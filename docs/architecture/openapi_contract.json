@@ -2092,6 +2092,11 @@
             "default": "",
             "title": "Public Base Url",
             "type": "string"
+          },
+          "recognition_action": {
+            "default": "save",
+            "title": "Recognition Action",
+            "type": "string"
           }
         },
         "title": "Body_owner_settings_post_owner_settings__settings_group__post",

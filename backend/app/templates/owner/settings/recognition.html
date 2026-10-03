@@ -11,7 +11,7 @@
   </dl>
 </div>
 
-<form method="post" action="/owner/settings/recognition">
+<form method="post" action="/owner/settings/recognition" data-show-loading="正在处理识别设置…">
   <div class="card">
     <h2>小票识别</h2>
     <div class="settings-form-grid">
@@ -60,7 +60,11 @@
       <label for="local_llm_model">模型名称</label>
       <input id="local_llm_model" name="local_llm_model" type="text"
              value="{{ recognition_view.form.local_llm_model }}"
-             placeholder="留空时从本机服务自动发现" class="inline-input inline-input--mono">
+             placeholder="留空时从本机服务自动发现" class="inline-input inline-input--mono" list="local-model-options">
+      <datalist id="local-model-options">
+        {% for model in recognition_models|default([]) %}<option value="{{ model }}">{% endfor %}
+      </datalist>
+      <span></span><p class="help-text fs-meta">填写地址后，可用下方“读取本机模型”选择模型，再用固定图片检查识别。检查使用当前填写的地址与模型，不会保存设置，也不会读取你的账本或原件。</p>
     </div>
   </div>
 
@@ -86,7 +90,9 @@
   </details>
 
   <div class="settings-form-actions mt-5">
-    <button type="submit" class="btn btn-primary">保存识别设置</button>
+    <button type="submit" name="recognition_action" value="save" class="btn btn-primary">保存识别设置</button>
+    <button type="submit" name="recognition_action" value="models" class="btn" formnovalidate>读取本机模型</button>
+    <button type="submit" name="recognition_action" value="test" class="btn" formnovalidate>测试图片识别</button>
     <a class="btn" href="/owner/diagnostics">查看系统状态</a>
     <a class="btn" href="/web/pending#recognition" target="_blank" rel="noopener">查看我的近期上传识别</a>
   </div>

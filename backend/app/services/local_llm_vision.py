@@ -26,7 +26,7 @@ from time import monotonic
 from typing import TypeAlias, cast
 from urllib import error, request
 
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.errors import AppError
 from app.services._json_types import JsonObject
 
@@ -98,8 +98,8 @@ def require_local_llm_base_url(base_url: str) -> None:
         )
 
 
-def resolve_local_llm_model(base_url: str) -> str:
-    """Return the first model id the endpoint advertises (when no model is pinned)."""
+def list_local_llm_models(base_url: str) -> tuple[str, ...]:
+    """Read the same model list used by automatic selection and Owner setup."""
 
     endpoint = f"{base_url}/models"
     req = request.Request(endpoint, method="GET")
@@ -110,12 +110,18 @@ def resolve_local_llm_model(base_url: str) -> str:
         raise AppError("server_error", "本地大模型服务不可用。", status_code=500) from exc
 
     models = payload.get("data") if isinstance(payload, dict) else None
-    if not models:
+    if not isinstance(models, list) or not models:
         raise AppError("server_error", "本地大模型服务没有可用模型。", status_code=500)
-    model_id = models[0].get("id") if isinstance(models[0], dict) else None
-    if not model_id:
+    model_ids = tuple(dict.fromkeys(item["id"] for item in models if isinstance(item, dict)
+                                   and isinstance(item.get("id"), str) and item["id"].strip()))
+    if not model_ids:
         raise AppError("server_error", "本地大模型服务模型列表格式不正确。", status_code=500)
-    return str(model_id)
+    return model_ids
+
+
+def resolve_local_llm_model(base_url: str) -> str:
+    """Return the first advertised model when no model is pinned."""
+    return list_local_llm_models(base_url)[0]
 
 
 def post_chat_completion(
@@ -187,17 +193,19 @@ def parse_json_object(content: str) -> LocalVisionModelJson:
     return cast(LocalVisionModelJson, payload)
 
 
-def call_local_llm_vision(image_bytes: bytes, media_type: str | None, prompt_text: str) -> LocalVisionModelJson:
+def call_local_llm_vision(image_bytes: bytes, media_type: str | None, prompt_text: str, *,
+                          settings: Settings | None = None) -> LocalVisionModelJson:
     """Run one image through the local vision model and return its JSON object.
 
     Encodes ``image_bytes`` inline as a data URL, resolves the model (pinned or
     first-available), POSTs a single deterministic (``temperature=0``)
     chat-completion under the shared concurrency slot, and decodes the one JSON
     object the model returns. The caller owns the prompt and the JSON→domain
-    mapping; everything between is identical for every vision task.
+    mapping; everything between is identical for every vision task. Owner setup
+    may pass an immutable draft snapshot without publishing runtime settings.
     """
 
-    settings = get_settings()
+    settings = settings or get_settings()
     require_local_llm_base_url(settings.local_llm_base_url)
     media = media_type or "image/jpeg"
     encoded = base64.b64encode(image_bytes).decode("ascii")
