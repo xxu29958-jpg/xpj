@@ -2161,6 +2161,17 @@
         "title": "Body_owner_settings_post_owner_settings__settings_group__post",
         "type": "object"
       },
+      "Body_owner_upload_links_create_owner_upload_links_post": {
+        "properties": {
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          }
+        },
+        "title": "Body_owner_upload_links_create_owner_upload_links_post",
+        "type": "object"
+      },
       "Body_owner_upload_links_limits_owner_upload_links__public_id__limits_post": {
         "properties": {
           "daily_byte_budget": {
@@ -46037,6 +46048,15 @@
       },
       "post": {
         "operationId": "owner_upload_links_create_owner_upload_links_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_owner_upload_links_create_owner_upload_links_post"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {
@@ -46047,6 +46067,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Owner Upload Links Create",
