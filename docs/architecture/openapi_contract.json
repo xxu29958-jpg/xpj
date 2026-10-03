@@ -2225,9 +2225,9 @@
             "title": "Daily Byte Budget"
           },
           "per_remote_min_interval_seconds": {
-            "default": 0,
+            "default": "0",
             "title": "Per Remote Min Interval Seconds",
-            "type": "integer"
+            "type": "string"
           }
         },
         "title": "Body_owner_upload_links_limits_owner_upload_links__public_id__limits_post",
