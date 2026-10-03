@@ -339,7 +339,8 @@ _EXACT_SCOPE_RULES = {
     "backend/tests/fixtures/shell_keyboard_contract.html": ("postgres", "desktop"),
     **dict.fromkeys(_DESKTOP_PAIRING_PRODUCER_FILES, _DESKTOP_PAIRING_SCOPES),
     _CROSS_RUNTIME_RELEASE_CONFIG: ("postgres", "desktop", "windows"),
-    "backend/app/version.py": ("postgres", "desktop", "windows"),
+    # The shared final log formatter now embeds this identity in the frozen backend.
+    "backend/app/version.py": ("postgres", "backend_frozen", "desktop", "windows"),
     "backend/packaging/windows-build-toolchain.json": ("postgres", "windows"),
     **dict.fromkeys(_DESKTOP_BFF_AUTH_ROUTES, ("postgres", "backend_frozen")),
 }

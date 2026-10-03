@@ -276,7 +276,7 @@ def test_desktop_build_contract_runs_tests_and_packaging() -> None:
 def test_version_contract_crosses_backend_desktop_and_packaging() -> None:
     assert classify_ci_paths(["backend/app/version.py"]) == {
         "postgres": True,
-        "backend_frozen": False,
+        "backend_frozen": True,
         "desktop": True,
         "android": False,
         "windows": True,
