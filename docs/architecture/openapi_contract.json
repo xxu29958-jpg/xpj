@@ -1910,6 +1910,17 @@
           "decision_type": {
             "title": "Decision Type",
             "type": "string"
+          },
+          "ledger_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ledger Id"
           }
         },
         "required": [
@@ -1997,12 +2008,40 @@
           "decision_public_id": {
             "title": "Decision Public Id",
             "type": "string"
+          },
+          "ledger_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ledger Id"
           }
         },
         "required": [
           "decision_public_id"
         ],
         "title": "Body_owner_learning_maintenance_dismiss_post_owner_learning_maintenance_dismiss_decision_post",
+        "type": "object"
+      },
+      "Body_owner_learning_maintenance_run_post_owner_learning_maintenance_run_post": {
+        "properties": {
+          "ledger_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ledger Id"
+          }
+        },
+        "title": "Body_owner_learning_maintenance_run_post_owner_learning_maintenance_run_post",
         "type": "object"
       },
       "Body_owner_ledger_rename_owner_ledgers__ledger_id__name_post": {
@@ -44669,6 +44708,24 @@
     "/owner/algorithm-versions": {
       "get": {
         "operationId": "owner_algorithm_versions_get_owner_algorithm_versions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ledger Id"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -44679,6 +44736,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Owner Algorithm Versions Get",
@@ -44991,6 +45058,24 @@
     "/owner/learning-maintenance": {
       "get": {
         "operationId": "owner_learning_maintenance_get_owner_learning_maintenance_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ledger Id"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -45001,6 +45086,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Owner Learning Maintenance Get",
@@ -45053,6 +45148,15 @@
     "/owner/learning-maintenance/run": {
       "post": {
         "operationId": "owner_learning_maintenance_run_post_owner_learning_maintenance_run_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_owner_learning_maintenance_run_post_owner_learning_maintenance_run_post"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {
@@ -45063,6 +45167,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Owner Learning Maintenance Run Post",

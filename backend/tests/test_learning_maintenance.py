@@ -248,7 +248,7 @@ def test_owner_console_panel_run_redirects(
         "/owner/learning-maintenance/run", follow_redirects=False
     )
     assert response.status_code == 303
-    assert response.headers["location"] == "/owner/learning-maintenance"
+    assert response.headers["location"] == "/owner/learning-maintenance?ledger_id=owner"
 
 
 def test_owner_console_lists_active_decisions(
@@ -262,9 +262,9 @@ def test_owner_console_lists_active_decisions(
     response = local_client.get("/owner/learning-maintenance")
     assert response.status_code == 200
     text = response.text
-    assert "active 决策" in text
+    assert "待采纳建议" in text
     assert "category_suggestion" in text
-    assert "Dismiss" in text
+    assert "忽略这条建议" in text
 
 
 def test_owner_console_dismiss_flips_active_row(
@@ -288,7 +288,7 @@ def test_owner_console_dismiss_flips_active_row(
         follow_redirects=False,
     )
     assert response.status_code == 303
-    assert response.headers["location"] == "/owner/learning-maintenance"
+    assert response.headers["location"] == "/owner/learning-maintenance?ledger_id=owner"
 
     with SessionLocal() as db:
         row = (

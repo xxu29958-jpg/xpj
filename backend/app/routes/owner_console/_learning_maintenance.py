@@ -22,14 +22,15 @@ counts.
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.routes.owner_console._ai_advisor import _owner_console_tenant_id
 from app.routes.owner_console._shared import LocalOnly, _base, templates
+from app.services import owner_console_service as svc
 from app.services.learning_service import (
     ALGORITHM_TYPES,
     find_decision_by_public_id,
@@ -60,21 +61,15 @@ def _recent_active_decisions(
 @router.get("/learning-maintenance", response_class=HTMLResponse)
 def owner_learning_maintenance_get(
     request: Request,
+    ledger_id: str | None = None,
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
-    tenant_id = _owner_console_tenant_id(db)
-    # Scope counts + active list to the owner's tenant. Calling
-    # without tenant_id aggregates every tenant on the host, which
-    # is wrong for any multi-ledger deployment (PR #124 codex
-    # review fix).
-    overview = get_status_overview(db, tenant_id=tenant_id)
+    choices, selected = svc.resolve_console_ledger_scope(db, ledger_id)
     ctx = _base(request, db)
-    ctx["overview"] = overview
-    ctx["tenant_id"] = tenant_id
-    ctx["active_decisions"] = _recent_active_decisions(
-        db, tenant_id=tenant_id
-    )
+    ctx.update(ledger_choices=choices, selected_ledger=selected)
+    ctx["overview"] = get_status_overview(db, tenant_id=selected.ledger_id) if selected else None
+    ctx["active_decisions"] = _recent_active_decisions(db, tenant_id=selected.ledger_id) if selected else []
     # Pass the registry so the template can show display labels for
     # each algorithm type next to the raw decision_type identifier.
     ctx["algorithm_types"] = [
@@ -89,15 +84,15 @@ def owner_learning_maintenance_get(
 
 @router.post("/learning-maintenance/run", response_class=HTMLResponse)
 def owner_learning_maintenance_run_post(
+    ledger_id: str | None = Form(None),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
-    # Owner-driven manual cleanup is scoped to the owner's tenant —
-    # the cron path (scheduler) is the only legitimate global caller.
-    tenant_id = _owner_console_tenant_id(db)
-    run_full_maintenance(db, tenant_id=tenant_id)
+    _, selected = svc.resolve_console_ledger_scope(db, ledger_id, mutation=True)
+    assert selected is not None
+    run_full_maintenance(db, tenant_id=selected.ledger_id)
     return RedirectResponse(
-        url="/owner/learning-maintenance", status_code=303
+        url="/owner/learning-maintenance?" + urlencode({"ledger_id": selected.ledger_id}), status_code=303
     )
 
 
@@ -106,33 +101,18 @@ def owner_learning_maintenance_run_post(
 )
 def owner_learning_maintenance_dismiss_post(
     decision_public_id: str = Form(...),
+    ledger_id: str | None = Form(None),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
-    tenant_id = _owner_console_tenant_id(db)
+    _, selected = svc.resolve_console_ledger_scope(db, ledger_id, mutation=True)
+    assert selected is not None
     decision = find_decision_by_public_id(
-        db, tenant_id=tenant_id, public_id=decision_public_id
+        db, tenant_id=selected.ledger_id, public_id=decision_public_id
     )
-    if decision is None:
-        # No row → just redirect; the panel will show the up-to-date
-        # state. We don't 404 because the owner might race a cleanup.
-        return RedirectResponse(
-            url="/owner/learning-maintenance", status_code=303
-        )
-    if decision.status != "active":
-        # Already closed by another path; nothing to do.
-        return RedirectResponse(
-            url="/owner/learning-maintenance", status_code=303
-        )
-    # Owner-driven manual dismiss → 'dismissed' (not 'withdrawn',
-    # which is reserved for algorithm-version rollback governance).
-    set_decision_status(
-        db,
-        tenant_id=tenant_id,
-        decision_id=decision.id,
-        new_status="dismissed",
-    )
-    db.commit()
+    if decision is not None and decision.status == "active":
+        set_decision_status(db, tenant_id=selected.ledger_id, decision_id=decision.id, new_status="dismissed")
+        db.commit()
     return RedirectResponse(
-        url="/owner/learning-maintenance", status_code=303
+        url="/owner/learning-maintenance?" + urlencode({"ledger_id": selected.ledger_id}), status_code=303
     )

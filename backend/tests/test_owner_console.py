@@ -945,7 +945,7 @@ def test_owner_algorithm_versions_inventory_and_withdraw(
 
     page = local_client.get("/owner/algorithm-versions")
     assert page.status_code == 200
-    assert "Version Inventory" in page.text
+    assert "建议版本" in page.text
     assert "category-history-v1" in page.text
     assert "/owner/algorithm-versions/withdraw" in page.text
 

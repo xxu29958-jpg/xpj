@@ -62,6 +62,7 @@ from app.services.owner_console_service._ledger_console import (
     list_console_ledgers,
     list_ledger_health,
     list_manageable_console_ledgers,
+    resolve_console_ledger_scope,
 )
 from app.services.owner_console_service._pairing import (
     PairingCodeResult,
@@ -135,4 +136,5 @@ __all__ = [
     "list_ledger_health",
     "list_manageable_console_ledgers",
     "list_recovery_device_choices",
+    "resolve_console_ledger_scope",
 ]

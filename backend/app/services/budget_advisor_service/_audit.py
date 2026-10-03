@@ -360,11 +360,11 @@ def cleanup_expired_audit_logs(
     return len(expired)
 
 
-def advisor_status_for_tenant(db: Session, *, tenant_id: str, actor_role: str = "owner") -> AdvisorStatus:
+def advisor_status_for_tenant(db: Session, *, tenant_id: str | None, actor_role: str = "owner") -> AdvisorStatus:
     cfg = get_settings()
     readiness = get_advisor_readiness()
     blocked_reason = readiness.blocked_reason(actor_role)
-    latest = latest_audit_row(db, tenant_id=tenant_id)
+    latest = latest_audit_row(db, tenant_id=tenant_id) if tenant_id is not None else None
     return AdvisorStatus(
         provider=readiness.provider,
         model=cfg.budget_advisor_model or None,
