@@ -13,8 +13,11 @@ import re
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
+from app.database import SessionLocal
 from app.main import app
+from app.models import Ledger, LedgerMember
 from app.routes import owner_ledgers
 
 _CSRF_META = re.compile(r'<meta name="csrf-token" content="([^"]*)"')
@@ -61,3 +64,26 @@ def test_owner_calendar_rejects_nonlocal_get_and_post(client):
     assert client.get(path).status_code == 403
     assert client.post(path, data={"timezone_name": "UTC", "expected_revision": "1",
         "idempotency_key": "remote-calendar"}).status_code == 403
+
+
+def test_calendar_page_keeps_ledger_identity_and_only_offers_owner_commands(local_client, identity):
+    path = "/owner/ledgers/owner/calendar"
+    for role in ("owner", "member", "viewer"):
+        with SessionLocal() as db:
+            ledger = db.scalar(select(Ledger).where(Ledger.ledger_id == "owner"))
+            name, revision = ledger.name, ledger.calendar_revision
+            member = db.scalar(select(LedgerMember).where(LedgerMember.ledger_id == "owner",
+                LedgerMember.account_id == ledger.owner_account_id))
+            member.role = role
+            db.commit()
+        page = local_client.get(path)
+        assert page.status_code == 200
+        assert f"{name} · 新规则只影响新输入。" in page.text
+        assert "规则历史" in page.text
+        assert ('name="timezone_name"' in page.text) is (role == "owner")
+        if role != "owner":
+            rejected = local_client.post(path, data={"timezone_name": "UTC",
+                "expected_revision": str(revision), "idempotency_key": f"owner-view-{role}"})
+            assert rejected.status_code == 403
+            with SessionLocal() as db:
+                assert db.scalar(select(Ledger.calendar_revision).where(Ledger.ledger_id == "owner")) == revision

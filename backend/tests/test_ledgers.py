@@ -382,10 +382,9 @@ def test_owner_ledgers_lists_and_creates(local_client: TestClient) -> None:
     assert "灰度用户1" in listing.text
     assert 'class="skip-link" href="#main-content"' in listing.text
     assert 'class="owner-main" id="main-content" tabindex="-1"' in listing.text
-    # Console shows the current household-management advisory banner.
-    assert "v0.5" in listing.text
+    # The named ledger remains distinct from its family-management actions.
+    assert 'aria-label="当前账本"' in listing.text
     assert "家庭成员邀请、角色调整和拥有者转让" in listing.text
-    assert 'class="role-chip role-owner"' in listing.text
     assert "拥有者" in listing.text
     # Each ledger row exposes a "打开账本" link carrying its ledger_id.
     assert 'href="/web?ledger_id=owner"' in listing.text
@@ -399,19 +398,18 @@ def test_owner_ledgers_lists_and_creates(local_client: TestClient) -> None:
     after = local_client.get("/owner/ledgers")
     assert "家庭账本" in after.text
     assert 'data-confirm="归档账本' in after.text
-    import re
-
-    archive_action = (
-        r"<tr>.*?家庭账本.*?"
-        r'action="/owner/ledgers/([^"]+)/archive"'
-    )
-    match = re.search(archive_action, after.text, re.S)
-    assert match is not None
-    archive = local_client.post(f"/owner/ledgers/{match.group(1)}/archive")
+    with SessionLocal() as db:
+        created_ledger = db.scalars(
+            select(Ledger).where(Ledger.name == "家庭账本")
+        ).one()
+        created_ledger_id = created_ledger.ledger_id
+    assert f'action="/owner/ledgers/{created_ledger_id}/archive"' in after.text
+    archive = local_client.post(f"/owner/ledgers/{created_ledger_id}/archive")
     assert archive.status_code in (200, 303)
 
     archived = local_client.get("/owner/ledgers")
     assert archived.status_code == 200
+    assert f'action="/owner/ledgers/{created_ledger_id}/unarchive"' in archived.text
     assert 'data-confirm="恢复账本' in archived.text
     assert "return confirm(" not in archived.text
 

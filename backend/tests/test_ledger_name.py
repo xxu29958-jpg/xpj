@@ -156,3 +156,23 @@ def test_revocation_after_authentication_cannot_publish_a_ledger_name(client, id
         assert failure.value.status_code == 401
         command.rollback()
         assert command.scalar(select(Ledger).where(Ledger.ledger_id == "owner")).name == old
+
+
+def test_owner_access_loss_keeps_unpublished_name_without_offering_another_ledger(client, identity):
+    old = _current(client, identity)["name"]
+    with SessionLocal() as db:
+        ledger = db.scalar(select(Ledger).where(Ledger.ledger_id == "owner"))
+        member = db.scalar(select(LedgerMember).where(LedgerMember.ledger_id == "owner",
+            LedgerMember.account_id == ledger.owner_account_id))
+        member.role = "member"
+        db.commit()
+    app.dependency_overrides[owner_ledgers._require_local] = lambda: None
+    try:
+        rejected = client.post("/owner/ledgers/owner/name", data={"name": "尚未保存的家", "expected_name": old})
+        assert rejected.status_code == 403
+        assert 'value="尚未保存的家" readonly' in rejected.text
+        assert 'action="/owner/ledgers/owner/name"' not in rejected.text
+        with SessionLocal() as db:
+            assert db.scalar(select(Ledger.name).where(Ledger.ledger_id == "owner")) == old
+    finally:
+        app.dependency_overrides.pop(owner_ledgers._require_local, None)
