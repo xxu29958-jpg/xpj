@@ -1447,7 +1447,9 @@ def test_owner_settings_service_editable_keys_are_explicit() -> None:
     """_EDITABLE_KEYS is the reviewed Owner Console runtime-edit surface."""
     from app.services.runtime_settings_service import _EDITABLE_KEYS
 
-    assert frozenset({"BUDGET_ADVISOR_OWNER_CONFIRMED", "PUBLIC_BASE_URL", "RECOGNITION_PIPELINE"}) == _EDITABLE_KEYS, (
+    # Model permission now requires the connection-bound confirmation command;
+    # the generic setting writer must no longer bypass that check.
+    assert frozenset({"PUBLIC_BASE_URL", "RECOGNITION_PIPELINE"}) == _EDITABLE_KEYS, (
         f"_EDITABLE_KEYS should contain only reviewed keys, got: {_EDITABLE_KEYS}"
     )
 
