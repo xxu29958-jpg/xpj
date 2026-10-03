@@ -12,6 +12,21 @@ import kotlin.test.assertTrue
 
 class PendingThumbnailLoaderTest {
     @Test
+    fun cachedReceiptLoadsByIdWithoutRestoringTheServerPath() = runTest {
+        val receipt = image("cached receipt")
+        val cached = expense(id = 1L, imagePath = null).copy(hasImage = true)
+        val deleted = cached.copy(id = 2L, imageDeletedAt = "2026-10-01T00:00:00Z")
+        val actions = ThumbnailFakeReviewActions(thumbnails = mapOf(1L to receipt))
+
+        val loaded = PendingThumbnailLoader(actions).loadMissing(listOf(cached, deleted), emptyMap())
+
+        assertEquals(listOf(1L), actions.thumbnailCalls)
+        assertEquals(setOf(1L), loaded.keys)
+        assertSame(receipt, loaded[1L])
+        assertEquals(null, cached.imagePath)
+    }
+
+    @Test
     fun loadMissingSkipsItemsWithoutImagesAndExistingThumbnails() = runTest {
         val existingImage = image("existing")
         val missingImage = image("loaded")

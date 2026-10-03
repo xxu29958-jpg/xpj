@@ -144,7 +144,7 @@ internal fun PendingExpenseReviewRow(
 @Composable
 private fun PendingExpenseLeadingMark(item: PendingExpenseReviewItem) {
     val size = if (item.compact) DpSize(40.dp, 52.dp) else DpSize(46.dp, 60.dp)
-    if (item.expense.imagePath != null) {
+    if (item.expense.hasUndeletedImage) {
         AppAsyncImage(
             image = item.thumbnail,
             presentation = AppAsyncImagePresentation(

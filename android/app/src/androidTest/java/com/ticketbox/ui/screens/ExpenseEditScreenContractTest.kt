@@ -27,6 +27,28 @@ class ExpenseEditScreenContractTest {
     val composeRule = createComposeRule()
 
     @Test
+    fun cachedReceiptKeepsTheReadOnlyOriginalImageAction() {
+        var originalRequests = 0
+        composeRule.setContent {
+            TicketboxTheme(skin = AppSkin.Default) {
+                ExpenseEditScreen(
+                    screenState = expenseEditScreenState(
+                        expense = expense().copy(hasImage = true),
+                        editState = ExpenseEditUiState(readOnly = true),
+                    ),
+                    actions = ExpenseEditScreenActions(
+                        media = ExpenseEditMediaActions(onLoadFullImage = { originalRequests += 1 }),
+                    ),
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("小票截图").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("看原图").performScrollTo().assertIsEnabled().performClick()
+        composeRule.runOnIdle { assertEquals(1, originalRequests) }
+    }
+
+    @Test
     fun expenseTimeAndMoreSectionClicksStayStableAndSubmitDraft() {
         var retryCount = 0
         var savedDraft: ExpenseDraft? = null

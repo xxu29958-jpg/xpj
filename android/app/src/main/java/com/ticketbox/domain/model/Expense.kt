@@ -35,8 +35,7 @@ data class Expense(
     val note: String?,
     val source: String,
     val imagePath: String?,
-    // Presence of the original receipt image (cache-stored; the path itself
-    // isn't). Read by the confirmed-without-image data-quality filter.
+    // Receipt presence survives caching; the server path itself does not.
     val hasImage: Boolean = imagePath != null,
     val thumbnailPath: String?,
     val imageDeletedAt: String? = null,
@@ -80,7 +79,10 @@ data class Expense(
      */
     val originalCurrencyCodeRaw: String? = null,
     val accountingTime: ExpenseAccountingTime? = null,
-)
+) {
+    // Metadata permits an image request; the protected reader still checks access and bytes.
+    val hasUndeletedImage: Boolean get() = hasImage && imageDeletedAt == null
+}
 
 /**
  * UI/UX 第三波 批 13：本票是否可发起跨账本拆账邀请（ADR-0029）。

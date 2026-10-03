@@ -415,7 +415,7 @@ fun ExpenseEditScreen(
     val wideTwoColumn = LocalAppAdaptiveLayoutPolicy.current.showsSupportingPane
 
     val evidenceSections: @Composable () -> Unit = {
-        if (currentExpense.imagePath != null) {
+        if (currentExpense.hasUndeletedImage) {
             ExpenseEditEvidenceSection(
                 state = ExpenseEditEvidenceState(
                     previewImage = previewImage,

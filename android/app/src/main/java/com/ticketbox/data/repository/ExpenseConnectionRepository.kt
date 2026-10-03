@@ -100,7 +100,7 @@ internal class ExpenseConnectionRepository(
             }
             record(DiagnosticCheckKind.Duplicates) { service.duplicates() }
 
-            val imageCandidate = pending.firstOrNull { it.imagePath != null || it.thumbnailPath != null }
+            val imageCandidate = pending.firstOrNull { it.hasUndeletedImage || it.thumbnailPath != null }
             if (imageCandidate == null) {
                 checks += DiagnosticCheck(
                     kind = DiagnosticCheckKind.ProtectedImage,
