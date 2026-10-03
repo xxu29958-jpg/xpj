@@ -108,6 +108,8 @@ internal class RepositoryGraph(
         sessionCoordinator = ledgerSessionCoordinator,
     )
 
+    val accountProfileRepository = com.ticketbox.data.repository.AccountProfileRepository(apiServiceProvider, ledgerSessionCoordinator)
+
     private val recurringQueries = com.ticketbox.data.repository.RecurringQueryReader(
         apiServiceProvider, database.expenseDao(), ledgerSessionCoordinator,
     )

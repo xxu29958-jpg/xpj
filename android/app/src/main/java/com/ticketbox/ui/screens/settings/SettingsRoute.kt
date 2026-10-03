@@ -2,6 +2,7 @@ package com.ticketbox.ui.screens.settings
 
 enum class SettingsRoute {
     Root,
+    AccountProfile,
     Server,
     Appearance,
     BackgroundGallery,

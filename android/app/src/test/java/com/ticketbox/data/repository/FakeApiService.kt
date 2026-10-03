@@ -633,6 +633,10 @@ internal class FakeApiService(
         )
     }
 
+    override suspend fun accountProfile(): com.ticketbox.data.remote.dto.AccountProfileDto = error("Unexpected account profile read")
+    override suspend fun renameAccountProfile(request: com.ticketbox.data.remote.dto.AccountProfileRenameDto):
+        com.ticketbox.data.remote.dto.AccountProfileDto = error("Unexpected account profile write")
+
     override suspend fun serverSettings(): ServerSettingsDto = serverSettingsResult ?: ServerSettingsDto(
         accountName = "我",
         ledgerId = "old",

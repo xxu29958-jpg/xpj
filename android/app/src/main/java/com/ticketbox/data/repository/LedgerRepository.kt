@@ -46,7 +46,6 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import retrofit2.HttpException
 import java.io.IOException
-import java.time.Instant
 
 /**
  * Repository for v0.4-alpha1 multi-ledger management.
@@ -178,7 +177,7 @@ class LedgerRepository(
             val devicePublicId = response.devicePublicId.requireSessionProtocolId("设备身份")
             val applied = sessionCoordinator.applyTransitionIfCurrent(
                 expectedSnapshot = session,
-                transition = LedgerSessionTransition(
+                transition = { current -> LedgerSessionTransition(
                     change = LocalSessionChange.SelectLedger,
                     serverId = serverId,
                     dataGeneration = dataGeneration,
@@ -190,10 +189,10 @@ class LedgerRepository(
                         ledgerName = response.ledger.name,
                         deviceName = response.deviceName,
                         role = response.ledger.role,
-                        boundAt = apiProvider.currentSession()?.identity?.boundAt ?: Instant.now().toString(),
+                        boundAt = current.boundAt,
                     ),
                     cacheInvalidation = LedgerCacheInvalidation.TargetLedger,
-                ),
+                ) },
             )
             if (!applied) {
                 throw RepositoryException(LedgerRequestGuard.LEDGER_CHANGED_MESSAGE)
@@ -474,7 +473,7 @@ class LedgerRepository(
             val current = requireNotNull(sessionStore.currentSession())
             val applied = sessionCoordinator.applyTransitionIfCurrent(
                 expectedSnapshot = session,
-                transition = response.toLedgerSelectionTransition(current.identity.boundAt),
+                transition = { identity -> response.toLedgerSelectionTransition(identity.boundAt) },
             )
             if (!applied) {
                 throw RepositoryException(LedgerRequestGuard.LEDGER_CHANGED_MESSAGE)

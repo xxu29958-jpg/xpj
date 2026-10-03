@@ -140,8 +140,8 @@ def evaluate_debt(counts: DebtCounts) -> int:
 # counter is and how it's computed.
 STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_carriers": 138,  # + Web budget archive with its captured expected row version.
-    "mutate_token_exempted": 139,  # + Web consumers of the existing Account device commands.
-    "mutate_token_reason_admin_single_writer": 11,
+    "mutate_token_exempted": 141,  # + Account name API/Web with field CAS under the identity lock.
+    "mutate_token_reason_admin_single_writer": 13,
     "mutate_token_reason_append_only_fact": 3,
     "mutate_token_reason_batch_db_write": 17,
     "mutate_token_reason_create_row": 38,
@@ -181,6 +181,9 @@ BASELINE_RATCHET_DOWN: frozenset[str] = frozenset(
     }
 )
 _MUTATE_TOKEN_EXEMPTION_ADMISSIONS = (
+    # Account identity owns its display label. Both adapters use expected_name
+    # CAS and the existing credential lock, without a financial OCC carrier.
+    ("afa32490213c9752c5ceedec07ad5425ae8f42e0", 139, 141),
     # Four Web adapters reuse existing Account device commands and the API's
     # classifications; no financial writer, OCC carrier or identity owner moves.
     ("3eca4d4f0e525cda0e6abc7d4734b5a36c4ddb7d", 135, 139),

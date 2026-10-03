@@ -81,6 +81,9 @@ internal class RuntimeNegotiationInterceptor : Interceptor {
     private fun Request.requiresRuntimeNegotiation(incomeForecastRead: Boolean, requiresCapabilityEvidence: Boolean): Boolean =
         requiresCapabilityEvidence || ((incomeForecastRead || isDebtGoalRead() || method in MUTATING_HTTP_METHODS) &&
             header("Authorization") != null && !url.encodedPath.startsWith("/api/auth/") &&
+            // This account-owned label remains editable without a ledger. The
+            // currency handshake requires ledger access and owns no part of it.
+            url.encodedPath != "/api/settings/account" &&
             header(TICKETBOX_API_VERSION_HEADER) == null)
 
     private fun compatibilityRequest(request: Request): Request {

@@ -419,6 +419,7 @@ class AppContainer(context: Context) {
 
     val expenseRepository = repositories.expenseRepository
     val ledgerRepository = repositories.ledgerRepository
+    val accountProfileRepository = repositories.accountProfileRepository
     val recurringRepository = repositories.recurringRepository
     val budgetRepository = repositories.budgetRepository
 

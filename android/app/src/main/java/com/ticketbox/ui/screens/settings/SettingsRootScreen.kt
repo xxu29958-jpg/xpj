@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Tune
@@ -35,6 +36,7 @@ data class SettingsRootNavigationActions(
 )
 
 data class SettingsRootLedgerFamilyNavigationActions(
+    val onOpenAccountProfile: () -> Unit,
     val onOpenLedgers: () -> Unit,
     val onOpenFamilyMembers: () -> Unit,
     val onOpenMyDevices: () -> Unit,
@@ -101,6 +103,12 @@ private fun SettingsLedgerFamilySection(
 ) {
     SettingsSection(title = stringResource(R.string.settings_root_section_ledger_family), icon = Icons.Filled.Group) {
         SettingsRootEntryGroup {
+            SettingsEntryRow(
+                title = stringResource(R.string.account_profile_title),
+                subtitle = stringResource(R.string.account_profile_subtitle),
+                icon = Icons.Filled.Person,
+                onClick = actions.onOpenAccountProfile,
+            )
             SettingsEntryRow(
                 title = stringResource(R.string.settings_root_entry_ledgers_title),
                 subtitle = stringResource(R.string.settings_root_entry_ledgers_subtitle),

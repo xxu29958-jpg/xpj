@@ -161,10 +161,13 @@ class LocalLedgerSessionCoordinator(
 
     suspend fun applyTransitionIfCurrent(
         expectedSnapshot: LedgerSessionSnapshot,
-        transition: LedgerSessionTransition,
+        transition: (LedgerSessionIdentity) -> LedgerSessionTransition,
     ): Boolean = mutex.withLock {
         if (!currentSnapshot().hasSameLogicalBinding(expectedSnapshot)) return@withLock false
-        applyTransitionLocked(transition = transition, clearOutbox = false)
+        val current = sessionStore.currentSession() ?: return@withLock false
+        // Resolve field updates against the current identity while holding the
+        // same lock as persistence; a name edit must not restore an older role.
+        applyTransitionLocked(transition = transition(current.identity.toLedgerSessionIdentity()), clearOutbox = false)
     }
 
     internal suspend fun clearSession() {
