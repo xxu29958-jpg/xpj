@@ -398,19 +398,18 @@ def test_owner_ledgers_lists_and_creates(local_client: TestClient) -> None:
     after = local_client.get("/owner/ledgers")
     assert "家庭账本" in after.text
     assert 'data-confirm="归档账本' in after.text
-    import re
-
-    archive_action = (
-        r"<tr>.*?家庭账本.*?"
-        r'action="/owner/ledgers/([^"]+)/archive"'
-    )
-    match = re.search(archive_action, after.text, re.S)
-    assert match is not None
-    archive = local_client.post(f"/owner/ledgers/{match.group(1)}/archive")
+    with SessionLocal() as db:
+        created_ledger = db.scalars(
+            select(Ledger).where(Ledger.name == "家庭账本")
+        ).one()
+        created_ledger_id = created_ledger.id
+    assert f'action="/owner/ledgers/{created_ledger_id}/archive"' in after.text
+    archive = local_client.post(f"/owner/ledgers/{created_ledger_id}/archive")
     assert archive.status_code in (200, 303)
 
     archived = local_client.get("/owner/ledgers")
     assert archived.status_code == 200
+    assert f'action="/owner/ledgers/{created_ledger_id}/unarchive"' in archived.text
     assert 'data-confirm="恢复账本' in archived.text
     assert "return confirm(" not in archived.text
 
