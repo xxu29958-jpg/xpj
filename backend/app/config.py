@@ -151,9 +151,7 @@ class Settings:
     # Batch 2: AI budget advisor live calls require explicit opt-in.
     # ``empty`` / ``mock`` providers do not need this flag.
     budget_advisor_owner_confirmed: bool
-    # v1.2 ops: scheduled learning-table cleanup. Disabled by default
-    # so existing deployments don't suddenly grow a background thread;
-    # enable via env when ready to retire manual cleanup.
+    # Scheduled learning cleanup stays idle until the Owner enables it.
     learning_cleanup_auto_enabled: bool
     learning_cleanup_daily_at: str
     learning_cleanup_timezone: str
