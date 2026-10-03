@@ -1804,9 +1804,60 @@
               }
             ],
             "title": "Confirmed"
+          },
+          "connection_revision": {
+            "default": "",
+            "title": "Connection Revision",
+            "type": "string"
           }
         },
         "title": "Body_owner_ai_advisor_confirmation_post_owner_ai_advisor_confirmation_post",
+        "type": "object"
+      },
+      "Body_owner_ai_advisor_settings_post_owner_ai_advisor_settings_post": {
+        "properties": {
+          "api_key": {
+            "default": "",
+            "title": "Api Key",
+            "type": "string"
+          },
+          "base_url": {
+            "default": "",
+            "title": "Base Url",
+            "type": "string"
+          },
+          "daily_call_limit": {
+            "default": "50",
+            "title": "Daily Call Limit",
+            "type": "string"
+          },
+          "key_action": {
+            "default": "keep",
+            "title": "Key Action",
+            "type": "string"
+          },
+          "min_interval_seconds": {
+            "default": "60",
+            "title": "Min Interval Seconds",
+            "type": "string"
+          },
+          "model": {
+            "default": "",
+            "title": "Model",
+            "type": "string"
+          },
+          "provider": {
+            "default": "empty",
+            "title": "Provider",
+            "type": "string"
+          },
+          "timeout_seconds": {
+            "default": "60",
+            "title": "Timeout Seconds",
+            "type": "string"
+          }
+        },
+        "title": "Body_owner_ai_advisor_settings_post_owner_ai_advisor_settings_post",
         "type": "object"
       },
       "Body_owner_algorithm_versions_withdraw_post_owner_algorithm_versions_withdraw_post": {
@@ -1853,6 +1904,32 @@
           "idempotency_key"
         ],
         "title": "Body_owner_calendar_post_owner_ledgers__ledger_id__calendar_post",
+        "type": "object"
+      },
+      "Body_owner_fx_settings_post_owner_fx_settings_post": {
+        "properties": {
+          "auto_enabled": {
+            "default": false,
+            "title": "Auto Enabled",
+            "type": "boolean"
+          },
+          "source": {
+            "default": "frankfurter",
+            "title": "Source",
+            "type": "string"
+          },
+          "sync_times": {
+            "default": "09:10,23:10",
+            "title": "Sync Times",
+            "type": "string"
+          },
+          "timezone": {
+            "default": "Asia/Shanghai",
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "title": "Body_owner_fx_settings_post_owner_fx_settings_post",
         "type": "object"
       },
       "Body_owner_inspect_originals_owner_originals_inspect_post": {
@@ -44105,6 +44182,67 @@
         ]
       }
     },
+    "/owner/ai-advisor/settings": {
+      "post": {
+        "operationId": "owner_ai_advisor_settings_post_owner_ai_advisor_settings_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_owner_ai_advisor_settings_post_owner_ai_advisor_settings_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Owner Ai Advisor Settings Post",
+        "tags": [
+          "owner-console"
+        ]
+      }
+    },
+    "/owner/ai-advisor/test": {
+      "post": {
+        "operationId": "owner_ai_advisor_test_owner_ai_advisor_test_post",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Owner Ai Advisor Test",
+        "tags": [
+          "owner-console"
+        ]
+      }
+    },
     "/owner/algorithm-versions": {
       "get": {
         "operationId": "owner_algorithm_versions_get_owner_algorithm_versions_get",
@@ -44382,6 +44520,46 @@
           }
         },
         "summary": "Owner Fx Refresh",
+        "tags": [
+          "owner-console"
+        ]
+      }
+    },
+    "/owner/fx/settings": {
+      "post": {
+        "operationId": "owner_fx_settings_post_owner_fx_settings_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_owner_fx_settings_post_owner_fx_settings_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Owner Fx Settings Post",
         "tags": [
           "owner-console"
         ]
