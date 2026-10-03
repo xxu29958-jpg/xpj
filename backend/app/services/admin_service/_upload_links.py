@@ -89,12 +89,12 @@ def list_upload_links(db: Session, *, ledger_ids: set[str] | None = None) -> lis
     }
     accounts_by_id = {a.id: a for a in db.scalars(select(Account).where(Account.id.in_(account_ids)))}
     devices_by_id = {d.id: d for d in db.scalars(select(Device).where(Device.id.in_(device_ids)))}
-    usage_by_id = {row.upload_link_id: row.bytes_total for row in db.scalars(
-        select(UploadLinkDailyUsage).where(
+    usage_by_id = dict(db.execute(
+        select(UploadLinkDailyUsage.upload_link_id, UploadLinkDailyUsage.bytes_total).where(
             UploadLinkDailyUsage.upload_link_id.in_([link.id for link in links]),
             UploadLinkDailyUsage.ymd == now_utc().strftime("%Y-%m-%d"),
         )
-    )}
+    ).all())
 
     summaries: list[UploadLinkSummary] = []
     for link in links:

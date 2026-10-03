@@ -490,14 +490,13 @@ def test_owner_upload_links_blocks_creation_until_endpoint_configured(
         with SessionLocal() as db:
             assert db.query(UploadLink).count() == count_before
         # Owner Console must neither mint a credential nor pretend to provide a usable URL.
-        warning = re.search(
-            r'<div class="alert alert-danger alert--accent-danger">(.*?)</div>',
+        warnings = re.findall(
+            r'<div\b[^>]*role="alert"[^>]*>(.*?)</div>',
             resp.text,
             flags=re.S,
         )
-        assert warning is not None
-        assert "手机连接设置" in warning.group(1)
-        assert 'href="/owner/settings"' in warning.group(1)
+        warning = next((message for message in warnings if "手机连接设置" in message), "")
+        assert 'href="/owner/settings"' in warning
         assert 'disabled aria-disabled="true"' in resp.text
         # A missing or invalid endpoint must not produce a usable credential URL.
         full_urls = re.findall(r"https?://[^\s\"<]+/u/[A-Za-z0-9_\-]+", resp.text)
