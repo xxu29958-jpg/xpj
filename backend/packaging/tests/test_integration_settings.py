@@ -1,27 +1,23 @@
 from __future__ import annotations
 
 import json
-import sys
 import threading
 from dataclasses import replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-
-from app import config  # noqa: E402
-from app.errors import AppError  # noqa: E402
-from app.services import integration_settings_service as integration  # noqa: E402
-from app.services import runtime_settings_service as runtime  # noqa: E402
-from app.services import runtime_settings_store as store  # noqa: E402
-from app.services.budget_advisor_service import _runner  # noqa: E402
-from app.services.budget_advisor_service._models import BudgetAdvice, BudgetInputs  # noqa: E402
-from app.services.budget_advisor_service._providers import OpenAiCompatBudgetAdvisor  # noqa: E402
-from app.services.runtime_integration_settings import AdvisorSettingsProjection, FxSettingsProjection  # noqa: E402
-from app.services.runtime_settings_store import RuntimeSettingsProjection, write_runtime_settings  # noqa: E402
+from app import config
+from app.errors import AppError
+from app.services import integration_settings_service as integration
+from app.services import runtime_settings_service as runtime
+from app.services import runtime_settings_store as store
+from app.services.budget_advisor_service import _runner
+from app.services.budget_advisor_service._models import BudgetAdvice, BudgetInputs
+from app.services.budget_advisor_service._providers import OpenAiCompatBudgetAdvisor
+from app.services.runtime_integration_settings import AdvisorSettingsProjection, FxSettingsProjection
+from app.services.runtime_settings_store import RuntimeSettingsProjection, write_runtime_settings
 
 
 @pytest.fixture
@@ -116,11 +112,18 @@ def test_old_recognition_projection_can_gain_integration_settings_without_losing
     assert config.get_settings().budget_advisor_owner_confirmed is True
 
 
-def test_connection_check_uses_saved_model_and_only_fixed_example(settings_file):
+def test_connection_check_uses_saved_model_and_only_fixed_example(settings_file, caplog):
     requests = []
+    reject = False
+    test_key = "example-private-key-for-connection-test"
     class ModelHandler(BaseHTTPRequestHandler):
         def do_POST(self):
             requests.append((self.path, json.loads(self.rfile.read(int(self.headers["Content-Length"])))))
+            if reject:
+                self.send_response(401, test_key)
+                self.end_headers()
+                self.wfile.write(test_key.encode())
+                return
             body = json.dumps({"choices": [{"message": {"content": json.dumps({"summary": "示例建议", "suggestions": [], "confidence": 0.5})}}]}).encode()
             self.send_response(200)
             self.end_headers()
@@ -133,7 +136,7 @@ def test_connection_check_uses_saved_model_and_only_fixed_example(settings_file)
     worker.start()
     try:
         form = _local_form(base_url=f"http://127.0.0.1:{server.server_port}/v1")
-        integration.save_advisor(form, api_key="", key_action="clear")
+        integration.save_advisor(form, api_key=test_key, key_action="replace")
         with pytest.raises(AppError, match="先允许"):
             integration.test_advisor_connection()
         assert requests == []
@@ -144,6 +147,12 @@ def test_connection_check_uses_saved_model_and_only_fixed_example(settings_file)
         sent = json.loads(body["messages"][1]["content"])
         assert sent["month"] == "2026-01" and sent["home_currency"] == "CNY"
         assert sent["category_breakdown"] == [{"category": "餐饮", "amount_cents": 1000, "count": 1}]
+        reject = True
+        saved = settings_file.read_bytes()
+        with pytest.raises(AppError, match="测试失败"):
+            integration.test_advisor_connection()
+        assert settings_file.read_bytes() == saved
+        assert test_key not in caplog.text
     finally:
         server.shutdown()
         server.server_close()

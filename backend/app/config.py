@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 
 from app.fx_constants import DEFAULT_SUPPORTED_CURRENCY_CODES
 from app.recognition_config import resolve_recognition_config
+from app.services.runtime_integration_settings import AdvisorSettingsProjection, FxSettingsProjection
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
@@ -277,6 +278,31 @@ def database_url_is_default_fallback() -> bool:
     return os.getenv("DATABASE_URL") is None
 
 
+def _resolve_advisor_config(saved: AdvisorSettingsProjection | None) -> AdvisorSettingsProjection:
+    if saved is not None:
+        return saved
+    return AdvisorSettingsProjection(
+        provider=os.getenv("BUDGET_ADVISOR_PROVIDER", "empty").strip().lower(),
+        base_url=os.getenv("BUDGET_ADVISOR_BASE_URL", "").strip(),
+        api_key=os.getenv("BUDGET_ADVISOR_API_KEY", ""),
+        model=os.getenv("BUDGET_ADVISOR_MODEL", "").strip(),
+        timeout_seconds=int(os.getenv("BUDGET_ADVISOR_TIMEOUT_SECONDS", "60")),
+        min_interval_seconds=max(0, int(os.getenv("BUDGET_ADVISOR_LIVE_MIN_INTERVAL_SECONDS", "60"))),
+        daily_call_limit=max(0, int(os.getenv("BUDGET_ADVISOR_LIVE_DAILY_CALL_LIMIT", "50"))),
+    )
+
+
+def _resolve_fx_config(saved: FxSettingsProjection | None) -> FxSettingsProjection:
+    if saved is not None:
+        return saved
+    return FxSettingsProjection(
+        auto_enabled=_bool_env("FX_RATE_AUTO_SYNC_ENABLED", True),
+        source=os.getenv("FX_RATE_SOURCE", "frankfurter").strip().lower() or "frankfurter",
+        sync_times=os.getenv("FX_RATE_SYNC_TIMES", "09:10,23:10").strip() or "09:10,23:10",
+        timezone=os.getenv("FX_RATE_SYNC_TIMEZONE", "Asia/Shanghai").strip() or "Asia/Shanghai",
+    )
+
+
 @lru_cache
 def get_settings() -> Settings:
     from app.services.runtime_settings_store import read_runtime_settings
@@ -288,8 +314,8 @@ def get_settings() -> Settings:
     if runtime_settings_service_owned() and runtime_settings is None:
         raise InstalledRuntimeSettingsError("installed runtime settings projection is missing")
     recognition = resolve_recognition_config(runtime_settings.recognition if runtime_settings is not None else None)
-    advisor = runtime_settings.advisor if runtime_settings is not None else None
-    fx = runtime_settings.fx if runtime_settings is not None else None
+    advisor = _resolve_advisor_config(runtime_settings.advisor if runtime_settings is not None else None)
+    fx = _resolve_fx_config(runtime_settings.fx if runtime_settings is not None else None)
     upload_dir = Path(os.getenv("UPLOAD_DIR", "uploads"))
     if not upload_dir.is_absolute():
         upload_dir = DATA_ROOT / upload_dir
@@ -342,11 +368,11 @@ def get_settings() -> Settings:
         # Together / Groq in the cloud — same base_url + api_key + model
         # triple. No endpoint is preset; selecting openai_compat without
         # BUDGET_ADVISOR_BASE_URL + MODEL raises at provider lookup.
-        budget_advisor_provider=advisor.provider if advisor else os.getenv("BUDGET_ADVISOR_PROVIDER", "empty").strip().lower(),
-        budget_advisor_base_url=advisor.base_url if advisor else os.getenv("BUDGET_ADVISOR_BASE_URL", "").strip(),
-        budget_advisor_api_key=advisor.api_key if advisor else os.getenv("BUDGET_ADVISOR_API_KEY", ""),
-        budget_advisor_model=advisor.model if advisor else os.getenv("BUDGET_ADVISOR_MODEL", "").strip(),
-        budget_advisor_timeout_seconds=advisor.timeout_seconds if advisor else int(os.getenv("BUDGET_ADVISOR_TIMEOUT_SECONDS", "60")),
+        budget_advisor_provider=advisor.provider,
+        budget_advisor_base_url=advisor.base_url,
+        budget_advisor_api_key=advisor.api_key,
+        budget_advisor_model=advisor.model,
+        budget_advisor_timeout_seconds=advisor.timeout_seconds,
         budget_advisor_audit_retention_days=int(os.getenv("BUDGET_ADVISOR_AUDIT_RETENTION_DAYS", "180")),
         budget_advisor_audit_cleanup_auto_enabled=_bool_env(
             "BUDGET_ADVISOR_AUDIT_CLEANUP_AUTO_ENABLED",
@@ -370,14 +396,8 @@ def get_settings() -> Settings:
             1,
             int(os.getenv("RECYCLE_BIN_RETENTION_DAYS", "30")),
         ),
-        budget_advisor_live_min_interval_seconds=advisor.min_interval_seconds if advisor else max(
-            0,
-            int(os.getenv("BUDGET_ADVISOR_LIVE_MIN_INTERVAL_SECONDS", "60")),
-        ),
-        budget_advisor_live_daily_call_limit=advisor.daily_call_limit if advisor else max(
-            0,
-            int(os.getenv("BUDGET_ADVISOR_LIVE_DAILY_CALL_LIMIT", "50")),
-        ),
+        budget_advisor_live_min_interval_seconds=advisor.min_interval_seconds,
+        budget_advisor_live_daily_call_limit=advisor.daily_call_limit,
         tenants_json=os.getenv("TENANTS_JSON", "").strip(),
         enable_http_bootstrap=_bool_env("ENABLE_HTTP_BOOTSTRAP", False),
         http_bootstrap_secret=os.getenv("HTTP_BOOTSTRAP_SECRET", "").strip(),
@@ -439,10 +459,10 @@ def get_settings() -> Settings:
             ",".join(sorted(DEFAULT_SUPPORTED_CURRENCY_CODES)),
         ).strip()
         or ",".join(sorted(DEFAULT_SUPPORTED_CURRENCY_CODES)),
-        fx_rate_auto_sync_enabled=fx.auto_enabled if fx else _bool_env("FX_RATE_AUTO_SYNC_ENABLED", True),
-        fx_rate_sync_times=fx.sync_times if fx else os.getenv("FX_RATE_SYNC_TIMES", "09:10,23:10").strip() or "09:10,23:10",
-        fx_rate_sync_timezone=fx.timezone if fx else os.getenv("FX_RATE_SYNC_TIMEZONE", "Asia/Shanghai").strip() or "Asia/Shanghai",
-        fx_rate_source=fx.source if fx else (os.getenv("FX_RATE_SOURCE", "frankfurter").strip().lower() or "frankfurter"),
+        fx_rate_auto_sync_enabled=fx.auto_enabled,
+        fx_rate_sync_times=fx.sync_times,
+        fx_rate_sync_timezone=fx.timezone,
+        fx_rate_source=fx.source,
         fx_rate_ecb_url=(
             os.getenv(
                 "FX_RATE_ECB_URL",

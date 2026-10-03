@@ -117,20 +117,26 @@ def confirm_advisor(*, confirmed: bool, revision: str) -> None:
                                   check_advisor=True, expected_advisor=snapshot))
 
 
-def save_advisor(form: AdvisorSettingsForm, *, api_key: str, key_action: str) -> None:
-    if form.provider not in {"empty", "openai_compat"}:
-        raise runtime._invalid("请选择关闭 AI 或兼容 OpenAI 的模型服务。")
-    settings = get_settings()
-    base_url = form.base_url.strip().rstrip("/")
+def _resolve_advisor_key(form: AdvisorSettingsForm, *, api_key: str, key_action: str) -> str:
+    """Keep a stored secret only when its destination remains the same."""
     if key_action not in {"keep", "replace", "clear"}:
         raise runtime._invalid("请选择保留、更换或清除密钥。")
     if key_action == "keep" and api_key:
         raise runtime._invalid("已填写新密钥，请选择更换密钥后再保存。")
-    if form.provider == "openai_compat" and key_action == "keep" and settings.budget_advisor_api_key and base_url != settings.budget_advisor_base_url.rstrip("/"):
+    settings = get_settings()
+    if form.provider == "openai_compat" and key_action == "keep" and settings.budget_advisor_api_key and form.base_url.strip().rstrip("/") != settings.budget_advisor_base_url.rstrip("/"):
         raise runtime._invalid("接口地址已改变，请重新填写密钥并选择更换，或明确清除原密钥。")
     key = settings.budget_advisor_api_key if key_action == "keep" else api_key if key_action == "replace" else ""
     if key_action == "replace" and not key:
         raise runtime._invalid("请填写新密钥；不需要密钥的本机服务可选择清除密钥。")
+    return key
+
+
+def save_advisor(form: AdvisorSettingsForm, *, api_key: str, key_action: str) -> None:
+    if form.provider not in {"empty", "openai_compat"}:
+        raise runtime._invalid("请选择关闭 AI 或兼容 OpenAI 的模型服务。")
+    base_url = form.base_url.strip().rstrip("/")
+    key = _resolve_advisor_key(form, api_key=api_key, key_action=key_action)
     model = form.model.strip()
     if form.provider == "openai_compat" and (not base_url or not model):
         raise runtime._invalid("请填写接口地址和模型名称；这些值由你选择的模型服务提供。")

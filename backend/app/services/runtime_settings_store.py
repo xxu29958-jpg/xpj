@@ -8,7 +8,7 @@ import os
 import threading
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Literal
+from typing import Literal, TypeVar
 
 from app.services.runtime_integration_settings import (
     AdvisorSettingsProjection,
@@ -205,7 +205,10 @@ def _decode_recognition(value: object) -> RecognitionSettingsProjection | None:
     return RecognitionSettingsProjection(**value)
 
 
-def _decode_integration(value: object, model):
+_Integration = TypeVar("_Integration", AdvisorSettingsProjection, FxSettingsProjection)
+
+
+def _decode_integration(value: object, model: type[_Integration]) -> _Integration | None:
     if value is None:
         return None
     if not isinstance(value, dict) or set(value) != set(model.__dataclass_fields__):
@@ -226,6 +229,11 @@ def read_runtime_settings(
     holder = hold_service_owned_projection_for_read if service_owned else hold_protected_file_for_read
     with holder(target) as protected:
         encoded = protected.read_bytes()
+    return _decode_runtime_settings(encoded)
+
+
+def _decode_runtime_settings(encoded: bytes) -> RuntimeSettingsProjection:
+    """Validate the complete saved document before any group becomes effective."""
     if len(encoded) > _MAX_BYTES:
         raise ValueError("runtime settings projection exceeds its bounded size")
     try:
