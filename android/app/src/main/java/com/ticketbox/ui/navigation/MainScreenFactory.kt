@@ -75,6 +75,7 @@ internal class MainScreenFactory(
 
 internal data class MainFeatureRepositories(
     val portableExports: com.ticketbox.data.repository.PortableExportActions,
+    val accountProfile: com.ticketbox.data.repository.AccountProfileActions,
     val repository: ExpenseRepository,
     val uploadIntents: UploadIntentActions,
     val ledgerRepository: LedgerRepository,

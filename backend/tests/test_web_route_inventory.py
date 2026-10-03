@@ -97,6 +97,7 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("GET", "/web/auth/whoami"): "auth",
     # Account-owned device commands; exercised by test_web_settings.py.
     ("GET", "/web/settings"): "principal-read",
+    ("POST", "/web/settings/account/name"): "principal-command",
     ("POST", "/web/settings/devices/pairing-codes"): "principal-command",
     ("POST", "/web/settings/devices/{public_id}/delete"): "principal-command",
     ("POST", "/web/settings/devices/{public_id}/rename"): "principal-command",

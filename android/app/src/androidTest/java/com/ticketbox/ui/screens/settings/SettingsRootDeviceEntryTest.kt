@@ -3,6 +3,8 @@ package com.ticketbox.ui.screens.settings
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.SettingsUiState
@@ -16,6 +18,7 @@ import org.junit.Test
  * 218-B2's settings migration briefly wrapped it in an owner-only gate.
  */
 class SettingsRootDeviceEntryTest {
+    private var accountOpened = false
     @get:Rule
     val composeRule = createComposeRule()
 
@@ -23,21 +26,23 @@ class SettingsRootDeviceEntryTest {
     fun myDevicesEntryRendersForOwner() {
         setRootContent(role = "owner")
 
-        composeRule.onNodeWithText("我的设备").assertIsDisplayed()
+        composeRule.onNodeWithText("我的设备").performScrollTo().assertIsDisplayed()
     }
 
     @Test
     fun myDevicesEntryRendersForMember() {
         setRootContent(role = "member")
 
-        composeRule.onNodeWithText("我的设备").assertIsDisplayed()
+        composeRule.onNodeWithText("我的设备").performScrollTo().assertIsDisplayed()
     }
 
     @Test
     fun myDevicesEntryRendersForViewer() {
         setRootContent(role = "viewer")
 
-        composeRule.onNodeWithText("我的设备").assertIsDisplayed()
+        composeRule.onNodeWithText("我的设备").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("账号名称").performScrollTo().performClick()
+        composeRule.runOnIdle { check(accountOpened) }
     }
 
     private fun setRootContent(role: String) {
@@ -61,6 +66,7 @@ class SettingsRootDeviceEntryTest {
     private fun settingsRootNavigationActionsNoOp(): SettingsRootNavigationActions =
         SettingsRootNavigationActions(
             ledgerFamily = SettingsRootLedgerFamilyNavigationActions(
+                onOpenAccountProfile = { accountOpened = true },
                 onOpenLedgers = {},
                 onOpenFamilyMembers = {},
                 onOpenMyDevices = {},

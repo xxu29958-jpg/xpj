@@ -222,6 +222,11 @@ ALLOWLIST: dict[str, Exempt] = {
     # Web self-service delegates to the exact same Account-scoped device commands.
     # Name updates have no financial predecessor; revoke/delete retain the shared
     # locked credential and terminal-state guards; pairing issues a new capability.
+    # Account-owned labels: one shared writer, credential lifecycle lock, and
+    # expected_name field CAS. A stale, different value returns 409; identical
+    # assignment retries are harmless. No financial row/version is involved.
+    "POST /api/settings/account": Exempt("admin_single_writer", "identity", ("accounts",)),
+    "POST /web/settings/account/name": Exempt("admin_single_writer", "identity", ("accounts",)),
     "POST /web/settings/devices/{public_id}/rename": Exempt("admin_single_writer", "identity", ("devices",)),
     "POST /web/settings/devices/{public_id}/revoke": Exempt("terminal_flag_flip", "identity", _DEVICE_REVOKE, "medium"),
     "POST /web/settings/devices/{public_id}/delete": Exempt("terminal_flag_flip", "identity", _DEVICE_CLEANUP, "medium"),

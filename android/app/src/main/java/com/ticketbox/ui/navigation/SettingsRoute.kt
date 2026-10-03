@@ -72,6 +72,7 @@ internal fun SettingsRoute(
         ),
         repositories = SettingsRouteRepositories(
             portableExports = screenFactory.repositories.portableExports,
+            accountProfile = screenFactory.repositories.accountProfile,
             ledgerRepository = screenFactory.ledgerRepository,
             expenseRepository = screenFactory.repository,
             outboxRepository = screenFactory.outboxRepository,

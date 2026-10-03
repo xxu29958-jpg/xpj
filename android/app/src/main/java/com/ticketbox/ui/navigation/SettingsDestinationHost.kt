@@ -15,6 +15,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.integerResource
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.data.repository.DebtCreationActions
 import com.ticketbox.data.repository.ExpenseRepository
@@ -129,6 +130,7 @@ internal data class SettingsRouteActions(
 
 internal data class SettingsRouteRepositories(
     val portableExports: com.ticketbox.data.repository.PortableExportActions,
+    val accountProfile: com.ticketbox.data.repository.AccountProfileActions,
     val ledgerRepository: LedgerRepository,
     val expenseRepository: ExpenseRepository,
     val outboxRepository: OutboxRepository,
@@ -204,6 +206,7 @@ internal fun SettingsDestinationHost(
             onBack = navigation.onCloseRoot,
             navigationActions = SettingsRootNavigationActions(
                 ledgerFamily = SettingsRootLedgerFamilyNavigationActions(
+                    onOpenAccountProfile = { route = SettingsDestination.AccountProfile },
                     onOpenLedgers = { route = SettingsDestination.Ledgers },
                     onOpenFamilyMembers = { route = SettingsDestination.FamilyMembers },
                     onOpenMyDevices = { route = SettingsDestination.MyDevices },
@@ -225,6 +228,28 @@ internal fun SettingsDestinationHost(
                 ),
             ),
         )
+
+        SettingsDestination.AccountProfile -> {
+            val vm: com.ticketbox.viewmodel.AccountProfileViewModel = viewModel(
+                key = "account-profile:${states.settings.access?.binding}",
+                factory = com.ticketbox.viewmodel.accountProfileViewModelFactory(repositories.accountProfile),
+            )
+            val profileState by vm.uiState.collectAsStateWithLifecycle()
+            LaunchedEffect(vm) { vm.refresh() }
+            LaunchedEffect(profileState.profile) {
+                if (profileState.profile != null) {
+                    actions.onBindingChanged()
+                    actions.onRefreshServerSettings()
+                }
+            }
+            com.ticketbox.ui.screens.settings.AccountProfileScreen(
+                state = profileState,
+                onNameChange = vm::changeName,
+                onSave = vm::save,
+                onRefresh = vm::refresh,
+                onBack = { route = SettingsDestination.Root },
+            )
+        }
 
         SettingsDestination.Server -> ServerSettingsScreen(
             state = ServerSettingsScreenState(

@@ -40,6 +40,8 @@ class OpenApiContractGateTest {
         Pairing(ErrorDto::class, "ErrorResponse"),
         Pairing(CategoryReferenceDto::class, "CategoryReferenceResponse"),
         Pairing(AuthCheckDto::class, "AuthCheckResponse"),
+        Pairing(AccountProfileDto::class, "AccountProfileResponse"),
+        Pairing(AccountProfileRenameDto::class, "AccountProfileRenameRequest"),
         Pairing(PairRequestDto::class, "PairRequest"),
         Pairing(PairResponseDto::class, "PairResponse"),
         Pairing(RefreshSessionRequestDto::class, "RefreshSessionRequest"),

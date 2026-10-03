@@ -163,6 +163,7 @@ class MainActivity : FragmentActivity() {
 
     private fun AppContainer.mainFeatureRepositories(): MainFeatureRepositories = MainFeatureRepositories(
         portableExports = portableExportRepository,
+        accountProfile = accountProfileRepository,
         ledgerCalendarRepository = ledgerCalendarRepository,
         uploadIntents = uploadIntentRepository,
         originalAttachments = uploadIntentRepository,

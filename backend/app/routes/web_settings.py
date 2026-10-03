@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Form, Request, Response
@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.errors import AppError
 from app.routes.web_common import LedgerOption, _base_ctx, _read_ui_theme, templates
-from app.services import owner_device_service
+from app.services import account_profile_service, owner_device_service
 from app.services.identity_service import PairingCodeResult
 from app.services.ledger_service import list_ledgers_for_account
 from app.services.spending_contract_service import accounting_datetime_label
@@ -22,7 +22,7 @@ from app.version import BACKEND_VERSION, STATIC_ASSET_VERSION
 
 router = APIRouter(prefix="/web/settings", tags=["web-app"])
 _MESSAGES = {"renamed": "设备名称已保存。", "revoked": "设备已停用，原登录和上传链接已失效。",
-             "deleted": "已移除停用的设备记录，账本中的记录仍然保留。"}
+             "deleted": "已移除停用的设备记录，账本中的记录仍然保留。", "account-renamed": "账号名称已保存。"}
 _PLATFORMS = {"web": "浏览器", "android": "Android", "iphone": "iPhone", "desktop": "桌面管理器"}
 
 
@@ -60,13 +60,17 @@ def _moment(value: str | None) -> str:
 
 
 def _render_settings(request: Request, db: Session, *, error: str = "", status_code: int = 200,
-                     form: DeviceForm = DeviceForm(), pairing: PairingCodeResult | None = None) -> HTMLResponse:
+                     form: DeviceForm = DeviceForm(), pairing: PairingCodeResult | None = None,
+                     account_name_draft: str | None = None) -> HTMLResponse:
     principal = _principal(request)
+    profile = account_profile_service.read_profile(db, principal)
+    principal = replace(principal, account_name=profile.display_name)
     devices = owner_device_service.list_my_devices(db, principal)
     current_platform = next((item.summary.platform for item in devices if item.is_current), "")
     ctx = _settings_context(request, db, principal)
     ctx.update(principal=principal, devices=devices, current_platform=current_platform, platforms=_PLATFORMS,
                device_form=form, error=error, pairing=pairing, moment=_moment,
+               account_profile=profile, account_name_draft=account_name_draft,
                message=_MESSAGES.get(request.query_params.get("done", ""), ""))
     return templates.TemplateResponse(request=request, name="settings.html", context=ctx, status_code=status_code)
 
@@ -74,6 +78,17 @@ def _render_settings(request: Request, db: Session, *, error: str = "", status_c
 @router.get("", response_class=HTMLResponse)
 def web_settings(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
     return _render_settings(request, db)
+
+
+@router.post("/account/name")
+def web_account_name(request: Request, display_name: str = Form(default=""), expected_name: str = Form(default=""),
+                     db: Session = Depends(get_db)) -> Response:
+    try:
+        account_profile_service.rename_profile(db, _principal(request), display_name=display_name, expected_name=expected_name)
+    except AppError as exc:
+        db.rollback()
+        return _render_settings(request, db, error=exc.message, status_code=exc.status_code, account_name_draft=display_name)
+    return RedirectResponse(url="/web/settings?done=account-renamed", status_code=303)
 
 
 def _device_response(request: Request, db: Session, *, command: Callable[[], object], done: str,

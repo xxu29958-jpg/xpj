@@ -103,6 +103,47 @@
         "title": "AcceptedInvitationImpact",
         "type": "object"
       },
+      "AccountProfileRenameRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "display_name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Display Name",
+            "type": "string"
+          },
+          "expected_name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Expected Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "display_name",
+          "expected_name"
+        ],
+        "title": "AccountProfileRenameRequest",
+        "type": "object"
+      },
+      "AccountProfileResponse": {
+        "properties": {
+          "account_public_id": {
+            "title": "Account Public Id",
+            "type": "string"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "account_public_id",
+          "display_name"
+        ],
+        "title": "AccountProfileResponse",
+        "type": "object"
+      },
       "AccountingTimeInput": {
         "additionalProperties": false,
         "properties": {
@@ -2731,6 +2772,22 @@
           }
         },
         "title": "Body_save_correction_rate_web_expenses__expense_id__correction_rate_post",
+        "type": "object"
+      },
+      "Body_web_account_name_web_settings_account_name_post": {
+        "properties": {
+          "display_name": {
+            "default": "",
+            "title": "Display Name",
+            "type": "string"
+          },
+          "expected_name": {
+            "default": "",
+            "title": "Expected Name",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_account_name_web_settings_account_name_post",
         "type": "object"
       },
       "Body_web_budget_archive_web_budgets_archive_post": {
@@ -42967,6 +43024,138 @@
         ]
       }
     },
+    "/api/settings/account": {
+      "get": {
+        "operationId": "get_account_profile_api_settings_account_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountProfileResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Get Account Profile",
+        "tags": [
+          "settings"
+        ]
+      },
+      "post": {
+        "operationId": "rename_account_profile_api_settings_account_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountProfileRenameRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountProfileResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Rename Account Profile",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
     "/api/settings/server": {
       "get": {
         "operationId": "get_server_settings_api_settings_server_get",
@@ -55835,6 +56024,44 @@
           }
         },
         "summary": "Web Settings",
+        "tags": [
+          "web-app"
+        ]
+      }
+    },
+    "/web/settings/account/name": {
+      "post": {
+        "operationId": "web_account_name_web_settings_account_name_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_account_name_web_settings_account_name_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Account Name",
         "tags": [
           "web-app"
         ]

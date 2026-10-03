@@ -506,6 +506,10 @@ internal class StubApi(
         maxScan: Int,
     ): RuleApplyConfirmedResponseDto = ledgerUnsupported()
     override suspend fun serverSettings(): ServerSettingsDto = ledgerUnsupported()
+
+    override suspend fun accountProfile(): com.ticketbox.data.remote.dto.AccountProfileDto = ledgerUnsupported()
+    override suspend fun renameAccountProfile(request: com.ticketbox.data.remote.dto.AccountProfileRenameDto):
+        com.ticketbox.data.remote.dto.AccountProfileDto = ledgerUnsupported()
     override suspend fun monthlyStats(month: String?, tag: String?, timezone: String?, homeCurrencyCode: String?): MonthlyStatsDto = ledgerUnsupported()
     override suspend fun lifestyleStats(month: String?, timezone: String?, homeCurrencyCode: String?): LifestyleStatsDto = ledgerUnsupported()
     override suspend fun reportsOverview(

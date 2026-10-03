@@ -30,6 +30,19 @@
   {% endif %}
 </nav>
 
+<section class="product-panel product-panel--padded settings-panel" aria-labelledby="settings-account-title">
+  <h2 class="product-panel-title" id="settings-account-title">账号名称</h2>
+  <p class="product-panel-subtitle">家人会在成员列表中看到这个名称。当前名称：{{ account_profile.display_name }}。更名不会改变账号身份、账本归属或设备连接。</p>
+  <form method="post" action="/web/settings/account/name" class="settings-device-rename">
+    {{ csrf_field|safe }}<input type="hidden" name="expected_name" value="{{ account_profile.display_name }}">
+    <label class="product-field"><span>我的显示名称</span>
+      <input class="product-input" name="display_name" maxlength="120" required autocomplete="nickname"
+             value="{{ account_name_draft if account_name_draft is not none else account_profile.display_name }}">
+    </label>
+    <button class="product-button" type="submit">保存账号名称</button>
+  </form>
+</section>
+
 {% if pairing %}
 <section class="product-panel product-panel--padded settings-panel" aria-labelledby="settings-code-title" data-settings-code-result>
   <h2 class="product-panel-title" id="settings-code-title">连接码已生成</h2>
