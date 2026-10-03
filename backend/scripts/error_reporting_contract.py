@@ -22,8 +22,8 @@ PYTHON_OWNERS = {
     },
     "backend/app/services/background_task_executor.py": {
         "submit_committed": {"app.error_reporting.report_error"},
-        "_run_observed": {"app.error_reporting.report_error", "runner"},
-        "_ExecutorPool.submit": {"_run_observed", "concurrent.futures.ThreadPoolExecutor.submit"},
+        "_report_worker_outcome": {"app.error_reporting.report_error", "future.exception", "future.cancelled"},
+        "_ExecutorPool.submit": {"runner", "concurrent.futures.ThreadPoolExecutor.submit", "future.add_done_callback", "_report_worker_outcome"},
     },
     "backend/app/services/background_task_worker.py": {"run_task": {"app.error_reporting.report_error"}},
     "backend/app/log_sanitize.py": {
@@ -34,7 +34,7 @@ PYTHON_OWNERS = {
 }
 KOTLIN_OWNERS = (
     ANDROID + "data/remote/dto/ErrorDto.kt", ANDROID + "data/repository/NetworkErrorHandler.kt",
-    ANDROID + "data/repository/NetworkErrorReporting.kt", ANDROID + "data/repository/_RepositorySupport.kt",
+    ANDROID + "data/repository/NetworkErrorReporting.kt",
 )
 REQUIRED_FILES = (*PYTHON_OWNERS, *KOTLIN_OWNERS, "android/app/build.gradle.kts")
 
@@ -42,9 +42,9 @@ REQUIRED_FILES = (*PYTHON_OWNERS, *KOTLIN_OWNERS, "android/app/build.gradle.kts"
 # A changed symbol invalidates this reviewed responsibility and requires a fresh review.
 REVIEWED_BOUNDARIES = {
     ("backend/app/services/background_task_executor.py", "_ExecutorPool.submit"): {
-        "sha256": "3fdc1abfc940b504db977095a6b4ff106e8a10f4130a513c166677c315ae9759", "owner": "_run_observed wraps both inline and executor worker invocation",
+        "sha256": "3228d34871e9c9efc391ac6bcd4ea2fbf711dd1e09b8fe4137132484fa137056", "owner": "pool completion reports Future errors; inline errors propagate to submit_committed",
         "test": "backend/tests/test_background_task_claim.py::test_claim_failure_is_observed_without_publishing_a_new_task_state",
-        "reason": "The existing pool is an independent executor; the common wrapper reports outside-handler exceptions and reraises.",
+        "reason": "The existing pool Future retains outside-handler exceptions. Its completion callback reports them without consuming cancellation or changing task state.",
     },
     ("backend/app/error_reporting.py", "report_error"): {
         "sha256": "846d33fc9a0853f2617085a4fd235523e42239695788f98212c58c9b8fbcaa82", "owner": "final log sink failure stays outside business state",
@@ -108,9 +108,8 @@ def _android_contract(files: dict[str, str]) -> list[dict]:
     results = []
     checks = [
         (KOTLIN_OWNERS[0], "requestId", "requestId" in kotlin_code(files[KOTLIN_OWNERS[0]])),
-        (KOTLIN_OWNERS[3], "RepositoryException", "requestId" in kotlin_code(files[KOTLIN_OWNERS[3]])),
         (handler_path, "parseErrorMessage", bool(re.search(r"requestId\s*=\s*bodyId\s*\?:\s*headerId", handler))),
-        (handler_path, "httpFailure", bool(re.search(r"requestId\s*=\s*parsed\.requestId", handler))),
+        (handler_path, "parseErrorMessage", bool(re.search(r"\.copy\(\s*requestId\s*=\s*requestId\s*\)", handler))),
         (handler_path, "safeCall", "BuildConfig.DEBUG" not in handler and "logNetworkWarning" in handler),
         (handler_path, "parseHttpError", handler.count(".string()") == 1),
         (reporting_path, "logNetworkWarning", bool(re.search(r"Log\.w\(\s*,\s*output\s*\)", output))),

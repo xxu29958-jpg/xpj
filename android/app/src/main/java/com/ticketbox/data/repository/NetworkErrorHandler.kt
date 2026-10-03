@@ -71,7 +71,7 @@ internal class NetworkErrorHandler(
     fun httpFailure(error: HttpException): RepositoryException {
         val parsed = parseHttpError(error)
         return RepositoryException(parsed.message, parsed.errorCode, conflict = parsed.conflict,
-            httpStatusCode = error.code(), cause = error, requestId = parsed.requestId)
+            httpStatusCode = error.code(), cause = error)
     }
 
     fun parseErrorMessage(
@@ -90,7 +90,7 @@ internal class NetworkErrorHandler(
         val conflict = if (bodyId != null && headerId != null && bodyId != headerId) {
             " request_id_mismatch=true header_request_id=$headerId"
         } else ""
-        logNetworkWarning("operation=$context HTTP status=$statusCode code=$code request_id=${requestId ?: "absent"}$conflict", cause)
+        logNetworkWarning("operation=$context HTTP status=$statusCode code=$code request_id=${parsed.requestId ?: "absent"}$conflict", cause)
         return parsed
     }
 

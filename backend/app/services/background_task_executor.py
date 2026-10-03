@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import os
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from threading import Lock
 from typing import Any
 
@@ -64,7 +64,7 @@ class _ExecutorPool:
         runner: TaskRunner,
     ) -> None:
         if os.environ.get("XPJ_BACKGROUND_TASK_INLINE") == "1":
-            _run_observed(task_id, payload, registry, runner)
+            runner(task_id, payload, registry)
             return
         with self._lock:
             if self._executor is None:
@@ -72,7 +72,8 @@ class _ExecutorPool:
                     max_workers=MAX_WORKERS,
                     thread_name_prefix="xpj-bgtask",
                 )
-            self._executor.submit(_run_observed, task_id, payload, registry, runner)
+            future = self._executor.submit(runner, task_id, payload, registry)
+            future.add_done_callback(lambda finished: _report_worker_outcome(task_id, finished))
 
     def shutdown(self, *, wait: bool) -> None:
         with self._lock:
@@ -85,17 +86,11 @@ class _ExecutorPool:
 _EXECUTOR_POOL = _ExecutorPool()
 
 
-def _run_observed(
-    task_id: int,
-    payload: dict[str, Any],
-    registry: TaskHandlerRegistry,
-    runner: TaskRunner,
-) -> None:
-    try:
-        runner(task_id, payload, registry)
-    except Exception as exc:  # Observe errors otherwise retained only by an unconsumed Future.
-        report_error(logger, "background task %s stage=worker_boundary failed", task_id, error=exc)
-        raise
+def _report_worker_outcome(task_id: int, future: Future[None]) -> None:
+    # A pool Future otherwise retains outside-handler errors without an observer.
+    # Inline execution already propagates to the existing submission boundary.
+    if not future.cancelled() and (error := future.exception()) is not None:
+        report_error(logger, "background task %s stage=worker_boundary failed", task_id, error=error)
 
 
 def submit_task(

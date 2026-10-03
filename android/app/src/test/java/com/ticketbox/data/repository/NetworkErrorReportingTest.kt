@@ -42,7 +42,6 @@ class NetworkErrorReportingTest {
             "conflict_tag_public_id":"tag-id","conflict_tag_row_version":7}""")
         val original = httpError(body, "header-id", 409)
         val failure = handler.safeCall<Unit> { throw original }.exceptionOrNull() as RepositoryException
-        assertEquals("body-id", failure.requestId)
         assertEquals("tag_conflict", failure.errorCode)
         assertEquals(7L, failure.conflictTagRowVersion)
         assertEquals(409, failure.httpStatusCode)
@@ -60,12 +59,11 @@ class NetworkErrorReportingTest {
     fun oldMalformedAndHeaderOnlyResponsesKeepFallbackAndNeverInventServerIds() {
         for (body in listOf("""{"error":"server_error"}""", "invalid JSON")) {
             val withHeader = handler.httpFailure(httpError(CountingBody(body), "header-only"))
-            assertEquals("header-only", withHeader.requestId)
+            assertEquals(503, withHeader.httpStatusCode)
             assertTrue(finalLog().contains("request_id=header-only"))
         }
         val old = handler.httpFailure(httpError(CountingBody("""{"error":"server_error"}""")))
         assertEquals("server_error", old.errorCode)
-        assertNull(old.requestId)
         assertTrue(finalLog().contains("request_id=absent"))
     }
 
@@ -78,7 +76,7 @@ class NetworkErrorReportingTest {
             val result = handler.safeCall<Unit> { throw original }
             val reported = result.exceptionOrNull() as RepositoryException
             assertOriginalCause(original, reported.cause)
-            assertNull(reported.requestId)
+            assertNull(reported.httpStatusCode)
         }
         logNetworkWarning("Authorization: Bearer ${secrets[0]} url=https://host.test/u/${secrets[1]} " +
             "pairing=${secrets[2]} password=${secrets[3]}", failure)

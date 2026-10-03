@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
-import logging
+import logging.config
 import os
 import re
 from dataclasses import replace
@@ -182,7 +182,7 @@ def test_cleanup_rejected_images_does_not_disguise_missing_bytes_as_deleted(
 
     launch = _load_packaging_launch()
     config = launch._build_log_config(tmp_path / "logs", console=False)
-    formatter = logging.Formatter(config["formatters"]["plain"]["format"])
+    formatter = logging.config.DictConfigurator(config).configure_formatter(config["formatters"]["plain"])
     formatted = formatter.format(record)
     assert "event=upload_integrity_missing" in formatted
     assert f"reference_digest={record.reference_digest}" in formatted

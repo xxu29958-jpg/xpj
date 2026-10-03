@@ -99,7 +99,7 @@ example = "logging.basicConfig(filename='raw.log')"
 @pytest.mark.parametrize("target,old,new", [
     ("backend/app/errors.py", "report_http_error(request, 500, error=exc)", "pass"),
     ("android/app/src/main/java/com/ticketbox/data/repository/NetworkErrorHandler.kt",
-        "requestId = parsed.requestId", "requestId = null"),
+        "copy(requestId = requestId)", "copy(requestId = null)"),
     ("backend/packaging/launch.py", "app.log_sanitize.SanitizedFormatter", "logging.Formatter"),
 ])
 def test_common_owner_and_android_id_loss_are_blocked(guard_repo, target, old, new):
