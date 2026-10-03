@@ -28,7 +28,7 @@ from app.routes.owner_console._shared import templates
 from app.schemas._ledger_calendar import LedgerCalendarChangeRequest
 from app.services import owner_console_service as svc
 from app.services.ledger_calendar_commands import change_ledger_calendar, ledger_calendar_history, read_ledger_calendar
-from app.services.ledger_service import rename_ledger
+from app.services.ledger_service import get_ledger_for_account, rename_ledger
 from app.services.spending_contract_service import count_undated_expenses
 from app.version import BACKEND_VERSION  # noqa: F401  (kept for parity with sibling pages)
 
@@ -60,8 +60,10 @@ def _render_calendar_page(request: Request, db: Session, ledger_id: str, *,
                           status_code: int = 200) -> HTMLResponse:
     account_id = _calendar_owner_id(db)
     current = read_ledger_calendar(db, ledger_id=ledger_id, account_id=account_id)
+    ledger, role = get_ledger_for_account(db, ledger_id=ledger_id, account_id=account_id)
     context = _base(request, db)
     context.update(calendar=current, calendar_history=ledger_calendar_history(db, ledger_id=ledger_id, account_id=account_id),
+        calendar_ledger_name=ledger.name, calendar_can_edit=role == "owner",
         ledger_undated_expense_count=count_undated_expenses(db, tenant_id=ledger_id),
         submitted_timezone=submitted_timezone if submitted_timezone is not None else current.timezone_name,
         idempotency_key=uuid4().hex, error=error)
