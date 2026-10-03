@@ -1,6 +1,15 @@
 /* Reveal invalid fields before native form validation tries to focus them. */
 (function () {
     "use strict";
+    function revealSection() {
+        var section = document.getElementById(window.location.hash.slice(1));
+        if (!section || !section.matches(".workspace-disclosure")) return;
+        section.open = true;
+        section.querySelector("summary").focus({ preventScroll: true });
+        section.scrollIntoView({ block: "start" });
+    }
+    revealSection();
+    window.addEventListener("hashchange", revealSection);
     document.addEventListener("invalid", function (event) {
         if (!event.target.closest(".workspace-form")) return;
         var details = event.target.closest("details");

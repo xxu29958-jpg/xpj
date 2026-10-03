@@ -231,7 +231,7 @@ def test_owner_console_panel_renders(
     response = local_client.get("/owner/learning-maintenance")
     assert response.status_code == 200
     text = response.text
-    assert "学习层维护" in text
+    assert "学习记录维护" in text
     assert "algorithm_decisions" in text
     assert "ledger_learning_events" in text
     assert "ocr_facts" in text
@@ -248,7 +248,7 @@ def test_owner_console_panel_run_redirects(
         "/owner/learning-maintenance/run", follow_redirects=False
     )
     assert response.status_code == 303
-    assert response.headers["location"] == "/owner/learning-maintenance?ledger_id=owner"
+    assert response.headers["location"] == "/owner/learning-maintenance?ledger_id=owner#learning-volume"
 
 
 def test_owner_console_lists_active_decisions(
@@ -288,7 +288,7 @@ def test_owner_console_dismiss_flips_active_row(
         follow_redirects=False,
     )
     assert response.status_code == 303
-    assert response.headers["location"] == "/owner/learning-maintenance?ledger_id=owner"
+    assert response.headers["location"] == "/owner/learning-maintenance?ledger_id=owner#learning-candidates"
 
     with SessionLocal() as db:
         row = (
@@ -312,3 +312,38 @@ def test_owner_console_dismiss_silently_ignores_unknown(
         follow_redirects=False,
     )
     assert response.status_code == 303
+
+
+def test_owner_maintenance_failure_shows_partial_result_without_retry(
+    local_client: TestClient, monkeypatch: pytest.MonkeyPatch, *, identity,
+) -> None:
+    from sqlalchemy.exc import SQLAlchemyError
+
+    from app.models import AlgorithmDecision
+    from app.services.learning_service import _cleanup
+
+    expense_id = _seed_pending_expense()
+    decision_id = _seed_active_decision(retention_days=1, days_ago=3)
+    with SessionLocal() as db:
+        db.get(AlgorithmDecision, decision_id).status = "dismissed"
+        db.commit()
+
+    attempts = []
+
+    def fail_second_table(*args, **kwargs):
+        attempts.append(kwargs["tenant_id"])
+        raise SQLAlchemyError("isolated second-table failure")
+
+    monkeypatch.setattr(_cleanup, "cleanup_expired_learning_events", fail_second_table)
+    response = local_client.post("/owner/learning-maintenance/run", data={"ledger_id": "owner"})
+    assert response.status_code == 500
+    assert "部分批次可能已经完成" in response.text
+    assert 'id="learning-volume" class="workspace-disclosure workspace-task-group" open' in response.text
+    assert 'name="ledger_id" value="owner"' in response.text
+    assert "暂无完成记录" in response.text
+    assert attempts == ["owner"]
+    with SessionLocal() as db:
+        assert db.get(AlgorithmDecision, decision_id) is None
+        expense = db.get(Expense, expense_id)
+        assert expense.status == "pending"
+        assert expense.amount_cents == 1000
