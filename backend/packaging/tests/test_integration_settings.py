@@ -74,6 +74,7 @@ def test_save_confirm_change_and_clear_secret_keep_other_settings(settings_file)
 
 
 @pytest.mark.parametrize("changed", [
+    {"provider": "empty", "base_url": "http://127.0.0.1:4321/v1"},
     {"base_url": "http://cloud.example/v1"}, {"base_url": "https://user:pass@cloud.example/v1"},
     {"model": ""}, {"model": "model\nsecret"}, {"timeout_seconds": "zero"}, {"daily_call_limit": "-1"},
 ])

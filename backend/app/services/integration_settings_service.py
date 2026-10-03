@@ -107,7 +107,7 @@ def _resolve_advisor_key(form: AdvisorSettingsForm, *, api_key: str, key_action:
     if key_action == "keep" and api_key:
         raise runtime._invalid("已填写新密钥，请选择更换密钥后再保存。")
     settings = get_settings()
-    if form.provider == "openai_compat" and key_action == "keep" and settings.budget_advisor_api_key and form.base_url.strip().rstrip("/") != settings.budget_advisor_base_url.rstrip("/"):
+    if key_action == "keep" and settings.budget_advisor_api_key and form.base_url.strip().rstrip("/") != settings.budget_advisor_base_url.rstrip("/"):
         raise runtime._invalid("接口地址已改变，请重新填写密钥并选择更换，或明确清除原密钥。")
     key = settings.budget_advisor_api_key if key_action == "keep" else api_key if key_action == "replace" else ""
     if key_action == "replace" and not key:
