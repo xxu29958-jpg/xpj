@@ -295,7 +295,8 @@ def test_owner_upload_links_list_masked(local_client: TestClient) -> None:
     resp = local_client.get("/owner/upload-links")
     assert resp.status_code == 200
     assert "data-owner" in resp.text
-    assert 'class="table-scroll"' in resp.text
+    assert 'aria-label="链接列表"' in resp.text
+    assert 'workspace-upload-link' in resp.text
     assert "掩码路径" in resp.text
     assert "有效期至" in resp.text
     # Full upload keys start with 'upl_'; must NOT appear in persistent list HTML
@@ -349,6 +350,40 @@ def test_owner_upload_link_limits_can_be_updated(
         link = db.query(UploadLink).filter(UploadLink.public_id == public_id).one()
         assert link.daily_byte_budget == 1048576
         assert link.per_remote_min_interval_seconds == 9
+
+
+@pytest.mark.parametrize("budget,interval", [("1.5", "9"), ("-1", "7"), ("2048", "-2")])
+def test_owner_upload_link_invalid_limits_keep_draft_and_saved_values(
+    local_client: TestClient, phone_mobile_endpoint, budget: str, interval: str,
+) -> None:
+    import re
+
+    from app.database import SessionLocal
+    from app.models import UploadLink
+
+    created = local_client.post("/owner/upload-links")
+    public_id = re.findall(r"/owner/upload-links/([0-9a-f\-]{36})/limits", created.text)[0]
+    with SessionLocal() as db:
+        link = db.query(UploadLink).filter(UploadLink.public_id == public_id).one()
+        saved = (link.daily_byte_budget, link.per_remote_min_interval_seconds)
+    response = local_client.post(f"/owner/upload-links/{public_id}/limits", data={
+        "daily_byte_budget": budget, "per_remote_min_interval_seconds": interval,
+    })
+    assert response.status_code == 422
+    assert re.search(fr'name="daily_byte_budget"[^>]*value="{re.escape(budget)}"', response.text)
+    assert re.search(fr'name="per_remote_min_interval_seconds"[^>]*value="{re.escape(interval)}"', response.text)
+    assert 'workspace-upload-limits" open' in response.text
+    with SessionLocal() as db:
+        link = db.query(UploadLink).filter(UploadLink.public_id == public_id).one()
+        assert (link.daily_byte_budget, link.per_remote_min_interval_seconds) == saved
+
+    corrected = local_client.post(f"/owner/upload-links/{public_id}/limits", data={
+        "daily_byte_budget": "2048", "per_remote_min_interval_seconds": "9",
+    }, follow_redirects=False)
+    assert corrected.status_code == 303
+    with SessionLocal() as db:
+        link = db.query(UploadLink).filter(UploadLink.public_id == public_id).one()
+        assert (link.daily_byte_budget, link.per_remote_min_interval_seconds) == (2048, 9)
 
 
 def test_owner_upload_link_can_be_extended(

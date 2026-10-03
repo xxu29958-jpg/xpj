@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.models import Account, Device, Ledger, UploadLink
+from app.models import Account, Device, Ledger, UploadLink, UploadLinkDailyUsage
 from app.services.admin_scope_service import lock_and_resolve_mutation_ledger_ids
 from app.services.admin_service._dtos import UploadLinkSecret, UploadLinkSummary
 from app.services.identity_service import (
@@ -21,15 +21,25 @@ from app.services.identity_service._bootstrap_exposure_guard import (
 )
 from app.services.session_lifecycle_service import upload_link_expires_at
 from app.services.time_service import ensure_utc, now_utc, to_iso
+from app.services.upload_link_throttle_service import resolve_limits
 from app.tenants import AuthContext
 
 UPLOAD_LINK_PUBLIC_ID_CANDIDATE_COUNT = 8
+
+
+def _remaining_budget(link: UploadLink, used: int) -> int | None:
+    budget = resolve_limits(link).daily_byte_budget
+    return max(0, budget - used) if budget > 0 else None
 
 
 def _upload_link_summary(db: Session, link: UploadLink) -> UploadLinkSummary:
     ledger = db.scalar(select(Ledger).where(Ledger.ledger_id == link.ledger_id).limit(1))
     account = db.get(Account, link.account_id)
     device = db.get(Device, link.device_id)
+    used = db.scalar(select(UploadLinkDailyUsage.bytes_total).where(
+        UploadLinkDailyUsage.upload_link_id == link.id,
+        UploadLinkDailyUsage.ymd == now_utc().strftime("%Y-%m-%d"),
+    )) or 0
     return UploadLinkSummary(
         public_id=link.public_id,
         ledger_id=link.ledger_id,
@@ -42,6 +52,7 @@ def _upload_link_summary(db: Session, link: UploadLink) -> UploadLinkSummary:
         expires_at=to_iso(link.expires_at),
         is_expired=_is_expired(link),
         expires_in_days=_days_until_expiry(link),
+        daily_bytes_remaining=_remaining_budget(link, used),
         # Lists / dashboards must NEVER show the full upload key — only the
         # public_id is safe to reveal repeatedly.
         masked_url_path="/u/***",
@@ -78,6 +89,12 @@ def list_upload_links(db: Session, *, ledger_ids: set[str] | None = None) -> lis
     }
     accounts_by_id = {a.id: a for a in db.scalars(select(Account).where(Account.id.in_(account_ids)))}
     devices_by_id = {d.id: d for d in db.scalars(select(Device).where(Device.id.in_(device_ids)))}
+    usage_by_id = {row.upload_link_id: row.bytes_total for row in db.scalars(
+        select(UploadLinkDailyUsage).where(
+            UploadLinkDailyUsage.upload_link_id.in_([link.id for link in links]),
+            UploadLinkDailyUsage.ymd == now_utc().strftime("%Y-%m-%d"),
+        )
+    )}
 
     summaries: list[UploadLinkSummary] = []
     for link in links:
@@ -97,6 +114,7 @@ def list_upload_links(db: Session, *, ledger_ids: set[str] | None = None) -> lis
                 expires_at=to_iso(link.expires_at),
                 is_expired=_is_expired(link),
                 expires_in_days=_days_until_expiry(link),
+                daily_bytes_remaining=_remaining_budget(link, usage_by_id.get(link.id, 0)),
                 # Lists / dashboards must NEVER show the full upload key — only the
                 # public_id is safe to reveal repeatedly.
                 masked_url_path="/u/***",

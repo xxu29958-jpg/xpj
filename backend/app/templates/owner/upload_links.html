@@ -1,149 +1,94 @@
-{% extends "base.html" %}
+{% extends "_workspace.html" %}
+{% from "_workspace_ui.html" import icon with context %}
 {% block title %}iPhone 上传链接 — 小票夹{% endblock %}
-{% block content %}
-<h1>iPhone 上传链接</h1>
-<p class="help-text"><a class="text-link" href="/owner/settings/uploads">设置上传大小、默认配额和新链接有效期</a></p>
-<details class="page-help">
-  <summary>这是什么</summary>
-  <p>给 iPhone 用的：iPhone 没有小票夹 App，靠「快捷指令」把拍好的小票发过来。在这里生成一条上传链接，按下面的步骤配进 iPhone 快捷指令一次，以后拍完直接分享就能上传。配一次即可，平时不用进来。</p>
-</details>
-
-{% if error %}
-<div class="alert alert-danger">{{ error }}</div>
-{% endif %}
-
+{% block back_url %}/owner/settings/uploads{% endblock %}
+{% block back_label %}上传与链接{% endblock %}
+{% block workspace_title %}iPhone 上传链接{% endblock %}
+{% block workspace_description %}按设备管理每一个上传入口。{% endblock %}
+{% block workspace_body %}
+{% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
 {% if not public_base_url_configured %}
-<div class="alert alert-danger alert--accent-danger">
-  尚未完成手机连接设置。为避免生成无法使用的链接，新建和重新生成暂不可用。请先到 <a class="text-link" href="/owner/settings"><strong>设置</strong></a> 页面完成配置。
-</div>
+<div class="alert alert-danger" role="alert">尚未完成手机连接设置。新建和重新生成暂不可用，请先到 <a class="text-link" href="/owner/settings">设置</a> 完成配置。</div>
 {% endif %}
-
 {% if new_secret %}
-<div class="card">
-  <div class="alert alert-success">
-    ✅ 上传链接已{% if new_secret.public_id %}创建/轮换{% endif %}。<br>
-    <strong>请把下面的<u>完整公网 URL</u>整段复制到 iPhone 快捷指令的「URL」动作。必须包含 <code>https://</code> 开头的域名，<u>不能</u>只复制 <code>/u/...</code> 路径。</strong>
-  </div>
-  {% if new_secret_ledger_name %}<p class="help-text">这条链接上传到：<strong>{{ new_secret_ledger_name }}</strong></p>{% endif %}
-  <div class="secret-box" data-upload-handoff-url>{{ new_secret_full_url }}</div>
-  <div class="reveal-row">
+<details class="workspace-disclosure workspace-upload-reveal">
+  <summary><span class="workspace-task__text"><strong>上传链接已准备好 · 查看完整链接与二维码</strong><span>本次仅显示一次，离开后无法再次查看</span></span>{{ icon('chevron-right') }}</summary>
+  <div class="workspace-disclosure__body">
+    {% if new_secret_ledger_name %}<p class="workspace-note">上传到：<strong>{{ new_secret_ledger_name }}</strong></p>{% endif %}
+    <div class="secret-box" data-upload-handoff-url>{{ new_secret_full_url }}</div>
     <button type="button" class="btn btn-primary" data-copy-upload-url>复制完整 URL</button>
-    <span class="help-text">点一下整段复制，去 iPhone「快捷指令」的「URL」动作里粘贴。</span>
-  </div>
-  <div data-upload-qr-section hidden class="my-4">
-    <div data-upload-qr class="qr-box"></div>
-    <p class="help-text qr-hint">或用 iPhone 相机扫上面的二维码：长按顶部识别横幅，选「<strong>拷贝</strong>」把链接粘进快捷指令。<u>不要选「打开」</u>——上传地址只接受快捷指令发出的 POST 上传，浏览器直接打开会提示无效。</p>
-  </div>
-  <p class="secret-note">⚠️ 完整 URL 仅显示一次；离开本页面后无法再查看，列表中只保留 <code>/u/***</code> 掩码。</p>
-</div>
-{% endif %}
-
-<div class="card">
-  <h2>链接列表</h2>
-  <form method="post" action="/owner/upload-links" class="settings-form-grid mb-4">
-    <label for="upload-ledger">上传到账本</label>
-    <select id="upload-ledger" name="ledger_id" class="inline-select" required>
-      {% if not selected_upload_ledger_available %}<option value="" selected disabled>请选择可管理的账本</option>{% endif %}
-      {% for choice in ledger_choices %}
-      <option value="{{ choice.ledger_id }}"{% if choice.ledger_id == selected_upload_ledger_id %} selected{% endif %}>{{ choice.name }}{% if choice.is_default %}（默认）{% endif %}</option>
-      {% endfor %}
-    </select>
-    <span></span><p class="help-text">新链接上传的图片只进入所选账本，已有链接保持原来的账本。</p>
-    <span></span><div class="settings-form-actions">
-      <button type="submit" class="btn btn-primary"{% if not public_base_url_configured or not ledger_choices %} disabled aria-disabled="true"{% endif %}>+ 新建上传链接</button>
+    <p class="workspace-note">将完整公网 URL 粘贴到快捷指令的「URL」动作，必须包含 https:// 开头的域名。</p>
+    <div data-upload-qr-section hidden class="my-4"><div data-upload-qr class="qr-box"></div>
+      <p class="workspace-note">或用 iPhone 相机扫描，长按识别横幅选「拷贝」，再粘贴到快捷指令。不要选「打开」——上传地址只接受快捷指令发出的 POST 上传。</p>
     </div>
-  </form>
-  {% if links %}
-  <div class="table-scroll">
-  <table>
-    <thead>
-      <tr>
-        <th class="nowrap">创建时间</th>
-        <th class="nowrap">绑定设备</th>
-        <th class="nowrap">账本</th>
-        <th class="nowrap">时区</th>
-        <th class="nowrap">日配额</th>
-        <th class="nowrap">同端间隔</th>
-        <th class="nowrap">有效期至</th>
-        <th class="nowrap">最近使用</th>
-        <th class="nowrap">状态</th>
-        <th class="nowrap">掩码路径</th>
-        <th>操作</th>
-      </tr>
-    </thead>
-    <tbody>
-    {% for link in links %}
-      <tr>
-        <td class="text-meta cell-meta-time">{{ link.created_at|owner_datetime }}</td>
-        <td>{{ link.device_name or '—' }}</td>
-        <td>{{ link.ledger_name }}</td>
-        <td>{{ link.default_timezone or 'Asia/Shanghai' }}</td>
-        <td>
-          <input form="upload-link-limits-{{ link.public_id }}" type="number" min="0"
-                 name="daily_byte_budget"
-                 value="{{ link.daily_byte_budget if link.daily_byte_budget is not none else '' }}"
-                 placeholder="默认" class="inline-input w-9r">
-        </td>
-        <td>
-          <form id="upload-link-limits-{{ link.public_id }}" class="inline" method="post"
-                action="/owner/upload-links/{{ link.public_id }}/limits"></form>
-          <input form="upload-link-limits-{{ link.public_id }}" type="number" min="0"
-                 name="per_remote_min_interval_seconds"
-                 value="{{ link.per_remote_min_interval_seconds }}" class="inline-input w-6r">
-          <button form="upload-link-limits-{{ link.public_id }}" type="submit" class="btn btn-secondary">保存</button>
-          <span class="text-meta hint-under">一般不用改，默认即可</span>
-        </td>
-        <td class="text-meta cell-meta-time">{{ link.expires_at|owner_datetime }}</td>
-        <td>{{ link.last_used_at|owner_datetime }}</td>
-        <td>
-          {% if link.revoked_at %}
-            <span class="badge badge-off">已停用</span>
-          {% elif link.is_expired %}
-            <span class="badge badge-off">已过期</span>
-          {% elif link.expires_in_days is not none and link.expires_in_days <= 7 %}
-            <span class="badge badge-warn">{{ link.expires_in_days }} 天后过期</span>
-          {% else %}
-            <span class="badge badge-ok">正常</span>
-          {% endif %}
-        </td>
-        <td class="path-mono">{{ link.masked_url_path }}</td>
-        <td>
-          <div class="actions">
-            {% if not link.revoked_at %}
-            <form class="inline" method="post"
-                  action="/owner/upload-links/{{ link.public_id }}/rotate"
-                  data-confirm="重新生成上传 Key？旧 iPhone 快捷指令将立即失效。">
-              <button type="submit" class="btn btn-secondary"{% if not public_base_url_configured %} disabled aria-disabled="true" title="请先配置手机 HTTPS 地址"{% endif %}>重新生成</button>
-            </form>
-            <form class="inline" method="post"
-                  action="/owner/upload-links/{{ link.public_id }}/extend">
-              <button type="submit" class="btn btn-secondary">续期</button>
-            </form>
-            <form class="inline" method="post"
-                  action="/owner/upload-links/{{ link.public_id }}/revoke"
-                  data-confirm="确认停用该上传链接？">
-              <button type="submit" class="btn btn-danger">停用</button>
-            </form>
-            {% else %}
-            <form class="inline" method="post"
-                  action="/owner/upload-links/{{ link.public_id }}/delete"
-                  data-confirm="确认从列表移除该上传链接？仅移除已停用链接记录，账单数据保留。">
-              <button type="submit" class="btn btn-danger">移除记录</button>
-            </form>
-            {% endif %}
-          </div>
-        </td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
+    <p class="workspace-note">完整链接是上传凭证，请只保存在自己的设备。列表仅显示 /u/*** 掩码。</p>
   </div>
-  {% else %}
-    <p class="empty-note">暂无上传链接，点击「新建」创建一个。</p>
-  {% endif %}
-</div>
-
-<div class="card">
+</details>
+{% endif %}
+<div class="workspace-columns workspace-upload-columns">
+  <section class="workspace-section" aria-label="链接列表">
+    {% for link in links %}
+    {% set draft = limits_draft if limits_draft and limits_draft.public_id == link.public_id else none %}
+    <details class="workspace-disclosure workspace-task-group workspace-upload-link" id="upload-link-{{ link.public_id }}"{% if links|length == 1 or draft %} open{% endif %}>
+      <summary>
+        <span class="workspace-task__icon workspace-tone-green">{{ icon('smartphone') }}</span>
+        <span class="workspace-task__text"><strong>{{ link.device_name or '上传设备' }}</strong>
+          <span>{{ link.ledger_name }} · {% if link.revoked_at %}已停用{% elif link.is_expired %}已过期{% elif link.expires_in_days is not none and link.expires_in_days <= 7 %}<span class="badge badge-warn">{{ link.expires_in_days }} 天后过期</span>{% else %}有效{% endif %} · {% if link.daily_bytes_remaining is none %}每日不限额{% elif link.daily_bytes_remaining == 0 %}今日配额已用尽{% else %}今日剩余 {{ link.daily_bytes_remaining|filesizeformat(true) }}{% endif %}</span>
+          <span>有效期至 {{ link.expires_at|owner_datetime }}</span>
+        </span>{{ icon('chevron-right') }}
+      </summary>
+      <div class="workspace-disclosure__body">
+        <h2>链接操作</h2>
+        {% if not link.revoked_at %}
+        <form method="post" action="/owner/upload-links/{{ link.public_id }}/extend">
+          <button class="workspace-task workspace-check-action" type="submit"><span class="workspace-task__icon workspace-tone-lilac">{{ icon('calendar-plus') }}</span><span class="workspace-task__text"><strong>续期</strong><span>保留原链接，无需重新配置手机</span></span>{{ icon('chevron-right') }}</button>
+        </form>
+        <form method="post" action="/owner/upload-links/{{ link.public_id }}/rotate" data-confirm="重新生成上传链接？旧地址立即失效，需要重新配置 iPhone 快捷指令。已上传图片和账单保留。">
+          <button class="workspace-task workspace-check-action" type="submit"{% if not public_base_url_configured %} disabled aria-disabled="true" title="请先配置手机 HTTPS 地址"{% endif %}><span class="workspace-task__icon workspace-tone-apricot">{{ icon('refresh-cw') }}</span><span class="workspace-task__text"><strong>重新生成</strong><span>旧地址立即失效，已上传内容保留</span></span>{{ icon('chevron-right') }}</button>
+        </form>
+        <form method="post" action="/owner/upload-links/{{ link.public_id }}/revoke" data-confirm="确认停用该上传链接？此地址不能再上传，已上传图片和账单保留。">
+          <button class="workspace-task workspace-check-action" type="submit"><span class="workspace-task__icon workspace-tone-sand">{{ icon('circle-pause') }}</span><span class="workspace-task__text"><strong>停用</strong><span>停止此入口的上传，已有内容保留</span></span>{{ icon('chevron-right') }}</button>
+        </form>
+        {% else %}
+        <form method="post" action="/owner/upload-links/{{ link.public_id }}/delete" data-confirm="确认从列表移除该上传链接？仅移除已停用链接记录，账单数据保留。">
+          <button class="workspace-task workspace-check-action" type="submit"><span class="workspace-task__icon workspace-tone-sand">{{ icon('archive') }}</span><span class="workspace-task__text"><strong>移除记录</strong><span>仅移除已停用入口，账单数据保留</span></span>{{ icon('chevron-right') }}</button>
+        </form>
+        {% endif %}
+        <details class="workspace-disclosure workspace-upload-limits"{% if draft %} open{% endif %}>
+          <summary><span>额度与链接详情</span>{{ icon('chevron-right') }}</summary>
+          <div class="workspace-disclosure__body">
+            <p class="workspace-note">每日额度按 UTC 零点重置，已扣除正在上传时预占的额度。这里显示的是当前快照。</p>
+            {% if link.daily_bytes_remaining is not none %}<p class="workspace-note">当前剩余 {{ link.daily_bytes_remaining }} 字节。</p>{% endif %}
+            {% if not link.revoked_at %}
+            <form id="upload-link-limits-{{ link.public_id }}" class="workspace-form" method="post" action="/owner/upload-links/{{ link.public_id }}/limits">
+              <label class="workspace-field" for="budget-{{ link.public_id }}"><span>日配额（字节）</span>
+                <input id="budget-{{ link.public_id }}" name="daily_byte_budget" type="number" min="0" value="{{ draft.daily_byte_budget if draft else (link.daily_byte_budget if link.daily_byte_budget is not none else '') }}" placeholder="使用默认值">
+                <span class="workspace-note">留空沿用默认配额；0 表示不限额。1 MB = 1048576 字节。</span>
+              </label>
+              <label class="workspace-field" for="interval-{{ link.public_id }}"><span>同一来源上传间隔（秒）</span>
+                <input id="interval-{{ link.public_id }}" name="per_remote_min_interval_seconds" type="number" min="0" required value="{{ draft.per_remote_min_interval_seconds if draft else link.per_remote_min_interval_seconds }}">
+                <span class="workspace-note">0 沿用默认间隔，正数优先于默认设置。</span>
+              </label>
+              <button class="btn btn-secondary" type="submit">保存此链接设置</button>
+            </form>
+            {% else %}<p class="workspace-note">已停用，不能再修改额度或重新启用。</p>{% endif %}
+            <dl class="workspace-facts">
+              <div><dt>所属账号</dt><dd>{{ link.account_name }}</dd></div>
+              <div><dt>时区</dt><dd>{{ link.default_timezone or 'Asia/Shanghai' }}</dd></div>
+              <div><dt>创建时间</dt><dd>{{ link.created_at|owner_datetime }}</dd></div>
+              <div><dt>最近使用</dt><dd>{{ link.last_used_at|owner_datetime }}</dd></div>
+              <div><dt>掩码路径</dt><dd>{{ link.masked_url_path }}</dd></div>
+              <div><dt>链接编号</dt><dd>{{ link.public_id }}</dd></div>
+            </dl>
+          </div>
+        </details>
+      </div>
+    </details>
+    {% else %}<div class="workspace-service"><strong>还没有上传链接</strong><p>新建一个入口，配置到 iPhone 快捷指令，以后从照片直接分享上传。</p></div>{% endfor %}
+<details class="workspace-disclosure workspace-upload-help" id="upload-help">
+  <summary><span>快捷指令设置与失败排查</span>{{ icon('arrow-right') }}</summary>
+  <div class="workspace-disclosure__body">
+<section class="workspace-section">
   <h2>iPhone 快捷指令使用说明</h2>
   <ol class="help-text steps-list">
     <li>在 iPhone「快捷指令」App 中创建新快捷指令，详情中开启「在共享表单中显示」，接收类型只勾选「图像」。</li>
@@ -161,9 +106,9 @@
   </ol>
   <p class="help-text">“已收到图片”表示服务器已接收，账单仍需人工核对。若「获取 URL 内容」报错中断，先保留原图并查看收件，确认结果后再决定是否重试。</p>
   <p class="secret-note">UploadLink URL 自身就是上传凭证，无需另外填写 <code>Upload-Token</code>。回执判断和错误分支尚待 iPhone 实机核准。</p>
-</div>
+</section>
 
-<div class="card card--accent-warn">
+<section class="workspace-section">
   <h2>iPhone 上传失败排查</h2>
   <ol class="help-text steps-list">
     <li>iPhone 提示「无效的 URL」：URL 动作里粘贴的是 <code>/u/...</code> 相对路径或 <code>/u/***</code> 掩码，必须粘贴完整公网 URL（以 <code>https://</code> 开头）。</li>
@@ -173,5 +118,27 @@
     <li>用手机浏览器检查公网域名下的 <code>/api/health</code>。健康响应只用于排查连接；上传结果以本次回执和收件记录为准。</li>
     <li>仍然失败时，可在请求头中添加 <code>User-Agent: TicketBox/1.0 iOS-Shortcut</code> 以便区分流量。</li>
   </ol>
+</section>
+
+
+  </div>
+</details>
+  </section>
+  <section class="workspace-section">
+    <details class="workspace-disclosure workspace-task-group" id="new-upload-link"{% if not links or (error and not limits_draft) %} open{% endif %}>
+      <summary><span class="workspace-task__icon workspace-tone-green">{{ icon('link') }}</span><span class="workspace-task__text"><strong>新建上传链接</strong><span>为另一台设备创建入口</span></span>{{ icon('chevron-right') }}</summary>
+      <form method="post" action="/owner/upload-links" class="workspace-form workspace-disclosure__body">
+        <label class="workspace-field" for="upload-ledger"><span>上传到账本</span>
+          <select id="upload-ledger" name="ledger_id" required>
+            {% if not selected_upload_ledger_available %}<option value="" selected disabled>请选择可管理的账本</option>{% endif %}
+            {% for choice in ledger_choices %}<option value="{{ choice.ledger_id }}"{% if choice.ledger_id == selected_upload_ledger_id %} selected{% endif %}>{{ choice.name }}{% if choice.is_default %}（默认）{% endif %}</option>{% endfor %}
+          </select>
+        </label>
+        <p class="workspace-note">图片只进入所选账本。已有链接保持原来的账本；链接只用于采集图片，不提供账单查看与管理权限。</p>
+        <button type="submit" class="btn btn-primary"{% if not public_base_url_configured or not ledger_choices %} disabled aria-disabled="true"{% endif %}>新建上传链接 {{ icon('arrow-right') }}</button>
+      </form>
+    </details>
+    <a class="workspace-task workspace-text-action" href="/owner/settings/uploads"><span class="workspace-task__text"><strong>上传默认值</strong><span>文件大小、默认配额与有效期</span></span>{{ icon('arrow-right') }}</a>
+  </section>
 </div>
 {% endblock %}

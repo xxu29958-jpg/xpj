@@ -1,25 +1,45 @@
-{% extends "settings/_layout.html" %}
-{% block title %}上传与链接 — 小票夹{% endblock %}
-{% block settings_body %}
-<div class="card">
-  <h2>上传与链接</h2>
-  <p class="help-text">设置一次，后续上传即按这里的规则处理。单个上传链接仍可在<a class="text-link" href="/owner/upload-links">链接列表</a>中单独调整配额。</p>
-  <form method="post" action="/owner/settings/uploads">
-    <div class="kv-grid">
-      <label for="max_upload_size_mb">单文件上限（MB）</label>
-      <input id="max_upload_size_mb" name="max_upload_size_mb" type="number" min="1" max="1024" required class="inline-input" value="{{ form.max_upload_size_mb }}">
-      <span></span><p class="help-text">适用于之后的上传请求，不会删除已经保存的文件。此处 1 MB = 1024 × 1024 字节。</p>
-      <label for="daily_budget_mb">每条链接每日默认配额（MB）</label>
-      <input id="daily_budget_mb" name="daily_budget_mb" type="number" min="0" max="1048576" step="any" required class="inline-input" value="{{ form.daily_budget_mb }}">
-      <span></span><p class="help-text">0 表示不限额。新旧链接中“日配额”留空的链接都会使用此默认值；单独保存的配额不变。</p>
-      <label for="upload_link_default_per_remote_interval_seconds">同一来源上传间隔（秒）</label>
-      <input id="upload_link_default_per_remote_interval_seconds" name="upload_link_default_per_remote_interval_seconds" type="number" min="0" max="86400" required class="inline-input" value="{{ form.upload_link_default_per_remote_interval_seconds }}">
-      <span></span><p class="help-text">0 表示默认不限制间隔。链接列表中间隔为 0 的链接沿用此默认值；已有的正数间隔优先。</p>
-      <label for="upload_link_ttl_days">新链接有效期（天）</label>
-      <input id="upload_link_ttl_days" name="upload_link_ttl_days" type="number" min="1" max="3650" required class="inline-input" value="{{ form.upload_link_ttl_days }}">
-      <span></span><p class="help-text">用于此后新建或轮换的链接。现有链接的到期时间保持不变。</p>
-    </div>
-    <button class="btn btn-primary mt-4" type="submit">保存上传设置</button>
+{% extends "_workspace.html" %}
+{% from "_workspace_ui.html" import icon, task_link with context %}
+{% block title %}上传默认值 — 设置 — 小票夹{% endblock %}
+{% block back_url %}/owner/settings{% endblock %}
+{% block back_label %}设置{% endblock %}
+{% block workspace_title %}上传默认值{% endblock %}
+{% block workspace_description %}影响新建链接与之后的上传。{% endblock %}
+{% block workspace_body %}
+{% if message %}<div class="alert alert-success" role="status">{{ message }}</div>{% endif %}
+{% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+<div class="workspace-columns">
+  <form method="post" action="/owner/settings/uploads" class="workspace-form workspace-upload-defaults">
+    <label class="workspace-field" for="max_upload_size_mb">
+      <span>单个文件上限（MB）</span>
+      <input id="max_upload_size_mb" name="max_upload_size_mb" type="number" min="1" max="1024" required value="{{ form.max_upload_size_mb }}">
+    </label>
+    <label class="workspace-field" for="daily_budget_mb">
+      <span>每条链接每日默认配额（MB）</span>
+      <input id="daily_budget_mb" name="daily_budget_mb" type="number" min="0" max="1048576" step="any" required value="{{ form.daily_budget_mb }}" aria-describedby="upload-budget-note">
+      <span class="workspace-note" id="upload-budget-note">0 表示不限额；配额留空的现有链接也会采用此值。</span>
+    </label>
+    <label class="workspace-field" for="upload_link_default_per_remote_interval_seconds">
+      <span>同一来源上传间隔（秒）</span>
+      <input id="upload_link_default_per_remote_interval_seconds" name="upload_link_default_per_remote_interval_seconds" type="number" min="0" max="86400" required value="{{ form.upload_link_default_per_remote_interval_seconds }}">
+    </label>
+    <label class="workspace-field" for="upload_link_ttl_days">
+      <span>新链接有效期（天）</span>
+      <input id="upload_link_ttl_days" name="upload_link_ttl_days" type="number" min="1" max="3650" required value="{{ form.upload_link_ttl_days }}">
+    </label>
+    <details class="workspace-disclosure workspace-task-group">
+      <summary><span class="workspace-task__icon">{{ icon('info') }}</span><span class="workspace-task__text"><strong>查看本次影响范围</strong><span>已保存的文件和链接单独设置会保留</span></span>{{ icon('chevron-right') }}</summary>
+      <div class="workspace-disclosure__body workspace-note">
+        <p>单文件上限适用于之后的上传，不会删除已保存的文件。1 MB = 1024 × 1024 字节。</p>
+        <p>新旧链接中「日配额」留空的链接使用每日默认配额；单独保存的配额不变。</p>
+        <p>默认间隔为 0 表示不限制。链接列表中间隔为 0 的链接沿用默认值；已有正数间隔优先。</p>
+        <p>有效期用于此后新建或重新生成的链接。现有链接的到期时间保持不变。</p>
+      </div>
+    </details>
+    <div class="workspace-save"><button class="btn btn-primary" type="submit">保存上传设置 {{ icon('arrow-right') }}</button></div>
   </form>
+  <section class="workspace-section" aria-label="链接管理">
+    {{ task_link('/owner/upload-links', 'iPhone 上传链接', 'smartphone', '查看额度、续期与管理每个上传入口') }}
+  </section>
 </div>
 {% endblock %}
