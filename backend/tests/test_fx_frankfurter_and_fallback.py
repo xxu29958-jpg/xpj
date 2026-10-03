@@ -278,7 +278,8 @@ def test_owner_fx_distinguishes_enabled_configuration_from_running_task(
     ))
     page = local_client.get("/owner/fx")
     assert page.status_code == 200
-    assert "自动同步配置" in page.text
+    assert "已保存的计划" in page.text
+    assert "每日 09:10（UTC）" in page.text
     assert expected in page.text
     if config_error:
         assert "自动任务会在后续计划时间继续尝试" not in page.text

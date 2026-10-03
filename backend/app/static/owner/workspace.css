@@ -1,4 +1,4 @@
-/* v0.5: the local-management home, settings directory and recognition flow. */
+/* v0.5: the local-management home, settings directory and configuration flows. */
 .owner-workspace {
   --surface-app: #fafbf7;
   --surface-card: #fff;
@@ -113,6 +113,7 @@
 .owner-workspace .btn-primary:hover { background: var(--brand-primary-strong); color: var(--text-on-primary); }
 .workspace-form { max-width: 720px; }
 .workspace-field { display: block; margin-bottom: 18px; }
+.workspace-field[hidden] { display: none; }
 .workspace-field > span { display: block; font-size: 14px; color: var(--text-muted); margin-bottom: 6px; }
 .workspace-field input, .workspace-field select { display: block; width: 100%; min-width: 0; min-height: 51px; border: 1px solid var(--border-card); border-radius: 13px; background: var(--surface-card); color: var(--text-default); font: inherit; line-height: 1.5; padding: 12px 15px; }
 .workspace-field input:hover, .workspace-field select:hover { border-color: var(--border-input); }
@@ -136,6 +137,13 @@
 .workspace-save .btn { min-height: 51px; width: 100%; font-weight: 600; }
 .workspace-draft-status { margin: 0 0 20px; font-size: 13px; color: var(--text-muted); }
 .workspace-draft-status span { display: block; }
+.workspace-consent { display: flex; align-items: flex-start; gap: 12px; min-height: 44px; cursor: pointer; }
+.workspace-consent input { flex: 0 0 22px; width: 22px; height: 22px; margin-top: 3px; accent-color: var(--brand-primary); }
+.workspace-facts { margin: 20px 0; font-size: 14px; }
+.workspace-facts > div { padding: 10px 0; border-bottom: 1px solid var(--border-card); }
+.workspace-facts dt { color: var(--text-muted); margin-bottom: 3px; }
+.workspace-facts dd { margin: 0; overflow-wrap: anywhere; }
+.workspace-text-action { color: var(--brand-primary); margin-top: 20px; }
 .owner-workspace .alert { overflow-wrap: anywhere; font-size: 14px; }
 @media (max-width: 1100px) {
   .owner-workspace .owner-main { padding-left: 28px; padding-right: 28px; }

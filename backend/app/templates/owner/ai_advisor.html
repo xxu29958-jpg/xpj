@@ -1,149 +1,143 @@
-{% extends "settings/_layout.html" %}
-{% block title %}AI 顾问 - 小票夹 本机管理后台{% endblock %}
-{% block settings_body %}
-{% with ledger_scope_note='这里选择调用记录所属的账本；模型连接与请求授权仍作用于整个本机服务。' %}
-  {% include "_ledger_scope.html" %}
-{% endwith %}
-<div class="card">
-  <h2>AI 预算顾问</h2>
-  <p class="help-text">连接本机或云端模型，为预算提供参考建议。关闭 AI 仍可正常记账和使用预算；模型不会自动改账。</p>
-  <form method="post" action="/owner/ai-advisor/settings{{ ledger_query }}" autocomplete="off">
-    <div class="settings-form-grid">
-      <label for="advisor_provider">使用方式</label>
-      <select id="advisor_provider" name="provider" class="inline-select">
+{% extends "_workspace.html" %}
+{% from "_workspace_ui.html" import icon with context %}
+{% block title %}AI 预算顾问 — 设置 — 小票夹{% endblock %}
+{% block back_url %}/owner/settings{% endblock %}
+{% block back_label %}设置{% endblock %}
+{% block workspace_title %}AI 预算顾问{% endblock %}
+{% block workspace_description %}开启前，先了解发送哪些信息。{% endblock %}
+{% block workspace_body %}
+{% if message %}<div class="alert alert-success" role="status">{{ message }}</div>{% endif %}
+{% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+<div class="workspace-columns">
+  <form class="workspace-form" method="post" action="/owner/ai-advisor/settings{{ ledger_query }}" autocomplete="off">
+    <label class="workspace-field" for="advisor_provider">
+      <span>使用方式</span>
+      <select id="advisor_provider" name="provider">
         <option value="empty" {% if advisor_form.provider == 'empty' %}selected{% endif %}>关闭 AI，使用本地预算规则</option>
         <option value="openai_compat" {% if advisor_form.provider == 'openai_compat' %}selected{% endif %}>连接兼容 OpenAI 的模型服务</option>
       </select>
-      <label for="advisor_base_url">接口地址</label>
-      <input id="advisor_base_url" name="base_url" type="url" maxlength="2048" class="inline-input"
-             value="{{ advisor_form.base_url }}" placeholder="例如 http://127.0.0.1:1234/v1">
-      <span></span><p class="help-text">填写模型服务提供的接口根地址，不包含 /chat/completions；云端地址须使用 HTTPS。</p>
-      <label for="advisor_model">模型名称</label>
-      <input id="advisor_model" name="model" maxlength="256" class="inline-input" value="{{ advisor_form.model }}" placeholder="填写服务中的模型标识">
-      <label for="advisor_key_action">访问密钥</label>
-      <select id="advisor_key_action" name="key_action" class="inline-select">
+      <span class="workspace-note">关闭 AI 仍可记账和使用预算，已保存的目标不受影响。</span>
+    </label>
+    <label class="workspace-field" for="advisor_base_url">
+      <span>接口地址</span>
+      <input id="advisor_base_url" name="base_url" type="url" maxlength="2048" value="{{ advisor_form.base_url }}" placeholder="填写服务地址" aria-describedby="advisor-address-note">
+      <span class="workspace-note" id="advisor-address-note">填写接口根地址，不含 /chat/completions。本机示例：http://127.0.0.1:1234/v1；云端须使用 HTTPS。</span>
+    </label>
+    <label class="workspace-field" for="advisor_model">
+      <span>模型名称</span>
+      <input id="advisor_model" name="model" maxlength="256" value="{{ advisor_form.model }}" placeholder="填写模型名称">
+    </label>
+    <label class="workspace-field" for="advisor_key_action">
+      <span>调用密钥</span>
+      <select id="advisor_key_action" name="key_action">
         <option value="keep">{% if advisor_key_configured %}保留已保存的密钥{% else %}没有密钥（本机服务可不填）{% endif %}</option>
         <option value="replace">更换密钥</option>
         <option value="clear">清除已保存的密钥</option>
       </select>
-      <label for="advisor_api_key">新密钥</label>
-      <input id="advisor_api_key" name="api_key" type="password" maxlength="4096" autocomplete="new-password" class="inline-input" placeholder="仅在选择更换密钥时填写">
-      <span></span><p class="help-text">已保存的密钥不会显示。保存失败时请重新填写新密钥；更换接口地址时需重新设置密钥。</p>
-    </div>
-    <details class="mt-5">
-      <summary>调用限制</summary>
-      <div class="settings-form-grid mt-4">
-        <label for="advisor_timeout">请求超时（秒）</label>
-        <input id="advisor_timeout" name="timeout_seconds" type="number" min="5" max="300" value="{{ advisor_form.timeout_seconds }}" class="inline-input" required>
-        <label for="advisor_interval">两次建议最短间隔（秒）</label>
-        <input id="advisor_interval" name="min_interval_seconds" type="number" min="0" max="86400" value="{{ advisor_form.min_interval_seconds }}" class="inline-input" required>
-        <label for="advisor_daily">每个账本 24 小时调用上限</label>
-        <input id="advisor_daily" name="daily_call_limit" type="number" min="0" max="10000" value="{{ advisor_form.daily_call_limit }}" class="inline-input" required>
-        <span></span><p class="help-text">间隔或上限为 0 时不限制该项。云端模型可能按调用收费。</p>
+    </label>
+    <label class="workspace-field" for="advisor_api_key" id="advisor-new-key">
+      <span>新密钥</span>
+      <input id="advisor_api_key" name="api_key" type="password" maxlength="4096" autocomplete="new-password" placeholder="仅在选择更换密钥时填写" aria-describedby="advisor-key-note">
+      <span class="workspace-note" id="advisor-key-note">已保存的密钥不会显示。保存失败时请重新填写新密钥；更换接口地址时需重新设置密钥。</span>
+    </label>
+    <details class="workspace-disclosure workspace-task-group"{% if error %} open{% endif %}>
+      <summary>
+        <span class="workspace-task__icon workspace-tone-lilac">{{ icon('sliders-horizontal') }}</span>
+        <span class="workspace-task__text"><strong>调用限制</strong><span>超时、调用间隔与每日上限</span></span>{{ icon('chevron-right') }}
+      </summary>
+      <div class="workspace-disclosure__body">
+        <label class="workspace-field" for="advisor_timeout"><span>请求超时（秒）</span>
+          <input id="advisor_timeout" name="timeout_seconds" type="number" min="5" max="300" value="{{ advisor_form.timeout_seconds }}" required>
+        </label>
+        <label class="workspace-field" for="advisor_interval"><span>两次建议最短间隔（秒）</span>
+          <input id="advisor_interval" name="min_interval_seconds" type="number" min="0" max="86400" value="{{ advisor_form.min_interval_seconds }}" required>
+        </label>
+        <label class="workspace-field" for="advisor_daily"><span>每个账本 24 小时调用上限</span>
+          <input id="advisor_daily" name="daily_call_limit" type="number" min="0" max="10000" value="{{ advisor_form.daily_call_limit }}" required>
+        </label>
+        <p class="workspace-note">间隔或上限为 0 时不限制该项。云端模型可能按调用收费。</p>
       </div>
     </details>
-    <button type="submit" class="btn btn-primary mt-5">保存模型设置</button>
-  </form>
-</div>
-
-<div class="card">
-  <div class="card-head-row">
-    <div>
-      <h2>授权与验证</h2>
+    <div class="workspace-save">
+      <button type="submit" class="btn btn-primary">保存顾问设置 {{ icon('arrow-right') }}</button>
     </div>
-    {% if not status.configuration_valid %}
-      <span class="badge badge-warn">配置不完整或无效</span>
-    {% elif status.needs_confirmation %}
-      <span class="badge badge-warn">需要 Owner 确认</span>
-    {% elif status.is_live %}
-      <span class="badge badge-ok">配置有效，已允许请求</span>
-    {% else %}
-      <span class="badge badge-off">本地 / 空 Provider</span>
-    {% endif %}
-  </div>
-  <div class="table-scroll mt-4">
-    <table>
-      <tbody>
-        <tr><th>使用方式</th><td>{{ {'empty': '本地预算规则', 'openai_compat': '模型服务', 'mock': '测试模型'}.get(status.provider, '不支持的旧配置') }}</td></tr>
-        <tr><th>已保存的模型</th><td>{{ advisor_saved_model or "未配置" }}</td></tr>
-        <tr><th>已保存的接口</th><td>{{ advisor_saved_base_url or "未配置" }}</td></tr>
-        <tr><th>请求授权</th><td>{{ "已允许" if status.owner_confirmed else "未允许" }}</td></tr>
-        <tr><th>最近调用</th><td>{{ status.last_called_at|owner_datetime }}</td></tr>
-        <tr><th>最近结果</th><td>
-          {% if status.last_success is none %}
-            无记录
-          {% elif status.last_success %}
-            成功，{{ status.last_suggestion_count or 0 }} 条建议，{{ status.last_duration_ms or 0 }} ms
-          {% else %}
-            失败：{{ status.last_error_code or "unknown" }}
-          {% endif %}
-        </td></tr>
-      </tbody>
-    </table>
-  </div>
-  {% if not status.configuration_valid %}
-  <p class="text-meta">请在上方补全接口地址、模型和密钥，保存后再测试连接。</p>
-  {% endif %}
-  <p class="text-meta">保存配置不会发起外部请求。可通过下方的示例测试验证连接，预算建议的使用结果见最近调用。</p>
-  <form method="post" action="/owner/ai-advisor/confirmation{{ ledger_query }}" class="mt-5">
-    <input type="hidden" name="connection_revision" value="{{ advisor_connection_revision }}">
-    <label class="label-check-row">
-      <input type="checkbox" name="confirmed" value="on" {% if status.owner_confirmed %}checked{% endif %}>
-      <span>允许当前模型接收分类汇总与泛化后的预算计划，用于生成建议</span>
-    </label>
-    <div class="mt-4">
-      <button type="submit" class="btn btn-primary">保存确认状态</button>
-    </div>
+    <p class="workspace-note">保存设置不会发起外部请求。更换模型连接会撤回原授权，请核对后重新允许。</p>
   </form>
-  <p class="help-text">不会发送票据图片、真实商户名、姓名或备注。更换模型连接会撤回原授权，请核对后重新允许。</p>
-  <form method="post" action="/owner/ai-advisor/test{{ ledger_query }}" data-show-loading="正在测试模型，最长约 20 秒…" class="mt-4">
-    <button type="submit" class="btn" {% if not status.configuration_valid or not status.is_live or not status.owner_confirmed %}disabled{% endif %}>测试模型（仅发送示例）</button>
-    <a class="btn" href="/web/budget-advise">前往月度安排使用建议</a>
-  </form>
-  <p class="help-text">测试会向已保存的模型发送一次固定示例，可能产生少量调用费用，不使用真实账本数据。</p>
-</div>
 
-<div class="card">
-  <h2>最近 10 次预算建议调用</h2>
-  {% if selected_ledger %}<p class="help-text">当前账本：{{ selected_ledger.name }}</p>{% endif %}
-  <p class="help-text">这里记录实际预算建议的使用结果，不包含固定示例的连接测试。</p>
-  {% if audit_rows %}
-  <div class="table-scroll">
-    <table>
-      <thead>
-        <tr>
-          <th>时间</th>
-          <th>服务</th>
-          <th>月份</th>
-          <th>结果</th>
-          <th>建议</th>
-          <th>耗时</th>
-          <th>留存</th>
-        </tr>
-      </thead>
-      <tbody>
-      {% for row in audit_rows %}
-        <tr>
-          <td class="text-meta">{{ row.called_at|owner_datetime }}</td>
-          <td><code>{{ row.provider }}</code></td>
-          <td>{{ row.month or "-" }}</td>
-          <td>
-            {% if row.success %}
-              <span class="badge badge-ok">成功</span>
-            {% else %}
-              <span class="badge badge-err">{{ row.error_code or "失败" }}</span>
-            {% endif %}
-          </td>
-          <td>{{ row.suggestion_count }}</td>
-          <td>{{ row.duration_ms or 0 }} ms</td>
-          <td>{{ "永久" if row.retention_days == 0 else row.retention_days ~ " 天" }}</td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
+  <div>
+    <section class="workspace-section" aria-labelledby="advisor-permission">
+      <h2 id="advisor-permission">请求授权</h2>
+      {% if not status.configuration_valid %}
+        <span class="badge badge-warn">配置不完整或无效</span>
+      {% elif status.needs_confirmation %}
+        <span class="badge badge-warn">需要确认请求授权</span>
+      {% elif status.is_live %}
+        <span class="badge badge-ok">配置有效，已允许请求</span>
+      {% else %}
+        <span class="badge badge-off">使用本地预算规则</span>
+      {% endif %}
+      <dl class="workspace-facts">
+        <div><dt>使用方式</dt><dd>{{ {'empty': '本地预算规则', 'openai_compat': '模型服务', 'mock': '测试模型'}.get(status.provider, '不支持的旧配置') }}</dd></div>
+        <div><dt>已保存的模型</dt><dd>{{ advisor_saved_model or "未配置" }}</dd></div>
+        <div><dt>已保存的接口</dt><dd>{{ advisor_saved_base_url or "未配置" }}</dd></div>
+        <div><dt>请求授权</dt><dd>{{ "已允许" if status.owner_confirmed else "未允许" }}</dd></div>
+      </dl>
+      {% if not status.configuration_valid %}<p class="workspace-note">请先补全接口地址、模型和密钥，保存后再测试连接。</p>{% endif %}
+      <form method="post" action="/owner/ai-advisor/confirmation{{ ledger_query }}">
+        <input type="hidden" name="connection_revision" value="{{ advisor_connection_revision }}">
+        <label class="workspace-consent">
+          <input type="checkbox" name="confirmed" value="on" {% if status.owner_confirmed %}checked{% endif %}>
+          <span>允许当前模型接收分类汇总与泛化后的预算计划，用于生成建议</span>
+        </label>
+        <p class="workspace-note">不会发送票据图片、真实商户名、姓名或备注。模型不会自动改账。</p>
+        <button type="submit" class="btn">保存请求授权</button>
+      </form>
+    </section>
+
+    <details class="workspace-disclosure workspace-task-group" id="advisor-checks"{% if request.url.path.endswith('/test') or request.query_params.get('ledger_id') %} open{% endif %}>
+      <summary>
+        <span class="workspace-task__icon workspace-tone-green">{{ icon('flask-conical') }}</span>
+        <span class="workspace-task__text"><strong>示例测试与调用记录</strong><span>测试仅使用示例数据</span></span>{{ icon('chevron-right') }}
+      </summary>
+      <div class="workspace-disclosure__body">
+        <h2>测试已保存的模型</h2>
+        <p class="workspace-note">测试会向已保存的模型发送一次固定示例，可能产生少量调用费用，不使用真实账本数据。</p>
+        <form method="post" action="/owner/ai-advisor/test{{ ledger_query }}" data-show-loading="正在测试模型，最长约 20 秒…">
+          <button type="submit" class="btn" {% if not status.configuration_valid or not status.is_live or not status.owner_confirmed %}disabled{% endif %}>测试模型（仅发送示例）</button>
+        </form>
+        <p class="workspace-note"><a href="/web/budget-advise">前往月度安排使用建议</a></p>
+        <h2 class="mt-5">最近 10 次预算建议调用</h2>
+        {% with ledger_scope_action='/owner/ai-advisor#advisor-checks', ledger_scope_note='这里选择调用记录所属的账本；模型连接与请求授权仍作用于整个本机服务。' %}
+          {% include "_ledger_scope.html" %}
+        {% endwith %}
+        {% if selected_ledger %}<p class="workspace-note">当前账本：{{ selected_ledger.name }}</p>{% endif %}
+        <dl class="workspace-facts">
+          <div><dt>最近调用</dt><dd>{{ status.last_called_at|owner_datetime }}</dd></div>
+          <div><dt>最近结果</dt><dd>
+            {% if status.last_success is none %}无记录
+            {% elif status.last_success %}成功，{{ status.last_suggestion_count or 0 }} 条建议，{{ status.last_duration_ms or 0 }} ms
+            {% else %}失败：{{ status.last_error_code or "unknown" }}{% endif %}
+          </dd></div>
+        </dl>
+        <p class="workspace-note">这里记录实际预算建议的使用结果，不包含固定示例的连接测试。</p>
+        {% if audit_rows %}
+        <div class="table-scroll" role="region" tabindex="0" aria-label="预算建议调用记录，可横向滚动">
+          <table>
+            <thead><tr><th>时间</th><th>服务</th><th>月份</th><th>结果</th><th>建议</th><th>耗时</th><th>留存</th></tr></thead>
+            <tbody>{% for row in audit_rows %}
+              <tr>
+                <td>{{ row.called_at|owner_datetime }}</td><td>{{ row.provider }}</td><td>{{ row.month or "-" }}</td>
+                <td>{% if row.success %}<span class="badge badge-ok">成功</span>{% else %}<span class="badge badge-err">{{ row.error_code or "失败" }}</span>{% endif %}</td>
+                <td>{{ row.suggestion_count }}</td><td>{{ row.duration_ms or 0 }} ms</td><td>{{ "永久" if row.retention_days == 0 else row.retention_days ~ " 天" }}</td>
+              </tr>
+            {% endfor %}</tbody>
+          </table>
+        </div>
+        {% else %}
+        <p class="workspace-note">{{ "所选账本暂无 AI 顾问调用记录。" if selected_ledger else "没有可管理的账本，暂不显示调用记录。" }}</p>
+        {% endif %}
+      </div>
+    </details>
   </div>
-  {% else %}
-    <p class="empty-note">{{ "所选账本暂无 AI 顾问调用记录。" if selected_ledger else "没有可管理的账本，暂不显示调用记录。" }}</p>
-  {% endif %}
 </div>
 {% endblock %}

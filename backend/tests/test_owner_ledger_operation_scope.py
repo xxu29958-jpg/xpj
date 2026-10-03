@@ -1,5 +1,6 @@
 """Owner operations follow the selected ledger without falling back after access loss."""
 
+import re
 from datetime import timedelta
 
 import pytest
@@ -153,3 +154,9 @@ def test_invalid_model_form_keeps_ledger_and_unsaved_input(owner, ledgers):
     assert f'value="{target}" selected' in result.text
     assert f'action="/owner/ai-advisor/settings?ledger_id={target}"' in result.text
     assert 'value="draft-model"' in result.text
+    selection = re.search(r'<form method="get" action="([^"]+)"', result.text)
+    assert selection is not None
+    switched = owner.get(selection.group(1).split("#", 1)[0], params={"ledger_id": "owner"})
+    assert switched.status_code == 200, switched.text
+    assert 'value="owner" selected' in switched.text
+    assert "2026-01" in switched.text and "2026-02" not in switched.text
