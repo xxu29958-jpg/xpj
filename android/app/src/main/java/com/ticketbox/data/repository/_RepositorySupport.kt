@@ -1,7 +1,5 @@
 package com.ticketbox.data.repository
 
-import android.util.Log
-
 /**
  * Generic repository failure that callers can map to UI error messages.
  *
@@ -18,6 +16,7 @@ class RepositoryException(
     val localFailure: LocalRepositoryFailure? = null,
     val httpStatusCode: Int? = null,
     cause: Throwable? = null,
+    val requestId: String? = null,
 ) : RuntimeException(message, cause) {
     val conflictTagPublicId: String? get() = conflict.tag.publicId
     val conflictTagRowVersion: Long? get() = conflict.tag.rowVersion
@@ -149,22 +148,6 @@ private val backendErrorUserMessages = mapOf(
     "route_not_found" to "账本版本过旧，请重启电脑上的小票夹后再试。",
     "method_not_allowed" to "操作方式不正确，请更新 App 后再试。",
 )
-
-internal fun logNetworkWarning(message: String, error: Throwable) {
-    // ADR-0038 PR-2g.3 round-8 / codex round-9 follow-up: catch
-    // Exception, NOT Throwable. android.util.Log is an unmocked
-    // stub in pure-JVM unit tests and throws ``Method w not
-    // mocked``; swallowing it here keeps tests honest (they can
-    // still assert on the Result the caller returns) while
-    // production behaviour is unchanged. JVM-level Errors (OOM /
-    // StackOverflow / LinkageError) propagate up by design —
-    // same principle as [OutboxDrainEngine]'s round-5 fix.
-    try {
-        Log.w("TicketboxNetwork", message, error)
-    } catch (_: Exception) {
-        // logging backend fault / JVM unit-test Android Log stub
-    }
-}
 
 internal fun defaultAndroidDeviceName(): String {
     val manufacturer = android.os.Build.MANUFACTURER.orEmpty().trim()

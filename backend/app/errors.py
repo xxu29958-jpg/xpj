@@ -7,6 +7,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app.error_reporting import report_http_error, retain_handled_error
+
 
 class Utf8JSONResponse(JSONResponse):
     media_type = "application/json; charset=utf-8"
@@ -414,6 +416,8 @@ def html_error_response(request: Request, status_code: int) -> HTMLResponse:
 
 
 async def app_error_handler(request: Request, exc: AppError) -> Response:
+    if exc.status_code >= 500:
+        retain_handled_error(request, exc)
     if (
         exc.error == "currency_adoption_required"
         and request.method in {"GET", "HEAD"}
@@ -452,6 +456,8 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
 
 
 async def http_error_handler(request: Request, exc: StarletteHTTPException) -> Response:
+    if exc.status_code >= 500:
+        retain_handled_error(request, exc)
     if _wants_html_error_page(request):
         return html_error_response(request, exc.status_code)
     request_id = _request_id(request)
@@ -468,15 +474,16 @@ async def http_error_handler(request: Request, exc: StarletteHTTPException) -> R
     return error_response("invalid_request", str(exc.detail), exc.status_code, request_id=request_id)
 
 
-async def unhandled_error_handler(request: Request, __: Exception) -> Response:
+async def unhandled_error_handler(request: Request, exc: Exception) -> Response:
+    report_http_error(request, 500, error=exc)
     if _wants_html_error_page(request):
-        return html_error_response(request, 500)
-    return error_response(
-        "server_error",
-        ERROR_MESSAGES["server_error"],
-        500,
-        request_id=_request_id(request),
-    )
+        response = html_error_response(request, 500)
+    else:
+        response = error_response("server_error", ERROR_MESSAGES["server_error"], 500,
+            request_id=_request_id(request))
+    if request_id := _request_id(request):
+        response.headers["X-Request-Id"] = request_id
+    return response
 
 
 def add_exception_handlers(app: FastAPI) -> None:

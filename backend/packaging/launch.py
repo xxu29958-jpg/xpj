@@ -706,7 +706,7 @@ def _build_log_config(log_dir: Path, *, console: bool | None = None) -> dict:
         "version": 1,
         "disable_existing_loggers": False,
         "formatters": {
-            "plain": {"format": "%(asctime)s %(levelname)s [%(name)s] %(message)s"},
+            "plain": {"()": "app.log_sanitize.SanitizedFormatter"},
         },
         "handlers": handlers,
         # Root catches the app + middleware loggers (they have no own handlers).
@@ -772,6 +772,7 @@ def main() -> int | None:
     # app, so the console=False service build (sys.stdout/stderr None) never falls
     # through to logging's lastResort stderr handler, and startup/import-time
     # diagnostics are captured. See _build_log_config + ADR-0047 §8.
+    logging.raiseExceptions = False
     logging.config.dictConfig(_build_log_config(data_dir / "logs"))
     if getattr(sys, "frozen", False):
         _initialize_installed_runtime_settings(data_dir)

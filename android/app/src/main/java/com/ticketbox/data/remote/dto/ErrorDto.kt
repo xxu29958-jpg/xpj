@@ -36,6 +36,7 @@ data class ErrorDto(
     @param:Json(name = "conflict_alias_enabled") val conflictAliasEnabled: Boolean? = null,
     @param:Json(name = "conflict_alias_deleted") val conflictAliasDeleted: Boolean? = null,
     @param:Json(name = "category_references") val categoryReferences: List<CategoryReferenceDto> = emptyList(),
+    @param:Json(name = "request_id") val requestId: String? = null,
 )
 
 data class CategoryReferenceDto(val kind: String? = null, val id: String? = null, val label: String? = null)

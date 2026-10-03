@@ -2,7 +2,7 @@
 
 Goals:
 - Mask upload keys in /u/{key} paths before any log output.
-- Redact Authorization, X-Bootstrap-Secret, cookie, upload-token headers.
+- Never collect authentication/cookie headers.
 - Never log request bodies.
 - Never log absolute Windows filesystem paths in error responses.
 - Not add noisy per-request access logs; only log on 5xx or for debug mode.
@@ -17,7 +17,7 @@ disabled by default.
 
 from __future__ import annotations
 
-import logging
+import re
 import secrets
 import time
 
@@ -25,9 +25,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
-from app.log_sanitize import mask_upload_path, safe_headers
-
-logger = logging.getLogger("ticketbox.http")
+from app.error_reporting import report_http_error
 
 REQUEST_ID_HEADER = "X-Request-Id"
 
@@ -39,7 +37,7 @@ def _new_request_id() -> str:
 
 
 class SanitizedLoggingMiddleware(BaseHTTPMiddleware):
-    """Log 5xx responses with sanitized path/headers. Silent on 2xx/3xx/4xx.
+    """Report 5xx with a masked path, request ID and retained error. Silent on 2xx/3xx/4xx.
 
     Per-request flow:
 
@@ -54,7 +52,7 @@ class SanitizedLoggingMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next) -> Response:  # type: ignore[override]
         incoming = request.headers.get(REQUEST_ID_HEADER, "").strip()
-        request_id = incoming if (1 <= len(incoming) <= 64) else _new_request_id()
+        request_id = incoming if re.fullmatch(r"[A-Za-z0-9_-]{1,64}", incoming) else _new_request_id()
         request.state.request_id = request_id
 
         start = time.monotonic()
@@ -65,15 +63,5 @@ class SanitizedLoggingMiddleware(BaseHTTPMiddleware):
 
         status = response.status_code
         if status >= 500:
-            safe_path = mask_upload_path(request.url.path)
-            safe_hdrs = safe_headers(dict(request.headers))
-            logger.error(
-                "%s %s -> %d (%dms) request_id=%s headers=%s",
-                request.method,
-                safe_path,
-                status,
-                elapsed_ms,
-                request_id,
-                safe_hdrs,
-            )
+            report_http_error(request, status, elapsed_ms=elapsed_ms)
         return response

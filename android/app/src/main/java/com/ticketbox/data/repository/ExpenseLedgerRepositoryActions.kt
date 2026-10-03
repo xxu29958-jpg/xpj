@@ -72,8 +72,7 @@ internal class ExpenseLedgerRepositoryActions(
                 timezone = core.currentTimezoneId(),
             )
             if (!response.isSuccessful) {
-                val parsed = core.errorHandler.parseErrorMessage(response.code(), response.errorBody()?.string())
-                throw RepositoryException(parsed.message, parsed.errorCode)
+                throw core.errorHandler.httpFailure(retrofit2.HttpException(response))
             }
             val body = response.body() ?: throw RepositoryException("导出内容为空。")
             val fileName = buildString {
