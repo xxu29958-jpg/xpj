@@ -42,8 +42,8 @@ private const val LEDGER_NAME_MAX = 60
  * v0.4-alpha1 minimum-viable ledger management surface.
  *
  * Renders the list of ledgers the current account belongs to, lets the user
- * switch between them (rotating the session token server-side) and create a
- * new ledger. Ownership is decided server-side; this screen never trusts
+ * switch between them, create a new ledger and rename an owned ledger.
+ * Ownership is decided server-side; this screen never trusts
  * client-supplied roles for authorization.
  *
  * ViewModel-driven as of 2026-05 (was Repository-injected — that broke the
@@ -55,6 +55,7 @@ fun LedgerSwitcherScreen(
     activeLedgerId: String?,
     onBack: () -> Unit,
     onSwitched: () -> Unit,
+    onRenamed: () -> Unit,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var newLedgerName by remember { mutableStateOf("") }
@@ -78,6 +79,7 @@ fun LedgerSwitcherScreen(
             activeLedgerId = activeLedgerId,
             onRefresh = viewModel::refresh,
             onSwitch = { ledgerId -> viewModel.switchTo(ledgerId, onSwitched) },
+            onRename = viewModel::beginRename,
         )
         LedgerCreateSection(
             name = newLedgerName,
@@ -93,6 +95,8 @@ fun LedgerSwitcherScreen(
             },
         )
     }
+    LedgerRenameDialog(state, viewModel::changeRenameName, viewModel::dismissRename,
+        onSave = { viewModel.saveRename(onRenamed) }, onRefresh = viewModel::refresh)
 }
 
 @Composable
@@ -132,6 +136,7 @@ private fun LedgerListSection(
     activeLedgerId: String?,
     onRefresh: () -> Unit,
     onSwitch: (String) -> Unit,
+    onRename: (LedgerSummary) -> Unit,
 ) {
     SettingsSection(
         title = stringResource(R.string.ledger_switcher_section_joined),
@@ -142,6 +147,7 @@ private fun LedgerListSection(
                 state = state,
                 activeLedgerId = activeLedgerId,
                 onSwitch = onSwitch,
+                onRename = onRename,
             )
             AppSecondaryButton(
                 text = if (state.loading) {
@@ -163,6 +169,7 @@ private fun LedgerListContent(
     state: LedgerSwitcherUiState,
     activeLedgerId: String?,
     onSwitch: (String) -> Unit,
+    onRename: (LedgerSummary) -> Unit,
 ) {
     val ledgers = state.ledgers
     when {
@@ -191,6 +198,7 @@ private fun LedgerListContent(
                     isActive = ledger.ledgerId == activeLedgerId,
                     loading = state.loading,
                     onSwitch = onSwitch,
+                    onRename = onRename,
                 )
             }
         }
@@ -207,26 +215,31 @@ private fun LedgerRow(
     isActive: Boolean,
     loading: Boolean,
     onSwitch: (String) -> Unit,
+    onRename: (LedgerSummary) -> Unit,
 ) {
     val rowModifier = Modifier
         .fillMaxWidth()
         .padding(vertical = AppSpacing.smallGap)
 
-    if (isActive) {
-        LedgerRowContent(ledger = ledger, isActive = true, modifier = rowModifier)
-    } else {
-        AppAdaptiveContentActionRow(
-            modifier = rowModifier,
-            content = {
-                LedgerRowContent(ledger = ledger, isActive = false)
-            },
-        ) { actionModifier ->
-            AppSecondaryButton(
-                text = stringResource(R.string.ledger_switcher_row_switch_button),
-                modifier = actionModifier,
-                enabled = !loading,
-                onClick = { onSwitch(ledger.ledgerId) },
-            )
+    Column {
+        if (isActive) {
+            LedgerRowContent(ledger = ledger, isActive = true, modifier = rowModifier)
+        } else {
+            AppAdaptiveContentActionRow(
+                modifier = rowModifier,
+                content = { LedgerRowContent(ledger = ledger, isActive = false) },
+            ) { actionModifier ->
+                AppSecondaryButton(
+                    text = stringResource(R.string.ledger_switcher_row_switch_button),
+                    modifier = actionModifier,
+                    enabled = !loading,
+                    onClick = { onSwitch(ledger.ledgerId) },
+                )
+            }
+        }
+        if (ledger.role == "owner") {
+            AppSecondaryButton(text = stringResource(R.string.ledger_name_edit), enabled = !loading,
+                onClick = { onRename(ledger) })
         }
     }
 }

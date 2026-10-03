@@ -31,6 +31,11 @@ data class LedgerCreateRequestDto(
     val name: String,
 )
 
+data class LedgerRenameRequestDto(
+    val name: String,
+    @param:Json(name = "expected_name") val expectedName: String,
+)
+
 data class LedgerSwitchResponseDto(
     @param:Json(name = "session_token")
     val sessionToken: String,

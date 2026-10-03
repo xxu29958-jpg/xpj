@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ledger_name_edit">修改账本名称</string>
+    <string name="ledger_name_current">当前名称：%1$s</string>
+    <string name="ledger_name_online_hint">联网保存后，家人的账本列表也会使用新名称。</string>
+    <string name="ledger_name_reload_hint">请先刷新当前名称和权限，输入会保留。</string>
+    <string name="ledger_name_owner_only">只有账本拥有者可以修改名称，输入已保留。</string>
+    <string name="ledger_name_save">保存名称</string>
+    <string name="ledger_name_saved">账本名称已保存。</string>
+    <string name="ledger_name_save_failed">账本名称未保存，请稍后重试。</string>
+</resources>

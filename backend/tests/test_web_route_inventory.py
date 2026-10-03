@@ -230,6 +230,7 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     # Family members and invitations
     ("GET", "/web/family"): "local-only-rendering",
     ("POST", "/web/family/invitations"): "writer-only",
+    ("POST", "/web/family/name"): "writer-only",
     ("POST", "/web/family/invitations/{public_id}/revoke"): "writer-only",
     ("POST", "/web/family/members/{member_id}/disable"): "writer-only",
     ("POST", "/web/family/members/{member_id}/role"): "writer-only",

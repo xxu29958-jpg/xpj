@@ -271,7 +271,7 @@ private fun SettingsUiState.withLocalBindingFields(
         role = binding?.role,
         boundAt = binding?.boundAt,
         serverSettings = serverSettings?.let { settings ->
-            binding?.let { settings.copy(role = it.role, accountName = it.accountName) } ?: settings
+            binding?.let { settings.copy(role = it.role, accountName = it.accountName, ledgerName = it.ledgerName) } ?: settings
         },
         notificationPreferences = settingsStore.notificationPreferences(),
         lastUploadAt = repository.lastUploadAt(),

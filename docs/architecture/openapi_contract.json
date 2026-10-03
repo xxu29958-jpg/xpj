@@ -2005,6 +2005,24 @@
         "title": "Body_owner_learning_maintenance_dismiss_post_owner_learning_maintenance_dismiss_decision_post",
         "type": "object"
       },
+      "Body_owner_ledger_rename_owner_ledgers__ledger_id__name_post": {
+        "properties": {
+          "expected_name": {
+            "title": "Expected Name",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "expected_name"
+        ],
+        "title": "Body_owner_ledger_rename_owner_ledgers__ledger_id__name_post",
+        "type": "object"
+      },
       "Body_owner_ledgers_post_owner_ledgers_post": {
         "properties": {
           "name": {
@@ -4866,6 +4884,24 @@
           }
         },
         "title": "Body_web_items_save_web_expenses__expense_id__items_save_post",
+        "type": "object"
+      },
+      "Body_web_ledger_rename_web_family_name_post": {
+        "properties": {
+          "expected_name": {
+            "title": "Expected Name",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "expected_name"
+        ],
+        "title": "Body_web_ledger_rename_web_family_name_post",
         "type": "object"
       },
       "Body_web_merchant_alias_create_web_merchants_aliases_create_post": {
@@ -16692,6 +16728,29 @@
           "role"
         ],
         "title": "LedgerMemberRoleUpdateRequest",
+        "type": "object"
+      },
+      "LedgerRenameRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_name": {
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Expected Name",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "expected_name"
+        ],
+        "title": "LedgerRenameRequest",
         "type": "object"
       },
       "LedgerResponse": {
@@ -37893,6 +37952,90 @@
         ]
       }
     },
+    "/api/ledgers/{ledger_id}/name": {
+      "post": {
+        "operationId": "rename_ledger_endpoint_api_ledgers__ledger_id__name_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ledger_id",
+            "required": true,
+            "schema": {
+              "title": "Ledger Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LedgerRenameRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/LedgerResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Rename Ledger Endpoint",
+        "tags": [
+          "ledgers"
+        ]
+      }
+    },
     "/api/ledgers/{ledger_id}/switch": {
       "post": {
         "operationId": "switch_ledger_endpoint_api_ledgers__ledger_id__switch_post",
@@ -45113,6 +45256,58 @@
         ]
       }
     },
+    "/owner/ledgers/{ledger_id}/name": {
+      "post": {
+        "operationId": "owner_ledger_rename_owner_ledgers__ledger_id__name_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ledger_id",
+            "required": true,
+            "schema": {
+              "title": "Ledger Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_owner_ledger_rename_owner_ledgers__ledger_id__name_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Owner Ledger Rename",
+        "tags": [
+          "owner-console"
+        ]
+      }
+    },
     "/owner/ledgers/{ledger_id}/unarchive": {
       "post": {
         "description": "Restore an archived ledger, then redirect back to the management page.",
@@ -51305,6 +51500,65 @@
           }
         },
         "summary": "Web Family Transfer Owner",
+        "tags": [
+          "web-app"
+        ]
+      }
+    },
+    "/web/family/name": {
+      "post": {
+        "operationId": "web_ledger_rename_web_family_name_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ledger Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_ledger_rename_web_family_name_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Ledger Rename",
         "tags": [
           "web-app"
         ]

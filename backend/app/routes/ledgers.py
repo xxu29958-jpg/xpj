@@ -43,6 +43,7 @@ from app.schemas import (
     LedgerSwitchPrepareRequest,
     LedgerSwitchResponse,
 )
+from app.schemas._identity import LedgerRenameRequest
 from app.schemas._ledger_calendar import LedgerCalendarChangeRequest, LedgerCalendarResponse
 from app.services.desktop_switch_service import prepare_desktop_ledger_switch
 from app.services.ledger_calendar_commands import change_ledger_calendar, read_ledger_calendar
@@ -50,6 +51,7 @@ from app.services.ledger_service import (
     LedgerSummary,
     create_ledger,
     list_ledgers_for_account,
+    rename_ledger,
     switch_ledger,
 )
 from app.services.server_identity_service import read_server_data_identity
@@ -82,6 +84,14 @@ def _to_response(summary: LedgerSummary) -> LedgerResponse:
         created_at=summary.created_at,
         archived_at=summary.archived_at,
     )
+
+
+@router.post("/{ledger_id}/name", response_model=LedgerResponse)
+def rename_ledger_endpoint(ledger_id: str, payload: LedgerRenameRequest,
+                           auth: AuthContext = Depends(get_current_ledger_app_context),
+                           db: Session = Depends(get_db)) -> LedgerResponse:
+    return _to_response(rename_ledger(db, account_id=auth.account_id, ledger_id=ledger_id,
+        name=payload.name, expected_name=payload.expected_name, auth=auth))
 
 
 @router.get("", response_model=LedgerListResponse)

@@ -28,6 +28,7 @@ from app.services import invitation_service
 from app.services.invitation_audit import LedgerAuditSummary
 from app.services.invitation_invites import InvitationSummary
 from app.services.invitation_members import MemberSummary
+from app.services.ledger_service import rename_ledger
 from app.services.spending_contract_service import accounting_datetime_label
 from app.services.time_service import ensure_utc, now_utc
 from app.tenants import AuthContext
@@ -109,6 +110,7 @@ def _render_family(
     submitted_role: str = "member",
     submitted_note: str = "",
     submitted_ttl_days: int = 7,
+    submitted_ledger_name: str | None = None,
     status_code: int = 200,
 ) -> HTMLResponse:
     options, selected_id, actor_id, _auth = _family_actor(
@@ -164,6 +166,8 @@ def _render_family(
         submitted_role=submitted_role,
         submitted_note=submitted_note,
         submitted_ttl_days=submitted_ttl_days,
+        ledger_name=selected.name,
+        submitted_ledger_name=submitted_ledger_name,
     )
     return templates.TemplateResponse(
         request=request,
@@ -228,6 +232,23 @@ def web_family_invite(
         invitation_token=created.invite_token,
         invitation_url=created.invite_url or "",
     )
+
+
+@router.post("/name", response_class=HTMLResponse)
+def web_ledger_rename(request: Request, ledger_id: str | None = None, name: str = Form(...),
+                       expected_name: str = Form(...), _local: None = LocalOnly,
+                       db: Session = Depends(get_db)) -> Response:
+    _options, selected_id, actor_id, auth = _family_actor(request, db, ledger_id=ledger_id, require_owner=False)
+    try:
+        _require_selected_ledger_write(_options, selected_id)
+        # The same service checks the actual ledger Owner under the credential lock.
+        rename_ledger(db, account_id=actor_id, ledger_id=selected_id, name=name,
+                      expected_name=expected_name, auth=auth)
+    except AppError as exc:
+        db.rollback()
+        return _render_family(request, db, ledger_id=selected_id, error=exc.message,
+            submitted_ledger_name=name, status_code=exc.status_code)
+    return _web_redirect("/web/family", selected_id)
 
 
 def _owner_command(

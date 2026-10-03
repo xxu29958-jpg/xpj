@@ -26,6 +26,20 @@
 
 {% if not can_manage_family %}
 <div class="product-feedback" role="status">当前角色可以查看家庭成员；邀请和权限由账本拥有者管理。</div>
+{% if submitted_ledger_name is not none %}<p>未保存的账本名称：{{ submitted_ledger_name }}</p>{% endif %}
+{% else %}
+<section class="product-panel product-panel--padded" aria-labelledby="ledger-name-title">
+  <h2 class="product-panel-title" id="ledger-name-title">账本名称</h2>
+  <p class="product-panel-subtitle">当前名称：{{ ledger_name }}。更名会同步到家人的账本列表。</p>
+  <form method="post" action="/web/family/name?ledger_id={{ selected_ledger_id }}" class="product-form-grid">
+    {{ csrf_field|safe }}
+    <input type="hidden" name="expected_name" value="{{ ledger_name }}">
+    <label class="product-field"><span>名称</span>
+      <input class="product-input" name="name" maxlength="60" required value="{{ submitted_ledger_name if submitted_ledger_name is not none else ledger_name }}">
+    </label>
+    <div class="family-form-action"><button class="product-button product-button--primary" type="submit">保存名称</button></div>
+  </form>
+</section>
 {% endif %}
 
 {% if invitation_token %}
@@ -185,7 +199,7 @@
 </details>
 
 <details class="product-panel product-panel--padded family-disclosure">
-  <summary>成员记录 · 最近 {{ audit_logs | length }} 条</summary>
+  <summary>账本管理记录 · 最近 {{ audit_logs | length }} 条</summary>
   <ol class="family-audit-list">
   {% for item in audit_logs %}
     <li>
@@ -196,12 +210,14 @@
         'invitation_revoked': '撤销邀请',
         'member_role_changed': '调整角色',
         'member_disabled': '停用成员',
-        'owner_transferred': '转让拥有者'
+        'owner_transferred': '转让拥有者',
+        'ledger_renamed': '修改账本名称'
       }.get(item.action, item.action) }}</strong>
       <span>
         {{ item.actor_account_name or '系统' }}{% if item.target_account_name %} → {{ item.target_account_name }}{% endif %}
         {% if item.previous_role or item.new_role %} · {{ role_label(item.previous_role) if item.previous_role else '—' }} → {{ role_label(item.new_role) if item.new_role else '—' }}{% endif %}
       </span>
+      {% if item.action == 'ledger_renamed' %}<span>{{ item.detail }}</span>{% endif %}
       <span class="product-status{% if item.result == 'success' %} product-status--success{% endif %}">{{ '成功' if item.result == 'success' else item.result }}</span>
     </li>
   {% else %}

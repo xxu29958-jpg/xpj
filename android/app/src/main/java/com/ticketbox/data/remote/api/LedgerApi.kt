@@ -27,6 +27,12 @@ interface LedgerApi {
     @POST("api/ledgers")
     suspend fun createLedger(@Body request: LedgerCreateRequestDto): com.ticketbox.data.remote.dto.LedgerDto
 
+    @POST("api/ledgers/{ledgerId}/name")
+    suspend fun renameLedger(
+        @Path("ledgerId") ledgerId: String,
+        @Body request: com.ticketbox.data.remote.dto.LedgerRenameRequestDto,
+    ): com.ticketbox.data.remote.dto.LedgerDto
+
     @POST("api/ledgers/{ledgerId}/switch")
     suspend fun switchLedger(@Path("ledgerId") ledgerId: String): LedgerSwitchResponseDto
 

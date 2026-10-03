@@ -856,6 +856,7 @@ internal class FakeApiService(
     override suspend fun listLedgers(): com.ticketbox.data.remote.dto.LedgerListResponseDto = unsupported()
 
     override suspend fun createLedger(request: com.ticketbox.data.remote.dto.LedgerCreateRequestDto): com.ticketbox.data.remote.dto.LedgerDto = unsupported()
+    override suspend fun renameLedger(ledgerId: String, request: com.ticketbox.data.remote.dto.LedgerRenameRequestDto): com.ticketbox.data.remote.dto.LedgerDto = unsupported()
 
     override suspend fun switchLedger(ledgerId: String): com.ticketbox.data.remote.dto.LedgerSwitchResponseDto = unsupported()
 

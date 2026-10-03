@@ -32,6 +32,7 @@ from app.services.identity_service import (
 from app.services.identity_service._bootstrap_exposure_guard import (
     assert_bootstrap_sensitive_mutation_allowed,
 )
+from app.services.invitation_audit import add_audit_log
 from app.services.ledger_archive_service import (
     AUDIT_LEDGER_ARCHIVED,
     AUDIT_LEDGER_UNARCHIVED,
@@ -78,6 +79,27 @@ def _new_ledger_id(db: Session) -> str:
         if candidate not in existing:
             return candidate
     raise AppError("server_error", status_code=500)
+
+
+def rename_ledger(db: Session, *, account_id: int, ledger_id: str, name: str,
+                  expected_name: str, auth: AuthContext | None) -> LedgerSummary:
+    """Change one owned label, with field CAS and a single audit on real change."""
+    lock_and_revalidate_mutation_actor(db, auth, actor_account_id=account_id, ledger_id=ledger_id)
+    cleaned = _normalize_ledger_name(name)
+    _ledger, role = get_ledger_for_account(db, account_id=account_id, ledger_id=ledger_id)
+    ledger = db.scalar(select(Ledger).where(Ledger.ledger_id == ledger_id).with_for_update()
+                       .execution_options(populate_existing=True))
+    if ledger is None or ledger.archived_at is not None or role != "owner" or ledger.owner_account_id != account_id:
+        raise AppError("permission_denied", "只有账本拥有者可以修改账本名称。", status_code=403)
+    if ledger.name != expected_name and ledger.name != cleaned:
+        raise AppError("ledger_name_conflict", "账本名称已更新，请核对当前名称后再次保存。", status_code=409)
+    if ledger.name != cleaned:
+        previous = ledger.name
+        ledger.name = cleaned
+        add_audit_log(db, ledger_id=ledger_id, action="ledger_renamed", actor_account_id=account_id,
+                      detail=f"账本名称：{previous} → {cleaned}")
+    db.commit()
+    return _summary(ledger, role)
 
 
 def _summary(ledger: Ledger, role: str) -> LedgerSummary:

@@ -152,6 +152,10 @@ class LedgerCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=60)
 
 
+class LedgerRenameRequest(LedgerCreateRequest):
+    expected_name: str = Field(min_length=1, max_length=60)
+
+
 class LedgerSwitchPrepareRequest(BaseModel):
     """Desktop two-phase ledger switch: client-owned attempt proof for staging."""
 
