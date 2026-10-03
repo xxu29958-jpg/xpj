@@ -22,10 +22,10 @@
 {% set _q = '?ledger_id=' ~ selected_ledger_id %}
 <header class="product-page-header inbox-page-header">
   <div class="product-page-heading">
-    <h1 class="page-title">把新账单整理清楚</h1>
+    <h1 class="page-title">待我处理</h1>
     <p class="product-page-summary">
       {% if pending_count %}
-      共 {{ pending_count }} 笔待整理，其中 {{ ready_count }} 笔可直接确认；其余先补齐金额、商家、分类或核对重复。{% if filter != 'all' %}当前筛选显示 {{ filtered_count }} 笔。{% endif %}
+      {{ pending_count }} 笔待整理 · {{ ready_count }} 笔可确认
       {% else %}
       当前账本没有待处理记录。
       {% endif %}
@@ -101,7 +101,7 @@
 {% include "_recent_recognition_tasks.html" %}
 
 {% if pending_count %}
-<nav class="product-commandbar" aria-label="待处理筛选">
+<nav class="product-commandbar inbox-filters" aria-label="待处理筛选">
   <div class="product-segments">
     <a class="filter-tab{% if filter == 'all' %} is-active{% endif %}"
        href="/web/pending{{ _q }}"
@@ -143,7 +143,7 @@
 
 <p class="inbox-filter-note" aria-live="polite">
   {% if filter == 'all' %}
-    按最新上传排序。打开一条记录即可在侧栏核对原图和字段。
+    最新上传在前 · 打开小票核对原图和字段
   {% else %}
     当前筛选命中 {{ filtered_count }} 笔；切回“全部”可查看完整队列。
   {% endif %}

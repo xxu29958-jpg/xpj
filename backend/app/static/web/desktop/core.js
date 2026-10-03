@@ -142,6 +142,16 @@
     });
   };
 
+  app.initInboxFilters = function initInboxFilters() {
+    const filters = document.querySelector(".inbox-filters .product-segments");
+    const active = filters && filters.querySelector('[aria-current="page"]');
+    if (!active) return;
+    const viewport = filters.getBoundingClientRect();
+    const selected = active.getBoundingClientRect();
+    if (selected.right > viewport.right) filters.scrollLeft += selected.right - viewport.right;
+    else if (selected.left < viewport.left) filters.scrollLeft -= viewport.left - selected.left;
+  };
+
   app.initInboxEnrichmentWatch = function initInboxEnrichmentWatch() {
     const marker = document.querySelector("[data-inbox-enrichment-watch]");
     if (!marker) return;

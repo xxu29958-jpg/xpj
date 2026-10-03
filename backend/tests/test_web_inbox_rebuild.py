@@ -154,7 +154,7 @@ def test_web_pending_bulk_selection_markup_and_js_field_name(web_client: TestCli
 @pytest.mark.parametrize(
     ("path", "page_level", "copy"),
     [
-        ("/web/pending?ledger_id=owner", "primary", "把新账单整理清楚"),
+        ("/web/pending?ledger_id=owner", "primary", "待我处理"),
         ("/web/duplicates?ledger_id=owner", "secondary", "逐组核对相似账单"),
     ],
 )

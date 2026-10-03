@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
@@ -107,12 +106,7 @@ internal fun PendingQueueOverview(
             bulkRunning = bulkRunning,
             onOpenBulkConfirm = onOpenBulkConfirm,
         )
-        Text(
-            text = pendingQueuePriorityText(model),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodySmall,
-        )
-        FlowRow(
+        if (model.shouldShowMetrics || model.hasReviewSignals) FlowRow(
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
         ) {
@@ -159,11 +153,11 @@ private fun PendingQueueOverviewHeader(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = stringResource(R.string.pending_queue_overview_title),
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = AppTextHierarchy.heading.weight,
+            text = pendingQueuePriorityText(model),
+            modifier = Modifier.weight(1f),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
         )
-        Spacer(modifier = Modifier.weight(1f))
         if (!readOnly && model.canBulkConfirm) {
             TextButton(
                 enabled = !bulkRunning,

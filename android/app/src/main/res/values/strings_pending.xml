@@ -48,7 +48,7 @@
     <!-- 页头 PendingTop -->
     <string name="pending_top_title">待我处理</string>
     <string name="pending_top_subtitle_has_items">逐条核对后入账</string>
-    <string name="pending_top_subtitle_count">%1$d 张待整理，确认后进入账本</string>
+    <string name="pending_top_subtitle_count">%1$d 张待整理</string>
     <string name="pending_top_subtitle_empty">截图上传后逐条确认</string>
     <string name="pending_top_subtitle_empty_readonly">当前可查看待确认状态</string>
     <string name="pending_top_metric_caption">待核对截图</string>
@@ -58,7 +58,6 @@
     <string name="pending_top_cta_upload">上传小票</string>
 
     <!-- 待确认队列概览 -->
-    <string name="pending_queue_overview_title">处理重点</string>
     <string name="pending_queue_overview_priority_duplicate">优先处理疑似重复，避免重复入账。</string>
     <string name="pending_queue_overview_priority_amount">补全金额后再确认入账。</string>
     <string name="pending_queue_overview_priority_merchant">补全商家后，筛选与统计更准确。</string>
@@ -79,8 +78,7 @@
     <string name="pending_queue_overview_bulk_running">正在确认</string>
 
     <!-- 显示模式按钮 -->
-    <string name="pending_display_mode_button_loading">刷新中</string>
-    <string name="pending_display_options_button">显示</string>
+    <string name="pending_display_options_button">收件工具</string>
 
     <!-- 待确认真实条目：紧凑复核行 -->
     <string name="pending_row_image_placeholder">截图</string>
@@ -110,7 +108,7 @@
     <string name="pending_undo_banner_action">撤销</string>
 
     <!-- 工具 sheet PendingToolsSheet -->
-    <string name="pending_tools_title">列表与刷新</string>
+    <string name="pending_tools_title">收件工具</string>
     <string name="pending_tools_subtitle">调整列表密度，或重新获取待确认账单。</string>
     <string name="pending_tools_density_compact">紧凑</string>
     <string name="pending_tools_density_comfortable">舒适</string>

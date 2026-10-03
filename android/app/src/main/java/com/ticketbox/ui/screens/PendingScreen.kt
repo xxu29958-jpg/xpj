@@ -218,7 +218,7 @@ fun PendingScreen(
                 loading = blockingRefresh,
                 displayMode = displayMode,
                 onDisplayModeChange = { displayMode = it },
-                onRefresh = chromeActions.onRefresh,
+                actions = chromeActions,
                 onDismiss = { showPendingTools = false },
             )
         }
@@ -306,6 +306,7 @@ fun PendingScreen(
                         PendingTriagePane(
                             state = triagePaneState,
                             actions = triagePaneActions,
+                            showRelatedActions = false,
                         )
                     }
                 }
@@ -428,6 +429,14 @@ fun PendingScreen(
             bodyState == PendingListBodyState.Content -> Unit
         }
 
+        if (!adaptivePolicy.showsSupportingPane && state.items.isEmpty()) {
+            item {
+                InboxActionLinks(
+                    onOpenRepaymentReview = chromeActions.onOpenRepaymentReview,
+                    onOpenDataQuality = chromeActions.onOpenDataQuality,
+                )
+            }
+        }
         if (state.items.isNotEmpty()) {
             if (filteredItems.isEmpty()) {
                 item { NeedsReviewEmptyFilterCard(filter = needsReviewFilter) }
@@ -514,6 +523,7 @@ private fun pendingUploadOriginalSummary(originals: List<PendingUploadOriginalUi
 private fun PendingTriagePane(
     state: PendingTriagePaneState,
     actions: PendingTriagePaneActions,
+    showRelatedActions: Boolean = true,
 ) {
     Column(
         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
@@ -531,14 +541,18 @@ private fun PendingTriagePane(
                 localCacheBodyRes = R.string.components_data_authority_pending_cache_body,
             )
         }
-        NeedsReviewFilterBar(
-            state = NeedsReviewFilterBarState(selected = state.selectedFilter, counts = state.counts),
-            onSelect = actions.onSelectFilter,
-        )
-        InboxActionLinks(
-            onOpenRepaymentReview = actions.onOpenRepaymentReview,
-            onOpenDataQuality = actions.onOpenDataQuality,
-        )
+        if (state.counts.all > 0 || state.selectedFilter != NeedsReviewFilter.All) {
+            NeedsReviewFilterBar(
+                state = NeedsReviewFilterBarState(selected = state.selectedFilter, counts = state.counts),
+                onSelect = actions.onSelectFilter,
+            )
+        }
+        if (showRelatedActions) {
+            InboxActionLinks(
+                onOpenRepaymentReview = actions.onOpenRepaymentReview,
+                onOpenDataQuality = actions.onOpenDataQuality,
+            )
+        }
     }
 }
 

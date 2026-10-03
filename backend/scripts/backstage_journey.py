@@ -79,6 +79,7 @@ class BackstageJourney:
         self.expense_id = expense["id"]
         self.task_id = result["tasks"][0]["id"]
         self.original_task = result["tasks"][0]
+        self.capture_pending_queue()
         self.goto("/web/pending")
         self.page.locator("#recognition > summary").click()
         task = self.page.locator(f'[data-recognition-task-id="{self.task_id}"]')
@@ -200,6 +201,29 @@ class BackstageJourney:
         self.goto(f"/web/expenses/{self.expense_id}/edit")
         assert "19.00" in self.page.inner_text("main")
         self.capture("human-confirmed-native-amount")
+
+    def capture_pending_queue(self):
+        before = self.facts()
+        for theme in ("paper", "midnight"):
+            self.page.set_viewport_size({"width": 1280, "height": 960})
+            self.goto("/web/pending")
+            self.page.locator("#appearance > summary").click()
+            self.page.locator(f'#appearance [data-theme-mode="{theme}"]').click()
+            self.page.wait_for_function("theme => document.documentElement.dataset.theme === theme", arg=theme)
+            self.page.locator("#appearance > summary").click()
+            for width in (1280, 390):
+                self.page.set_viewport_size({"width": width, "height": 960})
+                self.goto("/web/pending")
+                self.capture(f"inbox-queue-{width}-{theme}")
+                self.page.locator('.inbox-filters a[href*="filter=ready"]').click()
+                assert self.page.locator(".exp-row").filter(has_text="18.51").count() == 1
+                assert self.page.locator('.inbox-filters [aria-current="page"]').evaluate("""node => {
+                    const selected = node.getBoundingClientRect();
+                    const viewport = node.parentElement.getBoundingClientRect();
+                    return selected.left >= viewport.left - 1 && selected.right <= viewport.right + 1;
+                }"""), "The selected inbox filter is outside the visible filter strip"
+                self.capture(f"inbox-ready-{width}-{theme}")
+        assert self.facts() == before, "Reading the real inbox filters changed the original bill or task"
 
     def appearances(self):
         for theme in ("paper", "midnight"):
