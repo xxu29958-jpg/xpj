@@ -115,6 +115,7 @@ def _post_recognition_settings(
             error=getattr(exc, "message", None) or "操作未完成，请检查输入或服务状态后重试。",
         )
         ctx["recognition_view"] = runtime_settings_service.get_recognition_view(form)
+        ctx["recognition_action"] = recognition_action
         return templates.TemplateResponse(request=request, name="settings/recognition.html", context=ctx,
             status_code=200 if recognition_action == "save" else getattr(exc, "status_code", 503))
     ctx = _settings_ctx(
@@ -125,6 +126,7 @@ def _post_recognition_settings(
     )
     ctx["recognition_view"] = recognition_view
     ctx["recognition_models"] = check.models
+    ctx["recognition_action"] = recognition_action
     return templates.TemplateResponse(request=request, name="settings/recognition.html", context=ctx)
 
 
