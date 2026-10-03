@@ -1,100 +1,100 @@
-{% extends "settings/_layout.html" %}
+{% extends "_workspace.html" %}
+{% from "_workspace_ui.html" import icon with context %}
 {% block title %}识别与录入 — 设置 — 小票夹{% endblock %}
-{% block settings_body %}
-<div class="card">
-  <h2>识别与录入</h2>
-  <p class="help-text">决定小票上传后如何提取金额、商户和时间，以及债务账单是否使用同一台本机视觉模型。</p>
-  <dl class="kv-list">
-    <dt>小票识别</dt><dd><span class="badge badge-ok">{{ recognition_view.receipt_status }}</span></dd>
-    <dt>债务账单</dt><dd>{{ recognition_view.debt_bill_status }}</dd>
-    <dt>生效方式</dt><dd>保存后立即生效，不重启；已上传的草稿不会被后台改写</dd>
-  </dl>
-</div>
+{% block back_url %}/owner/settings{% endblock %}
+{% block back_label %}设置{% endblock %}
+{% block workspace_title %}小票怎么识别{% endblock %}
+{% block workspace_description %}从这里设置本机的识别方式。{% endblock %}
+{% block workspace_body %}
+{% set checking = recognition_action|default('save') in ('models', 'test') %}
+{% if not checking %}
+  {% if message %}<div class="alert alert-success" role="status">{{ message }}</div>{% endif %}
+  {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+{% endif %}
+<form class="workspace-form" method="post" action="/owner/settings/recognition" data-show-loading="正在处理识别设置…">
+  <label class="workspace-field" for="ocr_provider">
+    <span>主要识别方式</span>
+    <select id="ocr_provider" name="ocr_provider">
+      <option value="empty" {% if recognition_view.form.ocr_provider == 'empty' %}selected{% endif %}>关闭，手动核对</option>
+      <option value="local_llm" {% if recognition_view.form.ocr_provider == 'local_llm' %}selected{% endif %}>本机视觉模型</option>
+      <option value="rapidocr" {% if recognition_view.form.ocr_provider == 'rapidocr' %}selected{% endif %} {% if not recognition_view.rapidocr_available %}disabled{% endif %}>RapidOCR{% if not recognition_view.rapidocr_available %}（未安装）{% endif %}</option>
+    </select>
+  </label>
+  <label class="workspace-field" for="ocr_fallback_provider">
+    <span>备用识别方式</span>
+    <select id="ocr_fallback_provider" name="ocr_fallback_provider">
+      <option value="empty" {% if recognition_view.form.ocr_fallback_provider == 'empty' %}selected{% endif %}>不启用</option>
+      <option value="local_llm" {% if recognition_view.form.ocr_fallback_provider == 'local_llm' %}selected{% endif %}>本机视觉模型</option>
+      <option value="rapidocr" {% if recognition_view.form.ocr_fallback_provider == 'rapidocr' %}selected{% endif %} {% if not recognition_view.rapidocr_available %}disabled{% endif %}>RapidOCR{% if not recognition_view.rapidocr_available %}（未安装）{% endif %}</option>
+    </select>
+    <span class="workspace-note">主要结果缺字段或低于阈值时才使用备用方式。</span>
+  </label>
+  <label class="workspace-field" for="local_llm_base_url">
+    <span>本机接口地址</span>
+    <input id="local_llm_base_url" name="local_llm_base_url" type="url" value="{{ recognition_view.form.local_llm_base_url }}" placeholder="http://127.0.0.1:1234/v1" aria-describedby="model-address-note">
+    <span class="workspace-note" id="model-address-note">只连接本机环回地址，图片不会由此发往公网。</span>
+  </label>
+  <label class="workspace-field" for="local_llm_model">
+    <span>模型</span>
+    <input id="local_llm_model" name="local_llm_model" type="text" value="{{ recognition_view.form.local_llm_model }}" placeholder="读取后选择，或填写模型名称" list="local-model-options" aria-describedby="model-selection-note">
+    <datalist id="local-model-options">
+      {% for model in recognition_models|default([]) %}<option value="{{ model }}">{% endfor %}
+    </datalist>
+    <span class="workspace-note" id="model-selection-note">留空时从本机服务自动发现。</span>
+  </label>
+  <label class="workspace-switch" for="ocr_auto_run">
+    <span><strong>新小票自动识别</strong><small>识别后仍由用户确认；关闭后可手动识别。</small></span>
+    <input type="checkbox" role="switch" id="ocr_auto_run" name="ocr_auto_run" {% if recognition_view.form.ocr_auto_run %}checked{% endif %}>
+  </label>
 
-<form method="post" action="/owner/settings/recognition" data-show-loading="正在处理识别设置…">
-  <div class="card">
-    <h2>小票识别</h2>
-    <div class="settings-form-grid">
-      <label for="ocr_provider">主要识别方式</label>
-      <select id="ocr_provider" name="ocr_provider" class="inline-select">
-        <option value="empty" {% if recognition_view.form.ocr_provider == 'empty' %}selected{% endif %}>关闭，手动核对</option>
-        <option value="local_llm" {% if recognition_view.form.ocr_provider == 'local_llm' %}selected{% endif %}>本机视觉模型</option>
-        <option value="rapidocr" {% if recognition_view.form.ocr_provider == 'rapidocr' %}selected{% endif %} {% if not recognition_view.rapidocr_available %}disabled{% endif %}>RapidOCR{% if not recognition_view.rapidocr_available %}（未安装）{% endif %}</option>
-      </select>
-
-      <span>自动识别</span>
-      <label class="label-check-row" for="ocr_auto_run">
-        <input type="checkbox" id="ocr_auto_run" name="ocr_auto_run" {% if recognition_view.form.ocr_auto_run %}checked{% endif %}>
-        新小票上传后自动运行；关闭时仍可在待确认页手动识别
-      </label>
-
-      <label for="ocr_fallback_provider">备用识别方式</label>
-      <select id="ocr_fallback_provider" name="ocr_fallback_provider" class="inline-select">
-        <option value="empty" {% if recognition_view.form.ocr_fallback_provider == 'empty' %}selected{% endif %}>不启用</option>
-        <option value="local_llm" {% if recognition_view.form.ocr_fallback_provider == 'local_llm' %}selected{% endif %}>本机视觉模型</option>
-        <option value="rapidocr" {% if recognition_view.form.ocr_fallback_provider == 'rapidocr' %}selected{% endif %} {% if not recognition_view.rapidocr_available %}disabled{% endif %}>RapidOCR{% if not recognition_view.rapidocr_available %}（未安装）{% endif %}</option>
-      </select>
-      <span></span><p class="help-text fs-meta">主要结果缺字段或低于阈值时才尝试备用方式；不会覆盖用户已经改过的草稿字段。</p>
-    </div>
-  </div>
-
-  <div class="card">
-    <h2>债务账单</h2>
-    <div class="settings-form-grid">
-      <label for="debt_bill_provider">图片录入方式</label>
-      <select id="debt_bill_provider" name="debt_bill_provider" class="inline-select">
-        <option value="empty" {% if recognition_view.form.debt_bill_provider == 'empty' %}selected{% endif %}>手动录入</option>
-        <option value="local_llm" {% if recognition_view.form.debt_bill_provider == 'local_llm' %}selected{% endif %}>复用本机视觉模型</option>
-      </select>
-    </div>
-  </div>
-
-  <div class="card">
-    <h2>本机视觉模型</h2>
-    <p class="help-text">只接受本机环回地址，票据图片不会被这个设置发送到公网服务。</p>
-    <div class="settings-form-grid">
-      <label for="local_llm_base_url">接口地址</label>
-      <input id="local_llm_base_url" name="local_llm_base_url" type="url"
-             value="{{ recognition_view.form.local_llm_base_url }}"
-             placeholder="http://127.0.0.1:1234/v1" class="inline-input inline-input--mono">
-      <label for="local_llm_model">模型名称</label>
-      <input id="local_llm_model" name="local_llm_model" type="text"
-             value="{{ recognition_view.form.local_llm_model }}"
-             placeholder="留空时从本机服务自动发现" class="inline-input inline-input--mono" list="local-model-options">
-      <datalist id="local-model-options">
-        {% for model in recognition_models|default([]) %}<option value="{{ model }}">{% endfor %}
-      </datalist>
-      <span></span><p class="help-text fs-meta">填写地址后，可用下方“读取本机模型”选择模型，再用固定图片检查识别。检查使用当前填写的地址与模型，不会保存设置，也不会读取你的账本或原件。</p>
-    </div>
-  </div>
-
-  <details class="card">
-    <summary><strong>识别细节</strong> <span class="text-meta">多数情况保持默认即可</span></summary>
-    <div class="settings-form-grid mt-5">
-      <label for="ocr_min_confidence">启用备用识别的阈值</label>
-      <input id="ocr_min_confidence" name="ocr_min_confidence" type="number" min="0" max="1" step="0.01"
-             value="{{ recognition_view.form.ocr_min_confidence }}" class="inline-input">
-      <label for="ocr_default_timezone">默认时区</label>
-      <input id="ocr_default_timezone" name="ocr_default_timezone" type="text"
-             value="{{ recognition_view.form.ocr_default_timezone }}" class="inline-input inline-input--mono">
-      <label for="local_llm_timeout_seconds">单次识别超时（秒）</label>
-      <input id="local_llm_timeout_seconds" name="local_llm_timeout_seconds" type="number" min="5" max="300"
-             value="{{ recognition_view.form.local_llm_timeout_seconds }}" class="inline-input">
-      <label for="local_llm_max_concurrent">同时识别任务</label>
-      <input id="local_llm_max_concurrent" name="local_llm_max_concurrent" type="number" min="1" max="8"
-             value="{{ recognition_view.form.local_llm_max_concurrent }}" class="inline-input">
-      <label for="local_llm_queue_timeout_seconds">排队等待（秒）</label>
-      <input id="local_llm_queue_timeout_seconds" name="local_llm_queue_timeout_seconds" type="number" min="0" max="60" step="0.5"
-             value="{{ recognition_view.form.local_llm_queue_timeout_seconds }}" class="inline-input">
+  <details class="workspace-disclosure workspace-model-checks" id="model-checks"{% if checking %} open{% endif %}>
+    <summary><span>读取模型与测试识别</span>{{ icon('chevron-right') }}</summary>
+    <div class="workspace-disclosure__body">
+      <h2>先试一张测试图片</h2>
+      <p class="workspace-note">使用上方填写的地址与模型。读取和测试都不会保存设置，也不会读取账本或原件。</p>
+      <button type="submit" class="workspace-task workspace-check-action" name="recognition_action" value="models" formaction="/owner/settings/recognition#model-checks" formnovalidate>
+        <span class="workspace-task__icon workspace-tone-green">{{ icon('list') }}</span>
+        <span class="workspace-task__text"><strong>读取本机模型</strong><span>先确认本机模型服务已启动</span></span>
+        <span class="workspace-check-label">读取</span>{{ icon('chevron-right') }}
+      </button>
+      <button type="submit" class="workspace-task workspace-check-action" name="recognition_action" value="test" formaction="/owner/settings/recognition#model-checks" formnovalidate>
+        <span class="workspace-task__icon workspace-tone-apricot">{{ icon('scan-line') }}</span>
+        <span class="workspace-task__text"><strong>测试图片识别</strong><span>发送一张含数字的固定测试图片</span></span>
+        <span class="workspace-check-label">测试</span>{{ icon('chevron-right') }}
+      </button>
+      {% if checking %}
+      <section class="workspace-check-result" aria-label="本次检查结果">
+        <h3>{{ '本次模型读取' if recognition_action == 'models' else '本次图片测试' }}</h3>
+        {% if message %}<div class="alert alert-success" role="status">{{ message }}</div>{% endif %}
+        {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+        {% if recognition_models %}<p class="workspace-note">已读取的模型可在上方“模型”输入框中选择。</p>{% endif %}
+      </section>
+      {% endif %}
+      <p class="workspace-note"><a href="/web/pending#recognition" target="_blank" rel="noopener">回到收件，核对真实小票</a></p>
+      <p class="workspace-note"><a href="/owner/diagnostics">查看系统状态</a></p>
     </div>
   </details>
 
-  <div class="settings-form-actions mt-5">
-    <button type="submit" name="recognition_action" value="save" class="btn btn-primary">保存识别设置</button>
-    <button type="submit" name="recognition_action" value="models" class="btn" formnovalidate>读取本机模型</button>
-    <button type="submit" name="recognition_action" value="test" class="btn" formnovalidate>测试图片识别</button>
-    <a class="btn" href="/owner/diagnostics">查看系统状态</a>
-    <a class="btn" href="/web/pending#recognition" target="_blank" rel="noopener">查看我的近期上传识别</a>
+  <details class="workspace-disclosure">
+    <summary><span>债务账单与识别细节<span>多数情况保持默认即可</span></span>{{ icon('chevron-right') }}</summary>
+    <div class="workspace-disclosure__body">
+      <p class="workspace-draft-status"><span>小票识别：{{ recognition_view.receipt_status }}</span><span>债务账单：{{ recognition_view.debt_bill_status }}</span></p>
+      <label class="workspace-field" for="debt_bill_provider"><span>债务账单图片录入方式</span>
+        <select id="debt_bill_provider" name="debt_bill_provider">
+          <option value="empty" {% if recognition_view.form.debt_bill_provider == 'empty' %}selected{% endif %}>手动录入</option>
+          <option value="local_llm" {% if recognition_view.form.debt_bill_provider == 'local_llm' %}selected{% endif %}>复用本机视觉模型</option>
+        </select>
+      </label>
+      <label class="workspace-field" for="ocr_min_confidence"><span>启用备用识别的阈值</span><input id="ocr_min_confidence" name="ocr_min_confidence" type="number" min="0" max="1" step="0.01" value="{{ recognition_view.form.ocr_min_confidence }}"></label>
+      <label class="workspace-field" for="ocr_default_timezone"><span>默认时区</span><input id="ocr_default_timezone" name="ocr_default_timezone" type="text" value="{{ recognition_view.form.ocr_default_timezone }}"></label>
+      <label class="workspace-field" for="local_llm_timeout_seconds"><span>单次识别超时（秒）</span><input id="local_llm_timeout_seconds" name="local_llm_timeout_seconds" type="number" min="5" max="300" value="{{ recognition_view.form.local_llm_timeout_seconds }}"></label>
+      <label class="workspace-field" for="local_llm_max_concurrent"><span>同时识别任务</span><input id="local_llm_max_concurrent" name="local_llm_max_concurrent" type="number" min="1" max="8" value="{{ recognition_view.form.local_llm_max_concurrent }}"></label>
+      <label class="workspace-field" for="local_llm_queue_timeout_seconds"><span>排队等待（秒）</span><input id="local_llm_queue_timeout_seconds" name="local_llm_queue_timeout_seconds" type="number" min="0" max="60" step="0.5" value="{{ recognition_view.form.local_llm_queue_timeout_seconds }}"></label>
+    </div>
+  </details>
+  <div class="workspace-save">
+    <button type="submit" name="recognition_action" value="save" class="btn btn-primary">保存识别设置 {{ icon('arrow-right') }}</button>
   </div>
+  <p class="workspace-note">保存后立即生效，无需重启；已上传的草稿和人工修改会保留。</p>
 </form>
 {% endblock %}

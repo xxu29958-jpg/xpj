@@ -1,11 +1,11 @@
 {# v0.10 Owner 左 sidebar (分两组: 运维高频 / 治理低频), 替代旧的扁平横向 nav #}
 {# Owner 工作台片: is-active 同步 aria-current="page", 当前定位读屏可达。 #}
 <aside class="owner-sidebar" aria-label="管理后台导航">
-  <a class="owner-sidebar__brand" href="/owner">🎫 小票夹</a>
+  <a class="owner-sidebar__brand" href="/owner"><img src="/static/web/product/brand/brand-mark{{ '-midnight' if ui_theme == 'midnight' else '' }}.png?v={{ asset_version }}" width="28" height="28" alt="">小票夹</a>
   <nav class="owner-sidebar__nav">
     <div class="owner-sidebar__group">
       <div class="owner-sidebar__group-label">运维</div>
-      <a href="/owner" {% if request.url.path == '/owner' %}class="is-active" aria-current="page"{% endif %}>仪表盘</a>
+      <a href="/owner" {% if request.url.path == '/owner' %}class="is-active" aria-current="page"{% endif %}>本机管理</a>
       <a href="/owner/devices" {% if '/devices' in request.url.path %}class="is-active" aria-current="page"{% endif %}>设备</a>
       <a href="/owner/ledgers" {% if '/ledgers' in request.url.path %}class="is-active" aria-current="page"{% endif %}>账本</a>
       <a href="/owner/diagnostics" {% if '/diagnostics' in request.url.path %}class="is-active" aria-current="page"{% endif %}>诊断</a>

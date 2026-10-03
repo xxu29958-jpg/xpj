@@ -58,7 +58,8 @@ def test_reopened_pending_template_shows_failed_and_no_result_original_tasks():
 
 @pytest.mark.parametrize("page", ["settings/recognition.html", "diagnostics.html"])
 def test_owner_recognition_pages_navigate_to_user_pending_context(page):
-    context = {"recognition_view": SimpleNamespace(form=SimpleNamespace(), rapidocr_available=False,
+    context = {"request": Request({"type": "http", "path": "/owner/" + page.removesuffix(".html"), "headers": []}),
+        "recognition_view": SimpleNamespace(form=SimpleNamespace(), rapidocr_available=False,
         receipt_status="已配置，自动识别关闭", debt_bill_status="手动录入")}
     html = _render(owner_templates, page, context)
     assert 'href="/web/pending#recognition"' in html, (

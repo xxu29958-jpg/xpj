@@ -1,0 +1,11 @@
+{% macro icon(name) -%}
+<svg class="workspace-icon" width="24" height="24" aria-hidden="true" focusable="false"><use href="/static/shared/vendor/lucide/icons.svg?v={{ asset_version }}#{{ name }}"></use></svg>
+{%- endmacro %}
+
+{% macro task_link(url, title, symbol, description='', tone='green') -%}
+<a class="workspace-task" href="{{ url }}">
+  <span class="workspace-task__icon workspace-tone-{{ tone }}">{{ icon(symbol) }}</span>
+  <span class="workspace-task__text"><strong>{{ title }}</strong>{% if description %}<span>{{ description }}</span>{% endif %}</span>
+  {{ icon('chevron-right') }}
+</a>
+{%- endmacro %}

@@ -18,6 +18,7 @@ from PIL import Image
 from app import config
 from app.database import get_db
 from app.middleware import csrf
+from app.middleware.logging import SanitizedLoggingMiddleware
 from app.routes.owner_console import _settings
 from app.services import runtime_settings_service as runtime
 from app.services.local_llm_vision import call_local_llm_vision, local_llm_slot
@@ -71,6 +72,7 @@ def setup_page(tmp_path, monkeypatch):
     monkeypatch.setattr(csrf, "_csrf_secret", lambda: b"recognition-setup-test-secret")
     monkeypatch.setattr(_settings, "_base", lambda request, db: {"ui_theme": "paper", "asset_version": "test"})
     app = FastAPI()
+    app.add_middleware(SanitizedLoggingMiddleware)
     app.include_router(_settings.router)
     app.dependency_overrides[get_db] = lambda: None
     with TestClient(app, base_url="http://127.0.0.1", client=("127.0.0.1", 50000)) as client:
@@ -108,7 +110,7 @@ def test_image_check_uses_draft_connection_and_only_a_fixed_test_image(setup_pag
 
 
 @pytest.mark.parametrize("status,number", [(200, 99), (503, 24)])
-def test_failed_check_retains_draft_and_never_reports_success(setup_page, local_model, status, number):
+def test_failed_check_retains_draft_and_never_reports_success(setup_page, local_model, status, number, caplog):
     client, target, form = setup_page
     before = target.read_bytes()
     local_model.status, local_model.number = status, number
@@ -117,6 +119,30 @@ def test_failed_check_retains_draft_and_never_reports_success(setup_page, local_
     assert result.status_code == 502
     assert "测试图片识别通过" not in result.text and 'value="unverified-model"' in result.text
     assert target.read_bytes() == before
+    report = next(record for record in caplog.records if record.name == "ticketbox.http")
+    assert result.headers["X-Request-Id"] in report.getMessage()
+    assert report.exc_info and report.exc_info[1].error == "dependency_unavailable"
+    if status == 503:
+        assert report.exc_info[1].__cause__ is not None
+
+
+def test_failed_save_keeps_draft_and_settings_with_reported_storage_cause(setup_page, monkeypatch, caplog):
+    client, target, form = setup_page
+    before = target.read_bytes()
+    failure = OSError("synthetic storage unavailable")
+
+    def fail_publication(*_args, **_kwargs):
+        raise failure
+
+    monkeypatch.setattr(runtime, "patch_runtime_settings", fail_publication)
+    result = client.post("/owner/settings/recognition", data={**form, "local_llm_model": "unsaved-model"})
+    assert result.status_code == 503
+    assert 'value="unsaved-model"' in result.text and "操作未完成" in result.text
+    assert "synthetic storage unavailable" not in result.text
+    assert target.read_bytes() == before and config.get_settings().local_llm_model == "saved-model"
+    report = next(record for record in caplog.records if record.name == "ticketbox.http")
+    assert result.headers["X-Request-Id"] in report.getMessage()
+    assert report.exc_info and report.exc_info[1] is failure
 
 
 def test_nonlocal_address_is_rejected_before_any_connection(setup_page, local_model):

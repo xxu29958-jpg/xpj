@@ -21,7 +21,7 @@
   <script defer src="/static/shared/handoff-qr.js?v={{ asset_version }}"></script>
   <script defer src="/static/owner/upload-link-handoff.js?v={{ asset_version }}"></script>
 </head>
-<body class="owner-shell">
+<body class="owner-shell {% block body_class %}{% endblock %}">
 <a class="skip-link" href="#main-content">跳到主内容</a>
 <div class="owner-app">
   {% include "_sidebar_nav.html" %}

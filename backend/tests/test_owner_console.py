@@ -138,16 +138,17 @@ def test_owner_index_local_returns_200(local_client: TestClient) -> None:
     assert f"/static/owner/owner.css?v={STATIC_ASSET_VERSION}" in body
     assert f"/static/shared/tokens.css?v={STATIC_ASSET_VERSION}" in body
     assert f"/static/shared/vendor/qrcode.js?v={STATIC_ASSET_VERSION}" in body
-    assert 'class="owner-icon-sprite"' in body
-    assert body.count('class="owner-action-icon"') >= 10
-    assert '<a class="owner-action-link" href="/owner/pairing">' in body
+    assert f"/static/owner/workspace.css?v={STATIC_ASSET_VERSION}" in body
+    for target in ("pairing", "ledgers", "devices", "upload-links", "diagnostics", "originals", "settings/recognition"):
+        assert f'href="/owner/{target}"' in body
+    assert "绑定你的手机" in body
+    assert "本机服务" in body
     assert 'class="owner-sidebar__group owner-sidebar__advanced"' in body
     assert 'class="owner-sidebar__group-label owner-sidebar__advanced-summary"' in body
     assert '<span class="owner-sidebar__advanced-title">高级</span>' in body
     assert '<span class="owner-sidebar__advanced-note">平时不用</span>' in body
     assert '<span class="owner-sidebar__advanced-count" aria-label="2 个入口">2</span>' in body
     assert "/owner/tag-cleanup" not in body
-    assert '<use href="#owner-icon-phone">' in body
     for legacy_label in [
         "🔑 绑定你的手机",
         "👪 给家人发邀请",

@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% from "_workspace_ui.html" import icon with context %}
+{% block body_class %}owner-workspace{% endblock %}
+{% block page_styles %}
+<link rel="stylesheet" href="/static/web/fonts/fonts.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/owner/workspace.css?v={{ asset_version }}">
+<script defer src="/static/owner/workspace.js?v={{ asset_version }}"></script>
+{% endblock %}
+{% block content %}
+<div class="workspace-page">
+  <header class="workspace-toolbar">
+    <a class="workspace-back" href="{% block back_url %}/owner{% endblock %}">
+      {{ icon('arrow-left') }}<span>{% block back_label %}本机管理{% endblock %}</span>
+    </a>
+    <details class="workspace-menu">
+      <summary aria-label="打开本机管理导航">{{ icon('ellipsis') }}</summary>
+      {% include "_sidebar_nav.html" %}
+    </details>
+  </header>
+  <div class="workspace-heading">
+    <h1>{% block workspace_title %}{% endblock %}</h1>
+    <p>{% block workspace_description %}{% endblock %}</p>
+  </div>
+  {% block workspace_body %}{% endblock %}
+  <footer class="workspace-foot">小票夹 · 仅限本机访问</footer>
+</div>
+{% endblock %}

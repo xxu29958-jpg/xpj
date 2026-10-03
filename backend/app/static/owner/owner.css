@@ -202,13 +202,6 @@ form.inline { display: inline; }
     width: 160px;
 }
 
-.owner-icon-sprite {
-    position: absolute;
-    inline-size: 0;
-    block-size: 0;
-    overflow: hidden;
-}
-
 .quick-links {
     display: flex;
     align-items: center;
@@ -422,6 +415,9 @@ form.inline { display: inline; }
     overflow-y: auto;
 }
 .owner-sidebar__brand {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
     font-size: var(--type-subtitle-size);
     font-weight: var(--type-subtitle-weight);
     color: var(--owner-nav-strong-fg);
