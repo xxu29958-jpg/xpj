@@ -172,6 +172,7 @@ jobs:
           python -m pytest -q
           tests/test_repository_weight.py
           tests/test_ci_run_timing.py
+          tests/test_error_reporting_audit.py
           --noconftest -p no:cacheprovider
 
       - name: Audit (release lanes)

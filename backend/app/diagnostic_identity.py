@@ -6,13 +6,11 @@ import hashlib
 import json
 import re
 import sys
-from functools import cache
 from pathlib import Path
 
 from app.version import BACKEND_VERSION
 
 
-@cache
 def diagnostic_build_identity() -> str:
     if getattr(sys, "frozen", False):
         manifest = Path(sys.executable).parent / "BUILD_PROVENANCE.json"

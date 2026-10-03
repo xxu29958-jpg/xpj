@@ -6,7 +6,6 @@ import java.time.Instant
 import java.util.Collections
 import java.util.IdentityHashMap
 
-private val requestIdPattern = Regex("[A-Za-z0-9_-]{1,64}")
 private val bearerPattern = Regex("(?i)\\bBearer\\s+[A-Za-z0-9._~+/=-]+")
 private val secretPattern = Regex(
     "(?i)((?:authorization|cookie|set-cookie|upload[-_]token|upload[-_]key|pairing[-_ ]?code|" +
@@ -14,7 +13,7 @@ private val secretPattern = Regex(
         "api[-_]key|token|password|secret)[\"']?\\s*[:=]\\s*[\"']?)([^\\s,;\"'&<>]+)",
 )
 
-internal fun safeRequestId(value: String?): String? = value?.takeIf { requestIdPattern.matches(it) }
+internal fun safeRequestId(value: String?): String? = value?.takeIf { it.length in 1..64 && it.none(Char::isISOControl) }
 
 private fun sanitizedDiagnosticText(message: String): String = message
     .replace(bearerPattern, "Bearer ***")

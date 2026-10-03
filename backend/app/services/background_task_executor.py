@@ -85,7 +85,12 @@ class _ExecutorPool:
 _EXECUTOR_POOL = _ExecutorPool()
 
 
-def _run_observed(task_id: int, payload: dict[str, Any], registry: TaskHandlerRegistry, runner: TaskRunner) -> None:
+def _run_observed(
+    task_id: int,
+    payload: dict[str, Any],
+    registry: TaskHandlerRegistry,
+    runner: TaskRunner,
+) -> None:
     try:
         runner(task_id, payload, registry)
     except Exception as exc:  # noqa: BLE001 - observe errors otherwise retained only by an unconsumed Future

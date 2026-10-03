@@ -1,0 +1,131 @@
+"""The selected common owners and small, exact reviewed independent boundaries."""
+
+from __future__ import annotations
+
+import ast
+import re
+
+from error_reporting_rules import aliases_for, calls, function_nodes, kotlin_code
+
+ANDROID = "android/app/src/main/java/com/ticketbox/"
+PYTHON_OWNERS = {
+    "backend/app/errors.py": {
+        "app_error_handler": {"app.error_reporting.retain_handled_error"},
+        "http_error_handler": {"app.error_reporting.retain_handled_error"},
+        "unhandled_error_handler": {"app.error_reporting.report_http_error"},
+    },
+    "backend/app/middleware/logging.py": {
+        "SanitizedLoggingMiddleware.dispatch": {"app.error_reporting.report_http_error"},
+    },
+    "backend/app/error_reporting.py": {
+        "report_http_error": {"report_error"}, "report_error": {"logger.error"},
+    },
+    "backend/app/services/background_task_executor.py": {
+        "submit_committed": {"app.error_reporting.report_error"},
+        "_run_observed": {"app.error_reporting.report_error", "runner"},
+        "_ExecutorPool.submit": {"_run_observed", "concurrent.futures.ThreadPoolExecutor.submit"},
+    },
+    "backend/app/services/background_task_worker.py": {"run_task": {"app.error_reporting.report_error"}},
+    "backend/app/log_sanitize.py": {
+        "SanitizedFormatter.format": {"sanitize_log_text", "safe_exception_text"},
+        "SanitizedFormatter.__init__": {"app.diagnostic_identity.diagnostic_build_identity"},
+    },
+    "backend/packaging/launch.py": {"main": {"logging.config.dictConfig", "_build_log_config"}},
+}
+KOTLIN_OWNERS = (
+    ANDROID + "data/remote/dto/ErrorDto.kt", ANDROID + "data/repository/NetworkErrorHandler.kt",
+    ANDROID + "data/repository/NetworkErrorReporting.kt", ANDROID + "data/repository/_RepositorySupport.kt",
+)
+REQUIRED_FILES = (*PYTHON_OWNERS, *KOTLIN_OWNERS, "android/app/build.gradle.kts")
+
+# Exact-symbol evidence, never a module/directory exemption or a handler registry.
+# A changed symbol invalidates this reviewed responsibility and requires a fresh review.
+REVIEWED_BOUNDARIES = {
+    ("backend/app/services/background_task_executor.py", "_ExecutorPool.submit"): {
+        "sha256": "3fdc1abfc940b504db977095a6b4ff106e8a10f4130a513c166677c315ae9759", "owner": "_run_observed wraps both inline and executor worker invocation",
+        "test": "backend/tests/test_background_task_claim.py::test_claim_failure_is_observed_without_publishing_a_new_task_state",
+        "reason": "The existing pool is an independent executor; the common wrapper reports outside-handler exceptions and reraises.",
+    },
+    ("backend/app/error_reporting.py", "report_error"): {
+        "sha256": "846d33fc9a0853f2617085a4fd235523e42239695788f98212c58c9b8fbcaa82", "owner": "final log sink failure stays outside business state",
+        "test": "backend/tests/test_error_reporting_runtime.py::test_logging_sink_failure_does_not_replace_http_outcomes",
+        "reason": "Only the log call is suppressed; there is no business retry, persistence or recursive reporting.",
+    },
+    (ANDROID + "data/repository/NetworkErrorHandler.kt", "safeCall"): {
+        "sha256": "24a26eb6fdc2b73a1bb99203c808221f7078dc550894d12eac0cefcdbf3bf707", "owner": "public repository failure mapping and sanitized Logcat",
+        "test": "android/app/src/test/java/com/ticketbox/data/repository/NetworkErrorReportingTest.kt",
+        "reason": "Cancellation reraises and existing RepositoryException is returned; unexpected outcomes are logged before mapping.",
+    },
+    (ANDROID + "data/repository/NetworkErrorReporting.kt", "logNetworkWarning"): {
+        "sha256": "58d8569c1a2ae044feb3eb78064704e73e79e9c6232a9ce11efd2d32f1881e40", "owner": "the existing TicketboxNetwork Logcat output",
+        "test": "android/app/src/test/java/com/ticketbox/data/repository/NetworkErrorReportingTest.kt",
+        "reason": "Sanitized message plus project frames, with no raw Throwable argument; an output failure cannot change the Result.",
+    },
+    ("backend/app/routes/web_expense_recognition.py", "web_text_recognition_post"): {
+        "sha256": "4e5d8ec46cdaf791c901945acfae9e77b1cf2624b5ec1388ea7c74d76071563e",
+        "owner": "retain_handled_error feeds the common HTTP reporter while preserving the original form",
+        "test": "backend/tests/test_web_text_recognition.py",
+        "reason": "Expected AppError refusals keep their existing 4xx UI; only 5xx/SQL failures retain the exception for reporting.",
+    },
+    ("backend/packaging/launch.py", "_build_log_config"): {
+        "sha256": "e2e66d7e5752900a201b3cd2c9b9b18c4d969dc095b7ae327c3fe18b88f551ee", "owner": "existing shared rotating file and optional console handlers",
+        "test": "backend/tests/test_error_reporting_runtime.py::test_rotated_files_keep_build_identity_and_final_sanitization",
+        "reason": "All configured root/Uvicorn handlers use the common formatter; the existing 5MB and three backups stay unchanged.",
+    },
+}
+
+
+def violation(path: str, symbol: str, detail: str, line: int = 1) -> dict:
+    return {"status": "VIOLATION", "rule": "common-owner", "path": path, "symbol": symbol,
+        "line": line, "observation": detail, "owner": "existing shared error reporting"}
+
+
+def _python_contract(path: str, text: str) -> list[dict]:
+    tree = ast.parse(text, filename=path)
+    functions, aliases = function_nodes(tree), aliases_for(tree)
+    results = []
+    for symbol, required in PYTHON_OWNERS[path].items():
+        node = functions.get(symbol)
+        missing = required - (calls(node, aliases) if node else set())
+        if missing:
+            results.append(violation(path, symbol, "missing shared calls: " + ", ".join(sorted(missing)),
+                node.lineno if node else 1))
+    if path == "backend/packaging/launch.py":
+        config = functions.get("_build_log_config")
+        entries = {key.value: value.value for node in ast.walk(config or tree) if isinstance(node, ast.Dict)
+            for key, value in zip(node.keys, node.values, strict=True)
+            if isinstance(key, ast.Constant) and isinstance(value, ast.Constant)}
+        expected = {"()": "app.log_sanitize.SanitizedFormatter", "maxBytes": 5_000_000, "backupCount": 3}
+        for key, value in expected.items():
+            if entries.get(key) != value:
+                results.append(violation(path, "_build_log_config", f"final formatter/rotation changed: {key}"))
+    return results
+
+
+def _android_contract(files: dict[str, str]) -> list[dict]:
+    handler_path, reporting_path = KOTLIN_OWNERS[1:3]
+    handler, output = kotlin_code(files[handler_path]), kotlin_code(files[reporting_path])
+    results = []
+    checks = [
+        (KOTLIN_OWNERS[0], "requestId", "requestId" in kotlin_code(files[KOTLIN_OWNERS[0]])),
+        (KOTLIN_OWNERS[3], "RepositoryException", "requestId" in kotlin_code(files[KOTLIN_OWNERS[3]])),
+        (handler_path, "parseErrorMessage", bool(re.search(r"requestId\s*=\s*bodyId\s*\?:\s*headerId", handler))),
+        (handler_path, "httpFailure", bool(re.search(r"requestId\s*=\s*parsed\.requestId", handler))),
+        (handler_path, "safeCall", "BuildConfig.DEBUG" not in handler and "logNetworkWarning" in handler),
+        (handler_path, "parseHttpError", handler.count(".string()") == 1),
+        (reporting_path, "logNetworkWarning", bool(re.search(r"Log\.w\(\s*,\s*output\s*\)", output))),
+        (reporting_path, "logNetworkWarning", all(item in output for item in (
+            "BuildConfig.SOURCE_FINGERPRINT", "sanitizedDiagnosticText(message)", "projectFrames(current.stackTrace)"))),
+        ("android/app/build.gradle.kts", "SOURCE_FINGERPRINT", 'buildConfigField("String", "SOURCE_FINGERPRINT"' in files["android/app/build.gradle.kts"]),
+    ]
+    for path, symbol, okay in checks:
+        if not okay:
+            results.append(violation(path, symbol, "selected Android decode/output/build wiring regressed"))
+    return results
+
+
+def common_contract(files: dict[str, str]) -> list[dict]:
+    for path in REQUIRED_FILES:
+        if path not in files:
+            raise ValueError(f"required reporting source missing: {path}")
+    return [item for path in PYTHON_OWNERS for item in _python_contract(path, files[path])] + _android_contract(files)

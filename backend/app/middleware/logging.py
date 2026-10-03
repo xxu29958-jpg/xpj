@@ -17,7 +17,6 @@ disabled by default.
 
 from __future__ import annotations
 
-import re
 import secrets
 import time
 
@@ -52,7 +51,7 @@ class SanitizedLoggingMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next) -> Response:  # type: ignore[override]
         incoming = request.headers.get(REQUEST_ID_HEADER, "").strip()
-        request_id = incoming if re.fullmatch(r"[A-Za-z0-9_-]{1,64}", incoming) else _new_request_id()
+        request_id = incoming if (1 <= len(incoming) <= 64) else _new_request_id()
         request.state.request_id = request_id
 
         start = time.monotonic()

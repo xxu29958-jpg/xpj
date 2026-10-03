@@ -1,6 +1,7 @@
 package com.ticketbox.data.repository
 
 import com.ticketbox.BuildConfig
+import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -15,6 +16,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.Implementation
+import org.robolectric.annotation.Implements
 import org.robolectric.shadows.ShadowLog
 import retrofit2.HttpException
 import java.io.IOException
@@ -74,7 +77,7 @@ class NetworkErrorReportingTest {
         for (original in listOf(root, failure)) {
             val result = handler.safeCall<Unit> { throw original }
             val reported = result.exceptionOrNull() as RepositoryException
-            assertSame(original, reported.cause)
+            assertOriginalCause(original, reported.cause)
             assertNull(reported.requestId)
         }
         logNetworkWarning("Authorization: Bearer ${secrets[0]} url=https://host.test/u/${secrets[1]} " +
@@ -93,11 +96,21 @@ class NetworkErrorReportingTest {
             handler.safeCall<Unit> { throw cancellation }
             error("cancellation was swallowed")
         } catch (actual: CancellationException) {
-            assertSame(cancellation, actual)
+            assertOriginalCause(cancellation, actual)
         }
         val refusal = RepositoryException("existing business refusal")
         assertSame(refusal, handler.safeCall<Unit> { throw refusal }.exceptionOrNull())
         assertTrue(ShadowLog.getLogsForTag("TicketboxNetwork").isEmpty())
+    }
+
+    @Test
+    @Config(shadows = [FailedLogSink::class])
+    fun failedLogSinkDoesNotReplaceTheOriginalNetworkFailureOrRetryIt() = runTest {
+        val original = IOException("synthetic failure")
+        var attempts = 0
+        val result = handler.safeCall<Unit> { attempts += 1; throw original }
+        assertEquals(1, attempts)
+        assertOriginalCause(original, result.exceptionOrNull()?.cause)
     }
 
     private fun assertLocated(output: String) {
@@ -106,6 +119,12 @@ class NetworkErrorReportingTest {
         assertTrue(BuildConfig.SOURCE_FINGERPRINT.matches(Regex("[a-f0-9]{64}")))
         assertTrue(output.contains("NetworkErrorReportingTest.kt:"))
         assertTrue(output.contains("reported_at:"))
+    }
+
+    private fun assertOriginalCause(original: Throwable, actual: Throwable?) {
+        // Coroutine stacktrace recovery may copy an exception across withContext,
+        // retaining the original in its cause chain. That existing behavior stays intact.
+        assertTrue(generateSequence(actual) { it.cause }.take(16).any { it === original })
     }
 
     private fun finalLog(): String = ShadowLog.getLogsForTag("TicketboxNetwork")
@@ -126,5 +145,17 @@ class NetworkErrorReportingTest {
             .request(Request.Builder().url("https://example.test/u/synthetic-upload").build())
             .code(status).message("test").apply { if (requestId != null) header("X-Request-ID", requestId) }.build()
         return HttpException(retrofit2.Response.error<Unit>(body, raw))
+    }
+}
+
+@Implements(Log::class)
+class FailedLogSink {
+    companion object {
+        @JvmStatic
+        @Implementation
+        fun w(tag: String?, message: String?): Int {
+            if (tag == "TicketboxNetwork") error("synthetic log output failure")
+            return 0
+        }
     }
 }

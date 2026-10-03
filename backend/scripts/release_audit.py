@@ -56,6 +56,7 @@ _REQUIRED_LANES = frozenset(
     {
         ("pr-delta-metrics", "_audit_pr_delta_metrics.py"),
         ("repository-weight", "_audit_repository_weight.py"),
+        ("error-reporting", "_audit_error_reporting.py"),
     }
 )
 

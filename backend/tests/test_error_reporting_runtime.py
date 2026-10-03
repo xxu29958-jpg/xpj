@@ -166,5 +166,44 @@ def test_logging_sink_failure_does_not_replace_http_outcomes(tmp_path):
     assert result["ordinary"]["body"] == {"ok": True}
 
 
+def _run_rotation_probe(output: Path):
+    _configure_probe_logging(output, drop_report=False, broken_sink=False)
+    handler = next(item for item in logging.getLogger().handlers if hasattr(item, "maxBytes"))
+    assert (handler.maxBytes, handler.backupCount) == (5_000_000, 3)
+    handler.maxBytes = 1024  # Exercise the existing rotator without producing 20 MB in every test.
+    logger = logging.getLogger("ticketbox.rotation.child")
+    for index in range(35):
+        logger.warning("ordinary rotation event=%s token=synthetic-rotation-secret", index)
+    logging.shutdown()
+    files = {path.name: path.read_text(encoding="utf-8") for path in output.glob("backend.log*")}
+    (output / "result.json").write_text(json.dumps(files), encoding="utf-8")
+
+
+def test_rotated_files_keep_build_identity_and_final_sanitization(tmp_path):
+    files = _probe(tmp_path, "rotation")
+    assert set(files) == {"backend.log", "backend.log.1", "backend.log.2", "backend.log.3"}
+    for text in files.values():
+        assert "source_tree_sha256=" in text and "version=1.2.0" in text
+        assert "synthetic-rotation-secret" not in text
+        assert "ordinary rotation event=" in text
+
+
+def test_frozen_reports_use_existing_manifest_identity_without_claiming_a_git_sha(tmp_path, monkeypatch):
+    from app.diagnostic_identity import diagnostic_build_identity
+
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "backend.exe"))
+    manifest = {"artifact_type": "ticketbox-frozen-backend", "source": {"fingerprint": "a" * 64},
+        "payload": {"fingerprint": "b" * 64}}
+    (tmp_path / "BUILD_PROVENANCE.json").write_text(json.dumps(manifest), encoding="utf-8")
+    identity = diagnostic_build_identity()
+    assert f"recorded_source_sha256={'a' * 64}" in identity
+    assert f"recorded_payload_sha256={'b' * 64}" in identity
+    assert "git" not in identity.lower()
+
+
 if __name__ == "__main__":
-    _run_probe(Path(sys.argv[1]), drop_report=sys.argv[2] == "drop-report", broken_sink=sys.argv[2] == "broken-sink")
+    if sys.argv[2] == "rotation":
+        _run_rotation_probe(Path(sys.argv[1]))
+    else:
+        _run_probe(Path(sys.argv[1]), drop_report=sys.argv[2] == "drop-report", broken_sink=sys.argv[2] == "broken-sink")
