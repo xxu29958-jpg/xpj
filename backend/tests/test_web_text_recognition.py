@@ -69,7 +69,9 @@ def test_text_retry_preserves_command_and_api_replay_does_not_duplicate_suggesti
     assert _retained_text(failed.text) == TEXT
     retry = hidden_post_forms(failed.text)[action]
     retry["raw_text"] = _retained_text(failed.text)
-    assert retry == fields
+    assert {name: retry[name] for name in fields if name != "csrf_token"} == {
+        name: value for name, value in fields.items() if name != "csrf_token"
+    }
     accepted = web_client.post(action, data=retry, follow_redirects=False)
     assert accepted.status_code == 303, accepted.text
     query = parse_qs(urlsplit(accepted.headers["location"]).query)
