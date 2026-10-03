@@ -70,6 +70,10 @@ def _is_portable_request(request: Request) -> bool:
     return request.method.upper() in {"GET", "HEAD"} and request.url.path in _PORTABLE_WEB_PATHS
 
 
+def _is_account_settings_request(request: Request) -> bool:
+    return request.url.path == "/web/settings" or request.url.path.startswith("/web/settings/")
+
+
 def _request_id(request: Request) -> str | None:
     return getattr(request.state, "request_id", None)
 
@@ -181,6 +185,7 @@ def _browser_cookie_authenticate(
     token: str,
     required_account_id: int | None,
     *, principal_only: bool = False,
+    allow_missing_ledger: bool = False,
 ) -> _BrowserCookieOutcome:
     with SessionLocal() as db:
         principal = authenticate_web_session_principal(
@@ -199,6 +204,8 @@ def _browser_cookie_authenticate(
                 ttl_seconds=SESSION_COOKIE_MAX_AGE_SECONDS,
             )
         except AppError:
+            if allow_missing_ledger:
+                return _BrowserCookieOutcome(kind="ok", principal=principal)
             return _BrowserCookieOutcome(kind="ledger_picker")
         return _BrowserCookieOutcome(kind="ok", principal=principal, result=result)
 
@@ -270,11 +277,16 @@ async def _desktop_bridge_session_gate(
             request_id=_request_id(request),
         )
 
+    request.state.web_session_platform = "desktop"
+    auth: AuthContext | None = None
     try:
-        authenticate = _desktop_principal_authenticate if _is_portable_request(request) else _desktop_bridge_authenticate
-        auth = await run_in_threadpool(authenticate, token)
+        if _is_portable_request(request) or _is_account_settings_request(request):
+            request.state.web_session_principal = await run_in_threadpool(_desktop_principal_authenticate, token)
+        if not _is_portable_request(request):
+            auth = await run_in_threadpool(_desktop_bridge_authenticate, token)
     except AppError as exc:
-        return _app_error_response(request, exc)
+        if not (_is_account_settings_request(request) and exc.error == "ledger_forbidden"):
+            return _app_error_response(request, exc)
     except SQLAlchemyError:
         return error_response(
             "server_error",
@@ -283,9 +295,7 @@ async def _desktop_bridge_session_gate(
             request_id=_request_id(request),
         )
 
-    request.state.web_session_platform = "desktop"
-    if _is_portable_request(request):
-        request.state.web_session_principal = auth
+    if auth is None:
         return await call_next(request)
     request.state.web_session_auth = auth
     ledger_error = _ledger_binding_error(request, auth.ledger_id)
@@ -311,6 +321,7 @@ async def _browser_cookie_session_gate(
             token,
             required_account_id,
             principal_only=_is_portable_request(request),
+            allow_missing_ledger=_is_account_settings_request(request),
         )
     except AppError:
         redirect = RedirectResponse(url=login_url, status_code=303)
@@ -338,6 +349,8 @@ async def _browser_cookie_session_gate(
     if _is_portable_request(request):
         return await call_next(request)
     if outcome.result is None:
+        if _is_account_settings_request(request):
+            return await call_next(request)
         return RedirectResponse(url=_ledger_picker_redirect_url(request), status_code=303)
     request.state.web_session_auth = outcome.result.auth
     ledger_error = _ledger_binding_error(request, outcome.result.auth.ledger_id)

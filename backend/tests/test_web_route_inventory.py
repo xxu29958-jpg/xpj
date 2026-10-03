@@ -34,6 +34,10 @@ axes:
   selected data access in its service, including owned archived ledgers;
   does not require or select an active ledger for the session.
 
+- ``principal-command`` — manages the authenticated account's own devices
+  through the shared device service, independently of ledger-write roles.
+  Issuing a connection code additionally requires an active ledger membership.
+
 This file is the **single source of truth** for that classification. The
 tests below assert:
 
@@ -72,6 +76,7 @@ Classification = Literal[
     "owner-live-provider",
     "desktop-installation-owner",
     "principal-read",
+    "principal-command",
 ]
 
 
@@ -90,6 +95,12 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("POST", "/web/auth/login"): "auth",
     ("POST", "/web/auth/logout"): "auth",
     ("GET", "/web/auth/whoami"): "auth",
+    # Account-owned device commands; exercised by test_web_settings.py.
+    ("GET", "/web/settings"): "principal-read",
+    ("POST", "/web/settings/devices/pairing-codes"): "principal-command",
+    ("POST", "/web/settings/devices/{public_id}/delete"): "principal-command",
+    ("POST", "/web/settings/devices/{public_id}/rename"): "principal-command",
+    ("POST", "/web/settings/devices/{public_id}/revoke"): "principal-command",
     # /web root and slash redirect.
     ("GET", "/web"): "local-only-rendering",
     ("GET", "/web/"): "local-only-rendering",

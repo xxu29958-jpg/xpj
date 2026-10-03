@@ -896,7 +896,9 @@ def test_lost_ledger_reaches_download_selection_through_the_same_desktop_identit
         connection.request("GET", "/web", headers={"Cookie": cookie})
         refusal = connection.getresponse()
         assert refusal.status == 403
-        assert 'href="/web/exports"' in refusal.read().decode()
+        refused_html = refusal.read().decode()
+        assert 'href="/web/exports"' in refused_html
+        assert 'href="/web/settings"' in refused_html
         connection.close()
         connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=2)
         connection.request("GET", "/web/exports", headers={"Cookie": cookie})

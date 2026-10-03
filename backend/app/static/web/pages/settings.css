@@ -1,0 +1,38 @@
+.settings-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3, 12px);
+  margin-block: 16px 24px;
+}
+.settings-links form { margin: 0; }
+.settings-device + .settings-device { border-top: 1px solid var(--border-card); }
+.settings-device { padding-block: 20px; min-width: 0; }
+.settings-device-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.settings-device-heading h3 { margin: 0; overflow-wrap: anywhere; }
+.settings-device-heading p { margin-block: 8px; }
+.settings-device-actions summary { cursor: pointer; padding-block: 12px; min-height: 44px; overflow-wrap: anywhere; }
+.settings-device-rename {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-block: 8px 20px;
+}
+.settings-device-rename label { flex: 1 1 220px; min-width: 0; }
+.settings-device-command { display: grid; gap: 12px; margin-block: 20px; }
+.settings-device-command > label { display: flex; align-items: flex-start; gap: 8px; line-height: 1.7; }
+.settings-device-command input[type=checkbox] { flex: none; margin-top: 5px; }
+.settings-device-command button { justify-self: start; }
+.settings-code-field { max-width: 24rem; margin-top: 20px; }
+.settings-code-field input { font-size: 1.5rem; letter-spacing: .14em; }
+.settings-panel { margin-bottom: 24px; }
+.settings-device-panel > .product-panel-header { flex-wrap: wrap; }
+.settings-device-panel > .product-panel-header > div { flex: 1 1 16rem; }
+.settings-device-panel > .product-panel-header > a { flex: none; }

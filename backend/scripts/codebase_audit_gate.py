@@ -140,17 +140,17 @@ def evaluate_debt(counts: DebtCounts) -> int:
 # counter is and how it's computed.
 STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_carriers": 138,  # + Web budget archive with its captured expected row version.
-    "mutate_token_exempted": 135,  # + four Local Owner settings groups and fixed-sample model check.
-    "mutate_token_reason_admin_single_writer": 10,
+    "mutate_token_exempted": 139,  # + Web consumers of the existing Account device commands.
+    "mutate_token_reason_admin_single_writer": 11,
     "mutate_token_reason_append_only_fact": 3,
     "mutate_token_reason_batch_db_write": 17,
-    "mutate_token_reason_create_row": 37,
+    "mutate_token_reason_create_row": 38,
     "mutate_token_reason_enqueue_task": 2,
     "mutate_token_reason_external_side_effect": 8,
     "mutate_token_reason_governance_action": 8,
     "mutate_token_reason_read_only_compute": 5,
     "mutate_token_reason_session_rotation": 8,
-    "mutate_token_reason_terminal_flag_flip": 33,
+    "mutate_token_reason_terminal_flag_flip": 35,
     "mutate_token_reason_upsert_bucket": 4,
 }
 STRICT_EQUALITY_BASELINE.update(load_current_test_count_baselines())
@@ -181,6 +181,9 @@ BASELINE_RATCHET_DOWN: frozenset[str] = frozenset(
     }
 )
 _MUTATE_TOKEN_EXEMPTION_ADMISSIONS = (
+    # Four Web adapters reuse existing Account device commands and the API's
+    # classifications; no financial writer, OCC carrier or identity owner moves.
+    ("3eca4d4f0e525cda0e6abc7d4734b5a36c4ddb7d", 135, 139),
     # ADR-0036/0038 external_side_effect: four settings groups publish through the
     # existing protected settings file lock, not a financial row. Connection
     # changes revoke consent; confirmation checks its exact saved revision.

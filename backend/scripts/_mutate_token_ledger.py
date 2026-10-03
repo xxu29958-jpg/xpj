@@ -219,6 +219,13 @@ ALLOWLIST: dict[str, Exempt] = {
     # time, so there is no fold to fence → exempt.
     "POST /api/ledgers/{ledger_id}/devices/{public_id}/delete": Exempt("terminal_flag_flip", "identity", _DEVICE_CLEANUP, "medium"),
     "POST /api/ledgers/{ledger_id}/devices/pairing-codes": Exempt("create_row", "identity", ("pairing_codes",)),
+    # Web self-service delegates to the exact same Account-scoped device commands.
+    # Name updates have no financial predecessor; revoke/delete retain the shared
+    # locked credential and terminal-state guards; pairing issues a new capability.
+    "POST /web/settings/devices/{public_id}/rename": Exempt("admin_single_writer", "identity", ("devices",)),
+    "POST /web/settings/devices/{public_id}/revoke": Exempt("terminal_flag_flip", "identity", _DEVICE_REVOKE, "medium"),
+    "POST /web/settings/devices/{public_id}/delete": Exempt("terminal_flag_flip", "identity", _DEVICE_CLEANUP, "medium"),
+    "POST /web/settings/devices/pairing-codes": Exempt("create_row", "identity", ("pairing_codes",)),
     "POST /api/merchants/aliases": Exempt("create_row", "merchants", ("merchant_aliases",)),
     "POST /api/merchants/catalog": Exempt("create_row", "merchants", _MERCHANT_CATALOG),
     "POST /api/merchants/aliases/{public_id}/undo": Exempt(

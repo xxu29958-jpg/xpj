@@ -17,6 +17,7 @@ import app.routes.web_family as web_family
 import app.routes.web_invitation_join as web_invitation_join
 import app.routes.web_library as web_library
 import app.routes.web_saved_views as web_saved_views
+import app.routes.web_settings as web_settings
 from app.auth import get_current_app_context
 from app.config import DATA_ROOT, get_settings
 from app.database import get_db, init_db, wait_for_db
@@ -398,6 +399,7 @@ app.include_router(web_expense_lifecycle.router)
 app.include_router(web_expense_items.router)
 app.include_router(web_expense_splits.router)
 app.include_router(web_family.router)
+app.include_router(web_settings.router)
 app.include_router(web_media.router)
 app.include_router(web_originals.router)
 app.include_router(web_pending.router)

@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block title %}设置与设备 · 小票夹{% endblock %}
+{% block page_styles %}
+<link rel="stylesheet" href="/static/web/pages/settings.css?v={{ asset_version }}">
+{% endblock %}
+{% block page_scripts %}
+<script defer src="/static/web/settings.js?v={{ asset_version }}"></script>
+{% endblock %}
+{% block content %}
+<header class="product-page-header">
+  <div class="product-page-heading">
+    <span class="product-eyebrow">我的账户</span>
+    <h1 class="page-title">设置与设备</h1>
+    <p class="product-page-summary">{{ principal.account_name }} · 管理自己的连接设备，找到家庭和数据设置。</p>
+  </div>
+</header>
+
+{% if error %}<div class="product-feedback product-feedback--danger" role="alert">{{ error }}</div>{% endif %}
+{% if message and not error %}<div class="product-feedback product-feedback--success" role="status">{{ message }}</div>{% endif %}
+
+<nav class="settings-links" aria-label="账户设置">
+  {% if request.state.web_session_platform != 'desktop' %}
+  <a class="product-button" href="/web/auth/ledgers?next=/web/settings">切换账本</a>
+  <a class="product-button" href="/web/auth/join">加入家庭账本</a>
+  {% endif %}
+  {% if can_pair_devices %}<a class="product-button" href="/web/family{{ q }}">家庭成员</a>{% endif %}
+  <a class="product-button" href="/web/exports">带走账本数据</a>
+  {% if request.state.web_session_platform != 'desktop' %}
+  <form method="post" action="/web/auth/logout">{{ csrf_field|safe }}<button class="product-button" type="submit">退出当前浏览器</button></form>
+  {% endif %}
+</nav>
+
+{% if pairing %}
+<section class="product-panel product-panel--padded settings-panel" aria-labelledby="settings-code-title" data-settings-code-result>
+  <h2 class="product-panel-title" id="settings-code-title">连接码已生成</h2>
+  <p class="product-panel-subtitle">用于你自己的设备，连接到「{{ pairing.ledger_name }}」。不要发给家人；家人应使用家庭邀请。</p>
+  <label class="product-field settings-code-field"><span>仅本次显示的连接码</span>
+    <input class="product-input" type="text" readonly autocomplete="off" value="{{ pairing.pairing_code }}" data-settings-code>
+  </label>
+  <p class="hint">{{ moment(pairing.expires_at) }} 到期。请在另一台设备的连接页面输入；重新连接时使用原设备。</p>
+  <div class="settings-links">
+    <button class="product-button product-button--primary" type="button" data-settings-copy>复制连接码</button>
+    <a class="product-button" href="/web/settings">已记下，收起</a>
+    <span class="hint" aria-live="polite" data-settings-copy-status>也可以选中连接码手动复制。</span>
+  </div>
+</section>
+{% endif %}
+
+<section class="product-panel product-panel--padded settings-panel settings-device-panel" aria-labelledby="settings-devices-title">
+  <div class="product-panel-header">
+    <div>
+      <h2 class="product-panel-title" id="settings-devices-title">我的设备</h2>
+      <p class="product-panel-subtitle">只列出 {{ principal.account_name }} 的设备。停用会使该设备在所有账本的登录和上传链接失效，未提交的离线内容仍留在原设备上。</p>
+    </div>
+    <a class="product-button" href="/web/settings">刷新列表</a>
+  </div>
+  <div class="settings-device-list">
+  {% for item in devices %}
+    {% set device = item.summary %}
+    <article class="settings-device" data-device-id="{{ device.public_id }}">
+      <div class="settings-device-heading">
+        <div>
+          <h3>{{ device.device_name }}</h3>
+          <p class="hint">{{ platforms.get(device.platform, device.platform) }} · 最近活动：{{ moment(device.last_seen_at) }}</p>
+        </div>
+        {% if item.is_current %}<span class="product-status product-status--success">当前设备</span>
+        {% elif device.revoked_at %}<span class="product-status">已停用 · {{ moment(device.revoked_at) }}</span>
+        {% else %}<span class="product-status product-status--info">已连接</span>{% endif %}
+      </div>
+      <details class="settings-device-actions"{% if device_form.public_id == device.public_id %} open{% endif %}>
+        <summary>管理 {{ device.device_name }}</summary>
+        <form method="post" action="/web/settings/devices/{{ device.public_id }}/rename" class="settings-device-rename">
+          {{ csrf_field|safe }}
+          <label class="product-field"><span>设备名称</span>
+            <input class="product-input" name="device_name" value="{{ device_form.name if device_form.public_id == device.public_id else device.device_name }}" maxlength="120" required>
+          </label>
+          <button class="product-button" type="submit">保存名称</button>
+        </form>
+        {% if not item.is_current %}
+          {% if can_pair_devices and device.platform == current_platform %}
+          <form method="post" action="/web/settings/devices/pairing-codes" class="settings-device-command">
+            {{ csrf_field|safe }}<input type="hidden" name="recovery_device_public_id" value="{{ device.public_id }}">
+            <label><input type="checkbox" name="confirmed" value="yes" required> 在原设备重新连接，保留原设备身份与离线内容；连接成功后替换它的旧登录。</label>
+            <button class="product-button" type="submit">生成重新连接码</button>
+          </form>
+          {% elif device.platform != current_platform %}
+          <p class="hint">需要重新连接时，请从另一台已连接的{{ platforms.get(device.platform, device.platform) }}设备操作。</p>
+          {% endif %}
+          {% if not device.revoked_at %}
+          <form method="post" action="/web/settings/devices/{{ device.public_id }}/revoke" class="settings-device-command">
+            {{ csrf_field|safe }}
+            <label><input type="checkbox" name="confirmed" value="yes" required> 确认停用这台设备在所有账本的登录和上传链接。</label>
+            <button class="product-button" type="submit">停用设备</button>
+          </form>
+          {% else %}
+          <form method="post" action="/web/settings/devices/{{ device.public_id }}/delete" class="settings-device-command">
+            {{ csrf_field|safe }}
+            <label><input type="checkbox" name="confirmed" value="yes" required> 原设备没有需要继续提交的离线内容。我确认移除设备记录后不能再以原身份重新连接；服务器账本记录会保留。</label>
+            <button class="product-button" type="submit">移除停用记录</button>
+          </form>
+          {% endif %}
+        {% endif %}
+      </details>
+    </article>
+  {% else %}
+    <p class="hint">当前没有可显示的设备，请刷新后重试。</p>
+  {% endfor %}
+  </div>
+</section>
+
+<section class="product-panel product-panel--padded settings-panel" aria-labelledby="settings-add-title">
+  <h2 class="product-panel-title" id="settings-add-title">连接我的另一台设备</h2>
+  {% if can_pair_devices %}
+  <p class="product-panel-subtitle">为「{{ selected_ledger_name }}」生成 15 分钟内有效的连接码。适用于新手机或浏览器；已有离线内容的旧设备请使用上面的“重新连接”。</p>
+  <form method="post" action="/web/settings/devices/pairing-codes">
+    {{ csrf_field|safe }}<button class="product-button product-button--primary" type="submit">生成新设备连接码</button>
+  </form>
+  {% else %}
+  <p class="product-panel-subtitle">当前没有选中可访问的账本。你仍可管理自己的设备；选择有效账本后才能生成连接码。</p>
+  <a class="product-button" href="{{ '/' if request.state.web_session_platform == 'desktop' else '/web/auth/ledgers?next=/web/settings' }}">选择账本</a>
+  {% endif %}
+</section>
+{% endblock %}

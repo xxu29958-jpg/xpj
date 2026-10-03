@@ -72,7 +72,7 @@
         <summary class="nav-group-title">工作区</summary>
         <div class="account-summary">
           <strong>{{ selected_ledger_name }}</strong>
-          <span>{{ _role_zh }} · 已连接</span>
+          <span>{% if account_without_ledger|default(false) %}账户已连接 · 尚未选择有效账本{% else %}{{ _role_zh }} · 已连接{% endif %}</span>
         </div>
       </details>
     </div>
