@@ -163,6 +163,44 @@ def test_daily_byte_budget_is_reserved_before_body_is_processed(
         reset_settings_cache()
 
 
+def test_link_list_remaining_budget_uses_current_utc_reservations(identity, quota_env, monkeypatch) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from app.services import upload_link_throttle_service as throttle
+    from app.services.admin_service import _upload_links as links
+
+    now = datetime(2026, 10, 4, 23, 59, tzinfo=UTC)
+    monkeypatch.setattr(links, "now_utc", lambda: now)
+    monkeypatch.setattr(throttle, "now_utc", lambda: now)
+    link = _upload_link(identity.upload_key)
+    with SessionLocal() as db:
+        def remaining():
+            rows = links.list_upload_links(db, ledger_ids={link.ledger_id})
+            return next(row.daily_bytes_remaining for row in rows if row.public_id == link.public_id)
+
+        assert remaining() == 1024
+        reservation = reserve_upload_bytes(db, link=link, declared_content_length=600)
+        assert remaining() == 424
+        persisted = db.get(UploadLink, link.id)
+        persisted.daily_byte_budget = 700
+        db.commit()
+        assert remaining() == 100
+        persisted.daily_byte_budget = 0
+        db.commit()
+        assert remaining() is None
+        persisted.daily_byte_budget = None
+        db.commit()
+        now += timedelta(minutes=2)
+        assert remaining() == 1024
+        now -= timedelta(minutes=2)
+        assert remaining() == 424
+        usage = db.query(UploadLinkDailyUsage).filter_by(upload_link_id=link.id).one()
+        assert usage.bytes_total == 600 and usage.request_count == 0
+        assert links.list_upload_links(db, ledger_ids=set()) == []
+        release_upload_bytes(db, reservation=reservation)
+        assert remaining() == 1024
+
+
 def test_content_length_pre_check_rejects_without_consuming_body(
     client: TestClient, *, identity, monkeypatch: pytest.MonkeyPatch
 ) -> None:

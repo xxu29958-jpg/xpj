@@ -49,7 +49,7 @@ def test_selected_ledger_owns_the_link_and_actual_uploaded_receipt(owner, identi
     created = owner.post("/owner/upload-links", data={"ledger_id": target})
     assert created.status_code == 200, created.text
     assert f'value="{target}" selected' in created.text
-    assert '这条链接上传到：<strong>旅行</strong>' in created.text
+    assert '上传到：<strong>旅行</strong>' in created.text
     url = unescape(re.search(r'data-upload-handoff-url>([^<]+)</div>', created.text).group(1))
     parsed = urlsplit(url)
     received = owner.post(parsed.path + "?" + parsed.query, content=PNG_BYTES, headers={"Content-Type": "image/png"})

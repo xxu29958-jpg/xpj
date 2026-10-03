@@ -178,3 +178,20 @@
   .workspace-switch input:checked { background: Highlight; }
   .workspace-switch input:checked::before { background: HighlightText; }
 }
+/* Upload entry management shares the saved/default form language. */
+.workspace-upload-link { margin-bottom: 20px; }
+.workspace-upload-link > summary { align-items: flex-start; }
+.workspace-upload-link > summary > .workspace-icon { margin-top: 12px; }
+.workspace-upload-link .workspace-task__text { overflow-wrap: anywhere; }
+.workspace-upload-link .workspace-disclosure__body > form { border-bottom: 1px solid var(--border-card); }
+.workspace-upload-limits { margin-top: 22px; }
+.workspace-upload-help { color: var(--brand-primary); }
+.workspace-upload-help .workspace-disclosure__body { color: var(--text-default); }
+.workspace-upload-reveal { margin-bottom: 28px; padding: 18px; background: var(--workspace-green); border: 0; border-radius: 18px; }
+.workspace-upload-reveal .secret-box { overflow-wrap: anywhere; }
+.workspace-check-action:disabled { cursor: not-allowed; opacity: .55; }
+
+@media (max-width: 880px) {
+  .workspace-upload-defaults { display: flex; flex-direction: column; min-height: calc(100svh - 180px); }
+  .workspace-upload-defaults .workspace-save { margin-top: auto; }
+}

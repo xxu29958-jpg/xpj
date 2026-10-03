@@ -37,6 +37,7 @@ def _render_upload_links(
     error: str | None = None,
     status_code: int = 200,
     selected_ledger_id: str | None = None,
+    limits_draft: dict[str, str] | None = None,
 ) -> HTMLResponse:
     ctx = _base(request, db)
     ctx["links"] = svc.get_upload_links(db) if links is None else links
@@ -57,6 +58,7 @@ def _render_upload_links(
     ctx["selected_upload_ledger_id"] = selected
     ctx["selected_upload_ledger_available"] = any(choice.ledger_id == selected for choice in choices)
     ctx["error"] = error
+    ctx["limits_draft"] = limits_draft
     return templates.TemplateResponse(
         request=request,
         name="upload_links.html",
@@ -189,24 +191,31 @@ def owner_upload_links_limits(
     public_id: str,
     request: Request,
     daily_byte_budget: str | None = Form(default=None),
-    per_remote_min_interval_seconds: int = Form(default=0),
+    per_remote_min_interval_seconds: str = Form(default="0"),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> Response:
     try:
+        budget = _parse_optional_int(daily_byte_budget)
+        interval = int(per_remote_min_interval_seconds)
+        if (budget is not None and budget < 0) or interval < 0:
+            raise ValueError("negative limit")
         svc.do_update_upload_link_limits(
             db,
             public_id,
-            daily_byte_budget=_parse_optional_int(daily_byte_budget),
-            per_remote_min_interval_seconds=per_remote_min_interval_seconds,
+            daily_byte_budget=budget,
+            per_remote_min_interval_seconds=interval,
         )
-    except ValueError:
+    except (ValueError, AppError) as exc:
+        db.rollback()
         return _render_upload_links(
             request,
             db,
             mobile_endpoint=configured_mobile_endpoint_url(get_settings().public_base_url),
-            error="配额必须是非负整数；留空表示使用默认值。",
-            status_code=422,
+            error=exc.message if isinstance(exc, AppError) else "配额和间隔必须是非负整数；配额留空表示使用默认值。",
+            status_code=exc.status_code if isinstance(exc, AppError) else 422,
+            limits_draft={"public_id": public_id, "daily_byte_budget": daily_byte_budget or "",
+                          "per_remote_min_interval_seconds": per_remote_min_interval_seconds},
         )
     return RedirectResponse(url="/owner/upload-links", status_code=303)
 

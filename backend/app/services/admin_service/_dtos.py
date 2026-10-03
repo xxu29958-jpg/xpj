@@ -35,6 +35,9 @@ class UploadLinkSummary:
     # /owner list uses it for the "N 天后过期" warning badge. The /api/admin
     # response schema intentionally does not expose it.
     expires_in_days: int | None
+    # Owner-only projection of the existing UTC-day reservation counter.
+    # None means unlimited; zero means exhausted. Not part of the API DTO.
+    daily_bytes_remaining: int | None
     masked_url_path: str
     last_used_at: str | None
     revoked_at: str | None
