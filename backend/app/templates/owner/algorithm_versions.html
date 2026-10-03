@@ -1,62 +1,53 @@
-{% extends "base.html" %}
-{% block title %}算法版本 - 小票夹 本机管理后台{% endblock %}
-{% block content %}
-<h1>算法版本</h1>
-<details class="page-help">
-  <summary>这是什么</summary>
-  <p>开发者维护用：查看各类自动建议算法的版本和数量，必要时撤回某个版本发出的建议。平时不用进来。</p>
-</details>
-{% include "_ledger_scope.html" %}
-
-<div class="card">
-  <div class="card-head-row">
-    <div>
-      <h2>建议版本</h2>
-      {% if selected_ledger %}<p class="text-meta">当前账本：{{ selected_ledger.name }}</p>{% endif %}
-    </div>
-    <span class="badge badge-off">治理</span>
-  </div>
-
-  {% if versions %}
-  <div class="table-scroll mt-4">
-    <table>
-      <thead>
-        <tr>
-          <th>类型</th>
-          <th>版本</th>
-          <th class="num">待采纳</th>
-          <th class="num">已替代</th>
-          <th class="num">已撤回</th>
-          <th>操作</th>
-        </tr>
-      </thead>
-      <tbody>
-      {% for row in versions %}
-        <tr>
-          <td><code>{{ row.decision_type }}</code></td>
-          <td><code>{{ row.algorithm_version }}</code></td>
-          <td class="num-cell">{{ row.active_count }}</td>
-          <td class="num-cell">{{ row.superseded_count }}</td>
-          <td class="num-cell">{{ row.withdrawn_count }}</td>
-          <td>
-            {% if row.active_count > 0 %}
-            <form method="post" action="/owner/algorithm-versions/withdraw" class="inline" data-confirm="撤回所选账本中这个版本尚未采纳的建议？这不会更改账单。">
-              <input type="hidden" name="ledger_id" value="{{ selected_ledger.ledger_id }}">
-              <input type="hidden" name="decision_type" value="{{ row.decision_type }}">
-              <input type="hidden" name="algorithm_version" value="{{ row.algorithm_version }}">
-              <button type="submit" class="btn btn-danger">撤回此版本建议</button>
-            </form>
-            {% else %}
-              <span class="text-meta">没有待采纳建议</span>
-            {% endif %}
-          </td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% else %}
-    <p class="empty-note">暂无算法建议记录。</p>
-  {% endif %}
+{% extends "_workspace.html" %}
+{% from "_workspace_ui.html" import icon with context %}
+{% from "_learning_ui.html" import ledger_filter, registry %}
+{% block title %}算法版本 — 小票夹{% endblock %}
+{% block back_url %}/owner/settings{% endblock %}
+{% block back_label %}高级维护{% endblock %}
+{% block workspace_title %}算法版本{% endblock %}
+{% block workspace_description %}低频高级设置{% endblock %}
+{% block workspace_body %}
+<div class="workspace-learning">
+  {{ ledger_filter(ledger_choices, selected_ledger, '/owner/algorithm-versions') }}
+  {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+  <section class="workspace-section" aria-label="算法版本与来源">
+    <details class="workspace-disclosure workspace-task-group">
+      <summary><span class="workspace-task__icon workspace-tone-green">{{ icon('cpu') }}</span><span class="workspace-task__text"><strong>当前算法</strong><span>版本号从实际构建读取</span></span><span class="workspace-view-label">查看</span>{{ icon('chevron-right') }}</summary>
+      <div class="workspace-disclosure__body">{{ registry(algorithm_types) }}</div>
+    </details>
+    <details id="algorithm-history" class="workspace-disclosure workspace-task-group"{% if error %} open{% endif %}>
+      <summary><span class="workspace-task__icon workspace-tone-lilac">{{ icon('history') }}</span><span class="workspace-task__text"><strong>历史版本</strong><span>保留版本与决策记录</span></span><span class="workspace-view-label">查看</span>{{ icon('chevron-right') }}</summary>
+      <div class="workspace-disclosure__body">
+      {% if selected_ledger %}
+        <h2>建议版本 · {{ selected_ledger.name }}</h2>
+        <p class="workspace-note">按保留下来的建议统计，可能包含当前版本。撤回仅关闭本账本中该版本尚未采纳的建议，不会更改账单，也不会停用算法或阻止后续新建议。</p>
+        {% for row in versions %}
+        {% set entry = algorithm_types.get(row.decision_type) %}
+        <section class="workspace-learning-record">
+          <h3>{{ entry.display_label if entry else row.decision_type }}</h3>
+          <p class="workspace-note"><code>{{ row.algorithm_version }}</code></p>
+          <dl class="workspace-facts">
+            <div><dt>类型标识</dt><dd><code>{{ row.decision_type }}</code></dd></div>
+            <div><dt>待采纳</dt><dd>{{ row.active_count }}</dd></div>
+            <div><dt>已被新建议替代</dt><dd>{{ row.superseded_count }}</dd></div>
+            <div><dt>已撤回</dt><dd>{{ row.withdrawn_count }}</dd></div>
+            <div><dt>已采纳 / 已忽略</dt><dd>{{ row.accepted_count }} / {{ row.dismissed_count }}</dd></div>
+          </dl>
+          {% if row.active_count > 0 %}
+          <form method="post" action="/owner/algorithm-versions/withdraw" data-confirm="撤回所选账本中这个版本尚未采纳的建议？这不会更改账单，也不会停用算法。">
+            <input type="hidden" name="ledger_id" value="{{ selected_ledger.ledger_id }}">
+            <input type="hidden" name="decision_type" value="{{ row.decision_type }}">
+            <input type="hidden" name="algorithm_version" value="{{ row.algorithm_version }}">
+            <button type="submit" class="btn btn-danger">撤回此版本建议</button>
+          </form>
+          {% else %}<p class="workspace-note">没有待采纳建议。</p>{% endif %}
+        </section>
+        {% else %}<div class="workspace-empty"><h3>暂无算法建议记录</h3><p>此账本产生建议后，可回来核对使用的版本。</p></div>{% endfor %}
+        <a href="/owner/learning-maintenance?ledger_id={{ selected_ledger.ledger_id|urlencode }}#learning-candidates">查看近期候选与具体建议</a>
+      {% else %}<p class="workspace-note">当前没有可管理的账本。</p>{% endif %}
+      </div>
+    </details>
+  </section>
+  <div class="workspace-guidance">{{ icon('info') }}<div><strong>查看版本与来源</strong><p>排查识别问题时，可一并提供这些信息。</p></div></div>
 </div>
 {% endblock %}

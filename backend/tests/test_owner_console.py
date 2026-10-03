@@ -1029,7 +1029,10 @@ def test_owner_ai_advisor_confirmation_updates_runtime_projection(
 
 def test_owner_algorithm_versions_inventory_and_withdraw(
     local_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from sqlalchemy.exc import SQLAlchemyError
+
     from app.database import SessionLocal
     from app.models import AlgorithmDecision
     from app.services.learning_service import DecisionDraft, record_decision
@@ -1055,6 +1058,20 @@ def test_owner_algorithm_versions_inventory_and_withdraw(
     assert "category-history-v1" in page.text
     assert "/owner/algorithm-versions/withdraw" in page.text
 
+    def unavailable(*args, **kwargs):
+        raise SQLAlchemyError("isolated withdrawal failure")
+
+    with monkeypatch.context() as patch:
+        patch.setattr("app.routes.owner_console._algorithm_versions.withdraw_algorithm_version", unavailable)
+        failed = local_client.post("/owner/algorithm-versions/withdraw", data={
+            "ledger_id": "owner", "decision_type": "category_suggestion", "algorithm_version": "category-history-v1",
+        })
+    assert failed.status_code == 500
+    assert "未能确认撤回结果" in failed.text
+    assert 'name="ledger_id" value="owner"' in failed.text
+    with SessionLocal() as db:
+        assert db.get(AlgorithmDecision, decision_id).status == "active"
+
     response = local_client.post(
         "/owner/algorithm-versions/withdraw",
         data={
@@ -1064,11 +1081,28 @@ def test_owner_algorithm_versions_inventory_and_withdraw(
         follow_redirects=False,
     )
     assert response.status_code == 303
+    assert response.headers["location"] == "/owner/algorithm-versions?ledger_id=owner#algorithm-history"
 
     with SessionLocal() as db:
         row = db.get(AlgorithmDecision, decision_id)
         assert row is not None
         assert row.status == "withdrawn"
+
+
+def test_owner_current_algorithm_version_comes_from_runtime_registry(
+    local_client: TestClient, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from dataclasses import replace
+
+    from app.services.learning_service import ALGORITHM_TYPES, CATEGORY_SUGGESTION
+
+    entry = replace(CATEGORY_SUGGESTION, current_version="category-current-build")
+    monkeypatch.setitem(ALGORITHM_TYPES, entry.decision_type, entry)
+    for path in ("/owner/algorithm-versions", "/owner/learning-maintenance"):
+        page = local_client.get(path)
+        assert page.status_code == 200
+        assert "category-current-build" in page.text
+        assert "分类建议" in page.text
 
 
 def test_owner_settings_subpages_open(local_client: TestClient) -> None:

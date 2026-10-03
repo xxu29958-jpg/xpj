@@ -341,6 +341,65 @@ def test_postgres_process_and_binary_identity_are_exact(
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows PostgreSQL lifecycle")
+def test_owned_process_scan_allows_only_a_vanished_child() -> None:
+    escaped_contract = str(_PROCESS_CONTRACT).replace("'", "''")
+    command = f"""
+$ErrorActionPreference = 'Stop'
+. '{escaped_contract}'
+$root = Get-CimInstance Win32_Process -Filter "ProcessId = $PID"
+$script:rootId = $PID
+$child = Start-Process -FilePath 'cmd.exe' -ArgumentList '/d /c ping 127.0.0.1 -n 20 >nul' -PassThru -WindowStyle Hidden
+$script:childId = $child.Id
+Stop-Process -InputObject $child -Force
+$child.WaitForExit()
+$child.Close()
+function Resolve-XpjTestPostgresDataDir {{ param($DataDir); return $DataDir }}
+function Read-XpjPostmasterIdentityFile {{ param($DataDir, $Port); return [pscustomobject]@{{ ProcessId = $script:rootId }} }}
+function Assert-XpjPostmasterProcessGeneration {{ param($Identity, $Handle) }}
+function Get-XpjPostgresDataArgument {{ param($CommandLine, $ProcessId); return 'C:\\isolated-test-snapshot' }}
+function Get-NetTCPConnection {{ [CmdletBinding()] param($State, $LocalPort); return @() }}
+function Get-XpjProcessTree {{
+    param($RootProcessId)
+    return @(
+        [pscustomobject]@{{ ProcessId = $script:rootId; ParentProcessId = $root.ParentProcessId; CreationDate = $root.CreationDate; ExecutablePath = $root.ExecutablePath }},
+        [pscustomobject]@{{ ProcessId = $script:childId; ParentProcessId = $script:rootId; CreationDate = $root.CreationDate; ExecutablePath = $root.ExecutablePath }}
+    )
+}}
+$arguments = @{{ DataDir = 'C:\\isolated-test-snapshot'; Port = 0; PostgresExe = $root.ExecutablePath; AllowUnmarkedLegacy = $true; AllowNoListener = $true }}
+$identity = Assert-XpjOwnedPostgresProcess @arguments
+try {{
+    if ($identity.Processes.Count -ne 1 -or $identity.Processes[0].Id -ne $PID) {{ throw 'The verified live root was not retained alone' }}
+}} finally {{ foreach ($handle in $identity.Processes) {{ $handle.Close() }} }}
+$script:rootId = $script:childId
+try {{
+    $null = Assert-XpjOwnedPostgresProcess @arguments
+    throw 'A missing postmaster was accepted'
+}} catch {{
+    if ($_.FullyQualifiedErrorId -notlike 'NoProcessFoundForGivenId,*') {{ throw }}
+}}
+$script:rootId = $PID
+function Get-Process {{
+    [CmdletBinding()] param([int]$Id)
+    if ($Id -eq $script:childId) {{ throw [UnauthorizedAccessException]::new('synthetic access denied') }}
+    Microsoft.PowerShell.Management\\Get-Process -Id $Id -ErrorAction Stop
+}}
+try {{
+    $null = Assert-XpjOwnedPostgresProcess @arguments
+    throw 'An unverifiable live child was accepted'
+}} catch {{
+    if ($_.Exception -isnot [UnauthorizedAccessException]) {{ throw }}
+}}
+Write-Output 'only vanished descendants are omitted; missing root and access denial remain failures'
+"""
+    for engine in powershell_contract_engines():
+        completed = _run_powershell([
+            engine, "-NoLogo", "-NoProfile", "-NonInteractive",
+            "-ExecutionPolicy", "Bypass", "-Command", command,
+        ])
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows PostgreSQL lifecycle")
 def test_final_ownership_scan_accepts_only_the_exact_vanished_process_error() -> None:
     powershell_51, powershell_7 = powershell_contract_engines()
     escaped_contract = str(_LIFECYCLE_CONTRACT).replace("'", "''")

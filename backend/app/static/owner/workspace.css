@@ -292,3 +292,22 @@
 .workspace-diagnostics a, .workspace-rule-audit a { color: var(--brand-primary); text-underline-offset: 3px; }
 .workspace-diagnostic-export { text-decoration: none; }
 .workspace-diagnostic-export:hover { text-decoration: underline; }
+
+/* Advanced learning workspaces use the same disclosure rhythm as diagnostics. */
+.workspace-learning .workspace-task-group > summary { min-height: 72px; padding: 12px 0; }
+.workspace-learning .workspace-task-group:last-child { border-bottom: 0; }
+.workspace-learning .workspace-disclosure__body { padding: 0 0 22px; }
+.workspace-learning .workspace-disclosure__body > h2 { font-size: 18px; margin: 10px 0; }
+.workspace-learning a { color: var(--brand-primary); text-underline-offset: 3px; }
+.workspace-learning-record { padding: 18px 0; border-bottom: 1px solid var(--border-card); }
+.workspace-learning-record:last-child { border-bottom: 0; }
+.workspace-learning-record h3 { font-size: 16px; margin: 0 0 8px; }
+.workspace-learning code, .workspace-learning .workspace-facts dd, .workspace-learning summary span { overflow-wrap: anywhere; }
+.workspace-learning-payload { max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; padding: 14px; background: var(--surface-sunken); border-radius: 12px; font-size: 13px; }
+.workspace-learning .workspace-ledger-filter { margin-bottom: 8px; }
+.workspace-learning > .workspace-note { margin-bottom: 22px; }
+.workspace-learning [id] { scroll-margin-top: 24px; }
+.workspace-learning .workspace-ledger-choice { border: 0; padding: 0; margin: -12px 0 12px; }
+.workspace-ledger-choice > summary { gap: 10px; font-size: 13px; color: var(--text-muted); }
+.workspace-ledger-choice > summary strong { flex: 1; min-width: 0; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.workspace-ledger-choice > summary > .workspace-icon { width: 16px; height: 16px; flex: 0 0 16px; }
