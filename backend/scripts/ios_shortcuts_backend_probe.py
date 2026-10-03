@@ -105,6 +105,29 @@ def export_redacted_text(root: Path, output: Path, upload_key: str) -> str:
     return "\n".join(texts)
 
 
+def probe_share_after_restart(command: list[str], *, output: Path, root: Path, upload_key: str):
+    device_id = json.loads((output / "environment.json").read_text())["device_id"]
+    restart_root = root / "share-after-restart"
+    restart_root.mkdir()
+    restart_output = output / "share-after-restart"
+    restart_output.mkdir()
+    raw_log = restart_root / "ui-control.log"
+    try:
+        with raw_log.open("w") as log:
+            # Preserve the isolated simulator's saved workflow and Photos library.
+            for action in (["shutdown", device_id], ["boot", device_id], ["bootstatus", device_id, "-b"]):
+                subprocess.run(["xcrun", "simctl", *action], stdout=log, stderr=subprocess.STDOUT,
+                               check=True, timeout=120)
+            after_restart = [arg for arg in command if not arg.startswith("-only-testing:")]
+            after_restart[after_restart.index("-resultBundlePath") + 1] = str(restart_root / "ui-control.xcresult")
+            after_restart.append("-only-testing:ShortcutProbe/ShortcutProbe/testSavedShareEntryAfterRestart")
+            completed = subprocess.run(after_restart, stdout=log, stderr=subprocess.STDOUT, timeout=360)
+    finally:
+        (restart_output / "ui-control.log").write_text(raw_log.read_text().replace(upload_key, "REDACTED_UPLOAD_KEY"))
+    export_redacted_text(restart_root, restart_output, upload_key)
+    return completed
+
+
 def run_with_upload_backend(command: list[str], *, output: Path, root: Path):
     if os.environ.get("GITHUB_ACTIONS") != "true" or sys.platform != "darwin":
         raise RuntimeError("This probe requires its disposable macOS cloud runner")
@@ -186,6 +209,31 @@ def run_with_upload_backend(command: list[str], *, output: Path, root: Path):
                     finally:
                         (output / "ui-control.log").write_text(raw_log.read_text().replace(upload_key, "REDACTED_UPLOAD_KEY"))
                     observed = export_redacted_text(root, output, upload_key)
+                    with SessionLocal() as db:
+                        rows = db.scalars(select(Expense)).all()
+                        result["expenses_after_probe"] = len(rows)
+                        result["uploads"] = []
+                        for expense in rows:
+                            original = resolve_upload_path_for_tenant(expense.image_path, expense.tenant_id)
+                            original_digest = hashlib.sha256(original.read_bytes()).hexdigest() if original and original.is_file() else None
+                            result["uploads"].append({"public_id": expense.public_id, "ledger_id": expense.tenant_id,
+                                "status": expense.status, "image_hash": expense.image_hash, "original_sha256": original_digest,
+                                "receipt_visible": expense.public_id in observed})
+                    result["share_configuration_saved"] = completed.returncode == 0
+                    result["photos_share_entry_verified"] = None
+                    result["photos_share_entry_after_restart_verified"] = None
+                    result["actual_upload_verified"] = len(rows) == 1 and all(
+                        row["ledger_id"] == fixture.ledger_id and row["status"] == "pending" and row["receipt_visible"]
+                        and row["image_hash"] == row["original_sha256"] and row["original_sha256"] is not None
+                        for row in result["uploads"])
+                    (output / "upload-backend.json").write_text(json.dumps(result, indent=2))
+                    if completed.returncode == 0 and not result["actual_upload_verified"]:
+                        raise AssertionError("The system upload did not preserve one pending original and its visible receipt")
+                    if completed.returncode == 0:
+                        completed = probe_share_after_restart(command, output=output, root=root, upload_key=upload_key)
+                        result["photos_share_entry_verified"] = completed.returncode == 0
+                        result["photos_share_entry_after_restart_verified"] = completed.returncode == 0
+                        (output / "upload-backend.json").write_text(json.dumps(result, indent=2))
                     if completed.returncode:
                         device_id = json.loads((output / "environment.json").read_text())["device_id"]
                         share_logs = subprocess.run([
@@ -203,24 +251,6 @@ def run_with_upload_backend(command: list[str], *, output: Path, root: Path):
                         (output / "photos-share-services.json").write_text(json.dumps({
                             "exit_code": share_logs.returncode, "scope": "last-five-minutes-system-share-services",
                         }, indent=2))
-                    with SessionLocal() as db:
-                        rows = db.scalars(select(Expense)).all()
-                        result["expenses_after_probe"] = len(rows)
-                        result["uploads"] = []
-                        for expense in rows:
-                            original = resolve_upload_path_for_tenant(expense.image_path, expense.tenant_id)
-                            original_digest = hashlib.sha256(original.read_bytes()).hexdigest() if original and original.is_file() else None
-                            result["uploads"].append({"public_id": expense.public_id, "ledger_id": expense.tenant_id,
-                                "status": expense.status, "image_hash": expense.image_hash, "original_sha256": original_digest,
-                                "receipt_visible": expense.public_id in observed})
-                    result["photos_share_entry_verified"] = completed.returncode == 0
-                    result["actual_upload_verified"] = len(rows) == 1 and all(
-                        row["ledger_id"] == fixture.ledger_id and row["status"] == "pending" and row["receipt_visible"]
-                        and row["image_hash"] == row["original_sha256"] and row["original_sha256"] is not None
-                        for row in result["uploads"])
-                    (output / "upload-backend.json").write_text(json.dumps(result, indent=2))
-                    if completed.returncode == 0 and not result["actual_upload_verified"]:
-                        raise AssertionError("The system upload did not preserve one pending original and its visible receipt")
                     return completed
                 finally:
                     server.terminate()

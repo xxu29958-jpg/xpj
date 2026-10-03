@@ -174,10 +174,10 @@ final class ShortcutProbe: XCTestCase {
         captureText(app, "Actual upload result in Shortcuts")
         captureText(springboard, "System surface after the upload attempt")
         XCTAssertTrue(receiptVisible, "The actual system action must expose the upload receipt")
-        try inspectPhotosShareEntry(app)
+        try configurePhotosShareEntry(app)
     }
 
-    @MainActor private func inspectPhotosShareEntry(_ app: XCUIApplication) throws {
+    @MainActor private func configurePhotosShareEntry(_ app: XCUIApplication) throws {
         // Public Details UI documented by Apple; the info control was observed in this editor.
         let info = app.buttons["info"]
         XCTAssertTrue(info.waitForExistence(timeout: 10))
@@ -205,12 +205,26 @@ final class ShortcutProbe: XCTestCase {
         captureText(app, "Shortcut library categories after enabling image sharing")
         let shareCollection = app.descendants(matching: .any)
             .matching(NSPredicate(format: "label == %@", "Share Sheet")).firstMatch
-        if shareCollection.exists && shareCollection.isHittable {
+        XCTAssertTrue(shareCollection.waitForExistence(timeout: 10))
+        XCTAssertTrue(shareCollection.isHittable)
+        shareCollection.tap()
+        captureText(app, "Saved workflows in the Share Sheet collection")
+        let saved = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Get Contents of URL")).firstMatch
+        XCTAssertTrue(saved.waitForExistence(timeout: 10))
+    }
+
+    @MainActor func testSavedShareEntryAfterRestart() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication(bundleIdentifier: "com.apple.shortcuts")
+        app.launch()
+        let saved = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Get Contents of URL")).firstMatch
+        let shareCollection = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label == %@", "Share Sheet")).firstMatch
+        if !saved.exists && shareCollection.exists && shareCollection.isHittable {
             shareCollection.tap()
-            captureText(app, "Saved workflows in the Share Sheet collection")
-            let saved = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Get Contents of URL")).firstMatch
-            XCTAssertTrue(saved.waitForExistence(timeout: 10))
         }
+        captureText(app, "Saved shortcut after simulator restart")
+        XCTAssertTrue(saved.waitForExistence(timeout: 10))
         // Run-Workflow excludes content whose source app is Shortcuts. Start
         // the real Photos intake from Home, not directly from the editor app.
         XCUIDevice.shared.press(.home)
@@ -261,17 +275,6 @@ final class ShortcutProbe: XCTestCase {
         for _ in 0..<3 {
             if shortcut.exists && shortcut.isHittable { break }
             activities.swipeUp()
-        }
-        // Share extension activation succeeded in the previous run, but the
-        // workflow was absent after the initial scan. Observe readiness explicitly.
-        if !shortcut.exists {
-            _ = shortcut.waitForExistence(timeout: 120)
-            captureText(photos, "Share actions after waiting for workflow discovery")
-            activities.swipeDown()
-            for _ in 0..<3 {
-                if shortcut.exists && shortcut.isHittable { break }
-                activities.swipeUp()
-            }
         }
         captureText(photos, "Configured shortcut in the Photos share sheet")
         if !(shortcut.exists && shortcut.isHittable) {

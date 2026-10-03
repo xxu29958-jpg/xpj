@@ -197,7 +197,10 @@ jobs:
           (output / "ui-control-result.json").write_text(json.dumps({"scope": "isolated-system-file-upload", "xctest_exit_code": completed.returncode}, indent=2))
           print("XCTest exit code:", completed.returncode)
           if completed.returncode:
-              print("\n".join((output / "ui-control.log").read_text().splitlines()[-60:]))
+              last_log = output / "share-after-restart" / "ui-control.log"
+              if not last_log.exists():
+                  last_log = output / "ui-control.log"
+              print("\n".join(last_log.read_text().splitlines()[-60:]))
           raise SystemExit(completed.returncode)
           PY
       - name: Preserve the observed environment
