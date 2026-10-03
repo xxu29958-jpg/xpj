@@ -1,32 +1,32 @@
-{% extends "base.html" %}
+{% extends "_workspace.html" %}
+{% from "_workspace_ui.html" import icon with context %}
 {% block title %}原件存储 — 小票夹{% endblock %}
-{% block page_styles %}<link rel="stylesheet" href="/static/owner/originals.css?v={{ asset_version }}">{% endblock %}
-{% block content %}
+{% block back_url %}/owner/settings/maintenance{% endblock %}
+{% block back_label %}维护{% endblock %}
+{% block workspace_title %}原件存储检查{% endblock %}
+{% block workspace_description %}检查之后，再决定是否处置。{% endblock %}
+{% block page_styles %}{{ super() }}<link rel="stylesheet" href="/static/owner/originals.css?v={{ asset_version }}">{% endblock %}
+{% block workspace_body %}
 <div class="original-maintenance">
-  <h1>原件存储</h1>
-  <p>查找已经超过保留缓冲时间、也没有被账单、历史回执或待完成清理任务引用的文件。先检查和核对，再明确处置。</p>
+  {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
   {% if not choices %}
   <div class="card"><h2>暂时没有可管理的账本</h2><p>请先在本机账本管理中核对拥有者和账本状态，再检查原件存储。</p><a href="/owner/ledgers">查看账本管理</a></div>
   {% else %}
-  <section class="card" aria-label="检查范围">
-    <form method="get" action="/owner/originals" class="original-maintenance-actions">
-      <label for="original-ledger">账本</label>
+    <form method="get" action="/owner/originals" class="workspace-form original-ledger-form">
+      <label class="workspace-field" for="original-ledger"><span>账本</span>
       <select id="original-ledger" name="ledger_id">
         {% for choice in choices %}<option value="{{ choice.ledger_id }}"{% if choice.ledger_id == selected %} selected{% endif %}>{{ choice.name }}{% if choice.archived_at %}（已归档）{% endif %}</option>{% endfor %}
-      </select>
+      </select></label>
       <button class="btn btn-secondary" type="submit">查看此账本</button>
     </form>
-    <form method="post" action="/owner/originals/inspect">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <input type="hidden" name="ledger_id" value="{{ selected }}">
-      <input type="hidden" name="client_ref" value="{{ client_ref }}">
-      <button class="btn btn-primary" type="submit">开始检查，不删除文件</button>
-    </form>
-    <p class="text-meta">任务在后台执行，可以离开后回来查看。已有账单、金额和原件引用会保留。</p>
-  </section>
-
-  {% if task %}
-  <section class="card" id="original-task" aria-label="本次任务">
+  <details class="workspace-disclosure workspace-task-group">
+    <summary><span class="workspace-task__icon workspace-tone-green">{{ icon('scan-line') }}</span><span class="workspace-task__text"><strong>检查范围</strong><span>按账本查找未引用的原件文件</span></span>{{ icon('chevron-right') }}</summary>
+    <div class="workspace-disclosure__body workspace-note"><p>查找已经超过保留缓冲时间，也没有被账单、历史回执或待完成清理任务引用的文件。已有账单、金额和原件引用会保留。</p><p>任务在后台执行，可以离开后回来查看。候选范围由本次检查记录；之后新增的文件不在本次处置范围内。</p></div>
+  </details>
+  <details class="workspace-disclosure workspace-task-group" id="original-task"{% if task %} open{% endif %}>
+    <summary><span class="workspace-task__icon workspace-tone-apricot">{{ icon('copy') }}</span><span class="workspace-task__text"><strong>{{ '处置结果' if task and task.kind == 'orphan_disposal' else '候选原件' }}</strong><span>{{ task.status_label if task else '先检查，再逐项核对' }}</span></span>{{ icon('chevron-right') }}</summary>
+    <div class="workspace-disclosure__body">
+    {% if task %}
     <div class="original-maintenance-actions">
       <h2>{{ task.kind_label }}</h2><span class="badge badge-off">{{ task.status_label }}</span>
     </div>
@@ -54,11 +54,11 @@
     {% endif %}
 
     {% if task.kind == 'orphan_inspection' and task.result %}
-    <dl class="kv-grid">
-      <dt>检查文件</dt><dd>{{ task.result.scanned_files }}</dd>
-      <dt>已有引用，保留</dt><dd>{{ task.result.protected_files }}</dd>
-      <dt>本次候选</dt><dd>{{ task.result.candidate_files }} 个 · {{ task.size_label }}</dd>
-      <dt>保留缓冲</dt><dd>{{ task.result.grace_hours }} 小时</dd>
+    <dl class="workspace-facts original-facts">
+      <div><dt>检查文件</dt><dd>{{ task.result.scanned_files }}</dd></div>
+      <div><dt>已有引用，保留</dt><dd>{{ task.result.protected_files }}</dd></div>
+      <div><dt>本次候选</dt><dd>{{ task.result.candidate_files }} 个 · {{ task.size_label }}</dd></div>
+      <div><dt>保留缓冲</dt><dd>{{ task.result.grace_hours }} 小时</dd></div>
     </dl>
     {% if task.result.busy_files %}<p>有 {{ task.result.busy_files }} 个文件正在上传或补回，本次保留，稍后可以重新检查。</p>{% endif %}
     {% if task.result.unreadable_files %}<p role="status">有文件或目录未能检查。本次结果只包括已经成功核对的文件；请在存储恢复可用后重新检查。</p>{% endif %}
@@ -84,30 +84,32 @@
     <form method="post" action="/owner/originals/tasks/{{ task.public_id }}/dispose" class="original-disposal-confirm">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="hidden" name="ledger_id" value="{{ selected }}">
-      <label><input type="checkbox" name="confirmed" value="true" required> 我已核对，确认永久删除本次 {{ task.result.candidate_files }} 个候选文件。</label>
+      <label class="workspace-consent"><input type="checkbox" name="confirmed" value="true" required><span>我已核对，确认永久删除本次 {{ task.result.candidate_files }} 个候选文件。</span></label>
       <p>删除无法撤销。执行前会再次检查；后来被引用、替换或正在发布的文件会保留。本次检查之后新增的文件不在删除范围内。</p>
       <button class="btn btn-danger" type="submit">删除本次候选文件</button>
     </form>
     {% endif %}
     {% elif task.kind == 'orphan_disposal' and task.result %}
-    <dl class="kv-grid">
-      <dt>本次范围</dt><dd>{{ task.result.candidate_files }} 个文件</dd>
-      <dt>已删除</dt><dd>{{ task.result.deleted_files }} 个 · {{ task.size_label }}</dd>
-      <dt>已被引用，保留</dt><dd>{{ task.result.referenced_files }}</dd>
-      <dt>文件已变化，保留</dt><dd>{{ task.result.changed_files }}</dd>
-      <dt>已不存在</dt><dd>{{ task.result.absent_files }}</dd>
-      <dt>仍待处理</dt><dd>{{ task.result.busy_files + task.result.failed_files + task.result.candidate_files - task.result.processed_files }}</dd>
+    <dl class="workspace-facts original-facts">
+      <div><dt>本次范围</dt><dd>{{ task.result.candidate_files }} 个文件</dd></div>
+      <div><dt>已删除</dt><dd>{{ task.result.deleted_files }} 个 · {{ task.size_label }}</dd></div>
+      <div><dt>已被引用，保留</dt><dd>{{ task.result.referenced_files }}</dd></div>
+      <div><dt>文件已变化，保留</dt><dd>{{ task.result.changed_files }}</dd></div>
+      <div><dt>已不存在</dt><dd>{{ task.result.absent_files }}</dd></div>
+      <div><dt>仍待处理</dt><dd>{{ task.result.busy_files + task.result.failed_files + task.result.candidate_files - task.result.processed_files }}</dd></div>
     </dl>
     <p>执行时已经不存在的文件单独列出，不计入本次删除量。</p>
     {% endif %}
     {% if task.can_continue %}
     <form method="post" action="/owner/originals/tasks/{{ task.public_id }}/continue"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="ledger_id" value="{{ selected }}"><button class="btn btn-primary" type="submit">{{ '继续未完成的原文件' if task.kind == 'orphan_disposal' else '继续检查' }}</button></form>
     {% endif %}
-  </section>
-  {% endif %}
+    {% else %}<p class="workspace-note">先开始一次检查，完成后可在这里核对候选文件。若要继续此前的处理，请从历史任务打开原记录。</p>{% endif %}
+    </div>
+  </details>
 
-  <section class="card" aria-label="原件任务历史">
-    <h2>任务历史</h2>
+  <details class="workspace-disclosure workspace-task-group" id="original-history"{% if page > 1 %} open{% endif %}>
+    <summary><span class="workspace-task__icon workspace-tone-lilac">{{ icon('history') }}</span><span class="workspace-task__text"><strong>历史任务</strong><span>查看完成、失败和中断记录</span></span>{{ icon('chevron-right') }}</summary>
+    <div class="workspace-disclosure__body" aria-label="原件任务历史">
     {% if tasks %}
     <ul class="original-task-history">
       {% for item in tasks %}<li><a href="{{ item.href }}">{{ item.kind_label }}</a><span>{{ item.status_label }}</span><time>{{ item.created_at | owner_datetime }}</time></li>{% endfor %}
@@ -118,7 +120,15 @@
       {% if next_href %}<a href="{{ next_href }}">更早的任务</a>{% endif %}
     </nav>
     {% else %}<p>这个账本还没有原件检查或处置任务。</p>{% endif %}
-  </section>
+    </div>
+  </details>
+  <div class="original-scope-note">{{ icon('info') }}<div><strong>检查不会删除文件</strong><p>本次确认只作用于已核对的候选。</p></div></div>
+  <form method="post" action="/owner/originals/inspect" class="workspace-save original-start">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="ledger_id" value="{{ selected }}">
+    <input type="hidden" name="client_ref" value="{{ client_ref }}">
+    <button class="btn btn-primary" type="submit">{{ '开始新的检查，不删除文件' if task else '开始检查，不删除文件' }} {{ icon('arrow-right') }}</button>
+  </form>
   {% endif %}
 </div>
 {% endblock %}
