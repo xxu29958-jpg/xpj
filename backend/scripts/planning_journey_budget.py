@@ -175,7 +175,13 @@ class BudgetJourney:
         self.native.reveal_any("v1")
         self.native.capture("arrangement-history-" + suffix)
         self.open_native("series")
-        self.native.click("定义历史")
+        self.native.capture("series-history-before-open-" + suffix)
+        self.native.click("定义历史", stable=True)
+        try:
+            wait_for(lambda: self.native.has("这里保存固定支出的计划定义"),
+                     "The actual recurring definition history did not open")
+        finally:
+            self.native.capture("series-history-after-open-" + suffix)
         if offline:
             self.native.reveal_any("离线保存")
         self.native.reveal_any("1,200", "1200")
