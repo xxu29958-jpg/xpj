@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import date
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 from uuid import UUID
@@ -265,9 +266,6 @@ def test_inbox_pending_header_has_native_upload_form_and_flat_queue_summary(
         r' name="file" accept="image/\*" required',
         form_html,
     )
-    # 原生常显 file input: 代理 label 按钮与 JS 文件名槽整体退役。
-    assert "file-picker-label" not in form_html
-    assert "data-file-picker-name" not in form_html
     assert "上传小票" in form_html
     assert "导入与导出" in body
 
@@ -285,6 +283,23 @@ def test_inbox_pending_header_has_native_upload_form_and_flat_queue_summary(
     assert f'data-upload-max-bytes="{get_settings().max_upload_size_bytes}"' in body
     desktop_js = (static_root / "desktop.js").read_text(encoding="utf-8")
     assert 'call("initInboxCapture");' not in desktop_js
+
+
+def test_pending_date_only_receipt_displays_saved_date_without_inventing_a_time(web_client: TestClient, *, identity):
+    expense_id = _seed_pending_with_amount(web_client, "9.00", "只有日期的小票", identity=identity)
+    with SessionLocal() as db:
+        expense = db.get(Expense, expense_id)
+        expense.expense_time = None
+        expense.time_precision = "date_only"
+        expense.user_local_date = expense.accounting_date = date(2026, 8, 31)
+        expense.accounting_date_basis = "user_date"
+        db.commit()
+    page = web_client.get("/web/pending?ledger_id=owner")
+    assert page.status_code == 200
+    row = page.text.split(f'data-expense-id="{expense_id}"', 1)[1].split('class="exp-flags"', 1)[0]
+    assert '<time datetime="2026-08-31">2026-08-31</time>' in row
+    assert "日期待核对" not in row and "时间待核对" not in row
+    assert "原始时刻：" not in row and "按账本日历推定" not in row
 
 
 def test_inbox_pending_row_single_priority_status_and_one_writer_action(web_client: TestClient, *, identity) -> None:

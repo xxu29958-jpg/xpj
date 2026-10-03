@@ -34,12 +34,15 @@
   {% if pending_count %}
   <div class="product-page-actions">
     {% if can_write %}
-    {% include "_inbox_capture.html" %}
+    <details class="inbox-capture">
+      <summary class="product-button product-button--primary">上传小票</summary>
+      {% include "_inbox_capture.html" %}
+    </details>
     {% endif %}
-    <a class="product-button" href="/web/import{{ _q }}">导入与导出</a>
   </div>
   {% endif %}
 </header>
+{% if can_write and upload_intent.scope %}<section data-attachment-shelf aria-label="尚未完成的图片任务"></section>{% endif %}
 
 {# K3: 队列概况并入页头判断句 (不再独立成区); 可行动计数在下方筛选 pill 上。 #}
 
@@ -98,7 +101,10 @@
 </div>
 {% endif %}
 
-{% include "_recent_recognition_tasks.html" %}
+<div class="inbox-utilities">
+  {% include "_recent_recognition_tasks.html" %}
+  <a href="/web/import{{ _q }}">导入与导出</a>
+</div>
 
 {% if pending_count %}
 <nav class="product-commandbar inbox-filters" aria-label="待处理筛选">
@@ -167,7 +173,7 @@
     <div aria-hidden="true">凭证</div>
     <div aria-hidden="true">商家与来源</div>
     <div aria-hidden="true">分类</div>
-    <div aria-hidden="true">时间</div>
+    <div aria-hidden="true">账务日期</div>
     <div aria-hidden="true" class="text-end">金额</div>
     <div aria-hidden="true">状态与操作</div>
   </div>
@@ -242,7 +248,10 @@
         {% endif %}
       </div>
       <div>
-        <div class="exp-time">{{ e.expense_time or '时间待核对' }}</div>
+        <div class="exp-time"{% if e.expense_time %} title="原始时刻：{{ e.expense_time }}"{% endif %}>
+          {% if e.accounting_date %}<time datetime="{{ e.accounting_date }}">{{ e.accounting_date }}</time>{% else %}日期待核对{% endif %}
+        </div>
+        {% if e.accounting_date_assumed %}<div class="exp-time-meta">按账本日历推定</div>{% endif %}
         <div class="exp-time-meta">上传 {{ e.created_at }}</div>
       </div>
       <div class="text-end">
