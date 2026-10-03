@@ -258,7 +258,7 @@ class JoinFamilyLedgerViewModelTest {
     }
 
     @Test
-    fun invalidTextShareShowsFeedbackAndNeverCallsPreview() = runTest {
+    fun invalidScannedOrSharedTextPreservesTheDraftAndNeverCallsPreview() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         var testOwner: JoinFamilyLedgerViewModel? = null
         try {
@@ -266,11 +266,17 @@ class JoinFamilyLedgerViewModelTest {
             val viewModel = viewModel(api, LedgerFakeSettingsStore(), LedgerFakeTokenStore())
             testOwner = viewModel
 
+            viewModel.onAccountNameChanged("家人的名字")
+            viewModel.onServerUrlChanged("https://family.example.com")
+            viewModel.onInvitationInputChanged("inv_saved_draft")
             viewModel.consumeSharedInvitation("这不是邀请")
             advanceUntilIdle()
 
             assertNotNull(viewModel.uiState.value.error)
-            assertEquals("", viewModel.uiState.value.invitationInput)
+            assertEquals("inv_saved_draft", viewModel.uiState.value.invitationInput)
+            assertEquals("家人的名字", viewModel.uiState.value.accountName)
+            assertEquals("https://family.example.com", viewModel.uiState.value.serverUrl)
+            assertFalse(viewModel.uiState.value.canAccept)
             assertTrue(api.previewRequests.isEmpty())
         } finally {
             testOwner?.viewModelScope?.coroutineContext?.job?.cancelAndJoin()

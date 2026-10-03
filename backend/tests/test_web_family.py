@@ -164,7 +164,9 @@ def test_owner_shares_the_configured_browser_join_link_once(
         )
         assert created_html.count(invite_token) == 1
         assert "复制邀请" in created_html
-        assert "在浏览器打开链接" in created_html
+        assert "手机相机扫码" in created_html
+        assert 'data-qr-source="[data-family-invite-value]"' in created_html
+        assert "data-qr-output" not in web_client.get("/web/family?ledger_id=owner").text
         assert "我有家庭邀请" not in created_html
         assert "设置 → 加入家庭账本" not in created_html
     finally:

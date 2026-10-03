@@ -34,8 +34,10 @@ import com.ticketbox.ui.components.AppTextInputActions
 import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.components.PageRole
 import com.ticketbox.ui.components.AppSecondaryButton
+import com.ticketbox.ui.components.ScanQrButton
 import com.ticketbox.ui.design.AppAdaptiveContentWidth
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.navigation.parsePairingQrLink
 
 /**
  * BuildConfig-derived server-URL entry rules shared by the unbound auth
@@ -66,6 +68,8 @@ fun BindServerScreen(
     var serverUrl by remember(serverUrlEntry.defaultUrl) { mutableStateOf(serverUrlEntry.defaultUrl) }
     var pairingCode by remember { mutableStateOf("") }
     var confirmAbandonPending by remember { mutableStateOf(false) }
+    var scannedOrigin by remember { mutableStateOf<String?>(null) }
+    var scanInvalid by remember { mutableStateOf(false) }
     val canBind = !loading && serverUrl.isNotBlank() && pairingCode.length == BindingCodeLength
     val submitBind = {
         if (canBind) actions.onBind(serverUrl, pairingCode)
@@ -87,6 +91,20 @@ fun BindServerScreen(
             subtitle = stringResource(R.string.bind_server_header_subtitle),
         )
         AppStatusBanner(message = message, tone = MessageTone.Danger)
+        ScanQrButton(
+            label = stringResource(R.string.qr_scan_pairing), enabled = !loading && !hasPendingEnrollment,
+            onResult = { raw ->
+                val scanned = parsePairingQrLink(raw)
+                scanInvalid = scanned == null
+                if (scanned != null) {
+                    serverUrl = scanned.serverUrl
+                    pairingCode = scanned.pairingCode
+                    scannedOrigin = scanned.serverUrl
+                }
+            },
+        )
+        if (scanInvalid) Text(stringResource(R.string.qr_pairing_invalid))
+        scannedOrigin?.let { Text(stringResource(R.string.qr_pairing_ready, it)) }
         Text(
             text = if (serverUrlEntry.showInput) {
                 stringResource(R.string.bind_server_hint_with_url)
@@ -105,7 +123,10 @@ fun BindServerScreen(
                     enabled = !loading,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                 ),
-                actions = AppTextInputActions(onValueChange = { serverUrl = it }),
+                actions = AppTextInputActions(onValueChange = {
+                    serverUrl = it
+                    scannedOrigin = null
+                }),
             )
         }
         AppTextInput(

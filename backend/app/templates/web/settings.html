@@ -2,9 +2,12 @@
 {% block title %}设置与设备 · 小票夹{% endblock %}
 {% block page_styles %}
 <link rel="stylesheet" href="/static/web/pages/settings.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shared/handoff-qr.css?v={{ asset_version }}">
 {% endblock %}
 {% block page_scripts %}
 <script defer src="/static/web/settings.js?v={{ asset_version }}"></script>
+<script defer src="/static/shared/vendor/qrcode.js?v={{ asset_version }}"></script>
+<script defer src="/static/shared/handoff-qr.js?v={{ asset_version }}"></script>
 {% endblock %}
 {% block content %}
 <header class="product-page-header">
@@ -51,6 +54,10 @@
     <input class="product-input" type="text" readonly autocomplete="off" value="{{ pairing.pairing_code }}" data-settings-code>
   </label>
   <p class="hint">{{ moment(pairing.expires_at) }} 到期。请在另一台设备的连接页面输入；重新连接时使用原设备。</p>
+  {% if pairing_origin %}
+  <div hidden data-qr-output data-qr-source="[data-settings-code]" data-qr-origin="{{ pairing_origin }}" data-qr-label="连接自己的设备二维码"></div>
+  <p class="hint">自己的 Android 设备可在连接页点「扫一扫连接」；iPad 可用相机扫码连接网页版。</p>
+  {% endif %}
   <div class="settings-links">
     <button class="product-button product-button--primary" type="button" data-settings-copy>复制连接码</button>
     <a class="product-button" href="/web/settings">已记下，收起</a>

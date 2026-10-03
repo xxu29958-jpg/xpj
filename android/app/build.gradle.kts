@@ -375,6 +375,8 @@ configurations.named("androidTestImplementation") {
 
 dependencies {
     implementation(libs.androidx.core.ktx)
+    implementation(libs.zxing.core)
+    implementation(libs.zxing.embedded)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.exifinterface)
     implementation(libs.androidx.activity.compose)

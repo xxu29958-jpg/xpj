@@ -48,3 +48,11 @@ def test_public_other_static_path_not_affected() -> None:
     public = _public_client()
     response = public.get("/static/shared/tokens.css", follow_redirects=False)
     assert response.status_code != 403
+
+
+def test_public_qr_assets_are_local_shared_files_not_owner_resources() -> None:
+    with _public_client() as public:
+        for path in ("/static/shared/vendor/qrcode.js", "/static/shared/handoff-qr.js",
+                     "/static/shared/handoff-qr.css", "/static/web/auth-pairing.js"):
+            assert public.get(path).status_code == 200
+        assert public.get("/static/owner/vendor/qrcode.js").status_code == 403

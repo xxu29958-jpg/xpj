@@ -8,7 +8,7 @@
  * 约束:
  *   - 完整 URL 在 HTML 里只允许出现一次(test_owner_upload_links_create_reveals_once
  *     钉死),所以本脚本只从 [data-upload-handoff-url] 的文本读取,绝不把 URL 复制进
- *     第二个属性/节点;二维码由 vendored qrcode.js(/static/owner/vendor/,MIT)在
+ *     第二个属性/节点;二维码由 vendored qrcode.js(/static/shared/vendor/,MIT)在
  *     客户端本地编码,零网络、零后端参与。
  *   - 复制走 navigator.clipboard(loopback http://127.0.0.1 属 secure context),
  *     失败降级 document.execCommand("copy");二维码渲染失败不破坏页面,复制按钮仍可用。

@@ -9,11 +9,12 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+from app.config import get_settings
 from app.database import SessionLocal
 from app.main import app
 from app.models import Account, AuthToken, Device, LedgerMember, PairingCode, UploadLink
 from app.routes.web_auth import SESSION_COOKIE_NAME
-from app.services.identity_service import hash_secret
+from app.services.identity_service import hash_pairing_code, hash_secret
 from app.services.time_service import now_utc
 from tests._web_public_session_support import PUBLIC_HOST, mint_session, public_client
 
@@ -171,6 +172,7 @@ def test_browser_recovery_retains_device_identity_and_reveals_code_only_once(bro
     assert match is not None
     code = match.group(1)
     assert created.text.count(code) == 1 and created.headers["cache-control"] == "no-store"
+    assert "data-qr-output" not in created.text
     assert "data-settings-code>" not in web.get("/web/settings").text
     assert _post(web, f"/web/settings/devices/{public_id}/delete", confirmed="yes").status_code == 409
     with closing(public_client()) as recovered:
@@ -183,6 +185,36 @@ def test_browser_recovery_retains_device_identity_and_reveals_code_only_once(bro
         assert _session_device(fresh_token)[1] == device_id
     with SessionLocal() as db:
         assert db.get(Device, device_id).revoked_at is None
+
+
+def test_new_device_qr_uses_one_time_result_and_existing_pairing_authority(browser, monkeypatch):
+    web, token = browser
+    account_id, original_device_id, _ = _session_device(token)
+    monkeypatch.setenv("PUBLIC_BASE_URL", f"https://{PUBLIC_HOST}")
+    get_settings.cache_clear()
+    try:
+        created = _post(web, "/web/settings/devices/pairing-codes")
+        assert created.status_code == 200, created.text
+        code = re.search(r'value="([0-9]{8})" data-settings-code', created.text).group(1)
+        assert created.text.count(code) == 1
+        assert 'data-qr-source="[data-settings-code]"' in created.text
+        assert f'data-qr-origin="https://{PUBLIC_HOST}"' in created.text
+        assert created.headers["cache-control"] == "no-store"
+        assert "data-qr-output" not in web.get("/web/settings").text
+        with closing(public_client()) as new_device:
+            form = new_device.get("/web/auth/login")
+            assert "/static/web/auth-pairing.js" in form.text
+            result = new_device.post("/web/auth/login", data={"csrf_token": _csrf(form.text),
+                "pairing_code": code, "device_name": "扫码连接的 iPad"},
+                headers={"Origin": f"https://{PUBLIC_HOST}"}, follow_redirects=False)
+            assert result.status_code == 303, result.text
+            paired_account, paired_device, _ = _session_device(new_device.cookies.get(SESSION_COOKIE_NAME))
+            assert paired_account == account_id and paired_device != original_device_id
+        with SessionLocal() as db:
+            assert db.get(Device, original_device_id).revoked_at is None
+            assert db.scalar(select(PairingCode).where(PairingCode.code_hash == hash_pairing_code(code))).used_at is not None
+    finally:
+        get_settings.cache_clear()
 
 
 def test_desktop_bridge_settings_keep_device_identity_without_ledger(browser):

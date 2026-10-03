@@ -10,11 +10,13 @@ from fastapi import APIRouter, Depends, Form, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.database import get_db
 from app.errors import AppError
 from app.routes.web_common import LedgerOption, _base_ctx, _read_ui_theme, templates
 from app.services import account_profile_service, owner_device_service
 from app.services.identity_service import PairingCodeResult
+from app.services.installation_health_service import configured_mobile_endpoint_url
 from app.services.ledger_service import list_ledgers_for_account
 from app.services.spending_contract_service import accounting_datetime_label
 from app.tenants import AuthContext, SessionPrincipal
@@ -61,7 +63,7 @@ def _moment(value: str | None) -> str:
 
 def _render_settings(request: Request, db: Session, *, error: str = "", status_code: int = 200,
                      form: DeviceForm = DeviceForm(), pairing: PairingCodeResult | None = None,
-                     account_name_draft: str | None = None) -> HTMLResponse:
+                     account_name_draft: str | None = None, pairing_origin: str | None = None) -> HTMLResponse:
     principal = _principal(request)
     profile = account_profile_service.read_profile(db, principal)
     principal = replace(principal, account_name=profile.display_name)
@@ -70,6 +72,7 @@ def _render_settings(request: Request, db: Session, *, error: str = "", status_c
     ctx = _settings_context(request, db, principal)
     ctx.update(principal=principal, devices=devices, current_platform=current_platform, platforms=_PLATFORMS,
                device_form=form, error=error, pairing=pairing, moment=_moment,
+               pairing_origin=pairing_origin,
                account_profile=profile, account_name_draft=account_name_draft,
                message=_MESSAGES.get(request.query_params.get("done", ""), ""))
     return templates.TemplateResponse(request=request, name="settings.html", context=ctx, status_code=status_code)
@@ -153,4 +156,5 @@ def web_device_pairing(request: Request, recovery_device_public_id: str = Form(d
     except AppError as exc:
         db.rollback()
         return _render_settings(request, db, error=exc.message, status_code=exc.status_code)
-    return _render_settings(request, db, pairing=pairing)
+    origin = configured_mobile_endpoint_url(get_settings().public_base_url) if not recovery_device_public_id else None
+    return _render_settings(request, db, pairing=pairing, pairing_origin=origin)
