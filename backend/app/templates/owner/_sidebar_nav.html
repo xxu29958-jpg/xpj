@@ -8,7 +8,6 @@
       <a href="/owner" {% if request.url.path == '/owner' %}class="is-active" aria-current="page"{% endif %}>仪表盘</a>
       <a href="/owner/devices" {% if '/devices' in request.url.path %}class="is-active" aria-current="page"{% endif %}>设备</a>
       <a href="/owner/ledgers" {% if '/ledgers' in request.url.path %}class="is-active" aria-current="page"{% endif %}>账本</a>
-      <a href="/owner/fx" {% if '/fx' in request.url.path %}class="is-active" aria-current="page"{% endif %}>汇率</a>
       <a href="/owner/diagnostics" {% if '/diagnostics' in request.url.path %}class="is-active" aria-current="page"{% endif %}>诊断</a>
       <a href="/owner/originals" {% if '/originals' in request.url.path %}class="is-active" aria-current="page"{% endif %}>原件存储</a>
     </div>
@@ -18,16 +17,15 @@
       <a href="/owner/upload-links" {% if '/upload-links' in request.url.path %}class="is-active" aria-current="page"{% endif %}>上传链接</a>
       <a href="/owner/rule-applications" {% if '/rule-applications' in request.url.path %}class="is-active" aria-current="page"{% endif %}>规则审计</a>
       <a href="/web/recycle-bin">回收站</a>
-      <a href="/owner/settings" {% if '/settings' in request.url.path %}class="is-active" aria-current="page"{% endif %}>设置</a>
+      <a href="/owner/settings" {% if '/settings' in request.url.path or '/ai-advisor' in request.url.path or '/fx' in request.url.path %}class="is-active" aria-current="page"{% endif %}>设置</a>
     </div>
-    {% set advanced_active = '/ai-advisor' in request.url.path or '/algorithm-versions' in request.url.path or '/learning-maintenance' in request.url.path %}
+    {% set advanced_active = '/algorithm-versions' in request.url.path or '/learning-maintenance' in request.url.path %}
     <details class="owner-sidebar__group owner-sidebar__advanced"{% if advanced_active %} open{% endif %}>
       <summary class="owner-sidebar__group-label owner-sidebar__advanced-summary">
         <span class="owner-sidebar__advanced-title">高级</span>
         <span class="owner-sidebar__advanced-note">平时不用</span>
-        <span class="owner-sidebar__advanced-count" aria-label="3 个入口">3</span>
+        <span class="owner-sidebar__advanced-count" aria-label="2 个入口">2</span>
       </summary>
-      <a href="/owner/ai-advisor" {% if '/ai-advisor' in request.url.path %}class="is-active" aria-current="page"{% endif %}>AI 顾问</a>
       <a href="/owner/algorithm-versions" {% if '/algorithm-versions' in request.url.path %}class="is-active" aria-current="page"{% endif %}>算法版本</a>
       <a href="/owner/learning-maintenance" {% if '/learning-maintenance' in request.url.path %}class="is-active" aria-current="page"{% endif %}>学习层维护</a>
     </details>

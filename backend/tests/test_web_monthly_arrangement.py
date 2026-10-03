@@ -62,11 +62,11 @@ def test_web_cross_currency_posts_preserve_report_source_and_save_intent(monkeyp
         "provider_name": "local", "provider_enabled": True, "advisor_can_request": True})
     monkeypatch.setattr(web, "_actor_role", lambda *a, **kw: "owner")
     monkeypatch.setattr(web, "_actor_account_id", lambda _: 1)
-    monkeypatch.setattr(_runner, "get_advisor_readiness", lambda: SimpleNamespace(
+    monkeypatch.setattr(_runner, "get_advisor_readiness", lambda **_: SimpleNamespace(
         provider="empty", is_live=False, blocked_reason=lambda _: None))
     provider = Mock()
     provider.advise.return_value = None
-    monkeypatch.setattr(_runner, "get_budget_advisor", lambda: provider)
+    monkeypatch.setattr(_runner, "get_budget_advisor", lambda **_: provider)
     monkeypatch.setattr(save, "_require_selected_ledger_write", lambda *a: None)
     monkeypatch.setattr(save, "resolve_web_actor_account_id", lambda *a: 1)
     monkeypatch.setattr(save, "read_monthly_arrangement", lambda *a, **kw: saved)

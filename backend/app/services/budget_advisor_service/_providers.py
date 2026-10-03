@@ -28,7 +28,7 @@ from typing import cast
 from urllib import error, request
 from urllib.parse import urlparse
 
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.errors import AppError, DataIntegrityError
 from app.money_contract import (
     MoneySign,
@@ -230,15 +230,15 @@ class OpenAiCompatBudgetAdvisor:
             raise AppError("server_error", "AI 服务暂时不可用。", status_code=500) from exc
 
 
-def get_budget_advisor(provider_name: str | None = None) -> BudgetAdvisorProvider:
+def get_budget_advisor(provider_name: str | None = None, *, settings: Settings | None = None) -> BudgetAdvisorProvider:
     """Resolve a provider by name. Defaults to ``empty`` per ADR-0036."""
 
-    raw_name = clean_provider_name(provider_name or get_settings().budget_advisor_provider)
+    settings = settings or get_settings()
+    raw_name = clean_provider_name(provider_name or settings.budget_advisor_provider)
     name = canonical_provider_name(raw_name)
     if name == MOCK_PROVIDER_NAME:
         return MockBudgetAdvisor()
     if raw_name in OPENAI_COMPAT_PROVIDER_NAMES or name in OPENAI_COMPAT_PROVIDER_NAMES:
-        settings = get_settings()
         if not settings.budget_advisor_base_url:
             raise AppError(
                 "server_error",

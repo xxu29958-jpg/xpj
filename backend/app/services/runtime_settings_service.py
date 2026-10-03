@@ -37,9 +37,7 @@ from app.version import BACKEND_VERSION
 _SETTINGS_PATH = DATA_ROOT / "runtime-settings" / "runtime-settings.json"
 _SERVICE_OWNED = runtime_settings_service_owned()
 
-_EDITABLE_KEYS: frozenset[str] = frozenset(
-    {"BUDGET_ADVISOR_OWNER_CONFIRMED", "PUBLIC_BASE_URL", "RECOGNITION_PIPELINE"}
-)
+_EDITABLE_KEYS: frozenset[str] = frozenset({"PUBLIC_BASE_URL", "RECOGNITION_PIPELINE"})
 
 
 @dataclass(frozen=True)
@@ -244,8 +242,8 @@ def _write_runtime_value(key: str, value: str) -> RuntimeSettingsProjection:
         budget_advisor_owner_confirmed=settings.budget_advisor_owner_confirmed,
     )
     mutation = RuntimeSettingsMutation(
-        field=("public_base_url" if key == "PUBLIC_BASE_URL" else "budget_advisor_owner_confirmed"),
-        value=value if key == "PUBLIC_BASE_URL" else value == "true",
+        field="public_base_url",
+        value=value,
     )
     projection = patch_runtime_settings(
         _SETTINGS_PATH,
@@ -374,9 +372,3 @@ def update_public_base_url(raw: str) -> RuntimeSettingsView:
     value = _validate_public_base_url(raw)
     _write_runtime_value("PUBLIC_BASE_URL", value)
     return get_view()
-
-
-def update_budget_advisor_owner_confirmed(confirmed: bool) -> bool:
-    value = "true" if confirmed else "false"
-    projection = _write_runtime_value("BUDGET_ADVISOR_OWNER_CONFIRMED", value)
-    return projection.budget_advisor_owner_confirmed

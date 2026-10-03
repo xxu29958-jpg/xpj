@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.errors import AppError
 from app.services.budget_advisor_service._provider_names import canonical_provider_name, is_known_provider
 from app.services.budget_advisor_service._providers import get_budget_advisor
@@ -29,12 +29,12 @@ class AdvisorReadiness:
         return None
 
 
-def get_advisor_readiness() -> AdvisorReadiness:
-    cfg = get_settings()
+def get_advisor_readiness(*, settings: Settings | None = None) -> AdvisorReadiness:
+    cfg = settings or get_settings()
     provider = canonical_provider_name(cfg.budget_advisor_provider)
     known = is_known_provider(provider)
     try:
-        get_budget_advisor()
+        get_budget_advisor(settings=cfg)
     except AppError:
         valid = False
     else:

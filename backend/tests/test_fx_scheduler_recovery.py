@@ -174,15 +174,29 @@ def test_invalid_quote_schedule_still_continues_accepted_bills_on_the_existing_t
     assert (status.success_count, status.failed_count, status.last_error, status.last_success_at) == (0, 0, None, None)
 
 
-def test_disabled_configuration_does_not_start_the_scheduler(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_disabled_configuration_waits_without_work_and_can_be_enabled_without_restart(monkeypatch: pytest.MonkeyPatch) -> None:
     settings = SimpleNamespace(
         fx_rate_auto_sync_enabled=False, fx_rate_sync_times="invalid", fx_rate_sync_timezone="Unavailable/Timezone",
     )
     refill = Mock()
     monkeypatch.setattr(scheduler, "get_settings", lambda: settings)
     monkeypatch.setattr(scheduler, "refill_pending_expense_fx", refill)
-    assert scheduler.start_fx_rate_scheduler() is None
-    refill.assert_not_called()
-    disabled = scheduler.fx_rate_sync_status()
-    assert disabled.scheduler_config_error is False
-    assert disabled.scheduler_running is False
+    ticks = _ScheduledTicks(count=2)
+    waits = 0
+    def wait(delay):
+        nonlocal waits
+        waits += 1
+        if waits == 1:
+            refill.assert_not_called()
+            settings.fx_rate_auto_sync_enabled = True
+            settings.fx_rate_sync_times = "09:10"
+            settings.fx_rate_sync_timezone = "UTC"
+        return ticks.wait(delay)
+    stop = SimpleNamespace(is_set=lambda: False, wait=wait)
+    scheduled = Mock()
+    monkeypatch.setattr(scheduler, "datetime", SimpleNamespace(now=ticks.now))
+    monkeypatch.setattr(scheduler, "_run_scheduled_fx_sync", scheduled)
+    scheduler._scheduler_loop(stop, [], ZoneInfo("UTC"), follow_settings=True)
+    assert refill.call_count == 2
+    scheduled.assert_not_called()  # Enabling does not invent a past due run.
+    assert scheduler.fx_rate_sync_status().scheduler_config_error is False

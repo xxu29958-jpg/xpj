@@ -8,7 +8,7 @@ from time import perf_counter
 
 from sqlalchemy.orm import Session
 
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.errors import AppError, DataIntegrityError
 from app.services.budget_advisor_service._audit import (
     complete_live_call_audit_row,
@@ -48,7 +48,8 @@ def run_budget_advisor(
 ) -> AdvisorRunResult:
     """Run the configured provider with identical gates for API and /web."""
 
-    readiness = get_advisor_readiness()
+    settings = get_settings()
+    readiness = get_advisor_readiness(settings=settings)
     provider_name = readiness.provider
     provider_is_live = readiness.is_live
     blocked_reason = readiness.blocked_reason(actor_role)
@@ -73,7 +74,7 @@ def run_budget_advisor(
     home = projection.home_currency_code
     inputs = projection.provider_inputs
     assert inputs is not None  # The input owner only creates the outbound envelope after all projections complete.
-    advisor = get_budget_advisor()
+    advisor = get_budget_advisor(settings=settings)
     audit_log_id: int | None = None
     if provider_is_live:
         # Fail-closed outbound-schema guard runs once, before reserving the
@@ -98,6 +99,7 @@ def run_budget_advisor(
             provider=provider_name,
             month=month,
             input_hash=input_hash,
+            settings=settings,
         )
 
     return _invoke_and_record(
@@ -173,8 +175,9 @@ def _reserve_live_call(
     provider: str,
     month: str,
     input_hash: str,
+    settings: Settings,
 ) -> int:
-    cfg = get_settings()
+    cfg = settings
     audit_log = reserve_live_call_budget(
         db,
         tenant_id=tenant_id,

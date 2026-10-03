@@ -1,17 +1,52 @@
-{% extends "base.html" %}
+{% extends "settings/_layout.html" %}
 {% block title %}AI 顾问 - 小票夹 本机管理后台{% endblock %}
-{% block content %}
-<h1>AI 顾问</h1>
-<details class="page-help">
-  <summary>这是什么</summary>
-  <p>高级功能：让外部 AI 帮看预算给点建议。要先在这里确认才会把已脱敏的请求发出去，建议默认是参考、不会自动改账。没配置外部 AI 就不用进来。</p>
-</details>
+{% block settings_body %}
+<div class="card">
+  <h2>AI 预算顾问</h2>
+  <p class="help-text">连接本机或云端模型，为预算提供参考建议。关闭 AI 仍可正常记账和使用预算；模型不会自动改账。</p>
+  <form method="post" action="/owner/ai-advisor/settings" autocomplete="off">
+    <div class="settings-form-grid">
+      <label for="advisor_provider">使用方式</label>
+      <select id="advisor_provider" name="provider" class="inline-select">
+        <option value="empty" {% if advisor_form.provider == 'empty' %}selected{% endif %}>关闭 AI，使用本地预算规则</option>
+        <option value="openai_compat" {% if advisor_form.provider == 'openai_compat' %}selected{% endif %}>连接兼容 OpenAI 的模型服务</option>
+      </select>
+      <label for="advisor_base_url">接口地址</label>
+      <input id="advisor_base_url" name="base_url" type="url" maxlength="2048" class="inline-input"
+             value="{{ advisor_form.base_url }}" placeholder="例如 http://127.0.0.1:1234/v1">
+      <span></span><p class="help-text">填写模型服务提供的接口根地址，不包含 /chat/completions；云端地址须使用 HTTPS。</p>
+      <label for="advisor_model">模型名称</label>
+      <input id="advisor_model" name="model" maxlength="256" class="inline-input" value="{{ advisor_form.model }}" placeholder="填写服务中的模型标识">
+      <label for="advisor_key_action">访问密钥</label>
+      <select id="advisor_key_action" name="key_action" class="inline-select">
+        <option value="keep">{% if advisor_key_configured %}保留已保存的密钥{% else %}没有密钥（本机服务可不填）{% endif %}</option>
+        <option value="replace">更换密钥</option>
+        <option value="clear">清除已保存的密钥</option>
+      </select>
+      <label for="advisor_api_key">新密钥</label>
+      <input id="advisor_api_key" name="api_key" type="password" maxlength="4096" autocomplete="new-password" class="inline-input" placeholder="仅在选择更换密钥时填写">
+      <span></span><p class="help-text">已保存的密钥不会显示。保存失败时请重新填写新密钥；更换接口地址时需重新设置密钥。</p>
+    </div>
+    <details class="mt-5">
+      <summary>调用限制</summary>
+      <div class="settings-form-grid mt-4">
+        <label for="advisor_timeout">请求超时（秒）</label>
+        <input id="advisor_timeout" name="timeout_seconds" type="number" min="5" max="300" value="{{ advisor_form.timeout_seconds }}" class="inline-input" required>
+        <label for="advisor_interval">两次建议最短间隔（秒）</label>
+        <input id="advisor_interval" name="min_interval_seconds" type="number" min="0" max="86400" value="{{ advisor_form.min_interval_seconds }}" class="inline-input" required>
+        <label for="advisor_daily">每个账本 24 小时调用上限</label>
+        <input id="advisor_daily" name="daily_call_limit" type="number" min="0" max="10000" value="{{ advisor_form.daily_call_limit }}" class="inline-input" required>
+        <span></span><p class="help-text">间隔或上限为 0 时不限制该项。云端模型可能按调用收费。</p>
+      </div>
+    </details>
+    <button type="submit" class="btn btn-primary mt-5">保存模型设置</button>
+  </form>
+</div>
 
 <div class="card">
   <div class="card-head-row">
     <div>
-      <h2>Provider 状态</h2>
-      <p class="text-meta">当前账本：<code>{{ tenant_id }}</code></p>
+      <h2>授权与验证</h2>
     </div>
     {% if not status.configuration_valid %}
       <span class="badge badge-warn">配置不完整或无效</span>
@@ -26,9 +61,10 @@
   <div class="table-scroll mt-4">
     <table>
       <tbody>
-        <tr><th>Provider</th><td><code>{{ status.provider }}</code></td></tr>
-        <tr><th>Model</th><td>{{ status.model or "未配置" }}</td></tr>
-        <tr><th>Owner 确认</th><td>{{ "已确认" if status.owner_confirmed else "未确认" }}</td></tr>
+        <tr><th>使用方式</th><td>{{ {'empty': '本地预算规则', 'openai_compat': '模型服务', 'mock': '测试模型'}.get(status.provider, '不支持的旧配置') }}</td></tr>
+        <tr><th>已保存的模型</th><td>{{ advisor_saved_model or "未配置" }}</td></tr>
+        <tr><th>已保存的接口</th><td>{{ advisor_saved_base_url or "未配置" }}</td></tr>
+        <tr><th>请求授权</th><td>{{ "已允许" if status.owner_confirmed else "未允许" }}</td></tr>
         <tr><th>最近调用</th><td>{{ status.last_called_at|owner_datetime }}</td></tr>
         <tr><th>最近结果</th><td>
           {% if status.last_success is none %}
@@ -43,29 +79,37 @@
     </table>
   </div>
   {% if not status.configuration_valid %}
-  <p class="text-meta">请检查服务配置中的提供方、模型、接口地址和密钥。修正后刷新此页。</p>
+  <p class="text-meta">请在上方补全接口地址、模型和密钥，保存后再测试连接。</p>
   {% endif %}
-  <p class="text-meta">配置检查不会发起外部请求；网络可用性与实际结果以最近调用为准。</p>
+  <p class="text-meta">保存配置不会发起外部请求。可通过下方的示例测试验证连接，预算建议的使用结果见最近调用。</p>
   <form method="post" action="/owner/ai-advisor/confirmation" class="mt-5">
+    <input type="hidden" name="connection_revision" value="{{ advisor_connection_revision }}">
     <label class="label-check-row">
       <input type="checkbox" name="confirmed" value="on" {% if status.owner_confirmed %}checked{% endif %}>
-      <span>我确认允许当前配置的 AI Provider 接收已脱敏的预算顾问请求</span>
+      <span>允许当前模型接收分类汇总与泛化后的预算计划，用于生成建议</span>
     </label>
     <div class="mt-4">
       <button type="submit" class="btn btn-primary">保存确认状态</button>
     </div>
   </form>
+  <p class="help-text">不会发送票据图片、真实商户名、姓名或备注。更换模型连接会撤回原授权，请核对后重新允许。</p>
+  <form method="post" action="/owner/ai-advisor/test" data-show-loading="正在测试模型，最长约 20 秒…" class="mt-4">
+    <button type="submit" class="btn" {% if not status.configuration_valid or not status.is_live or not status.owner_confirmed %}disabled{% endif %}>测试模型（仅发送示例）</button>
+    <a class="btn" href="/web/budget-advise">前往月度安排使用建议</a>
+  </form>
+  <p class="help-text">测试会向已保存的模型发送一次固定示例，可能产生少量调用费用，不使用真实账本数据。</p>
 </div>
 
 <div class="card">
-  <h2>最近 10 次审计</h2>
+  <h2>最近 10 次预算建议调用</h2>
+  <p class="help-text">这里记录实际预算建议的使用结果，不包含固定示例的连接测试。</p>
   {% if audit_rows %}
   <div class="table-scroll">
     <table>
       <thead>
         <tr>
           <th>时间</th>
-          <th>Provider</th>
+          <th>服务</th>
           <th>月份</th>
           <th>结果</th>
           <th>建议</th>
