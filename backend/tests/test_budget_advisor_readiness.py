@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
+from fastapi import Request
 from jinja2 import ChoiceLoader, DictLoader, Environment, FileSystemLoader
 
 from app.config import reset_settings_cache
@@ -39,7 +40,10 @@ def _render_owner(status: object) -> str:
         FileSystemLoader(owner_templates),
     ]), autoescape=True)
     environment.filters["owner_datetime"] = lambda value: value or "无记录"
-    return environment.get_template("ai_advisor.html").render(status=status, audit_rows=[], advisor_form=advisor_form())
+    return environment.get_template("ai_advisor.html").render(
+        status=status, audit_rows=[], advisor_form=advisor_form(),
+        request=Request({"type": "http", "path": "/owner/ai-advisor", "query_string": b"", "headers": []}),
+    )
 
 
 @pytest.mark.parametrize(("field", "value"), [

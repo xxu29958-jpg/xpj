@@ -1,121 +1,93 @@
-{% extends "settings/_layout.html" %}
-{% block title %}汇率同步 — 小票夹{% endblock %}
-{% block settings_body %}
-<h2>汇率同步</h2>
-<details class="page-help">
-  <summary>这是什么</summary>
-  <p>这里更新最新参考汇率。自动任务运行时按计划拉取；想立即更新，或上次同步失败时，可以点击「立即拉取一次」。历史账单请在待确认中按账单日期补齐汇率，取得结果后仍需核对并确认。</p>
-</details>
-
-<form method="post" action="/owner/fx/settings" class="card">
-  <h2>自动同步设置</h2>
-  <div class="settings-form-grid">
-    <span>自动同步</span>
-    <label class="label-check-row" for="fx_auto_enabled">
-      <input id="fx_auto_enabled" name="auto_enabled" type="checkbox" {% if fx_form.auto_enabled %}checked{% endif %}>
-      按每天的计划更新参考汇率
-    </label>
-    <label for="fx_source">汇率来源</label>
-    <select id="fx_source" name="source" class="inline-select">
-      <option value="frankfurter" {% if fx_form.source == 'frankfurter' %}selected{% endif %}>Frankfurter（欧洲央行参考汇率镜像）</option>
-      <option value="ecb" {% if fx_form.source == 'ecb' %}selected{% endif %}>欧洲央行直连</option>
-    </select>
-    <label for="fx_sync_times">每日时间</label>
-    <input id="fx_sync_times" name="sync_times" class="inline-input" value="{{ fx_form.sync_times }}" maxlength="128" required>
-    <span></span><p class="help-text">例如 09:10,23:10；最多 6 个时间，用逗号分隔。</p>
-    <label for="fx_timezone">计划所在时区</label>
-    <input id="fx_timezone" name="timezone" class="inline-input" value="{{ fx_form.timezone }}" maxlength="64" list="fx_timezones" required>
-    <datalist id="fx_timezones"><option value="Asia/Shanghai"><option value="Asia/Hong_Kong"><option value="Asia/Tokyo"><option value="UTC"></datalist>
-  </div>
-  <button type="submit" class="btn btn-primary mt-5">保存同步设置</button>
-  <p class="help-text">后台空闲时在 30 秒内采用新计划，进行中的任务完成后切换。关闭自动同步仍可手动拉取；已有汇率和历史账单不会被清除或重新计算。</p>
-</form>
-
+{% extends "_workspace.html" %}
+{% from "_workspace_ui.html" import icon with context %}
+{% block title %}汇率同步 — 设置 — 小票夹{% endblock %}
+{% block back_url %}/owner/settings{% endblock %}
+{% block back_label %}设置{% endblock %}
+{% block workspace_title %}汇率自动更新{% endblock %}
+{% block workspace_description %}用于补充参考换算信息。{% endblock %}
+{% block workspace_body %}
+{% if message %}<div class="alert alert-success" role="status">{{ message }}</div>{% endif %}
+{% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
 {% if refreshed == 'ok' %}
-<div class="alert alert-success">
-  ✅ 已拉取最新汇率{% if fx_latest_date %}（最新价格日期 {{ fx_latest_date }}）{% endif %}。
-</div>
+<div class="alert alert-success" role="status">已拉取最新汇率{% if fx_latest_date %}（最新价格日期 {{ fx_latest_date }}）{% endif %}。历史账单是否补齐，请回原账单核对。</div>
 {% elif refreshed == 'fail' %}
-<div class="alert alert-danger">
-  ⚠️ 拉取失败，已保留上一次的汇率。原因见下方「最近错误」。
-</div>
+<div class="alert alert-danger" role="alert">拉取失败，已保留上一次的汇率。原因见下方「最近错误」。</div>
 {% endif %}
-
-<div class="card">
-  <h2>同步状态</h2>
-  <div class="kv-grid">
-    <span class="kv-key">数据源</span>
-    <span class="kv-val">
-      欧洲央行参考汇率{% if fx_source == 'ecb' %}（ECB 直连）{% else %}（经 Frankfurter 镜像，国内可达、免 key）{% endif %}
-    </span>
-    <span class="kv-key">自动同步配置</span>
-    <span class="kv-val">
-      {% if fx_auto_enabled %}
-      <span class="badge badge-ok">开</span> 每日 {{ fx_sync_times }}（{{ fx_sync_timezone }}）
-      {% else %}
-      <span class="badge badge-warn">关</span>
-      {% endif %}
-    </span>
-    <span class="kv-key">任务运行</span>
-    <span class="kv-val" data-testid="fx-scheduler-state">
-      {% if not fx_auto_enabled %}
-      <span class="badge badge-off">自动同步已关闭</span> 可手动拉取
-      {% elif fx_scheduler_config_error %}
-      <span class="badge badge-err">报价计划配置无效</span> 请在上方修正时间和时区后保存。
-      {% if fx_scheduler_running %}待补汇率的账单仍会继续处理。{% endif %}
-      {% elif fx_scheduler_running %}
-      <span class="badge badge-ok">运行中</span> 等待计划时间或正在同步
-      {% elif fx_auto_enabled %}
-      <span class="badge badge-err">任务未运行</span> 请通过桌面管理器查看后端状态；仍可尝试手动拉取。
-      {% else %}
-      <span class="badge badge-warn">未启用</span> 可手动拉取
-      {% endif %}
-    </span>
-    <span class="kv-key">本次启动后</span>
-    <span class="kv-val">最近成功 {{ fx_last_success_at | owner_datetime }} · 成功 {{ fx_success_count }} 次 / 失败 {{ fx_failed_count }} 次</span>
-    {% if fx_last_error %}
-    <span class="kv-key">最近错误</span>
-    <span class="kv-val"><span class="badge badge-err">!</span> {{ fx_last_error }}</span>
-    {% endif %}
-  </div>
-  <form method="post" action="/owner/fx/refresh" class="form-row" data-show-loading="正在拉取最新汇率，请稍候…">
-    <button type="submit" class="btn btn-primary">立即拉取一次</button>
+<div class="workspace-columns">
+  <form method="post" action="/owner/fx/settings" class="workspace-form">
+    <label class="workspace-switch" for="fx_auto_enabled">
+      <span><strong>每天更新参考汇率</strong><small>关闭后仍可手动同步</small></span>
+      <input id="fx_auto_enabled" name="auto_enabled" type="checkbox" role="switch" {% if fx_form.auto_enabled %}checked{% endif %}>
+    </label>
+    <label class="workspace-field" for="fx_source">
+      <span>汇率来源</span>
+      <select id="fx_source" name="source">
+        <option value="frankfurter" {% if fx_form.source == 'frankfurter' %}selected{% endif %}>Frankfurter（欧洲央行参考汇率镜像）</option>
+        <option value="ecb" {% if fx_form.source == 'ecb' %}selected{% endif %}>欧洲央行直连</option>
+      </select>
+    </label>
+    <label class="workspace-field" for="fx_sync_times">
+      <span>每日时间</span>
+      <input id="fx_sync_times" name="sync_times" value="{{ fx_form.sync_times }}" maxlength="128" required aria-describedby="fx-times-note">
+      <span class="workspace-note" id="fx-times-note">例如 09:10,23:10；最多 6 个时间，用逗号分隔。</span>
+    </label>
+    <label class="workspace-field" for="fx_timezone">
+      <span>计划所在时区</span>
+      <input id="fx_timezone" name="timezone" value="{{ fx_form.timezone }}" maxlength="64" list="fx_timezones" required>
+      <datalist id="fx_timezones"><option value="Asia/Shanghai"><option value="Asia/Hong_Kong"><option value="Asia/Tokyo"><option value="UTC"></datalist>
+    </label>
+    <p class="workspace-note">后台空闲时在 30 秒内采用新计划，进行中的任务完成后切换。已有汇率和历史账单不会被清除或重新计算。</p>
+    <div class="workspace-save"><button type="submit" class="btn btn-primary">保存同步设置 {{ icon('arrow-right') }}</button></div>
   </form>
-  {% if fx_scheduler_running and not fx_scheduler_config_error and fx_last_error %}
-  <p class="text-meta">自动任务会在后续计划时间继续尝试，也可现在手动拉取。</p>
-  {% endif %}
-  <p class="text-meta mt-3">
-    汇率取欧央行每日参考中间价（经 Frankfurter 转发）。最新同步不代表历史账单已补齐。按账单日期获取时，会核实该日期可用的报价；周末 / 节假日可能使用较早公布的参考价，账单保留实际参考日期。
-  </p>
-</div>
 
-<div class="card">
-  <h2>最新汇率（折算到 {{ home_currency_code }}）</h2>
-  {% if fx_rows %}
-  <table>
-    <thead>
-      <tr>
-        <th class="nowrap">币种</th>
-        <th class="num">1 外币 = ? {{ home_currency_code }}</th>
-        <th class="nowrap">价格日期</th>
-        <th class="nowrap">来源</th>
-        <th class="nowrap">拉取时间</th>
-      </tr>
-    </thead>
-    <tbody>
-    {% for row in fx_rows %}
-      <tr>
-        <td class="nowrap">{{ row.currency }}</td>
-        <td class="num">{{ row.rate }}</td>
-        <td class="nowrap">{{ row.rate_date }}</td>
-        <td class="nowrap">{{ row.source }}</td>
-        <td class="nowrap">{{ row.fetched_at | owner_datetime }}</td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  {% else %}
-  <p class="text-meta">还没有任何汇率记录。点击上方「立即拉取一次」获取。</p>
-  {% endif %}
+  <section class="workspace-section" aria-labelledby="fx-recent-heading">
+    <h2 id="fx-recent-heading">最近运行</h2>
+    <p class="workspace-note" data-testid="fx-scheduler-state">
+      {% if not fx_auto_enabled %}
+        <span class="badge badge-off">自动同步已关闭</span> 可手动拉取
+      {% elif fx_scheduler_config_error %}
+        <span class="badge badge-err">报价计划配置无效</span> 请修正时间和时区后保存。
+        {% if fx_scheduler_running %}待补汇率的账单仍会继续处理。{% endif %}
+      {% elif fx_scheduler_running %}
+        <span class="badge badge-ok">运行中</span> 等待计划时间或正在同步
+      {% else %}
+        <span class="badge badge-err">任务未运行</span> 请通过桌面管理器查看后端状态；仍可尝试手动拉取。
+      {% endif %}
+    </p>
+    {% if fx_last_error %}<p class="workspace-note"><strong>最近错误：</strong>{{ fx_last_error }}</p>{% endif %}
+    <details class="workspace-disclosure workspace-task-group" id="fx-history"{% if refreshed %} open{% endif %}>
+      <summary>
+        <span class="workspace-task__icon workspace-tone-green">{{ icon('history') }}</span>
+        <span class="workspace-task__text"><strong>同步状态与汇率记录</strong><span>查看实际执行结果</span></span>{{ icon('chevron-right') }}
+      </summary>
+      <div class="workspace-disclosure__body">
+        <dl class="workspace-facts">
+          <div><dt>数据源</dt><dd>欧洲央行参考汇率{% if fx_source == 'ecb' %}（ECB 直连）{% else %}（经 Frankfurter 镜像）{% endif %}</dd></div>
+          <div><dt>已保存的计划</dt><dd>{% if fx_auto_enabled %}每日 {{ fx_sync_times }}（{{ fx_sync_timezone }}）{% else %}自动同步已关闭{% endif %}</dd></div>
+          <div><dt>本次启动后最近成功</dt><dd>{{ fx_last_success_at|owner_datetime }}</dd></div>
+          <div><dt>本次启动后运行次数</dt><dd>成功 {{ fx_success_count }} 次 / 失败 {{ fx_failed_count }} 次</dd></div>
+        </dl>
+        <h2>最新汇率（折算到 {{ home_currency_code }}）</h2>
+        {% if fx_rows %}
+        <div class="table-scroll" role="region" tabindex="0" aria-label="最新汇率，可横向滚动">
+          <table>
+            <thead><tr><th>币种</th><th class="num">1 外币 = ? {{ home_currency_code }}</th><th>价格日期</th><th>来源</th><th>拉取时间</th></tr></thead>
+            <tbody>{% for row in fx_rows %}
+              <tr><td>{{ row.currency }}</td><td class="num">{{ row.rate }}</td><td>{{ row.rate_date }}</td><td>{{ row.source }}</td><td>{{ row.fetched_at|owner_datetime }}</td></tr>
+            {% endfor %}</tbody>
+          </table>
+        </div>
+        {% else %}<p class="workspace-note">还没有任何汇率记录。点击「立即拉取一次」获取。</p>{% endif %}
+        <p class="workspace-note">最新同步不代表历史账单已补齐。按账单日期获取时，会核实该日期可用的报价；周末 / 节假日可能使用较早公布的参考价，账单保留实际参考日期。</p>
+      </div>
+    </details>
+    <form method="post" action="/owner/fx/refresh" data-show-loading="正在拉取最新汇率，请稍候…">
+      <button type="submit" class="workspace-task workspace-check-action workspace-text-action"><span class="workspace-task__text"><strong>立即拉取一次</strong><span>使用已保存的来源，当前表单不会被保存</span></span>{{ icon('arrow-right') }}</button>
+    </form>
+    {% if fx_scheduler_running and not fx_scheduler_config_error and fx_last_error %}
+    <p class="workspace-note">自动任务会在后续计划时间继续尝试，也可现在手动拉取。</p>
+    {% endif %}
+    <p class="workspace-note">历史账单请在待确认中按账单日期补齐汇率，取得结果后仍需核对并确认。</p>
+  </section>
 </div>
 {% endblock %}
