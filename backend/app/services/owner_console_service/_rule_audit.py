@@ -1,13 +1,13 @@
 """Owner Console rule-application audit view-models.
 
 Read-only listing of recent rule application batches. Reuses the
-existing ``classify_service.list_rule_applications`` rather than
+existing rule application history queries rather than
 duplicating its query.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from sqlalchemy.orm import Session
 
@@ -28,6 +28,7 @@ class RuleApplicationAuditRow:
     changed_count: int
     created_at: object
     rolled_back_at: object | None
+    change_counts: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass
@@ -50,7 +51,7 @@ def get_rule_application_audit(
     application list service and only allows ledgers the local owner account
     can already manage from the console.
     """
-    from app.services.classify_service import list_rule_applications
+    from app.services.rule_application_service import list_rule_applications, rule_application_change_counts
 
     choices = list_console_ledger_choices(db)
     if not choices:
@@ -70,6 +71,7 @@ def get_rule_application_audit(
         selected = choices[0]
 
     batches = list_rule_applications(db, tenant_id=selected.ledger_id, limit=limit)
+    outcomes = rule_application_change_counts(db, tenant_id=selected.ledger_id, batch_ids=[batch.id for batch in batches])
     rows = [
         RuleApplicationAuditRow(
             ledger_id=selected.ledger_id,
@@ -80,6 +82,7 @@ def get_rule_application_audit(
             changed_count=batch.changed_count,
             created_at=batch.created_at,
             rolled_back_at=batch.rolled_back_at,
+            change_counts=outcomes.get(batch.id, {}),
         )
         for batch in batches
     ]

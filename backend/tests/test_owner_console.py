@@ -159,10 +159,11 @@ def test_owner_index_local_returns_200(local_client: TestClient) -> None:
         assert legacy_label not in body
 
 
-def test_owner_index_remote_returns_403(client: TestClient) -> None:
+@pytest.mark.parametrize("path", ["/owner", "/owner/diagnostics?download=true"])
+def test_owner_index_remote_returns_403(client: TestClient, path: str) -> None:
     # Default TestClient uses host='testclient', which is NOT in the loopback
     # allowlist, so the dependency must reject it.
-    resp = client.get("/owner")
+    resp = client.get(path)
     assert resp.status_code == 403
 
 
@@ -908,10 +909,32 @@ def test_owner_upload_links_expiring_soon_badge(local_client: TestClient) -> Non
     assert "天后过期" not in expired.text
 
 
-def test_owner_diagnostics_page_opens(local_client: TestClient) -> None:
+def test_owner_diagnostics_page_opens(local_client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.routes.owner_console import _diagnostics
+
+    cfg = SimpleNamespace(ocr_provider="empty", ocr_auto_run=True, enable_http_bootstrap=False,
+        max_upload_size_mb=12, api_key="PRIVATE_DIAGNOSTIC_KEY", upload_dir="PRIVATE_HOST_PATH")
+    monkeypatch.setattr(_diagnostics, "get_settings", lambda: cfg)
     resp = local_client.get("/owner/diagnostics")
     assert resp.status_code == 200
     assert "诊断" in resp.text
+    assert "本次读取完成" in resp.text
+    assert "目录存在不代表可写或原件完整" in resp.text
+    assert "配置已保存不代表识别已成功" in resp.text
+    download = local_client.get("/owner/diagnostics?download=true")
+    assert download.status_code == 200
+    assert download.headers["content-type"].startswith("application/json")
+    assert download.headers["content-disposition"].startswith("attachment;")
+    assert download.headers["cache-control"] == "no-store"
+    data = download.json()
+    assert data["database_reads"] == "completed"
+    assert data["recognition_configuration"] == {"provider": "empty", "automatic": True, "max_upload_size_mb": 12}
+    assert "PRIVATE_DIAGNOSTIC_KEY" not in download.text
+    assert "PRIVATE_HOST_PATH" not in download.text
+    assert "account_name" not in data
+    assert "ledger_name" not in data
+    cfg.ocr_auto_run = False
+    assert local_client.get("/owner/diagnostics?download=true").json()["recognition_configuration"]["automatic"] is False
 
 
 def test_owner_settings_page_opens(local_client: TestClient) -> None:

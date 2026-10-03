@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
@@ -30,6 +31,24 @@ def list_rule_applications(
             .limit(capped)
         )
     )
+
+
+def rule_application_change_counts(
+    db: Session, *, tenant_id: str, batch_ids: list[int],
+) -> dict[int, dict[str, int]]:
+    """Read retained outcomes together; no inference about why a change was skipped."""
+    if not batch_ids:
+        return {}
+    rows = db.execute(
+        ledger_scoped_select(RuleApplicationChange, tenant_id)
+        .with_only_columns(RuleApplicationChange.batch_id, RuleApplicationChange.status, func.count())
+        .where(RuleApplicationChange.batch_id.in_(batch_ids))
+        .group_by(RuleApplicationChange.batch_id, RuleApplicationChange.status)
+    )
+    counts: dict[int, dict[str, int]] = {}
+    for batch_id, status, count in rows:
+        counts.setdefault(batch_id, {})[status] = count
+    return counts
 
 
 def rollback_rule_application(

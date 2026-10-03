@@ -270,3 +270,25 @@
 .workspace-maintenance .workspace-save { position: static; }
 .workspace-maintenance-warning { display: flex; align-items: flex-start; gap: 12px; padding: 20px; margin-bottom: 22px; border-radius: 20px; background: var(--workspace-apricot); font-size: 14px; }
 .workspace-maintenance-warning p { margin-top: 6px; color: var(--text-muted); }
+
+/* Diagnostics and retained rule-application records share the native disclosure layout. */
+.workspace-view-label { flex: none; font-size: 13px; white-space: nowrap; }
+.workspace-diagnostics .workspace-task-group:last-child, .workspace-rule-batch:last-of-type { border-bottom: 0; }
+.workspace-diagnostics .workspace-disclosure__body, .workspace-rule-batch .workspace-disclosure__body { padding: 0 0 20px; }
+.workspace-diagnostics > .workspace-section { margin-bottom: 14px; }
+.workspace-diagnostic-export { min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 16px; color: var(--brand-primary); font-size: 14px; font-weight: 600; }
+.workspace-guidance { display: flex; gap: 12px; margin-top: 32px; font-size: 14px; }
+.workspace-guidance > .workspace-icon { flex: 0 0 20px; color: var(--brand-primary); }
+.workspace-guidance p { margin: 8px 0; color: var(--text-muted); }
+.workspace-row-actions { display: flex; flex-wrap: wrap; gap: 8px 18px; }
+.workspace-row-actions a { min-height: 44px; display: inline-flex; align-items: center; }
+.workspace-ledger-filter { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin-bottom: 22px; }
+.workspace-ledger-filter > label { flex: 1 1 180px; min-width: 0; margin: 0; }
+.workspace-ledger-filter > button { margin: 0; min-height: 44px; }
+.workspace-empty { padding: 26px 0; }
+.workspace-empty h2 { font-size: 19px; margin: 18px 0 8px; }
+.workspace-empty p { color: var(--text-muted); }
+.workspace-diagnostics .workspace-task-group > summary, .workspace-rule-batch > summary { min-height: 72px; padding: 12px 0; }
+.workspace-diagnostics a, .workspace-rule-audit a { color: var(--brand-primary); text-underline-offset: 3px; }
+.workspace-diagnostic-export { text-decoration: none; }
+.workspace-diagnostic-export:hover { text-decoration: underline; }
