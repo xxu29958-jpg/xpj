@@ -44,7 +44,7 @@ enum class LedgerListLoadState {
 class LedgerSwitcherViewModel(
     private val repository: LedgerRepository,
 ) : ViewModel() {
-    private val binding = repository.currentBinding()
+    private var binding = repository.currentBinding()
     private val _uiState = MutableStateFlow(cachedInitialState(repository.cachedLedgers()))
     val uiState: StateFlow<LedgerSwitcherUiState> = _uiState.asStateFlow()
 
@@ -99,8 +99,9 @@ class LedgerSwitcherViewModel(
     fun switchTo(ledgerId: String, onSwitched: () -> Unit) {
         viewModelScope.launch {
             _uiState.update { it.copy(loading = true, message = null, messageTone = MessageTone.Neutral) }
-            repository.switchLedger(ledgerId)
+            repository.switchLedger(ledgerId, expectedBinding = binding)
                 .onSuccess { summary ->
+                    binding = repository.currentBinding()
                     _uiState.update {
                         it.copy(
                             loading = false,
