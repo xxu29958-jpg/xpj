@@ -9,7 +9,11 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import CategoryRule, Expense, LedgerMember, RuleApplicationBatch, RuleApplicationChange
-from app.services.rule_application_service import _try_apply_rule_category, _try_rollback_rule_change
+from app.services.rule_application_service import (
+    _try_apply_rule_category,
+    _try_rollback_rule_change,
+    rule_application_change_counts,
+)
 from app.services.time_service import now_utc
 
 
@@ -84,6 +88,8 @@ def test_rule_application_audit_and_rollback_integration(client: TestClient, *, 
         assert change.rule_id == rule_id
         assert change.before_category == "其他"
         assert change.after_category == "餐饮"
+        assert rule_application_change_counts(db, tenant_id="owner", batch_ids=[batch.id]) == {batch.id: {"applied": 1}}
+        assert rule_application_change_counts(db, tenant_id="tester_1", batch_ids=[batch.id]) == {}
 
     rollback = client.post(f"/api/rules/applications/{batch_id}/rollback", headers=identity.app_headers)
     assert rollback.status_code == 200
@@ -93,6 +99,7 @@ def test_rule_application_audit_and_rollback_integration(client: TestClient, *, 
         expense = db.scalar(select(Expense).where(Expense.id == pending_id))
         assert expense is not None
         assert expense.category == "其他"
+        assert rule_application_change_counts(db, tenant_id="owner", batch_ids=[batch.id]) == {batch.id: {"rolled_back": 1}}
 
     second = client.post(f"/api/rules/applications/{batch_id}/rollback", headers=identity.app_headers)
     assert second.status_code == 200
@@ -179,6 +186,11 @@ def test_rule_application_rollback_skips_after_manual_edit_even_when_category_ma
         assert expense is not None
         assert expense.category == "餐饮"
         assert expense.note == "用户后续手工编辑过备注"
+        from app.services.owner_console_service import get_rule_application_audit
+
+        audit = get_rule_application_audit(db, ledger_id="owner")
+        assert audit.rows[0].public_id == batch_id
+        assert audit.rows[0].change_counts == {"skipped": 1}
 
 
 def test_rule_application_cas_skips_stale_candidate_snapshot(client: TestClient, *, identity) -> None:

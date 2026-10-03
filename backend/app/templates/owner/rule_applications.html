@@ -1,74 +1,38 @@
-{% extends "base.html" %}
+{% extends "_workspace.html" %}
+{% from "_workspace_ui.html" import icon with context %}
 {% block title %}规则应用审计 — 小票夹{% endblock %}
-{% block content %}
-<h1>规则应用审计</h1>
-<details class="page-help">
-  <summary>这是什么</summary>
-  <p>只读的查看页：记录分类规则批量应用过哪些账单。想核对某次批量分类做了什么、或排查时进来看；这里只看不改，规则的新增和回滚在网页端规则页里做。</p>
-</details>
-
-<div class="alert alert-info">
-  本页只展示分类规则批量应用的最近记录，按账本隔离；规则编辑、应用和回滚仍在正常规则治理页面处理。
-</div>
-
-<div class="card">
-  <h2>选择账本</h2>
-  {% if not rule_audit.ledger_choices %}
-  <p class="meta">{{ owner_recovery_message }}</p>
-  {% else %}
-  <form method="get" action="/owner/rule-applications">
-    <label>账本：
-      <select name="ledger_id" class="inline-input">
-        {% for ledger in rule_audit.ledger_choices %}
-        <option value="{{ ledger.ledger_id }}" {% if ledger.ledger_id == rule_audit.selected_ledger_id %}selected{% endif %}>
-          {{ ledger.name }}{% if ledger.is_default %}（默认）{% endif %}
-        </option>
-        {% endfor %}
-      </select>
-    </label>
-    <button type="submit" class="btn btn-secondary ml-3">切换</button>
+{% block workspace_title %}规则应用记录{% endblock %}
+{% block workspace_description %}查看每批账单实际改了什么。{% endblock %}
+{% block workspace_body %}
+<div class="workspace-rule-audit">
+  {% if rule_audit.ledger_choices %}
+  <form method="get" action="/owner/rule-applications" class="workspace-ledger-filter">
+    <label class="workspace-field"><span>账本</span><select name="ledger_id">{% for ledger in rule_audit.ledger_choices %}<option value="{{ ledger.ledger_id }}" {% if ledger.ledger_id == rule_audit.selected_ledger_id %}selected{% endif %}>{{ ledger.name }}{% if ledger.is_default %}（默认）{% endif %}</option>{% endfor %}</select></label>
+    <button type="submit" class="btn btn-secondary">查看记录</button>
   </form>
-  {% endif %}
-</div>
-
-<div class="card">
-  <h2>最近批次{% if rule_audit.selected_ledger_name %} · {{ rule_audit.selected_ledger_name }}{% endif %}</h2>
-  {% if not rule_audit.rows %}
-  <p class="meta">当前账本暂无规则应用批次。</p>
-  {% else %}
-  <div class="table-scroll">
-  <table>
-    <thead>
-      <tr>
-        <th>创建时间</th>
-        <th>批次</th>
-        <th>状态</th>
-        <th class="text-end">扫描账单</th>
-        <th class="text-end">变更账单</th>
-        <th>回滚时间</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for batch in rule_audit.rows %}
-      <tr>
-        <td>{{ batch.created_at|owner_datetime }}</td>
-        <td><code>{{ batch.public_id }}</code></td>
-        <td>
-          {% if batch.status == 'rolled_back' %}<span class="status-chip status-muted">已回滚</span>
-          {% elif batch.status == 'rollback_partial' %}<span class="status-chip status-warning">部分回滚</span>
-          {% elif batch.status == 'rollback_skipped' %}<span class="status-chip status-muted">未回滚</span>
-          {% elif batch.status == 'applied_confirmed' %}<span class="status-chip status-success">已应用历史</span>
-          {% elif batch.status == 'applied' %}<span class="status-chip status-success">已应用待确认</span>
-          {% else %}<span class="status-chip status-muted">{{ batch.status }}</span>{% endif %}
-        </td>
-        <td class="text-end">{{ batch.pending_scanned }}</td>
-        <td class="text-end">{{ batch.changed_count }}</td>
-        <td>{{ batch.rolled_back_at|owner_datetime }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  </div>
-  {% endif %}
+  <section class="workspace-section" aria-label="{{ rule_audit.selected_ledger_name }}最近规则应用批次">
+    {% for batch in rule_audit.rows %}
+    {% set reverted = batch.rolled_back_at is not none %}
+    {% set retained = batch.change_counts.values()|sum %}
+    <details class="workspace-disclosure workspace-task-group workspace-rule-batch">
+      <summary><span class="workspace-task__icon workspace-tone-{{ 'apricot' if reverted else 'green' }}">{{ icon('rotate-ccw' if reverted else 'wand-sparkles') }}</span><span class="workspace-task__text"><strong>{{ ((batch.rolled_back_at if reverted else batch.created_at)|owner_datetime)[:10] }} · {{ '回退记录' if reverted else '分类整理' }}</strong><span>{% if reverted %}{% if retained < batch.changed_count %}现存明细 · {% endif %}已回退 {{ batch.change_counts.get('rolled_back', 0) }} · 已跳过 {{ batch.change_counts.get('skipped', 0) }}{% else %}已改 {{ batch.changed_count }} · 未变更 {{ batch.pending_scanned - batch.changed_count }}{% endif %}</span></span><span class="workspace-view-label">查看</span>{{ icon('chevron-right') }}</summary>
+      <div class="workspace-disclosure__body">
+        <dl class="workspace-facts">
+          <div><dt>应用时间</dt><dd>{{ batch.created_at|owner_datetime }}</dd></div>
+          <div><dt>批次状态</dt><dd>{% if batch.status == 'rolled_back' %}已回滚{% elif batch.status == 'rollback_partial' %}部分回滚{% elif batch.status == 'rollback_skipped' %}未回滚{% elif batch.status == 'applied_confirmed' %}已应用历史{% elif batch.status == 'applied' %}已应用待确认{% else %}{{ batch.status }}{% endif %}</dd></div>
+          <div><dt>当时扫描</dt><dd>{{ batch.pending_scanned }} 笔</dd></div>
+          <div><dt>当时变更</dt><dd>{{ batch.changed_count }} 笔</dd></div>
+          {% if reverted %}<div><dt>最近回退时间</dt><dd>{{ batch.rolled_back_at|owner_datetime }}</dd></div><div><dt>保留的回退结果</dt><dd>已回退 {{ batch.change_counts.get('rolled_back', 0) }} 笔 · 已跳过 {{ batch.change_counts.get('skipped', 0) }} 笔 · 未回退 {{ batch.change_counts.get('applied', 0) }} 笔</dd></div>{% endif %}
+          <div><dt>批次编号</dt><dd><code>{{ batch.public_id }}</code></dd></div>
+        </dl>
+        {% if retained < batch.changed_count %}<p class="workspace-note">当前保留 {{ retained }} 笔变更明细，少于当时变更的 {{ batch.changed_count }} 笔。未保留明细的结果无法据此判断。</p>{% endif %}
+        <p class="workspace-note">“未变更”只表示当时没有修改，不能据此判断失败原因。回退跳过可能因为记录已变更、已不可用或条件不再满足，不能全部视为人工修改。</p>
+      </div>
+    </details>
+    {% else %}<div class="workspace-empty"><span class="workspace-task__icon workspace-tone-green">{{ icon('history') }}</span><h2>这里还没有应用记录</h2><p>在此账本应用分类规则后，可回来核对每批结果。</p></div>{% endfor %}
+    {% if rule_audit.rows %}<p class="workspace-note">当前账本最近 {{ rule_audit.rows|length }} 个批次，最多显示 20 个。</p>{% endif %}
+  </section>
+  {% else %}<div class="workspace-empty"><h2>还没有可查看的账本</h2><p>{{ owner_recovery_message }}</p><a href="/owner/ledgers">查看账本</a></div>{% endif %}
+  <div class="workspace-guidance">{{ icon('info') }}<div><strong>跳过的不会当失败重放</strong><p>后续人工更正受到保护。此处用于核对记录，编辑、应用和回退请在网页端的对应账本中操作。</p><a href="/web/rules" target="_blank" rel="noopener">打开网页端分类规则</a></div></div>
 </div>
 {% endblock %}
