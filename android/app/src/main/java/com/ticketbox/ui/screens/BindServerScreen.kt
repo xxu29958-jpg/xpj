@@ -1,13 +1,23 @@
 package com.ticketbox.ui.screens
 
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -15,9 +25,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import com.ticketbox.R
@@ -31,12 +45,14 @@ import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
+import com.ticketbox.ui.components.AppTextInputDecorations
 import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.components.PageRole
 import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.ScanQrButton
 import com.ticketbox.ui.design.AppAdaptiveContentWidth
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.navigation.parsePairingQrLink
 
 /**
@@ -65,10 +81,10 @@ fun BindServerScreen(
     serverUrlEntry: ServerUrlEntryConfig,
     actions: BindServerActions,
 ) {
-    var serverUrl by remember(serverUrlEntry.defaultUrl) { mutableStateOf(serverUrlEntry.defaultUrl) }
-    var pairingCode by remember { mutableStateOf("") }
+    var serverUrl by rememberSaveable(serverUrlEntry.defaultUrl) { mutableStateOf(serverUrlEntry.defaultUrl) }
+    var pairingCode by rememberSaveable { mutableStateOf("") }
     var confirmAbandonPending by remember { mutableStateOf(false) }
-    var scannedOrigin by remember { mutableStateOf<String?>(null) }
+    var scannedOrigin by rememberSaveable { mutableStateOf<String?>(null) }
     var scanInvalid by remember { mutableStateOf(false) }
     val canBind = !loading && serverUrl.isNotBlank() && pairingCode.length == BindingCodeLength
     val submitBind = {
@@ -91,6 +107,7 @@ fun BindServerScreen(
             subtitle = stringResource(R.string.bind_server_header_subtitle),
         )
         AppStatusBanner(message = message, tone = MessageTone.Danger)
+        BindingIntroduction()
         ScanQrButton(
             label = stringResource(R.string.qr_scan_pairing), enabled = !loading && !hasPendingEnrollment,
             onResult = { raw ->
@@ -121,13 +138,19 @@ fun BindServerScreen(
                     value = serverUrl,
                     placeholder = stringResource(R.string.bind_server_field_url_placeholder),
                     enabled = !loading,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Next),
                 ),
                 actions = AppTextInputActions(onValueChange = {
                     serverUrl = it
                     scannedOrigin = null
                 }),
+                decorations = AppTextInputDecorations(
+                    trailingContent = { Icon(Icons.Filled.Link, contentDescription = null) },
+                ),
             )
+        } else {
+            Text(stringResource(R.string.bind_server_configured_url, serverUrl),
+                style = MaterialTheme.typography.bodyMedium)
         }
         AppTextInput(
             state = AppTextInputState(
@@ -144,7 +167,19 @@ fun BindServerScreen(
                 onValueChange = { pairingCode = it.filter(Char::isDigit).take(BindingCodeLength) },
                 keyboardActions = KeyboardActions(onDone = { submitBind() }),
             ),
+            decorations = AppTextInputDecorations(
+                trailingContent = { Icon(Icons.Filled.VpnKey, contentDescription = null) },
+            ),
         )
+        Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
+            Icon(Icons.Filled.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+                Text(stringResource(R.string.bind_server_continuity_title),
+                    style = MaterialTheme.typography.titleSmall)
+                Text(stringResource(R.string.bind_server_continuity_body),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
         Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
             AppPrimaryButton(
                 text = if (loading) {
@@ -152,7 +187,7 @@ fun BindServerScreen(
                 } else {
                     stringResource(R.string.bind_server_button_bind)
                 },
-                icon = Icons.Default.CheckCircle,
+                icon = Icons.AutoMirrored.Filled.ArrowForward,
                 enabled = canBind,
                 modifier = Modifier.fillMaxWidth(),
                 onClick = submitBind,
@@ -202,3 +237,23 @@ fun BindServerScreen(
 }
 
 private const val BindingCodeLength = 8
+
+@Composable
+private fun BindingIntroduction() {
+    Row(
+        modifier = Modifier.fillMaxWidth()
+            .background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(24.dp))
+            .padding(AppSpacing.cardPadding),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+            Text(stringResource(R.string.bind_server_intro_title),
+                style = MaterialTheme.typography.titleLarge, fontWeight = AppTextHierarchy.heading.weight)
+            Text(stringResource(R.string.bind_server_intro_body),
+                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
+        }
+        Image(painterResource(R.drawable.receipt_tray), contentDescription = null,
+            modifier = Modifier.size(width = 108.dp, height = 110.dp))
+    }
+}

@@ -92,16 +92,16 @@
     <string name="bill_split_status_expired">已过期</string>
 
     <!-- BindServerScreen：绑定私人账本 -->
-    <string name="bind_server_header_title">绑定私人账本</string>
-    <string name="bind_server_header_subtitle">完成绑定后，即可在小票夹查看账本。</string>
+    <string name="bind_server_header_title">连接私人账本</string>
+    <string name="bind_server_header_subtitle">使用账本拥有者提供的地址和码。</string>
     <string name="bind_server_hint_with_url">服务拥有者会提供账本地址和绑定码。</string>
     <string name="bind_server_hint_no_url">服务拥有者已配置账本地址，请输入绑定码。</string>
     <string name="bind_server_field_url_label">账本地址</string>
     <string name="bind_server_field_url_placeholder">向服务拥有者获取</string>
     <string name="bind_server_field_code_label">绑定码</string>
     <string name="bind_server_field_code_placeholder">8 位数字</string>
-    <string name="bind_server_button_binding">正在绑定</string>
-    <string name="bind_server_button_bind">绑定账本</string>
+    <string name="bind_server_button_binding">正在连接</string>
+    <string name="bind_server_button_bind">连接账本</string>
     <string name="bind_server_button_join_with_invitation">我有家庭邀请</string>
     <string name="bind_server_button_abandon_pending">放弃未完成的绑定</string>
     <string name="bind_server_abandon_pending_title">放弃上一次绑定？</string>
@@ -195,4 +195,9 @@
     <string name="bill_split_open_received">查看入账记录</string>
     <string name="bill_split_open_source">查看原账单</string>
     <string name="bill_split_open_failed">暂时无法打开这笔记录，请重试。</string>
+    <string name="bind_server_intro_title">把账本带在身边</string>
+    <string name="bind_server_intro_body">连接后，继续自己的记录。</string>
+    <string name="bind_server_configured_url">账本地址：%1$s</string>
+    <string name="bind_server_continuity_title">中途离开也能继续</string>
+    <string name="bind_server_continuity_body">切换家庭邀请或旋转屏幕后保留输入。未完成的绑定仍可继续；只有不再需要时才单独确认放弃。</string>
 </resources>
