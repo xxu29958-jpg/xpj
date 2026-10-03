@@ -389,7 +389,7 @@ class LedgerRepository(
                 request = PairingCodeCreateRequestDto(
                     recoveryDevicePublicId = recoveryDevice?.publicId,
                 ),
-            ).toDevicePairingCode(recoveryDevice?.deviceName, bound.snapshot.serverUrl)
+            ).toDevicePairingCode(recoveryDevice?.deviceName, bound.logicalBinding.serverUrl)
         }
     }
 
