@@ -14,7 +14,7 @@ from app.database import SessionLocal
 from app.main import app
 from app.models import Account, AuthToken, Device, LedgerMember, PairingCode, UploadLink
 from app.routes.web_auth import SESSION_COOKIE_NAME
-from app.services.identity_service import hash_secret
+from app.services.identity_service import hash_pairing_code, hash_secret
 from app.services.time_service import now_utc
 from tests._web_public_session_support import PUBLIC_HOST, mint_session, public_client
 
@@ -212,7 +212,7 @@ def test_new_device_qr_uses_one_time_result_and_existing_pairing_authority(brows
             assert paired_account == account_id and paired_device != original_device_id
         with SessionLocal() as db:
             assert db.get(Device, original_device_id).revoked_at is None
-            assert db.scalar(select(PairingCode).where(PairingCode.code_hash == hash_secret(code))).used_at is not None
+            assert db.scalar(select(PairingCode).where(PairingCode.code_hash == hash_pairing_code(code))).used_at is not None
     finally:
         get_settings.cache_clear()
 
