@@ -127,8 +127,11 @@ class JoinFamilyLedgerViewModel(
         }
         val inviteToken = parseFamilyInvitationToken(sharedText)
         if (inviteToken == null) {
-            reset(_uiState.value.serverUrl)
-            _uiState.update { it.copy(error = UiText.res(R.string.join_family_ledger_invalid_shared_text)) }
+            invalidatePreviewRequest()
+            _uiState.update {
+                it.copy(preview = null, target = null, previewing = false, success = null,
+                    error = UiText.res(R.string.join_family_ledger_invalid_shared_text))
+            }
             return
         }
         invalidatePreviewRequest(clearOwnership = true)
