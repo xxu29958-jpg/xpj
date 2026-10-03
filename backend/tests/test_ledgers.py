@@ -402,7 +402,7 @@ def test_owner_ledgers_lists_and_creates(local_client: TestClient) -> None:
         created_ledger = db.scalars(
             select(Ledger).where(Ledger.name == "家庭账本")
         ).one()
-        created_ledger_id = created_ledger.id
+        created_ledger_id = created_ledger.ledger_id
     assert f'action="/owner/ledgers/{created_ledger_id}/archive"' in after.text
     archive = local_client.post(f"/owner/ledgers/{created_ledger_id}/archive")
     assert archive.status_code in (200, 303)
