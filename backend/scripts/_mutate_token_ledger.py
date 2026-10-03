@@ -227,6 +227,11 @@ ALLOWLIST: dict[str, Exempt] = {
     # assignment retries are harmless. No financial row/version is involved.
     "POST /api/settings/account": Exempt("admin_single_writer", "identity", ("accounts",)),
     "POST /web/settings/account/name": Exempt("admin_single_writer", "identity", ("accounts",)),
+    # Ledger labels share one Owner command, credential/ledger locks and
+    # expected_name CAS. Replays of the accepted label add no second audit.
+    "POST /api/ledgers/{ledger_id}/name": Exempt("admin_single_writer", "identity", ("ledgers", "ledger_audit_logs")),
+    "POST /web/family/name": Exempt("admin_single_writer", "identity", ("ledgers", "ledger_audit_logs")),
+    "POST /owner/ledgers/{ledger_id}/name": Exempt("admin_single_writer", "owner_console", ("ledgers", "ledger_audit_logs")),
     "POST /web/settings/devices/{public_id}/rename": Exempt("admin_single_writer", "identity", ("devices",)),
     "POST /web/settings/devices/{public_id}/revoke": Exempt("terminal_flag_flip", "identity", _DEVICE_REVOKE, "medium"),
     "POST /web/settings/devices/{public_id}/delete": Exempt("terminal_flag_flip", "identity", _DEVICE_CLEANUP, "medium"),

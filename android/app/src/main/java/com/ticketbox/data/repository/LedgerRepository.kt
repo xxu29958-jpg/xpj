@@ -7,6 +7,7 @@ import com.ticketbox.data.local.ExpenseDao
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.dto.DeviceRenameRequestDto
 import com.ticketbox.data.remote.dto.LedgerCreateRequestDto
+import com.ticketbox.data.remote.dto.LedgerRenameRequestDto
 import com.ticketbox.data.remote.dto.LedgerDto
 import com.ticketbox.data.remote.dto.ErrorDto
 import com.ticketbox.data.remote.dto.MyDeviceDto
@@ -103,15 +104,39 @@ class LedgerRepository(
         },
     )
 
-    suspend fun refreshLedgers(): Result<List<LedgerSummary>> = wrap {
-        val bound = requestGuard.bind()
+    fun currentBinding(): LogicalSessionBinding? = requestGuard.captureLogicalBinding()
+
+    suspend fun refreshLedgers(expectedBinding: LogicalSessionBinding? = null): Result<List<LedgerSummary>> = wrap {
+        val bound = if (expectedBinding == null) requestGuard.bind() else requestGuard.bindExact(expectedBinding)
         val response = bound.call { it.listLedgers() }
         val summaries = response.ledgers.map { it.toSummary() }
         bound.requireStillActive()
         settingsStore.saveAvailableLedgersJson(ledgerListAdapter.toJson(response.ledgers))
         summaries.firstOrNull { it.ledgerId == bound.ledgerId }
-            ?.let { persistCurrentRoleIfChanged(it.role, expectedLedgerId = bound.ledgerId) }
+            ?.let { persistCurrentLedgerProjection(it.role, bound, name = it.name) }
         summaries
+    }
+
+    suspend fun renameLedger(binding: LogicalSessionBinding, target: LedgerSummary, name: String): Result<LedgerSummary> = wrap {
+        val clean = name.trim()
+        require(clean.isNotEmpty() && clean.length <= LEDGER_NAME_MAX_LEN) { "账本名称需在 1–60 个字符之间。" }
+        val snapshot = sessionCoordinator.currentSnapshot()
+        val bound = requestGuard.bindExact(binding)
+        val dto = bound.call { it.renameLedger(target.ledgerId, LedgerRenameRequestDto(clean, target.name)) }
+        require(dto.ledgerId == target.ledgerId) { "账本已变化，请重新打开账本管理。" }
+        if (snapshot.activeLedgerId == dto.ledgerId) {
+            val applied = sessionCoordinator.applyTransitionIfCurrent(snapshot) { current ->
+                LedgerSessionTransition(LocalSessionChange.RefreshProjection, current.copy(ledgerName = dto.name))
+            }
+            if (!applied) throw RepositoryException(LedgerRequestGuard.LEDGER_CHANGED_MESSAGE)
+        }
+        bound.requireStillActive()
+        // Reuse the existing list cache; do not restore roles from the rename response.
+        val rows = ledgerListAdapter.fromJson(settingsStore.availableLedgersJson() ?: "[]").orEmpty()
+        settingsStore.saveAvailableLedgersJson(ledgerListAdapter.toJson(rows.map {
+            if (it.ledgerId == dto.ledgerId) it.copy(name = dto.name) else it
+        }))
+        dto.toSummary()
     }
 
     fun cachedLedgers(): List<LedgerSummary> {
@@ -205,10 +230,11 @@ class LedgerRepository(
         val targetLedgerId = requireNotNull(ledgerId?.takeIf { it.isNotBlank() }) {
             "当前账本还没有准备好。"
         }
-        val members = requestGuard.guardedCall(expectedLedgerId = targetLedgerId) { api ->
+        val bound = requestGuard.bind(expectedLedgerId = targetLedgerId)
+        val members = bound.call { api ->
             api.ledgerMembers(targetLedgerId).members.map { it.toFamilyMember() }
         }
-        members.firstOrNull { it.isSelf }?.let { persistSelfRoleIfChanged(it, expectedLedgerId = targetLedgerId) }
+        members.firstOrNull { it.isSelf }?.let { persistSelfRoleIfChanged(it, bound) }
         members
     }
 
@@ -280,12 +306,13 @@ class LedgerRepository(
         ledgerId: String? = activeLedgerId(),
     ): Result<OwnerTransferResult> = wrap {
         val targetLedgerId = requireActiveLedger(ledgerId)
-        val response = requestGuard.guardedCall(expectedLedgerId = targetLedgerId) { api ->
+        val bound = requestGuard.bind(expectedLedgerId = targetLedgerId)
+        val response = bound.call { api ->
             api.transferLedgerOwner(targetLedgerId, memberId)
         }
         val result = response.toOwnerTransferResult()
-        persistSelfRoleIfChanged(result.previousOwner, expectedLedgerId = targetLedgerId)
-        persistSelfRoleIfChanged(result.newOwner, expectedLedgerId = targetLedgerId)
+        persistSelfRoleIfChanged(result.previousOwner, bound)
+        persistSelfRoleIfChanged(result.newOwner, bound)
         runCatching { refreshLedgers() }
         result
     }
@@ -514,7 +541,7 @@ class LedgerRepository(
             val message = parsed
                 ?.let { backendErrorUserMessage(it.error, it.message.orEmpty()) }
                 ?: defaultHttpMessage(error.code())
-            Result.failure(RepositoryException(message))
+            Result.failure(RepositoryException(message, errorCode = parsed?.error, httpStatusCode = error.code()))
         } catch (error: IOException) {
             Result.failure(RepositoryException("网络连接失败，请检查电脑端服务。"))
         } catch (error: RepositoryException) {
@@ -539,30 +566,24 @@ class LedgerRepository(
         }
     }
 
-    private suspend fun persistSelfRoleIfChanged(member: FamilyMember, expectedLedgerId: String) {
+    private suspend fun persistSelfRoleIfChanged(member: FamilyMember, bound: BoundLedgerRequest) {
         if (!member.isSelf) return
-        persistCurrentRoleIfChanged(member.role, expectedLedgerId)
+        persistCurrentLedgerProjection(member.role, bound)
     }
 
-    private suspend fun persistCurrentRoleIfChanged(role: String, expectedLedgerId: String) {
+    private suspend fun persistCurrentLedgerProjection(role: String, bound: BoundLedgerRequest, name: String? = null) {
+        val snapshot = sessionCoordinator.currentSnapshot()
+        bound.requireStillActive()
         val session = apiProvider.currentSession() ?: return
-        if (session.identity.ledgerId != expectedLedgerId) return
-        if (role == session.identity.role) return
-        sessionCoordinator.applyTransition(
+        if (snapshot.activeLedgerId != bound.ledgerId) return
+        if (role == session.identity.role && (name == null || name == session.identity.ledgerName)) return
+        val applied = sessionCoordinator.applyTransitionIfCurrent(snapshot) { current ->
             LedgerSessionTransition(
                 change = LocalSessionChange.RefreshProjection,
-                identity = LedgerSessionIdentity(
-                    accountPublicId = session.identity.accountPublicId,
-                    devicePublicId = session.identity.devicePublicId,
-                    accountName = session.identity.accountName,
-                    ledgerId = session.identity.ledgerId,
-                    ledgerName = session.identity.ledgerName,
-                    deviceName = session.identity.deviceName,
-                    role = role,
-                    boundAt = session.identity.boundAt,
-                ),
-            ),
-        )
+                identity = current.copy(role = role, ledgerName = name ?: current.ledgerName),
+            )
+        }
+        if (!applied) throw RepositoryException(LedgerRequestGuard.LEDGER_CHANGED_MESSAGE)
     }
 
     private companion object {

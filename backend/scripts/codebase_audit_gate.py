@@ -140,8 +140,8 @@ def evaluate_debt(counts: DebtCounts) -> int:
 # counter is and how it's computed.
 STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_carriers": 138,  # + Web budget archive with its captured expected row version.
-    "mutate_token_exempted": 141,  # + Account name API/Web with field CAS under the identity lock.
-    "mutate_token_reason_admin_single_writer": 13,
+    "mutate_token_exempted": 144,  # + Ledger label API/Web/Owner with shared field CAS.
+    "mutate_token_reason_admin_single_writer": 16,
     "mutate_token_reason_append_only_fact": 3,
     "mutate_token_reason_batch_db_write": 17,
     "mutate_token_reason_create_row": 38,
@@ -181,6 +181,9 @@ BASELINE_RATCHET_DOWN: frozenset[str] = frozenset(
     }
 )
 _MUTATE_TOKEN_EXEMPTION_ADMISSIONS = (
+    # One existing Ledger.name fact; three adapters share the Owner/credential
+    # lock and field CAS. No financial OCC carrier or persistence owner changes.
+    ("30beaeca2db6e76e72d7bd5acc5cd54a37212883", 141, 144),
     # Account identity owns its display label. Both adapters use expected_name
     # CAS and the existing credential lock, without a financial OCC carrier.
     ("afa32490213c9752c5ceedec07ad5425ae8f42e0", 139, 141),

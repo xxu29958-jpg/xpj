@@ -40,6 +40,7 @@ fun ledgerAuditActionLabel(action: String): String = when (action) {
     "member_role_changed" -> "调整角色"
     "member_disabled" -> "停用成员"
     "owner_transferred" -> "转让拥有者"
+    "ledger_renamed" -> "修改账本名称"
     else -> "成员变更"
 }
 

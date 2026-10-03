@@ -350,7 +350,7 @@ internal fun SettingsDestinationHost(
 
         SettingsDestination.Ledgers -> {
             val vm: LedgerSwitcherViewModel = viewModel(
-                key = "ledger-switcher",
+                key = "ledger-switcher-${repositories.ledgerRepository.currentBinding()}",
                 factory = ledgerSwitcherViewModelFactory(repositories.ledgerRepository),
             )
             LedgerSwitcherScreen(
@@ -358,6 +358,7 @@ internal fun SettingsDestinationHost(
                 activeLedgerId = repositories.activeLedgerId,
                 onBack = { route = SettingsDestination.Root },
                 onSwitched = actions.onLedgerSwitched,
+                onRenamed = actions.onBindingChanged,
             )
         }
 

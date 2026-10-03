@@ -28,6 +28,7 @@ from app.routes.owner_console._shared import templates
 from app.schemas._ledger_calendar import LedgerCalendarChangeRequest
 from app.services import owner_console_service as svc
 from app.services.ledger_calendar_commands import change_ledger_calendar, ledger_calendar_history, read_ledger_calendar
+from app.services.ledger_service import rename_ledger
 from app.services.spending_contract_service import count_undated_expenses
 from app.version import BACKEND_VERSION  # noqa: F401  (kept for parity with sibling pages)
 
@@ -93,6 +94,8 @@ def _render_ledgers_page(
     *,
     error: str | None = None,
     submitted_name: str | None = None,
+    rename_draft: dict | None = None,
+    status_code: int = 200,
 ) -> HTMLResponse:
     """Render the ledger management page (active + archived rows).
 
@@ -105,7 +108,22 @@ def _render_ledgers_page(
     ctx["error"] = error
     ctx["created_ledger"] = None
     ctx["submitted_name"] = submitted_name
-    return templates.TemplateResponse(request=request, name="ledgers.html", context=ctx)
+    ctx["rename_draft"] = rename_draft
+    return templates.TemplateResponse(request=request, name="ledgers.html", context=ctx, status_code=status_code)
+
+
+@router.post("/ledgers/{ledger_id}/name", response_class=HTMLResponse)
+def owner_ledger_rename(request: Request, ledger_id: str, name: str = Form(...),
+                        expected_name: str = Form(...), _local: None = LocalOnly,
+                        db: Session = Depends(get_db)) -> HTMLResponse:
+    try:
+        rename_ledger(db, account_id=_calendar_owner_id(db), ledger_id=ledger_id,
+                      name=name, expected_name=expected_name, auth=None)
+    except AppError as exc:
+        db.rollback()
+        return _render_ledgers_page(request, db, error=exc.message,
+            rename_draft={"ledger_id": ledger_id, "name": name}, status_code=exc.status_code)
+    return RedirectResponse(url="/owner/ledgers", status_code=303)
 
 
 @router.get("/ledgers", response_class=HTMLResponse)
