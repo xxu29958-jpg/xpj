@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -69,9 +70,10 @@ internal fun StatsFilterControls(
         state = state,
         optionLimit = StatsTagFilterOptionLimit,
     )
-    Row(
+    FlowRow(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
     ) {
         StatsSelectablePill(
             selected = true,
@@ -234,7 +236,7 @@ private fun StatsTextTab(
                 text = label,
                 color = labelColor,
                 style = MaterialTheme.typography.labelLarge,
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
                 maxLines = 1,
             )
         }
@@ -292,8 +294,8 @@ private fun StatsSelectablePill(
             text = label,
             modifier = Modifier.weight(1f, fill = false),
             color = labelColor,
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )

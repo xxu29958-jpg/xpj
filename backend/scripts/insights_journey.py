@@ -173,7 +173,7 @@ class InsightsJourney:
         month_start = date.fromisoformat(before["month"] + "-01")
         historical = (month_start - timedelta(days=1)).strftime("%Y-%m")
         self.goto(f"/web/overview?month={historical}")
-        page.locator('[data-overview-card="budget"]').get_by_role("link", name="管理", exact=True).click()
+        page.locator('[data-overview-card="budget"]').get_by_role("link", name="设置预算", exact=True).click()
         page.wait_for_url("**/web/budgets?**")
         assert page.get_by_role("heading", name="月度预算", exact=True).is_visible()
         form = page.locator('form[action="/web/budgets/save"]')
