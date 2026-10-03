@@ -191,7 +191,36 @@
 .workspace-upload-reveal .secret-box { overflow-wrap: anywhere; }
 .workspace-check-action:disabled { cursor: not-allowed; opacity: .55; }
 
+/* Ledger identity, lifecycle actions and calendar rules stay distinct. */
+.workspace-ledgers { min-height: calc(100svh - 240px); }
+.workspace-ledger-row .workspace-task__text, .workspace-archived-ledger .workspace-task__text { overflow-wrap: anywhere; }
+.workspace-row-action { font-size: 14px; white-space: nowrap; }
+.workspace-ledger-row .workspace-disclosure__body { padding-bottom: 20px; }
+.workspace-ledger-counts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 0 0 20px; }
+.workspace-ledger-counts dt { font-size: 13px; color: var(--text-muted); }
+.workspace-ledger-counts dd { margin: 4px 0 0; font-size: 22px; font-weight: 600; overflow-wrap: anywhere; }
+.workspace-ledger-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; }
+.workspace-ledger-create { align-self: stretch; display: flex; flex-direction: column; }
+.workspace-ledger-create > form { display: flex; flex-direction: column; flex: 1; }
+.workspace-ledger-create .workspace-save { margin-top: auto; }
+.workspace-ledger-help { border: 0; padding: 0 0 18px; color: var(--brand-primary); }
+.workspace-calendar { max-width: 720px; }
+.workspace-calendar-current { margin-bottom: 26px; border: 0; overflow-wrap: anywhere; }
+.workspace-calendar-current .badge { white-space: normal; flex-shrink: 0; }
+.workspace-calendar-note { margin: 6px 0 18px; border: 0; font-size: 14px; }
+.workspace-calendar-note > summary { align-items: flex-start; }
+.workspace-calendar-note > summary > .workspace-icon:first-child { color: var(--brand-primary); width: 20px; height: 20px; flex-basis: 20px; transform: none; }
+.workspace-calendar-note .workspace-disclosure__body { padding: 0 0 0 34px; }
+.workspace-calendar-history { margin-bottom: 24px; border-bottom: 0; }
+.workspace-calendar-rules { list-style: none; margin: 0; padding-left: 0; }
+.workspace-calendar-rules li { padding: 14px 0; border-bottom: 1px solid var(--border-card); font-size: 14px; overflow-wrap: anywhere; }
+.workspace-calendar-rules li span { display: block; color: var(--text-muted); font-size: 13px; margin-top: 4px; }
+
 @media (max-width: 880px) {
   .workspace-upload-defaults { display: flex; flex-direction: column; min-height: calc(100svh - 180px); }
   .workspace-upload-defaults .workspace-save { margin-top: auto; }
+  .workspace-ledgers, .workspace-calendar-form { display: flex; flex-direction: column; min-height: calc(100svh - 180px); }
+  .workspace-ledgers > div { width: 100%; min-width: 0; }
+  .workspace-ledger-create { flex: 1; }
+  .workspace-calendar-form .workspace-save { margin-top: auto; }
 }

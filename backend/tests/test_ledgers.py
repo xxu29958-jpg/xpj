@@ -382,10 +382,9 @@ def test_owner_ledgers_lists_and_creates(local_client: TestClient) -> None:
     assert "灰度用户1" in listing.text
     assert 'class="skip-link" href="#main-content"' in listing.text
     assert 'class="owner-main" id="main-content" tabindex="-1"' in listing.text
-    # Console shows the current household-management advisory banner.
-    assert "v0.5" in listing.text
+    # The named ledger remains distinct from its family-management actions.
+    assert 'aria-label="当前账本"' in listing.text
     assert "家庭成员邀请、角色调整和拥有者转让" in listing.text
-    assert 'class="role-chip role-owner"' in listing.text
     assert "拥有者" in listing.text
     # Each ledger row exposes a "打开账本" link carrying its ledger_id.
     assert 'href="/web?ledger_id=owner"' in listing.text
