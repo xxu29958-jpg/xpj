@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, DecimalException
 from zoneinfo import ZoneInfoNotFoundError
 
 from app.config import get_settings
@@ -43,7 +43,7 @@ def save_uploads(form: dict[str, str]) -> None:
         budget = Decimal(form["daily_budget_mb"]) * _MIB
         if not budget.is_finite() or budget != budget.to_integral_value() or not 0 <= budget <= INTEGER_LIMITS["upload_link_default_daily_byte_budget"][1]:
             raise ValueError("invalid upload budget")
-    except (InvalidOperation, ValueError) as exc:
+    except (DecimalException, ValueError) as exc:
         raise runtime._invalid("每日上传配额须为 0–1048576 MB，可填写小数；0 表示不限额。") from exc
     value = UploadSettingsProjection(
         max_upload_size_mb=runtime._bounded_int(form["max_upload_size_mb"], label="单文件上限", minimum=1, maximum=1024),

@@ -91,6 +91,15 @@ def test_operations_publication_failure_preserves_effective_choices(operations_f
     assert config.get_settings().upload_link_ttl_days == original
 
 
+@pytest.mark.parametrize("budget", ["NaN", "Infinity", "1e999999999"])
+def test_invalid_upload_budget_returns_a_correctable_error_without_replacing_settings(operations_file, budget):
+    operations.save_uploads(operations.upload_form())
+    before = operations_file.read_bytes()
+    with pytest.raises(AppError, match="每日上传配额"):
+        operations.save_uploads({**operations.upload_form(), "daily_budget_mb": budget})
+    assert operations_file.read_bytes() == before
+
+
 def test_daily_plan_follows_enable_and_time_change_before_any_cleanup(monkeypatch):
     choices = SimpleNamespace(learning_cleanup_auto_enabled=False, learning_cleanup_daily_at="00:01", learning_cleanup_timezone="UTC")
     current = datetime(2026, 10, 3, tzinfo=UTC)

@@ -51,17 +51,19 @@ def operations_payload(value: UploadSettingsProjection | MaintenanceSettingsProj
             lower, upper = INTEGER_LIMITS[name]
             if type(item) is not int or not lower <= item <= upper:
                 raise ValueError(f"invalid runtime setting: {name}")
-        elif name.endswith("_enabled"):
+            continue
+        if name.endswith("_enabled"):
             if type(item) is not bool:
                 raise ValueError(f"invalid runtime setting: {name}")
-        elif name.endswith("_daily_at"):
+            continue
+        if name.endswith("_daily_at"):
             parsed = time.fromisoformat(item)
             if parsed.strftime("%H:%M") != item:
                 raise ValueError(f"invalid daily time: {name}")
-        else:
-            if not isinstance(item, str) or len(item) > 64:
-                raise ValueError(f"invalid timezone: {name}")
-            ZoneInfo(item)
+            continue
+        if not isinstance(item, str) or len(item) > 64:
+            raise ValueError(f"invalid timezone: {name}")
+        ZoneInfo(item)
     return payload
 
 
