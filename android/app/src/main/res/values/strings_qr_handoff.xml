@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="qr_display_failed">二维码暂时无法显示，请复制链接或输入连接码。</string>
+    <string name="qr_scan_prompt">将邀请或连接二维码放入取景框</string>
+    <string name="qr_camera_unavailable">未能使用相机。可在系统设置中允许小票夹使用相机，也可以继续手动输入。</string>
+    <string name="qr_scan_pairing">扫一扫连接</string>
+    <string name="qr_scan_invitation">扫一扫加入</string>
+    <string name="qr_pairing_invalid">这不是有效的连接二维码。家庭邀请请从“加入家庭账本”扫码。</string>
+    <string name="qr_pairing_ready">已填入连接信息，请确认服务器：%1$s</string>
+    <string name="qr_invitation_description">加入家庭账本二维码</string>
+    <string name="qr_pairing_description">连接自己的设备二维码</string>
+    <string name="qr_pairing_hint">在另一台 Android 小票夹的连接页点“扫一扫连接”；此码只用于你自己的设备。</string>
+</resources>

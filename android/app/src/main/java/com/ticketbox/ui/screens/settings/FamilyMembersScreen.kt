@@ -46,6 +46,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
+import com.ticketbox.ui.components.HandoffQrCode
 import com.ticketbox.domain.model.FamilyInvitationCreated
 import com.ticketbox.domain.model.FamilyMember
 import com.ticketbox.domain.model.LEDGER_ROLE_MEMBER
@@ -369,6 +370,9 @@ private fun CreatedInviteResult(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+    invite.inviteUrl?.takeIf(String::isNotBlank)?.let { url ->
+        HandoffQrCode(url, stringResource(R.string.qr_invitation_description))
     }
     Text(
         text = stringResource(R.string.family_members_invite_once_hint),

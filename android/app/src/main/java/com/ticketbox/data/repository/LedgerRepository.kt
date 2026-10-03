@@ -382,13 +382,14 @@ class LedgerRepository(
         ledgerId: String? = activeLedgerId(),
     ): Result<DevicePairingCode> = wrap {
         val targetLedgerId = requireActiveLedger(ledgerId)
-        requestGuard.guardedCall(expectedLedgerId = targetLedgerId) { api ->
+        val bound = requestGuard.bind(expectedLedgerId = targetLedgerId)
+        bound.call { api ->
             api.createLedgerDevicePairingCode(
                 ledgerId = targetLedgerId,
                 request = PairingCodeCreateRequestDto(
                     recoveryDevicePublicId = recoveryDevice?.publicId,
                 ),
-            ).toDevicePairingCode(recoveryDevice?.deviceName)
+            ).toDevicePairingCode(recoveryDevice?.deviceName, bound.snapshot.serverUrl)
         }
     }
 
@@ -637,11 +638,14 @@ internal fun MyDeviceDto.toAccountDevice(): AccountDevice = AccountDevice(
 
 private fun PairingCodeResponseDto.toDevicePairingCode(
     recoveryDeviceName: String?,
+    serverUrl: String,
 ): DevicePairingCode = DevicePairingCode(
     pairingCode = pairingCode,
     ledgerName = ledgerName,
     expiresAt = expiresAt,
     recoveryDeviceName = recoveryDeviceName,
+    connectionUrl = serverUrl.takeIf { recoveryDeviceName == null && it.startsWith("https://") }
+        ?.let { "${it.trimEnd('/')}/web/auth/login#pairing=$pairingCode" },
 )
 
 private fun RecycleBinItemDto.toRecycleBinItem(): RecycleBinItem = RecycleBinItem(

@@ -24,6 +24,7 @@ import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.AppSecondaryButton
+import com.ticketbox.ui.components.ScanQrButton
 import com.ticketbox.ui.components.displayDateTime
 import com.ticketbox.ui.components.ledgerRoleLabelText
 import com.ticketbox.ui.design.AppAlpha
@@ -64,6 +65,11 @@ fun JoinFamilyLedgerScreen(
             AppStatusBanner(message = statusMessage, tone = statusTone)
         },
     ) {
+        ScanQrButton(
+            label = stringResource(R.string.qr_scan_invitation),
+            enabled = !state.previewing && !state.submitting,
+            onResult = { viewModel.consumeSharedInvitation(it) },
+        )
         JoinInvitationForm(
             state = state,
             serverUrlEntry = serverUrlEntry,

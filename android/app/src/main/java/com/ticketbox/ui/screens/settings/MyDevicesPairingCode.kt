@@ -19,6 +19,7 @@ import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.domain.model.DevicePairingCode
+import com.ticketbox.ui.components.HandoffQrCode
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.design.AppSpacing
 import kotlinx.coroutines.launch
@@ -46,6 +47,10 @@ internal fun CreatedPairingCodeResult(
         style = MaterialTheme.typography.headlineSmall,
         color = MaterialTheme.colorScheme.onSurface,
     )
+    code.connectionUrl?.let { url ->
+        HandoffQrCode(url, stringResource(R.string.qr_pairing_description))
+        Text(stringResource(R.string.qr_pairing_hint))
+    }
     Text(
         text = stringResource(R.string.my_devices_add_code_expires_at, displayTime(code.expiresAt)),
         style = MaterialTheme.typography.bodySmall,

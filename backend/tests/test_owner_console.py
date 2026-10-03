@@ -137,7 +137,7 @@ def test_owner_index_local_returns_200(local_client: TestClient) -> None:
     assert "小票夹" in body
     assert f"/static/owner/owner.css?v={STATIC_ASSET_VERSION}" in body
     assert f"/static/shared/tokens.css?v={STATIC_ASSET_VERSION}" in body
-    assert f"/static/owner/vendor/qrcode.js?v={STATIC_ASSET_VERSION}" in body
+    assert f"/static/shared/vendor/qrcode.js?v={STATIC_ASSET_VERSION}" in body
     assert 'class="owner-icon-sprite"' in body
     assert body.count('class="owner-action-icon"') >= 10
     assert '<a class="owner-action-link" href="/owner/pairing">' in body
@@ -275,6 +275,19 @@ def test_owner_pairing_page_opens(
         assert rejected.status_code == 200
         assert "要恢复的设备不存在，请重新选择" in rejected.text
         assert "设备恢复码已生成" not in rejected.text
+
+
+def test_owner_new_device_result_offers_qr_only_while_code_is_visible(local_client, phone_mobile_endpoint) -> None:
+    import re
+
+    created = local_client.post("/owner/pairing", data={"ledger_id": "owner", "ttl_minutes": "15"})
+    assert created.status_code == 200, created.text
+    code = re.search(r'data-pairing-code>([0-9]{8})</div>', created.text)
+    assert code is not None
+    assert created.text.count(code.group(1)) == 1
+    assert 'data-qr-source="[data-pairing-code]"' in created.text
+    assert 'data-qr-origin="https://finance.example.test"' in created.text
+    assert "data-qr-output" not in local_client.get("/owner/pairing").text
 
 
 def test_owner_upload_links_list_masked(local_client: TestClient) -> None:
@@ -745,8 +758,8 @@ def test_owner_upload_links_no_handoff_ui_without_public_base_url(
 def test_owner_static_qrcode_vendor_is_self_hosted(local_client: TestClient) -> None:
     """Mirror of test_web_reports_static_echarts_vendor_is_self_hosted for the
     /owner QR encoder: vendored file + license served locally, no CDN."""
-    script = local_client.get("/static/owner/vendor/qrcode.js")
-    license_file = local_client.get("/static/owner/vendor/qrcode.LICENSE")
+    script = local_client.get("/static/shared/vendor/qrcode.js")
+    license_file = local_client.get("/static/shared/vendor/qrcode.LICENSE")
     handoff = local_client.get("/static/owner/upload-link-handoff.js")
 
     assert script.status_code == 200
@@ -764,7 +777,7 @@ def test_owner_static_qrcode_vendor_is_self_hosted(local_client: TestClient) -> 
     # so the global `qrcode` exists when the binder runs.
     page = local_client.get("/owner/upload-links")
     assert page.status_code == 200
-    vendor_pos = page.text.find("/static/owner/vendor/qrcode.js")
+    vendor_pos = page.text.find("/static/shared/vendor/qrcode.js")
     handoff_pos = page.text.find("/static/owner/upload-link-handoff.js")
     assert vendor_pos != -1
     assert handoff_pos != -1

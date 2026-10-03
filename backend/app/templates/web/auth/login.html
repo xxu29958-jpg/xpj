@@ -13,6 +13,7 @@
   <link rel="stylesheet" href="/static/web/fonts/fonts.css?v={{ asset_version }}">
   <link rel="stylesheet" href="/static/web/pages/auth-login.css?v={{ asset_version }}">
   <script defer src="/static/shared/csrf.js?v={{ asset_version }}"></script>
+  <script defer src="/static/web/auth-pairing.js?v={{ asset_version }}"></script>
 </head>
 <body>
   <main class="auth-layout">
@@ -31,7 +32,7 @@
 
     <section class="auth-card" aria-label="连接这台设备">
       <h2 class="auth-card-title">连接已有身份</h2>
-      <p class="auth-hint">输入小票夹为你生成的 8 位连接码，连接当前已有身份的一台设备。</p>
+      <p class="auth-hint" data-pairing-scan-hint>输入小票夹为你生成的 8 位连接码，连接当前已有身份的一台设备。</p>
 
       {% if error_message %}
       <div class="auth-error" role="alert">{{ error_message }}</div>

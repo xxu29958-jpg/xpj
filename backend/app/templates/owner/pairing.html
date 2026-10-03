@@ -29,7 +29,11 @@
   <div class="alert alert-success">
     {% if selected_recovery_device_id %}设备恢复码已生成{% else %}新设备绑定码已生成{% endif %}，请在有效期内完成绑定。
   </div>
-  <div class="code-big">{{ pairing_result.pairing_code }}</div>
+  <div class="code-big" data-pairing-code>{{ pairing_result.pairing_code }}</div>
+  {% if android_server_url and not selected_recovery_device_id %}
+  <div hidden data-qr-output data-qr-source="[data-pairing-code]" data-qr-origin="{{ android_server_url }}" data-qr-label="连接自己的设备二维码"></div>
+  <p class="help-text">在 Android 小票夹连接页点「扫一扫连接」；iPhone 或 iPad 可用相机扫码连接网页版。只用于你自己的设备。</p>
+  {% endif %}
   <div class="meta text-center">
     账本：{{ pairing_result.ledger_name }} &nbsp;·&nbsp;
     有效期至：{{ pairing_result.expires_at|owner_datetime }}

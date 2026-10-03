@@ -1,0 +1,2 @@
+[data-qr-output] { width: min(100%, 248px); margin-block: 1rem; }
+[data-qr-output] svg { display: block; width: 100%; height: auto; background: #fff; }

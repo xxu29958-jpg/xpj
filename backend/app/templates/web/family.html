@@ -7,7 +7,12 @@
   {{ {'owner': '拥有者', 'member': '成员', 'viewer': '只读'}.get(role, role) }}
 {%- endmacro %}
 
+{% block page_styles %}
+<link rel="stylesheet" href="/static/shared/handoff-qr.css?v={{ asset_version }}">
+{% endblock %}
 {% block page_scripts %}
+<script defer src="/static/shared/vendor/qrcode.js?v={{ asset_version }}"></script>
+<script defer src="/static/shared/handoff-qr.js?v={{ asset_version }}"></script>
 <script defer src="/static/web/family.js?v={{ asset_version }}"></script>
 {% endblock %}
 
@@ -60,7 +65,8 @@
     <span class="hint" data-family-copy-status aria-live="polite">也可以长按或全选上面的邀请手动复制。</span>
   </div>
   {% if invitation_url %}
-  <p class="hint">让家人在浏览器打开链接，核对账本和权限后确认加入。</p>
+  <div hidden data-qr-output data-qr-source="[data-family-invite-value]" data-qr-label="加入家庭账本二维码"></div>
+  <p class="hint">家人可用手机相机扫码，或在小票夹「加入家庭账本」中扫一扫，核对账本和权限后确认加入。</p>
   {% else %}
   <p class="hint">尚未配置可分享地址。让家人在浏览器打开加入页并粘贴这段邀请码。</p>
   {% endif %}

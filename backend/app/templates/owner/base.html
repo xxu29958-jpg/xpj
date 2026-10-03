@@ -16,7 +16,9 @@
   <script defer src="/static/shared/csrf.js?v={{ asset_version }}"></script>
   <script defer src="/static/shared/confirm-modal.js?v={{ asset_version }}"></script>
   <script defer src="/static/owner/owner-feedback.js?v={{ asset_version }}"></script>
-  <script defer src="/static/owner/vendor/qrcode.js?v={{ asset_version }}"></script>
+  <link rel="stylesheet" href="/static/shared/handoff-qr.css?v={{ asset_version }}">
+  <script defer src="/static/shared/vendor/qrcode.js?v={{ asset_version }}"></script>
+  <script defer src="/static/shared/handoff-qr.js?v={{ asset_version }}"></script>
   <script defer src="/static/owner/upload-link-handoff.js?v={{ asset_version }}"></script>
 </head>
 <body class="owner-shell">
