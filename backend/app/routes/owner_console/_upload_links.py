@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
+from app.errors import AppError
 from app.routes.owner_console._shared import LocalOnly, _base, templates
 from app.services import owner_console_service as svc
 from app.services.installation_health_service import (
@@ -35,16 +36,26 @@ def _render_upload_links(
     secret: svc.UploadLinkSecret | None = None,
     error: str | None = None,
     status_code: int = 200,
+    selected_ledger_id: str | None = None,
 ) -> HTMLResponse:
     ctx = _base(request, db)
     ctx["links"] = svc.get_upload_links(db) if links is None else links
     ctx["new_secret"] = secret
+    ctx["new_secret_ledger_name"] = next(
+        (link.ledger_name for link in ctx["links"] if secret is not None and link.public_id == secret.public_id), None
+    )
     ctx["new_secret_full_url"] = (
         svc.compose_public_upload_url(secret, public_base_url=mobile_endpoint)
         if secret is not None and mobile_endpoint is not None
         else None
     )
     ctx["public_base_url_configured"] = mobile_endpoint is not None
+    choices = svc.list_console_ledger_choices(db)
+    default = next((choice for choice in choices if choice.is_default), choices[0] if choices else None)
+    selected = selected_ledger_id if selected_ledger_id is not None else (default.ledger_id if default else "")
+    ctx["ledger_choices"] = choices
+    ctx["selected_upload_ledger_id"] = selected
+    ctx["selected_upload_ledger_available"] = any(choice.ledger_id == selected for choice in choices)
     ctx["error"] = error
     return templates.TemplateResponse(
         request=request,
@@ -67,6 +78,7 @@ def owner_upload_links_get(
 @router.post("/upload-links", response_class=HTMLResponse)
 def owner_upload_links_create(
     request: Request,
+    ledger_id: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
@@ -80,7 +92,7 @@ def owner_upload_links_create(
             links=[],
             error=owner_recovery_message(cfg.owner_recovery_channel),
         )
-    ledger_id = svc.get_default_ledger_id(db)
+    ledger_id = ledger_id.strip() or svc.get_default_ledger_id(db)
     account_id = svc.get_owner_account_id(db)
     if ledger_id is None or account_id is None:
         return _render_upload_links(
@@ -95,13 +107,23 @@ def owner_upload_links_create(
             request,
             db,
             mobile_endpoint=None,
+            selected_ledger_id=ledger_id,
             error="请先在设置中配置可供手机访问的 HTTPS 地址，再创建上传链接。",
         )
     tz = (cfg.ocr_default_timezone or "Asia/Shanghai").strip() or "Asia/Shanghai"
-    _summary, secret = svc.do_create_upload_link(
-        db, ledger_id=ledger_id, admin_account_id=account_id, default_timezone=tz
+    try:
+        _summary, secret = svc.do_create_upload_link(
+            db, ledger_id=ledger_id, admin_account_id=account_id, default_timezone=tz
+        )
+    except AppError as exc:
+        db.rollback()
+        return _render_upload_links(
+            request, db, mobile_endpoint=mobile_endpoint,
+            selected_ledger_id=ledger_id, error=exc.message, status_code=exc.status_code,
+        )
+    return _render_upload_links(
+        request, db, mobile_endpoint=mobile_endpoint, secret=secret, selected_ledger_id=ledger_id,
     )
-    return _render_upload_links(request, db, mobile_endpoint=mobile_endpoint, secret=secret)
 
 
 @router.post("/upload-links/{public_id}/rotate", response_class=HTMLResponse)

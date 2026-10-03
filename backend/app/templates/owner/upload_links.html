@@ -24,6 +24,7 @@
     ✅ 上传链接已{% if new_secret.public_id %}创建/轮换{% endif %}。<br>
     <strong>请把下面的<u>完整公网 URL</u>整段复制到 iPhone 快捷指令的「URL」动作。必须包含 <code>https://</code> 开头的域名，<u>不能</u>只复制 <code>/u/...</code> 路径。</strong>
   </div>
+  {% if new_secret_ledger_name %}<p class="help-text">这条链接上传到：<strong>{{ new_secret_ledger_name }}</strong></p>{% endif %}
   <div class="secret-box" data-upload-handoff-url>{{ new_secret_full_url }}</div>
   <div class="reveal-row">
     <button type="button" class="btn btn-primary" data-copy-upload-url>复制完整 URL</button>
@@ -38,12 +39,20 @@
 {% endif %}
 
 <div class="card">
-  <div class="row-between mb-4">
-    <h2>链接列表</h2>
-    <form method="post" action="/owner/upload-links">
-      <button type="submit" class="btn btn-primary"{% if not public_base_url_configured %} disabled aria-disabled="true" title="请先配置手机 HTTPS 地址"{% endif %}>+ 新建上传链接</button>
-    </form>
-  </div>
+  <h2>链接列表</h2>
+  <form method="post" action="/owner/upload-links" class="settings-form-grid mb-4">
+    <label for="upload-ledger">上传到账本</label>
+    <select id="upload-ledger" name="ledger_id" class="inline-select" required>
+      {% if not selected_upload_ledger_available %}<option value="" selected disabled>请选择可管理的账本</option>{% endif %}
+      {% for choice in ledger_choices %}
+      <option value="{{ choice.ledger_id }}"{% if choice.ledger_id == selected_upload_ledger_id %} selected{% endif %}>{{ choice.name }}{% if choice.is_default %}（默认）{% endif %}</option>
+      {% endfor %}
+    </select>
+    <span></span><p class="help-text">新链接上传的图片只进入所选账本，已有链接保持原来的账本。</p>
+    <span></span><div class="settings-form-actions">
+      <button type="submit" class="btn btn-primary"{% if not public_base_url_configured or not ledger_choices %} disabled aria-disabled="true"{% endif %}>+ 新建上传链接</button>
+    </div>
+  </form>
   {% if links %}
   <div class="table-scroll">
   <table>
