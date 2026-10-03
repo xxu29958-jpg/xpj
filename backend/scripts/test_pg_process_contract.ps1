@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 
 . (Join-Path $PSScriptRoot 'test_pg_ownership_contract.ps1')
 
