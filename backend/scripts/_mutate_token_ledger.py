@@ -439,6 +439,10 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /owner/originals/inspect": Exempt("enqueue_task", "maintenance", ("background_tasks",)),
     "POST /owner/originals/tasks/{public_id}/{action}": Exempt("enqueue_task", "maintenance", ("background_tasks",), "high"),
     "POST /owner/settings/{settings_group}": Exempt("external_side_effect", "owner_console", ()),
+    # Protected runtime file publication, with explicit cleanup impact consent;
+    # these routes do not delete rows or change issued link expiry timestamps.
+    "POST /owner/settings/uploads": Exempt("external_side_effect", "owner_console", ()),
+    "POST /owner/settings/maintenance": Exempt("external_side_effect", "owner_console", (), "medium"),
     "POST /owner/upload-links": Exempt("create_row", "owner_console", _UPLOAD_LINKS),
     "POST /owner/upload-links/{public_id}/delete": Exempt("terminal_flag_flip", "owner_console", _UPLOAD_LINKS),
     "POST /owner/upload-links/{public_id}/limits": Exempt("admin_single_writer", "owner_console", _UPLOAD_LINKS),

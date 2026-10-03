@@ -2119,6 +2119,32 @@
         "title": "Body_owner_upload_links_limits_owner_upload_links__public_id__limits_post",
         "type": "object"
       },
+      "Body_owner_upload_settings_post_owner_settings_uploads_post": {
+        "properties": {
+          "daily_budget_mb": {
+            "default": "200",
+            "title": "Daily Budget Mb",
+            "type": "string"
+          },
+          "max_upload_size_mb": {
+            "default": "10",
+            "title": "Max Upload Size Mb",
+            "type": "string"
+          },
+          "upload_link_default_per_remote_interval_seconds": {
+            "default": "2",
+            "title": "Upload Link Default Per Remote Interval Seconds",
+            "type": "string"
+          },
+          "upload_link_ttl_days": {
+            "default": "90",
+            "title": "Upload Link Ttl Days",
+            "type": "string"
+          }
+        },
+        "title": "Body_owner_upload_settings_post_owner_settings_uploads_post",
+        "type": "object"
+      },
       "Body_page_budget_advise_run_web_budget_advise_post": {
         "properties": {
           "arrangement_currency_code": {
@@ -45338,6 +45364,46 @@
         ]
       }
     },
+    "/owner/settings/maintenance": {
+      "get": {
+        "operationId": "owner_maintenance_settings_get_owner_settings_maintenance_get",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Owner Maintenance Settings Get",
+        "tags": [
+          "owner-console"
+        ]
+      },
+      "post": {
+        "operationId": "owner_maintenance_settings_post_owner_settings_maintenance_post",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Owner Maintenance Settings Post",
+        "tags": [
+          "owner-console"
+        ]
+      }
+    },
     "/owner/settings/public-base-url": {
       "get": {
         "operationId": "owner_settings_public_base_url_get_owner_settings_public_base_url_get",
@@ -45396,6 +45462,65 @@
           }
         },
         "summary": "Owner Settings Security",
+        "tags": [
+          "owner-console"
+        ]
+      }
+    },
+    "/owner/settings/uploads": {
+      "get": {
+        "operationId": "owner_upload_settings_get_owner_settings_uploads_get",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Owner Upload Settings Get",
+        "tags": [
+          "owner-console"
+        ]
+      },
+      "post": {
+        "operationId": "owner_upload_settings_post_owner_settings_uploads_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_owner_upload_settings_post_owner_settings_uploads_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Owner Upload Settings Post",
         "tags": [
           "owner-console"
         ]

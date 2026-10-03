@@ -40,6 +40,7 @@ from app.routes.owner_console import (
     _fx,
     _index,
     _learning_maintenance,
+    _operations_settings,
     _originals,
     _pairing,
     _settings,
@@ -65,6 +66,7 @@ router.include_router(_upload_links.router)
 router.include_router(_diagnostics.router)
 router.include_router(_originals.router)
 router.include_router(_fx.router)
+router.include_router(_operations_settings.router)
 router.include_router(_settings.router)
 
 

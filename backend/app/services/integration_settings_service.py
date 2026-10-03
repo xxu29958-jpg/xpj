@@ -20,10 +20,7 @@ from app.services.budget_advisor_service._providers import (
 )
 from app.services.runtime_integration_settings import AdvisorSettingsProjection, FxSettingsProjection, advisor_payload
 from app.services.runtime_settings_store import (
-    RuntimeSettingsConflictError,
     RuntimeSettingsMutation,
-    RuntimeSettingsProjection,
-    patch_runtime_settings,
     read_runtime_settings,
 )
 
@@ -74,20 +71,6 @@ def fx_form() -> FxSettingsForm:
                           settings.fx_rate_sync_times, settings.fx_rate_sync_timezone)
 
 
-def _save(mutation: RuntimeSettingsMutation) -> None:
-    settings = get_settings()
-    try:
-        patch_runtime_settings(runtime._SETTINGS_PATH, defaults=RuntimeSettingsProjection(
-            public_base_url=settings.public_base_url,
-            budget_advisor_owner_confirmed=settings.budget_advisor_owner_confirmed,
-        ), mutation=mutation, service_owned=runtime._SERVICE_OWNED)
-    except RuntimeSettingsConflictError as exc:
-        raise AppError("conflict", "模型配置已改变，请刷新页面，核对当前连接后重新确认。", status_code=409) from exc
-    except OSError as exc:
-        raise AppError("server_error", "设置未保存。请检查主机存储状态后重试，原设置仍保留。", status_code=503) from exc
-    get_settings.cache_clear()
-
-
 def _connection_snapshot() -> AdvisorSettingsProjection | None:
     projection = read_runtime_settings(runtime._SETTINGS_PATH, service_owned=runtime._SERVICE_OWNED)
     return projection.advisor if projection else None
@@ -113,7 +96,7 @@ def confirm_advisor(*, confirmed: bool, revision: str) -> None:
     snapshot = _connection_snapshot()
     if revision != _connection_revision(snapshot or _advisor_snapshot(get_settings())):
         raise AppError("conflict", "模型配置已改变，请刷新页面，核对当前连接后重新确认。", status_code=409)
-    _save(RuntimeSettingsMutation("budget_advisor_owner_confirmed", confirmed,
+    runtime.save_runtime_mutation(RuntimeSettingsMutation("budget_advisor_owner_confirmed", confirmed,
                                   check_advisor=True, expected_advisor=snapshot))
 
 
@@ -157,7 +140,7 @@ def save_advisor(form: AdvisorSettingsForm, *, api_key: str, key_action: str) ->
         advisor_payload(value)
     except ValueError as exc:
         raise runtime._invalid("地址、模型名称或密钥包含无效字符，或超过长度限制。") from exc
-    _save(RuntimeSettingsMutation("advisor", value))
+    runtime.save_runtime_mutation(RuntimeSettingsMutation("advisor", value))
 
 
 def save_fx(form: FxSettingsForm) -> None:
@@ -173,7 +156,7 @@ def save_fx(form: FxSettingsForm) -> None:
         raise runtime._invalid("每天可设置 1–6 个 HH:MM 时间，用逗号分隔；时区请填写 Asia/Shanghai 等有效名称。") from exc
     value = FxSettingsProjection(form.auto_enabled, form.source,
                                  ",".join(sorted({item.strftime("%H:%M") for item in times})), timezone)
-    _save(RuntimeSettingsMutation("fx", value))
+    runtime.save_runtime_mutation(RuntimeSettingsMutation("fx", value))
 
 
 def test_advisor_connection() -> str:

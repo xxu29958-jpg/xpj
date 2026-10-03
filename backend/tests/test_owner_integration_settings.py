@@ -11,6 +11,7 @@ from app import config
 from app.main import app
 from app.routes.owner_console import _require_local
 from app.services import integration_settings_service as integration
+from app.services import operations_settings_service as operations
 from app.services import runtime_settings_service as runtime
 from app.services.budget_advisor_service._models import BudgetAdvice
 
@@ -92,8 +93,45 @@ def test_owner_changes_fx_schedule_and_corrects_validation_without_losing_choice
     assert config.get_settings().fx_rate_sync_times == "10:00"
 
 
-@pytest.mark.parametrize("path", ["/owner/ai-advisor/settings", "/owner/ai-advisor/test", "/owner/fx/settings"])
+@pytest.mark.parametrize("path", ["/owner/ai-advisor/settings", "/owner/ai-advisor/test", "/owner/fx/settings",
+                                  "/owner/settings/uploads", "/owner/settings/maintenance"])
 def test_public_requests_cannot_configure_host_integrations(client, integration_file, path):
     response = client.post(path, headers={"Host": "api.example.com"})
     assert response.status_code == 403
     assert not integration_file.exists()
+
+
+def test_owner_configures_upload_defaults_and_recovers_a_failed_form(owner, integration_file):
+    page = owner.get("/owner/settings/uploads")
+    assert page.status_code == 200 and 'action="/owner/settings/uploads"' in page.text
+    form = {"max_upload_size_mb": "20", "upload_link_ttl_days": "30", "daily_budget_mb": "50",
+            "upload_link_default_per_remote_interval_seconds": "3"}
+    saved = owner.post("/owner/settings/uploads", data=form)
+    assert saved.status_code == 200 and "上传设置已保存" in saved.text
+    assert config.get_settings().upload_link_ttl_days == 30
+    assert config.get_settings().upload_link_default_daily_byte_budget == 50 * 1024 * 1024
+    before = integration_file.read_bytes()
+    invalid = owner.post("/owner/settings/uploads", data={**form, "max_upload_size_mb": "-1"})
+    assert invalid.status_code == 422 and 'value="30"' in invalid.text
+    assert integration_file.read_bytes() == before
+    corrected = owner.post("/owner/settings/uploads", data={**form, "max_upload_size_mb": "25"})
+    assert corrected.status_code == 200 and config.get_settings().max_upload_size_mb == 25
+
+
+def test_owner_sees_cleanup_impact_and_must_confirm_before_enabling(owner, integration_file):
+    page = owner.get("/owner/settings/maintenance")
+    assert page.status_code == 200 and "已有记录仍按创建时" in page.text
+    form = {name: value for name, value in operations.maintenance_form().items() if not isinstance(value, bool)}
+    form.update(learning_cleanup_auto_enabled="on", learning_cleanup_daily_at="05:30")
+    denied = owner.post("/owner/settings/maintenance", data=form)
+    assert denied.status_code == 422 and "确认清理影响" in denied.text
+    assert config.get_settings().learning_cleanup_auto_enabled is False
+    saved = owner.post("/owner/settings/maintenance", data={**form, "confirm_cleanup": "on"})
+    assert saved.status_code == 200 and "维护设置已保存" in saved.text
+    assert config.get_settings().learning_cleanup_auto_enabled is True
+    before = integration_file.read_bytes()
+    invalid = owner.post("/owner/settings/maintenance", data={**form, "confirm_cleanup": "on", "device_cleanup_timezone": "invalid/zone"})
+    assert invalid.status_code == 422 and 'value="05:30"' in invalid.text
+    assert integration_file.read_bytes() == before
+    stopped = owner.post("/owner/settings/maintenance", data={name: value for name, value in form.items() if not name.endswith("_enabled")})
+    assert stopped.status_code == 200 and config.get_settings().learning_cleanup_auto_enabled is False

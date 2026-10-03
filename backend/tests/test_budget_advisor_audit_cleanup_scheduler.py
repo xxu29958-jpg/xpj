@@ -18,8 +18,9 @@ def test_budget_advisor_audit_cleanup_scheduler_disabled_by_default(
     try:
         scheduler = start_budget_advisor_audit_cleanup_scheduler()
         assert scheduler.enabled is False
-        assert scheduler.thread is None
+        assert scheduler.thread is not None and scheduler.thread.is_alive()
     finally:
+        scheduler.stop()
         get_settings.cache_clear()
 
 
@@ -51,4 +52,5 @@ def test_budget_advisor_audit_cleanup_scheduler_invalid_config_noops(
         assert scheduler.enabled is False
         assert scheduler.config_error == "invalid_config"
     finally:
+        scheduler.stop()
         get_settings.cache_clear()

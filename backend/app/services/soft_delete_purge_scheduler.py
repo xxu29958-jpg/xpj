@@ -16,6 +16,7 @@ from datetime import datetime
 from app.config import get_settings
 from app.database import SessionLocal
 from app.services.cleanup_service import purge_expired_soft_deletes
+from app.services.runtime_maintenance_schedule import wait_for_interval_run
 from app.services.scheduler_lease_service import try_claim_scheduler_lease
 from app.services.time_service import now_utc
 
@@ -65,7 +66,7 @@ def soft_delete_purge_status_snapshot() -> SoftDeletePurgeSchedulerStatus:
 
 def _scheduler_loop(stop_event: threading.Event, interval_seconds: int) -> None:
     while not stop_event.is_set():
-        if stop_event.wait(interval_seconds):
+        if not wait_for_interval_run(stop_event, "soft_delete_purge_auto_enabled", interval_seconds):
             return
         _status.last_attempt_at = now_utc()
         try:
@@ -90,8 +91,7 @@ def _scheduler_loop(stop_event: threading.Event, interval_seconds: int) -> None:
 
 
 def start_soft_delete_purge_scheduler() -> SoftDeletePurgeScheduler:
-    if not get_settings().soft_delete_purge_auto_enabled:
-        return SoftDeletePurgeScheduler()
+    enabled = get_settings().soft_delete_purge_auto_enabled
     stop_event = threading.Event()
     thread = threading.Thread(
         target=_scheduler_loop,
@@ -100,7 +100,7 @@ def start_soft_delete_purge_scheduler() -> SoftDeletePurgeScheduler:
         daemon=True,
     )
     thread.start()
-    return SoftDeletePurgeScheduler(enabled=True, thread=thread, stop_event=stop_event)
+    return SoftDeletePurgeScheduler(enabled=enabled, thread=thread, stop_event=stop_event)
 
 
 __all__ = [

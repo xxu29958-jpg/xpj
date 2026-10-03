@@ -102,6 +102,8 @@ def test_failed_publication_keeps_effective_configuration(settings_file, monkeyp
 def test_old_recognition_projection_can_gain_integration_settings_without_losing_values(settings_file):
     write_runtime_settings(settings_file, RuntimeSettingsProjection("https://receipts.example", True), service_owned=False)
     old = json.loads(settings_file.read_bytes())
+    old.pop("uploads")
+    old.pop("maintenance")
     old.pop("advisor")
     old.pop("fx")
     old["schema"] = "ticketbox-runtime-settings-v2"
@@ -180,13 +182,13 @@ def test_configuration_changed_during_inputs_cannot_send_facts_to_the_new_unappr
 def test_stale_confirmation_is_rejected_inside_the_atomic_write(settings_file, monkeypatch):
     integration.save_advisor(_local_form(), api_key="", key_action="clear")
     revision = integration.advisor_connection_revision()
-    real_patch = integration.patch_runtime_settings
+    real_patch = runtime.patch_runtime_settings
     def interleaved_patch(*args, **kwargs):
         if kwargs["mutation"].check_advisor:
             snapshot = replace(store.read_runtime_settings(settings_file, service_owned=False).advisor, model="changed-between-check-and-write")
             real_patch(*args, **{**kwargs, "mutation": store.RuntimeSettingsMutation("advisor", snapshot)})
         return real_patch(*args, **kwargs)
-    monkeypatch.setattr(integration, "patch_runtime_settings", interleaved_patch)
+    monkeypatch.setattr(runtime, "patch_runtime_settings", interleaved_patch)
     with pytest.raises(AppError, match="模型配置已改变"):
         integration.confirm_advisor(confirmed=True, revision=revision)
     config.reset_settings_cache()

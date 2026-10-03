@@ -16,6 +16,11 @@ from app.services.runtime_integration_settings import (
     advisor_payload,
     fx_payload,
 )
+from app.services.runtime_operations_settings import (
+    MaintenanceSettingsProjection,
+    UploadSettingsProjection,
+    operations_payload,
+)
 from app.services.secure_file import (
     hold_protected_file_for_read,
     hold_service_owned_projection_for_read,
@@ -29,7 +34,11 @@ _SCHEMA = "ticketbox-runtime-settings-v3"
 _MAX_BYTES = 32768
 _LEGACY_FIELDS = frozenset({"schema", "public_base_url", "budget_advisor_owner_confirmed"})
 _RECOGNITION_SCHEMA_FIELDS = frozenset({*_LEGACY_FIELDS, "recognition"})
-_FIELDS = frozenset({*_RECOGNITION_SCHEMA_FIELDS, "advisor", "fx"})
+_FIELDS = frozenset({*_RECOGNITION_SCHEMA_FIELDS, "advisor", "fx", "uploads", "maintenance"})
+_FIELDS_BY_SCHEMA = {
+    _RECOGNITION_SCHEMA: _RECOGNITION_SCHEMA_FIELDS,
+    _SCHEMA: _FIELDS,
+}
 _RECOGNITION_FIELDS = frozenset(
     {
         "ocr_provider",
@@ -71,12 +80,14 @@ class RuntimeSettingsProjection:
     recognition: RecognitionSettingsProjection | None = None
     advisor: AdvisorSettingsProjection | None = None
     fx: FxSettingsProjection | None = None
+    uploads: UploadSettingsProjection | None = None
+    maintenance: MaintenanceSettingsProjection | None = None
 
 
 @dataclass(frozen=True)
 class RuntimeSettingsMutation:
-    field: Literal["public_base_url", "budget_advisor_owner_confirmed", "recognition", "advisor", "fx"]
-    value: str | bool | RecognitionSettingsProjection | AdvisorSettingsProjection | FxSettingsProjection
+    field: Literal["public_base_url", "budget_advisor_owner_confirmed", "recognition", "advisor", "fx", "uploads", "maintenance"]
+    value: str | bool | RecognitionSettingsProjection | AdvisorSettingsProjection | FxSettingsProjection | UploadSettingsProjection | MaintenanceSettingsProjection
     check_advisor: bool = False
     expected_advisor: AdvisorSettingsProjection | None = None
 
@@ -87,6 +98,8 @@ class RuntimeSettingsMutation:
             or (self.field == "recognition" and isinstance(self.value, RecognitionSettingsProjection))
             or (self.field == "advisor" and isinstance(self.value, AdvisorSettingsProjection))
             or (self.field == "fx" and isinstance(self.value, FxSettingsProjection))
+            or (self.field == "uploads" and isinstance(self.value, UploadSettingsProjection))
+            or (self.field == "maintenance" and isinstance(self.value, MaintenanceSettingsProjection))
         )
         if not valid:
             raise TypeError("runtime settings mutation type does not match its field")
@@ -164,6 +177,8 @@ def _payload(projection: RuntimeSettingsProjection) -> dict[str, object]:
         "recognition": (_recognition_payload(projection.recognition) if projection.recognition is not None else None),
         "advisor": advisor_payload(projection.advisor) if projection.advisor is not None else None,
         "fx": fx_payload(projection.fx) if projection.fx is not None else None,
+        "uploads": operations_payload(projection.uploads) if projection.uploads is not None else None,
+        "maintenance": operations_payload(projection.maintenance) if projection.maintenance is not None else None,
     }
 
 
@@ -205,10 +220,11 @@ def _decode_recognition(value: object) -> RecognitionSettingsProjection | None:
     return RecognitionSettingsProjection(**value)
 
 
-_Integration = TypeVar("_Integration", AdvisorSettingsProjection, FxSettingsProjection)
+_SettingsGroup = TypeVar("_SettingsGroup", AdvisorSettingsProjection, FxSettingsProjection,
+                        UploadSettingsProjection, MaintenanceSettingsProjection)
 
 
-def _decode_integration(value: object, model: type[_Integration]) -> _Integration | None:
+def _decode_integration(value: object, model: type[_SettingsGroup]) -> _SettingsGroup | None:
     if value is None:
         return None
     if not isinstance(value, dict) or set(value) != set(model.__dataclass_fields__):
@@ -253,9 +269,9 @@ def _decode_runtime_settings(encoded: bytes) -> RuntimeSettingsProjection:
         if encoded.decode("utf-8") != _encode_legacy(projection):
             raise ValueError("runtime settings projection is not canonical")
         return projection
-    if schema not in {_SCHEMA, _RECOGNITION_SCHEMA}:
+    if schema not in _FIELDS_BY_SCHEMA:
         raise ValueError("runtime settings projection schema is unsupported")
-    expected_fields = _RECOGNITION_SCHEMA_FIELDS if schema == _RECOGNITION_SCHEMA else _FIELDS
+    expected_fields = _FIELDS_BY_SCHEMA[schema]
     if set(value) != expected_fields:
         raise ValueError("runtime settings projection is not closed")
     projection = RuntimeSettingsProjection(
@@ -264,11 +280,12 @@ def _decode_runtime_settings(encoded: bytes) -> RuntimeSettingsProjection:
         recognition=_decode_recognition(value.get("recognition")),
         advisor=_decode_integration(value.get("advisor"), AdvisorSettingsProjection),
         fx=_decode_integration(value.get("fx"), FxSettingsProjection),
+        uploads=_decode_integration(value.get("uploads"), UploadSettingsProjection),
+        maintenance=_decode_integration(value.get("maintenance"), MaintenanceSettingsProjection),
     )
     canonical = _payload(projection)
-    if schema == _RECOGNITION_SCHEMA:
-        canonical = {key: val for key, val in canonical.items() if key in _RECOGNITION_SCHEMA_FIELDS}
-        canonical["schema"] = _RECOGNITION_SCHEMA
+    canonical = {key: val for key, val in canonical.items() if key in expected_fields}
+    canonical["schema"] = schema
     expected = json.dumps(canonical, ensure_ascii=True, allow_nan=False, sort_keys=True, separators=(",", ":")) + "\n"
     if encoded.decode("utf-8") != expected:
         raise ValueError("runtime settings projection is not canonical")
