@@ -36,6 +36,20 @@ class ExpenseMappersDataQualityTest {
     }
 
     @Test
+    fun cachedAndLiveRowsAgreeOnUndeletedReceiptPresence() {
+        val receipt = expenseDto(imagePath = "receipts/a.jpg")
+        val cached = receipt.toEntity("owner").toDomain()
+        assertNull(cached.imagePath)
+        assertTrue(cached.hasUndeletedImage)
+        assertTrue(receipt.toDomain().hasUndeletedImage)
+
+        val deleted = receipt.copy(imageDeletedAt = "2026-10-01T00:00:00Z")
+        assertFalse(deleted.toDomain().hasUndeletedImage)
+        assertFalse(deleted.toEntity("owner").toDomain().hasUndeletedImage)
+        assertFalse(expenseDto(imagePath = null).toEntity("owner").toDomain().hasUndeletedImage)
+    }
+
+    @Test
     fun entityToDomainRoundTripsQualityColumns() {
         val entity = expenseDto(category = "未分类", imagePath = "receipts/a.jpg").toEntity("owner")
         val domain = entity.toDomain()

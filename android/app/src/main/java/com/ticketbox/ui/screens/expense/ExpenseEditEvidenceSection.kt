@@ -43,7 +43,7 @@ internal data class ExpenseEditEvidenceActions(
 /**
  * 证据段：小票截图是本页的核对对象，贴近表单主任务区。只承载证据本身
  * （缩略图 / 看原图 / 重新识别 / 大图展开），不再镜像服务端商家/金额旧值——
- * 表单字段才是当前草稿事实。调用方保证 imagePath != null 才渲染本段。
+ * 表单字段才是当前草稿事实。调用方按持久凭证标志与删除状态决定是否渲染本段。
  */
 @Composable
 internal fun ExpenseEditEvidenceSection(

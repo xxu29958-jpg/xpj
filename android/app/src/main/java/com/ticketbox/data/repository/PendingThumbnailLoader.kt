@@ -18,7 +18,7 @@ class PendingThumbnailLoader(
     ): Map<Long, ProtectedImage> = coroutineScope {
         val activeIds = expenses.map { expense -> expense.id }.toSet()
         val missing = expenses.filter { expense ->
-            expense.imagePath != null && !existing.containsKey(expense.id)
+            expense.hasUndeletedImage && !existing.containsKey(expense.id)
         }
         if (missing.isEmpty()) return@coroutineScope emptyMap()
 

@@ -11,6 +11,8 @@ def native_inbox_filters(j):
     j.native.restart()
     j.native.domain_home("收件")
     wait_for(lambda: j.native.has("全部 1"), "The inbox did not reread the Web-uploaded pending bill")
+    wait_for(lambda: j.native.has("账单截图"),
+             "The restarted inbox lost the receipt image advertised by its cached bill")
     j.native.capture("inbox-pending")
     j.native.click_counted_tab("疑似重复")
     empty = "没有符合「疑似重复」的待确认账单"
