@@ -1,96 +1,62 @@
-{% extends "base.html" %}
-{% block title %}设备管理 — 小票夹{% endblock %}
-{% macro device_table(rows, ended_session=false) %}
-  <table>
-    <thead>
-      <tr>
-        <th>设备名</th>
-        <th>平台</th>
-        <th class="nowrap">账号</th>
-        <th class="nowrap">账本</th>
-        <th class="nowrap">创建时间</th>
-        <th class="nowrap">最近使用</th>
-        <th class="nowrap">状态</th>
-        <th>操作</th>
-      </tr>
-    </thead>
-    <tbody>
-    {% for d in rows %}
-      <tr>
-        <td>{{ d.device_name }}</td>
-        <td>{{ d.platform }}</td>
-        <td>{{ d.account_name }}</td>
-        <td>{{ d.ledger_name or d.ledger_id or '—' }}</td>
-        <td class="text-meta cell-meta-time">{{ d.created_at|owner_datetime }}</td>
-        <td>{{ d.last_seen_at|owner_datetime }}</td>
-        <td>
-          {% if d.revoked_at %}
-            <span class="badge badge-off">已停用</span>
-          {% elif ended_session %}
-            <span class="badge badge-off">会话已结束</span>
-          {% elif d.platform == 'web' %}
-            <span class="badge badge-ok">会话有效</span>
-          {% else %}
-            <span class="badge badge-ok">正常</span>
-          {% endif %}
-        </td>
-        <td>
-          <div class="actions">
-            {% if not d.revoked_at %}
-            <form class="inline" method="post" action="/owner/devices/{{ d.public_id }}/revoke"
-                  data-confirm="确认停用设备「{{ d.device_name }}」？停用后该设备的登录和上传入口将失效。">
-              <button type="submit" class="btn btn-danger">停用</button>
-            </form>
-            <form class="inline" method="post" action="/owner/devices/{{ d.public_id }}/rename">
-              <div class="rename-form">
-                <input class="rename-input" type="text" name="device_name"
-                       value="{{ d.device_name }}" maxlength="120" required>
-                <button type="submit" class="btn btn-secondary">重命名</button>
-              </div>
-            </form>
-            {% else %}
-            {% if d.platform != 'web' %}<a class="btn btn-secondary" href="/owner/pairing?recovery_device={{ d.public_id }}">恢复/替换</a>{% endif %}
-            <form class="inline" method="post" action="/owner/devices/{{ d.public_id }}/delete"
-                  data-confirm="确认从列表移除设备「{{ d.device_name }}」？将永久移除该设备及其历史 token / 上传链接记录，账单数据保留。">
-              <button type="submit" class="btn btn-danger">移除记录</button>
-            </form>
-            {% endif %}
-          </div>
-        </td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
+{% extends "_workspace.html" %}
+{% from "_workspace_ui.html" import icon with context %}
+{% block title %}管理访问设备 — 小票夹{% endblock %}
+{% block workspace_title %}管理访问设备{% endblock %}
+{% block workspace_description %}改名、停用与结束会话。{% endblock %}
+{% macro device_rows(rows, ended_session=false) %}
+  {% for d in rows %}
+  <details class="workspace-disclosure workspace-task-group workspace-device-row" id="device-{{ d.public_id }}"{% if failed_device_id == d.public_id %} open{% endif %}>
+    <summary>
+      <span class="workspace-task__icon workspace-tone-{{ 'apricot' if d.revoked_at else 'lilac' if d.platform == 'web' else 'green' }}">{{ icon('smartphone' if d.platform == 'android' else 'monitor') }}</span>
+      <span class="workspace-task__text"><strong>{{ d.device_name }}</strong><span>{{ 'Android' if d.platform == 'android' else 'Web' if d.platform == 'web' else '小票夹管理器' if d.platform == 'desktop' else d.platform }} · {% if d.revoked_at %}已停用{% elif ended_session %}会话已结束{% elif d.platform == 'web' %}会话有效{% elif d.last_seen_at %}最近使用 {{ d.last_seen_at|owner_datetime }}{% else %}尚无使用记录{% endif %}</span></span>
+      <span class="workspace-row-action">{{ '查看' if d.revoked_at or ended_session else '管理' }}</span>{{ icon('chevron-right') }}
+    </summary>
+    <div class="workspace-disclosure__body">
+      <dl class="workspace-device-meta"><div><dt>账号</dt><dd>{{ d.account_name }}</dd></div><div><dt>创建时间</dt><dd>{{ d.created_at|owner_datetime }}</dd></div><div><dt>最近使用</dt><dd>{{ d.last_seen_at|owner_datetime }}</dd></div>{% if d.revoked_at %}<div><dt>停用时间</dt><dd>{{ d.revoked_at|owner_datetime }}</dd></div>{% endif %}</dl>
+      {% if not d.revoked_at %}
+      <form method="post" action="/owner/devices/{{ d.public_id }}/rename" class="workspace-form workspace-device-rename">
+        <label class="workspace-field"><span>设备名称</span><input type="text" name="device_name" maxlength="120" required value="{{ submitted_device_name if failed_device_id == d.public_id and submitted_device_name is not none else d.device_name }}"></label>
+        <button type="submit" class="btn btn-secondary">保存名称</button>
+      </form>
+      <form method="post" action="/owner/devices/{{ d.public_id }}/revoke" data-confirm="确认{{ '结束浏览器会话' if d.platform == 'web' else '停用设备' }}「{{ d.device_name }}」？该设备的登录和上传入口将失效，账单与操作归属保留。请先在原设备核对尚未发送的内容。">
+        <button type="submit" class="btn btn-danger">{{ '结束会话' if d.platform == 'web' else '停用设备' }}</button>
+      </form>
+      {% else %}
+      {% if failed_device_id == d.public_id and submitted_device_name is not none %}
+      <label class="workspace-field"><span>未保存的设备名称</span><input value="{{ submitted_device_name }}" readonly></label><p class="workspace-note">设备已停用，名称尚未保存。可以先复制输入，再核对原设备。</p>
+      {% endif %}
+      <div class="workspace-device-actions">
+        {% if d.platform == 'android' %}<a class="btn btn-secondary" href="/owner/pairing?recovery_device={{ d.public_id }}">恢复原设备 {{ icon('rotate-ccw') }}</a>{% endif %}
+        <form method="post" action="/owner/devices/{{ d.public_id }}/delete" data-confirm="确认移除设备「{{ d.device_name }}」？请先在原设备核对尚未发送的内容；移除后不能沿原身份恢复。该设备的历史登录与上传入口记录将移除，已上传账单保留。">
+          <button type="submit" class="btn btn-danger">移除记录</button>
+        </form>
+      </div>
+      {% if d.platform == 'android' %}<p class="workspace-note">保留设备身份可沿原设备恢复。</p>{% else %}<p class="workspace-note">需要继续使用时，请在对应应用中重新连接。</p>{% endif %}
+      {% endif %}
+    </div>
+  </details>
+  {% endfor %}
 {% endmacro %}
-{% block content %}
-<h1>设备管理</h1>
-<details class="page-help">
-  <summary>这是什么</summary>
-  <p>管理这个账号的手机和浏览器。停用设备会撤销它的登录和上传入口；浏览器退出或会话到期后，记录保留在历史中，不再计入已连接设备。</p>
-</details>
-
-<div class="card">
-  {% if devices %}
-    {{ device_table(devices) }}
-  {% else %}
-    <p class="empty-note">暂无设备。手机绑定或浏览器确认身份后显示在此处。</p>
-  {% endif %}
-</div>
-
-{% if ended_browser_sessions %}
-<details class="card" id="browser-session-history">
-  <summary>已结束的浏览器会话 · {{ ended_browser_sessions|length }} 条</summary>
-  <p class="text-meta">这些浏览器已退出、到期或被停用。重新确认身份会建立新会话，历史设备记录用于保留操作归属。</p>
-  {{ device_table(ended_browser_sessions, true) }}
-</details>
+{% block workspace_body %}
+{% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+{% if submitted_device_name is not none and failed_device_id and not (devices + ended_browser_sessions)|selectattr('public_id', 'equalto', failed_device_id)|list %}
+<label class="workspace-field"><span>未保存的设备名称</span><input value="{{ submitted_device_name }}" readonly></label><p class="workspace-note">原设备已不可管理，输入尚未保存。请先复制这份名称并核对设备。</p>
 {% endif %}
-
-<div class="card">
-  <h2>添加设备</h2>
-  <p class="text-meta mb-5">
-    换了手机或要新增一台设备时，去这里生成一个一次性 8 位绑定码，在新设备的小票夹 App
-    里输入即可加入账本。给家人入伙请用「账本」里的邀请，不要把绑定码发给成员。
-  </p>
-  <a href="/owner/pairing" class="btn btn-primary">生成绑定码</a>
+<div class="workspace-devices">
+  {% set active_devices = devices|rejectattr('revoked_at')|list %}
+  {% set revoked_devices = devices|selectattr('revoked_at')|list %}
+  <section class="workspace-section" aria-label="当前访问设备">
+    {% if active_devices %}{{ device_rows(active_devices) }}{% else %}<p class="workspace-note">暂无正在使用的设备。手机绑定或浏览器确认身份后显示在此处。</p>{% endif %}
+  </section>
+  {% if revoked_devices %}<section class="workspace-section" aria-labelledby="revoked-devices-title"><h2 id="revoked-devices-title">已停用</h2>{{ device_rows(revoked_devices) }}</section>{% endif %}
+  <div class="workspace-device-warning">{{ icon('circle-alert') }}<div><strong>移除前先查看未发送内容</strong><p>移除后不能沿原身份恢复。停用会结束登录，已上传的账单保留。</p></div></div>
+  {% if ended_browser_sessions %}
+  <details class="workspace-disclosure workspace-device-history" id="browser-session-history"{% if ended_browser_sessions|selectattr('public_id', 'equalto', failed_device_id)|list %} open{% endif %}>
+    <summary><span>已结束的浏览器会话 · {{ ended_browser_sessions|length }} 条</span>{{ icon('chevron-right') }}</summary>
+    <p class="workspace-note">这些浏览器已退出、到期或被停用，不再计入已连接设备。重新确认身份会建立新会话，历史记录保留操作归属。</p>
+    {{ device_rows(ended_browser_sessions, true) }}
+  </details>
+  {% endif %}
+  <a href="/owner/pairing" class="workspace-task workspace-device-add"><span class="workspace-task__icon workspace-tone-green">{{ icon('smartphone') }}</span><span class="workspace-task__text"><strong>添加设备</strong><span>连接自己的手机或管理器；家庭成员请使用账本邀请。</span></span>{{ icon('chevron-right') }}</a>
 </div>
 {% endblock %}

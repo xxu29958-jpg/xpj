@@ -1,54 +1,56 @@
-{% extends "base.html" %}
-{% block title %}生成设备绑定码 — 小票夹{% endblock %}
-{% block content %}
-<h1>生成设备绑定码</h1>
-<details class="page-help">
-  <summary>这是什么</summary>
-  <p>在这里生成一个 8 位一次性码，可连接这台电脑上的小票夹管理器；配置手机连接地址后，也可用于自己的 Android 手机。给家人入伙请使用账本管理里的邀请。</p>
-</details>
-
-{% if error %}
-<div class="alert alert-danger">{{ error }}</div>
-{% endif %}
-
-{% if android_server_url %}
-<div class="card">
-  <div class="meta text-center">
-    Android 服务器地址：<code>{{ android_server_url }}</code>
-    <button class="btn" type="button" data-copy-server-url="{{ android_server_url }}">复制地址</button>
-  </div>
-</div>
-{% else %}
-<div class="alert alert-info">
-  当前绑定码可用于这台电脑上的小票夹管理器。若要连接 Android 手机，请先到<a class="text-link" href="/owner/settings"><strong>设置</strong></a>配置手机连接地址。
-</div>
-{% endif %}
-
-{% if pairing_result %}
-<div class="card">
-  <div class="alert alert-success">
-    {% if selected_recovery_device_id %}设备恢复码已生成{% else %}新设备绑定码已生成{% endif %}，请在有效期内完成绑定。
-  </div>
-  <div class="code-big" data-pairing-code>{{ pairing_result.pairing_code }}</div>
-  {% if android_server_url and not selected_recovery_device_id %}
-  <div hidden data-qr-output data-qr-source="[data-pairing-code]" data-qr-origin="{{ android_server_url }}" data-qr-label="连接自己的设备二维码"></div>
-  <p class="help-text">在 Android 小票夹连接页点「扫一扫连接」；iPhone 或 iPad 可用相机扫码连接网页版。只用于你自己的设备。</p>
-  {% endif %}
-  <div class="meta text-center">
-    账本：{{ pairing_result.ledger_name }} &nbsp;·&nbsp;
-    有效期至：{{ pairing_result.expires_at|owner_datetime }}
-  </div>
-  <p class="text-meta text-center mt-5">
-    {% if android_server_url %}
-    在 Android 小票夹 App 中点击"绑定账本"，输入上方 8 位码完成绑定。<br>
+{% extends "_workspace.html" %}
+{% from "_workspace_ui.html" import icon with context %}
+{% block title %}连接设备 — 小票夹{% endblock %}
+{% block workspace_title %}连接另一台设备{% endblock %}
+{% block workspace_description %}生成一个有明确用途的连接码。{% endblock %}
+{% block workspace_body %}
+{% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+<div class="workspace-columns workspace-pairing{% if pairing_result %} has-result{% endif %}">
+  <form method="post" action="/owner/pairing" class="workspace-form workspace-pairing-form">
+    {% if not ledger_choices %}
+    {% if not error %}<div class="alert alert-danger" role="alert">{{ owner_recovery_message }}</div>{% endif %}
     {% else %}
-    打开这台电脑上的小票夹管理器，在连接页面输入上方 8 位码。<br>
+    <label class="workspace-field" for="pairing-ledger"><span>目标账本</span>
+      <select id="pairing-ledger" name="ledger_id" required>
+        {% if selected_ledger_id and not ledger_choices|selectattr('ledger_id', 'equalto', selected_ledger_id)|list %}<option value="{{ selected_ledger_id }}" selected>原账本当前不可用，请重新选择</option>{% endif %}
+        {% for choice in ledger_choices %}<option value="{{ choice.ledger_id }}"{% if choice.ledger_id == selected_ledger_id %} selected{% endif %}>{{ choice.name }}{% if choice.is_default %}（默认）{% endif %}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="workspace-field" for="pairing-device"><span>连接方式</span>
+      <select id="pairing-device" name="recovery_device_public_id" aria-describedby="pairing-purpose">
+        <option value=""{% if not selected_recovery_device_id %} selected{% endif %}>添加新设备</option>
+        {% if recovery_selection_unavailable %}<option value="{{ selected_recovery_device_id }}" selected>原设备已不可恢复，请重新选择</option>{% endif %}
+        {% for device in recovery_devices %}<option value="{{ device.public_id }}"{% if device.public_id == selected_recovery_device_id %} selected{% endif %}>恢复「{{ device.device_name }}」{% if device.is_revoked %}（已停用）{% endif %}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="workspace-field" for="pairing-ttl"><span>有效时长（分钟）</span><input id="pairing-ttl" type="number" name="ttl_minutes" min="1" max="60" required value="{{ submitted_ttl_minutes|default(15) }}"></label>
+    <details class="workspace-disclosure workspace-task-group workspace-pairing-purpose" id="pairing-purpose"{% if selected_recovery_device_id %} open{% endif %}>
+      <summary><span class="workspace-task__icon workspace-tone-lilac">{{ icon('rotate-ccw') }}</span><span class="workspace-task__text"><strong>恢复已有设备</strong><span>沿用原设备身份</span></span>{{ icon('chevron-right') }}</summary>
+      <div class="workspace-disclosure__body workspace-note">在连接方式中选择原 Android 设备。恢复会沿用它的身份，并撤销它之前的登录状态；添加新设备不会挤掉现有手机。恢复前请在原设备核对尚未发送的内容。</div>
+    </details>
+    <div class="workspace-pairing-note">{{ icon('info') }}<div><strong>连接码不是家庭邀请</strong><p>只用于自己的设备。家庭成员请使用<a href="/owner/ledgers">账本里的邀请</a>。</p></div></div>
+    <div class="workspace-save"><button type="submit" class="btn btn-primary">生成连接码 {{ icon('arrow-right') }}</button></div>
     {% endif %}
-    绑定码为一次性使用，过期后自动失效。
-  </p>
+  </form>
+  <section class="workspace-pairing-handoff" aria-label="设备连接信息">
+    {% if pairing_result %}
+    <div class="workspace-pairing-result" role="status">
+      <h2>{% if selected_recovery_device_id %}设备恢复码已生成{% else %}新设备绑定码已生成{% endif %}</h2>
+      <p>目标账本：<strong>{{ pairing_result.ledger_name }}</strong></p>
+      <div class="code-big" data-pairing-code>{{ pairing_result.pairing_code }}</div>
+      <p class="workspace-note">有效期至 {{ pairing_result.expires_at|owner_datetime }}，一次性使用。失效后请重新生成。</p>
+      {% if android_server_url %}<div class="workspace-pairing-address"><h3>服务地址</h3><code>{{ android_server_url }}</code><button class="btn btn-secondary" type="button" data-copy-server-url="{{ android_server_url }}">复制地址</button></div>{% endif %}
+      {% if android_server_url and not selected_recovery_device_id %}
+      <div hidden data-qr-output data-qr-source="[data-pairing-code]" data-qr-origin="{{ android_server_url }}" data-qr-label="连接自己的设备二维码"></div>
+      <p class="workspace-note">Android 小票夹连接页点「扫一扫连接」；iPhone 或 iPad 可用相机扫码连接网页版。</p>
+      {% elif selected_recovery_device_id %}<p class="workspace-note">请在要恢复的 Android 小票夹中输入恢复码，沿原身份重新连接。</p>{% endif %}
+    </div>
+    {% endif %}
+    {% if android_server_url %}
+    {% if not pairing_result %}<p class="workspace-note">生成后会在这里一起显示连接码、目标账本和服务地址。</p>{% endif %}
+    {% else %}<div class="alert alert-info" role="status">当前绑定码可用于这台电脑上的小票夹管理器。连接 Android 手机前，请到<a class="text-link" href="/owner/settings"><strong>设置</strong></a>配置手机连接地址。</div>{% endif %}
+  </section>
 </div>
-{% endif %}
-
 {% if android_server_url %}
 <script>
   document.querySelectorAll("[data-copy-server-url]").forEach((button) => {
@@ -56,56 +58,9 @@
       try {
         await navigator.clipboard.writeText(button.dataset.copyServerUrl);
         button.textContent = "已复制";
-      } catch (_error) {
-        button.textContent = "请手动复制";
-      }
+      } catch (_error) { button.textContent = "请手动复制"; }
     });
   });
 </script>
 {% endif %}
-
-<div class="card">
-  <h2>生成新绑定码</h2>
-  <p class="text-meta mb-5">
-    添加新设备不会挤掉现有手机；恢复已有设备会保留原设备身份，并撤销那台设备之前的登录状态。
-    家庭成员入伙请改用「成员管理」里的邀请，不要把绑定码发给成员。
-  </p>
-  {% if not ledger_choices %}
-  <div class="alert alert-danger">
-    {{ owner_recovery_message }}
-  </div>
-  {% else %}
-  <form method="post" action="/owner/pairing">
-    <div class="flex-row-wrap">
-      <label>绑定到账本：
-        <select name="ledger_id"
-                class="inline-input">
-          {% for choice in ledger_choices %}
-          <option value="{{ choice.ledger_id }}"
-                  {% if choice.ledger_id == selected_ledger_id %}selected{% endif %}>
-            {{ choice.name }}{% if choice.is_default %}（默认）{% endif %}
-          </option>
-          {% endfor %}
-        </select>
-      </label>
-      <label>有效时长（分钟）：
-        <input type="number" name="ttl_minutes" value="15" min="1" max="60"
-               class="inline-input inline-input--narrow">
-      </label>
-      <label>设备方式：
-        <select name="recovery_device_public_id" class="inline-input">
-          <option value="">添加一台新设备</option>
-          {% for device in recovery_devices %}
-          <option value="{{ device.public_id }}"
-                  {% if device.public_id == selected_recovery_device_id %}selected{% endif %}>
-            恢复「{{ device.device_name }}」{% if device.is_revoked %}（已停用）{% endif %}
-          </option>
-          {% endfor %}
-        </select>
-      </label>
-      <button type="submit" class="btn btn-primary">生成绑定码</button>
-    </div>
-  </form>
-  {% endif %}
-</div>
 {% endblock %}
