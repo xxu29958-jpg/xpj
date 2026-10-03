@@ -1,6 +1,7 @@
 """Actual local Owner commands, persisted tasks and files in the PostgreSQL lane."""
 
 import json
+import re
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 from uuid import uuid4
@@ -13,6 +14,8 @@ from app.main import app
 from app.models import Account, BackgroundTask, Ledger, LedgerMember
 from app.routes.owner_console import _require_local
 from app.services import background_task_executor, background_task_service
+from app.services import orphan_maintenance_tasks as maintenance
+from app.services.background_task_admission import BackgroundTaskCapacityFullError
 from app.services.orphan_maintenance_tasks import remaining_candidates, task_result
 from app.services.time_service import now_utc
 from tests._infra.assets import PNG_BYTES
@@ -45,24 +48,55 @@ def _task(public_id):
 
 def test_owner_inspects_previews_and_continues_only_frozen_unfinished_files(local_client, identity, monkeypatch):
     files = [_old_file(f"owner-inspect-{index}.png") for index in range(13)]
-    client_ref = str(uuid4())
+    initial = local_client.get("/owner/originals?ledger_id=owner")
+    client_ref = re.search(r'name="client_ref" value="([^"]+)"', initial.text).group(1)
+
+    def full(*args, **kwargs):
+        raise BackgroundTaskCapacityFullError("isolated capacity refusal")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(background_task_service, "prepare_enqueue", full)
+        busy = local_client.post("/owner/originals/inspect", data={"ledger_id": "owner", "client_ref": client_ref})
+    assert busy.status_code == 503
+    assert "这次检查尚未开始" in busy.text
+    assert f'name="client_ref" value="{client_ref}"' in busy.text
+    assert 'name="ledger_id" value="owner"' in busy.text
+    assert 'action="/owner/originals/inspect"' in busy.text
+    assert _task(client_ref) is None
+    assert all(path.is_file() for path in files)
     location, inspection_id = _post(local_client, "/owner/originals/inspect", client_ref=client_ref)
+    assert inspection_id == client_ref
     inspection = _task(inspection_id)
-    assert inspection.status == "completed" and task_result(inspection)["candidate_files"] == 13
+    assert inspection.status == "completed"
+    assert task_result(inspection)["candidate_files"] == 13
     assert all(path.is_file() for path in files)
     assert _post(local_client, "/owner/originals/inspect", client_ref=client_ref) == (location, inspection_id)
     page = local_client.get(location)
-    assert page.status_code == 200 and "下一页文件" in page.text and "csrf_token" in page.text
+    assert page.status_code == 200
+    assert "下一页文件" in page.text
+    assert "csrf_token" in page.text
     assert "owner-inspect-" not in page.text
     preview = f"/owner/originals/tasks/{inspection_id}/files/0?ledger_id=owner"
     assert local_client.get(preview).content == PNG_BYTES
     assert local_client.get(preview.replace("ledger_id=owner", "ledger_id=tester_1")).status_code == 404
     api = local_client.get(f"/api/tasks/{inspection_id}", headers=identity.app_headers)
-    assert api.status_code == 200 and "_candidates" not in api.text and "owner-inspect-" not in api.text
+    assert api.status_code == 200
+    assert "_candidates" not in api.text
+    assert "owner-inspect-" not in api.text
     assert local_client.get(location + "&files_page=2").text.count('class="original-candidate"') == 1
     action = f"/owner/originals/tasks/{inspection_id}/dispose"
     assert local_client.post(action, data={"ledger_id": "owner"}, follow_redirects=False).status_code == 422
     late = _old_file("not-in-owner-inspection.png")
+    with monkeypatch.context() as patch:
+        patch.setattr(background_task_service, "prepare_enqueue", full)
+        busy = local_client.post(action, data={"ledger_id": "owner", "confirmed": "true"})
+    assert busy.status_code == 503
+    assert f'action="{action}"' in busy.text
+    assert "确认永久删除本次 13 个候选文件" in busy.text
+    assert all(path.is_file() for path in files)
+    assert late.is_file()
+    with SessionLocal() as db:
+        assert maintenance.disposal_for_inspection(db, _task(inspection_id)) is None
     real_unlink = Path.unlink
 
     def locked_file(path, *args, **kwargs):
@@ -75,16 +109,30 @@ def test_owner_inspects_previews_and_continues_only_frozen_unfinished_files(loca
         partial_location, disposal_id = _post(local_client, action, confirmed="true")
     result = task_result(_task(disposal_id))
     assert (result["deleted_files"], result["failed_files"], result["candidate_files"]) == (12, 1, 13)
-    assert files[0].is_file() and late.is_file()
+    assert files[0].is_file()
+    assert late.is_file()
     assert "仍有文件待处理" in local_client.get(partial_location).text
     original_inspection = local_client.get(location).text
-    assert "查看本次处置结果" in original_inspection and "删除本次候选文件" not in original_inspection
+    assert "查看本次处置结果" in original_inspection
+    assert "删除本次候选文件" not in original_inspection
     assert _post(local_client, action, confirmed="true") == (partial_location, disposal_id)
+    with monkeypatch.context() as patch:
+        patch.setattr(background_task_service, "prepare_enqueue", full)
+        busy = local_client.post(f"/owner/originals/tasks/{disposal_id}/continue", data={"ledger_id": "owner"})
+    assert busy.status_code == 503
+    assert f'action="/owner/originals/tasks/{disposal_id}/continue"' in busy.text
+    assert "继续未完成的原文件" in busy.text
+    assert files[0].is_file()
+    assert late.is_file()
+    assert task_result(_task(disposal_id)) == result
     continued_location, child_id = _post(local_client, f"/owner/originals/tasks/{disposal_id}/continue")
     child = _task(child_id)
-    assert child.status == "completed" and task_result(child)["deleted_files"] == 1
-    assert task_result(child)["candidate_files"] == 1 and not remaining_candidates(child)
-    assert not any(path.exists() for path in files) and late.is_file()
+    assert child.status == "completed"
+    assert task_result(child)["deleted_files"] == 1
+    assert task_result(child)["candidate_files"] == 1
+    assert not remaining_candidates(child)
+    assert not any(path.exists() for path in files)
+    assert late.is_file()
     assert _post(local_client, f"/owner/originals/tasks/{disposal_id}/continue") == (continued_location, child_id)
     assert "查看原检查范围" in local_client.get(continued_location).text
     assert task_result(_task(disposal_id)) == result, "Continuation must not rewrite the previous outcome"

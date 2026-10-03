@@ -262,3 +262,11 @@
   .workspace-ledger-create { flex: 1; }
   .workspace-calendar-form .workspace-save { margin-top: auto; }
 }
+
+.workspace-maintenance .workspace-disclosure__body { padding-bottom: 22px; }
+.workspace-maintenance .workspace-switch { margin-top: 16px; }
+.workspace-maintenance .workspace-text-action { display: inline-flex; align-items: center; min-height: 44px; }
+.workspace-maintenance-confirm { margin-top: 28px; }
+.workspace-maintenance .workspace-save { position: static; }
+.workspace-maintenance-warning { display: flex; align-items: flex-start; gap: 12px; padding: 20px; margin-bottom: 22px; border-radius: 20px; background: var(--workspace-apricot); font-size: 14px; }
+.workspace-maintenance-warning p { margin-top: 6px; color: var(--text-muted); }
