@@ -19,12 +19,10 @@ from app.services.installation_health_service import (
 router = APIRouter(prefix="/owner", tags=["owner-console"])
 
 
-def _runtime_recovery_message() -> str:
-    return owner_recovery_message(get_settings().owner_recovery_channel)
-
-
-def _add_android_connection_context(context: dict[str, object]) -> None:
-    context["android_server_url"] = configured_mobile_endpoint_url(get_settings().public_base_url)
+def _add_connection_context(context: dict[str, object]) -> None:
+    settings = get_settings()
+    context["android_server_url"] = configured_mobile_endpoint_url(settings.public_base_url)
+    context["owner_recovery_message"] = owner_recovery_message(settings.owner_recovery_channel)
 
 
 def _add_recovery_context(
@@ -59,7 +57,6 @@ def owner_pairing_get(
     ctx["ledger_id"] = selected_id
     ctx["selected_ledger_id"] = selected_id
     ctx["submitted_ttl_minutes"] = 15
-    ctx["owner_recovery_message"] = _runtime_recovery_message()
     recovery_is_valid = _add_recovery_context(
         ctx,
         db,
@@ -68,7 +65,7 @@ def owner_pairing_get(
     )
     if not recovery_is_valid:
         ctx["error"] = "要恢复的设备不存在，请重新选择。"
-    _add_android_connection_context(ctx)
+    _add_connection_context(ctx)
     return templates.TemplateResponse(request=request, name="pairing.html", context=ctx)
 
 
@@ -97,13 +94,12 @@ def owner_pairing_post(
         ledger_id=ledger_id if ledger_id in valid_ids else None,
         selected_ledger_id=ledger_id,
         submitted_ttl_minutes=ttl_minutes,
-        owner_recovery_message=_runtime_recovery_message(),
         error=None,
     )
-    _add_android_connection_context(ctx)
+    _add_connection_context(ctx)
     if not choices or account_id is None or ledger_id not in valid_ids or not recovery_is_valid:
         if not choices:
-            ctx["error"] = _runtime_recovery_message()
+            ctx["error"] = ctx["owner_recovery_message"]
         elif not recovery_is_valid:
             ctx["error"] = "要恢复的设备不存在，请重新选择。"
         else:

@@ -47,7 +47,7 @@
     </div>
     {% endif %}
     {% if android_server_url %}
-    {% if not pairing_result %}<p class="workspace-note">生成后会在这里一起显示连接码、目标账本和服务地址。</p>{% endif %}
+    {% if not pairing_result %}<div class="workspace-pairing-address"><h3>服务地址</h3><code>{{ android_server_url }}</code><button class="btn btn-secondary" type="button" data-copy-server-url="{{ android_server_url }}">复制地址</button><p class="workspace-note">生成后会在这里一起显示连接码和目标账本。</p></div>{% endif %}
     {% else %}<div class="alert alert-info" role="status">当前绑定码可用于这台电脑上的小票夹管理器。连接 Android 手机前，请到<a class="text-link" href="/owner/settings"><strong>设置</strong></a>配置手机连接地址。</div>{% endif %}
   </section>
 </div>
