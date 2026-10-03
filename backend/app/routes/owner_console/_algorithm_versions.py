@@ -10,7 +10,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.errors import retain_handled_error
+from app.error_reporting import retain_handled_error
 from app.routes.owner_console._shared import LocalOnly, _base, templates
 from app.services import owner_console_service as svc
 from app.services.learning_service import (

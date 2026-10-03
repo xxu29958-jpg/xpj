@@ -76,7 +76,8 @@ def test_operation_changes_selected_ledger_and_keeps_financial_facts(owner, ledg
             "decision_public_id": target_rows[1]}
     result = owner.post(f"/owner/{page}/{endpoint}", data=data, follow_redirects=False)
     assert result.status_code == 303, result.text
-    assert result.headers["location"] == f"/owner/{page}?ledger_id={target}"
+    section = {"withdraw": "algorithm-history", "dismiss": "learning-candidates", "cleanup": "learning-volume"}[action]
+    assert result.headers["location"] == f"/owner/{page}?ledger_id={target}#{section}"
     with SessionLocal() as db:
         assert db.get(AlgorithmDecision, source_rows[0]).status == "active"
         assert db.get(AlgorithmDecision, source_rows[2]) is not None

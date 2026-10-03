@@ -1,4 +1,4 @@
-﻿#Requires -Version 5.1
+#Requires -Version 5.1
 
 . (Join-Path $PSScriptRoot 'test_pg_ownership_contract.ps1')
 
@@ -345,7 +345,18 @@ function Assert-XpjOwnedPostgresProcess {
             if (-not [string]::Equals($snapshotExecutable, $resolvedPostgresExe, [StringComparison]::OrdinalIgnoreCase)) {
                 throw "PostgreSQL process tree contains a foreign executable: $snapshotExecutable"
             }
-            $handle = Get-Process -Id ([int]$item.ProcessId) -ErrorAction Stop
+            try {
+                $handle = Get-Process -Id ([int]$item.ProcessId) -ErrorAction Stop
+            }
+            catch {
+                # A backend child can exit normally after the CIM tree snapshot.
+                # Only that exact absence is harmless; never waive root identity.
+                if (
+                    [int]$item.ProcessId -eq $postmasterId -or
+                    $_.FullyQualifiedErrorId -notlike 'NoProcessFoundForGivenId,*'
+                ) { throw }
+                continue
+            }
             $null = $handle.Handle
             $handles.Add($handle)
             if ($handle.HasExited) {
