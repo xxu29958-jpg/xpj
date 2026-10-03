@@ -1,9 +1,24 @@
 import java.time.Duration
+import java.security.MessageDigest
 import java.util.Properties
 import java.util.concurrent.TimeUnit
 
 val ticketboxVersionCode = 10200000
 val ticketboxVersionName = "1.2.0"
+// Source identity only, not a Git SHA or a digest of signed APK bytes. Excludes local secrets.
+val ticketboxSourceFingerprint = MessageDigest.getInstance("SHA-256").run {
+    val sourceFiles = fileTree("src/main").files + listOf(
+        project.file("build.gradle.kts"), rootProject.file("build.gradle.kts"),
+        rootProject.file("settings.gradle.kts"), rootProject.file("gradle/libs.versions.toml"),
+    )
+    sourceFiles.sortedBy { it.relativeTo(rootProject.projectDir).invariantSeparatorsPath }.forEach { source ->
+        update(source.relativeTo(rootProject.projectDir).invariantSeparatorsPath.toByteArray(Charsets.UTF_8))
+        update(0.toByte())
+        update(source.readBytes())
+        update(0.toByte())
+    }
+    digest().joinToString("") { "%02x".format(it) }
+}
 // Invoked explicitly by the isolated PG/Web/native journey, not the Connected suite.
 val ticketboxCloudJourneyFixture = "com.ticketbox.ui.navigation.NotificationJourneyRuntimeTest"
 val ticketboxJavaLanguageVersion =
@@ -165,6 +180,7 @@ android {
         resValue("integer", "app_version_code", ticketboxVersionCode.toString())
         buildConfigField("Boolean", "SHOW_ADVANCED_TOOLS", "false")
         buildConfigField("String", "DEFAULT_SERVER_URL", "\"${ticketboxServerUrl}\"")
+        buildConfigField("String", "SOURCE_FINGERPRINT", "\"$ticketboxSourceFingerprint\"")
         manifestPlaceholders["appLabel"] = "小票夹"
     }
 

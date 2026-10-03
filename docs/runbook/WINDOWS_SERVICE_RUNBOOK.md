@@ -199,6 +199,29 @@ $env:TICKETBOX_SESSION_TOKEN="<session_token>"
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\diagnose_ticketbox.ps1 -Advanced
 ```
 
+## 按请求编号定位错误
+
+应用日志由现有启动器写到已核对的 `TICKETBOX_DATA_DIR/logs/backend.log`，保留 5,000,000 字节轮转和三个备份。正式安装的应用数据根以服务的安装契约/绑定元数据为准；不要把源码 checkout 的 `backend/logs` 当成现用服务日志。服务包装器的 stdout/stderr 目录是安装的 `program_data_root/logs/backend`，它与应用的 `backend.log` 是不同出口。
+
+正式安装仍由原有 SYSTEM、管理员和专用服务 SID 权限保护。获得现有读取权限的维护人员可在该目录检索响应中的 `request_id`，或任务记录的数字 ID；普通 Manager 只显示服务状态，状态诊断 ZIP 不含原始历史日志。权限不足时沿现有 Windows 管理员维护路径读取，不改 ACL，也不新增产品日志下载入口。
+
+```powershell
+$ticketboxLogDirectory = '<已核对的 TICKETBOX_DATA_DIR>\logs'
+$ticketboxRequestId = '<错误响应的 request_id>'
+Get-ChildItem -LiteralPath $ticketboxLogDirectory -Filter 'backend.log*' -File |
+    Select-String -SimpleMatch -Pattern $ticketboxRequestId -Context 0,18
+```
+
+每条新输出含 UTC 时间（`Z`）、模块、版本及来源指纹。HTTP 行含方法、脱敏路径、状态和请求编号；任务行含任务 ID 和提交/handler/worker 外侧阶段。异常类型、机器错误码及 `at backend/...:行号 in 函数` 是异常现场，`reported_at` 是报告调用点；不包含异常原文、源码行、局部变量或 SQL 参数。日志失败不会发起业务重试，也不参与判断服务端是否已写入。
+
+冻结包输出 `recorded_source_sha256` 和 `recorded_payload_sha256`，来自同目录既有 `BUILD_PROVENANCE.json`；用保留的该包清单/CI 构建找到对应源码。缺失清单会明确标记 `manifest_unavailable`，不可用当前主干替代发生时构建。源码运行的 `source_tree_sha256` 覆盖排序后的 `backend/app/**/*.py` 和 `backend/packaging/launch.py`（相对路径、NUL、原始字节、NUL）；它不是 Git SHA。版本号相同也不能推断来源相同。定位文件后，需要复杂度和责任导航时再查该构建对应的现有工程地图。
+
+Android 沿既有授权的 ADB/Logcat 读取 `TicketboxNetwork`：`adb logcat -d -s TicketboxNetwork:W`。公共错误消费会保留可选请求编号，错误体优先、响应头回退；不一致时同时记录 `request_id_mismatch` 和头编号。无响应/旧响应允许没有编号。输出保留源指纹、variant、安全异常类型和项目帧；原 `Result`、cause、错误码和取消语义继续供业务使用。Logcat 不提供跨重启历史留存，本项没有增加上传或持久日志服务。
+
+隔离合成故障可运行 `backend/tests/test_error_reporting_runtime.py` 的真实 Uvicorn 测试：它加载实际应用的完整 middleware/异常处理链，关闭 DB lifespan，仅在临时目录写日志，并验证未捕获 500、已处理 503、原表单保留、日志写入故障和轮转。它不需要触碰日常安装。后台任务的真实 PG 证据在 `test_background_tasks.py` / `test_background_task_claim.py`；Android 解析到输出由 `NetworkErrorReportingTest` 验证。
+
+只读 `python scripts/_audit_error_reporting.py` 已接入现有 release audit 和 CI。它报告 base、资格/源码 SHA 和有限覆盖；本地未提交验证显式加 `--worktree`。新独立执行、宽捕获终止或输出边界未明确归属时返回非零。精确例外需有责任点、理由和行为测试，相关函数变化会失效；它不读取用户日志、执行业务模块或连接数据库。
+
 ## 出门前保障检查
 
 出门前推荐运行：

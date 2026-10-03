@@ -6,6 +6,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.error_reporting import retain_handled_error
 from app.errors import AppError
 from app.routes._web_expense_return_context import (
     ExpenseReturnContext,
@@ -71,6 +72,8 @@ def web_text_recognition_post(
     except (AppError, SQLAlchemyError) as exc:
         db.rollback()
         status = exc.status_code if isinstance(exc, AppError) else 503
+        if status >= 500:
+            retain_handled_error(request, exc)
         message = exc.message if isinstance(exc, AppError) else "暂时未能取得识别结果，请重试原请求。"
         retry_allowed = status >= 500 or status == 429 or (isinstance(exc, AppError) and exc.error == "idempotency_key_in_progress")
         return _text_page(request, db, options, selected, expense_id, fields,

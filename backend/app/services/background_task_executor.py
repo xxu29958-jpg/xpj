@@ -5,13 +5,14 @@ from __future__ import annotations
 import logging
 import os
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from threading import Lock
 from typing import Any
 
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.error_reporting import report_error
 from app.models import BackgroundTask
 from app.services.background_task_handler_api import mark_failed
 from app.services.background_task_registry import PreparedBackgroundTask, TaskHandlerRegistry
@@ -36,15 +37,16 @@ def submit_committed(db: Session, prepared: PreparedBackgroundTask, *, runner: T
     try:
         submit_task(prepared.task_id, prepared.payload, registry=prepared.registry, runner=runner)
     except Exception as exc:  # noqa: BLE001 - executor submission barrier
-        logger.exception("background task %s could not be submitted", prepared.task_id)
+        report_error(logger, "background task %s stage=submit could not be submitted", prepared.task_id, error=exc)
         try:
             mark_failed(db, prepared.task_id, expected_status="queued", error_code="task_submission_failed",
                 error_message="Task execution could not be started.")
-        except SQLAlchemyError:
+        except SQLAlchemyError as status_error:
             # The receipt is durable; startup recovery owns a queued orphan if
             # this secondary status publication fails.
             db.rollback()
-            logger.exception("background task %s failure status could not be persisted", prepared.task_id)
+            report_error(logger, "background task %s stage=submit_failure_status could not be persisted",
+                prepared.task_id, error=status_error)
         raise BackgroundTaskSubmissionError(prepared.task_public_id) from exc
     return prepared.task
 
@@ -70,7 +72,8 @@ class _ExecutorPool:
                     max_workers=MAX_WORKERS,
                     thread_name_prefix="xpj-bgtask",
                 )
-            self._executor.submit(runner, task_id, payload, registry)
+            future = self._executor.submit(runner, task_id, payload, registry)
+            future.add_done_callback(lambda finished: _report_worker_outcome(task_id, finished))
 
     def shutdown(self, *, wait: bool) -> None:
         with self._lock:
@@ -81,6 +84,13 @@ class _ExecutorPool:
 
 
 _EXECUTOR_POOL = _ExecutorPool()
+
+
+def _report_worker_outcome(task_id: int, future: Future[None]) -> None:
+    # A pool Future otherwise retains outside-handler errors without an observer.
+    # Inline execution already propagates to the existing submission boundary.
+    if not future.cancelled() and (error := future.exception()) is not None:
+        report_error(logger, "background task %s stage=worker_boundary failed", task_id, error=error)
 
 
 def submit_task(

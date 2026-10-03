@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 import app.services.background_task_service as bgtasks
 from app.config import reset_settings_cache
 from app.database import SessionLocal
+from app.log_sanitize import SanitizedFormatter
 from app.models import Account, BackgroundTask, LedgerMember
 from app.services import background_task_handler_api as handler_api
 from app.services.time_service import now_utc
@@ -190,7 +191,13 @@ def test_enqueue_or_get_active_reuses_existing_singleton_task() -> None:
         assert active_count == 1
 
 
-def test_handler_exception_marks_failed(*, identity) -> None:
+@pytest.mark.parametrize("logging_failure", [False, True])
+def test_handler_exception_marks_failed(caplog, monkeypatch, logging_failure, *, identity) -> None:
+    if logging_failure:
+        def unavailable_sink(*_args, **_kwargs):
+            raise OSError("log sink unavailable")
+        monkeypatch.setattr("app.services.background_task_worker.logger.error", unavailable_sink)
+
     def boom(db, task, payload):
         raise RuntimeError("kaboom")
 
@@ -209,6 +216,12 @@ def test_handler_exception_marks_failed(*, identity) -> None:
         assert row.status == "failed"
         assert row.error_code == "RuntimeError"
         assert "kaboom" in (row.error_message or "")
+        task_id = row.id
+    if not logging_failure:
+        output = "\n".join(SanitizedFormatter().format(record) for record in caplog.records)
+        assert f"background task {task_id} (test_boom) stage=handler" in output
+        assert "RuntimeError" in output and "in boom" in output
+        assert "version=" in output and "source_tree_sha256=" in output
 
 
 # --- chunked progress + cancellation ----------------------------------

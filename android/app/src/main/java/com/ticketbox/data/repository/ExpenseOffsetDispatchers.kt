@@ -84,7 +84,9 @@ private suspend fun dispatchOffsetCommand(block: suspend () -> DispatchResult): 
 private fun mapOffsetHttpException(error: HttpException): DispatchResult {
     val body = error.response()?.errorBody()?.string().orEmpty()
     val message = extractOffsetServerMessage(body) ?: error.message().orEmpty()
-    val parsed = NetworkErrorHandler({ null }, "ExpenseOffset").parseErrorMessage(error.code(), body)
+    val parsed = NetworkErrorHandler({ null }, "ExpenseOffset").parseErrorMessage(
+        error.code(), body, error.response()?.headers()?.get("X-Request-ID"), error,
+    )
     if (error.code() == 409 && parsed.errorCode == CORRECTION_RATE_PENDING) {
         return DispatchResult.Failure(parsed.correctionRateFailure())
     }

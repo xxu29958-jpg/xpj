@@ -11,6 +11,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
+from app.error_reporting import report_error
 from app.models import BackgroundTask
 from app.services import background_task_executor
 from app.services.background_task_executor import BackgroundTaskSubmissionError
@@ -35,7 +36,7 @@ def run_task(
         task = claim_queued_task(db, task_id)
         if task is None:
             if db.get(BackgroundTask, task_id) is None:
-                logger.error("background task %s vanished before run", task_id)
+                report_error(logger, "background task %s stage=claim vanished before run", task_id)
             return
 
         active_registry = registry or runtime_handler_registry()
@@ -55,7 +56,7 @@ def run_task(
         except TaskCancelledError:
             _mark_cancelled(db, task_id)
         except Exception as exc:  # noqa: BLE001 - top-of-task outcome barrier
-            logger.exception("background task %s (%s) failed", task_id, task.task_type)
+            report_error(logger, "background task %s (%s) stage=handler failed", task_id, task.task_type, error=exc)
             _mark_failed(
                 db,
                 task_id,
