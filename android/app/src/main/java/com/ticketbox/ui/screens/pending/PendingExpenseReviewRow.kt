@@ -143,15 +143,15 @@ internal fun PendingExpenseReviewRow(
 
 @Composable
 private fun PendingExpenseLeadingMark(item: PendingExpenseReviewItem) {
-    val size = if (item.compact) DpSize(40.dp, 52.dp) else DpSize(46.dp, 60.dp)
+    val size = if (item.compact) DpSize(40.dp, 52.dp) else DpSize(56.dp, 72.dp)
     if (item.expense.hasUndeletedImage) {
         AppAsyncImage(
             image = item.thumbnail,
             presentation = AppAsyncImagePresentation(
                 placeholder = stringResource(R.string.pending_row_image_placeholder),
                 contentDescription = stringResource(R.string.components_async_image_content_description),
-                shape = RoundedCornerShape(AppRadius.small),
-                contentScale = ContentScale.Crop,
+                shape = RoundedCornerShape(4.dp),
+                contentScale = ContentScale.Fit,
             ),
             layout = AppAsyncImageLayout(compact = true, compactSize = size),
         )

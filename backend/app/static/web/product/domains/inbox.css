@@ -1,15 +1,113 @@
-/* 收件：高密度待办台，优先展示缺失信息与可执行动作。 */
+/* 收件：先读小票与当前动作，上传和识别记录按需展开。 */
 
 /* K3: 页头原生上传表单 (multipart, 无 JS 可用); file input 的呈现由
    components.css 的 file-picker primitive 承担。 */
 .inbox-page-header {
-    grid-template-columns: minmax(0, 1fr);
-    align-items: start;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
 }
 
 .inbox-page-header .product-page-actions {
+    min-inline-size: 0;
+    justify-content: flex-end;
+}
+
+.inbox-page-header:has(.inbox-capture[open]) {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.inbox-capture[open] {
+    width: 100%;
+}
+
+.inbox-capture > summary {
+    list-style: none;
+}
+
+.inbox-capture > summary::-webkit-details-marker {
+    display: none;
+}
+
+.inbox-capture .inbox-upload-form {
+    margin-block-start: var(--space-4);
+}
+
+.inbox-utilities {
+    display: flex;
+    flex-wrap: wrap;
     align-items: start;
     justify-content: space-between;
+    gap: var(--space-2) var(--space-5);
+    margin-block-end: var(--space-3);
+    border-block-end: 1px solid var(--border-card);
+    color: var(--text-muted);
+    font-size: var(--type-caption-size);
+}
+
+.inbox-recognition {
+    flex: 1 1 12rem;
+    min-width: 0;
+}
+
+.inbox-recognition > summary,
+.inbox-utilities > a {
+    min-height: var(--target-min);
+    align-content: center;
+}
+
+.inbox-utilities > a {
+    display: inline-flex;
+    align-items: center;
+}
+
+.inbox-recognition[open] > summary {
+    color: var(--text-default);
+}
+
+/* Enhancement only covers the native control after its filename has rendered.
+   Without JavaScript, the original input and its browser-owned label remain. */
+.file-picker.is-enhanced > input.file-picker-input,
+.inbox-file-choice:not([hidden]) {
+    grid-area: 2 / 1;
+}
+
+.file-picker.is-enhanced > input.file-picker-input {
+    z-index: 1;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.inbox-file-choice:not([hidden]) {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    align-items: center;
+    gap: var(--space-3);
+    min-height: var(--target-min);
+    padding-inline: var(--space-4);
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius-sm);
+    background: var(--surface-card);
+    pointer-events: none;
+}
+
+.inbox-file-choice > :first-child {
+    color: var(--brand-primary);
+    font-weight: var(--type-subtitle-weight);
+}
+
+.inbox-file-choice > [data-file-picker-name] {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.file-picker:has(input:focus-visible) .inbox-file-choice {
+    outline: var(--space-1) solid var(--brand-focus-ring);
+    outline-offset: var(--space-1);
+}
+
+.file-picker:has(input:disabled) .inbox-file-choice {
+    opacity: .6;
 }
 
 .inbox-upload-form {
@@ -55,6 +153,10 @@
 }
 
 @media (max-width: 48rem) {
+    .inbox-upload-form {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
     .inbox-empty {
         grid-template-columns: minmax(0, 1fr);
         gap: var(--space-4);
@@ -128,6 +230,8 @@
 /* W1 Warm Ledger: 队列去表格相框 — 桌面是纸面上的发丝分隔列表,
    ≤48rem 每行成为独立的实色卡 (见媒体查询), 容器始终透明。 */
 .exp-table {
+    --receipt-width: 3.5rem;
+    --receipt-height: 4.5rem;
     overflow: hidden;
     border-radius: var(--radius-card);
     background: transparent;
@@ -138,7 +242,7 @@
     display: grid;
     grid-template-columns:
         var(--space-7)
-        var(--space-10)
+        var(--receipt-width)
         minmax(calc(var(--space-12) * 2), 1.4fr)
         minmax(calc(var(--space-12) * 1.5), .8fr)
         minmax(calc(var(--space-12) * 1.6), .9fr)
@@ -178,7 +282,7 @@
     display: grid;
     grid-column: 2 / 7;
     grid-template-columns:
-        var(--space-10)
+        var(--receipt-width)
         minmax(calc(var(--space-12) * 2), 1.4fr)
         minmax(calc(var(--space-12) * 1.5), .8fr)
         minmax(calc(var(--space-12) * 1.6), .9fr)
@@ -218,14 +322,15 @@
     background: var(--brand-primary-bg);
 }
 
-/* W1: 凭证缩略图是 tonal 瓦片 (无描边灰盒); 文字占位态更安静。 */
+/* 保留原件完整比例，缩略图用于认出小票，明细仍由原图入口核对。 */
 .exp-thumb {
     display: grid;
-    width: var(--space-10);
-    height: var(--space-10);
+    width: var(--receipt-width);
+    height: var(--receipt-height);
     overflow: hidden;
     place-items: center;
-    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-card);
+    border-radius: var(--space-1);
     background: var(--surface-sunken);
 }
 
@@ -233,7 +338,7 @@
     grid-area: 1 / 1;
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    object-fit: contain;
 }
 
 .exp-thumb-label {
@@ -306,7 +411,7 @@
     .exp-row {
         grid-template-columns:
             var(--space-7)
-            var(--space-10)
+            var(--receipt-width)
             minmax(calc(var(--space-12) * 2), 1.4fr)
             minmax(calc(var(--space-12) * 1.4), auto)
             auto;
@@ -315,7 +420,7 @@
     .exp-row-detail {
         grid-column: 2 / 5;
         grid-template-columns:
-            var(--space-10)
+            var(--receipt-width)
             minmax(calc(var(--space-12) * 2), 1.4fr)
             minmax(calc(var(--space-12) * 1.4), auto);
     }
@@ -391,7 +496,7 @@
 
     .exp-row-detail {
         grid-column: 2;
-        grid-template-columns: var(--space-10) minmax(0, 1fr) auto;
+        grid-template-columns: var(--receipt-width) minmax(0, 1fr) auto;
     }
 
     .exp-row-detail > :nth-child(3),
@@ -432,11 +537,11 @@
 
 @media (max-width: 30rem) {
     .exp-row-detail {
-        grid-template-columns: var(--space-10) minmax(0, 1fr);
+        grid-template-columns: var(--receipt-width) minmax(0, 1fr);
         row-gap: var(--space-2);
     }
 
-    .exp-row-detail > .exp-thumb {
+    .exp-row-detail > :first-child {
         grid-row: 1 / 3;
     }
 
