@@ -12,7 +12,6 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.database import SessionLocal
 from app.models import Expense, LedgerMember, OcrFact
 from app.routes.web_auth import SESSION_COOKIE_NAME
-from app.services.time_service import now_utc
 from tests._web_native_form_support import hidden_post_forms
 from tests._web_public_session_support import PUBLIC_HOST, mint_session, public_client
 
@@ -20,13 +19,11 @@ pytestmark = pytest.mark.real_db
 TEXT = "中国建设银行\n交易金额：18.51\n交易时间：2026年5月4日 16:23:25"
 
 
-def _open_entry(client):
-    with SessionLocal() as db:
-        row = Expense(tenant_id="owner", amount_cents=None, merchant=None, category="其他", source="pytest",
-            raw_text="", status="pending", expense_time=None, created_at=now_utc())
-        db.add(row)
-        db.commit()
-        expense_id, version = row.id, row.row_version
+def _open_entry(client, identity):
+    created = client.post("/api/expenses/notification-drafts", headers=identity.app_headers,
+        json={"source": "alipay", "category": "其他"})
+    assert created.status_code == 200, created.text
+    expense_id, version = created.json()["id"], created.json()["row_version"]
     action = f"/web/expenses/{expense_id}/recognize-text"
     editor = client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner&return_to=pending&return_filter=missing_amount")
     assert editor.status_code == 200, editor.text
@@ -52,7 +49,7 @@ def _retained_text(html):
 
 
 def test_text_retry_preserves_command_and_api_replay_does_not_duplicate_suggestion(web_client, identity, monkeypatch):
-    expense_id, action, fields = _open_entry(web_client)
+    expense_id, action, fields = _open_entry(web_client, identity)
     before = _snapshot(expense_id)
     from app.services import expense_ocr_command_service as command
     prepare = command.prepare_pending_expense_fx
@@ -96,7 +93,7 @@ def test_text_retry_preserves_command_and_api_replay_does_not_duplicate_suggesti
 
 @pytest.mark.parametrize("change", ["viewer", "manual_edit", "confirmed", "other_ledger"])
 def test_text_command_rejects_stale_permission_or_fact_and_preserves_input(web_client, identity, change):
-    expense_id, action, fields = _open_entry(web_client)
+    expense_id, action, fields = _open_entry(web_client, identity)
     if change == "viewer":
         with SessionLocal() as db:
             db.scalar(select(LedgerMember).where(LedgerMember.ledger_id == "owner").order_by(LedgerMember.id)).role = "viewer"
@@ -126,7 +123,7 @@ def test_text_command_rejects_stale_permission_or_fact_and_preserves_input(web_c
 
 
 def test_empty_text_is_correctable_without_new_key(web_client, identity):
-    expense_id, action, fields = _open_entry(web_client)
+    expense_id, action, fields = _open_entry(web_client, identity)
     before = _snapshot(expense_id)
     failed = web_client.post(action, data={**fields, "raw_text": "   "})
     assert failed.status_code == 422 and "1–20000" in failed.text

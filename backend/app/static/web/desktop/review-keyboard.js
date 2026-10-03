@@ -56,8 +56,8 @@
       // edited field — the only deliberately global chord).
       if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
         // Pasted receipt text belongs to its own recognition command.
-        if (e.target && e.target.closest && e.target.closest("[data-text-recognition]")) return;
-        if (app.drawerApi && app.drawerApi.isOpen() && app.drawerApi.submitConfirm()) {
+        if (e.target?.closest?.("[data-text-recognition]")) return;
+        if (app.drawerApi?.isOpen() && app.drawerApi.submitConfirm()) {
           e.preventDefault();
         }
         return;
@@ -65,7 +65,7 @@
       if (e.altKey || e.ctrlKey || e.metaKey) return;
       // While the drawer is open, leave plain keys to the form (Esc closes it,
       // handled in drawer.js).
-      if (app.drawerApi && app.drawerApi.isOpen()) return;
+      if (app.drawerApi?.isOpen()) return;
       if (NAV_KEYS.indexOf(e.key) === -1) return;
       // 精确作用域：真实焦点必须在可用的行链接上。
       const active = document.activeElement;
