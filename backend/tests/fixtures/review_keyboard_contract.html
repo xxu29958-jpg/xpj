@@ -8,6 +8,7 @@
     <a id="row-3" class="exp-row-detail" href="#three" data-fragment-url="/fragment/3">第三笔</a>
   </div>
   <input id="editor" type="text" value="编辑中">
+  <form data-text-recognition><textarea id="receipt-text">待提取的小票文字</textarea></form>
   <script>
     let drawerOpen = false;
     let confirmCalls = 0;
@@ -55,6 +56,9 @@
     drawerOpen = true;
     const drawerArrow = press("ArrowDown");
     const confirm = press("Enter", {ctrlKey: true});
+    document.getElementById("receipt-text").focus();
+    const textControlEnter = press("Enter", {ctrlKey: true});
+    const textMetaEnter = press("Enter", {metaKey: true});
 
     window.__webConsumerProbe = {
       down,
@@ -67,6 +71,8 @@
       inputArrow,
       drawerArrow,
       confirm,
+      textControlEnter,
+      textMetaEnter,
       confirmCalls
     };
   </script>

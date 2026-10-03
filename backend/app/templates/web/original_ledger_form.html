@@ -15,6 +15,12 @@
     {% if original_fields.get(field) %}<dt>{{ label }}</dt><dd>{{ original_fields[field] }}</dd>{% endif %}
     {% endfor %}
   </dl>
+  {% if original_fields.get('raw_text') is not none %}
+  <div class="form-field">
+    <label for="retained-receipt-text">保留的小票文字</label>
+    <textarea id="retained-receipt-text" rows="6" readonly>{{ original_fields.raw_text }}</textarea>
+  </div>
+  {% endif %}
   <form method="post" action="{{ request.url.path }}">
     {{ csrf_field|safe }}
     {% for field, value in original_fields.items() %}{% if value is not none %}

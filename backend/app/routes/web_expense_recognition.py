@@ -1,7 +1,5 @@
 """Paste receipt text without replacing the bill editor or its unsaved inputs."""
 
-from uuid import uuid4
-
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, Response
 from sqlalchemy.exc import SQLAlchemyError
@@ -13,7 +11,6 @@ from app.routes._web_expense_return_context import (
     ExpenseReturnContext,
     edit_context_params,
     expense_return_form_context,
-    expense_return_query_context,
 )
 from app.routes._web_session_common import parse_form_row_version_token, resolve_web_actor
 from app.routes.web_common import (
@@ -29,7 +26,6 @@ from app.routes.web_common import (
 )
 from app.schemas import ExpenseRecognizeTextRequest
 from app.services.expense_ocr_command_service import submit_expense_text_recognition
-from app.services.expense_query import get_expense
 
 router = APIRouter(prefix="/web", tags=["web"])
 
@@ -42,24 +38,6 @@ def _text_page(request, db, options, selected, expense_id, fields, *, error="", 
             **edit_context_params(**{name: fields.get(name, "") for name in ExpenseReturnContext().as_kwargs()})))
     return templates.TemplateResponse(request=request, name="expense_text_recognition.html", context=ctx,
         status_code=status, headers={"Cache-Control": "no-store"})
-
-
-@router.get("/expenses/{expense_id}/recognize-text", response_class=HTMLResponse, include_in_schema=False)
-def web_text_recognition_get(
-    request: Request, expense_id: int, ledger_id: str | None = None, expected_row_version: str = "",
-    return_context: ExpenseReturnContext = Depends(expense_return_query_context),
-    _local: None = LocalOnly, db: Session = Depends(get_db),
-) -> Response:
-    options = _list_ledger_options(db)
-    selected = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
-    _require_selected_ledger_write(options, selected)
-    expense = get_expense(db, expense_id, selected)
-    if expense.status != "pending":
-        return _web_redirect(f"/web/expenses/{expense_id}/edit", selected, msg="只能对待处理账单提取文字建议。",
-            **edit_context_params(**return_context.as_kwargs()))
-    fields = {**return_context.as_kwargs(), "ledger_id": selected,
-        "expected_row_version": expected_row_version or str(expense.row_version), "idempotency_key": str(uuid4()), "raw_text": ""}
-    return _text_page(request, db, options, selected, expense_id, fields)
 
 
 @router.post("/expenses/{expense_id}/recognize-text", response_class=HTMLResponse, include_in_schema=False)

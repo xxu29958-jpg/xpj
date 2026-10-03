@@ -385,6 +385,8 @@ def _assert_review_keyboard_behaves_in_real_edge(tmp_path: Path) -> None:
         "inputArrow": {"active": "editor", "prevented": False},
         "drawerArrow": {"active": "row-1", "prevented": False},
         "confirm": {"active": "row-1", "prevented": True},
+        "textControlEnter": {"active": "receipt-text", "prevented": False},
+        "textMetaEnter": {"active": "receipt-text", "prevented": False},
         "confirmCalls": 1,
     }
 
