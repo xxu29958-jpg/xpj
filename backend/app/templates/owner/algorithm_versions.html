@@ -6,12 +6,13 @@
   <summary>这是什么</summary>
   <p>开发者维护用：查看各类自动建议算法的版本和数量，必要时撤回某个版本发出的建议。平时不用进来。</p>
 </details>
+{% include "_ledger_scope.html" %}
 
 <div class="card">
   <div class="card-head-row">
     <div>
-      <h2>Version Inventory</h2>
-      <p class="text-meta">当前账本：<code>{{ tenant_id }}</code></p>
+      <h2>建议版本</h2>
+      {% if selected_ledger %}<p class="text-meta">当前账本：{{ selected_ledger.name }}</p>{% endif %}
     </div>
     <span class="badge badge-off">治理</span>
   </div>
@@ -23,9 +24,9 @@
         <tr>
           <th>类型</th>
           <th>版本</th>
-          <th class="num">Active</th>
-          <th class="num">Superseded</th>
-          <th class="num">Withdrawn</th>
+          <th class="num">待采纳</th>
+          <th class="num">已替代</th>
+          <th class="num">已撤回</th>
           <th>操作</th>
         </tr>
       </thead>
@@ -39,13 +40,14 @@
           <td class="num-cell">{{ row.withdrawn_count }}</td>
           <td>
             {% if row.active_count > 0 %}
-            <form method="post" action="/owner/algorithm-versions/withdraw" class="inline" data-confirm="撤回该算法版本的所有 active 建议？">
+            <form method="post" action="/owner/algorithm-versions/withdraw" class="inline" data-confirm="撤回所选账本中这个版本尚未采纳的建议？这不会更改账单。">
+              <input type="hidden" name="ledger_id" value="{{ selected_ledger.ledger_id }}">
               <input type="hidden" name="decision_type" value="{{ row.decision_type }}">
               <input type="hidden" name="algorithm_version" value="{{ row.algorithm_version }}">
-              <button type="submit" class="btn btn-danger">Withdraw</button>
+              <button type="submit" class="btn btn-danger">撤回此版本建议</button>
             </form>
             {% else %}
-              <span class="text-meta">无 active 建议</span>
+              <span class="text-meta">没有待采纳建议</span>
             {% endif %}
           </td>
         </tr>

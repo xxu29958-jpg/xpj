@@ -15,7 +15,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.models import Expense
+from app.models import Account, Expense
 from app.services.data_quality_service import data_quality_summary
 from app.services.debt_service import count_open_external_debts
 from app.services.goal_debt_repayment_service import ledger_has_goal_needing_review
@@ -35,6 +35,7 @@ from app.services.owner_console_service._common import (
     get_owner_account_id,
     logger,
 )
+from app.services.session_credential_lock import lock_bootstrap_owner_transaction
 
 
 def list_console_ledger_choices(db: Session) -> list[LedgerSummary]:
@@ -59,6 +60,24 @@ def get_default_ledger_id(db: Session) -> str | None:
         return None
     default = next((ledger for ledger in choices if ledger.is_default), None)
     return (default or choices[0]).ledger_id
+
+
+def resolve_console_ledger_scope(
+    db: Session, ledger_id: str | None, *, mutation: bool = False,
+) -> tuple[list[LedgerSummary], LedgerSummary | None]:
+    """Keep a local management task on an explicitly authorized ledger."""
+    if mutation:
+        lock_bootstrap_owner_transaction(db)
+    owner_id = get_owner_account_id(db)
+    active = db.scalar(select(Account.id).where(Account.id == owner_id, Account.disabled_at.is_(None)))
+    choices = list_managed_ledgers_for_account(db, account_id=active) if active is not None else []
+    if ledger_id is None:
+        selected = next((row for row in choices if row.is_default), choices[0] if choices else None)
+    else:
+        selected = next((row for row in choices if row.ledger_id == ledger_id), None)
+    if selected is None and (ledger_id is not None or mutation):
+        raise AppError("ledger_forbidden", "这个账本已不可管理，请返回页面重新选择。", status_code=403)
+    return choices, selected
 
 
 @dataclass

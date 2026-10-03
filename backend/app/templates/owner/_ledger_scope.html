@@ -1,0 +1,16 @@
+<div class="card">
+  {% if ledger_choices %}
+  <form method="get" action="{{ request.url.path }}" class="settings-form-grid">
+    <label for="owner-ledger-scope">查看账本</label>
+    <select id="owner-ledger-scope" name="ledger_id" class="inline-select" required>
+      {% for choice in ledger_choices %}
+      <option value="{{ choice.ledger_id }}"{% if selected_ledger and choice.ledger_id == selected_ledger.ledger_id %} selected{% endif %}>{{ choice.name }}{% if choice.is_default %}（默认）{% endif %}</option>
+      {% endfor %}
+    </select>
+    <span></span><div><button type="submit" class="btn">查看</button></div>
+  </form>
+  <p class="help-text">{{ ledger_scope_note or '下方结果和操作只针对所选账本，不改变默认账本。' }}</p>
+  {% else %}
+  <p class="empty-note">当前没有可管理的账本。</p>
+  {% endif %}
+</div>

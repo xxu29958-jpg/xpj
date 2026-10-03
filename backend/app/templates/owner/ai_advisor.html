@@ -1,10 +1,13 @@
 {% extends "settings/_layout.html" %}
 {% block title %}AI 顾问 - 小票夹 本机管理后台{% endblock %}
 {% block settings_body %}
+{% with ledger_scope_note='这里选择调用记录所属的账本；模型连接与请求授权仍作用于整个本机服务。' %}
+  {% include "_ledger_scope.html" %}
+{% endwith %}
 <div class="card">
   <h2>AI 预算顾问</h2>
   <p class="help-text">连接本机或云端模型，为预算提供参考建议。关闭 AI 仍可正常记账和使用预算；模型不会自动改账。</p>
-  <form method="post" action="/owner/ai-advisor/settings" autocomplete="off">
+  <form method="post" action="/owner/ai-advisor/settings{{ ledger_query }}" autocomplete="off">
     <div class="settings-form-grid">
       <label for="advisor_provider">使用方式</label>
       <select id="advisor_provider" name="provider" class="inline-select">
@@ -82,7 +85,7 @@
   <p class="text-meta">请在上方补全接口地址、模型和密钥，保存后再测试连接。</p>
   {% endif %}
   <p class="text-meta">保存配置不会发起外部请求。可通过下方的示例测试验证连接，预算建议的使用结果见最近调用。</p>
-  <form method="post" action="/owner/ai-advisor/confirmation" class="mt-5">
+  <form method="post" action="/owner/ai-advisor/confirmation{{ ledger_query }}" class="mt-5">
     <input type="hidden" name="connection_revision" value="{{ advisor_connection_revision }}">
     <label class="label-check-row">
       <input type="checkbox" name="confirmed" value="on" {% if status.owner_confirmed %}checked{% endif %}>
@@ -93,7 +96,7 @@
     </div>
   </form>
   <p class="help-text">不会发送票据图片、真实商户名、姓名或备注。更换模型连接会撤回原授权，请核对后重新允许。</p>
-  <form method="post" action="/owner/ai-advisor/test" data-show-loading="正在测试模型，最长约 20 秒…" class="mt-4">
+  <form method="post" action="/owner/ai-advisor/test{{ ledger_query }}" data-show-loading="正在测试模型，最长约 20 秒…" class="mt-4">
     <button type="submit" class="btn" {% if not status.configuration_valid or not status.is_live or not status.owner_confirmed %}disabled{% endif %}>测试模型（仅发送示例）</button>
     <a class="btn" href="/web/budget-advise">前往月度安排使用建议</a>
   </form>
@@ -102,6 +105,7 @@
 
 <div class="card">
   <h2>最近 10 次预算建议调用</h2>
+  {% if selected_ledger %}<p class="help-text">当前账本：{{ selected_ledger.name }}</p>{% endif %}
   <p class="help-text">这里记录实际预算建议的使用结果，不包含固定示例的连接测试。</p>
   {% if audit_rows %}
   <div class="table-scroll">
@@ -139,7 +143,7 @@
     </table>
   </div>
   {% else %}
-    <p class="empty-note">暂无 AI 顾问调用记录。</p>
+    <p class="empty-note">{{ "所选账本暂无 AI 顾问调用记录。" if selected_ledger else "没有可管理的账本，暂不显示调用记录。" }}</p>
   {% endif %}
 </div>
 {% endblock %}

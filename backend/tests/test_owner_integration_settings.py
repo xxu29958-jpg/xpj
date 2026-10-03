@@ -44,7 +44,7 @@ def _revision(html):
 def test_owner_configures_model_without_env_and_never_receives_saved_secret(owner, integration_file, monkeypatch):
     page = owner.get("/owner/ai-advisor")
     assert page.status_code == 200
-    assert 'action="/owner/ai-advisor/settings"' in page.text
+    assert 'action="/owner/ai-advisor/settings?ledger_id=owner"' in page.text
     form = {"provider": "openai_compat", "base_url": "https://model.example/v1", "model": "household-model",
             "key_action": "replace", "api_key": "private-model-key", "daily_call_limit": "12"}
     saved = owner.post("/owner/ai-advisor/settings", data=form)
