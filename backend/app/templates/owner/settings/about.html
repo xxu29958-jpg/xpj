@@ -1,14 +1,29 @@
-{% extends "settings/_layout.html" %}
-{% block title %}关于 — 设置 — 小票夹{% endblock %}
-{% block settings_body %}
-<div class="card">
-  <h2>关于</h2>
-  <dl class="kv-list">
-    <dt>后端版本</dt><dd>{{ about_view.backend_version }}</dd>
-    <dt>后端目录</dt><dd>{{ about_view.backend_root }}</dd>
-    <dt>数据库</dt><dd>{{ about_view.database_url_masked }}</dd>
-    <dt>上传目录</dt><dd>{{ about_view.upload_dir }}</dd>
-    <dt>单文件上限</dt><dd>{{ about_view.max_upload_size_mb }} MB</dd>
-  </dl>
+{% extends "_workspace.html" %}
+{% from "_workspace_ui.html" import icon, task_link with context %}
+{% block title %}关于小票夹 — 设置 — 小票夹{% endblock %}
+{% block back_url %}/owner/settings{% endblock %}
+{% block back_label %}设置{% endblock %}
+{% block workspace_title %}关于小票夹{% endblock %}
+{% block workspace_description %}使用说明与当前版本{% endblock %}
+{% block workspace_body %}
+<div class="workspace-information">
+  <nav aria-label="说明目录">
+    {{ task_link('/owner/settings/security', '安全说明', 'shield-check', '本机、设备与数据边界') }}
+    {{ task_link('/owner/settings/api', '接口一览', 'braces', '查看受支持的访问方式', 'lilac') }}
+  </nav>
+  <details class="workspace-disclosure workspace-task-group" id="about-version">
+    <summary><span class="workspace-task__icon workspace-tone-apricot">{{ icon('info') }}</span><span class="workspace-task__text"><strong>关于与版本</strong><span>以当前运行构建为准</span></span>{{ icon('chevron-right') }}</summary>
+    <div class="workspace-disclosure__body">
+      <dl class="workspace-facts">
+        <div><dt>后端版本</dt><dd><code>{{ about_view.backend_version }}</code></dd></div>
+        <div><dt>后端目录</dt><dd>{{ about_view.backend_root }}</dd></div>
+        <div><dt>数据库</dt><dd><code>{{ about_view.database_url_masked }}</code></dd></div>
+        <div><dt>上传目录</dt><dd>{{ about_view.upload_dir }}</dd></div>
+        <div><dt>单文件上限</dt><dd>{{ about_view.max_upload_size_mb }} MB</dd></div>
+      </dl>
+      <p class="workspace-note">这里只显示当前后端的信息；其他设备的版本请在对应设备上查看。数据库连接信息已隐藏凭证。</p>
+    </div>
+  </details>
+  <div class="workspace-guidance">{{ icon('info') }}<div><strong>按问题阅读</strong><p>从摘要进入细节，技术信息按需展开。</p></div></div>
 </div>
 {% endblock %}

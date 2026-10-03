@@ -1,38 +1,35 @@
-{% extends "settings/_layout.html" %}
-{% block title %}公网域名 — 设置 — 小票夹{% endblock %}
-{% block settings_body %}
-<div class="card">
-  <h2>公网域名（PUBLIC_BASE_URL）</h2>
-  <p class="help-text">
-    iPhone 快捷指令的「URL」动作只接受完整公网 URL（以 <code>https://</code> 开头）。
-    填写本机后端通过 Cloudflare Tunnel 暴露的公网域名后，
-    Owner Console 在新建 / 轮换上传链接时会直接给出可粘贴的完整 URL。
-  </p>
-  <p class="help-text">
-    当前值：
-    {% if settings_view.public_base_url_configured %}
-      <code>{{ settings_view.public_base_url }}</code>
-      <span class="badge badge-ok ml-3">已配置</span>
-    {% else %}
-      <span class="badge badge-off">未配置</span>
-    {% endif %}
-  </p>
-
-  <form method="post" action="/owner/settings/public-base-url" class="mt-5">
-    <div class="form-row form-row--wrap">
-      <label for="public_base_url" class="label-fixed">公网域名</label>
-      <input type="text" id="public_base_url" name="public_base_url"
-             value="{{ settings_view.public_base_url }}"
-             placeholder="https://api.example.com"
-             class="inline-input inline-input--mono input-grow"
-             pattern="https?://.+"
-             title="必须以 http:// 或 https:// 开头">
-      <button type="submit" class="btn btn-primary">保存</button>
+{% extends "_workspace.html" %}
+{% from "_workspace_ui.html" import icon with context %}
+{% block title %}公网访问地址 — 设置 — 小票夹{% endblock %}
+{% block back_url %}/owner/settings{% endblock %}
+{% block back_label %}设置{% endblock %}
+{% block workspace_title %}公网访问地址{% endblock %}
+{% block workspace_description %}管理入口仍然只在本机。{% endblock %}
+{% block workspace_body %}
+<div class="workspace-information">
+{% if message %}<div class="alert alert-success" role="status">{{ message }}</div>{% endif %}
+{% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+<form method="post" action="/owner/settings/public-base-url" class="workspace-form workspace-public-address">
+  <label class="workspace-field" for="public_base_url"><span>公开服务域名</span>
+    <span class="workspace-address-input"><input type="text" id="public_base_url" name="public_base_url"
+      value="{{ public_base_url_draft if public_base_url_draft is defined else settings_view.public_base_url }}"
+      placeholder="https://api.example.com" inputmode="url" autocomplete="url" spellcheck="false" autocapitalize="none"
+      pattern="https?://.+" title="公网地址使用 https://，http:// 仅用于本机环回调试"
+      aria-describedby="address-guidance">{{ icon('link') }}</span>
+  </label>
+  <div class="workspace-guidance" id="address-guidance">{{ icon('info') }}<div><strong>保存地址后，还需检查连接</strong><p>域名、隧道、会话与业务访问分别检查。</p></div></div>
+  <a class="workspace-check-action workspace-task" href="/owner/diagnostics"><strong class="workspace-task__text">查看连接诊断</strong>{{ icon('arrow-right') }}</a>
+  <details class="workspace-disclosure workspace-address-help">
+    <summary><span>当前地址与填写说明</span>{{ icon('chevron-right') }}</summary>
+    <div class="workspace-disclosure__body">
+      <dl class="workspace-facts"><div><dt>当前已保存地址</dt><dd>{% if settings_view.public_base_url_configured %}<code>{{ settings_view.public_base_url }}</code> · 已配置{% else %}未配置{% endif %}</dd></div></dl>
+      <p>填写已配置的 HTTPS 服务域名，例如本机后端通过 Cloudflare Tunnel 对外提供的地址。只填写协议、主机和可选端口，不包含路径、查询参数、片段或用户名密码。HTTP 仅允许本机环回调试。</p>
+      <p>iPhone 快捷指令需要以 <code>https://</code> 开头的完整公网上传 URL；新建或轮换上传链接时，会使用这里的域名生成完整 URL。可到 <a href="/owner/upload-links">上传链接管理</a> 获取自己的配置。</p>
+      <p>留空可清除该配置；末尾斜杠会自动去掉。保存到受保护的运行时设置后无需重启后端，下一次创建上传链接即生效。保存不会替你建立隧道，也不会把本机管理入口开放到公网。</p>
+      <p class="workspace-note">设置项：<code>PUBLIC_BASE_URL</code></p>
     </div>
-    <p class="help-text fs-meta mt-3">
-      留空可清除该配置（清除后 Owner Console 将重新提示「未配置」）。
-      末尾斜杠会自动去掉；保存到受保护的运行时设置，下一次创建上传链接即生效，无需重启后端。
-    </p>
-  </form>
+  </details>
+  <div class="workspace-save"><button type="submit" class="btn btn-primary">保存地址 {{ icon('arrow-right') }}</button></div>
+</form>
 </div>
 {% endblock %}

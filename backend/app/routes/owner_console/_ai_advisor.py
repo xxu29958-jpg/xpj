@@ -36,7 +36,7 @@ def _render_advisor(
     settings = get_settings()
     choices, selected = svc.resolve_console_ledger_scope(db, request.query_params.get("ledger_id"))
     tenant_id = selected.ledger_id if selected else None
-    ctx = _settings_ctx(request, db, active="advisor", message=message, error=error)
+    ctx = _settings_ctx(request, db, message=message, error=error)
     ctx.update(ledger_choices=choices, selected_ledger=selected)
     ctx["ledger_query"] = "?" + urlencode({"ledger_id": tenant_id}) if tenant_id is not None else ""
     ctx["tenant_id"] = tenant_id
