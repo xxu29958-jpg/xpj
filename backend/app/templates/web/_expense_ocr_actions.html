@@ -1,5 +1,23 @@
 {% if e.status == 'pending' %}
 <section aria-label="识别建议">
+  {% if can_write %}
+  <details>
+  <summary>粘贴小票文字</summary>
+  <form method="post" action="/web/expenses/{{ e.id }}/recognize-text" target="_blank" rel="noopener" data-text-recognition>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+    <input type="hidden" name="expected_row_version" value="{{ e.row_version }}">
+    <input type="hidden" name="idempotency_key" value="{{ text_ocr_idempotency_key }}">
+    {% for field_name, field_value in edit_return_fields.items() %}<input type="hidden" name="{{ field_name }}" value="{{ field_value }}">{% endfor %}
+    <div class="form-field">
+      <label for="receipt-text-{{ e.id }}">小票文字</label>
+      <textarea id="receipt-text-{{ e.id }}" name="raw_text" rows="6" maxlength="20000" required placeholder="粘贴小票、交易通知中的文字"></textarea>
+    </div>
+    <button class="product-button product-button--small" type="submit">提取字段建议</button>
+  </form>
+  <p class="product-drawer-meta">结果在新窗口打开，当前填写和粘贴文字均保留。识别只提供建议，请核对后再确认。</p>
+  </details>
+  {% endif %}
   {% if e.has_image and can_write %}
   <form method="post" action="/web/expenses/{{ e.id }}/ocr/retry" target="_blank" rel="noopener">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -11,7 +29,7 @@
   </form>
   <p class="product-drawer-meta">在新窗口查看识别结果，当前未保存的填写会保留。识别只提供建议，请核对后再确认。</p>
   {% elif not e.has_image %}
-  <p class="product-drawer-meta">没有原图，无法重试识别。可检查原件或继续手动补全账单。</p>
+  <p class="product-drawer-meta">没有原图，无法重试图片识别。可粘贴小票文字提取字段，或继续手动补全。</p>
   {% endif %}
 </section>
 {% endif %}

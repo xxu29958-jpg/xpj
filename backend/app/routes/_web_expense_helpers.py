@@ -240,6 +240,7 @@ def web_edit_context(
     ctx["confirm_idempotency_key"] = (form_values or {}).get("idempotency_key") or str(uuid4())
     ctx["reject_idempotency_key"] = (form_values or {}).get("reject_idempotency_key") or str(uuid4())
     ctx["ocr_idempotency_key"] = str(uuid4())
+    ctx["text_ocr_idempotency_key"] = str(uuid4())
     ctx["error"] = None
     ctx["message"] = request.query_params.get("msg")
     ctx["items_error"] = None
