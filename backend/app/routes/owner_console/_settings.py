@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.routes.owner_console._shared import LocalOnly, _base, templates
-from app.services import route_inspector_service, runtime_settings_service
+from app.services import recognition_setup_service, route_inspector_service, runtime_settings_service
 
 router = APIRouter(prefix="/owner", tags=["owner-console"])
 
@@ -85,6 +85,7 @@ def _post_recognition_settings(
     local_llm_max_concurrent: str,
     local_llm_queue_timeout_seconds: str,
     debt_bill_provider: str,
+    recognition_action: str = "save",
 ) -> HTMLResponse:
     form = runtime_settings_service.RecognitionSettingsForm(
         ocr_provider=ocr_provider,
@@ -100,23 +101,30 @@ def _post_recognition_settings(
         debt_bill_provider=debt_bill_provider,
     )
     try:
-        recognition_view = runtime_settings_service.update_recognition_settings(form)
+        if recognition_action == "save":
+            recognition_view = runtime_settings_service.update_recognition_settings(form)
+            check = recognition_setup_service.RecognitionCheck("识别设置已保存；下一次上传或手动识别即使用新配置，无需重启。")
+        else:
+            check = recognition_setup_service.inspect_connection(form, action=recognition_action)
+            recognition_view = runtime_settings_service.get_recognition_view(form)
     except Exception as exc:  # noqa: BLE001 — validated error is rendered beside the preserved draft
         ctx = _settings_ctx(
             request,
             db,
             active="recognition",
-            error=getattr(exc, "message", None) or "保存失败，请检查输入。",
+            error=getattr(exc, "message", None) or "操作未完成，请检查输入或服务状态后重试。",
         )
         ctx["recognition_view"] = runtime_settings_service.get_recognition_view(form)
-        return templates.TemplateResponse(request=request, name="settings/recognition.html", context=ctx)
+        return templates.TemplateResponse(request=request, name="settings/recognition.html", context=ctx,
+            status_code=200 if recognition_action == "save" else getattr(exc, "status_code", 503))
     ctx = _settings_ctx(
         request,
         db,
         active="recognition",
-        message="识别设置已保存；下一次上传或手动识别即使用新配置，无需重启。",
+        message=check.message,
     )
     ctx["recognition_view"] = recognition_view
+    ctx["recognition_models"] = check.models
     return templates.TemplateResponse(request=request, name="settings/recognition.html", context=ctx)
 
 
@@ -166,6 +174,7 @@ def owner_settings_post(
     local_llm_max_concurrent: str = Form("2"),
     local_llm_queue_timeout_seconds: str = Form("5"),
     debt_bill_provider: str = Form("empty"),
+    recognition_action: str = Form("save"),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
@@ -186,6 +195,7 @@ def owner_settings_post(
             local_llm_max_concurrent=local_llm_max_concurrent,
             local_llm_queue_timeout_seconds=local_llm_queue_timeout_seconds,
             debt_bill_provider=debt_bill_provider,
+            recognition_action=recognition_action,
         )
     raise HTTPException(status_code=404)
 
