@@ -48,7 +48,7 @@ def _configure_probe_logging(output: Path, *, drop_report: bool, broken_sink: bo
 def _probe_app():
     # The actual application's entire middleware/exception chain, without starting
     # its DB-dependent lifespan. Probe routes themselves have no DB dependency.
-    import tests._infra.env  # noqa: F401
+    importlib.import_module("tests._infra.env")
     from app.main import app
 
     @app.get("/api/unhandled-probe")

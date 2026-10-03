@@ -93,7 +93,7 @@ def _run_observed(
 ) -> None:
     try:
         runner(task_id, payload, registry)
-    except Exception as exc:  # noqa: BLE001 - observe errors otherwise retained only by an unconsumed Future
+    except Exception as exc:  # Observe errors otherwise retained only by an unconsumed Future.
         report_error(logger, "background task %s stage=worker_boundary failed", task_id, error=exc)
         raise
 

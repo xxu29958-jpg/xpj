@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import json
 import os
 import shutil
@@ -14,7 +15,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "backend/scripts"
 sys.path.insert(0, str(SCRIPTS))
-from error_reporting_contract import REQUIRED_FILES  # noqa: E402
+REQUIRED_FILES = importlib.import_module("error_reporting_contract").REQUIRED_FILES
 
 
 def _git(repo, *args):

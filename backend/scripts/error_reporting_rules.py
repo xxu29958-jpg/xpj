@@ -85,31 +85,42 @@ def handled(statements: list[ast.stmt], aliases: dict[str, str]) -> bool:
     return False
 
 
-def _boundary(node: ast.AST, aliases: dict[str, str]) -> tuple[str, str] | None:
+def _logging_output(node: ast.AST, aliases: dict[str, str]) -> tuple[str, str] | None:
     if isinstance(node, ast.Dict):
         keys = {key.value for key in node.keys if isinstance(key, ast.Constant)}
         if {"handlers", "formatters"} <= keys:
             return "logging-output", "the configured root/child outputs and final sanitized formatter"
-    if isinstance(node, ast.ExceptHandler):
-        kinds = node.type.elts if isinstance(node.type, ast.Tuple) else [node.type]
-        broad = node.type is None or any(kind is not None and resolve(kind, aliases) in BROAD for kind in kinds)
-        if broad and not handled(node.body, aliases):
-            return "terminal-catch", "common HTTP/task reporting or an explicit local terminal owner"
     if isinstance(node, ast.Call):
         name = resolve(node.func, aliases)
-        if name in EXECUTORS or any(name == executor + ".submit" for executor in EXECUTORS):
-            return "independent-execution", "observe the independent worker, including errors outside its handler"
         if name in CONFIGURATORS or name.startswith("logging.") and name.endswith("Handler"):
             return "logging-output", "existing final sanitized file/console output"
         if name.endswith((".addHandler", ".removeHandler", ".setFormatter")):
             return "logging-output", "existing final sanitized file/console output"
-        if name == "contextlib.suppress" and any(resolve(arg, aliases) in BROAD for arg in node.args):
-            return "terminal-suppress", "an explicit expected/sink failure owner"
     if isinstance(node, (ast.Assign, ast.AnnAssign)):
         targets = node.targets if isinstance(node, ast.Assign) else [node.target]
         if any(name_of(target).endswith((".propagate", ".handlers", ".disabled")) for target in targets):
             return "logging-output", "existing final sanitized file/console output"
     return None
+
+
+def _terminal_error(node: ast.AST, aliases: dict[str, str]) -> tuple[str, str] | None:
+    if isinstance(node, ast.ExceptHandler):
+        kinds = node.type.elts if isinstance(node.type, ast.Tuple) else [node.type]
+        broad = node.type is None or any(kind is not None and resolve(kind, aliases) in BROAD for kind in kinds)
+        if broad and not handled(node.body, aliases):
+            return "terminal-catch", "common HTTP/task reporting or an explicit local terminal owner"
+    if (isinstance(node, ast.Call) and resolve(node.func, aliases) == "contextlib.suppress"
+            and any(resolve(arg, aliases) in BROAD for arg in node.args)):
+        return "terminal-suppress", "an explicit expected/sink failure owner"
+    return None
+
+
+def _boundary(node: ast.AST, aliases: dict[str, str]) -> tuple[str, str] | None:
+    if isinstance(node, ast.Call):
+        name = resolve(node.func, aliases)
+        if name in EXECUTORS or any(name == executor + ".submit" for executor in EXECUTORS):
+            return "independent-execution", "observe the independent worker, including errors outside its handler"
+    return _terminal_error(node, aliases) or _logging_output(node, aliases)
 
 
 def python_boundaries(text: str) -> list[dict]:
