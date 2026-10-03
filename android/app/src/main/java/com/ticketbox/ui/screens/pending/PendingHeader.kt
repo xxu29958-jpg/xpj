@@ -24,9 +24,7 @@ internal fun PendingToolsSheet(
     loading: Boolean,
     displayMode: PendingDisplayMode,
     onDisplayModeChange: (PendingDisplayMode) -> Unit,
-    onRefresh: () -> Unit,
-    onOpenRepaymentReview: () -> Unit,
-    onOpenDataQuality: () -> Unit,
+    actions: PendingScreenChromeActions,
     onDismiss: () -> Unit,
 ) {
     AppSheetScaffold(
@@ -47,8 +45,14 @@ internal fun PendingToolsSheet(
         }
         HorizontalDivider()
         InboxActionLinks(
-            onOpenRepaymentReview = onOpenRepaymentReview,
-            onOpenDataQuality = onOpenDataQuality,
+            onOpenRepaymentReview = {
+                onDismiss()
+                actions.onOpenRepaymentReview()
+            },
+            onOpenDataQuality = {
+                onDismiss()
+                actions.onOpenDataQuality()
+            },
         )
         Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
             AppSecondaryButton(
@@ -59,7 +63,7 @@ internal fun PendingToolsSheet(
                 },
                 modifier = Modifier.weight(1f),
                 enabled = !loading,
-                onClick = onRefresh,
+                onClick = actions.onRefresh,
             )
             Button(
                 modifier = Modifier.weight(1f),

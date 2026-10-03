@@ -57,7 +57,7 @@ def test_web_root_redirects_to_inbox_pending(web_client: TestClient) -> None:
 
     landing = web_client.get("/web")
     assert landing.status_code == 200
-    assert "把新账单整理清楚" in landing.text
+    assert "待我处理" in landing.text
     assert 'data-domain="inbox"' in landing.text
 
 

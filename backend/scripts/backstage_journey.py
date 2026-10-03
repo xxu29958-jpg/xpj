@@ -217,6 +217,11 @@ class BackstageJourney:
                 self.capture(f"inbox-queue-{width}-{theme}")
                 self.page.locator('.inbox-filters a[href*="filter=ready"]').click()
                 assert self.page.locator(".exp-row").filter(has_text="18.51").count() == 1
+                assert self.page.locator('.inbox-filters [aria-current="page"]').evaluate("""node => {
+                    const selected = node.getBoundingClientRect();
+                    const viewport = node.parentElement.getBoundingClientRect();
+                    return selected.left >= viewport.left - 1 && selected.right <= viewport.right + 1;
+                }"""), "The selected inbox filter is outside the visible filter strip"
                 self.capture(f"inbox-ready-{width}-{theme}")
         assert self.facts() == before, "Reading the real inbox filters changed the original bill or task"
 

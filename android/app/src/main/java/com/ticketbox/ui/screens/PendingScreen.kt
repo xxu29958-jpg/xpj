@@ -218,15 +218,7 @@ fun PendingScreen(
                 loading = blockingRefresh,
                 displayMode = displayMode,
                 onDisplayModeChange = { displayMode = it },
-                onRefresh = chromeActions.onRefresh,
-                onOpenRepaymentReview = {
-                    showPendingTools = false
-                    chromeActions.onOpenRepaymentReview()
-                },
-                onOpenDataQuality = {
-                    showPendingTools = false
-                    chromeActions.onOpenDataQuality()
-                },
+                actions = chromeActions,
                 onDismiss = { showPendingTools = false },
             )
         }
