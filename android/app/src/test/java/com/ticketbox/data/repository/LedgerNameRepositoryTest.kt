@@ -132,7 +132,7 @@ class LedgerNameRepositoryTest {
             assertEquals(1, h.calls.size)
             h.offline = false
             vm.refresh()
-            val refreshed = vm.uiState.first { !it.loading }
+            val refreshed = vm.uiState.first { !it.loading && it.rename?.ledger?.role == "viewer" }
             assertFalse(requireNotNull(refreshed.rename).fresh)
             assertEquals("保留输入", refreshed.rename?.name)
             vm.saveRename {}
