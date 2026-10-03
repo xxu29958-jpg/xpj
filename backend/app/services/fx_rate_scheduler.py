@@ -155,15 +155,27 @@ def _run_scheduled_fx_sync() -> None:
         _record_sync_failure("storage_unavailable")
 
 
-def _scheduler_loop(stop_event: threading.Event, sync_times: list[time], timezone: tzinfo) -> None:
+def _scheduler_loop(stop_event: threading.Event, sync_times: list[time], timezone: tzinfo, *, follow_settings: bool = False) -> None:
     after_id = 0
+    applied_schedule = None
+    enabled = True
     now = datetime.now(timezone)
     next_sync_at = now + timedelta(seconds=_seconds_until_next_run(now, sync_times)) if sync_times else None
     while not stop_event.is_set():
-        try:
-            after_id = refill_pending_expense_fx(after_id=after_id)
-        except SQLAlchemyError:
-            logger.warning("FX continuation deferred (storage_unavailable)")
+        if follow_settings:
+            settings = get_settings()
+            schedule = (settings.fx_rate_auto_sync_enabled, settings.fx_rate_sync_times, settings.fx_rate_sync_timezone)
+            enabled = settings.fx_rate_auto_sync_enabled
+            if schedule != applied_schedule:
+                sync_times, timezone = _configured_schedule(settings)
+                now = datetime.now(timezone)
+                next_sync_at = now + timedelta(seconds=_seconds_until_next_run(now, sync_times)) if sync_times else None
+                applied_schedule = schedule
+        if enabled:
+            try:
+                after_id = refill_pending_expense_fx(after_id=after_id)
+            except SQLAlchemyError:
+                logger.warning("FX continuation deferred (storage_unavailable)")
         if stop_event.is_set():
             return
         now = datetime.now(timezone)
@@ -179,26 +191,28 @@ def _scheduler_loop(stop_event: threading.Event, sync_times: list[time], timezon
             return
 
 
-def start_fx_rate_scheduler() -> FxRateScheduler | None:
-    _runtime.scheduler = None
+def _configured_schedule(settings) -> tuple[list[time], tzinfo]:
     _runtime.config_error = False
-    settings = get_settings()
     if not settings.fx_rate_auto_sync_enabled:
-        return None
+        return [], UTC
     try:
-        sync_times = _parse_sync_times(settings.fx_rate_sync_times)
-        timezone: tzinfo = ZoneInfo(settings.fx_rate_sync_timezone)
+        return _parse_sync_times(settings.fx_rate_sync_times), ZoneInfo(settings.fx_rate_sync_timezone)
     except (ValueError, ZoneInfoNotFoundError):
         _runtime.config_error = True
         logger.warning("FX rate scheduler config is invalid")
         # Daily quote configuration cannot strand already accepted bill continuation.
-        sync_times = []
-        timezone = UTC
+        return [], UTC
+
+
+def start_fx_rate_scheduler() -> FxRateScheduler:
+    _runtime.scheduler = None
+    sync_times, timezone = _configured_schedule(get_settings())
 
     stop_event = threading.Event()
     thread = threading.Thread(
         target=_scheduler_loop,
         args=(stop_event, sync_times, timezone),
+        kwargs={"follow_settings": True},
         name="fx-rate-scheduler",
         daemon=True,
     )

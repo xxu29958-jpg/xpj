@@ -11,12 +11,15 @@ the same status counters.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.routes.owner_console._shared import LocalOnly, _base, templates
+from app.errors import AppError
+from app.routes.owner_console._settings import _settings_ctx
+from app.routes.owner_console._shared import LocalOnly, templates
+from app.services import integration_settings_service as integration
 from app.services import owner_console_service as svc
 from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.fx_rate_scheduler import run_fx_sync_once
@@ -25,7 +28,7 @@ router = APIRouter(prefix="/owner", tags=["owner-console"])
 
 
 def _fx_context(request: Request, db: Session, *, refreshed: str | None = None) -> dict:
-    ctx = _base(request, db)
+    ctx = _settings_ctx(request, db, active="fx")
     home_currency = require_runtime_home_currency_code(db)
     vm = svc.get_fx_panel_vm(db, home_currency_code=home_currency)
     ctx.update(
@@ -42,6 +45,7 @@ def _fx_context(request: Request, db: Session, *, refreshed: str | None = None) 
         fx_rows=vm.rows,
         fx_latest_date=vm.latest_date,
         refreshed=refreshed,
+        fx_form=integration.fx_form(),
     )
     return ctx
 
@@ -54,6 +58,26 @@ def owner_fx_get(
 ) -> HTMLResponse:
     ctx = _fx_context(request, db)
     return templates.TemplateResponse(request=request, name="fx.html", context=ctx)
+
+
+@router.post("/fx/settings", response_class=HTMLResponse)
+def owner_fx_settings_post(
+    request: Request,
+    auto_enabled: bool = Form(False), source: str = Form("frankfurter"),
+    sync_times: str = Form("09:10,23:10"), timezone: str = Form("Asia/Shanghai"),
+    _local: None = LocalOnly, db: Session = Depends(get_db),
+) -> HTMLResponse:
+    form = integration.FxSettingsForm(auto_enabled, source, sync_times, timezone)
+    error = None
+    status_code = 200
+    try:
+        integration.save_fx(form)
+    except AppError as exc:
+        error, status_code = exc.message, exc.status_code
+    ctx = _fx_context(request, db)
+    ctx.update(fx_form=form if error else integration.fx_form(), error=error,
+               message=None if error else "汇率设置已保存，无需重启。后台空闲时在 30 秒内采用新计划；进行中的任务完成后切换。")
+    return templates.TemplateResponse(request=request, name="fx.html", context=ctx, status_code=status_code)
 
 
 @router.post("/fx/refresh", response_class=HTMLResponse)

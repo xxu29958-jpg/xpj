@@ -8,8 +8,19 @@ import os
 import threading
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Literal
+from typing import Literal, TypeVar
 
+from app.services.runtime_integration_settings import (
+    AdvisorSettingsProjection,
+    FxSettingsProjection,
+    advisor_payload,
+    fx_payload,
+)
+from app.services.runtime_operations_settings import (
+    MaintenanceSettingsProjection,
+    UploadSettingsProjection,
+    operations_payload,
+)
 from app.services.secure_file import (
     hold_protected_file_for_read,
     hold_service_owned_projection_for_read,
@@ -18,10 +29,16 @@ from app.services.secure_file import (
 )
 
 _LEGACY_SCHEMA = "ticketbox-runtime-settings-v1"
-_SCHEMA = "ticketbox-runtime-settings-v2"
-_MAX_BYTES = 4096
+_RECOGNITION_SCHEMA = "ticketbox-runtime-settings-v2"
+_SCHEMA = "ticketbox-runtime-settings-v3"
+_MAX_BYTES = 32768
 _LEGACY_FIELDS = frozenset({"schema", "public_base_url", "budget_advisor_owner_confirmed"})
-_FIELDS = frozenset({*_LEGACY_FIELDS, "recognition"})
+_RECOGNITION_SCHEMA_FIELDS = frozenset({*_LEGACY_FIELDS, "recognition"})
+_FIELDS = frozenset({*_RECOGNITION_SCHEMA_FIELDS, "advisor", "fx", "uploads", "maintenance"})
+_FIELDS_BY_SCHEMA = {
+    _RECOGNITION_SCHEMA: _RECOGNITION_SCHEMA_FIELDS,
+    _SCHEMA: _FIELDS,
+}
 _RECOGNITION_FIELDS = frozenset(
     {
         "ocr_provider",
@@ -61,24 +78,38 @@ class RuntimeSettingsProjection:
     public_base_url: str
     budget_advisor_owner_confirmed: bool
     recognition: RecognitionSettingsProjection | None = None
+    advisor: AdvisorSettingsProjection | None = None
+    fx: FxSettingsProjection | None = None
+    uploads: UploadSettingsProjection | None = None
+    maintenance: MaintenanceSettingsProjection | None = None
 
 
 @dataclass(frozen=True)
 class RuntimeSettingsMutation:
-    field: Literal["public_base_url", "budget_advisor_owner_confirmed", "recognition"]
-    value: str | bool | RecognitionSettingsProjection
+    field: Literal["public_base_url", "budget_advisor_owner_confirmed", "recognition", "advisor", "fx", "uploads", "maintenance"]
+    value: str | bool | RecognitionSettingsProjection | AdvisorSettingsProjection | FxSettingsProjection | UploadSettingsProjection | MaintenanceSettingsProjection
+    check_advisor: bool = False
+    expected_advisor: AdvisorSettingsProjection | None = None
 
     def __post_init__(self) -> None:
         valid = (
             (self.field == "public_base_url" and isinstance(self.value, str))
             or (self.field == "budget_advisor_owner_confirmed" and type(self.value) is bool)
             or (self.field == "recognition" and isinstance(self.value, RecognitionSettingsProjection))
+            or (self.field == "advisor" and isinstance(self.value, AdvisorSettingsProjection))
+            or (self.field == "fx" and isinstance(self.value, FxSettingsProjection))
+            or (self.field == "uploads" and isinstance(self.value, UploadSettingsProjection))
+            or (self.field == "maintenance" and isinstance(self.value, MaintenanceSettingsProjection))
         )
         if not valid:
             raise TypeError("runtime settings mutation type does not match its field")
 
 
 _SETTINGS_LOCK = threading.Lock()
+
+
+class RuntimeSettingsConflictError(ValueError):
+    """The connection changed after its permission form was rendered."""
 
 
 def _clean_text(value: object, *, limit: int) -> str:
@@ -144,6 +175,10 @@ def _payload(projection: RuntimeSettingsProjection) -> dict[str, object]:
         "public_base_url": _clean_text(projection.public_base_url, limit=2048),
         "budget_advisor_owner_confirmed": projection.budget_advisor_owner_confirmed,
         "recognition": (_recognition_payload(projection.recognition) if projection.recognition is not None else None),
+        "advisor": advisor_payload(projection.advisor) if projection.advisor is not None else None,
+        "fx": fx_payload(projection.fx) if projection.fx is not None else None,
+        "uploads": operations_payload(projection.uploads) if projection.uploads is not None else None,
+        "maintenance": operations_payload(projection.maintenance) if projection.maintenance is not None else None,
     }
 
 
@@ -185,6 +220,18 @@ def _decode_recognition(value: object) -> RecognitionSettingsProjection | None:
     return RecognitionSettingsProjection(**value)
 
 
+_SettingsGroup = TypeVar("_SettingsGroup", AdvisorSettingsProjection, FxSettingsProjection,
+                        UploadSettingsProjection, MaintenanceSettingsProjection)
+
+
+def _decode_integration(value: object, model: type[_SettingsGroup]) -> _SettingsGroup | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict) or set(value) != set(model.__dataclass_fields__):
+        raise ValueError("runtime integration projection is not closed")
+    return model(**value)
+
+
 def read_runtime_settings(
     path: Path,
     *,
@@ -198,6 +245,11 @@ def read_runtime_settings(
     holder = hold_service_owned_projection_for_read if service_owned else hold_protected_file_for_read
     with holder(target) as protected:
         encoded = protected.read_bytes()
+    return _decode_runtime_settings(encoded)
+
+
+def _decode_runtime_settings(encoded: bytes) -> RuntimeSettingsProjection:
+    """Validate the complete saved document before any group becomes effective."""
     if len(encoded) > _MAX_BYTES:
         raise ValueError("runtime settings projection exceeds its bounded size")
     try:
@@ -217,16 +269,25 @@ def read_runtime_settings(
         if encoded.decode("utf-8") != _encode_legacy(projection):
             raise ValueError("runtime settings projection is not canonical")
         return projection
-    if schema != _SCHEMA:
+    if schema not in _FIELDS_BY_SCHEMA:
         raise ValueError("runtime settings projection schema is unsupported")
-    if set(value) != _FIELDS:
+    expected_fields = _FIELDS_BY_SCHEMA[schema]
+    if set(value) != expected_fields:
         raise ValueError("runtime settings projection is not closed")
     projection = RuntimeSettingsProjection(
         public_base_url=value.get("public_base_url"),
         budget_advisor_owner_confirmed=value.get("budget_advisor_owner_confirmed"),
         recognition=_decode_recognition(value.get("recognition")),
+        advisor=_decode_integration(value.get("advisor"), AdvisorSettingsProjection),
+        fx=_decode_integration(value.get("fx"), FxSettingsProjection),
+        uploads=_decode_integration(value.get("uploads"), UploadSettingsProjection),
+        maintenance=_decode_integration(value.get("maintenance"), MaintenanceSettingsProjection),
     )
-    if encoded.decode("utf-8") != _encode(projection):
+    canonical = _payload(projection)
+    canonical = {key: val for key, val in canonical.items() if key in expected_fields}
+    canonical["schema"] = schema
+    expected = json.dumps(canonical, ensure_ascii=True, allow_nan=False, sort_keys=True, separators=(",", ":")) + "\n"
+    if encoded.decode("utf-8") != expected:
         raise ValueError("runtime settings projection is not canonical")
     return projection
 
@@ -291,6 +352,16 @@ def patch_runtime_settings(
     _payload(defaults)
     with _SETTINGS_LOCK:
         current = read_runtime_settings(path, service_owned=service_owned) or defaults
+        if mutation.check_advisor and current.advisor != mutation.expected_advisor:
+            raise RuntimeSettingsConflictError("advisor connection changed")
         projection = replace(current, **{mutation.field: mutation.value})
+        # Permission to send budget aggregates belongs to the saved connection.
+        # Changing it must never silently carry consent to another provider.
+        if mutation.field == "advisor":
+            connection_fields = ("provider", "base_url", "api_key", "model")
+            if current.advisor is None or any(
+                getattr(current.advisor, name) != getattr(mutation.value, name) for name in connection_fields
+            ):
+                projection = replace(projection, budget_advisor_owner_confirmed=False)
         write_runtime_settings(path, projection, service_owned=service_owned)
         return projection

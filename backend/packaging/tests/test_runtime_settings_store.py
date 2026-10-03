@@ -228,7 +228,7 @@ def test_recognition_settings_are_published_as_one_closed_group(
     )
 
     payload = json.loads(target.read_text(encoding="utf-8"))
-    assert payload["schema"] == "ticketbox-runtime-settings-v2"
+    assert payload["schema"] == "ticketbox-runtime-settings-v3"
     assert payload["recognition"]["ocr_provider"] == "local_llm"
     assert payload["recognition"]["debt_bill_provider"] == "local_llm"
     assert store.read_runtime_settings(target, service_owned=False) == store.RuntimeSettingsProjection(

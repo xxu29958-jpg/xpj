@@ -6,7 +6,7 @@ day at ``LEARNING_CLEANUP_DAILY_AT`` (config; default ``03:30`` in
 backend lives on a Chinese-timezone home server).
 
 Disabled by default (``LEARNING_CLEANUP_AUTO_ENABLED=false``) so an
-existing deployment doesn't suddenly gain a background thread; the
+existing deployment does not begin deleting expired records; the
 manual ``/api/maintenance/cleanup-learning`` button + Owner Console
 "立即清理" still work whether or not the scheduler is on.
 
@@ -20,12 +20,13 @@ from __future__ import annotations
 import logging
 import threading
 from dataclasses import dataclass
-from datetime import datetime, time, timedelta
+from datetime import datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.config import get_settings
 from app.database import SessionLocal
 from app.services.learning_service import run_full_maintenance
+from app.services.runtime_maintenance_schedule import parse_daily_at, wait_for_daily_run
 from app.services.scheduler_lease_service import try_claim_scheduler_lease
 
 logger = logging.getLogger(__name__)
@@ -34,9 +35,7 @@ _SCHEDULER_LEASE_SECONDS = 60 * 60
 
 @dataclass
 class LearningCleanupSchedulerStatus:
-    """In-process counters surfaced to ``/api/maintenance/learning-status``
-    via the future scheduler-status endpoint. Today nothing reads it
-    directly; this keeps the door open without coupling the route."""
+    """In-process counters shown in Owner cleanup settings."""
 
     success_count: int = 0
     failed_count: int = 0
@@ -63,6 +62,8 @@ def learning_cleanup_status_snapshot() -> LearningCleanupSchedulerStatus:
 class LearningCleanupScheduler:
     thread: threading.Thread
     stop_event: threading.Event
+    enabled: bool = False
+    config_error: str | None = None
 
     def stop(self) -> None:
         self.stop_event.set()
@@ -70,31 +71,12 @@ class LearningCleanupScheduler:
             self.thread.join(timeout=5)
 
 
-def _parse_daily_at(value: str) -> time:
-    hour_text, minute_text = value.split(":", 1)
-    return time(hour=int(hour_text), minute=int(minute_text))
-
-
-def _seconds_until_next_run(now: datetime, daily_at: time) -> float:
-    candidate = now.replace(
-        hour=daily_at.hour,
-        minute=daily_at.minute,
-        second=0,
-        microsecond=0,
-    )
-    if candidate <= now:
-        candidate = candidate + timedelta(days=1)
-    return max((candidate - now).total_seconds(), 1)
-
-
-def _scheduler_loop(
-    stop_event: threading.Event, daily_at: time, timezone: ZoneInfo
-) -> None:
+def _scheduler_loop(stop_event: threading.Event) -> None:
     while not stop_event.is_set():
-        delay = _seconds_until_next_run(datetime.now(timezone), daily_at)
-        if stop_event.wait(delay):
+        attempted_at = wait_for_daily_run(stop_event, "learning_cleanup")
+        if attempted_at is None:
             return
-        _status.last_attempt_at = datetime.now(timezone)
+        _status.last_attempt_at = attempted_at
         try:
             with SessionLocal() as db:
                 if not try_claim_scheduler_lease(
@@ -107,7 +89,7 @@ def _scheduler_loop(
             with SessionLocal() as db:
                 result = run_full_maintenance(db)
             _status.success_count += 1
-            _status.last_success_at = datetime.now(timezone)
+            _status.last_success_at = datetime.now(attempted_at.tzinfo)
             logger.info(
                 "learning cleanup: swept=%s deleted=%s elapsed_ms=%s",
                 result.swept_stale_active,
@@ -123,32 +105,21 @@ def _scheduler_loop(
             logger.exception("learning cleanup failed")
 
 
-def start_learning_cleanup_scheduler() -> LearningCleanupScheduler | None:
-    """Spawn the daemon thread when auto-cleanup is enabled.
-
-    Returns ``None`` when disabled or misconfigured; caller (lifespan)
-    just ignores ``None`` so a config error doesn't block startup.
-    """
-
+def start_learning_cleanup_scheduler() -> LearningCleanupScheduler:
     settings = get_settings()
-    if not settings.learning_cleanup_auto_enabled:
-        return None
-    try:
-        daily_at = _parse_daily_at(settings.learning_cleanup_daily_at)
-        timezone = ZoneInfo(settings.learning_cleanup_timezone)
-    except (ValueError, ZoneInfoNotFoundError):
-        logger.exception("learning cleanup scheduler config invalid")
-        return None
-
+    enabled = settings.learning_cleanup_auto_enabled
+    config_error = None
+    if enabled:
+        try:
+            parse_daily_at(settings.learning_cleanup_daily_at)
+            ZoneInfo(settings.learning_cleanup_timezone)
+        except (ValueError, ZoneInfoNotFoundError):
+            enabled, config_error = False, "invalid_config"
     stop_event = threading.Event()
-    thread = threading.Thread(
-        target=_scheduler_loop,
-        args=(stop_event, daily_at, timezone),
-        name="learning-cleanup-scheduler",
-        daemon=True,
-    )
+    thread = threading.Thread(target=_scheduler_loop, args=(stop_event,),
+                              name="learning-cleanup-scheduler", daemon=True)
     thread.start()
-    return LearningCleanupScheduler(thread=thread, stop_event=stop_event)
+    return LearningCleanupScheduler(enabled=enabled, thread=thread, stop_event=stop_event, config_error=config_error)
 
 
 __all__ = [

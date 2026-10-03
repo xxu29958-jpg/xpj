@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from functools import lru_cache
 from pathlib import Path
 from urllib.parse import urlparse
@@ -10,6 +10,8 @@ from dotenv import load_dotenv
 
 from app.fx_constants import DEFAULT_SUPPORTED_CURRENCY_CODES
 from app.recognition_config import resolve_recognition_config
+from app.services.runtime_integration_settings import AdvisorSettingsProjection, FxSettingsProjection
+from app.services.runtime_operations_settings import resolve_maintenance_settings, resolve_upload_settings
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
@@ -149,9 +151,7 @@ class Settings:
     # Batch 2: AI budget advisor live calls require explicit opt-in.
     # ``empty`` / ``mock`` providers do not need this flag.
     budget_advisor_owner_confirmed: bool
-    # v1.2 ops: scheduled learning-table cleanup. Disabled by default
-    # so existing deployments don't suddenly grow a background thread;
-    # enable via env when ready to retire manual cleanup.
+    # Scheduled learning cleanup stays idle until the Owner enables it.
     learning_cleanup_auto_enabled: bool
     learning_cleanup_daily_at: str
     learning_cleanup_timezone: str
@@ -277,6 +277,31 @@ def database_url_is_default_fallback() -> bool:
     return os.getenv("DATABASE_URL") is None
 
 
+def _resolve_advisor_config(saved: AdvisorSettingsProjection | None) -> AdvisorSettingsProjection:
+    if saved is not None:
+        return saved
+    return AdvisorSettingsProjection(
+        provider=os.getenv("BUDGET_ADVISOR_PROVIDER", "empty").strip().lower(),
+        base_url=os.getenv("BUDGET_ADVISOR_BASE_URL", "").strip(),
+        api_key=os.getenv("BUDGET_ADVISOR_API_KEY", ""),
+        model=os.getenv("BUDGET_ADVISOR_MODEL", "").strip(),
+        timeout_seconds=int(os.getenv("BUDGET_ADVISOR_TIMEOUT_SECONDS", "60")),
+        min_interval_seconds=max(0, int(os.getenv("BUDGET_ADVISOR_LIVE_MIN_INTERVAL_SECONDS", "60"))),
+        daily_call_limit=max(0, int(os.getenv("BUDGET_ADVISOR_LIVE_DAILY_CALL_LIMIT", "50"))),
+    )
+
+
+def _resolve_fx_config(saved: FxSettingsProjection | None) -> FxSettingsProjection:
+    if saved is not None:
+        return saved
+    return FxSettingsProjection(
+        auto_enabled=_bool_env("FX_RATE_AUTO_SYNC_ENABLED", True),
+        source=os.getenv("FX_RATE_SOURCE", "frankfurter").strip().lower() or "frankfurter",
+        sync_times=os.getenv("FX_RATE_SYNC_TIMES", "09:10,23:10").strip() or "09:10,23:10",
+        timezone=os.getenv("FX_RATE_SYNC_TIMEZONE", "Asia/Shanghai").strip() or "Asia/Shanghai",
+    )
+
+
 @lru_cache
 def get_settings() -> Settings:
     from app.services.runtime_settings_store import read_runtime_settings
@@ -288,6 +313,10 @@ def get_settings() -> Settings:
     if runtime_settings_service_owned() and runtime_settings is None:
         raise InstalledRuntimeSettingsError("installed runtime settings projection is missing")
     recognition = resolve_recognition_config(runtime_settings.recognition if runtime_settings is not None else None)
+    advisor = _resolve_advisor_config(runtime_settings.advisor if runtime_settings is not None else None)
+    fx = _resolve_fx_config(runtime_settings.fx if runtime_settings is not None else None)
+    uploads = resolve_upload_settings(runtime_settings.uploads if runtime_settings is not None else None)
+    maintenance = resolve_maintenance_settings(runtime_settings.maintenance if runtime_settings is not None else None)
     upload_dir = Path(os.getenv("UPLOAD_DIR", "uploads"))
     if not upload_dir.is_absolute():
         upload_dir = DATA_ROOT / upload_dir
@@ -302,7 +331,6 @@ def get_settings() -> Settings:
         # localhost default only serves a bare local run with no .env.
         database_url=os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL),
         upload_dir=upload_dir.resolve(),
-        max_upload_size_mb=int(os.getenv("MAX_UPLOAD_SIZE_MB", "10")),
         delete_image_after_confirm=_bool_env("DELETE_IMAGE_AFTER_CONFIRM", False),
         generate_thumbnail=_bool_env("GENERATE_THUMBNAIL", True),
         delete_image_after_days=int(os.getenv("DELETE_IMAGE_AFTER_DAYS", "0")),
@@ -340,42 +368,13 @@ def get_settings() -> Settings:
         # Together / Groq in the cloud — same base_url + api_key + model
         # triple. No endpoint is preset; selecting openai_compat without
         # BUDGET_ADVISOR_BASE_URL + MODEL raises at provider lookup.
-        budget_advisor_provider=os.getenv("BUDGET_ADVISOR_PROVIDER", "empty").strip().lower(),
-        budget_advisor_base_url=os.getenv("BUDGET_ADVISOR_BASE_URL", "").strip(),
-        budget_advisor_api_key=os.getenv("BUDGET_ADVISOR_API_KEY", ""),
-        budget_advisor_model=os.getenv("BUDGET_ADVISOR_MODEL", "").strip(),
-        budget_advisor_timeout_seconds=int(os.getenv("BUDGET_ADVISOR_TIMEOUT_SECONDS", "60")),
-        budget_advisor_audit_retention_days=int(os.getenv("BUDGET_ADVISOR_AUDIT_RETENTION_DAYS", "180")),
-        budget_advisor_audit_cleanup_auto_enabled=_bool_env(
-            "BUDGET_ADVISOR_AUDIT_CLEANUP_AUTO_ENABLED",
-            False,
-        ),
-        budget_advisor_audit_cleanup_daily_at=os.getenv(
-            "BUDGET_ADVISOR_AUDIT_CLEANUP_DAILY_AT",
-            "03:45",
-        ).strip()
-        or "03:45",
-        budget_advisor_audit_cleanup_timezone=os.getenv(
-            "BUDGET_ADVISOR_AUDIT_CLEANUP_TIMEZONE",
-            "Asia/Shanghai",
-        ).strip()
-        or "Asia/Shanghai",
-        soft_delete_purge_auto_enabled=_bool_env(
-            "SOFT_DELETE_PURGE_AUTO_ENABLED",
-            False,
-        ),
-        recycle_bin_retention_days=max(
-            1,
-            int(os.getenv("RECYCLE_BIN_RETENTION_DAYS", "30")),
-        ),
-        budget_advisor_live_min_interval_seconds=max(
-            0,
-            int(os.getenv("BUDGET_ADVISOR_LIVE_MIN_INTERVAL_SECONDS", "60")),
-        ),
-        budget_advisor_live_daily_call_limit=max(
-            0,
-            int(os.getenv("BUDGET_ADVISOR_LIVE_DAILY_CALL_LIMIT", "50")),
-        ),
+        budget_advisor_provider=advisor.provider,
+        budget_advisor_base_url=advisor.base_url,
+        budget_advisor_api_key=advisor.api_key,
+        budget_advisor_model=advisor.model,
+        budget_advisor_timeout_seconds=advisor.timeout_seconds,
+        budget_advisor_live_min_interval_seconds=advisor.min_interval_seconds,
+        budget_advisor_live_daily_call_limit=advisor.daily_call_limit,
         tenants_json=os.getenv("TENANTS_JSON", "").strip(),
         enable_http_bootstrap=_bool_env("ENABLE_HTTP_BOOTSTRAP", False),
         http_bootstrap_secret=os.getenv("HTTP_BOOTSTRAP_SECRET", "").strip(),
@@ -393,15 +392,6 @@ def get_settings() -> Settings:
             os.getenv("CLOUDFLARE_ACCESS_TEAM_DOMAIN")
         ),
         cloudflare_access_aud=os.getenv("CLOUDFLARE_ACCESS_AUD", "").strip(),
-        # Batch 1: default daily budget 200 MiB / link, default 2-second
-        # gap per remote_key. 0 = unlimited (kept for tests / loopback).
-        upload_link_default_daily_byte_budget=int(
-            os.getenv("UPLOAD_LINK_DEFAULT_DAILY_BYTE_BUDGET", str(200 * 1024 * 1024))
-        ),
-        upload_link_default_per_remote_interval_seconds=int(
-            os.getenv("UPLOAD_LINK_DEFAULT_PER_REMOTE_INTERVAL_SECONDS", "2")
-        ),
-        upload_link_ttl_days=max(1, int(os.getenv("UPLOAD_LINK_TTL_DAYS", "90"))),
         csv_import_max_bytes=int(os.getenv("CSV_IMPORT_MAX_BYTES", str(8 * 1024 * 1024))),
         csv_import_max_lines=int(os.getenv("CSV_IMPORT_MAX_LINES", "25000")),
         csv_import_max_cell_bytes=int(os.getenv("CSV_IMPORT_MAX_CELL_BYTES", "4096")),
@@ -413,13 +403,6 @@ def get_settings() -> Settings:
             0,
             int(os.getenv("APP_TOKEN_ROTATION_GRACE_SECONDS", "60")),
         ),
-        device_cleanup_retention_days=max(
-            0,
-            int(os.getenv("DEVICE_CLEANUP_RETENTION_DAYS", "180")),
-        ),
-        device_cleanup_auto_enabled=_bool_env("DEVICE_CLEANUP_AUTO_ENABLED", False),
-        device_cleanup_daily_at=os.getenv("DEVICE_CLEANUP_DAILY_AT", "04:10").strip() or "04:10",
-        device_cleanup_timezone=os.getenv("DEVICE_CLEANUP_TIMEZONE", "Asia/Shanghai").strip() or "Asia/Shanghai",
         duplicate_phash_scan_limit=max(
             1,
             int(os.getenv("DUPLICATE_PHASH_SCAN_LIMIT", "500")),
@@ -429,18 +412,15 @@ def get_settings() -> Settings:
             if runtime_settings is not None
             else _bool_env("BUDGET_ADVISOR_OWNER_CONFIRMED", False)
         ),
-        learning_cleanup_auto_enabled=_bool_env("LEARNING_CLEANUP_AUTO_ENABLED", False),
-        learning_cleanup_daily_at=os.getenv("LEARNING_CLEANUP_DAILY_AT", "03:30").strip() or "03:30",
-        learning_cleanup_timezone=os.getenv("LEARNING_CLEANUP_TIMEZONE", "Asia/Shanghai").strip() or "Asia/Shanghai",
         fx_supported_currency_codes=os.getenv(
             "FX_SUPPORTED_CURRENCY_CODES",
             ",".join(sorted(DEFAULT_SUPPORTED_CURRENCY_CODES)),
         ).strip()
         or ",".join(sorted(DEFAULT_SUPPORTED_CURRENCY_CODES)),
-        fx_rate_auto_sync_enabled=_bool_env("FX_RATE_AUTO_SYNC_ENABLED", True),
-        fx_rate_sync_times=os.getenv("FX_RATE_SYNC_TIMES", "09:10,23:10").strip() or "09:10,23:10",
-        fx_rate_sync_timezone=os.getenv("FX_RATE_SYNC_TIMEZONE", "Asia/Shanghai").strip() or "Asia/Shanghai",
-        fx_rate_source=(os.getenv("FX_RATE_SOURCE", "frankfurter").strip().lower() or "frankfurter"),
+        fx_rate_auto_sync_enabled=fx.auto_enabled,
+        fx_rate_sync_times=fx.sync_times,
+        fx_rate_sync_timezone=fx.timezone,
+        fx_rate_source=fx.source,
         fx_rate_ecb_url=(
             os.getenv(
                 "FX_RATE_ECB_URL",
@@ -456,4 +436,6 @@ def get_settings() -> Settings:
             or "https://api.frankfurter.dev/v1/latest?base=EUR"
         ),
         debt_rollout_enabled=_bool_env("DEBT_ROLLOUT_ENABLED", True),
+        **asdict(uploads),
+        **asdict(maintenance),
     )

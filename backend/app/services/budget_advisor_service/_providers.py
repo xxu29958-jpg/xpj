@@ -22,13 +22,12 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 from ipaddress import ip_address
 from typing import cast
 from urllib import error, request
 from urllib.parse import urlparse
 
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.errors import AppError, DataIntegrityError
 from app.money_contract import (
     MoneySign,
@@ -60,9 +59,6 @@ MAX_PROVIDER_RESPONSE_BYTES = 512 * 1024
 MAX_ADVICE_SUMMARY_CHARS = 800
 MAX_ADVICE_RATIONALE_CHARS = 600
 MAX_ADVICE_SUGGESTIONS = 20
-_SECRETISH_DETAIL_RE = re.compile(
-    r"(?i)\b(api[_-]?key|authorization|bearer|token)\b\s*[:=]\s*['\"]?[^,\s'\"]+"
-)
 
 _SYSTEM_PROMPT = (
     "你是家庭预算助手。输入只有分类聚合、泛化收入计划、固定支出摘要和储蓄备用金安排，绝无真实商户名、姓名或路径。"
@@ -173,7 +169,8 @@ class OpenAiCompatBudgetAdvisor:
             response_json = self._post_chat_completion(request_body)
         except AppError:
             self.last_error_code = "ai_advisor_provider_call_failed"
-            logger.exception("budget_advisor_openai_compat: HTTP call failed")
+            # Provider errors can echo credentials in their body or reason.
+            logger.warning("budget_advisor_openai_compat: HTTP call failed")
             return None
         except Exception:  # noqa: BLE001 - surface anything else as no-advice
             self.last_error_code = "ai_advisor_provider_unexpected_error"
@@ -212,14 +209,9 @@ class OpenAiCompatBudgetAdvisor:
                     raise AppError("server_error", "AI 服务暂时不可用。", status_code=500)
                 return cast(BudgetAdvisorChatResponse, json.loads(raw.decode("utf-8")))
         except error.HTTPError as exc:
-            detail = _sanitize_provider_error_detail(
-                exc.read(4096).decode("utf-8", errors="replace")
-            )
             logger.warning(
-                "budget_advisor_openai_compat: provider HTTP error status=%s reason=%s detail=%s",
+                "budget_advisor_openai_compat: provider HTTP error status=%s",
                 exc.code,
-                exc.reason,
-                detail,
             )
             raise AppError(
                 "server_error",
@@ -230,15 +222,15 @@ class OpenAiCompatBudgetAdvisor:
             raise AppError("server_error", "AI 服务暂时不可用。", status_code=500) from exc
 
 
-def get_budget_advisor(provider_name: str | None = None) -> BudgetAdvisorProvider:
+def get_budget_advisor(provider_name: str | None = None, *, settings: Settings | None = None) -> BudgetAdvisorProvider:
     """Resolve a provider by name. Defaults to ``empty`` per ADR-0036."""
 
-    raw_name = clean_provider_name(provider_name or get_settings().budget_advisor_provider)
+    settings = settings or get_settings()
+    raw_name = clean_provider_name(provider_name or settings.budget_advisor_provider)
     name = canonical_provider_name(raw_name)
     if name == MOCK_PROVIDER_NAME:
         return MockBudgetAdvisor()
     if raw_name in OPENAI_COMPAT_PROVIDER_NAMES or name in OPENAI_COMPAT_PROVIDER_NAMES:
-        settings = get_settings()
         if not settings.budget_advisor_base_url:
             raise AppError(
                 "server_error",
@@ -432,11 +424,6 @@ def _validate_api_key_for_base_url(base_url: str, api_key: str) -> None:
 
 def _api_key_has_unsafe_shape(api_key: str) -> bool:
     return any(ch.isspace() or ord(ch) < 32 or ord(ch) == 127 for ch in api_key)
-
-
-def _sanitize_provider_error_detail(value: str) -> str:
-    collapsed = " ".join((value or "").split())
-    return _SECRETISH_DETAIL_RE.sub(r"\1=***", collapsed)[:160]
 
 
 def _cap_text(value: object, limit: int) -> str:

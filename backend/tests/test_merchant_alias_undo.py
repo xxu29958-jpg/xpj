@@ -206,13 +206,12 @@ def test_global_purge_removes_aged_spares_fresh(client: TestClient, *, identity)
 
 
 def test_purge_scheduler_disabled_by_default() -> None:
-    """The purge scheduler is opt-in (SOFT_DELETE_PURGE_AUTO_ENABLED), so it
-    must not spin up a background thread under the default config."""
+    """Cleanup is opt-in; the idle worker can follow a later saved Owner choice."""
     from app.services.soft_delete_purge_scheduler import start_soft_delete_purge_scheduler
 
     scheduler = start_soft_delete_purge_scheduler()
     try:
         assert scheduler.enabled is False
-        assert scheduler.thread is None
+        assert scheduler.thread is not None and scheduler.thread.is_alive()
     finally:
         scheduler.stop()

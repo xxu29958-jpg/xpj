@@ -1,11 +1,35 @@
-{% extends "base.html" %}
+{% extends "settings/_layout.html" %}
 {% block title %}汇率同步 — 小票夹{% endblock %}
-{% block content %}
-<h1>汇率同步</h1>
+{% block settings_body %}
+<h2>汇率同步</h2>
 <details class="page-help">
   <summary>这是什么</summary>
   <p>这里更新最新参考汇率。自动任务运行时按计划拉取；想立即更新，或上次同步失败时，可以点击「立即拉取一次」。历史账单请在待确认中按账单日期补齐汇率，取得结果后仍需核对并确认。</p>
 </details>
+
+<form method="post" action="/owner/fx/settings" class="card">
+  <h2>自动同步设置</h2>
+  <div class="settings-form-grid">
+    <span>自动同步</span>
+    <label class="label-check-row" for="fx_auto_enabled">
+      <input id="fx_auto_enabled" name="auto_enabled" type="checkbox" {% if fx_form.auto_enabled %}checked{% endif %}>
+      按每天的计划更新参考汇率
+    </label>
+    <label for="fx_source">汇率来源</label>
+    <select id="fx_source" name="source" class="inline-select">
+      <option value="frankfurter" {% if fx_form.source == 'frankfurter' %}selected{% endif %}>Frankfurter（欧洲央行参考汇率镜像）</option>
+      <option value="ecb" {% if fx_form.source == 'ecb' %}selected{% endif %}>欧洲央行直连</option>
+    </select>
+    <label for="fx_sync_times">每日时间</label>
+    <input id="fx_sync_times" name="sync_times" class="inline-input" value="{{ fx_form.sync_times }}" maxlength="128" required>
+    <span></span><p class="help-text">例如 09:10,23:10；最多 6 个时间，用逗号分隔。</p>
+    <label for="fx_timezone">计划所在时区</label>
+    <input id="fx_timezone" name="timezone" class="inline-input" value="{{ fx_form.timezone }}" maxlength="64" list="fx_timezones" required>
+    <datalist id="fx_timezones"><option value="Asia/Shanghai"><option value="Asia/Hong_Kong"><option value="Asia/Tokyo"><option value="UTC"></datalist>
+  </div>
+  <button type="submit" class="btn btn-primary mt-5">保存同步设置</button>
+  <p class="help-text">后台空闲时在 30 秒内采用新计划，进行中的任务完成后切换。关闭自动同步仍可手动拉取；已有汇率和历史账单不会被清除或重新计算。</p>
+</form>
 
 {% if refreshed == 'ok' %}
 <div class="alert alert-success">
@@ -34,8 +58,10 @@
     </span>
     <span class="kv-key">任务运行</span>
     <span class="kv-val" data-testid="fx-scheduler-state">
-      {% if fx_scheduler_config_error %}
-      <span class="badge badge-err">报价计划配置无效</span> 请核对同步时间和时区，修正后重启后端。
+      {% if not fx_auto_enabled %}
+      <span class="badge badge-off">自动同步已关闭</span> 可手动拉取
+      {% elif fx_scheduler_config_error %}
+      <span class="badge badge-err">报价计划配置无效</span> 请在上方修正时间和时区后保存。
       {% if fx_scheduler_running %}待补汇率的账单仍会继续处理。{% endif %}
       {% elif fx_scheduler_running %}
       <span class="badge badge-ok">运行中</span> 等待计划时间或正在同步

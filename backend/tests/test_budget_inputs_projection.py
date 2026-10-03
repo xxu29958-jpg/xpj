@@ -133,11 +133,11 @@ def test_saved_original_currency_is_not_relabelled_or_zeroed_when_conversion_is_
     assert recovered.breakdown.savings_target_cents == 1000 and recovered.breakdown.discretionary_cents == 400
     assert recovered.saved_arrangement is saved and saved.savings_target_cents == 500
     if implicit_home:
-        monkeypatch.setattr(_runner, "get_advisor_readiness", lambda: SimpleNamespace(
+        monkeypatch.setattr(_runner, "get_advisor_readiness", lambda **_: SimpleNamespace(
             provider="empty", is_live=False, blocked_reason=lambda _: None))
         provider = Mock()
         provider.advise.return_value = None
-        monkeypatch.setattr(_runner, "get_budget_advisor", lambda: provider)
+        monkeypatch.setattr(_runner, "get_budget_advisor", lambda **_: provider)
         generated = _runner.run_budget_advisor(object(), tenant_id="owner", actor_account_id=1,
             actor_role="owner", month="2026-08", timezone_name="UTC")
         assert generated.home_currency_code == provider.advise.call_args.args[0].home_currency == "JPY"
@@ -147,10 +147,10 @@ def test_saved_original_currency_is_not_relabelled_or_zeroed_when_conversion_is_
 
 def test_generation_returns_the_same_trial_basis_that_reaches_the_provider(monkeypatch):
     seed_reads(monkeypatch)
-    monkeypatch.setattr(_runner, "get_advisor_readiness", lambda: SimpleNamespace(
+    monkeypatch.setattr(_runner, "get_advisor_readiness", lambda **_: SimpleNamespace(
         provider="empty", is_live=False, blocked_reason=lambda _: None))
     captured = []
-    monkeypatch.setattr(_runner, "get_budget_advisor", lambda: SimpleNamespace(advise=lambda inputs: captured.append(inputs)))
+    monkeypatch.setattr(_runner, "get_budget_advisor", lambda **_: SimpleNamespace(advise=lambda inputs: captured.append(inputs)))
     result = _runner.run_budget_advisor(object(), tenant_id="owner", actor_account_id=1, actor_role="owner",
         month="2026-08", timezone_name="UTC", home_currency_code="JPY", savings_target_cents=1800, reserved_buffer_cents=100)
     assert result.inputs.breakdown.shortfall_cents == 300
@@ -208,7 +208,7 @@ def test_hidden_historical_rate_change_invalidates_advice_without_changing_month
 
 def test_generation_rechecks_gap_before_provider_quota_or_audit(monkeypatch):
     gap = ProjectionGap("CNY", "JPY", date(2026, 7, 2))
-    monkeypatch.setattr(_runner, "get_advisor_readiness", lambda: SimpleNamespace(
+    monkeypatch.setattr(_runner, "get_advisor_readiness", lambda **_: SimpleNamespace(
         provider="openai_compat", is_live=True, blocked_reason=lambda role: None,
     ))
     read = Mock(return_value=SimpleNamespace(home_currency_code="JPY", undated_expense_count=0, missing_rates=(gap,), provider_inputs=None))
@@ -242,7 +242,7 @@ def test_unused_previous_comparison_does_not_block_advice(monkeypatch):
 
 
 def test_generation_keeps_the_original_input_currency(monkeypatch):
-    monkeypatch.setattr(_runner, "get_advisor_readiness", lambda: SimpleNamespace(
+    monkeypatch.setattr(_runner, "get_advisor_readiness", lambda **_: SimpleNamespace(
         provider="empty", is_live=False, blocked_reason=lambda role: None,
     ))
     inputs = BudgetInputs(month="2026-08", home_currency="JPY")
@@ -250,7 +250,7 @@ def test_generation_keeps_the_original_input_currency(monkeypatch):
     monkeypatch.setattr(_runner, "read_budget_inputs", read)
     provider = Mock()
     provider.advise.return_value = None
-    monkeypatch.setattr(_runner, "get_budget_advisor", lambda: provider)
+    monkeypatch.setattr(_runner, "get_budget_advisor", lambda **_: provider)
     result = _runner.run_budget_advisor(object(), tenant_id="owner", actor_account_id=1, actor_role="owner",
         month="2026-08", timezone_name="UTC", home_currency_code="JPY")
     assert read.call_args.kwargs["home_currency_code"] == "JPY"
@@ -287,7 +287,7 @@ def test_undated_input_is_visible_without_provider_envelope_or_fake_fx_gap(monke
     projection = builder.read_budget_inputs(object(), tenant_id="owner", month="2026-08", home_currency_code="JPY")
     assert projection.undated_expense_count == 1 and projection.missing_rates == ()
     assert projection.breakdown.discretionary_cents is None and projection.provider_inputs is None
-    monkeypatch.setattr(_runner, "get_advisor_readiness", lambda: SimpleNamespace(
+    monkeypatch.setattr(_runner, "get_advisor_readiness", lambda **_: SimpleNamespace(
         provider="openai_compat", is_live=True, blocked_reason=lambda role: None))
     monkeypatch.setattr(_runner, "read_budget_inputs", lambda *a, **kw: projection)
     forbidden = Mock(side_effect=AssertionError("undated financial inputs cannot reach provider or quota"))

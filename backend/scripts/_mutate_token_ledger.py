@@ -406,6 +406,11 @@ ALLOWLIST: dict[str, Exempt] = {
     ),
     # --- /owner console (loopback-only admin / single-writer / batch) ---
     "POST /owner/ai-advisor/confirmation": Exempt("external_side_effect", "owner_console", (), "medium"),
+    # Runtime choices use the protected file's atomic read/merge/publish lock;
+    # model changes revoke consent, and confirmation checks its saved revision.
+    "POST /owner/ai-advisor/settings": Exempt("external_side_effect", "owner_console", (), "medium"),
+    # Explicit fixed-sample model request; does not read or mutate financial rows.
+    "POST /owner/ai-advisor/test": Exempt("external_side_effect", "owner_console", (), "medium"),
     "POST /owner/algorithm-versions/withdraw": Exempt("batch_db_write", "learning", _ALGO_DECISIONS, "medium"),
     "POST /owner/devices/{public_id}/delete": Exempt("terminal_flag_flip", "owner_console", _DEVICE_REVOKE, "medium"),
     "POST /owner/devices/{public_id}/rename": Exempt("admin_single_writer", "owner_console", ("devices",)),
@@ -415,6 +420,7 @@ ALLOWLIST: dict[str, Exempt] = {
     # trigger) but no row_version to guard — concurrency safety rests on the
     # upsert being idempotent (same data either way), not on single-writer.
     "POST /owner/fx/refresh": Exempt("upsert_bucket", "exchange_rates", ("fx_rates",)),
+    "POST /owner/fx/settings": Exempt("external_side_effect", "owner_console", ()),
     "POST /owner/learning-maintenance/dismiss-decision": Exempt(
         "terminal_flag_flip", "learning", _ALGO_DECISIONS
     ),
@@ -433,6 +439,10 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /owner/originals/inspect": Exempt("enqueue_task", "maintenance", ("background_tasks",)),
     "POST /owner/originals/tasks/{public_id}/{action}": Exempt("enqueue_task", "maintenance", ("background_tasks",), "high"),
     "POST /owner/settings/{settings_group}": Exempt("external_side_effect", "owner_console", ()),
+    # Protected runtime file publication, with explicit cleanup impact consent;
+    # these routes do not delete rows or change issued link expiry timestamps.
+    "POST /owner/settings/uploads": Exempt("external_side_effect", "owner_console", ()),
+    "POST /owner/settings/maintenance": Exempt("external_side_effect", "owner_console", (), "medium"),
     "POST /owner/upload-links": Exempt("create_row", "owner_console", _UPLOAD_LINKS),
     "POST /owner/upload-links/{public_id}/delete": Exempt("terminal_flag_flip", "owner_console", _UPLOAD_LINKS),
     "POST /owner/upload-links/{public_id}/limits": Exempt("admin_single_writer", "owner_console", _UPLOAD_LINKS),

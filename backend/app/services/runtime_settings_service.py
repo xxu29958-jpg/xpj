@@ -28,6 +28,7 @@ from app.errors import AppError
 from app.recognition_config import resolve_local_llm_base_url
 from app.services.runtime_settings_store import (
     RecognitionSettingsProjection,
+    RuntimeSettingsConflictError,
     RuntimeSettingsMutation,
     RuntimeSettingsProjection,
     patch_runtime_settings,
@@ -37,9 +38,7 @@ from app.version import BACKEND_VERSION
 _SETTINGS_PATH = DATA_ROOT / "runtime-settings" / "runtime-settings.json"
 _SERVICE_OWNED = runtime_settings_service_owned()
 
-_EDITABLE_KEYS: frozenset[str] = frozenset(
-    {"BUDGET_ADVISOR_OWNER_CONFIRMED", "PUBLIC_BASE_URL", "RECOGNITION_PIPELINE"}
-)
+_EDITABLE_KEYS: frozenset[str] = frozenset({"PUBLIC_BASE_URL", "RECOGNITION_PIPELINE"})
 
 
 @dataclass(frozen=True)
@@ -244,8 +243,8 @@ def _write_runtime_value(key: str, value: str) -> RuntimeSettingsProjection:
         budget_advisor_owner_confirmed=settings.budget_advisor_owner_confirmed,
     )
     mutation = RuntimeSettingsMutation(
-        field=("public_base_url" if key == "PUBLIC_BASE_URL" else "budget_advisor_owner_confirmed"),
-        value=value if key == "PUBLIC_BASE_URL" else value == "true",
+        field="public_base_url",
+        value=value,
     )
     projection = patch_runtime_settings(
         _SETTINGS_PATH,
@@ -376,7 +375,15 @@ def update_public_base_url(raw: str) -> RuntimeSettingsView:
     return get_view()
 
 
-def update_budget_advisor_owner_confirmed(confirmed: bool) -> bool:
-    value = "true" if confirmed else "false"
-    projection = _write_runtime_value("BUDGET_ADVISOR_OWNER_CONFIRMED", value)
-    return projection.budget_advisor_owner_confirmed
+def save_runtime_mutation(mutation: RuntimeSettingsMutation) -> None:
+    settings = get_settings()
+    try:
+        patch_runtime_settings(_SETTINGS_PATH, defaults=RuntimeSettingsProjection(
+            public_base_url=settings.public_base_url,
+            budget_advisor_owner_confirmed=settings.budget_advisor_owner_confirmed,
+        ), mutation=mutation, service_owned=_SERVICE_OWNED)
+    except RuntimeSettingsConflictError as exc:
+        raise AppError("conflict", "模型配置已改变，请刷新页面，核对当前连接后重新确认。", status_code=409) from exc
+    except OSError as exc:
+        raise AppError("server_error", "设置未保存。请检查主机存储状态后重试，原设置仍保留。", status_code=503) from exc
+    get_settings.cache_clear()

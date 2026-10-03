@@ -37,11 +37,11 @@ def test_cross_currency_http_trial_and_ai_share_repaired_report_basis(monkeypatc
         return kw["amount_minor"] * 2
 
     monkeypatch.setattr(builder, "project_recorded_amount", project)
-    monkeypatch.setattr(_runner, "get_advisor_readiness", lambda: SimpleNamespace(
+    monkeypatch.setattr(_runner, "get_advisor_readiness", lambda **_: SimpleNamespace(
         provider="empty", is_live=False, blocked_reason=lambda _: None))
     provider = Mock()
     provider.advise.return_value = None
-    monkeypatch.setattr(_runner, "get_budget_advisor", lambda: provider)
+    monkeypatch.setattr(_runner, "get_budget_advisor", lambda **_: provider)
     app = FastAPI()
     from app.errors import add_exception_handlers
     add_exception_handlers(app)

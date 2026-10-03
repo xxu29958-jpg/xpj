@@ -5,12 +5,13 @@ from __future__ import annotations
 import logging
 import threading
 from dataclasses import dataclass
-from datetime import datetime, time, timedelta
+from datetime import datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.config import get_settings
 from app.database import SessionLocal
 from app.services.budget_advisor_service import cleanup_expired_audit_logs
+from app.services.runtime_maintenance_schedule import parse_daily_at, wait_for_daily_run
 from app.services.scheduler_lease_service import try_claim_scheduler_lease
 
 logger = logging.getLogger(__name__)
@@ -54,33 +55,12 @@ def budget_advisor_audit_cleanup_status_snapshot() -> BudgetAdvisorAuditCleanupS
     )
 
 
-def _parse_daily_at(value: str) -> time:
-    hour_text, minute_text = value.split(":", 1)
-    return time(hour=int(hour_text), minute=int(minute_text))
-
-
-def _seconds_until_next_run(now: datetime, daily_at: time) -> float:
-    candidate = now.replace(
-        hour=daily_at.hour,
-        minute=daily_at.minute,
-        second=0,
-        microsecond=0,
-    )
-    if candidate <= now:
-        candidate += timedelta(days=1)
-    return max((candidate - now).total_seconds(), 1)
-
-
-def _scheduler_loop(
-    stop_event: threading.Event,
-    daily_at: time,
-    timezone: ZoneInfo,
-) -> None:
+def _scheduler_loop(stop_event: threading.Event) -> None:
     while not stop_event.is_set():
-        delay = _seconds_until_next_run(datetime.now(timezone), daily_at)
-        if stop_event.wait(delay):
+        attempted_at = wait_for_daily_run(stop_event, "budget_advisor_audit_cleanup")
+        if attempted_at is None:
             return
-        _status.last_attempt_at = datetime.now(timezone)
+        _status.last_attempt_at = attempted_at
         try:
             with SessionLocal() as db:
                 if not try_claim_scheduler_lease(
@@ -95,7 +75,7 @@ def _scheduler_loop(
             with SessionLocal() as db:
                 deleted = cleanup_expired_audit_logs(db)
             _status.success_count += 1
-            _status.last_success_at = datetime.now(timezone)
+            _status.last_success_at = datetime.now(attempted_at.tzinfo)
             logger.info("budget advisor audit cleanup: deleted=%s", deleted)
         except Exception as exc:  # noqa: BLE001 - daemon thread guard
             _status.failed_count += 1
@@ -105,28 +85,19 @@ def _scheduler_loop(
 
 def start_budget_advisor_audit_cleanup_scheduler() -> BudgetAdvisorAuditCleanupScheduler:
     settings = get_settings()
-    if not settings.budget_advisor_audit_cleanup_auto_enabled:
-        return BudgetAdvisorAuditCleanupScheduler()
-    try:
-        daily_at = _parse_daily_at(settings.budget_advisor_audit_cleanup_daily_at)
-        timezone = ZoneInfo(settings.budget_advisor_audit_cleanup_timezone)
-    except (ValueError, ZoneInfoNotFoundError):
-        logger.exception("budget advisor audit cleanup scheduler config invalid")
-        return BudgetAdvisorAuditCleanupScheduler(config_error="invalid_config")
-
+    enabled = settings.budget_advisor_audit_cleanup_auto_enabled
+    config_error = None
+    if enabled:
+        try:
+            parse_daily_at(settings.budget_advisor_audit_cleanup_daily_at)
+            ZoneInfo(settings.budget_advisor_audit_cleanup_timezone)
+        except (ValueError, ZoneInfoNotFoundError):
+            enabled, config_error = False, "invalid_config"
     stop_event = threading.Event()
-    thread = threading.Thread(
-        target=_scheduler_loop,
-        args=(stop_event, daily_at, timezone),
-        name="budget-advisor-audit-cleanup-scheduler",
-        daemon=True,
-    )
+    thread = threading.Thread(target=_scheduler_loop, args=(stop_event,),
+                              name="budget-advisor-audit-cleanup-scheduler", daemon=True)
     thread.start()
-    return BudgetAdvisorAuditCleanupScheduler(
-        enabled=True,
-        thread=thread,
-        stop_event=stop_event,
-    )
+    return BudgetAdvisorAuditCleanupScheduler(enabled=enabled, thread=thread, stop_event=stop_event, config_error=config_error)
 
 
 __all__ = [

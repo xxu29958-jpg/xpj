@@ -3,13 +3,13 @@
 <h1>设置</h1>
 <details class="page-help">
   <summary>这是什么</summary>
-  <p>管理识别、录入和公网连接等日常能力；涉及凭据、数据库和 Windows 服务边界的设置保持只读，并交给 Desktop Manager / 安装生命周期。</p>
+  <p>管理图片识别、AI 顾问、汇率、上传、清理和公网连接。各项设置会说明保存后的生效方式与运行结果。</p>
 </details>
 <div class="settings-shell">
-  <nav class="settings-side">
+  <nav class="settings-side" aria-label="设置分类">
     {% for item in settings_nav %}
       <a href="{{ item.url }}"
-         class="{% if item.slug == settings_active %}active{% endif %}">
+         class="{% if item.slug == settings_active %}active{% endif %}"{% if item.slug == settings_active %} aria-current="page"{% endif %}>
         {{ item.label }}
       </a>
     {% endfor %}

@@ -20,6 +20,10 @@ router = APIRouter(prefix="/owner", tags=["owner-console"])
 _SETTINGS_NAV = (
     {"slug": "", "label": "概览", "url": "/owner/settings"},
     {"slug": "recognition", "label": "识别与录入", "url": "/owner/settings/recognition"},
+    {"slug": "advisor", "label": "AI 预算顾问", "url": "/owner/ai-advisor"},
+    {"slug": "fx", "label": "汇率同步", "url": "/owner/fx"},
+    {"slug": "uploads", "label": "上传与链接", "url": "/owner/settings/uploads"},
+    {"slug": "maintenance", "label": "清理与保留", "url": "/owner/settings/maintenance"},
     {"slug": "public-base-url", "label": "公网域名", "url": "/owner/settings/public-base-url"},
     {"slug": "security", "label": "安全 / 边界", "url": "/owner/settings/security"},
     {"slug": "api", "label": "接口一览", "url": "/owner/settings/api"},

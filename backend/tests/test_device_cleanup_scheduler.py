@@ -16,8 +16,9 @@ def test_device_cleanup_scheduler_disabled_by_default(
     try:
         scheduler = start_device_cleanup_scheduler()
         assert scheduler.enabled is False
-        assert scheduler.thread is None
+        assert scheduler.thread is not None and scheduler.thread.is_alive()
     finally:
+        scheduler.stop()
         reset_settings_cache()
 
 
@@ -78,4 +79,5 @@ def test_device_cleanup_scheduler_invalid_config_noops(
         assert scheduler.enabled is False
         assert scheduler.config_error == "invalid_config"
     finally:
+        scheduler.stop()
         reset_settings_cache()

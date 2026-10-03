@@ -13,6 +13,7 @@ from jinja2 import ChoiceLoader, DictLoader, Environment, FileSystemLoader
 from app.config import reset_settings_cache
 from app.errors import AppError
 from app.services.budget_advisor_service import _audit, _runner
+from app.services.integration_settings_service import advisor_form
 
 
 @contextmanager
@@ -38,7 +39,7 @@ def _render_owner(status: object) -> str:
         FileSystemLoader(owner_templates),
     ]), autoescape=True)
     environment.filters["owner_datetime"] = lambda value: value or "无记录"
-    return environment.get_template("ai_advisor.html").render(status=status, audit_rows=[])
+    return environment.get_template("ai_advisor.html").render(status=status, audit_rows=[], advisor_form=advisor_form())
 
 
 @pytest.mark.parametrize(("field", "value"), [

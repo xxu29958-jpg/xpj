@@ -145,7 +145,7 @@ def test_owner_index_local_returns_200(local_client: TestClient) -> None:
     assert 'class="owner-sidebar__group-label owner-sidebar__advanced-summary"' in body
     assert '<span class="owner-sidebar__advanced-title">高级</span>' in body
     assert '<span class="owner-sidebar__advanced-note">平时不用</span>' in body
-    assert '<span class="owner-sidebar__advanced-count" aria-label="3 个入口">3</span>' in body
+    assert '<span class="owner-sidebar__advanced-count" aria-label="2 个入口">2</span>' in body
     assert "/owner/tag-cleanup" not in body
     assert '<use href="#owner-icon-phone">' in body
     for legacy_label in [
@@ -868,13 +868,12 @@ def test_owner_ai_advisor_panel_opens(local_client: TestClient) -> None:
 
     response = local_client.get("/owner/ai-advisor")
     assert response.status_code == 200
-    assert "Provider" in response.text
+    assert "AI 预算顾问" in response.text
     assert "/owner/ai-advisor/confirmation" in response.text
-    assert '<details class="owner-sidebar__group owner-sidebar__advanced" open>' in response.text
-    active_link = re.search(r'<a\b([^>]*)>AI 顾问</a>', response.text)
+    active_link = re.search(r'<a\b([^>]*)>设置</a>', response.text)
     assert active_link is not None
     attributes = dict(re.findall(r'([\w-]+)="([^"]*)"', active_link.group(1)))
-    assert attributes["href"] == "/owner/ai-advisor"
+    assert attributes["href"] == "/owner/settings"
     assert "is-active" in attributes["class"].split()
     assert attributes["aria-current"] == "page"
 
@@ -895,9 +894,13 @@ def test_owner_ai_advisor_confirmation_updates_runtime_projection(
         "BUDGET_ADVISOR_OWNER_CONFIRMED",
         "false",
     ):
+        import re
+
+        revision = re.search(r'name="connection_revision" value="([^"]+)"', local_client.get("/owner/ai-advisor").text)
+        assert revision is not None
         response = local_client.post(
             "/owner/ai-advisor/confirmation",
-            data={"confirmed": "on"},
+            data={"confirmed": "on", "connection_revision": revision.group(1)},
             follow_redirects=False,
         )
         assert response.status_code == 303
@@ -1444,7 +1447,9 @@ def test_owner_settings_service_editable_keys_are_explicit() -> None:
     """_EDITABLE_KEYS is the reviewed Owner Console runtime-edit surface."""
     from app.services.runtime_settings_service import _EDITABLE_KEYS
 
-    assert frozenset({"BUDGET_ADVISOR_OWNER_CONFIRMED", "PUBLIC_BASE_URL", "RECOGNITION_PIPELINE"}) == _EDITABLE_KEYS, (
+    # Model permission now requires the connection-bound confirmation command;
+    # the generic setting writer must no longer bypass that check.
+    assert frozenset({"PUBLIC_BASE_URL", "RECOGNITION_PIPELINE"}) == _EDITABLE_KEYS, (
         f"_EDITABLE_KEYS should contain only reviewed keys, got: {_EDITABLE_KEYS}"
     )
 
