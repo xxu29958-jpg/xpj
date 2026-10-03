@@ -195,12 +195,51 @@ def test_owner_devices_page_and_actions_are_ledger_scoped(local_client: TestClie
         follow_redirects=False,
     )
     assert rename.status_code == 404
+    assert 'value="should not rename" readonly' in rename.text
+    assert "external console phone" not in rename.text
 
     revoke = local_client.post(
         f"/owner/devices/{external_public_id}/revoke",
         follow_redirects=False,
     )
     assert revoke.status_code == 404
+
+
+@pytest.mark.parametrize("revoked", [False, True])
+def test_owner_device_rejected_rename_preserves_draft_and_name(
+    local_client: TestClient, revoked: bool,
+) -> None:
+    from sqlalchemy import select
+
+    from app.database import SessionLocal
+    from app.models import Device
+    from app.services import owner_console_service as svc
+    from app.services.time_service import now_utc
+
+    with SessionLocal() as db:
+        device = db.scalars(select(Device).where(
+            Device.account_id == svc.get_owner_account_id(db),
+            Device.platform == "android",
+        )).first()
+        assert device is not None
+        public_id, original_name = device.public_id, device.device_name
+        if revoked:
+            device.revoked_at = now_utc()
+            db.commit()
+    draft = "我还没有保存的设备名称" * 20
+    rejected = local_client.post(
+        f"/owner/devices/{public_id}/rename", data={"device_name": draft},
+    )
+    assert rejected.status_code == 422
+    assert f'value="{draft}"' in rejected.text
+    assert f'id="device-{public_id}" open' in rejected.text
+    if revoked:
+        assert "未保存的设备名称" in rejected.text
+        assert f'action="/owner/devices/{public_id}/rename"' not in rejected.text
+    with SessionLocal() as db:
+        assert db.scalar(select(Device.device_name).where(
+            Device.public_id == public_id,
+        )) == original_name
 
 
 def test_owner_devices_html_no_token_hash(local_client: TestClient) -> None:
@@ -228,10 +267,10 @@ def test_owner_pairing_page_opens(
 ) -> None:
     import re
 
-    from sqlalchemy import select
+    from sqlalchemy import func, select
 
     from app.database import SessionLocal
-    from app.models import Account, Device
+    from app.models import Account, Device, PairingCode
 
     external_device_id = _insert_external_console_device()
     with SessionLocal() as db:
@@ -264,18 +303,27 @@ def test_owner_pairing_page_opens(
     assert external_device_id not in resp.text
     assert windows_device_id not in resp.text
 
+    with SessionLocal() as db:
+        codes_before = db.scalar(select(func.count()).select_from(PairingCode))
     for blocked_device_id in (external_device_id, windows_device_id):
+        stale = local_client.get(f"/owner/pairing?recovery_device={blocked_device_id}")
+        assert "要恢复的设备不存在，请重新选择" in stale.text
+        assert f'<option value="{blocked_device_id}" selected>' in stale.text
         rejected = local_client.post(
             "/owner/pairing",
             data={
                 "ledger_id": "owner",
-                "ttl_minutes": "15",
+                "ttl_minutes": "27",
                 "recovery_device_public_id": blocked_device_id,
             },
         )
         assert rejected.status_code == 200
         assert "要恢复的设备不存在，请重新选择" in rejected.text
         assert "设备恢复码已生成" not in rejected.text
+        assert f'<option value="{blocked_device_id}" selected>' in rejected.text
+        assert 'name="ttl_minutes" min="1" max="60" required value="27"' in rejected.text
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count()).select_from(PairingCode)) == codes_before
 
 
 def test_owner_new_device_result_offers_qr_only_while_code_is_visible(local_client, phone_mobile_endpoint) -> None:
