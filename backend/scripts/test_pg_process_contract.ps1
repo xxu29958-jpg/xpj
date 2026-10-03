@@ -280,7 +280,8 @@ function Get-XpjVerifiedProcessSnapshot {
         [Parameter(Mandatory = $true)]
         [object]$Snapshot,
         [Parameter(Mandatory = $true)]
-        [Diagnostics.Process]$Handle
+        [Diagnostics.Process]$Handle,
+        [string]$ExpectedExecutable
     )
 
     $processId = [int]$Snapshot.ProcessId
@@ -297,6 +298,19 @@ function Get-XpjVerifiedProcessSnapshot {
     }
     if ([int]$Snapshot.ParentProcessId -ne [int]$fresh.ParentProcessId) {
         throw "PostgreSQL PID parent changed during identity verification: $processId"
+    }
+    if (-not [string]::IsNullOrWhiteSpace($ExpectedExecutable)) {
+        if ([string]::IsNullOrWhiteSpace([string]$fresh.ExecutablePath)) {
+            throw "Cannot revalidate PostgreSQL executable for PID $processId"
+        }
+        $freshExecutable = [IO.Path]::GetFullPath([string]$fresh.ExecutablePath)
+        $handleExecutable = [IO.Path]::GetFullPath($Handle.MainModule.FileName)
+        if (
+            -not [string]::Equals($freshExecutable, $ExpectedExecutable, [StringComparison]::OrdinalIgnoreCase) -or
+            -not [string]::Equals($handleExecutable, $freshExecutable, [StringComparison]::OrdinalIgnoreCase)
+        ) {
+            throw "PostgreSQL PID was reused during identity verification: $processId"
+        }
     }
     return $fresh
 }
@@ -362,18 +376,7 @@ function Assert-XpjOwnedPostgresProcess {
             if ($handle.HasExited) {
                 throw "PostgreSQL PID exited during identity verification: $($item.ProcessId)"
             }
-            $fresh = Get-XpjVerifiedProcessSnapshot -Snapshot $item -Handle $handle
-            if ([string]::IsNullOrWhiteSpace([string]$fresh.ExecutablePath)) {
-                throw "Cannot revalidate PostgreSQL executable for PID $($item.ProcessId)"
-            }
-            $freshExecutable = [IO.Path]::GetFullPath([string]$fresh.ExecutablePath)
-            $handleExecutable = [IO.Path]::GetFullPath($handle.MainModule.FileName)
-            if (
-                -not [string]::Equals($freshExecutable, $snapshotExecutable, [StringComparison]::OrdinalIgnoreCase) -or
-                -not [string]::Equals($handleExecutable, $freshExecutable, [StringComparison]::OrdinalIgnoreCase)
-            ) {
-                throw "PostgreSQL PID was reused during identity verification: $($item.ProcessId)"
-            }
+            $fresh = Get-XpjVerifiedProcessSnapshot -Snapshot $item -Handle $handle -ExpectedExecutable $snapshotExecutable
             if ([int]$item.ProcessId -eq $postmasterId) {
                 Assert-XpjPostmasterProcessGeneration -Identity $identity -Handle $handle
                 if ([string]::IsNullOrWhiteSpace([string]$fresh.CommandLine)) {
