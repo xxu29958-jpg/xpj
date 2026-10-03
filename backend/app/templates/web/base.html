@@ -245,7 +245,11 @@
          W1: 控件抽成 _appearance_control.html — topbar 与「我」popover
          (≤40rem) 两个真实 consumer 共用, theme.js 多实例绑定。 #}
       {% include "_appearance_control.html" %}
+      {% if account_without_ledger|default(false) %}
+      <a class="topbar-action" href="{{ '/' if request.state.web_session_platform == 'desktop' else '/web/auth/ledgers' }}">选择账本</a>
+      {% else %}
       {% include "_ledger_switcher.html" %}
+      {% endif %}
       </header>
     </div>
     <main class="content" id="main-content" tabindex="-1" data-page-level="{{ _page_level }}">
@@ -253,7 +257,7 @@
       {% include "_mobile_nav.html" %}
       {% if _role == 'viewer' %}
       <div class="readonly-callout" role="status">
-        当前为<strong>只读角色</strong>。查看与分析保持可用，写入动作已隐藏或禁用。
+        {% if _path.startswith('/web/settings') %}当前账本为<strong>只读角色</strong>。你仍可管理自己的设备。{% else %}当前为<strong>只读角色</strong>。查看与分析保持可用，写入动作已隐藏或禁用。{% endif %}
       </div>
       {% endif %}
       {% if ledger_undated_expense_count|default(0) %}

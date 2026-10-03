@@ -352,7 +352,8 @@ def _recovery_page(message: str, *, portable_available: bool = False) -> bytes:
     the way back itself; `/` is gated by the same control cookie the
     bootstrap issued.
     """
-    portable_link = '<p><a href="/web/exports">下载有权访问的账本数据</a></p>' if portable_available else ""
+    portable_link = ('<p><a href="/web/exports">下载有权访问的账本数据</a></p>'
+                     '<p><a href="/web/settings">设置与设备</a></p>') if portable_available else ""
     return (
         "<!doctype html><meta charset=utf-8>"
         "<title>小票夹需要恢复</title><h1>暂时无法打开账本</h1>"

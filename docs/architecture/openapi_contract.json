@@ -3957,6 +3957,55 @@
         "title": "Body_web_debt_rate_web_debts_rate_post",
         "type": "object"
       },
+      "Body_web_device_delete_web_settings_devices__public_id__delete_post": {
+        "properties": {
+          "confirmed": {
+            "default": "",
+            "title": "Confirmed",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_device_delete_web_settings_devices__public_id__delete_post",
+        "type": "object"
+      },
+      "Body_web_device_pairing_web_settings_devices_pairing_codes_post": {
+        "properties": {
+          "confirmed": {
+            "default": "",
+            "title": "Confirmed",
+            "type": "string"
+          },
+          "recovery_device_public_id": {
+            "default": "",
+            "title": "Recovery Device Public Id",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_device_pairing_web_settings_devices_pairing_codes_post",
+        "type": "object"
+      },
+      "Body_web_device_rename_web_settings_devices__public_id__rename_post": {
+        "properties": {
+          "device_name": {
+            "default": "",
+            "title": "Device Name",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_device_rename_web_settings_devices__public_id__rename_post",
+        "type": "object"
+      },
+      "Body_web_device_revoke_web_settings_devices__public_id__revoke_post": {
+        "properties": {
+          "confirmed": {
+            "default": "",
+            "title": "Confirmed",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_device_revoke_web_settings_devices__public_id__revoke_post",
+        "type": "object"
+      },
       "Body_web_duplicate_keep_web_duplicates__expense_id__keep_post": {
         "properties": {
           "expected_row_version": {
@@ -55762,6 +55811,214 @@
         "summary": "Web Search",
         "tags": [
           "web"
+        ]
+      }
+    },
+    "/web/settings": {
+      "get": {
+        "operationId": "web_settings_web_settings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Web Settings",
+        "tags": [
+          "web-app"
+        ]
+      }
+    },
+    "/web/settings/devices/pairing-codes": {
+      "post": {
+        "operationId": "web_device_pairing_web_settings_devices_pairing_codes_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_device_pairing_web_settings_devices_pairing_codes_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Device Pairing",
+        "tags": [
+          "web-app"
+        ]
+      }
+    },
+    "/web/settings/devices/{public_id}/delete": {
+      "post": {
+        "operationId": "web_device_delete_web_settings_devices__public_id__delete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_device_delete_web_settings_devices__public_id__delete_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Device Delete",
+        "tags": [
+          "web-app"
+        ]
+      }
+    },
+    "/web/settings/devices/{public_id}/rename": {
+      "post": {
+        "operationId": "web_device_rename_web_settings_devices__public_id__rename_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_device_rename_web_settings_devices__public_id__rename_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Device Rename",
+        "tags": [
+          "web-app"
+        ]
+      }
+    },
+    "/web/settings/devices/{public_id}/revoke": {
+      "post": {
+        "operationId": "web_device_revoke_web_settings_devices__public_id__revoke_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_device_revoke_web_settings_devices__public_id__revoke_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Device Revoke",
+        "tags": [
+          "web-app"
         ]
       }
     },

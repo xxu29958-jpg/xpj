@@ -58,6 +58,7 @@
 
       <p class="auth-foot">{{ footnote }}</p>
       {% if portable_export_url %}<p class="auth-foot"><a href="{{ portable_export_url }}">下载账本数据，包括拥有的已归档账本</a></p>{% endif %}
+      {% if account_settings_url %}<p class="auth-foot"><a href="{{ account_settings_url }}">设置与设备</a></p>{% endif %}
       {% if return_url %}<p class="auth-foot"><a href="{{ return_url }}">{{ return_label }}</a></p>{% endif %}
     </section>
   </main>

@@ -253,6 +253,7 @@ def web_ledger_picker(
             "submit_label": "进入所选账本",
             "footnote": "切换账本不会创建新账户、设备或浏览器令牌。",
             "portable_export_url": "/web/exports",
+            "account_settings_url": "/web/settings",
             "next_url": _safe_next_url(next),
             "error_message": error_message,
             "backend_version": BACKEND_VERSION,

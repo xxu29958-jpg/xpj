@@ -26,6 +26,11 @@
     <span class="role-badge ledger-role-chip ledger-role-{{ _role }} {{ _role }}">{{ _role_zh }}</span>
   </summary>
   <div class="chrome-popover ledger-popover" id="ledger-popover">
+    {% if request.state.web_session_auth %}
+    <a class="row" href="/web/settings">
+      <div class="meta"><div class="name">设置与设备</div><div class="sub">当前账户、自己的设备和数据</div></div>
+    </a>
+    {% endif %}
     <div class="head">切换账本</div>
     {% for opt in ledger_options %}
     {% if request.state.web_session_auth and request.state.web_session_platform != "desktop" %}
