@@ -140,13 +140,13 @@ def evaluate_debt(counts: DebtCounts) -> int:
 # counter is and how it's computed.
 STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_carriers": 138,  # + Web budget archive with its captured expected row version.
-    "mutate_token_exempted": 130,  # + two Local Owner admissions to durable original-maintenance tasks.
+    "mutate_token_exempted": 133,  # + Local Owner AI/FX runtime choices and fixed-sample model check.
     "mutate_token_reason_admin_single_writer": 10,
     "mutate_token_reason_append_only_fact": 3,
     "mutate_token_reason_batch_db_write": 17,
     "mutate_token_reason_create_row": 37,
     "mutate_token_reason_enqueue_task": 2,
-    "mutate_token_reason_external_side_effect": 3,
+    "mutate_token_reason_external_side_effect": 6,
     "mutate_token_reason_governance_action": 8,
     "mutate_token_reason_read_only_compute": 5,
     "mutate_token_reason_session_rotation": 8,
@@ -181,6 +181,12 @@ BASELINE_RATCHET_DOWN: frozenset[str] = frozenset(
     }
 )
 _MUTATE_TOKEN_EXEMPTION_ADMISSIONS = (
+    # ADR-0036/0038 external_side_effect: AI/FX choices publish through the
+    # existing protected settings file lock, not a financial row. Connection
+    # changes revoke consent; confirmation checks its exact saved revision.
+    # The third route only sends a fixed example to the saved model provider.
+    # No OCC-bearing financial route changes classification.
+    ("f971f28a0fb53031626209f1a4432414b42ee1fa", 130, 133),
     # ADR-0030/0038 enqueue_task; TICKETBOX_ORIGINAL_INTEGRITY_CONTRACT continuation.
     # Two new Local Owner task admissions have no predecessor financial row:
     # original UUID receipts + conditional task claims + exact file/ref checks
