@@ -35,7 +35,8 @@ def _seed_records(db, ledger_id, marker):
         now=now_utc() - timedelta(days=200))
     expired.status = "dismissed"
     expired.retention_days = 1
-    db.add(BudgetAdvisorAuditLog(tenant_id=ledger_id, provider="empty", model=marker, input_hash=marker, success=1))
+    db.add(BudgetAdvisorAuditLog(tenant_id=ledger_id, provider="empty", model=marker, input_hash=marker, success=1,
+        month="2026-01" if ledger_id == "owner" else "2026-02"))
     db.flush()
     return active.id, active.public_id, expired.id, expense.id
 
@@ -57,7 +58,7 @@ def test_selected_ledger_records_are_visible_on_all_three_pages(owner, ledgers):
     for page, visible, absent in (
         ("learning-maintenance", target_rows[1], source_rows[1]),
         ("algorithm-versions", "expired-travel-record", "expired-home-record"),
-        ("ai-advisor", "travel-record", "home-record"),
+        ("ai-advisor", "2026-02", "2026-01"),
     ):
         result = owner.get(f"/owner/{page}", params={"ledger_id": target})
         assert result.status_code == 200, result.text
@@ -139,6 +140,7 @@ def test_no_manageable_ledger_has_no_default_data_fallback(owner, ledgers):
         assert result.status_code == 200, result.text
         assert "当前没有可管理的账本" in result.text
         assert "home-record" not in result.text and "travel-record" not in result.text
+        assert "2026-01" not in result.text and "2026-02" not in result.text
         assert 'action="/owner/learning-maintenance/run"' not in result.text
         assert 'action="/owner/algorithm-versions/withdraw"' not in result.text
     assert owner.post("/owner/learning-maintenance/run").status_code == 403
