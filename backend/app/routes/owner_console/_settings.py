@@ -11,6 +11,7 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.error_reporting import retain_handled_error
 from app.routes.owner_console._shared import LocalOnly, _base, templates
 from app.services import recognition_setup_service, route_inspector_service, runtime_settings_service
 
@@ -108,6 +109,8 @@ def _post_recognition_settings(
             check = recognition_setup_service.inspect_connection(form, action=recognition_action)
             recognition_view = runtime_settings_service.get_recognition_view(form)
     except Exception as exc:  # noqa: BLE001 — validated error is rendered beside the preserved draft
+        retain_handled_error(request, exc)
+        error_status = getattr(exc, "status_code", 503)
         ctx = _settings_ctx(
             request,
             db,
@@ -117,7 +120,7 @@ def _post_recognition_settings(
         ctx["recognition_view"] = runtime_settings_service.get_recognition_view(form)
         ctx["recognition_action"] = recognition_action
         return templates.TemplateResponse(request=request, name="settings/recognition.html", context=ctx,
-            status_code=200 if recognition_action == "save" else getattr(exc, "status_code", 503))
+            status_code=200 if recognition_action == "save" and error_status < 500 else error_status)
     ctx = _settings_ctx(
         request,
         db,
