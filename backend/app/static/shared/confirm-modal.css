@@ -3,13 +3,20 @@
  */
 .tb-confirm-modal {
     border: 1px solid var(--border-card);
-    border-radius: 10px;
+    border-radius: var(--radius-card);
     background: var(--surface-card);
     color: var(--text-default);
     padding: 0;
+    margin: auto;
     max-width: 360px;
-    width: calc(100% - 32px);
-    box-shadow: 0 10px 32px rgba(0, 0, 0, 0.18);
+    width: calc(100% - var(--space-8));
+    max-height: calc(100% - var(--space-8));
+    overflow: hidden;
+    box-shadow: var(--shadow-raised);
+}
+.tb-confirm-modal[open] {
+    display: flex;
+    flex-direction: column;
 }
 .tb-confirm-modal::backdrop {
     background: rgba(0, 0, 0, 0.34);
@@ -17,43 +24,54 @@
 .tb-confirm-body {
     display: flex;
     flex-direction: column;
-    gap: 16px;
-    padding: 20px;
+    min-height: 0;
+    gap: var(--space-5);
+    padding: var(--space-7);
     margin: 0;
 }
 .tb-confirm-message {
     margin: 0;
-    font-size: 14px;
-    line-height: 1.6;
+    font-size: var(--type-body-size);
+    line-height: var(--type-body-line);
     color: var(--text-default);
     white-space: pre-wrap;
-    word-break: break-word;
+    overflow-wrap: anywhere;
+    min-height: 0;
+    overflow: auto;
 }
 .tb-confirm-actions {
     display: flex;
-    gap: 8px;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+    gap: var(--space-3);
     justify-content: flex-end;
 }
 .tb-confirm-actions button {
     appearance: none;
+    min-width: var(--target-min);
+    min-height: var(--space-10);
+    max-width: 100%;
     border: 1px solid var(--border-card);
-    background: var(--surface-app);
+    background: var(--surface-sunken);
     color: var(--text-default);
-    padding: 6px 14px;
-    border-radius: 6px;
-    font-size: 13px;
+    padding: var(--space-3) var(--space-5);
+    border-radius: var(--radius-input);
+    font-size: var(--type-body-size);
+    font-weight: var(--type-subtitle-weight);
     cursor: pointer;
     font-family: inherit;
-    line-height: 1.4;
+    line-height: var(--type-body-line);
+    overflow-wrap: anywhere;
 }
 .tb-confirm-actions .tb-confirm-ok {
+    min-height: calc(var(--target-min) + var(--space-3));
     background: var(--brand-primary);
     border-color: var(--brand-primary);
     color: var(--text-on-primary);
-    font-weight: 600;
+    font-weight: var(--type-title-weight);
 }
 .tb-confirm-actions button:hover { filter: brightness(0.96); }
 .tb-confirm-actions button:focus-visible {
-    outline: 2px solid var(--brand-focus-ring);
-    outline-offset: 2px;
+    outline: var(--space-1) solid var(--brand-focus-ring);
+    outline-offset: var(--space-1);
 }
