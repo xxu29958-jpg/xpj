@@ -1,6 +1,7 @@
 package com.ticketbox.ui.appearance.background
 
 import android.os.Build
+import android.graphics.Bitmap
 import android.view.View
 import android.view.ViewGroup
 import android.view.Window
@@ -24,6 +25,7 @@ import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
@@ -44,6 +46,8 @@ import com.ticketbox.ui.screens.settings.BackgroundEditorScreen
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.ui.saveConsumerArtPreview
 import com.ticketbox.viewmodel.BackgroundEditorState
+import java.io.File
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -52,6 +56,9 @@ import org.junit.Test
 
 class BackgroundEditorViewportTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    private var fixtureImage: File? = null
+
+    @After fun removeFixture() { fixtureImage?.delete() }
 
     @Test
     fun compositionUsesTheGlobalCanvasEvenUnderTheLocalUnlockBanner() {
@@ -107,12 +114,26 @@ class BackgroundEditorViewportTest {
         assertSystemBarIcons(lightAppearance = false)
         assertSampleAmountFits(1.8f)
         capture("background-editor-midnight-large")
-        compose.onNodeWithText("展开选项").performClick()
-        compose.onNodeWithText("统计").performScrollTo().performClick()
-        compose.onNodeWithText("统计 · 组件预览").assertIsDisplayed()
-        compose.onNodeWithText("专注").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("预览页面").performScrollTo().performClick()
+        compose.onNodeWithText("统计").performClick()
+        compose.onNodeWithText("统计").assertIsDisplayed()
+        compose.onNodeWithContentDescription("沉浸强度").performScrollTo().performClick()
+        compose.onNodeWithText("专注").performClick()
         compose.runOnIdle { assertEquals(ImmersionMode.Focus, editor.value.settings.immersionMode) }
-        compose.onNodeWithText("应用背景").performScrollTo().performClick()
+        val image = File.createTempFile("editor-composition-", ".png", compose.activity.cacheDir).also { fixtureImage = it }
+        Bitmap.createBitmap(120, 200, Bitmap.Config.ARGB_8888).also { bitmap ->
+            bitmap.eraseColor(android.graphics.Color.LTGRAY)
+            image.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            bitmap.recycle()
+        }
+        compose.runOnIdle { editor.value = editor.value.copy(settings = editor.value.settings.withCustomImage(image.absolutePath)) }
+        compose.onNodeWithText("拖动与缩放").performScrollTo().performClick()
+        val compositionViewport = compose.onNodeWithTag("background-editor-viewport").fetchSemanticsNode().boundsInWindow
+        assertEquals(preview, compositionViewport)
+        compose.onNodeWithText("放大").performScrollTo().performClick()
+        compose.runOnIdle { assertTrue(editor.value.settings.transform.scale > 1f); assertEquals(0, applied) }
+        compose.onNodeWithText("完成构图").performScrollTo().performClick()
+        compose.onNodeWithText("应用背景").performClick()
         compose.onNodeWithText("应用中…").assertIsNotEnabled()
         compose.onNodeWithText("取消").assertIsNotEnabled()
         compose.runOnIdle {
@@ -122,13 +143,13 @@ class BackgroundEditorViewportTest {
         }
         compose.onNodeWithText("背景没有保存成功。").performScrollTo().assertIsDisplayed()
         capture("background-editor-retained-draft-large")
-        compose.onNodeWithText("取消").performScrollTo().performClick()
+        compose.onNodeWithText("取消").performClick()
         compose.runOnIdle { assertEquals(1, cancelled); assertEquals(ImmersionMode.Focus, editor.value.settings.immersionMode) }
     }
 
     private fun assertSampleAmountFits(expectedScale: Float) {
         val layouts = mutableListOf<TextLayoutResult>()
-        compose.onNodeWithText("¥123,456.78", useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithText("¥123,456.78", useUnmergedTree = true).performScrollTo().assertIsDisplayed()
             .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
         assertTrue(layouts.isNotEmpty())
         layouts.forEach { layout ->
