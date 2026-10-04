@@ -173,42 +173,13 @@
 }
 
 @media (max-width: 64rem) {
-    .inbox-empty-page .content,
-    .inbox-empty-page .product-topbar { padding-inline: var(--space-7); }
-    .inbox-empty-page .topbar-brand,
-    .inbox-empty-page .topbar-context { display: none; }
-    .inbox-empty-page .ledger-switcher-wrap { order: -1; margin-right: auto; }
-    .inbox-empty-page .ledger-switcher-trigger { gap: var(--space-2); background: transparent; padding: 0; }
-    .inbox-empty-page .ledger-switcher-trigger .ledger-name { display: block; max-width: 11rem; font-size: 16px; }
-    .inbox-empty-page .ledger-switcher-trigger > .ledger-avatar,
-    .inbox-empty-page .ledger-switcher-trigger .ledger-kind,
-    .inbox-empty-page .ledger-switcher-trigger .role-badge { display: none; }
-    .inbox-empty-page .inbox-ledger-icon,
-    .inbox-empty-page .inbox-add-icon { display: block; flex: none; }
-    .inbox-empty-page .topbar-manual-expense > span,
-    .inbox-empty-page .topbar-capture > span,
-    .inbox-empty-page:has(.topbar-manual-expense) .topbar-capture { display: none; }
-    .inbox-empty-page .inbox-account-link { display: grid; }
     .inbox-empty {
         min-height: calc(100dvh - var(--mobile-chrome-block-size) - var(--mobile-nav-block-size) - env(safe-area-inset-bottom) - var(--space-12));
         padding: 0;
     }
 }
 
-.inbox-add-icon,
-.inbox-ledger-icon,
-.inbox-account-link { display: none; }
-.inbox-empty-page .inbox-account-link {
-    place-items: center;
-    width: var(--target-min);
-    height: var(--target-min);
-    border-radius: 50%;
-    color: var(--brand-primary-strong);
-    background: var(--state-success-bg);
-}
-.inbox-empty-page .mobile-primary-nav,
 .inbox-read-error .mobile-primary-nav { padding: var(--space-2) var(--space-3); gap: var(--space-1); }
-.inbox-empty-page .mobile-primary-nav .nav-item,
 .inbox-read-error .mobile-primary-nav .nav-item { border-radius: var(--radius-xl); }
 
 /* K3: enrichment ambient 状态带 — OCR/后台识别不再占用通用 flash。

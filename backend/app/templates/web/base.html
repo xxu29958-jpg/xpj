@@ -1,6 +1,8 @@
 {% set q = '?ledger_id=' ~ selected_ledger_id if selected_ledger_id else '' %}
 {% set _path = request.url.path %}
 {% set _role = selected_ledger_role or 'owner' %}
+{% set _readonly_transactions = _path == '/web/confirmed' and _role == 'viewer' %}
+{% set _compact_ledger_header = inbox_is_empty|default(false) or _readonly_transactions %}
 
 {# 五域 IA (218-D S1, 移植自产品矿): 产品归属显式声明, 遗留路由名只是传输契约。
    域判定集中在 base, _sidebar_nav.html 复用同一组标志做高亮。 #}
@@ -190,7 +192,7 @@
   <script defer src="/static/web/desktop.js?v={{ asset_version }}"></script>
   <script defer src="/static/shared/confirm-modal.js?v={{ asset_version }}"></script>
 </head>
-<body class="product-shell{% if _has_domain_subnav %} has-domain-subnav{% endif %}{% if inbox_is_empty|default(false) %} inbox-empty-page{% endif %}" data-body-stack="product" data-domain="{{ _domain }}" data-page="{{ _page_key }}" data-page-level="{{ _page_level }}">
+<body class="product-shell{% if _has_domain_subnav %} has-domain-subnav{% endif %}{% if inbox_is_empty|default(false) %} inbox-empty-page{% endif %}{% if _compact_ledger_header %} compact-ledger-header{% endif %}{% if _readonly_transactions %} ledger-readonly-page{% endif %}" data-body-stack="product" data-domain="{{ _domain }}" data-page="{{ _page_key }}" data-page-level="{{ _page_level }}">
 <a class="skip-link" href="#main-content">跳到主内容</a>
 <div class="product-app">
   {% include "_sidebar_nav.html" %}
@@ -216,7 +218,7 @@
       {# Desktop 桥接会话的返回入口 (main 独有, 矿无此面); class 名是测试契约, 勿改。 #}
       <a class="manager-home-link" href="/" title="返回桌面管理器">管理器</a>
       {% endif %}
-      {% if show_month_picker %}
+      {% if show_month_picker and not _readonly_transactions %}
         {% include "_month_picker.html" %}
       {% endif %}
       {# W1 IA-B: 全局安静入口 — 搜索全角色可达；手动记账只在真实设备会话
@@ -230,14 +232,14 @@
       {% if can_write and request.state.web_session_auth %}
       <a class="topbar-action topbar-manual-expense" href="/web/expenses/new"
          data-shell-shortcut="manual-expense" aria-keyshortcuts="N" title="手动记账（N）">
-        {% if inbox_is_empty|default(false) %}<svg class="inbox-add-icon" width="24" height="24" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#plus"/></svg>{% endif %}
+        {% if inbox_is_empty|default(false) %}<svg class="compact-add-icon" width="24" height="24" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#plus"/></svg>{% endif %}
         <span>记账</span><kbd class="topbar-shortcut-hint" aria-hidden="true">N</kbd>
       </a>
       {% endif %}
       {% if can_write %}
       <a class="topbar-action topbar-capture" href="/web/pending{{ q }}#capture"
          data-shell-shortcut="capture" aria-keyshortcuts="U" title="收票（U）">
-        {% if inbox_is_empty|default(false) %}<svg class="inbox-add-icon" width="24" height="24" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#plus"/></svg>{% endif %}
+        {% if inbox_is_empty|default(false) %}<svg class="compact-add-icon" width="24" height="24" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#plus"/></svg>{% endif %}
         <span>收票</span><kbd class="topbar-shortcut-hint" aria-hidden="true">U</kbd>
       </a>
       {% endif %}
@@ -252,15 +254,15 @@
       {% else %}
       {% include "_ledger_switcher.html" %}
       {% endif %}
-      {% if inbox_is_empty|default(false) and request.state.web_session_auth %}
-      <a class="inbox-account-link" href="/web/settings" aria-label="设置与设备"><svg width="24" height="24" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#user-round"/></svg></a>
+      {% if _compact_ledger_header and request.state.web_session_auth %}
+      <a class="compact-account-link" href="/web/settings" aria-label="设置与设备"><svg width="24" height="24" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#user-round"/></svg></a>
       {% endif %}
       </header>
     </div>
     <main class="content" id="main-content" tabindex="-1" data-page-level="{{ _page_level }}">
       {# W1 IA-B: 域内页签是页级导航, 作为 main 首元素随页滚动, 不占 chrome。 #}
       {% include "_mobile_nav.html" %}
-      {% if _role == 'viewer' %}
+      {% if _role == 'viewer' and not _readonly_transactions %}
       <div class="readonly-callout" role="status">
         {% if _path.startswith('/web/settings') %}当前账本为<strong>只读角色</strong>。你仍可管理自己的设备。{% else %}当前为<strong>只读角色</strong>。查看与分析保持可用，写入动作已隐藏或禁用。{% endif %}
       </div>

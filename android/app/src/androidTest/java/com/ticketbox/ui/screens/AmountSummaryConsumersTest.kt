@@ -76,15 +76,15 @@ class AmountSummaryConsumersTest {
         "budget-totals", listOf(maximum, formatDisplayAmount(MONEY_MINOR_MAX - 100, currency)),
     ) {
         BudgetSummarySection(
-            budget = BudgetMonthly(
+            state = com.ticketbox.viewmodel.BudgetUiState(month = "2026-10", budget = BudgetMonthly(
                 ledgerId = "amount-reading", month = "2026-10", configured = true,
                 totalAmountCents = MONEY_MINOR_MAX, rolloverAmountCents = 0, fixedAmountCents = 0,
                 nonMonthlyAmountCents = 0, flexBudgetCents = MONEY_MINOR_MAX,
                 spentAmountCents = 100, excludedAmountCents = 0, remainingAmountCents = MONEY_MINOR_MAX - 100,
                 overspentAmountCents = 0, excludedCategories = emptyList(), excludedBreakdown = emptyList(),
                 categoryBudgets = emptyList(), updatedAt = "2026-10-01T00:00:00Z", homeCurrencyCode = "CNY",
-            ),
-            loading = false, loadError = null, currencyDisplay = currency, onRetry = {},
+            )),
+            currencyDisplay = currency, onRetry = {},
         )
     }
 

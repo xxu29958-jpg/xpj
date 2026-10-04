@@ -32,11 +32,16 @@
     <p class="product-page-summary">全部月份 · 共 {{ total }} 笔已确认账单 · {% if can_write %}打开详情或勾选账单更正分类{% else %}打开详情查看，当前角色只读{% endif %}。</p>
     <a href="/web/data-quality?ledger_id={{ selected_ledger_id }}">返回数据体检</a>
     {% else %}
+    {% if not can_write %}
+    <h1 class="page-title">流水</h1>
+    <p class="product-page-summary">{{ selected_ledger_name|default('当前账本') }} · 只读</p>
+    {% else %}
     <h1 class="page-title">已确认流水</h1>
     <p class="confirmed-hero-amount"><span class="sr-only">{{ selected_month }} 合计 </span>{% if month_total_amount_yuan is not none %}{{ home_currency_symbol }}{{ month_total_amount_yuan }}{% elif ledger_undated_expense_count|default(0) %}待核对账务日期{% else %}待补齐换算信息{% endif %}</p>
     <p class="product-page-summary">
       {{ selected_month }} · 共 {{ month_total_count }} 笔 · 打开任意一行可查看详情与变更记录。
     </p>
+    {% endif %}
     {% endif %}
   </div>
   {% if can_write and request.state.web_session_auth and (expenses or tag or filter in ['missing_category', 'missing_accounting_date']) %}
@@ -45,6 +50,8 @@
   </div>
   {% endif %}
 </header>
+{% if not can_write %}{% include '_ledger_readonly_tools.html' %}{% endif %}
+{% if can_write %}
 <div class="ledger-view-actions">
   <a class="product-button product-button--quiet" href="/web/saved-views?ledger_id={{ selected_ledger_id }}">保存的视图</a>
   {% if can_write %}
@@ -78,7 +85,10 @@
   {% endif %}
   {% endif %}
 </div>
+{% endif %}
+{% if can_write or missing_rates or (money_incomplete is defined and money_incomplete) %}
 {% include 'partials/budget_fx_gaps.html' %}
+{% endif %}
 
 {% if tag %}
 {# 标签筛选是服务端真实筛选: 明确告知范围并给一键清除。清除只保留路由已验证的
@@ -128,12 +138,13 @@
     {% for d in _order %}
       {% set _items = _groups[d] %}
       {# 服务端按同一目标币种投影本页贡献；原事实的符号与币种不在模板重算。 #}
-  <div class="lday">
+  <div class="lday{% if not can_write and filter in ['missing_category', 'missing_accounting_date'] %} ledger-read-day-visible{% endif %}">
     <span class="lday-d">{% if d %}{{ d[5:7] }} 月 {{ d.split('-')[2] }} 日{% else %}账务日期待核对{% endif %}</span>
     <span class="lday-n">{{ _items | length }} 笔</span>
     <span class="lday-s">本页 {{ home_amount_label(page_day_totals[d]) }}</span>
   </div>
       {% for e in _items %}
+      {% set _row_date = e.stream_date if e.stream_date and filter in ['missing_category', 'missing_accounting_date'] else ((e.stream_date[5:7]|int|string) ~ '月' ~ (e.stream_date[8:10]|int|string) ~ '日' if e.stream_date else '账务日期待核对') %}
   {# #218 行结构合同: 选择槽 (.lrow-sel, 仅 expense root 行) 与整行链接
      (a.timeline-row-detail) 是兄弟节点, 链接内零交互控件。
      typed stream: refund/chargeback 是入账金额行 (+ 号与流入色, 不伪装成
@@ -149,11 +160,16 @@
         {% endif %}
         {% if e.entry_kind == 'expense' %}
     <a class="timeline-row-detail" href="/web/expenses/{{ e.id }}/edit?{{ confirmed_edit_query }}">
-      <div class="lrow-ic">{{ (e.category or '·')[:1] }}</div>
+      <div class="lrow-ic{% if not can_write and e.category == '餐饮' %} lrow-ic--dining{% endif %}">
+        {% if can_write %}{{ (e.category or '·')[:1] }}{% else %}
+        {% set _row_icon = {'居住': 'house', '房租': 'house', '餐饮': 'utensils'}.get(e.category, 'receipt-text') %}
+        <svg width="24" height="24" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#{{ _row_icon }}"/></svg>
+        {% endif %}
+      </div>
       <div class="lrow-mid">
         <div class="lrow-merch">{{ e.merchant or '未填写商家' }}</div>
         <div class="lrow-meta">
-          <span class="num">{{ e.stat_time[11:16] if e.stat_time and ' ' in e.stat_time else '—' }}</span>
+          <span class="num">{% if not can_write %}{{ _row_date }}{% else %}{{ e.stat_time[11:16] if e.stat_time and ' ' in e.stat_time else '—' }}{% endif %}</span>
           <span class="sep">·</span><span>{{ e.category or '未分类' }}</span>
           {% if e.lineage_chip_label %}<span class="product-status product-status--{{ e.lineage_chip_tone }} lrow-lineage">{{ e.lineage_chip_label }}</span>{% endif %}
         </div>
@@ -165,13 +181,14 @@
         <span class="amt-main">{% if _ap | length == 2 %}{{ _ap[0] }}<span class="d">.{{ _ap[1] }}</span>{% else %}{{ _ap[0] }}{% endif %}</span>
         {% if e.fx_meta %}<span class="amt-fx">{{ e.fx_meta }}</span>{% endif %}
       </div>
+      {% if not can_write %}<svg class="ledger-row-chevron" width="20" height="20" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>{% endif %}
     </a>
         {% else %}
     <a class="timeline-row-detail" href="/web/expenses/{{ e.root_expense_id }}/edit?{{ confirmed_edit_query }}">
       <div class="lrow-ic lrow-ic--{{ 'inflow' if e.is_money_event else 'event' }}">{{ e.kind_label[:1] }}</div>
       <div class="lrow-mid">
         <div class="lrow-merch">{{ e.merchant or '未填写商家' }}</div>
-        <div class="lrow-meta"><span>{{ e.meta_label }}</span></div>
+        <div class="lrow-meta">{% if not can_write %}<span class="num">{{ _row_date }}</span><span class="sep"> · </span>{% endif %}<span>{{ e.meta_label }}</span></div>
       </div>
           {% if e.is_money_event %}
       <div class="lrow-amt lrow-amt--inflow">
@@ -180,6 +197,7 @@
         {% if e.fx_meta %}<span class="amt-fx">{{ e.fx_meta }}</span>{% endif %}
       </div>
           {% endif %}
+      {% if not can_write %}<svg class="ledger-row-chevron" width="20" height="20" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>{% endif %}
     </a>
         {% endif %}
   </div>
@@ -212,10 +230,19 @@
   {% endif %}
 </section>
 
+{% if not can_write %}
+<a class="ledger-read-search" href="/web/search?ledger_id={{ selected_ledger_id|urlencode }}">搜索账单与原件<svg width="20" height="20" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-right"/></svg></a>
+{% endif %}
+
 {# 本月概况: 次要信息区, 下沉到流水之后; 每日分布按 server-owned typed stream
    净贡献 (含退款/拒付/冲销, 与列表日合计同一投影), 原始账单来源是 root-only
    入账渠道。 #}
 {% if filter not in ['missing_category', 'missing_accounting_date'] %}
+{% if not can_write %}
+<details class="ledger-read-overview"><summary>本月概况</summary>
+<p class="product-page-summary">{{ selected_month }} · 共 {{ month_total_count }} 笔 · 合计 {% if month_total_amount_yuan is not none %}{{ home_currency_symbol }}{{ month_total_amount_yuan }}{% elif ledger_undated_expense_count|default(0) %}待核对账务日期{% else %}待补齐换算信息{% endif %}</p>
+{% if expenses %}<p>本页按日合计</p><dl class="ledger-read-day-totals">{% for day, amount in page_day_totals.items() %}<dt>{{ day or '账务日期待核对' }}</dt><dd>{{ home_amount_label(amount) }}</dd>{% endfor %}</dl>{% endif %}
+{% endif %}
 <section class="month-overview" aria-label="本月概况">
   <div class="product-panel product-panel--padded">
     <div class="product-panel-header">
@@ -270,6 +297,7 @@
     </div>
   </div>
 </section>
+{% if not can_write %}</details>{% endif %}
 {% endif %}
 </div>
 

@@ -3,29 +3,42 @@ package com.ticketbox.ui.screens.budget
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.Modifier
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.repository.PendingBudgetSave
 import com.ticketbox.domain.model.CurrencyDisplay
-import com.ticketbox.ui.components.AppContentCard
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.AppRadius
+import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.ui.screens.settings.friendlyLastError
 
 @Composable
 internal fun BudgetPendingSaves(saves: List<PendingBudgetSave>, canModify: Boolean, recover: (PendingBudgetSave, Boolean) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+        Text(stringResource(R.string.budget_pending_heading), style = MaterialTheme.typography.titleLarge)
         saves.forEach { pending -> BudgetSaveStatus(pending, canModify, recover) }
     }
 }
@@ -39,14 +52,15 @@ private fun BudgetSaveStatus(pending: PendingBudgetSave, canModify: Boolean, rec
         else -> R.string.budget_save_attention
     })
     val needsAttention = pending.row.status in setOf(PendingMutationStatus.Failed, PendingMutationStatus.Conflict)
-    AppContentCard {
-        Text(statusText, style = MaterialTheme.typography.titleSmall)
-        ProvideTextStyle(MaterialTheme.typography.bodyMedium) { BudgetSaveIntentSummary(pending) }
+    Column(Modifier.fillMaxWidth().padding(vertical = AppSpacing.compactGap),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+        BudgetSaveSummary(pending, statusText)
         if (needsAttention) {
             val explanation = friendlyLastError(pending.row.lastError, statusText)
             if (explanation != statusText) Text(explanation, style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+        BudgetRowDivider()
         FlowRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
             if (pending.requiresReadRefresh) {
                 TextButton(onClick = { recover(pending, false) }) { Text(stringResource(R.string.budget_read_recover)) }
@@ -68,6 +82,23 @@ private fun BudgetSaveStatus(pending: PendingBudgetSave, canModify: Boolean, rec
             Text(stringResource(R.string.budget_save_drop))
         } },
         dismissButton = { TextButton(onClick = { confirmDrop = false }) { Text(stringResource(R.string.common_cancel)) } })
+}
+
+@Composable
+private fun BudgetSaveSummary(pending: PendingBudgetSave, statusText: String) {
+    val accepted = pending.row.status == PendingMutationStatus.Done
+    val tone = if (accepted) LocalStateTokens.current.success else LocalStateTokens.current.warn
+    Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap)) {
+        Surface(shape = RoundedCornerShape(AppRadius.medium), color = tone.bg,
+            modifier = Modifier.size(AppSpacing.controlMinHeight)) {
+            Icon(if (accepted) Icons.Outlined.Sync else Icons.Outlined.Info, contentDescription = null,
+                modifier = Modifier.padding(AppSpacing.compactGap), tint = tone.fg)
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+            Text(statusText, style = MaterialTheme.typography.titleSmall)
+            ProvideTextStyle(MaterialTheme.typography.bodyMedium) { BudgetSaveIntentSummary(pending) }
+        }
+    }
 }
 
 /** Both sync entrances show the original monetary basis, never the current display default. */

@@ -1191,3 +1191,37 @@ html[data-user-bg] body::before {
     font-size: var(--type-caption-size);
     line-height: var(--type-caption-line);
 }
+
+/* Selected compact ledger header shared by inbox completion and read-only ledger. */
+.compact-add-icon,
+.compact-ledger-icon,
+.compact-account-link { display: none; }
+.compact-ledger-header .compact-account-link {
+    place-items: center;
+    width: var(--target-min);
+    height: var(--target-min);
+    border-radius: 50%;
+    color: var(--brand-primary-strong);
+    background: var(--state-success-bg);
+}
+@media (max-width: 64rem) {
+    .compact-ledger-header .content,
+    .compact-ledger-header .product-topbar { padding-inline: var(--space-7); }
+    .compact-ledger-header .topbar-brand,
+    .compact-ledger-header .topbar-context { display: none; }
+    .compact-ledger-header .ledger-switcher-wrap { order: -1; margin-right: auto; }
+    .compact-ledger-header .ledger-switcher-trigger { gap: var(--space-2); background: transparent; padding: 0; }
+    .compact-ledger-header .ledger-switcher-trigger .ledger-name { display: block; max-width: 11rem; font-size: 16px; font-weight: var(--type-subtitle-weight); }
+    .compact-ledger-header .ledger-switcher-trigger > .ledger-avatar,
+    .compact-ledger-header .ledger-switcher-trigger .ledger-kind,
+    .compact-ledger-header .ledger-switcher-trigger .role-badge { display: none; }
+    .compact-ledger-header .compact-ledger-icon,
+    .compact-ledger-header .compact-add-icon { display: block; flex: none; }
+    .compact-ledger-header .topbar-manual-expense > span,
+    .compact-ledger-header .topbar-capture > span,
+    .compact-ledger-header:has(.topbar-manual-expense) .topbar-capture { display: none; }
+    .compact-ledger-header .compact-account-link { display: grid; }
+}
+
+.compact-ledger-header .mobile-primary-nav { padding: var(--space-2) var(--space-3); gap: var(--space-1); }
+.compact-ledger-header .mobile-primary-nav .nav-item { border-radius: var(--radius-xl); }
