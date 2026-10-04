@@ -12,6 +12,7 @@ import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
@@ -72,8 +73,8 @@ class AppearanceScreenTest {
         compose.runOnIdle { assertEquals(settings, edited) }
         compose.onNodeWithText("专注").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(ImmersionMode.Focus, settings.immersionMode) }
-        compose.onNodeWithText("减少动效").performScrollTo().assertIsOff().performClick().assertIsOn()
-        compose.onNodeWithText("视差动效").performScrollTo().assertIsOff().assertIsNotEnabled()
+        compose.onNodeWithContentDescription("减少动效").performScrollTo().assertIsOff().performClick().assertIsOn()
+        compose.onNodeWithContentDescription("视差动效").performScrollTo().assertIsOff().assertIsNotEnabled()
         compose.runOnIdle { assertEquals(true, settings.enableParallax); assertEquals(true, settings.reduceMotion) }
         capture("appearance-motion-paper")
         compose.onNodeWithText("默认记账币种").performScrollTo().assertIsDisplayed()
