@@ -205,6 +205,9 @@ class FactEntryNavigationTest {
         val original = runBlocking { harness.saveFailedCorrection() }
         installMainGraph()
         compose.runOnIdle { harness.shell.openAccount() }
+        val settingsGroup = context.getString(R.string.settings_root_sync_directory_title)
+        waitForText(settingsGroup)
+        compose.onNodeWithText(settingsGroup).performScrollTo().performClick()
         val entry = context.getString(R.string.settings_root_entry_offline_sync_title)
         waitForText(entry)
         compose.onNodeWithText(entry)
@@ -220,6 +223,9 @@ class FactEntryNavigationTest {
         harness.fixture.network.diagnosticApiVersion = "different-protocol"
         installMainGraph()
         compose.runOnIdle { harness.shell.openAccount() }
+        val settingsGroup = context.getString(R.string.settings_root_sync_directory_title)
+        waitForText(settingsGroup)
+        compose.onNodeWithText(settingsGroup).performScrollTo().performClick()
         val entry = context.getString(
             if (BuildConfig.SHOW_ADVANCED_TOOLS) R.string.settings_root_connection_title_advanced
             else R.string.settings_root_connection_title_basic,
@@ -255,6 +261,9 @@ class FactEntryNavigationTest {
             """.trimIndent()))
         installMainGraph()
         compose.runOnIdle { harness.shell.openAccount() }
+        val settingsGroup = context.getString(R.string.settings_root_sync_directory_title)
+        waitForText(settingsGroup)
+        compose.onNodeWithText(settingsGroup).performScrollTo().performClick()
         val entry = context.getString(R.string.settings_root_entry_background_tasks_title)
         waitForText(entry)
         compose.onNodeWithText(entry).performScrollTo().performClick()
