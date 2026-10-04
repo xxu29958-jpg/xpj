@@ -193,15 +193,13 @@ private fun AppTextInputFrame(
 ) {
     val shape = RoundedCornerShape(if (decorations.roundedSurface) AppRadius.large else AppRadius.extraSmall)
     val verticalPadding = if (state.singleLine) AppSpacing.contentGap else AppSpacing.compactGap
-    val borderColor = if (decorations.roundedSurface && !focused && !state.isError && state.enabled)
-        MaterialTheme.colorScheme.outlineVariant else appTextInputBorderColor(state, focused)
+    val borderColor = appTextInputBorderColor(state, focused, decorations.roundedSurface)
     val borderWidth = if (focused && state.enabled) 2.dp else 1.dp
     val baseModifier = Modifier
         .fillMaxWidth()
         .heightIn(min = appTextInputMinHeight(state))
         .clip(shape)
-        .background(if (decorations.roundedSurface && state.enabled) LocalThemeVisuals.current.surfaceRaised
-            else appTextInputBackgroundColor(state))
+        .background(appTextInputBackgroundColor(state, decorations.roundedSurface))
     val framedModifier = if (state.emphasis == AppTextInputEmphasis.Amount) {
         baseModifier.drawBehind {
             val stroke = borderWidth.toPx()
@@ -246,19 +244,21 @@ private fun appTextInputMinHeight(state: AppTextInputState) = when {
 }
 
 @Composable
-private fun appTextInputBorderColor(state: AppTextInputState, focused: Boolean): Color {
+private fun appTextInputBorderColor(state: AppTextInputState, focused: Boolean, roundedSurface: Boolean): Color {
     val visuals = LocalThemeVisuals.current
     return when {
         !state.enabled -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft)
         state.isError -> MaterialTheme.colorScheme.error
         focused -> visuals.focusRing
+        roundedSurface -> MaterialTheme.colorScheme.outlineVariant
         else -> MaterialTheme.colorScheme.outline
     }
 }
 
 @Composable
-private fun appTextInputBackgroundColor(state: AppTextInputState): Color {
+private fun appTextInputBackgroundColor(state: AppTextInputState, roundedSurface: Boolean): Color {
     val visuals = LocalThemeVisuals.current
+    if (roundedSurface && state.enabled) return visuals.surfaceRaised
     if (state.emphasis == AppTextInputEmphasis.Amount && state.enabled) return Color.Transparent
     return if (state.enabled) {
         visuals.surfaceSunken
