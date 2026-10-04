@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.SyncProblem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
