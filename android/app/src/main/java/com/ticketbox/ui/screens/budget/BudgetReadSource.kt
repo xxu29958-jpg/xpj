@@ -10,9 +10,13 @@ import com.ticketbox.ui.components.DataAuthorityTone
 import com.ticketbox.ui.components.displayDateTime
 
 @Composable
-fun BudgetReadSource(fetchedAt: String?, fromCache: Boolean, isLoading: Boolean = false) {
+fun BudgetReadSource(fetchedAt: String?, fromCache: Boolean, isLoading: Boolean = false, prominent: Boolean = false) {
     if (fetchedAt == null) {
         if (isLoading) AppDataAuthorityStrip(DataAuthorityTone.Refreshing)
+        return
+    }
+    if (fromCache && prominent) {
+        BudgetCachedReadSource(fetchedAt)
         return
     }
     AppDataAuthorityStrip(

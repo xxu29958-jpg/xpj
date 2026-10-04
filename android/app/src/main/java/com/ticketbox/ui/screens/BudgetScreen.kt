@@ -1,5 +1,6 @@
 package com.ticketbox.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.lazy.LazyListScope
@@ -15,14 +16,17 @@ import com.ticketbox.ui.screens.budget.BudgetReadSource
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.components.AppPageRole
-import com.ticketbox.ui.components.AppSecondaryPageChrome
-import com.ticketbox.ui.components.AppSecondaryPageSlots
-import com.ticketbox.ui.components.AppSecondaryRefreshState
-import com.ticketbox.ui.components.AppSecondaryScrollableContent
+import com.ticketbox.ui.components.AppSecondaryPageHeader
+import com.ticketbox.ui.components.AppScrollableContent
+import com.ticketbox.ui.components.AppScrollableContentChrome
+import com.ticketbox.ui.components.AppScrollableContentLayout
+import com.ticketbox.ui.components.AppScrollableRefreshState
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.StatusPill
 import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.AppAdaptiveContentWidth
+import com.ticketbox.ui.screens.budget.BudgetCachedHeader
 import com.ticketbox.ui.screens.budget.BudgetEditorActions
 import com.ticketbox.ui.screens.budget.BudgetEditorSection
 import com.ticketbox.ui.screens.budget.BudgetPageDecision
@@ -73,62 +77,62 @@ private fun BudgetScreenContent(
     val currencyDisplay = CurrencyDisplay.forRecord(state.budget?.homeCurrencyCode ?: "UNKNOWN")
     val decision = budgetPageDecision(state)
 
-    AppSecondaryScrollableContent(
-        chrome = AppSecondaryPageChrome(
+    BackHandler(enabled = onBack != null) { onBack?.invoke() }
+    AppScrollableContent(
+        chrome = AppScrollableContentChrome(
             role = AppPageRole.Stats,
-            title = stringResource(R.string.budget_header_title),
-            subtitle = stringResource(R.string.budget_header_subtitle, state.month),
-            backText = backText ?: stringResource(R.string.budget_back_to_stats),
-            onBack = onBack,
-            hasBottomBar = onBack == null,
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap),
+            layout = AppScrollableContentLayout(hasBottomBar = onBack == null,
+                contentWidth = AppAdaptiveContentWidth.Secondary,
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap)),
         ),
-        refresh = AppSecondaryRefreshState(
+        refresh = AppScrollableRefreshState(
             isRefreshing = ReadableRefreshIndicator.isActive(
                 loading = state.loading,
                 hasReadableData = state.budget != null,
             ),
             onRefresh = actions.onRefresh,
         ),
-        slots = AppSecondaryPageSlots(
-            actions = { BudgetPageActions(decision, onHistory) },
-        ),
     ) {
         item {
-            MonthSwitcher(
-                month = state.month,
-                onPreviousMonth = actions.onPreviousMonth,
-                onNextMonth = actions.onNextMonth,
-            )
+            if (state.fromCache) BudgetCachedHeader(backText ?: stringResource(R.string.budget_back_to_stats), onBack, onHistory)
+            else AppSecondaryPageHeader(title = stringResource(R.string.budget_header_title),
+                subtitle = stringResource(R.string.budget_header_subtitle, state.month),
+                backText = backText ?: stringResource(R.string.budget_back_to_stats), onBack = onBack,
+                actions = { BudgetPageActions(decision, onHistory) })
         }
-        state.message?.let { message ->
-            item { AppStatusBanner(message = message, tone = state.messageTone) }
-        }
-        budgetInlineLoadError(state)?.let { error ->
-            item { AppStatusBanner(message = error, tone = MessageTone.Info) }
-        }
-        item { BudgetReadSource(state.fetchedAt, state.fromCache, state.loading) }
-        item {
-            BudgetSummarySection(
-                budget = state.budget,
-                loading = state.loading && state.budget == null,
-                loadError = state.loadError,
-                currencyDisplay = currencyDisplay,
-                onRetry = actions.onRefresh,
-            )
-        }
-        if (state.saves.isNotEmpty()) {
-            item { BudgetPendingSaves(state.saves, state.canModify, actions.onRecoverSave) }
-        }
-        item {
-            BudgetEditorSection(
-                state = state,
-                actions = actions.toBudgetEditorActions(),
-            )
-        }
-        budgetExecutionSections(decision, currencyDisplay)
-        item { com.ticketbox.ui.screens.budget.BudgetArchiveAction(state, actions.onArchive) }
+        budgetPageContent(state, actions, decision, currencyDisplay)
     }
+}
+
+private fun LazyListScope.budgetPageContent(state: BudgetUiState, actions: BudgetScreenActions,
+    decision: BudgetPageDecision, currencyDisplay: CurrencyDisplay) {
+    if (!state.fromCache) item { MonthSwitcher(state.month, actions.onPreviousMonth, actions.onNextMonth) }
+    state.message?.let { message ->
+        item { AppStatusBanner(message = message, tone = state.messageTone) }
+    }
+    budgetInlineLoadError(state)?.let { error ->
+        item { AppStatusBanner(message = error, tone = MessageTone.Info) }
+    }
+    item { BudgetReadSource(state.fetchedAt, state.fromCache, state.loading, prominent = true) }
+    item {
+        BudgetSummarySection(
+            state = state,
+            currencyDisplay = currencyDisplay,
+            onRetry = actions.onRefresh,
+        )
+    }
+    if (state.saves.isNotEmpty()) {
+        item { BudgetPendingSaves(state.saves, state.canModify, actions.onRecoverSave) }
+    }
+    if (state.fromCache) item { MonthSwitcher(state.month, actions.onPreviousMonth, actions.onNextMonth) }
+    item {
+        BudgetEditorSection(
+            state = state,
+            actions = actions.toBudgetEditorActions(),
+        )
+    }
+    budgetExecutionSections(decision, currencyDisplay)
+    item { com.ticketbox.ui.screens.budget.BudgetArchiveAction(state, actions.onArchive) }
 }
 
 @Composable

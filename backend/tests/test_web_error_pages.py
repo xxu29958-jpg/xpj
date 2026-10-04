@@ -21,6 +21,7 @@ Two test layers:
 
 from __future__ import annotations
 
+import pytest
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
@@ -51,6 +52,10 @@ def _make_handler_app() -> FastAPI:
     @app.get("/api/boom")
     async def _api_boom() -> JSONResponse:  # pragma: no cover - body never returns
         raise RuntimeError("simulated /api 500")
+
+    @app.api_route("/web/pending", methods=["GET", "POST"])
+    async def _inbox_boom() -> JSONResponse:
+        raise RuntimeError("simulated failed inbox read")
 
     @app.get("/web/denied")
     async def _web_denied() -> JSONResponse:  # pragma: no cover - body never returns
@@ -127,6 +132,45 @@ def test_web_500_with_html_accept_is_html_without_stack() -> None:
     assert "RuntimeError" not in body
     assert "simulated" not in body
     assert "C:\\" not in body
+
+
+def test_failed_inbox_read_keeps_failure_and_safe_ledger_retry() -> None:
+    with TestClient(_make_handler_app(), raise_server_exceptions=False) as c:
+        response = c.get("/web/pending?ledger_id=household&watch=private-task", headers=_HTML_ACCEPT)
+    assert response.status_code == 500
+    assert "暂时读不到收件箱" in response.text
+    assert "无法判断还有多少待整理记录" in response.text
+    assert 'href="/web/pending?ledger_id=household"' in response.text
+    assert 'href="/web/settings"' in response.text
+    assert "testrid0000abcd" in response.text
+    assert "都收拾好了" not in response.text
+    assert "private-task" not in response.text
+    assert "<form" not in response.text
+    assert "RuntimeError" not in response.text
+
+
+@pytest.mark.parametrize("method", ["get", "post"])
+def test_failed_inbox_json_call_keeps_json_envelope(method: str) -> None:
+    with TestClient(_make_handler_app(), raise_server_exceptions=False) as c:
+        response = getattr(c, method)("/web/pending", headers=_JSON_ACCEPT)
+    assert response.status_code == 500
+    assert response.json()["error"] == "server_error"
+
+
+def test_failed_inbox_write_does_not_offer_a_read_as_command_retry() -> None:
+    with TestClient(_make_handler_app(), raise_server_exceptions=False) as c:
+        response = c.post("/web/pending", headers=_HTML_ACCEPT)
+    assert response.status_code == 500
+    assert "暂时出了点问题" in response.text
+    assert "重新读取收件箱" not in response.text
+
+
+def test_failed_inbox_read_escapes_ledger_context() -> None:
+    with TestClient(_make_handler_app(), raise_server_exceptions=False) as c:
+        response = c.get("/web/pending", params={"ledger_id": '\"><script>alert(1)</script>'}, headers=_HTML_ACCEPT)
+    assert response.status_code == 500
+    assert "<script>" not in response.text
+    assert "ledger_id=%22%3E%3Cscript%3Ealert%281%29%3C%2Fscript%3E" in response.text
 
 
 def test_web_500_with_json_accept_keeps_server_error_envelope() -> None:

@@ -63,14 +63,14 @@ def test_inbox_empty_state_shows_decorative_receipt_illustration(web_client: Tes
 
     assert response.status_code == 200
     state = re.search(
-        r'<div class="product-state inbox-empty">.*?<a class="product-state-action"',
+        r'<div class="product-state inbox-empty">.*?<a class="product-state-action inbox-state-row"',
         response.text,
         re.S,
     )
     assert state is not None
     assert '<div class="product-state-figure" aria-hidden="true">' in state.group(0)
-    assert '<img src="/static/web/product/art/receipt-tray.png" alt=""' in state.group(0)
-    assert web_client.get("/static/web/product/art/receipt-tray.png").status_code == 200
+    assert '<img src="/static/web/product/art/receipt-clip.png" alt=""' in state.group(0)
+    assert web_client.get("/static/web/product/art/receipt-clip.png").status_code == 200
 
 
 def test_inbox_row_meta_drops_engineering_id_and_keeps_command_contract(

@@ -4,4 +4,21 @@
     <string name="budget_read_body">数据时间：%1$s</string>
     <string name="budget_read_cached_title">离线预算</string>
     <string name="budget_read_cached_body">数据时间：%1$s。执行金额可能已变化，联网后刷新。</string>
+    <string name="budget_cached_subtitle">仍可查看上次读取的内容。</string>
+    <string name="budget_cached_time">内容更新于 %1$s</string>
+    <string name="budget_cached_notice">离线时仍可查看；执行金额可能已变化，联网后刷新。</string>
+    <string name="budget_cached_remaining">上次读取的预算剩余</string>
+    <string name="budget_cached_overspent">上次读取的预算超支</string>
+    <string name="budget_cached_basis">%1$s · %2$s</string>
+    <string name="budget_cached_details_show">预算明细</string>
+    <string name="budget_cached_details_hide">收起明细</string>
+    <string name="budget_pending_heading">还有这些事</string>
+    <string name="budget_pending_saved">预算已经保存</string>
+    <string name="budget_pending_change">一笔预算修改</string>
+    <string name="budget_pending_refresh_hint">联网后刷新显示</string>
+    <string name="budget_pending_review_hint">需要继续核对</string>
+    <string name="budget_pending_waiting_hint">等待服务器确认</string>
+    <string name="budget_pending_refresh">刷新</string>
+    <string name="budget_pending_view">查看</string>
+    <string name="budget_pending_collapse">收起</string>
 </resources>

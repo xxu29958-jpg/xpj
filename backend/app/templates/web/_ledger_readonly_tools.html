@@ -1,0 +1,35 @@
+<div class="ledger-read-notice" role="status">
+  <svg width="22" height="22" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#info"/></svg>
+  <div><strong>你可以查看这本账</strong><p>如需修改，请联系拥有者。</p></div>
+</div>
+<div class="ledger-read-tools">
+  {% if filter not in ['missing_category', 'missing_accounting_date'] %}
+  <details class="ledger-read-month">
+    <summary>{{ selected_month[:4] }}年{{ selected_month[5:]|int }}月</summary>
+    {% include '_month_picker.html' %}
+  </details>
+  {% endif %}
+  <details class="ledger-read-filters">
+    <summary>筛选</summary>
+    <div class="ledger-read-filter-body">
+      <form method="get" action="/web/confirmed">
+        <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+        <input type="hidden" name="home_currency_code" value="{{ home_currency_code }}">
+        {% if filter %}<input type="hidden" name="filter" value="{{ filter }}">{% endif %}
+        {% if filter not in ['missing_category', 'missing_accounting_date'] %}
+        <label>月份<input class="input" type="month" name="month" value="{{ month }}" required></label>
+        {% endif %}
+        <label>标签<input class="input" type="text" name="tag" value="{{ tag }}" placeholder="不限标签"></label>
+        <button class="product-button product-button--primary" type="submit">查看流水</button>
+      </form>
+      <nav aria-label="流水浏览工具">
+        <a href="/web/saved-views?ledger_id={{ selected_ledger_id|urlencode }}">保存的视图</a>
+        <a href="/web/library?ledger_id={{ selected_ledger_id|urlencode }}">资料库</a>
+        <a href="/web/import?ledger_id={{ selected_ledger_id|urlencode }}">导出账本</a>
+      </nav>
+      {% if not missing_rates and not (money_incomplete is defined and money_incomplete) %}
+      {% include 'partials/budget_fx_gaps.html' %}
+      {% endif %}
+    </div>
+  </details>
+</div>

@@ -49,6 +49,7 @@ from app.services.data_quality_service import is_ready_to_confirm_row, is_uncate
 from app.services.expense_review_command_service import submit_expense_rejection
 from app.services.expense_service import (
     fetch_expense_row_version_in_status,
+    ledger_has_any_expense,
     list_pending,
 )
 from app.services.pending_review_bulk_service import (
@@ -183,6 +184,8 @@ def web_pending(
     ctx["expenses"] = items
     ctx["upload_intent"] = attachment_form_context(db, request, action="/web/pending/upload", ledger_id=selected_id)
     ctx["pending_count"] = pending_total
+    ctx["inbox_is_empty"] = pending_total == 0
+    ctx["inbox_has_history"] = pending_total == 0 and ledger_has_any_expense(db, selected_id)
     ctx["filtered_count"] = len(items)
     ctx["filter"] = filter_key
     ctx["flash_message"] = msg or ""

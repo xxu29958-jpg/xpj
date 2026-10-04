@@ -13,7 +13,6 @@ import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.domain.model.BudgetMonthly
 import com.ticketbox.domain.model.CurrencyDisplay
-import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppAdaptiveMetricGrid
 import com.ticketbox.ui.components.AppAdaptiveMetricGridCompactMinWidth
@@ -25,16 +24,18 @@ import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalStateTokens
+import com.ticketbox.viewmodel.BudgetUiState
 import com.valentinilk.shimmer.shimmer
 
 @Composable
 internal fun BudgetSummarySection(
-    budget: BudgetMonthly?,
-    loading: Boolean,
-    loadError: UiText?,
+    state: BudgetUiState,
     currencyDisplay: CurrencyDisplay,
     onRetry: () -> Unit,
 ) {
+    val budget = state.budget
+    val loading = state.loading && budget == null
+    val loadError = state.loadError
     // A failed load with no budget gets a retryable error state instead of the card
     // (审计 8.4)——otherwise the placeholder's "正在读取预算。" loading copy stays forever.
     if (budget == null && !loading && loadError != null) {
@@ -46,6 +47,13 @@ internal fun BudgetSummarySection(
         return
     }
     val configuredBudget = budget?.takeIf { it.configured }
+    if (state.fromCache && configuredBudget != null) {
+        com.ticketbox.ui.components.AccountingDateNotice(configuredBudget.undatedExpenseCount)
+        BudgetCachedSummary(configuredBudget, currencyDisplay) {
+            BudgetSummaryDetails(configuredBudget, currencyDisplay)
+        }
+        return
+    }
     BudgetOpenSection(
         title = stringResource(R.string.budget_summary_title),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
@@ -60,27 +68,33 @@ internal fun BudgetSummarySection(
             budget = configuredBudget,
             currencyDisplay = currencyDisplay,
         )
-        configuredBudget.spentProgress?.let { BudgetProgressBar(progress = it) }
-        BudgetSummaryStatus(configuredBudget)
-        com.ticketbox.ui.components.CurrencyReferenceDates(configuredBudget.referenceRates)
-        if (configuredBudget.missingCurrencyCodes.isNotEmpty()) {
-            Text(stringResource(R.string.budget_missing_conversion, configuredBudget.missingCurrencyCodes.joinToString("、")))
-        }
-        BudgetMetricRows(
-            budget = configuredBudget,
-            currencyDisplay = currencyDisplay,
-        )
+        BudgetSummaryDetails(configuredBudget, currencyDisplay)
     }
 }
 
 @Composable
-private fun BudgetSummaryHero(
+private fun BudgetSummaryDetails(budget: BudgetMonthly, currencyDisplay: CurrencyDisplay) {
+    budget.spentProgress?.let { BudgetProgressBar(progress = it) }
+    BudgetSummaryStatus(budget)
+    com.ticketbox.ui.components.CurrencyReferenceDates(budget.referenceRates)
+    if (budget.missingCurrencyCodes.isNotEmpty()) {
+        Text(stringResource(R.string.budget_missing_conversion, budget.missingCurrencyCodes.joinToString("、")))
+    }
+    BudgetMetricRows(budget, currencyDisplay)
+}
+
+@Composable
+internal fun BudgetSummaryHero(
     budget: BudgetMonthly,
     currencyDisplay: CurrencyDisplay,
+    fromCache: Boolean = false,
 ) {
-    val label = stringResource(
-        if (budget.isOverBudget) R.string.budget_summary_metric_overspent else R.string.budget_summary_metric_remaining,
-    )
+    val label = stringResource(when {
+        fromCache && budget.isOverBudget -> R.string.budget_cached_overspent
+        fromCache -> R.string.budget_cached_remaining
+        budget.isOverBudget -> R.string.budget_summary_metric_overspent
+        else -> R.string.budget_summary_metric_remaining
+    })
     val value = formatDisplayAmount(
         if (budget.isOverBudget) budget.overspentAmountCents else budget.remainingAmountCents,
         currencyDisplay,
@@ -98,7 +112,7 @@ private fun BudgetSummaryHero(
         )
         AppAmountText(
             text = value,
-            role = AppAmountRole.Hero,
+            role = if (fromCache) AppAmountRole.Display else AppAmountRole.Hero,
             color = amountColor,
         )
     }

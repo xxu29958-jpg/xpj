@@ -83,17 +83,20 @@ class BudgetGlobalRecoveryTest {
     @Test fun acceptedBudgetReadRecoveryStaysAvailableToAReaderAtTheBudgetEntrance() {
         val accepted = acceptedReadPending()
         var recovered: PendingBudgetSave? = null
-        compose.setContent { TicketboxTheme(skin = AppSkin.Default) {
+        compose.setContent { TicketboxTheme(skin = AppSkin.Paper) {
             BudgetPendingSaves(listOf(accepted), canModify = false) { original, drop ->
                 check(!drop) { "An accepted save cannot be discarded as a failed command" }
                 recovered = original
             }
         } }
+        compose.onNodeWithText(context.getString(R.string.budget_pending_saved)).assertIsDisplayed().performClick()
         compose.onNodeWithText("预算已保存，显示待更新。").assertIsDisplayed()
         compose.onNodeWithText("2026-09 · JPY").assertIsDisplayed()
         compose.onNodeWithText(context.getString(R.string.sync_status_failed_button_retry)).assertDoesNotExist()
         compose.onNodeWithText(context.getString(R.string.budget_save_drop)).assertDoesNotExist()
-        compose.onNodeWithText("重新读取预算").performClick()
+        compose.onNodeWithText(context.getString(R.string.budget_pending_saved)).performClick()
+        saveConsumerArtPreview("budget-saved-read-refresh", compose.onRoot().captureToImage().asAndroidBitmap())
+        compose.onNodeWithText(context.getString(R.string.budget_pending_refresh)).performClick()
         compose.runOnIdle { assertEquals(accepted, recovered) }
     }
 

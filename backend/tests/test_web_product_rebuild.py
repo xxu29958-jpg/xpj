@@ -119,16 +119,22 @@ def test_product_shell_topbar_carries_compact_brand_identity(
 
 def test_product_shell_mobile_task_order_and_capture_search_entries(
     web_client: TestClient,
+    *, identity,
 ) -> None:
     """W1 IA-B: 移动 chrome = 单顶带 + 底部五域 nav; 域内页签移入 main 首元素
     随页滚动, 五域主导航唯一且在 main 之后。topbar 携带真实入口: 收票 (writer
     可见的 GET 导航, upload command owner 不变) 与搜索。"""
+    empty = web_client.get("/web/pending?ledger_id=owner")
+    assert empty.status_code == 200
+    assert 'class="mobile-plan-nav"' not in empty.text
+    assert "收第一张小票" in empty.text
+    _seed_pending_with_amount(web_client, "12.00", "待确认的小票", identity=identity)
     response = web_client.get("/web/pending?ledger_id=owner")
 
     assert response.status_code == 200
     body = response.text
 
-    # 渲染任务顺序: 域内页签在 main 内, 五域主导航在 main 之后, 各唯一
+    # 有待处理小票时保留域内页签；空态只显示唯一五域导航和真实采集入口。
     assert body.count('class="mobile-primary-nav"') == 1
     assert body.count('class="mobile-plan-nav"') == 1
     assert body.index('<main class="content"') < body.index('class="mobile-plan-nav"')
@@ -449,13 +455,14 @@ def test_viewer_primary_page_keeps_read_only_shell(
     owner_ledger_viewer: None,
 ) -> None:
     """viewer 角色壳契约: 五域导航保持可见 (只读可浏览), 顶栏/侧栏标注只读,
-    正文前置 readonly-callout, 写面动作由页面隐藏 (本例以预算保存表单为证)。"""
+    正文前置只读提示, 写面动作由页面隐藏 (本例以预算保存表单为证)。"""
     page = web_client.get("/web/confirmed?ledger_id=owner")
     assert page.status_code == 200
     body = page.text
     assert 'data-domain="transactions"' in body
-    assert 'class="readonly-callout"' in body
-    assert "只读角色" in body
+    assert 'class="ledger-read-notice" role="status"' in body
+    assert "你可以查看这本账" in body
+    assert "如需修改，请联系拥有者。" in body
     sidebar = re.search(r'<aside class="sidebar">.*?</aside>', body, re.S)
     assert sidebar is not None
     for label in ["收件", "流水", "往来", "计划", "洞察"]:

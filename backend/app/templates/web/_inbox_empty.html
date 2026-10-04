@@ -1,0 +1,31 @@
+<div class="product-state inbox-empty">
+  <div class="product-state-figure" aria-hidden="true">
+    <img src="/static/web/product/art/receipt-clip.png" alt=""
+         width="1280" height="1280" decoding="async">
+  </div>
+  <div class="inbox-empty-content">
+    <h1 class="product-state-title">{{ '小票都收拾好了' if inbox_has_history else '还没有待处理的小票' }}</h1>
+    <p class="product-state-body">{{ '当前账本没有待整理的小票。' if inbox_has_history else '从一张小票开始，把记录整理在一起。' }}</p>
+    <a class="product-state-action inbox-state-row" href="/web/confirmed{{ _q }}">
+      <span class="inbox-state-icon"><svg width="24" height="24" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#file-text"/></svg></span>
+      <span><strong>回看已确认的流水</strong><span>找一笔记录，看看花费</span></span>
+      <svg width="20" height="20" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
+    </a>
+    {% include "_recent_recognition_tasks.html" %}
+  </div>
+  {% if can_write %}
+  <details class="inbox-empty-capture">
+    <summary class="inbox-state-primary">{{ '再收一张小票' if inbox_has_history else '收第一张小票' }}
+      <svg width="20" height="20" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-right"/></svg>
+    </summary>
+    {% include "_inbox_capture.html" %}
+    <p class="product-state-body">新上传的截图、OCR 识别结果和导入草稿会出现在这里；手动记账可直接在流水中查看。</p>
+    <div class="inbox-empty-links">
+      <a href="/web/import{{ _q }}">从 CSV 导入</a>
+      {% if show_owner_upload_setup %}<a href="/owner/upload-links">配 iPhone 快捷指令</a>{% endif %}
+    </div>
+  </details>
+  {% else %}
+  <p class="product-state-body inbox-empty-readonly">当前为只读访问；可前往<a href="/web/import{{ _q }}">导出当前账本</a>留存副本。</p>
+  {% endif %}
+</div>

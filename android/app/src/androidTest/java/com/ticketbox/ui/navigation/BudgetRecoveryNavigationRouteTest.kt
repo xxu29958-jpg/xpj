@@ -7,12 +7,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
@@ -209,13 +211,13 @@ class BudgetRecoveryNavigationRouteTest {
     }
 
     private fun assertBudgetMonth(readsBeforeOpen: Int) {
-        val subtitle = context.getString(R.string.budget_header_subtitle, originalMonth)
-        waitForText(subtitle)
-        compose.onNodeWithText(subtitle).assertIsDisplayed()
         compose.waitUntil(5_000) { transport.budgetReads.size > readsBeforeOpen }
         assertEquals(originalMonth, transport.budgetReads.last())
         assertEquals(MainProductDestination.Secondary(ProductSecondaryPage.Budget), harness.shell.activeDestination)
         assertEquals(MAIN_ROUTE, outer.currentBackStackEntry?.destination?.route)
+        // Cached and fresh reads have distinct headers but the same task-month selector.
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(originalMonth))
+        compose.onNodeWithText(originalMonth).assertIsDisplayed()
     }
 
     private fun show() {

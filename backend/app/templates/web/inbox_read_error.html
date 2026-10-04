@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="{{ ui_theme }}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>收件暂时无法读取 · 小票夹</title>
+  <link rel="stylesheet" href="/static/shared/tokens.css?v={{ asset_version }}">
+  <link rel="stylesheet" href="/static/web/fonts/fonts.css?v={{ asset_version }}">
+  <link rel="stylesheet" href="/static/web/product/shell.css?v={{ asset_version }}">
+  <link rel="stylesheet" href="/static/web/product/components.css?v={{ asset_version }}">
+  <link rel="stylesheet" href="/static/web/product/domains/inbox.css?v={{ asset_version }}">
+</head>
+<body class="inbox-read-error">
+<header class="inbox-read-error-header">
+  <a href="/web/pending{{ q }}"><svg width="24" height="24" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#book-open"/></svg>收件</a>
+  <a href="/web/settings">设置与设备</a>
+</header>
+<main class="inbox-read-error-main" id="main-content">
+  <h1>暂时读不到收件箱</h1>
+  <p>请检查连接后，再试一次。</p>
+  <div class="inbox-read-warning" role="alert">
+    <svg width="22" height="22" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#circle-alert"/></svg>
+    <div><strong>这次没有读到列表</strong><p>无法判断还有多少待整理记录。重新读取不会重复上传图片。</p></div>
+  </div>
+  <div class="inbox-read-links">
+    <a class="inbox-state-row" href="/web/pending{{ q }}#recognition">
+      <span class="inbox-state-icon"><svg width="24" height="24" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#upload"/></svg></span>
+      <span><strong>最近上传</strong><span>重新读取后查看上传识别记录</span></span>
+      <svg width="20" height="20" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
+    </a>
+    <a class="inbox-state-row" href="/web/settings">
+      <span class="inbox-state-icon inbox-state-icon--connection"><svg width="24" height="24" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#link"/></svg></span>
+      <span><strong>账户与连接</strong><span>核对当前账号和连接设备</span></span>
+      <svg width="20" height="20" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
+    </a>
+  </div>
+  {% if request_id %}<details class="inbox-error-details"><summary>问题信息</summary><p>问题编号 {{ request_id }}</p></details>{% endif %}
+  <a class="inbox-state-primary" href="/web/pending{{ q }}">重新读取收件箱
+    <svg width="20" height="20" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-right"/></svg>
+  </a>
+</main>
+{% include "_bottom_nav.html" %}
+</body>
+</html>

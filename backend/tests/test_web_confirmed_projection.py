@@ -94,6 +94,8 @@ def test_real_confirmed_dto_keeps_original_label_while_projecting_page_total(mon
 
 
 def test_actual_confirmed_template_distinguishes_unknown_calendar_and_page_sum():
+    from starlette.requests import Request
+
     from app.routes._web_money_views import projected_money_context
 
     env = Environment(autoescape=True, undefined=StrictUndefined, loader=ChoiceLoader([
@@ -104,6 +106,8 @@ def test_actual_confirmed_template_distinguishes_unknown_calendar_and_page_sum()
         "merchant": "原账单", "category": "餐饮", "stat_time": "", "lineage_chip_label": "", "amount_label": "CN¥1.00",
         "fx_meta": None}
     html = env.get_template("confirmed.html").render(filter="", tag="", total=1, selected_ledger_id="family",
+        request=Request({"type": "http", "path": "/web/confirmed", "headers": [],
+                         "query_string": b"ledger_id=family&month=2026-08"}),
         selected_month="2026-08", month="2026-08", month_total_amount_yuan=None, month_total_count=1,
         can_write=False, expenses=[entry], page_day_totals={"2026-08-05": None},
         by_day=[{"date": "2026-08-05", "amount_cents": None, "count": 1}], calendar_max=None,
@@ -115,6 +119,11 @@ def test_actual_confirmed_template_distinguishes_unknown_calendar_and_page_sum()
     assert html.count("账务信息待补齐") >= 2 and "待补齐换算信息" in html
     assert "CN¥1.00" in re.sub(r"<[^>]+>", "", html)
     assert "None" not in html and "¥100" not in html
+    assert "你可以查看这本账" in html and "搜索账单与原件" in html
+    assert 'method="get" action="/web/confirmed"' in html
+    assert 'href="/web/import?ledger_id=family"' in html
+    assert 'id="bulk-form"' not in html and 'class="checkbox row-check"' not in html
+    assert 'href="/web/expenses/3/edit?ledger_id=family"' in html
 
 
 @pytest.mark.parametrize("failed", [True, False])

@@ -11,6 +11,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from jinja2 import ChoiceLoader, DictLoader, Environment, FileSystemLoader, StrictUndefined
+from starlette.requests import Request
 
 
 @pytest.fixture(scope="module")
@@ -193,6 +194,8 @@ def test_clear_tag_links_keep_only_the_current_month_or_all_month_scope(filter, 
         ]), autoescape=True, undefined=StrictUndefined,
     )
     body = environment.get_template("confirmed.html").render(
+        request=Request({"type": "http", "path": "/web/confirmed", "headers": [],
+            "query_string": b"ledger_id=family&home_currency_code=JPY&tag=Shared"}),
         filter=filter, month=month, selected_month=month, selected_ledger_id="family",
         tag="Shared", can_write=False, total=0, expenses=[], flash_message=None,
         home_currency_symbol="¥", month_total_amount_yuan="0.00", month_total_count=0,

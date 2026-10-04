@@ -21,6 +21,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.navigation.compose.rememberNavController
 import androidx.test.core.app.ApplicationProvider
@@ -42,6 +43,8 @@ import com.ticketbox.domain.model.BudgetMonthlyUpdate
 import com.ticketbox.domain.model.DASHBOARD_CARD_BUDGET
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.ui.saveConsumerArtPreview
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import java.net.ConnectException
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.runBlocking
@@ -62,6 +65,8 @@ class BudgetOfflineReadingConnectedTest {
     private val transport = OfflineBudgetTransport()
     private val harness = FactEntryNavigationHarness(context, transport::wrap)
     private val mounted = mutableStateOf(true)
+    private val skin = mutableStateOf(AppSkin.Paper)
+    private val scale = mutableStateOf(1f)
 
     @After fun close() {
         compose.runOnIdle { mounted.value = false; harness.models.viewModelStore.clear() }
@@ -121,6 +126,7 @@ class BudgetOfflineReadingConnectedTest {
         assertEquals("Reopening must not manufacture a new fetch time", originalReadTime, readTime())
         assertTrue(sourceText().contains("离线"))
         preview("budget-offline-editor")
+        verifyCachedBudgetPresentation(month)
 
         compose.runOnIdle { harness.shell.selectPrimaryDomain(PrimaryDomain.Insights.key) }
         compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasTestTag("overview-module-budget"))
@@ -139,6 +145,30 @@ class BudgetOfflineReadingConnectedTest {
     private fun preview(name: String) {
         compose.waitForIdle()
         saveConsumerArtPreview(name, requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+    }
+
+    private fun verifyCachedBudgetPresentation(month: String) {
+        compose.onNodeWithText("¥789").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("JPY · $month").performScrollTo().assertIsDisplayed()
+        val details = context.getString(R.string.budget_cached_details_show)
+        compose.onNodeWithText(details).performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.budget_summary_metric_spent)).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.budget_cached_details_hide)).performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.budget_pending_view)).performScrollTo().performClick()
+        compose.onNodeWithText("月度总预算 · ¥1,200").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.budget_save_drop)).performScrollTo().assertIsDisplayed()
+        preview("budget-cached-review")
+        compose.onNodeWithText(context.getString(R.string.budget_pending_collapse)).performScrollTo().performClick()
+        compose.onNode(hasScrollToIndexAction()).performScrollToIndex(0)
+        compose.onNodeWithText(context.getString(R.string.budget_history_title)).performScrollTo().assertIsDisplayed()
+        preview("budget-cached-paper")
+        compose.runOnIdle { skin.value = AppSkin.Midnight; scale.value = 1.8f }
+        compose.onNode(hasScrollToIndexAction()).performScrollToIndex(0)
+        compose.onNodeWithText(context.getString(R.string.budget_history_title)).performScrollTo().assertIsDisplayed()
+        preview("budget-cached-midnight-large")
+        compose.onNodeWithText("JPY · $month").performScrollTo().assertIsDisplayed()
+        preview("budget-cached-midnight-amount")
+        compose.runOnIdle { skin.value = AppSkin.Paper; scale.value = 1f }
     }
 
     @Test fun realBudgetHistoryReopensOfflineWithItsOriginalTimeAndOlderPages() {
@@ -189,12 +219,15 @@ class BudgetOfflineReadingConnectedTest {
     private fun showPlans() {
         compose.setContent {
             if (mounted.value) CompositionLocalProvider(LocalViewModelStoreOwner provides harness.models) {
-                TicketboxTheme(skin = AppSkin.Default) {
+                val density = LocalDensity.current
+                CompositionLocalProvider(LocalDensity provides Density(density.density, scale.value)) {
+                    TicketboxTheme(skin = skin.value) {
                     MainNavGraph(MainNavigationRuntime(rememberNavController(), harness.shell, currentFactory()),
                         remember { SnackbarHostState() },
                         SettingsPreferenceControls(AppSkin.Default, AppThemeMode.System, CurrencyCode.CNY,
                             onThemeModeChange = {}, onCurrencyChange = {}),
                         onBindingCleared = { error("Reading must preserve the binding") })
+                    }
                 }
             }
         }

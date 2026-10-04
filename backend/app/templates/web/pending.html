@@ -20,6 +20,7 @@
      用原生 checkbox，并把 id:row_version 快照关联到 bulk-form，无 JS 也能安全提交。 #}
 {% block content %}
 {% set _q = '?ledger_id=' ~ selected_ledger_id %}
+{% if pending_count %}
 <header class="product-page-header inbox-page-header">
   <div class="product-page-heading">
     <h1 class="page-title">待我处理</h1>
@@ -40,6 +41,7 @@
   </div>
   {% endif %}
 </header>
+{% endif %}
 
 {# K3: 队列概况并入页头判断句 (不再独立成区); 可行动计数在下方筛选 pill 上。 #}
 
@@ -98,7 +100,7 @@
 </div>
 {% endif %}
 
-{% include "_recent_recognition_tasks.html" %}
+{% if pending_count %}{% include "_recent_recognition_tasks.html" %}{% endif %}
 
 {% if pending_count %}
 <nav class="product-commandbar inbox-filters" aria-label="待处理筛选">
@@ -276,36 +278,15 @@
     </div>
   </div>
   {% else %}
-  <div class="product-state{% if not pending_count %} inbox-empty{% endif %}">
-    {% if not pending_count %}
-    <div class="product-state-figure" aria-hidden="true">
-      <img src="/static/web/product/art/receipt-tray.png" alt=""
-           width="1536" height="1024" decoding="async">
-    </div>
-    <div class="inbox-empty-content">
-      <h2 class="product-state-title">还没有待处理的小票</h2>
-      <p class="product-state-body">
-        新上传的截图、OCR 识别结果和导入草稿会出现在这里；手动记账可直接在流水中查看。
-      </p>
-      {% if can_write %}
-      {% include "_inbox_capture.html" %}
-      <div class="inbox-empty-links">
-        <a href="/web/import{{ _q }}">从 CSV 导入</a>
-        {% if show_owner_upload_setup %}<a href="/owner/upload-links">配 iPhone 快捷指令</a>{% endif %}
-      </div>
-      {% else %}
-      <p class="product-state-body">
-        当前为只读访问；可前往<a href="/web/import{{ _q }}">导出当前账本</a>留存副本。
-      </p>
-      {% endif %}
-      <a class="product-state-action" href="/web/confirmed{{ _q }}">查看全部流水</a>
-    </div>
-    {% else %}
+  {% if not pending_count %}
+    {% include "_inbox_empty.html" %}
+  {% else %}
+  <div class="product-state">
     <div class="product-state-title">没有符合当前条件的账单</div>
     <div class="product-state-body">换一个筛选条件，或返回完整队列继续处理。</div>
     <a class="product-state-action" href="/web/pending{{ _q }}">返回全部</a>
-    {% endif %}
   </div>
+  {% endif %}
   {% endfor %}
 </section>
 
