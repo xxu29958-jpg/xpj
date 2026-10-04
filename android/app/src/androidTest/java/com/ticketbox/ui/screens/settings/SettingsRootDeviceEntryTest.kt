@@ -83,6 +83,7 @@ class SettingsRootDeviceEntryTest {
             for (destination in destinations) {
                 composeRule.onNodeWithText(context.getString(destination)).performScrollTo().performClick()
             }
+            if (title == R.string.settings_root_sync_directory_title) capture("settings-root-expanded-system")
             composeRule.onNodeWithText(context.getString(title)).performScrollTo().performClick()
         }
         composeRule.onNodeWithText("我的设备").performScrollTo().performClick()

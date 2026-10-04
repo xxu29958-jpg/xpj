@@ -28,6 +28,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -240,9 +242,14 @@ private const val BindingCodeLength = 8
 
 @Composable
 private fun BindingIntroduction() {
+    val panelColor = if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) {
+        MaterialTheme.colorScheme.secondaryContainer
+    } else {
+        Color(0xFFEAF0D6)
+    }
     Row(
         modifier = Modifier.fillMaxWidth()
-            .background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(24.dp))
+            .background(panelColor, RoundedCornerShape(24.dp))
             .padding(AppSpacing.cardPadding),
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
         verticalAlignment = Alignment.CenterVertically,

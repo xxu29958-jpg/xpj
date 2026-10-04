@@ -104,6 +104,7 @@ class BindingQrHandoffTest {
             check(binds == listOf("https://family.example.test" to "12345678",
                 "https://family.example.test" to "12345678"))
         }
+        saveConsumerArtPreview("binding-large-font-actions", compose.onRoot().captureToImage().asAndroidBitmap())
     }
 
     private fun showScreen(registry: ScanResultRegistry, pending: Boolean,

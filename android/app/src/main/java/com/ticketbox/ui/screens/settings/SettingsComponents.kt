@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Palette
@@ -38,6 +39,7 @@ import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -64,6 +66,8 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -144,7 +148,11 @@ fun SettingsEntryRow(
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            SettingsEntryIcon(icon = icon)
+            SettingsEntryIcon(
+                icon = icon,
+                background = settingsEntryBackground(icon),
+                shape = RoundedCornerShape(14.dp),
+            )
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
@@ -171,6 +179,18 @@ fun SettingsEntryRow(
             color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium),
         )
     }
+}
+
+@Composable
+private fun settingsEntryBackground(icon: ImageVector): Color {
+    val tint = when (icon) {
+        Icons.Filled.Group, Icons.Filled.Info -> Color(0xFFF8E7D6)
+        Icons.Filled.Palette -> Color(0xFFEEE8F7)
+        Icons.Filled.Sync -> Color(0xFFF1EDDA)
+        else -> Color(0xFFE5EED7)
+    }
+    val surface = MaterialTheme.colorScheme.surface
+    return if (surface.luminance() < 0.5f) lerp(surface, tint, 0.12f) else tint
 }
 
 @Composable

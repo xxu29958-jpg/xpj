@@ -18,6 +18,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -76,12 +78,14 @@ fun SettingsEntryCard(
 fun SettingsEntryIcon(
     icon: ImageVector,
     modifier: Modifier = Modifier,
+    background: Color = MaterialTheme.colorScheme.primaryContainer,
+    shape: Shape = RoundedCornerShape(AppRadius.extraSmall),
 ) {
     Box(
         modifier = modifier
             .size(SettingsEntryIconTokens.ContainerSize)
-            .clip(RoundedCornerShape(AppRadius.extraSmall))
-            .background(MaterialTheme.colorScheme.primaryContainer),
+            .clip(shape)
+            .background(background),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
