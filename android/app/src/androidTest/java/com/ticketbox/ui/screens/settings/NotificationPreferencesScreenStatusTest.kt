@@ -84,7 +84,7 @@ class NotificationPreferencesScreenStatusTest {
 
     @Test
     fun storedCaptureWaitsForAuthorizationAndViewerCannotEnableIt() {
-        var preferences by mutableStateOf(NotificationPreferences(autoCaptureEnabled = true))
+        var preferences by mutableStateOf(NotificationPreferences())
         var listener by mutableStateOf(false)
         var notifications by mutableStateOf(false)
         var viewer by mutableStateOf(false)
@@ -106,9 +106,12 @@ class NotificationPreferencesScreenStatusTest {
             }
         }
         val capture = composeRule.onNodeWithText("解析支付通知")
+        capture.assertIsOff()
+        saveConsumerArtPreview("notifications-paper", composeRule.onRoot().captureToImage().asAndroidBitmap())
+        composeRule.runOnIdle { preferences = preferences.copy(autoCaptureEnabled = true) }
         capture.assertIsOn()
         composeRule.onNodeWithText("开关已开启，等待系统授权；目前不会解析通知。").assertIsDisplayed()
-        saveConsumerArtPreview("notifications-paper", composeRule.onRoot().captureToImage().asAndroidBitmap())
+        saveConsumerArtPreview("notifications-awaiting-authorization", composeRule.onRoot().captureToImage().asAndroidBitmap())
         composeRule.onNodeWithText("打开系统授权").performClick()
         composeRule.runOnIdle { assertEquals(1, authorizations); assertEquals(0, saves); listener = true }
         composeRule.onNodeWithText("查看系统授权").assertIsDisplayed()

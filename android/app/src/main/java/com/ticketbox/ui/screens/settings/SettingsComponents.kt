@@ -200,8 +200,9 @@ fun SettingsEntryRow(
 @Composable
 private fun settingsEntryBackground(icon: ImageVector): Color {
     val tint = when (icon) {
-        Icons.Filled.Group, Icons.Filled.Info -> SettingsColors.householdEntry
-        Icons.Filled.Palette -> SettingsColors.appearanceEntry
+        Icons.Filled.Group, Icons.Filled.Info,
+        Icons.Outlined.Group, Icons.Outlined.Info, Icons.Outlined.Image -> SettingsColors.householdEntry
+        Icons.Filled.Palette, Icons.Outlined.Palette, Icons.Outlined.PhotoLibrary -> SettingsColors.appearanceEntry
         Icons.Filled.Sync, Icons.Outlined.Sync -> SettingsColors.connectionEntry
         else -> SettingsColors.generalEntry
     }
