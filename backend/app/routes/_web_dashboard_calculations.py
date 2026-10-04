@@ -8,6 +8,13 @@ from app.money_contract import projection_sum_to_int
 from app.services.recurring_service import list_recurring_items
 
 
+def dashboard_percentage_tenths(part: int | None, total: int) -> int | None:
+    """Project a drawable share without rounding money through floating point."""
+    if part is None or part < 0 or total <= 0:
+        return None
+    return (part * 1000 + total // 2) // total
+
+
 def previous_month_string(month: str) -> str | None:
     try:
         year_text, month_text = month.split("-", 1)

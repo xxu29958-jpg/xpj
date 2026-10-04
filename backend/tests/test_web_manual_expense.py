@@ -168,7 +168,7 @@ def test_member_can_open_native_manual_expense_form(
     assert 'name="csrf_token"' in response.text
     assert 'name="currency_code"' in response.text
     assert ">CNY</option>" in response.text
-    assert 'href="/web/expenses/new"' in response.text
+    assert 'href="/web/expenses/new?ledger_id=shared_household"' in response.text
     assert 'data-shell-shortcut="manual-expense"' in response.text
     assert 'aria-keyshortcuts="N"' in response.text
     assert _draft_attribute(response.text, "data-manual-draft-scope") == _expected_draft_scope(

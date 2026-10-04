@@ -379,13 +379,4 @@ private object CategoryStructureTokens {
 }
 
 @Composable
-private fun statsCategoryColors(): List<Color> {
-    val visuals = LocalThemeVisuals.current
-    return listOf(
-        visuals.primary,
-        visuals.accent,
-        visuals.warningTint,
-        visuals.primaryDark.copy(alpha = 0.70f),
-        visuals.shadowTint.copy(alpha = 0.55f),
-    )
-}
+private fun statsCategoryColors(): List<Color> = LocalChartTokens.current.series

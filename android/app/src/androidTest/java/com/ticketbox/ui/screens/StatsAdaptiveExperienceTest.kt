@@ -35,6 +35,7 @@ import com.ticketbox.ui.screens.stats.OverviewInteractionActions
 import com.ticketbox.viewmodel.DashboardLayoutUiState
 import com.ticketbox.viewmodel.RecurringUiState
 import com.ticketbox.domain.model.AppSkin
+import com.ticketbox.domain.model.CategoryStats
 import com.ticketbox.domain.model.MonthlyStats
 import com.ticketbox.ui.components.AppAdaptivePaneStructures
 import com.ticketbox.ui.components.LocalAppAdaptivePaneDirective
@@ -162,11 +163,18 @@ class StatsAdaptiveExperienceTest {
     fun compactControlsKeepRetainedTagsMonthFailureAndTabSelectionUsable() {
         var selectedMonth: String? = null
         var selectedTag: String? = null
+        val skin = mutableStateOf(AppSkin.Paper)
+        val populated = readableStats.copy(
+            stats = MonthlyStats(homeCurrencyCode = "CNY", month = "2026-09", totalAmountCents = 246000, count = 4,
+                byCategory = listOf(CategoryStats("居住", 114000, 1), CategoryStats("餐饮", 60000, 1),
+                    CategoryStats("购物", 48000, 1), CategoryStats("交通", 24000, 1))),
+            tagsLoadState = StatsFilterOptionsLoadState.Failed,
+        )
         composeRule.setContent {
             DeviceConfigurationOverride(DeviceConfigurationOverride.ForcedSize(DpSize(360.dp, 900.dp))) {
-                TicketboxTheme(skin = AppSkin.Default) {
+                TicketboxTheme(skin = skin.value) {
                     StatsScreen(
-                        state = readableStats.copy(tagsLoadState = StatsFilterOptionsLoadState.Failed),
+                        state = populated,
                         overview = overview,
                         actions = actions(onMonthChange = { selectedMonth = it }, onTagChange = { selectedTag = it }),
                     )
@@ -186,6 +194,10 @@ class StatsAdaptiveExperienceTest {
             .performClick().assertIsSelected()
         composeRule.onNode(hasText(context.getString(R.string.stats_tab_category)) and hasClickAction())
             .performClick().assertIsSelected()
+        for (theme in listOf(AppSkin.Paper, AppSkin.Midnight)) {
+            composeRule.runOnIdle { skin.value = theme }
+            saveConsumerArtPreview("category-palette-${theme.name}", composeRule.onRoot().captureToImage().asAndroidBitmap())
+        }
     }
 
     private val monthLabel: String

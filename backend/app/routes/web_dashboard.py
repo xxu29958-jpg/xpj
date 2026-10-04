@@ -99,8 +99,8 @@ def web_overview(
         money_task={"ledger_id": selected_id, "month": cards["month"],
             "home_currency_code": cards["home_currency_code"], "return_to": "overview"})
     ctx["category_chart_available"] = bool(category_share) and all(
-        row["amount_cents"] is not None and row["amount_cents"] >= 0 for row in category_share
-    ) and any(row["amount_cents"] > 0 for row in category_share)
+        row["percent_label"] is not None for row in category_share
+    )
     # P2-3: ~1.1MB ECharts 只在环图真的渲染时才下载 (reports 卡可见且有分类数据)。
     ctx["overview_load_charts"] = ctx["category_chart_available"] and any(
         item["key"] == "reports" for item in visible_cards

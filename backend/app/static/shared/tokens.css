@@ -77,10 +77,10 @@
     --shadow-raised: 0 2px 6px rgba(26, 32, 28, .06), 0 16px 40px rgba(26, 32, 28, .10);
 
     /* Chart — 8 色调色板 */
-    --chart-series-1: #14504a;
-    --chart-series-2: #26322d;
-    --chart-series-3: #a9783e;
-    --chart-series-4: #b65e47;
+    --chart-series-1: #487d5b;
+    --chart-series-2: #bb9878;
+    --chart-series-3: #a598c2;
+    --chart-series-4: #deb985;
     --chart-series-5: #55747a;
     --chart-series-6: #7f8f68;
     --chart-series-7: #756a8a;
@@ -204,9 +204,9 @@
     --shadow-raised: 0 6px 24px rgba(0,0,0,.45);
 
     --chart-series-1: #70bfa5;
-    --chart-series-2: #b7c4bd;
-    --chart-series-3: #e3b36c;
-    --chart-series-4: #e0836f;
+    --chart-series-2: #bb9878;
+    --chart-series-3: #a598c2;
+    --chart-series-4: #deb985;
     /* 5-8 跨色相重排，避免多分类环图的相邻系列混在一起。 */
     --chart-series-5: #8db8c0;
     --chart-series-6: #a7b98c;

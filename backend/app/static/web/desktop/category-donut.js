@@ -13,7 +13,7 @@
       return d.amount_major == null || !Number.isFinite(d.amount_major) || d.amount_major < 0;
     }) || !data.some(function (d) { return d.amount_major > 0; })) return;
 
-    const chart = echarts.init(el, null, { renderer: "canvas" });
+    let chart = null;
     function build() {
       const palette = [
         app.readVar("--chart-series-1"),
@@ -23,51 +23,41 @@
         app.readVar("--chart-series-5"),
         app.readVar("--chart-series-6"),
       ];
-      const ink = app.readVar("--text-default");
       return {
         animation: false,
         tooltip: {
           trigger: "item",
           backgroundColor: app.readVar("--chart-tooltip-bg"),
           borderColor: app.readVar("--chart-tooltip-border"),
-          textStyle: { color: app.readVar("--chart-tooltip-fg"), fontFamily: app.readVar("--font-numeric") },
+          textStyle: { color: app.readVar("--chart-tooltip-fg"), fontFamily: app.readVar("--font-numeric"), fontSize: parseFloat(app.readVar("--type-caption-size")) },
           formatter: function (p) {
             // PR #253 P1-2: 分类名是用户/导入可控文本, 进 HTML tooltip 前必须转义。
             // 金额文案只消费服务器生成的精确 label；value 仅供几何。
-            return '<div style="font-size:12px"><b>' + app.escapeHtml(p.name) + "</b><br/>" +
-                   app.escapeHtml(p.data.amountLabel) + " · " + p.percent + "%</div>";
+            return '<div><b>' + app.escapeHtml(p.name) + "</b><br/>" +
+                   app.escapeHtml(p.data.amountLabel) + " · " + app.escapeHtml(p.data.percentLabel) + "</div>";
           },
         },
         legend: { show: false },
         series: [{
           type: "pie",
-          radius: ["62%", "85%"],
-          center: ["50%", "55%"],
+          radius: ["70%", "94%"],
+          center: ["50%", "50%"],
           avoidLabelOverlap: false,
           itemStyle: { borderColor: app.readVar("--surface-card"), borderWidth: 2 },
           label: { show: false, position: "center" },
           labelLine: { show: false },
           emphasis: {
             scale: true, scaleSize: 4,
-            label: {
-              show: true, color: ink,
-              fontFamily: app.readVar("--font-numeric"), fontSize: 22,
-              formatter: function (p) {
-                // 纯文本拼接, 不用 ECharts rich-text DSL: 分类名里的 "}"/"{x|" 元字符
-                // 会被当成样式段解析而破坏中心排版 (canvas 无 XSS, 但排版注入同样
-                // 不可接受 — PR #253 R2 复审 P2-2)。
-                return p.name + "\n" + p.data.amountLabel + "\n" + p.percent + "%";
-              },
-            },
+            label: { show: false },
           },
-          // Reads the dashboard category_share payload shape (name / amount_yuan, with
-          // exponent-aware amount_major preferred when present — PR #253 P1-1).
-          // Major units, not minor: tooltip and the center label print the value as-is.
+          // Values describe geometry only; labels and percentages come from the
+          // same server projection as the visible, accessible category list.
           data: data.slice(0, 6).map(function (d, i) {
             return {
               name: d.name,
               value: d.amount_major,
               amountLabel: d.amount_label,
+              percentLabel: d.percent_label,
               itemStyle: { color: palette[i % palette.length] },
             };
           }),
@@ -75,14 +65,22 @@
       };
     }
     const fontText = "0123456789.,%−-" + data.slice(0, 6).map(function (d) { return d.name + d.amount_label; }).join("");
-    app.withChartFonts(fontText, function () {
+    function render() {
+      // The narrow layout presents the same server-owned shares as text rows.
+      // Initialise only after CSS gives the canvas space, including on resize.
+      if (!el.clientWidth || !el.clientHeight) return;
+      if (!chart) chart = echarts.init(el, null, { renderer: "canvas" });
+      chart.resize();
       chart.setOption(build());
+    }
+    app.withChartFonts(fontText, function () {
+      render();
       // Canvas does not inherit changed CSS colors. Reproject the same data/instance.
-      new MutationObserver(function () { chart.setOption(build()); }).observe(document.documentElement, {
+      new MutationObserver(render).observe(document.documentElement, {
         attributes: true, attributeFilter: ["data-theme", "data-accent"],
       });
+      new ResizeObserver(render).observe(el);
     });
-    new ResizeObserver(function () { chart.resize(); }).observe(el);
 
     // 把环图 legend dots 的颜色也按 chart-series 涂上
     document.querySelectorAll(".chart-legend-0").forEach(function (n) { n.style.background = app.readVar("--chart-series-1"); });

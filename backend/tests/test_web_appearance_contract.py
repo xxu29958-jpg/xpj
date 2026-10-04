@@ -126,7 +126,7 @@ liveApp.readVar = name => [live.attrs["data-theme"] || "paper", live.attrs["data
 liveApp.homeMinorToMajor = value => value / 100;
 liveApp.homeMinorToMajorText = value => String(value / 100);
 const chartElements = {{
-  "chart-category": {{id: "donut", getAttribute: () => JSON.stringify([{{name:"餐饮", amount_major:12.34, amount_label:"¥12.34"}}])}},
+  "chart-category": {{id: "donut", clientWidth:240, clientHeight:240, getAttribute: () => JSON.stringify([{{name:"餐饮", amount_major:12.34, amount_label:"¥12.34", percent_label:"100.0%"}}])}},
   "chart-trend": {{id: "trend", getAttribute: () => JSON.stringify([{{month:"2026-09", amount_cents:1234, budget_cents:2000}}])}},
 }};
 live.context.document.getElementById = id => chartElements[id] || null;

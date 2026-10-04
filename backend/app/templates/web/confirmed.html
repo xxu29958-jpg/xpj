@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from 'partials/category_icon.html' import category_icon %}
 {% set product_body_domain = 'transactions' %}
 {% block title %}已确认 · 小票夹{% endblock %}
 
@@ -163,10 +164,7 @@
         {% if e.entry_kind == 'expense' %}
     <a class="timeline-row-detail" href="/web/expenses/{{ e.id }}/edit?{{ confirmed_edit_query }}">
       <span class="ledger-row-date">{{ _row_date }}</span>
-      <div class="product-entry-icon{% if e.category == '餐饮' %} product-entry-icon--apricot{% elif e.category == '交通' %} product-entry-icon--lilac{% endif %}">
-        {% set _row_icon = {'居住': 'house', '房租': 'house', '住房': 'house', '餐饮': 'utensils', '交通': 'bus', '购物': 'shopping-bag', '娱乐': 'clapperboard', '医疗': 'briefcase-medical', '教育': 'graduation-cap', '通讯': 'phone', 'AI订阅': 'bot', '数码': 'monitor-smartphone', '游戏': 'gamepad-2', '生活': 'sofa'}.get(e.category, 'receipt-text') %}
-        <svg width="24" height="24" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#{{ _row_icon }}"/></svg>
-      </div>
+      {{ category_icon(e.category) }}
       <div class="lrow-mid">
         <div class="lrow-merch">{{ e.merchant or '未填写商家' }}</div>
         <div class="lrow-meta">

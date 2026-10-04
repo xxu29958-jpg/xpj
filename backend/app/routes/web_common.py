@@ -21,6 +21,7 @@ from app.middleware.csrf import csrf_context
 from app.money_contract import projection_sum_to_int, projection_values_sum_to_int
 from app.routes._web_dashboard_calculations import (
     dashboard_month_delta,
+    dashboard_percentage_tenths,
     previous_month_string,
     recurring_status_counts,
 )
@@ -217,11 +218,13 @@ def _budget_top_rows(budget, *, currency_code: str) -> list[dict]:
     out = []
     for row in rows:
         spent, limit = row.spent_amount_cents, row.amount_cents
-        percent = None if spent is None else (spent * 100 + limit // 2) // limit if limit > 0 else 0
+        percent = None if spent is None or spent < 0 or limit <= 0 else (spent * 100 + limit // 2) // limit
         out.append({
             "name": row.category,
             "limit_yuan": _amount_yuan(limit, currency_code),
             "spent_yuan": _amount_yuan(spent, currency_code),
+            "spent_label": _minor_amount_label(spent, currency_code) if spent is not None else "待补齐汇率",
+            "limit_label": _minor_amount_label(limit, currency_code),
             "overspent_yuan": _amount_yuan(row.overspent_amount_cents, currency_code),
             "overspent_cents": row.overspent_amount_cents,
             "percent": None if percent is None else min(percent, 100),
@@ -248,11 +251,20 @@ def _goals_top_rows(goals) -> list[dict]:
 
 def _dashboard_budget_goals_block(budget, goals) -> dict:
     home = budget.home_currency_code
+    available = projection_sum_to_int(
+        budget.total_amount_cents + budget.rollover_amount_cents, label="web.dashboard_budget_available")
+    percent = dashboard_percentage_tenths(budget.spent_amount_cents, available)
     return {
         "budget_configured": budget.configured,
         "budget_home_currency_code": home,
         "budget_missing_currency_codes": budget.missing_currency_codes,
         "budget_total_yuan": _amount_yuan(budget.total_amount_cents, home),
+        "budget_available_label": _minor_amount_label(available, home),
+        "budget_spent_label": _minor_amount_label(budget.spent_amount_cents, home)
+            if budget.spent_amount_cents is not None else "待补齐汇率",
+        "budget_percent_label": None if percent is None else f"{percent // 10}.{percent % 10}%",
+        "budget_progress": None if percent is None else min(percent, 1000),
+        "budget_has_rollover": budget.rollover_amount_cents != 0,
         "budget_remaining_yuan": _amount_yuan(budget.remaining_amount_cents, home),
         "budget_remaining_cents": budget.remaining_amount_cents,
         "budget_overspent_yuan": _amount_yuan(budget.overspent_amount_cents, home),
@@ -382,6 +394,10 @@ def _dashboard_category_share(
     )
     home = stats["home_currency_code"]
     by_category = list(stats.get("by_category", []))
+    # A negative or unknown category cannot be hidden inside the grouped tail.
+    total = projection_values_sum_to_int(
+        (item["amount_cents"] for item in by_category), label="web.category_total"
+    ) if all(item["amount_cents"] is not None and item["amount_cents"] >= 0 for item in by_category) else 0
     if len(by_category) > 6 and all(item["amount_cents"] is not None for item in by_category):
         head, tail = by_category[:5], by_category[5:]
         tail_cents = projection_values_sum_to_int(
@@ -421,6 +437,7 @@ def _dashboard_category_share(
             item["amount_cents"],
             label="web.category_share",
         )
+        percent = dashboard_percentage_tenths(amount_minor, total)
         rows.append(
             {
                 "name": item["category"],
@@ -429,6 +446,7 @@ def _dashboard_category_share(
                 "amount_label": _minor_amount_label(amount_minor, home) if amount_minor is not None else "待补齐换算信息",
                 "amount_major": None if amount_minor is None else minor_amount_major_number(amount_minor, home),
                 "amount_major_text": projected_amount(amount_minor, home),
+                "percent_label": None if percent is None else f"{percent // 10}.{percent % 10}%",
                 "count": int(item["count"]),
             }
         )
