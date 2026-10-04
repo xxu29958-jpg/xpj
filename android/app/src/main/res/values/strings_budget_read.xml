@@ -10,8 +10,8 @@
     <string name="budget_cached_remaining">上次读取的预算剩余</string>
     <string name="budget_cached_overspent">上次读取的预算超支</string>
     <string name="budget_cached_basis">%1$s · %2$s</string>
-    <string name="budget_cached_details_show">查看上次读取的预算明细</string>
-    <string name="budget_cached_details_hide">收起预算明细</string>
+    <string name="budget_cached_details_show">预算明细</string>
+    <string name="budget_cached_details_hide">收起明细</string>
     <string name="budget_pending_heading">还有这些事</string>
     <string name="budget_pending_saved">预算已经保存</string>
     <string name="budget_pending_change">一笔预算修改</string>

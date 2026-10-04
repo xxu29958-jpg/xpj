@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -71,16 +73,20 @@ internal fun BudgetCachedReadSource(fetchedAt: String) {
 internal fun BudgetCachedSummary(budget: BudgetMonthly, currencyDisplay: CurrencyDisplay, details: @Composable () -> Unit) {
     var expanded by rememberSaveable(budget.ledgerId, budget.month) { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(AppRadius.hero),
+        Surface(onClick = { expanded = !expanded }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(AppRadius.hero),
             color = LocalThemeVisuals.current.surfaceRaised) {
             Column(Modifier.padding(AppSpacing.screenHorizontal), verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap)) {
                 BudgetSummaryHero(budget, currencyDisplay, fromCache = true)
-                Text(stringResource(R.string.budget_cached_basis, budget.homeCurrencyCode ?: "UNKNOWN", budget.month),
-                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+                    Text(stringResource(R.string.budget_cached_basis, budget.homeCurrencyCode ?: "UNKNOWN", budget.month),
+                        modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(if (expanded) R.string.budget_cached_details_hide else R.string.budget_cached_details_show),
+                        style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+                    Icon(if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, contentDescription = null,
+                        modifier = Modifier.size(AppSpacing.cardPadding), tint = MaterialTheme.colorScheme.primary)
+                }
             }
-        }
-        TextButton(onClick = { expanded = !expanded }) {
-            Text(stringResource(if (expanded) R.string.budget_cached_details_hide else R.string.budget_cached_details_show))
         }
         if (expanded || budget.missingCurrencyCodes.isNotEmpty()) {
             Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) { details() }
