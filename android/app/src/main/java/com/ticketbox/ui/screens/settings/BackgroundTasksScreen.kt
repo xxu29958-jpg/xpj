@@ -2,6 +2,9 @@ package com.ticketbox.ui.screens.settings
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -18,6 +21,7 @@ fun BackgroundTasksScreen(
     viewModel: BackgroundTasksViewModel,
     onBack: () -> Unit,
     onOpenExpense: (Long) -> Unit,
+    onOpenConnection: () -> Unit,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
@@ -50,5 +54,14 @@ fun BackgroundTasksScreen(
                 onRefresh = viewModel::refresh,
             )
         }
+        SettingsEntryRow(
+            title = stringResource(R.string.background_tasks_connection_title),
+            subtitle = stringResource(R.string.background_tasks_connection_body),
+            icon = Icons.Filled.Wifi,
+            onClick = onOpenConnection,
+        )
+        Text(stringResource(R.string.background_tasks_original_result_title), style = MaterialTheme.typography.titleSmall)
+        Text(stringResource(R.string.background_tasks_original_result_body),
+            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

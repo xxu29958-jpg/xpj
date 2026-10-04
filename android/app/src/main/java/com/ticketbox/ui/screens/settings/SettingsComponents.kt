@@ -66,8 +66,6 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -116,6 +114,7 @@ import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.design.SettingsColors
+import com.ticketbox.ui.design.settingsEntrySurface
 import com.ticketbox.ui.design.ThemeVisuals
 import com.ticketbox.ui.design.themeVisualsForSkin
 import com.ticketbox.ui.theme.TicketboxAtmosphereBackground
@@ -190,8 +189,7 @@ private fun settingsEntryBackground(icon: ImageVector): Color {
         Icons.Filled.Sync -> SettingsColors.connectionEntry
         else -> SettingsColors.generalEntry
     }
-    val surface = MaterialTheme.colorScheme.surface
-    return if (surface.luminance() < 0.5f) lerp(surface, tint, 0.12f) else tint
+    return settingsEntrySurface(tint)
 }
 
 @Composable

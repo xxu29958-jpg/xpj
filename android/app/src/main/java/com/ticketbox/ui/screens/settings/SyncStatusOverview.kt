@@ -182,24 +182,24 @@ internal fun SyncStatusRateReviews(state: OutboxStatusUiState, actions: SyncStat
 
 @Composable
 private fun overviewCaption(overview: SyncStatusOverview): String = when {
-    overview.refreshRequiredCount > 0 -> stringResource(
-        R.string.sync_status_overview_caption_refresh_required, overview.refreshRequiredCount,
-    )
     overview.reviewRequiredCount > 0 -> stringResource(
         R.string.sync_status_overview_caption_review_required,
         overview.reviewRequiredCount,
-    )
-    overview.quarantinedCount > 0 -> stringResource(
-        R.string.sync_status_overview_caption_quarantined,
-        overview.quarantinedCount,
     )
     overview.blockedPendingCount > 0 -> stringResource(
         R.string.sync_status_overview_caption_binding_changed,
         overview.blockedPendingCount,
     )
-    overview.needsActionCount > 0 -> stringResource(
+    overview.conflictCount + overview.failedCount > 0 -> stringResource(
         R.string.sync_status_overview_caption_needs_action,
-        overview.needsActionCount,
+        overview.conflictCount + overview.failedCount,
+    )
+    overview.refreshRequiredCount > 0 -> stringResource(
+        R.string.sync_status_overview_caption_refresh_required, overview.refreshRequiredCount,
+    )
+    overview.quarantinedCount > 0 -> stringResource(
+        R.string.sync_status_overview_caption_quarantined,
+        overview.quarantinedCount,
     )
     overview.queuedCount > 0 -> stringResource(overviewCaptionResource(overview))
     overview.stoppedCount > 0 -> stringResource(R.string.sync_status_overview_caption_stopped, overview.stoppedCount)

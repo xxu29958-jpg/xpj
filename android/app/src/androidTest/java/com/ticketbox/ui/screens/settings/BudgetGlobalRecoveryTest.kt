@@ -1,11 +1,17 @@
 package com.ticketbox.ui.screens.settings
 
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.unit.Density
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
@@ -24,6 +30,7 @@ import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.navigation.offlineBudget
+import com.ticketbox.ui.saveConsumerArtPreview
 import com.ticketbox.ui.screens.budget.BudgetPendingSaves
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.OutboxStatusUiState
@@ -88,6 +95,54 @@ class BudgetGlobalRecoveryTest {
         compose.onNodeWithText(context.getString(R.string.budget_save_drop)).assertDoesNotExist()
         compose.onNodeWithText("重新读取预算").performClick()
         compose.runOnIdle { assertEquals(accepted, recovered) }
+    }
+
+    @Test fun mixedRecoveryKeepsOriginalReviewSeparateFromAcceptedReadAndQuarantine() {
+        val accepted = acceptedReadPending()
+        val conflict = accepted.row.copy(id = 11, type = PendingMutationType.CreateExpenseOffset,
+            targetId = "expense:7", status = PendingMutationStatus.Conflict,
+            lastError = "row_version_mismatch", receiptJson = null)
+        val binding = LogicalSessionBinding("https://example.test", "owner", "owner", "session", "binding")
+        val state = OutboxStatusUiState(binding = binding, bindingReady = true,
+            correctionObservation = ExpenseCorrectionObservation(LedgerAccessContext(binding, true), emptyList()),
+            status = OutboxStatus(0, listOf(conflict), emptyList(), quarantinedCount = 2,
+                refreshRequired = listOf(accepted.row)), budgetSaves = mapOf(accepted.row.id to accepted))
+        var recovered: OutboxRow? = null
+        var reviewed: Long? = null
+        var cleared = 0
+        val skin = mutableStateOf(AppSkin.Paper)
+        val scale = mutableStateOf(1f)
+        compose.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, scale.value),
+                LocalCurrencyDisplay provides CurrencyDisplay(CurrencyCode.CNY)) {
+                TicketboxTheme(skin = skin.value) {
+                    SyncStatusScreenContent(state, SyncStatusActions(
+                        onRefreshAcceptedResult = { recovered = it }, onRepairCorrectionRate = { _, _ -> },
+                        onOpenRateSubmission = {}, onOpenIncomeSubmission = {}, onOpenRuleSubmission = {},
+                        onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {},
+                        onOpenExpense = { reviewed = it }, onKeepMine = { error("No automatic overwrite") },
+                        onDropMine = { error("No automatic drop") }, onRetry = { error("No accepted command replay") },
+                        onDropFailed = { error("No accepted command drop") }, onClearQuarantined = { cleared++ },
+                    ), {}, {})
+                }
+            }
+        }
+        compose.onNodeWithText(context.getString(R.string.sync_status_overview_caption_needs_action, 1))
+            .performScrollTo().assertIsDisplayed()
+        saveConsumerArtPreview("sync-mixed-paper", compose.onRoot().captureToImage().asAndroidBitmap())
+        compose.onNodeWithText(context.getString(R.string.expense_offset_review_current)).performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(7L, reviewed); assertEquals(null, recovered); assertEquals(0, cleared) }
+        compose.onNodeWithText("预算已保存，显示待更新。").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("¥1,200", substring = true).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("重新读取预算").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(accepted.row, recovered); assertEquals(0, cleared) }
+        saveConsumerArtPreview("sync-accepted-read-paper", compose.onRoot().captureToImage().asAndroidBitmap())
+        compose.onNodeWithText("移除隔离数据").performScrollTo().performClick()
+        compose.onNodeWithText("取消").performClick()
+        compose.runOnIdle { assertEquals(0, cleared); skin.value = AppSkin.Midnight; scale.value = 1.8f }
+        compose.onNodeWithText("原身份待处理").performScrollTo().assertIsDisplayed()
+        saveConsumerArtPreview("sync-quarantine-midnight-large", compose.onRoot().captureToImage().asAndroidBitmap())
     }
 
     private fun acceptedReadPending(): PendingBudgetSave {
