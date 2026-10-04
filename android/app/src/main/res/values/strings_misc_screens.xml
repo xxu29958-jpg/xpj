@@ -199,5 +199,5 @@
     <string name="bind_server_intro_body">连接后，继续自己的记录。</string>
     <string name="bind_server_configured_url">账本地址：%1$s</string>
     <string name="bind_server_continuity_title">中途离开也能继续</string>
-    <string name="bind_server_continuity_body">切换家庭邀请或旋转屏幕后保留输入。未完成的绑定仍可继续；只有不再需要时才单独确认放弃。</string>
+    <string name="bind_server_continuity_body">返回此页时保留已填信息。未完成的绑定可以继续，放弃前会请你确认。</string>
 </resources>

@@ -57,8 +57,13 @@ class BindingQrHandoffTest {
 
     @Test
     fun pendingEnrollmentCannotBeReplacedByAnotherScan() {
-        showScreen(ScanResultRegistry(), true, mutableListOf())
+        var abandoned = 0
+        showScreen(ScanResultRegistry(), true, mutableListOf(), onAbandon = { abandoned++ })
         compose.onNodeWithText("扫一扫连接").assertIsNotEnabled()
+        compose.onNodeWithText("放弃未完成的绑定").performScrollTo().performClick()
+        compose.onNodeWithText("取消").performClick()
+        compose.runOnIdle { check(abandoned == 0) }
+        compose.onNodeWithText("扫一扫连接").performScrollTo().assertIsNotEnabled()
     }
 
     @Test
@@ -101,14 +106,15 @@ class BindingQrHandoffTest {
         }
     }
 
-    private fun showScreen(registry: ScanResultRegistry, pending: Boolean, binds: MutableList<Pair<String, String>>) {
+    private fun showScreen(registry: ScanResultRegistry, pending: Boolean,
+                           binds: MutableList<Pair<String, String>>, onAbandon: () -> Unit = {}) {
         val owner = object : ActivityResultRegistryOwner { override val activityResultRegistry = registry }
         compose.setContent {
             CompositionLocalProvider(LocalActivityResultRegistryOwner provides owner) {
                 TicketboxTheme(skin = AppSkin.Default) {
                     BindServerScreen(false, null, pending, ServerUrlEntryConfig("https://old.example.com", false),
                         BindServerActions(onBind = { server, code -> binds += server to code },
-                            onJoinWithInvitation = {}, onAbandonPendingEnrollment = {}))
+                            onJoinWithInvitation = {}, onAbandonPendingEnrollment = onAbandon))
                 }
             }
         }

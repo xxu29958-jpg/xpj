@@ -87,6 +87,7 @@ class SettingsRootDeviceEntryTest {
         }
         composeRule.onNodeWithText("我的设备").performScrollTo().performClick()
         composeRule.onNodeWithText("关于").performScrollTo().performClick()
+        capture("settings-root-final-destinations")
         composeRule.runOnIdle {
             check(opened.toSet() == setOf("account", "ledgers", "members", "join", "devices", "export",
                 "notifications", "appearance", "connection", "sync", "background", "security", "about"))
