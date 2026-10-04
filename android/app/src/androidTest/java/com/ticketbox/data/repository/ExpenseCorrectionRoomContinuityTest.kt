@@ -374,7 +374,8 @@ class ExpenseCorrectionRoomContinuityTest {
         fixture.failCachePublication = false
         compose.onNodeWithText("刷新并核对当前事实").performScrollTo().performClick()
         compose.waitUntil(10_000) { model.value?.uiState?.value?.expense?.amountCents == 1_200L &&
-            model.value?.uiState?.value?.revisions?.singleOrNull()?.revisionNumber == 4L }
+            model.value?.uiState?.value?.revisions?.singleOrNull()?.revisionNumber == 4L &&
+            model.value?.uiState?.value?.corrections?.singleOrNull()?.let { it.delivered && !it.refreshRequired } == true }
         compose.onNodeWithText("查看已送达的更正（1）").performScrollTo().performClick()
         compose.waitUntil(10_000) {
             compose.onAllNodes(hasText("更正已送达，当前事实已刷新。")).fetchSemanticsNodes().size == 1

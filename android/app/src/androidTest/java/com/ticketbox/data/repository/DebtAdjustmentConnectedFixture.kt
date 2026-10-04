@@ -1,13 +1,14 @@
 package com.ticketbox.data.repository
 
 import android.content.Context
+import android.content.ContextWrapper
 import androidx.room.Room
 import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.RepositoryGraph
 import com.ticketbox.RepositoryGraphDependencies
 import com.ticketbox.RepositoryGraphOutbox
 import com.ticketbox.data.local.AppDatabase
-import com.ticketbox.data.local.TicketboxSettingsStore
+import com.ticketbox.data.local.LocalSettingsStore
 import com.ticketbox.data.remote.ApiClient
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
@@ -50,6 +51,13 @@ import org.junit.Assert.assertEquals
 /** Disk Room and production graph; session and remote IO are synthetic. No real account or financial data. */
 internal class DebtAdjustmentConnectedFixture(private val context: Context, private val remote: ApiService? = null) {
     private val name = "debt-adjustment-continuity.db"
+    private val settingsContext = object : ContextWrapper(context) {
+        override fun getApplicationContext(): Context = this
+        override fun getSharedPreferences(preferenceName: String, mode: Int) =
+            context.getSharedPreferences("$name.$preferenceName", mode)
+    }
+    // Read-retirement markers must survive a reader's cancellation and the Room reopen.
+    private val readSettings = LocalSettingsStore(settingsContext)
     private var database: AppDatabase? = null
     private val clock: Clock = Clock.fixed(Instant.parse("2026-09-30T15:30:00Z"), ZoneOffset.UTC)
     val network = DebtAdjustmentConnectedNetwork()
@@ -78,13 +86,7 @@ internal class DebtAdjustmentConnectedFixture(private val context: Context, priv
             override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = remote ?: network.service
         }
         apiProvider = ApiServiceProvider(factory, sessions, credentials)
-        return RepositoryGraph(RepositoryGraphDependencies(db, ApiClient(),
-            debtAdjustmentProxy<TicketboxSettingsStore> { when (it) {
-                "snapshotReadAccessDenial" -> null
-                "debtResourceCacheRetirements" -> emptyMap<String, String>()
-                "markDebtResourceCacheRetirement", "finishDebtResourceCacheRetirement" -> Unit
-                else -> error("Unexpected settings: $it")
-            } },
+        return RepositoryGraph(RepositoryGraphDependencies(db, ApiClient(), readSettings,
             sessions, credentials, apiProvider, RepositoryGraphOutbox(outbox, adapters)))
             .also { graph = it }
     }
@@ -113,7 +115,7 @@ internal class DebtAdjustmentConnectedFixture(private val context: Context, priv
             SetDebtKindDispatcher(LedgerRequestGuard(apiProvider), adapters.debtKindAdapter, adapters.debtVoidReceiptAdapter)),
         maxAttempts = maxAttempts, now = clock::millis).drainOnce()
 
-    fun close() { database?.close(); context.deleteDatabase(name) }
+    fun close() { database?.close(); context.deleteDatabase(name); readSettings.clear() }
 }
 
 internal class DebtAdjustmentConnectedNetwork {
