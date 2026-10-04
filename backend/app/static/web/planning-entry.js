@@ -26,7 +26,7 @@
   }
   function budgetRows(form) {
     return [...form.querySelectorAll('[name="category_budget_category"]')].map(input => {
-      const row = input.closest("tr, [data-budget-add-row]");
+      const row = input.closest(".budget-row, [data-budget-add-row]");
       const remove = row.querySelector('[name="category_budget_remove"]');
       return {category: input.value, amount: row.querySelector('[name="category_budget_amount_yuan"]').value,
         savedCategory: row.dataset.savedCategory || "", removeValue: remove?.value ?? null, removed: !!remove?.checked};
@@ -54,14 +54,13 @@
     chips.prepend(...selectedLabels);
     // Current execution stays attached to its saved category. Original inputs get
     // their own rows, never re-labelled as the refreshed server's current facts.
-    form.querySelectorAll(".budget-table input").forEach(input => {
+    form.querySelectorAll(".budget-row input").forEach(input => {
       const span = document.createElement("span");
       span.textContent = input.type === "checkbox" ? "已保存" : input.value;
       if (input.type === "checkbox") input.closest("label").replaceWith(span);
       else input.replaceWith(span);
     });
-    const lastHeading = form.querySelector(".budget-table thead th:last-child");
-    if (lastHeading) lastHeading.textContent = "当前配置";
+    form.querySelector("[data-budget-add-zone]").hidden = false;
     const rows = form.querySelector(".budget-add-rows");
     rows.replaceChildren();
     JSON.parse(saved.category_rows).forEach(row => {

@@ -20,6 +20,7 @@ from app.errors import AppError
 from app.middleware.csrf import csrf_context
 from app.money_contract import projection_sum_to_int, projection_values_sum_to_int
 from app.routes._web_dashboard_calculations import (
+    dashboard_category_groups,
     dashboard_month_delta,
     dashboard_percentage_tenths,
     previous_month_string,
@@ -398,41 +399,8 @@ def _dashboard_category_share(
     total = projection_values_sum_to_int(
         (item["amount_cents"] for item in by_category), label="web.category_total"
     ) if all(item["amount_cents"] is not None and item["amount_cents"] >= 0 for item in by_category) else 0
-    if len(by_category) > 6 and all(item["amount_cents"] is not None for item in by_category):
-        head, tail = by_category[:5], by_category[5:]
-        tail_cents = projection_values_sum_to_int(
-            (item["amount_cents"] for item in tail),
-            label="web.category_tail",
-        )
-        tail_count = sum(int(item["count"]) for item in tail)
-        merged_into_existing = False
-        for item in head:
-            if item["category"] == "其他":
-                item["amount_cents"] = projection_sum_to_int(
-                    projection_sum_to_int(
-                        item["amount_cents"],
-                        label="web.category_other",
-                    )
-                    + tail_cents,
-                    label="web.category_other_merged",
-                )
-                item["count"] = int(item["count"]) + tail_count
-                merged_into_existing = True
-                break
-        by_category = (
-            head
-            if merged_into_existing
-            else [
-                *head,
-                {
-                    "category": "其他",
-                    "amount_cents": tail_cents,
-                    "count": tail_count,
-                },
-            ]
-        )
     rows = []
-    for item in by_category:
+    for item in dashboard_category_groups(by_category):
         amount_minor = None if item["amount_cents"] is None else projection_sum_to_int(
             item["amount_cents"],
             label="web.category_share",

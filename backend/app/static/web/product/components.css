@@ -565,7 +565,7 @@ progress {
     border: 0;
     border-radius: var(--radius-pill);
     background: var(--surface-sunken);
-    accent-color: var(--brand-primary);
+    accent-color: var(--progress-fill, var(--brand-primary));
 }
 
 progress::-webkit-progress-bar {
@@ -575,12 +575,12 @@ progress::-webkit-progress-bar {
 
 progress::-webkit-progress-value {
     border-radius: var(--radius-pill);
-    background: var(--brand-primary);
+    background: var(--progress-fill, var(--brand-primary));
 }
 
 progress::-moz-progress-bar {
     border-radius: var(--radius-pill);
-    background: var(--brand-primary);
+    background: var(--progress-fill, var(--brand-primary));
 }
 
 textarea {
@@ -983,11 +983,10 @@ body.product-shell .file-picker > input.file-picker-input:focus-visible {
 .product-progress {
     width: 100%;
     height: var(--space-3);
-    accent-color: var(--brand-primary);
 }
 
 .product-progress.is-complete {
-    accent-color: var(--state-success-fg);
+    --progress-fill: var(--state-success-fg);
 }
 
 .product-check {

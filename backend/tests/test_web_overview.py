@@ -85,7 +85,7 @@ def test_overview_renders_amount_and_visible_modules(web_client: TestClient, *, 
     # 页头本月脉搏状态行 + hero 关键数字层级 (exponent 投影: cur/int/dec 三段)。
     assert "月，慢慢有数" in body
     assert "笔已入账" in body
-    assert "本月支出" in body
+    assert "本月净支出" in body
     assert "<small>¥</small>88<small>.00</small>" in body
     # 分类清单行走 minor_amount_label (符号+分组完整串)。
     assert "¥88.00" in body

@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.errors import AppError
 from app.money_contract import projection_sum_to_int
+from app.routes._web_dashboard_calculations import dashboard_percentage_tenths
 from app.routes._web_draft_binding import (
     browser_draft_scope,
     draft_ack_response,
@@ -230,6 +231,7 @@ def _budget_view(budget: BudgetMonthlyResponse, *, currency_code: str) -> dict:
         label="web_budget.available",
     )
     progress_max = max(available, 0)
+    percent = dashboard_percentage_tenths(budget.spent_amount_cents, available)
     category_rows = _category_form_rows(budget, currency_code=currency_code)
     return {
         "ledger_id": budget.ledger_id,
@@ -239,6 +241,8 @@ def _budget_view(budget: BudgetMonthlyResponse, *, currency_code: str) -> dict:
         "missing_currency_codes": budget.missing_currency_codes,
         "reference_rates": budget.reference_rates,
         "total_yuan": _amount_yuan(budget.total_amount_cents, currency_code),
+        "available_yuan": _amount_yuan(available, currency_code),
+        "percent_label": f"{percent // 10}.{percent % 10}%" if percent is not None else "",
         "rollover_yuan": _amount_yuan(budget.rollover_amount_cents, currency_code),
         "fixed_yuan": _amount_yuan(budget.fixed_amount_cents, currency_code),
         "non_monthly_yuan": _amount_yuan(budget.non_monthly_amount_cents, currency_code),

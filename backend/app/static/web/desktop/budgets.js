@@ -8,19 +8,24 @@
   "use strict";
 
   function initBudgetForm() {
-    const options = document.querySelector("#budget-options");
     const editor = document.querySelector("#budget-editor");
-    const summary = options && options.querySelector("summary");
-    const form = options && options.closest("form");
-    if (options && summary && form) {
+    const form = document.querySelector(".budget-form");
+    if (form) {
+      const options = [...form.querySelectorAll("[data-budget-options]")];
       // invalid 不冒泡；同步显露后由浏览器继续聚焦原生非法字段。
       // 不读取金额、不复制约束，也不把折叠状态变成第二份表单数据。
       form.addEventListener("invalid", function (event) {
         if (editor) editor.open = true;
-        if (options.contains(event.target)) options.open = true;
+        options.forEach(function (item) { if (item.contains(event.target)) item.open = true; });
+        const zone = event.target.closest("[data-budget-add-zone]");
+        if (zone) zone.hidden = false;
       }, true);
-      options.open = options.getAttribute("data-start-expanded") !== "false";
-      summary.hidden = false;
+      options.forEach(function (item) {
+        const summary = item.querySelector("summary");
+        if (!summary) return;
+        item.open = item.getAttribute("data-start-expanded") !== "false";
+        summary.hidden = false;
+      });
     }
 
     if (editor) {
@@ -37,6 +42,17 @@
     const more = zone.querySelector("[data-budget-add-more]");
     const prototype = rows && rows.querySelector("[data-budget-add-row]");
     if (!rows || !more || !prototype) return;
+
+    const start = document.querySelector("[data-budget-add-start]");
+    if (start) {
+      start.addEventListener("click", function () {
+        zone.hidden = false;
+        const first = [...rows.querySelectorAll("input")].find(input => !input.value);
+        if (first) first.focus();
+      });
+      zone.hidden = ![...rows.querySelectorAll("input")].some(input => input.value);
+      start.hidden = false;
+    }
 
     more.addEventListener("click", function () {
       const clone = prototype.cloneNode(true);

@@ -96,7 +96,6 @@
 
 .debt-progress {
     width: min(100%, calc(var(--space-12) * 4));
-    accent-color: var(--brand-primary);
 }
 
 .dh-amt {
@@ -520,7 +519,7 @@
 
 /* 外部债务的进度用中性色：商业语义不借家人往来的品牌色。 */
 .debt-progress--neutral {
-    accent-color: var(--text-default);
+    --progress-fill: var(--text-default);
 }
 
 .debt-installment-schedule {

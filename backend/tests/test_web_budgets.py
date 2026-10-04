@@ -163,9 +163,13 @@ def test_budget_presenter_keeps_fresh_execution_identity_when_draft_renames_row(
 
     view = _budget_view(fresh, currency_code="CNY")
     assert view["category_execution_rows"][0]["saved_amount_yuan"] == "100.00"
+    assert view["available_yuan"] == "1000.00" and view["percent_label"] == "12.5%"
+    carried = _budget_view(fresh.model_copy(update={"rollover_amount_cents": 25000}), currency_code="CNY")
+    assert carried["available_yuan"] == "1250.00" and carried["percent_label"] == "10.0%"
     for available, spent in [(0, 12500), (100000, -50), (100000, None)]:
         unavailable = fresh.model_copy(update={"total_amount_cents": available, "spent_amount_cents": spent})
         assert _budget_view(unavailable, currency_code="CNY")["has_progress_basis"] is False
+        assert _budget_view(unavailable, currency_code="CNY")["percent_label"] == ""
 
 
 def test_web_budgets_remote_returns_403(client: TestClient) -> None:
@@ -196,12 +200,13 @@ def test_web_budgets_renders_unconfigured_state_and_nav(web_client: TestClient) 
     # invalid-event reveal handler has been attached by budgets.js.
     assert "open" in options.group(1).split()
     assert 'data-start-expanded="false"' in options.group(1)
-    assert '<summary hidden>' in response.text[options.end():]
+    assert '<summary class="product-entry" hidden>' in response.text[options.end():]
     assert response.text.index('name="total_amount_yuan"') < options.start()
     options_end = response.text.index("</details>", options.end())
     assert response.text.index("保存预算</button>") > options_end
-    for name in ("rollover_amount_yuan", "non_monthly_amount_yuan", "excluded_category"):
+    for name in ("rollover_amount_yuan", "non_monthly_amount_yuan"):
         assert f'name="{name}"' in response.text[options.end():options_end]
+    assert 'name="excluded_category"' in response.text[options_end:]
     assert response.text.index('name="category_budget_category"') < options.start()
 
 
@@ -242,7 +247,7 @@ def test_web_budgets_save_and_display_budget_dashboard(web_client: TestClient, *
     assert "超支 ¥25.00" in page.text
     assert "医疗 ¥30.00" in page.text
     assert re.search(r'<progress[^>]+value="12500"[^>]+max="105000"', page.text)
-    assert page.text.count("<table") == 1
+    assert 'class="budget-row" data-saved-category="餐饮"' in page.text
     assert "分类预算执行" not in page.text
     assert "Flex 可花" not in page.text
     assert "服务端预算" not in page.text

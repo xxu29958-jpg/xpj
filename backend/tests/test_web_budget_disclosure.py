@@ -20,10 +20,10 @@ const vm = require('vm');
 const assert = require('assert/strict');
 const source = fs.readFileSync(process.argv[1], 'utf8');
 function mount(startExpanded, withSummary = true) {
-  const inside = {};
+  const inside = {closest: () => null};
   const summary = {hidden: true};
   let invalid;
-  const form = {addEventListener(name, handler, capture) {
+  const form = {querySelectorAll: () => [options], addEventListener(name, handler, capture) {
     assert.equal(name, 'invalid');
     assert.equal(capture, true);
     invalid = handler;
@@ -31,13 +31,12 @@ function mount(startExpanded, withSummary = true) {
   const options = {
     open: true,
     querySelector: selector => selector === 'summary' && withSummary ? summary : null,
-    closest: selector => selector === 'form' ? form : null,
     getAttribute: name => name === 'data-start-expanded' ? String(startExpanded) : null,
     contains: target => target === inside,
   };
   const document = {
     readyState: 'complete',
-    querySelector: selector => selector === '#budget-options' ? options : null,
+    querySelector: selector => selector === '.budget-form' ? form : null,
   };
   vm.runInNewContext(source, {window: {}, document});
   return {options, summary, inside, invalid};
@@ -45,7 +44,7 @@ function mount(startExpanded, withSummary = true) {
 const first = mount(false);
 assert.equal(first.options.open, false);
 assert.equal(first.summary.hidden, false);
-first.invalid({target: {}});
+first.invalid({target: {closest: () => null}});
 assert.equal(first.options.open, false);
 first.invalid({target: first.inside});
 assert.equal(first.options.open, true);
