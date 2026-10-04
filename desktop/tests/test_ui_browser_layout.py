@@ -383,7 +383,7 @@ def test_manager_layout_has_no_overflow_overlap_or_unsafe_repair_path(
     assert probe["dataProtectionHidden"] is False
     assert probe["importExportDisabled"] is True
     assert probe["primaryAction"] == ("start" if degraded else "stop")
-    assert probe["primaryText"] == ("▶启动" if degraded else "■停止")
+    assert probe["primaryText"] == ("启动" if degraded else "停止")
     assert probe["overallText"] == ("需要处理" if degraded else "运行正常")
     assert probe["runtimeText"] == "本机安装"
     assert probe["serviceTitle"] == ("小票夹需要修复" if degraded else "小票夹正在运行")

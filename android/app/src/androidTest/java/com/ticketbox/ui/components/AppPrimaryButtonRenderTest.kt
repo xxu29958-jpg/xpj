@@ -1,8 +1,6 @@
 package com.ticketbox.ui.components
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -31,7 +29,9 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.text.MultiParagraph
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -113,6 +113,7 @@ class AppPrimaryButtonRenderTest {
     @Test
     fun pairedActionsKeepTheirCompleteLabelsAtLargeFont() {
         val skin = mutableStateOf(AppSkin.Paper)
+        val actionWidth = mutableStateOf(328.dp)
         val primaryLabel = "确认并保存账单"
         val secondaryLabel = "核对当前事实后重新拟定"
         var primaryClicks = 0
@@ -124,35 +125,53 @@ class AppPrimaryButtonRenderTest {
                 TicketboxTheme(skin = skin.value) {
                     controlFontSize = MaterialTheme.typography.labelLarge.fontSize
                     AppActionRow(
-                        modifier = Modifier.width(328.dp),
+                        modifier = Modifier.width(actionWidth.value),
                         primary = AppAction(primaryLabel, onClick = { primaryClicks++ }),
                         secondary = AppAction(secondaryLabel, onClick = { secondaryClicks++ }),
                     )
                 }
             }
         }
-        for (theme in listOf(AppSkin.Paper, AppSkin.Midnight)) {
-            composeRule.runOnIdle { skin.value = theme }
-            saveConsumerArtPreview("paired-actions-${theme.name}-large-font",
+        for ((theme, width) in listOf(AppSkin.Paper, AppSkin.Midnight).flatMap { theme ->
+            listOf(328.dp, 256.dp).map { width -> theme to width }
+        }) {
+            composeRule.runOnIdle { skin.value = theme; actionWidth.value = width }
+            saveConsumerArtPreview("paired-actions-${theme.name}-${width.value.toInt()}-large-font",
                 composeRule.onRoot().captureToImage().asAndroidBitmap())
             for (label in listOf(primaryLabel, secondaryLabel)) {
                 val layouts = mutableListOf<TextLayoutResult>()
-                composeRule.onNodeWithText(label, useUnmergedTree = true)
-                    .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+                val textNode = composeRule.onNodeWithText(label, useUnmergedTree = true)
+                textNode.performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
                 assertTrue("The complete action must be rendered", layouts.isNotEmpty())
+                val textBounds = textNode.fetchSemanticsNode().boundsInRoot
+                val buttonBounds = composeRule.onNodeWithText(label).fetchSemanticsNode().boundsInRoot
+                assertTrue("The label must remain inside its action",
+                    textBounds.left >= buttonBounds.left && textBounds.right <= buttonBounds.right &&
+                        textBounds.top >= buttonBounds.top && textBounds.bottom <= buttonBounds.bottom)
                 for (layout in layouts) {
                     assertEquals("Action text must respect the user's text size",
                         controlFontSize, layout.layoutInput.style.fontSize)
-                    assertFalse("The action label must fit its height", layout.didOverflowHeight)
-                    // TextLayoutResult compares integer pixel bounds with a floating-point paragraph width.
-                    // Allow only that pixel rounding; keep full font size, glyph bounds and no ellipsis.
-                    assertTrue("Action '$label' must fit width: size=${layout.size.width}, " +
-                        "paragraph=${layout.multiParagraph.width}, lines=${layout.lineCount}",
-                        layout.multiParagraph.width <= layout.size.width + 1f)
-                    for (line in 0 until layout.lineCount) {
-                        assertFalse("Action words must not be ellipsized", layout.isLineEllipsized(line))
+                    assertEquals("Use the rendered text box", layout.size.width.toFloat(), textBounds.width, 1f)
+                    assertTrue("Action words must be allowed to wrap", layout.layoutInput.softWrap)
+                    // Compose 1.11's String semantics rebuilds MultiParagraph with the parent's
+                    // maximum width, although the drawn Paragraph uses the text's measured width.
+                    // Measure the same glyphs in the actual text box before checking clipping.
+                    val paragraph = MultiParagraph(
+                        intrinsics = layout.multiParagraph.intrinsics,
+                        constraints = Constraints(maxWidth = layout.size.width),
+                        maxLines = layout.layoutInput.maxLines,
+                        overflow = layout.layoutInput.overflow,
+                    )
+                    assertTrue("The action label must fit its height", paragraph.height <= textBounds.height + 1f)
+                    assertFalse("The complete label must fit", paragraph.didExceedMaxLines)
+                    assertEquals(label.length, paragraph.getLineEnd(paragraph.lineCount - 1))
+                    if (width == 256.dp && label == secondaryLabel) {
+                        assertTrue("The narrow action must exercise complete wrapped text", paragraph.lineCount > 1)
+                    }
+                    for (line in 0 until paragraph.lineCount) {
+                        assertFalse("Action words must not be ellipsized", paragraph.isLineEllipsized(line))
                         assertTrue("Action '$label' line $line must stay within its pixel bounds",
-                            layout.getLineLeft(line) >= -1f && layout.getLineRight(line) <= layout.size.width + 1f)
+                            paragraph.getLineLeft(line) >= -1f && paragraph.getLineRight(line) <= textBounds.width + 1f)
                     }
                 }
             }
@@ -163,8 +182,8 @@ class AppPrimaryButtonRenderTest {
             primary.performClick()
             secondary.performClick()
         }
-        assertEquals(2, primaryClicks)
-        assertEquals(2, secondaryClicks)
+        assertEquals(4, primaryClicks)
+        assertEquals(4, secondaryClicks)
     }
 
     private fun assertContainerFilled(stage: String, harness: Harness) {
