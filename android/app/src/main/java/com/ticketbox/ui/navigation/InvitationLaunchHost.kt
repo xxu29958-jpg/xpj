@@ -9,6 +9,7 @@ import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.ui.appearance.background.ImmersiveBackgroundScaffold
 import com.ticketbox.ui.appearance.background.SurfaceRole
 import com.ticketbox.ui.screens.settings.JoinFamilyLedgerScreen
+import com.ticketbox.ui.screens.settings.JoinFamilyLedgerNavigation
 import com.ticketbox.viewmodel.JoinFamilyLedgerViewModel
 import com.ticketbox.viewmodel.joinFamilyLedgerViewModelFactory
 
@@ -38,9 +39,8 @@ internal fun InvitationLaunchHost(
         LaunchedEffect(request) { joinViewModel.consumeSharedInvitation(request.sharedText) }
         JoinFamilyLedgerScreen(
             viewModel = joinViewModel,
-            onBack = actions.onHandled,
-            onAccepted = actions.onAccepted,
-            onInvitationConsumed = actions.onHandled,
+            navigation = JoinFamilyLedgerNavigation(onBack = actions.onHandled,
+                onAccepted = actions.onAccepted, onInvitationConsumed = actions.onHandled),
         )
     }
 }

@@ -240,14 +240,16 @@ internal fun SettingsPageFrame(
 }
 
 @Composable
-internal fun SettingsPageHeading(title: String, subtitle: String, onBack: (() -> Unit)?) {
+internal fun SettingsPageHeading(title: String, subtitle: String, onBack: (() -> Unit)?,
+    backLabel: String = stringResource(R.string.settings_root_page_title)) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap)) {
         onBack?.let { back ->
-            val backDescription = stringResource(R.string.settings_page_back_to_settings)
+            val backDescription = if (backLabel == stringResource(R.string.settings_root_page_title))
+                stringResource(R.string.settings_page_back_to_settings) else backLabel
             TextButton(onClick = back, modifier = Modifier.semantics { contentDescription = backDescription }) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
                 Spacer(Modifier.width(AppSpacing.smallGap))
-                Text(stringResource(R.string.settings_root_page_title))
+                Text(backLabel)
             }
         }
         Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {

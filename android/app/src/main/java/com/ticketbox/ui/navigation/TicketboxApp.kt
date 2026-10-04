@@ -48,6 +48,7 @@ import com.ticketbox.ui.screens.BindServerScreen
 import com.ticketbox.ui.screens.LoginScreen
 import com.ticketbox.ui.screens.ServerUrlEntryConfig
 import com.ticketbox.ui.screens.settings.JoinFamilyLedgerScreen
+import com.ticketbox.ui.screens.settings.JoinFamilyLedgerNavigation
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.AppUiState
 import com.ticketbox.viewmodel.AppViewModel
@@ -266,15 +267,17 @@ private fun UnboundAuthFlow(
         if (showJoinFlow) {
             JoinFamilyLedgerScreen(
                 viewModel = joinViewModel,
-                onBack = {
-                    showJoinFlow = false
-                    if (invitationRequest != null) launchConsumer.onHandled(invitationRequest)
-                },
-                onAccepted = appViewModel::refreshBindingState,
                 serverUrlEntry = serverUrlEntry,
-                onInvitationConsumed = {
-                    if (invitationRequest != null) launchConsumer.onHandled(invitationRequest)
-                },
+                navigation = JoinFamilyLedgerNavigation(
+                    onBack = {
+                        showJoinFlow = false
+                        if (invitationRequest != null) launchConsumer.onHandled(invitationRequest)
+                    },
+                    onAccepted = appViewModel::refreshBindingState,
+                    onInvitationConsumed = {
+                        if (invitationRequest != null) launchConsumer.onHandled(invitationRequest)
+                    },
+                ),
             )
         } else {
             bindingDraftState.SaveableStateProvider("pairing-form") {

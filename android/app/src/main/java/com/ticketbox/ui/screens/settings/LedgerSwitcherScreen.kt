@@ -1,333 +1,147 @@
 package com.ticketbox.ui.screens.settings
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.FolderShared
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Group
+import androidx.compose.material.icons.outlined.MailOutline
+import androidx.compose.material.icons.outlined.MenuBook
+import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.domain.model.LedgerSummary
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.ui.components.AppAdaptiveContentActionRow
-import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppStatusBanner
-import com.ticketbox.ui.components.AppSecondaryButton
-import com.ticketbox.ui.design.AppAlpha
-import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.components.AppTextInput
+import com.ticketbox.ui.components.AppTextInputActions
+import com.ticketbox.ui.components.AppTextInputDecorations
+import com.ticketbox.ui.components.AppTextInputState
+import com.ticketbox.ui.components.ledgerRoleLabelText
 import com.ticketbox.viewmodel.LedgerListLoadState
 import com.ticketbox.viewmodel.LedgerSwitcherUiState
 import com.ticketbox.viewmodel.LedgerSwitcherViewModel
 
 private const val LEDGER_NAME_MAX = 60
 
-/**
- * v0.4-alpha1 minimum-viable ledger management surface.
- *
- * Renders the list of ledgers the current account belongs to, lets the user
- * switch between them, create a new ledger and rename an owned ledger.
- * Ownership is decided server-side; this screen never trusts
- * client-supplied roles for authorization.
- *
- * ViewModel-driven as of 2026-05 (was Repository-injected — that broke the
- * Screen → ViewModel → Repository → IO layer rule).
- */
-@Composable
-fun LedgerSwitcherScreen(
-    viewModel: LedgerSwitcherViewModel,
-    activeLedgerId: String?,
-    onBack: () -> Unit,
-    onSwitched: () -> Unit,
-    onRenamed: () -> Unit,
-) {
-    val state by viewModel.uiState.collectAsStateWithLifecycle()
-    var newLedgerName by remember { mutableStateOf("") }
-    val summary = remember(state.ledgers, activeLedgerId) {
-        ledgerSwitcherSummary(state.ledgers, activeLedgerId)
-    }
-
-    LaunchedEffect(Unit) {
-        viewModel.refresh()
-    }
-
-    SettingsPageFrame(
-        title = stringResource(R.string.ledger_switcher_page_title),
-        subtitle = stringResource(R.string.ledger_switcher_page_subtitle),
-        onBack = onBack,
-        status = { AppStatusBanner(message = state.message, tone = state.messageTone) },
-    ) {
-        LedgerSwitcherOverviewSection(summary)
-        LedgerListSection(
-            state = state,
-            activeLedgerId = activeLedgerId,
-            onRefresh = viewModel::refresh,
-            onSwitch = { ledgerId -> viewModel.switchTo(ledgerId, onSwitched) },
-            onRename = viewModel::beginRename,
-        )
-        LedgerCreateSection(
-            name = newLedgerName,
-            loading = state.loading,
-            onNameChange = { value -> newLedgerName = value.take(LEDGER_NAME_MAX) },
-            onCreate = {
-                val name = newLedgerName.trim()
-                if (name.isEmpty()) {
-                    viewModel.showInputError(UiText.res(R.string.ledger_switcher_message_name_required))
-                } else {
-                    viewModel.create(name) { newLedgerName = "" }
-                }
-            },
-        )
-    }
-    LedgerRenameDialog(state, viewModel::changeRenameName, viewModel::dismissRename,
-        onSave = { viewModel.saveRename(onRenamed) }, onRefresh = viewModel::refresh)
-}
-
-@Composable
-private fun LedgerSwitcherOverviewSection(summary: LedgerSwitcherSummary) {
-    SettingsSection(
-        title = stringResource(R.string.ledger_switcher_section_overview),
-    ) {
-        SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
-            SettingsMetricGrid(
-                metrics = listOf(
-                    SettingsMetricData(
-                        label = stringResource(R.string.ledger_switcher_overview_total_label),
-                        value = stringResource(R.string.ledger_switcher_overview_count_value, summary.totalCount),
-                    ),
-                    SettingsMetricData(
-                        label = stringResource(R.string.ledger_switcher_overview_current_label),
-                        value = summary.currentName
-                            ?: stringResource(R.string.ledger_switcher_overview_current_unknown),
-                    ),
-                    SettingsMetricData(
-                        label = stringResource(R.string.ledger_switcher_overview_switchable_label),
-                        value = stringResource(
-                            R.string.ledger_switcher_overview_count_value,
-                            summary.switchableCount,
-                        ),
-                    ),
-                ),
-            )
-        }
-    }
-}
-
-@Composable
-private fun LedgerListSection(
-    state: LedgerSwitcherUiState,
-    activeLedgerId: String?,
-    onRefresh: () -> Unit,
-    onSwitch: (String) -> Unit,
-    onRename: (LedgerSummary) -> Unit,
-) {
-    SettingsSection(
-        title = stringResource(R.string.ledger_switcher_section_joined),
-    ) {
-        SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
-            LedgerListContent(
-                state = state,
-                activeLedgerId = activeLedgerId,
-                onSwitch = onSwitch,
-                onRename = onRename,
-            )
-            AppSecondaryButton(
-                text = if (state.loading) {
-                    stringResource(R.string.ledger_switcher_refresh_loading)
-                } else {
-                    stringResource(R.string.ledger_switcher_refresh_button)
-                },
-                leadingIcon = Icons.Filled.Refresh,
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !state.loading,
-                onClick = onRefresh,
-            )
-        }
-    }
-}
-
-@Composable
-private fun LedgerListContent(
-    state: LedgerSwitcherUiState,
-    activeLedgerId: String?,
-    onSwitch: (String) -> Unit,
-    onRename: (LedgerSummary) -> Unit,
-) {
-    val ledgers = state.ledgers
-    when {
-        ledgers.isEmpty() -> SettingsListStateSlot(
-            loading = ledgerSwitcherEmptySlotLoading(state),
-            hasData = false,
-            copy = SettingsStateSlotCopy(
-                loadingTitle = stringResource(R.string.ledger_switcher_loading_title),
-                loadingBody = stringResource(R.string.ledger_switcher_loading_body),
-                emptyText = stringResource(R.string.ledger_switcher_ledgers_empty),
-                emptyTitle = stringResource(R.string.ledger_switcher_empty_title),
-                emptyBody = stringResource(R.string.ledger_switcher_ledgers_empty),
-            ),
-            message = state.message
-                .takeIf { state.listLoadState == LedgerListLoadState.Failed }
-                ?.let { SettingsStateSlotMessage(text = it, tone = state.messageTone) },
-        )
-
-        else -> Column {
-            ledgers.forEachIndexed { index, ledger ->
-                if (index > 0) {
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft))
-                }
-                LedgerRow(
-                    ledger = ledger,
-                    isActive = ledger.ledgerId == activeLedgerId,
-                    loading = state.loading,
-                    onSwitch = onSwitch,
-                    onRename = onRename,
-                )
-            }
-        }
-    }
-}
-
-private fun ledgerSwitcherEmptySlotLoading(state: LedgerSwitcherUiState): Boolean =
-    state.listLoadState != LedgerListLoadState.Failed &&
-        (state.loading || state.listLoadState != LedgerListLoadState.Loaded)
-
-@Composable
-private fun LedgerRow(
-    ledger: LedgerSummary,
-    isActive: Boolean,
-    loading: Boolean,
-    onSwitch: (String) -> Unit,
-    onRename: (LedgerSummary) -> Unit,
-) {
-    val rowModifier = Modifier
-        .fillMaxWidth()
-        .padding(vertical = AppSpacing.smallGap)
-
-    Column {
-        if (isActive) {
-            LedgerRowContent(ledger = ledger, isActive = true, modifier = rowModifier)
-        } else {
-            AppAdaptiveContentActionRow(
-                modifier = rowModifier,
-                content = { LedgerRowContent(ledger = ledger, isActive = false) },
-            ) { actionModifier ->
-                AppSecondaryButton(
-                    text = stringResource(R.string.ledger_switcher_row_switch_button),
-                    modifier = actionModifier,
-                    enabled = !loading,
-                    onClick = { onSwitch(ledger.ledgerId) },
-                )
-            }
-        }
-        if (ledger.role == "owner") {
-            AppSecondaryButton(text = stringResource(R.string.ledger_name_edit), enabled = !loading,
-                onClick = { onRename(ledger) })
-        }
-    }
-}
-
-@Composable
-private fun LedgerRowContent(
-    ledger: LedgerSummary,
-    isActive: Boolean,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
-    ) {
-        Text(
-            text = ledger.name,
-            style = MaterialTheme.typography.titleSmall,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        LedgerBadgeRow(ledger = ledger, isActive = isActive)
-    }
-}
-
-@Composable
-private fun LedgerBadgeRow(
-    ledger: LedgerSummary,
-    isActive: Boolean,
-) {
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        SettingsLedgerScopeChip(isDefault = ledger.isDefault)
-        SettingsRoleChip(role = ledger.role)
-        if (isActive) {
-            SettingsCurrentChip(text = stringResource(R.string.ledger_switcher_row_current_badge))
-        }
-    }
-}
-
-@Composable
-private fun LedgerCreateSection(
-    name: String,
-    loading: Boolean,
-    onNameChange: (String) -> Unit,
-    onCreate: () -> Unit,
-) {
-    SettingsSection(
-        title = stringResource(R.string.ledger_switcher_section_create),
-    ) {
-        SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-            Text(
-                text = stringResource(R.string.ledger_switcher_create_hint, LEDGER_NAME_MAX),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-            )
-            SettingsDialogTextInput(
-                state = SettingsTextInputState(
-                    label = stringResource(R.string.ledger_switcher_field_ledger_name),
-                    value = name,
-                    enabled = !loading,
-                ),
-                onValueChange = onNameChange,
-            )
-            AppPrimaryButton(
-                text = stringResource(R.string.ledger_switcher_create_button),
-                icon = Icons.Filled.Add,
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !loading,
-                onClick = onCreate,
-            )
-        }
-    }
-}
-
-private data class LedgerSwitcherSummary(
-    val totalCount: Int,
-    val currentName: String?,
-    val switchableCount: Int,
+data class LedgerSwitcherNavigation(
+    val onBack: () -> Unit,
+    val onSwitched: () -> Unit,
+    val onRenamed: () -> Unit,
+    val onJoin: () -> Unit,
 )
 
-private fun ledgerSwitcherSummary(
-    ledgers: List<LedgerSummary>,
-    activeLedgerId: String?,
-): LedgerSwitcherSummary {
-    val currentLedger = ledgers.firstOrNull { it.ledgerId == activeLedgerId }
-    return LedgerSwitcherSummary(
-        totalCount = ledgers.size,
-        currentName = currentLedger?.name,
-        switchableCount = ledgers.count { it.ledgerId != activeLedgerId },
-    )
+@Composable
+fun LedgerSwitcherScreen(viewModel: LedgerSwitcherViewModel, activeLedgerId: String?, navigation: LedgerSwitcherNavigation) {
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) { viewModel.refresh() }
+    LedgerDirectoryPage(state, activeLedgerId, LedgerDirectoryActions(
+        onBack = navigation.onBack, onJoin = navigation.onJoin, onRefresh = viewModel::refresh,
+        onSwitch = { viewModel.switchTo(it, navigation.onSwitched) }, onRename = viewModel::beginRename,
+        onCreate = { name, created -> viewModel.create(name, created) },
+        onNameRequired = { viewModel.showInputError(UiText.res(R.string.ledger_switcher_message_name_required)) },
+    ))
+    LedgerRenameDialog(state, viewModel::changeRenameName, viewModel::dismissRename,
+        onSave = { viewModel.saveRename(navigation.onRenamed) }, onRefresh = viewModel::refresh)
+}
+
+internal data class LedgerDirectoryActions(
+    val onBack: () -> Unit,
+    val onJoin: () -> Unit,
+    val onRefresh: () -> Unit,
+    val onSwitch: (String) -> Unit,
+    val onRename: (LedgerSummary) -> Unit,
+    val onCreate: (String, () -> Unit) -> Unit,
+    val onNameRequired: () -> Unit,
+)
+
+@Composable
+internal fun LedgerDirectoryPage(state: LedgerSwitcherUiState, activeLedgerId: String?, actions: LedgerDirectoryActions) {
+    var name by rememberSaveable { mutableStateOf("") }
+    var showManagement by rememberSaveable { mutableStateOf(false) }
+    LedgerSettingsPage(
+        header = ManagementPageHeader(stringResource(R.string.ledger_switcher_page_title),
+            stringResource(R.string.ledger_switcher_page_subtitle)), onBack = actions.onBack,
+        action = SettingsPageAction(stringResource(R.string.ledger_switcher_create_button), !state.loading) {
+            val trimmed = name.trim()
+            if (trimmed.isEmpty()) actions.onNameRequired() else actions.onCreate(trimmed) { name = "" }
+        },
+    ) {
+        AppStatusBanner(message = state.message, tone = state.messageTone)
+        LedgerDirectoryRows(state, activeLedgerId, onSwitch = actions.onSwitch,
+            onShowCurrent = { showManagement = !showManagement })
+        AppTextInput(
+            state = AppTextInputState(label = stringResource(R.string.ledger_switcher_field_ledger_name), value = name,
+                placeholder = stringResource(R.string.ledger_switcher_name_placeholder), enabled = !state.loading),
+            actions = AppTextInputActions(onValueChange = { name = it.take(LEDGER_NAME_MAX) }),
+            decorations = AppTextInputDecorations(trailingContent = { Icon(Icons.Outlined.Edit, contentDescription = null) }),
+        )
+        SettingsDataRow(stringResource(R.string.join_family_ledger_page_title),
+            stringResource(R.string.ledger_switcher_join_hint), Icons.Outlined.MailOutline,
+            SettingsDataAction(""), onClick = if (state.loading) null else actions.onJoin)
+        SettingsEntryRow(stringResource(R.string.ledger_switcher_manage), stringResource(R.string.ledger_switcher_manage_hint),
+            Icons.Outlined.Tune, onClick = { showManagement = !showManagement }, expanded = showManagement)
+        if (showManagement || state.listLoadState == LedgerListLoadState.Failed) LedgerManagement(state, activeLedgerId, actions)
+    }
+}
+
+@Composable
+private fun LedgerDirectoryRows(state: LedgerSwitcherUiState, activeLedgerId: String?, onSwitch: (String) -> Unit, onShowCurrent: () -> Unit) {
+    if (state.ledgers.isEmpty()) {
+        SettingsListStateSlot(
+            loading = state.listLoadState != LedgerListLoadState.Failed && (state.loading || state.listLoadState != LedgerListLoadState.Loaded),
+            hasData = false,
+            copy = SettingsStateSlotCopy(
+                loadingTitle = stringResource(R.string.ledger_switcher_loading_title), loadingBody = stringResource(R.string.ledger_switcher_loading_body),
+                emptyText = stringResource(R.string.ledger_switcher_ledgers_empty), emptyTitle = stringResource(R.string.ledger_switcher_empty_title),
+                emptyBody = stringResource(R.string.ledger_switcher_ledgers_empty)),
+            message = state.message.takeIf { state.listLoadState == LedgerListLoadState.Failed }
+                ?.let { SettingsStateSlotMessage(it, state.messageTone) },
+        )
+    } else Column {
+        state.ledgers.forEach { ledger ->
+            val active = ledger.ledgerId == activeLedgerId
+            SettingsDataRow(ledger.name, ledgerRoleLabelText(ledger.role),
+                if (ledger.isDefault) Icons.Outlined.MenuBook else Icons.Outlined.Group,
+                SettingsDataAction(stringResource(if (active) R.string.ledger_switcher_row_current_badge
+                    else R.string.ledger_switcher_row_switch_button), if (active) true else null),
+                onClick = if (state.loading) null else { { if (active) onShowCurrent() else onSwitch(ledger.ledgerId) } })
+        }
+    }
+}
+
+@Composable
+private fun LedgerManagement(state: LedgerSwitcherUiState, activeLedgerId: String?, actions: LedgerDirectoryActions) {
+    SettingsSection(title = stringResource(R.string.ledger_switcher_section_overview)) {
+        Text(stringResource(R.string.ledger_switcher_overview_count_value, state.ledgers.size), style = MaterialTheme.typography.titleMedium)
+        state.ledgers.forEach { ledger ->
+            ManagedLedgerRow(ledger, ledger.ledgerId == activeLedgerId, state.loading, actions.onRename)
+        }
+        TextButton(enabled = !state.loading, onClick = actions.onRefresh) {
+            Text(stringResource(if (state.loading) R.string.ledger_switcher_refresh_loading else R.string.ledger_switcher_refresh_button))
+        }
+    }
+}
+
+@Composable
+private fun ManagedLedgerRow(ledger: LedgerSummary, active: Boolean, loading: Boolean, onRename: (LedgerSummary) -> Unit) {
+    Column {
+        Text(ledger.name, style = MaterialTheme.typography.titleSmall)
+        Text(ledgerRoleLabelText(ledger.role), style = MaterialTheme.typography.bodySmall)
+        SettingsLedgerScopeChip(isDefault = ledger.isDefault)
+        if (active) SettingsCurrentChip(stringResource(R.string.ledger_switcher_row_current_badge))
+        if (ledger.role == "owner") TextButton(enabled = !loading, onClick = { onRename(ledger) }) {
+            Text(stringResource(R.string.ledger_name_edit))
+        }
+    }
 }

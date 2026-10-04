@@ -14,6 +14,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Group
+import androidx.compose.material.icons.outlined.MailOutline
+import androidx.compose.material.icons.outlined.PersonOutline
 import androidx.compose.material.icons.outlined.Inventory2
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.Sync
@@ -48,8 +51,9 @@ internal fun SettingsDataRow(
     onClick: (() -> Unit)?,
 ) {
     val badge = when (icon) {
-        Icons.Outlined.Sync, Icons.Outlined.VpnKey -> SettingsColors.appearanceEntry
-        Icons.Outlined.Storage, Icons.AutoMirrored.Outlined.Send -> SettingsColors.householdEntry
+        Icons.Outlined.Sync, Icons.Outlined.VpnKey, Icons.Outlined.MailOutline,
+        Icons.Outlined.PersonOutline -> SettingsColors.appearanceEntry
+        Icons.Outlined.Storage, Icons.AutoMirrored.Outlined.Send, Icons.Outlined.Group -> SettingsColors.householdEntry
         Icons.Outlined.Inventory2 -> SettingsColors.connectionEntry
         else -> SettingsColors.generalEntry
     }
@@ -67,7 +71,7 @@ internal fun SettingsDataRow(
                 Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = AppTextHierarchy.heading.weight)
                 Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Text(action.label, style = MaterialTheme.typography.labelLarge,
+            if (action.label.isNotBlank()) Text(action.label, style = MaterialTheme.typography.labelLarge,
                 color = if (action.confirmed == true) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                 modifier = if (action.confirmed != null) Modifier.clip(RoundedCornerShape(10.dp))
                     .background(settingsEntrySurface(if (action.confirmed) SettingsColors.generalEntry else SettingsColors.connectionEntry))
