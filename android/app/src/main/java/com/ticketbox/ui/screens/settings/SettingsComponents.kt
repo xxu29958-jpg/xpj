@@ -115,6 +115,7 @@ import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalThemeVisuals
+import com.ticketbox.ui.design.SettingsColors
 import com.ticketbox.ui.design.ThemeVisuals
 import com.ticketbox.ui.design.themeVisualsForSkin
 import com.ticketbox.ui.theme.TicketboxAtmosphereBackground
@@ -184,10 +185,10 @@ fun SettingsEntryRow(
 @Composable
 private fun settingsEntryBackground(icon: ImageVector): Color {
     val tint = when (icon) {
-        Icons.Filled.Group, Icons.Filled.Info -> Color(0xFFF8E7D6)
-        Icons.Filled.Palette -> Color(0xFFEEE8F7)
-        Icons.Filled.Sync -> Color(0xFFF1EDDA)
-        else -> Color(0xFFE5EED7)
+        Icons.Filled.Group, Icons.Filled.Info -> SettingsColors.householdEntry
+        Icons.Filled.Palette -> SettingsColors.appearanceEntry
+        Icons.Filled.Sync -> SettingsColors.connectionEntry
+        else -> SettingsColors.generalEntry
     }
     val surface = MaterialTheme.colorScheme.surface
     return if (surface.luminance() < 0.5f) lerp(surface, tint, 0.12f) else tint

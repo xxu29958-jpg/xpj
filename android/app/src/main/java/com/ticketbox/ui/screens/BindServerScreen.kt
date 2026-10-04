@@ -28,7 +28,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.res.painterResource
@@ -54,6 +53,7 @@ import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.ScanQrButton
 import com.ticketbox.ui.design.AppAdaptiveContentWidth
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.SettingsColors
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.navigation.parsePairingQrLink
 
@@ -245,7 +245,7 @@ private fun BindingIntroduction() {
     val panelColor = if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) {
         MaterialTheme.colorScheme.secondaryContainer
     } else {
-        Color(0xFFEAF0D6)
+        SettingsColors.bindingIntroduction
     }
     Row(
         modifier = Modifier.fillMaxWidth()
