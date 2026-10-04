@@ -168,6 +168,7 @@
     });
     function restoreForm(record) {
       form.hidden = false;
+      form.closest("details")?.setAttribute("open", "");
       form.action = record.values.action;
       for (const name of ["reviewed_sha256", "request_id"]) {
         if (form.elements.namedItem(name)) form.elements.namedItem(name).value = record.values[name];

@@ -236,6 +236,7 @@ def test_inbox_empty_state_matches_real_ingestion_routing(
     assert pending.status_code == 200
     body = pending.text
     assert "还没有待处理的小票" in body
+    assert "小票都收拾好了" not in body
     assert "收件队列已经清空" not in body
     assert 'aria-label="待处理筛选"' not in body
     assert 'id="check-all"' not in body
@@ -253,6 +254,30 @@ def test_inbox_empty_state_matches_real_ingestion_routing(
     # main 保留 (矿无): 空态给上传入口直达。
     assert 'href="/owner/upload-links"' in body
     assert "从 CSV 导入" in body
+
+
+def test_inbox_after_confirmation_links_to_the_retained_financial_record(
+    web_client: TestClient, *, identity,
+) -> None:
+    expense_id = _seed_pending_with_amount(web_client, "12.00", "已核对的小票", category="餐饮", identity=identity)
+    confirmed = web_client.post(
+        f"/web/expenses/{expense_id}/confirm",
+        data={"ledger_id": "owner", "expected_row_version": str(_row_version(web_client, expense_id, identity=identity)),
+              "fragment": "1"},
+        follow_redirects=False,
+    )
+    assert confirmed.status_code == 200, confirmed.text
+    empty = web_client.get("/web/pending?ledger_id=owner")
+    assert empty.status_code == 200
+    assert "小票都收拾好了" in empty.text
+    assert 'href="/web/confirmed?ledger_id=owner"' in empty.text
+    assert "再收一张小票" in empty.text
+    assert 'id="capture"' in empty.text
+    retained = web_client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers)
+    assert retained.status_code == 200
+    assert retained.json()["status"] == "confirmed"
+    assert retained.json()["original_amount_minor"] == 1200
+    assert "已核对的小票" in web_client.get("/web/confirmed?ledger_id=owner").text
 
 
 def test_inbox_filtered_empty_keeps_return_path_without_selection(

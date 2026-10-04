@@ -8,6 +8,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.error_reporting import report_http_error, retain_handled_error
+from app.web_error_pages import inbox_read_error_response
 
 
 class Utf8JSONResponse(JSONResponse):
@@ -371,6 +372,8 @@ def html_error_response(request: Request, status_code: int) -> HTMLResponse:
     the request_id in small text so a screenshot is actionable (§12). No body
     field exposes internals (§4 / §10).
     """
+    if request.method in {"GET", "HEAD"} and request.url.path == "/web/pending" and status_code >= 500:
+        return inbox_read_error_response(request, status_code, _error_page_theme(request), _request_id(request))
     heading, hint = _error_page_copy(status_code)
     theme = _error_page_theme(request)
     request_id = _request_id(request)

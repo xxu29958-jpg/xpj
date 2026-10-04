@@ -190,7 +190,7 @@
   <script defer src="/static/web/desktop.js?v={{ asset_version }}"></script>
   <script defer src="/static/shared/confirm-modal.js?v={{ asset_version }}"></script>
 </head>
-<body class="product-shell{% if _has_domain_subnav %} has-domain-subnav{% endif %}" data-body-stack="product" data-domain="{{ _domain }}" data-page="{{ _page_key }}" data-page-level="{{ _page_level }}">
+<body class="product-shell{% if _has_domain_subnav %} has-domain-subnav{% endif %}{% if inbox_is_empty|default(false) %} inbox-empty-page{% endif %}" data-body-stack="product" data-domain="{{ _domain }}" data-page="{{ _page_key }}" data-page-level="{{ _page_level }}">
 <a class="skip-link" href="#main-content">跳到主内容</a>
 <div class="product-app">
   {% include "_sidebar_nav.html" %}
@@ -230,12 +230,14 @@
       {% if can_write and request.state.web_session_auth %}
       <a class="topbar-action topbar-manual-expense" href="/web/expenses/new"
          data-shell-shortcut="manual-expense" aria-keyshortcuts="N" title="手动记账（N）">
+        {% if inbox_is_empty|default(false) %}<svg class="inbox-add-icon" width="24" height="24" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#plus"/></svg>{% endif %}
         <span>记账</span><kbd class="topbar-shortcut-hint" aria-hidden="true">N</kbd>
       </a>
       {% endif %}
       {% if can_write %}
       <a class="topbar-action topbar-capture" href="/web/pending{{ q }}#capture"
          data-shell-shortcut="capture" aria-keyshortcuts="U" title="收票（U）">
+        {% if inbox_is_empty|default(false) %}<svg class="inbox-add-icon" width="24" height="24" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#plus"/></svg>{% endif %}
         <span>收票</span><kbd class="topbar-shortcut-hint" aria-hidden="true">U</kbd>
       </a>
       {% endif %}
@@ -249,6 +251,9 @@
       <a class="topbar-action" href="{{ '/' if request.state.web_session_platform == 'desktop' else '/web/auth/ledgers' }}">选择账本</a>
       {% else %}
       {% include "_ledger_switcher.html" %}
+      {% endif %}
+      {% if inbox_is_empty|default(false) and request.state.web_session_auth %}
+      <a class="inbox-account-link" href="/web/settings" aria-label="设置与设备"><svg width="24" height="24" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#user-round"/></svg></a>
       {% endif %}
       </header>
     </div>
