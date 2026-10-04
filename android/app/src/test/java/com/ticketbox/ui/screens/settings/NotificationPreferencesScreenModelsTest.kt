@@ -17,7 +17,14 @@ class NotificationPreferencesScreenModelsTest {
         )
 
         assertEquals(NotificationSettingState.ReadOnly, summary.autoDraftState)
-        assertEquals(NotificationPermissionState.Granted, summary.listenerState)
+        assertEquals(NotificationSettingState.AwaitingAuthorization, notificationPreferencesSummary(
+            NotificationPreferences(autoCaptureEnabled = true), readOnly = false,
+            listenerAuthorized = false, systemNotificationsAllowed = true,
+        ).autoDraftState)
+        assertEquals(NotificationSettingState.Enabled, notificationPreferencesSummary(
+            NotificationPreferences(autoCaptureEnabled = true), readOnly = false,
+            listenerAuthorized = true, systemNotificationsAllowed = false,
+        ).autoDraftState)
         assertFalse(summary.reminderPermissionMismatch)
     }
 
@@ -35,7 +42,6 @@ class NotificationPreferencesScreenModelsTest {
         )
 
         assertEquals(3, summary.enabledReminderCount)
-        assertEquals(NotificationPermissionState.Missing, summary.systemNotificationState)
         assertTrue(summary.reminderPermissionMismatch)
     }
 

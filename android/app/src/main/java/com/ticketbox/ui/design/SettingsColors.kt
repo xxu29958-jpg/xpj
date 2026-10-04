@@ -13,6 +13,9 @@ object SettingsColors {
     val connectionEntry = Color(0xFFF1EDDA)
     val generalEntry = Color(0xFFE5EED7)
     val bindingIntroduction = Color(0xFFEAF0D6)
+    val sessionCredential = appearanceEntry
+    val offlineCopy = householdEntry
+    val sessionExit = connectionEntry
 }
 
 @Composable

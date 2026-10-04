@@ -6,17 +6,10 @@ internal enum class NotificationSettingState {
     Enabled,
     Disabled,
     ReadOnly,
+    AwaitingAuthorization,
 }
-
-internal enum class NotificationPermissionState {
-    Granted,
-    Missing,
-}
-
 internal data class NotificationPreferencesSummary(
     val autoDraftState: NotificationSettingState,
-    val listenerState: NotificationPermissionState,
-    val systemNotificationState: NotificationPermissionState,
     val enabledReminderCount: Int,
     val reminderPermissionMismatch: Boolean,
 )
@@ -37,15 +30,11 @@ internal fun notificationPreferencesSummary(
     return NotificationPreferencesSummary(
         autoDraftState = when {
             readOnly -> NotificationSettingState.ReadOnly
+            preferences.autoCaptureEnabled && !listenerAuthorized -> NotificationSettingState.AwaitingAuthorization
             preferences.autoCaptureEnabled -> NotificationSettingState.Enabled
             else -> NotificationSettingState.Disabled
         },
-        listenerState = listenerAuthorized.toPermissionState(),
-        systemNotificationState = systemNotificationsAllowed.toPermissionState(),
         enabledReminderCount = enabledReminderCount,
         reminderPermissionMismatch = enabledReminderCount > 0 && !systemNotificationsAllowed,
     )
 }
-
-private fun Boolean.toPermissionState(): NotificationPermissionState =
-    if (this) NotificationPermissionState.Granted else NotificationPermissionState.Missing

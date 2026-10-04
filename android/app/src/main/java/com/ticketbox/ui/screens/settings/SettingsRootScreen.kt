@@ -5,19 +5,19 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CloudDone
-import androidx.compose.material.icons.filled.Devices
-import androidx.compose.material.icons.filled.FileDownload
-import androidx.compose.material.icons.filled.FolderShared
-import androidx.compose.material.icons.filled.Group
-import androidx.compose.material.icons.filled.GroupAdd
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.Palette
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Security
-import androidx.compose.material.icons.filled.Sync
-import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.outlined.CloudDone
+import androidx.compose.material.icons.outlined.Devices
+import androidx.compose.material.icons.outlined.FileDownload
+import androidx.compose.material.icons.outlined.FolderShared
+import androidx.compose.material.icons.outlined.Group
+import androidx.compose.material.icons.outlined.GroupAdd
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.Security
+import androidx.compose.material.icons.outlined.Sync
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -36,6 +36,7 @@ import com.ticketbox.ui.components.AppDataAuthorityStrip
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.DataAuthorityTone
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.asTextStyle
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.viewmodel.SettingsUiState
 
@@ -92,13 +93,16 @@ fun SettingsRootScreen(
                     localCacheBodyRes = R.string.components_data_authority_settings_cache_body,
                 )
             }
-            SettingsRootAccountSummary(
-                state = state,
-                onOpenConnection = navigationActions.connectionSystem.onOpenServer,
-            )
             SettingsLedgerFamilySection(navigationActions.ledgerFamily)
             SettingsDailySection(navigationActions)
             SettingsConnectionSystemSection(showAdvancedTools, navigationActions.connectionSystem)
+            SettingsDetailRow(
+                title = stringResource(R.string.settings_account_current_ledger_label),
+                subtitle = state.ledgerName.orEmpty(),
+                icon = Icons.Outlined.CloudDone,
+            ) {
+                SettingsRootAccountSummary(state, navigationActions.connectionSystem.onOpenServer)
+            }
         }
     }
 }
@@ -106,40 +110,40 @@ fun SettingsRootScreen(
 @Composable
 private fun SettingsLedgerFamilySection(actions: SettingsRootLedgerFamilyNavigationActions) {
     SettingsRootSection(stringResource(R.string.settings_root_section_ledger_family)) {
-        SettingsRootDisclosure(
+        SettingsDetailRow(
             title = stringResource(R.string.settings_root_family_directory_title),
-            subtitle = stringResource(R.string.settings_root_family_directory_subtitle),
-            icon = Icons.Filled.Group,
+            subtitle = "",
+            icon = Icons.Outlined.Group,
         ) {
             SettingsEntryRow(
                 title = stringResource(R.string.account_profile_title),
                 subtitle = stringResource(R.string.account_profile_subtitle),
-                icon = Icons.Filled.Person,
+                icon = Icons.Outlined.Person,
                 onClick = actions.onOpenAccountProfile,
             )
             SettingsEntryRow(
                 title = stringResource(R.string.settings_root_entry_ledgers_title),
                 subtitle = stringResource(R.string.settings_root_entry_ledgers_subtitle),
-                icon = Icons.Filled.FolderShared,
+                icon = Icons.Outlined.FolderShared,
                 onClick = actions.onOpenLedgers,
             )
             SettingsEntryRow(
                 title = stringResource(R.string.settings_root_entry_family_members_title),
                 subtitle = stringResource(R.string.settings_root_entry_family_members_subtitle),
-                icon = Icons.Filled.Group,
+                icon = Icons.Outlined.Group,
                 onClick = actions.onOpenFamilyMembers,
             )
             SettingsEntryRow(
                 title = stringResource(R.string.settings_root_entry_join_family_title),
                 subtitle = stringResource(R.string.settings_root_entry_join_family_subtitle),
-                icon = Icons.Filled.GroupAdd,
+                icon = Icons.Outlined.GroupAdd,
                 onClick = actions.onOpenJoinFamilyLedger,
             )
         }
         SettingsEntryRow(
             title = stringResource(R.string.settings_root_entry_my_devices_title),
-            subtitle = stringResource(R.string.settings_root_entry_my_devices_subtitle),
-            icon = Icons.Filled.Devices,
+            subtitle = "",
+            icon = Icons.Outlined.Devices,
             onClick = actions.onOpenMyDevices,
         )
     }
@@ -148,33 +152,33 @@ private fun SettingsLedgerFamilySection(actions: SettingsRootLedgerFamilyNavigat
 @Composable
 private fun SettingsDailySection(actions: SettingsRootNavigationActions) {
     SettingsRootSection(stringResource(R.string.settings_root_section_daily)) {
-        SettingsRootDisclosure(
+        SettingsDetailRow(
             title = stringResource(R.string.settings_root_alerts_directory_title),
-            subtitle = stringResource(R.string.settings_root_alerts_directory_subtitle),
-            icon = Icons.Filled.Palette,
+            subtitle = "",
+            icon = Icons.Outlined.Palette,
         ) {
             SettingsEntryRow(
                 title = stringResource(R.string.settings_root_entry_notifications_title),
                 subtitle = stringResource(R.string.settings_root_entry_notifications_subtitle),
-                icon = Icons.Filled.Notifications,
+                icon = Icons.Outlined.Notifications,
                 onClick = actions.alertsAppearance.onOpenNotifications,
             )
             SettingsEntryRow(
                 title = stringResource(R.string.settings_root_entry_appearance_title),
                 subtitle = stringResource(R.string.settings_root_entry_appearance_subtitle),
-                icon = Icons.Filled.Palette,
+                icon = Icons.Outlined.Palette,
                 onClick = actions.alertsAppearance.onOpenAppearance,
             )
         }
-        SettingsRootDisclosure(
+        SettingsDetailRow(
             title = stringResource(R.string.settings_root_section_data_privacy),
-            subtitle = stringResource(R.string.settings_root_privacy_directory_subtitle),
-            icon = Icons.Filled.Security,
+            subtitle = "",
+            icon = Icons.Outlined.Security,
         ) {
             SettingsEntryRow(
                 title = stringResource(R.string.settings_root_entry_data_export_title),
                 subtitle = stringResource(R.string.settings_root_entry_data_export_subtitle),
-                icon = Icons.Filled.FileDownload,
+                icon = Icons.Outlined.FileDownload,
                 onClick = actions.dataPrivacy.onOpenDataExport,
             )
             SettingsEntryRow(
@@ -183,7 +187,7 @@ private fun SettingsDailySection(actions: SettingsRootNavigationActions) {
                     if (BuildConfig.REQUIRE_LOCAL_UNLOCK) R.string.settings_root_entry_security_subtitle_locked
                     else R.string.settings_root_entry_security_subtitle_unlocked,
                 ),
-                icon = Icons.Filled.Security,
+                icon = Icons.Outlined.Security,
                 onClick = actions.connectionSystem.onOpenSecurity,
             )
         }
@@ -196,10 +200,10 @@ private fun SettingsConnectionSystemSection(
     actions: SettingsRootConnectionSystemNavigationActions,
 ) {
     SettingsRootSection(stringResource(R.string.settings_root_section_connection_system)) {
-        SettingsRootDisclosure(
+        SettingsDetailRow(
             title = stringResource(R.string.settings_root_sync_directory_title),
-            subtitle = stringResource(R.string.settings_root_sync_directory_subtitle),
-            icon = Icons.Filled.Sync,
+            subtitle = "",
+            icon = Icons.Outlined.Sync,
         ) {
             SettingsEntryRow(
                 title = stringResource(
@@ -210,26 +214,26 @@ private fun SettingsConnectionSystemSection(
                     if (showAdvancedTools) R.string.settings_root_connection_subtitle_advanced
                     else R.string.settings_root_connection_subtitle_basic,
                 ),
-                icon = Icons.Filled.CloudDone,
+                icon = Icons.Outlined.CloudDone,
                 onClick = actions.onOpenServer,
             )
             SettingsEntryRow(
                 title = stringResource(R.string.settings_root_entry_offline_sync_title),
                 subtitle = stringResource(R.string.settings_root_entry_offline_sync_subtitle),
-                icon = Icons.Filled.Sync,
+                icon = Icons.Outlined.Sync,
                 onClick = actions.onOpenSyncStatus,
             )
             SettingsEntryRow(
                 title = stringResource(R.string.settings_root_entry_background_tasks_title),
                 subtitle = stringResource(R.string.settings_root_entry_background_tasks_subtitle),
-                icon = Icons.Filled.Tune,
+                icon = Icons.Outlined.Tune,
                 onClick = actions.onOpenBackgroundTasks,
             )
         }
         SettingsEntryRow(
             title = stringResource(R.string.settings_root_entry_about_title),
-            subtitle = stringResource(R.string.settings_root_entry_about_subtitle),
-            icon = Icons.Filled.Info,
+            subtitle = "",
+            icon = Icons.Outlined.Info,
             onClick = actions.onOpenAbout,
         )
     }
@@ -240,7 +244,7 @@ private fun SettingsRootSection(title: String, content: @Composable ColumnScope.
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
         Text(
             title,
-            style = MaterialTheme.typography.titleMedium,
+            style = AppTextHierarchy.heading.asTextStyle(),
             fontWeight = AppTextHierarchy.heading.weight,
             modifier = Modifier.semantics { heading() },
         )
@@ -248,19 +252,6 @@ private fun SettingsRootSection(title: String, content: @Composable ColumnScope.
     }
 }
 
-@Composable
-private fun SettingsRootDisclosure(
-    title: String,
-    subtitle: String,
-    icon: ImageVector,
-    content: @Composable ColumnScope.() -> Unit,
-) {
-    var expanded by rememberSaveable { mutableStateOf(false) }
-    SettingsEntryRow(title, subtitle, icon, onClick = { expanded = !expanded }, expanded = expanded)
-    if (expanded) {
-        Column(modifier = Modifier.padding(start = AppSpacing.compactGap), content = content)
-    }
-}
 
 private fun settingsAuthorityTone(state: SettingsUiState): DataAuthorityTone = when {
     state.busy -> DataAuthorityTone.Refreshing

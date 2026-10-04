@@ -80,7 +80,7 @@ fun AppearanceScreen(
         onBack = actions.onBack,
         status = { AppStatusBanner(message = appearance.message, tone = appearance.messageTone) },
     ) {
-        SettingsSection(title = stringResource(R.string.appearance_section_skin_title), icon = Icons.Filled.Palette) {
+        SettingsSection(title = stringResource(R.string.appearance_section_skin_title)) {
             Column(modifier = Modifier.selectableGroup()) {
                 AppThemeMode.entries.forEach { mode ->
                     ThemeModeOption(
@@ -92,7 +92,7 @@ fun AppearanceScreen(
                 }
             }
         }
-        SettingsSection(title = stringResource(R.string.appearance_section_background_title), icon = Icons.Filled.Image) {
+        SettingsSection(title = stringResource(R.string.appearance_section_background_title)) {
             SettingsOpenPanel(
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
             ) {
@@ -155,7 +155,7 @@ fun AppearanceScreen(
                     )
             }
         }
-        SettingsSection(title = stringResource(R.string.appearance_section_immersion_title), icon = Icons.Filled.Tune) {
+        SettingsSection(title = stringResource(R.string.appearance_section_immersion_title)) {
             ImmersionModePicker(
                 selected = appearance.backgroundSettings.immersionMode,
                 onSelect = actions.immersion.onModeChange,

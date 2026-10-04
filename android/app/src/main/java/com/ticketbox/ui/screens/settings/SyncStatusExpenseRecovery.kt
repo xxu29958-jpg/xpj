@@ -7,6 +7,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationType
@@ -38,9 +39,9 @@ internal fun SyncStatusExpenseRefreshSection(state: OutboxStatusUiState, actions
     val corrections = state.correctionObservation.corrections.filter { it.refreshRequired }
     val rows = state.status.refreshRequired.filter { it.type != PendingMutationType.CorrectExpense }.distinctBy { it.targetId }
     if (corrections.isEmpty() && rows.isEmpty()) return
-    SettingsSection(title = stringResource(R.string.sync_status_refresh_title), icon = Icons.Filled.RestartAlt) {
+    SettingsSection(title = stringResource(R.string.sync_status_refresh_title)) {
         corrections.forEach { pending -> SyncStatusCorrectionRow(pending, state, actions) }
-        rows.forEach { row -> SyncStatusAcceptedRow(row, state, actions) }
+        rows.forEach { row -> key(state.binding, row.id) { SyncStatusAcceptedRow(row, state, actions) } }
     }
 }
 
@@ -61,10 +62,11 @@ private fun SyncStatusCorrectionRow(pending: PendingExpenseCorrection, state: Ou
 @Composable
 private fun SyncStatusAcceptedRow(row: OutboxRow, state: OutboxStatusUiState, actions: SyncStatusActions) {
     val budget = state.budgetSaves[row.id]
-    SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
-        Text(stringResource(syncStatusMutationLabelResources.getValue(row.type)), style = MaterialTheme.typography.titleSmall)
-        Text(stringResource(if (budget != null) R.string.budget_saved_read_pending else R.string.sync_status_refresh_required),
-            style = MaterialTheme.typography.bodyMedium)
+    SettingsDetailRow(
+        title = stringResource(syncStatusMutationLabelResources.getValue(row.type)),
+        subtitle = stringResource(if (budget != null) R.string.budget_saved_read_pending else R.string.sync_status_refresh_required),
+        icon = Icons.Filled.RestartAlt,
+    ) {
         budget?.let { com.ticketbox.ui.screens.budget.BudgetSaveIntentSummary(it) }
         AppOutlinedButton(onClick = { actions.onRefreshAcceptedResult(row) },
             options = AppOutlinedButtonOptions(enabled = state.busyRowId == null)) {

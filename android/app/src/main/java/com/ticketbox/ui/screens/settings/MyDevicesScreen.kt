@@ -135,7 +135,6 @@ private fun DeviceListSection(
 ) {
     SettingsSection(
         title = stringResource(R.string.my_devices_section_devices),
-        icon = Icons.Filled.Devices,
     ) {
         SettingsOpenPanel(
             verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
@@ -343,7 +342,6 @@ private fun AddDeviceSection(
 ) {
     SettingsSection(
         title = stringResource(R.string.my_devices_section_add),
-        icon = Icons.Filled.GroupAdd,
     ) {
         SettingsOpenPanel(
             verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),

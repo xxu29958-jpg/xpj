@@ -1,12 +1,20 @@
 package com.ticketbox.ui.screens.settings
 
+import android.os.Build
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -16,6 +24,7 @@ import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.NotificationPreferences
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.AppStatusBanner
+import com.ticketbox.ui.saveConsumerArtPreview
 import com.ticketbox.ui.theme.TicketboxTheme
 import org.junit.Rule
 import org.junit.Test
@@ -71,6 +80,63 @@ class NotificationPreferencesScreenStatusTest {
             assertEquals(false, preferences.pendingDraftReminders)
             assertEquals(2, saves)
         }
+    }
+
+    @Test
+    fun storedCaptureWaitsForAuthorizationAndViewerCannotEnableIt() {
+        var preferences by mutableStateOf(NotificationPreferences())
+        var listener by mutableStateOf(false)
+        var notifications by mutableStateOf(false)
+        var viewer by mutableStateOf(false)
+        var skin by mutableStateOf(AppSkin.Paper)
+        var scale by mutableStateOf(1f)
+        var saves = 0
+        var authorizations = 0
+        var reminderPermissions = 0
+        composeRule.setContent {
+            CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, scale)) {
+                TicketboxTheme(skin = skin) {
+                    SettingsPageFrame(title = "提醒你的方式", subtitle = "只接收对你有用的提醒。", onBack = {}) {
+                        NotificationPreferencesContent(preferences, viewer,
+                            NotificationSystemState(listener, notifications,
+                                { reminderPermissions++ }, { authorizations++ }),
+                            onSave = { preferences = it; saves++ })
+                    }
+                }
+            }
+        }
+        val capture = composeRule.onNodeWithText("解析支付通知")
+        capture.assertIsOff()
+        saveConsumerArtPreview("notifications-paper", composeRule.onRoot().captureToImage().asAndroidBitmap())
+        composeRule.runOnIdle { preferences = preferences.copy(autoCaptureEnabled = true) }
+        capture.assertIsOn()
+        composeRule.onNodeWithText("开关已开启，等待系统授权；目前不会解析通知。").assertIsDisplayed()
+        saveConsumerArtPreview("notifications-awaiting-authorization", composeRule.onRoot().captureToImage().asAndroidBitmap())
+        composeRule.onNodeWithText("打开系统授权").performClick()
+        composeRule.runOnIdle { assertEquals(1, authorizations); assertEquals(0, saves); listener = true }
+        composeRule.onNodeWithText("查看系统授权").assertIsDisplayed()
+        capture.performClick().assertIsOff().performClick().assertIsOn()
+        for (title in listOf("待确认提醒", "大额提醒", "固定支出提醒", "预算超支提醒", "备份超龄提醒")) {
+            composeRule.onNodeWithText(title).performScrollTo().assertIsOff().performClick().assertIsOn()
+        }
+        composeRule.runOnIdle {
+            assertEquals(7, saves)
+            assertEquals(if (Build.VERSION.SDK_INT >= 33) 5 else 0, reminderPermissions)
+            assertEquals(NotificationPreferences(autoCaptureEnabled = true, pendingDraftReminders = true,
+                largeAmountAlerts = true, recurringReminders = true, budgetOverspendAlerts = true,
+                backupStaleAlerts = true), preferences)
+        }
+        composeRule.onNodeWithText("系统通知权限未开启，提醒不会展示。").performScrollTo().assertIsDisplayed()
+        saveConsumerArtPreview("notifications-permission-missing", composeRule.onRoot().captureToImage().asAndroidBitmap())
+        composeRule.runOnIdle { notifications = true; viewer = true; skin = AppSkin.Midnight; scale = 1.8f }
+        composeRule.onNodeWithText("系统通知权限未开启，提醒不会展示。").assertDoesNotExist()
+        capture.performScrollTo().assertIsOff().assertIsNotEnabled()
+        composeRule.runOnIdle { assertEquals(7, saves); assertEquals(true, preferences.autoCaptureEnabled) }
+        saveConsumerArtPreview("notifications-viewer-midnight-large", composeRule.onRoot().captureToImage().asAndroidBitmap())
+        composeRule.onNodeWithText("采集只生成待核对记录").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("提醒与隐私说明").performScrollTo().performClick()
+        composeRule.onNodeWithText("通知原文不上传，金额由你确认。支付通知", substring = true).performScrollTo().assertIsDisplayed()
+        saveConsumerArtPreview("notifications-privacy-large", composeRule.onRoot().captureToImage().asAndroidBitmap())
     }
 
     private fun setScreenContent(status: (@Composable () -> Unit)?) {

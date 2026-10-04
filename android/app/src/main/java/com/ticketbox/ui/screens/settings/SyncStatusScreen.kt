@@ -9,6 +9,8 @@ import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.SyncProblem
+import androidx.compose.material.icons.outlined.AccountTree
+import androidx.compose.material.icons.outlined.PersonOff
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -17,6 +19,7 @@ import com.ticketbox.data.repository.manualCreateReviewExpenseId
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.key
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -189,7 +192,6 @@ private fun SyncStatusPageBody(
     val status = state.status
     ManualCreationSubmissionSection(state, actions, manualClientRef)
     if (manualClientRef != null) return
-    SyncStatusOverviewSection(status, state.correctionObservation.corrections, state.debtWrites.values.toList(), state.incomeSubmissions.values.toList(), state.manualRates.values.toList())
     SyncStatusIncomeReviews(state, actions)
     SyncStatusRateReviews(state, actions)
     SyncStatusBillSplitSection(state, actions)
@@ -200,21 +202,25 @@ private fun SyncStatusPageBody(
 
     val conflicts = status.conflicts.filter { it.type !in SEPARATE_RECOVERY_TYPES }
     if (conflicts.isNotEmpty()) {
-        SettingsSection(title = stringResource(R.string.sync_status_section_needs_action), icon = Icons.Filled.SyncProblem) {
+        SettingsSection(title = stringResource(R.string.sync_status_section_needs_action)) {
             conflicts.forEach { row ->
-                SyncStatusOriginalIntentSummary(row, state, actions)
-                ConflictCard(
-                    row = row,
-                    busy = state.busyRowId == row.id,
-                    actions = actions,
-                )
+                key(state.binding, row.id) {
+                    SettingsDetailRow(
+                        title = stringResource(syncStatusMutationLabelResources.getValue(row.type)),
+                        subtitle = stringResource(R.string.sync_status_review_entry_hint),
+                        icon = Icons.Outlined.AccountTree,
+                    ) {
+                        SyncStatusOriginalIntentSummary(row, state, actions)
+                        ConflictCard(row = row, busy = state.busyRowId == row.id, actions = actions)
+                    }
+                }
             }
         }
     }
 
     val failures = status.failed.filter { it.type !in SEPARATE_RECOVERY_TYPES }
     if (failures.isNotEmpty()) {
-        SettingsSection(title = stringResource(R.string.sync_status_section_failed), icon = Icons.Filled.ErrorOutline) {
+        SettingsSection(title = stringResource(R.string.sync_status_section_failed)) {
             failures.forEach { row ->
                 SyncStatusOriginalIntentSummary(row, state, actions)
                 FailedCard(
@@ -233,6 +239,7 @@ private fun SyncStatusPageBody(
         clearEnabled = !state.isClearingQuarantine && state.busyRowId == null,
         onClear = actions.onClearQuarantined,
     )
+    SyncStatusOverviewSection(status, state.correctionObservation.corrections, state.debtWrites.values.toList(), state.incomeSubmissions.values.toList(), state.manualRates.values.toList())
 }
 
 private val SEPARATE_RECOVERY_TYPES = setOf(PendingMutationType.CreateExpense, PendingMutationType.CreateBillSplitInvitation,
@@ -242,7 +249,7 @@ private val SEPARATE_RECOVERY_TYPES = setOf(PendingMutationType.CreateExpense, P
 private fun SyncStatusUploadSection(state: OutboxStatusUiState, onOpenInbox: () -> Unit) {
     val rows = (state.status.conflicts + state.status.failed).filter { it.type == PendingMutationType.UploadScreenshot }
     if (rows.isEmpty()) return
-    SettingsSection(title = stringResource(R.string.sync_status_mutation_upload_screenshot), icon = Icons.Filled.CloudUpload) {
+    SettingsSection(title = stringResource(R.string.sync_status_mutation_upload_screenshot)) {
         Text(stringResource(R.string.sync_status_upload_recovery_body), style = MaterialTheme.typography.bodyMedium)
         AppPrimaryButton(text = stringResource(R.string.sync_status_open_uploads), icon = Icons.Filled.CloudUpload,
             onClick = onOpenInbox)
@@ -254,9 +261,12 @@ private fun SyncStatusQuarantineSection(count: Int, clearEnabled: Boolean, onCle
     if (count > 0) {
         SettingsSection(
             title = stringResource(R.string.sync_status_section_quarantined),
-            icon = Icons.Filled.SyncProblem,
         ) {
-            SettingsOpenPanel {
+            SettingsDetailRow(
+                title = stringResource(R.string.sync_status_quarantine_entry_title),
+                subtitle = stringResource(R.string.sync_status_quarantine_entry_hint, count),
+                icon = Icons.Outlined.PersonOff,
+            ) {
                 Text(
                     text = stringResource(
                         R.string.sync_status_quarantined_body,

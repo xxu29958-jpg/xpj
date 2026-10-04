@@ -21,7 +21,7 @@ internal fun ManualCreationSubmissionSection(state: OutboxStatusUiState, actions
     }
     if (focusedRef != null && originals.isEmpty()) Text(stringResource(R.string.manual_submission_missing))
     originals.forEach { original ->
-        SettingsSection(title = stringResource(R.string.manual_submission_title), icon = Icons.Filled.CloudUpload) {
+        SettingsSection(title = stringResource(R.string.manual_submission_title)) {
             ManualCreationOriginalSummary(original)
             when (original.row.status) {
                 PendingMutationStatus.Failed -> FailedCard(original.row, null, state.busyRowId == original.row.id,

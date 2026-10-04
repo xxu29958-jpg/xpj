@@ -51,7 +51,7 @@ internal fun CurrencySection(
             FxContract.HomeCurrency.storageKey,
         )
     }
-    SettingsSection(title = stringResource(R.string.currency_section_title), icon = Icons.Filled.AttachMoney) {
+    SettingsSection(title = stringResource(R.string.currency_section_title)) {
         SettingsOpenPanel(
             verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
         ) {

@@ -103,7 +103,6 @@ fun LedgerSwitcherScreen(
 private fun LedgerSwitcherOverviewSection(summary: LedgerSwitcherSummary) {
     SettingsSection(
         title = stringResource(R.string.ledger_switcher_section_overview),
-        icon = Icons.Filled.FolderShared,
     ) {
         SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
             SettingsMetricGrid(
@@ -140,7 +139,6 @@ private fun LedgerListSection(
 ) {
     SettingsSection(
         title = stringResource(R.string.ledger_switcher_section_joined),
-        icon = Icons.Filled.FolderShared,
     ) {
         SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
             LedgerListContent(
@@ -290,7 +288,6 @@ private fun LedgerCreateSection(
 ) {
     SettingsSection(
         title = stringResource(R.string.ledger_switcher_section_create),
-        icon = Icons.Filled.FolderShared,
     ) {
         SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
             Text(

@@ -131,7 +131,6 @@ private fun CurrentBindingSection(
 ) {
     SettingsSection(
         title = stringResource(R.string.join_family_ledger_section_current),
-        icon = Icons.Filled.Devices,
     ) {
         SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
             JoinFamilyInfoRow(label = stringResource(R.string.join_family_ledger_current_ledger), value = ledgerName)
@@ -151,7 +150,6 @@ private fun JoinInvitationForm(
 ) {
     SettingsSection(
         title = stringResource(R.string.join_family_ledger_section_invite),
-        icon = Icons.Filled.GroupAdd,
     ) {
         SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap)) {
             JoinInvitationAccessFields(
