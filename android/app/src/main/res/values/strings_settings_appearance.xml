@@ -99,10 +99,6 @@
     <string name="background_tasks_original_result_title">任务结果回到原记录</string>
     <string name="background_tasks_original_result_body">有来源的任务可打开原账单；尚未取得结果时，请先查看任务状态。</string>
     <string name="background_tasks_section_recent_title">任务进度</string>
-    <string name="background_tasks_summary_total_label">全部</string>
-    <string name="background_tasks_summary_active_label">进行中</string>
-    <string name="background_tasks_summary_failed_label">失败</string>
-    <string name="background_tasks_summary_count">%1$d 个</string>
     <string name="background_tasks_summary_loading">正在读取服务端任务记录。</string>
     <string name="background_tasks_summary_empty">当前账本还没有你的任务记录。</string>
     <string name="background_tasks_summary_active">%1$d 个任务处理中，%2$d 个可取消。</string>
@@ -114,6 +110,8 @@
     <string name="background_tasks_empty">上传小票后，可在这里查看识别进度和结果。</string>
     <string name="background_tasks_row_error_generic">这个任务没有完成。</string>
     <string name="background_tasks_open_source">打开原账单</string>
+    <string name="background_tasks_details_show">任务详情</string>
+    <string name="background_tasks_details_hide">收起详情</string>
     <string name="background_tasks_source_unavailable">原账单当前不可访问，请到收件或流水核对。</string>
     <string name="background_tasks_type_csv_import">CSV 导入</string>
     <string name="background_tasks_type_expense_enrichment">小票识别</string>
