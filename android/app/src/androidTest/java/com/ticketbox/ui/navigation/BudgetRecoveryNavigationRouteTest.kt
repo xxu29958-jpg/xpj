@@ -111,6 +111,9 @@ class BudgetRecoveryNavigationRouteTest {
             waitForText(entry)
             compose.onNodeWithText(entry).performScrollTo().performClick()
         } else compose.runOnIdle { harness.shell.openSecondaryPage(ProductSecondaryPage.ObligationSync) }
+        val recoveryEntry = context.getString(R.string.sync_status_review_entry_hint)
+        waitForText(recoveryEntry)
+        compose.onNodeWithText(recoveryEntry).performScrollTo().performClick()
         waitForText(summary)
         compose.onNodeWithText(summary).performScrollTo().assertIsDisplayed()
         val action = context.getString(R.string.arrangement_open_month)
