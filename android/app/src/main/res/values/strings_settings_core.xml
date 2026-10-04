@@ -7,7 +7,7 @@
     <string name="sync_status_upload_recovery_body">原上传记录已保留。请到收件箱查看原截图，并继续或停止原批次。</string>
     <string name="sync_status_open_uploads">查看待上传截图</string>
     <string name="sync_status_overview_caption_refresh_required">%1$d 项操作已完成，显示仍待更新。</string>
-    <string name="sync_status_refresh_title">显示待更新</string>
+    <string name="sync_status_refresh_title">只需更新显示</string>
     <string name="sync_status_refresh_required">操作已完成，账单显示尚待更新。</string>
     <string name="sync_status_refresh_expense">刷新账单</string>
     <string name="sync_status_refresh_failed">暂时无法刷新账单。操作已完成，可以稍后再试。</string>
@@ -207,13 +207,13 @@
     <string name="settings_about_privacy_body">截图只用于识别和核对，不自动改写账单。</string>
 
     <!-- 离线同步页（SyncStatusScreen） -->
-    <string name="sync_status_page_title">离线同步</string>
+    <string name="sync_status_page_title">同步与待办</string>
     <string name="sync_status_binding_loading">正在读取当前账本的同步状态…</string>
     <string name="sync_status_binding_unavailable">账本连接已变化，请重新打开同步状态。</string>
-    <string name="sync_status_page_subtitle">联网后会自动把离线改动同步到账本；有冲突或失败时在这里处理。</string>
+    <string name="sync_status_page_subtitle">先处理需要你确认的内容。已接受的操作只需刷新显示。</string>
     <string name="sync_status_section_needs_action">需要你确认</string>
     <string name="sync_status_section_failed">同步失败</string>
-    <string name="sync_status_section_quarantined">隔离的旧操作</string>
+    <string name="sync_status_section_quarantined">原身份待处理</string>
     <string name="sync_status_summary_needs_action_title">%1$d 笔需要你处理</string>
     <string name="sync_status_summary_needs_action_body">下面的改动没能自动同步，需要你决定怎么办。</string>
     <string name="sync_status_summary_queued_title">%1$d 笔待同步</string>

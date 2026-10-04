@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.ErrorOutline
-import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.SyncProblem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -39,8 +38,6 @@ import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.DebtCreationIntentSummary
-import com.ticketbox.ui.screens.expense.fact.CorrectionSubmissionOptions
-import com.ticketbox.ui.screens.expense.fact.CorrectionSubmissionActions
 import com.ticketbox.data.repository.EXPENSE_REJECTION_ORIGINAL_REQUIRES_REVIEW
 import com.ticketbox.viewmodel.OutboxStatusUiState
 import com.ticketbox.viewmodel.OutboxStatusViewModel
@@ -195,14 +192,8 @@ private fun SyncStatusPageBody(
     SyncStatusIncomeReviews(state, actions)
     SyncStatusRateReviews(state, actions)
     SyncStatusBillSplitSection(state, actions)
-    SyncStatusExpenseRecoverySection(state, actions)
+    SyncStatusExpenseReviewSection(state, actions)
     SyncStatusUploadSection(state, onOpenInbox)
-
-    SyncStatusQuarantineSection(
-        count = status.quarantinedCount,
-        clearEnabled = !state.isClearingQuarantine && state.busyRowId == null,
-        onClear = actions.onClearQuarantined,
-    )
 
     SyncStatusDebtSections(state, actions)
 
@@ -235,6 +226,12 @@ private fun SyncStatusPageBody(
             }
         }
     }
+    SyncStatusExpenseRefreshSection(state, actions)
+    SyncStatusQuarantineSection(
+        count = status.quarantinedCount,
+        clearEnabled = !state.isClearingQuarantine && state.busyRowId == null,
+        onClear = actions.onClearQuarantined,
+    )
 }
 
 private val SEPARATE_RECOVERY_TYPES = setOf(PendingMutationType.CreateExpense, PendingMutationType.CreateBillSplitInvitation,
@@ -248,49 +245,6 @@ private fun SyncStatusUploadSection(state: OutboxStatusUiState, onOpenInbox: () 
         Text(stringResource(R.string.sync_status_upload_recovery_body), style = MaterialTheme.typography.bodyMedium)
         AppPrimaryButton(text = stringResource(R.string.sync_status_open_uploads), icon = Icons.Filled.CloudUpload,
             onClick = onOpenInbox)
-    }
-}
-
-@Composable
-private fun SyncStatusExpenseRecoverySection(state: OutboxStatusUiState, actions: SyncStatusActions) {
-    (state.status.conflicts + state.status.failed).filter { it.type == PendingMutationType.OriginalAttachment }.forEach { row ->
-        val id = row.targetId.removePrefix("expense:").toLongOrNull()
-        Text(stringResource(R.string.original_attention))
-        if (id != null) TextButton(onClick = { actions.onOpenExpense(id) }) { Text(stringResource(R.string.original_open_bill)) }
-    }
-    state.correctionObservation.corrections.filter { !it.delivered || it.refreshRequired }.forEach { pending ->
-        com.ticketbox.ui.screens.expense.fact.ExpenseCorrectionSubmissionCard(
-            pending = pending,
-            options = CorrectionSubmissionOptions(state.correctionObservation.access?.canModify == true, state.busyRowId != null, false),
-            actions = CorrectionSubmissionActions(
-                recover = { drop -> if (drop) actions.onDropFailed(pending.row) else actions.onRetry(pending.row) },
-                reviewFact = pending.expenseId?.let { id -> { actions.onOpenExpense(id) } },
-                repairRate = state.correctionObservation.access?.binding?.let { binding ->
-                    { gap -> actions.onRepairCorrectionRate(binding, gap) }
-                }),
-        )
-    }
-    val rows = state.status.refreshRequired.filter { it.type != PendingMutationType.CorrectExpense }.distinctBy { it.targetId }
-    if (rows.isEmpty()) return
-    SettingsSection(title = stringResource(R.string.sync_status_refresh_title), icon = Icons.Filled.RestartAlt) {
-        rows.forEach { row ->
-            val budget = state.budgetSaves[row.id]
-            SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
-                Text(stringResource(syncStatusMutationLabelResources.getValue(row.type)), style = MaterialTheme.typography.titleSmall)
-                Text(stringResource(if (budget != null) R.string.budget_saved_read_pending else R.string.sync_status_refresh_required),
-                    style = MaterialTheme.typography.bodyMedium)
-                budget?.let { com.ticketbox.ui.screens.budget.BudgetSaveIntentSummary(it) }
-                AppOutlinedButton(onClick = { actions.onRefreshAcceptedResult(row) },
-                    options = AppOutlinedButtonOptions(enabled = state.busyRowId == null)) {
-                    Text(stringResource(if (budget != null) R.string.budget_read_recover else R.string.sync_status_refresh_expense))
-                }
-                budget?.intent?.takeIf { budget.hasSupportedIntent }?.let { intent ->
-                    TextButton(onClick = { actions.onOpenBudget(intent.month) }) {
-                        Text(stringResource(R.string.budget_save_open_month))
-                    }
-                }
-            }
-        }
     }
 }
 

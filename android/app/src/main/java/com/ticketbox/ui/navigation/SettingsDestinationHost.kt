@@ -413,6 +413,7 @@ internal fun SettingsDestinationHost(
                 viewModel = vm,
                 onBack = { route = SettingsDestination.Root },
                 onOpenExpense = navigation.onOpenExpense,
+                onOpenConnection = { route = SettingsDestination.Server },
             )
         }
 

@@ -32,22 +32,8 @@ internal fun BackgroundTasksOverview(summary: BackgroundTasksSummaryModel) {
     SettingsOpenPanel(
         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
     ) {
-        SettingsMetricGrid(
-            metrics = listOf(
-                SettingsMetricData(
-                    label = stringResource(R.string.background_tasks_summary_total_label),
-                    value = stringResource(R.string.background_tasks_summary_count, summary.totalCount),
-                ),
-                SettingsMetricData(
-                    label = stringResource(R.string.background_tasks_summary_active_label),
-                    value = stringResource(R.string.background_tasks_summary_count, summary.activeCount),
-                ),
-                SettingsMetricData(
-                    label = stringResource(R.string.background_tasks_summary_failed_label),
-                    value = stringResource(R.string.background_tasks_summary_count, summary.failedCount),
-                ),
-            ),
-        )
+        Text(stringResource(R.string.background_tasks_summary_counts, summary.totalCount, summary.activeCount, summary.failedCount),
+            style = MaterialTheme.typography.bodyMedium)
         Text(
             text = backgroundTasksSummaryCaption(summary),
             color = MaterialTheme.colorScheme.onSurfaceVariant,

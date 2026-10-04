@@ -1,12 +1,15 @@
 package com.ticketbox.ui.screens.tasks
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -14,14 +17,12 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
 import com.ticketbox.R
 import com.ticketbox.domain.model.BackgroundTask
 import com.ticketbox.domain.model.shouldGeneralizeTaskError
 import com.ticketbox.ui.components.displayTime
-import com.ticketbox.ui.design.AppRadius
+import com.ticketbox.ui.components.SettingsEntryIcon
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 
@@ -74,6 +75,12 @@ private fun BackgroundTaskTitleLine(
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        SettingsEntryIcon(icon = when (task.taskType) {
+            "expense_enrichment" -> Icons.Filled.Image
+            "csv_import" -> Icons.Filled.FileDownload
+            "expense_fx" -> Icons.Filled.Sync
+            else -> Icons.Filled.Tune
+        })
         Column(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
@@ -155,22 +162,15 @@ private fun BackgroundTaskCancelAction(
     busy: Boolean,
     onCancel: () -> Unit,
 ) {
-    Text(
-        text = if (busy) {
-            stringResource(R.string.background_tasks_row_cancelling)
-        } else {
-            stringResource(R.string.background_tasks_row_request_cancel)
-        },
-        color = if (busy) {
-            MaterialTheme.colorScheme.onSurfaceVariant
-        } else {
-            MaterialTheme.colorScheme.primary
-        },
-        style = MaterialTheme.typography.labelLarge,
-        fontWeight = AppTextHierarchy.heading.weight,
-        modifier = Modifier
-            .clip(RoundedCornerShape(AppRadius.small))
-            .clickable(enabled = !busy, role = Role.Button, onClick = onCancel)
-            .padding(horizontal = AppSpacing.miniGap, vertical = AppSpacing.tinyGap),
-    )
+    TextButton(enabled = !busy, onClick = onCancel) {
+        Text(
+            text = if (busy) {
+                stringResource(R.string.background_tasks_row_cancelling)
+            } else {
+                stringResource(R.string.background_tasks_row_request_cancel)
+            },
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = AppTextHierarchy.heading.weight,
+        )
+    }
 }
