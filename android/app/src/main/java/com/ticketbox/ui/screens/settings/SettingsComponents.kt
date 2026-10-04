@@ -86,6 +86,7 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundSettings
@@ -239,7 +240,8 @@ internal fun SettingsPageFrame(
                 }
             }
             Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-                Text(title, style = AppTextHierarchy.hero.asTextStyle(), modifier = Modifier.semantics { heading() })
+                Text(title, style = AppTextHierarchy.hero.asTextStyle().copy(fontSize = 32.sp, lineHeight = 38.sp),
+                    modifier = Modifier.semantics { heading() })
                 if (subtitle.isNotBlank()) Text(subtitle, style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
