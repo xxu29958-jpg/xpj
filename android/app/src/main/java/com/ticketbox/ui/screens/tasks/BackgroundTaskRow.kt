@@ -29,7 +29,6 @@ import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.SettingsColors
-import com.ticketbox.ui.design.settingsEntrySurface
 
 @Composable
 internal fun BackgroundTaskRow(
@@ -102,12 +101,12 @@ private fun BackgroundTaskTitleLine(
             "csv_import" -> R.drawable.ic_lucide_download
             "expense_fx" -> R.drawable.ic_lucide_refresh_cw
             else -> R.drawable.ic_lucide_sliders_horizontal
-        }), shape = RoundedCornerShape(AppRadius.medium), background = settingsEntrySurface(when (task.taskType) {
+        }), shape = RoundedCornerShape(AppRadius.medium), background = when (task.taskType) {
             "expense_enrichment" -> SettingsColors.generalEntry
             "csv_import" -> SettingsColors.householdEntry
             "expense_fx" -> SettingsColors.connectionEntry
             else -> SettingsColors.appearanceEntry
-        }))
+        })
         Column(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),

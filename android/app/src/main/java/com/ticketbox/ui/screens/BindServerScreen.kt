@@ -25,7 +25,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.vectorResource
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -52,6 +51,7 @@ import com.ticketbox.ui.components.ScanQrButton
 import com.ticketbox.ui.design.AppAdaptiveContentWidth
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.SettingsColors
+import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.navigation.parsePairingQrLink
 
@@ -240,14 +240,9 @@ private const val BindingCodeLength = 8
 
 @Composable
 private fun BindingIntroduction() {
-    val panelColor = if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) {
-        MaterialTheme.colorScheme.secondaryContainer
-    } else {
-        SettingsColors.bindingIntroduction
-    }
     Row(
         modifier = Modifier.fillMaxWidth()
-            .background(panelColor, RoundedCornerShape(24.dp))
+            .background(SettingsColors.bindingIntroduction, RoundedCornerShape(AppRadius.hero))
             .padding(AppSpacing.cardPadding),
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
         verticalAlignment = Alignment.CenterVertically,

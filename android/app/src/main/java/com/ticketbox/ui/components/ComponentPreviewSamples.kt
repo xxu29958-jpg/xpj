@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddPhotoAlternate
-import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -20,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.ui.design.AppTextHierarchy
+import com.ticketbox.ui.screens.settings.SettingsEntryRow
 import com.ticketbox.ui.theme.TicketboxTheme
 
 @Preview(showBackground = true)
@@ -101,10 +101,10 @@ private fun AppVisualComponentsPreview() {
                     )
                 }
             }
-            SettingsEntryCard(
+            SettingsEntryRow(
                 title = "外观与主题",
                 subtitle = "主题皮肤、自定义背景、沉浸强度",
-                icon = Icons.Filled.Palette,
+                icon = R.drawable.ic_lucide_palette,
                 onClick = {},
             )
             AppBottomNav(

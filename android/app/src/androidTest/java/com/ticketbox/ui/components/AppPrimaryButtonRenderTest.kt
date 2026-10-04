@@ -144,9 +144,15 @@ class AppPrimaryButtonRenderTest {
                     assertEquals("Action text must respect the user's text size",
                         controlFontSize, layout.layoutInput.style.fontSize)
                     assertFalse("The action label must fit its height", layout.didOverflowHeight)
-                    assertFalse("The action label must fit its width", layout.didOverflowWidth)
+                    // TextLayoutResult compares integer pixel bounds with a floating-point paragraph width.
+                    // Allow only that pixel rounding; keep full font size, glyph bounds and no ellipsis.
+                    assertTrue("Action '$label' must fit width: size=${layout.size.width}, " +
+                        "paragraph=${layout.multiParagraph.width}, lines=${layout.lineCount}",
+                        layout.multiParagraph.width <= layout.size.width + 1f)
                     for (line in 0 until layout.lineCount) {
                         assertFalse("Action words must not be ellipsized", layout.isLineEllipsized(line))
+                        assertTrue("Action '$label' line $line must stay within its pixel bounds",
+                            layout.getLineLeft(line) >= -1f && layout.getLineRight(line) <= layout.size.width + 1f)
                     }
                 }
             }

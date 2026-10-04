@@ -163,8 +163,8 @@
         {% if e.entry_kind == 'expense' %}
     <a class="timeline-row-detail" href="/web/expenses/{{ e.id }}/edit?{{ confirmed_edit_query }}">
       <span class="ledger-row-date">{{ _row_date }}</span>
-      <div class="lrow-ic{% if e.category == '餐饮' %} lrow-ic--dining{% endif %}">
-        {% set _row_icon = {'居住': 'house', '房租': 'house', '餐饮': 'utensils'}.get(e.category, 'receipt-text') %}
+      <div class="product-entry-icon{% if e.category == '餐饮' %} product-entry-icon--apricot{% elif e.category == '交通' %} product-entry-icon--lilac{% endif %}">
+        {% set _row_icon = {'居住': 'house', '房租': 'house', '住房': 'house', '餐饮': 'utensils', '交通': 'bus', '购物': 'shopping-bag', '娱乐': 'clapperboard', '医疗': 'briefcase-medical', '教育': 'graduation-cap', '通讯': 'phone', 'AI订阅': 'bot', '数码': 'monitor-smartphone', '游戏': 'gamepad-2', '生活': 'sofa'}.get(e.category, 'receipt-text') %}
         <svg width="24" height="24" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#{{ _row_icon }}"/></svg>
       </div>
       <div class="lrow-mid">
@@ -188,7 +188,7 @@
         {% else %}
     <a class="timeline-row-detail" href="/web/expenses/{{ e.root_expense_id }}/edit?{{ confirmed_edit_query }}">
       <span class="ledger-row-date">{{ _row_date }}</span>
-      <div class="lrow-ic lrow-ic--{{ 'inflow' if e.is_money_event else 'event' }}">{{ e.kind_label[:1] }}</div>
+      <div class="product-entry-icon lrow-ic--{{ 'inflow' if e.is_money_event else 'event' }}">{{ e.kind_label[:1] }}</div>
       <div class="lrow-mid">
         <div class="lrow-merch">{{ e.merchant or '未填写商家' }}</div>
         <div class="lrow-meta"><span class="num">{{ _row_date }}</span><span class="sep"> · </span><span>{{ e.meta_label }}</span></div>

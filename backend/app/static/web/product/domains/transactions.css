@@ -207,27 +207,18 @@
     color: var(--text-faint);
 }
 
-.lrow-ic {
-    display: grid;
-    width: var(--space-9);
-    height: var(--space-9);
-    place-items: center;
-    border-radius: var(--radius-lg);
-    background: var(--brand-primary-bg);
-    color: var(--brand-primary-strong);
-    font-weight: var(--type-title-weight);
-}
-
 /* typed stream: offset 行图标承载事件方向 — 退款/拒付是入账 (success 语义色),
    冲销是中性事件; 金额槽只对入账行着色, 冲销行没有金额槽。 */
 .lrow-ic--inflow {
     background: var(--state-success-bg);
     color: var(--state-success-fg);
+    font-weight: var(--type-title-weight);
 }
 
 .lrow-ic--event {
     background: var(--surface-sunken);
     color: var(--text-meta);
+    font-weight: var(--type-title-weight);
 }
 
 /* root 行的 lineage chip: 复用 product-status 语义色, 压缩到 caption 行高内,
@@ -291,7 +282,6 @@
 .ledger-stream-footer { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: var(--space-3); padding-top: var(--space-5); color: var(--text-meta); font-size: var(--type-caption-size); }
 .ledger-row-date, .ledger-row-category, .ledger-row-kind { display: none; }
 .ledger-row-chevron { grid-column: 4; color: var(--text-meta); }
-.lrow-ic--dining { background: var(--state-warn-bg); }
 .timeline-row.lrow { padding-inline: 0; padding-block: var(--space-4); }
 .timeline-row.lrow:last-of-type { border-bottom: 0; }
 .lday.ledger-read-day-visible { display: grid; padding-inline: 0; }

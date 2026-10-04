@@ -46,7 +46,6 @@ import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.ThemeVisuals
 import com.ticketbox.ui.design.SettingsColors
-import com.ticketbox.ui.design.settingsEntrySurface
 import com.ticketbox.ui.components.AppAmountText
 import com.ticketbox.ui.components.formatAmount
 
@@ -83,7 +82,7 @@ internal fun ThemeModePicker(
             Box(
                 modifier = Modifier
                     .clip(CircleShape)
-                    .background(if (mode == selected) settingsEntrySurface(SettingsColors.generalEntry)
+                    .background(if (mode == selected) SettingsColors.generalEntry
                         else MaterialTheme.colorScheme.surface)
                     .selectable(selected = mode == selected, role = Role.RadioButton, onClick = { onSelect(mode) })
                     .semantics { contentDescription = description }
@@ -102,7 +101,7 @@ internal fun BackgroundReadabilitySample(modifier: Modifier = Modifier) {
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
-        color = settingsEntrySurface(SettingsColors.bindingIntroduction),
+        color = SettingsColors.bindingIntroduction,
     ) {
         Column(
             modifier = Modifier.heightIn(min = 176.dp).padding(28.dp),

@@ -108,7 +108,6 @@ import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.design.SettingsColors
-import com.ticketbox.ui.design.settingsEntrySurface
 import com.ticketbox.ui.design.ThemeVisuals
 import com.ticketbox.ui.design.themeVisualsForSkin
 import com.ticketbox.ui.theme.TicketboxAtmosphereBackground
@@ -186,7 +185,7 @@ private fun settingsEntryBackground(@DrawableRes icon: Int): Color {
         R.drawable.ic_lucide_refresh_cw, R.drawable.ic_lucide_user_round_x -> SettingsColors.connectionEntry
         else -> SettingsColors.generalEntry
     }
-    return settingsEntrySurface(tint)
+    return tint
 }
 
 @Composable

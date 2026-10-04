@@ -18,21 +18,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Devices
-import androidx.compose.material.icons.filled.DirectionsBus
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.MedicalServices
-import androidx.compose.material.icons.filled.Phone
-import androidx.compose.material.icons.filled.Restaurant
-import androidx.compose.material.icons.filled.School
-import androidx.compose.material.icons.filled.ShoppingBag
-import androidx.compose.material.icons.filled.SmartToy
-import androidx.compose.material.icons.filled.SportsEsports
-import androidx.compose.material.icons.filled.Theaters
-import androidx.compose.material.icons.filled.Weekend
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -46,6 +31,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -74,7 +60,6 @@ import java.time.format.DateTimeFormatter
 private object LedgerItemLayout {
     const val CardCategoryAlpha = 0.72f
     const val TableCategoryAlpha = 0.62f
-    const val CategoryMarkAlpha = 0.78f
     const val TableMerchantWeight = 1.35f
     const val TableCategoryWeight = 0.72f
     val DayHeaderTrailingMaxWidth = 160.dp
@@ -224,11 +209,11 @@ private fun LedgerDayHeaderAmount(
 private fun LedgerDayHeaderToggleIcon(state: LedgerDayHeaderUi) {
     if (!state.expandable) return
     Icon(
-        imageVector = if (state.expanded) {
-            Icons.Filled.KeyboardArrowDown
+        imageVector = ImageVector.vectorResource(if (state.expanded) {
+            R.drawable.ic_lucide_chevron_down
         } else {
-            Icons.AutoMirrored.Filled.KeyboardArrowRight
-        },
+            R.drawable.ic_lucide_chevron_right
+        }),
         contentDescription = if (state.expanded) {
             stringResource(R.string.ledger_day_collapse_description)
         } else {
@@ -534,36 +519,41 @@ private fun LedgerAmountOrPending(
  * W2-B: 默认分类从单调首字块升级为语义图标（展示助读，分类文本仍是事实）；
  * 自定义/未知分类回退首字，不为无事实的分类硬造图形。
  */
-private val ledgerCategoryIcons: Map<String, ImageVector> = mapOf(
-    DefaultExpenseCategories.DINING to Icons.Filled.Restaurant,
-    DefaultExpenseCategories.TRANSIT to Icons.Filled.DirectionsBus,
-    DefaultExpenseCategories.SHOPPING to Icons.Filled.ShoppingBag,
-    DefaultExpenseCategories.ENTERTAINMENT to Icons.Filled.Theaters,
-    DefaultExpenseCategories.MEDICAL to Icons.Filled.MedicalServices,
-    DefaultExpenseCategories.EDUCATION to Icons.Filled.School,
-    DefaultExpenseCategories.HOUSING to Icons.Filled.Home,
-    DefaultExpenseCategories.TELECOM to Icons.Filled.Phone,
-    DefaultExpenseCategories.AI_SUBSCRIPTION to Icons.Filled.SmartToy,
-    DefaultExpenseCategories.DIGITAL to Icons.Filled.Devices,
-    DefaultExpenseCategories.GAMES to Icons.Filled.SportsEsports,
-    DefaultExpenseCategories.LIFE to Icons.Filled.Weekend,
+private val ledgerCategoryIcons: Map<String, Int> = mapOf(
+    DefaultExpenseCategories.DINING to R.drawable.ic_lucide_utensils,
+    DefaultExpenseCategories.TRANSIT to R.drawable.ic_lucide_bus,
+    DefaultExpenseCategories.SHOPPING to R.drawable.ic_lucide_shopping_bag,
+    DefaultExpenseCategories.ENTERTAINMENT to R.drawable.ic_lucide_clapperboard,
+    DefaultExpenseCategories.MEDICAL to R.drawable.ic_lucide_briefcase_medical,
+    DefaultExpenseCategories.EDUCATION to R.drawable.ic_lucide_graduation_cap,
+    DefaultExpenseCategories.HOUSING to R.drawable.ic_lucide_house,
+    DefaultExpenseCategories.TELECOM to R.drawable.ic_lucide_phone,
+    DefaultExpenseCategories.AI_SUBSCRIPTION to R.drawable.ic_lucide_bot,
+    DefaultExpenseCategories.DIGITAL to R.drawable.ic_lucide_monitor_smartphone,
+    DefaultExpenseCategories.GAMES to R.drawable.ic_lucide_gamepad_2,
+    DefaultExpenseCategories.LIFE to R.drawable.ic_lucide_sofa,
 )
 
 @Composable
 private fun LedgerCategoryMark(category: String, density: AppListDensity) {
     val visuals = LocalThemeVisuals.current
     val rowMetrics = AppDensity.rowMetrics(density)
+    val background = when (category) {
+        DefaultExpenseCategories.DINING -> visuals.surfaceApricot
+        DefaultExpenseCategories.TRANSIT -> visuals.surfaceLilac
+        else -> visuals.brandPrimaryBg
+    }
     Box(
         modifier = Modifier
             .size(rowMetrics.markSize)
             .clip(RoundedCornerShape(AppRadius.small))
-            .background(visuals.chipSelected.copy(alpha = LedgerItemLayout.CategoryMarkAlpha)),
+            .background(background),
         contentAlignment = Alignment.Center,
     ) {
         val icon = ledgerCategoryIcons[category]
         if (icon != null) {
             Icon(
-                imageVector = icon,
+                imageVector = ImageVector.vectorResource(icon),
                 contentDescription = null,
                 tint = visuals.primary,
                 modifier = Modifier.size(
