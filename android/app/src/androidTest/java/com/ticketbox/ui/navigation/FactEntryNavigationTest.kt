@@ -232,16 +232,17 @@ class FactEntryNavigationTest {
         )
         waitForText(entry)
         compose.onNodeWithText(entry).performScrollTo().performClick()
-        waitForText("检查连接")
+        val checkConnection = context.getString(R.string.settings_server_check_again)
+        waitForText(checkConnection)
         compose.waitUntil(5_000) {
-            compose.onAllNodes(hasText("检查连接") and isEnabled()).fetchSemanticsNodes().isNotEmpty()
+            compose.onAllNodes(hasText(checkConnection) and isEnabled()).fetchSemanticsNodes().isNotEmpty()
         }
-        compose.onNodeWithText("检查连接").performScrollTo().performClick()
+        compose.onNodeWithText(checkConnection).assertIsDisplayed().performClick()
 
         val nextStep = "请将手机应用与服务端更新到配套版本，再重新检测。"
         waitForText(nextStep)
         compose.onNodeWithText(nextStep).performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("查看未发送的操作").performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.settings_server_pending_title)).performScrollTo().performClick()
         openRecoveryFactAndReturn()
 
         assertEquals(listOf("auth", "compatibility"), harness.fixture.network.diagnosticReads)

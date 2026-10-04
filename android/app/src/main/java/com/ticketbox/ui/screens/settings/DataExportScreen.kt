@@ -1,82 +1,21 @@
 package com.ticketbox.ui.screens.settings
 
-import androidx.annotation.StringRes
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CloudDone
-import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.Devices
-import androidx.compose.material.icons.filled.FileDownload
-import androidx.compose.material.icons.filled.RestartAlt
+import androidx.compose.material.icons.outlined.Storage
+import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.disabled
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.unit.dp
 import com.ticketbox.R
-import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppStatusBanner
-import com.ticketbox.ui.design.AppAlpha
-import com.ticketbox.ui.design.AppRadius
-import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.viewmodel.SettingsUiState
-
-internal enum class DataExportScopeKind {
-    Authority,
-    OfflineCopy,
-    ExportScope,
-}
-
-internal data class DataExportScopeRowModel(
-    val kind: DataExportScopeKind,
-    @param:StringRes val titleRes: Int,
-    @param:StringRes val bodyRes: Int,
-)
-
-internal fun dataExportScopeRows(): List<DataExportScopeRowModel> = listOf(
-    DataExportScopeRowModel(
-        kind = DataExportScopeKind.Authority,
-        titleRes = R.string.settings_data_export_authority_label,
-        bodyRes = R.string.settings_data_export_authority_body,
-    ),
-    DataExportScopeRowModel(
-        kind = DataExportScopeKind.OfflineCopy,
-        titleRes = R.string.settings_data_export_cache_label,
-        bodyRes = R.string.settings_data_export_cache_body,
-    ),
-    DataExportScopeRowModel(
-        kind = DataExportScopeKind.ExportScope,
-        titleRes = R.string.settings_data_export_export_label,
-        bodyRes = R.string.settings_data_export_export_body,
-    ),
-)
-
-internal fun dataExportCanClearCache(busy: Boolean): Boolean = !busy
 
 @Composable
 fun DataExportScreen(
@@ -86,208 +25,42 @@ fun DataExportScreen(
     onClearCache: () -> Unit,
     portableDownload: @Composable () -> Unit,
 ) {
-    var showClearCacheDialog by remember { mutableStateOf(false) }
-
+    var showClearCacheDialog by rememberSaveable { mutableStateOf(false) }
     if (showClearCacheDialog) {
         AlertDialog(
             onDismissRequest = { showClearCacheDialog = false },
             title = { Text(stringResource(R.string.settings_data_export_clear_dialog_title)) },
             text = { Text(stringResource(R.string.settings_data_export_clear_dialog_text)) },
             confirmButton = {
-                TextButton(
-                    onClick = {
-                        showClearCacheDialog = false
-                        onClearCache()
-                    },
-                ) {
-                    Text(
-                        text = stringResource(R.string.settings_data_export_clear_dialog_confirm),
-                        color = MaterialTheme.colorScheme.error,
-                    )
+                TextButton(enabled = !state.busy, onClick = { showClearCacheDialog = false; onClearCache() }) {
+                    Text(stringResource(R.string.settings_data_export_clear_dialog_confirm), color = MaterialTheme.colorScheme.error)
                 }
             },
-            dismissButton = {
-                TextButton(onClick = { showClearCacheDialog = false }) {
-                    Text(stringResource(R.string.common_cancel))
-                }
-            },
+            dismissButton = { TextButton(onClick = { showClearCacheDialog = false }) { Text(stringResource(R.string.common_cancel)) } },
         )
     }
-
     SettingsPageFrame(
         title = stringResource(R.string.settings_data_export_page_title),
         subtitle = stringResource(R.string.settings_data_export_page_subtitle),
         onBack = onBack,
+        status = { AppStatusBanner(message = state.message, tone = state.messageTone) },
     ) {
-        portableDownload()
-        SettingsSection(
-            title = stringResource(R.string.settings_data_export_section_refresh_cache),
-        ) {
-            AppStatusBanner(message = state.message, tone = state.messageTone)
-            DataExportScopeSection()
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium))
-            DataExportActions(
-                busy = state.busy,
-                onSync = onSync,
-                onClearCacheClick = { showClearCacheDialog = true },
+        SettingsSection(title = stringResource(R.string.settings_data_export_server_section)) { portableDownload() }
+        SettingsSection(title = stringResource(R.string.settings_data_export_section_refresh_cache)) {
+            SettingsDataRow(
+                title = stringResource(R.string.settings_data_export_button_refresh),
+                subtitle = stringResource(R.string.settings_data_export_refresh_hint), icon = Icons.Outlined.Sync,
+                action = SettingsDataAction(stringResource(if (state.busy) R.string.settings_data_export_button_refreshing
+                    else R.string.settings_data_export_refresh_action)), onClick = if (state.busy) null else onSync,
+            )
+            SettingsDataRow(
+                title = stringResource(R.string.settings_data_export_clear_row_title),
+                subtitle = stringResource(R.string.settings_data_export_clear_row_body), icon = Icons.Outlined.Storage,
+                action = SettingsDataAction(stringResource(R.string.settings_data_export_clear_row_action)),
+                onClick = if (state.busy) null else { { showClearCacheDialog = true } },
             )
         }
+        SettingsDataNote(stringResource(R.string.settings_data_export_pending_title),
+            stringResource(R.string.settings_data_export_pending_body))
     }
-}
-
-@Composable
-private fun DataExportScopeSection() {
-    val rows = remember { dataExportScopeRows() }
-    SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(0.dp)) {
-        rows.forEachIndexed { index, row ->
-            if (index > 0) {
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium))
-            }
-            DataExportScopeRow(row)
-        }
-    }
-}
-
-@Composable
-private fun DataExportScopeRow(row: DataExportScopeRowModel) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = AppSpacing.smallGap),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-        verticalAlignment = Alignment.Top,
-    ) {
-        DataExportIconBox(icon = row.kind.icon())
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
-        ) {
-            Text(
-                text = stringResource(row.titleRes),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = AppTextHierarchy.heading.weight,
-            )
-            Text(
-                text = stringResource(row.bodyRes),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
-    }
-}
-
-@Composable
-private fun DataExportIconBox(icon: ImageVector) {
-    Box(
-        modifier = Modifier
-            .size(AppSpacing.controlMinHeight)
-            .clip(RoundedCornerShape(AppRadius.small))
-            .background(MaterialTheme.colorScheme.primary.copy(alpha = AppAlpha.subtle)),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(AppSpacing.cardPadding),
-        )
-    }
-}
-
-@Composable
-private fun DataExportActions(
-    busy: Boolean,
-    onSync: () -> Unit,
-    onClearCacheClick: () -> Unit,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        AppPrimaryButton(
-            text = stringResource(
-                if (busy) {
-                    R.string.settings_data_export_button_refreshing
-                } else {
-                    R.string.settings_data_export_button_refresh
-                },
-            ),
-            icon = Icons.Filled.RestartAlt,
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !busy,
-            onClick = onSync,
-        )
-        DataExportClearCacheRow(
-            enabled = dataExportCanClearCache(busy),
-            onClick = onClearCacheClick,
-        )
-    }
-}
-
-@Composable
-private fun DataExportClearCacheRow(
-    enabled: Boolean,
-    onClick: () -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadius.small))
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-            .semantics {
-                if (!enabled) disabled()
-            }
-            .padding(vertical = AppSpacing.smallGap),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-        verticalAlignment = Alignment.Top,
-    ) {
-        DataExportIconBox(icon = Icons.Filled.DeleteOutline)
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
-        ) {
-            DataExportClearCacheTitle()
-            Text(
-                text = stringResource(R.string.settings_data_export_clear_row_body),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
-    }
-}
-
-@Composable
-private fun DataExportClearCacheTitle() {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = stringResource(R.string.settings_data_export_clear_row_title),
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = AppTextHierarchy.heading.weight,
-            modifier = Modifier.weight(1f),
-        )
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                imageVector = Icons.Filled.DeleteOutline,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.error,
-                modifier = Modifier.size(17.dp),
-            )
-            Text(
-                text = stringResource(R.string.settings_data_export_clear_row_action),
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = AppTextHierarchy.heading.weight,
-            )
-        }
-    }
-}
-
-private fun DataExportScopeKind.icon(): ImageVector = when (this) {
-    DataExportScopeKind.Authority -> Icons.Filled.CloudDone
-    DataExportScopeKind.OfflineCopy -> Icons.Filled.Devices
-    DataExportScopeKind.ExportScope -> Icons.Filled.FileDownload
 }
