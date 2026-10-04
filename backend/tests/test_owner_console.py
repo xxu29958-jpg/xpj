@@ -1437,7 +1437,9 @@ def test_owner_settings_save_public_base_url_writes_runtime_projection(
             )
         assert failed.status_code == 503
         assert 'value="https://draft.example.test"' in failed.text
-        assert "https://before.example.test" in failed.text
+        saved_address = re.search(r"<dt>当前已保存地址</dt><dd><code>([^<]*)</code>", failed.text)
+        assert saved_address is not None
+        assert saved_address.group(1) == "https://before.example.test"
         assert "公网连接仍需单独检查" not in failed.text
         assert projection.read_bytes() == original_projection
         resp = local_client.post(
