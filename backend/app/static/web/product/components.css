@@ -52,6 +52,13 @@ p {
     line-height: var(--type-hero-line);
 }
 
+@media (min-width: 64rem) {
+    .content[data-page-level="primary"] .page-title {
+        font-size: var(--type-display-size);
+        line-height: var(--type-display-line);
+    }
+}
+
 .page-title--compact {
     font-size: var(--type-headline-size);
     line-height: var(--type-headline-line);
@@ -99,19 +106,19 @@ p {
     flex: 1;
 }
 
-/* W1: segmented tonal strip — 一个圆角色面容器, active 段实心浮起;
-   窄屏横滚不折行 (六枚筛选在 360 不再折成两行描边 pill)。 */
+/* Shared filter chips: selected tint carries state, without a second frame.
+   Long sets retain the existing horizontal scrolling on narrow screens. */
 .seg,
 .product-segments {
     display: flex;
     min-width: 0;
     max-width: 100%;
     flex-wrap: nowrap;
-    gap: var(--space-1);
-    padding: var(--space-1);
+    gap: var(--space-3);
+    padding: 0;
     overflow-x: auto;
     border-radius: var(--radius-pill);
-    background: var(--surface-sunken);
+    background: transparent;
     scrollbar-width: none;
 }
 
@@ -126,19 +133,22 @@ p {
 .product-segments a,
 .product-segments button {
     display: inline-flex;
-    min-height: var(--space-9);
+    min-height: var(--target-min);
     flex: 0 0 auto;
     align-items: center;
     gap: var(--space-2);
-    padding: var(--space-2) var(--space-4);
+    padding: var(--space-3) var(--space-5);
     border: 0;
     border-radius: var(--radius-pill);
-    background: transparent;
+    background: var(--surface-card);
     color: var(--text-muted);
     cursor: pointer;
     text-decoration: none;
     white-space: nowrap;
 }
+
+.filter-tab { list-style: none; }
+.filter-tab::-webkit-details-marker { display: none; }
 
 .seg a:hover,
 .seg button:hover,
@@ -153,8 +163,8 @@ p {
 .filter-tab.is-active,
 .product-segments [aria-current="page"],
 .product-segments [aria-selected="true"] {
-    background: var(--surface-card);
-    box-shadow: var(--shadow-card);
+    background: var(--brand-primary-bg);
+    box-shadow: none;
     color: var(--text-default);
     font-weight: var(--type-subtitle-weight);
 }
@@ -181,7 +191,7 @@ a.dt-btn {
     gap: var(--space-2);
     padding: var(--space-2) var(--space-5);
     border: 0;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-lg);
     background: var(--surface-sunken);
     color: var(--text-default);
     cursor: pointer;
@@ -1004,6 +1014,16 @@ body.product-shell .file-picker > input.file-picker-input:focus-visible {
     color: var(--state-warn-fg);
 }
 
+/* Selection mode is enhanced by the existing bulk-bar owner. Native
+   checkboxes and forms remain available when scripts are unavailable. */
+.bulk-selection-ready:not(.bulk-selecting) .exp-row-selector,
+.bulk-selection-ready:not(.bulk-selecting) .exp-head,
+.bulk-selection-ready:not(.bulk-selecting) .lrow-sel,
+.bulk-selection-ready:not(.bulk-selecting) .confirmed-batch-head,
+.bulk-selection-ready .exp-flags { display: none; }
+.bulk-selection-ready:not(.bulk-selecting) .exp-row,
+.bulk-selection-ready:not(.bulk-selecting) .timeline-row.lrow.has-check { grid-template-columns: minmax(0, 1fr); }
+
 /* ── 编辑 core-fields 共享组件 (drawer / 完整整理页共用 _expense_core_fields.html) ──
    展示层唯一 owner: 字段排版、错误挂载、OCC 冲突对比条。值/选项/hidden
    command fields/OCC token 由各真实 consumer 表单提供。 */
@@ -1011,6 +1031,131 @@ body.product-shell .file-picker > input.file-picker-input:focus-visible {
 .expense-core-fields {
     display: grid;
     gap: var(--space-5);
+}
+
+.product-drawer-field-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(var(--space-12), calc(var(--space-12) * 1.5));
+    gap: var(--space-4);
+}
+
+.product-drawer-input-prefix {
+    position: relative;
+    display: grid;
+    align-items: center;
+}
+
+.product-drawer-input-prefix > span {
+    position: absolute;
+    z-index: 1;
+    inset-inline-start: var(--space-4);
+    color: var(--text-meta);
+    pointer-events: none;
+}
+
+.expense-core-fields .product-drawer-input-prefix > input.product-input {
+    padding-inline-start: var(--space-8);
+}
+
+.expense-manual-fx {
+    display: grid;
+    gap: var(--space-4);
+    padding: var(--space-4);
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius-card);
+    background: var(--surface-sunken);
+}
+
+.expense-manual-fx-copy {
+    display: grid;
+    gap: var(--space-1);
+    color: var(--text-default);
+}
+
+.expense-manual-fx-copy > span {
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+}
+
+.expense-manual-fx-equation {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr) max-content;
+    gap: var(--space-3);
+    align-items: center;
+}
+
+.expense-manual-fx-status {
+    margin: 0;
+}
+
+/* The same editable summary rows serve queue review and full expense editing.
+   Native details stay open without JS; the existing drawer enhancement reads
+   the real inputs and folds populated fields, without copying form state. */
+.expense-core-fields--compact { gap: 0; }
+.review-edit-field,
+.review-date-fields,
+.review-note-fields,
+.review-subtask { min-width: 0; border-bottom: 1px solid var(--border-card); }
+.review-edit-field > summary,
+.review-date-fields > summary,
+.review-note-fields > summary,
+.review-subtask-link {
+    display: grid;
+    grid-template-columns: var(--space-9) minmax(0, 1fr) var(--space-5);
+    align-items: center;
+    gap: var(--space-4);
+    min-height: calc(var(--target-min) + var(--space-5));
+    padding-block: var(--space-3);
+    list-style: none;
+    cursor: pointer;
+    color: var(--text-default);
+    text-decoration: none;
+}
+.review-edit-field > summary::-webkit-details-marker,
+.review-date-fields > summary::-webkit-details-marker,
+.review-note-fields > summary::-webkit-details-marker,
+.review-amount-field > summary::-webkit-details-marker { display: none; }
+.review-edit-field > summary > svg,
+.review-date-fields > summary > svg,
+.review-note-fields > summary > svg,
+.review-subtask-link > svg { width: var(--space-5); height: var(--space-5); color: var(--text-meta); }
+.review-edit-field[open] > summary > svg,
+.review-date-fields[open] > summary > svg,
+.review-note-fields[open] > summary > svg { transform: rotate(90deg); }
+.review-field-icon {
+    display: grid;
+    place-items: center;
+    width: var(--space-9);
+    height: var(--space-9);
+    border-radius: var(--radius-lg);
+    background: var(--brand-primary-bg);
+    color: var(--text-default);
+}
+.review-field-icon > svg { width: var(--space-7); height: var(--space-7); }
+.review-category-field .review-field-icon { background: var(--surface-apricot); }
+.review-date-fields .review-field-icon { background: var(--surface-lilac); }
+.review-field-copy { display: grid; gap: var(--space-1); min-width: 0; overflow-wrap: anywhere; }
+.review-field-copy strong { font-size: var(--type-subtitle-size); font-weight: var(--type-title-weight); }
+.review-field-copy > span { color: var(--text-meta); font-size: var(--type-body-size); line-height: var(--type-body-line); }
+.review-edit-field > .product-field { margin: 0 0 var(--space-5) calc(var(--space-9) + var(--space-4)); }
+.review-date-fields fieldset { border: 0; padding: var(--space-4) 0; min-width: 0; }
+.review-note-fields > .product-field { margin-block: var(--space-4); }
+.review-subtask-link { border-bottom: 1px solid var(--border-card); }
+.review-subtask > summary { display: flex; align-items: center; justify-content: space-between; gap: var(--space-5); min-height: calc(var(--target-min) + var(--space-5)); cursor: pointer; font-size: var(--type-subtitle-size); }
+.review-subtask > summary > span { color: var(--text-meta); font-size: var(--type-body-size); overflow-wrap: anywhere; }
+.review-subtask > section { padding-block: var(--space-5); }
+.review-subtask .product-panel-header { display: none; }
+.review-amount-field { padding: var(--space-6); margin-bottom: var(--space-4); border-radius: var(--radius-xl); background: var(--brand-primary-bg); }
+.review-amount-field > summary { display: grid; gap: var(--space-3); min-height: var(--target-min); cursor: pointer; list-style: none; color: var(--text-meta); font-size: var(--type-body-size); }
+.review-amount-value:not([hidden]) { display: flex; align-items: baseline; gap: var(--space-2); min-width: 0; color: var(--text-default); }
+.review-amount-value [data-review-amount] { min-width: 0; overflow-wrap: anywhere; font-family: var(--font-numeric); font-size: var(--type-display-size); font-weight: var(--type-title-weight); line-height: var(--type-display-line); }
+.review-amount-value > svg { flex: none; align-self: center; width: var(--space-5); height: var(--space-5); margin-inline-start: var(--space-3); color: var(--text-meta); }
+.review-amount-field .product-drawer-field-row { grid-template-columns: minmax(0, 1fr); margin-top: var(--space-5); }
+.review-amount-field .product-drawer-field-row > label:last-child { display: none; }
+@media (max-width: 48rem) {
+    .product-drawer-field-row,
+    .expense-manual-fx-equation { grid-template-columns: minmax(0, 1fr); }
+    .review-amount-field { background: var(--surface-raised); padding: var(--space-5); margin-bottom: var(--space-3); }
 }
 
 .product-field > span:first-child {

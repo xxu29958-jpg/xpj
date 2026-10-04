@@ -10,7 +10,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.ui.design.AppSpacing
 
 @Composable
@@ -41,8 +40,6 @@ fun ScreenHeader(
                 Text(
                     text = title,
                     style = MaterialTheme.typography.displaySmall,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
                 )
                 subtitle?.let {
                     Text(

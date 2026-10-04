@@ -83,7 +83,7 @@ def test_overview_renders_amount_and_visible_modules(web_client: TestClient, *, 
     assert "/static/web/pages/overview.css" not in body
 
     # 页头本月脉搏状态行 + hero 关键数字层级 (exponent 投影: cur/int/dec 三段)。
-    assert "本月概览" in body
+    assert "月，慢慢有数" in body
     assert "笔已入账" in body
     assert "本月支出" in body
     assert "<small>¥</small>88<small>.00</small>" in body
@@ -91,7 +91,7 @@ def test_overview_renders_amount_and_visible_modules(web_client: TestClient, *, 
     assert "¥88.00" in body
 
     assert re.findall(r'data-overview-card="([^"]+)"', body) == WEB_CARD_KEYS
-    assert "预算余量" in body
+    assert "预算还剩" in body
     assert "餐饮" in body
     assert "餐饮月度上限" in body
     assert "data-categories=" in body
@@ -407,10 +407,10 @@ def test_dashboard_month_uses_ledger_rule_with_a_separate_display_timezone(monke
 def test_overview_pending_card_link_is_readonly_for_viewer(
     web_client: TestClient, *, identity
 ) -> None:
-    """PR #253 R3-3: pending 卡链接按 can_write 分文案 (owner 去处理 / viewer 查看)。"""
+    """pending 卡按权限区分继续整理和只读查看入口。"""
     _create_pending_upload(web_client, identity=identity)
     owner_page = web_client.get("/web/overview?ledger_id=owner")
-    assert "去处理" in owner_page.text
+    assert "继续整理" in owner_page.text
 
     _demote_owner_ledger_to_viewer()
     resp = web_client.get("/web/overview?ledger_id=owner")
@@ -418,7 +418,7 @@ def test_overview_pending_card_link_is_readonly_for_viewer(
     card = re.search(r'data-overview-card="pending">.*?</article>', resp.text, re.S)
     assert card is not None
     assert "查看" in card.group(0)
-    assert "去处理" not in card.group(0)
+    assert "继续整理" not in card.group(0)
 
 
 def test_overview_skips_recurring_candidate_scan_when_card_hidden(

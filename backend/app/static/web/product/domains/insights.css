@@ -1,9 +1,31 @@
 /* 洞察：服务器事实优先的分析工作台。 */
 
 .insight-hero {
+    position: relative;
     display: grid;
-    gap: var(--space-4);
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--space-5);
+    background: var(--brand-primary-bg);
 }
+.insight-hero > .product-panel-header { grid-column: 1 / -1; }
+.insight-hero-art { grid-column: 2; grid-row: 2 / span 2; align-self: center; width: calc(var(--space-12) + var(--space-7)); max-width: 100%; }
+.insight-hero-value, .insight-hero .insight-module-foot { grid-column: 1; }
+.insight-hero-value { grid-row: 2; }
+.insight-hero .insight-module-foot { grid-row: 3; }
+.insight-module-icon { display: grid; place-items: center; width: var(--space-9); height: var(--space-9); border-radius: var(--radius-lg); background: var(--brand-primary-bg); }
+.insight-module-icon svg { width: var(--space-7); height: var(--space-7); }
+[data-overview-card="recurring"] .insight-module-icon { background: var(--surface-apricot); }
+[data-overview-card="recent_uploads"] .insight-module-icon { background: var(--surface-lilac); }
+[data-overview-card="backup_status"] .insight-module-icon { background: var(--surface-sand); }
+.insight-grid > .product-panel { border: 0; border-radius: var(--radius-xl); box-shadow: none; }
+.insight-grid > .insight-hero { background: var(--brand-primary-bg); }
+.insight-grid > [data-overview-card="budget"] .insight-stat-value { font-size: var(--type-display-size); }
+.insight-grid .product-status { justify-self: start; }
+.insight-grid > .insight-brief > .insight-module-icon { grid-column: 1 / -1; }
+.insight-grid > [data-overview-card="pending"] { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto 1fr; gap: var(--space-5); }
+.insight-grid > [data-overview-card="pending"] > a { grid-column: 1 / -1; align-self: end; justify-content: space-between; color: var(--brand-primary); font-weight: var(--type-title-weight); }
+.insight-grid > [data-overview-card="pending"] .insight-brief-detail { grid-row: 2; }
+
 
 .insight-hero-value {
     min-width: 0;
@@ -30,8 +52,7 @@
     align-content: start;
     align-items: baseline;
     gap: var(--space-2) var(--space-4);
-    padding-block: var(--space-3);
-    border-block-end: 1px solid var(--border-card);
+    padding: var(--space-6);
 }
 
 .insight-brief-title {
@@ -53,7 +74,7 @@
 .insight-grid a.product-panel-subtitle {
     display: inline-flex;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     min-height: var(--target-min);
     min-width: var(--target-min);
     padding-inline: var(--space-2);
@@ -75,8 +96,8 @@
 .insight-grid {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    gap: var(--space-3);
-    align-items: start;
+    gap: var(--space-6);
+    align-items: stretch;
 }
 
 .insight-grid h2 {
@@ -124,8 +145,8 @@
 
 .insight-brief .product-panel-title,
 .insight-module--empty .product-panel-title {
-    font-size: var(--type-subtitle-size);
-    font-weight: var(--type-subtitle-weight);
+    font-size: var(--type-title-size);
+    font-weight: var(--type-title-weight);
 }
 
 .insight-module-foot {
@@ -167,14 +188,14 @@
 }
 
 @media (min-width: 64rem) {
-    .insight-hero {
-        grid-template-columns: fit-content(24rem) minmax(0, 1fr);
-        align-items: baseline;
-    }
-
-    .insight-hero > .product-panel-header {
-        grid-column: 1 / -1;
-    }
+    .insight-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+    .insight-grid > * { grid-column: span 2; min-width: 0; }
+    .insight-grid > [data-overview-card="monthly_spend"],
+    .insight-grid > [data-overview-card="pending"],
+    .insight-grid > [data-overview-card="budget"],
+    .insight-grid > [data-overview-card="reports"] { grid-column: span 3; }
+    .insight-grid > .insight-hero { min-height: calc(var(--space-12) * 4); }
+    .insight-hero-art { width: calc(var(--space-12) * 2); }
 }
 
 @container (max-width: 26rem) {
@@ -715,12 +736,6 @@
     .report-chart--tall {
         min-height: calc(var(--space-12) * 4);
     }
-}
-
-/* 总览只有一个分析入口，窄屏也可与标题同行。 */
-.insight-page-header {
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: start;
 }
 
 .ov-status {

@@ -20,11 +20,15 @@
   </div>
   {% if pending_count %}
   <div class="product-page-actions">
-    {% if can_write %}<a class="product-button product-button--primary" href="#capture">收一张小票</a>{% endif %}
-    <a class="product-button" href="/web/import{{ _q }}">导入与导出</a>
+    {% if can_write %}<a class="product-button product-button--primary" href="#capture"><svg width="20" height="20" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#plus"/></svg>上传小票</a>{% endif %}
+    <a class="product-button product-button--quiet" href="/web/import{{ _q }}">导入与导出</a>
   </div>
   {% endif %}
 </header>
+{% endif %}
+<div class="inbox-workspace">
+<div class="inbox-queue">
+{% if pending_count %}
 {% if can_write %}
 <details class="inbox-capture-panel">
   <summary class="inbox-capture-cover">
@@ -149,7 +153,7 @@
   {% if expenses %}
   {# S4-R1: 表头不做整树 aria-hidden (#check-all 是可聚焦控件, 藏在 aria-hidden
      里读屏会摸到无公告控件); 只对纯展示列标签隐藏, 控件暴露 role/label/state。 #}
-  <div class="inbox-list-heading"><h2>待核对的小票</h2>{% if can_write %}<button class="product-button product-button--quiet" type="button" data-inbox-select hidden aria-pressed="false">选择</button>{% endif %}</div>
+  <div class="inbox-list-heading"><h2>待核对的小票</h2>{% if can_write %}<button class="product-button product-button--quiet" type="button" data-bulk-select hidden aria-pressed="false">选择</button>{% endif %}</div>
   <div class="exp-head">
     <div>
       {% if can_write %}
@@ -312,9 +316,8 @@
   <button class="product-button product-button--primary" type="submit" name="action" value="confirm_ready">确认入账</button>
 </form>
 {% endif %}
-{% endblock %}
-
-{% block drawer %}
+</div>
+<div class="drawer-host">
 <div class="scrim" id="drawer-scrim" aria-hidden="true"></div>
 <aside class="drawer"
        id="drawer"
@@ -323,4 +326,6 @@
        aria-label="编辑账单"
        aria-hidden="true"
        tabindex="-1"></aside>
+</div>
+</div>
 {% endblock %}

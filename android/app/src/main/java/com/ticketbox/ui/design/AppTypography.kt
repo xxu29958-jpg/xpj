@@ -26,7 +26,7 @@ object AppTypeScale {
     val sectionTitle = AppTextRole(18.sp, 24.sp, FontWeight.SemiBold)
     val cardTitle = AppTextRole(17.sp, 22.sp, FontWeight.SemiBold)
     val bodyStrong = AppTextRole(15.sp, 20.sp, FontWeight.Medium, 0.1.sp)
-    val body = AppTextRole(14.sp, 22.sp, FontWeight.Normal, 0.15.sp)
+    val body = AppTextRole(16.sp, 25.sp, FontWeight.Normal, 0.15.sp)
     val caption = AppTextRole(12.sp, 17.sp, FontWeight.Normal, 0.25.sp)
     val captionCompact = AppTextRole(12.sp, 16.sp, FontWeight.Normal, 0.4.sp)
     val control = AppTextRole(15.sp, 20.sp, FontWeight.Medium, 0.1.sp)

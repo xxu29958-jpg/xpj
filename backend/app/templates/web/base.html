@@ -2,7 +2,6 @@
 {% set _path = request.url.path %}
 {% set _role = selected_ledger_role or 'owner' %}
 {% set _readonly_transactions = _path == '/web/confirmed' and _role == 'viewer' %}
-{% set _compact_ledger_header = _path == '/web/pending' or inbox_is_empty|default(false) or _readonly_transactions %}
 
 {# 五域 IA (218-D S1, 移植自产品矿): 产品归属显式声明, 遗留路由名只是传输契约。
    域判定集中在 base, _sidebar_nav.html 复用同一组标志做高亮。 #}
@@ -110,6 +109,7 @@
   'primary' if _path in _primary_paths else
   'secondary'
 ) %}
+{% set _compact_ledger_header = _page_level == 'primary' or inbox_is_empty|default(false) %}
 
 {# 产品域样式装配。overview/pending/duplicates 仍使用路径表声明域；其他模板
    显式声明 product_body_domain，POST 422 原页重渲染也保留对应域。
@@ -193,7 +193,7 @@
   <script defer src="/static/web/desktop.js?v={{ asset_version }}"></script>
   <script defer src="/static/shared/confirm-modal.js?v={{ asset_version }}"></script>
 </head>
-<body class="product-shell{% if _has_domain_subnav %} has-domain-subnav{% endif %}{% if inbox_is_empty|default(false) %} inbox-empty-page{% endif %}{% if _compact_ledger_header %} compact-ledger-header{% endif %}{% if _readonly_transactions %} ledger-readonly-page{% endif %}" data-body-stack="product" data-domain="{{ _domain }}" data-page="{{ _page_key }}" data-page-level="{{ _page_level }}">
+<body class="product-shell{% if _has_domain_subnav %} has-domain-subnav{% endif %}{% if inbox_is_empty|default(false) %} inbox-empty-page{% endif %}{% if _compact_ledger_header %} compact-ledger-header{% endif %}" data-body-stack="product" data-domain="{{ _domain }}" data-page="{{ _page_key }}" data-page-level="{{ _page_level }}">
 <a class="skip-link" href="#main-content">跳到主内容</a>
 <div class="product-app">
   {% include "_sidebar_nav.html" %}
@@ -223,7 +223,7 @@
       {# Desktop 桥接会话的返回入口 (main 独有, 矿无此面); class 名是测试契约, 勿改。 #}
       <a class="manager-home-link" href="/" title="返回桌面管理器">管理器</a>
       {% endif %}
-      {% if show_month_picker and not _readonly_transactions %}
+      {% if show_month_picker and _path != '/web/confirmed' %}
         {% include "_month_picker.html" %}
       {% endif %}
       {# W1 IA-B: 全局安静入口 — 搜索全角色可达；手动记账只在真实设备会话
@@ -234,7 +234,7 @@
          data-shell-shortcut="search" aria-keyshortcuts="/" title="搜索（/）">
         <span>搜索</span><kbd class="topbar-shortcut-hint" aria-hidden="true">/</kbd>
       </a>
-      {% if can_write and _path == '/web/pending' %}
+      {% if can_write %}
       <details class="topbar-create">
         <summary aria-label="新增记录"><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#plus"/></svg></summary>
         <div class="topbar-create-menu">
@@ -243,21 +243,6 @@
           <a href="/web/import{{ q }}">导入账单</a>
         </div>
       </details>
-      {% else %}
-      {% if can_write and request.state.web_session_auth %}
-      <a class="topbar-action topbar-manual-expense" href="/web/expenses/new"
-         data-shell-shortcut="manual-expense" aria-keyshortcuts="N" title="手动记账（N）">
-        {% if _compact_ledger_header %}<svg class="compact-add-icon" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#plus"/></svg>{% endif %}
-        <span>记账</span><kbd class="topbar-shortcut-hint" aria-hidden="true">N</kbd>
-      </a>
-      {% endif %}
-      {% if can_write %}
-      <a class="topbar-action topbar-capture" href="/web/pending{{ q }}#capture"
-         data-shell-shortcut="capture" aria-keyshortcuts="U" title="收票（U）">
-        {% if _compact_ledger_header %}<svg class="compact-add-icon" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#plus"/></svg>{% endif %}
-        <span>收票</span><kbd class="topbar-shortcut-hint" aria-hidden="true">U</kbd>
-      </a>
-      {% endif %}
       {% endif %}
       {# 外观入口 (冻结片合同): 单一「外观」popover 聚合 主题/质感/强调色
          三条本地偏好轴。<details> 原生可开合, 无 JS 也可用; 三轴语义与

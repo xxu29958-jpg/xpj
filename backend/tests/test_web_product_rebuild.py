@@ -144,7 +144,8 @@ def test_product_shell_mobile_task_order_and_capture_search_entries(
     assert topbar is not None
     topbar_html = topbar.group(0)
     assert 'href="/web/pending?ledger_id=owner#capture"' in topbar_html
-    assert "收票" in topbar_html
+    assert "拍照或选小票" in topbar_html
+    assert 'aria-label="新增记录"' in topbar_html
     assert 'href="/web/search?ledger_id=owner"' in topbar_html
 
 
@@ -159,7 +160,7 @@ def test_product_shell_capture_entry_hidden_for_viewer(
     assert topbar is not None
     topbar_html = topbar.group(0)
     assert "#capture" not in topbar_html
-    assert "收票" not in topbar_html
+    assert "拍照或选小票" not in topbar_html
     assert 'href="/web/search?ledger_id=owner"' in topbar_html
 
 
@@ -255,7 +256,7 @@ def test_confirmed_product_body_retires_legacy_stack_and_fake_filter(
     assert "/static/web/desktop/ledger-filter.js" not in body
     assert "data-ledger-filter" not in body
 
-    assert '<h1 class="page-title">已确认流水</h1>' in body
+    assert '<h1 class="page-title">流水</h1>' in body
     assert "ledger-stream" in body
     assert 'aria-label="本月概况"' in body
     assert "每日分布" in body

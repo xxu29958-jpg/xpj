@@ -1,9 +1,6 @@
 /* 流水：适合月度浏览与批量管理的宽屏账本。 */
 
-/* Selected read-only ledger: one calm stream, with existing browse tools disclosed. */
-.ledger-readonly-page .content { width: 100%; max-width: 60rem; margin-inline: auto; }
-.ledger-readonly-page .product-page-header { margin-bottom: var(--space-7); }
-.ledger-readonly-page .page-title { font-size: var(--type-hero-size); }
+/* One ledger layout for every role; permissions govern actions, not page scale. */
 .ledger-read-notice { display: flex; align-items: start; gap: var(--space-3); margin-bottom: var(--space-5); }
 .ledger-read-notice > svg { flex: none; color: var(--brand-primary-strong); }
 .ledger-read-notice p { margin: var(--space-2) 0 0; color: var(--text-muted); }
@@ -11,44 +8,19 @@
 .ledger-read-tools .month-picker { background: var(--state-success-bg); border: none; border-radius: var(--radius-xl); }
 .ledger-read-tools .month-picker .label { font-weight: var(--type-subtitle-weight); }
 .ledger-read-tools .month-picker a { min-width: var(--target-min); min-height: var(--target-min); }
-.ledger-read-month > summary { display: flex; align-items: center; min-height: var(--target-min); padding-inline: var(--space-5); border-radius: var(--radius-xl); background: var(--state-success-bg); font-weight: var(--type-title-weight); cursor: pointer; list-style: none; }
-.ledger-read-month > summary::-webkit-details-marker { display: none; }
 .ledger-read-month[open] { flex-basis: 100%; }
 .ledger-read-month[open] .month-picker { display: inline-flex; margin-top: var(--space-3); }
-.ledger-read-filters > summary { display: flex; align-items: center; min-height: var(--target-min); padding: var(--space-3) var(--space-5); border-radius: var(--radius-xl); background: var(--surface-raised); cursor: pointer; list-style: none; }
-.ledger-read-filters > summary::-webkit-details-marker { display: none; }
 .ledger-read-filters[open] { flex-basis: 100%; }
 .ledger-read-filter-body { padding: var(--space-5); background: var(--surface-raised); border-radius: var(--radius-lg); margin-top: var(--space-3); }
 .ledger-read-filter-body form, .ledger-read-filter-body label { display: grid; gap: var(--space-3); }
 .ledger-read-filter-body nav { display: flex; flex-wrap: wrap; gap: var(--space-3) var(--space-5); margin-top: var(--space-5); }
 .ledger-read-filter-body nav a { min-height: var(--target-min); display: inline-flex; align-items: center; }
-.ledger-readonly-page .confirmed-desk { display: block; }
-.ledger-readonly-page .ledger-stream { background: transparent; border: none; box-shadow: none; border-radius: 0; }
-.ledger-readonly-page .ledger-stream::before { display: none; }
-.ledger-readonly-page .lday { display: none; }
-.ledger-readonly-page .lday.ledger-read-day-visible { display: grid; padding-inline: 0; }
-.ledger-readonly-page .timeline-row.lrow { padding: 0; min-height: calc(var(--space-10) + var(--space-7)); border-bottom: 1px solid var(--border-card); }
-.ledger-readonly-page .timeline-row.lrow:last-of-type { border-bottom: none; }
-.ledger-readonly-page .timeline-row.lrow > .timeline-row-detail { grid-template-columns: 2.75rem minmax(0, 1fr) fit-content(50%) 1.25rem; gap: var(--space-3); }
-.ledger-readonly-page .timeline-row-detail > .lrow-ic { grid-row: auto; }
-.ledger-readonly-page .lrow-amt { grid-column: auto; min-width: 0; justify-items: end; text-align: right; overflow-wrap: anywhere; }
-.ledger-readonly-page .lrow-ic { width: 2.75rem; height: 2.75rem; border-radius: var(--radius-lg); background: var(--state-success-bg); }
-.ledger-readonly-page .lrow-ic--dining { background: var(--state-warn-bg); }
-.ledger-readonly-page .lrow-merch { font-size: 16px; }
-.ledger-readonly-page .lrow-meta { font-size: var(--type-body-size); margin-top: var(--space-2); }
-.ledger-readonly-page .timeline-row + .lday { border: none; }
-.ledger-readonly-page .ledger-row-chevron { grid-column: 4; color: var(--text-muted); }
 .ledger-read-search { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); min-height: var(--target-min); margin-block: var(--space-8); font-weight: var(--type-subtitle-weight); color: var(--brand-primary-strong); text-decoration: none; }
 .ledger-read-overview { margin-top: var(--space-8); }
 .ledger-read-overview > summary { min-height: var(--target-min); padding-block: var(--space-3); color: var(--text-muted); cursor: pointer; }
 .ledger-read-overview .month-overview { margin-top: var(--space-4); }
 .ledger-read-day-totals { display: grid; grid-template-columns: 1fr auto; gap: var(--space-2) var(--space-5); }
 .ledger-read-day-totals dd { margin: 0; }
-@media (max-width: 40rem) {
-    .ledger-readonly-page .product-page-header { padding-top: 0; }
-    .ledger-readonly-page .lrow-meta { font-size: var(--type-body-size); }
-    .ledger-readonly-page .lrow-amt .amt-main { font-size: 16px; }
-}
 
 .ledger-hero {
     display: grid;
@@ -137,20 +109,6 @@
     position: relative;
 }
 
-/* 票夹刻: coral 侧夹咬住票面右缘上段 — 品牌右侧夹的 CSS 形态 (装饰, 不接收事件,
-   不进 AX 树; 与状态色正交, 状态仍走 state/goal 族) */
-.ledger-stream.product-panel::before {
-    content: "";
-    position: absolute;
-    inset-block-start: var(--space-6);
-    inset-inline-end: 0;
-    width: var(--space-2);
-    height: var(--space-10);
-    border-radius: var(--radius-sm) 0 0 var(--radius-sm);
-    background: var(--brand-clip);
-    pointer-events: none;
-}
-
 .confirmed-batch-head,
 .lday,
 .lrow {
@@ -177,6 +135,7 @@
 
 /* 票内日期戳: 不再是贯穿色带, 只出 stamp 文字与日合计 */
 .lday {
+    display: none;
     grid-template-columns: minmax(0, 1fr) auto auto;
     min-height: var(--space-9);
     color: var(--text-meta);
@@ -210,22 +169,13 @@
     color: var(--text-default);
 }
 
-/* 票带穿孔: 日组交界处换成断齿小计规线, 行尾不再叠一条实线 */
-.timeline-row:has(+ .lday) {
-    border-block-end: none;
-}
-
-.timeline-row + .lday {
-    border-block-start: 1px dashed var(--border-card);
-}
-
 .timeline-row.lrow.has-check {
-    grid-template-columns: var(--space-7) minmax(0, 1fr);
+    grid-template-columns: var(--target-min) minmax(0, 1fr);
 }
 
 .timeline-row.lrow > .timeline-row-detail {
     display: grid;
-    grid-template-columns: var(--space-9) minmax(0, 1fr) auto;
+    grid-template-columns: var(--space-9) minmax(0, 1fr) fit-content(50%) var(--space-5);
     align-items: center;
     align-self: stretch; /* 整行高度都是点击区, 不只内容高度 */
     gap: var(--space-4);
@@ -262,7 +212,7 @@
     width: var(--space-9);
     height: var(--space-9);
     place-items: center;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-lg);
     background: var(--brand-primary-bg);
     color: var(--brand-primary-strong);
     font-weight: var(--type-title-weight);
@@ -289,11 +239,9 @@
 }
 
 .lrow-merch {
-    overflow: hidden;
+    overflow-wrap: anywhere;
     font-size: var(--type-subtitle-size);
-    font-weight: var(--type-subtitle-weight);
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    font-weight: var(--type-title-weight);
 }
 
 .lrow-meta,
@@ -306,6 +254,9 @@
 .lrow-amt {
     display: grid;
     justify-items: end;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    text-align: right;
     font-family: var(--font-numeric);
     font-variant-numeric: tabular-nums;
 }
@@ -332,22 +283,41 @@
     margin-block-start: var(--space-6);
 }
 
-/* 宽屏台面: 票带限宽 46rem 让金额贴近对象; 本月概况 (热力图/来源, 既有真实内容)
-   收作右侧 sticky 便签; <80rem 维持单列堆叠, 消费者与顺序不变 */
+.ledger-summary { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: var(--space-5); margin-block: var(--space-7) var(--space-8); }
+.ledger-summary .confirmed-hero-amount { margin-top: var(--space-2); }
+.ledger-summary .ledger-view-actions { margin: 0; }
+.ledger-stream.product-panel { box-shadow: none; border-radius: var(--radius-xl); padding: var(--space-5) var(--space-7); }
+.ledger-stream-heading { display: none; }
+.ledger-stream-footer { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: var(--space-3); padding-top: var(--space-5); color: var(--text-meta); font-size: var(--type-caption-size); }
+.ledger-row-date, .ledger-row-category, .ledger-row-kind { display: none; }
+.ledger-row-chevron { grid-column: 4; color: var(--text-meta); }
+.lrow-ic--dining { background: var(--state-warn-bg); }
+.timeline-row.lrow { padding-inline: 0; padding-block: var(--space-4); }
+.timeline-row.lrow:last-of-type { border-bottom: 0; }
+.lday.ledger-read-day-visible { display: grid; padding-inline: 0; }
 @media (min-width: 80rem) {
-    .confirmed-desk {
-        display: grid;
-        align-items: start;
-        gap: var(--space-6);
-        grid-template-columns: minmax(0, 46rem) minmax(20rem, 1fr);
+    .ledger-stream-heading, .timeline-row.lrow > .timeline-row-detail {
+        grid-template-columns: minmax(0, 1fr) var(--space-9) minmax(0, 1.4fr) minmax(0, .7fr) minmax(0, .7fr) minmax(0, 1.1fr);
+        column-gap: var(--space-4);
     }
-
-    .confirmed-desk .month-overview {
-        grid-template-columns: minmax(0, 1fr);
-        margin-block-start: 0;
-        position: sticky;
-        inset-block-start: var(--space-6);
-    }
+    .ledger-stream-heading { display: grid; align-items: center; min-height: var(--space-12); color: var(--text-meta); border-bottom: 1px solid var(--border-card); font-size: var(--type-caption-size); }
+    .ledger-stream-heading > :nth-child(2) { grid-column: span 2; }
+    .ledger-stream-heading > :last-child { text-align: right; }
+    .ledger-row-date, .ledger-row-category, .ledger-row-kind { display: block; overflow-wrap: anywhere; }
+    .ledger-row-chevron { display: none; }
+    .timeline-row.lrow { min-height: calc(var(--space-12) + var(--space-7)); }
+    .lrow-amt { grid-column: 6; }
+    .lrow-meta > .num, .lrow-meta > .sep { display: none; }
+    .ledger-stream:has(.has-check) .ledger-stream-heading { padding-inline-start: calc(var(--target-min) + var(--space-4)); }
+    .bulk-selection-ready:not(.bulk-selecting) .ledger-stream-heading { padding-inline-start: 0; }
+    .ledger-stream:has(.has-check) .timeline-row:not(.has-check) { padding-inline-start: calc(var(--target-min) + var(--space-4)); }
+    .bulk-selection-ready:not(.bulk-selecting) .timeline-row:not(.has-check) { padding-inline-start: 0; }
+}
+@media (max-width: 64rem) {
+    .ledger-stream.product-panel { padding: 0; background: transparent; border-radius: 0; }
+    .timeline-row.lrow { gap: var(--space-3); }
+    .timeline-row.lrow > .timeline-row-detail { gap: var(--space-3); }
+    .amt-main { font-size: var(--type-subtitle-size); }
 }
 
 .heatmap {
@@ -453,34 +423,8 @@
 }
 
 @media (max-width: 48rem) {
-    .confirmed-batch-head,
-    .lday,
-    .timeline-row.lrow {
-        padding-inline: var(--space-4);
-    }
+    .confirmed-batch-head { padding-inline: 0; }
 
-}
-
-@media (max-width: 30rem) {
-    .timeline-row.lrow > .timeline-row-detail {
-        grid-template-columns: var(--space-9) minmax(0, 1fr);
-        row-gap: var(--space-2);
-    }
-
-    .timeline-row-detail > .lrow-ic {
-        grid-row: 1 / 3;
-    }
-
-    .lrow-amt {
-        grid-column: 2;
-        justify-items: start;
-        overflow-wrap: anywhere;
-    }
-
-    .lrow-merch {
-        white-space: normal;
-        overflow-wrap: anywhere;
-    }
 }
 
 /* 资料库 hub (C5c-1): 三组分组 + 目录行; 消费级入口, 非 dashboard。 */

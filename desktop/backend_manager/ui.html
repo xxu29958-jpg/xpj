@@ -7,23 +7,28 @@
   <script>window.CONTROL_TOKEN="__CONTROL_TOKEN__";</script>
   <style>
     :root {
-      --page: #f3f5f2;
+      --page: #fafbf7;
       --surface: #ffffff;
-      --surface-subtle: #f8faf7;
-      --ink: #202521;
-      --muted: #68716a;
-      --line: #d8ddd8;
-      --line-strong: #bec7bf;
-      --green: #176b4d;
-      --green-soft: #e7f2eb;
+      --surface-subtle: #e9efeb;
+      --ink: #23362d;
+      --muted: #5f6c60;
+      --line: #dee4e0;
+      --line-strong: #b5beb7;
+      --green: #246653;
+      --green-strong: #0d3d38;
+      --on-primary: #fdfefd;
+      --apricot: #f8e6d6;
+      --lilac: #eee8f8;
+      --sand: #f1eddb;
+      --green-soft: #e9f0dc;
       --blue: #315f95;
       --blue-soft: #e9f0f8;
       --amber: #8a5a1c;
       --amber-soft: #f8efdf;
       --red: #aa3c32;
       --red-soft: #fae9e6;
-      --shadow: 0 8px 24px rgba(31, 42, 34, 0.07);
-      --font: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+      --shadow: none;
+      --font: "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
       --mono: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
     }
 
@@ -34,7 +39,8 @@
       background: var(--page);
       color: var(--ink);
       font-family: var(--font);
-      font-size: 14px;
+      font-size: 16px;
+      line-height: 1.55;
       letter-spacing: 0;
       -webkit-font-smoothing: antialiased;
     }
@@ -43,22 +49,10 @@
       outline: 3px solid rgba(49, 95, 149, 0.28);
       outline-offset: 2px;
     }
-    .shell { width: min(940px, 100%); margin: 0 auto; padding: 22px 24px 28px; }
+    .shell { width: min(1440px, 100%); margin: 0 auto; padding: 32px 40px 40px; }
     .topbar { display: flex; align-items: center; gap: 12px; min-height: 42px; }
-    .brand-mark {
-      width: 36px;
-      height: 36px;
-      display: grid;
-      place-items: center;
-      border: 1px solid #0f563d;
-      border-radius: 8px;
-      background: var(--green);
-      color: #fff;
-      font-size: 17px;
-      font-weight: 700;
-    }
-    .brand-name { font-size: 17px; font-weight: 700; line-height: 1.25; }
-    .brand-meta { margin-top: 2px; color: var(--muted); font-size: 12px; }
+    .brand-name { margin: 0; font-size: 32px; font-weight: 700; line-height: 1.3; }
+    .brand-meta { margin-top: 8px; color: var(--muted); font-size: 14px; }
     .overall-state {
       margin-left: auto;
       display: flex;
@@ -93,7 +87,7 @@
     }
     .product-link:hover { color: var(--ink); text-decoration: underline; }
     .product-link + .overall-state { margin-left: 0; }
-    .product-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+    .product-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: flex-start; min-width: 0; }
     .product-actions input[type="text"], .product-actions select {
       min-height: 34px;
       padding: 6px 9px;
@@ -102,55 +96,66 @@
       font: inherit;
       font-size: 13px;
       color: var(--ink);
-      background: var(--card);
+      background: var(--surface);
     }
-    .product-actions input[type="text"] { width: 9em; letter-spacing: 0.12em; }
+    .product-actions input[type="text"] { width: 100%; letter-spacing: 0.12em; }
+    #productPairGroup { display: grid; width: 100%; justify-content: stretch; }
+    #productPairGroup label { display: grid; gap: 8px; color: var(--muted); font-size: 14px; }
+    #pairingCodeInput { min-height: 48px; font-size: 18px; }
+    #productManageGroup { border-top: 1px solid var(--line); padding-top: 16px; }
+    #productManageGroup select { max-width: 100%; }
+    .service-overview { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 24px; margin-top: 28px; }
+    .service-overview:has(#productPairGroup:not([hidden])) .service-band--product { order: -1; }
+    body:has(#overallState.is-ok) .service-band--runtime { background: var(--green-soft); }
+    body:has(#overallState.is-error) .service-band--runtime { background: var(--red-soft); }
+    .service-band--product .service-actions { align-items: stretch; flex-direction: column; }
+    .service-band--product .product-link { margin: 0; align-self: start; min-height: 52px; padding: 12px 28px; border-radius: 14px; background: var(--green); color: var(--on-primary); font-size: 16px; font-weight: 600; }
     /* The hidden attribute is authoritative over every display rule above —
        pair form / manage group / product link must never coexist. */
     [hidden] { display: none !important; }
 
     .service-band {
-      margin-top: 18px;
+      margin-top: 0;
       display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-columns: minmax(0, 1fr);
       align-items: center;
       gap: 22px;
-      min-height: 128px;
-      padding: 20px 22px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
+      min-height: 260px;
+      padding: 28px;
+      border: 0;
+      border-radius: 22px;
       background: var(--surface);
       box-shadow: var(--shadow);
     }
-    .eyebrow { color: var(--muted); font-size: 12px; font-weight: 650; }
-    .service-title { margin: 7px 0 0; font-size: 25px; line-height: 1.2; font-weight: 720; }
+    .eyebrow { color: var(--ink); font-size: 17px; font-weight: 650; }
+    .service-title { margin: 7px 0 0; font-size: 32px; line-height: 1.3; font-weight: 720; }
     .service-detail { margin-top: 8px; color: var(--muted); line-height: 1.45; }
     .service-actions { display: flex; align-items: center; gap: 8px; }
     .button {
-      min-height: 38px;
+      min-height: 44px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
       gap: 7px;
       padding: 8px 13px;
       border: 1px solid var(--line-strong);
-      border-radius: 6px;
+      border-radius: 14px;
       background: var(--surface);
       color: var(--ink);
       cursor: pointer;
       font-weight: 650;
-      white-space: nowrap;
+      white-space: normal;
       transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
     }
     .button:hover:not(:disabled) { border-color: #8e9990; background: var(--surface-subtle); }
     .button:active:not(:disabled) { background: #edf0ed; }
     .button:disabled { cursor: default; opacity: 0.48; }
-    .button-primary { border-color: var(--green); background: var(--green); color: #fff; }
-    .button-primary:hover:not(:disabled) { border-color: #10573f; background: #10573f; }
+    .button-primary { min-height: 52px; border-color: var(--green); background: var(--green); color: var(--on-primary); }
+    .button-primary:hover:not(:disabled) { border-color: var(--green-strong); background: var(--green-strong); }
     .button-danger { color: var(--red); }
     .button-primary.button-danger { border-color: #d3a39e; background: var(--surface); color: var(--red); }
     .button-primary.button-danger:hover:not(:disabled) { border-color: var(--red); background: var(--red-soft); }
-    .button-icon { width: 38px; padding: 8px; font-size: 18px; }
+    .button-icon { width: 44px; padding: 8px; font-size: 18px; }
     .icon { display: inline-grid; width: 18px; height: 18px; place-items: center; font-size: 15px; line-height: 18px; }
     .spinner { animation: spin 900ms linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
@@ -169,37 +174,39 @@
     .message-info { border-color: #b7c9dc; background: var(--blue-soft); color: #264f7a; }
     .message-error { border-color: #e0b0aa; background: var(--red-soft); color: #8e3029; }
 
-    .section-head { margin: 24px 0 10px; display: flex; align-items: baseline; justify-content: space-between; }
-    .section-head h2 { margin: 0; font-size: 15px; font-weight: 720; }
+    .section-head { margin: 28px 0 16px; display: flex; align-items: baseline; justify-content: space-between; }
+    .section-head h2 { margin: 0; font-size: 18px; font-weight: 720; }
     .section-meta { color: var(--muted); font-size: 12px; }
-    .task-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+    .task-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
     .task-card {
       min-width: 0;
       display: flex;
       flex-direction: column;
       min-height: 190px;
-      padding: 16px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
+      padding: 22px;
+      border: 0;
+      border-radius: 22px;
       background: var(--surface);
     }
     .task-icon {
-      width: 32px;
-      height: 32px;
+      width: 40px;
+      height: 40px;
       display: grid;
       place-items: center;
-      border-radius: 6px;
+      border-radius: 14px;
       background: var(--surface-subtle);
       color: var(--ink);
       font-size: 17px;
     }
     .task-card:nth-child(1) .task-icon { background: var(--green-soft); color: var(--green); }
-    .task-card:nth-child(2) .task-icon { background: var(--blue-soft); color: var(--blue); }
-    .task-card:nth-child(3) .task-icon { background: var(--amber-soft); color: var(--amber); }
-    .task-title { margin-top: 13px; font-size: 15px; font-weight: 720; }
-    .task-state { min-height: 40px; margin-top: 6px; color: var(--muted); font-size: 12.5px; line-height: 1.45; }
+    .task-card:nth-child(2) .task-icon { background: var(--apricot); color: var(--ink); }
+    .task-card:nth-child(3) .task-icon { background: var(--lilac); color: var(--ink); }
+    .task-card:nth-child(4) .task-icon { background: var(--sand); color: var(--ink); }
+    .task-icon svg { width: 24px; height: 24px; }
+    .task-title { margin-top: 20px; font-size: 18px; font-weight: 720; }
+    .task-state { min-height: 0; margin-block: 8px 16px; color: var(--muted); font-size: 14px; line-height: 1.45; }
     .task-actions { margin-top: auto; display: flex; flex-wrap: wrap; gap: 7px; }
-    .task-actions .button { min-height: 34px; padding: 6px 10px; font-size: 12.5px; }
+    .task-actions .button { min-height: 44px; padding: 8px 10px; font-size: 14px; }
 
     .connectivity-card {
       margin-top: 18px;
@@ -290,8 +297,17 @@
     }
     .footer { margin-top: 14px; color: #7a837c; font-size: 11.5px; text-align: right; }
 
+    .connectivity-details > summary { min-height: 44px; padding: 10px 20px; cursor: pointer; color: var(--green); font-weight: 600; }
+    @media (max-width: 1000px) {
+      .task-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
     @media (max-width: 700px) {
-      .shell { padding: 16px; }
+      .shell { padding: 24px; }
+      .topbar { flex-wrap: wrap; }
+      .brand-name { font-size: 28px; }
+      .service-overview { grid-template-columns: 1fr; }
+      .service-band { padding: 24px; min-height: 0; }
+      #productManageGroup { width: 100%; }
       .service-band { grid-template-columns: 1fr; gap: 16px; }
       .service-actions { width: 100%; }
       .service-actions .button-primary { flex: 1; }
@@ -308,22 +324,21 @@
 <body>
   <main class="shell">
     <header class="topbar">
-      <div class="brand-mark" aria-hidden="true">票</div>
       <div>
-        <div class="brand-name">小票夹管理器</div>
+        <h1 class="brand-name">小票夹管理器</h1>
         <div class="brand-meta" id="runtimeLabel">正在读取本机状态</div>
       </div>
-      <a class="product-link" id="productHomeLink" href="/web" hidden>返回日常账务</a>
       <div class="overall-state" id="overallState" role="status" aria-live="polite">
         <span class="state-dot" aria-hidden="true"></span>
         <span id="overallText">检查中</span>
       </div>
     </header>
 
-    <section class="service-band" aria-labelledby="serviceTitle">
+    <div class="service-overview">
+    <section class="service-band service-band--runtime" aria-labelledby="serviceTitle">
       <div>
-        <div class="eyebrow">此电脑</div>
-        <h1 class="service-title" id="serviceTitle">正在检查小票夹</h1>
+        <div class="eyebrow">本机服务</div>
+        <h2 class="service-title" id="serviceTitle">正在检查小票夹</h2>
         <div class="service-detail" id="serviceDetail">请稍候</div>
       </div>
       <div class="service-actions">
@@ -334,18 +349,19 @@
       </div>
     </section>
 
-    <section class="service-band" aria-labelledby="productTitle">
+    <section class="service-band service-band--product" aria-labelledby="productTitle">
       <div>
-        <div class="eyebrow">日常账务</div>
-        <h1 class="service-title" id="productTitle">桌面账本</h1>
+        <div class="eyebrow">桌面账本</div>
+        <h2 class="service-title" id="productTitle">连接这台电脑</h2>
         <div class="service-detail" id="productState">正在读取绑定状态</div>
         <p class="service-detail" id="productFirstUseHelp" hidden>账本数据和原始附件保存在这台 Windows 电脑。拥有者可在本机获取自己的设备绑定码；家庭成员请从自己已绑定的设备授权新设备。首次加入家庭需使用邀请。</p>
       </div>
       <div class="service-actions product-actions">
+        <a class="product-link" id="productHomeLink" href="/web" hidden>打开桌面账本 ↗</a>
         <span class="product-actions" id="productPairGroup" hidden>
+          <label>设备连接码<input type="text" id="pairingCodeInput" inputmode="numeric" pattern="[0-9]{8}" maxlength="8" placeholder="输入 8 位设备码" aria-label="绑定此电脑的 8 位码"></label>
+          <button class="button button-primary" id="pairAction" type="button" onclick="pairProduct()">连接此电脑</button>
           <button class="button" id="desktopPairingCodeAction" type="button" disabled onclick="act('open_pairing', this)">获取拥有者绑定码</button>
-          <input type="text" id="pairingCodeInput" inputmode="numeric" pattern="[0-9]{8}" maxlength="8" placeholder="8 位设备码" aria-label="绑定此电脑的 8 位码">
-          <button class="button button-primary" id="pairAction" type="button" onclick="pairProduct()">绑定此电脑</button>
         </span>
         <span class="product-actions" id="productManageGroup" hidden>
           <select id="ledgerSelect" aria-label="切换账本"></select>
@@ -354,26 +370,12 @@
         </span>
       </div>
     </section>
+    </div>
     <div class="message message-error" id="productError" role="alert">
       <span aria-hidden="true">!</span><span id="productErrorText"></span>
     </div>
 
-    <section class="connectivity-card" id="publicConnectivityCard"
-      aria-labelledby="publicConnectivityTitle" aria-busy="false">
-      <div class="connectivity-head">
-        <div>
-          <h2 id="publicConnectivityTitle">公网连接</h2>
-          <p class="card-subtitle">由 Cloudflare Tunnel 提供</p>
-        </div>
-        <span class="connectivity-badge" id="publicConnectivityBadge">状态未知</span>
-      </div>
-      <div class="connectivity-copy" aria-live="polite">
-        <p class="connectivity-summary" id="publicConnectivitySummary">正在读取公网连接状态</p>
-        <p class="connectivity-next"><strong>下一步：</strong><span id="publicConnectivityNextStep">请稍候</span></p>
-      </div>
-      <div class="connectivity-grid" id="publicConnectivityDetails" aria-label="公网连接分层状态"></div>
-      <div class="connectivity-actions" id="publicConnectivityActions" aria-label="公网连接只读操作"></div>
-    </section>
+
 
     <div class="message message-error" id="controlError" role="alert">
       <span aria-hidden="true">!</span><span id="controlErrorText"></span>
@@ -388,18 +390,31 @@
     </div>
     <section class="task-grid" aria-label="常用操作">
       <article class="task-card">
-        <div class="task-icon" aria-hidden="true">⌁</div>
+        <div class="task-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="20" x="5" y="2" rx="2" ry="2" />
+    <path d="M12 18h.01" /></svg></div>
         <div class="task-title">连接设备</div>
         <div class="task-state" id="connectState">服务正常后可以生成一次性绑定码。</div>
         <div class="task-actions">
           <button class="button manager-action owner-action" id="androidAction" type="button" disabled onclick="act('open_pairing', this)">设备绑定</button>
-          <button class="button manager-action owner-action" id="iphoneAction" type="button" onclick="act('open_upload_links', this)">iPhone 上传</button>
           <button class="button manager-action owner-action" type="button" title="查看已连接设备" onclick="act('open_devices', this)">设备</button>
         </div>
       </article>
 
+      <article class="task-card">
+        <div class="task-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12" />
+    <path d="m17 8-5-5-5 5" />
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /></svg></div>
+        <div class="task-title">iPhone 上传</div>
+        <div class="task-state">管理手机上传入口与快捷指令。</div>
+        <div class="task-actions">
+          <button class="button manager-action owner-action" id="iphoneAction" type="button" onclick="act('open_upload_links', this)">iPhone 上传</button>
+        </div>
+      </article>
+
       <article class="task-card" id="dataProtectionCard">
-        <div class="task-icon" aria-hidden="true">▣</div>
+        <div class="task-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3" />
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+    <path d="m7 10 5 5 5-5" /></svg></div>
         <div class="task-title">数据保护</div>
         <div class="task-state" id="protectState">导出流水或含历史、关系与原件的账本包，留存业务副本。</div>
         <div class="task-actions">
@@ -422,8 +437,12 @@ Start-Service TicketboxBackend</pre>
       </article>
 
       <article class="task-card">
-        <div class="task-icon" aria-hidden="true">+</div>
-        <div class="task-title">检查与自救</div>
+        <div class="task-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 2v2" />
+    <path d="M5 2v2" />
+    <path d="M5 3H4a2 2 0 0 0-2 2v4a6 6 0 0 0 12 0V5a2 2 0 0 0-2-2h-1" />
+    <path d="M8 15a6 6 0 0 0 12 0v-3" />
+    <circle cx="20" cy="10" r="2" /></svg></div>
+        <div class="task-title">诊断与体检</div>
         <div class="task-state" id="diagnosticState">导出包不包含令牌、账本内容或原始日志。</div>
         <div class="task-actions">
           <button class="button manager-action" id="diagnosticExportAction" type="button" onclick="act('export_diagnostics', this)">导出诊断包</button>
@@ -431,6 +450,26 @@ Start-Service TicketboxBackend</pre>
           <button class="button manager-action owner-action" type="button" title="打开小票夹设置" onclick="act('open_settings', this)">设置</button>
         </div>
       </article>
+    </section>
+
+    <section class="connectivity-card" id="publicConnectivityCard"
+      aria-labelledby="publicConnectivityTitle" aria-busy="false">
+      <div class="connectivity-head">
+        <div>
+          <h2 id="publicConnectivityTitle">公网连接</h2>
+          <p class="card-subtitle">由 Cloudflare Tunnel 提供</p>
+        </div>
+        <span class="connectivity-badge" id="publicConnectivityBadge">状态未知</span>
+      </div>
+      <div class="connectivity-copy" aria-live="polite">
+        <p class="connectivity-summary" id="publicConnectivitySummary">正在读取公网连接状态</p>
+        <p class="connectivity-next"><strong>下一步：</strong><span id="publicConnectivityNextStep">请稍候</span></p>
+      </div>
+      <details class="connectivity-details">
+        <summary>查看连接详情</summary>
+      <div class="connectivity-grid" id="publicConnectivityDetails" aria-label="公网连接分层状态"></div>
+      <div class="connectivity-actions" id="publicConnectivityActions" aria-label="公网连接只读操作"></div>
+      </details>
     </section>
 
     <details class="technical">
@@ -769,6 +808,7 @@ Start-Service TicketboxBackend</pre>
       applyDesktopPairingAvailability();
       $("productFirstUseHelp").hidden = showManage || productReadFailed;
       if (productReadFailed) {
+        $("productTitle").textContent = "桌面账本";
         $("productHomeLink").hidden = true;
         $("productPairGroup").hidden = true;
         $("productManageGroup").hidden = true;
@@ -781,6 +821,7 @@ Start-Service TicketboxBackend</pre>
         $("productState").textContent = "账本状态暂不可验证，请稍后重试。";
         return;
       }
+      $("productTitle").textContent = showManage ? productSession.ledger_name : "连接这台电脑";
       $("productHomeLink").hidden = !(showManage && available);
       $("productPairGroup").hidden = showManage;
       $("productManageGroup").hidden = !showManage;
@@ -802,7 +843,7 @@ Start-Service TicketboxBackend</pre>
       // the role persisted in WinCred at pair/switch time.
       const role = liveRow ? liveRow.role : productSession.role;
       $("productState").textContent =
-        `${productSession.ledger_name} · ${roleLabels[role] || role} · ${productSession.account_name}`;
+        `${roleLabels[role] || role} · ${productSession.account_name}`;
       const select = $("ledgerSelect");
       if (select.options.length === 0) {
         const option = document.createElement("option");

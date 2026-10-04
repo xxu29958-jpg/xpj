@@ -10,6 +10,7 @@ must redden one of them.
 """
 from __future__ import annotations
 
+import re
 from urllib.parse import unquote
 from uuid import uuid4
 
@@ -365,8 +366,11 @@ def test_web_pending_row_surfaces_missing_category_and_suppresses_ready_pill(
     assert resp.status_code == 200
     assert "缺分类" in resp.text
     assert "待汇率" in resp.text
-    # Only the genuinely ready row gets the green pill (218-D S4: product-status 族)。
-    assert resp.text.count('class="product-status product-status--success"') == 1
-    # The dirty row's cell shows the missing marker, not the raw token.
-    assert 'exp-cat exp-cat-missing">待分类</span>' in resp.text
-    assert 'exp-cat">none</span>' not in resp.text
+    statuses = re.findall(
+        r'<span class="exp-row-status exp-row-status--(\w+)">([^<]+)</span>', resp.text,
+    )
+    assert sorted(statuses) == [
+        ("success", "可确认"), ("warning", "待汇率"), ("warning", "缺分类"),
+    ]
+    # The missing category is a repair state, never the raw sentinel token.
+    assert ">none</span>" not in resp.text

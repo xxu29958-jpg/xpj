@@ -23,11 +23,7 @@
   </div>
   <section class="product-drawer-evidence" aria-label="账单凭证">
     <header class="product-drawer-section-header">
-      <div>
-        <span class="product-eyebrow">凭证</span>
-        <h2 class="product-drawer-section-title">小票原件</h2>
-      </div>
-      <span class="product-status">#{{ e.id }}</span>
+      <span class="product-drawer-meta">原件预览</span>
     </header>
 
     <div class="product-drawer-receipt"
@@ -48,15 +44,16 @@
 
     {% if e.has_image %}
     <div class="product-drawer-evidence-actions">
-      <button type="button" class="product-button product-button--quiet" data-receipt-zoom aria-label="放大小票原图"><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#plus"/></svg>缩放</button>
-      <button type="button" class="product-button product-button--quiet" data-receipt-rotate aria-label="旋转小票原图"><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#rotate-ccw"/></svg>旋转</button>
-      <a class="product-button product-button--small"
+      <button type="button" class="product-button product-button--quiet" data-receipt-zoom aria-label="放大小票原图" title="缩放原件"><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#plus"/></svg></button>
+      <span class="review-image-scale" data-receipt-scale>100%</span>
+      <button type="button" class="product-button product-button--quiet" data-receipt-rotate aria-label="旋转小票原图" title="旋转原件"><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#rotate-ccw"/></svg></button>
+      <a class="product-button product-button--quiet"
          href="/web/expenses/{{ e.id }}/image{{ '?ledger_id=' ~ selected_ledger_id }}"
          target="_blank"
-         rel="noopener">查看原图</a>
-      <a class="product-button product-button--small"
+         rel="noopener" aria-label="查看原图" title="查看完整原件"><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#maximize-2"/></svg><span class="review-image-link-label">查看完整原件</span></a>
+      <a class="product-button product-button--quiet review-image-download"
          href="/web/expenses/{{ e.id }}/image{{ '?ledger_id=' ~ selected_ledger_id }}"
-         download>下载原图</a>
+         download aria-label="下载原图" title="下载原图"><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#download"/></svg></a>
     </div>
     {% endif %}
 
@@ -66,23 +63,11 @@
   <section class="product-drawer-form">
     <header class="product-drawer-header">
       <div class="product-drawer-heading">
-        <span class="product-eyebrow">
-          {% if e.status == 'pending' %}待确认
-          {% elif e.status == 'confirmed' %}已入账
-          {% elif e.status == 'rejected' %}已忽略
-          {% else %}状态待核对
-          {% endif %}
-        </span>
-        <h2>核对这张小票</h2>
-        <div class="product-drawer-flags">
-          {% if e.needs_amount %}<span class="product-status product-status--danger">缺金额</span>{% endif %}
-          {% if e.needs_merchant %}<span class="product-status product-status--warning">缺商家</span>{% endif %}
-          {% if e.is_duplicate %}<span class="product-status product-status--danger">疑似重复</span>{% endif %}
-          {% if e.fx_pending %}<span class="product-status product-status--warning">待汇率</span>{% endif %}
-          {% if not e.needs_amount and not e.needs_merchant and not e.needs_category and not e.is_duplicate and not e.fx_pending %}
-          <span class="product-status product-status--success">可确认</span>
-          {% endif %}
+        <div class="review-heading-status">
+          {% if e.status == 'pending' %}<span class="review-position" data-review-position>待核对</span>{% endif %}
+          <span class="product-status">{% if e.status == 'confirmed' %}已入账{% elif e.status == 'rejected' %}已忽略{% elif e.status != 'pending' %}状态待核对{% elif e.needs_amount %}缺金额{% elif e.is_duplicate %}疑似重复{% elif e.needs_merchant %}缺商家{% elif e.fx_pending %}待汇率{% elif e.needs_category %}待分类{% else %}待确认{% endif %}</span>
         </div>
+        <h2>{{ '核对这张小票' if e.status == 'pending' else '账单详情' }}</h2>
       </div>
     </header>
 
@@ -137,7 +122,9 @@
 
       {% if can_write %}
       <div class="product-drawer-actions">
-        <details class="review-more-actions"><summary>更多操作</summary><div>
+        <details class="review-more-actions"><summary aria-label="更多操作"><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#ellipsis"/></svg></summary><div>
+        <a class="product-button product-button--quiet" href="/web/expenses/{{ e.id }}/edit{{ '?ledger_id=' ~ selected_ledger_id }}">完整整理</a>
+        <button class="product-button product-button--quiet" type="button" data-drawer-close>返回收件箱</button>
         <button class="product-button product-button--danger"
                 type="submit"
                 formaction="/web/expenses/{{ e.id }}/reject"
@@ -149,7 +136,7 @@
         {% endif %}
         </div></details>
         <div class="spacer"></div>
-        <button class="product-button" type="submit">保存草稿</button>
+        <button class="product-button product-button--quiet" type="submit">保存草稿</button>
         {% if e.status == 'pending' and not e.fx_pending and not fx_revision_changed %}
         <button class="product-button product-button--primary"
                 type="submit"
@@ -165,6 +152,7 @@
     </form>
     <details class="review-original-details">
     <summary>原件信息与识别</summary>
+    <a class="product-button product-button--small" href="/web/expenses/{{ e.id }}/edit{{ '?ledger_id=' ~ selected_ledger_id }}">完整整理</a>
     <p class="product-drawer-meta">{{ e.source_label }} · 上传于 {{ e.created_at or '时间待核对' }}</p>
     <a class="product-button product-button--small" href="/web/expenses/{{ e.id }}/original{{ '?ledger_id=' ~ selected_ledger_id }}">检查原件与继续处理</a>
     {% include "_expense_ocr_actions.html" %}

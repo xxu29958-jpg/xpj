@@ -1,48 +1,18 @@
 /* v0.5: the local-management home, settings directory and configuration flows. */
 .owner-workspace {
-  --surface-app: #fafbf7;
-  --surface-card: #fff;
-  --surface-nav: #f1f4ec;
-  --surface-sunken: #edf1e8;
-  --text-default: #23362d;
-  --text-muted: #5f6c60;
-  --text-meta: #5f6c60;
-  --brand-primary: #246653;
-  --brand-primary-strong: #194c3d;
-  --text-on-primary: #fff;
-  --border-card: #e3e8df;
-  --border-input: #b4c0b4;
-  --workspace-green: #e9f0dc;
-  --workspace-apricot: #f8e6d6;
-  --workspace-lilac: #eee8f8;
-  --workspace-sand: #f1eddb;
+  --workspace-green: var(--brand-primary-bg);
+  --workspace-apricot: var(--surface-apricot);
+  --workspace-lilac: var(--surface-lilac);
+  --workspace-sand: var(--surface-sand);
   --owner-nav-fg: var(--text-default);
   --owner-nav-strong-fg: var(--text-default);
   --owner-nav-muted-fg: var(--text-muted);
   --owner-nav-line: var(--border-card);
   --owner-nav-border: var(--border-card);
   --owner-nav-border-active: var(--brand-primary);
-  font-family: "Ticketbox Sans", -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
-  font-size: 16px;
-  line-height: 1.6;
-}
-[data-theme="midnight"] .owner-workspace {
-  --surface-app: #16201c;
-  --surface-card: #202d26;
-  --surface-nav: #1b2821;
-  --surface-sunken: #26362c;
-  --text-default: #eff4ed;
-  --text-muted: #b6c5b8;
-  --text-meta: #b6c5b8;
-  --brand-primary: #a6d7b9;
-  --brand-primary-strong: #c2e5cb;
-  --text-on-primary: #16201c;
-  --border-card: #35463b;
-  --border-input: #748879;
-  --workspace-green: #2e402b;
-  --workspace-apricot: #45372b;
-  --workspace-lilac: #383247;
-  --workspace-sand: #3c3b2c;
+  font-family: var(--font-product);
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line);
 }
 .owner-workspace .owner-main { padding: 24px 40px 0; }
 .workspace-page { max-width: 1040px; margin: 0 auto; min-width: 0; }

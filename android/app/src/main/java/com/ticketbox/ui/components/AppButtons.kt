@@ -68,7 +68,7 @@ fun AppPrimaryButton(
     onClick: () -> Unit,
 ) {
     val visuals = LocalThemeVisuals.current
-    val shape = RoundedCornerShape(AppRadius.small)
+    val shape = RoundedCornerShape(AppRadius.medium)
     // 禁用淡化走内容色级 alpha，不用 Modifier.alpha：后者在 disabled→enabled 翻转时会摘除
     // 链上的 graphicsLayer 元素（结构手术），eb49 实机曾因此永久丢失外侧 background/border
     // 绘制（合同回归见 AppPrimaryButtonRenderTest）。盒体填充两态均为满色，视觉不变。

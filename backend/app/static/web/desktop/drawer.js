@@ -41,22 +41,22 @@
 
   // A number input cannot wrap. The native disclosure reads the same input as
   // text, keeping long values visible without rounding or a second draft.
-  function bindReviewAmounts(root) {
-    root.querySelectorAll("[data-review-amount]").forEach(function (output) {
+  function bindReviewFields(root) {
+    root.querySelectorAll("[data-review-value]").forEach(function (output) {
       if (output.dataset.bound) return;
       output.dataset.bound = "true";
-      const field = output.closest(".review-amount-field");
-      const input = field.querySelector('[name="amount_yuan"]');
-      function showValue() { output.textContent = input.value || "待补金额"; }
+      const field = output.closest("details");
+      const input = field.querySelector('[name="' + output.dataset.reviewValue + '"]');
+      function showValue() { output.textContent = input.value || output.dataset.empty; }
       input.addEventListener("input", showValue);
       showValue();
-      output.parentElement.hidden = false;
+      (output.closest("[data-review-display]") || output).hidden = false;
       field.open = !input.value || input.getAttribute("aria-invalid") === "true";
     });
   }
 
   app.initDrawer = function initDrawer() {
-    bindReviewAmounts(document);
+    bindReviewFields(document);
     const drawer = document.getElementById("drawer");
     const scrim = document.getElementById("drawer-scrim");
     if (!drawer || !scrim) return;
@@ -217,7 +217,7 @@
     }
 
     function bindFragment() {
-      bindReviewAmounts(drawer);
+      bindReviewFields(drawer);
       drawer.querySelectorAll("[data-review-position]").forEach(function (position) {
         const rows = Array.from(document.querySelectorAll(".exp-row-detail[data-fragment-url]"));
         position.textContent = "第 " + (rows.indexOf(currentRow) + 1) + " / " + rows.length + " 张";
@@ -229,6 +229,8 @@
         if (zoom) zoom.onclick = function () {
           const enlarged = image.classList.toggle("is-zoomed");
           zoom.setAttribute("aria-label", enlarged ? "缩小小票原图" : "放大小票原图");
+          const scale = drawer.querySelector("[data-receipt-scale]");
+          if (scale) scale.textContent = enlarged ? "180%" : "100%";
         };
         if (rotate) rotate.onclick = function () {
           const angle = (Number(image.dataset.rotation || 0) - 90) % 360;

@@ -11,7 +11,7 @@
    expense_currency_input / category_options。 #}
 {% set e = expense %}
 {% set _p = core_fields_prefix %}
-<div class="expense-core-fields" data-expense-core-fields>
+<div class="expense-core-fields{% if core_fields_compact|default(false) %} expense-core-fields--compact{% endif %}" data-expense-core-fields>
   {% if conflict_current %}
   {% set _currency_conflict = e.original_currency_code != conflict_current.original_currency_code %}
   {# OCC 409: 写入被拒绝 = role="alert"; 数据主权事件 = warning tone, 不升级
@@ -79,7 +79,7 @@
   <details class="review-amount-field" open>
     <summary>
       <span>金额 · {{ e.original_currency_code }}{% if e.needs_amount %} · 待补{% endif %}</span>
-      <span class="review-amount-value" hidden><span aria-hidden="true">{{ e.amount_symbol }}</span><span data-review-amount></span>{% if can_write and not e.is_split_received %}<svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#pencil"/></svg>{% endif %}</span>
+      <span class="review-amount-value" data-review-display hidden><span aria-hidden="true">{{ e.amount_symbol }}</span><span data-review-amount data-review-value="amount_yuan" data-empty="待补金额"></span>{% if can_write and not e.is_split_received %}<svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#pencil"/></svg>{% endif %}</span>
     </summary>
   {% endif %}
   <div class="product-drawer-field-row">
@@ -145,8 +145,12 @@
   </section>
   {% endif %}
 
-  <label class="product-field review-merchant-field" for="{{ _p }}-merchant">
-    <span class="review-field-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#house"/></svg></span><span>商家</span>
+  {% if core_fields_compact|default(false) %}
+  <details class="review-edit-field" open>
+    <summary><span class="review-field-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#store"/></svg></span><span class="review-field-copy"><strong>商家</strong><span data-review-value="merchant" data-empty="待补商家" hidden></span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></summary>
+  {% endif %}
+  <label class="product-field" for="{{ _p }}-merchant">
+    <span>商家</span>
     <input id="{{ _p }}-merchant"
            class="product-input"
            type="text"
@@ -158,9 +162,14 @@
            {% if not can_write or e.is_split_received %}disabled{% endif %}>
     {% if field_errors.get('merchant') %}<span id="{{ _p }}-merchant-error" class="error-text">{{ field_errors.get('merchant') }}</span>{% endif %}
   </label>
+  {% if core_fields_compact|default(false) %}</details>{% endif %}
 
-  <label class="product-field review-category-field" for="{{ _p }}-category">
-    <span class="review-field-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#tag"/></svg></span><span>分类</span>
+  {% if core_fields_compact|default(false) %}
+  <details class="review-edit-field review-category-field" open>
+    <summary><span class="review-field-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#shopping-bag"/></svg></span><span class="review-field-copy"><strong>分类</strong><span data-review-value="category" data-empty="待分类" hidden></span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></summary>
+  {% endif %}
+  <label class="product-field" for="{{ _p }}-category">
+    <span>分类</span>
     <input id="{{ _p }}-category"
            class="product-input"
            type="text"
@@ -176,6 +185,7 @@
   <datalist id="{{ _p }}-category-options">
     {% for option in category_options %}<option value="{{ option }}"></option>{% endfor %}
   </datalist>
+  {% if core_fields_compact|default(false) %}</details>{% endif %}
 
   {% if time_form %}
   {% if core_fields_compact|default(false) %}

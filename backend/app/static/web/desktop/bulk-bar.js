@@ -12,14 +12,19 @@
     const checks = Array.from(document.querySelectorAll(".row-check"));
     const clearButton = form.querySelector("[data-bulk-clear]");
     const editor = form.querySelector(".bulk-editor");
-    const selectToggle = document.querySelector("[data-inbox-select]");
+    const selectToggle = document.querySelector("[data-bulk-select]");
     if (selectToggle) {
       selectToggle.hidden = false;
-      document.body.classList.add("inbox-selection-ready");
+      document.body.classList.add("bulk-selection-ready");
+      // Server-rendered 422 drafts may already carry a selection.
+      const initiallySelecting = checks.some(function (cb) { return cb.checked; });
+      document.body.classList.toggle("bulk-selecting", initiallySelecting);
+      selectToggle.setAttribute("aria-pressed", String(initiallySelecting));
+      selectToggle.textContent = initiallySelecting ? "完成" : "选择";
       selectToggle.addEventListener("click", function () {
-        const selecting = !document.body.classList.contains("inbox-selecting");
+        const selecting = !document.body.classList.contains("bulk-selecting");
         if (!selecting) checks.forEach(function (cb) { cb.checked = false; });
-        document.body.classList.toggle("inbox-selecting", selecting);
+        document.body.classList.toggle("bulk-selecting", selecting);
         selectToggle.setAttribute("aria-pressed", String(selecting));
         selectToggle.textContent = selecting ? "完成" : "选择";
         refresh();
