@@ -34,7 +34,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.AppThemeMode
@@ -114,8 +113,7 @@ internal fun BackgroundReadabilitySample(modifier: Modifier = Modifier) {
             AppAmountText(
                 text = formatAmount(12_345_678L, CurrencyCode.CNY),
                 modifier = Modifier.fillMaxWidth(),
-                role = AppAmountRole.Hero,
-                maxFontSize = 42.sp,
+                role = AppAmountRole.Display,
             )
             Text(stringResource(R.string.appearance_preview_sample_note),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

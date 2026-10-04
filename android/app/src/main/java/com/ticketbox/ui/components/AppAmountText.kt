@@ -23,12 +23,8 @@ fun AppAmountText(
     role: AppAmountRole = AppAmountRole.Medium,
     color: Color = MaterialTheme.colorScheme.onSurface,
     minFontSize: TextUnit = role.autosizeMinFontSize,
-    maxFontSize: TextUnit = role.role.size,
 ) {
-    val style = MaterialTheme.typography.titleLarge.asAmount(role).copy(
-        fontSize = maxFontSize,
-        lineHeight = (role.role.lineHeight.value + maxFontSize.value - role.role.size.value).sp,
-    )
+    val style = MaterialTheme.typography.titleLarge.asAmount(role)
     AppAutosizedAmountText(
         text = text,
         modifier = modifier,
@@ -36,7 +32,7 @@ fun AppAmountText(
             color = color,
             style = style,
             minFontSize = minFontSize,
-            maxFontSize = maxFontSize,
+            maxFontSize = role.role.size,
         ),
     )
 }
@@ -138,6 +134,7 @@ private data class AmountAutoSize(
 
 internal val AppAmountRole.autosizeMinFontSize: TextUnit
     get() = when (this) {
+        AppAmountRole.Display -> 18.sp
         AppAmountRole.Hero -> 18.sp
         AppAmountRole.Medium -> 14.sp
         AppAmountRole.Compact -> 11.sp
