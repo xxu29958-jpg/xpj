@@ -76,6 +76,8 @@
       const fixed = !!record && record.phase !== "editing";
       form.dataset.attachmentPhase = record?.phase || "editing";
       if (file) { file.disabled = fixed; file.required = !record?.values.file_sha256; }
+      const filename = form.querySelector("[data-file-picker-name]");
+      if (filename) filename.textContent = record?.values.file_name || file?.files[0]?.name || "未选择图片";
       button.textContent = fixed ? "重试原任务" : label;
       for (const name of ["reviewed_sha256", "request_id"]) {
         const input = form.elements.namedItem(name);

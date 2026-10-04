@@ -64,7 +64,13 @@ class BackstageJourney:
         with self.page.expect_file_chooser() as picker:
             form.get_by_label("选择小票图片", exact=True).click()
         picker.value.set_files(original)
+        assert form.locator("[data-file-picker-name]").inner_text() == original.name
         self.capture("inbox-selected-original")
+        self.page.locator("[data-attachment-status]").filter(has_text="已保留").wait_for()
+        self.page.reload()
+        self.page.locator("[data-attachment-status]").filter(has_text="已恢复").wait_for()
+        assert form.locator("[data-file-picker-name]").inner_text() == original.name
+        self.capture("inbox-restored-original")
         assert self.facts() == before_selection, "Selecting a file must not upload or create financial facts"
         form.get_by_role("button", name="上传小票", exact=True).click()
         wait_for(lambda: len(self.facts()["tasks"]) == 1, "The Web upload did not create its durable task")
@@ -223,6 +229,14 @@ class BackstageJourney:
                     return selected.left >= viewport.left - 1 && selected.right <= viewport.right + 1;
                 }"""), "The selected inbox filter is outside the visible filter strip"
                 self.capture(f"inbox-ready-{width}-{theme}")
+        self.goto("/web/pending")
+        assert not self.page.locator("#capture").is_visible()
+        self.page.locator(".inbox-capture > summary").click()
+        self.page.locator("#capture").wait_for(state="visible")
+        self.capture("inbox-upload-expanded")
+        self.page.locator(".inbox-capture > summary").click()
+        self.page.locator('a[href$="#capture"]:visible').click()
+        self.page.locator("#capture").wait_for(state="visible")
         assert self.facts() == before, "Reading the real inbox filters changed the original bill or task"
 
     def appearances(self):

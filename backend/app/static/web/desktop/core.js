@@ -142,6 +142,30 @@
     });
   };
 
+  // Only present the native picker and disclose its existing form. Selection,
+  // retained files, submission and recovery remain owned by attachment-entry.
+  app.initInboxPresentation = function initInboxPresentation() {
+    const form = document.querySelector("[data-inbox-capture]");
+    if (!form) return;
+    const picker = form.querySelector(".file-picker");
+    const input = form.elements.namedItem("file");
+    const choice = picker.querySelector(".inbox-file-choice");
+    const name = choice.querySelector("[data-file-picker-name]");
+    const showFilename = () => { name.textContent = input.files[0]?.name || "未选择图片"; };
+    if (input.files.length) showFilename();
+    input.addEventListener("change", showFilename);
+    choice.hidden = false;
+    picker.classList.add("is-enhanced");
+    const disclosure = form.closest(".inbox-capture");
+    const revealTask = () => {
+      if (disclosure && /^(#capture|#attachment-[a-f0-9]{32})$/.test(window.location.hash)) {
+        disclosure.open = true;
+      }
+    };
+    revealTask();
+    window.addEventListener("hashchange", revealTask);
+  };
+
   app.initInboxFilters = function initInboxFilters() {
     const filters = document.querySelector(".inbox-filters .product-segments");
     const active = filters && filters.querySelector('[aria-current="page"]');
