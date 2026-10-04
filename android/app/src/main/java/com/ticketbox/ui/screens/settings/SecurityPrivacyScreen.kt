@@ -12,12 +12,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
-import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.Devices
-import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Key
-import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.Devices
+import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Key
+import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -163,7 +163,6 @@ fun SecurityPrivacyScreen(
         )
         SettingsSection(
             title = stringResource(R.string.settings_security_confirmation_title),
-            icon = Icons.Filled.Info,
         ) {
             Text(stringResource(R.string.settings_security_confirmation_body),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -211,7 +210,6 @@ private fun SecurityConfirmDialog(
 private fun SecurityInfoSection(requireLocalUnlock: Boolean) {
     SettingsSection(
         title = stringResource(R.string.settings_security_section_protection),
-        icon = Icons.Filled.Security,
     ) {
         val rows = remember(requireLocalUnlock) { securityPrivacyInfoRows(requireLocalUnlock) }
         SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(0.dp)) {
@@ -228,9 +226,9 @@ private fun SecurityInfoSection(requireLocalUnlock: Boolean) {
 @Composable
 private fun SecurityInfoRow(row: SecurityPrivacyInfoRowModel) {
     val icon = when (row.kind) {
-        SecurityPrivacyInfoKind.LocalUnlock -> Icons.Filled.Security
-        SecurityPrivacyInfoKind.SessionCredential -> Icons.Filled.Key
-        SecurityPrivacyInfoKind.BackgroundPrivacy -> Icons.Filled.Image
+        SecurityPrivacyInfoKind.LocalUnlock -> Icons.Outlined.Security
+        SecurityPrivacyInfoKind.SessionCredential -> Icons.Outlined.Key
+        SecurityPrivacyInfoKind.BackgroundPrivacy -> Icons.Outlined.Image
     }
     Row(
         modifier = Modifier
@@ -250,7 +248,7 @@ private fun SecurityInfoRow(row: SecurityPrivacyInfoRowModel) {
         ) {
             Text(
                 text = stringResource(row.titleRes),
-                style = MaterialTheme.typography.titleSmall,
+                style = MaterialTheme.typography.titleMedium,
                 fontWeight = AppTextHierarchy.heading.weight,
             )
             Text(
@@ -269,7 +267,6 @@ private fun SecurityDangerSection(
 ) {
     SettingsSection(
         title = stringResource(R.string.settings_security_section_danger),
-        icon = Icons.Filled.DeleteOutline,
     ) {
         SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(0.dp)) {
             actions.forEachIndexed { index, action ->
@@ -291,7 +288,7 @@ private fun SecurityDangerRow(
     onClick: () -> Unit,
 ) {
     val icon = when (action.kind) {
-        SecurityDangerActionKind.ClearOfflineCopy -> Icons.Filled.Devices
+        SecurityDangerActionKind.ClearOfflineCopy -> Icons.Outlined.Devices
         SecurityDangerActionKind.LeaveLedger -> Icons.AutoMirrored.Filled.Logout
     }
     Row(
@@ -332,7 +329,7 @@ private fun SecurityDangerTitleRow(action: SecurityDangerActionModel) {
     ) {
         Text(
             text = stringResource(action.titleRes),
-            style = MaterialTheme.typography.titleSmall,
+            style = MaterialTheme.typography.titleMedium,
             fontWeight = AppTextHierarchy.heading.weight,
             modifier = Modifier.weight(1f),
         )
@@ -343,7 +340,7 @@ private fun SecurityDangerTitleRow(action: SecurityDangerActionModel) {
 @Composable
 private fun SecurityDangerInlineAction(action: SecurityDangerActionModel) {
     val icon = when (action.kind) {
-        SecurityDangerActionKind.ClearOfflineCopy -> Icons.Filled.DeleteOutline
+        SecurityDangerActionKind.ClearOfflineCopy -> Icons.Outlined.DeleteOutline
         SecurityDangerActionKind.LeaveLedger -> Icons.AutoMirrored.Filled.Logout
     }
     val actionColor = if (action.enabled) {

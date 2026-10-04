@@ -211,7 +211,7 @@
     <string name="sync_status_page_title">同步与待办</string>
     <string name="sync_status_binding_loading">正在读取当前账本的同步状态…</string>
     <string name="sync_status_binding_unavailable">账本连接已变化，请重新打开同步状态。</string>
-    <string name="sync_status_page_subtitle">先处理需要你确认的内容。已接受的操作只需刷新显示。</string>
+    <string name="sync_status_page_subtitle">先处理需要你确认的内容。</string>
     <string name="sync_status_section_needs_action">需要你确认</string>
     <string name="sync_status_section_failed">同步失败</string>
     <string name="sync_status_section_quarantined">原身份待处理</string>
@@ -328,4 +328,7 @@
     <string name="settings_root_privacy_directory_subtitle">导出、本机验证与设备数据</string>
     <string name="settings_root_sync_directory_title">同步与后台任务</string>
     <string name="settings_root_sync_directory_subtitle">连接、待处理操作与小票识别</string>
+    <string name="sync_status_review_entry_hint">查看原操作，核对后再继续</string>
+    <string name="sync_status_quarantine_entry_title">原设备身份不匹配</string>
+    <string name="sync_status_quarantine_entry_hint">%1$d 笔操作保留，不会自动放入当前账本</string>
 </resources>

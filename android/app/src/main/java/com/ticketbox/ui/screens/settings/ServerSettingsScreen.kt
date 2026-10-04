@@ -79,7 +79,7 @@ fun ServerSettingsScreen(
                 onSync = actions.onSync,
             ),
         )
-        SettingsSection(title = stringResource(R.string.settings_server_section_diagnostics), icon = Icons.Filled.Settings) {
+        SettingsSection(title = stringResource(R.string.settings_server_section_diagnostics)) {
             Text(
                 text = stringResource(R.string.settings_server_diagnostics_hint),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -108,7 +108,7 @@ fun ServerSettingsScreen(
 
 @Composable
 private fun BackupRecordSection(state: SettingsUiState, onRefresh: () -> Unit) {
-    SettingsSection(title = stringResource(R.string.settings_backup_title), icon = Icons.Filled.CloudDone) {
+    SettingsSection(title = stringResource(R.string.settings_backup_title)) {
         val health = state.backupHealth
         when {
             state.backupLoading -> Text(stringResource(R.string.settings_backup_loading))

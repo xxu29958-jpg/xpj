@@ -244,4 +244,6 @@
     <string name="recycle_bin_restore_dialog_confirm">恢复</string>
     <string name="recycle_bin_message_load_failed">回收站暂时打不开。</string>
     <string name="recycle_bin_message_restore_failed">恢复没有完成，请刷新后再试。</string>
+    <string name="notification_preferences_privacy_summary">通知原文不上传，金额由你确认。</string>
+    <string name="notification_preferences_details">提醒与隐私说明</string>
 </resources>

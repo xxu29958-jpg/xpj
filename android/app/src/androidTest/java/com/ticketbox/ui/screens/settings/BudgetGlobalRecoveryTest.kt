@@ -128,16 +128,18 @@ class BudgetGlobalRecoveryTest {
                 }
             }
         }
-        compose.onNodeWithText(context.getString(R.string.sync_status_overview_caption_needs_action, 1))
-            .performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("同步与待办").assertIsDisplayed()
         saveConsumerArtPreview("sync-mixed-paper", compose.onRoot().captureToImage().asAndroidBitmap())
+        compose.onNodeWithText("查看原操作，核对后再继续").performScrollTo().performClick()
         compose.onNodeWithText(context.getString(R.string.expense_offset_review_current)).performScrollTo().performClick()
         compose.runOnIdle { assertEquals(7L, reviewed); assertEquals(null, recovered); assertEquals(0, cleared) }
+        compose.onNodeWithText("保存预算").performScrollTo().performClick()
         compose.onNodeWithText("预算已保存，显示待更新。").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("¥1,200", substring = true).performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("重新读取预算").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(accepted.row, recovered); assertEquals(0, cleared) }
         saveConsumerArtPreview("sync-accepted-read-paper", compose.onRoot().captureToImage().asAndroidBitmap())
+        compose.onNodeWithText("原设备身份不匹配").performScrollTo().performClick()
         compose.onNodeWithText("移除隔离数据").performScrollTo().performClick()
         compose.onNodeWithText("取消").performClick()
         compose.runOnIdle { assertEquals(0, cleared); skin.value = AppSkin.Midnight; scale.value = 1.8f }
@@ -171,6 +173,9 @@ class BudgetGlobalRecoveryTest {
                 ), {}, {})
             }
         } }
+        if (pending.row.status == PendingMutationStatus.Done) {
+            compose.onNodeWithText("保存预算").performScrollTo().performClick()
+        }
     }
 
     private fun pending() = PendingBudgetSave(

@@ -45,7 +45,7 @@ internal fun MerchantCatalogListSection(
     busy: Boolean,
     actions: MerchantCatalogListActions,
 ) {
-    SettingsSection(title = stringResource(R.string.merchant_catalog_section_list), icon = Icons.Filled.Tune) {
+    SettingsSection(title = stringResource(R.string.merchant_catalog_section_list)) {
         if (catalog.isEmpty()) {
             SettingsInlineEmpty(
                 title = stringResource(R.string.merchant_catalog_list_empty_title),

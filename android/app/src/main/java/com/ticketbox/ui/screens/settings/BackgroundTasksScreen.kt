@@ -35,7 +35,7 @@ fun BackgroundTasksScreen(
         onBack = onBack,
         status = { AppStatusBanner(message = state.message, tone = state.messageTone) },
     ) {
-        SettingsSection(title = stringResource(R.string.background_tasks_section_recent_title), icon = Icons.Filled.Tune) {
+        SettingsSection(title = stringResource(R.string.background_tasks_section_recent_title)) {
             val summary = remember(state.tasks, state.loading) {
                 backgroundTasksSummaryModel(tasks = state.tasks, loading = state.loading)
             }

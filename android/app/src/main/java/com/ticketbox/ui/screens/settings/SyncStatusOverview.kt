@@ -132,7 +132,6 @@ internal fun SyncStatusOverviewSection(status: OutboxStatus, corrections: List<P
     val overview = syncStatusOverview(status, corrections, writes, incomeSubmissions, manualRates)
     SettingsSection(
         title = stringResource(R.string.sync_status_overview_title),
-        icon = Icons.Filled.Sync,
     ) {
         SettingsOpenPanel(
             verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
@@ -159,7 +158,7 @@ internal fun SyncStatusOverviewSection(status: OutboxStatus, corrections: List<P
 internal fun SyncStatusIncomeReviews(state: OutboxStatusUiState, actions: SyncStatusActions) {
     val reviews = state.incomeSubmissions.values.filter { it.requiresReview }
     if (reviews.isEmpty()) return
-    SettingsSection(title = stringResource(R.string.sync_status_section_needs_action), icon = Icons.Filled.Sync) {
+    SettingsSection(title = stringResource(R.string.sync_status_section_needs_action)) {
         reviews.forEach { original ->
             Text(stringResource(R.string.income_plan_submission_review))
             SyncStatusOriginalIntentSummary(original.row, state, actions)
@@ -211,7 +210,7 @@ private fun overviewCaption(overview: SyncStatusOverview): String = when {
 internal fun SyncStatusDebtSections(state: OutboxStatusUiState, actions: SyncStatusActions) {
     if (state.waitingDebtWrites.isNotEmpty()) {
         val title = if (state.waitingDebtWrites.any { it.canStop }) R.string.sync_status_section_needs_action else R.string.debt_write_waiting
-        SettingsSection(title = stringResource(title), icon = Icons.Filled.CloudUpload) {
+        SettingsSection(title = stringResource(title)) {
             state.waitingDebtWrites.forEach { pending ->
                 com.ticketbox.ui.screens.DebtWriteIntentSummary(pending)
                 if (pending.canStop) TextButton(enabled = state.busyRowId == null, onClick = { actions.onDropFailed(pending.row) }) {
@@ -222,7 +221,7 @@ internal fun SyncStatusDebtSections(state: OutboxStatusUiState, actions: SyncSta
     }
     val stopped = state.debtWrites.values.filter { it.row.status == PendingMutationStatus.Abandoned }
     if (stopped.isNotEmpty()) {
-        SettingsSection(title = stringResource(R.string.debt_write_stopped), icon = Icons.Filled.Sync) {
+        SettingsSection(title = stringResource(R.string.debt_write_stopped)) {
             stopped.forEach { com.ticketbox.ui.screens.DebtWriteIntentSummary(it) }
         }
     }

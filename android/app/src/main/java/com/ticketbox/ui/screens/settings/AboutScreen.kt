@@ -35,7 +35,6 @@ fun AboutScreen(
     ) {
         SettingsSection(
             title = stringResource(R.string.settings_about_section_app_info),
-            icon = Icons.Filled.Info,
         ) {
             SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
                 AboutInfoRow(
@@ -51,7 +50,6 @@ fun AboutScreen(
         }
         SettingsSection(
             title = stringResource(R.string.settings_about_section_boundaries),
-            icon = Icons.Filled.Security,
         ) {
             SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
                 AboutTrustRow(

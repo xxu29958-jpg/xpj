@@ -1,6 +1,7 @@
 package com.ticketbox.ui.screens.settings
 
 import android.graphics.BitmapFactory
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -32,14 +33,20 @@ import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -57,6 +64,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -71,6 +79,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
@@ -94,6 +104,9 @@ import com.ticketbox.ui.appearance.background.TicketboxBackgroundLayer
 import com.ticketbox.ui.appearance.background.resolveCardContainerAlpha
 import com.ticketbox.ui.appearance.background.resolveGlobalScrim
 import com.ticketbox.ui.components.AppPageRole
+import com.ticketbox.ui.components.AppPageChrome
+import com.ticketbox.ui.components.AppPageScrollableColumn
+import com.ticketbox.ui.components.AppScrollablePageChrome
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppSecondaryPageChrome
 import com.ticketbox.ui.components.AppSecondaryPageSlots
@@ -108,6 +121,8 @@ import com.ticketbox.ui.components.formatAmountInput
 import com.ticketbox.ui.components.parseAmountCents
 import com.ticketbox.ui.components.SettingsEntryIcon
 import com.ticketbox.ui.design.AppAlpha
+import com.ticketbox.ui.design.AppAdaptiveContentWidth
+import com.ticketbox.ui.design.asTextStyle
 import com.ticketbox.ui.design.AppElevation
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
@@ -143,13 +158,14 @@ fun SettingsEntryRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 72.dp)
+                .heightIn(min = 68.dp)
                 .padding(vertical = AppSpacing.compactGap),
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             SettingsEntryIcon(
                 icon = icon,
+                modifier = Modifier.size(40.dp),
                 background = settingsEntryBackground(icon),
                 shape = RoundedCornerShape(14.dp),
             )
@@ -159,13 +175,13 @@ fun SettingsEntryRow(
             ) {
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = AppTextHierarchy.body.weight,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = AppTextHierarchy.heading.weight,
                 )
-                Text(
+                if (subtitle.isNotBlank()) Text(
                     text = subtitle,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.labelSmall,
+                    style = MaterialTheme.typography.bodySmall,
                 )
             }
             Icon(
@@ -186,7 +202,7 @@ private fun settingsEntryBackground(icon: ImageVector): Color {
     val tint = when (icon) {
         Icons.Filled.Group, Icons.Filled.Info -> SettingsColors.householdEntry
         Icons.Filled.Palette -> SettingsColors.appearanceEntry
-        Icons.Filled.Sync -> SettingsColors.connectionEntry
+        Icons.Filled.Sync, Icons.Outlined.Sync -> SettingsColors.connectionEntry
         else -> SettingsColors.generalEntry
     }
     return settingsEntrySurface(tint)
@@ -203,15 +219,49 @@ internal fun SettingsPageFrame(
     // callers that pass no status untouched.
     status: (@Composable () -> Unit)? = null,
     content: @Composable () -> Unit,
-) = ManagementPageFrame(
-    header = ManagementPageHeader(
-        title = title,
-        subtitle = subtitle,
-    ),
-    onBack = onBack,
-    status = status,
-    content = content,
-)
+) {
+    BackHandler(enabled = onBack != null) { onBack?.invoke() }
+    AppPageScrollableColumn(
+        chrome = AppScrollablePageChrome(
+            page = AppPageChrome(role = AppPageRole.Settings, hasBottomBar = false),
+            contentWidth = AppAdaptiveContentWidth.Secondary,
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap),
+        ),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap)) {
+            onBack?.let { back ->
+                val backDescription = stringResource(R.string.settings_page_back_to_settings)
+                TextButton(onClick = back, modifier = Modifier.semantics { contentDescription = backDescription }) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+                    Spacer(Modifier.width(AppSpacing.smallGap))
+                    Text(stringResource(R.string.settings_root_page_title))
+                }
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+                Text(title, style = AppTextHierarchy.hero.asTextStyle(), modifier = Modifier.semantics { heading() })
+                if (subtitle.isNotBlank()) Text(subtitle, style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        status?.invoke()
+        content()
+    }
+}
+
+/** A compact entry keeps the overview readable; original controls live in its explicit details. */
+@Composable
+internal fun SettingsDetailRow(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+        SettingsEntryRow(title, subtitle, icon, onClick = { expanded = !expanded }, expanded = expanded)
+        if (expanded) Column(modifier = Modifier.padding(start = AppSpacing.compactGap), content = content)
+    }
+}
 
 @Composable
 internal fun ManagementPageFrame(

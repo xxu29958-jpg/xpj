@@ -131,7 +131,8 @@ class NotificationPreferencesScreenStatusTest {
         composeRule.runOnIdle { assertEquals(7, saves); assertEquals(true, preferences.autoCaptureEnabled) }
         saveConsumerArtPreview("notifications-viewer-midnight-large", composeRule.onRoot().captureToImage().asAndroidBitmap())
         composeRule.onNodeWithText("采集只生成待核对记录").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("通知原文不上", substring = true).performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("提醒与隐私说明").performScrollTo().performClick()
+        composeRule.onNodeWithText("通知原文不上传，金额由你确认。支付通知", substring = true).performScrollTo().assertIsDisplayed()
         saveConsumerArtPreview("notifications-privacy-large", composeRule.onRoot().captureToImage().asAndroidBitmap())
     }
 

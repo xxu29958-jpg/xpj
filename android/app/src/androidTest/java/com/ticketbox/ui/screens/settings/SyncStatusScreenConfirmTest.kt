@@ -140,6 +140,7 @@ class SyncStatusScreenConfirmTest {
             SyncStatusScreenContent(state.value, SyncStatusActions(onRefreshAcceptedResult = {}, onRepairCorrectionRate = { _, _ -> }, onOpenRateSubmission = {}, onOpenIncomeSubmission = {}, onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {}, onOpenExpense = {}, onKeepMine = {},
                 onDropMine = { dropped = it }, onRetry = {}, onDropFailed = {}, onClearQuarantined = {}), {}, onOpenInbox = {})
         } }
+        composeRule.onNodeWithText("查看原操作，核对后再继续").performScrollTo().performClick()
         composeRule.onNodeWithText("放弃我的改动").performScrollTo().performClick()
         composeRule.onNodeWithText("放弃我的改动？").assertIsDisplayed()
         composeRule.runOnIdle {
@@ -301,6 +302,12 @@ class SyncStatusScreenConfirmTest {
                     onOpenInbox = { openedUploads += 1 },
                 )
             }
+        }
+        if (conflicts.isNotEmpty()) {
+            composeRule.onNodeWithText("查看原操作，核对后再继续").performScrollTo().performClick()
+        }
+        if (quarantinedCount > 0) {
+            composeRule.onNodeWithText("原设备身份不匹配").performScrollTo().performClick()
         }
     }
 
