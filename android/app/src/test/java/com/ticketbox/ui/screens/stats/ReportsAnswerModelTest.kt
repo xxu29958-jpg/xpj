@@ -9,6 +9,22 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 class ReportsAnswerModelTest {
+    @Test fun refundNetAmountsRemainSignedAndDoNotBecomeOrdinarySpendingShares() {
+        val report = overview(totalAmountCents = -500, previousTotalAmountCents = -200).copy(
+            count = 2, previousCount = 1,
+            trend = listOf(ReportTrendPoint("2026-06-01", "6/1", 500, 1),
+                ReportTrendPoint("2026-06-02", "6/2", -1000, 1)),
+        )
+        val model = reportsAnswerModel(report)
+        assertEquals(-500L, model.totalAmountCents)
+        assertEquals(-200L, model.previousTotalAmountCents)
+        assertEquals(-300L, model.monthDeltaAmountCents)
+        assertNull(model.monthDeltaPercent)
+        assertEquals(listOf(500L, -1000L), model.trendPoints.map { it.amountCents })
+        assertEquals(-500L, model.trendEvidence?.totalAmountCents)
+        assertEquals(false, model.trendEvidence?.shouldUseDominanceBreakdown)
+    }
+
     @Test fun unavailableAmountsCannotProduceAComparisonOrAnEmptySpendingClaim() {
         val report = overview(totalAmountCents = 1200, previousTotalAmountCents = 500).copy(
             homeCurrencyCode = "JPY", totalAmountCents = null,
@@ -73,7 +89,7 @@ class ReportsAnswerModelTest {
     }
 
     @Test
-    fun answerModelRequiresPositiveYearOverYearBaselineBeforeShowingComparison() {
+    fun answerModelKeepsAbsoluteYearOverYearDifferenceForKnownZeroBaseline() {
         val model = reportsAnswerModel(
             overview(totalAmountCents = 12_000L).copy(
                 yearOverYearTotalAmountCents = 0L,
@@ -81,8 +97,7 @@ class ReportsAnswerModelTest {
             ),
         )
 
-        assertEquals(false, model.hasYearOverYearComparison)
-        // A zero baseline suppresses the comparison badge, not the known absolute difference.
+        assertEquals(true, model.hasYearOverYearComparison)
         assertEquals(12_000L, model.yearOverYearDeltaAmountCents)
     }
 

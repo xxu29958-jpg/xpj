@@ -147,6 +147,8 @@ class BudgetJourney:
 
     def native_edits(self):
         self.open_native("budget")
+        self.native.reveal_any("调整本月预算")
+        self.native.click("调整本月预算")
         self.native.reveal_any("月度总预算")
         self.native.fill("11000.00", previous=r"10,?000(?:\.00)?")
         self.native.click("保存预算")

@@ -50,7 +50,9 @@ internal fun LazyListScope.statsProductItems(
     actions: StatsReportActions,
     overview: StatsOverviewProductState,
 ) {
-    item { com.ticketbox.ui.screens.stats.StatsProjectionNotice(state, actions.onRepairStatsRates) }
+    if (selectedTab != StatsTab.Trend || state.reportsOverview == null || state.statsSource == com.ticketbox.viewmodel.StatsSource.CachedSnapshot) {
+        item { com.ticketbox.ui.screens.stats.StatsProjectionNotice(state, actions.onRepairStatsRates) }
+    }
     when (selectedTab.toPrimaryInsightTab()) {
         StatsTab.Overview -> {
             overviewModuleItems(state, overview.layout, overview.modules, overview.onTrend)
@@ -118,14 +120,12 @@ private fun LazyListScope.statsTrendItems(
 ) {
     when {
         state.reportsOverview != null -> item {
-            StatsInsightSurface {
-                ReportsInsightCard(
+            ReportsInsightCard(
                     overview = state.reportsOverview,
                     actions = actions,
                     exporting = state.reportsExporting || state.reportsLoading,
                     exportMessage = state.reportsExportMessage,
-                )
-            }
+            )
         }
         state.selectedTag.isNotBlank() -> item {
             state.stats?.let { stats ->

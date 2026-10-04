@@ -4,6 +4,7 @@ import com.ticketbox.domain.model.ReportGranularity
 import com.ticketbox.domain.model.ReportsOverview
 import com.ticketbox.domain.model.moneyPercent
 import java.time.LocalDate
+import java.math.BigInteger
 
 private const val DominantPeakPercent = 75
 private const val SparseTrendBucketLimit = 3
@@ -13,6 +14,7 @@ internal enum class ReportsTrendMode {
     Sparse,
     DominantPeak,
     Chart,
+    Signed,
 }
 
 internal data class ReportsTrendEvidence(
@@ -23,8 +25,10 @@ internal data class ReportsTrendEvidence(
     val otherPositiveBucketCount: Int,
     val otherTotalAmountCents: Long,
     val otherAverageAmountCents: Long,
+    val hasNegativeAmounts: Boolean = false,
 ) {
     val mode: ReportsTrendMode = when {
+        hasNegativeAmounts -> ReportsTrendMode.Signed
         totalAmountCents <= 0L || positiveBucketCount == 0 -> ReportsTrendMode.Empty
         positiveBucketCount <= SparseTrendBucketLimit -> ReportsTrendMode.Sparse
         peakSharePercent >= DominantPeakPercent -> ReportsTrendMode.DominantPeak
@@ -70,18 +74,18 @@ private fun reportsAnswerModel(
     val current = overview.totalAmountCents
     val previous = overview.previousTotalAmountCents
     val monthDelta = if (current != null && previous != null) current - previous else null
-    val hasPreviousMonthComparison = monthDelta != null && overview.previousCount > 0 && previous != null && previous > 0L
-    val hasYearOverYearComparison = overview.yearOverYearDeltaAmountCents != null && overview.yearOverYearCount > 0 && overview.yearOverYearTotalAmountCents?.let { it > 0L } == true
+    val hasPreviousMonthComparison = monthDelta != null && overview.previousCount > 0
+    val hasYearOverYearComparison = overview.yearOverYearDeltaAmountCents != null && overview.yearOverYearCount > 0 && overview.yearOverYearTotalAmountCents != null
     return ReportsAnswerModel(
         month = overview.month,
         granularity = overview.granularity,
-        totalAmountCents = overview.totalAmountCents?.coerceAtLeast(0L),
+        totalAmountCents = overview.totalAmountCents,
         count = overview.count.coerceAtLeast(0),
         previousMonth = overview.previousMonth,
         hasPreviousMonthComparison = hasPreviousMonthComparison,
-        previousTotalAmountCents = overview.previousTotalAmountCents?.coerceAtLeast(0L),
+        previousTotalAmountCents = overview.previousTotalAmountCents,
         monthDeltaAmountCents = monthDelta,
-        monthDeltaPercent = if (hasPreviousMonthComparison) {
+        monthDeltaPercent = if (hasPreviousMonthComparison && current != null && current >= 0L && previous != null && previous > 0L) {
             percentChange(requireNotNull(monthDelta), requireNotNull(previous))
         } else {
             null
@@ -96,7 +100,7 @@ private fun reportsAnswerModel(
 }
 
 internal fun reportsTrendEvidence(points: List<ReportTrendChartPoint>): ReportsTrendEvidence {
-    val normalized = points.map { it.copy(amountCents = it.amountCents.coerceAtLeast(0L)) }
+    val normalized = points
     val total = normalized.sumOf { it.amountCents }
     val peakIndex = normalized.indices.maxByOrNull { normalized[it].amountCents }
     val peak = peakIndex?.let { normalized[it] }
@@ -108,10 +112,13 @@ internal fun reportsTrendEvidence(points: List<ReportTrendChartPoint>): ReportsT
         peak = peak,
         totalAmountCents = total,
         positiveBucketCount = normalized.count { it.amountCents > 0L },
-        peakSharePercent = if (total > 0L) (((peak?.amountCents ?: 0L) * 100L) / total).toInt() else 0,
+        peakSharePercent = if (total > 0L && points.none { it.amountCents < 0L })
+            BigInteger.valueOf(peak?.amountCents ?: 0L).multiply(BigInteger.valueOf(100L))
+                .divide(BigInteger.valueOf(total)).toInt() else 0,
         otherPositiveBucketCount = otherPositivePoints.size,
         otherTotalAmountCents = otherTotal,
         otherAverageAmountCents = if (otherPositivePoints.isNotEmpty()) otherTotal / otherPositivePoints.size else 0L,
+        hasNegativeAmounts = points.any { it.amountCents < 0L },
     )
 }
 

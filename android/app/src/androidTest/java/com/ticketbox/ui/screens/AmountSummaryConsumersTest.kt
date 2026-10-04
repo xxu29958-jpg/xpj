@@ -35,6 +35,7 @@ import com.ticketbox.ui.screens.recurring.RecurringHeroSection
 import com.ticketbox.ui.screens.stats.StatsOverviewCard
 import com.ticketbox.ui.screens.stats.StatsOverviewHeaderModel
 import com.ticketbox.ui.screens.stats.ReportsAnswerHeader
+import com.ticketbox.ui.screens.stats.ReportsAnswerMetrics
 import com.ticketbox.ui.screens.stats.ReportsAnswerModel
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.StatsSource
@@ -89,15 +90,19 @@ class AmountSummaryConsumersTest {
     }
 
     @Test fun reportKeepsItsHeadingTotalAndSignedComparisonsReadable() = verify(
-        "report-summary", listOf("本月结论", maximum, "多 ${formatDisplayAmount(MONEY_MINOR_MAX - 1, currency)}", "少 $maximum"),
+        "report-summary", listOf("本月净支出", maximum, "多 ${formatDisplayAmount(MONEY_MINOR_MAX - 1, currency)}", "少 $maximum"),
     ) {
-        ReportsAnswerHeader(ReportsAnswerModel(
+        val model = ReportsAnswerModel(
             month = "2026-10", granularity = ReportGranularity.Month, totalAmountCents = MONEY_MINOR_MAX, count = 2,
             previousMonth = "2026-09", hasPreviousMonthComparison = true, previousTotalAmountCents = 1,
             monthDeltaAmountCents = MONEY_MINOR_MAX - 1, monthDeltaPercent = null,
             yearOverYearMonth = "2025-10", hasYearOverYearComparison = true, yearOverYearDeltaAmountCents = -MONEY_MINOR_MAX,
             trendPoints = emptyList(), trendEvidence = null, homeCurrencyCode = "CNY",
-        ))
+        )
+        androidx.compose.foundation.layout.Column {
+            ReportsAnswerHeader(model)
+            ReportsAnswerMetrics(model)
+        }
     }
 
     private fun verify(name: String, amounts: List<String>, content: @Composable () -> Unit) {
