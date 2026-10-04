@@ -13,13 +13,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -27,10 +28,8 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.text.TextLayoutResult
-import androidx.compose.ui.unit.Density
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.view.WindowInsetsControllerCompat
-import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundSettings
@@ -38,6 +37,7 @@ import com.ticketbox.domain.model.ImmersionMode
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.AppStatusBanner
+import com.ticketbox.ui.PlatformFontScale
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.settings.BackgroundEditorActions
 import com.ticketbox.ui.screens.settings.BackgroundEditorScreen
@@ -76,7 +76,8 @@ class BackgroundEditorViewportTest {
                                 ),
                             )
                             Box(Modifier.weight(1f)) {
-                                CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, scale.value)) {
+                                PlatformFontScale(scale.value) {
+                                    TicketboxTheme(skin = skin.value) {
                                     BackgroundEditorScreen(
                                         editor = editor.value,
                                         currentSkin = skin.value,
@@ -84,6 +85,7 @@ class BackgroundEditorViewportTest {
                                             { editor.value = editor.value.copy(settings = it) },
                                             { cancelled++ }, { applied++; editor.value = editor.value.copy(saving = true) }),
                                     )
+                                    }
                                 }
                             }
                         }
@@ -99,11 +101,11 @@ class BackgroundEditorViewportTest {
         assertEquals("Preview canvas width", appliedViewport.width, preview.width, 1f)
         assertEquals("Preview canvas height", appliedViewport.height, preview.height, 1f)
         assertSystemBarIcons(lightAppearance = true)
-        assertSampleAmountFits()
+        assertSampleAmountFits(1f)
         capture("background-editor-paper")
         compose.runOnIdle { skin.value = AppSkin.Midnight; scale.value = 1.8f }
         assertSystemBarIcons(lightAppearance = false)
-        assertSampleAmountFits()
+        assertSampleAmountFits(1.8f)
         capture("background-editor-midnight-large")
         compose.onNodeWithText("展开选项").performClick()
         compose.onNodeWithText("统计").performScrollTo().performClick()
@@ -124,12 +126,13 @@ class BackgroundEditorViewportTest {
         compose.runOnIdle { assertEquals(1, cancelled); assertEquals(ImmersionMode.Focus, editor.value.settings.immersionMode) }
     }
 
-    private fun assertSampleAmountFits() {
+    private fun assertSampleAmountFits(expectedScale: Float) {
         val layouts = mutableListOf<TextLayoutResult>()
         compose.onNodeWithText("¥123,456.78", useUnmergedTree = true).assertIsDisplayed()
             .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
         assertTrue(layouts.isNotEmpty())
         layouts.forEach { layout ->
+            assertEquals(expectedScale, layout.layoutInput.density.fontScale, 0.001f)
             assertFalse(layout.didOverflowHeight)
             for (line in 0 until layout.lineCount) {
                 assertFalse(layout.isLineEllipsized(line))
@@ -139,7 +142,7 @@ class BackgroundEditorViewportTest {
     }
 
     private fun capture(name: String) = saveConsumerArtPreview(name,
-        requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        compose.onNode(isDialog()).captureToImage().asAndroidBitmap())
 
     private fun assertSystemBarIcons(lightAppearance: Boolean) {
         compose.runOnIdle {
