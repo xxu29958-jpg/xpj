@@ -3,7 +3,6 @@ package com.ticketbox.ui.screens.settings
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
@@ -46,17 +45,12 @@ class AppearanceThemeChoiceRenderTest {
             val density = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(density.density, 1.8f)) {
                 TicketboxTheme(skin = skin.value) {
-                    Column(Modifier.width(328.dp).verticalScroll(rememberScrollState()).selectableGroup()) {
+                    Column(Modifier.width(328.dp).verticalScroll(rememberScrollState())) {
                         AppThemeMode.entries.forEach { mode ->
                             labels[mode] = stringResource(appThemeModeNameRes(mode)) to
                                 stringResource(appThemeModeDescriptionRes(mode))
-                            ThemeModeOption(
-                                mode = mode,
-                                previewSkin = mode.resolveSkin(skin.value == AppSkin.Midnight),
-                                selected = selected.value == mode,
-                                onClick = { selected.value = mode },
-                            )
                         }
+                        ThemeModePicker(selected.value) { selected.value = it }
                     }
                 }
             }
@@ -65,7 +59,7 @@ class AppearanceThemeChoiceRenderTest {
             composeRule.runOnIdle { skin.value = theme }
             for (mode in AppThemeMode.entries) {
                 val (name, description) = labels.getValue(mode)
-                composeRule.onNodeWithText(name).performScrollTo()
+                composeRule.onNodeWithText(name).performScrollTo().performClick().assertIsSelected()
                 saveConsumerArtPreview("appearance-choice-${theme.name}-${mode.name}-large-font",
                     composeRule.onRoot().captureToImage().asAndroidBitmap())
                 for (text in listOf(name, description)) {
@@ -86,7 +80,6 @@ class AppearanceThemeChoiceRenderTest {
                         }
                     }
                 }
-                composeRule.onNodeWithText(name).performClick().assertIsSelected()
                 composeRule.runOnIdle { assertEquals(mode, selected.value) }
             }
             saveConsumerArtPreview("appearance-choices-${theme.name}-large-font",

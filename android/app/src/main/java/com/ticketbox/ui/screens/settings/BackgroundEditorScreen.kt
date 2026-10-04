@@ -24,6 +24,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -31,6 +32,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -118,6 +120,7 @@ private fun BackgroundEditorContent(
             modifier = Modifier.align(Alignment.TopStart),
         )
         BackgroundEditorStageCaption(
+            role = previewRole,
             modifier = Modifier.align(Alignment.TopCenter),
         )
         BackgroundEditorControlPanel(
@@ -200,7 +203,12 @@ private fun BackgroundEditorStage(
             skin = skin,
             role = role,
             modifier = Modifier.fillMaxSize(),
-        )
+        ) {
+            BackgroundReadabilitySample(
+                Modifier.align(Alignment.TopCenter).statusBarsPadding()
+                    .padding(top = 104.dp, start = AppSpacing.screenHorizontal, end = AppSpacing.screenHorizontal),
+            )
+        }
     }
 }
 
@@ -246,10 +254,12 @@ private fun BackgroundEditorTopBar(
 
 @Composable
 private fun BackgroundEditorStageCaption(
+    role: SurfaceRole,
     modifier: Modifier = Modifier,
 ) {
     Text(
-        text = stringResource(R.string.background_editor_stage_caption),
+        text = stringResource(R.string.background_editor_stage_caption,
+            stringResource(backgroundEditorRoleNameRes(role))),
         modifier = modifier
             .statusBarsPadding()
             // 顶栏高度 = 48dp 触控 + 上下 smallGap；caption 贴在其下，不与标题重叠。
@@ -277,6 +287,7 @@ private fun BackgroundEditorControlPanel(
     modifier: Modifier = Modifier,
 ) {
     val draft = editor.settings
+    var optionsExpanded by rememberSaveable { mutableStateOf(false) }
     val maxPanelHeight = LocalConfiguration.current.screenHeightDp.dp * 0.56f
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -293,23 +304,18 @@ private fun BackgroundEditorControlPanel(
             verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
         ) {
             AppStatusBanner(message = editor.message, tone = MessageTone.Danger)
-            BackgroundEditorPanelLabel(text = stringResource(R.string.background_editor_section_preview_role))
-            BackgroundEditorRolePicker(previewRole, onRoleSelect)
-            if (draft.source == BackgroundSource.CustomImage) {
-                BackgroundEditorPanelLabel(text = stringResource(R.string.background_editor_section_composition))
-                BackgroundEditorCompositionControls(
-                    transform = draft.transform,
-                    enabled = !editor.saving,
-                    onTransformChange = { transform ->
-                        actions.onDraftChange(draft.copy(transform = transform))
-                    },
-                )
+            Row(verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+                Text(stringResource(R.string.appearance_background_current_label, backgroundSourceLabel(draft)),
+                    modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+                TextButton(onClick = { optionsExpanded = !optionsExpanded }) {
+                    Text(stringResource(if (optionsExpanded) R.string.background_editor_options_hide
+                        else R.string.background_editor_options_show))
+                }
             }
-            BackgroundEditorPanelLabel(text = stringResource(R.string.appearance_section_immersion_title))
-            ImmersionModePicker(
-                selected = draft.immersionMode,
-                onSelect = { mode -> actions.onDraftChange(draft.copy(immersionMode = mode)) },
-            )
+            if (optionsExpanded) {
+                BackgroundEditorOptions(editor, previewRole, onRoleSelect, actions.onDraftChange)
+            }
             Text(
                 text = stringResource(R.string.background_editor_scope_note),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -318,6 +324,31 @@ private fun BackgroundEditorControlPanel(
             BackgroundEditorFooter(editor.saving, actions)
         }
     }
+}
+
+@Composable
+private fun BackgroundEditorOptions(
+    editor: BackgroundEditorState,
+    previewRole: SurfaceRole,
+    onRoleSelect: (SurfaceRole) -> Unit,
+    onDraftChange: (BackgroundSettings) -> Unit,
+) {
+    val draft = editor.settings
+    BackgroundEditorPanelLabel(text = stringResource(R.string.background_editor_section_preview_role))
+    BackgroundEditorRolePicker(previewRole, onRoleSelect)
+    if (draft.source == BackgroundSource.CustomImage) {
+        BackgroundEditorPanelLabel(text = stringResource(R.string.background_editor_section_composition))
+        BackgroundEditorCompositionControls(
+            transform = draft.transform,
+            enabled = !editor.saving,
+            onTransformChange = { transform -> onDraftChange(draft.copy(transform = transform)) },
+        )
+    }
+    BackgroundEditorPanelLabel(text = stringResource(R.string.appearance_section_immersion_title))
+    ImmersionModePicker(
+        selected = draft.immersionMode,
+        onSelect = { mode -> onDraftChange(draft.copy(immersionMode = mode)) },
+    )
 }
 
 @Composable

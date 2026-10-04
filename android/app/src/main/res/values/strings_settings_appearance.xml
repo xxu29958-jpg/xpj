@@ -3,14 +3,12 @@
      命名/红线见 strings.xml 头部：screen_位置_用途 snake_case、不缩写、每处一个 key 不按值去重、只放中文。 -->
 <resources>
     <!-- AppearanceScreen：外观与主题屏 -->
-    <string name="appearance_page_title">外观与主题</string>
+    <string name="appearance_page_title">挑一种喜欢的感觉</string>
     <string name="appearance_page_subtitle">选择看得舒服的主题和背景。</string>
-    <string name="appearance_section_skin_title">主题</string>
-    <string name="appearance_section_background_title">背景</string>
     <string name="appearance_background_source_theme_default">跟随主题</string>
     <string name="appearance_background_source_builtin">内置背景</string>
     <string name="appearance_background_source_custom_image">自定义图片</string>
-    <string name="appearance_background_current_label">当前背景</string>
+    <string name="appearance_background_current_label">当前背景：%1$s</string>
     <string name="appearance_background_open_gallery">背景图库</string>
     <string name="appearance_background_pick_image">从相册选择</string>
     <string name="appearance_background_edit_composition">调整构图</string>
@@ -23,7 +21,12 @@
     <string name="appearance_reduce_motion_subtitle">关闭背景动效，保持录入稳定</string>
 
     <!-- SettingsAppearanceComponents：皮肤卡 / 沉浸预览组件 -->
-    <string name="appearance_mood_preview_caption">背景预览</string>
+    <string name="appearance_preview_amount_label">本月净支出 · 示例</string>
+    <string name="appearance_preview_sample_note">效果预览 · 示例金额，人民币 CNY</string>
+    <string name="appearance_background_gallery_hint">已有主题素材</string>
+    <string name="appearance_background_album_hint">图片只保存在本机</string>
+    <string name="appearance_background_composition_hint">裁切、位置与沉浸强度</string>
+    <string name="appearance_background_choose_first">先从图库或相册选择背景</string>
     <string name="appearance_skin_name_paper">晨纸</string>
     <string name="appearance_skin_name_midnight">玄夜</string>
     <string name="appearance_theme_mode_name_system">跟随系统</string>
@@ -66,7 +69,7 @@
     <string name="background_gallery_pick_image">从相册选择</string>
 
     <!-- BackgroundEditorScreen：全局背景编辑面（visual-ledger 全局背景批） -->
-    <string name="background_editor_page_title">调整背景</string>
+    <string name="background_editor_page_title">预览你的背景</string>
     <string name="background_editor_section_preview_role">预览页面</string>
     <string name="background_editor_section_composition">构图</string>
     <string name="background_editor_role_pending">待确认</string>
@@ -74,8 +77,10 @@
     <string name="background_editor_role_stats">统计</string>
     <string name="background_editor_role_edit">编辑确认</string>
     <string name="background_editor_role_settings">设置</string>
-    <string name="background_editor_stage_caption">实时预览 · 可拖动缩放</string>
-    <string name="background_editor_scope_note">应用后对所有页面生效，图片只保存在本机。</string>
+    <string name="background_editor_stage_caption">%1$s · 组件预览</string>
+    <string name="background_editor_scope_note">图片只保存在本机。退出未应用时，继续使用原来的背景。</string>
+    <string name="background_editor_options_show">展开选项</string>
+    <string name="background_editor_options_hide">收起选项</string>
     <string name="background_editor_cancel_button">取消</string>
     <string name="background_editor_apply_button">应用背景</string>
     <string name="background_editor_applying">应用中…</string>
