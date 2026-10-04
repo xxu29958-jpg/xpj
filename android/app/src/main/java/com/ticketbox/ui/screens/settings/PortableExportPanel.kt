@@ -8,11 +8,17 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -23,20 +29,36 @@ import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.PortableExportStage
 import com.ticketbox.viewmodel.PortableExportUiState
-import com.ticketbox.viewmodel.PortableExportViewModel
 
 @Composable
-internal fun PortableExportPanel(state: PortableExportUiState, model: PortableExportViewModel, onSave: () -> Unit) {
+internal fun PortableExportPanel(
+    state: PortableExportUiState,
+    onSelect: (String) -> Unit,
+    onSave: () -> Unit,
+    onCancel: () -> Unit,
+    onRefresh: () -> Unit,
+) {
     val idle = state.stage == PortableExportStage.Idle
-    SettingsSection(title = stringResource(R.string.portable_export_title)) {
+    var expanded by rememberSaveable(state.binding) { mutableStateOf(false) }
+    LaunchedEffect(state.stage, state.message) {
+        if (!idle || state.message != null) expanded = true
+    }
+    SettingsDataRow(
+        title = stringResource(R.string.portable_export_title),
+        subtitle = stringResource(R.string.portable_export_entry_hint), icon = Icons.Outlined.FileDownload,
+        action = SettingsDataAction(stringResource(if (expanded) R.string.settings_account_toggle_collapse
+            else R.string.portable_export_entry_action)),
+        onClick = if (idle) { { expanded = !expanded } } else null,
+    )
+    if (expanded) Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
         Text(stringResource(R.string.portable_export_scope), style = MaterialTheme.typography.bodyMedium)
         AppStatusBanner(message = state.message, tone = state.tone)
         if (state.loading) Text(stringResource(R.string.portable_export_loading))
-        else if (state.ledgers.isEmpty()) Text(stringResource(R.string.portable_export_empty))
+        else if (state.ledgers.isEmpty() && state.message == null) Text(stringResource(R.string.portable_export_empty))
         state.ledgers.forEach { ledger ->
             Row(modifier = Modifier.fillMaxWidth().selectable(
                 selected = state.selectedLedgerId == ledger.ledgerId, enabled = idle,
-                role = Role.RadioButton, onClick = { model.select(ledger.ledgerId) },
+                role = Role.RadioButton, onClick = { onSelect(ledger.ledgerId) },
             ).padding(vertical = AppSpacing.smallGap), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
                 RadioButton(selected = state.selectedLedgerId == ledger.ledgerId, onClick = null, enabled = idle)
@@ -47,8 +69,8 @@ internal fun PortableExportPanel(state: PortableExportUiState, model: PortableEx
                 }
             }
         }
-        PortableSaveControls(state, onSave, model::cancel)
-        if (idle) TextButton(onClick = model::refresh, enabled = !state.loading) {
+        PortableSaveControls(state, onSave, onCancel)
+        if (idle) TextButton(onClick = onRefresh, enabled = !state.loading) {
             Text(stringResource(R.string.portable_export_refresh))
         }
     }

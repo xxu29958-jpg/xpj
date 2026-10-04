@@ -233,24 +233,29 @@ internal fun SettingsPageFrame(
             verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap),
         ),
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap)) {
-            onBack?.let { back ->
-                val backDescription = stringResource(R.string.settings_page_back_to_settings)
-                TextButton(onClick = back, modifier = Modifier.semantics { contentDescription = backDescription }) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
-                    Spacer(Modifier.width(AppSpacing.smallGap))
-                    Text(stringResource(R.string.settings_root_page_title))
-                }
-            }
-            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-                Text(title, style = AppTextHierarchy.hero.asTextStyle().copy(fontSize = 32.sp, lineHeight = 38.sp),
-                    modifier = Modifier.semantics { heading() })
-                if (subtitle.isNotBlank()) Text(subtitle, style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
+        SettingsPageHeading(title, subtitle, onBack)
         status?.invoke()
         content()
+    }
+}
+
+@Composable
+internal fun SettingsPageHeading(title: String, subtitle: String, onBack: (() -> Unit)?) {
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap)) {
+        onBack?.let { back ->
+            val backDescription = stringResource(R.string.settings_page_back_to_settings)
+            TextButton(onClick = back, modifier = Modifier.semantics { contentDescription = backDescription }) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+                Spacer(Modifier.width(AppSpacing.smallGap))
+                Text(stringResource(R.string.settings_root_page_title))
+            }
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+            Text(title, style = AppTextHierarchy.hero.asTextStyle().copy(fontSize = 32.sp, lineHeight = 38.sp),
+                modifier = Modifier.semantics { heading() })
+            if (subtitle.isNotBlank()) Text(subtitle, style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -179,13 +180,12 @@ internal fun AccountStatusCard(
             .padding(vertical = AppSpacing.compactGap),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
     ) {
-        Row(
+        Column(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
         ) {
             Column(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
             ) {
                 Text(
@@ -196,13 +196,11 @@ internal fun AccountStatusCard(
                 Text(
                     text = displayLedger,
                     style = MaterialTheme.typography.headlineSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
                 )
             }
-            Row(
+            FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
-                verticalAlignment = Alignment.CenterVertically,
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
             ) {
                 ledgerScope?.let { AccountLedgerScopePill(text = it) }
                 StatusPill(text = statusText, confirmed = serverSettings != null)
@@ -344,7 +342,7 @@ internal fun ConnectionDiagnosticsCard(
     SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
         Text(title, style = MaterialTheme.typography.titleSmall)
         diagnostics?.let { result ->
-            result.checks.filter { expanded || it.status == DiagnosticStatus.Fail }.forEach { check ->
+            result.checks.filter { expanded || it.status != DiagnosticStatus.Pass }.forEach { check ->
                 val color = when (check.status) {
                     DiagnosticStatus.Pass -> MaterialTheme.colorScheme.primary
                     DiagnosticStatus.Warn -> MaterialTheme.colorScheme.tertiary
@@ -420,16 +418,12 @@ internal fun AccountInfoLine(label: String, value: String) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
             modifier = Modifier.weight(0.34f),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
         )
         Text(
             text = value,
             color = MaterialTheme.colorScheme.onSurface,
             style = MaterialTheme.typography.bodySmall,
             modifier = Modifier.weight(1f),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
         )
     }
 }

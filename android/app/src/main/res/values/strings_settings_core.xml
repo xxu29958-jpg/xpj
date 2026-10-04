@@ -136,7 +136,20 @@
     <string name="settings_server_page_title_advanced">连接与同步</string>
     <string name="settings_server_page_title_basic">账本连接</string>
     <string name="settings_server_page_subtitle_advanced">查看连接状态、更新账本，并运行连接检测。</string>
-    <string name="settings_server_page_subtitle_basic">检查连接和保存条件，查看结果并继续未完成的操作。</string>
+    <string name="settings_server_page_subtitle_basic">逐层看清哪里需要处理。</string>
+    <string name="settings_server_reachability_title">服务可达</string>
+    <string name="settings_server_reachability_confirmed">已收到服务器响应</string>
+    <string name="settings_server_reachability_unknown">尚未确认连接，请检查后查看结果</string>
+    <string name="settings_server_reachable">可达</string>
+    <string name="settings_server_unconfirmed">未确认</string>
+    <string name="settings_server_identity_title">身份与权限</string>
+    <string name="settings_server_identity_confirmed">当前账本会话有效</string>
+    <string name="settings_server_identity_unknown">当前会话尚未通过检查</string>
+    <string name="settings_server_valid">有效</string>
+    <string name="settings_server_pending_title">未发送操作</string>
+    <string name="settings_server_pending_hint">查看待处理记录</string>
+    <string name="settings_server_open_action">打开</string>
+    <string name="settings_server_check_again">重新检查连接</string>
     <string name="settings_server_section_diagnostics">连接检测</string>
     <string name="settings_server_diagnostics_hint">检查连接会读取账本状态，不会试写账单。未发送的操作保留在本机，可在离线同步中查看和继续。</string>
     <string name="settings_server_open_pending_operations">查看未发送的操作</string>
@@ -146,20 +159,19 @@
     <string name="settings_data_export_clear_dialog_title">清除离线副本？</string>
     <string name="settings_data_export_clear_dialog_text">仅移除这台设备保存的离线副本，不会删除已入账记录。</string>
     <string name="settings_data_export_clear_dialog_confirm">清除副本</string>
-    <string name="settings_data_export_page_title">数据与导出</string>
-    <string name="settings_data_export_page_subtitle">管理更新、离线副本与导出范围。</string>
-    <string name="settings_data_export_section_refresh_cache">当前账本与本机副本</string>
-    <string name="settings_data_export_authority_label">已入账记录</string>
-    <string name="settings_data_export_authority_body">以已同步账本记录为准，本页不改写金额、分类或标签。</string>
-    <string name="settings_data_export_cache_label">离线副本</string>
-    <string name="settings_data_export_cache_body">本机保存已入账记录副本，连接不可用时可查看。</string>
-    <string name="settings_data_export_export_label">导出范围</string>
-    <string name="settings_data_export_export_body">从账本页按月份、分类和标签导出记录。</string>
+    <string name="settings_data_export_page_title">带走与保留数据</string>
+    <string name="settings_data_export_page_subtitle">下载、刷新与清理分别处理。</string>
+    <string name="settings_data_export_server_section">服务器账本</string>
+    <string name="settings_data_export_section_refresh_cache">本机离线副本</string>
+    <string name="settings_data_export_refresh_hint">更新可离线查看的内容</string>
+    <string name="settings_data_export_refresh_action">刷新</string>
+    <string name="settings_data_export_pending_title">先检查未发送的操作</string>
+    <string name="settings_data_export_pending_body">本机尚未提交的内容不在服务器下载中。按月份、分类或标签导出记录，可前往账本页。</string>
     <string name="settings_data_export_button_refreshing">更新中</string>
-    <string name="settings_data_export_button_refresh">更新数据</string>
-    <string name="settings_data_export_clear_row_title">清除本机副本</string>
-    <string name="settings_data_export_clear_row_body">移除这台设备的离线副本，账本记录不受影响。</string>
-    <string name="settings_data_export_clear_row_action">清除</string>
+    <string name="settings_data_export_button_refresh">重新读取账本</string>
+    <string name="settings_data_export_clear_row_title">清理离线副本</string>
+    <string name="settings_data_export_clear_row_body">不删除服务器记录</string>
+    <string name="settings_data_export_clear_row_action">查看</string>
 
     <!-- 安全与隐私页（SecurityPrivacyScreen） -->
     <string name="settings_security_clear_dialog_title">清除离线副本？</string>
@@ -310,6 +322,11 @@
     <string name="sync_status_error_protocol_mismatch">客户端与服务器版本不匹配。原提交已保留，请更新为配套版本后重试。</string>
 
     <string name="settings_backup_title">备份记录</string>
+    <string name="settings_backup_latest_title">最近发布</string>
+    <string name="settings_backup_view">查看</string>
+    <string name="settings_backup_unconfirmed">尚未确认最近记录，点此查看</string>
+    <string name="settings_backup_note_title">备份异常到电脑上处理</string>
+    <string name="settings_backup_note_body">手机缓存不能代替服务器备份。</string>
     <string name="settings_backup_loading">正在读取服务器上的备份记录…</string>
     <string name="settings_backup_read_failed">暂时无法读取备份记录，请检查连接后重试。</string>
     <string name="settings_backup_never">尚未发现备份发布记录。</string>

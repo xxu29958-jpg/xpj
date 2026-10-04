@@ -41,7 +41,7 @@ internal fun PortableExportDestination(exports: PortableExportActions) {
         AppStatusBanner(message = UiText.res(if (removed) R.string.portable_export_interrupted else R.string.portable_export_partial),
             tone = if (removed) MessageTone.Info else MessageTone.Danger)
     }
-    PortableExportPanel(state, model, onSave = {
+    PortableExportPanel(state, onSelect = model::select, onCancel = model::cancel, onRefresh = model::refresh, onSave = {
         if (model.chooseLocation()) {
             try { picker.launch("ticketbox-portable.zip") } catch (_: ActivityNotFoundException) { model.cancel() }
         }
