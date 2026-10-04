@@ -6,11 +6,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudUpload
-import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.RestartAlt
-import androidx.compose.material.icons.filled.SyncProblem
-import androidx.compose.material.icons.outlined.AccountTree
-import androidx.compose.material.icons.outlined.PersonOff
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -208,7 +204,7 @@ private fun SyncStatusPageBody(
                     SettingsDetailRow(
                         title = stringResource(syncStatusMutationLabelResources.getValue(row.type)),
                         subtitle = stringResource(R.string.sync_status_review_entry_hint),
-                        icon = Icons.Outlined.AccountTree,
+                        icon = R.drawable.ic_lucide_git_branch,
                     ) {
                         SyncStatusOriginalIntentSummary(row, state, actions)
                         ConflictCard(row = row, busy = state.busyRowId == row.id, actions = actions)
@@ -265,7 +261,7 @@ private fun SyncStatusQuarantineSection(count: Int, clearEnabled: Boolean, onCle
             SettingsDetailRow(
                 title = stringResource(R.string.sync_status_quarantine_entry_title),
                 subtitle = stringResource(R.string.sync_status_quarantine_entry_hint, count),
-                icon = Icons.Outlined.PersonOff,
+                icon = R.drawable.ic_lucide_user_round_x,
             ) {
                 Text(
                     text = stringResource(

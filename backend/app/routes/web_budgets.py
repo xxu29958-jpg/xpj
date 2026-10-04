@@ -163,34 +163,40 @@ def _category_form_rows(
 
     rows: list[dict] = []
     for index, (category, amount_yuan) in enumerate(pairs):
-        saved_item = saved[index] if index < len(saved) else None
-        rows.append(
-            {
-                "index": index,
-                "category": category,
-                "saved_category": saved_item.category if saved_item is not None else "",
-                "amount_yuan": amount_yuan,
-                "saved_amount_yuan": (
-                    _amount_yuan(saved_item.amount_cents, currency_code) if saved_item is not None else ""
-                ),
-                "progress_value_cents": min(max(saved_item.spent_amount_cents or 0, 0), saved_item.amount_cents) if saved_item else 0,
-                "progress_max_cents": saved_item.amount_cents if saved_item else 0,
-                "has_progress_basis": bool(saved_item and saved_item.amount_cents > 0
-                    and saved_item.spent_amount_cents is not None and saved_item.spent_amount_cents >= 0),
-                "spent_yuan": (
-                    _amount_yuan(saved_item.spent_amount_cents, currency_code) if saved_item is not None else ""
-                ),
-                "remaining_yuan": (
-                    _amount_yuan(saved_item.remaining_amount_cents, currency_code) if saved_item is not None else ""
-                ),
-                "overspent_yuan": (
-                    _amount_yuan(saved_item.overspent_amount_cents, currency_code) if saved_item is not None else ""
-                ),
-                "has_overspend": bool(saved_item is not None and (saved_item.overspent_amount_cents or 0) > 0),
-                "is_configured": saved_item is not None,
-                "remove_requested": index in removed,
-            }
-        )
+        row = {
+            "index": index,
+            "category": category,
+            "amount_yuan": amount_yuan,
+            "saved_category": "",
+            "saved_amount_yuan": "",
+            "progress_value_cents": 0,
+            "progress_max_cents": 0,
+            "has_progress_basis": False,
+            "spent_yuan": "",
+            "remaining_yuan": "",
+            "overspent_yuan": "",
+            "has_overspend": False,
+            "is_configured": False,
+            "remove_requested": index in removed,
+        }
+        if index < len(saved):
+            saved_item = saved[index]
+            # Saved execution facts stay together; editable values above remain
+            # the original draft even when its category or amount is invalid.
+            row.update(
+                saved_category=saved_item.category,
+                saved_amount_yuan=_amount_yuan(saved_item.amount_cents, currency_code),
+                progress_value_cents=min(max(saved_item.spent_amount_cents or 0, 0), saved_item.amount_cents),
+                progress_max_cents=saved_item.amount_cents,
+                has_progress_basis=(saved_item.amount_cents > 0 and saved_item.spent_amount_cents is not None
+                    and saved_item.spent_amount_cents >= 0),
+                spent_yuan=_amount_yuan(saved_item.spent_amount_cents, currency_code),
+                remaining_yuan=_amount_yuan(saved_item.remaining_amount_cents, currency_code),
+                overspent_yuan=_amount_yuan(saved_item.overspent_amount_cents, currency_code),
+                has_overspend=(saved_item.overspent_amount_cents or 0) > 0,
+                is_configured=True,
+            )
+        rows.append(row)
 
     first_blank_index = len(rows)
     rows.extend(

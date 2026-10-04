@@ -248,7 +248,8 @@ def test_web_budgets_save_and_display_budget_dashboard(web_client: TestClient, *
     assert "服务端预算" not in page.text
     assert page.text.count("data-budget-add-row") == 2
     assert page.text.count('name="category_budget_remove"') == 2
-    assert re.search(r'<details[^>]+id="budget-options"[^>]*data-start-expanded="true"', page.text)
+    assert re.search(r'<details[^>]+id="budget-options"[^>]*data-start-expanded="false"', page.text)
+    assert re.search(r'<details[^>]+id="budget-editor">', page.text)
 
 
 def test_first_budget_total_only_save_and_optional_error_remain_operable(web_client: TestClient) -> None:
@@ -302,7 +303,9 @@ def test_web_budgets_selected_ledger_isolated(web_client: TestClient, *, identit
 
     assert response.status_code == 200
     assert "灰度用户1" in response.text
-    assert "从一个总额开始" in response.text
+    assert "给这个月定个额度" in response.text
+    assert re.search(r'<details[^>]+id="budget-editor" open>', response.text)
+    assert 'name="total_amount_yuan" value=""' in response.text
     assert "本月预算剩余" not in response.text
     assert "¥1000.00" not in response.text
 

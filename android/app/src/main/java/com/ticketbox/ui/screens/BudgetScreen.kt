@@ -84,7 +84,7 @@ private fun BudgetScreenContent(
     val currencyDisplay = CurrencyDisplay.forRecord(state.budget?.homeCurrencyCode ?: "UNKNOWN")
     val decision = budgetPageDecision(state)
     var editorOpen by rememberSaveable(state.binding, state.month) { mutableStateOf(false) }
-    LaunchedEffect(state.formDirty, state.hasPendingSave, state.budget?.configured, state.canModify) {
+    LaunchedEffect(state.binding, state.month, state.formDirty, state.hasPendingSave, state.budget?.configured, state.canModify) {
         if (state.formDirty || state.hasPendingSave || (state.canModify && state.budget?.configured == false)) editorOpen = true
     }
     val back: (() -> Unit)? = if (editorOpen) ({ editorOpen = false }) else onBack

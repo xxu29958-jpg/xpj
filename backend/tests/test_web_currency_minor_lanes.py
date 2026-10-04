@@ -282,7 +282,13 @@ def test_zero_fraction_no_js_forms_and_dashboard_share_input_contract(
 
     budgets = web_client.get("/web/budgets?ledger_id=owner&month=2026-05")
     assert budgets.status_code == 200, budgets.text
-    assert "月度总预算（JPY · ¥，仅支持整数）" in re.sub(r"<[^>]+>", "", budgets.text)
+    total_field = re.search(r'<div class="product-field budget-total-field">(.*?)</div>', budgets.text, re.S)
+    assert total_field is not None
+    field_text = re.sub(r"<[^>]+>", "", total_field.group(1))
+    assert "总预算 · JPY" in field_text
+    assert "¥ · 仅支持整数" in field_text
+    assert 'aria-describedby="budget-total-amount-hint"' in total_field.group(1)
+    assert 'id="budget-total-amount-hint"' in total_field.group(1)
     assert 'name="total_amount_yuan" value="1200" min="0" step="1"' in budgets.text
     assert "预算（元）" not in budgets.text
     assert 'class="dt-pill danger">超支 ¥0' not in budgets.text

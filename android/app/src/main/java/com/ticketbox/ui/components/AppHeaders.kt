@@ -39,7 +39,7 @@ fun ScreenHeader(
             ) {
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.displaySmall,
+                    style = MaterialTheme.typography.displayMedium,
                 )
                 subtitle?.let {
                     Text(

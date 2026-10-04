@@ -1,6 +1,7 @@
 package com.ticketbox.ui.screens.settings
 
 import android.graphics.BitmapFactory
+import androidx.annotation.DrawableRes
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -23,31 +24,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.automirrored.filled.Logout
-import androidx.compose.material.icons.filled.Category
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.CloudDone
-import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.FileDownload
-import androidx.compose.material.icons.filled.Group
-import androidx.compose.material.icons.outlined.Group
-import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.outlined.Image
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.filled.Palette
-import androidx.compose.material.icons.outlined.Palette
-import androidx.compose.material.icons.filled.PhotoLibrary
-import androidx.compose.material.icons.outlined.PhotoLibrary
-import androidx.compose.material.icons.filled.RestartAlt
-import androidx.compose.material.icons.filled.Security
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Sync
-import androidx.compose.material.icons.outlined.Sync
-import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -79,6 +55,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.contentDescription
@@ -87,7 +64,6 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundSettings
@@ -111,6 +87,7 @@ import com.ticketbox.ui.components.AppPageScrollableColumn
 import com.ticketbox.ui.components.AppScrollablePageChrome
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppSecondaryPageChrome
+import com.ticketbox.ui.components.AppSecondaryPageHeader
 import com.ticketbox.ui.components.AppSecondaryPageSlots
 import com.ticketbox.ui.components.AppSecondaryScrollableColumn
 import com.ticketbox.ui.components.AppSecondaryButton
@@ -144,7 +121,7 @@ import kotlinx.coroutines.withContext
 fun SettingsEntryRow(
     title: String,
     subtitle: String,
-    icon: ImageVector,
+    @DrawableRes icon: Int,
     onClick: (() -> Unit)?,
     expanded: Boolean? = null,
 ) {
@@ -167,10 +144,10 @@ fun SettingsEntryRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             SettingsEntryIcon(
-                icon = icon,
+                icon = ImageVector.vectorResource(icon),
                 modifier = Modifier.size(40.dp),
                 background = settingsEntryBackground(icon),
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(AppRadius.medium),
             )
             Column(
                 modifier = Modifier.weight(1f),
@@ -188,7 +165,7 @@ fun SettingsEntryRow(
                 )
             }
             Icon(
-                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                imageVector = ImageVector.vectorResource(R.drawable.ic_lucide_chevron_right),
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(AppSpacing.cardPadding).rotate(if (expanded == true) 90f else 0f),
@@ -201,13 +178,11 @@ fun SettingsEntryRow(
 }
 
 @Composable
-private fun settingsEntryBackground(icon: ImageVector): Color {
+private fun settingsEntryBackground(@DrawableRes icon: Int): Color {
     val tint = when (icon) {
-        Icons.Filled.Group, Icons.Filled.Info, Icons.Filled.Image,
-        Icons.Outlined.Group, Icons.Outlined.Info, Icons.Outlined.Image -> SettingsColors.householdEntry
-        Icons.Filled.Palette, Icons.Filled.PhotoLibrary,
-        Icons.Outlined.Palette, Icons.Outlined.PhotoLibrary -> SettingsColors.appearanceEntry
-        Icons.Filled.Sync, Icons.Outlined.Sync -> SettingsColors.connectionEntry
+        R.drawable.ic_lucide_users, R.drawable.ic_lucide_info, R.drawable.ic_lucide_image -> SettingsColors.householdEntry
+        R.drawable.ic_lucide_palette, R.drawable.ic_lucide_images -> SettingsColors.appearanceEntry
+        R.drawable.ic_lucide_refresh_cw -> SettingsColors.connectionEntry
         else -> SettingsColors.generalEntry
     }
     return settingsEntrySurface(tint)
@@ -242,23 +217,13 @@ internal fun SettingsPageFrame(
 @Composable
 internal fun SettingsPageHeading(title: String, subtitle: String, onBack: (() -> Unit)?,
     backLabel: String = stringResource(R.string.settings_root_page_title)) {
-    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap)) {
-        onBack?.let { back ->
-            val backDescription = if (backLabel == stringResource(R.string.settings_root_page_title))
-                stringResource(R.string.settings_page_back_to_settings) else backLabel
-            TextButton(onClick = back, modifier = Modifier.semantics { contentDescription = backDescription }) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
-                Spacer(Modifier.width(AppSpacing.smallGap))
-                Text(backLabel)
-            }
-        }
-        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-            Text(title, style = AppTextHierarchy.hero.asTextStyle().copy(fontSize = 32.sp, lineHeight = 38.sp),
-                modifier = Modifier.semantics { heading() })
-            if (subtitle.isNotBlank()) Text(subtitle, style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
+    AppSecondaryPageHeader(
+        title = title,
+        subtitle = subtitle,
+        backText = if (backLabel == stringResource(R.string.settings_root_page_title))
+            stringResource(R.string.settings_page_back_to_settings) else backLabel,
+        onBack = onBack,
+    )
 }
 
 /** A compact entry keeps the overview readable; original controls live in its explicit details. */
@@ -266,7 +231,7 @@ internal fun SettingsPageHeading(title: String, subtitle: String, onBack: (() ->
 internal fun SettingsDetailRow(
     title: String,
     subtitle: String,
-    icon: ImageVector,
+    @DrawableRes icon: Int,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }

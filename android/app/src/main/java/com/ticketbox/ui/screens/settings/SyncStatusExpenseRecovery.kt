@@ -1,8 +1,6 @@
 package com.ticketbox.ui.screens.settings
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -65,7 +63,7 @@ private fun SyncStatusAcceptedRow(row: OutboxRow, state: OutboxStatusUiState, ac
     SettingsDetailRow(
         title = stringResource(syncStatusMutationLabelResources.getValue(row.type)),
         subtitle = stringResource(if (budget != null) R.string.budget_saved_read_pending else R.string.sync_status_refresh_required),
-        icon = Icons.Filled.RestartAlt,
+        icon = R.drawable.ic_lucide_rotate_ccw,
     ) {
         budget?.let { com.ticketbox.ui.screens.budget.BudgetSaveIntentSummary(it) }
         AppOutlinedButton(onClick = { actions.onRefreshAcceptedResult(row) },

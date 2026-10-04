@@ -111,7 +111,8 @@ fun AppActionRow(
             SheetPrimaryAction(action = primary, modifier = Modifier.fillMaxWidth())
         } else {
             BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                if (shouldStackSheetActions(maxWidth = maxWidth, primary = primary, secondary = secondary)) {
+                if (shouldStackSheetActions(maxWidth = maxWidth, fontScale = LocalDensity.current.fontScale,
+                    primary = primary, secondary = secondary)) {
                     StackedSheetActions(primary = primary, secondary = secondary)
                 } else {
                     InlineSheetActions(primary = primary, secondary = secondary)
@@ -132,14 +133,16 @@ fun AppSheetActionRow(
 
 private fun shouldStackSheetActions(
     maxWidth: Dp,
+    fontScale: Float,
     primary: AppAction,
     secondary: AppAction,
 ): Boolean {
     val hasLongCopy = primary.text.length >= LongPairedActionLabelLength ||
         secondary.text.length >= LongPairedActionLabelLength ||
         primary.text.length + secondary.text.length >= LongPairedActionTotalLength
-    return maxWidth < AppAdaptiveBreakpoints.pairedActionInlineMinWidth ||
-        hasLongCopy && maxWidth < AppAdaptiveBreakpoints.editActionInlineMinWidth
+    val readableWidth = maxWidth / fontScale.coerceAtLeast(1f)
+    return readableWidth < AppAdaptiveBreakpoints.pairedActionInlineMinWidth ||
+        hasLongCopy && readableWidth < AppAdaptiveBreakpoints.editActionInlineMinWidth
 }
 
 @Composable

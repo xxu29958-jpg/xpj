@@ -156,8 +156,8 @@
 
     <div class="product-field budget-total-field">
       <label for="budget-total-amount-yuan">总预算 · <span data-plan-currency>{{ currency_input.currency_code }}</span></label>
-      <input id="budget-total-amount-yuan" class="product-input" type="number" name="total_amount_yuan" value="{{ budget.form_total_yuan }}" min="0" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_example }}" required>
-      <span class="hint" data-plan-amount-hint>{{ currency_input.currency_symbol }} · {{ currency_input.amount_input_hint }}</span>
+      <input id="budget-total-amount-yuan" class="product-input" aria-describedby="budget-total-amount-hint" type="number" name="total_amount_yuan" value="{{ budget.form_total_yuan }}" min="0" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_example }}" required>
+      <span class="hint" id="budget-total-amount-hint" data-plan-amount-hint>{{ currency_input.currency_symbol }} · {{ currency_input.amount_input_hint }}</span>
     </div>
 
         <div class="budget-category">

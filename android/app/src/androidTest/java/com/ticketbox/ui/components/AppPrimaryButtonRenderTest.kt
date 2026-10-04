@@ -123,17 +123,11 @@ class AppPrimaryButtonRenderTest {
             CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = 1.8f)) {
                 TicketboxTheme(skin = skin.value) {
                     controlFontSize = MaterialTheme.typography.labelLarge.fontSize
-                    Row(Modifier.width(328.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        AppSecondaryButton(
-                            text = secondaryLabel, modifier = Modifier.weight(1f).testTag("secondary"),
-                            onClick = { secondaryClicks++ },
-                        )
-                        AppPrimaryButton(
-                            text = primaryLabel, icon = Icons.Filled.Check,
-                            modifier = Modifier.weight(1f).testTag(BUTTON_TAG),
-                            onClick = { primaryClicks++ },
-                        )
-                    }
+                    AppActionRow(
+                        modifier = Modifier.width(328.dp),
+                        primary = AppAction(primaryLabel, onClick = { primaryClicks++ }),
+                        secondary = AppAction(secondaryLabel, onClick = { secondaryClicks++ }),
+                    )
                 }
             }
         }
@@ -156,8 +150,12 @@ class AppPrimaryButtonRenderTest {
             }
             saveConsumerArtPreview("paired-actions-${theme.name}-large-font",
                 composeRule.onRoot().captureToImage().asAndroidBitmap())
-            composeRule.onNodeWithTag(BUTTON_TAG).assertIsEnabled().performClick()
-            composeRule.onNodeWithTag("secondary").assertIsEnabled().performClick()
+            val primary = composeRule.onNodeWithText(primaryLabel).assertIsEnabled()
+            val secondary = composeRule.onNodeWithText(secondaryLabel).assertIsEnabled()
+            assertTrue("Large text actions should stack at this width",
+                primary.fetchSemanticsNode().boundsInRoot.top >= secondary.fetchSemanticsNode().boundsInRoot.bottom)
+            primary.performClick()
+            secondary.performClick()
         }
         assertEquals(2, primaryClicks)
         assertEquals(2, secondaryClicks)

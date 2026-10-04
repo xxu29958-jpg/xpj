@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
@@ -11,6 +13,7 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performTouchInput
@@ -19,6 +22,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.test.core.app.ApplicationProvider
+import androidx.test.espresso.Espresso.closeSoftKeyboard
+import androidx.compose.ui.graphics.asAndroidBitmap
 import com.ticketbox.R
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.MerchantAliasDto
@@ -30,6 +35,7 @@ import com.ticketbox.data.remote.dto.MerchantCatalogListDto
 import com.ticketbox.data.remote.dto.MerchantCatalogUpdateRequest
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.ui.theme.TicketboxTheme
+import com.ticketbox.ui.saveConsumerArtPreview
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.After
@@ -52,12 +58,13 @@ class MerchantManagementContinuationTest {
     @Volatile private var catalog: MerchantCatalogDto? = null
     @Volatile private var alias: MerchantAliasDto? = null
     @Volatile private var rejectAliasRead = false
+    private val completedAliasReads = CopyOnWriteArrayList<MerchantAliasListDto>()
     private val harness = FactEntryNavigationHarness(context) { delegate ->
         object : ApiService by delegate {
             override suspend fun merchantCatalog(includeHidden: Boolean) = MerchantCatalogListDto(listOfNotNull(catalog))
             override suspend fun merchantAliases(): MerchantAliasListDto {
                 if (rejectAliasRead) throw unavailable()
-                return MerchantAliasListDto(listOfNotNull(alias))
+                return MerchantAliasListDto(listOfNotNull(alias)).also { completedAliasReads += it }
             }
             override suspend fun createMerchantCatalog(request: MerchantCatalogCreateRequest): MerchantCatalogDto {
                 catalogRequests += request
@@ -121,12 +128,16 @@ class MerchantManagementContinuationTest {
         showMerchants()
         clickText(R.string.merchant_management_tools_add_catalog)
         fill(R.string.merchant_catalog_name_label, "尚未提交商家")
+        closeSoftKeyboard()
+        compose.waitForIdle()
         waitForText(R.string.merchant_aliases_reload_button)
 
         rejectAliasRead = false
         clickText(R.string.merchant_aliases_reload_button)
+        compose.waitUntil(5_000) { completedAliasReads.isNotEmpty() }
         compose.waitUntil(5_000) { compose.onAllNodesWithText("原始别名").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("原始别名").performScrollTo().assertIsDisplayed()
+        saveConsumerArtPreview("merchants-reloaded-alias", compose.onRoot().captureToImage().asAndroidBitmap())
         compose.onNode(hasSetTextAction() and hasText("尚未提交商家")).performScrollTo().assertIsDisplayed()
         assertEquals(emptyList<MerchantCatalogCreateRequest>(), catalogRequests)
         assertEquals(emptyList<MerchantAliasRequest>(), aliasRequests)
@@ -208,7 +219,7 @@ class MerchantManagementContinuationTest {
     }
 
     private fun clickText(label: Int) = compose.onNodeWithText(context.getString(label))
-        .performScrollTo().performTouchInput { click() }
+        .performScrollTo().assertIsEnabled().performTouchInput { click() }
 
     private fun fill(label: Int, value: String, index: Int = 0) {
         // AppTextInput exposes its label as a sibling, not as editable text.

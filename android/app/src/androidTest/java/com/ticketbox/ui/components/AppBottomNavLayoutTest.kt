@@ -1,21 +1,21 @@
 package com.ticketbox.ui.components
 
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ReceiptLong
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Insights
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Today
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.AppSkin
+import com.ticketbox.ui.navigation.PrimaryDomain
+import com.ticketbox.ui.navigation.toPrimaryNavItem
+import com.ticketbox.ui.saveConsumerArtPreview
 import com.ticketbox.ui.theme.TicketboxTheme
 import kotlin.math.abs
 import org.junit.Assert.assertEquals
@@ -29,11 +29,11 @@ class AppBottomNavLayoutTest {
 
     @Test
     fun tabSemanticTargetsStayEqualWidthAndClickable() {
-        var selectedKey by mutableStateOf("today")
+        var selectedKey by mutableStateOf(PrimaryDomain.Inbox.key)
         composeRule.setContent {
             TicketboxTheme(skin = AppSkin.Default) {
                 AppBottomNav(
-                    items = bottomNavItems(),
+                    items = PrimaryDomain.entries.map { it.toPrimaryNavItem() },
                     selectedKey = selectedKey,
                     onSelect = { selectedKey = it.key },
                 )
@@ -51,10 +51,11 @@ class AppBottomNavLayoutTest {
             assertTrue("Expected bottom nav target height >= 48.dp, got $height", height >= 48.dp)
         }
 
-        composeRule.onNodeWithContentDescription("账本").performClick()
+        saveConsumerArtPreview("primary-navigation-paper", composeRule.onRoot().captureToImage().asAndroidBitmap())
+        composeRule.onNodeWithContentDescription("流水").performClick()
         composeRule.waitForIdle()
 
-        assertEquals("ledger", selectedKey)
+        assertEquals(PrimaryDomain.Transactions.key, selectedKey)
     }
 
     private fun assertDpWithin(expected: Dp, actual: Dp) {
@@ -63,14 +64,6 @@ class AppBottomNavLayoutTest {
     }
 
     private companion object {
-        val bottomNavLabels = listOf("今日", "待确认", "账本", "洞察", "设置")
-
-        fun bottomNavItems(): List<AppPrimaryNavItem> = listOf(
-            AppPrimaryNavItem("today", "今日", Icons.Default.Today),
-            AppPrimaryNavItem("pending", "待确认", Icons.Default.CheckCircle),
-            AppPrimaryNavItem("ledger", "账本", Icons.AutoMirrored.Filled.ReceiptLong),
-            AppPrimaryNavItem("insights", "洞察", Icons.Default.Insights),
-            AppPrimaryNavItem("settings", "设置", Icons.Default.Settings),
-        )
+        val bottomNavLabels = listOf("收件", "流水", "往来", "计划", "洞察")
     }
 }

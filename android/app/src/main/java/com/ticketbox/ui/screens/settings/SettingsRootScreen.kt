@@ -4,20 +4,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.CloudDone
-import androidx.compose.material.icons.outlined.Devices
-import androidx.compose.material.icons.outlined.FileDownload
-import androidx.compose.material.icons.outlined.FolderShared
-import androidx.compose.material.icons.outlined.Group
-import androidx.compose.material.icons.outlined.GroupAdd
-import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.Notifications
-import androidx.compose.material.icons.outlined.Palette
-import androidx.compose.material.icons.outlined.Person
-import androidx.compose.material.icons.outlined.Security
-import androidx.compose.material.icons.outlined.Sync
-import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -26,7 +12,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -99,7 +84,7 @@ fun SettingsRootScreen(
             SettingsDetailRow(
                 title = stringResource(R.string.settings_account_current_ledger_label),
                 subtitle = state.ledgerName.orEmpty(),
-                icon = Icons.Outlined.CloudDone,
+                icon = R.drawable.ic_lucide_cloud_check,
             ) {
                 SettingsRootAccountSummary(state, navigationActions.connectionSystem.onOpenServer)
             }
@@ -113,37 +98,37 @@ private fun SettingsLedgerFamilySection(actions: SettingsRootLedgerFamilyNavigat
         SettingsDetailRow(
             title = stringResource(R.string.settings_root_family_directory_title),
             subtitle = "",
-            icon = Icons.Outlined.Group,
+            icon = R.drawable.ic_lucide_users,
         ) {
             SettingsEntryRow(
                 title = stringResource(R.string.account_profile_title),
                 subtitle = stringResource(R.string.account_profile_subtitle),
-                icon = Icons.Outlined.Person,
+                icon = R.drawable.ic_lucide_user_round,
                 onClick = actions.onOpenAccountProfile,
             )
             SettingsEntryRow(
                 title = stringResource(R.string.settings_root_entry_ledgers_title),
                 subtitle = stringResource(R.string.settings_root_entry_ledgers_subtitle),
-                icon = Icons.Outlined.FolderShared,
+                icon = R.drawable.ic_lucide_book_open,
                 onClick = actions.onOpenLedgers,
             )
             SettingsEntryRow(
                 title = stringResource(R.string.settings_root_entry_family_members_title),
                 subtitle = stringResource(R.string.settings_root_entry_family_members_subtitle),
-                icon = Icons.Outlined.Group,
+                icon = R.drawable.ic_lucide_users,
                 onClick = actions.onOpenFamilyMembers,
             )
             SettingsEntryRow(
                 title = stringResource(R.string.settings_root_entry_join_family_title),
                 subtitle = stringResource(R.string.settings_root_entry_join_family_subtitle),
-                icon = Icons.Outlined.GroupAdd,
+                icon = R.drawable.ic_lucide_user_round_plus,
                 onClick = actions.onOpenJoinFamilyLedger,
             )
         }
         SettingsEntryRow(
             title = stringResource(R.string.settings_root_entry_my_devices_title),
             subtitle = "",
-            icon = Icons.Outlined.Devices,
+            icon = R.drawable.ic_lucide_monitor_smartphone,
             onClick = actions.onOpenMyDevices,
         )
     }
@@ -155,30 +140,30 @@ private fun SettingsDailySection(actions: SettingsRootNavigationActions) {
         SettingsDetailRow(
             title = stringResource(R.string.settings_root_alerts_directory_title),
             subtitle = "",
-            icon = Icons.Outlined.Palette,
+            icon = R.drawable.ic_lucide_palette,
         ) {
             SettingsEntryRow(
                 title = stringResource(R.string.settings_root_entry_notifications_title),
                 subtitle = stringResource(R.string.settings_root_entry_notifications_subtitle),
-                icon = Icons.Outlined.Notifications,
+                icon = R.drawable.ic_lucide_bell,
                 onClick = actions.alertsAppearance.onOpenNotifications,
             )
             SettingsEntryRow(
                 title = stringResource(R.string.settings_root_entry_appearance_title),
                 subtitle = stringResource(R.string.settings_root_entry_appearance_subtitle),
-                icon = Icons.Outlined.Palette,
+                icon = R.drawable.ic_lucide_palette,
                 onClick = actions.alertsAppearance.onOpenAppearance,
             )
         }
         SettingsDetailRow(
             title = stringResource(R.string.settings_root_section_data_privacy),
             subtitle = "",
-            icon = Icons.Outlined.Security,
+            icon = R.drawable.ic_lucide_shield_check,
         ) {
             SettingsEntryRow(
                 title = stringResource(R.string.settings_root_entry_data_export_title),
                 subtitle = stringResource(R.string.settings_root_entry_data_export_subtitle),
-                icon = Icons.Outlined.FileDownload,
+                icon = R.drawable.ic_lucide_download,
                 onClick = actions.dataPrivacy.onOpenDataExport,
             )
             SettingsEntryRow(
@@ -187,7 +172,7 @@ private fun SettingsDailySection(actions: SettingsRootNavigationActions) {
                     if (BuildConfig.REQUIRE_LOCAL_UNLOCK) R.string.settings_root_entry_security_subtitle_locked
                     else R.string.settings_root_entry_security_subtitle_unlocked,
                 ),
-                icon = Icons.Outlined.Security,
+                icon = R.drawable.ic_lucide_shield_check,
                 onClick = actions.connectionSystem.onOpenSecurity,
             )
         }
@@ -203,7 +188,7 @@ private fun SettingsConnectionSystemSection(
         SettingsDetailRow(
             title = stringResource(R.string.settings_root_sync_directory_title),
             subtitle = "",
-            icon = Icons.Outlined.Sync,
+            icon = R.drawable.ic_lucide_refresh_cw,
         ) {
             SettingsEntryRow(
                 title = stringResource(
@@ -214,26 +199,26 @@ private fun SettingsConnectionSystemSection(
                     if (showAdvancedTools) R.string.settings_root_connection_subtitle_advanced
                     else R.string.settings_root_connection_subtitle_basic,
                 ),
-                icon = Icons.Outlined.CloudDone,
+                icon = R.drawable.ic_lucide_cloud_check,
                 onClick = actions.onOpenServer,
             )
             SettingsEntryRow(
                 title = stringResource(R.string.settings_root_entry_offline_sync_title),
                 subtitle = stringResource(R.string.settings_root_entry_offline_sync_subtitle),
-                icon = Icons.Outlined.Sync,
+                icon = R.drawable.ic_lucide_refresh_cw,
                 onClick = actions.onOpenSyncStatus,
             )
             SettingsEntryRow(
                 title = stringResource(R.string.settings_root_entry_background_tasks_title),
                 subtitle = stringResource(R.string.settings_root_entry_background_tasks_subtitle),
-                icon = Icons.Outlined.Tune,
+                icon = R.drawable.ic_lucide_sliders_horizontal,
                 onClick = actions.onOpenBackgroundTasks,
             )
         }
         SettingsEntryRow(
             title = stringResource(R.string.settings_root_entry_about_title),
             subtitle = "",
-            icon = Icons.Outlined.Info,
+            icon = R.drawable.ic_lucide_info,
             onClick = actions.onOpenAbout,
         )
     }
