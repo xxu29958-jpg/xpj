@@ -90,7 +90,8 @@ class NotificationOriginalTaskNavigationTest {
         show()
         waitForText(context.getString(R.string.settings_backup_never))
         compose.onNodeWithText(context.getString(R.string.settings_backup_title)).assertIsDisplayed()
-        compose.onNodeWithText(context.getString(R.string.settings_backup_next_step)).assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.settings_backup_latest_title)).performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.settings_backup_next_step)).performScrollTo().assertIsDisplayed()
         assertTrue(transport.backupReads > 0)
         assertEquals(0, kotlinx.coroutines.runBlocking { harness.fixture.stored().size })
     }

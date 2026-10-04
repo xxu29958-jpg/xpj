@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.outlined.Inventory2
 import androidx.compose.material.icons.outlined.VpnKey
@@ -33,7 +32,6 @@ import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.components.AppPageChrome
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppPageScrollableColumn
-import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppScrollablePageChrome
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.displayTime
@@ -68,10 +66,10 @@ fun ServerSettingsScreen(state: ServerSettingsScreenState, actions: ServerSettin
         ),
         bottomBar = {
             Surface(color = MaterialTheme.colorScheme.background) {
-                AppPrimaryButton(
+                SettingsPrimaryAction(
                     text = stringResource(if (settings.busy) R.string.settings_account_button_busy
                         else R.string.settings_server_check_again),
-                    icon = Icons.AutoMirrored.Filled.ArrowForward, enabled = !settings.busy,
+                    enabled = !settings.busy,
                     modifier = Modifier.fillMaxWidth().navigationBarsPadding()
                         .padding(horizontal = AppSpacing.screenHorizontal, vertical = AppSpacing.contentGap),
                     onClick = actions.onRunDiagnostics,
