@@ -157,6 +157,7 @@ class BudgetOfflineReadingConnectedTest {
         compose.onNodeWithText(context.getString(R.string.budget_pending_view)).performScrollTo().performClick()
         compose.onNodeWithText("月度总预算 · ¥1,200").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText(context.getString(R.string.budget_save_drop)).performScrollTo().assertIsDisplayed()
+        preview("budget-cached-review")
         compose.onNodeWithText(context.getString(R.string.budget_pending_collapse)).performScrollTo().performClick()
         compose.onNode(hasScrollToIndexAction()).performScrollToIndex(0)
         compose.onNodeWithText(context.getString(R.string.budget_history_title)).performScrollTo().assertIsDisplayed()
