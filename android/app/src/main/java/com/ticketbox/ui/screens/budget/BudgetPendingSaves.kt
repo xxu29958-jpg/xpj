@@ -83,7 +83,11 @@ private fun BudgetSaveStatus(pending: PendingBudgetSave, canModify: Boolean, rec
 @Composable
 private fun BudgetSaveSummary(pending: PendingBudgetSave, expanded: Boolean, toggle: () -> Unit, refresh: () -> Unit) {
     val accepted = pending.row.status == PendingMutationStatus.Done
-    val tone = if (accepted) LocalStateTokens.current.success else LocalStateTokens.current.warn
+    val (tone, title) = if (accepted) {
+        LocalStateTokens.current.success to R.string.budget_pending_saved
+    } else {
+        LocalStateTokens.current.warn to R.string.budget_pending_change
+    }
     Row(Modifier.fillMaxWidth().clickable(role = Role.Button,
             onClickLabel = stringResource(if (expanded) R.string.budget_pending_collapse else R.string.budget_pending_view),
             onClick = toggle),
@@ -94,8 +98,7 @@ private fun BudgetSaveSummary(pending: PendingBudgetSave, expanded: Boolean, tog
                 modifier = Modifier.padding(AppSpacing.compactGap), tint = tone.fg)
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-            Text(stringResource(if (accepted) R.string.budget_pending_saved else R.string.budget_pending_change),
-                style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(title), style = MaterialTheme.typography.titleSmall)
             val subtitle = when {
                 pending.requiresReadRefresh -> stringResource(R.string.budget_pending_refresh_hint)
                 pending.row.status in setOf(PendingMutationStatus.Failed, PendingMutationStatus.Conflict) ->
