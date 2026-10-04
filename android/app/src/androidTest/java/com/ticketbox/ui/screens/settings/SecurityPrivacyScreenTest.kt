@@ -1,11 +1,14 @@
 package com.ticketbox.ui.screens.settings
 
-import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.asAndroidBitmap
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.captureToImage
@@ -14,14 +17,16 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
-import androidx.compose.ui.unit.Density
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.text.TextLayoutResult
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.AppStatusBanner
+import com.ticketbox.ui.PlatformFontScale
 import com.ticketbox.ui.saveConsumerArtPreview
 import com.ticketbox.ui.theme.TicketboxTheme
 import org.junit.Assert.assertEquals
@@ -39,12 +44,14 @@ class SecurityPrivacyScreenTest {
         var clears = 0
         var exits = 0
         compose.setContent {
-            CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, scale)) {
+            PlatformFontScale(scale) {
                 TicketboxTheme(skin = skin) {
-                    SecurityPrivacyScreen(onBack = {}, busy = busy,
-                        onClearCache = { clears++; message = "副本暂未清除，请重试。" },
-                        onBindingCleared = { exits++ },
-                        status = { message?.let { AppStatusBanner(UiText.Raw(it), MessageTone.Danger) } })
+                    Box(Modifier.fillMaxSize().testTag("security-page")) {
+                        SecurityPrivacyScreen(onBack = {}, busy = busy,
+                            onClearCache = { clears++; message = "副本暂未清除，请重试。" },
+                            onBindingCleared = { exits++ },
+                            status = { message?.let { AppStatusBanner(UiText.Raw(it), MessageTone.Danger) } })
+                    }
                 }
             }
         }
@@ -66,6 +73,9 @@ class SecurityPrivacyScreenTest {
         compose.onNodeWithText("取消").performClick()
         compose.runOnIdle { assertEquals(0, exits); busy = false; skin = AppSkin.Midnight; scale = 1.8f }
         exit.performScrollTo().performClick()
+        val layouts = mutableListOf<TextLayoutResult>()
+        compose.onNodeWithText("退出当前账本？").performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+        assertEquals(1.8f, layouts.single().layoutInput.density.fontScale, 0.001f)
         saveConsumerArtPreview("security-exit-midnight-large",
             compose.onNode(isDialog()).assertIsDisplayed().captureToImage().asAndroidBitmap())
         compose.onNodeWithText("确定退出").performClick()
@@ -74,5 +84,6 @@ class SecurityPrivacyScreenTest {
         capture("security-device-actions-midnight-large")
     }
 
-    private fun capture(name: String) = saveConsumerArtPreview(name, compose.onRoot().captureToImage().asAndroidBitmap())
+    private fun capture(name: String) = saveConsumerArtPreview(name,
+        compose.onNodeWithTag("security-page").captureToImage().asAndroidBitmap())
 }
