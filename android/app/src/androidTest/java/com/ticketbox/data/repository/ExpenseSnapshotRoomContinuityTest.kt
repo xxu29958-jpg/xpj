@@ -124,6 +124,7 @@ class ExpenseSnapshotRoomContinuityTest {
         assertEquals(listOf(delivered), fixture.stored())
         showSync()
         compose.waitUntil(10_000) { compose.onAllNodes(hasText(REFRESH_REQUIRED)).fetchSemanticsNodes().isNotEmpty() }
+        compose.onAllNodes(hasText(REFRESH_REQUIRED)).onFirst().performScrollTo().performClick()
         val beforeRead = reads.get()
         clickRefresh()
         compose.runOnIdle {
@@ -180,7 +181,7 @@ class ExpenseSnapshotRoomContinuityTest {
         assertEquals(delivered, fixture.stored())
         showSync()
         compose.waitUntil(10_000) { compose.onAllNodes(hasText(REFRESH_REQUIRED)).fetchSemanticsNodes().isNotEmpty() }
-        compose.onAllNodes(hasText(REFRESH_REQUIRED)).onFirst().performScrollTo().assertIsDisplayed()
+        compose.onAllNodes(hasText(REFRESH_REQUIRED)).onFirst().performScrollTo().assertIsDisplayed().performClick()
         compose.onNodeWithText("重试原提交").assertDoesNotExist()
 
         offline = true
