@@ -147,8 +147,8 @@ _DEBT_KIND_OPTIONS = (
     ("installment", "分期还款", "按期固定偿还，系统会为每一期排出计划。"),
 )
 _DEBT_DIRECTION_OPTIONS = (
-    ("i_owe", "我欠 TA", "记一笔自己应付的。"),
-    ("owed_to_me", "TA 欠我", "记一笔对方应付的。"),
+    ("i_owe", "我欠对方", "记一笔自己应付的。"),
+    ("owed_to_me", "对方欠我", "记一笔对方应付的。"),
 )
 _DEBT_ACTION_KEY_NAMES = (
     "repay",

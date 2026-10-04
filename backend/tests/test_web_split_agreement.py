@@ -61,6 +61,8 @@ def test_cleared_original_does_not_hide_return_obligation_or_rewrite_private_rec
                  "show_progress": False}
     reconcile_member_detail(debt_view, view)
     assert debt_view["headline"] == "这件事还有返还待处理"
+    assert debt_view["direction_sentence"] == "这件事还有返还待处理"
+    assert debt_view["relationship_balance"] is True
     assert debt_view["remaining_label"] == "¥10.00"
     assert debt_view["member_status_label"] == "待返还"
     assert debt_view["member_status_tone"] == ""

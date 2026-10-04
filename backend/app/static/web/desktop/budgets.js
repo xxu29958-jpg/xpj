@@ -15,8 +15,6 @@
       // invalid 不冒泡；同步显露后由浏览器继续聚焦原生非法字段。
       // 不读取金额、不复制约束，也不把折叠状态变成第二份表单数据。
       form.addEventListener("invalid", function (event) {
-        if (editor) editor.open = true;
-        options.forEach(function (item) { if (item.contains(event.target)) item.open = true; });
         const zone = event.target.closest("[data-budget-add-zone]");
         if (zone) zone.hidden = false;
       }, true);

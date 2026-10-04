@@ -29,7 +29,7 @@
   <p>新份额 {{ agreement_pending.share }} {{ agreement.facts.home_currency_code }} · {{ agreement_pending.settlement }}</p>
   <p>{{ agreement_pending.proposal.reason }}</p>
   <p class="hint">双方接受前不会改动财务事实；接受后原付款、返还和免除仍保留。</p>
-  {% if change.can_draft %}<div class="debt-form-actions">
+  {% if change.can_draft %}<div class="product-form-actions">
     {% for action in agreement_pending.actions %}<a class="product-button product-button--quiet" href="{{ action.href }}">{{ action.label }}</a>{% endfor %}
     <a class="product-button product-button--quiet" href="{{ change.href }}&amp;supersedes={{ agreement_pending.proposal.public_id }}">另拟一份并替代此提议</a>
   </div>{% endif %}
@@ -88,7 +88,7 @@
       <textarea id="split-reason" class="product-input" name="reason" maxlength="500" required{% if change['values'].command != 'create' %} readonly{% endif %}>{{ change['values'].reason }}</textarea>
     </div>
     <p data-repayment-status class="product-page-summary" role="status" hidden></p>
-    <div class="debt-form-actions">
+    <div class="product-form-actions">
       <button class="product-button product-button--primary" type="submit" data-repayment-submit{% if not change.can_create and not change.result %} disabled{% endif %}>{{ change.submit_label }}</button>
       {% if change.replacement %}<button class="product-button product-button--quiet" type="button" data-repayment-replace hidden>核对当前事实后重新拟定</button>{% endif %}
     </div>

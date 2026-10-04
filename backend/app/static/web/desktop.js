@@ -20,6 +20,7 @@
       app.applyThemeMode(app.currentThemeMode());
     }
 
+    call("initFormDisclosures");
     call("initThemeControl");
     call("initBackgroundControl");
     call("initLedgerSwitcher");

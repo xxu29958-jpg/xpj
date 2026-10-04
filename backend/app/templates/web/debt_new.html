@@ -7,17 +7,18 @@
 {# C3a 新建外部欠款 (product 栈三级页): 方向/偿还方式用真实 radio 卡片
    (native 可提交, :checked 纯 CSS 选中态); 全部字段名/endpoint/hidden 幂等键
    与旧页一致; 422 由路由原页重渲染, values 回填草稿 (既有行为保留)。 #}
-{% block content %}
-<a class="debt-back" href="/web/debts?ledger_id={{ selected_ledger_id }}">← 返回欠款列表</a>
+{% block page_header %}
+<a class="debt-back" href="/web/debts?ledger_id={{ selected_ledger_id }}">← 往来</a>
 <header class="product-page-header">
   <div class="product-page-heading">
-    <span class="product-eyebrow">往来 / 新建欠款</span>
-    <h1 class="page-title">新建欠款</h1>
-    <p class="product-page-summary">记下你与账本外的人或机构之间的应付和应收，方便后续核对。</p>
+    <h1 class="page-title">记一笔欠款</h1>
+    <p class="product-page-summary">记录和账本外的人或机构的约定，不新增消费。</p>
   </div>
 </header>
+{% endblock %}
 
-<section class="product-panel product-panel--padded">
+{% block content %}
+<section>
   {% if form_error %}<div class="product-feedback product-feedback--danger debt-action-error" role="alert">{{ form_error }}</div>{% endif %}
   <form class="debt-create-form" method="post" action="/web/debts">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -29,12 +30,11 @@
     {% include '_fact_rate_recovery.html' %}
     <fieldset class="debt-choice-group">
       <legend>谁欠谁</legend>
-      <div class="debt-choice-row">
+      <div class="debt-choice-row debt-choice-row--direction">
         {% for option in direction_options %}
         <label class="debt-choice">
           <input type="radio" name="direction" value="{{ option.value }}"{% if values.direction == option.value or (not values.direction and loop.first) %} checked{% endif %}>
           <span class="debt-choice-title">{{ option.label }}</span>
-          <span class="debt-choice-hint">{{ option.hint }}</span>
         </label>
         {% endfor %}
       </div>
@@ -62,26 +62,17 @@
         <label for="debt-new-event-time">发生日期</label>
         <input id="debt-new-event-time" class="product-input" name="event_time" type="date" value="{{ values.event_time or today }}" required>
       </div>
-      <div class="product-field">
-        <label for="debt-new-note">往来说明（可选）</label>
-        <textarea id="debt-new-note" class="product-input" name="note" rows="3" maxlength="500" aria-describedby="debt-new-note-hint" placeholder="比如：一起出差垫付的交通费">{{ values.note or '' }}</textarea>
-        <p id="debt-new-note-hint" class="hint">记下缘由或约定，方便以后核对。最多 500 字。</p>
-      </div>
+
     </div>
 
-    <fieldset class="debt-choice-group">
-      <legend>偿还方式</legend>
-      <div class="debt-choice-row debt-choice-row--three">
-        {% for option in kind_options %}
-        <label class="debt-choice">
-          <input type="radio" name="debt_kind" value="{{ option.value }}"{% if values.debt_kind == option.value or (not values.debt_kind and loop.first) %} checked{% endif %}>
-          <span class="debt-choice-title">{{ option.label }}</span>
-          <span class="debt-choice-hint">{{ option.hint }}</span>
-        </label>
-        {% endfor %}
-      </div>
-    </fieldset>
-
+    <div class="product-field">
+      <label for="debt-new-kind">偿还方式</label>
+      <select id="debt-new-kind" class="product-input" name="debt_kind">
+        {% for option in kind_options %}<option value="{{ option.value }}"{% if values.debt_kind == option.value or (not values.debt_kind and loop.first) %} selected{% endif %}>{{ option.label }}</option>{% endfor %}
+      </select>
+    </div>
+    <details{% if values.installment_count or values.installment_period_months or values.note or form_error %} open{% endif %}>
+      <summary class="product-entry"><span class="product-entry-icon product-entry-icon--lilac" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#list-filter"/></svg></span><span class="product-entry-copy"><strong>分期与说明</strong><span>按需填写</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></summary>
     <div class="product-form-grid">
       <div class="product-field">
         <label for="debt-new-installment-count">总期数（分期时填）</label>
@@ -93,7 +84,14 @@
       </div>
     </div>
 
-    <div class="debt-form-actions">
+      <div class="product-field">
+        <label for="debt-new-note">往来说明（可选）</label>
+        <textarea id="debt-new-note" class="product-input" name="note" rows="3" maxlength="500" aria-describedby="debt-new-note-hint" placeholder="比如：一起出差垫付的交通费">{{ values.note or '' }}</textarea>
+        <p id="debt-new-note-hint" class="hint">记下缘由或约定，方便以后核对。最多 500 字。</p>
+      </div>
+    </details>
+
+    <div class="product-form-actions">
       <button class="product-button product-button--primary" type="submit">记下这笔欠款</button>
     </div>
   </form>

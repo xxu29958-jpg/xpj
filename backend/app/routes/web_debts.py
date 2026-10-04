@@ -36,6 +36,9 @@ from app.routes.web_debt_presenters import (
     _member_headline,
     _member_progress_note,
     _proposal_feedback_context,
+    debt_direction_sentence,
+    debt_remaining_totals,
+    debt_view_direction,
 )
 from app.services.debt_service import (
     get_participant_debt_response,
@@ -103,6 +106,13 @@ def _debt_view(debt) -> dict:
         "name": _debt_name(debt),
         "is_member": is_member,
         "status": debt.status,
+        "direction_sentence": debt_direction_sentence(debt, _debt_name(debt)),
+        "currency_code": debt.home_currency_code,
+        "principal_label": _home_amount_label(debt.principal_amount_cents, debt.home_currency_code),
+        "recede": debt.status != "open",
+        "member_headline": None,
+        "show_progress": False,
+        "direction_label": None,
     }
     if is_member:
         ratio = _communal_ratio(debt.paid_amount_cents, debt.principal_amount_cents)
@@ -119,6 +129,8 @@ def _debt_view(debt) -> dict:
                 "progress_note": _member_progress_note(ratio),
                 "member_status_label": member_status_label,
                 "member_status_tone": member_status_tone,
+                "status_label": member_status_label,
+                "status_tone": member_status_tone,
                 # 作废/已结清的家人行视觉沉降 (淡出、永不红 — 红线② + 「办完可追溯」P1·已决)。
                 "recede": debt.status != "open",
             }
@@ -126,7 +138,7 @@ def _debt_view(debt) -> dict:
     else:
         view.update(
             {
-                "direction_label": _DIRECTION_LABELS.get(debt.direction, "应付"),
+                "direction_label": _DIRECTION_LABELS.get(debt_view_direction(debt), "成员往来"),
                 "status_label": _STATUS_LABELS.get(debt.status, "未结清"),
                 "status_tone": _STATUS_TONE.get(debt.status, ""),
                 # remaining_label: full string for the row's aria-label (the visible hero is the
@@ -153,7 +165,7 @@ _STATUS_RANK = {"open": 0, "cleared": 1, "voided": 2}
 def _split_debt_views(items) -> tuple[list[dict], list[dict]]:
     """把债务列表分成 (家人, 外部) 两组，各组 active-first 排序 (1A 软分组)。
 
-    家人在前 (section header 非 tab，单滚动列表)；禁列表级聚合记分牌 (无 per-person/终身总额)。
+    家人在前，组内保留原排序；方向/币种摘要不改变事实列表。
     """
     views = [_debt_view(debt) for debt in items]
     members = sorted(
@@ -191,6 +203,9 @@ def _detail_view(debt) -> dict:
         "principal_label": _home_amount_label(debt.principal_amount_cents, home),
         "paid_label": _home_amount_label(debt.paid_amount_cents, home),
         "remaining_label": _home_amount_label(debt.remaining_amount_cents, home),
+        "remaining_minor": str(debt.remaining_amount_cents),
+        "direction_sentence": debt_direction_sentence(debt, name),
+        "currency_code": home,
     }
     if use_member:
         viewer_is_debtor = debt.viewer_is_debtor
@@ -216,7 +231,7 @@ def _detail_view(debt) -> dict:
         # rendered businesslike (--text-default fill, not the communal success green).
         view.update(
             {
-                "direction_subtitle": _DIRECTION_LABELS.get(debt.direction, "应付"),
+                "direction_subtitle": _DIRECTION_LABELS.get(debt_view_direction(debt), "成员往来"),
                 "kind_label": _DEBT_KIND_DETAIL_LABELS.get(debt.debt_kind, "暂不指定"),
                 "status_label": _STATUS_LABELS.get(status, "未结清"),
                 "status_tone": _STATUS_TONE.get(status, ""),
@@ -270,6 +285,7 @@ def web_debts(
     ctx["can_write"] = _debt_write_gate(options, selected_id)
     ctx["member_debts"] = member_debts
     ctx["external_debts"] = external_debts
+    ctx["debt_totals"] = debt_remaining_totals(items)
     return templates.TemplateResponse(request=request, name="debts.html", context=ctx)
 
 

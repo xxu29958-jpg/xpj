@@ -104,13 +104,11 @@ def test_web_debts_lists_external_i_owe_open(web_client: TestClient, *, identity
     resp = web_client.get("/web/debts")
     assert resp.status_code == 200
     assert "招商信用卡" in resp.text
-    assert "应付" in resp.text  # i_owe direction label
+    assert "我欠招商信用卡" in resp.text
     assert "未结清" in resp.text  # open status label
     assert "本金" in resp.text
     assert "500.00" in resp.text  # home-currency principal footnote
-    # Editorial-split remaining hero (cur/int/dec spans), not a blunt label string.
-    assert 'class="dh-amt"' in resp.text
-    assert '<span class="dh-int">500</span>' in resp.text
+    assert 'class="debt-num">¥500.00</strong>' in resp.text
 
 
 def test_web_debts_renders_owed_to_me_direction(web_client: TestClient, *, identity) -> None:
@@ -120,7 +118,7 @@ def test_web_debts_renders_owed_to_me_direction(web_client: TestClient, *, ident
     resp = web_client.get("/web/debts")
     assert resp.status_code == 200
     assert "同事借款" in resp.text
-    assert "应收" in resp.text  # owed_to_me direction label
+    assert "同事借款欠我" in resp.text
 
 
 def test_web_debts_renders_cleared_status_and_zero_remaining(
@@ -138,9 +136,7 @@ def test_web_debts_renders_cleared_status_and_zero_remaining(
     assert resp.status_code == 200
     assert "已结清" in resp.text  # cleared status label
     assert "product-status--success" in resp.text  # cleared → success tone class rendered
-    # Remaining hero integer is now exactly 0 (the only dh-int in the row; principal
-    # stays a plain footnote, so this precisely checks remaining == 0).
-    assert '<span class="dh-int">0</span>' in resp.text
+    assert 'class="debt-num">¥0.00</strong>' in resp.text
     assert "本金 " in resp.text  # principal footnote still shown
 
 
@@ -195,17 +191,17 @@ def test_web_debts_lists_member_debt_communal(web_client: TestClient) -> None:
     _seed_member_debt(direction="i_owe")
     resp = web_client.get("/web/debts")
     assert resp.status_code == 200
-    assert '<div class="debt-name">家人</div>' in resp.text
-    assert '<div class="debt-member-remaining">剩余 ¥120.00</div>' in resp.text
+    assert '<strong>家人</strong>' in resp.text
+    assert 'class="debt-num">¥120.00</strong>' in resp.text
     assert 'id="debt-section-member">家人</h2>' in resp.text  # 家人 section header
     # Communal relational headline (viewer=owner=debtor, open, ratio 0).
-    assert "你帮我垫了，慢慢还给你" in resp.text
+    assert "我欠家人" in resp.text
     assert "进行中" in resp.text  # member open status badge (neutral)
     # Red lines: a member row never shows the accounting framing.
     assert "应付" not in resp.text
     assert "应收" not in resp.text
     # No external debts seeded → no 外部 section.
-    assert 'id="debt-section-external">外部</h2>' not in resp.text
+    assert 'id="debt-section-external">朋友与其它</h2>' not in resp.text
 
 
 def test_web_debts_groups_family_before_external(web_client: TestClient, *, identity) -> None:
@@ -216,13 +212,13 @@ def test_web_debts_groups_family_before_external(web_client: TestClient, *, iden
     resp = web_client.get("/web/debts")
     assert resp.status_code == 200
     fam = 'id="debt-section-member">家人</h2>'
-    ext = 'id="debt-section-external">外部</h2>'
+    ext = 'id="debt-section-external">朋友与其它</h2>'
     assert fam in resp.text
     assert ext in resp.text
     assert resp.text.index(fam) < resp.text.index(ext)  # 家人 before 外部
-    assert "你帮我垫了，慢慢还给你" in resp.text  # family communal headline
+    assert "我欠家人" in resp.text  # family communal headline
     assert "招商信用卡" in resp.text  # external row
-    assert "应付" in resp.text  # external still uses the accounting direction label
+    assert "我欠招商信用卡" in resp.text
 
 
 def test_web_debts_member_row_third_party_viewer(web_client: TestClient) -> None:
@@ -232,7 +228,7 @@ def test_web_debts_member_row_third_party_viewer(web_client: TestClient) -> None
     _seed_third_party_member_debt()
     resp = web_client.get("/web/debts")
     assert resp.status_code == 200
-    assert "这件事还在进行中" in resp.text  # third-party headline
+    assert "与妹妹有关的成员往来" in resp.text
     assert "你帮我垫" not in resp.text
     assert "我帮你垫" not in resp.text
     assert "product-status--danger" not in resp.text  # never red for a member row
@@ -305,7 +301,7 @@ def test_debt_view_member_branch_is_communal() -> None:
     assert (member["member_status_label"], member["member_status_tone"]) == ("进行中", "")
     assert member["recede"] is False
     # A member row never carries the external accounting fields.
-    assert "direction_label" not in member
+    assert member["direction_label"] is None
     assert "remaining_segments" not in member
     assert member["remaining_label"] == "¥500.00"
 
@@ -359,6 +355,35 @@ def test_split_debt_views_groups_and_sorts_active_first() -> None:
     assert [v["public_id"] for v in externals] == ["e_open", "m_foreign", "e_voided"]  # open first
 
 
+def test_direction_and_totals_keep_participant_currency_and_third_party_boundaries() -> None:
+    from app.routes.web_debt_presenters import debt_remaining_totals
+    from app.routes.web_receivables import _receivable_row_view
+
+    foreign_receivable = _stub_debt(counterparty_type="member", viewer_is_debtor=False,
+        direction="i_owe", original_currency_code="USD", counterparty_label="家人甲",
+        remaining_amount_cents=90000, note="")
+    for view in (_debt_view(foreign_receivable), _receivable_row_view(foreign_receivable),
+                 _detail_view(foreign_receivable)):
+        assert view["direction_sentence"] == "家人甲欠我"
+        assert view["remaining_label"] == "¥900.00"
+    third_party = _stub_debt(counterparty_type="member", viewer_is_debtor=None,
+                            counterparty_label="家人乙", remaining_amount_cents=999999)
+    assert _debt_view(third_party)["direction_sentence"] == "与家人乙有关的成员往来"
+    totals = debt_remaining_totals([
+        foreign_receivable, third_party,
+        _stub_debt(remaining_amount_cents=26000),
+        _stub_debt(home_currency_code="JPY", remaining_amount_cents=147655),
+        _stub_debt(status="cleared", remaining_amount_cents=0),
+        _stub_debt(status="voided", remaining_amount_cents=50000),
+    ])
+    assert {(row["direction"], row["currency_code"]): (row["amount_cents"], row["count"])
+            for row in totals} == {
+        ("owed_to_me", "CNY"): (90000, 1), ("i_owe", "CNY"): (26000, 1),
+        ("i_owe", "JPY"): (147655, 1),
+    }
+    assert totals[-1]["amount_label"] == "¥147,655"
+
+
 def test_amount_segments_splits_cur_int_dec() -> None:
     """Editorial amount split: small currency mark + thousands-separated integer +
     decimal tail. No-fraction currencies drop the decimal segment."""
@@ -379,14 +404,13 @@ def test_web_debt_detail_external_renders_summary(web_client: TestClient, *, ide
     resp = web_client.get(f"/web/debts/{debt['public_id']}")
     assert resp.status_code == 200
     assert "招商信用卡" in resp.text
-    assert "应付" in resp.text  # external direction subtitle (businesslike)
-    for label in ("本金", "已偿还", "剩余", "未结清"):
+    assert "我欠招商信用卡" in resp.text
+    for label in ("本笔原本金", "本笔已付款", "当前未结金额", "未结清"):
         assert label in resp.text
     assert "500.00" in resp.text  # principal row
-    # 1B premium: editorial display-split hero + businesslike repayment bar +
-    # tracked (letter-spaced) card-title eyebrow (uppercase is a no-op on 剩余).
+    # The summary exposes the complete remaining amount before supporting facts.
     assert "dh-amt--hero" in resp.text
-    assert "debt-progress--neutral" in resp.text
+    assert "¥500.00" in resp.text
     assert "debt-card-label" in resp.text
     # The duplicate 剩余 ROW is removed (剩余 now lives only in the eyebrow/aria);
     # there must be no 剩余 row label left.
@@ -395,18 +419,17 @@ def test_web_debt_detail_external_renders_summary(web_client: TestClient, *, ide
 
 def test_web_debt_detail_member_renders_communal(web_client: TestClient) -> None:
     # Owner viewing their own ledger's member debt → viewer resolves to a party
-    # The relationship summary exposes the remaining amount before expanding supporting totals.
+    # The relationship summary exposes the remaining amount before supporting totals.
     public_id = _seed_member_debt(direction="i_owe", principal_cents=20000)
     detail = web_client.get(f"/web/debts/{public_id}")
     assert detail.status_code == 200
-    assert "一起处理" in detail.text  # participant eyebrow (viewer resolved to a party)
-    assert "看看账" in detail.text  # 看看账 expander
-    assert "这件事一共" in detail.text  # expander shows total, not remaining
+    assert "我欠家人" in detail.text
+    assert "本笔原本金" in detail.text
+    assert "本笔已付款" in detail.text
     # Red lines: member detail must not show accounting framing or danger tone.
     assert "应付" not in detail.text
     assert "应收" not in detail.text
-    before_details = detail.text.split('<details class="debt-look">')[0]
-    assert '<div class="debt-member-remaining">剩余 ¥200.00</div>' in before_details
+    assert 'class="dh-amt dh-amt--hero">¥200.00</strong>' in detail.text
     assert "product-status--danger" not in detail.text  # never red for member debt
     assert "进行中" in detail.text  # member open status badge (neutral)
 

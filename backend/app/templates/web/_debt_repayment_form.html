@@ -1,7 +1,7 @@
 {% set repayment = repayment_form %}
 <div data-repayment-container>
-<section class="product-panel product-panel--padded debt-actions" data-repayment-panel{% if not repayment.visible %} hidden{% endif %}>
-  <h2 class="product-panel-title">{{ '核对原还款' if repayment.result else '记一笔还款' }}</h2>
+<details class="debt-repay-editor" data-repayment-panel{% if not repayment.visible %} hidden{% endif %}{% if repayment.result or repayment.error or debt is not defined %} open{% endif %}>
+  <summary class="product-button product-button--primary">{{ '核对原还款' if repayment.result else '记一笔还款' }} <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-right"/></svg></summary>
   <form class="debt-action-form" method="post" action="/web/debts/{{ repayment.public_id }}/repayments"
         data-repayment-scope="{{ repayment.scope | tojson | forceescape }}"
         data-repayment-result="{{ repayment.result }}" data-repayment-can-create="{{ 'true' if repayment.can_create else 'false' }}"
@@ -26,8 +26,9 @@
         <input id="debt-repay-paid-at" class="product-input" name="paid_at" type="date" value="{{ repayment['values']['paid_at'] }}" required{% if repayment.error %} aria-describedby="debt-action-error-repayment"{% endif %}{% if repayment.result in ['submitted', 'blocked'] %} readonly{% endif %}>
       </div>
     </div>
+    {% include '_debt_balance_preview.html' %}
     <p class="product-page-summary" data-repayment-status role="status" hidden></p>
-    <div class="debt-form-actions">
+    <div class="product-form-actions">
       <button class="product-button product-button--primary" type="submit" data-repayment-submit{% if repayment.result == 'blocked' or not repayment.visible %} disabled{% endif %}>{{ '继续核实这笔还款' if repayment.result == 'submitted' else '记一笔还款' }}</button>
       {% if repayment.replacement %}
       <button class="product-button product-button--quiet" type="button" data-repayment-replace hidden>核对后重新填写</button>
@@ -35,7 +36,7 @@
       {% endif %}
     </div>
   </form>
-</section>
+</details>
 <section class="product-panel product-panel--padded" data-repayment-shelf hidden>
   <h2 class="product-panel-title">此浏览器保留的还款</h2><ul data-repayment-list></ul>
 </section>

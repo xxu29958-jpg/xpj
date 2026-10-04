@@ -50,6 +50,18 @@
     }).format(raw);
   };
 
+  // Native constraint validation must reveal the real field before focusing it.
+  // Shared by budget options, debt details and other progressive disclosures.
+  app.initFormDisclosures = function initFormDisclosures() {
+    document.addEventListener("invalid", function (event) {
+      let disclosure = event.target.closest("details");
+      while (disclosure) {
+        disclosure.open = true;
+        disclosure = disclosure.parentElement?.closest("details");
+      }
+    }, true);
+  };
+
   app.homeMinorToMajorText = function homeMinorToMajorText(value) {
     let raw;
     if (typeof value === "bigint") {

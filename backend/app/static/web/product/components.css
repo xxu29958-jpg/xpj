@@ -72,6 +72,7 @@ p {
 }
 
 .product-page-actions,
+.product-form-actions,
 .dt-actions,
 .actions {
     display: flex;
@@ -80,6 +81,8 @@ p {
     justify-content: flex-end;
     gap: var(--space-3);
 }
+
+.product-form-actions { justify-content: flex-start; margin-block-start: var(--space-5); }
 
 /* W1: commandbar 去卡片相框 — 筛选条是内容区的一段节奏, 不是被框住的表单。 */
 .product-commandbar,
@@ -194,6 +197,12 @@ a.dt-btn {
         background var(--motion-fast) var(--ease-standard),
         color var(--motion-fast) var(--ease-standard),
         transform var(--motion-fast) var(--ease-standard);
+}
+
+.product-button > svg {
+    flex: 0 0 var(--space-5);
+    width: var(--space-5);
+    height: var(--space-5);
 }
 
 .dt-btn:hover,
@@ -530,6 +539,7 @@ button[disabled] {
 .dt-form-row,
 .product-field {
     display: grid;
+    min-width: 0;
     gap: var(--space-2);
 }
 
@@ -546,6 +556,7 @@ input:where(:not([type="hidden"]):not([type="checkbox"]):not([type="radio"])),
 select,
 textarea {
     width: 100%;
+    min-width: 0;
     min-height: var(--space-10);
     padding: var(--space-3) var(--space-4);
     border: 1px solid var(--border-input);
@@ -1100,6 +1111,7 @@ body.product-shell .file-picker > input.file-picker-input:focus-visible {
     color: var(--text-default);
     text-decoration: none;
 }
+.product-button::-webkit-details-marker,
 .product-entry::-webkit-details-marker,
 .review-amount-field > summary::-webkit-details-marker { display: none; }
 .product-entry > svg { width: var(--space-5); height: var(--space-5); color: var(--text-meta); }
@@ -1264,6 +1276,8 @@ details[open] > .product-entry > svg { transform: rotate(90deg); }
 }
 
 @media (max-width: 40rem) {
+    .product-form-actions > .product-button--primary { width: 100%; }
+
     .dt-card {
         padding: var(--space-5);
     }
