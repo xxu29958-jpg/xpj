@@ -943,10 +943,24 @@ def test_product_card_visibility_matrix_is_hidden_authoritative(
       render(healthy);
       await loadProductSession();
       const unpaired = {{
+        heading: $("managerTitle").textContent,
+        helpHidden: $("connectionHelp").hidden,
         link: displayOf("productHomeLink"),
         pair: displayOf("productPairGroup"),
         manage: displayOf("productManageGroup"),
         importExportDisabled: $("importExportAction").disabled
+      }};
+      $("connectionRuntimeHelp").querySelector("summary").click();
+      $("connectionPublicHelp").querySelector("summary").click();
+      const runtimeCard = $("runtimeCard");
+      const publicCard = $("publicConnectivityCard");
+      render(healthy);
+      renderProduct();
+      const help = {{
+        service: $("serviceTitle").textContent,
+        publicSummary: $("publicConnectivitySummary").textContent,
+        runtimeOpen: $("connectionRuntimeHelp").open,
+        publicOpen: $("connectionPublicHelp").open
       }};
       window.fetch = async (url) => {{
         if (url === "/api/product/session") return {{status: 200, ok: true, json: async () => pairedSession}};
@@ -956,13 +970,18 @@ def test_product_card_visibility_matrix_is_hidden_authoritative(
       await loadProductSession();
       await loadProductLedgers();
       const paired = {{
+        heading: $("managerTitle").textContent,
+        helpHidden: $("connectionHelp").hidden,
+        sameProjections: runtimeCard === $("runtimeCard") && publicCard === $("publicConnectivityCard"),
+        runtimeVisible: $("runtimeCard").checkVisibility(),
+        publicVisible: $("publicConnectivityCard").checkVisibility(),
         link: displayOf("productHomeLink"),
         pair: displayOf("productPairGroup"),
         manage: displayOf("productManageGroup"),
         importExportDisabled: $("importExportAction").disabled,
         options: [...$("ledgerSelect").options].map((option) => option.value)
       }};
-      document.body.setAttribute("data-visibility-probe", JSON.stringify({{unpaired, paired}}));
+      document.body.setAttribute("data-visibility-probe", JSON.stringify({{unpaired, help, paired}}));
     }})();"""
     page = _render_probe_page(tmp_path, f"product-visibility-{width}x{height}.html", script)
     value = evaluate_page(
@@ -976,10 +995,18 @@ def test_product_card_visibility_matrix_is_hidden_authoritative(
     assert isinstance(value, str)
     probe = json.loads(value)
     assert probe["unpaired"] == {
+        "heading": "连接这台电脑",
+        "helpHidden": False,
         "link": "none",
         "pair": "grid",
         "manage": "none",
         "importExportDisabled": True,
+    }
+    assert probe["help"] == {
+        "service": "小票夹正在运行",
+        "publicSummary": "公网连接状态未知",
+        "runtimeOpen": True,
+        "publicOpen": True,
     }
     # Chromium reports inline-flex's used display as "flex"; the contract is
     # "link visible, pair form gone, manage group visible".
@@ -988,6 +1015,11 @@ def test_product_card_visibility_matrix_is_hidden_authoritative(
     assert probe["paired"]["manage"] == "flex"
     assert probe["paired"]["importExportDisabled"] is False
     assert probe["paired"]["options"] == ["owner", "family"]
+    assert probe["paired"]["heading"] == "小票夹管理器"
+    assert probe["paired"]["helpHidden"] is True
+    assert probe["paired"]["sameProjections"] is True
+    assert probe["paired"]["runtimeVisible"] is True
+    assert probe["paired"]["publicVisible"] is True
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows Edge consumer gate")
@@ -1165,7 +1197,7 @@ def test_prompt_product_failures_retire_prior_dom_without_erasing_public_status(
     assert probe["sessionSchemaRejected"] == degraded
     assert probe["sessionRoleSchemaRejected"] == degraded
     assert probe["unpaired"] == {
-        "productTitle": "连接这台电脑",
+        "productTitle": "填写连接信息",
         "productState": "获取自己的设备绑定码，连接这台电脑上的桌面账本。",
         "productHomeHidden": True,
         "productPairHidden": False,
