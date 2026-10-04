@@ -511,6 +511,7 @@ def test_drawer_save_resynchronizes_selected_row_occ_consumers_in_real_edge(
         tmp_path,
         "drawer-bulk-occ-contract.html",
         _DRAWER_BULK_OCC_FIXTURE.read_text(encoding="utf-8")
+        .replace("__SHELL_KEYBOARD_URI__", html.escape(_SHELL_KEYBOARD_JS.as_uri(), quote=True))
         .replace(
             "__BULK_BAR_URI__",
             html.escape(_BULK_BAR_JS.as_uri(), quote=True),
@@ -523,12 +524,16 @@ def test_drawer_save_resynchronizes_selected_row_occ_consumers_in_real_edge(
     probe = _evaluate_fixture(
         tmp_path,
         page=page,
-        width=1024,
-        height=768,
+        width=1440,
+        height=900,
         profile_name="edge-drawer-bulk-occ-contract",
     )
 
     assert probe == {
+        "menuEscape": True,
+        "refreshPreservesTarget": True,
+        "retained": {"sameForm": True, "merchant": "Unsaved merchant", "version": "11",
+            "key": "original-confirm-key", "fetches": 2, "queueOperable": True, "bulkBlocked": True},
         "drawerOpenedWhileSelected": True,
         "checkboxChecked": True,
         "checkboxDataRowVersion": "12",
@@ -536,7 +541,7 @@ def test_drawer_save_resynchronizes_selected_row_occ_consumers_in_real_edge(
         "quickConfirmSnapshot": "1:12",
         "bulkTokens": ["12"],
         "selectedCount": "1",
-    }
+    }, probe
     _assert_review_keyboard_behaves_in_real_edge(tmp_path)
 
 

@@ -39,7 +39,24 @@
     return "save";
   }
 
+  // A number input cannot wrap. The native disclosure reads the same input as
+  // text, keeping long values visible without rounding or a second draft.
+  function bindReviewAmounts(root) {
+    root.querySelectorAll("[data-review-amount]").forEach(function (output) {
+      if (output.dataset.bound) return;
+      output.dataset.bound = "true";
+      const field = output.closest(".review-amount-field");
+      const input = field.querySelector('[name="amount_yuan"]');
+      function showValue() { output.textContent = input.value || "待补金额"; }
+      input.addEventListener("input", showValue);
+      showValue();
+      output.parentElement.hidden = false;
+      field.open = !input.value || input.getAttribute("aria-invalid") === "true";
+    });
+  }
+
   app.initDrawer = function initDrawer() {
+    bindReviewAmounts(document);
     const drawer = document.getElementById("drawer");
     const scrim = document.getElementById("drawer-scrim");
     if (!drawer || !scrim) return;
@@ -50,20 +67,52 @@
       'input:not([type="hidden"]):not([disabled]):not([tabindex="-1"]):not([hidden])',
       'select:not([disabled]):not([tabindex="-1"]):not([hidden])',
       'textarea:not([disabled]):not([tabindex="-1"]):not([hidden])',
+      'summary',
       '[contenteditable="true"]:not([tabindex="-1"]):not([hidden])',
       '[tabindex]:not([tabindex="-1"]):not([hidden])'
     ].join(", ");
     let currentRow = null;
     let restoreFocusTo = null;
     let backgroundState = [];
+    const wideReview = window.matchMedia("(min-width: 80rem)");
+    const retainedForms = new Map();
+    let opening = 0;
+    let submitting = false;
+
+    // Keep the actual unsaved form, including its original OCC/key, when moving
+    // between queue rows. No re-created payload or second persistence owner.
+    function retainCurrent() {
+      if (!currentRow || !drawer.querySelector('[data-drawer-form][data-edited="true"]')) return;
+      const fragment = document.createDocumentFragment();
+      while (drawer.firstChild) fragment.appendChild(drawer.firstChild);
+      retainedForms.set(currentRow, fragment);
+    }
+
+    function syncReviewLayout() {
+      const open = drawer.classList.contains("on");
+      drawer.setAttribute("aria-modal", String(!wideReview.matches));
+      if (open && !wideReview.matches) lockBackground();
+      else unlockBackground();
+    }
+    wideReview.addEventListener("change", syncReviewLayout);
+    window.addEventListener("beforeunload", function (event) {
+      if (!submitting && (retainedForms.size || drawer.querySelector('[data-drawer-form][data-edited="true"]'))) {
+        event.preventDefault();
+        event.returnValue = "";
+      }
+    });
 
     function close() {
+      if (submitting) return;
+      opening += 1;
+      retainCurrent();
       drawer.classList.remove("on");
       scrim.classList.remove("on");
       drawer.setAttribute("aria-hidden", "true");
       markCurrent(null);
       if (currentRow) currentRow.setAttribute("aria-expanded", "false");
       drawer.innerHTML = "";
+      drawer.inert = false;
       currentRow = null;
       unlockBackground();
       restoreFocus();
@@ -92,7 +141,7 @@
     function focusableElements() {
       return Array.from(drawer.querySelectorAll(focusableSelector)).filter(function (element) {
         return (
-          element.getClientRects().length > 0 &&
+          element.checkVisibility() &&
           !element.closest('[aria-hidden="true"], [inert]')
         );
       });
@@ -168,17 +217,36 @@
     }
 
     function bindFragment() {
+      bindReviewAmounts(drawer);
+      drawer.querySelectorAll("[data-review-position]").forEach(function (position) {
+        const rows = Array.from(document.querySelectorAll(".exp-row-detail[data-fragment-url]"));
+        position.textContent = "第 " + (rows.indexOf(currentRow) + 1) + " / " + rows.length + " 张";
+      });
+      const image = drawer.querySelector(".product-drawer-receipt img");
+      if (image) {
+        const zoom = drawer.querySelector("[data-receipt-zoom]");
+        const rotate = drawer.querySelector("[data-receipt-rotate]");
+        if (zoom) zoom.onclick = function () {
+          const enlarged = image.classList.toggle("is-zoomed");
+          zoom.setAttribute("aria-label", enlarged ? "缩小小票原图" : "放大小票原图");
+        };
+        if (rotate) rotate.onclick = function () {
+          const angle = (Number(image.dataset.rotation || 0) - 90) % 360;
+          image.dataset.rotation = String(angle);
+          image.style.rotate = angle + "deg";
+        };
+      }
       if (typeof app.initReceiptSkeletons === "function") app.initReceiptSkeletons(drawer);
       drawer.querySelectorAll("[data-drawer-close]").forEach(function (b) {
-        b.addEventListener("click", close);
+        b.onclick = close;
       });
       // K3: 冲突横幅的「放弃修改，载入现值」在抽屉内原地重取 fragment
       // (fresh OCC token + 权威字段值), 不把用户踢出队列。
       drawer.querySelectorAll("[data-drawer-reload]").forEach(function (link) {
-        link.addEventListener("click", function (e) {
+        link.onclick = function (e) {
           e.preventDefault();
           refetchCurrent();
-        });
+        };
       });
       bindDrawerForm();
     }
@@ -187,28 +255,44 @@
     // fetch error fall back to the row's full-page edit link (unchanged
     // behaviour for the open action).
     function openRow(row) {
-      if (!row) return;
+      if (!row || submitting) return;
+      if (row === currentRow && drawer.classList.contains("on")) return;
       // 防御守卫（无当前生产者：批选不再挂 aria-disabled）：行链接被显式
       // 禁用时，程序化入口（review-keyboard 的 drawerApi.open）同样让路。
       if (row.getAttribute("aria-disabled") === "true") return;
       const url = row.getAttribute("data-fragment-url");
       if (!url) return;
       rememberFocus(row);
+      retainCurrent();
+      drawer.inert = true;
+      if (currentRow) currentRow.setAttribute("aria-expanded", "false");
       currentRow = row;
+      const generation = ++opening;
+      function showFragment(html) {
+        if (generation !== opening) return;
+        if (typeof html === "string") drawer.innerHTML = html;
+        else drawer.replaceChildren(html);
+        drawer.inert = false;
+        drawer.classList.add("on");
+        scrim.classList.add("on");
+        drawer.setAttribute("aria-hidden", "false");
+        syncReviewLayout();
+        markCurrent(row);
+        row.setAttribute("aria-expanded", "true");
+        bindFragment();
+        focusDrawer();
+      }
+      if (retainedForms.has(row)) {
+        showFragment(retainedForms.get(row));
+        retainedForms.delete(row);
+        return;
+      }
       fetch(url, { credentials: "same-origin", headers: { "Accept": "text/html" } })
         .then(function (res) { return res.text(); })
-        .then(function (html) {
-          drawer.innerHTML = html;
-          drawer.classList.add("on");
-          scrim.classList.add("on");
-          drawer.setAttribute("aria-hidden", "false");
-          lockBackground();
-          markCurrent(row);
-          row.setAttribute("aria-expanded", "true");
-          bindFragment();
-          focusDrawer();
-        })
+        .then(showFragment)
         .catch(function () {
+          if (generation !== opening) return;
+          close();
           window.location.href = row.getAttribute("href");
         });
     }
@@ -218,15 +302,21 @@
     function refetchCurrent() {
       if (!currentRow) { close(); return; }
       const url = currentRow.getAttribute("data-fragment-url");
-      fetch(url, { credentials: "same-origin", headers: { "Accept": "text/html" } })
+      const generation = opening;
+      return fetch(url, { credentials: "same-origin", headers: { "Accept": "text/html" } })
         .then(function (res) { return res.text(); })
         .then(function (html) {
+          if (generation !== opening) return;
           drawer.innerHTML = html;
           bindFragment();
           resyncRowConsumers();
           focusDrawer();
         })
-        .catch(function () { /* leave the drawer as-is; the row is unchanged */ });
+        .catch(function () {
+          if (generation !== opening) return;
+          const form = drawer.querySelector("[data-drawer-form]");
+          if (form) setDrawerBusy(form, false);
+        });
     }
 
     // save/keep 的 refetch 带回新 expected_row_version：同一新 OCC token 必须
@@ -323,6 +413,7 @@
       const form = drawer.querySelector("[data-drawer-form]");
       if (!form || form.getAttribute("data-fetch-bound") === "1") return;
       form.setAttribute("data-fetch-bound", "1");
+      form.addEventListener("input", function () { form.dataset.edited = "true"; });
       form.addEventListener("submit", function (e) {
         // Offline-fallback re-entry guard: requestSubmit() below re-fires this
         // listener; let the native submit through instead of looping.
@@ -341,6 +432,8 @@
     }
 
     function submitDrawer(form, actionUrl) {
+      if (submitting) return;
+      submitting = true;
       const kind = actionKind(actionUrl);
       const body = new FormData(form);
       body.append("fragment", "1"); // server returns a 200 marker / error fragment
@@ -351,19 +444,25 @@
       fetch(actionUrl, { method: "POST", credentials: "same-origin", body: body })
         .then(function (res) {
           if (res.ok && kind !== "fx") {
-            onMutationOk(kind);
-            return undefined;
+            delete form.dataset.edited;
+            if (kind === "confirm" || kind === "reject") submitting = false;
+            return Promise.resolve(onMutationOk(kind)).then(function () { submitting = false; });
           }
           // FX status/retry returns the original form and OCC with saved-bill
           // status alongside it. Only explicit reload may replace that draft.
           // Errors likewise return the fragment with its inline message.
           return res.text().then(function (html) {
             drawer.innerHTML = html;
+            const edited = drawer.querySelector("[data-drawer-form]");
+            if (edited) edited.dataset.edited = "true";
             bindFragment();
             focusDrawer();
+            submitting = false;
           });
         })
         .catch(function () {
+          submitting = false;
+          setDrawerBusy(form, false);
           // Offline / network failure → native full-page submit. No fragment
           // field is on the form itself, so the server redirects normally;
           // return_to=pending keeps a save on the queue. requestSubmit (not
@@ -385,11 +484,12 @@
         advanceAfterRemoval(removeCurrentRow());
       } else {
         // save / keep: the row stays; refresh the drawer for a fresh token.
-        refetchCurrent();
+        return refetchCurrent();
       }
     }
 
     function setDrawerBusy(form, busy) {
+      form.inert = busy;
       form.querySelectorAll("button[type=submit]").forEach(function (b) {
         b.disabled = busy;
       });
@@ -399,13 +499,21 @@
 
     scrim.addEventListener("click", close);
     document.addEventListener("keydown", function (e) {
-      if (!drawer.classList.contains("on") || hasExternalModal()) return;
+      if (e.defaultPrevented || e.isComposing || !drawer.classList.contains("on") || hasExternalModal()) return;
       if (e.key === "Escape") {
         e.preventDefault();
         close();
-      } else if (e.key === "Tab") {
+      } else if (e.key === "Tab" && !wideReview.matches) {
         trapFocus(e);
       }
+    });
+
+    const startReview = document.querySelector("[data-inbox-review-start]");
+    if (startReview) startReview.addEventListener("click", function (event) {
+      const first = document.querySelector(".exp-row-detail[data-fragment-url]");
+      if (!first) return;
+      event.preventDefault();
+      openRow(first);
     });
 
     document.querySelectorAll(".exp-row-detail[data-fragment-url]").forEach(function (row) {
@@ -432,6 +540,9 @@
       close: close,
       isOpen: function () { return drawer.classList.contains("on"); },
       currentRow: function () { return currentRow; },
+      hasUnsavedChanges: function () {
+        return submitting || retainedForms.size > 0 || !!drawer.querySelector('[data-drawer-form][data-edited="true"]');
+      },
       submitConfirm: function () {
         const form = drawer.querySelector("[data-drawer-form]");
         if (!form) return false;

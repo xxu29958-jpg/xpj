@@ -75,6 +75,13 @@
   </div>
   {% endif %}
 
+  {% if core_fields_compact|default(false) %}
+  <details class="review-amount-field" open>
+    <summary>
+      <span>金额 · {{ e.original_currency_code }}{% if e.needs_amount %} · 待补{% endif %}</span>
+      <span class="review-amount-value" hidden><span aria-hidden="true">{{ e.amount_symbol }}</span><span data-review-amount></span>{% if can_write and not e.is_split_received %}<svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#pencil"/></svg>{% endif %}</span>
+    </summary>
+  {% endif %}
   <div class="product-drawer-field-row">
     <label class="product-field" for="{{ _p }}-amount-yuan">
       <span>金额{% if e.needs_amount %} · 待补{% endif %}</span>
@@ -103,6 +110,7 @@
              disabled>
     </label>
   </div>
+  {% if core_fields_compact|default(false) %}</details>{% endif %}
 
   {% include "_expense_fx.html" %}
 
@@ -137,8 +145,8 @@
   </section>
   {% endif %}
 
-  <label class="product-field" for="{{ _p }}-merchant">
-    <span>商家</span>
+  <label class="product-field review-merchant-field" for="{{ _p }}-merchant">
+    <span class="review-field-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#house"/></svg></span><span>商家</span>
     <input id="{{ _p }}-merchant"
            class="product-input"
            type="text"
@@ -151,25 +159,8 @@
     {% if field_errors.get('merchant') %}<span id="{{ _p }}-merchant-error" class="error-text">{{ field_errors.get('merchant') }}</span>{% endif %}
   </label>
 
-  {% if time_form %}
-  {% with time_prefix=_p, time_name='expense_time', time_disabled=(not can_write or e.is_split_received) %}{% include '_accounting_time_fields.html' %}{% endwith %}
-  {% else %}
-  <label class="product-field" for="{{ _p }}-expense-time">
-    <span>消费时间</span>
-    <input id="{{ _p }}-expense-time"
-           class="product-input"
-           type="datetime-local"
-           name="expense_time"
-           value="{{ e.expense_time_local }}"
-           {% if field_errors.get('expense_time') %}aria-invalid="true" aria-describedby="{{ _p }}-time-error"{% endif %}
-           {% if not can_write or e.is_split_received %}disabled{% endif %}>
-    {% if field_errors.get('expense_time') %}<span id="{{ _p }}-time-error" class="error-text">{{ field_errors.get('expense_time') }}</span>{% endif %}
-    <span class="meta">留空表示不修改时间。</span>
-  </label>
-  {% endif %}
-
-  <label class="product-field" for="{{ _p }}-category">
-    <span>分类</span>
+  <label class="product-field review-category-field" for="{{ _p }}-category">
+    <span class="review-field-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#tag"/></svg></span><span>分类</span>
     <input id="{{ _p }}-category"
            class="product-input"
            type="text"
@@ -186,6 +177,38 @@
     {% for option in category_options %}<option value="{{ option }}"></option>{% endfor %}
   </datalist>
 
+  {% if time_form %}
+  {% if core_fields_compact|default(false) %}
+  <details class="review-date-fields"{% if field_errors.get('expense_time') or time_form.offset_options %} open{% endif %}>
+    <summary><span class="review-field-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#calendar-plus"/></svg></span><span class="review-field-copy"><strong>账务日期</strong><span>{{ e.accounting_date or '待核对' }}</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></summary>
+  {% endif %}
+  {% with time_prefix=_p, time_name='expense_time', time_disabled=(not can_write or e.is_split_received) %}{% include '_accounting_time_fields.html' %}{% endwith %}
+  {% if core_fields_compact|default(false) %}</details>{% endif %}
+  {% else %}
+  <label class="product-field" for="{{ _p }}-expense-time">
+    <span>消费时间</span>
+    <input id="{{ _p }}-expense-time"
+           class="product-input"
+           type="datetime-local"
+           name="expense_time"
+           value="{{ e.expense_time_local }}"
+           {% if field_errors.get('expense_time') %}aria-invalid="true" aria-describedby="{{ _p }}-time-error"{% endif %}
+           {% if not can_write or e.is_split_received %}disabled{% endif %}>
+    {% if field_errors.get('expense_time') %}<span id="{{ _p }}-time-error" class="error-text">{{ field_errors.get('expense_time') }}</span>{% endif %}
+    <span class="meta">留空表示不修改时间。</span>
+  </label>
+  {% endif %}
+
+
+
+  {% if core_fields_compact|default(false) %}
+  {% if core_fields_subtasks|default(false) %}
+  <a class="review-subtask-link" href="/web/expenses/{{ e.id }}/edit?ledger_id={{ selected_ledger_id }}#expense-items"><span class="review-field-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#list"/></svg></span><span class="review-field-copy"><strong>商品明细</strong><span>查看与核对</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></a>
+  <a class="review-subtask-link" href="/web/expenses/{{ e.id }}/edit?ledger_id={{ selected_ledger_id }}#expense-splits"><span class="review-field-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#users"/></svg></span><span class="review-field-copy"><strong>家庭拆账</strong><span>查看与调整分摊</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></a>
+  {% endif %}
+  <details class="review-note-fields"{% if field_errors.get('tags') %} open{% endif %}>
+    <summary><span class="review-field-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#tag"/></svg></span><span class="review-field-copy"><strong>标签与备注</strong><span>{{ e.tags or ('已填写备注' if e.note else '选填') }}</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></summary>
+  {% endif %}
   <label class="product-field" for="{{ _p }}-tags">
     <span>标签</span>
     <input id="{{ _p }}-tags"
@@ -209,4 +232,5 @@
               placeholder="可选，仅当前账本可见"
               {% if not can_write %}disabled{% endif %}>{{ e.note }}</textarea>
   </label>
+  {% if core_fields_compact|default(false) %}</details>{% endif %}
 </div>

@@ -22,7 +22,7 @@
     /* Low-chroma OKLCH neutrals (hue 155, chroma 0.002–0.014), exported as sRGB
        for Android and the shipped ECharts color parser, which rejects OKLCH.
        Light surfaces span L=0.946–0.997; text spans L=0.235–0.660. */
-    --surface-app: #f5f9f6;
+    --surface-app: #fafbf7;
     --surface-card: #fdfefd;
     --surface-raised: #fdfefd;
     --surface-nav: #f8fbf9;
@@ -32,20 +32,20 @@
        appearance-bootstrap.js TicketboxBackground，消费点 shell.css /
        auth-login.css / currency-adoption.css 的 body::before。
        全黑／全白合法图片下也须保住 meta 正文的 4.5:1，图片仍保留透明可见层。 */
-    --surface-user-veil: linear-gradient(rgba(245, 249, 246, 0.92), rgba(245, 249, 246, 0.92));
+    --surface-user-veil: linear-gradient(rgba(250, 251, 247, 0.94), rgba(250, 251, 247, 0.94));
 
     /* Text — 暖墨四级, meta 级在暖纸/卡上保 ≥4.5:1, 最重 SemiBold 即止 */
-    --text-default: #1a201c;
+    --text-default: #23362d;
     --text-muted: #49504c;
-    --text-meta: #606762;
+    --text-meta: #5f6c60;
     --text-faint: #8f9490;
     --text-on-primary: #fdfefd;
 
     /* Brand — 深常青印泥, 只用于主 CTA、选中态与焦点 */
-    --brand-primary: #14504a;
+    --brand-primary: #246653;
     --brand-primary-strong: #0d3d38;
     --brand-accent: #7fae9f;
-    --brand-primary-bg: #e3eeea;
+    --brand-primary-bg: #e9f0dc;
     --brand-focus-ring: rgba(20, 80, 74, 0.42);
     /* 票夹 coral — 品牌右侧夹的专用色: 只做票据「夹」形 / 当期聚焦标记,
        不承载状态语义 (状态留在 state/goal 族), 镜像 Android ThemeVisuals.clipCoral */
@@ -152,18 +152,18 @@
 
 :root[data-theme="midnight"] {
     /* After-hours use: quiet graphite, with distinct solid reading surfaces. */
-    --surface-app: #111512;
+    --surface-app: #16201c;
     --surface-card: #1b1f1c;
     --surface-raised: #252b26;
     --surface-nav: #161917;
     --surface-sunken: #212623;
     /* 自定义背景遮罩：同 paper 的阅读下限，使用深色基调。 */
-    --surface-user-veil: linear-gradient(rgba(17, 21, 18, 0.92), rgba(17, 21, 18, 0.92));
+    --surface-user-veil: linear-gradient(rgba(22, 32, 28, 0.94), rgba(22, 32, 28, 0.94));
 
     /* Text */
-    --text-default: #e9edea;
+    --text-default: #eff4ed;
     --text-muted: #afb6b1;
-    --text-meta: #909893;
+    --text-meta: #a9b2ab;
     --text-faint: #5c625e;
     --text-on-primary: #0e1a17;
 

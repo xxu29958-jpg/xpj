@@ -59,11 +59,11 @@ val LocalAppSkin = compositionLocalOf { AppSkin.Default }
 fun themeVisualsForSkin(skin: AppSkin): ThemeVisuals {
     return when (skin) {
         AppSkin.Paper -> ThemeVisuals(
-            primary = Color(0xFF14504A),
+            primary = Color(0xFF246653),
             primaryDark = Color(0xFF0D3D38),
             accent = Color(0xFF7FAE9F),
-            backgroundTop = Color(0xFFF5F9F6),
-            backgroundBottom = Color(0xFFF5F9F6),
+            backgroundTop = Color(0xFFFAFBF7),
+            backgroundBottom = Color(0xFFFAFBF7),
             heroGradient = listOf(
                 Color(0xFF176B5B),
                 Color(0xFF125C4F),
@@ -92,20 +92,20 @@ fun themeVisualsForSkin(skin: AppSkin): ThemeVisuals {
             ),
             surfaceNav = Color(0xFFF8FBF9),
             surfaceSunken = Color(0xFFE9EFEB),
-            textDefault = Color(0xFF1A201C),
+            textDefault = Color(0xFF23362D),
             textMuted = Color(0xFF49504C),
-            textMeta = Color(0xFF606762),
+            textMeta = Color(0xFF5F6C60),
             textFaint = Color(0xFF8F9490),
             textOnPrimary = Color(0xFFFDFEFD),
-            brandPrimaryBg = Color(0xFFE3EEEA),
+            brandPrimaryBg = Color(0xFFE9F0DC),
             clipCoral = Color(0xFFC2492F),
         )
         AppSkin.Midnight -> ThemeVisuals(
             primary = Color(0xFF70BFA5),
             primaryDark = Color(0xFF54A187),
             accent = Color(0xFF33584C),
-            backgroundTop = Color(0xFF111512),
-            backgroundBottom = Color(0xFF111512),
+            backgroundTop = Color(0xFF16201C),
+            backgroundBottom = Color(0xFF16201C),
             heroGradient = listOf(
                 Color(0xFF315C50),
                 Color(0xFF25483F),
@@ -134,9 +134,9 @@ fun themeVisualsForSkin(skin: AppSkin): ThemeVisuals {
             ),
             surfaceNav = Color(0xFF161917),
             surfaceSunken = Color(0xFF212623),
-            textDefault = Color(0xFFE9EDEA),
+            textDefault = Color(0xFFEFF4ED),
             textMuted = Color(0xFFAFB6B1),
-            textMeta = Color(0xFF909893),
+            textMeta = Color(0xFFA9B2AB),
             textFaint = Color(0xFF5C625E),
             textOnPrimary = Color(0xFF0E1A17),
             brandPrimaryBg = Color(0x2E70BFA5),

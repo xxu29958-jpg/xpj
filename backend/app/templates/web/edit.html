@@ -12,12 +12,11 @@
    明细/家庭拆账子表单仍由本页表单提供。 #}
 {% set e = expense %}
 {% set _q = '?ledger_id=' ~ selected_ledger_id %}
-<header class="product-page-header">
+<header class="product-page-header review-full-heading">
   <div class="product-page-heading">
-    <span class="product-eyebrow">收件 / 待我处理 / 完整整理</span>
-    <h1 class="page-title page-title--compact">完整整理账单 #{{ e.id }}</h1>
+    <h1 class="page-title page-title--compact">核对这张小票</h1>
     <p class="product-page-summary">
-      来源 {{ e.source_label }} · 上传于 {{ e.created_at or '时间待核对' }}
+      核对金额和分类，确认后计入流水。
       {% if e.is_split_received %}· 来自家庭拆账的账单，金额、商家和消费时间按协定冻结，分类、标签和备注仍可整理。{% endif %}
     </p>
   </div>
@@ -31,7 +30,6 @@
       {% elif e.needs_merchant %}缺商家
       {% else %}待确认{% endif %}
     </span>
-    <a href="{{ edit_return_href }}" class="product-button">{{ edit_return_label or '返回' }}</a>
   </div>
 </header>
 
@@ -43,7 +41,7 @@
 {% endif %}
 
 <div class="detail-layout expense-detail-layout">
-  <div class="detail-main">
+  <div class="detail-main product-drawer-form">
     <section class="product-panel product-panel--padded" aria-label="账单字段">
       <form method="post" action="/web/expenses/{{ e.id }}/save" class="edit-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -59,10 +57,11 @@
 
         {% set core_fields_prefix = 'expense-' ~ e.id %}
         {% set core_fields_reload_href = edit_current_href %}
+        {% set core_fields_compact = true %}
         {% include "_expense_core_fields.html" %}
 
         {% if can_write %}
-        <div class="product-page-actions detail-form-actions">
+        <div class="product-page-actions detail-form-actions product-drawer-actions">
           <button class="product-button product-button--danger"
                   type="submit"
                   formaction="/web/expenses/{{ e.id }}/reject"
@@ -87,8 +86,6 @@
 
   <div class="detail-aside">
     <section class="product-panel receipt-preview" aria-label="小票原件">
-      <a class="product-button" href="/web/expenses/{{ e.id }}/original{{ _q }}">检查原件与继续处理</a>
-      {% include "_expense_ocr_actions.html" %}
       {% if e.has_image %}
       <div class="receipt-image-shell" data-image-skeleton>
         <div class="receipt-image-skeleton" aria-hidden="true"></div>
@@ -107,12 +104,17 @@
         <div class="product-state-body">这可能是手动记录，或凭证图片尚未上传。</div>
       </div>
       {% endif %}
+      <details class="review-original-details"><summary>原件信息与识别</summary>
+      <a class="product-button" href="/web/expenses/{{ e.id }}/original{{ _q }}">检查原件与继续处理</a>
+      {% include "_expense_ocr_actions.html" %}
+      </details>
     </section>
   </div>
 </div>
 
 <div class="detail-sections">
-  <section class="product-panel product-panel--padded">
+  <details class="review-subtask"{% if items_error or receipt_items.status == 'mismatch_known' %} open{% endif %}><summary>小票明细 <span>核对商品与合计</span></summary>
+  <section class="product-panel product-panel--padded" id="expense-items">
     <div class="product-panel-header">
       <div>
         <h2 class="product-panel-title">小票明细</h2>
@@ -195,8 +197,9 @@
       {% endif %}
     </form>
   </section>
-
-  <section class="product-panel product-panel--padded">
+  </details>
+  <details class="review-subtask"{% if splits_error %} open{% endif %}><summary>家庭拆账 <span>查看与调整分摊</span></summary>
+  <section class="product-panel product-panel--padded" id="expense-splits">
     <div class="product-panel-header">
       <div>
         <h2 class="product-panel-title">家庭拆账</h2>
@@ -263,5 +266,6 @@
       {% endif %}
     </form>
   </section>
+  </details>
 </div>
 {% endblock %}

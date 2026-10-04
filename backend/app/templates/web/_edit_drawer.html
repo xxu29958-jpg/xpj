@@ -12,6 +12,15 @@
    (与完整整理页同一展示 owner); header 增加「完整整理」逃逸口。 #}
 {% set e = expense %}
 <div class="product-drawer-editor">
+  <header class="review-task-header">
+    <button class="product-button product-button--quiet" type="button" data-drawer-close><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-left"/></svg> 收件箱</button>
+    <span class="review-position" data-review-position>待核对</span>
+    <a class="product-button product-button--quiet" href="/web/expenses/{{ e.id }}/edit{{ '?ledger_id=' ~ selected_ledger_id }}">完整整理</a>
+  </header>
+  <div class="review-mobile-heading">
+    <div class="review-mobile-state"><span data-review-position>待核对</span><span class="product-status">{% if e.is_duplicate %}疑似重复{% elif e.needs_amount %}缺金额{% elif e.fx_pending %}待汇率{% elif e.needs_category %}待分类{% else %}待确认{% endif %}</span></div>
+    <h2 class="review-mobile-title">核对这张小票</h2>
+  </div>
   <section class="product-drawer-evidence" aria-label="账单凭证">
     <header class="product-drawer-section-header">
       <div>
@@ -20,10 +29,6 @@
       </div>
       <span class="product-status">#{{ e.id }}</span>
     </header>
-
-    <p class="product-drawer-meta">{{ e.source_label }} · 上传于 {{ e.created_at or '时间待核对' }}</p>
-    <a class="product-button product-button--small" href="/web/expenses/{{ e.id }}/original{{ '?ledger_id=' ~ selected_ledger_id }}">检查原件与继续处理</a>
-    {% include "_expense_ocr_actions.html" %}
 
     <div class="product-drawer-receipt"
          {% if e.has_image %}data-image-skeleton{% endif %}>
@@ -43,6 +48,8 @@
 
     {% if e.has_image %}
     <div class="product-drawer-evidence-actions">
+      <button type="button" class="product-button product-button--quiet" data-receipt-zoom aria-label="放大小票原图"><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#plus"/></svg>缩放</button>
+      <button type="button" class="product-button product-button--quiet" data-receipt-rotate aria-label="旋转小票原图"><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#rotate-ccw"/></svg>旋转</button>
       <a class="product-button product-button--small"
          href="/web/expenses/{{ e.id }}/image{{ '?ledger_id=' ~ selected_ledger_id }}"
          target="_blank"
@@ -53,49 +60,20 @@
     </div>
     {% endif %}
 
-    <dl class="product-drawer-facts">
-      <div>
-        <dt>商家</dt>
-        <dd>{{ e.merchant or '待补商家' }}</dd>
-      </div>
-      <div>
-        <dt>金额</dt>
-        <dd>{{ e.amount_label or '待补金额' }}</dd>
-      </div>
-      {% if e.fx_meta %}
-      <div>
-        <dt>折算</dt>
-        <dd>{{ e.fx_meta }}</dd>
-      </div>
-      {% endif %}
-      <div>
-        <dt>账务日期</dt>
-        <dd>{{ e.accounting_date or '日期待核对' }}</dd>
-        {% if e.accounting_date_assumed %}<dd>历史日期按初始账本日历推定，可更正</dd>{% endif %}
-      </div>
-      <div>
-        <dt>发生时刻</dt>
-        <dd>{{ e.expense_time or '未记录时刻' }}</dd>
-      </div>
-      <div>
-        <dt>分类</dt>
-        <dd>{% if e.needs_category %}待分类{% else %}{{ e.category or '待分类' }}{% endif %}</dd>
-      </div>
-    </dl>
+
   </section>
 
   <section class="product-drawer-form">
     <header class="product-drawer-header">
       <div class="product-drawer-heading">
         <span class="product-eyebrow">
-          收件 / 待我处理 /
           {% if e.status == 'pending' %}待确认
           {% elif e.status == 'confirmed' %}已入账
           {% elif e.status == 'rejected' %}已忽略
           {% else %}状态待核对
           {% endif %}
         </span>
-        <h2>{{ e.merchant or '未命名账单' }}</h2>
+        <h2>核对这张小票</h2>
         <div class="product-drawer-flags">
           {% if e.needs_amount %}<span class="product-status product-status--danger">缺金额</span>{% endif %}
           {% if e.needs_merchant %}<span class="product-status product-status--warning">缺商家</span>{% endif %}
@@ -105,13 +83,6 @@
           <span class="product-status product-status--success">可确认</span>
           {% endif %}
         </div>
-      </div>
-      <div class="product-drawer-header-actions">
-        <a class="product-button product-button--quiet product-button--small"
-           href="/web/expenses/{{ e.id }}/edit{{ '?ledger_id=' ~ selected_ledger_id }}">完整整理</a>
-        <button class="product-button product-button--quiet product-button--small"
-                type="button"
-                data-drawer-close>关闭</button>
       </div>
     </header>
 
@@ -160,10 +131,13 @@
 
       {% set core_fields_prefix = 'drawer-expense-' ~ e.id %}
       {% set core_fields_reload_href = edit_current_href %}
+      {% set core_fields_compact = true %}
+      {% set core_fields_subtasks = true %}
       {% include "_expense_core_fields.html" %}
 
       {% if can_write %}
       <div class="product-drawer-actions">
+        <details class="review-more-actions"><summary>更多操作</summary><div>
         <button class="product-button product-button--danger"
                 type="submit"
                 formaction="/web/expenses/{{ e.id }}/reject"
@@ -173,12 +147,13 @@
                 type="submit"
                 formaction="/web/duplicates/{{ e.id }}/keep">标为非重复</button>
         {% endif %}
+        </div></details>
         <div class="spacer"></div>
         <button class="product-button" type="submit">保存草稿</button>
         {% if e.status == 'pending' and not e.fx_pending and not fx_revision_changed %}
         <button class="product-button product-button--primary"
                 type="submit"
-                formaction="/web/expenses/{{ e.id }}/confirm">确认入账</button>
+                formaction="/web/expenses/{{ e.id }}/confirm">确认入账并下一张</button>
         {% endif %}
       </div>
       {% else %}
@@ -188,5 +163,40 @@
       </div>
       {% endif %}
     </form>
+    <details class="review-original-details">
+    <summary>原件信息与识别</summary>
+    <p class="product-drawer-meta">{{ e.source_label }} · 上传于 {{ e.created_at or '时间待核对' }}</p>
+    <a class="product-button product-button--small" href="/web/expenses/{{ e.id }}/original{{ '?ledger_id=' ~ selected_ledger_id }}">检查原件与继续处理</a>
+    {% include "_expense_ocr_actions.html" %}
+    <dl class="product-drawer-facts">
+      <div>
+        <dt>商家</dt>
+        <dd>{{ e.merchant or '待补商家' }}</dd>
+      </div>
+      <div>
+        <dt>金额</dt>
+        <dd>{{ e.amount_label or '待补金额' }}</dd>
+      </div>
+      {% if e.fx_meta %}
+      <div>
+        <dt>折算</dt>
+        <dd>{{ e.fx_meta }}</dd>
+      </div>
+      {% endif %}
+      <div>
+        <dt>账务日期</dt>
+        <dd>{{ e.accounting_date or '日期待核对' }}</dd>
+        {% if e.accounting_date_assumed %}<dd>历史日期按初始账本日历推定，可更正</dd>{% endif %}
+      </div>
+      <div>
+        <dt>发生时刻</dt>
+        <dd>{{ e.expense_time or '未记录时刻' }}</dd>
+      </div>
+      <div>
+        <dt>分类</dt>
+        <dd>{% if e.needs_category %}待分类{% else %}{{ e.category or '待分类' }}{% endif %}</dd>
+      </div>
+    </dl>
+    </details>
   </section>
 </div>

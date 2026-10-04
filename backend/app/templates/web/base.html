@@ -2,7 +2,7 @@
 {% set _path = request.url.path %}
 {% set _role = selected_ledger_role or 'owner' %}
 {% set _readonly_transactions = _path == '/web/confirmed' and _role == 'viewer' %}
-{% set _compact_ledger_header = inbox_is_empty|default(false) or _readonly_transactions %}
+{% set _compact_ledger_header = _path == '/web/pending' or inbox_is_empty|default(false) or _readonly_transactions %}
 
 {# 五域 IA (218-D S1, 移植自产品矿): 产品归属显式声明, 遗留路由名只是传输契约。
    域判定集中在 base, _sidebar_nav.html 复用同一组标志做高亮。 #}
@@ -90,7 +90,8 @@
 
 {# 页级三态：primary=五域首屏；tertiary=详情工作区(追加 detail.css)；
    其余=secondary。页级不决定样式新旧，所有正文均使用产品栈。 #}
-{% set _is_expense_detail = '/expenses/' in _path and '/edit' in _path %}
+{% set _is_expense_detail = ('/expenses/' in _path and '/edit' in _path) or (product_body_domain|default('') == 'inbox' and page_surface|default('') == 'tertiary') %}
+{% set _inbox_task = _is_expense_detail and _domain == 'inbox' %}
 {% set _is_debt_detail = _path.startswith('/web/debts/') and _path != '/web/debts/new' %}
 {% set _is_import_detail = _path.startswith('/web/import/') %}
 {% set _page_key = (
@@ -202,6 +203,10 @@
        (_bottom_nav.html); >64rem 本壳 display:contents, 桌面结构不变。 #}
     <div class="mobile-chrome">
       <header class="product-topbar">
+      {% if _inbox_task %}
+      <a class="product-button product-button--quiet" href="{{ edit_return_href }}"><svg width="20" height="20" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-left"/></svg> {{ edit_return_label or '收件箱' }}</a>
+      <span class="topbar-spacer"></span><span class="product-eyebrow">核对小票</span>
+      {% else %}
       {# K3 响应式收件片: ≤64rem 品牌身份并入 topbar (sidebar 整栏隐藏,
          chrome 收进 mobile-chrome 单带); 桌面由 CSS 隐藏, sidebar .brand
          仍是身份 owner。 #}
@@ -229,19 +234,30 @@
          data-shell-shortcut="search" aria-keyshortcuts="/" title="搜索（/）">
         <span>搜索</span><kbd class="topbar-shortcut-hint" aria-hidden="true">/</kbd>
       </a>
+      {% if can_write and _path == '/web/pending' %}
+      <details class="topbar-create">
+        <summary aria-label="新增记录"><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#plus"/></svg></summary>
+        <div class="topbar-create-menu">
+          <a href="/web/pending{{ q }}#capture" data-shell-shortcut="capture" aria-keyshortcuts="U">拍照或选小票</a>
+          {% if request.state.web_session_auth %}<a href="/web/expenses/new" data-shell-shortcut="manual-expense" aria-keyshortcuts="N">手动记一笔</a>{% endif %}
+          <a href="/web/import{{ q }}">导入账单</a>
+        </div>
+      </details>
+      {% else %}
       {% if can_write and request.state.web_session_auth %}
       <a class="topbar-action topbar-manual-expense" href="/web/expenses/new"
          data-shell-shortcut="manual-expense" aria-keyshortcuts="N" title="手动记账（N）">
-        {% if inbox_is_empty|default(false) %}<svg class="compact-add-icon" width="24" height="24" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#plus"/></svg>{% endif %}
+        {% if _compact_ledger_header %}<svg class="compact-add-icon" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#plus"/></svg>{% endif %}
         <span>记账</span><kbd class="topbar-shortcut-hint" aria-hidden="true">N</kbd>
       </a>
       {% endif %}
       {% if can_write %}
       <a class="topbar-action topbar-capture" href="/web/pending{{ q }}#capture"
          data-shell-shortcut="capture" aria-keyshortcuts="U" title="收票（U）">
-        {% if inbox_is_empty|default(false) %}<svg class="compact-add-icon" width="24" height="24" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#plus"/></svg>{% endif %}
+        {% if _compact_ledger_header %}<svg class="compact-add-icon" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#plus"/></svg>{% endif %}
         <span>收票</span><kbd class="topbar-shortcut-hint" aria-hidden="true">U</kbd>
       </a>
+      {% endif %}
       {% endif %}
       {# 外观入口 (冻结片合同): 单一「外观」popover 聚合 主题/质感/强调色
          三条本地偏好轴。<details> 原生可开合, 无 JS 也可用; 三轴语义与
@@ -257,11 +273,12 @@
       {% if _compact_ledger_header and request.state.web_session_auth %}
       <a class="compact-account-link" href="/web/settings" aria-label="设置与设备"><svg width="24" height="24" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#user-round"/></svg></a>
       {% endif %}
+      {% endif %}
       </header>
     </div>
     <main class="content" id="main-content" tabindex="-1" data-page-level="{{ _page_level }}">
       {# W1 IA-B: 域内页签是页级导航, 作为 main 首元素随页滚动, 不占 chrome。 #}
-      {% include "_mobile_nav.html" %}
+      {% if not _inbox_task %}{% include "_mobile_nav.html" %}{% endif %}
       {% if _role == 'viewer' and not _readonly_transactions %}
       <div class="readonly-callout" role="status">
         {% if _path.startswith('/web/settings') %}当前账本为<strong>只读角色</strong>。你仍可管理自己的设备。{% else %}当前为<strong>只读角色</strong>。查看与分析保持可用，写入动作已隐藏或禁用。{% endif %}
@@ -281,7 +298,7 @@
     </main>
     {# W1 IA-B: 五域主导航在 ≤64rem 是 fixed 底部 nav (拇指区), >64rem 由
        CSS 隐藏 (桌面 sidebar 域轨是唯一主导航)。 #}
-    {% include "_bottom_nav.html" %}
+    {% if not _inbox_task %}{% include "_bottom_nav.html" %}{% endif %}
   </div>
   <div class="drawer-host">
     {% block drawer %}{% endblock %}
