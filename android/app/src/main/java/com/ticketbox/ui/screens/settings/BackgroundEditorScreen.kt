@@ -45,6 +45,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
@@ -242,7 +243,8 @@ private fun BackgroundEditorHeading(
             Text(stringResource(R.string.background_editor_back), modifier = Modifier.padding(start = AppSpacing.smallGap))
         }
         Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-            Text(stringResource(R.string.background_editor_page_title), style = AppTextHierarchy.hero.asTextStyle())
+            Text(stringResource(R.string.background_editor_page_title),
+                style = AppTextHierarchy.hero.asTextStyle().copy(fontSize = 32.sp, lineHeight = 38.sp))
             Text(stringResource(R.string.background_editor_intro), style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
