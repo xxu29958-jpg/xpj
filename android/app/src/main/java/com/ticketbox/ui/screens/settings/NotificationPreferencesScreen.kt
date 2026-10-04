@@ -9,11 +9,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -28,7 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -37,6 +37,7 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.NotificationPreferences
 import com.ticketbox.notification.NotificationListenerStatus
 import com.ticketbox.ui.components.AppSwitch
+import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
@@ -51,6 +52,18 @@ fun NotificationPreferencesScreen(
     onSave: (NotificationPreferences) -> Unit,
 ) {
     val systemState = rememberNotificationSystemState()
+    NotificationPreferencesContent(preferences, readOnly, systemState, status, onBack, onSave)
+}
+
+@Composable
+internal fun NotificationPreferencesContent(
+    preferences: NotificationPreferences,
+    readOnly: Boolean,
+    systemState: NotificationSystemState,
+    status: (@Composable () -> Unit)?,
+    onBack: () -> Unit,
+    onSave: (NotificationPreferences) -> Unit,
+) {
     val summary = remember(
         preferences,
         readOnly,
@@ -71,10 +84,10 @@ fun NotificationPreferencesScreen(
         onBack = onBack,
         status = status,
     ) {
-        NotificationPreferencesOverviewSection(summary)
         NotificationAutoDraftSection(
             preferences = preferences,
             readOnly = readOnly,
+            state = summary.autoDraftState,
             listenerAuthorized = systemState.listenerAuthorized,
             onOpenAuthorization = systemState.openListenerSettings,
             onUpdate = onSave,
@@ -126,7 +139,7 @@ private fun rememberNotificationSystemState(): NotificationSystemState {
     )
 }
 
-private data class NotificationSystemState(
+internal data class NotificationSystemState(
     val listenerAuthorized: Boolean,
     val systemNotificationsAllowed: Boolean,
     val requestPostNotifications: () -> Unit,
@@ -137,48 +150,42 @@ private data class NotificationSystemState(
 private fun NotificationAutoDraftSection(
     preferences: NotificationPreferences,
     readOnly: Boolean,
+    state: NotificationSettingState,
     listenerAuthorized: Boolean,
     onOpenAuthorization: () -> Unit,
     onUpdate: (NotificationPreferences) -> Unit,
 ) {
-    SettingsSection(
-        title = stringResource(R.string.notification_preferences_section_auto_draft),
-        icon = Icons.Filled.Notifications,
-    ) {
-        SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
-            NotificationSwitchLine(
-                title = stringResource(R.string.notification_preferences_capture_title),
-                subtitle = when {
-                    readOnly -> stringResource(R.string.notification_preferences_capture_subtitle_readonly)
-                    listenerAuthorized -> stringResource(R.string.notification_preferences_capture_subtitle_authorized)
-                    else -> stringResource(R.string.notification_preferences_capture_subtitle_default)
-                },
-                checked = preferences.autoCaptureEnabled && !readOnly,
-                enabled = !readOnly,
-                onCheckedChange = { onUpdate(preferences.copy(autoCaptureEnabled = it)) },
-            )
-            Button(
-                onClick = onOpenAuthorization,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(
-                    if (listenerAuthorized) {
-                        stringResource(R.string.notification_preferences_grant_view)
-                    } else {
-                        stringResource(R.string.notification_preferences_grant_open)
-                    },
-                )
-            }
-            Text(
-                text = when {
-                    readOnly -> stringResource(R.string.notification_preferences_capture_note_readonly)
-                    preferences.autoCaptureEnabled -> stringResource(R.string.notification_preferences_capture_note_enabled)
-                    else -> stringResource(R.string.notification_preferences_capture_note_disabled)
-                },
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
+    SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
+        NotificationSwitchLine(
+            title = stringResource(R.string.notification_preferences_capture_title),
+            subtitle = when {
+                readOnly -> stringResource(R.string.notification_preferences_capture_subtitle_readonly)
+                listenerAuthorized -> stringResource(R.string.notification_preferences_capture_subtitle_authorized)
+                else -> stringResource(R.string.notification_preferences_capture_subtitle_default)
+            },
+            checked = preferences.autoCaptureEnabled && !readOnly,
+            enabled = !readOnly,
+            onCheckedChange = { onUpdate(preferences.copy(autoCaptureEnabled = it)) },
+        )
+        AppSecondaryButton(
+            text = stringResource(if (listenerAuthorized) {
+                R.string.notification_preferences_grant_view
+            } else {
+                R.string.notification_preferences_grant_open
+            }),
+            onClick = onOpenAuthorization,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Text(
+            text = stringResource(when (state) {
+                NotificationSettingState.ReadOnly -> R.string.notification_preferences_capture_note_readonly
+                NotificationSettingState.Enabled -> R.string.notification_preferences_capture_note_enabled
+                NotificationSettingState.AwaitingAuthorization -> R.string.notification_preferences_capture_note_awaiting
+                NotificationSettingState.Disabled -> R.string.notification_preferences_capture_note_disabled
+            }),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+        )
     }
 }
 
@@ -197,6 +204,12 @@ private fun NotificationReminderSection(
         SettingsOpenPanel(
             verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
         ) {
+            Text(
+                stringResource(R.string.notification_preferences_reminders_selected, summary.enabledReminderCount),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            ReminderPermissionHint(show = summary.reminderPermissionMismatch)
             val rows = reminderRows(preferences)
             rows.forEachIndexed { index, row ->
                 NotificationReminderRow(
@@ -207,7 +220,6 @@ private fun NotificationReminderSection(
                     onUpdate = onUpdate,
                 )
             }
-            ReminderPermissionHint(show = summary.reminderPermissionMismatch)
         }
     }
 }
@@ -251,17 +263,12 @@ private fun ReminderPermissionHint(show: Boolean) {
 @Composable
 private fun NotificationPrivacySection() {
     SettingsSection(
-        title = stringResource(R.string.notification_preferences_section_privacy),
+        title = stringResource(R.string.notification_preferences_privacy_title),
         icon = Icons.Filled.Notifications,
     ) {
         SettingsOpenPanel(
             verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
         ) {
-            Text(
-                text = stringResource(R.string.notification_preferences_privacy_title),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = AppTextHierarchy.heading.weight,
-            )
             Text(
                 text = stringResource(R.string.notification_preferences_privacy_body),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -280,12 +287,12 @@ private fun NotificationSwitchLine(
     onCheckedChange: (Boolean) -> Unit,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().toggleable(
+        modifier = Modifier.fillMaxWidth().heightIn(min = 72.dp).toggleable(
             value = checked,
             enabled = enabled,
             role = Role.Switch,
             onValueChange = onCheckedChange,
-        ),
+        ).padding(vertical = AppSpacing.smallGap),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -299,15 +306,11 @@ private fun NotificationSwitchLine(
                 text = title,
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = AppTextHierarchy.body.weight,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
             )
             Text(
                 text = subtitle,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
             )
         }
         AppSwitch(

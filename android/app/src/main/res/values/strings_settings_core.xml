@@ -163,15 +163,14 @@
 
     <!-- 安全与隐私页（SecurityPrivacyScreen） -->
     <string name="settings_security_clear_dialog_title">清除离线副本？</string>
-    <string name="settings_security_clear_dialog_text">只会移除这台设备保存的离线账本副本，不会删除已入账记录。重新更新后可再次离线查看。</string>
+    <string name="settings_security_clear_dialog_text">只移除这台设备的离线账本副本，不会删除已入账记录或未发送操作。未发送操作仍需到“同步与待办”处理。重新更新后可再次离线查看。</string>
     <string name="settings_security_clear_dialog_confirm">清除副本</string>
     <string name="settings_security_logout_dialog_title">退出当前账本？</string>
-    <string name="settings_security_logout_dialog_text">退出后，这台设备会移除账本会话凭证。已入账记录不会删除，重新使用需要再次绑定。</string>
+    <string name="settings_security_logout_dialog_text">退出后，这台设备会移除账本会话凭证。已入账记录不会删除；未发送操作仍保留在原身份下，请先到“同步与待办”核对。重新使用需要再次绑定。</string>
     <string name="settings_security_logout_dialog_confirm">确定退出</string>
     <string name="settings_security_page_title">安全与隐私</string>
-    <string name="settings_security_page_subtitle_locked">管理本机验证、会话凭证与离线副本。</string>
-    <string name="settings_security_page_subtitle_unlocked">管理本机验证、会话凭证与离线副本。</string>
-    <string name="settings_security_section_protection">设备保护</string>
+    <string name="settings_security_page_subtitle">哪些留在本机，由你看清。</string>
+    <string name="settings_security_section_protection">保护设备</string>
     <string name="settings_security_local_unlock_label_locked">本机验证已开启</string>
     <string name="settings_security_local_unlock_label_unlocked">本机验证未开启</string>
     <string name="settings_security_local_unlock_body_locked">切到后台超过 5 分钟后需重新验证，只作用于这台设备。</string>
@@ -180,15 +179,17 @@
     <string name="settings_security_session_body">绑定后仅保存在本机安全区；退出账本时移除。</string>
     <string name="settings_security_background_label">自定义背景</string>
     <string name="settings_security_background_body">仅保存在应用私有目录，不上传到小票夹服务。</string>
-    <string name="settings_security_section_danger">设备数据与退出</string>
+    <string name="settings_security_section_danger">这台设备上的内容</string>
     <string name="settings_security_danger_clear_copy_label">离线副本</string>
-    <string name="settings_security_danger_clear_copy_body">只清除本机副本，不影响已入账记录。</string>
-    <string name="settings_security_danger_logout_label">当前账本</string>
+    <string name="settings_security_danger_clear_copy_body">不影响已入账记录；未发送操作仍需到“同步与待办”处理。</string>
+    <string name="settings_security_danger_logout_label">当前账本会话</string>
     <string name="settings_security_danger_logout_body">移除本机会话凭证，重新使用需再次绑定。</string>
     <string name="settings_security_clear_data_icon_desc">清除离线副本</string>
     <string name="settings_security_button_clear_data">清除副本</string>
     <string name="settings_security_logout_icon_desc">退出当前账本</string>
     <string name="settings_security_button_logout">退出账本</string>
+    <string name="settings_security_confirmation_title">不同操作分别确认</string>
+    <string name="settings_security_confirmation_body">清除副本只清理本机读取的数据；退出移除本机会话凭证。移除设备请到“我的设备”单独操作。</string>
 
     <!-- 关于页（AboutScreen） -->
     <string name="settings_about_page_title">关于小票夹</string>
