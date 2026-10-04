@@ -155,27 +155,28 @@
     <string name="stats_frequent_merchants_count">%1$d 笔</string>
 
     <!-- 数据质量：洞察入口、二级页与账本体检概况 -->
-    <string name="stats_data_quality_entry_title">数据质量</string>
+    <string name="stats_data_quality_entry_title">数据体检</string>
     <string name="stats_data_quality_entry_attention">待确认 %1$d 项 · 未分类 %2$d 项 · 疑似重复 %3$d 项 · 已确认无图 %4$d 项</string>
     <string name="stats_data_quality_entry_clear">当前账本的数据状态良好</string>
     <string name="stats_data_quality_entry_loading">正在读取当前账本的数据状态</string>
     <string name="stats_data_quality_entry_unavailable">数据状态暂时不可用，点按重试</string>
-    <string name="stats_data_quality_page_title">数据质量</string>
-    <string name="stats_data_quality_page_subtitle">检查当前账本的待确认、分类完整性与凭证状态。</string>
+    <string name="stats_data_quality_page_title">让记录再完整一点</string>
+    <string name="stats_data_quality_page_subtitle">从原记录补齐信息，再刷新统计。</string>
     <string name="stats_data_quality_back_to_insights">洞察</string>
     <string name="stats_data_quality_error_title">暂时无法读取数据质量</string>
     <string name="stats_data_quality_load_failed">数据质量暂时无法加载，请稍后重试。</string>
-    <string name="stats_data_quality_empty_title">数据状态良好</string>
+    <string name="stats_data_quality_empty_title">暂时没有待补的信息</string>
     <string name="stats_data_quality_empty_body">当前没有待确认、未分类、疑似重复或缺少凭证的记录。</string>
     <string name="stats_data_quality_open_inbox">查看待确认</string>
     <string name="stats_data_quality_open_uncategorized_transactions">查看已确认未分类交易</string>
-    <string name="stats_data_quality_remediation_inbox_hint">进入收件对应筛选处理</string>
-    <string name="stats_data_quality_remediation_transactions_hint">进入流水问题筛选查看</string>
+    <string name="stats_data_quality_remediation_inbox_hint">从收件中的原记录继续</string>
+    <string name="stats_data_quality_remediation_transactions_hint">从流水中的原记录继续</string>
+    <string name="stats_data_quality_remediation_summary">%1$d 项 · %2$s</string>
     <string name="stats_data_quality_remediation_content_description">打开处理入口</string>
     <string name="stats_pending_overview_title">待确认与完整性</string>
     <string name="stats_pending_overview_oldest">最久 %1$d 天</string>
     <string name="stats_pending_overview_oldest_empty">—</string>
-    <string name="stats_pending_overview_hint">去待确认页处理，整理后这里会清零。</string>
+    <string name="stats_pending_overview_hint">补齐信息后返回刷新；每次入账仍由你确认。</string>
 
     <!-- ReportsInsightCards：动态图表 + 月度目标 -->
     <string name="stats_reports_answer_title">本月结论</string>

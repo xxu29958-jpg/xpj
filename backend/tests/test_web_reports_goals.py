@@ -191,8 +191,8 @@ def test_web_reports_absorbs_stats_top_expenses_and_seg_controls(
         "home_currency_code": ["CNY"], "granularity": ["week"],
         "ranking_metric": ["amount"],
     } in report_links
-    assert "趋势粒度" in response.text
-    assert "排行口径" in response.text
+    assert "本月净支出趋势" in response.text
+    assert "商家排行按" in response.text
     assert "cdn.jsdelivr" not in response.text
     assert "unpkg.com" not in response.text
     assert "Bearer " not in response.text

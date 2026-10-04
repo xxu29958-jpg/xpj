@@ -159,7 +159,7 @@ def test_web_reports_local_returns_200(web_client: TestClient) -> None:
     # UI/UX 批 14: /web/stats 整页归并进 /web/reports(月度统计页删除)。
     resp = web_client.get("/web/reports?month=2026-05")
     assert resp.status_code == 200
-    assert "动态报表" in resp.text
+    assert "这半年的花费" in resp.text
 
 
 @pytest.mark.parametrize(

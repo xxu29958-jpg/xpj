@@ -5,32 +5,34 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.ticketbox.R
 import com.ticketbox.domain.model.DashboardCard
-import com.ticketbox.ui.components.AppButtonIcons
-import com.ticketbox.ui.components.AppPrimaryButton
+import com.ticketbox.ui.components.AppAction
+import com.ticketbox.ui.components.AppActionRow
+import com.ticketbox.ui.components.AppSheetScaffold
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.DashboardLayoutUiState
@@ -53,7 +55,7 @@ data class OverviewInteractionActions(
 @Composable
 internal fun DashboardLayoutEditAction(state: DashboardLayoutUiState, actions: DashboardLayoutActions) {
     IconButton(onClick = actions.onEdit, enabled = state.cards != null && state.canModify && !state.saving) {
-        Icon(Icons.Filled.Tune, contentDescription = stringResource(R.string.dashboard_customize))
+        Icon(ImageVector.vectorResource(R.drawable.ic_lucide_sliders_horizontal), contentDescription = stringResource(R.string.dashboard_customize))
     }
 }
 
@@ -89,36 +91,24 @@ internal fun DashboardLayoutEditorContent(
     actions: DashboardLayoutActions,
 ) {
     Surface(shape = MaterialTheme.shapes.extraLarge) {
-        Column(
-            modifier = Modifier.padding(AppSpacing.cardPaddingSmall),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-        ) {
-                Text(stringResource(R.string.dashboard_editor_title), style = MaterialTheme.typography.titleLarge)
-                LazyColumn(modifier = Modifier.weight(1f, fill = false)) {
-                    item { Text(stringResource(R.string.dashboard_editor_description), style = MaterialTheme.typography.bodySmall) }
-                    itemsIndexed(cards, key = { _, card -> card.key }) { index, card ->
-                        DashboardLayoutRow(card, index, cards.lastIndex, state.saving, actions)
-                    }
-                    item {
-                        TextButton(onClick = actions.onReset, enabled = !state.saving) {
-                            Text(stringResource(R.string.dashboard_reset_save))
-                        }
-                    }
-                }
+        AppSheetScaffold(
+            title = stringResource(R.string.dashboard_editor_title),
+            subtitle = stringResource(R.string.dashboard_editor_description),
+            actions = {
                 state.message?.let { AppStatusBanner(message = it, tone = state.messageTone) }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap, Alignment.End),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    TextButton(onClick = actions.onCancel, enabled = !state.saving) { Text(stringResource(R.string.common_cancel)) }
-                    AppPrimaryButton(
-                        icons = AppButtonIcons(leading = Icons.Default.Check),
-                        text = stringResource(if (state.saving) R.string.common_saving else R.string.dashboard_save),
-                        enabled = !state.saving,
-                        onClick = actions.onSave,
-                    )
-                }
+                AppActionRow(
+                    primary = AppAction(stringResource(if (state.saving) R.string.common_saving else R.string.dashboard_save),
+                        actions.onSave, enabled = !state.saving),
+                    secondary = AppAction(stringResource(R.string.common_cancel), actions.onCancel, enabled = !state.saving),
+                )
+            },
+        ) {
+            cards.forEachIndexed { index, card ->
+                key(card.key) { DashboardLayoutRow(card, index, cards.lastIndex, state.saving, actions) }
+            }
+            TextButton(onClick = actions.onReset, enabled = !state.saving) {
+                Text(stringResource(R.string.dashboard_reset_save))
+            }
         }
     }
 }
@@ -132,23 +122,49 @@ private fun DashboardLayoutRow(
     actions: DashboardLayoutActions,
 ) {
     val visibilityLabel = stringResource(R.string.dashboard_visibility, card.title)
+    val orderLabel = stringResource(R.string.dashboard_order_action, card.title, index + 1)
+    var reorder by rememberSaveable { mutableStateOf(false) }
     Column(modifier = Modifier.fillMaxWidth().padding(vertical = AppSpacing.smallGap)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(card.title, modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-            Switch(
+            Checkbox(
                 checked = card.visible,
                 onCheckedChange = { actions.onVisible(card.key, it) },
                 enabled = !saving,
                 modifier = Modifier.semantics { contentDescription = visibilityLabel },
             )
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
+                Text(card.title, style = MaterialTheme.typography.titleMedium)
+                Text(
+                    text = dashboardPurpose(card.key)?.let {
+                        stringResource(R.string.dashboard_order_purpose, index + 1, stringResource(it))
+                    } ?: stringResource(R.string.dashboard_order, index + 1),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            IconButton(onClick = { reorder = !reorder }, enabled = !saving) {
+                Icon(ImageVector.vectorResource(R.drawable.ic_lucide_ellipsis), contentDescription = orderLabel)
+            }
         }
-        Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+        if (reorder) Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
             IconButton(onClick = { actions.onMove(card.key, -1) }, enabled = !saving && index > 0) {
-                Icon(Icons.Default.KeyboardArrowUp, stringResource(R.string.dashboard_move_up, card.title))
+                Icon(ImageVector.vectorResource(R.drawable.ic_lucide_chevron_up), stringResource(R.string.dashboard_move_up, card.title))
             }
             IconButton(onClick = { actions.onMove(card.key, 1) }, enabled = !saving && index < lastIndex) {
-                Icon(Icons.Default.KeyboardArrowDown, stringResource(R.string.dashboard_move_down, card.title))
+                Icon(ImageVector.vectorResource(R.drawable.ic_lucide_chevron_down), stringResource(R.string.dashboard_move_down, card.title))
             }
         }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
     }
+}
+
+private fun dashboardPurpose(key: String): Int? = when (key) {
+    "monthly_spend" -> R.string.dashboard_purpose_monthly
+    "budget" -> R.string.dashboard_purpose_budget
+    "reports" -> R.string.dashboard_purpose_reports
+    "goals" -> R.string.dashboard_purpose_goals
+    "recurring" -> R.string.dashboard_purpose_recurring
+    "pending" -> R.string.dashboard_purpose_pending
+    "recent_uploads" -> R.string.dashboard_purpose_recent
+    else -> null
 }

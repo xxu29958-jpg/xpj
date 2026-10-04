@@ -147,7 +147,7 @@ const darkBorder = charts.donut.option.series[0].itemStyle.borderColor;
 liveApp.applyAccentMode("plum");
 result.charts = {{
   instances: chartInstances, donutRenders: charts.donut.renders, trendRenders: charts.trend.renders,
-  darkBorder, trendAccent: charts.trend.option.series[2].lineStyle.color,
+  darkBorder, trendAccent: charts.trend.option.series[1].itemStyle.color,
   donutAmount: charts.donut.option.series[0].data[0].amountLabel,
   trendAmount: charts.trend.option.series[1].data[0].value,
 }};
@@ -212,7 +212,7 @@ def test_appearance_bootstrap_and_theme_share_one_preference_contract() -> None:
             "donutRenders": 3,
             "trendRenders": 3,
             "darkBorder": "midnight:evergreen:--surface-card",
-            "trendAccent": "midnight:plum:--brand-primary",
+            "trendAccent": "midnight:plum:--chart-series-1",
             "donutAmount": "¥12.34",
             "trendAmount": 12.34,
         },

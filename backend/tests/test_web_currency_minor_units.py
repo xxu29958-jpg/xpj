@@ -269,8 +269,8 @@ def test_confirmed_search_and_reports_use_zero_fraction_home_amounts(
         )
         assert reports.status_code == 200, reports.text
         report_text = _RenderedText(reports.text).text
-        assert "六月均值 ¥206 " in report_text
-        assert "本月支出 ¥1234 " in report_text
+        assert "六个月平均 ¥206" in report_text
+        assert f"本月净支出 · {month} ¥1,234" in report_text
         assert "¥12.34" not in report_text
         assert '"amount_yuan": 1234' in reports.text
     finally:

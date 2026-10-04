@@ -168,12 +168,10 @@ def test_overview_is_insights_nav_landing(web_client: TestClient) -> None:
         r'href="/web/overview\?ledger_id=owner"[^>]+aria-current="page"',
         cards_subnav.group(0),
     )
-    cards_mobile_nav = re.search(r'<nav class="mobile-plan-nav".*?</nav>', cards_page.text, re.S)
-    assert cards_mobile_nav is not None
-    assert re.search(
-        r'href="/web/dashboard/cards\?ledger_id=owner"[^>]+aria-current="page"',
-        cards_mobile_nav.group(0),
-    )
+    # The layout editor is a focused task; mobile keeps its explicit return,
+    # while the desktop domain rail still identifies the current page.
+    assert 'class="mobile-plan-nav"' not in cards_page.text
+    assert re.search(r'href="/web/overview\?ledger_id=owner"[^>]*>.*?返回总览</a>', cards_page.text, re.S)
 
     # 报表页子导航不再抢占主落点: 报表仍是自己的 aria-current=page。
     reports_page = web_client.get("/web/reports?ledger_id=owner")

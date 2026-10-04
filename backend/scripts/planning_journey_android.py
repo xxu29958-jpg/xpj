@@ -244,10 +244,10 @@ class PlanningAndroid:
         self.bound = False
         self.adb("reverse", f"tcp:{port}", f"tcp:{port}")
         self.adb("shell", "am", "start", "-n", "com.ticketbox/.MainActivity")
-        wait_for(lambda: self.has("绑定账本"), "The native binding screen did not open")
+        wait_for(lambda: self.has("连接账本"), "The native binding screen did not open")
         self.pairing_code = code
         self.fill(code)
-        self.click("绑定账本")
+        self.click("连接账本")
         wait_for(lambda: self.has("计划"), "The native application did not reach the bound product")
         self.bound = True
 

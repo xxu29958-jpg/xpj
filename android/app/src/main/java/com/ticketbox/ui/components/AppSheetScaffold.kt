@@ -23,7 +23,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.vectorResource
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import com.ticketbox.R
 import com.ticketbox.ui.design.AppAlpha
@@ -207,16 +206,12 @@ private fun AppSheetHeader(
         Text(
             text = title,
             style = MaterialTheme.typography.titleLarge,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
         )
         subtitle?.takeIf { it.isNotBlank() }?.let {
             Text(
                 text = it,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodyMedium,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
             )
         }
     }

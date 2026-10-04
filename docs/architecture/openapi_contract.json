@@ -55355,6 +55355,20 @@
           },
           {
             "in": "query",
+            "name": "view",
+            "required": false,
+            "schema": {
+              "default": "overview",
+              "enum": [
+                "overview",
+                "data"
+              ],
+              "title": "View",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
             "name": "msg",
             "required": false,
             "schema": {
@@ -55513,6 +55527,20 @@
                 }
               ],
               "title": "Ledger Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "month",
+              "enum": [
+                "month",
+                "six_month"
+              ],
+              "title": "Scope",
+              "type": "string"
             }
           }
         ],

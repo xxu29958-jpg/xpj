@@ -3,18 +3,20 @@ package com.ticketbox.ui.screens.stats
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.vectorResource
 import com.ticketbox.R
 import com.ticketbox.domain.model.DataQualitySummary
 import com.ticketbox.ui.components.AppListRow
+import com.ticketbox.ui.components.SettingsEntryIcon
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.viewmodel.DataQualityLoadState
@@ -27,6 +29,8 @@ internal fun DataQualityEntryCard(
     showDivider: Boolean = true,
 ) {
     AppListRow(onClick = onClick, showDivider = showDivider) {
+        SettingsEntryIcon(ImageVector.vectorResource(R.drawable.ic_lucide_receipt_text),
+            Modifier.padding(end = AppSpacing.contentGap).align(Alignment.CenterVertically))
         Column(
             modifier = Modifier
                 .weight(1f)
@@ -35,7 +39,7 @@ internal fun DataQualityEntryCard(
         ) {
             Text(
                 text = stringResource(R.string.stats_data_quality_entry_title),
-                style = MaterialTheme.typography.titleSmall,
+                style = MaterialTheme.typography.titleMedium,
                 fontWeight = AppTextHierarchy.heading.weight,
             )
             Text(
@@ -45,7 +49,7 @@ internal fun DataQualityEntryCard(
             )
         }
         Icon(
-            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            imageVector = ImageVector.vectorResource(R.drawable.ic_lucide_chevron_right),
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.align(Alignment.CenterVertically),

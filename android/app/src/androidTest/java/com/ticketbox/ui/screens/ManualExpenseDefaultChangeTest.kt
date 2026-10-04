@@ -59,11 +59,12 @@ class ManualExpenseDefaultChangeTest {
         assertEquals(1200L, original.originalAmountMinor)
         assertEquals(CurrencyCode.CNY, original.ledgerHomeCurrency)
 
-        // Finish the first task's OS input session before disposing its dialog.
-        // A pending hide from that dialog must not dismiss the next task's keyboard.
-        keyboard.dismissAndWait(compose)
+        // Removing the dialog also posts an OS input-session hide. Settle that
+        // removal before opening the next task; settling only before disposal
+        // can let the old window's hide overtake the new keyboard's show.
         compose.runOnIdle { visible.value = false }
         compose.waitForIdle()
+        keyboard.dismissAndWait(compose)
         compose.runOnIdle { visible.value = true }
         enterAmount()
         save("manual-next-jpy-keyboard")
