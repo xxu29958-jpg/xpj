@@ -8,16 +8,20 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -25,6 +29,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
@@ -38,9 +45,9 @@ import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.ThemeVisuals
+import com.ticketbox.ui.design.SettingsColors
+import com.ticketbox.ui.design.settingsEntrySurface
 import com.ticketbox.ui.components.AppAmountText
-import com.ticketbox.ui.components.AppPaperCard
-import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.formatAmount
 
 @Composable
@@ -57,7 +64,7 @@ internal fun ThemeMoodPreview(
             .fillMaxWidth()
             .clip(RoundedCornerShape(24.dp)),
     ) {
-        BackgroundReadabilitySample(Modifier.padding(AppSpacing.contentGap))
+        BackgroundReadabilitySample()
     }
 }
 
@@ -66,33 +73,39 @@ internal fun ThemeModePicker(
     selected: AppThemeMode,
     onSelect: (AppThemeMode) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        FlowRow(
-            modifier = Modifier.fillMaxWidth().selectableGroup(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-        ) {
-            AppThemeMode.entries.forEach { mode ->
-                AppFilterChip(
-                    label = stringResource(appThemeModeNameRes(mode)),
-                    selected = mode == selected,
-                    onClick = { onSelect(mode) },
-                )
+    FlowRow(
+        modifier = Modifier.fillMaxWidth().selectableGroup(),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+    ) {
+        AppThemeMode.entries.forEach { mode ->
+            val description = stringResource(appThemeModeDescriptionRes(mode))
+            Box(
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .background(if (mode == selected) settingsEntrySurface(SettingsColors.generalEntry)
+                        else MaterialTheme.colorScheme.surface)
+                    .selectable(selected = mode == selected, role = Role.RadioButton, onClick = { onSelect(mode) })
+                    .semantics { contentDescription = description }
+                    .heightIn(min = 48.dp)
+                    .padding(horizontal = 16.dp, vertical = AppSpacing.smallGap),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(stringResource(appThemeModeNameRes(mode)), style = MaterialTheme.typography.labelLarge)
             }
         }
-        Text(
-            text = stringResource(appThemeModeDescriptionRes(selected)),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }
 
 @Composable
 internal fun BackgroundReadabilitySample(modifier: Modifier = Modifier) {
-    AppPaperCard(modifier = modifier) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        color = settingsEntrySurface(SettingsColors.bindingIntroduction),
+    ) {
         Column(
-            modifier = Modifier.padding(AppSpacing.cardPadding),
+            modifier = Modifier.heightIn(min = 176.dp).padding(28.dp),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
         ) {
             Text(stringResource(R.string.appearance_preview_amount_label),

@@ -19,6 +19,8 @@
     <string name="appearance_parallax_subtitle">背景轻微参与层次变化</string>
     <string name="appearance_reduce_motion_title">减少动效</string>
     <string name="appearance_reduce_motion_subtitle">关闭背景动效，保持录入稳定</string>
+    <string name="appearance_more_title">更多外观设置</string>
+    <string name="appearance_more_hint">沉浸强度、记账币种与恢复背景</string>
 
     <!-- SettingsAppearanceComponents：皮肤卡 / 沉浸预览组件 -->
     <string name="appearance_preview_amount_label">本月净支出 · 示例</string>

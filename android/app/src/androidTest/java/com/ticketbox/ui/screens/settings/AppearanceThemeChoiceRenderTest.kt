@@ -12,6 +12,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -37,7 +38,7 @@ class AppearanceThemeChoiceRenderTest {
     val composeRule = createComposeRule()
 
     @Test
-    fun themeNamesAndDescriptionsRemainReadableAndSelectableAtLargeFont() {
+    fun themeNamesRemainReadableAndChoicesKeepDescriptionsAtLargeFont() {
         val skin = mutableStateOf(AppSkin.Paper)
         val selected = mutableStateOf(AppThemeMode.Paper)
         val labels = mutableMapOf<AppThemeMode, Pair<String, String>>()
@@ -60,9 +61,10 @@ class AppearanceThemeChoiceRenderTest {
             for (mode in AppThemeMode.entries) {
                 val (name, description) = labels.getValue(mode)
                 composeRule.onNodeWithText(name).performScrollTo().performClick().assertIsSelected()
+                    .assertContentDescriptionEquals(description)
                 saveConsumerArtPreview("appearance-choice-${theme.name}-${mode.name}-large-font",
                     composeRule.onRoot().captureToImage().asAndroidBitmap())
-                for (text in listOf(name, description)) {
+                for (text in listOf(name)) {
                     val layouts = mutableListOf<TextLayoutResult>()
                     composeRule.onNodeWithText(text, useUnmergedTree = true)
                         .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }

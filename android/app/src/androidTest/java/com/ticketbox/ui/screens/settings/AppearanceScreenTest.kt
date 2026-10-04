@@ -68,6 +68,7 @@ class AppearanceScreenTest {
             assertEquals(1, gallery); assertEquals(1, album)
             settings = settings.withBuiltInBackground("paper_warm")
         }
+        compose.onNodeWithText("更多外观设置").performScrollTo().performClick()
         compose.onNodeWithText("当前背景：茶雾").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("调整构图").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(settings, edited) }

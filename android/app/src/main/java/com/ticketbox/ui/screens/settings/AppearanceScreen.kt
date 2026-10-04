@@ -3,11 +3,12 @@ package com.ticketbox.ui.screens.settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.Crop
-import androidx.compose.material.icons.filled.PhotoLibrary
-import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.Crop
+import androidx.compose.material.icons.outlined.PhotoLibrary
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
@@ -69,43 +70,61 @@ fun AppearanceScreen(
     val preferences = state.preferences
     SettingsPageFrame(
         title = stringResource(R.string.appearance_page_title),
-        subtitle = stringResource(R.string.appearance_page_subtitle),
+        subtitle = "",
         onBack = actions.onBack,
         status = { AppStatusBanner(message = appearance.message, tone = appearance.messageTone) },
     ) {
         ThemeModePicker(preferences.currentMode, actions.preferences.onThemeModeChange)
         ThemeMoodPreview(appearance.backgroundSettings, preferences.currentSkin)
-        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
-            Text(stringResource(R.string.appearance_background_current_label,
-                backgroundSourceLabel(appearance.backgroundSettings)), style = MaterialTheme.typography.titleSmall)
-            Text(stringResource(R.string.appearance_background_local_hint),
-                color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+        Column {
+            AppearanceBackgroundEntries(appearance, actions.background)
         }
-        AppearanceBackgroundEntries(appearance, actions.background)
-        SettingsSection(title = stringResource(R.string.appearance_section_immersion_title)) {
-            ImmersionModePicker(
-                selected = appearance.backgroundSettings.immersionMode,
-                onSelect = actions.immersion.onModeChange,
-            )
+        Column {
             BackgroundSwitchLine(
                 title = stringResource(R.string.appearance_parallax_title),
-                subtitle = stringResource(R.string.appearance_parallax_subtitle),
+                subtitle = "",
                 checked = appearance.backgroundSettings.enableParallax && !appearance.backgroundSettings.reduceMotion,
                 enabled = !appearance.backgroundSettings.reduceMotion,
                 onCheckedChange = actions.immersion.onParallaxChange,
             )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             BackgroundSwitchLine(
                 title = stringResource(R.string.appearance_reduce_motion_title),
-                subtitle = stringResource(R.string.appearance_reduce_motion_subtitle),
+                subtitle = "",
                 checked = appearance.backgroundSettings.reduceMotion,
                 enabled = true,
                 onCheckedChange = actions.immersion.onReduceMotionChange,
             )
         }
-        CurrencySection(
-            currentCurrency = preferences.currentCurrency,
-            onCurrencyChange = actions.preferences.onCurrencyChange,
-        )
+        AppearanceDetails(state, actions)
+    }
+}
+
+@Composable
+private fun AppearanceDetails(state: AppearanceScreenState, actions: AppearanceScreenActions) {
+    val appearance = state.appearance
+    SettingsDetailRow(
+        title = stringResource(R.string.appearance_more_title),
+        subtitle = stringResource(R.string.appearance_more_hint),
+        icon = Icons.Outlined.Tune,
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap)) {
+            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
+                Text(stringResource(R.string.appearance_background_current_label,
+                    backgroundSourceLabel(appearance.backgroundSettings)), style = MaterialTheme.typography.titleSmall)
+                Text(stringResource(R.string.appearance_background_local_hint),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            }
+            SettingsSection(title = stringResource(R.string.appearance_section_immersion_title)) {
+                ImmersionModePicker(appearance.backgroundSettings.immersionMode, actions.immersion.onModeChange)
+            }
+            BackgroundActionButton(
+                text = stringResource(R.string.appearance_background_restore_theme),
+                enabled = !appearance.importing && appearance.backgroundSettings.source != BackgroundSource.ThemeDefault,
+                onClick = actions.background.onClearBackgroundImage,
+            )
+            CurrencySection(state.preferences.currentCurrency, actions.preferences.onCurrencyChange)
+        }
     }
 }
 
@@ -119,25 +138,20 @@ private fun AppearanceBackgroundEntries(
     SettingsEntryRow(
         title = stringResource(R.string.appearance_background_open_gallery),
         subtitle = stringResource(R.string.appearance_background_gallery_hint),
-        icon = Icons.Filled.Image, onClick = if (available) actions.onOpenGallery else null,
+        icon = Icons.Outlined.Image, onClick = if (available) actions.onOpenGallery else null,
     )
     SettingsEntryRow(
         title = stringResource(R.string.appearance_background_pick_image),
         subtitle = stringResource(R.string.appearance_background_album_hint),
-        icon = Icons.Filled.PhotoLibrary, onClick = if (available) actions.onPickCustomImage else null,
+        icon = Icons.Outlined.PhotoLibrary, onClick = if (available) actions.onPickCustomImage else null,
     )
     SettingsEntryRow(
         title = stringResource(R.string.appearance_background_edit_composition),
         subtitle = stringResource(if (hasBackground) R.string.appearance_background_composition_hint
             else R.string.appearance_background_choose_first),
-        icon = Icons.Filled.Crop,
+        icon = Icons.Outlined.Crop,
         onClick = if (available && hasBackground) {
             { actions.onEditBackground(appearance.backgroundSettings) }
         } else null,
-    )
-    BackgroundActionButton(
-        text = stringResource(R.string.appearance_background_restore_theme),
-        enabled = available && hasBackground,
-        onClick = actions.onClearBackgroundImage,
     )
 }
