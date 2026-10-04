@@ -78,10 +78,11 @@ def test_notification_privacy_copy_contract() -> None:
     android_copy = _android_copy()
     owner_index = _read("backend/app/templates/owner/index.html")
 
-    assert "通知只生成待确认草稿或本机提醒，核对后才会入账。" in android_copy
+    assert "采集只生成待核对记录" in android_copy
+    assert "自动草稿仍需在待确认页手动确认，绝不会自动入账。" in android_copy
     assert "系统授权" in android_copy
-    assert "通知原文不会上传到小票夹服务。" in android_copy
-    assert "只上传来源、金额、商家、分类和时间" in android_copy
+    assert "通知原文不上传，金额由你确认。" in android_copy
+    assert "上传字段限定为来源、金额、商家、分类和时间" in android_copy
     assert "Android 通知草稿只上传结构化字段，不上传通知原文。" in owner_index
 
 
