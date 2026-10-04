@@ -8,3 +8,9 @@ Integrity: `sha512-ts58ApMc5w5SHHUJBtGO+mgf9lo79FApQ1LttKQoJiMrWNZt8zxWA7R6owK6D
 
 To rebuild, read `package/icons/<symbol-id>.svg` for each symbol in icons.svg, retain the source viewBox and stroke attributes, and wrap its child elements in a symbol with that id.
 No package scripts or runtime dependency are used. See LICENSE for the upstream notices.
+
+The five primary navigation symbols also ship as Android VectorDrawable resources
+(`ic_lucide_*`). Their paths retain the same 24-unit viewport, 2-unit rounded stroke
+and geometry; SVG circles, polylines and rounded rectangles are expressed as paths.
+The Android assets include the same upstream license. Navigation behavior and
+responsive layout remain owned by each client's existing navigation components.

@@ -6,18 +6,15 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.EventNote
-import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.AddPhotoAlternate
-import androidx.compose.material.icons.filled.Inbox
-import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.Palette
-import androidx.compose.material.icons.filled.People
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
@@ -113,15 +110,15 @@ private fun AppVisualComponentsPreview() {
             AppBottomNav(
                 // 对齐生产五域主底栏：所有标签常显，账户与设置不占任务域位置。
                 items = listOf(
-                    AppPrimaryNavItem("inbox", stringResource(R.string.nav_domain_inbox), Icons.Filled.Inbox),
+                    AppPrimaryNavItem("inbox", stringResource(R.string.nav_domain_inbox), ImageVector.vectorResource(R.drawable.ic_lucide_inbox)),
                     AppPrimaryNavItem(
                         "transactions",
                         stringResource(R.string.nav_domain_transactions),
-                        Icons.AutoMirrored.Filled.ReceiptLong,
+                        ImageVector.vectorResource(R.drawable.ic_lucide_receipt_text),
                     ),
-                    AppPrimaryNavItem("obligations", stringResource(R.string.nav_domain_obligations), Icons.Filled.People),
-                    AppPrimaryNavItem("plans", stringResource(R.string.nav_domain_plans), Icons.AutoMirrored.Filled.EventNote),
-                    AppPrimaryNavItem("insights", stringResource(R.string.nav_domain_insights), Icons.Filled.Insights),
+                    AppPrimaryNavItem("obligations", stringResource(R.string.nav_domain_obligations), ImageVector.vectorResource(R.drawable.ic_lucide_users)),
+                    AppPrimaryNavItem("plans", stringResource(R.string.nav_domain_plans), ImageVector.vectorResource(R.drawable.ic_lucide_calendar_check)),
+                    AppPrimaryNavItem("insights", stringResource(R.string.nav_domain_insights), ImageVector.vectorResource(R.drawable.ic_lucide_chart_no_axes_combined)),
                 ),
                 selectedKey = "inbox",
                 onSelect = {},
