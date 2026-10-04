@@ -101,12 +101,14 @@ def test_actual_overview_template_exposes_unknown_and_original_recovery():
     cards = {"home_currency_code": "JPY", "month": "2026-08", "total_amount_cents": None,
         "delta_amount_cents": None, "delta_direction": "unavailable", "previous_total_amount_cents": 1200,
         "confirmed_count": 2, "pending_count": 0, "budget_top": [], "budget_remaining_cents": None,
-        "budget_home_currency_code": "CNY", "budget_configured": False}
+        "budget_home_currency_code": "CNY", "budget_configured": False, "budget_is_over": False}
     env = Environment(autoescape=True, undefined=StrictUndefined, loader=ChoiceLoader([
-        DictLoader({"base.html": "{% block content %}{% endblock %}"}),
+        DictLoader({"base.html": "{% block page_header %}{% endblock %}{% block content %}{% endblock %}"}),
         FileSystemLoader(Path(__file__).parents[1] / "app/templates/web"),
     ]))
     html = env.get_template("overview.html").render(cards=cards, selected_ledger_id="family", q="?ledger_id=family",
+        home_currency_code="JPY",
+        request=SimpleNamespace(state=SimpleNamespace(web_session_auth=object())),
         can_write=True, has_any_expense=True, overview_load_charts=False, category_chart_available=False,
         category_share=[{"name": "餐饮", "amount_label": "待补齐换算信息", "amount_cents": None}],
         overview_cards=[{"key": "monthly_spend"}, {"key": "budget"}, {"key": "reports"}],

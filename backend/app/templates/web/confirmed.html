@@ -45,7 +45,7 @@
 {% include '_ledger_readonly_tools.html' %}
 {% if filter not in ['missing_category', 'missing_accounting_date'] %}
 <div class="ledger-summary">
-  <div><p class="product-page-summary">本月净支出 · {{ home_currency_code }}</p><p class="confirmed-hero-amount">{% if month_total_amount_yuan is not none %}{{ home_currency_symbol }}{{ month_total_amount_yuan }}{% elif ledger_undated_expense_count|default(0) %}待核对账务日期{% else %}待补齐换算信息{% endif %}</p></div>
+  <div><p class="product-page-summary">本月净支出 · {{ home_currency_code }}</p><p class="confirmed-hero-amount"><span class="sr-only">{{ month }} 合计 </span>{% if month_total_amount_yuan is not none %}{{ home_currency_symbol }}{{ month_total_amount_yuan }}{% elif ledger_undated_expense_count|default(0) %}待核对账务日期{% else %}待补齐换算信息{% endif %}</p></div>
 {% endif %}
 {% if can_write %}
 <div class="ledger-view-actions">

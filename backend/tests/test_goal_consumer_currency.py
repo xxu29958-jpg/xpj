@@ -21,7 +21,7 @@ def _goal(*, currency="JPY", spent=300, percent=25):
 
 
 def _render(template, **context):
-    loader = ChoiceLoader([DictLoader({"base.html": "{% block content %}{% endblock %}"}),
+    loader = ChoiceLoader([DictLoader({"base.html": "{% block page_header %}{% endblock %}{% block content %}{% endblock %}"}),
         FileSystemLoader(Path(__file__).parents[1] / "app" / "templates" / "web")])
     return Environment(loader=loader, autoescape=True).get_template(template).render(**context)
 
@@ -38,9 +38,12 @@ def test_overview_goal_uses_captured_currency_and_keeps_unknown_progress():
 
 
 def test_overview_template_has_no_fake_percent_or_bar_for_unknown_goal():
-    html = _render("overview.html", cards={"goals_count": 1, "goals_top": [
+    html = _render("overview.html", cards={"month": "2026-09", "confirmed_count": 1, "pending_count": 0,
+        "goals_count": 1, "goals_top": [
         {"name": "待汇率目标", "percent": None, "state": "unavailable"}]},
         overview_cards=[{"key": "goals"}], selected_ledger_id="owner",
+        can_write=False, has_any_expense=True,
+        money_task={"ledger_id": "owner", "month": "2026-09", "home_currency_code": "CNY"},
         currency_input=currency_input_metadata("CNY"))
     assert "暂不可计算" in html
     assert "None%" not in html
