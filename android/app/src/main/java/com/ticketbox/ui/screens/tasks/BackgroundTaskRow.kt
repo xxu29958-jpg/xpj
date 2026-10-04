@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Image
@@ -15,9 +16,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.BackgroundTask
 import com.ticketbox.domain.model.shouldGeneralizeTaskError
@@ -25,6 +31,8 @@ import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.SettingsEntryIcon
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
+import com.ticketbox.ui.design.SettingsColors
+import com.ticketbox.ui.design.settingsEntrySurface
 
 @Composable
 internal fun BackgroundTaskRow(
@@ -34,6 +42,7 @@ internal fun BackgroundTaskRow(
     onCancel: () -> Unit,
     onOpenSource: () -> Unit,
 ) {
+    var detailsExpanded by rememberSaveable(task.publicId) { mutableStateOf(false) }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -45,20 +54,35 @@ internal fun BackgroundTaskRow(
             busy = busy,
             canModify = canModify,
             onCancel = onCancel,
+            onOpenSource = onOpenSource,
         )
-        BackgroundTaskTimeLines(task)
-        BackgroundTaskProgress(task)
-        BackgroundTaskMessage(task)
+        if (!task.isTerminal) {
+            BackgroundTaskProgress(task)
+            BackgroundTaskMessage(task)
+        }
         BackgroundTaskError(task)
         if (task.taskType == "orphan_inspection" || task.taskType == "orphan_disposal") {
             Text(stringResource(R.string.background_tasks_original_maintenance_source),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        if (task.sourceExpenseId != null) {
-            TextButton(onClick = onOpenSource) { Text(stringResource(R.string.background_tasks_open_source)) }
-        } else if (task.taskType == "expense_enrichment") {
+        if (task.sourceExpenseId == null && task.taskType == "expense_enrichment") {
             Text(stringResource(R.string.background_tasks_source_unavailable),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            TextButton(onClick = { detailsExpanded = !detailsExpanded }) {
+                Text(stringResource(if (detailsExpanded) R.string.background_tasks_details_hide else R.string.background_tasks_details_show))
+            }
+            if (task.sourceExpenseId != null && canCancelBackgroundTask(task, canModify)) {
+                BackgroundTaskCancelAction(busy = busy, onCancel = onCancel)
+            }
+        }
+        if (detailsExpanded) {
+            BackgroundTaskTimeLines(task)
+            if (task.isTerminal) {
+                BackgroundTaskProgress(task)
+                BackgroundTaskMessage(task)
+            }
         }
     }
 }
@@ -69,6 +93,7 @@ private fun BackgroundTaskTitleLine(
     busy: Boolean,
     canModify: Boolean,
     onCancel: () -> Unit,
+    onOpenSource: () -> Unit,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -80,7 +105,12 @@ private fun BackgroundTaskTitleLine(
             "csv_import" -> Icons.Filled.FileDownload
             "expense_fx" -> Icons.Filled.Sync
             else -> Icons.Filled.Tune
-        })
+        }, shape = RoundedCornerShape(14.dp), background = settingsEntrySurface(when (task.taskType) {
+            "expense_enrichment" -> SettingsColors.generalEntry
+            "csv_import" -> SettingsColors.householdEntry
+            "expense_fx" -> SettingsColors.connectionEntry
+            else -> SettingsColors.appearanceEntry
+        }))
         Column(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
@@ -93,10 +123,16 @@ private fun BackgroundTaskTitleLine(
             Text(
                 text = stringResource(backgroundTaskStatusLabelRes(task.status)),
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.secondary,
+                color = when (task.status) {
+                    "failed" -> MaterialTheme.colorScheme.error
+                    "completed" -> MaterialTheme.colorScheme.primary
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                },
             )
         }
-        if (canCancelBackgroundTask(task, canModify)) {
+        if (task.sourceExpenseId != null) {
+            TextButton(onClick = onOpenSource) { Text(stringResource(R.string.background_tasks_open_source)) }
+        } else if (canCancelBackgroundTask(task, canModify)) {
             BackgroundTaskCancelAction(busy = busy, onCancel = onCancel)
         }
     }
@@ -131,6 +167,7 @@ private fun BackgroundTaskProgress(task: BackgroundTask) {
     LinearProgressIndicator(
         progress = { progressCurrent.toFloat() / progressTotal.toFloat() },
         modifier = Modifier.fillMaxWidth(),
+        color = if (task.status == "failed") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
     )
 }
 

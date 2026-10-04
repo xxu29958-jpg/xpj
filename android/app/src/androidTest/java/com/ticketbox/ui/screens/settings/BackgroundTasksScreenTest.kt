@@ -50,6 +50,12 @@ class BackgroundTasksScreenTest {
         val repo = TaskHistory(original, canModify = true)
         val vm = show(repo)
         compose.waitUntil { vm.uiState.value.tasks.size == 3 && !vm.uiState.value.loading }
+        compose.onNodeWithText("进度 2/2").assertDoesNotExist()
+        compose.onAllNodesWithText("任务详情")[0].performScrollTo().performClick()
+        compose.onNodeWithText("进度 2/2").assertIsDisplayed()
+        capture("background-task-details-paper")
+        compose.onNodeWithText("收起详情").performClick()
+        compose.onNodeWithText("进度 2/2").assertDoesNotExist()
         capture("background-tasks-paper")
         compose.onAllNodesWithText("打开原账单")[0].performScrollTo().performClick()
         compose.onAllNodesWithText("打开原账单")[1].performScrollTo().performClick()
