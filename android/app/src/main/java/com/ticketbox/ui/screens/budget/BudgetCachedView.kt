@@ -43,7 +43,7 @@ internal fun BudgetCachedHeader(backText: String, onBack: (() -> Unit)?, onHisto
             TextButton(onClick = onHistory) { Text(stringResource(R.string.budget_history_title)) }
         }
         Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap)) {
-            Text(stringResource(R.string.budget_read_cached_title), style = MaterialTheme.typography.headlineLarge)
+            Text(stringResource(R.string.budget_read_cached_title), style = MaterialTheme.typography.displayMedium)
             Text(stringResource(R.string.budget_cached_subtitle), style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }

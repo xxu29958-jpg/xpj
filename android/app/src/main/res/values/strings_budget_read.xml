@@ -13,4 +13,12 @@
     <string name="budget_cached_details_show">查看上次读取的预算明细</string>
     <string name="budget_cached_details_hide">收起预算明细</string>
     <string name="budget_pending_heading">还有这些事</string>
+    <string name="budget_pending_saved">预算已经保存</string>
+    <string name="budget_pending_change">一笔预算修改</string>
+    <string name="budget_pending_refresh_hint">联网后刷新显示</string>
+    <string name="budget_pending_review_hint">需要继续核对</string>
+    <string name="budget_pending_waiting_hint">等待服务器确认</string>
+    <string name="budget_pending_refresh">刷新</string>
+    <string name="budget_pending_view">查看</string>
+    <string name="budget_pending_collapse">收起</string>
 </resources>

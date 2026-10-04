@@ -3,7 +3,7 @@
 /* Selected read-only ledger: one calm stream, with existing browse tools disclosed. */
 .ledger-readonly-page .content { width: 100%; max-width: 60rem; margin-inline: auto; }
 .ledger-readonly-page .product-page-header { margin-bottom: var(--space-7); }
-.ledger-readonly-page .page-title { font-size: var(--type-display-size); }
+.ledger-readonly-page .page-title { font-size: var(--type-hero-size); }
 .ledger-read-notice { display: flex; align-items: start; gap: var(--space-3); margin-bottom: var(--space-5); }
 .ledger-read-notice > svg { flex: none; color: var(--brand-primary-strong); }
 .ledger-read-notice p { margin: var(--space-2) 0 0; color: var(--text-muted); }
@@ -11,6 +11,10 @@
 .ledger-read-tools .month-picker { background: var(--state-success-bg); border: none; border-radius: var(--radius-xl); }
 .ledger-read-tools .month-picker .label { font-weight: var(--type-subtitle-weight); }
 .ledger-read-tools .month-picker a { min-width: var(--target-min); min-height: var(--target-min); }
+.ledger-read-month > summary { display: flex; align-items: center; min-height: var(--target-min); padding-inline: var(--space-5); border-radius: var(--radius-xl); background: var(--state-success-bg); font-weight: var(--type-title-weight); cursor: pointer; list-style: none; }
+.ledger-read-month > summary::-webkit-details-marker { display: none; }
+.ledger-read-month[open] { flex-basis: 100%; }
+.ledger-read-month[open] .month-picker { display: inline-flex; margin-top: var(--space-3); }
 .ledger-read-filters > summary { display: flex; align-items: center; min-height: var(--target-min); padding: var(--space-3) var(--space-5); border-radius: var(--radius-xl); background: var(--surface-raised); cursor: pointer; list-style: none; }
 .ledger-read-filters > summary::-webkit-details-marker { display: none; }
 .ledger-read-filters[open] { flex-basis: 100%; }
@@ -23,14 +27,14 @@
 .ledger-readonly-page .ledger-stream::before { display: none; }
 .ledger-readonly-page .lday { display: none; }
 .ledger-readonly-page .lday.ledger-read-day-visible { display: grid; padding-inline: 0; }
-.ledger-readonly-page .timeline-row.lrow { padding: 0; min-height: 6.5rem; border-bottom: 1px solid var(--border-card); }
+.ledger-readonly-page .timeline-row.lrow { padding: 0; min-height: calc(var(--space-10) + var(--space-7)); border-bottom: 1px solid var(--border-card); }
 .ledger-readonly-page .timeline-row.lrow:last-of-type { border-bottom: none; }
 .ledger-readonly-page .timeline-row.lrow > .timeline-row-detail { grid-template-columns: 2.75rem minmax(0, 1fr) auto 1.25rem; gap: var(--space-3); }
 .ledger-readonly-page .timeline-row-detail > .lrow-ic { grid-row: auto; }
 .ledger-readonly-page .lrow-amt { grid-column: auto; justify-items: end; }
 .ledger-readonly-page .lrow-ic { width: 2.75rem; height: 2.75rem; border-radius: var(--radius-lg); background: var(--state-success-bg); }
 .ledger-readonly-page .lrow-ic--dining { background: var(--state-warn-bg); }
-.ledger-readonly-page .lrow-merch { font-size: var(--type-title-size); }
+.ledger-readonly-page .lrow-merch { font-size: 16px; }
 .ledger-readonly-page .lrow-meta { font-size: var(--type-body-size); margin-top: var(--space-2); }
 .ledger-readonly-page .timeline-row + .lday { border: none; }
 .ledger-readonly-page .ledger-row-chevron { grid-column: 4; color: var(--text-muted); }
@@ -41,9 +45,9 @@
 .ledger-read-day-totals { display: grid; grid-template-columns: 1fr auto; gap: var(--space-2) var(--space-5); }
 .ledger-read-day-totals dd { margin: 0; }
 @media (max-width: 40rem) {
-    .ledger-readonly-page .product-page-header { padding-top: var(--space-5); }
+    .ledger-readonly-page .product-page-header { padding-top: 0; }
     .ledger-readonly-page .lrow-meta { font-size: var(--type-body-size); }
-    .ledger-readonly-page .lrow-amt .amt-main { font-size: var(--type-title-size); }
+    .ledger-readonly-page .lrow-amt .amt-main { font-size: 16px; }
 }
 
 .ledger-hero {

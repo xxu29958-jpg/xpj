@@ -1,5 +1,6 @@
 package com.ticketbox.ui.screens.budget
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
@@ -25,6 +26,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.Role
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.repository.PendingBudgetSave
@@ -46,6 +49,7 @@ internal fun BudgetPendingSaves(saves: List<PendingBudgetSave>, canModify: Boole
 @Composable
 private fun BudgetSaveStatus(pending: PendingBudgetSave, canModify: Boolean, recover: (PendingBudgetSave, Boolean) -> Unit) {
     var confirmDrop by rememberSaveable(pending.row.id) { mutableStateOf(false) }
+    var expanded by rememberSaveable(pending.row.id) { mutableStateOf(false) }
     val statusText = stringResource(when (pending.row.status) {
         PendingMutationStatus.Done -> if (pending.requiresReadRefresh) R.string.budget_saved_read_pending else R.string.budget_original_submission_saved
         PendingMutationStatus.Pending, PendingMutationStatus.InFlight -> R.string.budget_message_queued
@@ -54,26 +58,18 @@ private fun BudgetSaveStatus(pending: PendingBudgetSave, canModify: Boolean, rec
     val needsAttention = pending.row.status in setOf(PendingMutationStatus.Failed, PendingMutationStatus.Conflict)
     Column(Modifier.fillMaxWidth().padding(vertical = AppSpacing.compactGap),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        BudgetSaveSummary(pending, statusText)
-        if (needsAttention) {
-            val explanation = friendlyLastError(pending.row.lastError, statusText)
-            if (explanation != statusText) Text(explanation, style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        BudgetSaveSummary(pending, expanded, { expanded = !expanded }, { recover(pending, false) })
+        if (expanded) {
+            Text(statusText, style = MaterialTheme.typography.bodyMedium)
+            ProvideTextStyle(MaterialTheme.typography.bodyMedium) { BudgetSaveIntentSummary(pending) }
+            if (needsAttention) {
+                val explanation = friendlyLastError(pending.row.lastError, statusText)
+                if (explanation != statusText) Text(explanation, style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                BudgetSaveControls(pending, canModify, { confirmDrop = true }, recover)
+            }
         }
         BudgetRowDivider()
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-            if (pending.requiresReadRefresh) {
-                TextButton(onClick = { recover(pending, false) }) { Text(stringResource(R.string.budget_read_recover)) }
-            }
-            if (needsAttention) {
-                if (pending.canRetry && canModify) {
-                    TextButton(onClick = { recover(pending, false) }) {
-                        Text(stringResource(R.string.sync_status_failed_button_retry))
-                    }
-                }
-                TextButton(onClick = { confirmDrop = true }) { Text(stringResource(R.string.budget_save_drop)) }
-            }
-        }
     }
     if (confirmDrop) AlertDialog(onDismissRequest = { confirmDrop = false },
         title = { Text(stringResource(R.string.budget_save_drop)) },
@@ -85,19 +81,50 @@ private fun BudgetSaveStatus(pending: PendingBudgetSave, canModify: Boolean, rec
 }
 
 @Composable
-private fun BudgetSaveSummary(pending: PendingBudgetSave, statusText: String) {
+private fun BudgetSaveSummary(pending: PendingBudgetSave, expanded: Boolean, toggle: () -> Unit, refresh: () -> Unit) {
     val accepted = pending.row.status == PendingMutationStatus.Done
     val tone = if (accepted) LocalStateTokens.current.success else LocalStateTokens.current.warn
-    Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap)) {
+    Row(Modifier.fillMaxWidth().clickable(role = Role.Button,
+            onClickLabel = stringResource(if (expanded) R.string.budget_pending_collapse else R.string.budget_pending_view),
+            onClick = toggle),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap), verticalAlignment = Alignment.CenterVertically) {
         Surface(shape = RoundedCornerShape(AppRadius.medium), color = tone.bg,
             modifier = Modifier.size(AppSpacing.controlMinHeight)) {
             Icon(if (accepted) Icons.Outlined.Sync else Icons.Outlined.Info, contentDescription = null,
                 modifier = Modifier.padding(AppSpacing.compactGap), tint = tone.fg)
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-            Text(statusText, style = MaterialTheme.typography.titleSmall)
-            ProvideTextStyle(MaterialTheme.typography.bodyMedium) { BudgetSaveIntentSummary(pending) }
+            Text(stringResource(if (accepted) R.string.budget_pending_saved else R.string.budget_pending_change),
+                style = MaterialTheme.typography.titleSmall)
+            val subtitle = when {
+                pending.requiresReadRefresh -> stringResource(R.string.budget_pending_refresh_hint)
+                pending.row.status in setOf(PendingMutationStatus.Failed, PendingMutationStatus.Conflict) ->
+                    stringResource(R.string.budget_pending_review_hint)
+                pending.row.status in setOf(PendingMutationStatus.Pending, PendingMutationStatus.InFlight) ->
+                    stringResource(R.string.budget_pending_waiting_hint)
+                else -> pending.intent?.let { it.month + " · " + it.request.homeCurrencyCode }
+                    ?: stringResource(R.string.budget_save_unsupported)
+            }
+            Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+        TextButton(onClick = if (pending.requiresReadRefresh) refresh else toggle) {
+            Text(stringResource(when {
+                pending.requiresReadRefresh -> R.string.budget_pending_refresh
+                expanded -> R.string.budget_pending_collapse
+                else -> R.string.budget_pending_view
+            }))
+        }
+    }
+}
+
+@Composable
+private fun BudgetSaveControls(pending: PendingBudgetSave, canModify: Boolean, drop: () -> Unit,
+    recover: (PendingBudgetSave, Boolean) -> Unit) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+        if (pending.canRetry && canModify) {
+            TextButton(onClick = { recover(pending, false) }) { Text(stringResource(R.string.sync_status_failed_button_retry)) }
+        }
+        TextButton(onClick = drop) { Text(stringResource(R.string.budget_save_drop)) }
     }
 }
 

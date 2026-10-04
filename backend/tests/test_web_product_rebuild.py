@@ -455,13 +455,14 @@ def test_viewer_primary_page_keeps_read_only_shell(
     owner_ledger_viewer: None,
 ) -> None:
     """viewer 角色壳契约: 五域导航保持可见 (只读可浏览), 顶栏/侧栏标注只读,
-    正文前置 readonly-callout, 写面动作由页面隐藏 (本例以预算保存表单为证)。"""
+    正文前置只读提示, 写面动作由页面隐藏 (本例以预算保存表单为证)。"""
     page = web_client.get("/web/confirmed?ledger_id=owner")
     assert page.status_code == 200
     body = page.text
     assert 'data-domain="transactions"' in body
-    assert 'class="readonly-callout"' in body
-    assert "只读角色" in body
+    assert 'class="ledger-read-notice" role="status"' in body
+    assert "你可以查看这本账" in body
+    assert "如需修改，请联系拥有者。" in body
     sidebar = re.search(r'<aside class="sidebar">.*?</aside>', body, re.S)
     assert sidebar is not None
     for label in ["收件", "流水", "往来", "计划", "洞察"]:
