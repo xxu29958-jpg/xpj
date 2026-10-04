@@ -1,36 +1,36 @@
-{% extends "settings/_layout.html" %}
+{% extends "_workspace.html" %}
+{% from "_workspace_ui.html" import icon with context %}
 {% block title %}接口一览 — 设置 — 小票夹{% endblock %}
-{% block settings_body %}
-<div class="card">
-  <h2>接口一览（共 {{ route_total }} 项）</h2>
-  <p class="help-text">
-    自动从运行中的 FastAPI 路由表读取，按访问面分组。
-    Owner Console 路由仅本机可达；Admin / 上传 / Web 路由按各自鉴权放行。
-  </p>
-
-  {% for group in route_groups %}
-    {% if group.rows %}
-    <div class="card mt-5">
-      <span class="surface-pill {{ group.css_class }}">{{ group.label }} · {{ group.rows|length }}</span>
-      <p class="help-text help-text--meta">{{ group.description }}</p>
-      <table class="route-table">
-        <thead><tr><th class="w-160">方法</th><th>路径</th><th>名称</th></tr></thead>
-        <tbody>
-        {% for row in group.rows %}
-          <tr>
-            <td>
-              {% for m in row.methods %}
-                <span class="route-method route-method-{{ m }}">{{ m }}</span>
-              {% endfor %}
-            </td>
-            <td><code>{{ row.path }}</code></td>
-            <td class="text-meta">{{ row.name }}</td>
-          </tr>
-        {% endfor %}
-        </tbody>
+{% block back_url %}/owner/settings/about{% endblock %}
+{% block back_label %}关于小票夹{% endblock %}
+{% block workspace_title %}接口一览{% endblock %}
+{% block workspace_description %}当前运行应用的访问方式 · {{ route_total }} 项{% endblock %}
+{% block workspace_body %}
+<div class="workspace-information workspace-api-reference">
+  <p class="workspace-note">自动从运行中的 FastAPI 路由表读取，按访问面分组。Owner Console 路由仅本机可达；管理 API、上传和 Web 路由按各自鉴权放行。列出路径不代表当前请求已有调用权限。</p>
+  <nav class="workspace-doc-index" aria-label="接口分组目录">{% for group in route_groups if group.rows %}<a href="#api-{{ group.surface }}">{{ group.label }} · {{ group.rows|length }}</a>{% endfor %}</nav>
+  {% for group in route_groups if group.rows %}
+  <details class="workspace-disclosure" id="api-{{ group.surface }}">
+    <summary><span>{{ group.label }}<span>{{ group.rows|length }} 项</span></span>{{ icon('chevron-right') }}</summary>
+    <div class="workspace-disclosure__body">
+      <p class="workspace-note">{{ group.description }}</p>
+      <table class="workspace-route-table">
+        <caption>{{ group.label }}的接口</caption>
+        <thead><tr><th scope="col">方法</th><th scope="col">路径</th><th scope="col">名称</th></tr></thead>
+        <tbody>{% for row in group.rows %}<tr><td>{% for method in row.methods %}<code>{{ method }}</code>{% if not loop.last %} {% endif %}{% endfor %}</td><td><code>{{ row.path }}</code></td><td>{{ row.name }}</td></tr>{% endfor %}</tbody>
       </table>
+      <div class="workspace-route-list">
+        {% for row in group.rows %}
+        <details class="workspace-disclosure workspace-route-item">
+          <summary><span><span class="workspace-route-method">{{ row.methods|join(' · ') }}</span><code>{{ row.path }}</code></span>{{ icon('chevron-right') }}</summary>
+          <dl class="workspace-facts"><div><dt>名称</dt><dd>{{ row.name }}</dd></div><div><dt>访问面</dt><dd>{{ row.surface_label }}</dd></div></dl>
+        </details>
+        {% endfor %}
+      </div>
     </div>
-    {% endif %}
+  </details>
   {% endfor %}
+  {% if not route_total %}<div class="workspace-empty"><h2>当前没有可列出的接口</h2><p>本页只读取已挂载路由。可返回诊断页核对当前服务。</p><a href="/owner/diagnostics">查看诊断</a></div>{% endif %}
+  <div class="workspace-guidance">{{ icon('info') }}<div><strong>只展示接口定义</strong><p>路径中的参数名是占位符，不包含上传令牌、设备密钥或会话值。具体边界可查看 <a href="/owner/settings/security">安全说明</a>。</p></div></div>
 </div>
 {% endblock %}

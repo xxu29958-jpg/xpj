@@ -1,69 +1,36 @@
-{% extends "settings/_layout.html" %}
-{% block title %}安全 / 边界 — 设置 — 小票夹{% endblock %}
-{% block settings_body %}
-<div class="card">
-  <h2>安全 / 边界</h2>
-  <p class="help-text">
-    本页只读，说明当前访问边界。设备治理和维护入口仅在运行小票夹后端的电脑上可用，
-    不能通过公网域名开放。
-  </p>
-
-  <table class="route-table mt-3">
-    <thead><tr><th>项</th><th>状态</th><th>说明</th></tr></thead>
-    <tbody>
-      <tr>
-        <td>本机管理接口</td>
-        <td><span class="badge badge-ok">仅本机</span></td>
-        <td>
-          设备治理、上传链接管理、维护和管理配对码入口始终拒绝公网请求。
-          请在运行后端的电脑上使用本机管理入口。
-        </td>
-      </tr>
-      <tr>
-        <td><code>ENABLE_API_DOCS</code></td>
-        <td>
-          {% if security_view.enable_api_docs %}
-            <span class="badge badge-off">已挂载</span>
-          {% else %}
-            <span class="badge badge-ok">已关闭</span>
-          {% endif %}
-        </td>
-        <td>开启后 <code>/docs</code>、<code>/redoc</code>、<code>/openapi.json</code> 公网可见。</td>
-      </tr>
-      <tr>
-        <td><code>ENABLE_HTTP_BOOTSTRAP</code></td>
-        <td>
-          {% if security_view.enable_http_bootstrap %}
-            <span class="badge badge-off">已开启</span>
-          {% else %}
-            <span class="badge badge-ok">已关闭</span>
-          {% endif %}
-        </td>
-        <td>仅在首次绑定阶段使用，绑定完成后建议关闭。</td>
-      </tr>
-      <tr>
-        <td>Owner Console 边界</td>
-        <td><span class="badge badge-ok">本机环回 + Host 头</span></td>
-        <td>
-          见 <a class="text-link" href="/owner/settings/api">接口一览</a> 里 「Owner Console（仅本机）」 一组路由，
-          公网请求直接返回 403。
-        </td>
-      </tr>
-      <tr>
-        <td>公网域名</td>
-        <td>
-          {% if security_view.public_base_url_configured %}
-            <span class="badge badge-ok">已配置</span>
-          {% else %}
-            <span class="badge badge-off">未配置</span>
-          {% endif %}
-        </td>
-        <td>
-          仅用于 GUI 展示完整 UploadLink。
-          <a class="text-link" href="/owner/settings/public-base-url">前往修改</a>
-        </td>
-      </tr>
-    </tbody>
-  </table>
+{% extends "_workspace.html" %}
+{% from "_workspace_ui.html" import icon with context %}
+{% block title %}安全说明 — 设置 — 小票夹{% endblock %}
+{% block back_url %}/owner/settings/about{% endblock %}
+{% block back_label %}关于小票夹{% endblock %}
+{% block workspace_title %}安全说明{% endblock %}
+{% block workspace_description %}本机、设备与数据边界{% endblock %}
+{% block workspace_body %}
+<div class="workspace-information">
+  <p class="workspace-note">本页只读，说明当前访问边界。设备治理和维护入口仅在运行小票夹后端的电脑上可用，不能通过公网域名开放。</p>
+  <nav class="workspace-doc-index" aria-label="本页目录"><a href="#security-access">本机管理</a><a href="#security-switches">接口与首次绑定</a><a href="#security-address">公网域名</a></nav>
+  <details class="workspace-disclosure" id="security-access">
+    <summary><span>本机管理<span>本机环回与 Host 头共同校验</span></span>{{ icon('chevron-right') }}</summary>
+    <div class="workspace-disclosure__body">
+      <dl class="workspace-facts">
+        <div><dt>本机管理接口</dt><dd>仅本机。设备治理、上传链接管理、维护和管理配对码入口始终拒绝公网请求；请在运行后端的电脑上使用本机管理入口。</dd></div>
+        <div><dt>Owner Console 边界</dt><dd>本机环回 + Host 头双重校验，公网请求返回 403。可在 <a href="/owner/settings/api#api-owner">接口一览</a> 查看「Owner Console（仅本机）」的具体路由。</dd></div>
+      </dl>
+    </div>
+  </details>
+  <details class="workspace-disclosure" id="security-switches">
+    <summary><span>接口与首次绑定<span>查看当前开关及使用范围</span></span>{{ icon('chevron-right') }}</summary>
+    <div class="workspace-disclosure__body">
+      <dl class="workspace-facts">
+        <div><dt>接口文档 · <code>ENABLE_API_DOCS</code></dt><dd>{% if security_view.enable_api_docs %}已挂载{% else %}已关闭{% endif %}。开启后 <code>/docs</code>、<code>/redoc</code>、<code>/openapi.json</code> 公网可见。</dd></div>
+        <div><dt>HTTP 首次绑定 · <code>ENABLE_HTTP_BOOTSTRAP</code></dt><dd>{% if security_view.enable_http_bootstrap %}已开启{% else %}已关闭{% endif %}。仅在首次绑定阶段使用，绑定完成后建议关闭。</dd></div>
+      </dl>
+    </div>
+  </details>
+  <details class="workspace-disclosure" id="security-address">
+    <summary><span>公网域名<span>{{ '已配置' if security_view.public_base_url_configured else '未配置' }}，不代表连接已通过</span></span>{{ icon('chevron-right') }}</summary>
+    <div class="workspace-disclosure__body"><p>该设置用于 GUI 展示完整 UploadLink；它不会建立隧道，也不改变各接口的鉴权要求。</p><a href="/owner/settings/public-base-url">修改公网访问地址</a></div>
+  </details>
+  <div class="workspace-guidance">{{ icon('info') }}<div><strong>按入口核对权限</strong><p>设备、上传和网页版账本按各自鉴权放行；本机管理入口始终保持本机边界。</p></div></div>
 </div>
 {% endblock %}

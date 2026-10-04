@@ -1,7 +1,7 @@
 """Owner Console runtime-settings pages.
 
 Owner-facing runtime controls and read-only host boundaries under
-``/owner/settings``. The sub-nav is rendered from ``_SETTINGS_NAV``.
+``/owner/settings`` in the shared local workspace.
 """
 
 from __future__ import annotations
@@ -18,32 +18,15 @@ from app.services import recognition_setup_service, route_inspector_service, run
 router = APIRouter(prefix="/owner", tags=["owner-console"])
 
 
-_SETTINGS_NAV = (
-    {"slug": "", "label": "概览", "url": "/owner/settings"},
-    {"slug": "recognition", "label": "识别与录入", "url": "/owner/settings/recognition"},
-    {"slug": "advisor", "label": "AI 预算顾问", "url": "/owner/ai-advisor"},
-    {"slug": "fx", "label": "汇率同步", "url": "/owner/fx"},
-    {"slug": "uploads", "label": "上传与链接", "url": "/owner/settings/uploads"},
-    {"slug": "maintenance", "label": "清理与保留", "url": "/owner/settings/maintenance"},
-    {"slug": "public-base-url", "label": "公网域名", "url": "/owner/settings/public-base-url"},
-    {"slug": "security", "label": "安全 / 边界", "url": "/owner/settings/security"},
-    {"slug": "api", "label": "接口一览", "url": "/owner/settings/api"},
-    {"slug": "about", "label": "关于", "url": "/owner/settings/about"},
-)
-
-
 def _settings_ctx(
     request: Request,
     db: Session,
     *,
-    active: str = "",
     message: str | None = None,
     error: str | None = None,
 ) -> dict:
     ctx = _base(request, db)
     ctx["settings_view"] = runtime_settings_service.get_view()
-    ctx["settings_nav"] = _SETTINGS_NAV
-    ctx["settings_active"] = active
     ctx["message"] = message
     ctx["error"] = error
     return ctx
@@ -55,7 +38,7 @@ def owner_settings_index(
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
-    ctx = _settings_ctx(request, db, active="")
+    ctx = _settings_ctx(request, db)
     ctx["security_view"] = runtime_settings_service.get_security_view()
     return templates.TemplateResponse(request=request, name="settings/index.html", context=ctx)
 
@@ -66,7 +49,7 @@ def owner_settings_recognition_get(
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
-    ctx = _settings_ctx(request, db, active="recognition")
+    ctx = _settings_ctx(request, db)
     ctx["recognition_view"] = runtime_settings_service.get_recognition_view()
     return templates.TemplateResponse(request=request, name="settings/recognition.html", context=ctx)
 
@@ -114,7 +97,6 @@ def _post_recognition_settings(
         ctx = _settings_ctx(
             request,
             db,
-            active="recognition",
             error=getattr(exc, "message", None) or "操作未完成，请检查输入或服务状态后重试。",
         )
         ctx["recognition_view"] = runtime_settings_service.get_recognition_view(form)
@@ -124,7 +106,6 @@ def _post_recognition_settings(
     ctx = _settings_ctx(
         request,
         db,
-        active="recognition",
         message=check.message,
     )
     ctx["recognition_view"] = recognition_view
@@ -139,7 +120,7 @@ def owner_settings_public_base_url_get(
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
-    ctx = _settings_ctx(request, db, active="public-base-url")
+    ctx = _settings_ctx(request, db)
     return templates.TemplateResponse(request=request, name="settings/public_base_url.html", context=ctx)
 
 
@@ -150,15 +131,18 @@ def _post_public_base_url(
 ) -> HTMLResponse:
     try:
         runtime_settings_service.update_public_base_url(public_base_url)
-    except Exception as exc:  # noqa: BLE001 — surfaced to UI via getattr(exc, "message", ...)
-        message = getattr(exc, "message", None) or "保存失败，请检查输入。"
-        ctx = _settings_ctx(request, db, active="public-base-url", error=message)
-        return templates.TemplateResponse(request=request, name="settings/public_base_url.html", context=ctx)
+    except Exception as exc:  # noqa: BLE001 — retain the draft beside the existing validated error
+        retain_handled_error(request, exc)
+        message = getattr(exc, "message", None) or "未能确认保存结果，请核对当前地址和主机设置存储后重试。"
+        ctx = _settings_ctx(request, db, error=message)
+        ctx["public_base_url_draft"] = public_base_url
+        error_status = getattr(exc, "status_code", 503)
+        return templates.TemplateResponse(request=request, name="settings/public_base_url.html", context=ctx,
+            status_code=200 if error_status < 500 else error_status)
     ctx = _settings_ctx(
         request,
         db,
-        active="public-base-url",
-        message="已保存到受保护的运行时设置，下一次创建上传链接即生效。",
+        message="已保存到受保护的运行时设置，下一次创建上传链接即生效。公网连接仍需单独检查。",
     )
     return templates.TemplateResponse(request=request, name="settings/public_base_url.html", context=ctx)
 
@@ -211,7 +195,7 @@ def owner_settings_security(
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
-    ctx = _settings_ctx(request, db, active="security")
+    ctx = _settings_ctx(request, db)
     ctx["security_view"] = runtime_settings_service.get_security_view()
     return templates.TemplateResponse(request=request, name="settings/security.html", context=ctx)
 
@@ -222,7 +206,7 @@ def owner_settings_api(
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
-    ctx = _settings_ctx(request, db, active="api")
+    ctx = _settings_ctx(request, db)
     groups = route_inspector_service.list_route_groups(request.app)
     ctx["route_groups"] = groups
     ctx["route_total"] = route_inspector_service.count_routes(groups)
@@ -235,6 +219,6 @@ def owner_settings_about(
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
-    ctx = _settings_ctx(request, db, active="about")
+    ctx = _settings_ctx(request, db)
     ctx["about_view"] = runtime_settings_service.get_about_view()
     return templates.TemplateResponse(request=request, name="settings/about.html", context=ctx)

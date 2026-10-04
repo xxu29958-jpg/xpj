@@ -28,7 +28,7 @@ router = APIRouter(prefix="/owner", tags=["owner-console"])
 
 
 def _fx_context(request: Request, db: Session, *, refreshed: str | None = None) -> dict:
-    ctx = _settings_ctx(request, db, active="fx")
+    ctx = _settings_ctx(request, db)
     home_currency = require_runtime_home_currency_code(db)
     vm = svc.get_fx_panel_vm(db, home_currency_code=home_currency)
     ctx.update(

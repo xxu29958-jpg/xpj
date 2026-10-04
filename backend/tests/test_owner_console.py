@@ -13,8 +13,10 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from collections.abc import Iterator
 from contextlib import contextmanager
+from html import escape
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -1423,6 +1425,24 @@ def test_owner_settings_save_public_base_url_writes_runtime_projection(
     monkeypatch.setattr(app_config, "RUNTIME_SETTINGS_PATH", projection)
     monkeypatch.setattr(app_config, "_RUNTIME_SETTINGS_SERVICE_OWNED", False)
     with _isolated_runtime_setting(monkeypatch, "PUBLIC_BASE_URL", ""):
+        rss.update_public_base_url("https://before.example.test")
+        original_projection = projection.read_bytes()
+
+        def unavailable(*args, **kwargs):
+            raise OSError("isolated settings storage unavailable")
+
+        with monkeypatch.context() as patch:
+            patch.setattr(rss, "patch_runtime_settings", unavailable)
+            failed = local_client.post(
+                "/owner/settings/public-base-url", data={"public_base_url": "https://draft.example.test"},
+            )
+        assert failed.status_code == 503
+        assert 'value="https://draft.example.test"' in failed.text
+        saved_address = re.search(r"<dt>当前已保存地址</dt><dd><code>([^<]*)</code>", failed.text)
+        assert saved_address is not None
+        assert saved_address.group(1) == "https://before.example.test"
+        assert "公网连接仍需单独检查" not in failed.text
+        assert projection.read_bytes() == original_projection
         resp = local_client.post(
             "/owner/settings/public-base-url",
             data={"public_base_url": "https://api.zen70.cn/"},  # trailing slash dropped
@@ -1454,6 +1474,7 @@ def test_owner_settings_rejects_missing_scheme(
         )
         assert resp.status_code == 200
         assert "http://" in resp.text or "https://" in resp.text
+        assert 'value="api.zen70.cn"' in resp.text
         # nothing was written
         assert not projection.exists()
     finally:
@@ -1591,6 +1612,7 @@ def test_owner_settings_rejects_non_origin_url(
         )
         assert resp.status_code == 200, resp.text
         assert expect_fragment in resp.text, f"Expected error hint '{expect_fragment}' not found for input {bad_url!r}"
+        assert f'value="{escape(bad_url, quote=True)}"' in resp.text
         assert not projection.exists()
     finally:
         app_config.get_settings.cache_clear()

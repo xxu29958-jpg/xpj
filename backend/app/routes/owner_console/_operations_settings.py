@@ -17,7 +17,7 @@ router = APIRouter(prefix="/owner/settings", tags=["owner-console"])
 
 def _render(request: Request, db: Session, group: str, *, form: dict | None = None,
             error: str | None = None, message: str | None = None, status_code: int = 200) -> HTMLResponse:
-    ctx = _settings_ctx(request, db, active=group, error=error, message=message)
+    ctx = _settings_ctx(request, db, error=error, message=message)
     if group == "uploads":
         ctx["form"] = operations.upload_form() if form is None else form
     else:
