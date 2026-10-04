@@ -137,6 +137,9 @@ class HistoricalCorrectionRateRecoveryTest {
         val original = submitAndRefuse()
         installGraph()
         compose.runOnIdle { harness.shell.openAccount() }
+        val settingsGroup = context.getString(R.string.settings_root_sync_directory_title)
+        waitForText(settingsGroup)
+        compose.onNodeWithText(settingsGroup).performScrollTo().performClick()
         val syncEntry = context.getString(R.string.settings_root_entry_offline_sync_title)
         waitForText(syncEntry)
         compose.onNodeWithText(syncEntry).performScrollTo().performClick()

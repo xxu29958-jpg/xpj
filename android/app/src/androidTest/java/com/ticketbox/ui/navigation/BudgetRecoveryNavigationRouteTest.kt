@@ -104,6 +104,9 @@ class BudgetRecoveryNavigationRouteTest {
         show()
         if (fromWorkspace) {
             compose.runOnIdle { harness.shell.openAccount() }
+            val settingsGroup = context.getString(R.string.settings_root_sync_directory_title)
+            waitForText(settingsGroup)
+            compose.onNodeWithText(settingsGroup).performScrollTo().performClick()
             val entry = context.getString(R.string.settings_root_entry_offline_sync_title)
             waitForText(entry)
             compose.onNodeWithText(entry).performScrollTo().performClick()
@@ -182,6 +185,9 @@ class BudgetRecoveryNavigationRouteTest {
         show()
         if (fromWorkspace) {
             compose.runOnIdle { harness.shell.openAccount() }
+            val settingsGroup = context.getString(R.string.settings_root_sync_directory_title)
+            waitForText(settingsGroup)
+            compose.onNodeWithText(settingsGroup).performScrollTo().performClick()
             val entry = context.getString(R.string.settings_root_entry_offline_sync_title)
             waitForText(entry)
             compose.onNodeWithText(entry).performScrollTo().performClick()

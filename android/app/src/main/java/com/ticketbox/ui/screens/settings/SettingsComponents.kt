@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -30,6 +31,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Palette
@@ -37,6 +39,7 @@ import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -58,16 +61,23 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundSettings
@@ -105,6 +115,7 @@ import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalThemeVisuals
+import com.ticketbox.ui.design.SettingsColors
 import com.ticketbox.ui.design.ThemeVisuals
 import com.ticketbox.ui.design.themeVisualsForSkin
 import com.ticketbox.ui.theme.TicketboxAtmosphereBackground
@@ -119,20 +130,30 @@ fun SettingsEntryRow(
     subtitle: String,
     icon: ImageVector,
     onClick: () -> Unit,
+    expanded: Boolean? = null,
 ) {
+    val expansionLabel = stringResource(
+        if (expanded == true) R.string.settings_account_toggle_collapse else R.string.settings_account_toggle_expand,
+    )
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
+            .semantics { expanded?.let { stateDescription = expansionLabel } }
+            .clickable(role = Role.Button, onClick = onClick),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = AppSpacing.miniGap + AppSpacing.tinyGap),
+                .heightIn(min = 72.dp)
+                .padding(vertical = AppSpacing.compactGap),
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            SettingsEntryIcon(icon = icon)
+            SettingsEntryIcon(
+                icon = icon,
+                background = settingsEntryBackground(icon),
+                shape = RoundedCornerShape(14.dp),
+            )
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
@@ -141,28 +162,36 @@ fun SettingsEntryRow(
                     text = title,
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = AppTextHierarchy.body.weight,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
                 )
                 Text(
                     text = subtitle,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.labelSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
                 )
             }
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(AppSpacing.cardPadding),
+                modifier = Modifier.size(AppSpacing.cardPadding).rotate(if (expanded == true) 90f else 0f),
             )
         }
         HorizontalDivider(
             color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium),
         )
     }
+}
+
+@Composable
+private fun settingsEntryBackground(icon: ImageVector): Color {
+    val tint = when (icon) {
+        Icons.Filled.Group, Icons.Filled.Info -> SettingsColors.householdEntry
+        Icons.Filled.Palette -> SettingsColors.appearanceEntry
+        Icons.Filled.Sync -> SettingsColors.connectionEntry
+        else -> SettingsColors.generalEntry
+    }
+    val surface = MaterialTheme.colorScheme.surface
+    return if (surface.luminance() < 0.5f) lerp(surface, tint, 0.12f) else tint
 }
 
 @Composable

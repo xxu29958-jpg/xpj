@@ -14,6 +14,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
@@ -243,6 +244,7 @@ private fun UnboundAuthFlow(
         surfaceRole = SurfaceRole.Auth,
     ) {
         var showJoinFlow by rememberSaveable { mutableStateOf(false) }
+        val bindingDraftState = rememberSaveableStateHolder()
         val serverUrlEntry = ServerUrlEntryConfig(
             defaultUrl = BuildConfig.DEFAULT_SERVER_URL,
             showInput = BuildConfig.SHOW_ADVANCED_TOOLS || BuildConfig.DEFAULT_SERVER_URL.isBlank(),
@@ -275,20 +277,22 @@ private fun UnboundAuthFlow(
                 },
             )
         } else {
-            BindServerScreen(
-                loading = appState.binding,
-                message = appState.authMessage,
-                hasPendingEnrollment = appState.hasPendingEnrollment,
-                serverUrlEntry = serverUrlEntry,
-                actions = BindServerActions(
-                    onBind = appViewModel::bind,
-                    onJoinWithInvitation = {
-                        joinViewModel.reset(serverUrlEntry.defaultUrl)
-                        showJoinFlow = true
-                    },
-                    onAbandonPendingEnrollment = appViewModel::abandonPendingEnrollment,
-                ),
-            )
+            bindingDraftState.SaveableStateProvider("pairing-form") {
+                BindServerScreen(
+                    loading = appState.binding,
+                    message = appState.authMessage,
+                    hasPendingEnrollment = appState.hasPendingEnrollment,
+                    serverUrlEntry = serverUrlEntry,
+                    actions = BindServerActions(
+                        onBind = appViewModel::bind,
+                        onJoinWithInvitation = {
+                            joinViewModel.reset(serverUrlEntry.defaultUrl)
+                            showJoinFlow = true
+                        },
+                        onAbandonPendingEnrollment = appViewModel::abandonPendingEnrollment,
+                    ),
+                )
+            }
         }
     }
 }

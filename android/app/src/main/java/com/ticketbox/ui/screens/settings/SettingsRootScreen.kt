@@ -3,6 +3,7 @@ package com.ticketbox.ui.screens.settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.Devices
@@ -17,15 +18,25 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import com.ticketbox.BuildConfig
 import com.ticketbox.R
 import com.ticketbox.ui.components.AppDataAuthorityStrip
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.DataAuthorityTone
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.viewmodel.SettingsUiState
 
 data class SettingsRootNavigationActions(
@@ -85,24 +96,21 @@ fun SettingsRootScreen(
                 state = state,
                 onOpenConnection = navigationActions.connectionSystem.onOpenServer,
             )
-            SettingsLedgerFamilySection(state = state, actions = navigationActions.ledgerFamily)
-            SettingsDataPrivacySection(actions = navigationActions.dataPrivacy)
-            SettingsAlertsAppearanceSection(actions = navigationActions.alertsAppearance)
-            SettingsConnectionSystemSection(
-                showAdvancedTools = showAdvancedTools,
-                actions = navigationActions.connectionSystem,
-            )
+            SettingsLedgerFamilySection(navigationActions.ledgerFamily)
+            SettingsDailySection(navigationActions)
+            SettingsConnectionSystemSection(showAdvancedTools, navigationActions.connectionSystem)
         }
     }
 }
 
 @Composable
-private fun SettingsLedgerFamilySection(
-    state: SettingsUiState,
-    actions: SettingsRootLedgerFamilyNavigationActions,
-) {
-    SettingsSection(title = stringResource(R.string.settings_root_section_ledger_family), icon = Icons.Filled.Group) {
-        SettingsRootEntryGroup {
+private fun SettingsLedgerFamilySection(actions: SettingsRootLedgerFamilyNavigationActions) {
+    SettingsRootSection(stringResource(R.string.settings_root_section_ledger_family)) {
+        SettingsRootDisclosure(
+            title = stringResource(R.string.settings_root_family_directory_title),
+            subtitle = stringResource(R.string.settings_root_family_directory_subtitle),
+            icon = Icons.Filled.Group,
+        ) {
             SettingsEntryRow(
                 title = stringResource(R.string.account_profile_title),
                 subtitle = stringResource(R.string.account_profile_subtitle),
@@ -122,60 +130,61 @@ private fun SettingsLedgerFamilySection(
                 onClick = actions.onOpenFamilyMembers,
             )
             SettingsEntryRow(
-                title = stringResource(R.string.settings_root_entry_my_devices_title),
-                subtitle = stringResource(R.string.settings_root_entry_my_devices_subtitle),
-                icon = Icons.Filled.Devices,
-                onClick = actions.onOpenMyDevices,
-            )
-            SettingsEntryRow(
                 title = stringResource(R.string.settings_root_entry_join_family_title),
                 subtitle = stringResource(R.string.settings_root_entry_join_family_subtitle),
                 icon = Icons.Filled.GroupAdd,
                 onClick = actions.onOpenJoinFamilyLedger,
             )
         }
+        SettingsEntryRow(
+            title = stringResource(R.string.settings_root_entry_my_devices_title),
+            subtitle = stringResource(R.string.settings_root_entry_my_devices_subtitle),
+            icon = Icons.Filled.Devices,
+            onClick = actions.onOpenMyDevices,
+        )
     }
 }
 
 @Composable
-private fun SettingsDataPrivacySection(
-    actions: SettingsRootDataPrivacyNavigationActions,
-) {
-    SettingsSection(
-        title = stringResource(R.string.settings_root_section_data_privacy),
-        icon = Icons.Filled.Security,
-    ) {
-        SettingsRootEntryGroup {
-            SettingsEntryRow(
-                title = stringResource(R.string.settings_root_entry_data_export_title),
-                subtitle = stringResource(R.string.settings_root_entry_data_export_subtitle),
-                icon = Icons.Filled.FileDownload,
-                onClick = actions.onOpenDataExport,
-            )
-        }
-    }
-}
-
-@Composable
-private fun SettingsAlertsAppearanceSection(
-    actions: SettingsRootAlertsAppearanceNavigationActions,
-) {
-    SettingsSection(
-        title = stringResource(R.string.settings_root_section_alerts_appearance),
-        icon = Icons.Filled.Palette,
-    ) {
-        SettingsRootEntryGroup {
+private fun SettingsDailySection(actions: SettingsRootNavigationActions) {
+    SettingsRootSection(stringResource(R.string.settings_root_section_daily)) {
+        SettingsRootDisclosure(
+            title = stringResource(R.string.settings_root_alerts_directory_title),
+            subtitle = stringResource(R.string.settings_root_alerts_directory_subtitle),
+            icon = Icons.Filled.Palette,
+        ) {
             SettingsEntryRow(
                 title = stringResource(R.string.settings_root_entry_notifications_title),
                 subtitle = stringResource(R.string.settings_root_entry_notifications_subtitle),
                 icon = Icons.Filled.Notifications,
-                onClick = actions.onOpenNotifications,
+                onClick = actions.alertsAppearance.onOpenNotifications,
             )
             SettingsEntryRow(
                 title = stringResource(R.string.settings_root_entry_appearance_title),
                 subtitle = stringResource(R.string.settings_root_entry_appearance_subtitle),
                 icon = Icons.Filled.Palette,
-                onClick = actions.onOpenAppearance,
+                onClick = actions.alertsAppearance.onOpenAppearance,
+            )
+        }
+        SettingsRootDisclosure(
+            title = stringResource(R.string.settings_root_section_data_privacy),
+            subtitle = stringResource(R.string.settings_root_privacy_directory_subtitle),
+            icon = Icons.Filled.Security,
+        ) {
+            SettingsEntryRow(
+                title = stringResource(R.string.settings_root_entry_data_export_title),
+                subtitle = stringResource(R.string.settings_root_entry_data_export_subtitle),
+                icon = Icons.Filled.FileDownload,
+                onClick = actions.dataPrivacy.onOpenDataExport,
+            )
+            SettingsEntryRow(
+                title = stringResource(R.string.settings_root_entry_security_title),
+                subtitle = stringResource(
+                    if (BuildConfig.REQUIRE_LOCAL_UNLOCK) R.string.settings_root_entry_security_subtitle_locked
+                    else R.string.settings_root_entry_security_subtitle_unlocked,
+                ),
+                icon = Icons.Filled.Security,
+                onClick = actions.connectionSystem.onOpenSecurity,
             )
         }
     }
@@ -186,28 +195,21 @@ private fun SettingsConnectionSystemSection(
     showAdvancedTools: Boolean,
     actions: SettingsRootConnectionSystemNavigationActions,
 ) {
-    val connectionTitle = stringResource(
-        if (showAdvancedTools) {
-            R.string.settings_root_connection_title_advanced
-        } else {
-            R.string.settings_root_connection_title_basic
-        },
-    )
-    val connectionSubtitle = stringResource(
-        if (showAdvancedTools) {
-            R.string.settings_root_connection_subtitle_advanced
-        } else {
-            R.string.settings_root_connection_subtitle_basic
-        },
-    )
-    SettingsSection(
-        title = stringResource(R.string.settings_root_section_connection_system),
-        icon = Icons.Filled.Security,
-    ) {
-        SettingsRootEntryGroup {
+    SettingsRootSection(stringResource(R.string.settings_root_section_connection_system)) {
+        SettingsRootDisclosure(
+            title = stringResource(R.string.settings_root_sync_directory_title),
+            subtitle = stringResource(R.string.settings_root_sync_directory_subtitle),
+            icon = Icons.Filled.Sync,
+        ) {
             SettingsEntryRow(
-                title = connectionTitle,
-                subtitle = connectionSubtitle,
+                title = stringResource(
+                    if (showAdvancedTools) R.string.settings_root_connection_title_advanced
+                    else R.string.settings_root_connection_title_basic,
+                ),
+                subtitle = stringResource(
+                    if (showAdvancedTools) R.string.settings_root_connection_subtitle_advanced
+                    else R.string.settings_root_connection_subtitle_basic,
+                ),
                 icon = Icons.Filled.CloudDone,
                 onClick = actions.onOpenServer,
             )
@@ -223,33 +225,41 @@ private fun SettingsConnectionSystemSection(
                 icon = Icons.Filled.Tune,
                 onClick = actions.onOpenBackgroundTasks,
             )
-            SettingsEntryRow(
-                title = stringResource(R.string.settings_root_entry_security_title),
-                subtitle = stringResource(
-                    if (BuildConfig.REQUIRE_LOCAL_UNLOCK) {
-                        R.string.settings_root_entry_security_subtitle_locked
-                    } else {
-                        R.string.settings_root_entry_security_subtitle_unlocked
-                    },
-                ),
-                icon = Icons.Filled.Security,
-                onClick = actions.onOpenSecurity,
-            )
-            SettingsEntryRow(
-                title = stringResource(R.string.settings_root_entry_about_title),
-                subtitle = stringResource(R.string.settings_root_entry_about_subtitle),
-                icon = Icons.Filled.Info,
-                onClick = actions.onOpenAbout,
-            )
         }
+        SettingsEntryRow(
+            title = stringResource(R.string.settings_root_entry_about_title),
+            subtitle = stringResource(R.string.settings_root_entry_about_subtitle),
+            icon = Icons.Filled.Info,
+            onClick = actions.onOpenAbout,
+        )
     }
 }
 
 @Composable
-private fun SettingsRootEntryGroup(
+private fun SettingsRootSection(title: String, content: @Composable ColumnScope.() -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+        Text(
+            title,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = AppTextHierarchy.heading.weight,
+            modifier = Modifier.semantics { heading() },
+        )
+        Column(content = content)
+    }
+}
+
+@Composable
+private fun SettingsRootDisclosure(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Column(content = content)
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    SettingsEntryRow(title, subtitle, icon, onClick = { expanded = !expanded }, expanded = expanded)
+    if (expanded) {
+        Column(modifier = Modifier.padding(start = AppSpacing.compactGap), content = content)
+    }
 }
 
 private fun settingsAuthorityTone(state: SettingsUiState): DataAuthorityTone = when {

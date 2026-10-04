@@ -18,7 +18,7 @@
     <string name="settings_root_connection_subtitle_advanced">连接状态、同步记录</string>
     <string name="settings_root_connection_subtitle_basic">检查连接、更新账本状态</string>
     <string name="settings_root_page_title">设置</string>
-    <string name="settings_root_page_subtitle">账本、规则、同步和安全</string>
+    <string name="settings_root_page_subtitle">把小票夹调成适合你的样子。</string>
     <string name="settings_root_account_identity_line">%1$s · %2$s · %3$s</string>
     <string name="settings_root_section_ledger_family">账本与家庭</string>
     <string name="settings_root_entry_offline_sync_title">离线同步</string>
@@ -319,4 +319,12 @@
     <string name="settings_backup_next_step">请在保存账本的电脑上打开小票夹管理器，查看备份记录并创建新的备份；如果由家人管理，请联系该电脑的使用者。</string>
     <string name="settings_backup_record_scope">这里展示备份记录及其时间，不代表备份文件已完整复检或已经通过恢复验证。</string>
     <string name="settings_backup_refresh">重新读取备份记录</string>
+    <string name="settings_root_family_directory_title">账本和家庭成员</string>
+    <string name="settings_root_family_directory_subtitle">账号、账本、成员与家庭邀请</string>
+    <string name="settings_root_section_daily">日常使用</string>
+    <string name="settings_root_alerts_directory_title">通知与外观</string>
+    <string name="settings_root_alerts_directory_subtitle">提醒、主题与背景</string>
+    <string name="settings_root_privacy_directory_subtitle">导出、本机验证与设备数据</string>
+    <string name="settings_root_sync_directory_title">同步与后台任务</string>
+    <string name="settings_root_sync_directory_subtitle">连接、待处理操作与小票识别</string>
 </resources>
