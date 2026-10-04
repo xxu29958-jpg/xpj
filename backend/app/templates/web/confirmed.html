@@ -20,7 +20,7 @@
      (未增强即保持原生可见; product 片禁止 body 内样式标签);
    - 分页走共享 product/_pagination.html; OCC 快照/幂等键/422 原页草稿与勾选
      保留全部沿用既有 hidden 字段与 flash 钩子 (confirmed-batch-feedback)。 #}
-{% block content %}
+{% block page_header %}
 <header class="product-page-header">
   <div class="product-page-heading">
     {% if filter == 'missing_accounting_date' %}
@@ -42,6 +42,10 @@
   </div>
   {% endif %}
 </header>
+{% endblock %}
+
+{% block content %}
+
 {% include '_ledger_readonly_tools.html' %}
 {% if filter not in ['missing_category', 'missing_accounting_date'] %}
 <div class="ledger-summary">

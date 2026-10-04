@@ -6,7 +6,9 @@ data class BudgetCategoryBudget(
     val spentAmountCents: Long?,
     val remainingAmountCents: Long?,
     val overspentAmountCents: Long?,
-)
+) {
+    val spentProgress: Float? get() = budgetSpentProgress(spentAmountCents, amountCents)
+}
 
 data class BudgetExcludedCategory(
     val category: String,
@@ -40,13 +42,14 @@ data class BudgetMonthly(
     val availableAmountCents: Long = totalAmountCents + rolloverAmountCents
     val isOverBudget: Boolean = overspentAmountCents?.let { it > 0L } == true ||
         remainingAmountCents?.let { it < 0L } == true
-    val spentPercent: Long? = spentAmountCents?.let { moneyPercent(it, availableAmountCents) }
-    val spentProgress: Float? = spentAmountCents?.let { spent ->
-        if (availableAmountCents > 0L) {
-            (spent.toFloat() / availableAmountCents.toFloat()).coerceIn(0f, 1f)
-        } else { 0f }
-    }
+    val spentProgress: Float? = budgetSpentProgress(spentAmountCents, availableAmountCents)
+    val spentPercent: Long? = spentAmountCents?.takeIf { spentProgress != null }?.let { moneyPercent(it, availableAmountCents) }
 }
+
+private fun budgetSpentProgress(spent: Long?, available: Long): Float? =
+    spent?.takeIf { it >= 0L && available > 0L }?.let {
+        (it.toFloat() / available.toFloat()).coerceIn(0f, 1f)
+    }
 
 enum class BudgetProgressStatus {
     Unknown,

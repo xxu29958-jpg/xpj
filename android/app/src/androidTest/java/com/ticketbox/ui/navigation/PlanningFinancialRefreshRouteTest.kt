@@ -14,9 +14,12 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextReplacement
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.navigation.NavHostController
@@ -102,6 +105,9 @@ class PlanningFinancialRefreshRouteTest {
         showPlans()
         waitForText("¥2,400")
         compose.runOnIdle { harness.shell.openSecondaryPage(ProductSecondaryPage.Budget) }
+        waitForText(context.getString(R.string.budget_status_badge_active))
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasTestTag("budget_edit_open"))
+        compose.onNodeWithTag("budget_edit_open").performClick()
         waitForText(context.getString(R.string.budget_editor_total_label))
         val field = compose.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag("budget_total_amount")),
             useUnmergedTree = true)
@@ -115,8 +121,11 @@ class PlanningFinancialRefreshRouteTest {
         switchDomain(PrimaryDomain.Plans)
 
         compose.onNode(hasScrollToIndexAction()).performScrollToIndex(0)
+        compose.onNodeWithContentDescription(context.getString(R.string.budget_editor_back)).performScrollTo().performClick()
         waitForText("¥4,400")
         compose.onNodeWithText("¥4,400").performScrollTo().assertIsDisplayed()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasTestTag("budget_edit_open"))
+        compose.onNodeWithTag("budget_edit_open").performClick()
         field.performScrollTo().assertTextEquals("3000.00")
         val completedBeforeBudget = completedExpenseCommands()
         assertEquals(2, completedBeforeBudget.size)

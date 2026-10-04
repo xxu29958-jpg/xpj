@@ -36,10 +36,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.ui.design.AppAlpha
+import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalThemeVisuals
+import com.ticketbox.ui.design.asAmount
 import com.ticketbox.ui.design.tabularNum
 
 @Immutable
@@ -74,6 +76,7 @@ data class AppTextInputDecorations(
     val trailingContent: (@Composable () -> Unit)? = null,
     val supportingText: (@Composable () -> Unit)? = null,
     val roundedSurface: Boolean = false,
+    val amountRole: AppAmountRole? = null,
 )
 
 @Composable
@@ -158,7 +161,7 @@ private fun AppTextInputField(
         maxLines = if (state.singleLine) 1 else state.maxLines,
         keyboardOptions = state.keyboardOptions,
         keyboardActions = actions.keyboardActions,
-        textStyle = appTextInputTextStyle(state),
+        textStyle = appTextInputTextStyle(state, decorations.amountRole),
         decorationBox = { innerTextField ->
             Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
                 AppTextInputHeader(state)
@@ -191,7 +194,7 @@ private fun AppTextInputFrame(
     decorations: AppTextInputDecorations,
     content: @Composable () -> Unit,
 ) {
-    val shape = RoundedCornerShape(if (decorations.roundedSurface) AppRadius.large else AppRadius.extraSmall)
+    val shape = RoundedCornerShape(if (decorations.roundedSurface) AppRadius.large else AppRadius.medium)
     val verticalPadding = if (state.singleLine) AppSpacing.contentGap else AppSpacing.compactGap
     val borderColor = appTextInputBorderColor(state, focused, decorations.roundedSurface)
     val borderWidth = if (focused && state.enabled) 2.dp else 1.dp
@@ -261,14 +264,14 @@ private fun appTextInputBackgroundColor(state: AppTextInputState, roundedSurface
     if (roundedSurface && state.enabled) return visuals.surfaceRaised
     if (state.emphasis == AppTextInputEmphasis.Amount && state.enabled) return Color.Transparent
     return if (state.enabled) {
-        visuals.surfaceSunken
+        visuals.surfaceRaised
     } else {
         visuals.surfaceSunken.copy(alpha = AppAlpha.soft)
     }
 }
 
 @Composable
-private fun appTextInputTextStyle(state: AppTextInputState): TextStyle {
+private fun appTextInputTextStyle(state: AppTextInputState, amountRole: AppAmountRole? = null): TextStyle {
     val color = if (state.enabled) {
         MaterialTheme.colorScheme.onSurface
     } else {
@@ -278,6 +281,7 @@ private fun appTextInputTextStyle(state: AppTextInputState): TextStyle {
         AppTextInputEmphasis.Amount -> MaterialTheme.typography.headlineSmall
             .copy(color = color, fontWeight = FontWeight.SemiBold)
             .tabularNum()
+            .let { style -> amountRole?.let { style.asAmount(it) } ?: style }
         AppTextInputEmphasis.Standard -> MaterialTheme.typography.bodyLarge.copy(color = color)
     }
 }

@@ -9,7 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Button
+import com.ticketbox.ui.components.AppPrimaryButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -238,9 +238,8 @@ private fun RepaymentDraftCardActions(action: DraftRowAction, callbacks: Repayme
         TextButton(onClick = callbacks.onDismiss, enabled = action == DraftRowAction.Idle) {
             Text(stringResource(R.string.repayment_draft_dismiss))
         }
-        Button(onClick = callbacks.onOpenPicker, enabled = action != DraftRowAction.Busy) {
-            Text(stringResource(R.string.repayment_review_open))
-        }
+        AppPrimaryButton(text = stringResource(R.string.repayment_review_open),
+            onClick = callbacks.onOpenPicker, enabled = action != DraftRowAction.Busy)
     }
 }
 

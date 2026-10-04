@@ -4,8 +4,7 @@
 
 {# One queue and command owner. Native upload, selection snapshots, CSRF, OCC,
    conflict/undo and recognition feedback remain usable without enhancement. #}
-{% block content %}
-{% set _q = '?ledger_id=' ~ selected_ledger_id %}
+{% block page_header %}
 {% if pending_count %}
 <header class="product-page-header inbox-page-header">
   <div class="product-page-heading">
@@ -21,11 +20,16 @@
   {% if pending_count %}
   <div class="product-page-actions">
     {% if can_write %}<a class="product-button product-button--primary" href="#capture"><svg width="20" height="20" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#plus"/></svg>上传小票</a>{% endif %}
-    <a class="product-button product-button--quiet" href="/web/import{{ _q }}">导入与导出</a>
+    <a class="product-button product-button--quiet" href="/web/import?ledger_id={{ selected_ledger_id|urlencode }}">导入与导出</a>
   </div>
   {% endif %}
 </header>
 {% endif %}
+{% endblock %}
+
+{% block content %}
+{% set _q = '?ledger_id=' ~ selected_ledger_id %}
+
 <div class="inbox-workspace">
 <div class="inbox-queue">
 {% if pending_count %}

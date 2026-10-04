@@ -170,6 +170,13 @@ def _category_form_rows(
                 "category": category,
                 "saved_category": saved_item.category if saved_item is not None else "",
                 "amount_yuan": amount_yuan,
+                "saved_amount_yuan": (
+                    _amount_yuan(saved_item.amount_cents, currency_code) if saved_item is not None else ""
+                ),
+                "progress_value_cents": min(max(saved_item.spent_amount_cents or 0, 0), saved_item.amount_cents) if saved_item else 0,
+                "progress_max_cents": saved_item.amount_cents if saved_item else 0,
+                "has_progress_basis": bool(saved_item and saved_item.amount_cents > 0
+                    and saved_item.spent_amount_cents is not None and saved_item.spent_amount_cents >= 0),
                 "spent_yuan": (
                     _amount_yuan(saved_item.spent_amount_cents, currency_code) if saved_item is not None else ""
                 ),
@@ -217,9 +224,11 @@ def _budget_view(budget: BudgetMonthlyResponse, *, currency_code: str) -> dict:
         label="web_budget.available",
     )
     progress_max = max(available, 0)
+    category_rows = _category_form_rows(budget, currency_code=currency_code)
     return {
         "ledger_id": budget.ledger_id,
         "month": budget.month,
+        "currency_code": currency_code,
         "configured": budget.configured,
         "missing_currency_codes": budget.missing_currency_codes,
         "reference_rates": budget.reference_rates,
@@ -238,10 +247,8 @@ def _budget_view(budget: BudgetMonthlyResponse, *, currency_code: str) -> dict:
             }
             for item in budget.excluded_breakdown
         ],
-        "category_rows": _category_form_rows(
-            budget,
-            currency_code=currency_code,
-        ),
+        "category_rows": category_rows,
+        "category_execution_rows": [row for row in category_rows if row["is_configured"]],
         "form_total_yuan": (_amount_yuan(budget.total_amount_cents, currency_code) if budget.configured else ""),
         "form_rollover_yuan": (_amount_yuan(budget.rollover_amount_cents, currency_code) if budget.configured else ""),
         "form_non_monthly_yuan": (
@@ -249,7 +256,7 @@ def _budget_view(budget: BudgetMonthlyResponse, *, currency_code: str) -> dict:
         ),
         "progress_value_cents": min(spent, progress_max),
         "progress_max_cents": progress_max,
-        "has_progress_basis": progress_max > 0 and budget.spent_amount_cents is not None,
+        "has_progress_basis": progress_max > 0 and budget.spent_amount_cents is not None and budget.spent_amount_cents >= 0,
         "is_over_budget": budget.remaining_amount_cents is not None and budget.remaining_amount_cents < 0,
     }
 

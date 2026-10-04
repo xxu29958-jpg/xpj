@@ -34,7 +34,7 @@ fun AppSecondaryButton(
         modifier = modifier.defaultMinSize(minHeight = AppSpacing.controlMinHeight),
         enabled = enabled,
         onClick = onClick,
-        shape = RoundedCornerShape(AppRadius.small),
+        shape = RoundedCornerShape(AppRadius.medium),
         contentPadding = PaddingValues(horizontal = AppSpacing.compactGap, vertical = AppSpacing.smallGap),
         colors = ButtonDefaults.filledTonalButtonColors(
             containerColor = visuals.surfaceSunken,

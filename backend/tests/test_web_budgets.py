@@ -13,7 +13,7 @@ from app.database import SessionLocal
 from app.main import app
 from app.models import Budget, LedgerMember
 from app.routes.web_app import _require_local as _web_require_local
-from app.routes.web_budgets import _category_form_rows
+from app.routes.web_budgets import _budget_view, _category_form_rows
 from app.schemas import BudgetCategoryResponse, BudgetMonthlyResponse
 from tests._local_web_identity_support import _connect_local_session, installed_web_setup
 from tests._web_native_form_support import hidden_post_forms
@@ -153,10 +153,19 @@ def test_budget_presenter_keeps_fresh_execution_identity_when_draft_renames_row(
 
     assert row["category"] == "购物"
     assert row["saved_category"] == "餐饮"
+    assert row["saved_amount_yuan"] == "100.00"
+    assert row["progress_value_cents"] == 10000
+    assert row["progress_max_cents"] == 10000
     assert row["spent_yuan"] == "125.00"
     assert row["remaining_yuan"] == "-25.00"
     assert row["overspent_yuan"] == "25.00"
     assert row["has_overspend"] is True
+
+    view = _budget_view(fresh, currency_code="CNY")
+    assert view["category_execution_rows"][0]["saved_amount_yuan"] == "100.00"
+    for available, spent in [(0, 12500), (100000, -50), (100000, None)]:
+        unavailable = fresh.model_copy(update={"total_amount_cents": available, "spent_amount_cents": spent})
+        assert _budget_view(unavailable, currency_code="CNY")["has_progress_basis"] is False
 
 
 def test_web_budgets_remote_returns_403(client: TestClient) -> None:
@@ -168,7 +177,7 @@ def test_web_budgets_renders_unconfigured_state_and_nav(web_client: TestClient) 
     response = web_client.get("/web/budgets?ledger_id=owner&month=2026-05")
 
     assert response.status_code == 200
-    start = re.search(r'<section[^>]+aria-label="开始设置预算"[^>]*>(.*?)</section>', response.text, re.S)
+    start = re.search(r'<details[^>]+id="budget-editor"[^>]* open[^>]*>(.*?)</form>', response.text, re.S)
     assert start is not None
     assert 'action="/web/budgets/save"' in start.group(1)
     assert "本月已确认支出" in start.group(1)
@@ -191,8 +200,9 @@ def test_web_budgets_renders_unconfigured_state_and_nav(web_client: TestClient) 
     assert response.text.index('name="total_amount_yuan"') < options.start()
     options_end = response.text.index("</details>", options.end())
     assert response.text.index("保存预算</button>") > options_end
-    for name in ("rollover_amount_yuan", "non_monthly_amount_yuan", "excluded_category", "category_budget_category"):
+    for name in ("rollover_amount_yuan", "non_monthly_amount_yuan", "excluded_category"):
         assert f'name="{name}"' in response.text[options.end():options_end]
+    assert response.text.index('name="category_budget_category"') < options.start()
 
 
 def test_web_budgets_save_and_display_budget_dashboard(web_client: TestClient, *, identity) -> None:

@@ -7,7 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
+import com.ticketbox.ui.components.AppPrimaryButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -87,8 +87,9 @@ private fun RepaymentReviewInputs(state: RepaymentDraftInboxUiState, model: Repa
             RepaymentReviewReopenUnsubmitted(state.canModify, model.reviewEditor::reviewAgain)
         }
         if (unsubmitted) {
-            Button(onClick = model.reviewEditor::submitReview, enabled = editable && !state.isLoading,
-                modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.repayment_review_confirm)) }
+            AppPrimaryButton(text = stringResource(R.string.repayment_review_confirm),
+                onClick = model.reviewEditor::submitReview, enabled = editable && !state.isLoading,
+                modifier = Modifier.fillMaxWidth())
             TextButton(onClick = { model.dismiss(input.draftPublicId) }, enabled = editable) {
                 Text(stringResource(R.string.repayment_draft_dismiss))
             }

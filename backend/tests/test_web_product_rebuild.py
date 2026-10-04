@@ -234,7 +234,7 @@ def test_budgets_product_body_retires_legacy_stack(web_client: TestClient) -> No
         assert retired not in body
     assert "/static/web/pages/budgets.css" not in body
     assert "desktop-shell-active" not in body
-    assert '<h1 class="page-title">月度预算</h1>' in body
+    assert '<h1 class="page-title">这个月，心里有数</h1>' in body
     assert "<style" not in body
     assert 'style="' not in body
     _assert_shell_chrome_has_no_inline_style(body)

@@ -50,6 +50,7 @@ internal fun CategoryBudgetSection(
                 amountLabel = amountLabel,
                 amountValue = amountValue,
             )
+            item.spentProgress?.let { BudgetProgressBar(it) }
         }
     }
 }

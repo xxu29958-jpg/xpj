@@ -8,9 +8,10 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material3.Button
+import com.ticketbox.ui.components.AppPrimaryButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import com.ticketbox.ui.components.AppOutlinedButton
+import com.ticketbox.ui.components.AppOutlinedButtonOptions
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -397,31 +398,29 @@ private fun DebtGoalIntegrityActions(
     onAction: (DebtIntegrityAction) -> Unit,
 ) {
     val keepAction: @Composable (Modifier) -> Unit = { actionModifier ->
-        OutlinedButton(
+        AppOutlinedButton(
             modifier = actionModifier,
             onClick = { onAction(DebtIntegrityAction.Acknowledge) },
-            enabled = !isSubmitting,
+            options = AppOutlinedButtonOptions(enabled = !isSubmitting),
         ) {
             Text(stringResource(R.string.debt_goal_review_action_keep))
         }
     }
     val removeAction: @Composable (Modifier) -> Unit = { actionModifier ->
-        Button(
+        AppPrimaryButton(
+            text = stringResource(R.string.debt_goal_review_action_remove),
             modifier = actionModifier,
             onClick = { onAction(DebtIntegrityAction.RemoveVoided) },
             enabled = !isSubmitting,
-        ) {
-            Text(stringResource(R.string.debt_goal_review_action_remove))
-        }
+        )
     }
     val archiveAction: @Composable (Modifier) -> Unit = { actionModifier ->
-        Button(
+        AppPrimaryButton(
+            text = stringResource(R.string.debt_goal_review_action_archive),
             modifier = actionModifier,
             onClick = { onAction(DebtIntegrityAction.Archive) },
             enabled = !isSubmitting,
-        ) {
-            Text(stringResource(R.string.debt_goal_review_action_archive))
-        }
+        )
     }
     when {
         // §6/F13: "keep for audit" (acknowledge) only applies to an ALREADY achieved

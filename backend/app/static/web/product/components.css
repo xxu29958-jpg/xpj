@@ -52,13 +52,6 @@ p {
     line-height: var(--type-hero-line);
 }
 
-@media (min-width: 64rem) {
-    .content[data-page-level="primary"] .page-title {
-        font-size: var(--type-display-size);
-        line-height: var(--type-display-line);
-    }
-}
-
 .page-title--compact {
     font-size: var(--type-headline-size);
     line-height: var(--type-headline-line);
@@ -174,12 +167,14 @@ p {
 .amount,
 .trend-num,
 .kpi-value {
+    min-width: 0;
+    overflow-wrap: anywhere;
     font-family: var(--font-numeric);
     font-variant-numeric: tabular-nums;
 }
 
-/* W1 Warm Ledger: 按钮三级制 — 默认 tonal 色面 (无描边), primary 实心强调,
-   danger tonal 危险色面, quiet 纯文本。描边白底按钮从 product 语言退役。 */
+/* Shared action hierarchy: evergreen submission, soft secondary actions and
+   quiet text actions. Control geometry is shared with inputs and other clients. */
 .dt-btn,
 .product-button,
 button.dt-btn,
@@ -216,8 +211,10 @@ a.dt-btn {
 
 .dt-btn.primary,
 .product-button--primary {
+    min-height: calc(var(--target-min) + var(--space-3));
     background: var(--brand-primary);
     color: var(--text-on-primary);
+    font-weight: var(--type-title-weight);
 }
 
 .dt-btn.primary:hover,
@@ -249,7 +246,7 @@ a.dt-btn {
 }
 
 .dt-btn--sm {
-    min-height: var(--space-8);
+    min-height: var(--target-min);
     padding: var(--space-1) var(--space-3);
     font-size: var(--type-caption-size);
 }
@@ -548,14 +545,14 @@ button[disabled] {
 
 .dt-input,
 .product-input,
-input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]),
+input:where(:not([type="hidden"]):not([type="checkbox"]):not([type="radio"])),
 select,
 textarea {
     width: 100%;
     min-height: var(--space-10);
     padding: var(--space-3) var(--space-4);
     border: 1px solid var(--border-input);
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-input);
     background: var(--surface-card);
     color: var(--text-default);
 }
@@ -596,7 +593,7 @@ textarea {
 
 .dt-input:hover,
 .product-input:hover,
-input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):hover,
+input:where(:not([type="hidden"]):not([type="checkbox"]):not([type="radio"])):hover,
 select:hover,
 textarea:hover {
     border-color: var(--control-border-hover);
@@ -604,7 +601,7 @@ textarea:hover {
 
 .dt-input:focus,
 .product-input:focus,
-input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):focus,
+input:where(:not([type="hidden"]):not([type="checkbox"]):not([type="radio"])):focus,
 select:focus,
 textarea:focus {
     border-color: var(--control-border-active);

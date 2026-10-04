@@ -34,7 +34,7 @@ import com.ticketbox.ui.design.LocalThemeVisuals
 @Composable
 fun AppPaperCard(
     modifier: Modifier = Modifier,
-    radius: RoundedCornerShape = RoundedCornerShape(AppRadius.medium),
+    radius: RoundedCornerShape = RoundedCornerShape(AppRadius.hero),
     content: @Composable () -> Unit,
 ) {
     val visuals = LocalThemeVisuals.current
@@ -60,7 +60,7 @@ fun AppSolidCard(
     // Solid cards are for edit, settings, and other input-heavy surfaces that
     // need stronger separation from the immersive background.
     val visuals = LocalThemeVisuals.current
-    val radius = RoundedCornerShape(AppRadius.medium)
+    val radius = RoundedCornerShape(AppRadius.hero)
     Box(
         modifier = modifier
             .fillMaxWidth()

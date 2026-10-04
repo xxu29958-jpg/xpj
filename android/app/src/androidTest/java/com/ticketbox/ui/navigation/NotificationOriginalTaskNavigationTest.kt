@@ -64,6 +64,7 @@ class NotificationOriginalTaskNavigationTest {
         }
         waitForMonth("2026-08")
         assertEquals(listOf("2026-07", "2026-08"), transport.budgetReads.toList())
+        compose.onNodeWithContentDescription(context.getString(R.string.budget_editor_back)).performClick()
         compose.onNodeWithContentDescription(context.getString(R.string.budget_back_to_stats)).performClick()
         waitForMonth("2026-07")
         compose.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag("budget_total_amount")))

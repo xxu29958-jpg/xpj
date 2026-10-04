@@ -2,23 +2,33 @@
  *
  * 边界: 只展开可选设置与克隆添加行, 不校验、不 normalize、不预测保存结果。
  * 分类名规范化/存在性/重复判定永远归服务端 Budget Owner。无 JS 时全部字段
- * 和两个真实添加行保持可见, 折叠入口及「再加一行」按钮保持 hidden。
+ * 与两个真实添加行仍能通过原生 details 访问；「再加一行」仅在增强完成后显示。
  */
 (function (window, document) {
   "use strict";
 
   function initBudgetForm() {
     const options = document.querySelector("#budget-options");
+    const editor = document.querySelector("#budget-editor");
     const summary = options && options.querySelector("summary");
     const form = options && options.closest("form");
     if (options && summary && form) {
       // invalid 不冒泡；同步显露后由浏览器继续聚焦原生非法字段。
       // 不读取金额、不复制约束，也不把折叠状态变成第二份表单数据。
       form.addEventListener("invalid", function (event) {
+        if (editor) editor.open = true;
         if (options.contains(event.target)) options.open = true;
       }, true);
       options.open = options.getAttribute("data-start-expanded") !== "false";
       summary.hidden = false;
+    }
+
+    if (editor) {
+      editor.addEventListener("toggle", function () {
+        if (editor.open) editor.scrollIntoView({block: "start"});
+      });
+      const requested = new URL(window.location.href);
+      if (requested.hash === "#budget-editor" || requested.searchParams.has("new_budget")) editor.open = true;
     }
 
     const zone = document.querySelector("[data-budget-add-zone]");

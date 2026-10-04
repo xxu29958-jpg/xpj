@@ -702,8 +702,8 @@
 
     <!-- BudgetHeader / MonthSwitcher：预算屏头部 + 月份切换 -->
     <string name="budget_back_to_stats">返回计划</string>
-    <string name="budget_header_title">预算</string>
-    <string name="budget_header_subtitle">%1$s 月度可花额度</string>
+    <string name="budget_header_title">这个月，心里有数</string>
+    <string name="budget_header_subtitle">%1$s · 月度预算</string>
     <string name="budget_month_previous">上月</string>
     <string name="budget_month_next">下月</string>
 
@@ -731,7 +731,9 @@
 
     <!-- BudgetEditorSection / BudgetFields：预算编辑 + 输入字段。
          只读提示复用 common_readonly_ledger、保存中复用 common_saving（strings.xml 已有同值）。 -->
-    <string name="budget_editor_title">预算设置</string>
+    <string name="budget_editor_title">给这个月定个额度</string>
+    <string name="budget_editor_open">调整本月预算</string>
+    <string name="budget_editor_back">返回预算</string>
     <string name="budget_editor_save">保存预算</string>
     <string name="budget_editor_total_label">月度总预算</string>
     <string name="budget_editor_total_placeholder">3000</string>

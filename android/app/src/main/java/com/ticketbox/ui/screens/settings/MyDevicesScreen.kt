@@ -18,7 +18,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import com.ticketbox.ui.components.AppOutlinedButton
+import com.ticketbox.ui.components.AppOutlinedButtonOptions
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -351,9 +352,9 @@ private fun AddDeviceSection(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )
-            OutlinedButton(
+            AppOutlinedButton(
                 onClick = onCreate,
-                enabled = !creating,
+                options = AppOutlinedButtonOptions(enabled = !creating),
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(

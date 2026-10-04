@@ -11,6 +11,8 @@ import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performScrollTo
@@ -25,6 +27,7 @@ import com.ticketbox.data.remote.dto.BudgetMonthlyDto
 import com.ticketbox.data.remote.dto.BudgetMonthlyArchiveRequestDto
 import com.ticketbox.data.remote.dto.BudgetMonthlyArchiveResponseDto
 import com.ticketbox.domain.model.AppSkin
+import com.ticketbox.R
 import com.ticketbox.ui.theme.TicketboxTheme
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -72,7 +75,7 @@ class BudgetArchiveRouteTest {
                 }
             }
         }
-        compose.waitUntil(5_000) { compose.onAllNodes(hasTestTag("budget_total_amount"))
+        compose.waitUntil(5_000) { compose.onAllNodes(hasText(context.getString(R.string.budget_status_badge_active)))
             .fetchSemanticsNodes().isNotEmpty() }
     }
 
@@ -93,10 +96,13 @@ class BudgetArchiveRouteTest {
 
     @Test fun confirmedArchiveUsesTheReadVersionAndRetainsAnUnsavedOriginalDraft() {
         show()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasTestTag("budget_edit_open"))
+        compose.onNodeWithTag("budget_edit_open").performClick()
         compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasTestTag("budget_total_amount"))
         val field = compose.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag("budget_total_amount")), useUnmergedTree = true)
         field.performScrollTo().performTextReplacement("1500")
         closeSoftKeyboard()
+        compose.onNodeWithContentDescription(context.getString(R.string.budget_editor_back)).performScrollTo().performClick()
         openArchive()
         compose.onNodeWithText("移入回收站").performClick()
         compose.waitUntil(5_000) { archives.isNotEmpty() }

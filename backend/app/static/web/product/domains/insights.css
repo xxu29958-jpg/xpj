@@ -2,16 +2,17 @@
 
 .insight-hero {
     position: relative;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    display: flex;
+    container-type: inline-size;
+    flex-wrap: wrap;
+    align-content: start;
     gap: var(--space-5);
     background: var(--brand-primary-bg);
 }
-.insight-hero > .product-panel-header { grid-column: 1 / -1; }
-.insight-hero-art { grid-column: 2; grid-row: 2 / span 2; align-self: center; width: calc(var(--space-12) + var(--space-7)); max-width: 100%; }
-.insight-hero-value, .insight-hero .insight-module-foot { grid-column: 1; }
-.insight-hero-value { grid-row: 2; }
-.insight-hero .insight-module-foot { grid-row: 3; }
+.insight-hero > .product-panel-header { flex: 0 0 100%; margin-bottom: 0; }
+.insight-hero-art { order: 2; align-self: center; width: calc(var(--space-12) + var(--space-7)); max-width: 100%; }
+.insight-hero-value { order: 1; flex: 1 1 auto; width: max-content; max-width: 100%; }
+.insight-hero .insight-module-foot { order: 3; flex-basis: 100%; }
 .insight-module-icon { display: grid; place-items: center; width: var(--space-9); height: var(--space-9); border-radius: var(--radius-lg); background: var(--brand-primary-bg); }
 .insight-module-icon svg { width: var(--space-7); height: var(--space-7); }
 [data-overview-card="recurring"] .insight-module-icon { background: var(--surface-apricot); }
@@ -19,7 +20,7 @@
 [data-overview-card="backup_status"] .insight-module-icon { background: var(--surface-sand); }
 .insight-grid > .product-panel { border: 0; border-radius: var(--radius-xl); box-shadow: none; }
 .insight-grid > .insight-hero { background: var(--brand-primary-bg); }
-.insight-grid > [data-overview-card="budget"] .insight-stat-value { font-size: var(--type-display-size); }
+.insight-grid > [data-overview-card="budget"] .insight-stat-value { font-size: clamp(var(--type-headline-size), 14cqi, var(--type-display-size)); }
 .insight-grid .product-status { justify-self: start; }
 .insight-grid > .insight-brief > .insight-module-icon { grid-column: 1 / -1; }
 .insight-grid > [data-overview-card="pending"] { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto 1fr; gap: var(--space-5); }
@@ -32,7 +33,7 @@
     overflow-wrap: anywhere;
     color: var(--text-default);
     font-family: var(--font-numeric);
-    font-size: var(--type-display-size);
+    font-size: clamp(var(--type-headline-size), 14cqi, var(--type-display-size));
     font-variant-numeric: tabular-nums;
     font-weight: var(--type-display-weight);
 }

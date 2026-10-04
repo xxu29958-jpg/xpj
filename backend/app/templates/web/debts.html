@@ -11,7 +11,7 @@
    - 旧 dt-card/dt-pill 与 inline 进度 style 退役, 视觉唯一 owner =
      product/domains/obligations.css; 既有 view-model 键与 aria 文案不变。 #}
 {% set _tone = {'ok': 'product-status--success', 'danger': 'product-status--danger', 'warn': 'product-status--warning', 'info': 'product-status--info'} %}
-{% block content %}
+{% block page_header %}
 <header class="product-page-header">
   <div class="product-page-heading">
     <h1 class="page-title">欠款</h1>
@@ -21,6 +21,10 @@
   <a class="product-button product-button--primary" href="/web/debts/new?ledger_id={{ selected_ledger_id }}">新建欠款</a>
   {% endif %}
 </header>
+{% endblock %}
+
+{% block content %}
+
 
 {% if flash_message %}
 <div class="product-feedback{% if flash_type == 'error' %} product-feedback--error{% endif %}" role="{% if flash_type == 'error' %}alert{% else %}status{% endif %}">{{ flash_message }}</div>

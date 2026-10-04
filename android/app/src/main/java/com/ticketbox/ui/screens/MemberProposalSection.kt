@@ -10,11 +10,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
+import com.ticketbox.ui.components.AppPrimaryButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
+import com.ticketbox.ui.components.AppOutlinedButton
+import com.ticketbox.ui.components.AppOutlinedButtonOptions
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -108,9 +109,9 @@ private fun DebtorProposalCard(state: MemberProposalUiState, viewModel: MemberRe
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                OutlinedButton(
+                AppOutlinedButton(
                     onClick = { viewModel.withdraw(task, pending.publicId) },
-                    enabled = !state.isSubmitting,
+                    options = AppOutlinedButtonOptions(enabled = !state.isSubmitting),
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text(stringResource(R.string.debt_proposal_withdraw_action)) }
             } else {
@@ -128,11 +129,12 @@ private fun DebtorProposalCard(state: MemberProposalUiState, viewModel: MemberRe
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Button(
+                AppPrimaryButton(
+                    text = stringResource(R.string.debt_proposal_propose_action),
                     onClick = { viewModel.openForm(task, ProposalForm.Propose) },
                     enabled = !state.isSubmitting,
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text(stringResource(R.string.debt_proposal_propose_action)) }
+                )
             }
         }
     }
@@ -195,15 +197,16 @@ private fun CreditorActionButtons(
     viewModel: MemberRepaymentProposalViewModel,
 ) {
     Row(modifier = Modifier.fillMaxWidth()) {
-        Button(
+        AppPrimaryButton(
+            text = stringResource(R.string.debt_proposal_confirm_action),
             onClick = { viewModel.openForm(task, ProposalForm.Confirm, pending) },
             enabled = !isSubmitting,
             modifier = Modifier.weight(1f),
-        ) { Text(stringResource(R.string.debt_proposal_confirm_action)) }
+        )
         Spacer(Modifier.width(AppSpacing.smallGap))
-        OutlinedButton(
+        AppOutlinedButton(
             onClick = { viewModel.reject(task, pending.publicId) },
-            enabled = !isSubmitting,
+            options = AppOutlinedButtonOptions(enabled = !isSubmitting),
             modifier = Modifier.weight(1f),
         ) { Text(stringResource(R.string.debt_proposal_reject_action)) }
     }

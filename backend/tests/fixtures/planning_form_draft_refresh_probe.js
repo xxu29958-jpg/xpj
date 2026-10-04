@@ -40,6 +40,7 @@
     }
     const before=read(f);
     f=await load(frame,url,spec);
+    if (spec.kind==='budget' && !f.closest('#budget-editor').open) throw Error('restored budget draft must reopen its editor');
     const after=read(f);
     results.push({entry:spec.kind,before,after,retained:JSON.stringify(before)===JSON.stringify(after)});
     frame.remove();

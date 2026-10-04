@@ -70,8 +70,8 @@
     --control-border-hover: rgba(20, 80, 74, 0.46);
     --control-border-active: rgba(20, 80, 74, 0.64);
     --control-press-bg: rgba(20, 80, 74, 0.10);
-    --radius-card: 14px;
-    --radius-input: 10px;
+    --radius-card: 20px;
+    --radius-input: 14px;
     --radius-pill: 999px;
     --shadow-card: 0 1px 3px rgba(26, 32, 28, .05), 0 6px 18px rgba(26, 32, 28, .03);
     --shadow-raised: 0 2px 6px rgba(26, 32, 28, .06), 0 16px 40px rgba(26, 32, 28, .10);
@@ -197,8 +197,8 @@
     --control-border-hover: rgba(105, 191, 164, 0.46);
     --control-border-active: rgba(105, 191, 164, 0.68);
     --control-press-bg: rgba(105, 191, 164, 0.12);
-    --radius-card: 10px;
-    --radius-input: 10px;
+    --radius-card: 20px;
+    --radius-input: 14px;
     --radius-pill: 999px;
     --shadow-card: 0 1px 3px rgba(0,0,0,.40);
     --shadow-raised: 0 6px 24px rgba(0,0,0,.45);
@@ -278,27 +278,26 @@
  * ─────────────────────────────────────────────────────────────────────────── */
 :root {
     /* ── Typography scale ─────────────────────────────────────────────────
-     * 字体族保留在各端局部定义（web/_base.css 的 --font-zh/--font-num/--font-serif、
-     * owner.css 的 system stack、Android Material3 FontFamily）,shared 层只统一
-     * 字号/行高/字重的语义阶梯。
+     * Web / Owner 的字体族使用上方 --font-product / --font-numeric，
+     * Android 使用系统中文字体；这里统一字号/行高/字重的语义阶梯。
      *
-     *  display  34/1.12/600  —— 焦点金额(每屏 ≤1 处),对齐 Android AppTypography.amountLarge
-     *  hero     28/1.15/700  —— 页面主标题,每屏 1 处
+     *  display  42/1.12/600  —— 焦点金额(每屏 ≤1 处),对齐 Android AppTypography.amountLarge
+     *  hero     30/1.15/700  —— 页面主标题,每屏 1 处
      *  headline 22/1.25/700  —— 区块大标题、h1
      *  title    18/1.30/600  —— 卡片/section 标题,对齐 AppTextHierarchy.heading
-     *  subtitle 15/1.40/500  —— 列表项首行、强调正文,对齐 AppTextHierarchy.body
-     *  body     14/1.55/400  —— 默认正文(@import 后 body { font-size } 应消费此值)
-     *  caption  12/1.40/400  —— 辅助文字(meta/时间/标签),对齐 AppTextHierarchy.caption
-     *  meta     10/1.30/500  —— uppercase eyebrow 文字,letter-spacing 0.18em
+     *  subtitle 16/1.40/500  —— 列表项首行、强调正文,对齐 AppTextHierarchy.body
+     *  body     16/1.55/400  —— 默认正文(@import 后 body { font-size } 应消费此值)
+     *  caption  13/1.40/400  —— 辅助文字(meta/时间/标签),对齐 AppTextHierarchy.caption
+     *  meta     12/1.30/500  —— uppercase eyebrow 文字,letter-spacing 0.18em
      */
-    --type-display-size: 34px;   --type-display-line: 1.12; --type-display-weight: 600;
-    --type-hero-size: 28px;      --type-hero-line: 1.15;    --type-hero-weight: 700;
+    --type-display-size: 42px;   --type-display-line: 1.12; --type-display-weight: 600;
+    --type-hero-size: 30px;      --type-hero-line: 1.15;    --type-hero-weight: 700;
     --type-headline-size: 22px;  --type-headline-line: 1.25; --type-headline-weight: 700;
     --type-title-size: 18px;     --type-title-line: 1.30;   --type-title-weight: 600;
-    --type-subtitle-size: 15px;  --type-subtitle-line: 1.40; --type-subtitle-weight: 500;
+    --type-subtitle-size: 16px;  --type-subtitle-line: 1.40; --type-subtitle-weight: 500;
     --type-body-size: 16px;      --type-body-line: 1.55;    --type-body-weight: 400;
-    --type-caption-size: 12px;   --type-caption-line: 1.40; --type-caption-weight: 400;
-    --type-meta-size: 10px;      --type-meta-line: 1.30;    --type-meta-weight: 500;
+    --type-caption-size: 13px;   --type-caption-line: 1.40; --type-caption-weight: 400;
+    --type-meta-size: 12px;      --type-meta-line: 1.30;    --type-meta-weight: 500;
     --type-meta-tracking: 0.18em;
     --type-tabular-features: "tnum", "ss01";
 

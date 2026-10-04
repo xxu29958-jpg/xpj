@@ -33,6 +33,8 @@
     });
   }
   function restoreBudget(form, saved, prototype) {
+    const editor = form.closest("#budget-editor");
+    if (editor) editor.open = true;
     const excluded = JSON.parse(saved.excluded_values);
     let chips = form.querySelector('[aria-label="可排除的分类"]');
     if (!chips) {

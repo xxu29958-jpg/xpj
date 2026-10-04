@@ -7,6 +7,13 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
@@ -76,8 +83,13 @@ private fun BudgetScreenContent(
 ) {
     val currencyDisplay = CurrencyDisplay.forRecord(state.budget?.homeCurrencyCode ?: "UNKNOWN")
     val decision = budgetPageDecision(state)
+    var editorOpen by rememberSaveable(state.binding, state.month) { mutableStateOf(false) }
+    LaunchedEffect(state.formDirty, state.hasPendingSave, state.budget?.configured, state.canModify) {
+        if (state.formDirty || state.hasPendingSave || (state.canModify && state.budget?.configured == false)) editorOpen = true
+    }
+    val back: (() -> Unit)? = if (editorOpen) ({ editorOpen = false }) else onBack
 
-    BackHandler(enabled = onBack != null) { onBack?.invoke() }
+    BackHandler(enabled = back != null) { back?.invoke() }
     AppScrollableContent(
         chrome = AppScrollableContentChrome(
             role = AppPageRole.Stats,
@@ -94,18 +106,18 @@ private fun BudgetScreenContent(
         ),
     ) {
         item {
-            if (state.fromCache) BudgetCachedHeader(backText ?: stringResource(R.string.budget_back_to_stats), onBack, onHistory)
-            else AppSecondaryPageHeader(title = stringResource(R.string.budget_header_title),
+            if (state.fromCache && !editorOpen) BudgetCachedHeader(backText ?: stringResource(R.string.budget_back_to_stats), onBack, onHistory)
+            else AppSecondaryPageHeader(title = stringResource(if (editorOpen) R.string.budget_editor_title else R.string.budget_header_title),
                 subtitle = stringResource(R.string.budget_header_subtitle, state.month),
-                backText = backText ?: stringResource(R.string.budget_back_to_stats), onBack = onBack,
+                backText = if (editorOpen) stringResource(R.string.budget_editor_back) else backText ?: stringResource(R.string.budget_back_to_stats), onBack = back,
                 actions = { BudgetPageActions(decision, onHistory) })
         }
-        budgetPageContent(state, actions, decision, currencyDisplay)
+        budgetPageContent(state, actions, decision, currencyDisplay, editorOpen) { editorOpen = true }
     }
 }
 
 private fun LazyListScope.budgetPageContent(state: BudgetUiState, actions: BudgetScreenActions,
-    decision: BudgetPageDecision, currencyDisplay: CurrencyDisplay) {
+    decision: BudgetPageDecision, currencyDisplay: CurrencyDisplay, editorOpen: Boolean, onEdit: () -> Unit) {
     if (!state.fromCache) item { MonthSwitcher(state.month, actions.onPreviousMonth, actions.onNextMonth) }
     state.message?.let { message ->
         item { AppStatusBanner(message = message, tone = state.messageTone) }
@@ -114,7 +126,7 @@ private fun LazyListScope.budgetPageContent(state: BudgetUiState, actions: Budge
         item { AppStatusBanner(message = error, tone = MessageTone.Info) }
     }
     item { BudgetReadSource(state.fetchedAt, state.fromCache, state.loading, prominent = true) }
-    item {
+    if (!editorOpen) item {
         BudgetSummarySection(
             state = state,
             currencyDisplay = currencyDisplay,
@@ -125,14 +137,21 @@ private fun LazyListScope.budgetPageContent(state: BudgetUiState, actions: Budge
         item { BudgetPendingSaves(state.saves, state.canModify, actions.onRecoverSave) }
     }
     if (state.fromCache) item { MonthSwitcher(state.month, actions.onPreviousMonth, actions.onNextMonth) }
-    item {
+    if (editorOpen) item {
         BudgetEditorSection(
             state = state,
             actions = actions.toBudgetEditorActions(),
         )
     }
-    budgetExecutionSections(decision, currencyDisplay)
-    item { com.ticketbox.ui.screens.budget.BudgetArchiveAction(state, actions.onArchive) }
+    if (!editorOpen) {
+        budgetExecutionSections(decision, currencyDisplay)
+        if (state.canModify) item {
+            TextButton(onClick = onEdit, modifier = Modifier.testTag("budget_edit_open")) {
+                Text(stringResource(R.string.budget_editor_open))
+            }
+        }
+        item { com.ticketbox.ui.screens.budget.BudgetArchiveAction(state, actions.onArchive) }
+    }
 }
 
 @Composable

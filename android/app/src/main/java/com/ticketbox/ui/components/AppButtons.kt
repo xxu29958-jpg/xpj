@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import com.ticketbox.ui.design.AppIconSize
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalThemeVisuals
 
 private const val ControlBorderIdleAlpha = 0.46f
@@ -62,9 +63,10 @@ data class AppOutlinedButtonOptions(
 @Composable
 fun AppPrimaryButton(
     text: String,
-    icon: ImageVector,
+    icon: ImageVector? = null,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    trailingIcon: ImageVector? = null,
     onClick: () -> Unit,
 ) {
     val visuals = LocalThemeVisuals.current
@@ -77,7 +79,7 @@ fun AppPrimaryButton(
     )
     Box(
         modifier = modifier
-            .heightIn(min = AppSpacing.controlMinHeight)
+            .heightIn(min = AppSpacing.controlMinHeight + AppSpacing.miniGap)
             .clip(shape)
             .background(visuals.primary)
             .border(
@@ -93,18 +95,25 @@ fun AppPrimaryButton(
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = contentColor,
-                modifier = Modifier.size(AppIconSize.standard),
-            )
+            icon?.let {
+                Icon(
+                    imageVector = it,
+                    contentDescription = null,
+                    tint = contentColor,
+                    modifier = Modifier.size(AppIconSize.standard),
+                )
+            }
             Text(
                 text = text,
                 color = contentColor,
                 style = MaterialTheme.typography.labelLarge,
+                fontWeight = AppTextHierarchy.heading.weight,
                 textAlign = TextAlign.Center,
+                modifier = Modifier.weight(1f, fill = false),
             )
+            trailingIcon?.let {
+                Icon(it, contentDescription = null, tint = contentColor, modifier = Modifier.size(AppIconSize.standard))
+            }
         }
     }
 }
@@ -192,7 +201,7 @@ fun AppOutlinedButton(
         modifier = modifier.defaultMinSize(minHeight = AppSpacing.controlMinHeight),
         enabled = options.enabled,
         onClick = onClick,
-        shape = RoundedCornerShape(AppRadius.small),
+        shape = RoundedCornerShape(AppRadius.medium),
         interactionSource = interactionSource,
         contentPadding = options.contentPadding,
         colors = ButtonDefaults.outlinedButtonColors(

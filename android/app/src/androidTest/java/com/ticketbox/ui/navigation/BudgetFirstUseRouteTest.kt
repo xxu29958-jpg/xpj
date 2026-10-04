@@ -16,6 +16,7 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -67,9 +68,10 @@ class BudgetFirstUseRouteTest {
         harness.close()
     }
 
-    @Test fun totalAlonePublishesOriginalYenBudgetAndShowsAdvancedFieldsAfterAcceptance() {
+    @Test fun totalAlonePublishesOriginalYenBudgetAndReturnsToItsExecution() {
         show()
-        compose.onNodeWithText(text(R.string.budget_editor_category_section_title)).assertDoesNotExist()
+        compose.onNodeWithText(text(R.string.budget_editor_category_section_title)).assertExists()
+        compose.onNodeWithTag("budget_optional_fields").assertDoesNotExist()
         input("budget_total_amount", "1200")
         save()
         compose.waitUntil(5_000) { runBlocking { harness.fixture.pendingDao.allRows().size == 1 } }
@@ -92,8 +94,14 @@ class BudgetFirstUseRouteTest {
         assertEquals(original.idempotencyKey, transport.writes.single().second)
         assertEquals(intent.request, transport.writes.single().first)
         compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasTestTag("budget_total_amount"))
-        compose.waitUntil(5_000) { compose.onAllNodes(hasTestTag("budget_optional_fields"))
-            .fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithContentDescription(text(R.string.budget_editor_back)).performScrollTo().performClick()
+        compose.onNodeWithText(text(R.string.budget_header_title)).assertIsDisplayed()
+        saveConsumerArtPreview("budget-execution-paper", requireNotNull(
+            InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasTestTag("budget_edit_open"))
+        compose.onNodeWithTag("budget_edit_open").performClick()
+        compose.onNodeWithTag("budget_optional_fields").assertDoesNotExist()
+        openOptional()
         compose.onNodeWithTag("budget_optional_fields").performScrollTo().assertIsDisplayed()
         assertEquals(PendingMutationStatus.Done.wireValue, runBlocking { harness.fixture.pendingDao.allRows().single().status })
     }
@@ -102,7 +110,7 @@ class BudgetFirstUseRouteTest {
         show()
         openOptional()
         shiftMonth(R.string.budget_month_next)
-        compose.onNodeWithText(text(R.string.budget_editor_category_section_title)).assertDoesNotExist()
+        compose.onNodeWithTag("budget_optional_fields").assertDoesNotExist()
         openOptional()
         input("budget_total_amount", "1200")
         input("budget_category_name", "餐饮")
@@ -114,14 +122,14 @@ class BudgetFirstUseRouteTest {
         assertTrue(runBlocking { harness.fixture.pendingDao.allRows().isEmpty() })
 
         shiftMonth(R.string.budget_month_next)
-        compose.onNodeWithText(text(R.string.budget_editor_category_section_title)).assertDoesNotExist()
+        compose.onNodeWithTag("budget_optional_fields").assertDoesNotExist()
         shiftMonth(R.string.budget_month_previous)
         field("budget_category_name").performScrollTo().assertTextEquals("餐饮")
         transport.ledgerId = "another-ledger"
         compose.runOnIdle { harness.fixture.switchLedger() }
         compose.waitUntil(5_000) { transport.readLedgers.lastOrNull() == "another-ledger" }
         compose.onNodeWithText(text(R.string.budget_editor_total_label)).performScrollTo()
-        compose.onNodeWithText(text(R.string.budget_editor_category_section_title)).assertDoesNotExist()
+        compose.onNodeWithTag("budget_optional_fields").assertDoesNotExist()
         assertTrue(runBlocking { harness.fixture.pendingDao.allRows().isEmpty() })
         assertTrue(transport.writes.isEmpty())
     }
@@ -131,7 +139,7 @@ class BudgetFirstUseRouteTest {
         compose.onNode(hasScrollToIndexAction()).performScrollToIndex(0)
         saveConsumerArtPreview("budget-header-large-font", requireNotNull(
             InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
-        val headings = listOf(text(R.string.budget_header_title),
+        val headings = listOf(text(R.string.budget_editor_title),
             context.getString(R.string.budget_header_subtitle, transport.reads.first()))
         for (heading in headings) {
             val layouts = mutableListOf<TextLayoutResult>()

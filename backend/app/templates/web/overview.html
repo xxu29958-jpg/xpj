@@ -11,7 +11,7 @@
 {% endif %}
 {% endblock %}
 
-{% block content %}
+{% block page_header %}
 <header class="product-page-header">
   <div class="product-page-heading">
     <h1 class="page-title" id="overview-title">{{ cards.month[5:]|int }}月，慢慢有数</h1>
@@ -31,6 +31,10 @@
     <a class="product-button product-button--quiet" href="/web/reports?{{ money_task|urlencode }}">分析</a>
   </div>
 </header>
+{% endblock %}
+
+{% block content %}
+
 {% if flash_message %}<div class="product-feedback" role="status">{{ flash_message }}</div>{% endif %}
 {% include 'partials/budget_fx_gaps.html' %}
 
