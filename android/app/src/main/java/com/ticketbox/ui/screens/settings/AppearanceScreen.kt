@@ -82,7 +82,7 @@ fun AppearanceScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
         }
         AppearanceBackgroundEntries(appearance, actions.background)
-        SettingsSection(title = stringResource(R.string.appearance_section_immersion_title), icon = Icons.Filled.Tune) {
+        SettingsSection(title = stringResource(R.string.appearance_section_immersion_title)) {
             ImmersionModePicker(
                 selected = appearance.backgroundSettings.immersionMode,
                 onSelect = actions.immersion.onModeChange,

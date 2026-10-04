@@ -110,7 +110,6 @@ internal fun TagListSection(
 ) {
     SettingsSection(
         title = stringResource(R.string.tag_management_section_all),
-        icon = Icons.AutoMirrored.Filled.Label,
     ) {
         AppSolidCard {
             if (state.bodyState != TagManagementBodyState.Content) {

@@ -156,7 +156,7 @@ fun BackgroundGalleryScreen(
                 }
             }
         }
-        SettingsSection(title = stringResource(R.string.background_gallery_section_custom_title), icon = Icons.Filled.PhotoLibrary) {
+        SettingsSection(title = stringResource(R.string.background_gallery_section_custom_title)) {
             BackgroundGalleryCustomActions(
                 onPickCustomImage = onPickCustomImage,
                 onRestoreTheme = onRestoreTheme,

@@ -28,7 +28,7 @@ import com.ticketbox.viewmodel.PortableExportViewModel
 @Composable
 internal fun PortableExportPanel(state: PortableExportUiState, model: PortableExportViewModel, onSave: () -> Unit) {
     val idle = state.stage == PortableExportStage.Idle
-    SettingsSection(title = stringResource(R.string.portable_export_title), icon = Icons.Filled.FileDownload) {
+    SettingsSection(title = stringResource(R.string.portable_export_title)) {
         Text(stringResource(R.string.portable_export_scope), style = MaterialTheme.typography.bodyMedium)
         AppStatusBanner(message = state.message, tone = state.tone)
         if (state.loading) Text(stringResource(R.string.portable_export_loading))

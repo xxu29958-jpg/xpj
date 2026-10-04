@@ -409,7 +409,7 @@ private fun MerchantManagementToolsSection(
     state: MerchantManagementToolState,
     actions: MerchantManagementToolActions,
 ) {
-    SettingsSection(title = stringResource(R.string.merchant_management_section_tools), icon = Icons.Filled.Tune) {
+    SettingsSection(title = stringResource(R.string.merchant_management_section_tools)) {
         when (state.activeTool) {
             null -> SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
                 Column(
@@ -584,7 +584,7 @@ private fun MerchantAliasListSection(
     onToggleAlias: (MerchantAlias) -> Unit,
     onDeleteAlias: (MerchantAlias) -> Unit,
 ) {
-    SettingsSection(title = stringResource(R.string.merchant_aliases_section_list), icon = Icons.Filled.Tune) {
+    SettingsSection(title = stringResource(R.string.merchant_aliases_section_list)) {
         if (aliases.isEmpty()) {
             SettingsInlineEmpty(
                 title = stringResource(R.string.merchant_aliases_list_empty_title),

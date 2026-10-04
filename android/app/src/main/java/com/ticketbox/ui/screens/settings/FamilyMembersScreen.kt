@@ -132,7 +132,6 @@ fun FamilyMembersScreen(
     ) {
         SettingsSection(
             title = stringResource(R.string.family_members_section_members),
-            icon = Icons.Filled.Group,
         ) {
             SettingsOpenPanel {
                 SettingsListStateSlot(
@@ -183,7 +182,6 @@ fun FamilyMembersScreen(
             )
             SettingsSection(
                 title = stringResource(R.string.family_members_section_audit),
-                icon = Icons.Filled.Info,
             ) {
                 SettingsOpenPanel {
                     SettingsListStateSlot(
@@ -228,7 +226,6 @@ private fun InviteFamilySection(
     val shareChooserTitle = stringResource(R.string.family_members_invite_share_chooser)
     SettingsSection(
         title = stringResource(R.string.family_members_section_invite),
-        icon = Icons.Filled.Group,
     ) {
         SettingsOpenPanel {
             Text(

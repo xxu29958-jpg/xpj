@@ -122,7 +122,6 @@ fun DataExportScreen(
         portableDownload()
         SettingsSection(
             title = stringResource(R.string.settings_data_export_section_refresh_cache),
-            icon = Icons.Filled.FileDownload,
         ) {
             AppStatusBanner(message = state.message, tone = state.messageTone)
             DataExportScopeSection()

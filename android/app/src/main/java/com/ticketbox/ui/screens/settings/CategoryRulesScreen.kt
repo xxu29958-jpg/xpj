@@ -252,7 +252,7 @@ private fun CategoryRulesContent(
         actions = actions,
         onRequestDelete = onRequestDelete,
     )
-    SettingsSection(title = stringResource(R.string.category_rules_section_confirmed_apply), icon = Icons.Filled.RestartAlt) {
+    SettingsSection(title = stringResource(R.string.category_rules_section_confirmed_apply)) {
         ConfirmedRuleApplyPanel(
             preview = state.confirmedPreview,
             busy = state.busy,
@@ -278,7 +278,6 @@ private fun CategoryRuleListSection(
     val form = editor.form
     SettingsSection(
         title = stringResource(R.string.category_rules_section_list),
-        icon = Icons.Filled.Category,
         trailing = if (!state.readOnly && form == null) {
             {
                 TextButton(
@@ -414,7 +413,7 @@ private fun RuleApplicationHistorySection(
     onRequestRollback: (RuleApplicationBatch) -> Unit,
     onReload: () -> Unit,
 ) {
-    SettingsSection(title = stringResource(R.string.category_rules_section_history), icon = Icons.Filled.RestartAlt) {
+    SettingsSection(title = stringResource(R.string.category_rules_section_history)) {
         if (state.applicationsLoadFailed) {
             SettingsInlineEmpty(
                 title = stringResource(R.string.category_rule_history_read_failed_title),
