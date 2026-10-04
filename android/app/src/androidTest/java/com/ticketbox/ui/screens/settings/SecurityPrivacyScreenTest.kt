@@ -18,6 +18,7 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.Density
+import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
@@ -66,7 +67,8 @@ class SecurityPrivacyScreenTest {
         compose.onNodeWithText("取消").performClick()
         compose.runOnIdle { assertEquals(0, exits); busy = false; skin = AppSkin.Midnight; scale = 1.8f }
         exit.performScrollTo().performClick()
-        capture("security-exit-midnight-large")
+        saveConsumerArtPreview("security-exit-midnight-large",
+            requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
         compose.onNodeWithText("确定退出").performClick()
         compose.runOnIdle { assertEquals(1, clears); assertEquals(1, exits) }
         compose.onNodeWithText("不同操作分别确认").performScrollTo().assertIsDisplayed()

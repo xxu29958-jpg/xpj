@@ -23,9 +23,3 @@ fun settingsEntrySurface(tint: Color): Color {
     val surface = MaterialTheme.colorScheme.surface
     return if (surface.luminance() < 0.5f) lerp(surface, tint, 0.12f) else tint
 }
-
-@Composable
-fun settingsEntrySurface(tint: Color): Color {
-    val surface = MaterialTheme.colorScheme.surface
-    return if (surface.luminance() < 0.5f) lerp(surface, tint, 0.12f) else tint
-}
