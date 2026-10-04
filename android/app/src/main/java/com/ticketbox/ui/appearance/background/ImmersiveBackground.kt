@@ -74,8 +74,8 @@ fun ImmersiveBackgroundScaffold(
 /**
  * 背景编辑器的预览舞台：真实三层渲染（背景层 + 全局 scrim + 底部可读遮罩），
  * 与 [ImmersiveBackgroundScaffold] 同一管线，只是承载在编辑面容器内。
- * 只承诺「背景与遮罩」预览，不以样卡冒充具体业务页面；应用后的全局效果
- * 由真实五域 / 设置 / 登录页验收。
+ * 可承载明确标注的组件样例；不把示例金额当成业务事实。应用后的全局效果
+ * 仍由真实五域 / 设置 / 登录页验收。
  */
 @Composable
 fun BackgroundPreviewStage(
@@ -86,13 +86,14 @@ fun BackgroundPreviewStage(
     content: @Composable BoxScope.() -> Unit = {},
 ) {
     Box(modifier = modifier) {
-        TicketboxBackgroundLayer(settings = settings, skin = skin, surfaceRole = role)
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(resolveGlobalScrim(settings, skin, role)),
-        )
-        BottomReadabilityScrim(settings = settings, skin = skin, role = role)
+        Box(Modifier.matchParentSize()) {
+            TicketboxBackgroundLayer(settings = settings, skin = skin, surfaceRole = role)
+            Box(
+                modifier = Modifier.fillMaxSize()
+                    .background(resolveGlobalScrim(settings, skin, role)),
+            )
+            BottomReadabilityScrim(settings = settings, skin = skin, role = role)
+        }
         content()
     }
 }

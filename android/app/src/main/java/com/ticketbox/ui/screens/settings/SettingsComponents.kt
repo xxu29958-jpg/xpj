@@ -69,6 +69,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
@@ -144,7 +145,7 @@ fun SettingsEntryRow(
     title: String,
     subtitle: String,
     icon: ImageVector,
-    onClick: () -> Unit,
+    onClick: (() -> Unit)?,
     expanded: Boolean? = null,
 ) {
     val expansionLabel = stringResource(
@@ -154,7 +155,8 @@ fun SettingsEntryRow(
         modifier = Modifier
             .fillMaxWidth()
             .semantics { expanded?.let { stateDescription = expansionLabel } }
-            .clickable(role = Role.Button, onClick = onClick),
+            .clickable(enabled = onClick != null, role = Role.Button, onClick = { onClick?.invoke() })
+            .alpha(if (onClick != null) 1f else AppAlpha.strong),
     ) {
         Row(
             modifier = Modifier
@@ -201,9 +203,10 @@ fun SettingsEntryRow(
 @Composable
 private fun settingsEntryBackground(icon: ImageVector): Color {
     val tint = when (icon) {
-        Icons.Filled.Group, Icons.Filled.Info,
+        Icons.Filled.Group, Icons.Filled.Info, Icons.Filled.Image,
         Icons.Outlined.Group, Icons.Outlined.Info, Icons.Outlined.Image -> SettingsColors.householdEntry
-        Icons.Filled.Palette, Icons.Outlined.Palette, Icons.Outlined.PhotoLibrary -> SettingsColors.appearanceEntry
+        Icons.Filled.Palette, Icons.Filled.PhotoLibrary,
+        Icons.Outlined.Palette, Icons.Outlined.PhotoLibrary -> SettingsColors.appearanceEntry
         Icons.Filled.Sync, Icons.Outlined.Sync -> SettingsColors.connectionEntry
         else -> SettingsColors.generalEntry
     }

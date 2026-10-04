@@ -14,6 +14,7 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ApplicationProvider
+import androidx.test.espresso.Espresso.closeSoftKeyboard
 import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.CurrencyCode
@@ -59,6 +60,9 @@ class ManualExpenseDefaultChangeTest {
         assertEquals(1200L, original.originalAmountMinor)
         assertEquals(CurrencyCode.CNY, original.ledgerHomeCurrency)
 
+        // Finish the first task's OS input session before disposing its dialog.
+        // A pending hide from that dialog must not dismiss the next task's keyboard.
+        closeSoftKeyboard()
         compose.runOnIdle { visible.value = false }
         compose.waitForIdle()
         compose.runOnIdle { visible.value = true }

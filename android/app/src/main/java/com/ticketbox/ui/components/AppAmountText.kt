@@ -134,6 +134,7 @@ private data class AmountAutoSize(
 
 internal val AppAmountRole.autosizeMinFontSize: TextUnit
     get() = when (this) {
+        AppAmountRole.Display -> 18.sp
         AppAmountRole.Hero -> 18.sp
         AppAmountRole.Medium -> 14.sp
         AppAmountRole.Compact -> 11.sp

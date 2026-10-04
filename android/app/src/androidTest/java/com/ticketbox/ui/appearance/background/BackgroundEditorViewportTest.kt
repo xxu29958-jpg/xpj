@@ -1,6 +1,7 @@
 package com.ticketbox.ui.appearance.background
 
 import android.os.Build
+import android.graphics.Bitmap
 import android.view.View
 import android.view.ViewGroup
 import android.view.Window
@@ -13,34 +14,60 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.view.WindowInsetsControllerCompat
 import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundSettings
+import com.ticketbox.domain.model.ImmersionMode
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.AppStatusBanner
+import com.ticketbox.ui.PlatformFontScale
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.settings.BackgroundEditorActions
 import com.ticketbox.ui.screens.settings.BackgroundEditorScreen
 import com.ticketbox.ui.theme.TicketboxTheme
+import com.ticketbox.ui.saveConsumerArtPreview
 import com.ticketbox.viewmodel.BackgroundEditorState
+import java.io.File
+import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
 class BackgroundEditorViewportTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    private var fixtureImage: File? = null
+
+    @After fun removeFixture() { fixtureImage?.delete() }
 
     @Test
     fun compositionUsesTheGlobalCanvasEvenUnderTheLocalUnlockBanner() {
         compose.runOnUiThread { compose.activity.enableEdgeToEdge() }
         val skin = mutableStateOf(AppSkin.Paper)
+        val scale = mutableStateOf(1f)
+        val editor = mutableStateOf(BackgroundEditorState(BackgroundSettings().withBuiltInBackground("paper_warm")))
+        var applied = 0
+        var cancelled = 0
         compose.setContent {
             TicketboxTheme(skin = skin.value) {
                 Box(Modifier.fillMaxSize().testTag("applied-viewport")) {
@@ -56,11 +83,17 @@ class BackgroundEditorViewportTest {
                                 ),
                             )
                             Box(Modifier.weight(1f)) {
-                                BackgroundEditorScreen(
-                                    editor = BackgroundEditorState(BackgroundSettings()),
-                                    currentSkin = skin.value,
-                                    actions = BackgroundEditorActions({}, {}, {}),
-                                )
+                                PlatformFontScale(scale.value) {
+                                    TicketboxTheme(skin = skin.value) {
+                                    BackgroundEditorScreen(
+                                        editor = editor.value,
+                                        currentSkin = skin.value,
+                                        actions = BackgroundEditorActions(
+                                            { editor.value = editor.value.copy(settings = it) },
+                                            { cancelled++ }, { applied++; editor.value = editor.value.copy(saving = true) }),
+                                    )
+                                    }
+                                }
                             }
                         }
                     }
@@ -68,16 +101,69 @@ class BackgroundEditorViewportTest {
             }
         }
 
-        val applied = compose.onNodeWithTag("applied-viewport").fetchSemanticsNode().boundsInWindow
+        val appliedViewport = compose.onNodeWithTag("applied-viewport").fetchSemanticsNode().boundsInWindow
         val preview = compose.onNodeWithTag("background-editor-viewport").fetchSemanticsNode().boundsInWindow
-        assertEquals("Preview left origin", applied.left, preview.left, 1f)
-        assertEquals("Preview top origin", applied.top, preview.top, 1f)
-        assertEquals("Preview canvas width", applied.width, preview.width, 1f)
-        assertEquals("Preview canvas height", applied.height, preview.height, 1f)
+        assertEquals("Preview left origin", appliedViewport.left, preview.left, 1f)
+        assertEquals("Preview top origin", appliedViewport.top, preview.top, 1f)
+        assertEquals("Preview canvas width", appliedViewport.width, preview.width, 1f)
+        assertEquals("Preview canvas height", appliedViewport.height, preview.height, 1f)
         assertSystemBarIcons(lightAppearance = true)
-        compose.runOnIdle { skin.value = AppSkin.Midnight }
+        assertSampleAmountFits(1f)
+        capture("background-editor-paper")
+        compose.runOnIdle { skin.value = AppSkin.Midnight; scale.value = 1.8f }
         assertSystemBarIcons(lightAppearance = false)
+        assertSampleAmountFits(1.8f)
+        capture("background-editor-midnight-large")
+        compose.onNodeWithContentDescription("预览页面").performScrollTo().performClick()
+        compose.onNodeWithText("统计").performClick()
+        compose.onNodeWithText("统计").assertIsDisplayed()
+        compose.onNodeWithContentDescription("沉浸强度").performScrollTo().performClick()
+        compose.onNodeWithText("专注").performClick()
+        compose.runOnIdle { assertEquals(ImmersionMode.Focus, editor.value.settings.immersionMode) }
+        val image = File.createTempFile("editor-composition-", ".png", compose.activity.cacheDir).also { fixtureImage = it }
+        Bitmap.createBitmap(120, 200, Bitmap.Config.ARGB_8888).also { bitmap ->
+            bitmap.eraseColor(android.graphics.Color.LTGRAY)
+            image.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            bitmap.recycle()
+        }
+        compose.runOnIdle { editor.value = editor.value.copy(settings = editor.value.settings.withCustomImage(image.absolutePath)) }
+        compose.onNodeWithText("拖动与缩放").performScrollTo().performClick()
+        val compositionViewport = compose.onNodeWithTag("background-editor-viewport").fetchSemanticsNode().boundsInWindow
+        assertEquals(preview, compositionViewport)
+        compose.onNodeWithText("放大").performScrollTo().performClick()
+        compose.runOnIdle { assertTrue(editor.value.settings.transform.scale > 1f); assertEquals(0, applied) }
+        compose.onNodeWithText("完成构图").performScrollTo().performClick()
+        compose.onNodeWithText("应用背景").performClick()
+        compose.onNodeWithText("应用中…").assertIsNotEnabled()
+        compose.onNodeWithText("取消").assertIsNotEnabled()
+        compose.runOnIdle {
+            assertEquals(1, applied); assertEquals(0, cancelled)
+            editor.value = editor.value.copy(saving = false,
+                message = UiText.res(R.string.appearance_message_background_save_failed))
+        }
+        compose.onNodeWithText("背景没有保存成功。").performScrollTo().assertIsDisplayed()
+        capture("background-editor-retained-draft-large")
+        compose.onNodeWithText("取消").performClick()
+        compose.runOnIdle { assertEquals(1, cancelled); assertEquals(ImmersionMode.Focus, editor.value.settings.immersionMode) }
     }
+
+    private fun assertSampleAmountFits(expectedScale: Float) {
+        val layouts = mutableListOf<TextLayoutResult>()
+        compose.onNodeWithText("¥123,456.78", useUnmergedTree = true).performScrollTo().assertIsDisplayed()
+            .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+        assertTrue(layouts.isNotEmpty())
+        layouts.forEach { layout ->
+            assertEquals(expectedScale, layout.layoutInput.density.fontScale, 0.001f)
+            assertFalse(layout.didOverflowHeight)
+            for (line in 0 until layout.lineCount) {
+                assertFalse(layout.isLineEllipsized(line))
+                assertTrue(layout.getLineRight(line) <= layout.size.width)
+            }
+        }
+    }
+
+    private fun capture(name: String) = saveConsumerArtPreview(name,
+        compose.onNode(isDialog()).captureToImage().asAndroidBitmap())
 
     private fun assertSystemBarIcons(lightAppearance: Boolean) {
         compose.runOnIdle {

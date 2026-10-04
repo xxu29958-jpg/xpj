@@ -3,7 +3,6 @@ package com.ticketbox.ui.screens.settings
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
@@ -13,6 +12,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -38,7 +38,7 @@ class AppearanceThemeChoiceRenderTest {
     val composeRule = createComposeRule()
 
     @Test
-    fun themeNamesAndDescriptionsRemainReadableAndSelectableAtLargeFont() {
+    fun themeNamesRemainReadableAndChoicesKeepDescriptionsAtLargeFont() {
         val skin = mutableStateOf(AppSkin.Paper)
         val selected = mutableStateOf(AppThemeMode.Paper)
         val labels = mutableMapOf<AppThemeMode, Pair<String, String>>()
@@ -46,17 +46,12 @@ class AppearanceThemeChoiceRenderTest {
             val density = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(density.density, 1.8f)) {
                 TicketboxTheme(skin = skin.value) {
-                    Column(Modifier.width(328.dp).verticalScroll(rememberScrollState()).selectableGroup()) {
+                    Column(Modifier.width(328.dp).verticalScroll(rememberScrollState())) {
                         AppThemeMode.entries.forEach { mode ->
                             labels[mode] = stringResource(appThemeModeNameRes(mode)) to
                                 stringResource(appThemeModeDescriptionRes(mode))
-                            ThemeModeOption(
-                                mode = mode,
-                                previewSkin = mode.resolveSkin(skin.value == AppSkin.Midnight),
-                                selected = selected.value == mode,
-                                onClick = { selected.value = mode },
-                            )
                         }
+                        ThemeModePicker(selected.value) { selected.value = it }
                     }
                 }
             }
@@ -65,10 +60,11 @@ class AppearanceThemeChoiceRenderTest {
             composeRule.runOnIdle { skin.value = theme }
             for (mode in AppThemeMode.entries) {
                 val (name, description) = labels.getValue(mode)
-                composeRule.onNodeWithText(name).performScrollTo()
+                composeRule.onNodeWithText(name).performScrollTo().performClick().assertIsSelected()
+                    .assertContentDescriptionEquals(description)
                 saveConsumerArtPreview("appearance-choice-${theme.name}-${mode.name}-large-font",
                     composeRule.onRoot().captureToImage().asAndroidBitmap())
-                for (text in listOf(name, description)) {
+                for (text in listOf(name)) {
                     val layouts = mutableListOf<TextLayoutResult>()
                     composeRule.onNodeWithText(text, useUnmergedTree = true)
                         .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
@@ -86,7 +82,6 @@ class AppearanceThemeChoiceRenderTest {
                         }
                     }
                 }
-                composeRule.onNodeWithText(name).performClick().assertIsSelected()
                 composeRule.runOnIdle { assertEquals(mode, selected.value) }
             }
             saveConsumerArtPreview("appearance-choices-${theme.name}-large-font",
