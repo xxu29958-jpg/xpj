@@ -1,5 +1,8 @@
 package com.ticketbox.ui.components
 
+import com.ticketbox.R
+import androidx.compose.ui.res.vectorResource
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
@@ -18,8 +21,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -126,7 +127,7 @@ private fun CheckBubble(description: String) {
         contentAlignment = Alignment.Center,
     ) {
         Icon(
-            imageVector = Icons.Filled.Check,
+            imageVector = ImageVector.vectorResource(R.drawable.ic_lucide_check),
             contentDescription = description,
             tint = MaterialTheme.colorScheme.onPrimary,
             modifier = Modifier.size(32.dp),

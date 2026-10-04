@@ -15,8 +15,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -24,8 +22,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import com.ticketbox.R
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppAdaptiveBreakpoints
 import com.ticketbox.ui.design.AppSpacing
@@ -37,7 +37,7 @@ data class AppAction(
     val text: String,
     val onClick: () -> Unit,
     val enabled: Boolean = true,
-    val icon: ImageVector = Icons.Filled.Check,
+    val icon: ImageVector? = null,
 )
 
 typealias AppSheetAction = AppAction
@@ -190,7 +190,7 @@ private fun SheetPrimaryAction(
 ) {
     AppPrimaryButton(
         text = action.text,
-        icons = AppButtonIcons(leading = action.icon),
+        icons = AppButtonIcons(leading = action.icon ?: ImageVector.vectorResource(R.drawable.ic_lucide_check)),
         modifier = modifier,
         enabled = action.enabled,
         onClick = action.onClick,

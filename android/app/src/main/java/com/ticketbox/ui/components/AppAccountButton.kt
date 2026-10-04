@@ -1,12 +1,12 @@
 package com.ticketbox.ui.components
 
+import androidx.compose.ui.res.vectorResource
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -45,7 +45,7 @@ fun AppAccountButton(
             contentAlignment = androidx.compose.ui.Alignment.Center,
         ) {
             Icon(
-                imageVector = Icons.Filled.Person,
+                imageVector = ImageVector.vectorResource(R.drawable.ic_lucide_user_round),
                 contentDescription = stringResource(R.string.navigation_open_account),
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(AppAccountButtonTokens.IconSize),

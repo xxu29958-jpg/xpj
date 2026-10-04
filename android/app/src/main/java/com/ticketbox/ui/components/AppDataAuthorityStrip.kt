@@ -1,14 +1,12 @@
 package com.ticketbox.ui.components
 
+import androidx.compose.ui.res.vectorResource
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -63,10 +61,10 @@ fun AppDataAuthorityStrip(
     }
     val icon = when (tone) {
         DataAuthorityTone.Backend -> null
-        DataAuthorityTone.Refreshing -> Icons.Filled.Sync
+        DataAuthorityTone.Refreshing -> ImageVector.vectorResource(R.drawable.ic_lucide_refresh_cw)
         DataAuthorityTone.LocalCache,
         DataAuthorityTone.ReadOnly,
-        -> Icons.Filled.Info
+        -> ImageVector.vectorResource(R.drawable.ic_lucide_info)
     }
     DataAuthorityStripContent(
         title = title,

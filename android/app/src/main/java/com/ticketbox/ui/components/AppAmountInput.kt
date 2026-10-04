@@ -1,13 +1,13 @@
 package com.ticketbox.ui.components
 
+import androidx.compose.ui.res.vectorResource
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -121,7 +121,7 @@ private fun AppAmountInputCurrencyTrailing(
             maxLines = 1,
         )
         Icon(
-            imageVector = Icons.Filled.ExpandMore,
+            imageVector = ImageVector.vectorResource(R.drawable.ic_lucide_chevron_down),
             contentDescription = null,
             tint = contentColor,
             modifier = Modifier.size(AppSpacing.compactGap),

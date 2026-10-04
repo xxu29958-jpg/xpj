@@ -5,8 +5,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -90,7 +88,7 @@ private fun AppVisualComponentsPreview() {
                     AppFilterChip(label = "餐饮", selected = true, onClick = {})
                     AppPrimaryButton(
                         text = "上传截图",
-                        icons = AppButtonIcons(leading = Icons.Filled.AddPhotoAlternate),
+                        icons = AppButtonIcons(leading = ImageVector.vectorResource(R.drawable.ic_lucide_image_plus)),
                         modifier = Modifier.fillMaxWidth(),
                         onClick = {},
                     )
