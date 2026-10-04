@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% set product_body_domain = 'insights' %}
+{% set page_surface = 'tertiary' %}
+{% block title %}月度明细数据 · 小票夹{% endblock %}
+{% block page_header %}
+<a class="product-button product-button--quiet" href="/web/reports?{{ report_query }}"><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-left"/></svg>报表</a>
+<header class="product-page-header"><div class="product-page-heading">
+  <h1 class="page-title">每个月的净支出</h1>
+  <p class="product-page-summary">与半年趋势使用同一组数据。{{ report.home_currency_code }} · 全分类</p>
+</div></header>
+{% endblock %}
+{% block content %}
+<div class="report-monthly-rows">
+  {% for item in six_month_trend %}
+  <section class="report-monthly-row">
+    <div><strong>{{ item.month }}</strong><span>{{ report.home_currency_code }}{% if item.budget_cents is not none and item.budget_cents != 0 %} · 预算 {{ item.budget_label }}{% elif item.budget_cents is none %} · 预算待补信息{% endif %}</span></div>
+    <strong class="num">{{ item.amount_label }}</strong>
+    {% if item.missing_rates %}<p class="text-meta">本月有换算信息待补齐，请从报表中的原任务继续处理。</p>{% endif %}
+    {% if item.reference_rates %}{% with reference_rates=item.reference_rates %}{% include 'partials/reference_rates.html' %}{% endwith %}{% endif %}
+  </section>
+  {% endfor %}
+  <div class="report-monthly-row"><strong>六个月合计</strong><strong class="num">{{ six_month_total_label }}</strong></div>
+  <div class="report-monthly-row"><strong>月平均</strong><strong class="num">{% if six_month_average_amount_yuan is none %}待补信息{% else %}{{ home_currency_symbol }}{{ six_month_average_amount_yuan }}{% endif %}</strong></div>
+</div>
+<div class="product-form-actions"><a class="product-button product-button--primary" href="/web/reports/export.csv?{{ report_export_query }}&amp;scope=six_month">导出这六个月的数据 <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#download"/></svg></a></div>
+{% endblock %}

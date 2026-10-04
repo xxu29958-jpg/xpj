@@ -93,7 +93,7 @@ def test_web_reports_uses_real_report_service_and_csv(web_client: TestClient, *,
     )
 
     assert response.status_code == 200
-    assert "动态报表" in response.text
+    assert "这半年的花费" in response.text
     assert "月报摘要" in response.text
     assert "预算解释" in response.text
     assert "历史不足" in response.text

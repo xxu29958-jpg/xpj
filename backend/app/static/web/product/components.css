@@ -405,6 +405,7 @@ button[disabled] {
 .callout-info,
 .product-feedback {
     display: flex;
+    flex-wrap: wrap;
     align-items: flex-start;
     justify-content: space-between;
     gap: var(--space-4);
@@ -1008,7 +1009,7 @@ body.product-shell .file-picker > input.file-picker-input:focus-visible {
     font-size: var(--type-body-size);
 }
 
-.product-check input {
+.product-check input:where(:not(.checkbox)) {
     width: var(--space-5);
     height: var(--space-5);
     accent-color: var(--brand-primary);

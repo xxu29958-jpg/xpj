@@ -50,7 +50,7 @@ def report_client(monkeypatch):
     })
     monkeypatch.setattr(web_reports, "reports_overview", lambda _db, **kw: {**kw, "missing_rates": ()})
     monkeypatch.setattr(web_reports, "_view_model", lambda payload, **_k: {
-        **payload, "merchant_category": payload.get("merchant_category") or "", "total_amount_yuan": "0.00",
+        **payload, "merchant_category": payload.get("merchant_category") or "", "total_amount_yuan": "0.00", "total_amount_label": "¥0",
         "total_amount_cents": 0, "previous_total_amount_cents": 0, "merchant_amount_unavailable": False,
         "year_over_year_delta_amount_yuan": "0.00", "count": 0, "previous_count": 0,
         "trend": [], "category_comparison": [], "merchant_ranking": [],

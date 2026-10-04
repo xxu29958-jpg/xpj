@@ -32,7 +32,8 @@
 .insight-grid > [data-overview-card="pending"] .insight-brief-detail { margin-block-start: var(--space-3); }
 
 
-.insight-hero-value {
+.insight-hero-value,
+.report-hero-value {
     min-width: 0;
     overflow-wrap: anywhere;
     color: var(--text-default);
@@ -267,7 +268,7 @@
 
 .quality-metrics {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 10em), 1fr));
     gap: var(--space-4);
     margin-block-end: var(--space-6);
 }
@@ -318,165 +319,42 @@
     margin-block-end: var(--space-5);
 }
 
-.quality-action {
-    display: grid;
-    min-height: var(--space-12);
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
-    gap: var(--space-5);
-    padding-block: var(--space-3);
-    border-block-end: 1px solid var(--border-card);
-    color: var(--text-default);
-    text-decoration: none;
-}
+.quality-actions > .product-entry + .product-entry { border-block-start: 1px solid var(--border-card); }
+.quality-guidance { margin-block: var(--space-6); color: var(--text-meta); }
+.quality-details { margin-block: var(--space-6); }
+.quality-details[open] > summary { margin-block-end: var(--space-5); }
+body[data-domain="insights"] .content[data-page-level="tertiary"] { max-inline-size: var(--layout-page-narrow-max); }
 
-.quality-action:last-child {
-    border-block-end: 0;
-}
+.layout-editor { display: grid; gap: var(--space-5); }
+.layout-editor-list { display: grid; }
+.layout-editor-row { display: flex; flex-wrap: wrap; align-items: start; gap: var(--space-4); padding-block: var(--space-4); border-block-end: 1px solid var(--border-card); }
+.layout-editor-row:last-child { border-block-end: 0; }
+.layout-editor-row[draggable="true"] { cursor: grab; }
+.layout-editor-row[draggable="true"]:active { cursor: grabbing; }
+.layout-editor-title { flex: 1 1 12em; min-width: 0; align-items: flex-start; }
+.layout-position { max-width: 100%; margin-inline-start: auto; }
+.layout-position[open] { flex-basis: 100%; }
+.layout-position[open] > summary { margin-block-end: var(--space-3); }
+.layout-position .product-input { max-inline-size: 8em; }
+.layout-reset { margin-block-start: var(--space-5); }
 
-.quality-action:hover {
-    color: var(--brand-primary-strong);
-}
-
-.quality-action > span:first-child {
-    display: grid;
-    gap: var(--space-1);
-}
-
-.quality-action small {
-    color: var(--text-meta);
-    font-size: var(--type-caption-size);
-    font-weight: var(--type-body-weight);
-}
-
-.layout-editor {
-    display: grid;
-    gap: var(--space-5);
-}
-
-.layout-editor-head,
-.layout-editor-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(var(--space-12), auto) minmax(var(--space-12), 7rem);
-    align-items: center;
-    gap: var(--space-5);
-}
-
-.layout-editor-head {
-    padding: 0 var(--space-4) var(--space-3);
-    border-block-end: 1px solid var(--border-card);
-    color: var(--text-meta);
-    font-size: var(--type-meta-size);
-    font-weight: var(--type-meta-weight);
-    letter-spacing: var(--type-meta-tracking);
-    text-transform: uppercase;
-}
-
-.layout-editor-list {
-    display: grid;
-}
-
-.layout-editor-row {
-    min-height: var(--space-12);
-    padding: var(--space-3) var(--space-4);
-    border-block-end: 1px solid var(--border-card);
-}
-
-.layout-editor-row:last-child {
-    border-block-end: 0;
-}
-
-.layout-editor-row[draggable="true"] {
-    cursor: grab;
-}
-
-.layout-editor-row[draggable="true"]:active {
-    cursor: grabbing;
-}
-
-.layout-editor-title {
-    display: flex;
-    min-width: 0;
-    align-items: center;
-    gap: var(--space-3);
-}
-
-.layout-drag-handle {
-    color: var(--text-faint);
-    font-family: var(--font-numeric);
-    letter-spacing: -.15em;
-}
-
-.layout-position .product-input {
-    min-width: 0;
-}
-
-.layout-reset {
-    padding-block-start: var(--space-5);
-    border-block-start: 1px solid var(--border-card);
-}
-
-.reports-controls {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--space-5);
-    margin-block-end: var(--space-6);
-    padding: var(--space-4);
-    border: 1px solid var(--border-card);
-    border-radius: var(--radius-md);
-    background: var(--surface-card);
-}
-
-.reports-control-group {
-    display: grid;
-    gap: var(--space-2);
-}
-
-.report-metrics {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: var(--space-4);
-    margin-block-end: var(--space-6);
-}
-
-.report-metric {
-    display: grid;
-    min-height: calc(var(--space-12) * 2);
-    align-content: space-between;
-    gap: var(--space-3);
-    padding: var(--space-5);
-    border-block-start: var(--space-1) solid var(--border-input);
-    background: var(--surface-card);
-}
-
-.report-metric.is-primary {
-    border-block-start-color: var(--brand-primary);
-}
-
-.report-metric.is-warning {
-    border-block-start-color: var(--state-warn-fg);
-}
-
-.report-metric-label,
-.report-metric-note {
-    color: var(--text-meta);
-    font-size: var(--type-caption-size);
-    line-height: var(--type-caption-line);
-}
-
-.report-metric-value {
-    color: var(--text-default);
-    font-family: var(--font-numeric);
-    font-size: var(--type-headline-size);
-    font-variant-numeric: tabular-nums;
-    font-weight: var(--type-headline-weight);
-}
-
-.report-metric-value small,
-.report-summary strong small {
-    color: var(--text-muted);
-    font-size: var(--type-body-size);
-}
+.report-hero { display: grid; container-type: inline-size; gap: var(--space-4); box-shadow: none; }
+.report-hero > span { color: var(--text-meta); }
+.report-history { margin-block: var(--space-6); }
+.report-primary-action { margin-block: var(--space-6); }
+.report-section { border-block-start: 1px solid var(--border-card); }
+.report-section[open] > summary { margin-block-end: var(--space-5); }
+.reports-control-group { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin-block-end: var(--space-5); }
+.report-supporting-facts { display: grid; gap: var(--space-4); margin-block: var(--space-5); }
+.report-supporting-facts > div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-3); }
+.report-supporting-facts dd { margin: 0; }
+.report-supporting-facts dt { color: var(--text-meta); }
+.report-monthly-row { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: var(--space-3) var(--space-5); padding-block: var(--space-6); border-block-end: 1px solid var(--border-card); }
+.report-monthly-row > div { display: grid; gap: var(--space-2); }
+.report-monthly-row > div > span { color: var(--text-meta); }
+.report-monthly-row > .num { margin-inline-start: auto; max-width: 100%; overflow-wrap: anywhere; font-size: var(--type-title-size); }
+.report-monthly-row > p { flex-basis: 100%; }
+.report-summary strong small { color: var(--text-muted); font-size: var(--type-body-size); }
 
 .report-grid {
     display: grid;
@@ -503,35 +381,6 @@
 
 .report-span-12 {
     grid-column: 1 / -1;
-}
-
-.report-legend {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-3);
-    color: var(--text-meta);
-    font-size: var(--type-caption-size);
-}
-
-.report-legend > span {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-}
-
-.report-legend-mark {
-    width: var(--space-4);
-    height: var(--space-1);
-    border-radius: var(--radius-pill);
-    background: var(--text-default);
-}
-
-.report-legend-mark.is-budget {
-    background: var(--text-faint);
-}
-
-.report-legend-mark.is-trend {
-    background: var(--brand-primary);
 }
 
 .report-chart {
@@ -572,7 +421,7 @@
 
 .report-summary {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 10em), 1fr));
     gap: var(--space-5);
     margin-block-end: var(--space-5);
 }
@@ -592,6 +441,7 @@
     font-family: var(--font-numeric);
     font-size: var(--type-title-size);
     font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
 }
 
 .report-ranked-list,
@@ -601,7 +451,8 @@
 
 .report-ranked-row,
 .report-explanation {
-    display: grid;
+    display: flex;
+    flex-wrap: wrap;
     min-height: var(--space-10);
     align-items: center;
     gap: var(--space-4);
@@ -609,12 +460,17 @@
     border-block-end: 1px solid var(--border-card);
 }
 
-.report-ranked-row {
-    grid-template-columns: minmax(0, 1fr) auto;
+.report-ranked-row > span,
+.report-explanation > div {
+    flex: 1 1 10em;
+    min-width: 0;
 }
 
-.report-explanation {
-    grid-template-columns: minmax(0, 1fr) auto minmax(var(--space-12), auto);
+.report-ranked-row > strong,
+.report-explanation > strong {
+    margin-inline-start: auto;
+    max-width: 100%;
+    overflow-wrap: anywhere;
 }
 
 .report-ranked-row:last-child,
@@ -677,11 +533,6 @@
         grid-column: span 6;
     }
 
-    .quality-metrics,
-    .report-metrics {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
     .report-span-4,
     .report-span-5,
     .report-span-7,
@@ -702,15 +553,8 @@
         grid-column: 1;
     }
 
-    .reports-controls,
     .report-grid {
         grid-template-columns: minmax(0, 1fr);
-    }
-
-    /* 360 首屏密度: 摘要指标两列, 趋势/操作尽早入屏 (真实设备验收反馈)。 */
-    .quality-metrics,
-    .report-metrics {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .report-span-4,
@@ -721,45 +565,6 @@
         grid-column: 1;
     }
 
-    .layout-editor-head {
-        display: none;
-    }
-
-    /* 360 紧凑行: 标题独占首行不折字, 第二行 显示 | 顺序(定宽小输入) 两端分布。
-       触屏无 HTML5 拖拽, 数字输入是手机重排主路径, 保持可见可达。 */
-    .layout-editor-row {
-        grid-template-columns: minmax(0, 1fr) auto;
-        gap: var(--space-2) var(--space-4);
-    }
-
-    .layout-editor-title {
-        grid-column: 1 / -1;
-    }
-
-    .layout-position {
-        display: inline-flex;
-        align-items: center;
-        justify-self: end;
-        gap: var(--space-2);
-    }
-
-    /* 级联注记: components.css 的 input:not([type=hidden]):not(...) {width:100%}
-       特异性 (0,3,1); 本规则用 (0,3,1) 同级 + 域文件后加载取胜, 不改全局 token。 */
-    .layout-editor-row .layout-position input.product-input {
-        width: calc(var(--space-12) + var(--space-4));
-    }
-
-    .report-explanation {
-        grid-template-columns: minmax(0, 1fr) auto;
-    }
-
-    .report-explanation > span {
-        grid-column: 1 / -1;
-    }
-
-    .report-legend {
-        display: none;
-    }
 
     .report-chart,
     .report-chart--tall {
