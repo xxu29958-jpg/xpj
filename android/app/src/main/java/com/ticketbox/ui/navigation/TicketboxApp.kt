@@ -255,6 +255,7 @@ private fun UnboundAuthFlow(
             factory = joinFamilyLedgerViewModelFactory(ledgerRepository),
         )
         val invitationRequest = launchConsumer.request as? LaunchIntentRequest.JoinInvitation
+        val consumeInvitation: () -> Unit = { invitationRequest?.let(launchConsumer.onHandled) }
         LaunchedEffect(invitationRequest) {
             if (invitationRequest != null) {
                 showJoinFlow = true
@@ -271,12 +272,10 @@ private fun UnboundAuthFlow(
                 navigation = JoinFamilyLedgerNavigation(
                     onBack = {
                         showJoinFlow = false
-                        if (invitationRequest != null) launchConsumer.onHandled(invitationRequest)
+                        consumeInvitation()
                     },
                     onAccepted = appViewModel::refreshBindingState,
-                    onInvitationConsumed = {
-                        if (invitationRequest != null) launchConsumer.onHandled(invitationRequest)
-                    },
+                    onInvitationConsumed = consumeInvitation,
                 ),
             )
         } else {

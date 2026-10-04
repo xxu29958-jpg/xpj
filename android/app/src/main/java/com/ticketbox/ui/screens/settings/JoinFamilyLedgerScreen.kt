@@ -2,10 +2,11 @@ package com.ticketbox.ui.screens.settings
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Dns
 import androidx.compose.material.icons.outlined.Edit
-import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material.icons.outlined.PersonOutline
 import androidx.compose.material3.Icon
@@ -16,6 +17,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -136,14 +139,21 @@ private fun JoinAccessFields(state: JoinFamilyLedgerUiState, binding: JoinCurren
                 AppTextInputState(stringResource(R.string.join_family_ledger_field_invite_token), state.invitationInput,
                     placeholder = stringResource(R.string.join_family_ledger_invite_placeholder), enabled = enabled,
                     singleLine = false, maxLines = 2), AppTextInputActions(actions.onInviteChange),
-                decorations = AppTextInputDecorations(trailingContent = { Icon(Icons.Outlined.Link, contentDescription = null) }))
-        } else Text(stringResource(R.string.join_family_ledger_invitation_read), style = MaterialTheme.typography.bodyMedium)
-        ScanQrButton(stringResource(R.string.qr_scan_invitation), enabled = enabled, onResult = actions.onScan)
+                decorations = AppTextInputDecorations(roundedSurface = true, trailingContent = {
+                    ScanQrButton(stringResource(R.string.qr_scan_invitation), enabled, actions.onScan, iconOnly = true)
+                }))
+        } else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(R.string.join_family_ledger_invitation_read), style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f))
+            ScanQrButton(stringResource(R.string.qr_scan_invitation), enabled, actions.onScan, iconOnly = true)
+        }
         if (binding.unbound || state.accountNameRequired) AppTextInput(
             AppTextInputState(stringResource(R.string.join_family_ledger_field_account_name), state.accountName,
                 placeholder = stringResource(R.string.join_family_ledger_name_placeholder), enabled = enabled),
             AppTextInputActions(actions.onNameChange),
-            decorations = AppTextInputDecorations(trailingContent = { Icon(Icons.Outlined.Edit, contentDescription = null) }))
+            decorations = AppTextInputDecorations(roundedSurface = true,
+                trailingContent = { Icon(Icons.Outlined.Edit, contentDescription = null) }))
     }
 }
 

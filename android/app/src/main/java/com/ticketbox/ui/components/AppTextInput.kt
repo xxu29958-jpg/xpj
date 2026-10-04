@@ -73,6 +73,7 @@ data class AppTextInputDecorations(
     val leadingContent: (@Composable () -> Unit)? = null,
     val trailingContent: (@Composable () -> Unit)? = null,
     val supportingText: (@Composable () -> Unit)? = null,
+    val roundedSurface: Boolean = false,
 )
 
 @Composable
@@ -190,15 +191,17 @@ private fun AppTextInputFrame(
     decorations: AppTextInputDecorations,
     content: @Composable () -> Unit,
 ) {
-    val shape = RoundedCornerShape(AppRadius.extraSmall)
+    val shape = RoundedCornerShape(if (decorations.roundedSurface) AppRadius.large else AppRadius.extraSmall)
     val verticalPadding = if (state.singleLine) AppSpacing.contentGap else AppSpacing.compactGap
-    val borderColor = appTextInputBorderColor(state, focused)
+    val borderColor = if (decorations.roundedSurface && !focused && !state.isError && state.enabled)
+        MaterialTheme.colorScheme.outlineVariant else appTextInputBorderColor(state, focused)
     val borderWidth = if (focused && state.enabled) 2.dp else 1.dp
     val baseModifier = Modifier
         .fillMaxWidth()
         .heightIn(min = appTextInputMinHeight(state))
         .clip(shape)
-        .background(appTextInputBackgroundColor(state))
+        .background(if (decorations.roundedSurface && state.enabled) LocalThemeVisuals.current.surfaceRaised
+            else appTextInputBackgroundColor(state))
     val framedModifier = if (state.emphasis == AppTextInputEmphasis.Amount) {
         baseModifier.drawBehind {
             val stroke = borderWidth.toPx()

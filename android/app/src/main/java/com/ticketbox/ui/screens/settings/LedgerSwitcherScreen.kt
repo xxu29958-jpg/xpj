@@ -81,10 +81,11 @@ internal fun LedgerDirectoryPage(state: LedgerSwitcherUiState, activeLedgerId: S
         LedgerDirectoryRows(state, activeLedgerId, onSwitch = actions.onSwitch,
             onShowCurrent = { showManagement = !showManagement })
         AppTextInput(
-            state = AppTextInputState(label = stringResource(R.string.ledger_switcher_field_ledger_name), value = name,
+            state = AppTextInputState(label = stringResource(R.string.ledger_switcher_field_new_ledger_name), value = name,
                 placeholder = stringResource(R.string.ledger_switcher_name_placeholder), enabled = !state.loading),
             actions = AppTextInputActions(onValueChange = { name = it.take(LEDGER_NAME_MAX) }),
-            decorations = AppTextInputDecorations(trailingContent = { Icon(Icons.Outlined.Edit, contentDescription = null) }),
+            decorations = AppTextInputDecorations(roundedSurface = true,
+                trailingContent = { Icon(Icons.Outlined.Edit, contentDescription = null) }),
         )
         SettingsDataRow(stringResource(R.string.join_family_ledger_page_title),
             stringResource(R.string.ledger_switcher_join_hint), Icons.Outlined.MailOutline,

@@ -131,7 +131,8 @@
     <string name="ledger_switcher_refresh_button">刷新列表</string>
     <string name="ledger_switcher_section_create">新建账本</string>
     <string name="ledger_switcher_create_hint">最多 %1$d 个字；新建后可在列表中切换。</string>
-    <string name="ledger_switcher_field_ledger_name">新账本名称</string>
+    <string name="ledger_switcher_field_ledger_name">账本名称</string>
+    <string name="ledger_switcher_field_new_ledger_name">新账本名称</string>
     <string name="ledger_switcher_create_button">创建账本</string>
     <string name="ledger_switcher_name_placeholder">给账本起个名字</string>
     <string name="ledger_switcher_join_hint">核对邀请后加入</string>

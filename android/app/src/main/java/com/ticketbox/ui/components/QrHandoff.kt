@@ -7,6 +7,10 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.Text
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -55,18 +59,25 @@ internal fun handoffQrMatrix(content: String): BitMatrix = QRCodeWriter().encode
 
 /** The embedded scanner works offline and does not save a camera image. */
 @Composable
-fun ScanQrButton(label: String, enabled: Boolean, onResult: (String) -> Unit) {
+fun ScanQrButton(label: String, enabled: Boolean, onResult: (String) -> Unit, iconOnly: Boolean = false) {
     var cameraUnavailable by remember { mutableStateOf(false) }
     val prompt = stringResource(R.string.qr_scan_prompt)
     val scanner = rememberLauncherForActivityResult(ScanContract()) { result ->
         cameraUnavailable = result.originalIntent?.getBooleanExtra(Intents.Scan.MISSING_CAMERA_PERMISSION, false) == true
         result.contents?.let(onResult)
     }
-    AppSecondaryButton(text = label, leadingIcon = Icons.Default.QrCodeScanner, enabled = enabled,
-        modifier = Modifier.fillMaxWidth(), onClick = {
-            cameraUnavailable = false
-            scanner.launch(ScanOptions().setDesiredBarcodeFormats(ScanOptions.QR_CODE).setPrompt(prompt)
-                .setBeepEnabled(false).setBarcodeImageEnabled(false).setOrientationLocked(false))
-        })
-    if (cameraUnavailable) Text(stringResource(R.string.qr_camera_unavailable))
+    val launchScanner = {
+        cameraUnavailable = false
+        scanner.launch(ScanOptions().setDesiredBarcodeFormats(ScanOptions.QR_CODE).setPrompt(prompt)
+            .setBeepEnabled(false).setBarcodeImageEnabled(false).setOrientationLocked(false))
+    }
+    if (iconOnly) IconButton(enabled = enabled, onClick = launchScanner) {
+        Icon(Icons.Default.QrCodeScanner, contentDescription = label)
+    } else AppSecondaryButton(text = label, leadingIcon = Icons.Default.QrCodeScanner, enabled = enabled,
+        modifier = Modifier.fillMaxWidth(), onClick = launchScanner)
+    if (cameraUnavailable && iconOnly) AlertDialog(
+        onDismissRequest = { cameraUnavailable = false },
+        text = { Text(stringResource(R.string.qr_camera_unavailable)) },
+        confirmButton = { TextButton(onClick = { cameraUnavailable = false }) { Text(stringResource(R.string.common_confirm)) } },
+    ) else if (cameraUnavailable) Text(stringResource(R.string.qr_camera_unavailable))
 }
