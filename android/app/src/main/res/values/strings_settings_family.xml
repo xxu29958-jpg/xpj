@@ -78,18 +78,18 @@
 
     <!-- JoinFamilyLedgerScreen：设置→加入家庭账本 屏 -->
     <string name="join_family_ledger_page_title">加入家庭账本</string>
-    <string name="join_family_ledger_page_subtitle">验证邀请并切换账本。</string>
+    <string name="join_family_ledger_page_subtitle">先看看来源和使用身份。</string>
     <string name="join_family_ledger_section_current">当前设备</string>
     <string name="join_family_ledger_section_invite">邀请验证</string>
     <string name="join_family_ledger_current_ledger">账本</string>
     <string name="join_family_ledger_current_account">账号</string>
     <string name="join_family_ledger_current_role">角色</string>
     <string name="join_family_ledger_current_note">接受后切换到账本。</string>
-    <string name="join_family_ledger_identity_title">显示身份</string>
-    <string name="join_family_ledger_field_invite_token">邀请码</string>
-    <string name="join_family_ledger_field_account_name">显示名</string>
+    <string name="join_family_ledger_identity_title">使用身份</string>
+    <string name="join_family_ledger_field_invite_token">邀请</string>
+    <string name="join_family_ledger_field_account_name">你的称呼</string>
     <string name="join_family_ledger_preview_loading">预览中…</string>
-    <string name="join_family_ledger_preview_button">预览邀请</string>
+    <string name="join_family_ledger_preview_button">预览加入信息</string>
     <string name="join_family_ledger_accept_loading">处理中…</string>
     <string name="join_family_ledger_accept_button">加入账本</string>
     <string name="join_family_ledger_preview_required">预览后确认目标账本和角色。</string>
@@ -112,8 +112,8 @@
     <string name="join_family_ledger_continue_in_browser">在浏览器中继续</string>
 
     <!-- LedgerSwitcherScreen：设置→账本 屏 -->
-    <string name="ledger_switcher_page_title">账本</string>
-    <string name="ledger_switcher_page_subtitle">切换、新建和更新账本。</string>
+    <string name="ledger_switcher_page_title">我的账本</string>
+    <string name="ledger_switcher_page_subtitle">切换之后，继续那本账的生活。</string>
     <string name="ledger_switcher_section_overview">账本概况</string>
     <string name="ledger_switcher_overview_total_label">已加入</string>
     <string name="ledger_switcher_overview_current_label">当前</string>
@@ -132,7 +132,28 @@
     <string name="ledger_switcher_section_create">新建账本</string>
     <string name="ledger_switcher_create_hint">最多 %1$d 个字；新建后可在列表中切换。</string>
     <string name="ledger_switcher_field_ledger_name">账本名称</string>
-    <string name="ledger_switcher_create_button">新建账本</string>
+    <string name="ledger_switcher_field_new_ledger_name">新账本名称</string>
+    <string name="ledger_switcher_create_button">创建账本</string>
+    <string name="ledger_switcher_name_placeholder">给账本起个名字</string>
+    <string name="ledger_switcher_join_hint">核对邀请后加入</string>
+    <string name="ledger_switcher_manage">账本管理</string>
+    <string name="ledger_switcher_manage_hint">重命名、刷新与账本信息</string>
+    <string name="join_family_ledger_back">返回</string>
+    <string name="join_family_ledger_invite_placeholder">粘贴邀请链接或邀请码</string>
+    <string name="join_family_ledger_name_placeholder">填写称呼</string>
+    <string name="join_family_ledger_invitation_read">邀请链接已读取</string>
+    <string name="join_family_ledger_this_join">这次加入</string>
+    <string name="join_family_ledger_source_title">服务来源</string>
+    <string name="join_family_ledger_source_pending">核对连接的账本服务</string>
+    <string name="join_family_ledger_source_note">完整链接会显示邀请来源；单独的邀请码使用当前账本服务或上方填写的地址。</string>
+    <string name="join_family_ledger_verify">核对</string>
+    <string name="join_family_ledger_target_title">目标账本</string>
+    <string name="join_family_ledger_view">查看</string>
+    <string name="join_family_ledger_identity_new">新建</string>
+    <string name="join_family_ledger_identity_keep">保留</string>
+    <string name="join_family_ledger_identity_new_note">确认加入后，使用这个称呼创建成员身份并连接本机。</string>
+    <string name="join_family_ledger_existing_title">已有记录留在原账本</string>
+    <string name="join_family_ledger_existing_body">不会把未发送内容搬到新的账本。</string>
     <!-- LedgerSwitcherViewModel：状态/反馈消息（ADR-0044 wave 2） -->
     <string name="ledger_switcher_message_load_failed">获取账本失败。</string>
     <string name="ledger_switcher_message_switched">已切换到「%1$s」</string>

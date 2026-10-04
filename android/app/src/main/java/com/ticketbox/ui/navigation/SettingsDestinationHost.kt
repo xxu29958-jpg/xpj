@@ -44,6 +44,8 @@ import com.ticketbox.ui.screens.settings.BackgroundTasksScreen
 import com.ticketbox.ui.screens.settings.DataExportScreen
 import com.ticketbox.ui.screens.settings.FamilyMembersScreen
 import com.ticketbox.ui.screens.settings.JoinFamilyLedgerScreen
+import com.ticketbox.ui.screens.settings.JoinFamilyLedgerNavigation
+import com.ticketbox.ui.screens.settings.LedgerSwitcherNavigation
 import com.ticketbox.ui.screens.settings.LedgerSwitcherScreen
 import com.ticketbox.ui.screens.settings.MyDevicesScreen
 import com.ticketbox.ui.screens.settings.NotificationPreferencesScreen
@@ -155,6 +157,7 @@ internal fun SettingsDestinationHost(
     repositories: SettingsRouteRepositories,
 ) {
     var route by rememberSaveable { mutableStateOf(navigation.initialDestination) }
+    var joinReturnRoute by rememberSaveable { mutableStateOf(SettingsDestination.Root) }
     val appVersionName = stringResource(R.string.app_version_name)
     val appVersionCode = integerResource(R.integer.app_version_code)
 
@@ -210,7 +213,7 @@ internal fun SettingsDestinationHost(
                     onOpenLedgers = { route = SettingsDestination.Ledgers },
                     onOpenFamilyMembers = { route = SettingsDestination.FamilyMembers },
                     onOpenMyDevices = { route = SettingsDestination.MyDevices },
-                    onOpenJoinFamilyLedger = { route = SettingsDestination.JoinFamilyLedger },
+                    onOpenJoinFamilyLedger = { joinReturnRoute = SettingsDestination.Root; route = SettingsDestination.JoinFamilyLedger },
                 ),
                 dataPrivacy = SettingsRootDataPrivacyNavigationActions(
                     onOpenDataExport = { route = SettingsDestination.DataExport },
@@ -356,9 +359,11 @@ internal fun SettingsDestinationHost(
             LedgerSwitcherScreen(
                 viewModel = vm,
                 activeLedgerId = repositories.activeLedgerId,
-                onBack = { route = SettingsDestination.Root },
-                onSwitched = actions.onLedgerSwitched,
-                onRenamed = actions.onBindingChanged,
+                navigation = LedgerSwitcherNavigation(
+                    onBack = { route = SettingsDestination.Root }, onSwitched = actions.onLedgerSwitched,
+                    onRenamed = actions.onBindingChanged,
+                    onJoin = { joinReturnRoute = SettingsDestination.Ledgers; route = SettingsDestination.JoinFamilyLedger },
+                ),
             )
         }
 
@@ -395,12 +400,16 @@ internal fun SettingsDestinationHost(
             )
             JoinFamilyLedgerScreen(
                 viewModel = vm,
-                onBack = { route = SettingsDestination.Root },
-                onAccepted = {
-                    actions.onBindingChanged()
-                    actions.onLedgerSwitched()
-                    route = SettingsDestination.Ledgers
-                },
+                navigation = JoinFamilyLedgerNavigation(
+                    onBack = { route = joinReturnRoute },
+                    onAccepted = {
+                        actions.onBindingChanged()
+                        actions.onLedgerSwitched()
+                        route = SettingsDestination.Ledgers
+                    },
+                    backLabel = stringResource(if (joinReturnRoute == SettingsDestination.Ledgers)
+                        R.string.ledger_switcher_page_title else R.string.settings_root_page_title),
+                ),
             )
         }
 
