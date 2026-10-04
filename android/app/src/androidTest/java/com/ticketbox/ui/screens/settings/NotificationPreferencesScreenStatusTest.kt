@@ -96,10 +96,12 @@ class NotificationPreferencesScreenStatusTest {
         composeRule.setContent {
             CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, scale)) {
                 TicketboxTheme(skin = skin) {
-                    NotificationPreferencesContent(preferences, viewer,
-                        NotificationSystemState(listener, notifications,
-                            { reminderPermissions++ }, { authorizations++ }),
-                        status = null, onBack = {}, onSave = { preferences = it; saves++ })
+                    SettingsPageFrame(title = "提醒你的方式", subtitle = "只接收对你有用的提醒。", onBack = {}) {
+                        NotificationPreferencesContent(preferences, viewer,
+                            NotificationSystemState(listener, notifications,
+                                { reminderPermissions++ }, { authorizations++ }),
+                            onSave = { preferences = it; saves++ })
+                    }
                 }
             }
         }

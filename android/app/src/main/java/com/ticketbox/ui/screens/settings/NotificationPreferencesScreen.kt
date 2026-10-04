@@ -52,7 +52,14 @@ fun NotificationPreferencesScreen(
     onSave: (NotificationPreferences) -> Unit,
 ) {
     val systemState = rememberNotificationSystemState()
-    NotificationPreferencesContent(preferences, readOnly, systemState, status, onBack, onSave)
+    SettingsPageFrame(
+        title = stringResource(R.string.notification_preferences_page_title),
+        subtitle = stringResource(R.string.notification_preferences_page_subtitle),
+        onBack = onBack,
+        status = status,
+    ) {
+        NotificationPreferencesContent(preferences, readOnly, systemState, onSave)
+    }
 }
 
 @Composable
@@ -60,8 +67,6 @@ internal fun NotificationPreferencesContent(
     preferences: NotificationPreferences,
     readOnly: Boolean,
     systemState: NotificationSystemState,
-    status: (@Composable () -> Unit)?,
-    onBack: () -> Unit,
     onSave: (NotificationPreferences) -> Unit,
 ) {
     val summary = remember(
@@ -78,18 +83,11 @@ internal fun NotificationPreferencesContent(
         )
     }
 
-    SettingsPageFrame(
-        title = stringResource(R.string.notification_preferences_page_title),
-        subtitle = stringResource(R.string.notification_preferences_page_subtitle),
-        onBack = onBack,
-        status = status,
-    ) {
-        NotificationAutoDraftSection(
+    NotificationAutoDraftSection(
             preferences = preferences,
             readOnly = readOnly,
             state = summary.autoDraftState,
-            listenerAuthorized = systemState.listenerAuthorized,
-            onOpenAuthorization = systemState.openListenerSettings,
+            systemState = systemState,
             onUpdate = onSave,
         )
         NotificationReminderSection(
@@ -99,8 +97,7 @@ internal fun NotificationPreferencesContent(
             onRequestPermission = systemState.requestPostNotifications,
             onUpdate = onSave,
         )
-        NotificationPrivacySection()
-    }
+    NotificationPrivacySection()
 }
 
 @Composable
@@ -151,8 +148,7 @@ private fun NotificationAutoDraftSection(
     preferences: NotificationPreferences,
     readOnly: Boolean,
     state: NotificationSettingState,
-    listenerAuthorized: Boolean,
-    onOpenAuthorization: () -> Unit,
+    systemState: NotificationSystemState,
     onUpdate: (NotificationPreferences) -> Unit,
 ) {
     SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
@@ -160,7 +156,7 @@ private fun NotificationAutoDraftSection(
             title = stringResource(R.string.notification_preferences_capture_title),
             subtitle = when {
                 readOnly -> stringResource(R.string.notification_preferences_capture_subtitle_readonly)
-                listenerAuthorized -> stringResource(R.string.notification_preferences_capture_subtitle_authorized)
+                systemState.listenerAuthorized -> stringResource(R.string.notification_preferences_capture_subtitle_authorized)
                 else -> stringResource(R.string.notification_preferences_capture_subtitle_default)
             },
             checked = preferences.autoCaptureEnabled && !readOnly,
@@ -168,12 +164,12 @@ private fun NotificationAutoDraftSection(
             onCheckedChange = { onUpdate(preferences.copy(autoCaptureEnabled = it)) },
         )
         AppSecondaryButton(
-            text = stringResource(if (listenerAuthorized) {
+            text = stringResource(if (systemState.listenerAuthorized) {
                 R.string.notification_preferences_grant_view
             } else {
                 R.string.notification_preferences_grant_open
             }),
-            onClick = onOpenAuthorization,
+            onClick = systemState.openListenerSettings,
             modifier = Modifier.fillMaxWidth(),
         )
         Text(
