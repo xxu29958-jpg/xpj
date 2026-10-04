@@ -190,7 +190,7 @@ private fun SheetPrimaryAction(
 ) {
     AppPrimaryButton(
         text = action.text,
-        icon = action.icon,
+        icons = AppButtonIcons(leading = action.icon),
         modifier = modifier,
         enabled = action.enabled,
         onClick = action.onClick,

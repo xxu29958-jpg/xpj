@@ -80,7 +80,7 @@ class AppPrimaryButtonRenderTest {
                         }
                         AppPrimaryButton(
                             text = SAVE_TEXT,
-                            icon = Icons.Filled.Check,
+                            icons = AppButtonIcons(leading = Icons.Filled.Check),
                             modifier = Modifier.fillMaxWidth().testTag(BUTTON_TAG),
                             enabled = harness.currencyResolved,
                             onClick = { harness.clicks++ },
@@ -133,6 +133,8 @@ class AppPrimaryButtonRenderTest {
         }
         for (theme in listOf(AppSkin.Paper, AppSkin.Midnight)) {
             composeRule.runOnIdle { skin.value = theme }
+            saveConsumerArtPreview("paired-actions-${theme.name}-large-font",
+                composeRule.onRoot().captureToImage().asAndroidBitmap())
             for (label in listOf(primaryLabel, secondaryLabel)) {
                 val layouts = mutableListOf<TextLayoutResult>()
                 composeRule.onNodeWithText(label, useUnmergedTree = true)
@@ -142,14 +144,12 @@ class AppPrimaryButtonRenderTest {
                     assertEquals("Action text must respect the user's text size",
                         controlFontSize, layout.layoutInput.style.fontSize)
                     assertFalse("The action label must fit its height", layout.didOverflowHeight)
+                    assertFalse("The action label must fit its width", layout.didOverflowWidth)
                     for (line in 0 until layout.lineCount) {
                         assertFalse("Action words must not be ellipsized", layout.isLineEllipsized(line))
-                        assertTrue(layout.getLineLeft(line) >= 0f && layout.getLineRight(line) <= layout.size.width)
                     }
                 }
             }
-            saveConsumerArtPreview("paired-actions-${theme.name}-large-font",
-                composeRule.onRoot().captureToImage().asAndroidBitmap())
             val primary = composeRule.onNodeWithText(primaryLabel).assertIsEnabled()
             val secondary = composeRule.onNodeWithText(secondaryLabel).assertIsEnabled()
             assertTrue("Large text actions should stack at this width",

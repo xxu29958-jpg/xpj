@@ -76,17 +76,19 @@ internal fun ExpenseEditAmountCluster(
                 onFocusChanged = { actions.onAmountFocusChanged(it.isFocused) },
                 onCurrencyClick = actions.onToggleCurrency.takeIf { state.enabled },
             ),
-            supportingText = if (state.currency.storageKey != state.homeCurrencyCode) {
-                {
-                    Text(
-                        text = state.exchangeMeta ?: stringResource(R.string.expense_edit_fx_hint),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-            } else {
-                null
-            },
+            decorations = AppTextInputDecorations(
+                supportingText = if (state.currency.storageKey != state.homeCurrencyCode) {
+                    {
+                        Text(
+                            text = state.exchangeMeta ?: stringResource(R.string.expense_edit_fx_hint),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                } else {
+                    null
+                },
+            ),
         )
         if (state.currencyExpanded) {
             ExpenseCurrencyChoices(

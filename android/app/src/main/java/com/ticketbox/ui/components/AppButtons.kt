@@ -12,19 +12,19 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -32,13 +32,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.onClick
-import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.ticketbox.R
 import com.ticketbox.ui.design.AppIconSize
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
@@ -50,6 +50,11 @@ private const val ControlBorderPressedAlpha = 0.82f
 private const val ControlContainerIdleAlpha = 0.98f
 private const val ControlContainerPressedAlpha = 1f
 private const val PrimaryDisabledContentAlpha = 0.58f
+
+data class AppButtonIcons(
+    val leading: ImageVector? = null,
+    val trailing: ImageVector? = null,
+)
 
 data class AppOutlinedButtonOptions(
     val enabled: Boolean = true,
@@ -63,10 +68,9 @@ data class AppOutlinedButtonOptions(
 @Composable
 fun AppPrimaryButton(
     text: String,
-    icon: ImageVector? = null,
+    icons: AppButtonIcons = AppButtonIcons(),
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    trailingIcon: ImageVector? = null,
     onClick: () -> Unit,
 ) {
     val visuals = LocalThemeVisuals.current
@@ -95,7 +99,7 @@ fun AppPrimaryButton(
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            icon?.let {
+            icons.leading?.let {
                 Icon(
                     imageVector = it,
                     contentDescription = null,
@@ -111,7 +115,7 @@ fun AppPrimaryButton(
                 textAlign = TextAlign.Center,
                 modifier = Modifier.weight(1f, fill = false),
             )
-            trailingIcon?.let {
+            icons.trailing?.let {
                 Icon(it, contentDescription = null, tint = contentColor, modifier = Modifier.size(AppIconSize.standard))
             }
         }
@@ -126,7 +130,7 @@ fun PrimaryCtaButton(
     enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
-    AppPrimaryButton(text = text, icon = icon, modifier = modifier, enabled = enabled, onClick = onClick)
+    AppPrimaryButton(text = text, icons = AppButtonIcons(leading = icon), modifier = modifier, enabled = enabled, onClick = onClick)
 }
 
 @Composable
@@ -135,40 +139,15 @@ fun AppBackButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Box(
+    TextButton(
         modifier = modifier
-            .clearAndSetSemantics {
-                contentDescription = text
-                role = Role.Button
-                onClick(action = {
-                    onClick()
-                    true
-                })
-            }
-            .size(AppSpacing.controlMinHeight)
-            .clip(CircleShape)
-            .clickable(role = Role.Button, onClick = onClick),
-        contentAlignment = Alignment.Center,
+            .heightIn(min = AppSpacing.controlMinHeight)
+            .semantics { contentDescription = text },
+        onClick = onClick,
     ) {
-        Box(
-            modifier = Modifier
-                .size(AppButtonTokens.BackVisualSize)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.surfaceContainerLow)
-                .border(
-                    width = AppButtonTokens.BorderWidth,
-                    color = MaterialTheme.colorScheme.outlineVariant,
-                    shape = CircleShape,
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(AppIconSize.standard),
-            )
-        }
+        Icon(ImageVector.vectorResource(R.drawable.ic_lucide_arrow_left), contentDescription = null)
+        Spacer(Modifier.width(AppSpacing.smallGap))
+        Text(text)
     }
 }
 
@@ -217,5 +196,4 @@ fun AppOutlinedButton(
 
 private object AppButtonTokens {
     val BorderWidth = 1.dp
-    val BackVisualSize = 34.dp
 }

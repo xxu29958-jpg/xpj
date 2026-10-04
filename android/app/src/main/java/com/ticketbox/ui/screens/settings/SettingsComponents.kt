@@ -180,9 +180,10 @@ fun SettingsEntryRow(
 @Composable
 private fun settingsEntryBackground(@DrawableRes icon: Int): Color {
     val tint = when (icon) {
-        R.drawable.ic_lucide_users, R.drawable.ic_lucide_info, R.drawable.ic_lucide_image -> SettingsColors.householdEntry
-        R.drawable.ic_lucide_palette, R.drawable.ic_lucide_images -> SettingsColors.appearanceEntry
-        R.drawable.ic_lucide_refresh_cw -> SettingsColors.connectionEntry
+        R.drawable.ic_lucide_users, R.drawable.ic_lucide_info, R.drawable.ic_lucide_image,
+        R.drawable.ic_lucide_git_branch -> SettingsColors.householdEntry
+        R.drawable.ic_lucide_palette, R.drawable.ic_lucide_images, R.drawable.ic_lucide_wifi -> SettingsColors.appearanceEntry
+        R.drawable.ic_lucide_refresh_cw, R.drawable.ic_lucide_user_round_x -> SettingsColors.connectionEntry
         else -> SettingsColors.generalEntry
     }
     return settingsEntrySurface(tint)

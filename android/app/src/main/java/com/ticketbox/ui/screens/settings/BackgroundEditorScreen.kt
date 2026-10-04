@@ -59,6 +59,7 @@ import com.ticketbox.ui.appearance.background.BackgroundPreviewStage
 import com.ticketbox.ui.appearance.background.BackgroundTransformGeometry
 import com.ticketbox.ui.appearance.background.SurfaceRole
 import com.ticketbox.ui.appearance.background.rememberBackgroundImage
+import com.ticketbox.ui.components.AppButtonIcons
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppAlpha
@@ -327,7 +328,7 @@ private fun BackgroundEditorCompositionPanel(
                 onTransformChange = { actions.onDraftChange(editor.settings.copy(transform = it)) },
             )
             AppPrimaryButton(text = stringResource(R.string.background_editor_composition_done),
-                icon = Icons.Filled.Check, modifier = Modifier.fillMaxWidth(), enabled = !editor.saving, onClick = onDone)
+                icons = AppButtonIcons(leading = Icons.Filled.Check), modifier = Modifier.fillMaxWidth(), enabled = !editor.saving, onClick = onDone)
         }
     }
 }
@@ -349,7 +350,7 @@ private fun BackgroundEditorFooter(
                     R.string.background_editor_apply_button
                 },
             ),
-            icon = Icons.Filled.Check,
+            icons = AppButtonIcons(leading = Icons.Filled.Check),
             modifier = Modifier.weight(1f),
             enabled = !saving,
             onClick = actions.onApply,

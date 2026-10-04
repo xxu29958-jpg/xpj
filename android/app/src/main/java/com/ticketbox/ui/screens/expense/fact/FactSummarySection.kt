@@ -20,6 +20,7 @@ import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseFactBundle
 import com.ticketbox.domain.model.ExpenseLineageStatus
 import com.ticketbox.domain.model.recordCurrencyDisplay
+import com.ticketbox.ui.components.AppButtonIcons
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.StatusPill
 import com.ticketbox.ui.components.displayDateTime
@@ -133,7 +134,7 @@ internal fun FactSummarySection(
     } else {
         AppPrimaryButton(
             text = stringResource(R.string.expense_fact_correct_cta),
-            icon = Icons.Filled.Edit,
+            icons = AppButtonIcons(leading = Icons.Filled.Edit),
             onClick = onOpenCorrection,
             enabled = state.canStartCorrection,
             modifier = Modifier.fillMaxWidth(),

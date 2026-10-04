@@ -25,6 +25,7 @@ import com.ticketbox.ui.components.AppDataAuthorityStrip
 import com.ticketbox.ui.components.AppErrorState
 import com.ticketbox.ui.components.AppLoadingState
 import com.ticketbox.ui.components.AppPageRole
+import com.ticketbox.ui.components.AppButtonIcons
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.AppSecondaryPageChrome
@@ -142,7 +143,7 @@ private fun BudgetAdviceStartCard(onRequestAdvice: () -> Unit) {
         )
         AppPrimaryButton(
             text = stringResource(R.string.budget_advice_generate),
-            icon = Icons.Filled.Tune,
+            icons = AppButtonIcons(leading = Icons.Filled.Tune),
             modifier = Modifier.fillMaxWidth(),
             onClick = onRequestAdvice,
         )

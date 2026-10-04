@@ -9,8 +9,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.hasClickAction
-import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
@@ -339,8 +337,8 @@ class FactEntryNavigationTest {
             assertTrue(harness.fixture.network.expenseReads.contains(42L))
             assertTrue(harness.fixture.network.calls.isEmpty())
         }
-        // ExpenseFactScreen supplies backText="" to the production AppBackButton's semantics.
-        compose.onNode(hasContentDescription("") and hasClickAction()).performScrollTo().performClick()
+        compose.onNodeWithContentDescription(context.getString(R.string.expense_edit_primary_back_button))
+            .performScrollTo().performClick()
         compose.waitForIdle()
         compose.runOnIdle { assertEquals(MAIN_ROUTE, outer.currentBackStackEntry?.destination?.route) }
     }

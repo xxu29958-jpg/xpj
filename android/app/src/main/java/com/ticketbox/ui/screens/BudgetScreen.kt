@@ -81,7 +81,6 @@ private fun BudgetScreenContent(
     onHistory: () -> Unit,
     backText: String?,
 ) {
-    val currencyDisplay = CurrencyDisplay.forRecord(state.budget?.homeCurrencyCode ?: "UNKNOWN")
     val decision = budgetPageDecision(state)
     var editorOpen by rememberSaveable(state.binding, state.month) { mutableStateOf(false) }
     LaunchedEffect(state.binding, state.month, state.formDirty, state.hasPendingSave, state.budget?.configured, state.canModify) {
@@ -112,12 +111,13 @@ private fun BudgetScreenContent(
                 backText = if (editorOpen) stringResource(R.string.budget_editor_back) else backText ?: stringResource(R.string.budget_back_to_stats), onBack = back,
                 actions = { BudgetPageActions(decision, onHistory) })
         }
-        budgetPageContent(state, actions, decision, currencyDisplay, editorOpen) { editorOpen = true }
+        budgetPageContent(state, actions, decision, editorOpen) { editorOpen = true }
     }
 }
 
 private fun LazyListScope.budgetPageContent(state: BudgetUiState, actions: BudgetScreenActions,
-    decision: BudgetPageDecision, currencyDisplay: CurrencyDisplay, editorOpen: Boolean, onEdit: () -> Unit) {
+    decision: BudgetPageDecision, editorOpen: Boolean, onEdit: () -> Unit) {
+    val currencyDisplay = CurrencyDisplay.forRecord(state.budget?.homeCurrencyCode ?: "UNKNOWN")
     if (!state.fromCache) item { MonthSwitcher(state.month, actions.onPreviousMonth, actions.onNextMonth) }
     state.message?.let { message ->
         item { AppStatusBanner(message = message, tone = state.messageTone) }

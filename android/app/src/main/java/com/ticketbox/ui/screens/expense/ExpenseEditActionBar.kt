@@ -28,6 +28,7 @@ import com.ticketbox.ui.components.AppAdaptiveEditActionMode
 import com.ticketbox.ui.components.AppFloatingActionBar
 import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppOutlinedButtonOptions
+import com.ticketbox.ui.components.AppButtonIcons
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.LocalAppImeVisible
 import com.ticketbox.ui.components.AppSecondaryButton
@@ -136,7 +137,7 @@ private fun ExpenseEditStackedActionRows(
         if (state.allowConfirm) {
             AppPrimaryButton(
                 text = stringResource(R.string.expense_edit_confirm_button),
-                icon = Icons.Filled.Check,
+                icons = AppButtonIcons(leading = Icons.Filled.Check),
                 modifier = Modifier.fillMaxWidth(),
                 enabled = !state.saving,
                 onClick = actions.onConfirm,
@@ -235,7 +236,7 @@ private fun ExpenseEditActionForwardRow(
         if (state.allowConfirm) {
             AppPrimaryButton(
                 text = stringResource(R.string.expense_edit_confirm_button),
-                icon = Icons.Filled.Check,
+                icons = AppButtonIcons(leading = Icons.Filled.Check),
                 modifier = Modifier.weight(if (state.allowSave) 1.24f else 1f),
                 enabled = !state.saving,
                 onClick = actions.onConfirm,
@@ -320,7 +321,7 @@ private fun RowScope.CompactFilledAction(
 ) {
     AppPrimaryButton(
         text = text,
-        icon = Icons.Filled.Check,
+        icons = AppButtonIcons(leading = Icons.Filled.Check),
         modifier = Modifier.weight(weight),
         enabled = enabled,
         onClick = onClick,

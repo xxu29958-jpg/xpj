@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.ui.components.AppAdaptiveContentActionStateRow
+import com.ticketbox.ui.components.AppButtonIcons
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppSheetAction
 import com.ticketbox.ui.components.AppSheetActionRow
@@ -133,7 +134,7 @@ private fun LedgerSelectionActions(
         )
         AppPrimaryButton(
             text = stringResource(R.string.ledger_selection_edit),
-            icon = Icons.Filled.Edit,
+            icons = AppButtonIcons(leading = Icons.Filled.Edit),
             enabled = state.selectedCount > 0 && !state.applying,
             modifier = buttonModifier,
             onClick = actions.onEdit,

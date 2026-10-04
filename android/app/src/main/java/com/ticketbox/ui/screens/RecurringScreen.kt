@@ -20,6 +20,7 @@ import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.domain.model.RecurringItem
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppPageRole
+import com.ticketbox.ui.components.AppButtonIcons
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppSecondaryPageChrome
 import com.ticketbox.ui.components.AppSecondaryPageSlots
@@ -203,7 +204,7 @@ private fun LazyListScope.recurringOverviewSection(
             AppPrimaryButton(
                 modifier = Modifier.fillMaxWidth(),
                 text = stringResource(R.string.recurring_add_cta),
-                icon = Icons.Filled.Add,
+                icons = AppButtonIcons(leading = Icons.Filled.Add),
                 enabled = !state.manualSaveInFlight,
                 onClick = callbacks.onCreate,
             )

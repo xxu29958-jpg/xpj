@@ -30,6 +30,7 @@ p {
 
 .product-page-heading {
     display: grid;
+    min-width: 0;
     gap: var(--space-2);
 }
 
@@ -50,11 +51,7 @@ p {
     font-weight: var(--type-hero-weight);
     letter-spacing: -.035em;
     line-height: var(--type-hero-line);
-}
-
-.page-title--compact {
-    font-size: var(--type-headline-size);
-    line-height: var(--type-headline-line);
+    overflow-wrap: anywhere;
 }
 
 .page-sub,
@@ -1085,41 +1082,31 @@ body.product-shell .file-picker > input.file-picker-input:focus-visible {
     margin: 0;
 }
 
-/* The same editable summary rows serve queue review and full expense editing.
-   Native details stay open without JS; the existing drawer enhancement reads
-   the real inputs and folds populated fields, without copying form state. */
-.expense-core-fields--compact { gap: 0; }
-.review-edit-field,
-.review-date-fields,
-.review-note-fields,
-.review-subtask { min-width: 0; border-bottom: 1px solid var(--border-card); }
-.review-edit-field > summary,
-.review-date-fields > summary,
-.review-note-fields > summary,
-.review-subtask-link {
+/* One entry row for editable receipt fields and account/device directories.
+   Links, native disclosures and form buttons retain their own behavior. */
+.product-entry {
     display: grid;
     grid-template-columns: var(--space-9) minmax(0, 1fr) var(--space-5);
+    width: 100%;
     align-items: center;
     gap: var(--space-4);
     min-height: calc(var(--target-min) + var(--space-5));
-    padding-block: var(--space-3);
+    padding: var(--space-3) 0;
+    border: 0;
+    background: transparent;
+    font: inherit;
+    text-align: start;
     list-style: none;
     cursor: pointer;
     color: var(--text-default);
     text-decoration: none;
 }
-.review-edit-field > summary::-webkit-details-marker,
-.review-date-fields > summary::-webkit-details-marker,
-.review-note-fields > summary::-webkit-details-marker,
+.product-entry::-webkit-details-marker,
 .review-amount-field > summary::-webkit-details-marker { display: none; }
-.review-edit-field > summary > svg,
-.review-date-fields > summary > svg,
-.review-note-fields > summary > svg,
-.review-subtask-link > svg { width: var(--space-5); height: var(--space-5); color: var(--text-meta); }
-.review-edit-field[open] > summary > svg,
-.review-date-fields[open] > summary > svg,
-.review-note-fields[open] > summary > svg { transform: rotate(90deg); }
-.review-field-icon {
+.product-entry > svg { width: var(--space-5); height: var(--space-5); color: var(--text-meta); }
+details[open] > .product-entry > svg { transform: rotate(90deg); }
+.product-entry:hover { color: var(--brand-primary-strong); }
+.product-entry-icon {
     display: grid;
     place-items: center;
     width: var(--space-9);
@@ -1128,12 +1115,20 @@ body.product-shell .file-picker > input.file-picker-input:focus-visible {
     background: var(--brand-primary-bg);
     color: var(--text-default);
 }
-.review-field-icon > svg { width: var(--space-7); height: var(--space-7); }
-.review-category-field .review-field-icon { background: var(--surface-apricot); }
-.review-date-fields .review-field-icon { background: var(--surface-lilac); }
-.review-field-copy { display: grid; gap: var(--space-1); min-width: 0; overflow-wrap: anywhere; }
-.review-field-copy strong { font-size: var(--type-subtitle-size); font-weight: var(--type-title-weight); }
-.review-field-copy > span { color: var(--text-meta); font-size: var(--type-body-size); line-height: var(--type-body-line); }
+.product-entry-icon > svg { width: var(--space-7); height: var(--space-7); }
+.product-entry-icon--apricot { background: var(--surface-apricot); }
+.product-entry-icon--lilac { background: var(--surface-lilac); }
+.product-entry-copy { display: grid; gap: var(--space-1); min-width: 0; overflow-wrap: anywhere; }
+.product-entry-copy strong { font-size: var(--type-subtitle-size); font-weight: var(--type-title-weight); }
+.product-entry-copy > span { color: var(--text-meta); font-size: var(--type-body-size); line-height: var(--type-body-line); }
+
+/* Native details stay open without JS; the existing drawer enhancement reads
+   the real inputs and folds populated fields, without copying form state. */
+.expense-core-fields--compact { gap: 0; }
+.review-edit-field,
+.review-date-fields,
+.review-note-fields,
+.review-subtask { min-width: 0; border-bottom: 1px solid var(--border-card); }
 .review-edit-field > .product-field { margin: 0 0 var(--space-5) calc(var(--space-9) + var(--space-4)); }
 .review-date-fields fieldset { border: 0; padding: var(--space-4) 0; min-width: 0; }
 .review-note-fields > .product-field { margin-block: var(--space-4); }

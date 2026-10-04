@@ -4,22 +4,14 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.res.vectorResource
-import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
-import com.ticketbox.R
 import com.ticketbox.ui.design.AppAdaptiveContentWidth
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
@@ -73,13 +65,7 @@ fun AppSecondaryPageHeader(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap),
     ) {
-        onBack?.let { back ->
-            TextButton(onClick = back, modifier = Modifier.semantics { contentDescription = backText }) {
-                Icon(ImageVector.vectorResource(R.drawable.ic_lucide_arrow_left), contentDescription = null)
-                Spacer(Modifier.width(AppSpacing.smallGap))
-                Text(backText)
-            }
-        }
+        onBack?.let { AppBackButton(text = backText, onClick = it) }
         AppSecondaryTitleText(title = title, subtitle = subtitle, modifier = Modifier.fillMaxWidth())
         actions?.invoke()
     }

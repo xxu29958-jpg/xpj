@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Tune
+import com.ticketbox.ui.components.AppButtonIcons
 import com.ticketbox.ui.components.AppPrimaryButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -208,7 +209,7 @@ private fun LedgerRecordButton(
 ) {
     AppPrimaryButton(
         text = stringResource(R.string.ledger_header_add_button),
-        icon = Icons.Filled.Add,
+        icons = AppButtonIcons(leading = Icons.Filled.Add),
         onClick = onClick,
         modifier = modifier,
     )

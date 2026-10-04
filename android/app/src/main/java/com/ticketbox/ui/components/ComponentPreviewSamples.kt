@@ -90,7 +90,7 @@ private fun AppVisualComponentsPreview() {
                     AppFilterChip(label = "餐饮", selected = true, onClick = {})
                     AppPrimaryButton(
                         text = "上传截图",
-                        icon = Icons.Filled.AddPhotoAlternate,
+                        icons = AppButtonIcons(leading = Icons.Filled.AddPhotoAlternate),
                         modifier = Modifier.fillMaxWidth(),
                         onClick = {},
                     )

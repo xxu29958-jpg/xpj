@@ -19,6 +19,7 @@ import com.ticketbox.ui.components.AppAmountInputActions
 import com.ticketbox.ui.components.AppAmountInputState
 import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
+import com.ticketbox.ui.components.AppTextInputDecorations
 import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppAmountRole
@@ -36,7 +37,7 @@ internal fun MoneyField(
         state = state,
         actions = AppAmountInputActions(onValueChange = onValueChange),
         modifier = modifier.fillMaxWidth(),
-        amountRole = amountRole,
+        decorations = AppTextInputDecorations(amountRole = amountRole),
     )
 }
 

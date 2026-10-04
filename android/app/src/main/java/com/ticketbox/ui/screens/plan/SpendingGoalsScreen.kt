@@ -21,6 +21,7 @@ import com.ticketbox.ui.components.AppErrorState
 import com.ticketbox.ui.components.AppFloatingActionBar
 import com.ticketbox.ui.components.AppLoadingState
 import com.ticketbox.ui.components.AppPageRole
+import com.ticketbox.ui.components.AppButtonIcons
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppSecondaryPageChrome
 import com.ticketbox.ui.components.AppSecondaryPageSlots
@@ -150,7 +151,7 @@ private fun SpendingGoalsFooter(onCreate: () -> Unit, hasRetainedDraft: Boolean)
     AppFloatingActionBar {
         AppPrimaryButton(
             text = stringResource(if (hasRetainedDraft) R.string.goal_draft_continue else R.string.spending_goals_create_action),
-            icon = Icons.Filled.Add,
+            icons = AppButtonIcons(leading = Icons.Filled.Add),
             modifier = Modifier.fillMaxWidth(),
             onClick = onCreate,
         )

@@ -29,6 +29,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.ticketbox.R
 import com.ticketbox.domain.model.DashboardCard
+import com.ticketbox.ui.components.AppButtonIcons
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppSpacing
@@ -112,7 +113,7 @@ internal fun DashboardLayoutEditorContent(
                 ) {
                     TextButton(onClick = actions.onCancel, enabled = !state.saving) { Text(stringResource(R.string.common_cancel)) }
                     AppPrimaryButton(
-                        icon = Icons.Default.Check,
+                        icons = AppButtonIcons(leading = Icons.Default.Check),
                         text = stringResource(if (state.saving) R.string.common_saving else R.string.dashboard_save),
                         enabled = !state.saving,
                         onClick = actions.onSave,

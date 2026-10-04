@@ -19,6 +19,7 @@ import com.ticketbox.ui.components.AppListStateContent
 import com.ticketbox.ui.components.AppListStateSpec
 import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppOutlinedButtonOptions
+import com.ticketbox.ui.components.AppButtonIcons
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.ReceiptEmptyIllustration
 import com.ticketbox.ui.components.displayMonthLabel
@@ -84,7 +85,7 @@ private fun LedgerEmptyCta(
         recordCtaSlot == LedgerRecordCtaSlot.EmptyState -> {
             AppPrimaryButton(
                 text = stringResource(R.string.ledger_header_add_button),
-                icon = Icons.Filled.Add,
+                icons = AppButtonIcons(leading = Icons.Filled.Add),
                 modifier = Modifier.fillMaxWidth(),
                 onClick = onManualAdd,
             )

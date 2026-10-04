@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import com.ticketbox.R
+import com.ticketbox.ui.components.AppButtonIcons
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.ReceiptEmptyIllustration
 import com.ticketbox.ui.design.AppAdaptiveBreakpoints
@@ -118,7 +119,7 @@ internal fun EmptyPendingState(
                 )?.let { cta ->
                     AppPrimaryButton(
                         text = stringResource(cta.labelRes),
-                        icon = Icons.Filled.AddPhotoAlternate,
+                        icons = AppButtonIcons(leading = Icons.Filled.AddPhotoAlternate),
                         modifier = Modifier.fillMaxWidth(),
                         enabled = cta.enabled && state.canStartUpload,
                         onClick = onUploadScreenshot,

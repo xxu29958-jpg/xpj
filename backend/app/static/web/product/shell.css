@@ -776,6 +776,12 @@ details[open] > .chrome-trigger {
 }
 
 @media (max-width: 64rem) {
+    html {
+        scroll-padding-block:
+            calc(var(--mobile-chrome-block-size) + var(--space-3))
+            calc(var(--mobile-nav-block-size) + env(safe-area-inset-bottom) + var(--space-7));
+    }
+
     .product-app {
         display: block;
     }
@@ -923,7 +929,7 @@ details[open] > .chrome-trigger {
     .content[data-page-level="secondary"],
     .content[data-page-level="tertiary"] {
         width: 100%;
-        padding: var(--space-6) var(--space-5)
+        padding: var(--space-6) var(--space-7)
             calc(var(--mobile-nav-block-size) + env(safe-area-inset-bottom) + var(--space-7));
     }
 }
@@ -970,11 +976,6 @@ details[open] > .chrome-trigger {
         display: grid;
     }
 
-    .content,
-    .content[data-page-level="secondary"],
-    .content[data-page-level="tertiary"] {
-        padding-inline: var(--space-4);
-    }
 }
 
 /* K3: pointer 轴正交于 width 断点 — 宽度管布局密度, coarse 管触达尺寸。
@@ -1206,7 +1207,6 @@ html[data-user-bg] body::before {
     background: var(--state-success-bg);
 }
 @media (max-width: 64rem) {
-    .compact-ledger-header .content,
     .compact-ledger-header .product-topbar { padding-inline: var(--space-7); }
     .compact-ledger-header .topbar-brand,
     .compact-ledger-header .topbar-context { display: none; }

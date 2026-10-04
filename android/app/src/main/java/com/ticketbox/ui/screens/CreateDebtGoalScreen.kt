@@ -33,6 +33,7 @@ import com.ticketbox.ui.components.AppListStateContent
 import com.ticketbox.ui.components.AppListStateMessage
 import com.ticketbox.ui.components.AppListStateSpec
 import com.ticketbox.ui.components.AppPageRole
+import com.ticketbox.ui.components.AppButtonIcons
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppSecondaryPageChrome
 import com.ticketbox.ui.components.AppSecondaryPageSlots
@@ -262,7 +263,7 @@ private fun CreateDebtGoalFooter(
             } else {
                 stringResource(R.string.debt_goal_create_save)
             },
-            icon = Icons.Filled.Check,
+            icons = AppButtonIcons(leading = Icons.Filled.Check),
             modifier = Modifier.fillMaxWidth(),
             enabled = canSubmit,
             onClick = onSubmit,

@@ -24,7 +24,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.ui.design.AppAlpha
-import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppSpacing
 
 @Immutable
@@ -53,8 +52,7 @@ fun AppAmountInput(
     actions: AppAmountInputActions,
     modifier: Modifier = Modifier,
     focusRequester: FocusRequester? = null,
-    amountRole: AppAmountRole? = null,
-    supportingText: (@Composable () -> Unit)? = null,
+    decorations: AppTextInputDecorations = AppTextInputDecorations(),
 ) {
     val currencyTrailing = state.currency.trailingLabel()
     AppTextInput(
@@ -75,7 +73,7 @@ fun AppAmountInput(
         ),
         modifier = modifier,
         focusRequester = focusRequester,
-        decorations = AppTextInputDecorations(
+        decorations = decorations.copy(
             trailingContent = actions.onCurrencyClick?.let { onCurrencyClick ->
                 {
                     AppAmountInputCurrencyTrailing(
@@ -84,9 +82,7 @@ fun AppAmountInput(
                         onClick = onCurrencyClick,
                     )
                 }
-            },
-            supportingText = supportingText,
-            amountRole = amountRole,
+            } ?: decorations.trailingContent,
         ),
     )
 }

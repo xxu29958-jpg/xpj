@@ -34,6 +34,7 @@ import com.ticketbox.ui.components.AppAdaptiveEditActionMode
 import com.ticketbox.ui.components.AppAdaptiveTrailingActionRow
 import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppOutlinedButtonOptions
+import com.ticketbox.ui.components.AppButtonIcons
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppSpacing
@@ -247,7 +248,7 @@ private fun SyncStatusUploadSection(state: OutboxStatusUiState, onOpenInbox: () 
     if (rows.isEmpty()) return
     SettingsSection(title = stringResource(R.string.sync_status_mutation_upload_screenshot)) {
         Text(stringResource(R.string.sync_status_upload_recovery_body), style = MaterialTheme.typography.bodyMedium)
-        AppPrimaryButton(text = stringResource(R.string.sync_status_open_uploads), icon = Icons.Filled.CloudUpload,
+        AppPrimaryButton(text = stringResource(R.string.sync_status_open_uploads), icons = AppButtonIcons(leading = Icons.Filled.CloudUpload),
             onClick = onOpenInbox)
     }
 }
@@ -435,7 +436,7 @@ private fun SyncStatusRecoveryActions(
             ) {
                 AppPrimaryButton(
                     text = primary.text,
-                    icon = primary.icon ?: Icons.Filled.CloudUpload,
+                    icons = AppButtonIcons(leading = primary.icon ?: Icons.Filled.CloudUpload),
                     modifier = Modifier.fillMaxWidth(),
                     enabled = primary.enabled,
                     onClick = primary.onClick,
@@ -455,7 +456,7 @@ private fun SyncStatusRecoveryActions(
             ) {
                 AppPrimaryButton(
                     text = primary.text,
-                    icon = primary.icon ?: Icons.Filled.CloudUpload,
+                    icons = AppButtonIcons(leading = primary.icon ?: Icons.Filled.CloudUpload),
                     enabled = primary.enabled,
                     onClick = primary.onClick,
                 )

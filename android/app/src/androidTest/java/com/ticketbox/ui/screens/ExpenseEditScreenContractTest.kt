@@ -2,6 +2,8 @@ package com.ticketbox.ui.screens
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -171,7 +173,7 @@ class ExpenseEditScreenContractTest {
 
         // 已入账：只剩保存 + 返回，确认/忽略收起（语义对齐 ExpenseEditRoute）。
         composeRule.onNodeWithText("保存").assertIsDisplayed()
-        composeRule.onNodeWithText("返回").assertIsDisplayed()
+        composeRule.onNode(hasText("返回") and !hasContentDescription("返回")).assertIsDisplayed()
         composeRule.onNodeWithText("确认入账").assertDoesNotExist()
         composeRule.onNodeWithText("忽略").assertDoesNotExist()
     }

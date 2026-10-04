@@ -23,6 +23,7 @@ import com.ticketbox.ui.components.AppErrorState
 import com.ticketbox.ui.components.AppFloatingActionBar
 import com.ticketbox.ui.components.AppLoadingState
 import com.ticketbox.ui.components.AppPageRole
+import com.ticketbox.ui.components.AppButtonIcons
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.AppSecondaryPageChrome
@@ -179,7 +180,7 @@ private fun SpendingGoalDetailFooter(
                     } else {
                         stringResource(R.string.spending_goal_edit_save)
                     },
-                    icon = Icons.Filled.Check,
+                    icons = AppButtonIcons(leading = Icons.Filled.Check),
                     modifier = Modifier.weight(1f),
                     enabled = state.canSave,
                     onClick = viewModel::save,
@@ -188,7 +189,7 @@ private fun SpendingGoalDetailFooter(
         } else {
             AppPrimaryButton(
                 text = stringResource(R.string.spending_goal_edit_action),
-                icon = Icons.Filled.Edit,
+                icons = AppButtonIcons(leading = Icons.Filled.Edit),
                 modifier = Modifier.fillMaxWidth(),
                 // 编辑和保存都使用这个目标自身已确认的币种。
                 enabled = state.goalCurrency != null && !state.hasPendingEdit && !state.isSaving,

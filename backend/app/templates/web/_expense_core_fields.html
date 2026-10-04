@@ -147,7 +147,7 @@
 
   {% if core_fields_compact|default(false) %}
   <details class="review-edit-field" open>
-    <summary><span class="review-field-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#store"/></svg></span><span class="review-field-copy"><strong>商家</strong><span data-review-value="merchant" data-empty="待补商家" hidden></span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></summary>
+    <summary class="product-entry"><span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#store"/></svg></span><span class="product-entry-copy"><strong>商家</strong><span data-review-value="merchant" data-empty="待补商家" hidden></span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></summary>
   {% endif %}
   <label class="product-field" for="{{ _p }}-merchant">
     <span>商家</span>
@@ -166,7 +166,7 @@
 
   {% if core_fields_compact|default(false) %}
   <details class="review-edit-field review-category-field" open>
-    <summary><span class="review-field-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#shopping-bag"/></svg></span><span class="review-field-copy"><strong>分类</strong><span data-review-value="category" data-empty="待分类" hidden></span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></summary>
+    <summary class="product-entry"><span class="product-entry-icon product-entry-icon--apricot" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#shopping-bag"/></svg></span><span class="product-entry-copy"><strong>分类</strong><span data-review-value="category" data-empty="待分类" hidden></span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></summary>
   {% endif %}
   <label class="product-field" for="{{ _p }}-category">
     <span>分类</span>
@@ -190,7 +190,7 @@
   {% if time_form %}
   {% if core_fields_compact|default(false) %}
   <details class="review-date-fields"{% if field_errors.get('expense_time') or time_form.offset_options %} open{% endif %}>
-    <summary><span class="review-field-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#calendar-plus"/></svg></span><span class="review-field-copy"><strong>账务日期</strong><span>{{ e.accounting_date or '待核对' }}</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></summary>
+    <summary class="product-entry"><span class="product-entry-icon product-entry-icon--lilac" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#calendar-plus"/></svg></span><span class="product-entry-copy"><strong>账务日期</strong><span>{{ e.accounting_date or '待核对' }}</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></summary>
   {% endif %}
   {% with time_prefix=_p, time_name='expense_time', time_disabled=(not can_write or e.is_split_received) %}{% include '_accounting_time_fields.html' %}{% endwith %}
   {% if core_fields_compact|default(false) %}</details>{% endif %}
@@ -213,11 +213,11 @@
 
   {% if core_fields_compact|default(false) %}
   {% if core_fields_subtasks|default(false) %}
-  <a class="review-subtask-link" href="/web/expenses/{{ e.id }}/edit?ledger_id={{ selected_ledger_id }}#expense-items"><span class="review-field-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#list"/></svg></span><span class="review-field-copy"><strong>商品明细</strong><span>查看与核对</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></a>
-  <a class="review-subtask-link" href="/web/expenses/{{ e.id }}/edit?ledger_id={{ selected_ledger_id }}#expense-splits"><span class="review-field-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#users"/></svg></span><span class="review-field-copy"><strong>家庭拆账</strong><span>查看与调整分摊</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></a>
+  <a class="product-entry review-subtask-link" href="/web/expenses/{{ e.id }}/edit?ledger_id={{ selected_ledger_id }}#expense-items"><span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#list"/></svg></span><span class="product-entry-copy"><strong>商品明细</strong><span>查看与核对</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></a>
+  <a class="product-entry review-subtask-link" href="/web/expenses/{{ e.id }}/edit?ledger_id={{ selected_ledger_id }}#expense-splits"><span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#users"/></svg></span><span class="product-entry-copy"><strong>家庭拆账</strong><span>查看与调整分摊</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></a>
   {% endif %}
   <details class="review-note-fields"{% if field_errors.get('tags') %} open{% endif %}>
-    <summary><span class="review-field-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#tag"/></svg></span><span class="review-field-copy"><strong>标签与备注</strong><span>{{ e.tags or ('已填写备注' if e.note else '选填') }}</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></summary>
+    <summary class="product-entry"><span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#tag"/></svg></span><span class="product-entry-copy"><strong>标签与备注</strong><span>{{ e.tags or ('已填写备注' if e.note else '选填') }}</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></summary>
   {% endif %}
   <label class="product-field" for="{{ _p }}-tags">
     <span>标签</span>

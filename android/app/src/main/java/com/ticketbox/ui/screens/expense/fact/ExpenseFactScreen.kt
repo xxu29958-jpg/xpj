@@ -59,7 +59,7 @@ fun ExpenseFactScreen(
             title = stringResource(R.string.expense_fact_title),
             // W2-B: 副标题不再是操作说明——更正入口在摘要段自明。
             subtitle = null,
-            backText = "",
+            backText = stringResource(R.string.expense_edit_primary_back_button),
             onBack = onBack,
             hasBottomBar = false,
             verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),

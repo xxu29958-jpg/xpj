@@ -28,6 +28,7 @@ import com.ticketbox.domain.model.ConfirmedStreamItem
 import com.ticketbox.domain.model.ExpenseFilterCriteria
 import com.ticketbox.domain.model.ExpenseLineageStatus
 import com.ticketbox.domain.model.filterConfirmedStreamItems
+import com.ticketbox.ui.components.AppButtonIcons
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppBusyGuardedSheet
@@ -176,7 +177,7 @@ private fun OccurrenceRecordPayment(
     if (!canWrite || !unfulfilled) return
     AppPrimaryButton(
         text = stringResource(R.string.occurrence_record_payment),
-        icon = Icons.Filled.Add,
+        icons = AppButtonIcons(leading = Icons.Filled.Add),
         onClick = onRecord,
         enabled = origin.resolved && !origin.conflict && !origin.localDraftHeld &&
             !origin.priorGenerationOccupied,
@@ -207,7 +208,7 @@ private fun occurrenceChoiceActions(
             else stringResource(R.string.occurrence_link_review, choice.paymentLabel.orEmpty(),
                 occurrencePaymentAmountText(choice.paymentAmountCents, choice.paymentCurrencyCode))
         Text(label)
-        AppPrimaryButton(text = stringResource(R.string.occurrence_submit), icon = Icons.Filled.Check, onClick = submit,
+        AppPrimaryButton(text = stringResource(R.string.occurrence_submit), icons = AppButtonIcons(leading = Icons.Filled.Check), onClick = submit,
             enabled = state.canWrite, modifier = Modifier.fillMaxWidth().testTag("occurrence-submit"))
     }
 }

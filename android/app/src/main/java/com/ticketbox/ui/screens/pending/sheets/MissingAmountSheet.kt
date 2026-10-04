@@ -27,6 +27,7 @@ import com.ticketbox.ui.components.AppAmountInputActions
 import com.ticketbox.ui.components.AppAmountInputState
 import com.ticketbox.ui.components.AppSheetAction
 import com.ticketbox.ui.components.AppSecondaryButton
+import com.ticketbox.ui.components.AppTextInputDecorations
 import com.ticketbox.ui.components.formatMinorAmount
 import com.ticketbox.ui.components.formatMinorAmountInput
 import com.ticketbox.ui.components.parseMinorAmount
@@ -112,11 +113,13 @@ internal fun MissingAmountSheetContent(
                 },
             ),
             focusRequester = focusRequester,
-            supportingText = if (invalid) {
-                { Text(stringResource(R.string.pending_missing_amount_invalid), color = MaterialTheme.colorScheme.error) }
-            } else {
-                null
-            },
+            decorations = AppTextInputDecorations(
+                supportingText = if (invalid) {
+                    { Text(stringResource(R.string.pending_missing_amount_invalid), color = MaterialTheme.colorScheme.error) }
+                } else {
+                    null
+                },
+            ),
         )
 
         if (originalUnsupported) {
