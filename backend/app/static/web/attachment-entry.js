@@ -164,11 +164,14 @@
       if (!options.batch) window.location.assign(result.next);
     }
     form.addEventListener("change", capture);
+    function canSubmitRetained() {
+      return !onlineOnly && held && !busy && !accepted && !captureError && !needsOriginalReview();
+    }
     async function submit() {
-      if (onlineOnly || !held || busy || accepted || captureError || needsOriginalReview()) return false;
+      if (!canSubmitRetained()) return false;
       const record = store.read(ref);
       if (!record || record.phase === "editing") await capture();
-      if (captureError || !held || needsOriginalReview()) return false;
+      if (!canSubmitRetained()) return false;
       busy = true;
       button.disabled = true;
       notice("正在提交原任务…");
