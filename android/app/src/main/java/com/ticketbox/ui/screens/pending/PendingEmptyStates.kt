@@ -37,26 +37,6 @@ import com.ticketbox.ui.design.LocalAppAdaptiveLayoutPolicy
 import com.ticketbox.ui.design.LocalThemeVisuals
 
 @Composable
-internal fun UploadProgressCard() {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-    ) {
-        Text(
-            text = stringResource(R.string.pending_upload_progress_title),
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = AppTextHierarchy.heading.weight,
-        )
-        Text(
-            text = stringResource(R.string.pending_upload_progress_body),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodySmall,
-        )
-        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-    }
-}
-
-@Composable
 internal fun EmptyPendingState(
     state: EmptyPendingStateModel,
     onUploadScreenshot: () -> Unit,

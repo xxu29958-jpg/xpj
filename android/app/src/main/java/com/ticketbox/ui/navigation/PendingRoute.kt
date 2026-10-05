@@ -79,14 +79,14 @@ internal fun PendingRoute(
         }
     }
 
-    val imagePickerLauncher = rememberSingleImageUploadLauncher(shellState)
+    val imagePickerLauncher = rememberImageUploadLauncher(shellState)
     val launchImagePicker: () -> Boolean = {
         if (state.canStartUpload)
             imagePickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
         state.canStartUpload
     }
 
-    // 待确认页负责的两个入口动作：「传小票」shortcut 拉起图片选择 / 系统分享图直传。
+    // 待确认页接住快捷入口或系统分享；选图后由用户确认，再交给原上传 Owner。
     PendingLaunchActionEffect(
         shellState = shellState,
         canAcceptUpload = state.canStartUpload,
@@ -103,14 +103,10 @@ internal fun PendingRoute(
             navigation = PendingInboxNavigationActions(
                 onOpenRepaymentReview = shellState::openRepaymentDrafts,
                 onOpenDataQuality = { shellState.openSecondaryPage(ProductSecondaryPage.InsightsDataQuality) },
+                onOpenUploadExpense = { navController.openExpense(it) },
             ),
             filterRequest = shellState.pendingFilterRequest,
-            uploadSelection = PendingUploadSelectionUiState(
-                pendingCount = shellState.launchAction.pendingUpload?.selection?.uris?.size ?: 0,
-                accepting = shellState.launchAction.acceptingUpload,
-                onRetry = shellState.launchAction::retryUpload,
-                onStop = { cancelPendingUploadSelection(context, shellState.launchAction) },
-            ),
+            uploadSelection = pendingUploadSelectionUi(context, shellState.launchAction),
         ),
         itemActions = pendingExpenseQueueActions(navController, pendingViewModel),
         reviewActions = pendingReviewFlowActions(pendingViewModel),
@@ -121,6 +117,7 @@ internal fun PendingRoute(
 internal data class PendingInboxNavigationActions(
     val onOpenRepaymentReview: () -> Unit,
     val onOpenDataQuality: () -> Unit,
+    val onOpenUploadExpense: (Long) -> Unit = {},
 )
 
 internal fun pendingScreenChromeActions(
@@ -135,6 +132,7 @@ internal fun pendingScreenChromeActions(
     onUploadScreenshot = onUploadScreenshot,
     onOpenRepaymentReview = navigation.onOpenRepaymentReview,
     onOpenDataQuality = navigation.onOpenDataQuality,
+    onOpenUploadExpense = navigation.onOpenUploadExpense,
     onRetryEnrichment = viewModel::retryEnrichmentObservation,
     onRetryCapacityUpload = viewModel::retryCapacityUpload,
     onDiscardCapacityUpload = viewModel::discardCapacityUpload,
@@ -185,26 +183,26 @@ private fun pendingReviewSheetActions(viewModel: PendingViewModel): PendingRevie
     )
 
 /**
- * 列表内「上传截图」按钮 + 「传小票」shortcut 共用的单图选择器：选一张图 → IO 预处理
+ * 列表内「上传截图」按钮 + 「传小票」shortcut 共用的系统多图选择器：复核选择后 → IO 预处理
  * → 与分享共用持久接受入口。每个非空结果只生成一次原 selection id，重入不重造。
  */
 @Composable
-internal fun rememberSingleImageUploadLauncher(
+internal fun rememberImageUploadLauncher(
     shellState: MainShellState,
-): ManagedActivityResultLauncher<PickVisualMediaRequest, Uri?> {
+): ManagedActivityResultLauncher<PickVisualMediaRequest, List<Uri>> {
     val context = LocalContext.current
-    return rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        persistPickedUploadSource(context, uri)
+    return rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(com.ticketbox.data.repository.MAX_UPLOAD_BATCH_ITEMS)) { uris ->
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        uris.forEach { persistPickedUploadSource(context, it) }
         shellState.launchAction.post(LaunchAction.UploadSharedImages(
-            LaunchIntentRequest.ShareImages(UUID.randomUUID().toString(), listOf(uri.toString())),
+            LaunchIntentRequest.ShareImages(UUID.randomUUID().toString(), uris.map(Uri::toString)),
         ))
     }
 }
 
 /**
  * 消费 MainShell 派发给待确认页的入口动作（W1）：「传小票」shortcut 拉起系统图片选择，
- * 或系统分享图直传。只在动作是自己负责的变体时 [LaunchActionState.consume]
+ * 或系统分享图片。只在动作是自己负责的变体时 [LaunchActionState.consume]
  * （取走即清空），不是自己的留给对的 Route——tab 过场两 Route 短暂共存也不会被错的一方吞掉。
  */
 @Composable
@@ -230,7 +228,7 @@ internal fun PendingLaunchActionEffect(
     }
     val action = actionState.pendingUpload
     LaunchedEffect(action?.selection?.batchId, actionState.uploadAttempt) {
-        if (action == null || actionState.awaitingUploadRetry) return@LaunchedEffect
+        if (action == null || actionState.awaitingUploadRetry || !actionState.uploadApproved) return@LaunchedEffect
         val binding = snapshotFlow { currentCanAccept to currentBinding }
             .first { (ready, binding) -> ready && binding != null }.second ?: return@LaunchedEffect
         if (!actionState.beginUpload(action, binding)) return@LaunchedEffect

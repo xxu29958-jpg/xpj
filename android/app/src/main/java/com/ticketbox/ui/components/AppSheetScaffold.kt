@@ -205,7 +205,7 @@ private fun AppSheetHeader(
     Column(verticalArrangement = Arrangement.spacedBy(if (compact) AppSpacing.tinyGap else AppSpacing.miniGap)) {
         Text(
             text = title,
-            style = MaterialTheme.typography.titleLarge,
+            style = if (compact) MaterialTheme.typography.titleLarge else MaterialTheme.typography.displayMedium,
         )
         subtitle?.takeIf { it.isNotBlank() }?.let {
             Text(

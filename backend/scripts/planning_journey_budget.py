@@ -201,6 +201,7 @@ class BudgetJourney:
                     self.capture(f"{kind}-{width}-{theme}")
         self.native.plan_home()
         self.native.click("打开账户与设置")
+        self.native.click("通知与外观")
         self.native.click("外观与主题")
         self.native.click("玄夜")
         for kind, values in (("budget", ("11,500", "11500")), ("arrangement", ("1,150", "1150")),

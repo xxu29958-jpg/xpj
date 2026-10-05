@@ -20,6 +20,8 @@ internal class LaunchShareHandoffTest {
         state.post(second)
 
         assertEquals(first, state.pending)
+        assertFalse(state.beginUpload(first, binding()))
+        state.retryUpload()
         assertTrue(state.beginUpload(first, binding()))
         assertEquals(first, state.pending)
         state.finishUpload(first, accepted = true)
@@ -34,6 +36,7 @@ internal class LaunchShareHandoffTest {
         val first = share("first", "a", "b")
         val second = share("second", "c")
         state.post(first)
+        state.retryUpload()
         assertTrue(state.beginUpload(first, binding()))
         state.post(second)
         val repeated = share("first", "a", "b")
@@ -53,6 +56,7 @@ internal class LaunchShareHandoffTest {
         val state = LaunchActionState()
         val first = share("first", "a", "b")
         state.post(first)
+        state.retryUpload()
         assertTrue(state.beginUpload(first, binding()))
         state.finishUpload(first, accepted = false)
         assertFalse(state.beginUpload(first, binding()))
@@ -78,10 +82,10 @@ internal class LaunchShareHandoffTest {
             val state = LaunchActionState()
             val original = share("selection-$count", *(1..count).map { "image-$it" }.toTypedArray())
             state.post(original)
-            assertTrue(state.beginUpload(original, binding()))
-            state.finishUpload(original, accepted = false)
             state.retryUpload()
-            assertEquals(count > 100, state.awaitingUploadRetry)
+            assertEquals(count <= 100, state.beginUpload(original, binding()))
+            if (count <= 100) state.finishUpload(original, accepted = false)
+            assertEquals(count <= 100, state.awaitingUploadRetry)
             assertEquals(if (count > 100) 0 else 1, state.uploadAttempt)
             assertEquals(original.selection.uris, state.pendingUpload!!.selection.uris)
             state.cancelUploadSelection()
@@ -158,6 +162,32 @@ internal class LaunchShareHandoffTest {
         val parsedAgain = share("another-parse", "original-image").selection
         assertEquals(listOf(restored), initialLaunchRequests(listOf(restored), parsedAgain))
         assertTrue(initialLaunchRequests(emptyList(), parsedAgain).isEmpty())
+    }
+
+    @Test
+    fun removingAnUnsentImageKeepsTheOtherSourcesAndQueuedShareButNeverChangesAnAttemptedOriginal() {
+        val state = LaunchActionState()
+        val first = share("selection", "a", "b")
+        val later = share("later", "c")
+        state.post(first)
+        state.post(later)
+        state.removeUploadImage(0)
+        val changed = requireNotNull(state.pendingUpload)
+        assertEquals(listOf("b"), changed.selection.uris)
+        assertFalse(changed.selection.batchId == first.selection.batchId)
+        assertTrue(state.containsUpload(later.selection.batchId))
+        assertFalse(state.beginUpload(changed, binding()))
+        state.retryUpload()
+        assertTrue(state.beginUpload(changed, binding()))
+        state.removeUploadImage(0)
+        assertEquals(changed, state.pendingUpload)
+        state.finishUpload(changed, accepted = false)
+        state.removeUploadImage(0)
+        assertEquals(changed, state.pendingUpload)
+        val restored = LaunchActionState.restore(state.snapshot())
+        assertFalse(restored.uploadApproved)
+        assertEquals(listOf("b"), restored.pendingUpload!!.selection.uris)
+        assertEquals(binding(), restored.pendingUpload!!.selection.expectedBinding)
     }
 
     private fun share(name: String, vararg uris: String) = LaunchAction.UploadSharedImages(

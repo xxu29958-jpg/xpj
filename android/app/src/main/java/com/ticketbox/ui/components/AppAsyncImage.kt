@@ -49,7 +49,11 @@ data class AppAsyncImageLayout(
     val compact: Boolean = false,
     val compactSize: DpSize = DpSize(width = 96.dp, height = 128.dp),
     val displayHeight: Dp? = null,
-)
+) {
+    companion object {
+        val ReceiptThumbnail = AppAsyncImageLayout(compact = true, compactSize = DpSize(40.dp, 52.dp))
+    }
+}
 
 /**
  * Coil 3 包装的异步图片加载器，统一处理：
