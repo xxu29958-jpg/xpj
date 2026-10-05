@@ -11,7 +11,7 @@
   const splitNames = ["split_public_id", "split_member_id", "split_amount_yuan", "split_note"];
   const names = [...scalars, "present_fields", "item_rows", "split_rows"];
   const readRows = (form, columns) => [...form.querySelectorAll('[name="' + columns[0] + '"]')].map(input => {
-    const row = input.closest("tr");
+    const row = input.closest("[data-review-line]");
     return Object.fromEntries(columns.map(name => [name, row.querySelector('[name="' + name + '"]').value]));
   });
   function put(input, value) {
@@ -25,11 +25,15 @@
     input.value = value;
   }
   function restoreRows(form, columns, encoded) {
-    const prototype = form.querySelector('[name="' + columns[0] + '"]').closest("tr").cloneNode(true);
-    const parent = form.querySelector('[name="' + columns[0] + '"]').closest("tbody");
+    const original = form.querySelector('[name="' + columns[0] + '"]');
+    const prototype = original.closest("[data-review-line]").cloneNode(true);
+    const parent = original.closest(".expense-lines-editor");
     parent.replaceChildren();
     JSON.parse(encoded).forEach((values, index) => {
       const row = prototype.cloneNode(true);
+      row.hidden = false;
+      row.open = false;
+      row.querySelectorAll("[data-bound]").forEach(node => node.removeAttribute("data-bound"));
       row.querySelectorAll(".field-error, .meta").forEach(node => node.remove());
       row.querySelectorAll("[aria-describedby]").forEach(node => node.removeAttribute("aria-describedby"));
       columns.forEach(name => {
@@ -39,6 +43,7 @@
       });
       parent.append(row);
     });
+    window.TicketboxWeb.bindReviewFields(parent);
   }
   document.querySelectorAll("[data-correction-draft-scope]").forEach(form => {
     let present = [...new FormData(form).keys()].filter(name => scalars.includes(name));

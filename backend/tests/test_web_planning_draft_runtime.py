@@ -19,6 +19,7 @@ _runtime_spec.loader.exec_module(_runtime)
 
 ENV = Environment(loader=ChoiceLoader([
     DictLoader({"base.html": '<!doctype html><html><head><meta charset="utf-8">'
+                '<script src="/static/web/desktop/core.js" defer></script>'
                 '{% block page_scripts %}{% endblock %}</head><body>'
                 '{% block content %}{% endblock %}</body></html>'}),
     FileSystemLoader(ROOT / "backend/app/templates/web"),

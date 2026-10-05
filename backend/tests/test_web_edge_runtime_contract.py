@@ -271,7 +271,8 @@ def test_income_create_original_form_draft_survives_refresh_in_real_edge(tmp_pat
 def test_drawer_fx_status_and_retry_keep_draft_until_explicit_load_in_real_edge(tmp_path: Path) -> None:
     fixture = _REPO_ROOT / "backend/tests/fixtures/drawer_fx_original_form_contract.html"
     page = _write_fixture(tmp_path, fixture.name, fixture.read_text(encoding="utf-8").replace(
-        "__DRAWER_URI__", html.escape(_DRAWER_JS.as_uri(), quote=True)))
+        "__DRAWER_URI__", html.escape(_DRAWER_JS.as_uri(), quote=True)).replace(
+        "__CORE_URI__", html.escape(_DRAWER_JS.with_name("core.js").as_uri(), quote=True)))
     value = _evaluate_fixture(tmp_path, page=page, width=1024, height=768, profile_name="edge-drawer-fx-form")
     assert value == {
         "posts": [{"url": f"/web/expenses/1/{action}", "version": "11", "key": "original-key",
@@ -279,6 +280,37 @@ def test_drawer_fx_status_and_retry_keep_draft_until_explicit_load_in_real_edge(
         "retained": {"reads": 1, "version": "11", "key": "original-key", "merchant": "Unsent merchant", "rowVersion": "11"},
         "loaded": {"reads": 2, "version": "12", "merchant": "Saved merchant", "rowVersion": "12"},
     }
+
+
+def test_pending_subtasks_preserve_inputs_and_guard_only_other_unsaved_forms(tmp_path: Path) -> None:
+    """Real review template and controllers; PG owns saving and confirmation."""
+    environment = Environment(loader=ChoiceLoader([
+        DictLoader({"base.html": '<html><head><meta charset="utf-8"></head><body>'
+                    '{% block content %}{% endblock %}</body></html>'}),
+        FileSystemLoader(_REPO_ROOT / "backend/app/templates/web"),
+    ]), autoescape=select_autoescape(["html"]))
+    row = {"public_id": "", "name": "", "kind": "product", "amount_yuan": "", "unit_price_yuan": "",
+        "quantity_text": "", "category": "", "errors": {}}
+    body = environment.get_template("edit.html").render(expense={"id": 7, "row_version": 9, "merchant": "原商家",
+        "status": "pending", "amount_label": "CNY 100.00", "original_currency_code": "CNY",
+        "original_amount_value": "100.00", "category_input": "餐饮"}, can_write=True, selected_ledger_id="original-ledger",
+        field_errors={}, category_options=["餐饮"], csrf_token="synthetic", edit_return_fields={"return_to": "search"},
+        edit_current_href="review-subtasks.html", receipt_items={"rows": [{**row, "name": "原明细", "amount_yuan": "100.00"}, row, row, row]},
+        split_rows={"rows": []}, split_members=[], currency_input={"currency_code": "CNY", "currency_symbol": "¥"},
+        expense_currency_input={"amount_step": "0.01", "inputmode": "decimal"})
+    for script in [_DRAWER_JS.with_name("core.js"), _DRAWER_JS,
+                   _REPO_ROOT / "backend/tests/fixtures/review_subtasks_probe.js"]:
+        body += '<script src="' + html.escape(script.as_uri(), quote=True) + '"></script>'
+    page = _write_fixture(tmp_path, "review-subtasks.html", body)
+    result = _evaluate_fixture(tmp_path, page=page, width=393, height=852, profile_name="edge-review-subtasks")
+    assert not result.get("error"), result
+    assert result["detailsVisible"] and result["mainHidden"] and result["mainVisibleOnReturn"]
+    assert result["names"] == ["原明细修改", "", "", "第三个新增位"]
+    assert result["amountText"] == "000100.00" and result["summaryText"] == "原明细修改"
+    assert result["ownSubmitWarned"] is False, "Saving the only edited section is not an unsaved departure"
+    assert result["otherInputWarned"] and result["cancelThenLeaveWarned"]
+    assert result["merchant"] == "未提交的原商家" and result["version"] == "9"
+    assert result["action"].endswith("/web/expenses/7/items/save")
 
 
 def _discover_edge() -> str:
@@ -511,6 +543,7 @@ def test_drawer_save_resynchronizes_selected_row_occ_consumers_in_real_edge(
         tmp_path,
         "drawer-bulk-occ-contract.html",
         _DRAWER_BULK_OCC_FIXTURE.read_text(encoding="utf-8")
+        .replace("__CORE_URI__", html.escape(_DRAWER_JS.with_name("core.js").as_uri(), quote=True))
         .replace("__SHELL_KEYBOARD_URI__", html.escape(_SHELL_KEYBOARD_JS.as_uri(), quote=True))
         .replace(
             "__BULK_BAR_URI__",

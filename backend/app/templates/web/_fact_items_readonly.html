@@ -31,32 +31,20 @@
   {% endif %}
   {% set visible_items = receipt_items.rows | selectattr('name') | list %}
   {% if visible_items %}
-  {# 窄屏重组为带标签的行卡（CSS 消费 data-label），不做整页横向滚动。 #}
-  <table class="product-table fact-lines-table">
-    <thead>
-      <tr>
-        <th>类型</th>
-        <th>名称</th>
-        <th>数量</th>
-        <th>单价</th>
-        <th>金额</th>
-        <th>分类</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for item in visible_items %}
-      <tr>
-        <td data-label="类型">{% if item.kind == 'discount' %}优惠/折扣{% elif item.kind == 'tax' %}税{% elif item.kind == 'service_fee' %}服务费{% else %}商品{% endif %}</td>
-        <td data-label="名称">{{ item.name }}</td>
-        {# 空单价/空数量在窄屏行卡模式不渲染无意义标签行（fact-cell-empty 仅桌面占位）。 #}
-        {% if item.quantity_text %}<td data-label="数量">{{ item.quantity_text }}</td>{% else %}<td class="fact-cell-empty"></td>{% endif %}
-        {% if item.unit_price_yuan %}<td data-label="单价" class="num">{{ item.unit_price_yuan }}</td>{% else %}<td class="num fact-cell-empty"></td>{% endif %}
-        <td data-label="金额" class="num">{{ item.amount_yuan }}</td>
-        {% if item.category %}<td data-label="分类">{{ item.category }}</td>{% else %}<td class="fact-cell-empty"></td>{% endif %}
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div role="list">
+    {% for item in visible_items %}
+    <div class="product-entry product-entry--static" role="listitem">
+      <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#shopping-bag"/></svg></span>
+      <div class="product-entry-copy">
+        <div class="product-entry-heading"><strong>{{ item.name }}</strong><span class="product-entry-amount">{% if item.amount_yuan %}{{ currency_input.currency_symbol }}{{ item.amount_yuan }}{% else %}金额未填{% endif %}</span></div>
+        {% if item.kind != 'product' %}<span>{{ {'discount': '优惠/折扣', 'tax': '税', 'service_fee': '服务费'}.get(item.kind, item.kind) }}</span>{% endif %}
+        {% if item.quantity_text or item.unit_price_yuan %}<span>{% if item.quantity_text %}数量 {{ item.quantity_text }}{% endif %}{% if item.quantity_text and item.unit_price_yuan %} · {% endif %}{% if item.unit_price_yuan %}单价 {{ currency_input.currency_symbol }}{{ item.unit_price_yuan }}{% endif %}</span>{% endif %}
+        {% if item.category %}<span>分类 {{ item.category }}</span>{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% if receipt_items.total_yuan %}<div class="fact-reconcile"><span>明细合计 · {{ currency_input.currency_code }}</span><strong>{{ currency_input.currency_symbol }}{{ receipt_items.total_yuan }}</strong></div>{% endif %}
   {% else %}
   <div class="meta">没有记录明细行。</div>
   {% endif %}

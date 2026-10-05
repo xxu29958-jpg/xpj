@@ -105,17 +105,8 @@
     margin-block-start: var(--space-6);
 }
 
-.expense-lines-scroll {
-    max-width: 100%;
-    overflow-x: auto;
-}
-
-.expense-lines-table {
-    min-width: calc(var(--space-12) * 9);
-}
-
-.expense-sub-actions {
-    margin-block-start: var(--space-4);
+.expense-subtask-nav {
+    grid-column: 1 / -1;
 }
 
 .split-invite-form {
@@ -132,27 +123,6 @@
 
 .split-invite-sent {
     margin-block-start: var(--space-5);
-}
-
-.expense-lines-table input,
-.expense-lines-table select {
-    min-width: calc(var(--space-12) * 2);
-}
-
-.expense-lines-table input:disabled,
-.expense-lines-table select:disabled {
-    color: var(--text-muted);
-    background: var(--surface-sunken);
-}
-
-.expense-reconcile {
-    margin-block-end: var(--space-4);
-    padding: var(--space-3) var(--space-4);
-    border-inline-start: var(--space-1) solid var(--brand-primary);
-    border-radius: var(--radius-xs);
-    background: var(--brand-primary-bg);
-    color: var(--text-muted);
-    font-size: var(--type-caption-size);
 }
 
 .library-workspace {

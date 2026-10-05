@@ -53,6 +53,7 @@
   // Native constraint validation must reveal the real field before focusing it.
   // Shared by budget options, debt details and other progressive disclosures.
   app.initFormDisclosures = function initFormDisclosures() {
+    app.bindReviewFields(document);
     document.addEventListener("invalid", function (event) {
       let disclosure = event.target.closest("details");
       while (disclosure) {
@@ -60,6 +61,28 @@
         disclosure = disclosure.parentElement?.closest("details");
       }
     }, true);
+  };
+
+  // The disclosure reads the real input, preserving raw long values without
+  // rounding or a second draft. Used by review, correction and restored rows.
+  app.bindReviewFields = function bindReviewFields(root) {
+    root.querySelectorAll("[data-review-value]").forEach(function (output) {
+      if (output.dataset.bound) return;
+      output.dataset.bound = "true";
+      const field = output.closest("details");
+      const input = field.querySelector('[name="' + output.dataset.reviewValue + '"]');
+      function showValue() {
+        output.textContent = input.value
+          ? (input.tagName === "SELECT" ? input.selectedOptions[0].textContent.trim() : input.value)
+          : output.dataset.empty;
+        (output.closest("[data-review-display]") || output).hidden = input.value === output.dataset.reviewHideValue;
+      }
+      input.addEventListener("input", showValue);
+      showValue();
+      if (!field.hasAttribute("data-review-line")) {
+        field.open = !input.value || input.getAttribute("aria-invalid") === "true";
+      }
+    });
   };
 
   app.homeMinorToMajorText = function homeMinorToMajorText(value) {

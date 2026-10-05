@@ -317,6 +317,7 @@ def _web_item_rows(
     )
     return {
         "rows": rows,
+        "total_yuan": _amount_yuan(response.items_total_amount_cents, currency_code),
         "status": response.items_sum_status,
         "mismatch_cents": response.mismatch_cents,
         "mismatch_yuan": _amount_yuan(response.mismatch_cents, currency_code),

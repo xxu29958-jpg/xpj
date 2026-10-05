@@ -203,9 +203,10 @@
        (_bottom_nav.html); >64rem 本壳 display:contents, 桌面结构不变。 #}
     <div class="mobile-chrome">
       <header class="product-topbar">
-      {% if _inbox_task %}
-      <a class="product-button product-button--quiet" href="{{ edit_return_href }}"><svg width="20" height="20" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-left"/></svg> {{ edit_return_label or '收件箱' }}</a>
-      <span class="topbar-spacer"></span><span class="product-eyebrow">核对小票</span>
+      {% if _is_expense_detail %}
+      <a class="product-button product-button--quiet" href="{{ edit_return_href }}" data-review-stage="primary"><svg width="20" height="20" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-left"/></svg> {{ edit_return_label or ('收件箱' if _inbox_task else '流水') }}</a>
+      <a class="product-button product-button--quiet" href="#review" data-review-stage="details" hidden><svg width="20" height="20" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-left"/></svg> 核对小票</a>
+      <span class="topbar-spacer"></span><span class="product-eyebrow" data-review-stage="primary">{{ '核对小票' if expense.status == 'pending' else '账单详情' }}</span>
       {% else %}
       {# K3 响应式收件片: ≤64rem 品牌身份并入 topbar (sidebar 整栏隐藏,
          chrome 收进 mobile-chrome 单带); 桌面由 CSS 隐藏, sidebar .brand
@@ -284,7 +285,7 @@
     </main>
     {# W1 IA-B: 五域主导航在 ≤64rem 是 fixed 底部 nav (拇指区), >64rem 由
        CSS 隐藏 (桌面 sidebar 域轨是唯一主导航)。 #}
-    {% if not _inbox_task %}{% include "_bottom_nav.html" %}{% endif %}
+    {% if _page_level != 'tertiary' %}{% include "_bottom_nav.html" %}{% endif %}
   </div>
   <div class="drawer-host">
     {% block drawer %}{% endblock %}

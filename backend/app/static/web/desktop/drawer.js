@@ -39,24 +39,59 @@
     return "save";
   }
 
-  // A number input cannot wrap. The native disclosure reads the same input as
-  // text, keeping long values visible without rounding or a second draft.
-  function bindReviewFields(root) {
-    root.querySelectorAll("[data-review-value]").forEach(function (output) {
-      if (output.dataset.bound) return;
-      output.dataset.bound = "true";
-      const field = output.closest("details");
-      const input = field.querySelector('[name="' + output.dataset.reviewValue + '"]');
-      function showValue() { output.textContent = input.value || output.dataset.empty; }
-      input.addEventListener("input", showValue);
-      showValue();
-      (output.closest("[data-review-display]") || output).hidden = false;
-      field.open = !input.value || input.getAttribute("aria-invalid") === "true";
+  function preserveReviewOnLeave(hasUnsubmittedInput) {
+    window.addEventListener("beforeunload", function (event) {
+      if (hasUnsubmittedInput()) {
+        event.preventDefault();
+        event.returnValue = "";
+      }
     });
   }
 
+  function bindReviewSubtasks() {
+    const related = document.querySelector("[data-review-subtasks]");
+    if (!related) return;
+    if (related.dataset.reviewError && !window.location.hash) {
+      window.history.replaceState(null, "", "#expense-" + related.dataset.reviewError);
+    }
+    const forms = [...document.querySelectorAll("[data-review-form]")];
+    let submittingForm = null;
+    forms.forEach(form => {
+      form.addEventListener("input", () => { form.dataset.edited = "true"; });
+      form.addEventListener("submit", event => {
+        submittingForm = form;
+        queueMicrotask(() => { if (event.defaultPrevented) submittingForm = null; });
+      });
+    });
+    preserveReviewOnLeave(() => {
+      const submitted = submittingForm;
+      submittingForm = null;
+      return forms.some(form => form.dataset.edited && form !== submitted);
+    });
+    let showingRelated = null;
+    function showReviewStage() {
+      const target = window.location.hash;
+      const next = target === "#expense-items" || target === "#expense-splits";
+      document.querySelectorAll("[data-review-stage]").forEach(node => {
+        node.hidden = (node.dataset.reviewStage === "details") !== next;
+      });
+      if (next) related.querySelectorAll(":scope > details").forEach(node => { node.open = true; });
+      related.querySelectorAll(".product-segments a").forEach(link => {
+        if (link.hash === target) link.setAttribute("aria-current", "location");
+        else link.removeAttribute("aria-current");
+      });
+      if (showingRelated !== next && (next || showingRelated !== null)) {
+        document.getElementById(next ? "review-breakdown" : "review").focus({preventScroll: true});
+        window.scrollTo(0, 0);
+      }
+      showingRelated = next;
+    }
+    window.addEventListener("hashchange", showReviewStage);
+    showReviewStage();
+  }
+
   app.initDrawer = function initDrawer() {
-    bindReviewFields(document);
+    bindReviewSubtasks();
     const drawer = document.getElementById("drawer");
     const scrim = document.getElementById("drawer-scrim");
     if (!drawer || !scrim) return;
@@ -95,12 +130,7 @@
       else unlockBackground();
     }
     wideReview.addEventListener("change", syncReviewLayout);
-    window.addEventListener("beforeunload", function (event) {
-      if (!submitting && (retainedForms.size || drawer.querySelector('[data-drawer-form][data-edited="true"]'))) {
-        event.preventDefault();
-        event.returnValue = "";
-      }
-    });
+    preserveReviewOnLeave(() => !submitting && (retainedForms.size || drawer.querySelector('[data-drawer-form][data-edited="true"]')));
 
     function close() {
       if (submitting) return;
@@ -217,7 +247,7 @@
     }
 
     function bindFragment() {
-      bindReviewFields(drawer);
+      app.bindReviewFields(drawer);
       drawer.querySelectorAll("[data-review-position]").forEach(function (position) {
         const rows = Array.from(document.querySelectorAll(".exp-row-detail[data-fragment-url]"));
         position.textContent = "第 " + (rows.indexOf(currentRow) + 1) + " / " + rows.length + " 张";
