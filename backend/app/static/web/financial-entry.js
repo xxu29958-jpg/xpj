@@ -120,6 +120,29 @@
       acceptsDestination: (next, saved) => next.pathname === "/web/expenses/" + saved.expense_id + "/edit",
     });
   });
+  function updateOffsetPreview(form) {
+    const panel = form.querySelector("[data-offset-preview]");
+    if (!panel) return;
+    panel.hidden = true;
+    const field = name => form.elements.namedItem(name);
+    if (field("original_amount").readOnly || field("expected_row_version").value !== panel.dataset.previewVersion ||
+        field("original_currency_code").value !== panel.dataset.previewCurrency) return;
+    const after = window.TicketboxWeb.remainingMoneyPreview(field("original_amount").value,
+      panel.dataset.previewMinor, Number(panel.dataset.previewDigits));
+    if (after === null) return;
+    panel.querySelector("[data-offset-net]").textContent = panel.dataset.previewSymbol + after;
+    panel.querySelector("[data-offset-preview-input]").textContent = panel.dataset.previewSymbol + field("original_amount").value;
+    panel.hidden = false;
+  }
+  document.querySelectorAll(".offset-form").forEach(form => {
+    form.addEventListener("input", () => updateOffsetPreview(form));
+    form.addEventListener("change", () => updateOffsetPreview(form));
+    form.addEventListener("submit", () => {
+      const panel = form.querySelector("[data-offset-preview]");
+      if (panel) panel.hidden = true;
+    });
+    updateOffsetPreview(form);
+  });
   document.querySelectorAll("[data-offset-draft-scope]").forEach(form => {
     const fields = ["ledger_id", "expense_id", "task_id", "target_public_id", "kind", "original_amount", "original_currency_code",
       "accounting_date", "reason", "void_reason", "expected_row_version", "idempotency_key", "draft_client_ref",
@@ -129,6 +152,7 @@
       idField: "task_id", titleField: "reason", amount: "original_amount", create: fields, edit: fields,
       draftRefField: "draft_client_ref", commandKeyField: "idempotency_key", reviewName: "review_latest",
       reviewRequiresRejection: true, reviewWhileEditing: true, submitSelector: "[data-offset-submit]",
+      updatePresentation: updateOffsetPreview,
       inactiveMessage: "当前事实不允许追加这项记录。原输入仍保留，可核实已提交的请求或放弃本地原稿。",
       relatedAction: submitter => submitter?.getAttribute("formaction") === "/web/expenses/" + field("expense_id").value + "/offset-rate",
       href: (record, scope) => {
@@ -150,10 +174,18 @@
         put(input, saved[name]);
       }),
       present: (_, saved) => {
-        form.querySelector("[data-offset-basis-note]").textContent = "原输入依据版本 " + saved.expected_row_version +
+        if (!document.querySelector(".fact-task[data-active]") || window.location.hash === "#offset-edit-" + saved.draft_client_ref) {
+          document.querySelectorAll(".fact-task[data-active]").forEach(task => task.removeAttribute("data-active"));
+          form.closest(".fact-task")?.setAttribute("data-active", "");
+        }
+        const note = form.querySelector("[data-offset-basis-note]");
+        note.hidden = false;
+        note.textContent = "原输入依据版本 " + saved.expected_row_version +
           "，原币 " + saved.original_currency_code + "；当前事实显示在上方，核对后才采用新的依据。";
         const label = form.querySelector('label[for="offset-amount"]');
         if (label) label.textContent = "退回金额（" + saved.original_currency_code + "）";
+        const panel = form.querySelector("[data-offset-preview]");
+        if (panel) panel.hidden = true;
       },
       body: (body, saved) => fields.forEach(name => body.set(name, saved[name])),
       receiptMatches: (receipt, saved) => String(receipt?.expense_id) === saved.expense_id &&

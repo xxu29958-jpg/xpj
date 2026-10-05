@@ -38,6 +38,7 @@ import com.ticketbox.ui.design.LocalThemeVisuals
 fun AppPaperCard(
     modifier: Modifier = Modifier,
     radius: RoundedCornerShape = RoundedCornerShape(AppRadius.hero),
+    containerColor: Color? = null,
     content: @Composable () -> Unit,
 ) {
     val visuals = LocalThemeVisuals.current
@@ -46,7 +47,7 @@ fun AppPaperCard(
             .fillMaxWidth()
             .paperSurface(
                 radius = radius,
-                containerColor = visuals.paperCard.copy(alpha = APP_PAPER_CARD_DEFAULT_ALPHA),
+                containerColor = containerColor ?: visuals.paperCard.copy(alpha = APP_PAPER_CARD_DEFAULT_ALPHA),
                 borderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft),
                 shadowColor = visuals.shadowTint,
             ),

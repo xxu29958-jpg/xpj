@@ -267,6 +267,12 @@ def test_reports_fact_correction_keeps_original_month_through_422_409_and_succes
     current = web_client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers).json()
     prepared = web_client.post(action, data={**data, "review_latest": "true"}, follow_redirects=False)
     assert prepared.status_code == 200, prepared.text
+    unresolved = _hidden_form(prepared.text, action)
+    assert unresolved["expected_row_version"] == data["expected_row_version"]
+    assert unresolved["idempotency_key"] == data["idempotency_key"]
+    prepared = web_client.post(action, data={**data, **unresolved, "review_latest": "true",
+        "review_merchant_choice": "keep"}, follow_redirects=False)
+    assert prepared.status_code == 200, prepared.text
     reviewed = _hidden_form(prepared.text, action)
     assert {key: reviewed[key] for key in origin} == origin
     assert reviewed["expected_row_version"] == str(current["row_version"])

@@ -22,6 +22,8 @@
       form.dispatchEvent(new frame.contentWindow.Event("input", {bubbles: true}));
     }
     const before = snapshot(), ref = form.elements.namedItem("draft_client_ref").value;
+    const review = form.querySelector('[data-command-review]');
+    if (review) review.checked = true;
     form.requestSubmit(form.querySelector('[data-offset-submit]'));
     await wait(() => form.dataset.offsetDraftPhase === "blocked" && !form.querySelector('[data-offset-submit]').disabled);
     const frozen = form.elements.namedItem(id === 12 ? "void_reason" : "reason").readOnly &&

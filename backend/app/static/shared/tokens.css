@@ -19,6 +19,7 @@
 
 :root,
 :root[data-theme="paper"] {
+    color-scheme: light;
     /* Low-chroma OKLCH neutrals (hue 155, chroma 0.002–0.014), exported as sRGB
        for Android and the shipped ECharts color parser, which rejects OKLCH.
        Light surfaces span L=0.946–0.997; text spans L=0.235–0.660. */
@@ -156,6 +157,7 @@
 
 
 :root[data-theme="midnight"] {
+    color-scheme: dark;
     /* After-hours use: quiet graphite, with distinct solid reading surfaces. */
     --surface-app: #16201c;
     --surface-card: #1b1f1c;

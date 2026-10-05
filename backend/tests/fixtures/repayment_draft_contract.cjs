@@ -103,6 +103,8 @@ function environment() {
     const start = () => {
       if (options.splitChange) vm.runInNewContext(fs.readFileSync(require('node:path').join(
         require('node:path').dirname(process.argv[3]), 'split-settlement-input.js'), 'utf8'), {window});
+      vm.runInNewContext(fs.readFileSync(require('node:path').join(require('node:path').dirname(process.argv[3]),
+        'desktop/core.js'), 'utf8'), {window, document});
       vm.runInNewContext(fs.readFileSync(process.argv[3], 'utf8'), {window, document});
     };
     windows.push(window);

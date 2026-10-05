@@ -20,8 +20,6 @@
     const input = form.elements.namedItem("amount_major");
     const output = panel.querySelector("[data-balance-after]");
     const digits = Number(panel.dataset.balanceDigits);
-    const before = BigInt(panel.dataset.balanceMinor);
-    const scale = 10n ** BigInt(digits);
     function update() {
       panel.hidden = true;
       const currency = form.elements.namedItem("home_currency_code");
@@ -30,16 +28,9 @@
           version && version.value !== panel.dataset.balanceVersion) return;
       // This estimates only exact positive input. It never normalizes a command,
       // clamps an overpayment, or represents an unknown submission as accepted.
-      const match = /^(0|[1-9][0-9]*)(?:\.([0-9]+))?$/.exec(input.value.trim());
-      if (!match) return;
-      const fraction = match[2] || "";
-      if (/[^0]/.test(fraction.slice(digits))) return;
-      const minor = BigInt(match[1]) * scale + BigInt(fraction.slice(0, digits).padEnd(digits, "0") || "0");
-      if (minor <= 0n || minor > before) return;
-      const after = before - minor;
-      const whole = (after / scale).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-      output.textContent = panel.dataset.balanceSymbol + whole +
-        (digits ? "." + (after % scale).toString().padStart(digits, "0") : "");
+      const after = window.TicketboxWeb.remainingMoneyPreview(input.value, panel.dataset.balanceMinor, digits);
+      if (after === null) return;
+      output.textContent = panel.dataset.balanceSymbol + after;
       panel.hidden = false;
     }
     form.addEventListener("input", update);

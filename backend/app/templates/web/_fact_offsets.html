@@ -4,9 +4,8 @@
    （直接消费 offset_currency_input 元数据），不用 remaining 设 max，不做金额
    eligibility —— 409/422 由 route 以 offset_form/offset_void_form 重渲染
    open+原输入+原 token，本模板只呈现；显式核对才准备新依据。
-   交互：native <details> 保证 no-JS；summary 是可发现动作。offset_form.kind 为
-   refund/chargeback 时只展开「登记退款或拒付」，为 reversal 时只展开冲销；
-   void 错误只展开目标行。冲销是低频高危动作：quiet-danger disclosure，无金额。
+   交互：原生锚链接进入同一账单的专注任务，no-JS 可用；原稿与服务端错误继续
+   显示原任务。事件撤销仍在目标行展开。冲销单独说明影响，不填写金额。
    reversal 不是现金流入：active 行不渲染金额槽（与 stream 同一语义）。
    reversal gate 用 server lineage status（context 已收成 confirmed-only）：
    有 active 退款/拒付时冲销必然 409 expense_refund_exists，不诱导用户提交。 #}
@@ -69,6 +68,8 @@
   {% if offset_retained_target %}{% with row=offset_retained_target %}{% include '_offset_void_form.html' %}{% endwith %}{% endif %}
   {% if offset_reversed %}<p class="meta">这笔账单已冲销，不再计入支出。</p>
   {% elif not offset_can_reverse %}<p class="meta">已有退款或拒付记录；先撤销它们，才能冲销整笔账单。</p>{% endif %}
-  {% with reversal=false %}{% include '_offset_form.html' %}{% endwith %}
-  {% with reversal=true %}{% include '_offset_form.html' %}{% endwith %}
+  <div class="offset-form-actions">
+  {% if offset_can_create_refund %}<a class="product-button product-button--secondary" href="#offset-create-money">登记退款或拒付</a>{% endif %}
+  {% if offset_can_reverse %}<a class="product-button product-button--quiet" href="#offset-create-reversal">冲销这笔账单</a>{% endif %}
+  </div>
 </section>

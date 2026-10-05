@@ -1361,10 +1361,13 @@
 .fact-disclosure > .product-panel { box-shadow: none; border: 0; background: transparent; padding: var(--space-3) 0; }
 .fact-disclosure .product-panel-header { margin-bottom: var(--space-3); }
 .fact-actions > .product-button--primary { flex: 1 1 100%; }
-.fact-workspace > .fact-timeline { display: none; }
-.fact-workspace > .fact-timeline:target { display: grid; gap: var(--space-5); }
-.fact-timeline > .product-button { justify-self: start; }
-.fact-workspace:has(> .fact-timeline:target) > .fact-layout { display: none; }
+.fact-workspace > .fact-task { display: none; }
+.fact-workspace > .fact-task:target,
+.fact-workspace:not(:has(> :target)) > .fact-task[data-active] { display: grid; gap: var(--space-5); }
+.fact-task > .product-button { justify-self: start; }
+.fact-task > .product-page-header { margin-block-end: 0; }
+.fact-workspace:has(> .fact-task:target) > .fact-layout,
+.fact-workspace:not(:has(> :target)):has(> .fact-task[data-active]) > .fact-layout { display: none; }
 
 .fact-amount {
     font-family: var(--font-numeric);
@@ -1830,34 +1833,11 @@
     font-weight: var(--type-subtitle-weight);
 }
 
-.fact-offsets .offset-kind-group {
-    display: flex;
-    gap: var(--space-3);
-}
-
-.fact-offsets .offset-kind-option {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-}
-
-.fact-offsets .offset-action-panel,
 .fact-offsets .offset-void {
     padding-block: var(--space-3);
     border-block-start: 1px solid var(--border-card);
 }
 
-.fact-offsets .offset-action-panel > summary {
-    color: var(--text-default);
-    font-weight: var(--type-subtitle-weight);
-    cursor: pointer;
-}
-
-.fact-offsets .offset-action-panel--danger > summary {
-    color: var(--state-danger-fg);
-}
-
-.fact-offsets .offset-action-panel > summary:focus-visible,
 .fact-offsets .offset-void > summary:focus-visible {
     outline: var(--space-1) solid var(--brand-focus-ring);
     outline-offset: var(--space-1);
@@ -1873,10 +1853,10 @@
     cursor: pointer;
 }
 
-.fact-offsets .offset-form,
+.offset-form,
 .fact-offsets .offset-void-form {
     display: grid;
-    gap: var(--space-3);
+    gap: var(--space-5);
     margin-block-start: var(--space-3);
 }
 
@@ -1885,9 +1865,9 @@
     padding: var(--space-2) var(--space-3);
 }
 
-.fact-offsets .offset-form-actions {
-    display: flex;
-    justify-content: flex-end;
+.offset-form-actions {
+    display: grid;
+    gap: var(--space-3);
 }
 
 .fact-offsets .offset-history {
@@ -1895,10 +1875,12 @@
     border-block-start: 1px solid var(--border-card);
 }
 
-.manual-entry {
+.manual-entry,
+.offset-action-panel {
     max-inline-size: 40rem;
     margin-inline: auto;
 }
+.offset-action-panel { width: 100%; }
 
 .manual-entry > .product-page-header {
     margin-block-start: var(--space-5);

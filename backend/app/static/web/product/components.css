@@ -546,10 +546,11 @@ button[disabled] {
 }
 
 .dt-form-row > label,
-.product-field > label {
-    color: var(--text-default);
-    font-size: var(--type-caption-size);
-    font-weight: var(--type-subtitle-weight);
+.product-field > label,
+.product-field > span:first-child {
+    color: var(--text-meta);
+    font-size: var(--type-body-size);
+    font-weight: var(--type-body-weight);
 }
 
 .dt-input,
@@ -1036,6 +1037,7 @@ fieldset.product-field { border: 0; padding: 0; margin: 0; }
 .product-comparison span { color: var(--text-meta); font-size: var(--type-caption-size); }
 .product-comparison strong { font-size: var(--type-title-size); font-weight: var(--type-title-weight); }
 .product-comparison-proposed { background: var(--brand-primary-bg); border-radius: var(--radius-input); }
+.product-panel--highlight { background: var(--brand-primary-bg); }
 
 .text-warning {
     color: var(--state-warn-fg);
@@ -1199,12 +1201,6 @@ details[open] > .product-entry > svg { transform: rotate(90deg); }
     .product-drawer-field-row,
     .expense-manual-fx-equation { grid-template-columns: minmax(0, 1fr); }
     .review-amount-field { background: var(--surface-raised); padding: var(--space-5); margin-bottom: var(--space-3); }
-}
-
-.product-field > span:first-child {
-    color: var(--text-default);
-    font-size: var(--type-caption-size);
-    font-weight: var(--type-subtitle-weight);
 }
 
 .error-text {

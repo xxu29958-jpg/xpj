@@ -90,6 +90,13 @@ a {
     display: contents;
 }
 
+/* A bill's focused task supplies its own return to the bill; restore the
+   normal product bar when that task returns to the overview. */
+.product-workspace:has(.fact-workspace > .fact-task:target) > .mobile-chrome,
+.product-workspace:has(.fact-workspace > .fact-task[data-active]):not(:has(.fact-workspace > :target)) > .mobile-chrome {
+    display: none;
+}
+
 .sidebar {
     position: sticky;
     inset-block-start: 0;

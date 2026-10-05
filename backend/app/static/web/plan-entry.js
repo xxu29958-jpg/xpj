@@ -96,7 +96,7 @@
         if (usesDisabled(input)) input.disabled = !editing || permanentDisabled.has(input);
         else input.readOnly = !editing || permanentReadonly.has(input);
       });
-      form.querySelectorAll("[data-plan-preview], [data-budget-add-more]").forEach(input => { input.disabled = !editing; });
+      form.querySelectorAll("[data-plan-preview], [data-budget-add-more], [data-command-review]").forEach(input => { input.disabled = !editing; });
     }
     function enableNativeValues() {
       [...form.elements].forEach(input => {
@@ -118,6 +118,7 @@
       }
       form.querySelector(selector("review-note")).hidden = review.hidden;
       form.dataset[family + "DraftPhase"] = phase;
+      definition.updatePresentation?.(form);
     }
     function stop(message) { blocked = true; controls(); notice(message); }
     function restore(record) {

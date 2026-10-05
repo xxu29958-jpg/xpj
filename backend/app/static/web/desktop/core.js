@@ -107,6 +107,22 @@
     return (negative ? "-" : "") + whole.toString() + "." + fraction;
   };
 
+  // Read-only repayment/refund estimate. Currency precision and balance come
+  // from the displayed server snapshot; this never changes or accepts input.
+  app.remainingMoneyPreview = function remainingMoneyPreview(value, before, digits) {
+    if (!Number.isInteger(digits) || digits < 0 || digits > 20 || !/^[0-9]+$/.test(before)) return null;
+    const match = /^(0|[1-9][0-9]*)(?:\.([0-9]+))?$/.exec(value.trim());
+    if (!match) return null;
+    const fraction = match[2] || "";
+    if (/[^0]/.test(fraction.slice(digits))) return null;
+    const scale = 10n ** BigInt(digits);
+    const minor = BigInt(match[1]) * scale + BigInt(fraction.slice(0, digits).padEnd(digits, "0") || "0");
+    if (minor <= 0n || minor > BigInt(before)) return null;
+    const after = BigInt(before) - minor;
+    const whole = (after / scale).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    return whole + (digits ? "." + (after % scale).toString().padStart(digits, "0") : "");
+  };
+
   app.homeMinorToMajor = function homeMinorToMajor(value) {
     const amount = Number(value || 0);
     const digits = app.homeCurrencyMinorDigits();

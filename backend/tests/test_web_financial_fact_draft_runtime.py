@@ -123,7 +123,10 @@ def offset_page(expense_id, query):
     code = "JPY" if current else "CNY"
     row = {"public_id": "offset-original", "kind": "refund", "kind_label": "商家退款", "amount_label": "CNY 3.00",
         "accounting_date": "2026-09-30", "reason": "原退回", "row_version": 1, "void_idempotency_key": str(uuid4()), "active": True}
-    content = _browser.ENV.get_template("_fact_offsets.html").render(
+    content = _browser.ENV.from_string("""<div class="fact-workspace">
+        <div class="fact-layout" id="fact-overview">{% include '_fact_offsets.html' %}</div>
+        {% with reversal=false %}{% include '_offset_form.html' %}{% endwith %}
+        {% with reversal=true %}{% include '_offset_form.html' %}{% endwith %}</div>""").render(
         expense={"id": expense_id, "row_version": count, "original_currency_code": code},
         selected_ledger_id="owner", csrf_token="synthetic", edit_return_fields={"return_to": "search", "return_query": "原查询"},
         offset_draft_scope=SCOPE, offset_can_write=True, offset_can_create_refund=not current, offset_can_reverse=not current,
@@ -136,7 +139,7 @@ def offset_page(expense_id, query):
             "reason": "", "expected_row_version": count, "original_currency_code": code, "idempotency_key": str(uuid4())},
         offset_reversal_key=str(uuid4()))
     return '<!doctype html><meta charset="utf-8">' + content + ''.join(
-        f'<script src="/static/web/{name}.js" defer></script>' for name in ("manual-drafts", "plan-entry", "financial-entry"))
+        f'<script src="/static/web/{name}.js" defer></script>' for name in ("desktop/core", "manual-drafts", "plan-entry", "financial-entry"))
 
 
 class OffsetRecoveryHandler(_browser.RecoveryHandler):
