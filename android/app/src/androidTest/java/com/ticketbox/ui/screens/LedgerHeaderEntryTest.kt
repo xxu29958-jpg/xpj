@@ -22,6 +22,8 @@ import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import androidx.test.core.app.ApplicationProvider
+import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.ConfirmedStreamItem
 import com.ticketbox.domain.model.Expense
@@ -154,7 +156,8 @@ class LedgerHeaderEntryTest {
             actions = LedgerScreenActions(onOpenGlobalSearch = { searchOpened = true }),
         )
 
-        composeRule.onNodeWithContentDescription("搜索").performClick()
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        composeRule.onNodeWithContentDescription(context.getString(R.string.global_search_header_title)).performClick()
         assertTrue(searchOpened)
     }
 

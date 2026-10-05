@@ -341,22 +341,17 @@ def _interrupt_csv_before_finalize(monkeypatch, *, public_id: str, row_outcome: 
 
 
 def _csv_receipt_rendered_counts(hub: str, detail: str, public_id: str) -> tuple[dict[str, int], dict[str, int]]:
-    batch_row = next(
-        row for row in re.findall(r"<tr\b[^>]*>(.*?)</tr>", hub, re.DOTALL)
-        if f"/web/import/{public_id}?" in row
-    )
-    cells = re.findall(r"<td\b[^>]*>(.*?)</td>", batch_row, re.DOTALL)
-    metrics = dict(re.findall(r"<span>([^<]+)</span><strong>(\d+)</strong>", detail))
-    hub_counts = {"remaining_valid_rows": int(cells[2].strip()), "error_rows": int(cells[4].strip())}
-    for field, label in {"inserted_count": "消费草稿", "confirmed_offset_rows": "事件入账",
-                         "matched_rows": "已有", "review_rows": "待复核"}.items():
-        values = re.findall(rf"{label}\s+(\d+)", cells[3])
-        assert len(values) == 1, f"Expected one {label} count in the saved batch result: {cells[3]}"
-        hub_counts[field] = int(values[0])
-    detail_labels = {"remaining_valid_rows": "剩余可导入", "error_rows": "错误行",
-        "inserted_count": "新增消费草稿", "confirmed_offset_rows": "已登记退款 / 冲销",
-        "matched_rows": "已有记录", "review_rows": "待复核事件"}
-    return hub_counts, {field: int(metrics[label]) for field, label in detail_labels.items()}
+    batch_row = re.search(r'<div data-import-batch="' + re.escape(public_id) + r'">(.*?)</div>', hub, re.DOTALL)
+    assert batch_row is not None, "The original batch is absent from the import history"
+    fields = ("remaining_valid_rows", "inserted_count", "confirmed_offset_rows", "matched_rows", "review_rows", "error_rows")
+
+    def counts(html):
+        visible = re.findall(r'<(?:span|strong) data-import-count="([a-z_]+)">(\d+)</(?:span|strong)>', html)
+        assert len(visible) == len(dict(visible)), "An outcome is rendered twice with competing counts"
+        result = dict(visible)
+        return {field: int(result.get(field, "0")) for field in fields}
+
+    return counts(batch_row.group(1)), counts(detail)
 
 
 def test_native_csv_rendered_counts_preserve_each_financial_result_kind(monkeypatch) -> None:

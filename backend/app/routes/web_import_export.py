@@ -138,6 +138,7 @@ def web_import_form(
     page_size: int = 20,
     msg: str = "",
     flash_type: str = "",
+    task: str = "",
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
@@ -150,6 +151,7 @@ def web_import_form(
     ctx["export_tags"] = list_tags(db, selected_id)
     ctx["flash_message"] = msg
     ctx["flash_type"] = "error" if flash_type == "error" else "success"
+    ctx["view_mode"] = task if task in {"export", "portable"} else ""
     ctx["q"] = "?ledger_id=" + selected_id
     ctx["portable_export_available"] = getattr(request.state, "web_session_auth", None) is not None
     ctx["batch_page"] = batches
@@ -219,6 +221,13 @@ def web_import_batch_detail(
     except AppError as exc:
         return _web_redirect("/web/import", selected_id, msg=exc.message, flash_type="error")
     batch = progress.batch
+    next_review_href = ""
+    if progress.row_counts.review_rows:
+        next_rows = list_csv_import_rows(db, tenant_id=selected_id, public_id=public_id,
+                                        page=1, page_size=1, status="review")
+        if next_rows.items:
+            next_review_href = _with_ledger(
+                f"/web/import/{public_id}/rows/{next_rows.items[0].line_number}/review", selected_id)
     expense_ids = list({row.resolved_expense_id or row.expense_id for row in rows_page.items
                         if row.resolved_expense_id or row.expense_id})
     current_expenses = {
@@ -231,6 +240,7 @@ def web_import_batch_detail(
         {
             "batch": batch,
             "progress": progress,
+            "next_review_href": next_review_href,
             "created_label": accounting_datetime_label(batch.created_at),
             "updated_label": accounting_datetime_label(batch.updated_at),
             "rows": rows_page.items,

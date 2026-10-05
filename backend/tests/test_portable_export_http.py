@@ -54,8 +54,11 @@ def test_api_and_real_browser_viewer_download_without_filters_or_cross_ledger_di
     _assert_bill_and_unverified_original(api, expense_id, source.read_bytes())
     page = browser.get("/web/import?ledger_id=owner")
     assert page.status_code == 200, page.text
-    assert 'href="/web/export/portable?ledger_id=owner"' in page.text
-    assert 'action="/web/export.csv"' in page.text
+    assert 'task=portable' in page.text and 'task=export' in page.text
+    portable_page = browser.get("/web/import?ledger_id=owner&task=portable")
+    assert 'href="/web/export/portable?ledger_id=owner"' in portable_page.text
+    export_page = browser.get("/web/import?ledger_id=owner&task=export")
+    assert 'action="/web/export.csv"' in export_page.text
     web = browser.get("/web/export/portable?ledger_id=owner&month=1999-01")
     _assert_bill_and_unverified_original(web, expense_id, source.read_bytes())
     assert browser.get("/web/export/portable?ledger_id=export-private").status_code == 403

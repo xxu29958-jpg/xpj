@@ -558,14 +558,6 @@
     color: var(--state-warn-fg);
 }
 
-.import-apply-form {
-    grid-template-columns: minmax(calc(var(--space-12) * 2), 1fr) auto;
-    max-width: calc(var(--space-12) * 6);
-    margin-block-end: 0;
-    padding-block-end: 0;
-    border-block-end: 0;
-}
-
 @media (max-width: 48rem) {
     .import-metrics {
         grid-template-columns: minmax(0, 1fr);
@@ -583,27 +575,8 @@
 
 /* 导入导出：一个文件入口、一个筛选出口，避免功能卡片化堆叠。 */
 
-.import-export-workspace {
-    display: grid;
-    grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr);
-    align-items: start;
-    gap: var(--space-6);
-}
-
-.import-export-panel {
-    min-width: 0;
-}
-
-.import-export-panel--primary {
-    border-color: var(--control-border-active);
-}
-
-.import-export-panel .product-panel-title {
-    margin-block-start: var(--space-1);
-}
-
 .import-upload-form {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr);
     align-items: end;
 }
 
@@ -649,14 +622,6 @@
 .import-schema code {
     color: var(--text-default);
     font-family: var(--font-numeric);
-}
-
-.export-filter-form {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.export-submit-field {
-    justify-content: end;
 }
 
 .import-export-note {
@@ -728,18 +693,7 @@
     width: min(calc(var(--space-12) * 4), 100%);
 }
 
-@media (max-width: 56rem) {
-    .import-export-workspace {
-        grid-template-columns: minmax(0, 1fr);
-    }
-}
-
 @media (max-width: 48rem) {
-    .import-upload-form,
-    .export-filter-form {
-        grid-template-columns: minmax(0, 1fr);
-    }
-
     .uncategorized-header,
     .uncategorized-bulkbar {
         align-items: stretch;
@@ -753,9 +707,7 @@
 
 /* ── C4 旧栈收官补遗 ────────────────────────────────────────────────────
    未分类 ≤40rem 行卡 (勾选+商家+金额首行, 时间/分类换行 meta; 表头视觉隐藏但
-   留在无障碍树, 同 merchant-catalog 模式); 导入批次页头部动作 / 完成态 / 筛选行 /
-   错误文本断行; 批次统计 ≤48rem 两列成对 (--pair 变体, 可导入↔错误并排对照,
-   覆盖共享单列收叠 —— 同优先级靠文件内顺序, 高优先级靠 .import-metrics--pair)。 */
+   留在无障碍树, 同 merchant-catalog 模式); 导入筛选与错误文本保留可读性。 */
 
 @media (max-width: 40rem) {
     .uncategorized-table thead {
@@ -828,8 +780,6 @@
     }
 }
 
-.import-batch-head-side,
-.import-batch-done,
 .import-batch-filter {
     display: flex;
     flex-wrap: wrap;
@@ -862,32 +812,9 @@
     white-space: nowrap;
 }
 
-.import-apply-form {
-    align-items: end;
-}
-
 .import-row-error {
     color: var(--state-danger-fg);
     overflow-wrap: anywhere;
-}
-
-@media (max-width: 48rem) {
-    .import-metrics--pair {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .import-metrics--pair .import-metric {
-        border-block-end: 1px solid var(--border-card);
-        border-inline-end: 0;
-    }
-
-    .import-metrics--pair .import-metric:nth-child(odd) {
-        border-inline-end: 1px solid var(--border-card);
-    }
-
-    .import-metrics--pair .import-metric:nth-last-child(-n+2) {
-        border-block-end: 0;
-    }
 }
 
 /* ── 资料库 section 页 (C5c-1 增量 2): 面包屑 / 面板布局 / 行内操作 ──────────
@@ -1795,7 +1722,8 @@
 .manual-entry,
 .offset-action-panel,
 .saved-view-editor,
-.ledger-search-workspace {
+.ledger-search-workspace,
+.import-task {
     max-inline-size: 40rem;
     margin-inline: auto;
 }
@@ -1913,3 +1841,9 @@
 .saved-view-editor .product-form-grid { grid-template-columns: minmax(0, 1fr); }
 .saved-view-editor form { display: grid; gap: var(--space-5); }
 .saved-view-actions { padding-block-end: var(--space-3); }
+
+.import-task > .product-page-header { margin-block-end: var(--space-3); }
+.import-task > .import-schema { margin-block-start: 0; }
+.import-export-cover { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4); }
+.import-export-cover > div { flex: 1 1 12em; min-inline-size: 0; }
+.import-export-cover img { inline-size: 25%; block-size: auto; margin-inline-start: auto; }

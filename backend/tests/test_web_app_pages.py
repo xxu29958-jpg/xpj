@@ -124,7 +124,7 @@ def test_web_mobile_primary_nav_contract(web_client: TestClient) -> None:
 
 def test_web_mobile_plan_nav_shows_current_domain_pages(web_client: TestClient) -> None:
     """窄屏第二行(矿 mobile-plan-nav): 只渲染当前域页级链接, 当前页 aria-current=page。"""
-    resp = web_client.get("/web/search?ledger_id=owner")
+    resp = web_client.get("/web/confirmed?ledger_id=owner")
     assert resp.status_code == 200
     body = resp.text
 
@@ -136,9 +136,14 @@ def test_web_mobile_plan_nav_shows_current_domain_pages(web_client: TestClient) 
     # 非当前域(计划)的页级链接不出现。
     assert "AI 预算建议" not in plan_nav.group(0)
     assert re.search(
-        r'class="active" href="/web/search\?ledger_id=owner"[^>]+aria-current="page"',
+        r'class="active" href="/web/confirmed\?ledger_id=owner"[^>]+aria-current="page"',
         plan_nav.group(0),
     )
+    # Focused search returns to the ledger instead of exposing a second domain navigation.
+    search = web_client.get("/web/search?ledger_id=owner")
+    assert search.status_code == 200
+    assert '<nav class="mobile-plan-nav"' not in search.text
+    assert 'href="/web/confirmed?ledger_id=owner"' in search.text
 
 
 def test_web_month_picker_links_drop_page_param(web_client: TestClient) -> None:

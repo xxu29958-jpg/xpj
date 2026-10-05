@@ -156,11 +156,16 @@ def test_import_export_page_retains_csv_and_offers_bound_download_or_identity_re
     templates = Jinja2Templates(directory=root)
     templates.env.loader = ChoiceLoader([DictLoader({"base.html": "{% block content %}{% endblock %}"}),
                                         FileSystemLoader(root)])
-    rendered = templates.get_template("import_export.html").render(
-        selected_ledger_id=AUTH.ledger_id, selected_ledger_name=AUTH.ledger_name,
-        q="?ledger_id=" + AUTH.ledger_id, portable_export_available=has_session, can_write=False,
-        batch_page=SimpleNamespace(items=[], page=1, page_size=20, total_pages=1, total=0))
-    assert 'action="/web/export.csv"' in rendered
+    context = {
+        "selected_ledger_id": AUTH.ledger_id, "selected_ledger_name": AUTH.ledger_name,
+        "q": "?ledger_id=" + AUTH.ledger_id, "portable_export_available": has_session, "can_write": False,
+        "batch_page": SimpleNamespace(items=[], page=1, page_size=20, total_pages=1, total=0),
+    }
+    template = templates.get_template("import_export.html")
+    hub = template.render(**context)
+    assert "task=export" in hub and "task=portable" in hub
+    rendered = template.render(**context, view_mode="portable")
+    assert 'action="/web/export.csv"' in template.render(**context, view_mode="export")
     assert "尚未提交的离线草稿不在包内" in rendered
     assert "不是安装恢复包" in rendered
     assert "你的收件箱和跨账本往来另行标明范围" in rendered and "不带走对方账本的私有记录" in rendered

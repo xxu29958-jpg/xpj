@@ -52260,6 +52260,16 @@
               "title": "Flash Type",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "task",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Task",
+              "type": "string"
+            }
           }
         ],
         "responses": {
