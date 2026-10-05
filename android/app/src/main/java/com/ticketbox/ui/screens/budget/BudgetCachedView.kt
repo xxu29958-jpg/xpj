@@ -43,7 +43,9 @@ internal fun BudgetCachedHeader(backText: String, onBack: (() -> Unit)?, onHisto
         subtitle = stringResource(R.string.budget_cached_subtitle),
         backText = backText,
         onBack = onBack,
-        actions = { TextButton(onClick = onHistory) { Text(stringResource(R.string.budget_history_title)) } },
+        slots = com.ticketbox.ui.components.AppSecondaryPageSlots(actions = {
+            TextButton(onClick = onHistory) { Text(stringResource(R.string.budget_history_title)) }
+        }),
     )
 }
 

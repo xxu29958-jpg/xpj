@@ -126,7 +126,8 @@ def test_composite_correction_closes_scalar_items_and_splits(web_client: TestCli
     assert 'aria-label="明细第 3 行：名称"' in form.text
     assert 'aria-label="拆账第 1 行：成员"' in form.text
     assert 'aria-label="拆账第 3 行：成员"' in form.text
-    assert 'data-label="金额"' in form.text
+    assert 'aria-label="明细第 1 行：金额"' in form.text
+    assert 'aria-label="拆账第 1 行：金额"' in form.text
     # 更正页币种可变，不能让初始币种的 step 在浏览器层拦截合法的新币种金额。
     assert 'type="text" name="amount_yuan"' in form.text
     assert 'inputmode="decimal"' in form.text

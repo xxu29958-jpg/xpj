@@ -12,6 +12,7 @@
   ('pending' if (expense is defined and expense.status == 'pending') else 'confirmed')
 ) %}
 {% set _is_inbox_context = (
+  (product_body_domain|default('') == 'inbox' and page_surface|default('') == 'tertiary') or
   _path in ['/web', '/web/'] or '/pending' in _path or '/duplicates' in _path or
   ('/expenses/' in _path and _edit_origin in ['pending', 'duplicates'])
 ) %}
@@ -89,7 +90,7 @@
 
 {# 页级三态：primary=五域首屏；tertiary=详情工作区(追加 detail.css)；
    其余=secondary。页级不决定样式新旧，所有正文均使用产品栈。 #}
-{% set _is_expense_detail = ('/expenses/' in _path and '/edit' in _path) or (product_body_domain|default('') == 'inbox' and page_surface|default('') == 'tertiary') %}
+{% set _is_expense_detail = '/expenses/' in _path and _path.endswith('/edit') %}
 {% set _inbox_task = _is_expense_detail and _domain == 'inbox' %}
 {% set _is_debt_detail = _path.startswith('/web/debts/') and _path != '/web/debts/new' %}
 {% set _is_import_detail = _path.startswith('/web/import/') %}
@@ -207,6 +208,9 @@
       <a class="product-button product-button--quiet" href="{{ edit_return_href }}" data-review-stage="primary"><svg width="20" height="20" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-left"/></svg> {{ edit_return_label or ('收件箱' if _inbox_task else '流水') }}</a>
       <a class="product-button product-button--quiet" href="#review" data-review-stage="details" hidden><svg width="20" height="20" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-left"/></svg> 核对小票</a>
       <span class="topbar-spacer"></span><span class="product-eyebrow" data-review-stage="primary">{{ '核对小票' if expense.status == 'pending' else '账单详情' }}</span>
+      {% elif _page_level == 'tertiary' and _domain == 'inbox' %}
+      <a class="product-button product-button--quiet" href="{{ current_href }}"><svg width="20" height="20" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-left"/></svg> 返回账单</a>
+      <span class="topbar-spacer"></span><span class="product-eyebrow">识别小票</span>
       {% else %}
       {# K3 响应式收件片: ≤64rem 品牌身份并入 topbar (sidebar 整栏隐藏,
          chrome 收进 mobile-chrome 单带); 桌面由 CSS 隐藏, sidebar .brand

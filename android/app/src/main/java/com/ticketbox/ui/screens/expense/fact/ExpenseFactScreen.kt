@@ -1,10 +1,14 @@
 package com.ticketbox.ui.screens.expense.fact
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -15,9 +19,15 @@ import com.ticketbox.domain.model.canCreateRepaymentDraft
 import com.ticketbox.domain.model.canInitiateBillSplit
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppSecondaryPageChrome
+import com.ticketbox.ui.components.AppSecondaryPageSlots
+import com.ticketbox.ui.components.AppPrimaryButton
+import com.ticketbox.ui.components.expenseTimeLabel
 import com.ticketbox.ui.components.AppSecondaryScrollableColumn
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.AppListDensity
+import com.ticketbox.ui.screens.ledger.LedgerCategoryMark
+import com.ticketbox.ui.screens.settings.SettingsDetailRow
 import com.ticketbox.ui.screens.expense.ExpenseBillSplitInvitePanel
 import com.ticketbox.ui.screens.expense.ExpenseBillSplitInvitePanelActions
 import com.ticketbox.ui.screens.expense.ExpenseBillSplitInvitePanelState
@@ -30,6 +40,7 @@ import com.ticketbox.viewmodel.acknowledgeItemsMismatch
 import com.ticketbox.viewmodel.cancelBillSplitInvitation
 import com.ticketbox.viewmodel.createRepaymentDraftFromExpense
 import com.ticketbox.viewmodel.loadExpenseRevisions
+import com.ticketbox.viewmodel.loadExpenseFactBundle
 import com.ticketbox.viewmodel.loadOlderExpenseRevisions
 import com.ticketbox.viewmodel.openBillSplitInviteSheet
 import com.ticketbox.viewmodel.openCorrectionSheet
@@ -53,36 +64,46 @@ fun ExpenseFactScreen(
     onRepairCorrectionRate: CorrectionRateAction,
     originalContent: (@Composable () -> Unit)? = null,
 ) {
-    AppSecondaryScrollableColumn(
-        chrome = AppSecondaryPageChrome(
-            role = AppPageRole.Ledger,
-            title = stringResource(R.string.expense_fact_title),
-            // W2-B: 副标题不再是操作说明——更正入口在摘要段自明。
-            subtitle = null,
-            backText = stringResource(R.string.expense_edit_primary_back_button),
-            onBack = onBack,
-            hasBottomBar = false,
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-        ),
-    ) {
-        AppStatusBanner(message = state.message, tone = state.messageTone)
-        FactInputContinuitySection(state, viewModel)
-        FactCorrectionSubmissions(state, viewModel, onRepairCorrectionRate)
-        if (state.expense == null) FactBillSplitSubmissions(state, viewModel)
-        when {
-            // 首载：骨架占位（成熟产品的加载形态，不是白屏）。
-            state.expense == null && state.expenseLoadState != ExpenseDetailDataLoadState.Failed -> {
-                FactLoadingSkeleton()
-            }
-            // 首载失败：明确错误 + 重试，不冒充空态。
-            state.expense == null -> {
-                FactLoadFailedSection(
-                    message = state.expenseLoadMessage?.asString(),
-                    onRetry = viewModel::retryLoadExpense,
-                )
-            }
-            else -> {
-                FactContentSections(state = state, viewModel = viewModel, originalContent = originalContent)
+    key(state.timelineExpanded) {
+        AppSecondaryScrollableColumn(
+            modifier = Modifier.testTag("expense-fact"),
+            chrome = AppSecondaryPageChrome(
+                role = AppPageRole.Ledger,
+                title = if (state.timelineExpanded) stringResource(R.string.expense_fact_history_heading)
+                    else state.expense?.merchant?.takeIf { it.isNotBlank() } ?: stringResource(R.string.expense_fact_title),
+                subtitle = state.expense?.let { expense ->
+                    if (state.timelineExpanded) expense.merchant else "${expenseTimeLabel(expense).asString()} · ${expense.category}"
+                },
+                backText = stringResource(if (state.timelineExpanded) R.string.expense_fact_title else R.string.expense_edit_primary_back_button),
+                onBack = if (state.timelineExpanded) viewModel::toggleTimelineExpanded else onBack,
+                hasBottomBar = false,
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+            ),
+            slots = AppSecondaryPageSlots(headingPrefix = {
+                state.expense?.takeUnless { state.timelineExpanded }?.let {
+                    LedgerCategoryMark(it.category, AppListDensity.Standard)
+                }
+            }),
+        ) {
+            AppStatusBanner(message = state.message, tone = state.messageTone)
+            FactInputContinuitySection(state, viewModel)
+            FactCorrectionSubmissions(state, viewModel, onRepairCorrectionRate)
+            if (state.expense == null) FactBillSplitSubmissions(state, viewModel)
+            when {
+                // 首载：骨架占位（成熟产品的加载形态，不是白屏）。
+                state.expense == null && state.expenseLoadState != ExpenseDetailDataLoadState.Failed -> {
+                    FactLoadingSkeleton()
+                }
+                // 首载失败：明确错误 + 重试，不冒充空态。
+                state.expense == null -> {
+                    FactLoadFailedSection(
+                        message = state.expenseLoadMessage?.asString(),
+                        onRetry = viewModel::retryLoadExpense,
+                    )
+                }
+                else -> {
+                    FactContentSections(state = state, viewModel = viewModel, originalContent = originalContent)
+                }
             }
         }
     }
@@ -134,59 +155,88 @@ private fun FactContentSections(
     viewModel: ExpenseFactViewModel,
     originalContent: (@Composable () -> Unit)?,
 ) {
-                val expense = state.expense ?: return
-                // 已知内容 + 权威刷新失败：低层级 stale 提示，不抢任务焦点。
-                if (state.expenseStale) {
-                    FactStaleBanner(onRetry = viewModel::retryLoadExpense)
-                }
-                FactSummarySection(
-                    expense = expense,
-                    state = state,
-                    onOpenCorrection = viewModel::openCorrectionSheet,
-                )
-                FactOffsetsSection(state = state, viewModel = viewModel)
-                FactMediaSection(
-                    state = state,
-                    onLoadFullImage = viewModel::loadFullImage,
-                    onRetryThumbnail = viewModel::retryLoadThumbnail,
-                    originalContent = originalContent,
-                )
-                FactLinesSection(
-                    state = state,
-                    onRetryItems = viewModel::loadExpenseItems,
-                    onRetrySplits = viewModel::loadExpenseSplits,
-                    onRefreshFact = viewModel::refreshCorrectionFact,
-                    onAcknowledgeItems = viewModel::acknowledgeItemsMismatch,
-                )
-                FactTimelineSection(
-                    state = state,
-                    onRetryLoad = viewModel::loadExpenseRevisions,
-                    onToggleExpanded = viewModel::toggleTimelineExpanded,
-                    onLoadOlder = viewModel::loadOlderExpenseRevisions,
-                )
-                FactBillSplitSubmissions(state, viewModel)
-                if (expense.canInitiateBillSplit(state.readOnly)) {
-                    ExpenseBillSplitInvitePanel(
-                        state = ExpenseBillSplitInvitePanelState(
-                            sent = state.billSplitSent,
-                            loadState = state.billSplitSentLoadState,
-                            loading = state.billSplitLoading,
-                            message = state.billSplitMessage,
-                            messageTone = state.billSplitMessageTone,
-                            canStartInvite = state.authoritativeRootReady,
-                            hasPendingSubmission = state.billSplitSubmissions.isNotEmpty(),
-                        ),
-                        actions = ExpenseBillSplitInvitePanelActions(
-                            onStartInvite = viewModel::openBillSplitInviteSheet,
-                            onCancelInvite = { id -> state.correctionAccess?.binding?.let { viewModel.cancelBillSplitInvitation(it, id) } },
-                        ),
-                    )
-                }
-                if (expense.canCreateRepaymentDraft(state.readOnly)) {
-                    ExpenseRepaymentDraftPanel(
-                        creating = state.repaymentDraftCreating,
-                        canCreate = state.authoritativeRootReady,
-                        onCreate = viewModel::createRepaymentDraftFromExpense,
-                    )
-                }
+    val expense = state.expense ?: return
+    if (state.timelineExpanded) {
+        FactTimelineSection(state, viewModel::loadExpenseRevisions,
+            viewModel::toggleTimelineExpanded, viewModel::loadOlderExpenseRevisions)
+        return
+    }
+    // 已知内容 + 权威刷新失败：低层级 stale 提示，不抢任务焦点。
+    if (state.expenseStale) {
+        FactStaleBanner(onRetry = viewModel::retryLoadExpense)
+    }
+    FactSummarySection(
+        expense = expense,
+        state = state,
+        onRetryBundle = viewModel::loadExpenseFactBundle,
+    )
+    FactReadingEntries(state, viewModel, originalContent)
+    FactTimelineSection(
+        state = state,
+        onRetryLoad = viewModel::loadExpenseRevisions,
+        onToggleExpanded = viewModel::toggleTimelineExpanded,
+        onLoadOlder = viewModel::loadOlderExpenseRevisions,
+    )
+    if (state.readOnly) Text(stringResource(R.string.expense_fact_readonly_hint)) else
+        AppPrimaryButton(text = stringResource(R.string.expense_fact_correct_cta), onClick = viewModel::openCorrectionSheet,
+            enabled = state.canStartCorrection, modifier = Modifier.fillMaxWidth())
+    FactBillSplitSubmissions(state, viewModel)
+    if (expense.canInitiateBillSplit(state.readOnly)) {
+        ExpenseBillSplitInvitePanel(
+            state = ExpenseBillSplitInvitePanelState(
+                sent = state.billSplitSent,
+                loadState = state.billSplitSentLoadState,
+                loading = state.billSplitLoading,
+                message = state.billSplitMessage,
+                messageTone = state.billSplitMessageTone,
+                canStartInvite = state.authoritativeRootReady,
+                hasPendingSubmission = state.billSplitSubmissions.isNotEmpty(),
+            ),
+            actions = ExpenseBillSplitInvitePanelActions(
+                onStartInvite = viewModel::openBillSplitInviteSheet,
+                onCancelInvite = { id -> state.correctionAccess?.binding?.let { viewModel.cancelBillSplitInvitation(it, id) } },
+            ),
+        )
+    }
+    if (expense.canCreateRepaymentDraft(state.readOnly)) {
+        ExpenseRepaymentDraftPanel(
+            creating = state.repaymentDraftCreating,
+            canCreate = state.authoritativeRootReady,
+            onCreate = viewModel::createRepaymentDraftFromExpense,
+        )
+    }
+}
+
+/** Shared reading entries retain the original query and command owners. */
+@Composable
+private fun FactReadingEntries(
+    state: ExpenseFactUiState,
+    viewModel: ExpenseFactViewModel,
+    originalContent: (@Composable () -> Unit)?,
+) {
+    val expense = state.expense ?: return
+    FactMediaSection(
+        state = state,
+        onLoadFullImage = viewModel::loadFullImage,
+        onRetryThumbnail = viewModel::retryLoadThumbnail,
+        originalContent = originalContent,
+    )
+    SettingsDetailRow(stringResource(R.string.expense_fact_lines_entry),
+        stringResource(R.string.expense_fact_lines_entry_hint), R.drawable.ic_lucide_receipt_text) {
+        FactLinesSection(
+            state = state,
+            onRetryItems = viewModel::loadExpenseItems,
+            onRetrySplits = viewModel::loadExpenseSplits,
+            onRefreshFact = viewModel::refreshCorrectionFact,
+            onAcknowledgeItems = viewModel::acknowledgeItemsMismatch,
+        )
+    }
+    SettingsDetailRow(stringResource(R.string.expense_fact_offsets_title),
+        stringResource(R.string.expense_fact_offsets_entry_hint), R.drawable.ic_lucide_rotate_ccw) {
+        FactOffsetsSection(state, viewModel)
+    }
+    SettingsDetailRow(stringResource(R.string.expense_fact_notes_entry),
+        expense.tags?.takeIf { it.isNotBlank() } ?: expense.note.orEmpty(), R.drawable.ic_lucide_tag) {
+        FactFieldRows(expense)
+    }
 }

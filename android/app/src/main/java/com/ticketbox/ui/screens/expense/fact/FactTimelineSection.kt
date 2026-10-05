@@ -3,6 +3,7 @@ package com.ticketbox.ui.screens.expense.fact
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -52,8 +53,14 @@ internal fun FactTimelineSection(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
     ) {
-        AppSectionHeader(title = stringResource(R.string.expense_fact_timeline_title))
-        FactTimelineStateContent(state, currency, onRetryLoad, onToggleExpanded, onLoadOlder)
+        AppSectionHeader(title = stringResource(if (state.timelineExpanded) R.string.expense_fact_timeline_title
+            else R.string.expense_fact_recent_changes))
+        if (!state.timelineExpanded) TextButton(onClick = onToggleExpanded) {
+            Text(stringResource(R.string.expense_fact_history_entry))
+        }
+        FactTimelineStateContent(state, currency, onRetryLoad, onLoadOlder)
+        if (state.timelineExpanded) Text(stringResource(R.string.expense_fact_history_preserved),
+            color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
     }
 }
 
@@ -62,7 +69,6 @@ private fun FactTimelineStateContent(
     state: ExpenseFactUiState,
     currency: CurrencyCode,
     onRetryLoad: () -> Unit,
-    onToggleExpanded: () -> Unit,
     onLoadOlder: () -> Unit,
 ) {
     when (state.revisionsLoadState) {
@@ -73,7 +79,6 @@ private fun FactTimelineStateContent(
             state = state,
             currency = currency,
             onRetryLoad = onRetryLoad,
-            onToggleExpanded = onToggleExpanded,
             onLoadOlder = onLoadOlder,
         )
         else -> Text(
@@ -89,7 +94,6 @@ private fun FactTimelineLoadedContent(
     state: ExpenseFactUiState,
     currency: CurrencyCode,
     onRetryLoad: () -> Unit,
-    onToggleExpanded: () -> Unit,
     onLoadOlder: () -> Unit,
 ) {
     if (state.revisions.isEmpty()) {
@@ -122,7 +126,6 @@ private fun FactTimelineLoadedContent(
     val visible = if (state.timelineExpanded) entries else entries.take(TIMELINE_PREVIEW_COUNT)
     visible.forEach { entry -> FactTimelineEntryRow(entry = entry) }
     FactTimelineOlderAction(state = state, onLoadOlder = onLoadOlder)
-    FactTimelineExpansionAction(state = state, entriesSize = entries.size, onToggleExpanded = onToggleExpanded)
 }
 
 @Composable
@@ -151,31 +154,12 @@ private fun FactTimelineOlderAction(
 }
 
 @Composable
-private fun FactTimelineExpansionAction(
-    state: ExpenseFactUiState,
-    entriesSize: Int,
-    onToggleExpanded: () -> Unit,
-) {
-    if (state.revisionsTotal <= TIMELINE_PREVIEW_COUNT && entriesSize <= TIMELINE_PREVIEW_COUNT) return
-    // CTA 文案必须等于这一次点击的交付：仍有远端页时只承诺展开本地最近 M 条。
-    val text = when {
-        state.timelineExpanded -> stringResource(R.string.expense_fact_timeline_collapse)
-        state.revisionsTotal > entriesSize -> stringResource(
-            R.string.expense_fact_timeline_expand_loaded,
-            entriesSize,
-        )
-        else -> stringResource(R.string.expense_fact_timeline_expand, state.revisionsTotal)
-    }
-    AppSecondaryButton(text = text, onClick = onToggleExpanded)
-}
-
-@Composable
 private fun FactTimelineEntryRow(entry: FactTimelineEntry) {
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
     ) {
-        Row(
+        FlowRow(
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
         ) {
             StatusPill(

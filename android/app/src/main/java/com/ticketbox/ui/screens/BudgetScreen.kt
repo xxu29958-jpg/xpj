@@ -24,6 +24,7 @@ import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppSecondaryPageHeader
+import com.ticketbox.ui.components.AppSecondaryPageSlots
 import com.ticketbox.ui.components.AppScrollableContent
 import com.ticketbox.ui.components.AppScrollableContentChrome
 import com.ticketbox.ui.components.AppScrollableContentLayout
@@ -109,7 +110,7 @@ private fun BudgetScreenContent(
             else AppSecondaryPageHeader(title = stringResource(if (editorOpen) R.string.budget_editor_title else R.string.budget_header_title),
                 subtitle = stringResource(R.string.budget_header_subtitle, state.month),
                 backText = if (editorOpen) stringResource(R.string.budget_editor_back) else backText ?: stringResource(R.string.budget_back_to_stats), onBack = back,
-                actions = { BudgetPageActions(decision, onHistory) })
+                slots = AppSecondaryPageSlots(actions = { BudgetPageActions(decision, onHistory) }))
         }
         budgetPageContent(state, actions, decision, editorOpen) { editorOpen = true }
     }

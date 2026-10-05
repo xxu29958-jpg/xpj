@@ -3,9 +3,19 @@
    本卡只承载次级字段，不再重复商家/金额。
    契约：expense, can_write, correction_href（含 return context）,
    edit_return_href / edit_return_label（回来源列表，如「返回搜索结果」）。 #}
-<section class="product-panel product-panel--padded" aria-label="更多事实">
+<details class="fact-disclosure">
+  <summary class="product-entry">
+    <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#tag"/></svg></span>
+    <span class="product-entry-copy"><strong>标签与备注</strong><span>{{ expense.tags or expense.note or '查看这笔账的更多信息' }}</span></span>
+    <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
+  </summary>
+<section aria-label="更多事实">
   <dl class="fact-grid">
     {% if expense.is_foreign_currency %}
+    <div class="fact-row">
+      <dt>发生时刻</dt>
+      <dd>{{ expense.expense_time or '未记录' }}</dd>
+    </div>
     <div class="fact-row">
       <dt>原币金额</dt>
       <dd>{{ expense.original_currency_code }} {{ expense.original_amount_value or '—' }}</dd>
@@ -34,12 +44,5 @@
     </div>
     {% endif %}
   </dl>
-  <div class="fact-actions">
-    {% if can_write %}
-    <a class="product-button product-button--primary" href="{{ correction_href }}">更正这笔账单</a>
-    {% else %}
-    <span class="meta">只读角色可查看事实与变更记录。</span>
-    {% endif %}
-    <a href="{{ edit_return_href }}" class="product-button product-button--quiet">{{ edit_return_label }}</a>
-  </div>
 </section>
+</details>

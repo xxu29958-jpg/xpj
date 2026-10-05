@@ -25,17 +25,8 @@
     {% endif %}
   </div>
 
-  {% if offset_summary.status != 'confirmed' %}
-  <dl class="offset-summary">
-    <div><dt>原始金额</dt><dd>{{ offset_summary.gross_original_label }}</dd></div>
-    {% if offset_summary.status in ['partially_refunded', 'fully_refunded'] %}
-    <div><dt>已退回</dt><dd>{{ offset_summary.refunded_original_label }}</dd></div>
-    {% endif %}
-    <div><dt>当前净额</dt><dd>{{ offset_summary.lineage_net_label }}</dd></div>
-  </dl>
   {% if offset_summary.fx_difference_label %}
   <p class="meta">其中 {{ offset_summary.fx_difference_label }} 是汇率变动差额。</p>
-  {% endif %}
   {% endif %}
 
   {% if offset_summary.status == 'confirmed' and not active_offsets and not offset_recent_history %}

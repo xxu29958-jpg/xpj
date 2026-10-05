@@ -535,7 +535,7 @@ private val ledgerCategoryIcons: Map<String, Int> = mapOf(
 )
 
 @Composable
-private fun LedgerCategoryMark(category: String, density: AppListDensity) {
+internal fun LedgerCategoryMark(category: String, density: AppListDensity) {
     val visuals = LocalThemeVisuals.current
     val rowMetrics = AppDensity.rowMetrics(density)
     val background = when (category) {

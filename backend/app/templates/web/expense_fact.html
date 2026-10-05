@@ -7,13 +7,6 @@
 <script src="/static/web/financial-entry.js?v={{ asset_version }}" defer></script>
 {% endblock %}
 {% block content %}
-{# 已确认账单事实详情（编排壳）：read-first 单任务页。各段责任：
-   _fact_header / _fact_summary_card / _fact_offsets / _fact_items_readonly /
-   _fact_splits_readonly / _fact_split_invite / _fact_timeline。
-   凭证是事实的旁证：桌面右侧 aside（detail.css 骨架），窄屏上移到明细
-   之前（transactions.css 的 order 规则），不抢 hero。 #}
-{% include "_fact_header.html" %}
-
 {% if error %}
 <div class="product-feedback product-feedback--danger" role="alert">{{ error }}</div>
 {% endif %}
@@ -24,20 +17,60 @@
 <div class="product-feedback{% if _msg_tone == 'error' %} product-feedback--error{% elif _msg_tone == 'warning' %} product-feedback--warning{% else %} product-feedback--success{% endif %}" role="{% if _msg_tone == 'error' %}alert{% else %}status{% endif %}">{{ message }}</div>
 {% endif %}
 
-<div class="detail-layout fact-layout">
+<div class="fact-workspace">
+<div class="detail-layout fact-layout" id="fact-overview">
   <div class="detail-main">
+    {% include "_fact_header.html" %}
+    <section class="product-panel product-panel--padded fact-hero" aria-label="原消费">
+      <div class="meta">原消费</div>
+      <div class="fact-amount">{{ offset_summary.gross_original_label }}</div>
+      <div class="meta">{{ expense.original_currency_code }}</div>
+      {% if expense.is_foreign_currency %}<div class="meta">入账金额 {{ offset_summary.gross_home_label }}</div>{% endif %}
+      {% if expense.fx_meta %}<div class="meta">{{ expense.fx_meta }}</div>{% endif %}
+    </section>
+    <dl class="fact-balances">
+      <div><dt>已退回</dt><dd>{{ offset_summary.refunded_original_label }}</dd></div>
+      <div><dt>当前净额</dt><dd>{{ offset_summary.lineage_net_label }}</dd></div>
+    </dl>
+    <div class="fact-entries">
+    <a class="product-entry" href="/web/expenses/{{ expense.id }}/original{{ q }}">
+      <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#receipt-text"/></svg></span>
+      <span class="product-entry-copy"><strong>原件</strong><span>{% if expense.has_image %}查看图片与文件状态{% elif expense.image_state == 'cleaned' %}图片已清理，查看或继续补回{% else %}检查原件或继续补回任务{% endif %}</span></span>
+      <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
+    </a>
+    <details class="fact-disclosure" {% if items_error %}open{% endif %}>
+      <summary class="product-entry">
+        <span class="product-entry-icon product-entry-icon--lilac" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#list"/></svg></span>
+        <span class="product-entry-copy"><strong>商品与拆账</strong><span>查看明细和份额</span></span>
+        <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
+      </summary>
+      {% include "_fact_items_readonly.html" %}
+      {% include "_fact_splits_readonly.html" %}
+    </details>
+    <details class="fact-disclosure" {% if offset_form.open or offset_void_form.open or offset_retained_target or message or error %}open{% endif %}>
+      <summary class="product-entry">
+        <span class="product-entry-icon product-entry-icon--apricot" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#rotate-ccw"/></svg></span>
+        <span class="product-entry-copy"><strong>退款与冲销</strong><span>{% if active_offsets %}{{ offset_summary.status_label }} · {{ active_offsets | length }} 条记录{% else %}查看记录或登记退回{% endif %}</span></span>
+        <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
+      </summary>
+      {% include "_fact_offsets.html" %}
+    </details>
     {% include "_fact_summary_card.html" %}
-    {# 退回与冲销紧随摘要卡（事实之后、明细之前）；PRG 锚点 #fact-offsets。 #}
-    {% include "_fact_offsets.html" %}
-    {% include "_fact_items_readonly.html" %}
-    {% include "_fact_splits_readonly.html" %}
-    {# 拆账邀请是关联动作，排在事实之后、历史之前，不抢事实主体。 #}
+    </div>
+    <section class="fact-recent" aria-label="最近变更">
+      <div class="product-panel-header"><h2 class="product-panel-title">最近变更</h2><a href="#fact-timeline">更正历史</a></div>
+      {% for entry in fact_timeline[:2] %}
+      <p class="meta">{{ entry.kind_label }} · {{ entry.when }}{% if entry.reason %} · {{ entry.reason }}{% endif %}</p>
+      {% else %}<p class="meta">还没有更正记录</p>{% endfor %}
+    </section>
+    <div class="fact-actions">
+      {% if can_write %}<a class="product-button product-button--primary" href="{{ correction_href }}">更正这笔账单 <span aria-hidden="true">→</span></a>
+      {% else %}<span class="meta">只读角色可查看事实与变更记录。</span>{% endif %}
+    </div>
     {% include "_fact_split_invite.html" %}
-    {% include "_fact_timeline.html" %}
   </div>
 
   <aside class="detail-aside fact-evidence">
-    <p><a href="/web/expenses/{{ expense.id }}/original{{ q }}">检查原件或继续补回任务</a></p>
     {% if expense.has_image %}
     <div class="product-panel receipt-preview receipt-image-shell" data-image-skeleton>
       <div class="receipt-loading" aria-hidden="true"></div>
@@ -51,5 +84,7 @@
     <div class="product-panel product-panel--padded meta">没有凭证图片</div>
     {% endif %}
   </aside>
+</div>
+{% include "_fact_timeline.html" %}
 </div>
 {% endblock %}

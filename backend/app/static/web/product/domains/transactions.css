@@ -1343,11 +1343,28 @@
     line-height: var(--type-caption-line);
 }
 
-/* ── 事实 hero：金额焦点贴右，窄屏回落左对齐 ─────────────────────────── */
+/* 原消费、退回与净额各守金额口径；详情入口复用全产品 entry。 */
+.fact-header { grid-template-columns: minmax(0, 1fr); }
+.fact-header .product-page-heading { gap: var(--space-3); }
 .fact-hero {
-    text-align: end;
+    display: grid;
+    gap: var(--space-3);
+    text-align: start;
     overflow-wrap: anywhere;
 }
+.fact-balances { display: flex; flex-wrap: wrap; gap: var(--space-4) var(--space-6); margin: 0; }
+.fact-balances > div { flex: 1 1 10ch; min-width: 0; }
+.fact-balances dt { color: var(--text-meta); font-size: var(--type-body-size); }
+.fact-balances dd { margin: var(--space-2) 0 0; font-family: var(--font-numeric); font-size: var(--type-title-size); font-weight: var(--type-title-weight); overflow-wrap: anywhere; }
+.fact-entries > .product-entry, .fact-disclosure { border-bottom: 1px solid var(--border-card); }
+.fact-disclosure > section { margin-block: var(--space-4); }
+.fact-disclosure > .product-panel { box-shadow: none; border: 0; background: transparent; padding: var(--space-3) 0; }
+.fact-disclosure .product-panel-header { margin-bottom: var(--space-3); }
+.fact-actions > .product-button--primary { flex: 1 1 100%; }
+.fact-workspace > .fact-timeline { display: none; }
+.fact-workspace > .fact-timeline:target { display: grid; gap: var(--space-5); }
+.fact-timeline > .product-button { justify-self: start; }
+.fact-workspace:has(> .fact-timeline:target) > .fact-layout { display: none; }
 
 .fact-amount {
     font-family: var(--font-numeric);
@@ -1431,13 +1448,19 @@
 }
 
 .fact-timeline-entry {
-    padding: var(--space-4) 0;
-    border-block-start: 1px solid var(--border-card); /* 1px hairline：登记例外 */
+    position: relative;
+    padding: 0 0 var(--space-7) var(--space-6);
+    border-inline-start: 1px solid var(--border-card);
 }
-
-.fact-timeline-entry:first-child {
-    border-block-start: none;
-    padding-block-start: 0;
+.fact-timeline-entry::before {
+    content: '';
+    position: absolute;
+    inset-inline-start: calc(var(--space-1) * -1);
+    inset-block-start: var(--space-2);
+    width: var(--space-2);
+    height: var(--space-2);
+    border-radius: var(--radius-pill);
+    background: var(--brand-primary-strong);
 }
 
 .fact-timeline-head {
@@ -1577,9 +1600,10 @@
 }
 
 .fact-pager-slot {
-    flex: 1 1 0;
+    flex: 1 1 12ch;
     min-width: 0;
 }
+.fact-pager-slot:empty { display: none; }
 
 .fact-pager-slot--older {
     text-align: right;
@@ -1751,7 +1775,7 @@
 
     /* 凭证是事实的旁证：窄屏上移到明细之前，而不是时间线之后。 */
     .fact-evidence {
-        order: -1;
+        display: none;
     }
 
 

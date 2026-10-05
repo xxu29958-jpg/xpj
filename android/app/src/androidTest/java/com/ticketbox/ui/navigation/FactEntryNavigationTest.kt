@@ -26,6 +26,8 @@ import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
 import androidx.test.core.app.ApplicationProvider
+import androidx.test.platform.app.InstrumentationRegistry
+import com.ticketbox.ui.saveConsumerArtPreview
 import com.ticketbox.R
 import com.ticketbox.BuildConfig
 import com.ticketbox.data.local.PendingMutationType
@@ -57,6 +59,37 @@ class FactEntryNavigationTest {
     private val handledLaunches = mutableListOf<LaunchIntentRequest>()
     private val sharedImage = File(context.cacheDir, "fact-navigation-share.png")
 
+    @Test fun factReadingAndOriginalKeepTheSameNavigationOwner() {
+        if (InstrumentationRegistry.getArguments().getString("captureRefund") == "true") {
+            val longContent = InstrumentationRegistry.getArguments().getString("captureLong") == "true"
+            val amount = if (longContent) Long.MAX_VALUE else 12000L
+            harness.fixture.network.current = harness.fixture.network.current.copy(
+                merchant = if (longContent) "一家名称很长但需要完整识别的家庭采购商店" else "街角小馆",
+                amountCents = amount, originalAmountMinor = amount)
+            harness.fixture.network.financialSummary = com.ticketbox.data.remote.dto.ExpenseFinancialSummaryDto(
+                amount, amount, amount, 2000L, amount - 2000L, amount - 2000L, 0L,
+                com.ticketbox.data.remote.dto.ExpenseLineageStatusDto.PartiallyRefunded)
+        }
+        installMainGraph()
+        openFact()
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        automation.waitForIdle(300, 3_000)
+        saveConsumerArtPreview("fact-overview", requireNotNull(automation.takeScreenshot()))
+        compose.onNodeWithText(context.getString(R.string.expense_fact_original_spend)).performScrollTo()
+        automation.waitForIdle(300, 3_000)
+        saveConsumerArtPreview("fact-money", requireNotNull(automation.takeScreenshot()))
+        compose.onNodeWithText(context.getString(R.string.expense_fact_history_entry))
+            .performScrollTo().performClick()
+        waitForText(context.getString(R.string.expense_fact_history_heading))
+        automation.waitForIdle(300, 3_000)
+        saveConsumerArtPreview("fact-history", requireNotNull(automation.takeScreenshot()))
+        compose.onNodeWithText(context.getString(R.string.expense_fact_title)).performClick()
+        waitForText(context.getString(R.string.expense_fact_original_spend))
+        compose.onNodeWithText(context.getString(R.string.expense_fact_correct_cta))
+            .performScrollTo().performClick()
+        waitForText(context.getString(R.string.expense_correction_sheet_title))
+    }
+
     @After fun close() {
         compose.runOnIdle { mounted.value = false; harness.models.viewModelStore.clear() }
         compose.waitForIdle()
@@ -84,6 +117,11 @@ class FactEntryNavigationTest {
         val request = LaunchIntentRequest.ShareImages("ad4ef4c7-93fb-4cb2-97b4-6b318a6c1b08",
             listOf(Uri.fromFile(sharedImage).toString()), "UTC")
         compose.runOnIdle { launchRequest.value = request }
+        val upload = context.getString(R.string.pending_capture_submit, 1)
+        waitForText(upload)
+        assertTrue(harness.fixture.stored().isEmpty())
+        assertTrue(handledLaunches.isEmpty())
+        compose.onNodeWithText(upload).performClick()
         compose.waitUntil(5_000) { handledLaunches.contains(request) }
         compose.runOnIdle {
             assertEquals(MAIN_ROUTE, outer.currentBackStackEntry?.destination?.route)
@@ -174,7 +212,7 @@ class FactEntryNavigationTest {
 
     private fun openFact() {
         compose.runOnIdle { outer.navigate(expenseRoute(42L)) }
-        waitForText(context.getString(R.string.expense_fact_title))
+        waitForText(context.getString(R.string.expense_fact_original_spend))
         compose.waitForIdle()
     }
 
@@ -184,6 +222,7 @@ class FactEntryNavigationTest {
         installMainGraph()
         compose.runOnIdle { outer.openExpense(42L) }
         waitForText(context.getString(R.string.expense_edit_confirm_button))
+        compose.onNodeWithTag("expense-edit-merchant-row").performScrollTo().performClick()
         compose.onNode(hasSetTextAction() and hasText(requireNotNull(network.current.merchant)))
             .performTextReplacement("未提交的商家")
         compose.runOnIdle { launchRequest.value = LaunchIntentRequest.Navigate(ShortcutTarget.ReviewPending) }
@@ -327,8 +366,8 @@ class FactEntryNavigationTest {
     }
 
     private fun assertRealFactAndReturn() {
-        waitForText(context.getString(R.string.expense_fact_title))
-        compose.onNodeWithText(context.getString(R.string.expense_fact_title)).assertIsDisplayed()
+        waitForText(context.getString(R.string.expense_fact_original_spend))
+        compose.onNodeWithTag("expense-fact").assertIsDisplayed()
         waitForText("更正这笔账单")
         compose.onNodeWithText("更正这笔账单").performScrollTo().assertIsDisplayed()
         compose.runOnIdle {
@@ -360,7 +399,8 @@ class FactEntryNavigationTest {
         compose.setContent {
             if (mounted.value) {
                 CompositionLocalProvider(LocalViewModelStoreOwner provides harness.models) {
-                    TicketboxTheme(skin = AppSkin.Paper) {
+                    TicketboxTheme(skin = if (InstrumentationRegistry.getArguments().getString("captureSkin") == "midnight")
+                        AppSkin.Midnight else AppSkin.Paper) {
                         val controller = rememberNavController()
                         outer = controller
                         LaunchRequestEffect(launchRequest.value, harness.shell, controller) { handledLaunches += it }

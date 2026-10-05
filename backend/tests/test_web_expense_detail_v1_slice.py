@@ -394,7 +394,9 @@ def test_jpy_exact_split_does_not_render_a_false_zero_mismatch(
 
     detail = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
     assert detail.status_code == 200, detail.text
-    assert "账单 ¥1234 · 已拆 ¥1234" in detail.text
+    assert "已分摊 · JPY" in detail.text
+    assert "账单 ¥1234" in detail.text
+    assert "<strong>¥1234</strong>" in detail.text
     assert "· 差额" not in detail.text
 
 

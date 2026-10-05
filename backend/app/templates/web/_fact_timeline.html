@@ -4,12 +4,14 @@
    翻页链接钉在同一 rev_snapshot 上（服务端快照口径），重新进入事实页才取新锚。
    items/splits 变化附完整 Before/After 集合（原生 details 展开，no-JS），
    只呈现 snapshot 已有字段，不做行级 diff 推断。分页文案与 URL 语义属 #319
-   冻结合同，一行不动。 #}
-<section class="product-panel product-panel--padded fact-timeline" id="fact-timeline" aria-label="变更记录">
+   保持服务端页码、快照与完整前后集合。 #}
+<section class="fact-timeline" id="fact-timeline" aria-label="变更记录" tabindex="-1">
+  <a class="product-button product-button--quiet" href="#fact-overview">← 账单详情</a>
   <div class="product-panel-header">
     <div>
-      <h2 class="product-panel-title">变更记录</h2>
-      <div class="product-panel-subtitle">每次更正都会留下原因和内容对照，最新在最前。</div>
+      <h2 class="page-title">这笔账的来龙去脉</h2>
+      <p class="meta">{{ expense.merchant or '未填写商家' }} · 原消费 {{ offset_summary.gross_original_label }}</p>
+      <div class="product-panel-subtitle">确认与更正记录，最新在前。退款和冲销记录可从账单详情进入。</div>
     </div>
   </div>
   {% if fact_timeline %}
@@ -17,7 +19,7 @@
     {% for entry in fact_timeline %}
     <li class="fact-timeline-entry">
       <div class="fact-timeline-head">
-        <span class="product-status {% if entry.is_correction %}product-status--warning{% else %}product-status--success{% endif %}">{{ entry.kind_label }}</span>
+        <strong>{{ entry.kind_label }}</strong>
         <span class="fact-timeline-when">{{ entry.when }}</span>
         {% if entry.actor %}<span class="meta">{{ entry.actor }}</span>{% endif %}
       </div>
@@ -81,4 +83,5 @@
   {% else %}
   <div class="meta">这笔账单还没有变更记录；第一次更正后会从这里开始记录。</div>
   {% endif %}
+  <p class="meta">原记录始终保留。更正和退回分别记录，不覆盖之前发生的事。</p>
 </section>

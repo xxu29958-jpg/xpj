@@ -37,6 +37,7 @@ class AppSecondaryPageSlots(
     val status: (@Composable () -> Unit)? = null,
     val actions: (@Composable () -> Unit)? = null,
     val bottomBar: (@Composable () -> Unit)? = null,
+    val headingPrefix: (@Composable () -> Unit)? = null,
 )
 
 internal fun AppSecondaryPageSlots.resolveBottomBar(
@@ -59,15 +60,16 @@ fun AppSecondaryPageHeader(
     subtitle: String?,
     backText: String,
     onBack: (() -> Unit)?,
-    actions: @Composable (() -> Unit)? = null,
+    slots: AppSecondaryPageSlots = AppSecondaryPageSlots(),
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap),
     ) {
         onBack?.let { AppBackButton(text = backText, onClick = it) }
+        slots.headingPrefix?.invoke()
         AppSecondaryTitleText(title = title, subtitle = subtitle, modifier = Modifier.fillMaxWidth())
-        actions?.invoke()
+        slots.actions?.invoke()
     }
 }
 
@@ -159,7 +161,7 @@ private fun SecondaryHeader(
         subtitle = chrome.subtitle,
         backText = chrome.backText,
         onBack = chrome.onBack,
-        actions = slots.actions,
+        slots = slots,
     )
 }
 

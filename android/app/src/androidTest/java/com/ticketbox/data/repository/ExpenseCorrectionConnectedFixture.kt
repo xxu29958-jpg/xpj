@@ -216,6 +216,7 @@ internal class ExpenseCorrectionConnectedFixture(
 /** Response-loss model deduplicates by the actual original key and full request; not a PostgreSQL substitute. */
 internal class CorrectionConnectedNetwork {
     var current = correctionExpense()
+    var financialSummary: ExpenseFinancialSummaryDto? = null
     var diagnosticApiVersion = com.ticketbox.data.remote.CURRENT_TICKETBOX_API_VERSION
     val diagnosticReads = CopyOnWriteArrayList<String>()
     var backgroundTasks = com.ticketbox.data.remote.dto.BackgroundTaskListResponseDto()
@@ -372,7 +373,7 @@ internal class CorrectionConnectedNetwork {
             check(id == current.id.toString())
             readable()
             val amount = requireNotNull(current.originalAmountMinor)
-            return ExpenseFactBundleDto(current, ExpenseFinancialSummaryDto(amount, amount, amount, 0, amount,
+            return ExpenseFactBundleDto(current, financialSummary ?: ExpenseFinancialSummaryDto(amount, amount, amount, 0, amount,
                 amount, 0, ExpenseLineageStatusDto.Confirmed), emptyList())
         }
         override suspend fun correctExpense(id: String, request: ExpenseCorrectionRequestDto, idempotencyKey: String?): ExpenseCorrectionResponseDto {

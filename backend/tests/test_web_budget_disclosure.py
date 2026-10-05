@@ -37,6 +37,7 @@ function mount(startExpanded, withSummary = true) {
   };
   const document = {
     readyState: 'complete',
+    querySelectorAll: () => [],
     addEventListener: (_name, handler) => { nativeInvalid = handler; },
     querySelector: selector => selector === '.budget-form' ? form : null,
   };

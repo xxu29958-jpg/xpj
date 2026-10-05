@@ -57,7 +57,8 @@ def record_context(monkeypatch):
     monkeypatch.setattr(money_views, "current_pending_expense_fx_tasks", task_query)
     monkeypatch.setattr(helpers, "web_split_members", lambda *_a: [])
     monkeypatch.setattr(helpers, "list_ledger_category_options", lambda *_a, **_k: [])
-    item_response = SimpleNamespace(items_sum_status="mismatch_known", mismatch_cents=200, items=[
+    item_response = SimpleNamespace(items_sum_status="mismatch_known", mismatch_cents=200,
+        items_total_amount_cents=1000, items=[
         SimpleNamespace(public_id="item", kind="product", name="车票", quantity_text="1",
             unit_price_cents=1000, amount_cents=1000, category="交通", is_ocr_draft=False)])
     monkeypatch.setattr(helpers, "list_expense_items", lambda *_a: item_response)
@@ -133,7 +134,8 @@ def test_record_child_templates_keep_home_symbol_separate_from_payment_and_defau
 def test_pending_record_uses_the_same_record_basis_for_child_summaries(record_context):
     html = _render("edit.html", record_context("pending"))
     assert "金额差 ¥2.00" in html and "金额差 $2.00" not in html
-    assert "账单 ¥12.00 · 已拆 ¥10.00" in html
+    assert "账单 ¥12.00" in html
+    assert "<strong>¥10.00</strong>" in html
     assert "还差 ¥2.00 未分配" in html
 
 
