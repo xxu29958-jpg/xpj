@@ -41,11 +41,6 @@
     const accepted = items.filter(item => item.result).length;
     selection.hidden = items.length === 0;
     task.querySelector("[data-capture-count]").textContent = items.length + " 张";
-    task.querySelector("[data-capture-progress]").hidden = !attempted && !accepted;
-    task.querySelector("[data-capture-progress-label]").textContent = accepted + " / " + items.length;
-    const progress = task.querySelector("[data-capture-progress-bar]");
-    progress.max = Math.max(1, items.length);
-    progress.value = accepted;
     const ready = items.filter(item => !item.result && item.controller?.state().ready && !item.controller.state().onlineOnly);
     const preparing = !sending && items.some(item => item.controller?.state().busy);
     const onlineOnly = items.some(item => item.controller?.state().onlineOnly);
@@ -57,22 +52,31 @@
     if (onlineOnly) status.textContent = "浏览器不能保留这些原图。请逐张在线上传，离开会失去尚未上传的选择。";
     form.querySelector(".file-picker").hidden = attempted;
     stop.hidden = !sending;
+    updateProgress(accepted);
+    items.forEach(updateRow);
+  }
+  function updateProgress(accepted) {
+    task.querySelector("[data-capture-progress]").hidden = !attempted && !accepted;
+    task.querySelector("[data-capture-progress-label]").textContent = accepted + " / " + items.length;
+    const progress = task.querySelector("[data-capture-progress-bar]");
+    progress.max = Math.max(1, items.length);
+    progress.value = accepted;
     if (accepted) {
       const readyToReview = accepted === items.length && items.every(item => item.recognition === "updated");
       task.querySelector("[data-capture-title]").textContent = readyToReview ? "小票已准备好核对" : "小票正在整理";
       task.querySelector("[data-capture-description]").textContent = readyToReview ? "核对金额、商家和日期，确认后计入流水。" : "已收到的图片会继续识别，可以离开后再回来。";
       task.querySelector("[data-capture-progress] .product-page-summary").textContent = readyToReview ? "上传和识别已完成，账单仍需你确认。" : "上传完成后，识别还会继续。重试沿用原任务。";
     }
-    for (const item of items) {
-      const state = item.controller?.state();
-      item.remove.hidden = !!item.result || !!state && state.phase !== "editing";
-      item.remove.disabled = sending || !state?.canRemove;
-      item.retry.hidden = !!item.result || (!state?.onlineOnly && state?.phase === "editing");
-      if (state?.onlineOnly) item.retry.textContent = "仅此张在线上传";
-      item.retry.classList.toggle("product-button--primary", !!state?.onlineOnly);
-      item.retry.classList.toggle("product-button--quiet", !state?.onlineOnly);
-      if (item.result) item.form.querySelector("[data-attachment-status]").hidden = true;
-    }
+  }
+  function updateRow(item) {
+    const state = item.controller?.state();
+    item.remove.hidden = !!item.result || !!state && state.phase !== "editing";
+    item.remove.disabled = sending || !state?.canRemove;
+    item.retry.hidden = !!item.result || (!state?.onlineOnly && state?.phase === "editing");
+    if (state?.onlineOnly) item.retry.textContent = "仅此张在线上传";
+    item.retry.classList.toggle("product-button--primary", !!state?.onlineOnly);
+    item.retry.classList.toggle("product-button--quiet", !state?.onlineOnly);
+    if (item.result) item.form.querySelector("[data-attachment-status]").hidden = true;
   }
   function preview(item, file) {
     item.url = window.URL.createObjectURL(file);

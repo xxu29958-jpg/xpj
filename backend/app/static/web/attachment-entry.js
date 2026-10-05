@@ -94,9 +94,10 @@
     }
     function values() {
       const previous = store.read(ref);
-      return {action: form.action, reviewed_sha256: form.elements.namedItem("reviewed_sha256")?.value || "",
+      return {action: form.action,
         request_id: form.elements.namedItem("request_id")?.value || "", file_sha256: "", file_name: "",
-        file_type: "", file_last_modified: "", ...(previous?.values || {})};
+        file_type: "", file_last_modified: "", ...(previous?.values || {}),
+        reviewed_sha256: form.elements.namedItem("reviewed_sha256")?.value || ""};
     }
     async function capture() {
       if (!held || busy || accepted) return;
@@ -106,9 +107,7 @@
       button.disabled = true;
       notice("正在保留原文件和任务，请暂勿关闭此页…");
       try {
-        const raw = values();
-        raw.reviewed_sha256 = form.elements.namedItem("reviewed_sha256")?.value || "";
-        const saved = await drafts.retain(scope, ref, raw, file?.files[0]);
+        const saved = await drafts.retain(scope, ref, values(), file?.files[0]);
         retained = true;
         controls(saved);
         captureError = false;
