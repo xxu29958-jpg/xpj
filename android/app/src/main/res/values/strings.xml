@@ -287,10 +287,12 @@
     <string name="expense_correction_review_title">核对当前账单</string>
     <string name="expense_correction_review_versions">原稿依据版本 %1$d；当前版本 %2$d</string>
     <string name="expense_correction_review_scores">价值 %1$s · 后悔 %2$s</string>
-    <string name="expense_correction_review_explainer">下方保留原输入。继续核对会保留你改过的字段，未修改的字段采用当前值；保留修改过的金额时也保留原币。发生变化的明细和拆账请逐项选择，受保护的归属信息保持当前值。</string>
+    <string name="expense_correction_review_explainer">你的修改已保留。请选择有冲突的部分，核对后再保存；未修改的字段采用当前值，更正原因保持不变。</string>
     <string name="expense_correction_review_adopt">按以上选择继续核对</string>
     <string name="expense_correction_review_current_rows">当前记录：\n%1$s</string>
     <string name="expense_correction_review_original_rows">我的原输入：\n%1$s</string>
-    <string name="expense_correction_review_keep_rows">保留我的整组输入，替换当前记录</string>
-    <string name="expense_correction_review_use_current">采用当前记录，放弃这部分原输入</string>
+    <string name="expense_correction_review_keep_rows">改为我的选择，沿用更正原因</string>
+    <string name="expense_correction_review_use_current">使用当前记录，保留另一端的修改</string>
+    <string name="expense_correction_comparison_current">当前记录</string>
+    <string name="expense_correction_comparison_proposed">这次修改</string>
 </resources>

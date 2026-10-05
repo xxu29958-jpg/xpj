@@ -1731,10 +1731,9 @@
    会悬浮覆盖途经的编辑字段；折叠后约 1.5 视口、reason 锚点在顶，正流收尾
    同时保住行动可达与编辑无遮挡。 */
 .correction-actions {
-    display: flex;
-    align-items: center;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: var(--space-4);
-    flex-wrap: wrap;
     padding: var(--space-3) 0;
     border-block-start: 1px solid var(--border-card); /* 1px hairline：登记例外 */
 }

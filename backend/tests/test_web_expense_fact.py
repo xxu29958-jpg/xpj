@@ -231,7 +231,7 @@ def test_correction_row_errors_open_the_fold_for_no_js_recovery(
 
     assert response.status_code == 422, response.text
     assert section_title in response.text
-    assert '<details class="dt-card correction-fold" open>' in response.text
+    assert '<details class="correction-fold" open>' in response.text
     assert "行需要修正，请检查后重新提交" in response.text
 
 
@@ -373,7 +373,7 @@ def test_correction_conflict_keeps_original_input_and_version_until_explicit_rev
     # The raw form keeps its old version; the peer fact is shown separately for review.
     assert "第一次的值" in conflict.text
     assert 'value="过期页面提交的值"' in conflict.text
-    assert "原输入仍保留" in conflict.text
+    assert "你的修改已保留" in conflict.text
     assert 'value="拿着旧页面再改"' in conflict.text
     assert _hidden_input(conflict.text, "return_to") == "search"
     assert _hidden_input(conflict.text, "return_query") == "上下文咖啡"
@@ -390,6 +390,48 @@ def test_correction_conflict_keeps_original_input_and_version_until_explicit_rev
     assert _hidden_input(reviewed.text, "idempotency_key") != stale_key
     unchanged = web_client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers).json()
     assert unchanged["row_version"] == fresh_token and unchanged["merchant"] == "第一次的值"
+
+
+@pytest.mark.parametrize("choice", ["keep", "current"])
+def test_field_conflict_review_uses_only_the_displayed_version_and_never_writes_until_save(web_client, identity, choice):
+    expense_id = _create_confirmed(web_client, identity=identity)
+    path = f"/web/expenses/{expense_id}/corrections"
+    page = web_client.get(f"/web/expenses/{expense_id}/correct?ledger_id=owner").text
+    original = {"ledger_id": "owner", "reason": "核对原小票", "merchant": "我的商家", "note": "我的备注",
+        "expected_row_version": _hidden_input(page, "expected_row_version"),
+        "fact_basis": _hidden_input(page, "fact_basis"), "idempotency_key": _hidden_input(page, "idempotency_key")}
+    for peer in ("另一端商家", "又一次更新"):
+        previous = _row_version(web_client, expense_id, identity)
+        changed = web_client.post(path, data={"ledger_id": "owner", "reason": "另一端核对", "merchant": peer,
+            "expected_row_version": str(previous), "idempotency_key": _correction_key(web_client, expense_id)}, follow_redirects=False)
+        assert changed.status_code == 303, changed.text
+        if peer == "另一端商家":
+            rejected = web_client.post(path, data=original, follow_redirects=False)
+            assert rejected.status_code == 409, rejected.text
+            shown = _hidden_input(rejected.text, "review_current_version")
+            assert 'name="review_merchant_choice"' in rejected.text
+    stale = web_client.post(path, data={**original, "review_latest": "true",
+        "review_current_version": shown, "review_merchant_choice": choice}, follow_redirects=False)
+    assert stale.status_code == 200, stale.text
+    assert _hidden_input(stale.text, "idempotency_key") == original["idempotency_key"]
+    assert _hidden_input(stale.text, "expected_row_version") == original["expected_row_version"]
+    latest = _hidden_input(stale.text, "review_current_version")
+    prepared = web_client.post(path, data={**original, "review_latest": "true",
+        "review_current_version": latest, "review_merchant_choice": choice}, follow_redirects=False)
+    assert prepared.status_code == 200, prepared.text
+    fresh_key = _hidden_input(prepared.text, "idempotency_key")
+    assert fresh_key != original["idempotency_key"]
+    assert _hidden_input(prepared.text, "expected_row_version") == latest
+    current = web_client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers).json()
+    assert current["merchant"] == "又一次更新" and current["note"] != "我的备注"
+    accepted = {**original, "merchant": "我的商家" if choice == "keep" else "又一次更新",
+        "expected_row_version": latest, "fact_basis": _hidden_input(prepared.text, "fact_basis"), "idempotency_key": fresh_key}
+    saved = web_client.post(path, data=accepted, follow_redirects=False)
+    assert saved.status_code == 303, saved.text
+    current = web_client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers).json()
+    assert current["merchant"] == accepted["merchant"] and current["note"] == "我的备注"
+    assert web_client.post(path, data=accepted, follow_redirects=False).status_code == 303
+    assert _row_version(web_client, expense_id, identity) == current["row_version"]
 
 
 def test_web_correction_replay_hits_claim_before_current_state_diff(web_client: TestClient, *, identity) -> None:

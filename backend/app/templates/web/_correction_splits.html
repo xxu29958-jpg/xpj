@@ -3,13 +3,10 @@
 {% set _filled = split_rows.rows | selectattr('member_id') | list %}
 {% set _error_rows = split_rows.rows | selectattr('errors') | list %}
 {% set _section_error = field_errors.get('splits') %}
-<details class="dt-card correction-fold"{% if _error_rows or _section_error %} open{% endif %}>
-  <summary class="correction-fold-summary">
-    <span class="correction-fold-title">家庭拆账</span>
-    <span class="meta">已记 {{ _filled | length }} 行；展开可调整，与账单字段同一次更正保存；不动则不会产生拆账变更。</span>
-    {% if _error_rows %}<span class="field-error">{{ _error_rows | length }} 行需要修正，请检查后重新提交。</span>{% endif %}
-    {% if _section_error %}<span class="field-error">{{ _section_error }}</span>{% endif %}
-  </summary>
+<details class="correction-fold"{% if _error_rows or _section_error %} open{% endif %}>
+  <summary class="product-entry"><span class="product-entry-icon"><svg><use href="/static/shared/vendor/lucide/icons.svg#users"/></svg></span><span class="product-entry-copy"><strong>家庭拆账</strong><span>已记 {{ _filled | length }} 项 · 查看与调整</span></span><svg><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></summary>
+    {% if _error_rows %}<p class="field-error">{{ _error_rows | length }} 项需要修正</p>{% endif %}
+    {% if _section_error %}<p class="field-error">{{ _section_error }}</p>{% endif %}
   <div class="correction-fold-body">
     {% if split_rows.total_yuan %}
     <div class="fact-reconcile">

@@ -1015,6 +1015,27 @@ body.product-shell .file-picker > input.file-picker-input:focus-visible {
     height: var(--space-5);
     accent-color: var(--brand-primary);
 }
+fieldset.product-field { border: 0; padding: 0; margin: 0; }
+.product-field > label.product-check { min-height: var(--target-min); font-size: var(--type-body-size); font-weight: normal; }
+
+/* Before/after facts share the same type, spacing and emphasis as editable entry rows. */
+.product-comparison {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 12ch), 1fr));
+    align-items: stretch;
+    gap: var(--space-4);
+}
+.product-comparison > div {
+    display: grid;
+    align-content: center;
+    gap: var(--space-2);
+    padding: var(--space-4);
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+.product-comparison span { color: var(--text-meta); font-size: var(--type-caption-size); }
+.product-comparison strong { font-size: var(--type-title-size); font-weight: var(--type-title-weight); }
+.product-comparison-proposed { background: var(--brand-primary-bg); border-radius: var(--radius-input); }
 
 .text-warning {
     color: var(--state-warn-fg);

@@ -1,13 +1,8 @@
 {# 更正专属：评价（值回票价 / 后悔指数）。原生 radiogroup：1–5 分 + 清空，
    键盘方向键/读屏原生成立；空值 = 清空评分（absent/clear/value 三态由
    _web_correction_form._score_change 裁决）；field_errors 行内定位。 #}
-<div class="product-panel product-panel--padded">
-  <div class="product-panel-header">
-    <div>
-      <h2 class="product-panel-title">评价</h2>
-      <div class="product-panel-subtitle">1 到 5 分；选「清空」会删除已有评分。</div>
-    </div>
-  </div>
+<details {% if field_errors.get('value_score') or field_errors.get('regret_score') %}open{% endif %}>
+  <summary class="product-entry"><span class="product-entry-icon product-entry-icon--lilac"><svg><use href="/static/shared/vendor/lucide/icons.svg#sparkles"/></svg></span><span class="product-entry-copy"><strong>评价</strong><span>值回票价与后悔指数</span></span><svg><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></summary>
   <div class="correction-fields">
     <fieldset class="product-field score-row">
       <legend>值回票价</legend>
@@ -42,4 +37,4 @@
       {% if field_errors.get('regret_score') %}<div class="field-error">{{ field_errors.get('regret_score') }}</div>{% endif %}
     </fieldset>
   </div>
-</div>
+</details>

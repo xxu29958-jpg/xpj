@@ -45,6 +45,33 @@
     });
     window.TicketboxWeb.bindReviewFields(parent);
   }
+  function renderCorrectionComparison(form) {
+    form.querySelectorAll("[data-correction-comparison]").forEach(row => {
+      const fields = JSON.parse(row.dataset.fields), current = JSON.parse(row.dataset.current);
+      const values = fields.map(name => form.elements.namedItem(name)?.value ?? current[name]);
+      row.hidden = !row.querySelector('[type="radio"]') && fields.every((name, index) => values[index] === current[name]);
+      let displayed = values;
+      if (row.dataset.kind === "expense_time") {
+        const time = Object.fromEntries(fields.map((name, index) => [name, values[index]]));
+        displayed = time.time_precision === "date_only" ? [time.user_local_date] :
+          [time.expense_time?.replace("T", " "), time.source_timezone];
+      }
+      row.querySelector("[data-correction-proposed]").textContent = displayed.filter(Boolean).join(" · ") || "未填写";
+    });
+  }
+  document.querySelectorAll(".correction-form").forEach(form => {
+    form.addEventListener("input", () => renderCorrectionComparison(form));
+    form.addEventListener("change", () => renderCorrectionComparison(form));
+    const preview = form.querySelector("[data-correction-show-preview]");
+    if (preview) {
+      preview.hidden = false;
+      preview.addEventListener("click", () => {
+        renderCorrectionComparison(form);
+        form.querySelector("[data-correction-fields]").open = false;
+        form.querySelector("[data-correction-comparisons]").scrollIntoView({block: "start"});
+      });
+    }
+  });
   document.querySelectorAll("[data-correction-draft-scope]").forEach(form => {
     let present = [...new FormData(form).keys()].filter(name => scalars.includes(name));
     const currentVersion = form.dataset.correctionCurrentVersion;
@@ -76,6 +103,7 @@
         present = JSON.parse(saved.present_fields);
         scalars.forEach(name => { const input = field(name); if (input) put(input, saved[name]); });
         restoreRows(current, itemNames, saved.item_rows); restoreRows(current, splitNames, saved.split_rows);
+        renderCorrectionComparison(current);
       },
       present: (_, saved) => {
         const note = form.querySelector("[data-correction-basis-note]");

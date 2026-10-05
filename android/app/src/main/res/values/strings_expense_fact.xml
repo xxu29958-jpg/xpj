@@ -93,7 +93,11 @@
     <string name="expense_correction_sheet_subtitle">更正会保留修改记录：保存后，原值与新值都会显示在变更记录里。</string>
     <string name="expense_correction_reason_label">更正原因（必填）</string>
     <string name="expense_correction_reason_placeholder">例如：小票金额看错了 / 商家识别错了</string>
-    <string name="expense_correction_reason_helper">这句话会显示在变更记录里，帮助家人（和以后的你）理解为什么改。</string>
+    <string name="expense_correction_reason_helper">原因会随修改记录保留。</string>
+    <string name="expense_correction_fields_title">账单字段</string>
+    <string name="expense_correction_fields_hint">金额、商家、分类与日期</string>
+    <string name="expense_correction_preview">查看本次修改</string>
+    <string name="expense_correction_collection_hint">查看与调整，随本次更正保存</string>
     <string name="expense_correction_reason_required">请说明这次更正的原因。</string>
     <string name="expense_correction_snapshot_changed">账单状态已有变化，草稿还在。请先核对当前账单，再重新发起更正。</string>
     <string name="expense_correction_collections_not_current">明细或拆账尚待核对；请刷新账单后再修改这些内容。</string>

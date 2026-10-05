@@ -31,7 +31,7 @@ def correction_page(prepared=None, native_result="prepared"):
         expense.update(merchant=prepared["merchant"], original_amount_value=prepared["amount_yuan"],
             original_currency_code=prepared["original_currency"], row_version=prepared["expected_row_version"],
             value_score=prepared["value_score"], regret_score=prepared["regret_score"])
-    return _browser.ENV.get_template("expense_correct.html").render(expense=expense, can_write=True, correction_mode=True,
+    return _browser.ENV.get_template("expense_correct.html").render(expense=expense, current_expense=expense, can_write=True, correction_mode=True,
         frozen_scalars=[], field_errors={}, csrf_token="synthetic", selected_ledger_id="owner",
         confirm_idempotency_key=prepared["idempotency_key"] if prepared else str(uuid4()),
         reason_input=prepared["reason"] if prepared else "", flow_return_fields={"return_to": "search", "return_query": "原查询"},
