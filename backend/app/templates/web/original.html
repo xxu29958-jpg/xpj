@@ -1,55 +1,75 @@
 {% extends "base.html" %}
 {% from '_history_time.html' import saved_time %}
+{% set page_surface = 'tertiary' %}
+{% set product_body_domain = 'transactions' %}
+{% set task_return_href = '/web/expenses/' ~ original.expense_id ~ '/edit?ledger_id=' ~ selected_ledger_id %}
+{% set task_return_label = '账单详情' %}
 {% block title %}账单原件 · 小票夹{% endblock %}
 {% block page_scripts %}{% include "_attachment_scripts.html" %}<script defer src="/static/web/originals.js?v={{ asset_version }}"></script>{% endblock %}
 {% block content %}
-{% set labels = {'none':'没有关联原件','cleaned':'已按策略清理','missing':'原件文件缺失','corrupt':'原件内容与记录不符','unverified':'旧原件尚未建立摘要','verified':'原件一致','unreadable':'暂时无法读取原件'} %}
-<header class="product-page-header"><div><h1 class="page-title">账单原件</h1><p>{{ original_expense.merchant or '未填写商家' }} · 账单 #{{ original.expense_id }}</p></div>
-  <a class="product-button" href="/web/expenses/{{ original.expense_id }}/edit?ledger_id={{ selected_ledger_id }}">返回账单</a>
-  <a class="product-button" href="/web/originals?ledger_id={{ selected_ledger_id }}">检查其他原件</a>
-</header>
+{% set labels = {'none':'没有关联原件','cleaned':'已按策略清理','missing':'原件文件缺失','corrupt':'原件内容与记录不符','unverified':'旧原件尚未核验','verified':'原件可用','unreadable':'暂时无法读取原件'} %}
+{% set needs_replenish = original.expected_sha256 and original.state in ['missing','corrupt','cleaned','unreadable'] %}
+<header class="product-page-header"><div class="product-page-heading">
+  <h1 class="page-title">{{ '把原件补回来' if needs_replenish else '账单原件' }}</h1>
+  <p class="product-page-summary">{{ original_expense.merchant or '未填写商家' }} · {{ original_amount_label }}</p>
+</div></header>
 {% if message %}<p class="product-feedback" role="status">{{ message }}</p>{% endif %}
-<section class="product-panel product-panel--padded">
-  <h2>{{ labels[original.state] }}</h2><p>检查时间：{{ saved_time(original.checked_at) }}。此结果只说明本次读取，不代表文件将来始终可用。</p>
-  <p>金额、账务日期及历史仍保留。缩略图是预览副本，不能证明原件完整。</p>
-  {% if original.state == 'none' %}<p>手动账单可以没有原件，无需补回。</p>{% endif %}
-  {% if original.state in ['missing','corrupt','cleaned'] %}<p>请选择同一张已存原件或可归一为它的原始图片。不同内容不会替换账单，也不会新建账单。</p>{% endif %}
-  {% if original.state in ['verified','unverified'] %}
-  <button class="product-button" type="button" data-original-preview data-image-href="/web/expenses/{{ original.expense_id }}/image?ledger_id={{ selected_ledger_id }}">打开实际原图</button>
-  <a class="product-button" href="/web/expenses/{{ original.expense_id }}/image?ledger_id={{ selected_ledger_id }}" download>下载原图</a>
-  <p data-original-preview-status role="status"></p><img hidden data-original-reviewed-image alt="当前实际原图" class="receipt-img">
-  {% endif %}
+<div class="detail-layout">
+<section class="detail-main" aria-label="原件阅读">
+{% if original.state in ['verified','unverified'] %}
+  <div class="receipt-image-shell original-reader" data-original-reader>
+    <img hidden data-original-reviewed-image alt="这笔账单的实际原图">
+    <p class="meta" data-original-preview-status role="status">实际原图待打开</p>
+  </div>
+  <div class="product-page-actions" data-original-controls hidden>
+    <button type="button" class="product-button product-button--quiet" data-receipt-zoom aria-label="放大小票原图"><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#plus"/></svg><span data-receipt-scale>100%</span></button>
+    <button type="button" class="product-button product-button--quiet" data-receipt-rotate aria-label="旋转小票原图"><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#rotate-ccw"/></svg>旋转</button>
+    <a class="product-button product-button--quiet" href="/web/expenses/{{ original.expense_id }}/image?ledger_id={{ selected_ledger_id }}" download><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#download"/></svg>下载原图</a>
+  </div>
+  <button class="product-button product-button--quiet" type="button" data-original-preview data-image-href="/web/expenses/{{ original.expense_id }}/image?ledger_id={{ selected_ledger_id }}">打开实际原图</button>
+  <noscript><p>请<a href="/web/expenses/{{ original.expense_id }}/image?ledger_id={{ selected_ledger_id }}">打开实际原图</a>查看或下载。核验摘要需要启用脚本后读取并核对图片。</p></noscript>
+{% else %}
+  <div class="product-panel product-panel--padded fact-hero"><span class="meta">对应账单</span><strong class="fact-amount">{{ original_amount_label }}</strong><p>{{ original_expense.merchant or '未填写商家' }}</p></div>
+  <p class="product-feedback">{{ labels[original.state] }}。{% if original.state == 'none' %}手动账单可以没有原件，无需补回。{% else %}这笔账单、金额与历史记录仍然保留。{% endif %}</p>
+{% endif %}
 </section>
+<aside class="detail-aside" aria-label="原件操作与状态">
 {% if can_write and request.state.web_session_auth %}
 {% macro intent_form(action, title, available, binary=false) %}
 {% set intent = original_intents[action] %}
-<form method="post" action="{{ intent.action }}&amp;expected_row_version={{ original.row_version }}{% if binary and original.expected_sha256 %}&amp;expected_sha256={{ original.expected_sha256 }}{% endif %}"
+<form class="edit-form" method="post" action="{{ intent.action }}&amp;expected_row_version={{ original.row_version }}{% if binary and original.expected_sha256 %}&amp;expected_sha256={{ original.expected_sha256 }}{% endif %}"
       data-attachment-scope="{{ intent.scope | tojson | forceescape }}" data-attachment-ref="{{ intent.client_ref }}"
       data-attachment-available="{{ 'true' if available else 'false' }}" {% if not available %}hidden{% endif %}
       {% if binary %}enctype="multipart/form-data"{% endif %} {% if action == 'verify' %}data-original-verification{% endif %}>
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-  {% if binary %}<label>选择要补回的原件 <input type="file" name="file" accept="image/*" required></label>{% endif %}
+  {% if binary %}<div class="product-field"><label for="original-file">选择同一张小票</label><input class="product-input" id="original-file" type="file" name="file" accept="image/*" required><p class="meta">核对所选图片属于这笔账单。补回会检查原件内容，不会另建账单。</p></div>{% endif %}
   {% if action == 'verify' %}
   <input type="hidden" name="reviewed_sha256" value="">
-  <label><input type="checkbox" data-original-reviewed disabled required>我已看清上方实际原图，确认它属于这笔账单，建立当前摘要基线。</label>
-  <p>这次确认记录的是现在所见文件，不会伪造历史来源。文件随后变化时会拒绝本次确认。</p>
+  <label class="product-check"><input type="checkbox" data-original-reviewed disabled required><span>我已看清上方实际原图，确认它属于这笔账单。</span></label>
+  <p class="meta">确认后记录当前图片的核验结果；不改变历史来源。</p>
   {% elif action.startswith('cleanup/') %}<input type="hidden" name="request_id" value="{{ original.cleanup.request_id if original.cleanup else '' }}">{% endif %}
-  <button class="product-button" type="submit" {% if action == 'verify' %}disabled{% endif %}>{{ title }}</button>
-  <p data-attachment-status role="status">操作前保留原请求；离开后可从下方原任务继续。</p>
+  <div class="product-form-actions"><button class="product-button {{ 'product-button--primary' if binary or action == 'verify' else 'product-button--quiet' }}" type="submit" {% if action == 'verify' %}disabled{% endif %}>{{ title }}</button></div>
+  <p class="meta" data-attachment-status role="status">未完成的操作可从下方继续。</p>
 </form>
 {% endmacro %}
-<section class="product-panel product-panel--padded">
 {{ intent_form('verify', '确认所见原件', original.state == 'unverified') }}
-{{ intent_form('replenish', '补回到这笔账单', original.expected_sha256 and original.state in ['missing','corrupt','cleaned','unreadable'], true) }}
-{% if original.cleanup %}<h2>尚未结束的清理</h2><p>请求时间 {{ saved_time(original.cleanup.requested_at) }}。原图：{{ original.cleanup.image or '不涉及' }}；缩略图：{{ original.cleanup.thumbnail or '不涉及' }}。</p>
-{% if not original.cleanup.policy_enabled %}<p>当前清理策略已关闭；保留原请求，可取消剩余工作。</p>{% endif %}{% endif %}
+{{ intent_form('replenish', '核对并补回原件', needs_replenish, true) }}
+{% if original.cleanup %}<section><h2 class="product-panel-title">尚未结束的清理</h2><p class="meta">请求时间 {{ saved_time(original.cleanup.requested_at) }}。原图：{{ original.cleanup.image or '不涉及' }}；缩略图：{{ original.cleanup.thumbnail or '不涉及' }}。</p>
+{% if not original.cleanup.policy_enabled %}<p class="meta">当前清理策略已关闭；保留原请求，可取消剩余工作。</p>{% endif %}</section>{% endif %}
 {{ intent_form('cleanup/retry', '继续原清理请求', original.cleanup and original.cleanup.policy_enabled) }}
 {{ intent_form('cleanup/cancel', '取消尚未执行的清理', original.cleanup) }}
-{% if original.cleanup_error %}<p>清理请求无法解释，请保留原件并联系拥有者核查。</p>{% endif %}
+{% if original.cleanup_error %}<p class="product-feedback product-feedback--warning">清理请求无法解释，请保留原件并联系拥有者核查。</p>{% endif %}
 <section data-attachment-shelf aria-label="保留的原件任务"></section>
-<a class="product-button" href="/web/expenses/{{ original.expense_id }}/original?ledger_id={{ selected_ledger_id }}">重新检查并选择正确文件（保留原任务）</a>
-</section>
 {% elif can_write %}
-<p>查看与下载继续可用。<a href="/web/auth/local?next=/web/expenses/{{ original.expense_id }}/original">建立当前浏览器身份后继续补回或核验</a>。</p>
+<p class="meta">查看与下载继续可用。<a href="/web/auth/local?next=/web/expenses/{{ original.expense_id }}/original">建立当前浏览器身份后继续补回或核验</a>。</p>
 {% endif %}
+<details class="fact-disclosure">
+  <summary class="product-entry"><span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#info"/></svg></span><span class="product-entry-copy"><strong>{{ labels[original.state] }}</strong><span>查看检查时间与范围</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></summary>
+  <p class="meta">检查时间：{{ saved_time(original.checked_at) }}。此结果只说明本次读取。缩略图是预览副本，不能证明原件完整。</p>
+  <p class="meta">金额、账务日期及历史仍保留；检查结果不代表备份或恢复验证。</p>
+  <a class="product-button product-button--quiet" href="/web/expenses/{{ original.expense_id }}/original?ledger_id={{ selected_ledger_id }}">重新检查（保留原任务）</a>
+</details>
+<a class="product-entry" href="/web/originals?ledger_id={{ selected_ledger_id }}"><span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#layers"/></svg></span><span class="product-entry-copy"><strong>检查其他原件</strong><span>查看当前账本的原件状态</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></a>
+</aside>
+</div>
 {% endblock %}

@@ -7,6 +7,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.hasScrollToIndexAction
@@ -168,19 +169,34 @@ class FactEntryNavigationTest {
     }
 
     @Test fun factWithoutThumbnailStillOpensItsProtectedOriginal() {
+        InstrumentationRegistry.getArguments().getString("captureImage")?.let {
+            harness.fixture.network.originalImageOverride = File(it).readBytes()
+        }
         harness.fixture.network.current = harness.fixture.network.current.copy(imagePath = "synthetic/original.png")
         installMainGraph()
         openFact()
-        val original = context.getString(R.string.original_view)
-        waitForText(original)
         compose.waitUntil(5_000) { harness.fixture.network.originalHealthReads.contains(42L) }
-        compose.onNodeWithText(original).performScrollTo().performClick()
         compose.waitUntil(5_000) { harness.fixture.network.imageReads.size == 1 }
         compose.waitForIdle()
         compose.onNodeWithContentDescription(context.getString(R.string.components_async_image_content_description))
             .performScrollTo().assertIsDisplayed()
         assertEquals(listOf(42L), harness.fixture.network.imageReads)
         assertEquals(null, harness.fixture.network.current.thumbnailPath)
+        saveConsumerArtPreview("original-reader", requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        compose.onNodeWithText(context.getString(R.string.original_verify))
+            .performScrollTo().assertIsNotEnabled()
+        saveConsumerArtPreview("original-actions", requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+    }
+
+    @Test fun missingOriginalKeepsTheBillAndReplenishEntry() {
+        harness.fixture.network.originalMissing = true
+        installMainGraph()
+        openFact()
+        waitForText(context.getString(R.string.original_replenish))
+        compose.onNodeWithText(context.getString(R.string.original_replenish)).performScrollTo().assertIsEnabled()
+        assertTrue(harness.fixture.network.imageReads.isEmpty())
+        assertEquals("confirmed", harness.fixture.network.current.status)
+        saveConsumerArtPreview("original-missing", requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
     }
 
     @Test fun splitSaveShowsTheOriginalAtItsActionWithoutScrollingBackToThePageTop() {

@@ -253,21 +253,7 @@
         position.textContent = "第 " + (rows.indexOf(currentRow) + 1) + " / " + rows.length + " 张";
       });
       const image = drawer.querySelector(".product-drawer-receipt img");
-      if (image) {
-        const zoom = drawer.querySelector("[data-receipt-zoom]");
-        const rotate = drawer.querySelector("[data-receipt-rotate]");
-        if (zoom) zoom.onclick = function () {
-          const enlarged = image.classList.toggle("is-zoomed");
-          zoom.setAttribute("aria-label", enlarged ? "缩小小票原图" : "放大小票原图");
-          const scale = drawer.querySelector("[data-receipt-scale]");
-          if (scale) scale.textContent = enlarged ? "180%" : "100%";
-        };
-        if (rotate) rotate.onclick = function () {
-          const angle = (Number(image.dataset.rotation || 0) - 90) % 360;
-          image.dataset.rotation = String(angle);
-          image.style.rotate = angle + "deg";
-        };
-      }
+      if (image) app.bindReceiptControls(drawer, image);
       if (typeof app.initReceiptSkeletons === "function") app.initReceiptSkeletons(drawer);
       drawer.querySelectorAll("[data-drawer-close]").forEach(function (b) {
         b.onclick = close;

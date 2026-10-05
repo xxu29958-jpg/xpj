@@ -10,17 +10,18 @@ from starlette.requests import Request
 from app.models import Expense, LedgerCalendarRevision
 from app.routes import _web_expense_fact as fact
 from app.routes import _web_expense_helpers as helpers
-from app.schemas import ExpenseRevisionListResponse, ExpenseRevisionResponse
+from app.schemas import ExpenseOffsetRevisionResponse, ExpenseRevisionListResponse, ExpenseRevisionResponse
 
 
 def test_offset_history_keeps_the_currency_and_amount_of_each_historical_snapshot():
-    row = fact._offset_timeline_entry({
+    row = fact._offset_timeline_entry(ExpenseOffsetRevisionResponse.model_validate({
+        "public_id": "offset-revision", "offset_public_id": "offset", "revision_number": 2,
         "change_kind": "correction", "reason": "按退款凭证核对", "created_at": "2026-10-05T00:00:00Z",
         "before": {"kind": "refund", "original_currency_code": "JPY", "original_amount_minor": 1200,
             "home_currency_code": "CNY", "amount_cents": 6000, "accounting_date": "2026-10-04"},
         "after": {"kind": "refund", "original_currency_code": "JPY", "original_amount_minor": 1000,
             "home_currency_code": "CNY", "amount_cents": 5000, "accounting_date": "2026-10-05"},
-    })
+    }))
     assert row["kind_label"] == "更正：商家退回"
     assert row["summary"] == "¥1,000 · 2026-10-05"
     amount = next(change for change in row["changes"] if change["label"] == "原币金额")
@@ -28,12 +29,13 @@ def test_offset_history_keeps_the_currency_and_amount_of_each_historical_snapsho
 
 
 def test_reversal_history_is_a_preserved_event_instead_of_a_zero_value_refund():
-    row = fact._offset_timeline_entry({
+    row = fact._offset_timeline_entry(ExpenseOffsetRevisionResponse.model_validate({
+        "public_id": "offset-void", "offset_public_id": "offset", "revision_number": 2,
         "change_kind": "void", "reason": "恢复原消费", "created_at": "2026-10-05T00:00:00Z",
         "before": {"kind": "reversal", "status": "active"},
         "after": {"kind": "reversal", "status": "voided", "original_currency_code": "CNY",
             "original_amount_minor": 12000, "accounting_date": "2026-10-05"},
-    })
+    }))
     assert row["kind_label"] == "撤销：冲销账单"
     assert row["summary"] == "2026-10-05"
     assert row["reason"] == "恢复原消费"

@@ -67,6 +67,14 @@
     overflow: hidden;
 }
 
+.original-reader { min-height: calc(var(--space-12) * 6); max-height: 70svh; overflow: auto; background: var(--surface-sunken); border-radius: var(--radius-xl); padding: var(--space-3); }
+.original-reader > img { display: block; max-width: 100%; max-height: calc(70svh - var(--space-6)); object-fit: contain; }
+.original-reader > img[hidden] { display: none; }
+.original-reader > img.is-zoomed { width: 180%; max-width: none; max-height: none; }
+.original-reader > [data-original-preview-status] { padding: var(--space-5); text-align: center; }
+.original-list > .product-entry { border-bottom: 1px solid var(--border-card); }
+.original-list [data-original-row-time] { font-size: var(--type-caption-size); color: var(--text-muted); }
+
 .receipt-loading {
     position: absolute;
     z-index: 1;

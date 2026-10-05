@@ -12,6 +12,7 @@ from app.database import get_db
 from app.routes._upload_request import read_request_upload
 from app.routes._web_attachment_intent import attachment_form_context
 from app.routes._web_draft_binding import draft_ack_response, require_draft_binding
+from app.routes._web_money_views import _expense_amount_labels
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
@@ -79,6 +80,8 @@ def web_original(request: Request, expense_id: int, ledger_id: str | None = None
                for action in ("verify", "replenish", "cleanup/retry", "cleanup/cancel")}
     ctx.update(original=health, original_expense=expense, original_intents=intents,
                message=request.query_params.get("msg", ""))
+    ctx["original_amount_label"], _ = _expense_amount_labels(expense,
+        presentation_currency_code=ctx.get("home_currency_code"))
     ctx["max_upload_size_bytes"] = get_settings().max_upload_size_bytes
     return templates.TemplateResponse(request=request, name="original.html", context=ctx)
 

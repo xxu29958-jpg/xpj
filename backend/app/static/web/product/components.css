@@ -1131,6 +1131,9 @@ details[open] > .product-entry > svg { transform: rotate(90deg); }
     color: var(--text-default);
 }
 .product-entry-icon > svg { width: var(--space-7); height: var(--space-7); }
+.product-entry-icon--receipt { position: relative; height: auto; aspect-ratio: 3 / 4; overflow: hidden; border-radius: var(--radius-sm); background: var(--surface-sunken); }
+.product-entry-icon--receipt > img { position: absolute; width: 100%; height: 100%; object-fit: contain; }
+.product-entry-icon--receipt.is-loaded > svg { visibility: hidden; }
 .product-entry-icon--apricot { background: var(--surface-apricot); }
 .product-entry-icon--lilac { background: var(--surface-lilac); }
 .product-entry-copy { display: grid; gap: var(--space-1); min-width: 0; overflow-wrap: anywhere; }

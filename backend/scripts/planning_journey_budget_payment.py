@@ -65,6 +65,7 @@ def reverse_payment(j, path, payment_date):
     j.goto(path)
     assert "本期已关联付款" in j.page.inner_text("main")
     j.page.get_by_role("link", name="查看原账单", exact=True).click()
+    j.page.get_by_text("退款与冲销", exact=True).click()
     panel = j.page.locator("#offset-create-reversal")
     panel.locator("summary").click()
     panel.locator('[name="accounting_date"]').fill(payment_date)

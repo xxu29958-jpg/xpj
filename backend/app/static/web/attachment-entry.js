@@ -65,16 +65,23 @@
       finally { busy = false; discard.disabled = false; changed(); }
     });
     function changed() { options.onChange?.(); }
+    function needsOriginalReview() {
+      return form.hasAttribute("data-original-verification") &&
+        (form.dataset.attachmentPhase || "editing") === "editing" &&
+        !form.elements.namedItem("reviewed_sha256").value;
+    }
     function notice(text) { status.textContent = text; changed(); }
     function allowOnlineOnly() {
       if (wanted || retained || accepted) return false;
       try { if (store.read(ref)) return false; }
       catch (_) { /* Only this fresh server-issued form may use native submission. */ }
       onlineOnly = true;
+      form.dataset.attachmentPhase = "editing";
       button.disabled = form.hasAttribute("data-original-verification") &&
         !form.elements.namedItem("reviewed_sha256").value;
       button.textContent = label + "（仅当前页在线提交）";
       notice(options.batch ? "原图未能保留，离开后无法恢复此选择。" : "浏览器未能持久保存文件；仍可在本页在线提交。离开或重载后不能恢复所选文件，请先确认网络可用。");
+      options.onReady?.();
       return true;
     }
     function controls(record) {
@@ -87,7 +94,7 @@
         if (input) input.readOnly = fixed;
       }
       const reviewed = form.querySelector("[data-original-reviewed]");
-      if (record?.values.reviewed_sha256 && reviewed) {
+      if (fixed && record?.values.reviewed_sha256 && reviewed) {
         reviewed.checked = true;
         reviewed.disabled = true;
       }
@@ -122,7 +129,7 @@
           return;
         }
         if (!allowOnlineOnly()) notice("最新文件未能保留，本次不会发送。原任务仍在；请保留页面，或重新检查后另开表单选择。");
-      } finally { busy = false; if (!onlineOnly) button.disabled = !held || captureError; changed(); }
+      } finally { busy = false; if (!onlineOnly) button.disabled = !held || captureError || needsOriginalReview(); changed(); }
     }
     async function send() {
       rejection = null;
@@ -158,16 +165,17 @@
     }
     form.addEventListener("change", capture);
     async function submit() {
-      if (onlineOnly || !held || busy || accepted || captureError) return false;
-      if (!store.read(ref)) await capture();
-      if (captureError || !held) return false;
+      if (onlineOnly || !held || busy || accepted || captureError || needsOriginalReview()) return false;
+      const record = store.read(ref);
+      if (!record || record.phase === "editing") await capture();
+      if (captureError || !held || needsOriginalReview()) return false;
       busy = true;
       button.disabled = true;
       notice("正在提交原任务…");
       try { await send(); }
       catch (_) { notice(accepted ? "操作已接受，本地文件暂未收起。请返回原账单，不要再次提交。" :
         "暂未收到保存回执。原文件和原请求仍在；恢复连接后重试原任务。"); }
-      finally { busy = false; button.disabled = accepted || !held; shelf(scope); changed(); }
+      finally { busy = false; button.disabled = accepted || !held || needsOriginalReview(); shelf(scope); changed(); }
       return accepted;
     }
     form.addEventListener("submit", event => {
@@ -180,7 +188,8 @@
       if (!options.batch) form.closest("details")?.setAttribute("open", "");
       form.action = record.values.action;
       for (const name of ["reviewed_sha256", "request_id"]) {
-        if (form.elements.namedItem(name)) form.elements.namedItem(name).value = record.values[name];
+        if (form.elements.namedItem(name)) form.elements.namedItem(name).value =
+          name === "reviewed_sha256" && record.phase === "editing" ? "" : record.values[name];
       }
       notice(options.batch ? "原图与原请求已恢复" : (record.values.file_name || "原件任务") + " 已恢复；提交沿用原文件、版本与请求。");
     }
@@ -222,7 +231,7 @@
         }
         controls(record);
         button.disabled = (!record && form.dataset.attachmentAvailable === "false") ||
-          (form.hasAttribute("data-original-verification") && !record?.values.reviewed_sha256);
+          needsOriginalReview();
         options.onReady?.();
         changed();
         return new Promise(resolve => { release = resolve; });
@@ -262,7 +271,7 @@
   }
   window.TicketboxAttachmentEntry = {init, shelf};
   document.querySelectorAll("[data-attachment-scope]:not([data-inbox-batch])").forEach(form => {
-    try { init(form); }
+    try { init(form, {onReady: () => form.dispatchEvent(new Event("attachment-ready"))}); }
     catch (_) { form.querySelector("[data-attachment-status]").textContent = "原任务无法读取，请保留页面并核对浏览器存储。"; }
   });
   window.addEventListener("hashchange", () => {

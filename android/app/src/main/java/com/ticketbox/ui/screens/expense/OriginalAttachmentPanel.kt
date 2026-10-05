@@ -3,15 +3,19 @@ package com.ticketbox.ui.screens.expense
 import com.ticketbox.ui.screens.settings.SettingsEntryRowOptions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -21,7 +25,10 @@ import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.components.AppAsyncImage
 import com.ticketbox.ui.components.AppAsyncImageLayout
 import com.ticketbox.ui.components.AppAsyncImagePresentation
+import com.ticketbox.ui.components.AppPrimaryButton
+import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.AppStatusBanner
+import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.settings.SettingsEntryRow
 import com.ticketbox.viewmodel.OriginalAttachmentUiState
@@ -38,23 +45,25 @@ fun OriginalAttachmentPanel(state: OriginalAttachmentUiState, viewModel: Origina
     val needsAttention = state.localIntent || state.commands.any { !it.delivered } ||
         state.health?.state in setOf("unverified", "missing", "corrupt", "unreadable")
     val expanded = expandedOverride ?: needsAttention
+    LaunchedEffect(expanded, state.access?.binding, state.health?.state) {
+        if (expanded && state.canReadOriginal && state.image == null && !state.imageLoading) viewModel.loadImage()
+    }
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
         SettingsEntryRow(
             title = stringResource(if (!expanded && state.canReadOriginal && state.health != null)
                 R.string.original_view else R.string.original_title),
-            subtitle = originalHealthLabel(state),
+            subtitle = originalHealthLabel(state, compact = true),
             icon = R.drawable.ic_lucide_image,
             onClick = {
                 expandedOverride = !expanded
-                if (!expanded && state.canReadOriginal && state.image == null && !state.imageLoading) viewModel.loadImage()
             },
             options = SettingsEntryRowOptions(expanded = expanded),
         )
         AppStatusBanner(state.message, MessageTone.Neutral)
         if (expanded) {
-            OriginalHealthSection(state) { viewModel.refresh() }
             if (state.localIntent) OriginalLocalSelection(state, onResumeSelection, viewModel::clearOriginalSelection)
             OriginalReadAndRepair(state, viewModel, onSelectFile)
+            OriginalHealthSection(state) { viewModel.refresh() }
             OriginalCleanupSection(state, viewModel)
             state.commands.forEach { OriginalCommandCard(it, state.busy, state.access?.canModify == true) { drop ->
                 viewModel.recoverOriginal(it.row.id, drop)
@@ -64,7 +73,16 @@ fun OriginalAttachmentPanel(state: OriginalAttachmentUiState, viewModel: Origina
 }
 
 @Composable
-private fun originalHealthLabel(state: OriginalAttachmentUiState): String {
+private fun originalHealthLabel(state: OriginalAttachmentUiState, compact: Boolean = false): String {
+    if (compact && state.stale && state.health != null) return stringResource(R.string.original_stale)
+    if (compact) return stringResource(when (state.health?.state) {
+        "none" -> R.string.original_status_none
+        "cleaned" -> R.string.original_status_cleaned
+        "missing", "corrupt" -> R.string.original_status_replenish
+        "unverified" -> R.string.original_status_unverified
+        "verified" -> R.string.original_status_verified
+        else -> R.string.original_status_unreadable
+    })
     val labels = mapOf("none" to R.string.original_none, "cleaned" to R.string.original_cleaned,
         "missing" to R.string.original_missing, "corrupt" to R.string.original_corrupt,
         "unverified" to R.string.original_unverified, "verified" to R.string.original_verified,
@@ -74,32 +92,47 @@ private fun originalHealthLabel(state: OriginalAttachmentUiState): String {
 
 @Composable
 private fun OriginalHealthSection(state: OriginalAttachmentUiState, onRefresh: () -> Unit) {
-    if (state.stale && state.health != null) Text(stringResource(R.string.original_stale))
-    state.health?.checkedAt?.let { Text(stringResource(R.string.original_checked_at, it)) }
-    TextButton(onClick = onRefresh, enabled = !state.checking) { Text(stringResource(R.string.original_check)) }
+    var expanded by rememberSaveable(state.access?.binding) { mutableStateOf(false) }
+    SettingsEntryRow(
+        title = stringResource(R.string.original_inspection_details),
+        subtitle = state.health?.checkedAt?.let { stringResource(R.string.original_checked_at, displayTime(it)) }
+            ?: stringResource(R.string.original_status_unreadable),
+        icon = R.drawable.ic_lucide_info,
+        onClick = { expanded = !expanded },
+        options = SettingsEntryRowOptions(expanded = expanded),
+    )
+    if (expanded) {
+        Text(originalHealthLabel(state), style = MaterialTheme.typography.bodyMedium)
+        AppSecondaryButton(text = stringResource(R.string.original_check), enabled = !state.checking, onClick = onRefresh)
+    }
 }
 
 @Composable
 private fun OriginalReadAndRepair(state: OriginalAttachmentUiState, viewModel: OriginalAttachmentViewModel, onSelectFile: () -> Unit) {
     var verify by remember(state.access?.binding) { mutableStateOf(false) }
-    if (state.canReadOriginal) {
-        TextButton(onClick = viewModel::loadImage, enabled = !state.imageLoading) { Text(stringResource(R.string.original_view)) }
-    }
-    state.image?.let { image ->
-        AppAsyncImage(image, presentation = AppAsyncImagePresentation(stringResource(R.string.original_image_failed),
+    if (state.image != null || state.imageLoading) {
+        AppAsyncImage(state.image, presentation = AppAsyncImagePresentation(stringResource(
+            if (state.imageLoading) R.string.expense_edit_large_image_loading else R.string.original_image_failed),
             stringResource(R.string.components_async_image_content_description), contentScale = ContentScale.Fit),
             layout = AppAsyncImageLayout(displayHeight = 420.dp), onDisplayed = viewModel::imageDisplayed)
-        if (image.originalSha256 == null) Text(stringResource(R.string.original_verify_no_digest))
+        if (state.image != null && state.image.originalSha256 == null) Text(stringResource(R.string.original_verify_no_digest))
+    }
+    if (state.canReadOriginal) {
+        AppSecondaryButton(text = stringResource(if (state.image == null) R.string.original_view else R.string.original_read_again),
+            onClick = viewModel::loadImage, enabled = !state.imageLoading)
     }
     if (state.health?.state == "unverified") {
-        TextButton(onClick = { verify = true }, enabled = state.canVerify) { Text(stringResource(R.string.original_verify)) }
+        AppPrimaryButton(text = stringResource(R.string.original_verify), modifier = Modifier.fillMaxWidth(),
+            onClick = { verify = true }, enabled = state.canVerify)
     }
     if (verify) OriginalConfirmDialog(R.string.original_verify_explanation, {
         verify = false
         viewModel.verifyReviewedImage()
     }, { verify = false })
     if (state.health?.expectedSha256 != null && state.health.state in setOf("missing", "corrupt", "cleaned", "unreadable")) {
-        TextButton(onClick = onSelectFile, enabled = state.canSubmit) { Text(stringResource(R.string.original_replenish)) }
+        Text(stringResource(R.string.original_replenish_context), style = MaterialTheme.typography.bodyMedium)
+        AppPrimaryButton(text = stringResource(R.string.original_replenish), modifier = Modifier.fillMaxWidth(),
+            onClick = onSelectFile, enabled = state.canSubmit)
     }
 }
 

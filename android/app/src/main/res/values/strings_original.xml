@@ -1,5 +1,14 @@
 <resources>
     <string name="original_title">原件</string>
+    <string name="original_status_none">手动记录，无需原件</string>
+    <string name="original_status_cleaned">已按保留策略清理</string>
+    <string name="original_status_replenish">原件需要补回，账单仍保留</string>
+    <string name="original_status_unverified">查看并核对原件</string>
+    <string name="original_status_verified">原件可用</string>
+    <string name="original_status_unreadable">暂未取得原件状态</string>
+    <string name="original_inspection_details">本次原件检查</string>
+    <string name="original_read_again">重新读取原图</string>
+    <string name="original_replenish_context">选择这笔账单对应的同一张小票。账单与历史仍然保留，失败后可继续原任务。</string>
     <string name="original_open_bill">回到账单继续</string>
     <string name="original_continue">确认继续</string>
     <string name="original_cancel">取消</string>

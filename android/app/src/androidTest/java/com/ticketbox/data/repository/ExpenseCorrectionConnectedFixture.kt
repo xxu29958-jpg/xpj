@@ -242,6 +242,8 @@ internal class CorrectionConnectedNetwork {
     val editCalls = CopyOnWriteArrayList<String>()
     val imageReads = CopyOnWriteArrayList<Long>()
     val originalHealthReads = CopyOnWriteArrayList<Long>()
+    var originalImageOverride: ByteArray? = null
+    var originalMissing = false
     val originalImage: ByteArray by lazy {
         val bitmap = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888)
         ByteArrayOutputStream().use { output ->
@@ -302,13 +304,14 @@ internal class CorrectionConnectedNetwork {
             readable()
             originalHealthReads += id
             return com.ticketbox.data.remote.dto.OriginalHealthDto(expenseId = current.id, publicId = requireNotNull(current.publicId),
-                rowVersion = current.rowVersion, state = if (current.imagePath == null) "none" else "unverified",
+                rowVersion = current.rowVersion, state = if (originalMissing) "missing" else if (current.imagePath == null) "none" else "unverified",
+                expectedSha256 = if (originalMissing) "b".repeat(64) else null,
                 checkedAt = "2026-09-20T00:00:00Z")
         }
         override suspend fun expenseImage(id: Long): Response<ResponseBody> {
             readable()
             imageReads += id
-            return Response.success(originalImage.toResponseBody("image/png".toMediaType()))
+            return Response.success((originalImageOverride ?: originalImage).toResponseBody("image/png".toMediaType()))
         }
         override suspend fun serverSettings() = ServerSettingsDto(accountName = "家庭成员", ledgerId = "correction-ledger",
             ledgerName = "家庭账本", deviceName = "测试手机", role = "member", status = "ok", storageStatus = "ok",

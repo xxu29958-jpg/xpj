@@ -34,6 +34,7 @@ from app.routes._web_expense_return_context import (
 )
 from app.routes._web_money_views import _minor_amount_label
 from app.routes.web_common import _web_redirect, templates
+from app.schemas import ExpenseOffsetRevisionResponse
 from app.services import invitation_members
 from app.services.expense_fact_history import list_expense_fact_history
 from app.services.expense_service import get_expense
@@ -315,8 +316,8 @@ def build_fact_timeline(
     for item in response.items:
         revision = item.model_dump()
         actor_parts = [part for part in (item.actor_account_name, item.actor_device_name) if part]
-        if revision.get("offset_public_id"):
-            rows.append(_offset_timeline_entry(revision))
+        if isinstance(item, ExpenseOffsetRevisionResponse):
+            rows.append(_offset_timeline_entry(item))
             continue
         rows.append(
             {
@@ -346,19 +347,19 @@ def build_fact_timeline(
     }
 
 
-def _historical_amount(snapshot: dict[str, Any]) -> str:
+def _historical_amount(snapshot: dict[str, object]) -> str:
     if isinstance(snapshot.get("original_amount_minor"), int):
         return _snapshot_money(snapshot["original_amount_minor"], snapshot.get("original_currency_code"))
     return _snapshot_money(snapshot.get("amount_cents"), snapshot.get("home_currency_code"))
 
 
-def _offset_timeline_entry(revision: dict[str, Any]) -> dict[str, Any]:
-    after, before = revision["after"], revision.get("before") or {}
+def _offset_timeline_entry(revision: ExpenseOffsetRevisionResponse) -> dict[str, object]:
+    after, before = revision.after, revision.before or {}
     kind = {"refund": "商家退回", "chargeback": "银行拒付", "reversal": "冲销账单"}.get(after.get("kind"), "退回记录")
-    action = {"created": "", "correction": "更正：", "void": "撤销："}[revision["change_kind"]]
+    action = {"created": "", "correction": "更正：", "void": "撤销："}[revision.change_kind]
     fields = ("original_amount_minor", "accounting_time", "accounting_date", "category")
     changes = []
-    if revision["change_kind"] == "correction":
+    if revision.change_kind == "correction":
         for field in fields:
             if field == "accounting_date" and "accounting_time" in after or before.get(field) == after.get(field):
                 continue
@@ -366,10 +367,10 @@ def _offset_timeline_entry(revision: dict[str, Any]) -> dict[str, Any]:
             changes.append({"label": label, "before": _format_fact_value(field, before.get(field), before),
                 "after": _format_fact_value(field, after.get(field), after)})
     return {
-        "kind": revision["change_kind"], "kind_label": action + kind, "reason": revision["reason"],
-        "when": _snapshot_time_label(str(revision["created_at"])),
-        "actor": " · ".join(part for part in (revision.get("actor_account_name"), revision.get("actor_device_name")) if part),
-        "is_correction": revision["change_kind"] == "correction", "changes": changes,
+        "kind": revision.change_kind, "kind_label": action + kind, "reason": revision.reason,
+        "when": _snapshot_time_label(revision.created_at.isoformat()),
+        "actor": " · ".join(part for part in (revision.actor_account_name, revision.actor_device_name) if part),
+        "is_correction": revision.change_kind == "correction", "changes": changes,
         "summary": " · ".join(filter(None, [
             "" if after.get("kind") == "reversal" else _historical_amount(after), after.get("accounting_date"),
         ])),

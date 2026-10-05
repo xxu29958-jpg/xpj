@@ -41,12 +41,12 @@ function reviewPage() {
   const ref='b'.repeat(32);
   const query=new URLSearchParams({ledger_id:'owner',idempotency_key:ref,draft_scope:JSON.stringify(scope),expected_row_version:'7'});
   return `<!doctype html><meta charset='utf-8'><button data-original-preview data-image-href='/image'>打开实际原图</button>
-    <p data-original-preview-status></p><img data-original-reviewed-image hidden>
+    <p data-original-preview-status></p><img data-original-reviewed-image hidden><div data-original-controls hidden></div>
     <form action='/web/expenses/17/original/verify?${query}' data-original-verification data-attachment-scope='${JSON.stringify(scope)}' data-attachment-ref='${ref}'>
     <input name='csrf_token' value='synthetic'><input type='hidden' name='reviewed_sha256' value=''>
     <input type='checkbox' data-original-reviewed disabled required><button type='submit' disabled>确认所见原件</button>
     <p data-attachment-status></p></form><section data-attachment-shelf></section>
-    ${['manual-drafts','manual-draft-files','attachment-drafts','attachment-entry','originals'].map(s=>`<script data-upload-max-bytes='1024' src='/static/${s}.js'></script>`).join('')}`;
+    ${['manual-drafts','manual-draft-files','attachment-drafts','attachment-entry','desktop/receipt-skeletons','originals'].map(s=>`<script data-upload-max-bytes='1024' src='/static/${s}.js'></script>`).join('')}`;
 }
 const server = http.createServer(async (req,res)=>{
   const url = new URL(req.url,'http://127.0.0.1');
@@ -266,15 +266,48 @@ let browser;
   assert.equal(await denied.locator('button[type=submit]').isDisabled(),true);
   assert.equal(attempts.length,beforeDeniedRecovery);
   const review=await context.newPage();await review.goto(origin+'/review');
-  assert.equal(await review.locator('[data-original-reviewed]').isDisabled(),true);
-  assert.equal(await review.locator('[name=reviewed_sha256]').inputValue(),'');
-  await review.click('[data-original-preview]');
   await review.waitForFunction(()=>!document.querySelector('[data-original-reviewed]').disabled);
   assert.equal(await review.locator('[name=reviewed_sha256]').inputValue(),'');
+  assert.equal(await review.evaluate(()=>TicketboxAttachmentDrafts.store.read('b'.repeat(32))),null,'opening an original does not create an empty task');
   await review.check('[data-original-reviewed]');
   await review.waitForFunction(()=>document.querySelector('[data-attachment-status]').textContent.includes('已保留'));
   assert.equal(await review.locator('[name=reviewed_sha256]').inputValue(),'e'.repeat(64));
   assert.equal(await review.locator('[data-original-reviewed-image]').evaluate(img=>img.naturalWidth),1);
+  await review.uncheck('[data-original-reviewed]');
+  await review.waitForFunction(()=>TicketboxAttachmentDrafts.store.read('b'.repeat(32)).values.reviewed_sha256==='');
+  assert.equal(await review.locator('button[type=submit]').isDisabled(),true);
+  await review.check('[data-original-reviewed]');
+  await review.waitForFunction(()=>TicketboxAttachmentDrafts.store.read('b'.repeat(32)).values.reviewed_sha256.length===64);
+  await review.reload();
+  await review.waitForFunction(()=>!document.querySelector('[data-original-reviewed]').disabled);
+  assert.equal(await review.locator('button[type=submit]').isDisabled(),true,'an editing draft must review the newly read image');
+  await review.check('[data-original-reviewed]');
+  await review.waitForFunction(()=>!document.querySelector('button[type=submit]').disabled);
+  await review.route('**/image',route=>route.fulfill({status:503,body:''}));
+  await review.click('[data-original-preview]');
+  await review.waitForFunction(()=>document.querySelector('[data-original-preview-status]').textContent.includes('未能打开'));
+  await review.waitForFunction(()=>TicketboxAttachmentDrafts.store.read('b'.repeat(32)).values.reviewed_sha256==='');
+  assert.equal(await review.locator('button[type=submit]').isDisabled(),true,'failed reread cannot submit the previous digest');
+  await review.unroute('**/image');
+  await review.click('[data-original-preview]');
+  await review.waitForFunction(()=>!document.querySelector('[data-original-reviewed]').disabled);
+  await review.check('[data-original-reviewed]');
+  await review.waitForFunction(()=>!document.querySelector('button[type=submit]').disabled);
+  const verificationAttempts=[];
+  await review.route('**/web/expenses/17/original/verify?**',async route=>{
+    verificationAttempts.push({url:route.request().url(),digest:route.request().postData().includes('e'.repeat(64))});
+    await route.fulfill({status:409,contentType:'application/json',body:JSON.stringify({error:'original_review_conflict',message:'原件需要核对'})});
+  });
+  await review.click('button[type=submit]');
+  await review.waitForFunction(()=>document.querySelector('[data-attachment-status]').textContent.includes('原件需要核对'));
+  await review.route('**/image',route=>route.fulfill({status:503,body:''}));
+  await review.reload();
+  await review.waitForFunction(()=>!document.querySelector('button[type=submit]').disabled);
+  await review.click('button[type=submit]');
+  await review.waitForFunction(()=>document.querySelector('[data-attachment-status]').textContent.includes('原件需要核对'));
+  assert.equal(verificationAttempts.length,2);
+  assert.equal(verificationAttempts[0].digest,true);
+  assert.deepEqual(verificationAttempts[0],verificationAttempts[1],'submitted review retries its original snapshot even if the new read fails');
   console.log('PASS real Chromium: IndexedDB Blob reload; offline/ACK-loss original replay; one accepted receipt; OCC file retention; changed device fence; storage-unavailable native upload');
   console.log('PASS real Chromium: failed metadata blob compensation; state conflict/mismatch/not-needed confirmed discard; unknown outcome retained; configured size rejects before arrayBuffer');
   console.log('PASS real Chromium: legacy verification empty until actual snapshot decoded and user checked; digest bound to response ETag');

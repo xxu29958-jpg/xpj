@@ -1,15 +1,38 @@
 {% extends "base.html" %}
+{% set page_surface = 'tertiary' %}
+{% set product_body_domain = 'transactions' %}
+{% set task_return_href = '/web/library?ledger_id=' ~ selected_ledger_id %}
+{% set task_return_label = '资料库' %}
 {% block title %}原件检查 · 小票夹{% endblock %}
 {% block page_scripts %}<script defer src="/static/web/originals.js?v={{ asset_version }}"></script>{% endblock %}
 {% block content %}
-<header class="product-page-header"><div><h1 class="page-title">原件检查</h1><p>只检查本页最多 25 笔账单，按需读取实际文件；不会更改摘要或财务事实。</p></div>
-<a class="product-button" href="/web/data-quality?ledger_id={{ selected_ledger_id }}">返回数据体检</a></header>
-<button class="product-button" type="button" data-original-scan>检查本页</button>
-<p data-original-scan-status role="status">尚未检查本页。可逐笔打开检查，也可开始本页检查。</p>
-<section class="product-panel product-panel--padded">
-{% for row in original_rows %}<p data-original-row data-health-href="/web/expenses/{{ row.id }}/original/health?ledger_id={{ selected_ledger_id }}">
-<a href="/web/expenses/{{ row.id }}/original?ledger_id={{ selected_ledger_id }}">{{ row.merchant or '未填写商家' }} · #{{ row.id }}</a> <span data-original-row-status>未检查</span></p>
-{% else %}<p>没有更多账单。</p>{% endfor %}
+<header class="product-page-header"><div class="product-page-heading">
+  <h1 class="page-title" data-original-scan-heading>原件检查</h1>
+  <p class="product-page-summary">检查{{ selected_ledger_name }}当前页的 {{ original_rows|length }} 笔记录</p>
+</div></header>
+<section class="original-list" aria-label="本页账单原件" data-original-list>
+{% for row in original_rows %}
+<a class="product-entry" data-original-row data-expense-id="{{ row.id }}" data-health-href="/web/expenses/{{ row.id }}/original/health?ledger_id={{ selected_ledger_id }}"
+   href="/web/expenses/{{ row.id }}/original?ledger_id={{ selected_ledger_id }}">
+  <span class="product-entry-icon{% if row.thumbnail_path and not row.image_deleted_at %} product-entry-icon--receipt{% endif %}" aria-hidden="true" {% if row.thumbnail_path and not row.image_deleted_at %}data-receipt-thumb{% endif %}>
+    <svg><use href="/static/shared/vendor/lucide/icons.svg#receipt-text"/></svg>
+    {% if row.thumbnail_path and not row.image_deleted_at %}<img src="/web/expenses/{{ row.id }}/thumbnail?ledger_id={{ selected_ledger_id }}" alt="" loading="lazy" decoding="async">{% endif %}
+  </span>
+  <span class="product-entry-copy"><span class="product-entry-heading"><strong>{{ row.merchant or '未填写商家' }}</strong><span class="product-status" data-original-row-action>检查</span></span>
+    <span data-original-row-status>尚未检查原件</span><span class="meta" data-original-row-time></span></span>
+  <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
+</a>
+{% else %}<div class="product-state"><h2 class="product-state-title">本页没有更多账单</h2><p class="product-state-body">可以返回资料库继续查看。</p></div>{% endfor %}
 </section>
-{% if next_after %}<a class="product-button" href="/web/originals?ledger_id={{ selected_ledger_id }}&amp;after={{ next_after }}">下一页</a>{% endif %}
+<p class="meta" data-original-scan-status role="status">{% if original_rows %}本次只检查这 {{ original_rows|length }} 笔。其它记录可换页后继续检查。{% else %}此页没有可检查的记录。{% endif %}</p>
+{% if original_rows %}<div class="product-form-actions">
+  <a class="product-button product-button--primary" data-original-next hidden>补回缺失原件</a>
+  <button class="product-button product-button--primary" type="button" data-original-scan>检查这 {{ original_rows|length }} 笔</button>
+</div>{% endif %}
+<noscript><p class="meta">逐笔打开账单即可检查原件；本页批量检查需要启用脚本。</p></noscript>
+<div class="product-page-actions">
+  {% if next_after %}<a class="product-button product-button--quiet" href="/web/originals?ledger_id={{ selected_ledger_id }}&amp;after={{ next_after }}">下一页 <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-right"/></svg></a>{% endif %}
+  <a class="product-button product-button--quiet" href="/web/data-quality?ledger_id={{ selected_ledger_id }}">数据体检</a>
+</div>
+<p class="meta">检查仅说明当前文件状态，不代表已完成备份或恢复验证。</p>
 {% endblock %}
