@@ -164,8 +164,8 @@
     else if (selected.left < viewport.left) filters.scrollLeft -= viewport.left - selected.left;
   };
 
-  app.initInboxEnrichmentWatch = function initInboxEnrichmentWatch() {
-    const marker = document.querySelector("[data-inbox-enrichment-watch]");
+  app.initInboxEnrichmentWatch = function initInboxEnrichmentWatch(root = document) {
+    const marker = root.querySelector("[data-inbox-enrichment-watch]");
     if (!marker) return;
     const delayMs = 1500;
     const fetchTimeoutMs = 5000;
@@ -184,7 +184,7 @@
     };
 
     const poll = async function poll() {
-      if (Date.now() >= deadline) {
+      if (!marker.isConnected || Date.now() >= deadline) {
         stopWaiting();
         return;
       }
@@ -193,15 +193,20 @@
         controller.abort();
       }, Math.min(fetchTimeoutMs, Math.max(1, deadline - Date.now())));
       try {
-        const response = await fetch(window.location.href, {
+        const response = await fetch(marker.dataset.watchHref || window.location.href, {
           cache: "no-store",
           headers: {Accept: "text/html"},
           signal: controller.signal
         });
         if (response.ok) {
           const next = new DOMParser().parseFromString(await response.text(), "text/html");
-          if (next.querySelector("[data-inbox-enrichment-terminal]")) {
-            window.location.replace(window.location.href);
+          const terminal = next.querySelector("[data-inbox-enrichment-terminal]");
+          if (terminal) {
+            if (marker.hasAttribute("data-watch-inline")) {
+              marker.setAttribute("aria-busy", "false");
+              marker.querySelector("span").textContent = terminal.textContent.trim();
+              marker.dispatchEvent(new CustomEvent("recognitioncomplete", {detail: {state: terminal.dataset.enrichmentState}}));
+            } else window.location.replace(window.location.href);
             return;
           }
           if (!next.querySelector("[data-inbox-enrichment-watch]")) {

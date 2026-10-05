@@ -1133,6 +1133,9 @@ details[open] > .product-entry > svg { transform: rotate(90deg); }
 .product-entry-copy { display: grid; gap: var(--space-1); min-width: 0; overflow-wrap: anywhere; }
 .product-entry-copy strong { font-size: var(--type-subtitle-size); font-weight: var(--type-title-weight); }
 .product-entry-copy > span { color: var(--text-meta); font-size: var(--type-body-size); line-height: var(--type-body-line); }
+.product-entry--actions { display: flex; flex-wrap: wrap; }
+.product-entry--actions > .product-entry-copy { flex: 1 1 12ch; }
+.product-entry-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-inline-start: auto; }
 
 /* Native details stay open without JS; the existing drawer enhancement reads
    the real inputs and folds populated fields, without copying form state. */

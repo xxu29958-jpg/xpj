@@ -83,7 +83,7 @@ class BudgetJourney:
     def form(self, action, *, page=None):
         form = (page or self.page).locator(f'form[method="post"][action="{action}"]')
         if not form.is_visible():
-            form.locator("xpath=ancestor::details").locator("summary").click()
+            form.locator("xpath=ancestor::details[1]/summary").click()
         return form
 
     def capture(self, name, *, page=None):

@@ -251,7 +251,7 @@ def test_inbox_pending_header_has_native_upload_form_and_flat_queue_summary(
     form = re.search(
         r'<form class="inbox-upload-form" id="capture" method="post"'
         r' action="/web/pending/upload\?ledger_id=owner&amp;idempotency_key=[a-f0-9]{32}" data-inbox-capture'
-        r' enctype="multipart/form-data"\s*>.*?</form>',
+        r' data-inbox-batch enctype="multipart/form-data"\s*>.*?</form>',
         body,
         re.S,
     )

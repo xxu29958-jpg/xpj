@@ -3,7 +3,6 @@
   "use strict";
   const drafts = window.TicketboxAttachmentDrafts;
   const store = drafts.store;
-  const wanted = /^#attachment-([a-f0-9]{32})$/.exec(window.location.hash);
   function taskPage(action) {
     const url = new URL(action, window.location.href);
     const path = url.pathname === "/web/pending/upload" ? "/web/pending" :
@@ -15,6 +14,7 @@
     if (!host) return;
     host.replaceChildren();
     store.list(scope).forEach(record => {
+      if (host.hasAttribute("data-capture-originals") && new URL(record.values.action).pathname === "/web/pending/upload") return;
       const link = document.createElement("a");
       link.href = taskPage(record.values.action) + "#attachment-" + record.clientRef;
       link.textContent = (record.values.file_name || "原件核对任务") +
@@ -23,8 +23,10 @@
       item.append(link);
       host.append(item);
     });
+    if (host.hasAttribute("data-capture-originals")) host.hidden = !host.childElementCount;
   }
-  function init(form) {
+  function init(form, options = {}) {
+    const wanted = options.batch ? null : /^#attachment-([a-f0-9]{32})$/.exec(window.location.hash);
     const scope = JSON.parse(form.dataset.attachmentScope);
     const status = form.querySelector("[data-attachment-status]");
     const file = form.elements.namedItem("file");
@@ -41,6 +43,7 @@
     let rejection = null;
     const discard = document.createElement("button");
     discard.type = "button";
+    discard.className = "product-button product-button--quiet";
     discard.textContent = "丢弃已拒绝任务";
     discard.hidden = true;
     discard.dataset.attachmentDiscard = "";
@@ -57,10 +60,12 @@
         discard.hidden = true;
         notice("已丢弃此任务和本地文件；请重新打开表单选择文件。");
         shelf(scope);
+        if (options.onDiscarded) { held = false; release?.(); options.onDiscarded(); }
       } catch (_) { notice("任务未能完整清理，请保留页面并检查浏览器存储。"); }
-      finally { busy = false; discard.disabled = false; }
+      finally { busy = false; discard.disabled = false; changed(); }
     });
-    function notice(text) { status.textContent = text; }
+    function changed() { options.onChange?.(); }
+    function notice(text) { status.textContent = text; changed(); }
     function allowOnlineOnly() {
       if (wanted || retained || accepted) return false;
       try { if (store.read(ref)) return false; }
@@ -69,7 +74,7 @@
       button.disabled = form.hasAttribute("data-original-verification") &&
         !form.elements.namedItem("reviewed_sha256").value;
       button.textContent = label + "（仅当前页在线提交）";
-      notice("浏览器未能持久保存文件；仍可在本页在线提交。离开或重载后不能恢复所选文件，请先确认网络可用。");
+      notice(options.batch ? "原图未能保留，离开后无法恢复此选择。" : "浏览器未能持久保存文件；仍可在本页在线提交。离开或重载后不能恢复所选文件，请先确认网络可用。");
       return true;
     }
     function controls(record) {
@@ -107,8 +112,8 @@
         retained = true;
         controls(saved);
         captureError = false;
-        window.history.replaceState(null, "", "#attachment-" + ref);
-        notice((saved.values.file_name || "原件任务") + " 已保留在此浏览器，尚未提交。");
+        if (!options.batch) window.history.replaceState(null, "", "#attachment-" + ref);
+        notice(options.batch ? "原图已保留 · 准备上传" : (saved.values.file_name || "原件任务") + " 已保留在此浏览器，尚未提交。");
         shelf(scope);
       } catch (error) {
         captureError = true;
@@ -118,7 +123,7 @@
           return;
         }
         if (!allowOnlineOnly()) notice("最新文件未能保留，本次不会发送。原任务仍在；请保留页面，或重新检查后另开表单选择。");
-      } finally { busy = false; if (!onlineOnly) button.disabled = !held || captureError; }
+      } finally { busy = false; if (!onlineOnly) button.disabled = !held || captureError; changed(); }
     }
     async function send() {
       rejection = null;
@@ -147,35 +152,41 @@
         throw Error("unconfirmed_receipt");
       }
       accepted = true;
-      await drafts.acknowledge(result.ack);
+      try { await drafts.acknowledge(result.ack); }
+      finally { options.onAccepted?.(result); }
       notice("操作已接受，正在返回原账单…");
-      window.location.assign(result.next);
+      if (!options.batch) window.location.assign(result.next);
     }
     form.addEventListener("change", capture);
-    form.addEventListener("submit", async event => {
-      if (onlineOnly) return;
-      event.preventDefault();
-      if (!held || busy || accepted || captureError) return;
+    async function submit() {
+      if (onlineOnly || !held || busy || accepted || captureError) return false;
       if (!store.read(ref)) await capture();
-      if (captureError || !held) return;
+      if (captureError || !held) return false;
       busy = true;
       button.disabled = true;
       notice("正在提交原任务…");
       try { await send(); }
       catch (_) { notice(accepted ? "操作已接受，本地文件暂未收起。请返回原账单，不要再次提交。" :
         "暂未收到保存回执。原文件和原请求仍在；恢复连接后重试原任务。"); }
-      finally { busy = false; button.disabled = accepted || !held; shelf(scope); }
+      finally { busy = false; button.disabled = accepted || !held; shelf(scope); changed(); }
+      return accepted;
+    }
+    form.addEventListener("submit", event => {
+      if (onlineOnly) return;
+      event.preventDefault();
+      void submit();
     });
     function restoreForm(record) {
       form.hidden = false;
-      form.closest("details")?.setAttribute("open", "");
+      if (!options.batch) form.closest("details")?.setAttribute("open", "");
       form.action = record.values.action;
       for (const name of ["reviewed_sha256", "request_id"]) {
         if (form.elements.namedItem(name)) form.elements.namedItem(name).value = record.values[name];
       }
-      notice((record.values.file_name || "原件任务") + " 已恢复；提交沿用原文件、版本与请求。");
+      notice(options.batch ? "原图与原请求已恢复" : (record.values.file_name || "原件任务") + " 已恢复；提交沿用原文件、版本与请求。");
     }
     function activate() {
+      if (!form.isConnected) return;
       button.disabled = true;
       if (!window.navigator.locks || !window.indexedDB) {
         if (!allowOnlineOnly()) notice("浏览器不能安全恢复原任务；原文件仍保留，请恢复存储能力后继续。");
@@ -213,6 +224,8 @@
         controls(record);
         button.disabled = (!record && form.dataset.attachmentAvailable === "false") ||
           (form.hasAttribute("data-original-verification") && !record?.values.reviewed_sha256);
+        options.onReady?.();
+        changed();
         return new Promise(resolve => { release = resolve; });
       }).catch(() => {
         if (!allowOnlineOnly()) notice("浏览器不能安全恢复原任务；已有文件未被覆盖，请恢复存储能力后继续。");
@@ -231,8 +244,25 @@
       return;
     }
     activate();
+    return {
+      submit, capture,
+      state: () => ({busy, accepted, onlineOnly, ready: held && !busy && !accepted && !captureError,
+        canRemove: held && !busy && !accepted && (form.dataset.attachmentPhase || "editing") === "editing",
+        phase: form.dataset.attachmentPhase || "editing"}),
+      async remove() {
+        if (!held || busy || accepted) return false;
+        busy = true;
+        try {
+          if (!await drafts.discardEditing(scope, ref)) return false;
+          held = false;
+          release?.();
+          return true;
+        } finally { busy = false; changed(); }
+      },
+    };
   }
-  document.querySelectorAll("[data-attachment-scope]").forEach(form => {
+  window.TicketboxAttachmentEntry = {init, shelf};
+  document.querySelectorAll("[data-attachment-scope]:not([data-inbox-batch])").forEach(form => {
     try { init(form); }
     catch (_) { form.querySelector("[data-attachment-status]").textContent = "原任务无法读取，请保留页面并核对浏览器存储。"; }
   });

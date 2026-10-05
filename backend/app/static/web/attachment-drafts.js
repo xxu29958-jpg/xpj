@@ -49,5 +49,12 @@
     await window.TicketboxDraftFiles.remove(store.key(proof.clientRef));
     return store.discardRejected(proof);
   }
-  window.TicketboxAttachmentDrafts = {store, retain, submitted, acknowledge, discardRejected};
+  async function discardEditing(scope, clientRef) {
+    const record = store.read(clientRef);
+    if (!record) return true;
+    if (record.phase !== "editing" || !store.matches(record.scope, scope)) return false;
+    await window.TicketboxDraftFiles.remove(store.key(clientRef));
+    return store.discardLocal({scope, clientRef, values: record.values, decision: "discard-local"});
+  }
+  window.TicketboxAttachmentDrafts = {store, retain, submitted, acknowledge, discardRejected, discardEditing};
 })(window);
