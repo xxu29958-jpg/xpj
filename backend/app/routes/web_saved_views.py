@@ -38,7 +38,7 @@ def confirmed_save_context(request: Request, db: Session, *, ledger_id: str, tag
         if exc.error != "saved_view_tag_repair_required":
             raise
         return {"save_view_error": "这个标签已变更或移除。请重新选择标签后保存视图。"}
-    return {"save_view_tag_public_id": tag_id or "", "save_view_key": str(uuid4())}
+    return {"save_view_tag_public_id": tag_id or ""}
 
 
 def _error_message(exc: AppError) -> str:
@@ -53,6 +53,11 @@ def _render_views(request, db, *, options, selected, message="", error="", draft
                   editing_public_id="", status_code=200) -> HTMLResponse:
     actor = resolve_web_actor_account_id(db, request, selected)
     views = saved_views.list_views(db, tenant_id=selected, actor_account_id=actor)
+    if editing_public_id and draft is None:
+        view = next((item for item in views if item.public_id == editing_public_id), None)
+        if view is None:
+            raise AppError("saved_view_not_found", status_code=404)
+        draft = asdict(view)
     ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected,
                     page_title="保存的视图")
     ctx.update(views=[asdict(view) for view in views], flash_message=message, error=error,
@@ -65,10 +70,16 @@ def _render_views(request, db, *, options, selected, message="", error="", draft
 
 @router.get("/saved-views", response_class=HTMLResponse)
 def web_saved_views(request: Request, ledger_id: str = "", msg: str = "",
+                    edit: str = "", create: bool = False, month_mode: str = "current",
+                    month: str = "", filter: str = "", tag_public_id: str = "", home_currency_code: str = "",
                     _local: None = LocalOnly, db: Session = Depends(get_db)) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
-    return _render_views(request, db, options=options, selected=selected, message=msg)
+    draft = {"name": "", "ledger_id": selected, "month_mode": month_mode, "month": month, "filter": filter,
+        "tag_public_id": tag_public_id, "home_currency_code": home_currency_code,
+        "idempotency_key": str(uuid4())} if create and not edit else None
+    return _render_views(request, db, options=options, selected=selected, message=msg,
+                         draft=draft, editing_public_id=edit)
 
 
 @router.get("/saved-views/{public_id}/open", response_class=RedirectResponse)
@@ -82,7 +93,8 @@ def web_saved_view_open(request: Request, public_id: str, ledger_id: str = "",
                                               public_id=public_id)
     except AppError as exc:
         return _render_views(request, db, options=options, selected=selected,
-            error=_error_message(exc), status_code=exc.status_code)
+            error=_error_message(exc), status_code=exc.status_code,
+            editing_public_id=public_id if exc.error == "saved_view_tag_repair_required" else "")
     return RedirectResponse("/web/confirmed?" + urlencode(query), status_code=303)
 
 

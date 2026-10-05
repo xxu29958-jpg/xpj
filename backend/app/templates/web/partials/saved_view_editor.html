@@ -1,3 +1,13 @@
+{% macro conditions(view) %}{% if view.filter == 'missing_category' %}待补分类 · 全部月份{% elif view.filter == 'missing_accounting_date' %}账务日期待核对 · 全部月份{% elif view.month_mode == 'current' %}账本当前月{% else %}{{ view.month }} · 固定账务月{% endif %} · {{ view.tag_name or ('原标签待修复' if view.tag_public_id else '不限标签') }} · {{ view.home_currency_code }}{% endmacro %}
+
+{% macro entry(view, selected_ledger_id) %}
+<a class="product-entry" href="{% if view.repair_reason %}/web/saved-views?ledger_id={{ selected_ledger_id|urlencode }}&amp;edit={{ view.public_id|urlencode }}{% else %}/web/saved-views/{{ view.public_id }}/open?ledger_id={{ selected_ledger_id|urlencode }}{% endif %}">
+  <span class="product-entry-icon{% if view.repair_reason %} product-entry-icon--apricot{% endif %}" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#bookmark"/></svg></span>
+  <span class="product-entry-copy"><strong>{{ view.name }}</strong><span>{{ conditions(view) }}</span>{% if view.repair_reason %}<span class="field-error">原标签待修复 · 请明确选择替代条件</span>{% endif %}</span>
+  <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
+</a>
+{% endmacro %}
+
 {% macro editor(fields, public_id, selected_ledger_id, tag_options, currency_codes, csrf_field, can_write) %}
 <form method="post" action="/web/saved-views{% if public_id %}/{{ public_id }}/rename{% endif %}">
   {{ csrf_field|safe }}
@@ -46,6 +56,6 @@
     </label>
   </div>
   <p class="hint">待补分类和账务日期待核对始终查询全部月份。币种只影响金额呈现，不改变原账单；缺少汇率时仍会提示。</p>
-  <button class="product-button product-button--primary" type="submit">{% if not can_write %}权限恢复后重试原提交{% elif public_id %}保存更改{% else %}保存视图{% endif %}</button>
+  <button class="product-button product-button--primary" type="submit">{% if not can_write %}权限恢复后重试原提交{% elif public_id %}保存更改{% else %}保存这组查询{% endif %}</button>
 </form>
 {% endmacro %}

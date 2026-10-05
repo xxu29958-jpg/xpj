@@ -249,9 +249,10 @@ class FinancialJourney:
         form.locator('[name="void_reason"]').fill("RefundRecalled")
         self.lost_reply(form, "[data-offset-submit]", suffix, "void")
         assert self.facts()["net"] == 1725 and self.facts()["offsets"][0]["status"] == "voided"
-        self.page.locator("#offset-create-reversal > summary").click()
+        self.page.get_by_role("link", name="冲销这笔账单", exact=True).click()
         reversal = self.page.locator(f'form[data-offset-plan-id="{state["id"]}:reversal"]')
         reversal.locator('[name="reason"]').fill("DuplicateFact")
+        reversal.locator("[data-command-review]").check()
         self.lost_reply(reversal, "[data-offset-submit]", "/offsets", "reversal")
         state = self.facts()
         assert state["net"] == 0 and len(state["offsets"]) == 2

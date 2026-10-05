@@ -56245,6 +56245,76 @@
               "title": "Msg",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "edit",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Edit",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "create",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Create",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "month_mode",
+            "required": false,
+            "schema": {
+              "default": "current",
+              "title": "Month Mode",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "month",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Month",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "filter",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Filter",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tag_public_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Tag Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "home_currency_code",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Home Currency Code",
+              "type": "string"
+            }
           }
         ],
         "responses": {

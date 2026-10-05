@@ -1,5 +1,7 @@
 """A saved view preserves a shared query, not a frozen list of financial facts."""
 
+import re
+from html import unescape
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
@@ -24,9 +26,14 @@ def test_saved_view_reopens_the_same_query_and_reads_new_facts_without_changing_
         source = browser.get("/web/confirmed", params={"ledger_id": "owner", "month": "2026-09",
                                                      "tag": "旅行", "home_currency_code": "CNY"})
         assert source.status_code == 200, source.text
-        forms = hidden_post_forms(source.text)
-        assert "/web/saved-views" in forms, "The current financial query has no save-view entry"
-        submitted = {**forms["/web/saved-views"], "name": "九月旅行", "month_mode": "fixed"}
+        entry = re.search(r'<a\b(?=[^>]*\bdata-save-view\b)[^>]*\bhref="([^"]+)"', source.text)
+        assert entry is not None, "The current financial query has no save-view entry"
+        href = unescape(entry.group(1))
+        conditions = {key: values[0] for key, values in parse_qs(urlsplit(href).query, keep_blank_values=True).items() if key != "create"}
+        editor = browser.get(href)
+        assert editor.status_code == 200 and 'value="2026-09"' in editor.text
+        forms = hidden_post_forms(editor.text)
+        submitted = {**conditions, **forms["/web/saved-views"], "name": "九月旅行", "month_mode": "fixed"}
         saved = browser.post("/web/saved-views", data=submitted,
                              headers={"Origin": f"https://{PUBLIC_HOST}"}, follow_redirects=False)
         assert saved.status_code == 303, saved.text
@@ -47,8 +54,11 @@ def test_saved_view_reopens_the_same_query_and_reads_new_facts_without_changing_
         views = reopened.get("/web/saved-views?ledger_id=owner")
         assert views.status_code == 200 and "九月旅行" in views.text
         actions = hidden_post_forms(views.text)
-        rename_action = next(action for action in actions if action.endswith("/rename"))
-        public_id = rename_action.split("/")[-2]
+        delete_action = next(action for action in actions if action.endswith("/delete"))
+        public_id = delete_action.split("/")[-2]
+        search = reopened.get("/web/search?ledger_id=owner&q=旅行")
+        assert search.status_code == 200 and "九月旅行" in search.text
+        assert f"/web/saved-views/{public_id}/open?ledger_id=owner" in search.text
         opened = reopened.get(f"/web/saved-views/{public_id}/open?ledger_id=owner", follow_redirects=False)
         assert opened.status_code == 303, opened.text
         location = urlsplit(opened.headers["location"])

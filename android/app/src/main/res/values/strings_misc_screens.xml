@@ -40,7 +40,7 @@
 
     <!-- GlobalSearchScreen：全局搜索 -->
     <string name="global_search_back">返回账本</string>
-    <string name="global_search_header_title">搜索</string>
+    <string name="global_search_header_title">找一笔账</string>
     <string name="global_search_header_subtitle">搜索待确认和已确认账单。</string>
     <string name="global_search_clear_action">清空</string>
     <string name="global_search_field_label">关键词</string>

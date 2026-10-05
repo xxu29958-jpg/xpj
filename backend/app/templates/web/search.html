@@ -1,15 +1,19 @@
 {% extends "base.html" %}
+{% from 'partials/saved_view_editor.html' import entry %}
 {% set product_body_domain = 'transactions' %}
+{% set page_surface = 'tertiary' %}
+{% set task_return_href = '/web/confirmed?ledger_id=' ~ selected_ledger_id %}
+{% set task_return_label = '流水' %}
 {% block title %}搜索 · 小票夹{% endblock %}
 
 {% block content %}
+<div class="ledger-search-workspace">
 {# 搜索只是「找到记录」的入口：query owner/四组/排序均在服务端
    （web_search_service.search_web），本页只承载壳、层级与三态。 #}
 <header class="product-page-header">
   <div class="product-page-heading">
-    <span class="product-eyebrow">流水 / 搜索</span>
-    <h1 class="page-title">搜索</h1>
-    <p class="product-page-summary">在当前账本里查待确认、已确认、规则和目标，快速回到一笔账或一条规则。</p>
+    <h1 class="page-title">找一笔账</h1>
+    <p class="product-page-summary">{{ selected_ledger_name }} · 账单、规则与目标</p>
   </div>
 </header>
 
@@ -19,7 +23,7 @@
     <label class="sr-only" for="search-query">搜索关键词</label>
     <input id="search-query" class="product-input" type="search" name="q" value="{{ search_query }}" maxlength="80" placeholder="商家、分类、备注、规则关键词或目标名" autofocus{% if search_error %} aria-invalid="true" aria-describedby="search-query-error"{% endif %}>
   </div>
-  <button class="product-button product-button--primary" type="submit">搜索</button>
+  <button class="product-button" type="submit" aria-label="搜索"><svg width="22" height="22" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#search"/></svg></button>
 </form>
 
 {% if search_error %}
@@ -39,34 +43,32 @@
 </div>
 {% else %}
 <div class="ledger-search-groups">
-  {% for group in search_groups %}
-  <section class="product-panel ledger-search-group" aria-label="{{ group.title }}">
-    <div class="product-panel-header ledger-search-group-head">
-      <div>
-        <h2 class="product-panel-title">{{ group.title }}</h2>
-        <div class="product-panel-subtitle">{{ group.results | length }} 条匹配</div>
-      </div>
+  <div class="product-panel-header"><h2 class="product-panel-title">搜索结果</h2><span class="meta">每类最多 {{ search_group_limit }} 条</span></div>
+  {% for group in search_groups if group.results %}
+  <section aria-label="{{ group.title }}">
+    <div class="product-panel-header">
+      <h3 class="product-panel-subtitle">{{ group.title }} · {{ group.results | length }} 条匹配</h3>
     </div>
-    {% if group.results %}
       <div class="ledger-search-results">
         {% for result in group.results %}
-        <a class="ledger-search-result" href="{{ result.href }}">
-          <span class="product-status">{{ result.badge }}</span>
-          <span class="ledger-search-copy">
-            <strong>{{ result.title }}</strong>
-            <span>{{ result.subtitle }}</span>
-          </span>
+        <a class="product-entry" href="{{ result.href }}">
+          <span class="product-entry-icon{% if group.key == 'rules' %} product-entry-icon--apricot{% elif group.key == 'goals' %} product-entry-icon--lilac{% endif %}" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#{{ {'pending':'inbox','confirmed':'receipt-text','rules':'list-filter','goals':'flag'}.get(group.key, 'search') }}"/></svg></span>
+          <span class="product-entry-copy"><span class="product-entry-heading"><strong>{{ result.title }}</strong>
           {% if result.amount_cents is not none %}
-          <span class="ledger-search-amount">{% if result.group == 'goals' and not result.currency_code %}{{ result.amount_cents }}（最小单位，币种待确认）{% else %}{{ search_amount_label(result.amount_cents, result.currency_code or home_currency_code) }}{% if result.currency_code %} <small>{{ result.currency_code }}</small>{% endif %}{% endif %}</span>
+          <span class="product-entry-amount">{% if result.group == 'goals' and not result.currency_code %}{{ result.amount_cents }}（最小单位，币种待确认）{% else %}{{ search_amount_label(result.amount_cents, result.currency_code or home_currency_code) }}{% if result.currency_code %} <small>{{ result.currency_code }}</small>{% endif %}{% endif %}</span>
           {% endif %}
+          </span><span>{{ result.subtitle }}</span></span>
+          <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
         </a>
         {% endfor %}
       </div>
-    {% else %}
-      <div class="meta ledger-search-none">这一组没有匹配项。</div>
-    {% endif %}
   </section>
   {% endfor %}
 </div>
 {% endif %}
+<section class="library-section" aria-label="常用查询">
+  <div class="product-panel-header"><h2 class="product-panel-title">常用查询</h2><a href="/web/saved-views?ledger_id={{ selected_ledger_id|urlencode }}">管理</a></div>
+  {% for view in saved_views %}{{ entry(view, selected_ledger_id) }}{% else %}<p class="meta">在流水选好月份与标签，可保存为常用查询。</p>{% endfor %}
+</section>
+</div>
 {% endblock %}

@@ -7,6 +7,7 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.routes._web_session_common import resolve_web_actor_account_id
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
@@ -16,7 +17,8 @@ from app.routes.web_common import (
     _sidebar_counts,
     templates,
 )
-from app.services.web_search_service import MAX_QUERY_LENGTH, search_web
+from app.services.saved_view_service import list_views
+from app.services.web_search_service import DEFAULT_GROUP_LIMIT, MAX_QUERY_LENGTH, search_web
 
 router = APIRouter(prefix="/web", tags=["web"])
 
@@ -53,6 +55,9 @@ def web_search(
     ctx["search_groups"] = groups
     ctx["search_total"] = sum(len(group.results) for group in groups)
     ctx["search_amount_label"] = _home_amount_label
+    ctx["search_group_limit"] = DEFAULT_GROUP_LIMIT
+    ctx["saved_views"] = list_views(db, tenant_id=selected_id,
+        actor_account_id=resolve_web_actor_account_id(db, request, selected_id))
     return templates.TemplateResponse(
         request=request,
         name="search.html",

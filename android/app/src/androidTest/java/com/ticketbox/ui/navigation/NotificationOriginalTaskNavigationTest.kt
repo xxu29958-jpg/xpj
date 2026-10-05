@@ -13,6 +13,7 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
@@ -64,7 +65,10 @@ class NotificationOriginalTaskNavigationTest {
         }
         waitForMonth("2026-08")
         assertEquals(listOf("2026-07", "2026-08"), transport.budgetReads.toList())
-        compose.onNodeWithContentDescription(context.getString(R.string.budget_editor_back)).performClick()
+        val editorBack = context.getString(R.string.budget_editor_back)
+        // The month header is visible while its remote budget is still loading.
+        compose.waitUntil(5_000) { compose.onAllNodesWithContentDescription(editorBack).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithContentDescription(editorBack).performScrollTo().performClick()
         compose.onNodeWithContentDescription(context.getString(R.string.budget_back_to_stats)).performClick()
         waitForMonth("2026-07")
         compose.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag("budget_total_amount")))

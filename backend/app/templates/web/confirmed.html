@@ -57,32 +57,7 @@
   <a class="product-button product-button--quiet" href="/web/saved-views?ledger_id={{ selected_ledger_id }}">保存的视图</a>
   {% if can_write %}
   {% if save_view_error %}<p class="product-feedback" role="status">{{ save_view_error }}</p>{% else %}
-  <details class="ledger-view-save">
-    <summary>保存当前视图</summary>
-    <p class="hint">当前账本的参与者都能查看；每次打开按这些条件读取最新账单。</p>
-    <form method="post" action="/web/saved-views">
-      {{ csrf_field|safe }}
-      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-      <input type="hidden" name="idempotency_key" value="{{ save_view_key }}">
-      <input type="hidden" name="month" value="{{ month }}">
-      <input type="hidden" name="filter" value="{{ filter }}">
-      <input type="hidden" name="tag_public_id" value="{{ save_view_tag_public_id }}">
-      <input type="hidden" name="home_currency_code" value="{{ home_currency_code }}">
-      <div class="product-form-grid">
-        <label class="product-field"><span>视图名称</span><input class="input" name="name" maxlength="120" required placeholder="例如：每月旅行支出"></label>
-        {% if filter %}
-        <input type="hidden" name="month_mode" value="current">
-        <p>{% if filter == 'missing_category' %}待补分类{% else %}账务日期待核对{% endif %} · 全部月份</p>
-        {% else %}
-        <label class="product-field"><span>月份方式</span>
-          <select class="select" name="month_mode"><option value="fixed">固定为 {{ month }}</option><option value="current">每次打开时的账本当前月</option></select>
-        </label>
-        {% endif %}
-      </div>
-      <p class="hint">{{ tag or '不限标签' }} · {{ home_currency_code }} 金额呈现</p>
-      <button class="product-button product-button--primary" type="submit">保存视图</button>
-    </form>
-  </details>
+  <a class="product-button product-button--quiet" data-save-view href="/web/saved-views?{{ {'ledger_id':selected_ledger_id, 'create':'true', 'month_mode':('current' if filter else 'fixed'), 'month':month, 'filter':filter, 'tag_public_id':save_view_tag_public_id, 'home_currency_code':home_currency_code}|urlencode }}">保存当前视图</a>
   {% endif %}
   {% endif %}
 </div>

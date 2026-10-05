@@ -1,6 +1,7 @@
 """Native saved-view forms preserve the original query through refusals and repair."""
 
 import re
+from html import unescape
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
@@ -40,7 +41,13 @@ def _create(browser, client, identity):
                    expense_time="2026-09-03T10:00:00Z")
     page = browser.get("/web/confirmed?ledger_id=owner&month=2026-09&tag=旅行&home_currency_code=CNY")
     assert page.status_code == 200, page.text
-    fields = {**hidden_post_forms(page.text)["/web/saved-views"],
+    entry = re.search(r'<a\b(?=[^>]*\bdata-save-view\b)[^>]*\bhref="([^"]+)"', page.text)
+    assert entry is not None
+    href = unescape(entry.group(1))
+    conditions = {key: values[0] for key, values in parse_qs(urlsplit(href).query, keep_blank_values=True).items() if key != "create"}
+    page = browser.get(href)
+    assert page.status_code == 200 and 'value="2026-09"' in page.text
+    fields = {**conditions, **hidden_post_forms(page.text)["/web/saved-views"],
               "name": "九月旅行", "month_mode": "fixed"}
     result = _post(browser, "/web/saved-views", fields)
     assert result.status_code == 303, result.text
@@ -50,7 +57,7 @@ def _create(browser, client, identity):
 
 
 def _editor(browser, public_id, original):
-    page = browser.get("/web/saved-views?ledger_id=owner")
+    page = browser.get(f"/web/saved-views?ledger_id=owner&edit={public_id}")
     assert page.status_code == 200, page.text
     action = f"/web/saved-views/{public_id}/rename"
     return action, {**original, **hidden_post_forms(page.text)[action]}

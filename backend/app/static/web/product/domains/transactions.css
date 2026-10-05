@@ -84,25 +84,6 @@
     margin-block-end: var(--space-2);
 }
 
-.ledger-view-save > summary {
-    min-height: var(--target-min);
-    padding: var(--space-3);
-    color: var(--text-muted);
-    cursor: pointer;
-}
-
-.ledger-view-save[open] {
-    flex-basis: 100%;
-    padding: var(--space-4);
-    border: 1px solid var(--border-card);
-    border-radius: var(--radius-card);
-}
-
-.ledger-view-save[open] > summary {
-    margin: calc(-1 * var(--space-3));
-    margin-block-end: var(--space-3);
-}
-
 .ledger-stream {
     overflow: hidden;
     padding: 0;
@@ -526,54 +507,12 @@
 .ledger-search-groups {
     display: grid;
     gap: var(--space-6);
+    margin-block-end: var(--space-8);
 }
+.ledger-search-groups .product-panel-header { margin-block-end: 0; }
 
 .ledger-search-results {
     display: grid;
-}
-
-.ledger-search-result {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    align-items: center;
-    gap: var(--space-4);
-    min-height: calc(var(--space-12) + var(--space-3));
-    padding: var(--space-4) var(--space-5);
-    border-block-end: 1px solid var(--border-card);
-    color: var(--text-default);
-    text-decoration: none;
-}
-
-.ledger-search-result:last-child {
-    border-block-end: 0;
-}
-
-.ledger-search-result:hover {
-    background: var(--surface-sunken);
-}
-
-.ledger-search-copy {
-    display: grid;
-    gap: var(--space-1);
-    min-width: 0;
-}
-
-.ledger-search-copy strong,
-.ledger-search-copy span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.ledger-search-copy span {
-    color: var(--text-meta);
-    font-size: var(--type-caption-size);
-}
-
-.ledger-search-amount {
-    font-family: var(--font-numeric);
-    font-variant-numeric: tabular-nums;
-    font-weight: var(--type-subtitle-weight);
 }
 
 .import-metrics {
@@ -628,17 +567,8 @@
 }
 
 @media (max-width: 48rem) {
-    .ledger-search-form,
     .import-metrics {
         grid-template-columns: minmax(0, 1fr);
-    }
-
-    .ledger-search-result {
-        grid-template-columns: auto minmax(0, 1fr);
-    }
-
-    .ledger-search-amount {
-        grid-column: 2;
     }
 
     .import-metric {
@@ -1745,20 +1675,7 @@
     margin: 0;
 }
 
-/* ── 搜索：分组结果面板（行样式 .ledger-search-* 复用上方既有规则） ───── */
-.ledger-search-group {
-    overflow: hidden;
-}
 
-.ledger-search-group-head {
-    margin-block-end: 0;
-    padding: var(--space-5) var(--space-5) var(--space-2);
-}
-
-.ledger-search-none {
-    margin: 0;
-    padding: 0 var(--space-5) var(--space-5);
-}
 
 /* ── 窄屏（56rem，与 detail.css 同约定） ─────────────────────────────── */
 @media (max-width: 56rem) {
@@ -1876,7 +1793,9 @@
 }
 
 .manual-entry,
-.offset-action-panel {
+.offset-action-panel,
+.saved-view-editor,
+.ledger-search-workspace {
     max-inline-size: 40rem;
     margin-inline: auto;
 }
@@ -1990,3 +1909,7 @@
     text-underline-offset: 0.2em;
     padding-block: var(--space-2);
 }
+
+.saved-view-editor .product-form-grid { grid-template-columns: minmax(0, 1fr); }
+.saved-view-editor form { display: grid; gap: var(--space-5); }
+.saved-view-actions { padding-block-end: var(--space-3); }
