@@ -11,7 +11,7 @@
     <div>
       <h2 class="page-title">这笔账的来龙去脉</h2>
       <p class="meta">{{ expense.merchant or '未填写商家' }} · 原消费 {{ offset_summary.gross_original_label }}</p>
-      <div class="product-panel-subtitle">确认与更正记录，最新在前。退款和冲销记录可从账单详情进入。</div>
+      <div class="product-panel-subtitle">确认、更正与退回各自保留，最新记录在前。</div>
     </div>
   </div>
   {% if fact_timeline %}
@@ -23,7 +23,8 @@
         <span class="fact-timeline-when">{{ entry.when }}</span>
         {% if entry.actor %}<span class="meta">{{ entry.actor }}</span>{% endif %}
       </div>
-      <div class="fact-timeline-reason">{{ entry.reason }}</div>
+      {% if entry.summary %}<p class="meta">{{ entry.summary }}</p>{% endif %}
+      {% if entry.reason != entry.kind_label %}<div class="fact-timeline-reason">{{ entry.reason }}</div>{% endif %}
       {% if entry.changes %}
       <dl class="fact-timeline-changes">
         {% for change in entry.changes %}

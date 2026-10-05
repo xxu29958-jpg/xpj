@@ -177,8 +177,8 @@ class AppPrimaryButtonRenderTest {
             }
             val primary = composeRule.onNodeWithText(primaryLabel).assertIsEnabled()
             val secondary = composeRule.onNodeWithText(secondaryLabel).assertIsEnabled()
-            assertTrue("Large text actions should stack at this width",
-                primary.fetchSemanticsNode().boundsInRoot.top >= secondary.fetchSemanticsNode().boundsInRoot.bottom)
+            assertTrue("Large text actions stack with the primary action first",
+                primary.fetchSemanticsNode().boundsInRoot.bottom <= secondary.fetchSemanticsNode().boundsInRoot.top)
             primary.performClick()
             secondary.performClick()
         }

@@ -125,7 +125,7 @@ def _active_offsets(
     return list(db.scalars(statement))
 
 
-def _revision_to_response(
+def offset_revision_to_response(
     db: Session,
     revision: ExpenseOffsetRevision,
     *,
@@ -182,7 +182,7 @@ def expense_fact_bundle(
         active_offsets=[ExpenseOffsetResponse.model_validate(offset).model_copy(update={
             "accounting_time": accounting_time_snapshot(offset)}) for offset in offsets],
         recent_history=[
-            _revision_to_response(
+            offset_revision_to_response(
                 db,
                 revision,
                 offset_public_id=offset_by_id[revision.offset_id],

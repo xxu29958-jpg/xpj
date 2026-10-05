@@ -1,8 +1,4 @@
-{# 次级事实卡 + 唯一写入口「更正这笔账单」。
-   关键元数据（时间/分类/评价）已上移到 _fact_header 的 hero 带；
-   本卡只承载次级字段，不再重复商家/金额。
-   契约：expense, can_write, correction_href（含 return context）,
-   edit_return_href / edit_return_label（回来源列表，如「返回搜索结果」）。 #}
+{# 标签、备注与来源信息沿同一只读入口展开；发生时刻与账务日期分别保留。 #}
 <details class="fact-disclosure">
   <summary class="product-entry">
     <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#tag"/></svg></span>
@@ -11,11 +7,11 @@
   </summary>
 <section aria-label="更多事实">
   <dl class="fact-grid">
-    {% if expense.is_foreign_currency %}
     <div class="fact-row">
       <dt>发生时刻</dt>
       <dd>{{ expense.expense_time or '未记录' }}</dd>
     </div>
+    {% if expense.is_foreign_currency %}
     <div class="fact-row">
       <dt>原币金额</dt>
       <dd>{{ expense.original_currency_code }} {{ expense.original_amount_value or '—' }}</dd>

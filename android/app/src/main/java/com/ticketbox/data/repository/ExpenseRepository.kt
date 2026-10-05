@@ -165,9 +165,10 @@ class ExpenseRepository internal constructor(
         id: Long,
         page: Int,
         pageSize: Int,
-        snapshotRevision: Long?,
+        snapshot: com.ticketbox.domain.model.ExpenseHistorySnapshot?,
         expectedBinding: LogicalSessionBinding?,
-    ): Result<ReadSnapshot<ExpenseRevisionPage>> = factQueryReader.revisions(id, page, pageSize, snapshotRevision, expectedBinding)
+    ): Result<ReadSnapshot<ExpenseRevisionPage>> = factQueryReader.revisions(id, page, pageSize,
+        snapshot, expectedBinding)
 
     override fun observeCorrections(): Flow<ExpenseCorrectionObservation> = correctionRepository.observe()
 

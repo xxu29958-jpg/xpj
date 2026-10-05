@@ -13913,10 +13913,28 @@
         "properties": {
           "items": {
             "items": {
-              "$ref": "#/components/schemas/ExpenseRevisionResponse"
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ExpenseRevisionResponse"
+                },
+                {
+                  "$ref": "#/components/schemas/ExpenseOffsetRevisionResponse"
+                }
+              ]
             },
             "title": "Items",
             "type": "array"
+          },
+          "offset_snapshot_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Offset Snapshot Id"
           },
           "page": {
             "title": "Page",
@@ -32805,6 +32823,33 @@
             }
           },
           {
+            "in": "query",
+            "name": "include_offsets",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Offsets",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset_snapshot_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Offset Snapshot Id"
+            }
+          },
+          {
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -50338,7 +50383,7 @@
             "schema": {
               "anyOf": [
                 {
-                  "minimum": 1,
+                  "minimum": 0,
                   "type": "integer"
                 },
                 {
@@ -50346,6 +50391,23 @@
                 }
               ],
               "title": "Rev Snapshot"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset_snapshot",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Offset Snapshot"
             }
           },
           {

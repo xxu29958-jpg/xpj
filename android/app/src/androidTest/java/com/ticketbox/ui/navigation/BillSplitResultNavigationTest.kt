@@ -10,6 +10,7 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
@@ -105,8 +106,8 @@ class BillSplitResultNavigationTest {
     }
 
     private fun assertFactAndReturn(expenseId: Long) {
-        waitForText(context.getString(R.string.expense_fact_title))
-        compose.onNodeWithText(context.getString(R.string.expense_fact_title)).assertIsDisplayed()
+        waitForText(context.getString(R.string.expense_fact_original_spend))
+        compose.onNodeWithTag("expense-fact").assertIsDisplayed()
         compose.runOnIdle {
             assertEquals(EXPENSE_ROUTE, outer.currentBackStackEntry?.destination?.route)
             assertEquals(expenseId, outer.currentBackStackEntry?.arguments?.getLong(EXPENSE_ID_ARG))

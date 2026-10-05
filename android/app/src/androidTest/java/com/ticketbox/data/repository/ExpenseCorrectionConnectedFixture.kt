@@ -217,6 +217,7 @@ internal class ExpenseCorrectionConnectedFixture(
 internal class CorrectionConnectedNetwork {
     var current = correctionExpense()
     var financialSummary: ExpenseFinancialSummaryDto? = null
+    var historyOverride: List<ExpenseRevisionDto>? = null
     var diagnosticApiVersion = com.ticketbox.data.remote.CURRENT_TICKETBOX_API_VERSION
     val diagnosticReads = CopyOnWriteArrayList<String>()
     var backgroundTasks = com.ticketbox.data.remote.dto.BackgroundTaskListResponseDto()
@@ -365,9 +366,11 @@ internal class CorrectionConnectedNetwork {
             readable()
             return ExpenseSplitsResponseDto(id, current.rowVersion, current.amountCents, null, null, emptyList())
         }
-        override suspend fun expenseRevisions(id: Long, page: Int, pageSize: Int, snapshotRevision: Long?): ExpenseRevisionPageDto {
+        override suspend fun expenseRevisions(id: Long, page: Int, pageSize: Int, snapshotRevision: Long?, offsetSnapshotId: Long?): ExpenseRevisionPageDto {
             readable()
-            return ExpenseRevisionPageDto(results.values.map { it.revision }, page, pageSize, results.size, current.factRevision)
+            val rows = historyOverride ?: results.values.map { it.revision }
+            return ExpenseRevisionPageDto(rows, page, pageSize, rows.size, current.factRevision,
+                offsetSnapshotId = if (rows.any { it.offsetPublicId != null }) 1 else 0)
         }
         override suspend fun expenseFactBundle(id: String): ExpenseFactBundleDto {
             check(id == current.id.toString())

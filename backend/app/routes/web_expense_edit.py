@@ -53,7 +53,8 @@ def web_edit_get(
     flash_type: str = "",
     rev_page: int = Query(default=1, ge=1),
     # A1 P2: 变更记录在同一服务端快照内翻页；缺省 = 重新进入事实页，取新锚。
-    rev_snapshot: int | None = Query(default=None, ge=1),
+    rev_snapshot: int | None = Query(default=None, ge=0),
+    offset_snapshot: int | None = Query(default=None, ge=0),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> Response:
@@ -101,6 +102,7 @@ def web_edit_get(
             expense_id,
             revision_page=rev_page,
             revision_snapshot=rev_snapshot,
+            offset_snapshot_id=offset_snapshot,
             flash_type=flash_type,
             return_context=return_context,
         )

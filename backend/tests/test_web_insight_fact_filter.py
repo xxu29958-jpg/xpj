@@ -283,7 +283,7 @@ def test_reports_fact_correction_keeps_original_month_through_422_409_and_succes
     stored = web_client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers)
     assert stored.status_code == 200, stored.text
     assert stored.json()["merchant"] == "月报更正后的商家"
-    return_anchor = re.search(r'<a\b[^>]*href="([^"]+)"[^>]*>\s*返回原月份月报\s*</a>', result.text)
+    return_anchor = re.search(r'<a\b[^>]*href="([^"]+)"[^>]*>(?:\s|<[^>]+>)*返回原月份月报\s*</a>', result.text)
     assert return_anchor is not None
     return_link = unescape(return_anchor.group(1))
     _assert_query(return_link, "/web/reports", ledger_id="owner", **report_task)

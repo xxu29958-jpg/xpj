@@ -58,10 +58,10 @@
     {% include "_fact_summary_card.html" %}
     </div>
     <section class="fact-recent" aria-label="最近变更">
-      <div class="product-panel-header"><h2 class="product-panel-title">最近变更</h2><a href="#fact-timeline">更正历史</a></div>
+      <div class="product-panel-header"><h2 class="product-panel-title">最近变更</h2><a href="#fact-timeline">完整历史</a></div>
       {% for entry in fact_timeline[:2] %}
       <p class="meta">{{ entry.kind_label }} · {{ entry.when }}{% if entry.reason %} · {{ entry.reason }}{% endif %}</p>
-      {% else %}<p class="meta">还没有更正记录</p>{% endfor %}
+      {% else %}<p class="meta">还没有变更记录</p>{% endfor %}
     </section>
     <div class="fact-actions">
       {% if can_write %}<a class="product-button product-button--primary" href="{{ correction_href }}">更正这笔账单 <span aria-hidden="true">→</span></a>

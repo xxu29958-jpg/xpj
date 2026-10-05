@@ -27,6 +27,7 @@ data class FactTimelineEntry(
     val changes: List<FactTimelineChange>,
     /** items/splits 触及时的完整 Before/After 集合；空表示无集合明细。 */
     val collections: List<FactTimelineCollectionDetail> = emptyList(),
+    val summary: UiText? = null,
 )
 
 data class FactTimelineChange(
@@ -60,6 +61,7 @@ private val FACT_FIELD_ORDER: List<Pair<String, Int>> = listOf(
     "tags" to R.string.expense_fact_timeline_field_tags,
     "expense_time" to R.string.expense_fact_timeline_field_time,
     "accounting_time" to R.string.expense_fact_timeline_field_time,
+    "accounting_date" to R.string.expense_fact_timeline_field_time,
     "value_score" to R.string.expense_fact_timeline_field_value_score,
     "regret_score" to R.string.expense_fact_timeline_field_regret_score,
     "items" to R.string.expense_fact_timeline_field_items,
@@ -173,12 +175,12 @@ private fun MutableList<FactTimelineChange>.appendAllocationChange(
     return true
 }
 
-private data class TimelineCorrectionContent(
+internal data class TimelineCorrectionContent(
     val changes: List<FactTimelineChange>,
     val collections: List<FactTimelineCollectionDetail>,
 )
 
-private fun ExpenseRevision.correctionTimelineContent(
+internal fun ExpenseRevision.correctionTimelineContent(
     currency: CurrencyCode,
     memberNames: Map<Long, String>?,
 ): TimelineCorrectionContent {
@@ -236,6 +238,7 @@ private fun ExpenseRevision.toTimelineEntry(
     currency: CurrencyCode,
     memberNames: Map<Long, String>?,
 ): FactTimelineEntry {
+    if (offsetPublicId != null) return offsetTimelineEntry(currency)
     val isCorrection = changeKind == "correction"
     val content = if (isCorrection) {
         correctionTimelineContent(currency, memberNames)
@@ -254,10 +257,11 @@ private fun ExpenseRevision.toTimelineEntry(
         actor = listOfNotNull(actorAccountName, actorDeviceName).filter { it.isNotBlank() }.joinToString(" · "),
         changes = content.changes,
         collections = content.collections,
+        summary = if (changeKind == "confirmed") historicalAmount(after) else null,
     )
 }
 
-/** 时间线展示模型：newest-first（服务端已按 revision_number desc 返回）。 */
+/** Server order covers both immutable journals; the client never re-sorts pages. */
 internal fun List<ExpenseRevision>.toTimelineEntries(
     currency: CurrencyCode,
     memberNames: Map<Long, String>? = null,

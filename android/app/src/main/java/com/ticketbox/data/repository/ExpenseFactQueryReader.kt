@@ -41,13 +41,15 @@ internal class ExpenseFactQueryReader(private val core: ExpenseRepositoryCore) {
                 }
             })).map { ReadSnapshot(it.value.toDomain(), it.fetchedAt, it.fromCache) }
 
-    suspend fun revisions(id: Long, page: Int, pageSize: Int, snapshot: Long?, binding: LogicalSessionBinding?):
+    suspend fun revisions(id: Long, page: Int, pageSize: Int, snapshot: com.ticketbox.domain.model.ExpenseHistorySnapshot?, binding: LogicalSessionBinding?):
         Result<ReadSnapshot<ExpenseRevisionPage>> =
-        read(id, binding, FactQuery("revisions:$pageSize:$page:$snapshot", revisionsAdapter,
-            { api -> api.expenseRevisions(id, page, pageSize, snapshot) },
+        read(id, binding, FactQuery("history:$pageSize:$page:${snapshot?.revision}:${snapshot?.offsetId}", revisionsAdapter,
+            { api -> api.expenseRevisions(id, page, pageSize, snapshot?.revision, snapshot?.offsetId) },
             validate = { require(it.page == page && it.pageSize == pageSize &&
-                (snapshot == null || it.snapshotRevision == snapshot) &&
-                it.items.all { row -> row.revisionNumber <= it.snapshotRevision }) { "账单历史快照不一致，请重新读取。" } }))
+                it.offsetSnapshotId != null && (snapshot == null || (it.snapshotRevision == snapshot.revision &&
+                it.offsetSnapshotId == snapshot.offsetId)) &&
+                it.items.all { row -> row.offsetPublicId != null || row.revisionNumber <= it.snapshotRevision }) {
+                    "账单历史快照不一致，请重新读取。" } }))
             .map { ReadSnapshot(it.value.toDomain(), it.fetchedAt, it.fromCache) }
 
     private data class FactQuery<T>(val key: String, val adapter: JsonAdapter<T>, val fetch: suspend (ApiService) -> T,

@@ -13,6 +13,32 @@ from app.routes import _web_expense_helpers as helpers
 from app.schemas import ExpenseRevisionListResponse, ExpenseRevisionResponse
 
 
+def test_offset_history_keeps_the_currency_and_amount_of_each_historical_snapshot():
+    row = fact._offset_timeline_entry({
+        "change_kind": "correction", "reason": "按退款凭证核对", "created_at": "2026-10-05T00:00:00Z",
+        "before": {"kind": "refund", "original_currency_code": "JPY", "original_amount_minor": 1200,
+            "home_currency_code": "CNY", "amount_cents": 6000, "accounting_date": "2026-10-04"},
+        "after": {"kind": "refund", "original_currency_code": "JPY", "original_amount_minor": 1000,
+            "home_currency_code": "CNY", "amount_cents": 5000, "accounting_date": "2026-10-05"},
+    })
+    assert row["kind_label"] == "更正：商家退回"
+    assert row["summary"] == "¥1,000 · 2026-10-05"
+    amount = next(change for change in row["changes"] if change["label"] == "原币金额")
+    assert (amount["before"], amount["after"]) == ("¥1,200", "¥1,000")
+
+
+def test_reversal_history_is_a_preserved_event_instead_of_a_zero_value_refund():
+    row = fact._offset_timeline_entry({
+        "change_kind": "void", "reason": "恢复原消费", "created_at": "2026-10-05T00:00:00Z",
+        "before": {"kind": "reversal", "status": "active"},
+        "after": {"kind": "reversal", "status": "voided", "original_currency_code": "CNY",
+            "original_amount_minor": 12000, "accounting_date": "2026-10-05"},
+    })
+    assert row["kind_label"] == "撤销：冲销账单"
+    assert row["summary"] == "2026-10-05"
+    assert row["reason"] == "恢复原消费"
+
+
 def _snapshot(home, amount, original, original_amount, split):
     return {
         "home_currency_code": home, "amount_cents": amount,
@@ -54,7 +80,7 @@ def fact_context(monkeypatch):
         revision = ExpenseRevisionResponse(public_id="revision-2", revision_number=2,
             change_kind="correction", reason="实际支付日元", created_at=now, before=before, after=after,
             changed_fields=["amount_cents", "original_currency_code", "original_amount_minor", "items", "splits"])
-        monkeypatch.setattr(fact, "list_expense_revisions", lambda *_a, **_k: ExpenseRevisionListResponse(
+        monkeypatch.setattr(fact, "list_expense_fact_history", lambda *_a, **_k: ExpenseRevisionListResponse(
             items=[revision], page=1, page_size=50, total=1, snapshot_revision=2))
         request = Request({"type": "http", "method": "GET", "headers": [],
             "path": "/web/expenses/41/edit", "query_string": b""})

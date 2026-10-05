@@ -166,9 +166,9 @@ def test_composite_correction_closes_scalar_items_and_splits(web_client: TestCli
     assert "小票商家和明细看错了" in fact.text
     assert "苹果" in fact.text
     assert "返回搜索结果" in fact.text
-    # 只读行带窄屏标签（data-label 驱动行卡模式，真实数据行验证）。
-    assert 'data-label="名称"' in fact.text
-    assert 'data-label="成员"' in fact.text
+    # Shared read-only entries retain both collections and their actual facts.
+    assert 'aria-label="小票明细"' in fact.text
+    assert 'aria-label="家庭拆账"' in fact.text
 
     revisions = web_client.get(f"/api/expenses/{expense_id}/revisions", headers=identity.app_headers)
     assert revisions.status_code == 200

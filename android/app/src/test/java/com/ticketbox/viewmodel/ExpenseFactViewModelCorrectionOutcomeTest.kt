@@ -130,7 +130,7 @@ internal class ExpenseFactViewModelCorrectionOutcomeTest : ExpenseFactViewModelT
         assertEquals(published.root, state.expense, "First DONE may be newer than the initial fact GET or local fallback")
         assertEquals(published, state.factBundle)
         assertEquals(listOf("rev-correction", "rev-1"), state.revisions.map { it.publicId })
-        assertEquals(2L, state.revisionsSnapshotRevision)
+        assertEquals(2L, state.revisionsSnapshot?.revision)
         assertEquals(ExpenseDetailDataLoadState.Loaded, state.factBundleLoadState)
         assertEquals(ExpenseDetailDataLoadState.Loaded, state.revisionsLoadState)
         assertEquals(stored.intent, state.corrections.single().intent)

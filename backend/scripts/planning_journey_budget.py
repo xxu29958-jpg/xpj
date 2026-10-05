@@ -164,6 +164,7 @@ class BudgetJourney:
     def history(self, *, offline=False):
         suffix = "offline-restart" if offline else "online"
         self.open_native("budget")
+        self.native.reveal_any("预算修改记录", toward_start=True)
         self.native.click("预算修改记录")
         if offline:
             self.native.reveal_any("本机保留")

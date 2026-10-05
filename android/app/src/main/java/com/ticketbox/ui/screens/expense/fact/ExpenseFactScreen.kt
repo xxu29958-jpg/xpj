@@ -72,7 +72,9 @@ fun ExpenseFactScreen(
                 title = if (state.timelineExpanded) stringResource(R.string.expense_fact_history_heading)
                     else state.expense?.merchant?.takeIf { it.isNotBlank() } ?: stringResource(R.string.expense_fact_title),
                 subtitle = state.expense?.let { expense ->
-                    if (state.timelineExpanded) expense.merchant else "${expenseTimeLabel(expense).asString()} · ${expense.category}"
+                    if (state.timelineExpanded) stringResource(R.string.expense_fact_history_subtitle,
+                        expense.merchant.orEmpty(), factAmountLabels(expense, state.factBundle).original)
+                    else "${expenseTimeLabel(expense).asString()} · ${expense.category}"
                 },
                 backText = stringResource(if (state.timelineExpanded) R.string.expense_fact_title else R.string.expense_edit_primary_back_button),
                 onBack = if (state.timelineExpanded) viewModel::toggleTimelineExpanded else onBack,

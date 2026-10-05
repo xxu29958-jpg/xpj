@@ -35,7 +35,7 @@ from app.routes._web_expense_return_context import (
 from app.routes._web_money_views import _minor_amount_label
 from app.routes.web_common import _web_redirect, templates
 from app.services import invitation_members
-from app.services.expense_revision_service import list_expense_revisions
+from app.services.expense_fact_history import list_expense_fact_history
 from app.services.expense_service import get_expense
 from app.services.spending_contract_service import accounting_datetime_label
 
@@ -294,20 +294,20 @@ def build_fact_timeline(
     *,
     tenant_id: str,
     expense_id: int,
-    current_revision: int,
     snapshot_revision: int | None = None,
+    offset_snapshot_id: int | None = None,
     page: int = 1,
     page_size: int = 50,
     member_names: dict[int, str] | None = None,
 ) -> dict[str, Any]:
     """Newest-first human timeline rows for the fact page."""
 
-    response = list_expense_revisions(
+    response = list_expense_fact_history(
         db,
         tenant_id=tenant_id,
         expense_id=expense_id,
-        current_revision=current_revision,
         snapshot_revision=snapshot_revision,
+        offset_snapshot_id=offset_snapshot_id,
         page=page,
         page_size=page_size,
     )
@@ -315,6 +315,9 @@ def build_fact_timeline(
     for item in response.items:
         revision = item.model_dump()
         actor_parts = [part for part in (item.actor_account_name, item.actor_device_name) if part]
+        if revision.get("offset_public_id"):
+            rows.append(_offset_timeline_entry(revision))
+            continue
         rows.append(
             {
                 "revision_number": item.revision_number,
@@ -324,6 +327,7 @@ def build_fact_timeline(
                 "when": _snapshot_time_label(item.created_at.isoformat()),
                 "actor": " · ".join(actor_parts),
                 "is_correction": item.change_kind == "correction",
+                "summary": _historical_amount(item.after) if item.change_kind == "confirmed" else "",
                 "changes": _timeline_changes(
                     revision,
                     member_names=member_names,
@@ -336,8 +340,39 @@ def build_fact_timeline(
         "page_size": response.page_size,
         "total": response.total,
         "snapshot_revision": response.snapshot_revision,
+        "offset_snapshot_id": response.offset_snapshot_id,
         "has_newer": response.page > 1,
         "has_older": response.page * response.page_size < response.total,
+    }
+
+
+def _historical_amount(snapshot: dict[str, Any]) -> str:
+    if isinstance(snapshot.get("original_amount_minor"), int):
+        return _snapshot_money(snapshot["original_amount_minor"], snapshot.get("original_currency_code"))
+    return _snapshot_money(snapshot.get("amount_cents"), snapshot.get("home_currency_code"))
+
+
+def _offset_timeline_entry(revision: dict[str, Any]) -> dict[str, Any]:
+    after, before = revision["after"], revision.get("before") or {}
+    kind = {"refund": "商家退回", "chargeback": "银行拒付", "reversal": "冲销账单"}.get(after.get("kind"), "退回记录")
+    action = {"created": "", "correction": "更正：", "void": "撤销："}[revision["change_kind"]]
+    fields = ("original_amount_minor", "accounting_time", "accounting_date", "category")
+    changes = []
+    if revision["change_kind"] == "correction":
+        for field in fields:
+            if field == "accounting_date" and "accounting_time" in after or before.get(field) == after.get(field):
+                continue
+            label = _FACT_FIELD_LABELS.get(field, "账务日期")
+            changes.append({"label": label, "before": _format_fact_value(field, before.get(field), before),
+                "after": _format_fact_value(field, after.get(field), after)})
+    return {
+        "kind": revision["change_kind"], "kind_label": action + kind, "reason": revision["reason"],
+        "when": _snapshot_time_label(str(revision["created_at"])),
+        "actor": " · ".join(part for part in (revision.get("actor_account_name"), revision.get("actor_device_name")) if part),
+        "is_correction": revision["change_kind"] == "correction", "changes": changes,
+        "summary": " · ".join(filter(None, [
+            "" if after.get("kind") == "reversal" else _historical_amount(after), after.get("accounting_date"),
+        ])),
     }
 
 
@@ -350,6 +385,7 @@ def web_fact_context(
     *,
     revision_page: int = 1,
     revision_snapshot: int | None = None,
+    offset_snapshot_id: int | None = None,
     message: str | None = None,
     flash_type: str = "",
     error: str | None = None,
@@ -407,8 +443,8 @@ def web_fact_context(
         db,
         tenant_id=selected_id,
         expense_id=expense_id,
-        current_revision=expense.fact_revision,
         snapshot_revision=revision_snapshot,
+        offset_snapshot_id=offset_snapshot_id,
         page=revision_page,
         member_names=member_names,
     )

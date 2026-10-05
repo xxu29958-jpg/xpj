@@ -11,7 +11,8 @@
     <string name="expense_fact_offsets_entry_hint">查看记录或登记退回</string>
     <string name="expense_fact_notes_entry">标签与备注</string>
     <string name="expense_fact_history_heading">这笔账的来龙去脉</string>
-    <string name="expense_fact_history_entry">更正历史</string>
+    <string name="expense_fact_history_entry">完整历史</string>
+    <string name="expense_fact_history_subtitle">%1$s · 原消费 %2$s</string>
     <string name="expense_fact_recent_changes">最近变更</string>
     <string name="expense_fact_history_preserved">原记录始终保留。更正和退回分别记录，不覆盖之前发生的事。</string>
     <string name="expense_fact_status_confirmed">已确认</string>

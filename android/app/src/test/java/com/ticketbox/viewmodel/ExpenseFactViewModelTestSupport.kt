@@ -155,6 +155,7 @@ internal class FakeExpenseFactActions : ExpenseFactActions {
     var lastCorrectionDraft: ExpenseCorrectionDraft? = null
     var fetchExpenseCalls = 0
     var fetchRevisionsCalls = 0
+    val offsetRevisionSnapshots = mutableListOf<Long?>()
     val revisionRequests = mutableListOf<Pair<Int, Int>>()
     /** 每次 revisions 请求携带的快照锚（null = 进入新快照）。 */
     val revisionSnapshots = mutableListOf<Long?>()
@@ -317,12 +318,13 @@ internal class FakeExpenseFactActions : ExpenseFactActions {
         id: Long,
         page: Int,
         pageSize: Int,
-        snapshotRevision: Long?,
+        snapshot: com.ticketbox.domain.model.ExpenseHistorySnapshot?,
         expectedBinding: LogicalSessionBinding?,
     ): Result<com.ticketbox.data.repository.ReadSnapshot<ExpenseRevisionPage>> {
         fetchRevisionsCalls++
         revisionRequests += page to pageSize
-        revisionSnapshots += snapshotRevision
+        revisionSnapshots += snapshot?.revision
+        offsetRevisionSnapshots += snapshot?.offsetId
         return revisionsResult(page, pageSize).map { com.ticketbox.data.repository.ReadSnapshot(it, "2026-09-30T00:00:00Z", factHistoryFromCache) }
     }
 

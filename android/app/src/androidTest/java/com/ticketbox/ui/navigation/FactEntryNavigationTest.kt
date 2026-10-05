@@ -60,16 +60,7 @@ class FactEntryNavigationTest {
     private val sharedImage = File(context.cacheDir, "fact-navigation-share.png")
 
     @Test fun factReadingAndOriginalKeepTheSameNavigationOwner() {
-        if (InstrumentationRegistry.getArguments().getString("captureRefund") == "true") {
-            val longContent = InstrumentationRegistry.getArguments().getString("captureLong") == "true"
-            val amount = if (longContent) Long.MAX_VALUE else 12000L
-            harness.fixture.network.current = harness.fixture.network.current.copy(
-                merchant = if (longContent) "一家名称很长但需要完整识别的家庭采购商店" else "街角小馆",
-                amountCents = amount, originalAmountMinor = amount)
-            harness.fixture.network.financialSummary = com.ticketbox.data.remote.dto.ExpenseFinancialSummaryDto(
-                amount, amount, amount, 2000L, amount - 2000L, amount - 2000L, 0L,
-                com.ticketbox.data.remote.dto.ExpenseLineageStatusDto.PartiallyRefunded)
-        }
+        prepareFactCapture()
         installMainGraph()
         openFact()
         val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
@@ -88,6 +79,30 @@ class FactEntryNavigationTest {
         compose.onNodeWithText(context.getString(R.string.expense_fact_correct_cta))
             .performScrollTo().performClick()
         waitForText(context.getString(R.string.expense_correction_sheet_title))
+    }
+
+    private fun prepareFactCapture() {
+        if (InstrumentationRegistry.getArguments().getString("captureRefund") == "true") {
+            val longContent = InstrumentationRegistry.getArguments().getString("captureLong") == "true"
+            val amount = if (longContent) Long.MAX_VALUE else 12000L
+            harness.fixture.network.current = harness.fixture.network.current.copy(
+                merchant = if (longContent) "一家名称很长但需要完整识别的家庭采购商店" else "街角小馆",
+                amountCents = amount, originalAmountMinor = amount)
+            harness.fixture.network.financialSummary = com.ticketbox.data.remote.dto.ExpenseFinancialSummaryDto(
+                amount, amount, amount, 2000L, amount - 2000L, amount - 2000L, 0L,
+                com.ticketbox.data.remote.dto.ExpenseLineageStatusDto.PartiallyRefunded)
+            val confirmed = com.ticketbox.data.remote.dto.ExpenseRevisionDto("history-confirmed", 1, "confirmed", "首次确认",
+                emptyList(), after = mapOf("original_currency_code" to "CNY", "original_amount_minor" to amount),
+                createdAt = "2026-10-03T04:35:00Z")
+            harness.fixture.network.historyOverride = listOf(
+                confirmed.copy(publicId = "history-refund", offsetPublicId = "refund-1", changeKind = "created",
+                    reason = "退回一份", createdAt = "2026-10-03T06:10:00Z",
+                    after = mapOf("kind" to "refund", "original_currency_code" to "CNY", "original_amount_minor" to 2000L,
+                        "home_currency_code" to "CNY", "amount_cents" to 2000L, "accounting_date" to "2026-10-03")),
+                confirmed.copy(publicId = "history-category", changeKind = "correction", reason = "按原小票核对",
+                    changedFields = listOf("category"), before = mapOf("category" to "其他"), after = mapOf("category" to "餐饮"),
+                    createdAt = "2026-10-03T05:20:00Z"), confirmed)
+        }
     }
 
     @After fun close() {

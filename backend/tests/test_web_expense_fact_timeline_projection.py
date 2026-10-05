@@ -20,7 +20,7 @@ from app.services.invitation_members import MemberSummary
 def test_timeline_reads_requested_page_and_exposes_reachability() -> None:
     captured: dict[str, object] = {}
 
-    def fake_list_expense_revisions(*_args, **kwargs):
+    def fake_list_expense_fact_history(*_args, **kwargs):
         captured.update(kwargs)
         return ExpenseRevisionListResponse(
             items=[
@@ -42,14 +42,13 @@ def test_timeline_reads_requested_page_and_exposes_reachability() -> None:
         )
 
     with patch(
-        "app.routes._web_expense_fact.list_expense_revisions",
-        side_effect=fake_list_expense_revisions,
+        "app.routes._web_expense_fact.list_expense_fact_history",
+        side_effect=fake_list_expense_fact_history,
     ):
         timeline = build_fact_timeline(
             object(),
             tenant_id="owner",
             expense_id=7,
-            current_revision=120,
             page=2,
             page_size=50,
             member_names={},
@@ -58,8 +57,8 @@ def test_timeline_reads_requested_page_and_exposes_reachability() -> None:
     assert captured == {
         "tenant_id": "owner",
         "expense_id": 7,
-        "current_revision": 120,
         "snapshot_revision": None,
+        "offset_snapshot_id": None,
         "page": 2,
         "page_size": 50,
     }
@@ -237,7 +236,7 @@ def test_web_fact_context_keeps_disabled_member_identity_in_revision_projection(
             return_value=[_disabled_member_summary()],
         ),
         patch(
-            "app.routes._web_expense_fact.list_expense_revisions",
+            "app.routes._web_expense_fact.list_expense_fact_history",
             return_value=_disabled_member_revision_page(),
         ),
     ):
@@ -330,7 +329,7 @@ def test_anchored_timeline_pager_keeps_one_snapshot_across_pages() -> None:
             return_value=[],
         ),
         patch(
-            "app.routes._web_expense_fact.list_expense_revisions",
+            "app.routes._web_expense_fact.list_expense_fact_history",
             side_effect=reader,
         ),
     ):
@@ -345,7 +344,7 @@ def test_anchored_timeline_pager_keeps_one_snapshot_across_pages() -> None:
             return_context=ExpenseReturnContext(return_to="confirmed"),
         )
 
-    assert reader.kwargs["current_revision"] == 140
+    assert reader.kwargs["offset_snapshot_id"] is None
     assert reader.kwargs["snapshot_revision"] == 120
     pager = context["fact_timeline_page"]
     assert pager["snapshot_revision"] == 120

@@ -70,7 +70,7 @@ def record_context(monkeypatch):
     monkeypatch.setattr(fact, "build_split_invite_context", lambda *_a, **_k: None)
     monkeypatch.setattr(fact, "expense_offset_fact_view", lambda *_a: {})
     monkeypatch.setattr(fact.invitation_members, "list_members", lambda *_a, **_k: [])
-    monkeypatch.setattr(fact, "list_expense_revisions", lambda *_a, **_k: ExpenseRevisionListResponse(
+    monkeypatch.setattr(fact, "list_expense_fact_history", lambda *_a, **_k: ExpenseRevisionListResponse(
         items=[], page=1, page_size=50, total=0, snapshot_revision=1))
 
     def read(mode, status="mismatch_known", *, source_unknown=False):
