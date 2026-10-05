@@ -150,8 +150,8 @@ private fun StackedSheetActions(
     secondary: AppAction,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap)) {
-        SheetSecondaryAction(action = secondary, modifier = Modifier.fillMaxWidth())
         SheetPrimaryAction(action = primary, modifier = Modifier.fillMaxWidth())
+        SheetSecondaryAction(action = secondary, modifier = Modifier.fillMaxWidth())
     }
 }
 

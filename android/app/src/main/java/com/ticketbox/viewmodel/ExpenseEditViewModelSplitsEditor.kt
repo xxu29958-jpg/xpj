@@ -27,6 +27,10 @@ import kotlinx.coroutines.launch
  *  built once members arrive (member checklist seeded from the current
  *  splits — see [loadSplitMembers]). No-op until splits have loaded. */
 fun ExpenseEditViewModel.openSplitsEditor() {
+    if (_uiState.value.splitDraftsInitialized || _uiState.value.splitMembersLoading) {
+        _uiState.update { it.copy(splitEditorOpen = true) }
+        return
+    }
     if (_uiState.value.expenseSplits == null) {
         _uiState.update {
             it.copy(
@@ -57,6 +61,7 @@ fun ExpenseEditViewModel.loadSplitMembers() {
                 _uiState.update {
                     it.copy(
                         splitDrafts = buildSplitDrafts(members, currentSplits),
+                        splitDraftsInitialized = true,
                         splitMembersLoading = false,
                         splitsMessageTone = MessageTone.Neutral,
                     )
@@ -131,7 +136,7 @@ fun ExpenseEditViewModel.evenSplitAmounts() {
 }
 
 fun ExpenseEditViewModel.closeSplitsEditor() {
-    _uiState.update { it.copy(splitEditorOpen = false, splitDrafts = emptyList()) }
+    _uiState.update { it.copy(splitEditorOpen = false) }
 }
 
 /** Persist the edited splits. Mirrors [saveItems]: Synced refreshes the
@@ -205,6 +210,7 @@ private fun ExpenseEditViewModel.applySplitsSaveOutcome(outcome: ReplaceSplitsOu
             splitsLoadState = ExpenseDetailDataLoadState.Loaded,
             splitEditorOpen = false,
             splitDrafts = emptyList(),
+            splitDraftsInitialized = false,
             splitsSaving = false,
             message = if (synced != null) {
                 UiText.res(R.string.expense_edit_splits_saved)
@@ -237,6 +243,7 @@ private fun ExpenseEditViewModel.buildSplitDrafts(
                 included = existing != null,
                 amountText = existing?.let { centsToYuanText(it.amountCents) }.orEmpty(),
                 disabled = false,
+                note = existing?.note,
             )
             // Disabled member already on a split: keep, read-only.
             existing != null -> EditableSplit(
@@ -245,6 +252,7 @@ private fun ExpenseEditViewModel.buildSplitDrafts(
                 included = true,
                 amountText = centsToYuanText(existing.amountCents),
                 disabled = true,
+                note = existing.note,
             )
             // Disabled member NOT on a split: drop (can't add a disabled member).
             else -> null
@@ -257,6 +265,7 @@ private fun ExpenseEditViewModel.buildSplitDrafts(
             included = true,
             amountText = centsToYuanText(split.amountCents),
             disabled = true,
+            note = split.note,
         )
     }
     return rosterDrafts + orphanDrafts
@@ -265,5 +274,5 @@ private fun ExpenseEditViewModel.buildSplitDrafts(
 private fun EditableSplit.toDomainDraft(currency: CurrencyCode): ExpenseSplitDraft = ExpenseSplitDraft(
     memberId = memberId,
     amountCents = parseAmountCents(amountText, currency) ?: 0L,
-    note = null,
+    note = note,
 )

@@ -49,6 +49,7 @@ data class AppAsyncImageLayout(
     val compact: Boolean = false,
     val compactSize: DpSize = DpSize(width = 96.dp, height = 128.dp),
     val displayHeight: Dp? = null,
+    val displayAspectRatio: Float = 4f / 5f,
 ) {
     companion object {
         val ReceiptThumbnail = AppAsyncImageLayout(compact = true, compactSize = DpSize(40.dp, 52.dp))
@@ -95,7 +96,7 @@ fun AppAsyncImage(
     val sizeModifier = when {
         layout.compact -> Modifier.size(layout.compactSize)
         layout.displayHeight != null -> Modifier.fillMaxWidth().height(layout.displayHeight)
-        else -> Modifier.fillMaxWidth().aspectRatio(4f / 5f)
+        else -> Modifier.fillMaxWidth().aspectRatio(layout.displayAspectRatio)
     }
 
     Box(

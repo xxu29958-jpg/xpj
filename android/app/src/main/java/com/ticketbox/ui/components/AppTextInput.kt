@@ -78,6 +78,7 @@ data class AppTextInputDecorations(
     val supportingText: (@Composable () -> Unit)? = null,
     val roundedSurface: Boolean = false,
     val amountRole: AppAmountRole? = null,
+    val headerTrailingContent: (@Composable () -> Unit)? = null,
 )
 
 @Composable
@@ -118,7 +119,7 @@ private data class AppTextInputFocusState(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun AppTextInputHeader(state: AppTextInputState) {
+private fun AppTextInputHeader(state: AppTextInputState, trailingContent: (@Composable () -> Unit)?) {
     FlowRow(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -139,6 +140,7 @@ private fun AppTextInputHeader(state: AppTextInputState) {
                 style = MaterialTheme.typography.labelMedium,
             )
         }
+        trailingContent?.invoke()
     }
 }
 
@@ -166,7 +168,7 @@ private fun AppTextInputField(
         textStyle = appTextInputTextStyle(state, decorations.amountRole),
         decorationBox = { innerTextField ->
             Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
-                AppTextInputHeader(state)
+                AppTextInputHeader(state, decorations.headerTrailingContent)
                 AppTextInputFrame(state = state, focused = focusState.focused, decorations = decorations) {
                     val showPlaceholder = state.value.isEmpty() &&
                         state.placeholder.isNotBlank() &&

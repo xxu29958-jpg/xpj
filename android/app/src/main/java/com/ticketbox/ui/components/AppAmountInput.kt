@@ -24,6 +24,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.ui.design.AppAlpha
+import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppSpacing
 
 @Immutable
@@ -55,6 +56,10 @@ fun AppAmountInput(
     decorations: AppTextInputDecorations = AppTextInputDecorations(),
 ) {
     val currencyTrailing = state.currency.trailingLabel()
+    val hero = decorations.amountRole == AppAmountRole.Hero
+    val currencyAction: (@Composable () -> Unit)? = actions.onCurrencyClick?.let { onCurrencyClick ->
+        { AppAmountInputCurrencyTrailing(text = currencyTrailing, enabled = state.enabled, onClick = onCurrencyClick) }
+    }
     AppTextInput(
         state = AppTextInputState(
             label = state.label,
@@ -64,6 +69,8 @@ fun AppAmountInput(
             trailingLabel = currencyTrailing.takeIf { actions.onCurrencyClick == null },
             enabled = state.enabled,
             isError = state.isError,
+            singleLine = !hero,
+            maxLines = if (hero) Int.MAX_VALUE else 3,
             emphasis = AppTextInputEmphasis.Amount,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
         ),
@@ -74,15 +81,9 @@ fun AppAmountInput(
         modifier = modifier,
         focusRequester = focusRequester,
         decorations = decorations.copy(
-            trailingContent = actions.onCurrencyClick?.let { onCurrencyClick ->
-                {
-                    AppAmountInputCurrencyTrailing(
-                        text = currencyTrailing,
-                        enabled = state.enabled,
-                        onClick = onCurrencyClick,
-                    )
-                }
-            } ?: decorations.trailingContent,
+            trailingContent = if (hero) decorations.trailingContent else currencyAction ?: decorations.trailingContent,
+            headerTrailingContent = if (hero) currencyAction ?: decorations.headerTrailingContent
+                else decorations.headerTrailingContent,
         ),
     )
 }

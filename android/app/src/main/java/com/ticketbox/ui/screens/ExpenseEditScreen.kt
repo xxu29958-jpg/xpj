@@ -80,6 +80,8 @@ import com.ticketbox.ui.screens.expense.SplitsEditorSheetActions
 import com.ticketbox.ui.screens.expense.SplitsEditorSheet
 import com.ticketbox.ui.screens.expense.SplitsEditorSheetState
 import com.ticketbox.viewmodel.ExpenseEditUiState
+import com.ticketbox.ui.screens.settings.SettingsDetailRow
+import androidx.compose.ui.platform.testTag
 
 data class ExpenseEditScreenState(
     val expense: Expense,
@@ -178,6 +180,8 @@ fun ExpenseEditScreen(
                 parentAmountCents = state.expenseItems?.parentAmountCents,
                 saving = state.itemsSaving,
                 display = expense.recordCurrencyDisplay(),
+                feedback = com.ticketbox.ui.components.AppSheetActionFeedbackState(
+                    statusMessage = state.itemsMessage?.asString(), statusTone = state.itemsMessageTone),
             ),
             actions = itemizationActions.editor,
         )
@@ -191,6 +195,8 @@ fun ExpenseEditScreen(
                 saving = state.splitsSaving,
                 loading = state.splitMembersLoading,
                 display = expense.recordCurrencyDisplay(),
+                feedback = com.ticketbox.ui.components.AppSheetActionFeedbackState(
+                    statusMessage = state.splitsMessage?.asString(), statusTone = state.splitsMessageTone),
             ),
             actions = splitEditingActions.editor,
         )
@@ -421,8 +427,6 @@ fun ExpenseEditScreen(
                     previewImage = previewImage,
                     fullImage = state.fullImage,
                     imageLoading = state.imageLoading,
-                    ocrRunning = state.ocrRunning,
-                    readOnly = readOnly,
                     showLargeImage = showLargeImage,
                     originalTaskAvailable = originalContent != null,
                 ),
@@ -433,7 +437,6 @@ fun ExpenseEditScreen(
                         }
                         showLargeImage = !showLargeImage
                     },
-                    onRetryOcr = mediaActions.onRetryOcr,
                 ),
             )
         }
@@ -479,11 +482,14 @@ fun ExpenseEditScreen(
                 onToggleCurrency = { currencyExpanded = !currencyExpanded },
             ),
         )
-        ExpenseEditMerchantField(
-            merchant = merchant,
-            onMerchantChange = { merchant = it },
-            enabled = !readOnly,
-        )
+        SettingsDetailRow(
+            title = stringResource(R.string.expense_edit_merchant_field_label),
+            subtitle = merchant.ifBlank { stringResource(R.string.expense_edit_merchant_empty) },
+            icon = R.drawable.ic_lucide_store,
+            modifier = Modifier.testTag("expense-edit-merchant-row"),
+        ) {
+            ExpenseEditMerchantField(merchant = merchant, onMerchantChange = { merchant = it }, enabled = !readOnly)
+        }
         ExpenseEditCategorySelector(
             state = ExpenseEditCategorySelectorState(
                 category = category,
@@ -497,12 +503,13 @@ fun ExpenseEditScreen(
                 onDismissSheet = { categorySheetOpen = false },
             ),
         )
-        ExpenseEditNoteField(
-            note = note,
-            onNoteChange = { note = it },
-            enabled = !readOnly,
-        )
-        com.ticketbox.ui.screens.expense.ExpenseTimeEditor(timeForm, setTimeForm, !readOnly)
+        SettingsDetailRow(
+            title = stringResource(R.string.calendar_input_title),
+            subtitle = listOfNotNull(timeForm.date, timeForm.time.takeIf { timeForm.precision == "instant" },
+                timeForm.sourceZone.takeIf { timeForm.precision == "instant" }).joinToString(" · "),
+            icon = R.drawable.ic_lucide_calendar_check,
+            modifier = Modifier.testTag("expense-edit-time-section"),
+        ) { com.ticketbox.ui.screens.expense.ExpenseTimeEditor(timeForm, setTimeForm, !readOnly) }
         if (timeForm.changed) androidx.compose.material3.TextButton(enabled = !readOnly, onClick = {
             com.ticketbox.ui.screens.expense.readExpenseTimeForm(baselineTimeFormJson)?.let(setTimeForm)
         }) { androidx.compose.material3.Text(stringResource(R.string.expense_edit_undo_change_button)) }
@@ -560,6 +567,7 @@ fun ExpenseEditScreen(
                 onRetryOcr = mediaActions.onRetryOcr,
                 onRecognizeText = mediaActions.onOpenRecognizeText,
             ),
+            noteContent = { ExpenseEditNoteField(note = note, onNoteChange = { note = it }, enabled = !readOnly) },
         )
     }
 

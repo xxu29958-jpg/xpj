@@ -173,7 +173,7 @@ fun AppAdaptiveEditAmountRow(
 ) {
     val amountColor = style.amountColor ?: MaterialTheme.colorScheme.onSurface
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
-        when (resolveAppAdaptiveAmountRowMode(maxWidth)) {
+        when (resolveAppAdaptiveAmountRowMode(maxWidth, LocalDensity.current.fontScale)) {
             AppAdaptiveAmountRowMode.Stacked -> Column(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
@@ -205,8 +205,8 @@ fun AppAdaptiveEditAmountRow(
     }
 }
 
-internal fun resolveAppAdaptiveAmountRowMode(maxWidth: Dp): AppAdaptiveAmountRowMode =
-    if (maxWidth < AppAdaptiveBreakpoints.amountRowInlineMinWidth) {
+internal fun resolveAppAdaptiveAmountRowMode(maxWidth: Dp, fontScale: Float = 1f): AppAdaptiveAmountRowMode =
+    if (maxWidth / fontScale.coerceAtLeast(1f) < AppAdaptiveBreakpoints.amountRowInlineMinWidth) {
         AppAdaptiveAmountRowMode.Stacked
     } else {
         AppAdaptiveAmountRowMode.Inline

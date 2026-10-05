@@ -1,5 +1,6 @@
 package com.ticketbox.ui.screens.expense
 
+import com.ticketbox.ui.screens.settings.SettingsEntryRowOptions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.AlertDialog
@@ -9,6 +10,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
@@ -21,6 +23,7 @@ import com.ticketbox.ui.components.AppAsyncImageLayout
 import com.ticketbox.ui.components.AppAsyncImagePresentation
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.screens.settings.SettingsEntryRow
 import com.ticketbox.viewmodel.OriginalAttachmentUiState
 import com.ticketbox.viewmodel.OriginalAttachmentViewModel
 import com.ticketbox.viewmodel.clearOriginalSelection
@@ -31,26 +34,46 @@ import com.ticketbox.viewmodel.verifyReviewedImage
 @Composable
 fun OriginalAttachmentPanel(state: OriginalAttachmentUiState, viewModel: OriginalAttachmentViewModel,
     onSelectFile: () -> Unit, onResumeSelection: () -> Unit) {
+    var expandedOverride by rememberSaveable(state.access?.binding) { mutableStateOf<Boolean?>(null) }
+    val needsAttention = state.localIntent || state.commands.any { !it.delivered } ||
+        state.health?.state in setOf("unverified", "missing", "corrupt", "unreadable")
+    val expanded = expandedOverride ?: needsAttention
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        Text(stringResource(R.string.original_title))
+        SettingsEntryRow(
+            title = stringResource(if (!expanded && state.canReadOriginal && state.health != null)
+                R.string.original_view else R.string.original_title),
+            subtitle = originalHealthLabel(state),
+            icon = R.drawable.ic_lucide_image,
+            onClick = {
+                expandedOverride = !expanded
+                if (!expanded && state.canReadOriginal && state.image == null && !state.imageLoading) viewModel.loadImage()
+            },
+            options = SettingsEntryRowOptions(expanded = expanded),
+        )
         AppStatusBanner(state.message, MessageTone.Neutral)
-        OriginalHealthSection(state) { viewModel.refresh() }
-        if (state.localIntent) OriginalLocalSelection(state, onResumeSelection, viewModel::clearOriginalSelection)
-        OriginalReadAndRepair(state, viewModel, onSelectFile)
-        OriginalCleanupSection(state, viewModel)
-        state.commands.forEach { OriginalCommandCard(it, state.busy, state.access?.canModify == true) { drop ->
-            viewModel.recoverOriginal(it.row.id, drop)
-        } }
+        if (expanded) {
+            OriginalHealthSection(state) { viewModel.refresh() }
+            if (state.localIntent) OriginalLocalSelection(state, onResumeSelection, viewModel::clearOriginalSelection)
+            OriginalReadAndRepair(state, viewModel, onSelectFile)
+            OriginalCleanupSection(state, viewModel)
+            state.commands.forEach { OriginalCommandCard(it, state.busy, state.access?.canModify == true) { drop ->
+                viewModel.recoverOriginal(it.row.id, drop)
+            } }
+        }
     }
 }
 
 @Composable
-private fun OriginalHealthSection(state: OriginalAttachmentUiState, onRefresh: () -> Unit) {
+private fun originalHealthLabel(state: OriginalAttachmentUiState): String {
     val labels = mapOf("none" to R.string.original_none, "cleaned" to R.string.original_cleaned,
         "missing" to R.string.original_missing, "corrupt" to R.string.original_corrupt,
         "unverified" to R.string.original_unverified, "verified" to R.string.original_verified,
         "unreadable" to R.string.original_unreadable)
-    Text(stringResource(labels[state.health?.state] ?: R.string.original_health_failed))
+    return stringResource(labels[state.health?.state] ?: R.string.original_health_failed)
+}
+
+@Composable
+private fun OriginalHealthSection(state: OriginalAttachmentUiState, onRefresh: () -> Unit) {
     if (state.stale && state.health != null) Text(stringResource(R.string.original_stale))
     state.health?.checkedAt?.let { Text(stringResource(R.string.original_checked_at, it)) }
     TextButton(onClick = onRefresh, enabled = !state.checking) { Text(stringResource(R.string.original_check)) }

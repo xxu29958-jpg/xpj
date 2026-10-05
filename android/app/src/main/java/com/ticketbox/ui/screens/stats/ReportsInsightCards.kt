@@ -1,5 +1,6 @@
 package com.ticketbox.ui.screens.stats
 
+import com.ticketbox.ui.screens.settings.SettingsEntryRowOptions
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -77,11 +78,12 @@ internal fun ReportsInsightCard(
                 onGranularityChange = actions.onGranularityChange,
             )
             SettingsEntryRow(
-                title = stringResource(R.string.reports_rankings_title),
-                subtitle = stringResource(R.string.reports_rankings_description),
-                icon = R.drawable.ic_lucide_chart_no_axes_combined,
-                onClick = { showRankings = !showRankings }, expanded = showRankings,
-            )
+            title = stringResource(R.string.reports_rankings_title),
+            subtitle = stringResource(R.string.reports_rankings_description),
+            icon = R.drawable.ic_lucide_chart_no_axes_combined,
+            onClick = { showRankings = !showRankings },
+            options = SettingsEntryRowOptions(expanded = showRankings),
+        )
             if (showRankings) {
                 ReportsMerchantCategoryFilter(overview, actions.onMerchantCategoryChange)
                 MerchantRankingBlock(
@@ -92,11 +94,12 @@ internal fun ReportsInsightCard(
                 if (overview.categoryComparison.isNotEmpty()) CategoryComparisonBlock(rows = overview.categoryComparison)
             }
             SettingsEntryRow(
-                title = stringResource(R.string.reports_comparisons_title),
-                subtitle = stringResource(R.string.reports_comparisons_description),
-                icon = R.drawable.ic_lucide_calendar_check,
-                onClick = { showComparisons = !showComparisons }, expanded = showComparisons,
-            )
+            title = stringResource(R.string.reports_comparisons_title),
+            subtitle = stringResource(R.string.reports_comparisons_description),
+            icon = R.drawable.ic_lucide_calendar_check,
+            onClick = { showComparisons = !showComparisons },
+            options = SettingsEntryRowOptions(expanded = showComparisons),
+        )
             if (showComparisons) {
                 ReportsAnswerMetrics(model)
                 model.trendEvidence?.takeIf { it.mode != ReportsTrendMode.Signed }?.let { ReportsTrendDetails(it) }

@@ -16,6 +16,7 @@ import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.ExpenseItemDraft
+import com.ticketbox.domain.model.ExpenseItem
 import com.ticketbox.domain.model.ExpenseItems
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.ExpenseSplit
@@ -432,6 +433,59 @@ internal class ExpenseEditViewModelTest {
     }
 
     @Test
+    fun itemSubtaskRetainsRawInputAndOriginalMetadataUntilItsOwnSaveSucceeds() = edit { fake ->
+        val original = ExpenseItem("item-a", 0, name = "日用品", quantityText = "2",
+            unitPriceCents = 500, amountCents = 1000, category = "家用", rawText = "原件第二行",
+            confidence = 0.9, isOcrDraft = true, createdAt = "2026-10-01", updatedAt = "2026-10-01")
+        fake.fetchItemsResponder = { Result.success(fake.items().copy(items = listOf(original))) }
+        val vm = viewModel(fake)
+        vm.openItemsEditor()
+        vm.updateItemDraft(0, amountText = "00010.00")
+        vm.closeItemsEditor()
+        vm.openItemsEditor()
+        assertEquals("00010.00", vm.uiState.value.itemDrafts.single().amountText)
+        vm.updateItemDraft(0, amountText = "10.00")
+        fake.replaceItemsResponder = { _, rows, _ ->
+            assertEquals(ExpenseItemDraft("日用品", "2", 500, 1000, "家用", "原件第二行", 0.9), rows.single())
+            Result.failure(IllegalStateException("offline rejection"))
+        }
+        vm.saveItems()
+        advanceUntilIdle()
+        assertEquals(1, fake.replaceItemsCalls)
+        assertTrue(vm.uiState.value.itemEditorOpen)
+        assertEquals("10.00", vm.uiState.value.itemDrafts.single().amountText)
+        vm.removeItemRow(0)
+        vm.closeItemsEditor()
+        vm.openItemsEditor()
+        assertTrue(vm.uiState.value.itemDrafts.isEmpty())
+        assertEquals(0, fake.confirmCalls)
+    }
+
+    @Test
+    fun splitSubtaskRetainsOriginalAttributionAndSelectionAcrossDismissal() = edit { fake ->
+        val original = ExpenseSplit("split-a", 0, 2, "停用的家庭成员", "member", 400,
+            "保留原分摊备注", "2026-10-01", "2026-09-01", "2026-10-01")
+        fake.fetchSplitsResponder = { Result.success(fake.splits().copy(splits = listOf(original))) }
+        val vm = viewModel(fake)
+        vm.openSplitsEditor()
+        advanceUntilIdle()
+        val originalDraft = vm.uiState.value.splitDrafts.single()
+        vm.closeSplitsEditor()
+        vm.openSplitsEditor()
+        advanceUntilIdle()
+        assertEquals(originalDraft, vm.uiState.value.splitDrafts.single())
+        fake.replaceSplitsResponder = { _, rows, _ ->
+            assertEquals(ExpenseSplitDraft(2, 400, "保留原分摊备注"), rows.single())
+            Result.success(ReplaceSplitsOutcome.Synced(fake.splits(parentRowVersion = 10)))
+        }
+        vm.saveSplits()
+        advanceUntilIdle()
+        assertFalse(vm.uiState.value.splitEditorOpen)
+        assertEquals(10L, vm.uiState.value.expense?.rowVersion)
+        assertEquals(0, fake.confirmCalls)
+    }
+
+    @Test
     fun saveItemsSyncedUsesResponseParentToken() = edit { fake ->
         val vm = viewModel(fake)
         vm.openItemsEditor()
@@ -448,6 +502,22 @@ internal class ExpenseEditViewModelTest {
         assertFalse(vm.uiState.value.itemEditorOpen)
         assertNotNull(vm.uiState.value.message)
         assertEquals(MessageTone.Success, vm.uiState.value.messageTone)
+    }
+
+    @Test
+    fun anUnknownItemAmountDoesNotBecomeZeroOnSave() = edit { fake ->
+        val vm = viewModel(fake)
+        vm.openItemsEditor()
+        vm.addItemRow()
+        vm.updateItemDraft(0, name = "金额未填的原明细")
+        fake.replaceItemsResponder = { _, rows, _ ->
+            assertNull(rows.single().amountCents)
+            Result.success(ReplaceItemsOutcome.Synced(fake.items()))
+        }
+        vm.saveItems()
+        advanceUntilIdle()
+        assertEquals(1, fake.replaceItemsCalls)
+        assertEquals(0, fake.confirmCalls)
     }
 
     @Test

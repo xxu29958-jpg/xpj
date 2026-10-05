@@ -82,6 +82,7 @@ import com.ticketbox.ui.appearance.background.TicketboxBackgroundLayer
 import com.ticketbox.ui.appearance.background.resolveCardContainerAlpha
 import com.ticketbox.ui.appearance.background.resolveGlobalScrim
 import com.ticketbox.ui.components.AppPageRole
+import com.ticketbox.ui.components.AppAdaptiveEditAmountRow
 import com.ticketbox.ui.components.AppPageChrome
 import com.ticketbox.ui.components.AppPageScrollableColumn
 import com.ticketbox.ui.components.AppScrollablePageChrome
@@ -116,23 +117,29 @@ import com.ticketbox.viewmodel.SettingsUiState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+data class SettingsEntryRowOptions(
+    val expanded: Boolean? = null,
+    val modifier: Modifier = Modifier,
+    val amount: String? = null,
+    val supportingContent: (@Composable () -> Unit)? = null,
+)
+
 @Composable
 fun SettingsEntryRow(
     title: String,
     subtitle: String,
     @DrawableRes icon: Int,
     onClick: (() -> Unit)?,
-    expanded: Boolean? = null,
+    options: SettingsEntryRowOptions = SettingsEntryRowOptions(),
 ) {
     val expansionLabel = stringResource(
-        if (expanded == true) R.string.settings_account_toggle_collapse else R.string.settings_account_toggle_expand,
+        if (options.expanded == true) R.string.settings_account_toggle_collapse else R.string.settings_account_toggle_expand,
     )
     Column(
-        modifier = Modifier
+        modifier = options.modifier
             .fillMaxWidth()
-            .semantics { expanded?.let { stateDescription = expansionLabel } }
-            .clickable(enabled = onClick != null, role = Role.Button, onClick = { onClick?.invoke() })
-            .alpha(if (onClick != null) 1f else AppAlpha.strong),
+            .semantics { options.expanded?.let { stateDescription = expansionLabel } }
+            .then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier),
     ) {
         Row(
             modifier = Modifier
@@ -148,26 +155,31 @@ fun SettingsEntryRow(
                 background = settingsEntryBackground(icon),
                 shape = RoundedCornerShape(AppRadius.medium),
             )
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
-            ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = AppTextHierarchy.heading.weight,
-                )
-                if (subtitle.isNotBlank()) Text(
-                    text = subtitle,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
-                )
+            val labels: @Composable () -> Unit = {
+                Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = AppTextHierarchy.heading.weight,
+                    )
+                    if (subtitle.isNotBlank()) Text(
+                        text = subtitle,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    options.supportingContent?.invoke()
+                }
             }
-            Icon(
+            if (options.amount == null) {
+                Box(modifier = Modifier.weight(1f)) { labels() }
+            } else {
+                AppAdaptiveEditAmountRow(amount = options.amount, modifier = Modifier.weight(1f), content = labels)
+            }
+            if (onClick != null) Icon(
                 imageVector = ImageVector.vectorResource(R.drawable.ic_lucide_chevron_right),
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(AppSpacing.cardPadding).rotate(if (expanded == true) 90f else 0f),
+                modifier = Modifier.size(AppSpacing.cardPadding).rotate(if (options.expanded == true) 90f else 0f),
             )
         }
         HorizontalDivider(
@@ -180,8 +192,9 @@ fun SettingsEntryRow(
 private fun settingsEntryBackground(@DrawableRes icon: Int): Color {
     val tint = when (icon) {
         R.drawable.ic_lucide_users, R.drawable.ic_lucide_info, R.drawable.ic_lucide_image,
-        R.drawable.ic_lucide_git_branch -> SettingsColors.householdEntry
-        R.drawable.ic_lucide_palette, R.drawable.ic_lucide_images, R.drawable.ic_lucide_wifi -> SettingsColors.appearanceEntry
+        R.drawable.ic_lucide_git_branch, R.drawable.ic_lucide_shopping_bag -> SettingsColors.householdEntry
+        R.drawable.ic_lucide_palette, R.drawable.ic_lucide_images, R.drawable.ic_lucide_wifi,
+        R.drawable.ic_lucide_calendar_check -> SettingsColors.appearanceEntry
         R.drawable.ic_lucide_refresh_cw, R.drawable.ic_lucide_user_round_x -> SettingsColors.connectionEntry
         else -> SettingsColors.generalEntry
     }
@@ -232,11 +245,18 @@ internal fun SettingsDetailRow(
     title: String,
     subtitle: String,
     @DrawableRes icon: Int,
+    modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        SettingsEntryRow(title, subtitle, icon, onClick = { expanded = !expanded }, expanded = expanded)
+        SettingsEntryRow(
+            title,
+            subtitle,
+            icon,
+            onClick = { expanded = !expanded },
+            options = SettingsEntryRowOptions(expanded = expanded, modifier = modifier),
+        )
         if (expanded) Column(modifier = Modifier.padding(start = AppSpacing.compactGap), content = content)
     }
 }

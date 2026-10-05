@@ -12,6 +12,8 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Alignment
@@ -133,7 +135,6 @@ private fun ExpenseEditStackedActionRows(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
     ) {
-        ExpenseEditSecondaryActionRow(state = state, actions = actions)
         if (state.allowConfirm) {
             AppPrimaryButton(
                 text = stringResource(R.string.expense_edit_confirm_button),
@@ -143,6 +144,7 @@ private fun ExpenseEditStackedActionRows(
                 onClick = actions.onConfirm,
             )
         }
+        ExpenseEditSecondaryActionRow(state = state, actions = actions)
     }
 }
 
@@ -336,10 +338,12 @@ private fun RowScope.CompactTextAction(
     danger: Boolean = false,
     onClick: () -> Unit,
 ) {
-    AppOutlinedButton(
+    TextButton(
         modifier = Modifier.weight(weight).defaultMinSize(minHeight = 48.dp),
         onClick = onClick,
-        options = AppOutlinedButtonOptions(enabled = enabled, danger = danger),
+        enabled = enabled,
+        colors = ButtonDefaults.textButtonColors(contentColor = if (danger)
+            MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary),
     ) {
         ExpenseEditActionLabel(text)
     }

@@ -12,6 +12,7 @@ import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
@@ -77,11 +78,12 @@ class SheetKeyboardTaskTest {
         val original = List(8) { index -> EditableItem(name = "项目${index + 1}", amountText = "1.00",
             rawText = "原始明细${index + 1}", baselineAmountCents = 100L, sourcePublicId = "item-$index") }
         var drafts by mutableStateOf(original)
+        var saving by mutableStateOf(false)
         val saved = mutableListOf<List<EditableItem>>()
         compose.setContent {
             TicketboxTheme(skin = AppSkin.Paper) {
                 ItemsEditorSheet(
-                    state = ItemsEditorSheetState(drafts, 800L, saving = false),
+                    state = ItemsEditorSheetState(drafts, 800L, saving = saving),
                     actions = ItemsEditorSheetActions(
                         onUpdate = { index, name, amount, kind -> drafts = drafts.mapIndexed { position, item ->
                             if (position == index) item.copy(name = name ?: item.name,
@@ -89,12 +91,13 @@ class SheetKeyboardTaskTest {
                         } },
                         onAddRow = { error("The save action must not add an item") },
                         onRemoveRow = { error("The save action must not remove an item") },
-                        onSave = { saved += drafts.toList() },
+                        onSave = { saved += drafts.toList(); saving = true },
                         onDismiss = {},
                     ),
                 )
             }
         }
+        compose.onNodeWithText("项目1").performScrollTo().performTouchInput { click() }
         compose.onAllNodes(hasSetTextAction())[0].performScrollTo().performTouchInput { click() }
             .performTextReplacement("修正品名")
         val save = text(R.string.expense_edit_items_save_button)
@@ -103,6 +106,8 @@ class SheetKeyboardTaskTest {
         compose.runOnIdle { assertEquals(listOf(original.toMutableList().apply {
             this[0] = this[0].copy(name = "修正品名")
         }.toList()), saved) }
+        compose.onNodeWithText(text(R.string.expense_edit_items_saving_button)).assertIsNotEnabled()
+        compose.onNodeWithTag("expense-item-amount-0").assertIsNotEnabled()
     }
 
     @Test fun bulkCategoryAndTagCommandsKeepTheirReasonAndReplacementConfirmation() {
