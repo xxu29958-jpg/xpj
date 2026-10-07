@@ -132,8 +132,11 @@ class MerchantAliasViewModelToneTest {
         val vm = harness(fakeApi()).vm
         awaitSettledState(vm)
 
+        vm.uiState.first { it.creation.ready }
         vm.createMerchantAlias("Starbucks", "Starbucks Local")
-        val state = vm.uiState.first { it.message == UiText.res(R.string.merchant_alias_added) }
+        val accepted = vm.creations.state.first { it.drafts.any { draft -> draft.phase == "accepted" } }.drafts.single()
+        vm.creations.acknowledge(accepted.kind, accepted.key)
+        val state = vm.uiState.first { it.message == UiText.raw("原添加已确认。") }
         advanceUntilIdle()
 
         assertEquals(MessageTone.Success, state.messageTone)
@@ -200,6 +203,7 @@ class MerchantAliasViewModelToneTest {
         val tokenStore = ledgerSessionFixture("owner", "My ledger")
         val apiFactory = FixedApiServiceFactory(service)
         val merchantRepository = MerchantRepository(
+            creationDrafts = com.ticketbox.data.repository.fakeMerchantCreationDraftStore(),
             binding = testServerSessionBinding(
                 apiClient = apiFactory,
                 settingsStore = settingsStore,

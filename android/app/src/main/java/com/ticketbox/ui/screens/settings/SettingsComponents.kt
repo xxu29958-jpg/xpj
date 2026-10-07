@@ -365,6 +365,7 @@ internal fun SettingsDialogTextInput(
             minLines = state.minLines,
             maxLines = state.maxLines,
             keyboardOptions = state.keyboardOptions,
+            readOnly = state.readOnly,
         ),
         actions = AppTextInputActions(onValueChange = onValueChange),
         modifier = modifier.fillMaxWidth(),
@@ -380,4 +381,5 @@ internal data class SettingsTextInputState(
     val minLines: Int = 1,
     val maxLines: Int = 3,
     val keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    val readOnly: Boolean = false,
 )

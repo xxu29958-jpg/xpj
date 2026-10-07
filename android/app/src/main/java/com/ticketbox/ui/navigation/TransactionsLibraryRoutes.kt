@@ -293,7 +293,7 @@ private fun MerchantDirectoryRoute(
             catalog = state.merchantCatalog,
             aliases = state.merchantAliases,
             aliasesLoadFailed = state.aliasesLoadFailed,
-            busy = state.busy,
+            busy = state.busy || state.creation.busy,
             readOnly = !screenFactory.repository.canModifyLedger(),
             message = state.message,
             messageTone = state.messageTone,
@@ -301,8 +301,12 @@ private fun MerchantDirectoryRoute(
             mergeSuggestion = state.mergeSuggestion,
             editorCompletion = state.editorCompletion,
             renameReview = state.renameReview,
+            creation = state.creation,
         ),
         actions = MerchantAliasesScreenActions(
+            creation = com.ticketbox.ui.screens.settings.MerchantCreationActions(
+                onEdit = viewModel.creations::edit, onReview = viewModel.creations::review,
+                onAccepted = viewModel.creations::acknowledge, onReload = viewModel.creations::reload),
             onBack = navController::popBackStack,
             onStartEditing = viewModel::dismissMessage,
             onReloadAliases = { viewModel.loadMerchantAliases() },

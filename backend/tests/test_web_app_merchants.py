@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from html import escape
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
@@ -57,7 +58,7 @@ def test_web_merchant_catalog_create_conflict_keeps_the_draft(web_client: TestCl
 
     conflict = web_client.post(
         "/web/merchants/catalog/create",
-        data={"display_name": "Unicode 咖啡 🧾", "ledger_id": "owner"},
+        data={"idempotency_key": str(uuid4()), "display_name": "Unicode 咖啡 🧾", "ledger_id": "owner"},
         follow_redirects=False,
     )
 
@@ -100,7 +101,7 @@ def test_web_merchant_catalog_create_conflict_points_to_recycled_entry(
 
     conflict = web_client.post(
         "/web/merchants/catalog/create",
-        data={"display_name": "待恢复商家", "ledger_id": "owner"},
+        data={"idempotency_key": str(uuid4()), "display_name": "待恢复商家", "ledger_id": "owner"},
         follow_redirects=False,
     )
 
@@ -113,7 +114,7 @@ def test_web_merchant_catalog_create_conflict_points_to_recycled_entry(
 def test_web_merchant_alias_create_conflict_keeps_both_draft_fields(web_client: TestClient) -> None:
     created = web_client.post(
         "/web/merchants/aliases/create",
-        data={
+        data={"idempotency_key": str(uuid4()),
             "canonical_merchant": "星巴克",
             "alias": "STARBUCKS 国贸店",
             "ledger_id": "owner",
@@ -124,7 +125,7 @@ def test_web_merchant_alias_create_conflict_keeps_both_draft_fields(web_client: 
 
     conflict = web_client.post(
         "/web/merchants/aliases/create",
-        data={
+        data={"idempotency_key": str(uuid4()),
             "canonical_merchant": "另一家",
             "alias": "starbucks 国贸店",
             "ledger_id": "owner",
@@ -152,7 +153,7 @@ def test_web_merchant_alias_same_target_conflict_is_neutral_and_truthful(
 ) -> None:
     created = web_client.post(
         "/web/merchants/aliases/create",
-        data={
+        data={"idempotency_key": str(uuid4()),
             "canonical_merchant": "星巴克",
             "alias": "STARBUCKS 国贸店",
             "ledger_id": "owner",
@@ -163,7 +164,7 @@ def test_web_merchant_alias_same_target_conflict_is_neutral_and_truthful(
 
     conflict = web_client.post(
         "/web/merchants/aliases/create",
-        data={
+        data={"idempotency_key": str(uuid4()),
             "canonical_merchant": "星巴克",
             "alias": "starbucks 国贸店",
             "ledger_id": "owner",
@@ -238,7 +239,7 @@ def test_web_merchant_catalog_merge_retains_choice_after_conflict_then_creates_a
 def _create_web_catalog(web_client: TestClient, display_name: str) -> None:
     created = web_client.post(
         "/web/merchants/catalog/create",
-        data={"display_name": display_name, "ledger_id": "owner"},
+        data={"idempotency_key": str(uuid4()), "display_name": display_name, "ledger_id": "owner"},
         follow_redirects=False,
     )
     assert created.status_code in {303, 307}
@@ -266,7 +267,7 @@ def _catalog_action_token(web_client: TestClient, html: str, public_id: str, act
 def _exercise_web_catalog_create_toggle_delete(web_client: TestClient, re_module) -> None:
     catalog_created = web_client.post(
         "/web/merchants/catalog/create",
-        data={"display_name": "星巴克", "ledger_id": "owner"},
+        data={"idempotency_key": str(uuid4()), "display_name": "星巴克", "ledger_id": "owner"},
         follow_redirects=False,
     )
     assert catalog_created.status_code in {303, 307}
@@ -317,7 +318,7 @@ def _exercise_web_catalog_create_toggle_delete(web_client: TestClient, re_module
 def _exercise_web_alias_create_toggle_delete(web_client: TestClient, re_module) -> None:
     created = web_client.post(
         "/web/merchants/aliases/create",
-        data={
+        data={"idempotency_key": str(uuid4()),
             "canonical_merchant": "星巴克",
             "alias": "STARBUCKS 国贸店",
             "ledger_id": "owner",
@@ -333,7 +334,7 @@ def _exercise_web_alias_create_toggle_delete(web_client: TestClient, re_module) 
 
     duplicate = web_client.post(
         "/web/merchants/aliases/create",
-        data={
+        data={"idempotency_key": str(uuid4()),
             "canonical_merchant": "另一家",
             "alias": "starbucks 国贸店",
             "ledger_id": "owner",
@@ -391,7 +392,7 @@ def test_web_merchant_alias_delete_then_undo_restores(web_client: TestClient) ->
 
     web_client.post(
         "/web/merchants/aliases/create",
-        data={"canonical_merchant": "星巴克", "alias": "STARBUCKS 国贸店", "ledger_id": "owner"},
+        data={"idempotency_key": str(uuid4()), "canonical_merchant": "星巴克", "alias": "STARBUCKS 国贸店", "ledger_id": "owner"},
         follow_redirects=False,
     )
     page = web_client.get("/web/merchants?ledger_id=owner&view=aliases")

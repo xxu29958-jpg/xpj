@@ -106,7 +106,8 @@ private fun MerchantAddAlias(
         modifier = Modifier.fillMaxWidth(), onClick = {
             actions.onStartEditing()
             // Reopening a different task must not replace an independently started alias draft.
-            if (editors.canonicalMerchant.isBlank() && item != null) editors.canonicalMerchant = item.displayName
+            if (state.creation.draft(com.ticketbox.data.repository.MerchantCreationKind.Alias) == null && item != null)
+                actions.creation.onEdit(com.ticketbox.data.repository.MerchantCreationKind.Alias, "", item.displayName, "")
             editors.openCreation(MerchantCreateTool.Alias)
         })
 }

@@ -54,14 +54,17 @@ class MerchantAliasViewModelTest {
         val harness = harness()
         harness.vm.uiState.first { it.merchantCatalog.any { catalog -> catalog.publicId == "catalog-1" } }
 
+        harness.vm.uiState.first { it.creation.ready }
         harness.vm.createMerchantCatalog("  蓝瓶咖啡  ")
+        val accepted = harness.vm.creations.state.first { it.drafts.any { draft -> draft.phase == "accepted" } }.drafts.single()
+        harness.vm.creations.acknowledge(accepted.kind, accepted.key)
         val state = harness.vm.uiState.first {
             it.merchantCatalog.any { catalog -> catalog.publicId == "catalog-created" }
         }
 
-        assertEquals("蓝瓶咖啡", harness.api.merchantCatalogCreateRequests.single().displayName)
+        assertEquals("  蓝瓶咖啡  ", harness.api.merchantCatalogCreateRequests.single().displayName)
         assertTrue(state.merchantCatalog.any { it.publicId == "catalog-created" })
-        assertEquals(UiText.res(R.string.merchant_catalog_added), state.message)
+        assertEquals(UiText.raw("原添加已确认。"), state.message)
         assertEquals(MessageTone.Success, state.messageTone)
         assertEquals(1, state.changedRevision)
     }
@@ -302,6 +305,7 @@ class MerchantAliasViewModelTest {
         val api = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0).apply(configureApi)
         val apiFactory = FakeApiServiceFactory(api)
         val merchantRepository = MerchantRepository(
+            creationDrafts = com.ticketbox.data.repository.fakeMerchantCreationDraftStore(),
             binding = testServerSessionBinding(
                 apiClient = apiFactory,
                 settingsStore = settingsStore,

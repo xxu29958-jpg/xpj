@@ -75,12 +75,14 @@ class MerchantRepositoryCatalogTest {
     }
 
     @Test
-    fun `createMerchantCatalog trims display name and uses default active status`() = runTest {
+    fun `creation sends original name and key with default active status`() = runTest {
         val api = CatalogApiServiceStub()
 
-        val created = repository(api).createMerchantCatalog("  蓝瓶咖啡  ").getOrThrow()
+        val merchant = repository(api)
+        val created = requireNotNull(merchant.submitCreation(MerchantCreationDraft(
+            requireNotNull(merchant.captureBinding()), MerchantCreationKind.Catalog, "catalog-original-key", displayName = "  蓝瓶咖啡  ")).getOrThrow().catalogReceipt)
 
-        assertEquals("蓝瓶咖啡", api.createRequests.single().displayName)
+        assertEquals("  蓝瓶咖啡  ", api.createRequests.single().displayName)
         assertEquals("active", api.createRequests.single().status)
         assertEquals("蓝瓶咖啡", created.displayName)
         assertEquals("active", created.status)
@@ -195,11 +197,11 @@ class MerchantRepositoryCatalogTest {
             return MerchantCatalogListDto(items = catalogItems)
         }
 
-        override suspend fun createMerchantCatalog(request: MerchantCatalogCreateRequest): MerchantCatalogDto {
+        override suspend fun createMerchantCatalog(request: MerchantCatalogCreateRequest, idempotencyKey: String): MerchantCatalogDto {
             createRequests += request
             return merchantCatalogDto(
                 publicId = "catalog-created",
-                displayName = request.displayName,
+                displayName = request.displayName.trim(),
                 status = request.status,
             )
         }

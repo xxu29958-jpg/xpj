@@ -31,7 +31,6 @@ from app.services.idempotency import (
     mark_idempotency_succeeded,
 )
 from app.services.merchant_alias_service import (
-    create_merchant_alias,
     delete_merchant_alias,
     get_merchant_alias,
     list_merchant_aliases,
@@ -39,12 +38,12 @@ from app.services.merchant_alias_service import (
     update_merchant_alias,
 )
 from app.services.merchant_catalog_service import (
-    create_merchant_catalog,
     delete_merchant_catalog,
     list_merchant_catalog,
     merge_merchant_catalog,
     update_merchant_catalog,
 )
+from app.services.merchant_creation_service import submit_merchant_creation
 from app.tenants import AuthContext
 
 router = APIRouter(
@@ -71,15 +70,12 @@ def get_merchant_catalog(
 @router.post("/catalog", response_model=MerchantCatalogResponse, status_code=201)
 def post_merchant_catalog(
     payload: MerchantCatalogCreateRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> MerchantCatalogResponse:
-    return create_merchant_catalog(
-        db,
-        tenant_id=auth.tenant_id,
-        display_name=payload.display_name,
-        status=payload.status,
-    )
+    return submit_merchant_creation(db, tenant_id=auth.tenant_id, actor_account_id=auth.account_id,
+        payload=payload, idempotency_key=idempotency_key)
 
 
 @router.patch("/catalog/{public_id}", response_model=MerchantCatalogResponse)
@@ -149,16 +145,12 @@ def get_merchant_aliases(
 @router.post("/aliases", response_model=MerchantAliasResponse, status_code=201)
 def post_merchant_alias(
     payload: MerchantAliasCreateRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> MerchantAliasResponse:
-    return create_merchant_alias(
-        db,
-        tenant_id=auth.tenant_id,
-        canonical_merchant=payload.canonical_merchant,
-        alias=payload.alias,
-        enabled=payload.enabled,
-    )
+    return submit_merchant_creation(db, tenant_id=auth.tenant_id, actor_account_id=auth.account_id,
+        payload=payload, idempotency_key=idempotency_key)
 
 
 def _accepted_alias_update(claim: IdempotencyOutcome, public_id: str, expected_row_version: int) -> MerchantAliasResponse:

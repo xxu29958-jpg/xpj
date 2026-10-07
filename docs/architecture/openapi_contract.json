@@ -4979,27 +4979,6 @@
         "title": "Body_web_ledger_rename_web_family_name_post",
         "type": "object"
       },
-      "Body_web_merchant_alias_create_web_merchants_aliases_create_post": {
-        "properties": {
-          "alias": {
-            "default": "",
-            "title": "Alias",
-            "type": "string"
-          },
-          "canonical_merchant": {
-            "default": "",
-            "title": "Canonical Merchant",
-            "type": "string"
-          },
-          "ledger_id": {
-            "default": "",
-            "title": "Ledger Id",
-            "type": "string"
-          }
-        },
-        "title": "Body_web_merchant_alias_create_web_merchants_aliases_create_post",
-        "type": "object"
-      },
       "Body_web_merchant_alias_delete_web_merchants_aliases__public_id__delete_post": {
         "properties": {
           "expected_row_version": {
@@ -5041,22 +5020,6 @@
           }
         },
         "title": "Body_web_merchant_alias_undo_web_merchants_aliases__public_id__undo_post",
-        "type": "object"
-      },
-      "Body_web_merchant_catalog_create_web_merchants_catalog_create_post": {
-        "properties": {
-          "display_name": {
-            "default": "",
-            "title": "Display Name",
-            "type": "string"
-          },
-          "ledger_id": {
-            "default": "",
-            "title": "Ledger Id",
-            "type": "string"
-          }
-        },
-        "title": "Body_web_merchant_catalog_create_web_merchants_catalog_create_post",
         "type": "object"
       },
       "Body_web_merchant_catalog_delete_web_merchants_catalog__public_id__delete_post": {
@@ -17958,6 +17921,62 @@
           "expected_row_version"
         ],
         "title": "MerchantCatalogUpdateRequest",
+        "type": "object"
+      },
+      "MerchantCreateForm": {
+        "properties": {
+          "alias": {
+            "default": "",
+            "title": "Alias",
+            "type": "string"
+          },
+          "canonical_merchant": {
+            "default": "",
+            "title": "Canonical Merchant",
+            "type": "string"
+          },
+          "display_name": {
+            "default": "",
+            "title": "Display Name",
+            "type": "string"
+          },
+          "draft_scope": {
+            "default": "",
+            "title": "Draft Scope",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "merchant": {
+            "default": "",
+            "title": "Merchant",
+            "type": "string"
+          },
+          "review_new": {
+            "default": false,
+            "title": "Review New",
+            "type": "boolean"
+          },
+          "search": {
+            "default": "",
+            "title": "Search",
+            "type": "string"
+          },
+          "status": {
+            "default": "all",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "title": "MerchantCreateForm",
         "type": "object"
       },
       "MonthlyArrangementDto": {
@@ -39215,6 +39234,22 @@
         "parameters": [
           {
             "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
             "name": "authorization",
             "required": false,
             "schema": {
@@ -39707,6 +39742,22 @@
       "post": {
         "operationId": "post_merchant_catalog_api_merchants_catalog_post",
         "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
           {
             "in": "header",
             "name": "authorization",
@@ -53755,10 +53806,11 @@
           "content": {
             "application/x-www-form-urlencoded": {
               "schema": {
-                "$ref": "#/components/schemas/Body_web_merchant_alias_create_web_merchants_aliases_create_post"
+                "$ref": "#/components/schemas/MerchantCreateForm"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {
@@ -53948,10 +54000,11 @@
           "content": {
             "application/x-www-form-urlencoded": {
               "schema": {
-                "$ref": "#/components/schemas/Body_web_merchant_catalog_create_web_merchants_catalog_create_post"
+                "$ref": "#/components/schemas/MerchantCreateForm"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {

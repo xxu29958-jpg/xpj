@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
@@ -50,7 +51,7 @@ import retrofit2.HttpException
 import retrofit2.Response
 import java.util.concurrent.CopyOnWriteArrayList
 
-/** New catalog and alias entries must survive a rejected save in the real library. */
+/** Original catalog and alias inputs survive unknown replies in the real library. */
 class MerchantManagementContinuationTest {
     @get:Rule val compose = createComposeRule()
     private val context = ApplicationProvider.getApplicationContext<Context>()
@@ -58,6 +59,7 @@ class MerchantManagementContinuationTest {
     private val catalogRequests = CopyOnWriteArrayList<MerchantCatalogCreateRequest>()
     private val aliasRequests = CopyOnWriteArrayList<MerchantAliasRequest>()
     private val updates = CopyOnWriteArrayList<MerchantCatalogUpdateRequest>()
+    private val creationKeys = mutableListOf<String>()
     @Volatile private var reject = true
     @Volatile private var catalog: MerchantCatalogDto? = null
     @Volatile private var alias: MerchantAliasDto? = null
@@ -75,7 +77,8 @@ class MerchantManagementContinuationTest {
                 if (rejectAliasRead) throw unavailable()
                 return MerchantAliasListDto(listOfNotNull(alias) + additionalAliases).also { completedAliasReads += it }
             }
-            override suspend fun createMerchantCatalog(request: MerchantCatalogCreateRequest): MerchantCatalogDto {
+            override suspend fun createMerchantCatalog(request: MerchantCatalogCreateRequest, idempotencyKey: String): MerchantCatalogDto {
+                creationKeys += idempotencyKey
                 catalogRequests += request
                 if (reject) throw unavailable()
                 return MerchantCatalogDto("travel-shop", request.displayName, request.displayName, "active",
@@ -83,7 +86,8 @@ class MerchantManagementContinuationTest {
                     .also { catalog = it }
             }
 
-            override suspend fun createMerchantAlias(request: MerchantAliasRequest): MerchantAliasDto {
+            override suspend fun createMerchantAlias(request: MerchantAliasRequest, idempotencyKey: String): MerchantAliasDto {
+                creationKeys += idempotencyKey
                 aliasRequests += request
                 if (reject) throw unavailable()
                 val canonical = requireNotNull(request.canonicalMerchant)
@@ -116,19 +120,23 @@ class MerchantManagementContinuationTest {
         harness.close()
     }
 
-    @Test fun rejectedCatalogCreationKeepsItsNameUntilAccepted() {
+    @Test fun unknownCatalogCreationKeepsItsNameAndKeyUntilAccepted() {
         showMerchants()
         clickText(R.string.merchant_management_tools_add_catalog)
         fill(R.string.merchant_catalog_name_label, "九月差旅商家")
         clickText(R.string.merchant_catalog_create_button)
         compose.waitUntil(5_000) { catalogRequests.size == 1 }
         compose.waitForIdle()
-        compose.onNode(hasSetTextAction() and hasText("九月差旅商家")).assertIsDisplayed()
+        compose.onNodeWithText("九月差旅商家").assertIsDisplayed().assert(hasSetTextAction().not())
+        reopenMerchantTask(aliasTask = false)
+        compose.onNodeWithText("九月差旅商家").assertIsDisplayed().assert(hasSetTextAction().not())
+        saveConsumerArtPreview("merchant-original-create", requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
         assertEquals(null, catalog)
 
         reject = false
-        clickText(R.string.merchant_catalog_create_button)
-        waitForText(R.string.merchant_catalog_added)
+        compose.onNodeWithText("核实原添加").performScrollTo().assertIsEnabled().performTouchInput { click() }
+        compose.waitUntil(5_000) { compose.onAllNodesWithText("原添加已确认。").fetchSemanticsNodes().isNotEmpty() }
+        assertEquals(creationKeys.first(), creationKeys.last())
         compose.onNodeWithText("九月差旅商家").assertIsDisplayed()
         assertEquals(listOf(MerchantCatalogCreateRequest("九月差旅商家"), MerchantCatalogCreateRequest("九月差旅商家")),
             catalogRequests)
@@ -187,7 +195,7 @@ class MerchantManagementContinuationTest {
         fill(R.string.merchant_catalog_name_label, "尚未提交商家")
         closeSoftKeyboard()
         compose.waitForIdle()
-        clickText(R.string.common_cancel)
+        compose.onNodeWithText("返回").performScrollTo().assertIsEnabled().performTouchInput { click() }
         clickText(R.string.merchant_directory_all_aliases)
         waitForText(R.string.merchant_aliases_reload_button)
 
@@ -204,7 +212,7 @@ class MerchantManagementContinuationTest {
         assertEquals(emptyList<MerchantAliasRequest>(), aliasRequests)
     }
 
-    @Test fun rejectedAliasCreationKeepsBothOriginalNamesUntilAccepted() {
+    @Test fun unknownAliasCreationKeepsBothNamesAndOriginalKeyUntilAccepted() {
         showMerchants()
         clickText(R.string.merchant_directory_all_aliases)
         clickText(R.string.merchant_management_tools_add_alias)
@@ -213,13 +221,18 @@ class MerchantManagementContinuationTest {
         clickText(R.string.merchant_aliases_create_button)
         compose.waitUntil(5_000) { aliasRequests.size == 1 }
         compose.waitForIdle()
-        compose.onNode(hasSetTextAction() and hasText("差旅商家")).assertIsDisplayed()
-        compose.onNode(hasSetTextAction() and hasText("PAY-差旅原始商家")).assertIsDisplayed()
+        compose.onNodeWithText("差旅商家").assertIsDisplayed().assert(hasSetTextAction().not())
+        compose.onNodeWithText("PAY-差旅原始商家").assertIsDisplayed().assert(hasSetTextAction().not())
+        reopenMerchantTask(aliasTask = true)
+        compose.onNodeWithText("差旅商家").assertIsDisplayed().assert(hasSetTextAction().not())
+        compose.onNodeWithText("PAY-差旅原始商家").assertIsDisplayed().assert(hasSetTextAction().not())
+        saveConsumerArtPreview("merchant-original-alias", requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
         assertEquals(null, alias)
 
         reject = false
-        clickText(R.string.merchant_aliases_create_button)
-        waitForText(R.string.merchant_alias_added)
+        compose.onNodeWithText("核实原添加").performScrollTo().assertIsEnabled().performTouchInput { click() }
+        compose.waitUntil(5_000) { compose.onAllNodesWithText("原添加已确认。").fetchSemanticsNodes().isNotEmpty() }
+        assertEquals(creationKeys.first(), creationKeys.last())
         compose.onNodeWithText("PAY-差旅原始商家").assertIsDisplayed()
         assertEquals(2, aliasRequests.size)
         assertEquals(aliasRequests[0], aliasRequests[1])
@@ -234,7 +247,7 @@ class MerchantManagementContinuationTest {
         clickText(R.string.merchant_management_tools_add_catalog)
         fill(R.string.merchant_catalog_name_label, "尚未提交的新商家")
         closeSoftKeyboard()
-        clickText(R.string.common_cancel)
+        compose.onNodeWithText("返回").performScrollTo().assertIsEnabled().performTouchInput { click() }
         compose.onNodeWithText("原商家").performScrollTo().performTouchInput { click() }
         clickText(R.string.merchant_detail_identity)
         compose.onNodeWithText(context.getString(R.string.merchant_catalog_card_action_rename))
@@ -321,6 +334,21 @@ class MerchantManagementContinuationTest {
         assertTrue(updates.isEmpty() && catalogRequests.isEmpty() && aliasRequests.isEmpty())
         saveConsumerArtPreview("merchant-rename-unavailable",
             requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+    }
+
+    private fun reopenMerchantTask(aliasTask: Boolean) {
+        compose.runOnIdle { mounted.value = false }
+        compose.waitForIdle()
+        compose.runOnIdle { harness.reopen(); mounted.value = true }
+        waitForText(R.string.transactions_library_merchants_title)
+        clickText(R.string.transactions_library_merchants_title)
+        waitForText(R.string.merchant_management_tools_add_catalog)
+        if (aliasTask) {
+            clickText(R.string.merchant_directory_all_aliases)
+            clickText(R.string.merchant_management_tools_add_alias)
+        } else clickText(R.string.merchant_management_tools_add_catalog)
+        compose.onNodeWithText("核实原添加").performScrollTo().assertIsEnabled()
+        assertEquals(1, creationKeys.size)
     }
 
     private fun showMerchants() {

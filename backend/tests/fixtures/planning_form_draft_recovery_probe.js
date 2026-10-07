@@ -14,6 +14,8 @@
     {kind:"recurring-edit", family:"recurring", action:"/web/recurring/series-one/edit", fields:{merchant:"原编辑方案",baseline_amount_yuan:"001800",next_expected_date:"2026-10-09"}},
     {kind:"tag-create", family:"tagcreation", action:"/web/reference/tag/create", fields:{name:"  原标签添加  "}},
     {kind:"category-create", family:"categorycreation", action:"/web/reference/category/create", fields:{name:"  原分类添加  "}},
+    {kind:"merchant-create", family:"catalogcreation", action:"/web/merchants/catalog/create", fields:{display_name:"  原商家添加  "}},
+    {kind:"alias-create", family:"aliascreation", action:"/web/merchants/aliases/create", fields:{canonical_merchant:"  原标准商家  ",alias:"  原别名添加  "}},
   ];
   for (const spec of specs) {
     const frame=document.createElement("iframe"); document.body.append(frame);

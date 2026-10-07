@@ -119,7 +119,7 @@ def create_merchant_catalog(
         updated_at=now,
     )
     db.add(item)
-    db.commit()
+    db.flush()
     db.refresh(item)
     return _catalog_view(
         item,

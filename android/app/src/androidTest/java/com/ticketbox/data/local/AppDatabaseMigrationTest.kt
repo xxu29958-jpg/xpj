@@ -19,6 +19,43 @@ import org.junit.Test
  * suite (which never opens Room) cannot.
  */
 class AppDatabaseMigrationTest {
+    @Test fun migrate24To25KeepsExistingInputAndPersistsOriginalMerchantCreationAcrossReopen() {
+        val name = "migration-24-25-merchant-input.db"
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        helper.createDatabase(name, 24).use { db ->
+            db.execSQL("INSERT INTO expense_fact_inputs VALUES ('original-owner','owner',9,'correction','binding','fact-key','raw-fact-input')")
+        }
+        helper.runMigrationsAndValidate(name, 25, true, AppDatabase.Migration24To25).use { db ->
+            db.query("SELECT originalKey, inputJson FROM expense_fact_inputs").use {
+                assertTrue(it.moveToFirst()); assertEquals("fact-key", it.getString(0)); assertEquals("raw-fact-input", it.getString(1))
+            }
+        }
+        val binding = com.ticketbox.data.repository.LogicalSessionBinding("https://isolated.invalid", "owner", "original-owner", "session", "revision")
+        val input = com.ticketbox.data.repository.MerchantCreationDraft(binding,
+            com.ticketbox.data.repository.MerchantCreationKind.Alias, "original-create-key",
+            canonicalMerchant = "  原标准商家  ", alias = "  原别名  ", phase = "unconfirmed")
+        var room = androidx.room.Room.databaseBuilder(context, AppDatabase::class.java, name).build()
+        try {
+            kotlinx.coroutines.runBlocking {
+                com.ticketbox.data.repository.MerchantCreationDraftStore(room.merchantCreationInputDao()).write(input)
+            }
+            room.close()
+            room = androidx.room.Room.databaseBuilder(context, AppDatabase::class.java, name).build()
+            kotlinx.coroutines.runBlocking {
+                val store = com.ticketbox.data.repository.MerchantCreationDraftStore(room.merchantCreationInputDao())
+                assertEquals(listOf(input), store.read(binding))
+                assertTrue(store.read(binding.copy(ownerKey = "another-owner")).isEmpty())
+                assertTrue(store.read(binding.copy(ledgerId = "another-ledger")).isEmpty())
+                assertTrue(store.read(binding.copy(serverUrl = "https://another.invalid")).isEmpty())
+                store.remove(input.copy(key = "not-original"))
+                assertEquals(listOf(input), store.read(binding))
+            }
+        } finally {
+            room.close()
+            context.deleteDatabase(name)
+        }
+    }
+
     @Test fun migrate23To24PreservesTheFactAndOriginalCommandBesideSeparateInputAndQueryStores() {
         val name = "migration-23-24-fact-continuity.db"
         helper.createDatabase(name, 23).use { db ->
@@ -74,7 +111,7 @@ class AppDatabaseMigrationTest {
             """.trimIndent())
         }
         val room = androidx.room.Room.databaseBuilder(context, AppDatabase::class.java, name)
-            .addMigrations(AppDatabase.Migration21To22, AppDatabase.Migration22To23, AppDatabase.Migration23To24).build()
+            .addMigrations(AppDatabase.Migration21To22, AppDatabase.Migration22To23, AppDatabase.Migration23To24, AppDatabase.Migration24To25).build()
         try {
                 room.openHelper.readableDatabase.query("SELECT amountCents, homeCurrencyCode, rowVersion FROM expenses WHERE id = 1").use {
                     assertTrue(it.moveToFirst()); assertEquals(100, it.getInt(0)); assertEquals("JPY", it.getString(1)); assertEquals(7, it.getInt(2))

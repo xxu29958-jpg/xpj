@@ -25,6 +25,7 @@ import java.util.UUID
 @Suppress("TooManyFunctions")
 class MerchantRepository(
     private val binding: ServerSessionBinding,
+    val creationDrafts: MerchantCreationDraftStore? = null,
     private val offlineMutations: MerchantAliasOfflineMutationWiring = MerchantAliasOfflineMutationWiring(),
 ) {
     private val outbox get() = offlineMutations.outbox
@@ -51,14 +52,35 @@ class MerchantRepository(
             }
         }
 
-    suspend fun createMerchantCatalog(displayName: String): Result<MerchantCatalog> =
+    fun observeAccess() = binding.apiProvider.observeActiveLedgerAccess()
+
+    suspend fun readCreationDrafts(owner: LogicalSessionBinding): Result<List<MerchantCreationDraft>> =
+        errorHandler.safeCall { requireNotNull(creationDrafts).read(owner) }
+
+    suspend fun saveCreationDraft(draft: MerchantCreationDraft): Result<Unit> =
+        errorHandler.safeCall { requireNotNull(creationDrafts).write(draft) }
+
+    suspend fun removeCreationDraft(draft: MerchantCreationDraft): Result<Unit> =
+        errorHandler.safeCall { requireNotNull(creationDrafts).remove(draft) }
+
+    suspend fun submitCreation(draft: MerchantCreationDraft): Result<MerchantCreationDraft> =
         errorHandler.safeCall {
-            val cleanDisplayName = displayName.trim()
-            require(cleanDisplayName.isNotBlank()) { "请输入商家名称。" }
-            ledgerRequestGuard.guardedCall { api ->
-                api.createMerchantCatalog(
-                    MerchantCatalogCreateRequest(displayName = cleanDisplayName),
-                ).toDomain()
+            ledgerRequestGuard.bindExact(draft.binding).call { api ->
+                when (draft.kind) {
+                    MerchantCreationKind.Catalog -> {
+                        require(draft.displayName.isNotBlank()) { "请输入商家名称。" }
+                        val receipt = api.createMerchantCatalog(MerchantCatalogCreateRequest(displayName = draft.displayName), draft.key)
+                        check(receipt.rowVersion == 1L && receipt.publicId.isNotBlank()) { "返回的原添加回执无法核对。" }
+                        draft.copy(phase = "accepted", catalogReceipt = receipt, error = null)
+                    }
+                    MerchantCreationKind.Alias -> {
+                        require(draft.canonicalMerchant.isNotBlank() && draft.alias.isNotBlank()) { "请输入标准商家和别名。" }
+                        val receipt = api.createMerchantAlias(MerchantAliasRequest(canonicalMerchant = draft.canonicalMerchant,
+                            alias = draft.alias, enabled = true), draft.key)
+                        check(receipt.rowVersion == 1L && receipt.publicId.isNotBlank()) { "返回的原添加回执无法核对。" }
+                        draft.copy(phase = "accepted", aliasReceipt = receipt, error = null)
+                    }
+                }
             }
         }
 
@@ -131,26 +153,6 @@ class MerchantRepository(
         errorHandler.safeCall {
             ledgerRequestGuard.guardedCall { api ->
                 api.merchantAliases().items.map { it.toDomain() }
-            }
-        }
-
-    suspend fun createMerchantAlias(
-        canonicalMerchant: String,
-        alias: String,
-    ): Result<MerchantAlias> =
-        errorHandler.safeCall {
-            val cleanCanonical = canonicalMerchant.trim()
-            val cleanAlias = alias.trim()
-            require(cleanCanonical.isNotBlank()) { "请输入标准商家名。" }
-            require(cleanAlias.isNotBlank()) { "请输入别名。" }
-            ledgerRequestGuard.guardedCall { api ->
-                api.createMerchantAlias(
-                    MerchantAliasRequest(
-                        canonicalMerchant = cleanCanonical,
-                        alias = cleanAlias,
-                        enabled = true,
-                    ),
-                ).toDomain()
             }
         }
 

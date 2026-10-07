@@ -29,7 +29,7 @@ interface MerchantApi {
     ): MerchantCatalogListDto
 
     @POST("api/merchants/catalog")
-    suspend fun createMerchantCatalog(@Body request: MerchantCatalogCreateRequest): MerchantCatalogDto
+    suspend fun createMerchantCatalog(@Body request: MerchantCatalogCreateRequest, @Header("Idempotency-Key") idempotencyKey: String): MerchantCatalogDto
 
     @PATCH("api/merchants/catalog/{publicId}")
     suspend fun updateMerchantCatalog(
@@ -55,7 +55,7 @@ interface MerchantApi {
     suspend fun merchantAliases(): MerchantAliasListDto
 
     @POST("api/merchants/aliases")
-    suspend fun createMerchantAlias(@Body request: MerchantAliasRequest): MerchantAliasDto
+    suspend fun createMerchantAlias(@Body request: MerchantAliasRequest, @Header("Idempotency-Key") idempotencyKey: String): MerchantAliasDto
 
     @PATCH("api/merchants/aliases/{publicId}")
     suspend fun updateMerchantAlias(

@@ -58,7 +58,7 @@ def _create_rule(client: TestClient, *, identity: TestIdentity, keyword: str = "
 def _create_alias(client: TestClient, *, identity: TestIdentity, alias: str = "IDEM 国贸店") -> dict:
     resp = client.post(
         "/api/merchants/aliases",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"canonical_merchant": "星巴克", "alias": alias},
     )
     assert resp.status_code == 201, resp.text

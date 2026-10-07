@@ -26,7 +26,7 @@ def _create_alias(
 ) -> dict:
     response = client.post(
         "/api/merchants/aliases",
-        headers=headers,
+        headers={**headers, "Idempotency-Key": str(uuid4())},
         json={
             "canonical_merchant": canonical,
             "alias": alias,
@@ -83,7 +83,7 @@ def test_merchant_alias_crud_and_conflict_within_ledger(client: TestClient, *, i
 
     conflict = client.post(
         "/api/merchants/aliases",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"canonical_merchant": "另一家", "alias": "starbucks 国贸店"},
     )
     assert conflict.status_code == 409
@@ -91,7 +91,7 @@ def test_merchant_alias_crud_and_conflict_within_ledger(client: TestClient, *, i
 
     same_as_canonical = client.post(
         "/api/merchants/aliases",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"canonical_merchant": "罗森", "alias": " 罗森 "},
     )
     assert same_as_canonical.status_code == 422
@@ -178,7 +178,7 @@ def test_viewer_cannot_mutate_merchant_aliases(client: TestClient, *, identity) 
             headers=original_headers, json=original_body),
         client.post(
             "/api/merchants/aliases",
-            headers=identity.app_headers,
+            headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
             json={"canonical_merchant": "KFC", "alias": "肯德基"},
         ),
         client.patch(

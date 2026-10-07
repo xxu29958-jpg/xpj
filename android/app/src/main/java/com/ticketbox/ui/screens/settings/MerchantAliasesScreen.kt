@@ -43,6 +43,8 @@ import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.viewmodel.MerchantCatalogMergeSuggestion
 import com.ticketbox.viewmodel.MerchantEditorCompletion
 import com.ticketbox.viewmodel.MerchantEditorKind
+import com.ticketbox.viewmodel.MerchantCreationState
+import com.ticketbox.data.repository.MerchantCreationKind
 import com.ticketbox.viewmodel.MerchantRenameReview
 import kotlinx.coroutines.delay
 
@@ -54,6 +56,7 @@ fun MerchantAliasesScreen(
 ) {
     val editors = remember { MerchantEditors() }
     val catalogDialogController = editors.catalogDialogs
+    MerchantCreationReceiptEffect(state.creation, actions.creation)
 
     LaunchedEffect(state.editorCompletion) {
         state.editorCompletion?.let(editors::complete)
@@ -223,6 +226,7 @@ data class MerchantAliasesScreenState(
     val mergeSuggestion: MerchantCatalogMergeSuggestion?,
     val editorCompletion: MerchantEditorCompletion?,
     val renameReview: MerchantRenameReview? = null,
+    val creation: MerchantCreationState = MerchantCreationState(),
 )
 
 data class MerchantAliasesScreenActions(
@@ -233,6 +237,14 @@ data class MerchantAliasesScreenActions(
     val alias: MerchantAliasesAliasActions,
     val mergeSuggestion: MerchantAliasesMergeSuggestionActions,
     val undo: MerchantAliasesUndoActions,
+    val creation: MerchantCreationActions = MerchantCreationActions(),
+)
+
+data class MerchantCreationActions(
+    val onEdit: (MerchantCreationKind, String, String, String) -> Unit = { _, _, _, _ -> },
+    val onReview: (MerchantCreationKind) -> Unit = {},
+    val onAccepted: (MerchantCreationKind, String) -> Unit = { _, _ -> },
+    val onReload: () -> Unit = {},
 )
 
 data class MerchantAliasesCatalogActions(
@@ -276,15 +288,8 @@ internal class MerchantEditors {
 
     fun openCreation(tool: MerchantCreateTool) {
         activeCreateTool = tool
-        catalogMessage = null
-        aliasMessage = null
     }
 
-    var catalogName by mutableStateOf("")
-    var canonicalMerchant by mutableStateOf("")
-    var aliasText by mutableStateOf("")
-    var catalogMessage by mutableStateOf<String?>(null)
-    var aliasMessage by mutableStateOf<String?>(null)
     var activeCreateTool by mutableStateOf<MerchantCreateTool?>(null)
     var deletingCatalog by mutableStateOf<MerchantCatalog?>(null)
     var deletingAlias by mutableStateOf<MerchantAlias?>(null)
@@ -293,14 +298,9 @@ internal class MerchantEditors {
     fun complete(completed: MerchantEditorCompletion) {
         when (completed.kind) {
             MerchantEditorKind.CreateCatalog -> {
-                catalogName = ""
-                catalogMessage = null
                 if (activeCreateTool == MerchantCreateTool.Catalog) activeCreateTool = null
             }
             MerchantEditorKind.CreateAlias -> {
-                canonicalMerchant = ""
-                aliasText = ""
-                aliasMessage = null
                 if (activeCreateTool == MerchantCreateTool.Alias) activeCreateTool = null
             }
             MerchantEditorKind.RenameCatalog -> {

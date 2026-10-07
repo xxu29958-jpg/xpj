@@ -6,6 +6,7 @@ import com.ticketbox.R
 import com.ticketbox.data.repository.DeleteOutcome
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.MerchantAliasSaveOutcome
+import com.ticketbox.data.repository.MerchantCreationKind
 import com.ticketbox.data.repository.MerchantRepository
 import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.domain.model.MerchantAlias
@@ -37,6 +38,7 @@ data class MerchantAliasUiState(
     val changedRevision: Int = 0,
     val editorCompletion: MerchantEditorCompletion? = null,
     val renameReview: MerchantRenameReview? = null,
+    val creation: MerchantCreationState = MerchantCreationState(),
 )
 
 enum class MerchantEditorKind { CreateCatalog, CreateAlias, RenameCatalog, MergeCatalog, DeleteCatalog, DeleteAlias }
@@ -61,7 +63,18 @@ class MerchantAliasViewModel(
     private val _uiState = MutableStateFlow(MerchantAliasUiState())
     val uiState: StateFlow<MerchantAliasUiState> = _uiState.asStateFlow()
 
+    val creations = MerchantCreationController(merchantRepository, viewModelScope) { draft ->
+        _uiState.update { state -> state.copy(changedRevision = state.changedRevision + 1,
+            message = UiText.raw("原添加已确认。"), messageTone = MessageTone.Success,
+            editorCompletion = MerchantEditorCompletion(
+                if (draft.kind == MerchantCreationKind.Catalog) MerchantEditorKind.CreateCatalog else MerchantEditorKind.CreateAlias,
+                requireNotNull(draft.acceptedId), state.changedRevision + 1)) }
+        loadMerchantCatalog(clearMessage = false)
+        loadMerchantAliases(clearMessage = false)
+    }
+
     init {
+        viewModelScope.launch { creations.state.collect { creation -> _uiState.update { it.copy(creation = creation) } } }
         loadMerchantCatalog(clearMessage = false)
         loadMerchantAliases(clearMessage = false)
     }
@@ -120,44 +133,12 @@ class MerchantAliasViewModel(
     }
 
     fun createMerchantCatalog(displayName: String) {
-        if (_uiState.value.busy) return
         if (!canModifyCurrentLedger()) {
-            _uiState.update {
-                it.copy(
-                    busy = false,
-                    message = UiText.res(R.string.common_readonly_ledger),
-                    messageTone = MessageTone.Danger,
-                )
-            }
+            _uiState.update { it.copy(message = UiText.res(R.string.common_readonly_ledger), messageTone = MessageTone.Danger) }
             return
         }
-        viewModelScope.launch {
-            _uiState.update { it.copy(busy = true, message = null, messageTone = MessageTone.Neutral) }
-            merchantRepository.createMerchantCatalog(displayName = displayName)
-                .onSuccess { created ->
-                    _uiState.update { state ->
-                        state.copy(
-                            merchantCatalog = (state.merchantCatalog + created).sortedMerchantCatalog(),
-                            busy = false,
-                            message = UiText.res(R.string.merchant_catalog_added),
-                            messageTone = MessageTone.Success,
-                            changedRevision = state.changedRevision + 1,
-                            editorCompletion = MerchantEditorCompletion(
-                                MerchantEditorKind.CreateCatalog, created.publicId, state.changedRevision + 1,
-                            ),
-                        )
-                    }
-                }
-                .onFailure { error ->
-                    _uiState.update {
-                        it.copy(
-                            busy = false,
-                            message = error.toUiText(R.string.merchant_catalog_add_failed),
-                            messageTone = MessageTone.Danger,
-                        )
-                    }
-                }
-        }
+        creations.edit(MerchantCreationKind.Catalog, displayName)
+        creations.submit(MerchantCreationKind.Catalog)
     }
 
     fun toggleMerchantCatalog(item: MerchantCatalog) {
@@ -405,44 +386,12 @@ class MerchantAliasViewModel(
     }
 
     fun createMerchantAlias(canonicalMerchant: String, alias: String) {
-        if (_uiState.value.busy) return
         if (!canModifyCurrentLedger()) {
-            _uiState.update {
-                it.copy(
-                    busy = false,
-                    message = UiText.res(R.string.common_readonly_ledger),
-                    messageTone = MessageTone.Danger,
-                )
-            }
+            _uiState.update { it.copy(message = UiText.res(R.string.common_readonly_ledger), messageTone = MessageTone.Danger) }
             return
         }
-        viewModelScope.launch {
-            _uiState.update { it.copy(busy = true, message = null, messageTone = MessageTone.Neutral) }
-            merchantRepository.createMerchantAlias(canonicalMerchant = canonicalMerchant, alias = alias)
-                .onSuccess { created ->
-                    _uiState.update { state ->
-                        state.copy(
-                            merchantAliases = (state.merchantAliases + created).sortedMerchantAliases(),
-                            busy = false,
-                            message = UiText.res(R.string.merchant_alias_added),
-                            messageTone = MessageTone.Success,
-                            changedRevision = state.changedRevision + 1,
-                            editorCompletion = MerchantEditorCompletion(
-                                MerchantEditorKind.CreateAlias, created.publicId, state.changedRevision + 1,
-                            ),
-                        )
-                    }
-                }
-                .onFailure { error ->
-                    _uiState.update {
-                        it.copy(
-                            busy = false,
-                            message = error.toUiText(R.string.merchant_alias_add_failed),
-                            messageTone = MessageTone.Danger,
-                        )
-                    }
-                }
-        }
+        creations.edit(MerchantCreationKind.Alias, "", canonicalMerchant, alias)
+        creations.submit(MerchantCreationKind.Alias)
     }
 
     fun toggleMerchantAlias(alias: MerchantAlias) {

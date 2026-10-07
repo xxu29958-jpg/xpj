@@ -554,10 +554,13 @@ def test_debt_receipts_require_access_to_the_parent_relationship(records):
     }
 
 
-def test_merchant_alias_receipts_remain_exportable_after_the_catalog_row_is_deleted(records):
-    for id_, operation, ledger in ((1, "update_merchant_alias", "selected"),
-        (2, "delete_merchant_alias", "selected"), (3, "delete_merchant_alias", "other")):
+@pytest.mark.parametrize("resource", ["merchant_catalog", "merchant_alias"])
+def test_merchant_receipts_remain_exportable_after_the_object_is_deleted(records, resource):
+    for id_, operation, ledger in ((1, "create_" + resource, "selected"),
+        (2, "update_" + resource, "selected"), (3, "create_" + resource, "other")):
         _seed(records, m.ApiIdempotencyKey, id=id_, tenant_id=ledger, status="succeeded",
-            resource_type="merchant_alias", resource_id="deleted-alias", operation=operation)
+            resource_type=resource, resource_id="deleted-object", operation=operation,
+            response_body=json.dumps({"public_id": "deleted-object", "row_version": id_}))
     assert [(row["id"], row["operation"]) for row in _rows(records, "accepted_operations")] == [
-        (1, "update_merchant_alias"), (2, "delete_merchant_alias")]
+        (1, "create_" + resource), (2, "update_" + resource)]
+    assert [row["response_body"]["row_version"] for row in _rows(records, "accepted_operations")] == [1, 2]

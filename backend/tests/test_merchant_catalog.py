@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 from fastapi.testclient import TestClient
 
 from app.services.merchant_catalog_guards import (
@@ -110,7 +112,7 @@ def test_merchant_catalog_is_ledger_isolated_and_conflict_checked(
 
     duplicate = client.post(
         "/api/merchants/catalog",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"display_name": " shared   store "},
     )
     assert duplicate.status_code == 409
@@ -141,7 +143,7 @@ def test_viewer_cannot_mutate_merchant_catalog(
     checks = [
         client.post(
             "/api/merchants/catalog",
-            headers=identity.app_headers,
+            headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
             json={"display_name": "KFC"},
         ),
         client.patch(

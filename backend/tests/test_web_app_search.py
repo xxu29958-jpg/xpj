@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from uuid import uuid4
 
 from api_contract_helpers import web_confirm_expense, web_save_expense
 from fastapi.testclient import TestClient
@@ -106,7 +107,7 @@ def test_web_search_uses_enabled_merchant_aliases(web_client: TestClient, *, ide
     expense_id = _seed_pending_with_amount(web_client, "19.00", "STARBUCKS 国贸店", identity=identity)
     alias = web_client.post(
         "/web/merchants/aliases/create",
-        data={
+        data={"idempotency_key": str(uuid4()),
             "ledger_id": "owner",
             "canonical_merchant": "星巴克",
             "alias": "STARBUCKS 国贸店",

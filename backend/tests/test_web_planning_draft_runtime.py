@@ -41,6 +41,13 @@ def render(kind, values=None, native_result=""):
                   "currency_input": JPY_INPUT, "currency_options": ["JPY", "CNY", "USD"],
                   "csrf_token": "synthetic", "csrf_field": '<input name="csrf_token" type="hidden" value="synthetic">',
                   "asset_version": "preflight", "request": {"query_params": {}}, "status_filter": ""}
+    if kind in {"merchant-create", "alias-create"}:
+        creation = {"ledger_id": "owner", "search": "原筛选", "status": "all", "merchant": "",
+            "display_name": "", "canonical_merchant": "", "alias": "", "draft_scope": json.dumps(scope), "idempotency_key": key}
+        return ENV.get_template("merchants.html").render(**common, merchant_draft_scope=scope,
+            catalog_form=creation, alias_form=creation, merchant_view="new" if kind == "merchant-create" else "aliases",
+            catalog=[], aliases=[], visible_aliases=[], merge_draft={}, alias_create_draft={},
+            directory_href="/web/merchants?ledger_id=owner", q="?ledger_id=owner", creation_result="", creation_kind="")
     if kind in {"tag-create", "category-create"}:
         reference_kind = kind.removesuffix("-create")
         return ENV.get_template("reference_create.html").render(**common, kind=reference_kind,
@@ -155,6 +162,9 @@ class RecoveryHandler(Handler):
             "receipt": {"public_id": values.get("public_id") or "00000000-0000-0000-0000-000000000001",
                 "kind": values.get("kind"), "month": values.get("month"), "row_version": 8},
             "next": destination + "?ledger_id=owner"}
+        if self.path.startswith("/web/merchants/"):
+            result["receipt"].update(row_version=1, display_name=values.get("display_name"), canonical_merchant=values.get("canonical_merchant"))
+            result["next"] = "/web/merchants?ledger_id=owner"
         return self.reply(json.dumps(result), "application/json")
 
 
@@ -214,7 +224,7 @@ def test_planning_and_reference_entries_replay_original_body_after_unknown_reply
         ensure_ascii=False, indent=2), encoding="utf-8")
     assert not result.get("error"), result
     assert not MISSING, MISSING
-    assert len(POSTS) == 12 and len(result["results"]) == 6
+    assert len(POSTS) == 16 and len(result["results"]) == 8
     for first, replay in zip(POSTS[::2], POSTS[1::2], strict=True):
         assert first == replay, "Retry must retain repeated fields, original scope, currency, month, version and key"
     assert all(row["confirmed"] and row["originalRemoved"] and row["frozen"] for row in result["results"]), result

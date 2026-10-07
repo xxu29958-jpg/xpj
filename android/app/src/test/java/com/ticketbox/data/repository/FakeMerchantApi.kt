@@ -42,13 +42,13 @@ internal class FakeMerchantApi : MerchantApi {
     override suspend fun merchantCatalog(includeHidden: Boolean): MerchantCatalogListDto =
         MerchantCatalogListDto(items = merchantCatalogItems)
 
-    override suspend fun createMerchantCatalog(request: MerchantCatalogCreateRequest): MerchantCatalogDto {
+    override suspend fun createMerchantCatalog(request: MerchantCatalogCreateRequest, idempotencyKey: String): MerchantCatalogDto {
         merchantCatalogCreateRequests += request
         return fakeMerchantCatalogDto(
             publicId = "catalog-created",
-            displayName = request.displayName,
+            displayName = request.displayName.trim(),
             status = request.status,
-        )
+        ).also { merchantCatalogItems = merchantCatalogItems + it }
     }
 
     override suspend fun updateMerchantCatalog(
@@ -118,7 +118,7 @@ internal class FakeMerchantApi : MerchantApi {
         )
     }
 
-    override suspend fun createMerchantAlias(request: MerchantAliasRequest): MerchantAliasDto {
+    override suspend fun createMerchantAlias(request: MerchantAliasRequest, idempotencyKey: String): MerchantAliasDto {
         merchantAliasRequests += request
         return fakeMerchantAliasDto(
             publicId = "alias-created",

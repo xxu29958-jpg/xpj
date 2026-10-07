@@ -58,6 +58,7 @@ data class AppTextInputState(
     val isError: Boolean = false,
     val emphasis: AppTextInputEmphasis = AppTextInputEmphasis.Standard,
     val keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    val readOnly: Boolean = false,
 )
 
 enum class AppTextInputEmphasis {
@@ -160,6 +161,7 @@ private fun AppTextInputField(
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .onFocusChanged(focusState.onFocusChanged),
         enabled = state.enabled,
+        readOnly = state.readOnly,
         singleLine = state.singleLine,
         minLines = if (state.singleLine) 1 else state.minLines,
         maxLines = if (state.singleLine) 1 else state.maxLines,

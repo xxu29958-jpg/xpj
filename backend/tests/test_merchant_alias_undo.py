@@ -29,7 +29,7 @@ from app.services.time_service import now_utc
 def _create(client: TestClient, headers: dict[str, str], *, alias: str = "STARBUCKS 国贸店") -> dict:
     response = client.post(
         "/api/merchants/aliases",
-        headers=headers,
+        headers={**headers, "Idempotency-Key": str(uuid4())},
         json={"canonical_merchant": "星巴克", "alias": alias},
     )
     assert response.status_code == 201, response.text
@@ -117,7 +117,7 @@ def test_recreate_while_soft_deleted_conflicts_then_undo_restores(client: TestCl
     # The soft-deleted key is reserved until restore or purge.
     recreate = client.post(
         "/api/merchants/aliases",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"canonical_merchant": "星巴克", "alias": "STARBUCKS 国贸店"},
     )
     assert recreate.status_code == 409, recreate.text
@@ -177,7 +177,7 @@ def test_purge_removes_aged_soft_deletes_and_spares_fresh(client: TestClient, *,
     # The purged key is free again.
     recreate = client.post(
         "/api/merchants/aliases",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"canonical_merchant": "星巴克", "alias": "AGED 店"},
     )
     assert recreate.status_code == 201, recreate.text
