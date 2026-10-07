@@ -344,15 +344,11 @@ def test_unused_tag_merge_to_used_target_keeps_filter_and_undo(
     unused = _unused_tag(web_client, identity.app_headers)
     used = tag_index(web_client, identity.app_headers)["出差"]
     page = _editor(web_client, unused["public_id"], "merge", unused=True)
-    form = _re.search(
-        rf'<form[^>]*action="/web/tags/{unused["public_id"]}/merge"[^>]*>(.*?)</form>',
-        page.text, _re.DOTALL,
-    )
-    assert form is not None
-    fields = dict(_re.findall(r'name="([^"]+)" value="([^"]*)"', form.group(1)))
+    path = f'/web/tags/{unused["public_id"]}/merge'
+    fields = hidden_post_forms(page.text)[path]
     assert fields["unused"] == "1"
     fields["target"] = f'{used["public_id"]}:{used["row_version"]}'
-    merged = web_client.post(f'/web/tags/{unused["public_id"]}/merge', data=fields, follow_redirects=False)
+    merged = web_client.post(path, data=fields, follow_redirects=False)
     assert merged.status_code == 303
     assert parse_qs(urlsplit(merged.headers["location"]).query)["unused"] == ["1"]
     assert "工作" not in tag_index(web_client, identity.app_headers)

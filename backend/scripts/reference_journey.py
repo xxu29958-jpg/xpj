@@ -76,9 +76,11 @@ class ReferenceJourney:
 
     def batch(self, expense_ids, field, value):
         self.goto("/web/confirmed")
+        self.page.get_by_role("button", name="选择", exact=True).click()
         for identity in expense_ids:
             self.page.locator(f'.row-check[data-id="{identity}"]').check()
         form = self.page.locator("#bulk-form")
+        form.get_by_text("批量更正", exact=True).click()
         form.locator('[name="reason"]').fill("资料库联动核对")
         form.locator(f'[name="{field}"]').fill(value)
         form.locator(f'button[name="action"][value="set_{field}"]').click()

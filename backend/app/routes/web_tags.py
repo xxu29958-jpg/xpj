@@ -22,6 +22,7 @@ from app.routes._web_draft_binding import (
 )
 from app.routes._web_session_common import resolve_web_actor
 from app.routes.web_common import (
+    LedgerOption,
     LocalOnly,
     _base_ctx,
     _list_ledger_options,
@@ -72,7 +73,10 @@ def _conflict_message(exc: AppError, unused: str = "") -> str:
     return exc.message
 
 
-def _render_tags(request, db, *, options, selected_id, unused="", msg="", flash_type="", undo="", undo_rv=""):
+def _render_tags(
+    request: Request, db: Session, *, options: list[LedgerOption], selected_id: str,
+    unused: str = "", msg: str = "", flash_type: str = "", undo: str = "", undo_rv: str = "",
+) -> HTMLResponse:
     ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id)
     tags = list_tags_with_usage(db, selected_id)
     ctx.update(tags=[tag for tag in tags if tag.usage_count == 0] if unused == "1" else tags,
@@ -93,8 +97,11 @@ def web_tags(
         unused=unused, msg=msg, flash_type=flash_type, undo=undo, undo_rv=undo_rv)
 
 
-def _render_editor(request, db, options, selected_id, public_id, action, *, values=None,
-                   unused="", error="", status_code=200, draft_result=""):
+def _render_editor(
+    request: Request, db: Session, options: list[LedgerOption], selected_id: str, public_id: str,
+    action: TagAction, *, values: TagEditForm | None = None, unused: str = "", error: str = "",
+    status_code: int = 200, draft_result: str = "",
+) -> HTMLResponse:
     tags = list_tags_with_usage(db, selected_id)
     current = next((tag for tag in tags if tag.public_id == public_id), None)
     scope = browser_draft_scope(db, request)
@@ -127,7 +134,7 @@ def web_tag_edit(
     return _render_editor(request, db, options, selected_id, public_id, action, unused=unused)
 
 
-def _review_editor(db, selected_id, public_id, values):
+def _review_editor(db: Session, selected_id: str, public_id: str, values: TagEditForm) -> TagEditForm:
     tags = list_tags_with_usage(db, selected_id)
     source = next((tag for tag in tags if tag.public_id == public_id), None)
     if source is None:
@@ -142,7 +149,9 @@ def _review_editor(db, selected_id, public_id, values):
         "target": f"{target.public_id}:{target.row_version}" if target else values.target})
 
 
-def _apply_tag_edit(db, request, selected_id, public_id, action, values):
+def _apply_tag_edit(
+    db: Session, request: Request, selected_id: str, public_id: str, action: TagAction, values: TagEditForm,
+) -> tuple[dict[str, str], str]:
     source_rv = parse_form_row_version_token(values.expected_row_version)
     if source_rv is None:
         raise AppError("state_conflict", status_code=409)
@@ -167,7 +176,9 @@ def _apply_tag_edit(db, request, selected_id, public_id, action, values):
         "undo": result.mutation_public_id, "undo_rv": str(result.source_tag_row_version)}, target_id
 
 
-def _submit_editor(request, db, public_id, action, values):
+def _submit_editor(
+    request: Request, db: Session, public_id: str, action: TagAction, values: TagEditForm,
+) -> Response:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, values.ledger_id or None, options, request=request)
     if "application/json" not in request.headers.get("accept", ""):
