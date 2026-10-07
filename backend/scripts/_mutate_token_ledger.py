@@ -72,6 +72,7 @@ OWNERS: frozenset[str] = frozenset(
         "owner_console",
         "exchange_rates",
         "saved_views",
+        "reference_library",
         "tasks",
     }
 )
@@ -196,6 +197,18 @@ ALLOWLIST: dict[str, Exempt] = {
     # not a Repayment fact — the confirm route below IS fold-changing and carries the token).
     "POST /api/repayment-drafts": Exempt("create_row", "debts", _REPAYMENT_DRAFTS),
     "POST /api/expenses/manual": Exempt("create_row", "expenses", ("expenses",)),
+    # Explicit unused references have no predecessor version. The shared command
+    # requires an idempotency key and keeps the original receipt; a duplicate
+    # live/deleted name is rejected, never an implicit restore or rename.
+    "POST /api/expenses/categories/preferences": Exempt(
+        "create_row", "reference_library", ("category_preferences", "api_idempotency_keys", "ledger_audit_logs")
+    ),
+    "POST /api/tags": Exempt(
+        "create_row", "reference_library", ("tags", "api_idempotency_keys", "ledger_audit_logs")
+    ),
+    "POST /web/reference/{kind}/create": Exempt(
+        "create_row", "reference_library", ("category_preferences", "tags", "api_idempotency_keys", "ledger_audit_logs")
+    ),
     "POST /api/expenses/notification-drafts": Exempt("create_row", "expenses", ("expenses",)),
     "POST /api/goals": Exempt("create_row", "goals", ("goals",)),
     "POST /api/imports/csv": Exempt("create_row", "imports", _IMPORT_CREATE),

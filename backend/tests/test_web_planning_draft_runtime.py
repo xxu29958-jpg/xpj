@@ -41,6 +41,13 @@ def render(kind, values=None, native_result=""):
                   "currency_input": JPY_INPUT, "currency_options": ["JPY", "CNY", "USD"],
                   "csrf_token": "synthetic", "csrf_field": '<input name="csrf_token" type="hidden" value="synthetic">',
                   "asset_version": "preflight", "request": {"query_params": {}}, "status_filter": ""}
+    if kind in {"tag-create", "category-create"}:
+        reference_kind = kind.removesuffix("-create")
+        return ENV.get_template("reference_create.html").render(**common, kind=reference_kind,
+            label="标签" if reference_kind == "tag" else "分类", reference_draft_scope=scope,
+            values={"ledger_id": "owner", "name": "", "month": "2026-09", "unused": "1",
+                "idempotency_key": key, "draft_scope": json.dumps(scope)}, draft_result="", error="",
+            return_href="/web/library?ledger_id=owner")
     if kind == "budget":
         common.update(budget={"configured": True, "home_currency_code": "JPY", "form_total_yuan": "1200",
                       "form_rollover_yuan": "0", "form_non_monthly_yuan": "0", "spent_yuan": "100", "remaining_yuan": "1100",
@@ -142,8 +149,11 @@ class RecoveryHandler(Handler):
             return self.reply('{"message":"Original receipt unavailable"}', "application/json", status=503)
         values = dict(fields)
         destination = "/web/recurring" if self.path.startswith("/web/recurring") else self.path.removesuffix("/save")
+        if self.path.startswith("/web/reference/"):
+            destination = "/web/tags" if values["kind"] == "tag" else "/web/categories"
         result = {"ack": {"scope": json.loads(values["draft_scope"]), "clientRef": values["idempotency_key"]},
-            "receipt": {"public_id": values.get("public_id") or "synthetic-series", "month": values.get("month"), "row_version": 8},
+            "receipt": {"public_id": values.get("public_id") or "00000000-0000-0000-0000-000000000001",
+                "kind": values.get("kind"), "month": values.get("month"), "row_version": 8},
             "next": destination + "?ledger_id=owner"}
         return self.reply(json.dumps(result), "application/json")
 
@@ -198,13 +208,13 @@ def test_four_planning_entries_retain_original_inputs_and_command_identity_after
         assert row["retained"], (row["entry"], differences)
 
 
-def test_four_planning_entries_replay_original_body_after_unknown_reply_and_reload(tmp_path: Path):
+def test_planning_and_reference_entries_replay_original_body_after_unknown_reply_and_reload(tmp_path: Path):
     result = _run_browser(tmp_path, RecoveryHandler, "window.__planningRecovery || undefined")
     (tmp_path / "planning-recovery-result.json").write_text(json.dumps({"browser": result, "posts": POSTS},
         ensure_ascii=False, indent=2), encoding="utf-8")
     assert not result.get("error"), result
     assert not MISSING, MISSING
-    assert len(POSTS) == 8 and len(result["results"]) == 4
+    assert len(POSTS) == 12 and len(result["results"]) == 6
     for first, replay in zip(POSTS[::2], POSTS[1::2], strict=True):
         assert first == replay, "Retry must retain repeated fields, original scope, currency, month, version and key"
     assert all(row["confirmed"] and row["originalRemoved"] and row["frozen"] for row in result["results"]), result

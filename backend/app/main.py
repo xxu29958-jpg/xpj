@@ -109,6 +109,7 @@ from app.routes import (
     web_receivables,
     web_recurring,
     web_recycle_bin,
+    web_reference_create,
     web_repayment_drafts,
     web_reports,
     web_rule_edit,
@@ -436,6 +437,7 @@ app.include_router(web_import_events.router)
 app.include_router(web_recurring.router)
 app.include_router(web_merchants.router)
 app.include_router(web_tags.router)
+app.include_router(web_reference_create.router)
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
 

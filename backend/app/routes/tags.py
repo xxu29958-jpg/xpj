@@ -1,15 +1,12 @@
-"""ADR-0043 tag management API — online-only rename / delete / merge / undo.
+"""Tag management API — online creation and OCC-protected editing.
 
-Online-only mutate surface (契约 7): every mutation carries
-``expected_row_version`` (OCC) in its body and NONE declare an
-``Idempotency-Key`` header (declaring it would make it required and route the
-request through the idempotency replay path). Writes require the ``writer``
-role; viewer → 403 via ``get_current_writer_context``.
+Creation retains an original Idempotency-Key receipt. Rename/delete/merge/undo
+retain their online OCC protocol. Writes require the writer role.
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_app_context, get_current_writer_context
@@ -24,6 +21,8 @@ from app.schemas import (
     TagUndoRequest,
     TagUndoResponse,
 )
+from app.schemas._reference_creation import ReferenceCreatedResponse, ReferenceCreateRequest
+from app.services.reference_creation_service import create_reference
 from app.services.tag_management_service import (
     delete_tag,
     list_tags_with_usage,
@@ -34,6 +33,17 @@ from app.services.tag_undo_service import undo_tag_mutation
 from app.tenants import AuthContext
 
 router = APIRouter(prefix="/api/tags", tags=["tags"])
+
+
+@router.post("", response_model=ReferenceCreatedResponse, status_code=201)
+def create_tag_route(
+    payload: ReferenceCreateRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    auth: AuthContext = Depends(get_current_writer_context),
+    db: Session = Depends(get_db),
+) -> ReferenceCreatedResponse:
+    return create_reference(db, tenant_id=auth.tenant_id, actor_account_id=auth.account_id,
+        kind="tag", name=payload.name, idempotency_key=idempotency_key)
 
 
 @router.get("", response_model=TagManagementListResponse)

@@ -9,6 +9,7 @@
 {% if tag_draft_scope %}
 <script defer src="/static/web/manual-drafts.js?v={{ asset_version }}"></script>
 <script defer src="/static/web/tag-entry.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/reference-entry.js?v={{ asset_version }}"></script>
 {% endif %}
 {% endblock %}
 {% block content %}
@@ -16,8 +17,9 @@
 <header class="product-page-header">
   <div class="product-page-heading"><h1 class="page-title">标签</h1><p class="product-page-summary">用自己的方式，把记录串起来。</p></div>
 </header>
-{% if not can_write %}<div class="product-feedback" role="status">只读角色可以查看标签，但不能重命名、合并或删除。</div>{% endif %}
+{% if not can_write %}<div class="product-feedback" role="status">只读角色可以查看标签，但不能添加、重命名、合并或删除。</div>{% endif %}
 {% if tag_draft_scope %}<div class="product-feedback" data-tag-catalog-scope="{{ tag_draft_scope | tojson | forceescape }}" hidden><p>此浏览器保留的标签整理</p><ul data-tag-draft-list></ul></div>{% endif %}
+{% if tag_draft_scope %}<div class="product-feedback" data-reference-catalog="tag" data-reference-scope="{{ tag_draft_scope | tojson | forceescape }}" hidden><p>此浏览器保留的添加任务</p><ul></ul></div>{% endif %}
 {% if flash_message %}
 <div id="tag-result" class="product-feedback{% if flash_type == 'success' %} product-feedback--success{% elif flash_type == 'error' %} product-feedback--error{% endif %}" role="{% if flash_type == 'error' %}alert{% else %}status{% endif %}">
   <span>{{ flash_message }}</span>
@@ -53,7 +55,7 @@
     </div>
   </details>
   {% else %}
-  <div class="product-state"><h2 class="product-state-title">{{ '当前没有未使用的标签' if unused else '还没有标签' }}</h2><p class="product-state-body">{{ '可以切换到「全部」查看和整理正在使用的标签。' if unused else '在记账时给账单添加标签后，这里就能统一整理它们。' }}</p></div>
+  <div class="product-state"><h2 class="product-state-title">{{ '当前没有未使用的标签' if unused else '还没有标签' }}</h2><p class="product-state-body">{{ '可以切换到「全部」查看和整理正在使用的标签。' if unused else '可先添加常用标签，也可在记账时填写新标签，之后在这里统一整理。' }}</p></div>
   {% endfor %}
   </div>
 </section>
@@ -62,8 +64,9 @@
   <span class="product-entry-copy"><strong>先核对影响，再合并</strong><span>整理失败可继续原输入。清理未使用标签时，会再次检查使用情况。</span></span>
 </div>
 <details>
-  <summary class="product-entry"><span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#history"/></svg></span><span class="product-entry-copy"><strong>添加与恢复标签</strong><span>随记账创建，在保留期内恢复。</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></summary>
-  <p class="meta">在记账时填写新标签即可创建。重命名会同步到相关账单；删除、合并后可撤销，也可到<a href="/web/recycle-bin?ledger_id={{ selected_ledger_id }}&amp;group=reference">账本回收站</a>恢复。恢复会跳过后来修改过的账单。</p>
+  <summary class="product-entry"><span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#history"/></svg></span><span class="product-entry-copy"><strong>添加与恢复标签</strong><span>提前准备标签，在保留期内恢复移除的对象。</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></summary>
+  <p class="meta">可先添加标签，也可在记账时填写新标签。重命名会同步到相关账单；删除、合并后可撤销，也可到<a href="/web/recycle-bin?ledger_id={{ selected_ledger_id }}&amp;group=reference">账本回收站</a>恢复。恢复会跳过后来修改过的账单。</p>
 </details>
+{% if can_write %}<a class="product-button product-button--primary" href="/web/reference/tag/new?ledger_id={{ selected_ledger_id }}{% if unused %}&amp;unused=1{% endif %}">添加标签 <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-right"/></svg></a>{% endif %}
 </div>
 {% endblock %}

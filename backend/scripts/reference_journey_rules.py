@@ -145,7 +145,7 @@ def restore_rule_and_category(j, category, rule):
     j.native_open("回收站")
     for label in ("Library", "RefShop"):
         native.reveal_any(label)
-        j.native_row_action(label, "恢复")
+        j.native.click(f"恢复 {label}")
         native.click_within("恢复项目？", "恢复")
         wait_for(lambda label=label: not any(node.get("text") == label for node in native.tree().iter("node")),
                  "The restored reference row remained in the actual recycle bin")

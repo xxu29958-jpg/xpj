@@ -154,7 +154,7 @@
       const saved = record.values;
       restoreFields(saved);
       if (definition.present) definition.present(form, saved);
-      else form.querySelector(selector("amount-label")).textContent =
+      else if (amount) form.querySelector(selector("amount-label")).textContent =
         (isGoal ? "目标金额（" : "预计金额（") + (saved.home_currency_code || "币种待确认") + "）";
       const intent = form.querySelector(selector("intent"));
       if (intent) intent.textContent = isGoal ?
@@ -321,7 +321,7 @@
       if (record && phase !== "editing" && reviewable) {
         notice("服务器已拒绝这次原提交，原输入仍保留。核对当前记录后，可保留输入继续修改。"); return;
       }
-      notice(record ? phase === "editing" ? "已恢复原" + taskLabel + "，保留原输入和版本依据。" :
+      notice(record ? phase === "editing" ? "已恢复原" + taskLabel + "，可继续之前的输入。" :
         "原提交结果尚未确认。核实会沿用原内容和编号。" : "输入会保留在此浏览器，尚未提交。");
     }
     function selectDraft(records, nativeResult) {

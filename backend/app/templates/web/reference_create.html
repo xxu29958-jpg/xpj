@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% set page_title = '添加' ~ label %}
+{% set product_body_domain = 'transactions' %}
+{% set page_surface = 'tertiary' %}
+{% set task_return_href = return_href %}
+{% set task_return_label = label %}
+{% set family = kind ~ 'creation' %}
+{% block title %}添加{{ label }} · 小票夹{% endblock %}
+{% block page_scripts %}
+{% if reference_draft_scope %}
+<script defer src="/static/web/manual-drafts.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/plan-entry.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/reference-entry.js?v={{ asset_version }}"></script>
+{% endif %}
+{% endblock %}
+{% block content %}
+<div class="library-workspace stack">
+  <header class="product-page-header"><div class="product-page-heading"><h1 class="page-title">添加{{ label }}</h1><p class="product-page-summary">先准备好，记账时直接选用。</p></div></header>
+  {% if error %}<div class="product-feedback product-feedback--error" role="alert">{{ error }}</div>{% endif %}
+  {% if not can_write %}<p class="product-feedback" role="status">当前角色为只读，原输入仍保留；恢复编辑权限后可继续。</p>{% endif %}
+  <form method="post" action="/web/reference/{{ kind }}/create" class="stack" data-reference-kind="{{ kind }}"
+    {% if reference_draft_scope %}data-{{ family }}-draft-scope="{{ reference_draft_scope | tojson | forceescape }}"
+    data-{{ family }}-can-write="{{ 'true' if can_write else 'false' }}" data-{{ family }}-native-result="{{ draft_result }}"{% endif %}>
+    {{ csrf_field|safe }}
+    {% for field in ['ledger_id', 'month', 'unused', 'draft_scope', 'idempotency_key'] %}<input type="hidden" name="{{ field }}" value="{{ values[field] }}">{% endfor %}
+    <input type="hidden" name="kind" value="{{ kind }}">
+    <label class="product-field"><span>{{ label }}名称</span><input name="name" value="{{ values.name }}" required maxlength="64" autocomplete="off"></label>
+    <p class="meta">{% if kind == 'tag' %}一次添加一个标签。{% else %}系统默认分类已可直接使用。{% endif %}添加后暂未使用，不会改动历史流水。</p>
+    <div class="pill-row"><button type="submit" class="product-button product-button--primary" data-{{ family }}-submit>添加{{ label }}</button><a class="product-button product-button--quiet" href="{{ return_href }}">返回{{ label }}</a></div>
+    <p class="product-feedback" data-{{ family }}-draft-status role="status" aria-live="polite" hidden></p>
+    <p class="meta" data-{{ family }}-review-note{% if draft_result != 'rejected' %} hidden{% endif %}>原添加已被拒绝。保留名称后可修改，再次确认才会添加。</p>
+    <button type="submit" name="review_new" value="true" class="product-button product-button--quiet" data-{{ family }}-review formnovalidate{% if draft_result != 'rejected' %} hidden{% endif %}>保留名称，继续修改</button>
+    {% if reference_draft_scope %}<button type="button" class="product-button product-button--quiet" data-{{ family }}-discard hidden>放弃此浏览器的原稿</button>{% endif %}
+  </form>
+  <a class="product-entry" href="/web/recycle-bin?ledger_id={{ selected_ledger_id }}&amp;group=reference"><span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#history"/></svg></span><span class="product-entry-copy"><strong>找回已删除的{{ label }}</strong><span>在回收站恢复原对象。</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></a>
+  {% if reference_draft_scope %}<details data-{{ family }}-draft-shelf hidden><summary>此浏览器保留的添加任务</summary><ul data-{{ family }}-draft-list></ul></details>{% endif %}
+</div>
+{% endblock %}

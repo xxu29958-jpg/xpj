@@ -12,6 +12,8 @@
     {kind:"arrangement", family:"arrangement", action:"/web/budget-advise", fields:{savings_target_yuan:"001200", reserved_buffer_yuan:"00030"}},
     {kind:"recurring-create", family:"recurring", action:"/web/recurring/create", fields:{merchant:"原创建方案",baseline_amount_yuan:"001500",next_expected_date:"2026-10-08"}},
     {kind:"recurring-edit", family:"recurring", action:"/web/recurring/series-one/edit", fields:{merchant:"原编辑方案",baseline_amount_yuan:"001800",next_expected_date:"2026-10-09"}},
+    {kind:"tag-create", family:"tagcreation", action:"/web/reference/tag/create", fields:{name:"  原标签添加  "}},
+    {kind:"category-create", family:"categorycreation", action:"/web/reference/category/create", fields:{name:"  原分类添加  "}},
   ];
   for (const spec of specs) {
     const frame=document.createElement("iframe"); document.body.append(frame);
@@ -40,7 +42,9 @@
     form=getForm();
     const frozen=Object.keys(spec.fields).every(name=>form.elements.namedItem(name).readOnly);
     if (form.elements.namedItem("idempotency_key").value!==ref || JSON.stringify(JSON.parse(localStorage.getItem(storageKey)).values)!==JSON.stringify(original.values)) {
-      throw Error("Reopening changed the original body");
+      throw Error("Reopening changed the original body: " + JSON.stringify({entry: spec.kind,
+        originalRef: ref, reopenedRef: form.elements.namedItem("idempotency_key").value,
+        before: original.values, after: JSON.parse(localStorage.getItem(storageKey)).values}));
     }
     form.requestSubmit(submit(form));
     await until(()=>frame.contentDocument.querySelector("[data-confirmed]"),"matching original receipt was not acknowledged");

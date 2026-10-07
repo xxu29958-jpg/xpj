@@ -139,6 +139,8 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("GET", "/web/categories/uncategorized"): "local-only-rendering",
     ("POST", "/web/categories/preferences/{public_id}/delete"): "writer-only",
     ("POST", "/web/categories/uncategorized/bulk-set"): "writer-only",
+    ("GET", "/web/reference/{kind}/new"): "local-only-rendering",
+    ("POST", "/web/reference/{kind}/create"): "writer-only",
     # Dashboard
     ("GET", "/web/dashboard/cards"): "local-only-rendering",
     ("POST", "/web/dashboard/cards/save"): "writer-only",

@@ -1,7 +1,6 @@
 package com.ticketbox.ui.navigation
 
 import android.content.Context
-import android.graphics.Bitmap
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
@@ -11,6 +10,7 @@ import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.click
@@ -35,7 +35,6 @@ import org.junit.Rule
 import org.junit.Test
 import retrofit2.HttpException
 import retrofit2.Response
-import java.io.File
 import java.util.concurrent.CopyOnWriteArrayList
 
 /** Filtering is presentation only: retry still addresses the original object and reviewed token. */
@@ -113,7 +112,9 @@ class RecycleBinContinuationTest {
         }
     }
     private fun restore() {
-        click("恢复")
+        compose.onNodeWithContentDescription("恢复 早餐店").performScrollTo().assertIsDisplayed()
+        capture("alias-action")
+        compose.onNodeWithContentDescription("恢复 早餐店").performTouchInput { click() }
         waitFor("恢复项目？")
         compose.onAllNodesWithText("恢复").fetchSemanticsNodes().let { nodes ->
             compose.onAllNodesWithText("恢复")[nodes.lastIndex].performTouchInput { click() }
@@ -124,11 +125,6 @@ class RecycleBinContinuationTest {
         compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
     }
     private fun capture(name: String) {
-        val prefix = InstrumentationRegistry.getArguments().getString("visualCapture") ?: return
-        compose.waitForIdle()
-        val bitmap = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
-        File(context.getExternalFilesDir(null), "$prefix-$name.png").outputStream().use {
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
-        }
+        captureReferenceLibraryStep(compose, context, name)
     }
 }

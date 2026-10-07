@@ -41,6 +41,7 @@ from app.schemas import (
     StatusResponse,
     TagsResponse,
 )
+from app.schemas._reference_creation import ReferenceCreatedResponse, ReferenceCreateRequest
 from app.services.background_task_response import task_response_dicts
 from app.services.category_preference_service import (
     CategoryPreferenceView,
@@ -88,6 +89,7 @@ from app.services.receipt_item_service import (
     list_expense_items,
     replace_expense_items,
 )
+from app.services.reference_creation_service import create_reference
 from app.services.spending_contract_service import count_undated_expenses
 from app.services.stats_service import export_confirmed_csv, list_categories, list_months
 from app.services.tag_service import list_tags
@@ -216,6 +218,17 @@ def get_expense_category_preferences(
     return CategoryPreferenceListResponse(
         items=[_category_preference_response(item) for item in list_category_preferences(db, tenant_id=auth.tenant_id)]
     )
+
+
+@router.post("/categories/preferences", response_model=ReferenceCreatedResponse, status_code=201)
+def create_expense_category_preference(
+    payload: ReferenceCreateRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    auth: AuthContext = Depends(get_current_writer_context),
+    db: Session = Depends(get_db),
+) -> ReferenceCreatedResponse:
+    return create_reference(db, tenant_id=auth.tenant_id, actor_account_id=auth.account_id,
+        kind="category", name=payload.name, idempotency_key=idempotency_key)
 
 
 @router.get("/categories/preferences/{public_id}", response_model=CategoryPreferenceInspectionResponse)

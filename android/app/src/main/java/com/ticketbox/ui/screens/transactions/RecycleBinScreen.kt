@@ -32,6 +32,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.domain.model.RecycleBinItem
@@ -259,7 +261,9 @@ private fun RecycleBinListCard(
                         style = AppAdaptiveContentActionStyle(compactAction = true),
                         content = { RecycleBinItemContent(item) },
                         action = { modifier ->
-                            RecycleBinRestoreButton(state.busyItemKey == item.busyKey(), { onRestore(item) }, modifier)
+                            val restoreLabel = stringResource(R.string.recycle_bin_restore_named, item.title)
+                            RecycleBinRestoreButton(state.busyItemKey == item.busyKey(), { onRestore(item) },
+                                modifier.semantics { contentDescription = restoreLabel })
                         },
                     )
                 } else RecycleBinItemContent(item)

@@ -93,6 +93,7 @@ class ReferenceJourney:
         page.locator(f'input[name="ledger_id"][value="{self.fixture.ledger_id}"]').check()
         self.form("/web/auth/local").locator('button[type="submit"]').click()
         page.wait_for_url("**/web/expenses/new*")
+        prepared = self.prepare_references()
         for index, (amount, category) in enumerate((("12.34", "其他"), ("25.00", "其他"), ("7.50", "Library")), 1):
             self.goto("/web/expenses/new")
             form = self.form("/web/expenses/new")
@@ -106,6 +107,8 @@ class ReferenceJourney:
         records = self.facts()["expenses"]
         self.batch([row["id"] for row in records[:2]], "tags", "Trip")
         self.batch([records[2]["id"]], "tags", "Monthly")
+        assert self.tag("Trip")["id"] == prepared["tags"], "First use replaced the prepared tag identity"
+        assert next(row["id"] for row in self.facts()["categories"] if row["name"] == "Library") == prepared["categories"]
         self.goto("/web/confirmed?tag=Trip")
         page.get_by_text("保存当前视图", exact=True).click()
         form = self.form("/web/saved-views")
@@ -114,6 +117,23 @@ class ReferenceJourney:
         self.expect(lambda state: len(state["views"]) == 1, "The actual saved view was not retained")
         assert self.facts()["views"][0]["tag_id"] == self.tag("Trip")["id"]
         self.native.bind(self.fixture.pairing_code, self.port)
+
+    def prepare_references(self):
+        prepared = {}
+        for kind, collection, label, name in (("tag", "tags", "标签", "Trip"),
+                                              ("category", "categories", "分类", "Library")):
+            self.goto(f"/web/{collection}")
+            self.page.get_by_role("link", name=f"添加{label}", exact=True).click()
+            form = self.form(f"/web/reference/{kind}/create")
+            form.get_by_role("textbox", name=f"{label}名称", exact=True).fill(name)
+            form.get_by_role("button", name=f"添加{label}", exact=True).click()
+            self.page.wait_for_url(f"**/web/{collection}?*")
+            self.expect(lambda state, name=name, collection=collection: any(row["name"] == name for row in state[collection]),
+                "Independent reference creation did not commit")
+            assert not self.facts()["expenses"], "Preparing reference choices created a financial fact"
+            prepared[collection] = next(row["id"] for row in self.facts()[collection] if row["name"] == name)
+            self.capture(f"prepared-{kind}-before-first-use")
+        return prepared
 
     def tag_edits(self):
         native, page = self.native, self.page

@@ -6,11 +6,13 @@
 {% set task_return_href = '/web/library' ~ q %}
 {% set task_return_label = '资料库' %}
 {% block title %}分类 · 资料库 · 小票夹{% endblock %}
+{% block page_scripts %}{% if reference_draft_scope %}<script defer src="/static/web/manual-drafts.js?v={{ asset_version }}"></script><script defer src="/static/web/reference-entry.js?v={{ asset_version }}"></script>{% endif %}{% endblock %}
 {% block content %}
 <div class="library-workspace stack">
 <header class="product-page-header">
   <div class="product-page-heading"><h1 class="page-title">分类</h1><p class="product-page-summary">看清每一类花费。</p></div>
 </header>
+{% if reference_draft_scope %}<div class="product-feedback" data-reference-catalog="category" data-reference-scope="{{ reference_draft_scope | tojson | forceescape }}" hidden><p>此浏览器保留的添加任务</p><ul></ul></div>{% endif %}
 {% if flash_message %}<div class="product-feedback product-feedback--success" role="status">{{ flash_message }}</div>{% endif %}
 <form method="get" action="/web/categories" class="library-month-form">
   <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
@@ -45,8 +47,8 @@
 </a>
 <section aria-labelledby="library-custom-categories">
   <h2 class="product-panel-title" id="library-custom-categories">自定义分类（{{ category_preferences|length }} 个）</h2>
-  <p class="meta">在记账时使用的新分类会出现在这里。系统默认分类始终保留、只读。</p>
-  {% if not can_write %}<p class="readonly-inline">只读角色可以查看分类，不能移除。</p>{% endif %}
+  <p class="meta">可先添加分类，也可在记账时使用新分类。系统默认分类始终保留、只读。</p>
+  {% if not can_write %}<p class="readonly-inline">只读角色可以查看分类，不能添加或移除。</p>{% endif %}
   {% if category_error and category_error_public_id not in (category_preferences | map(attribute='public_id') | list) %}
   <div class="product-feedback product-feedback--danger" role="alert" data-category-key="{{ category_error_public_id }}">
     {{ category_error }}
@@ -99,7 +101,7 @@
     {% endif %}
   </div>
   {% else %}
-  <div class="product-state"><h3 class="product-state-title">还没有自定义分类</h3><p class="product-state-body">在记账时填写新分类，就能在这里管理它。</p></div>
+  <div class="product-state"><h3 class="product-state-title">还没有自定义分类</h3><p class="product-state-body">可先添加常用分类，也可在记账时填写新分类，之后在这里统一管理。</p></div>
   {% endfor %}
   </div>
 </section>
@@ -108,5 +110,6 @@
   <span class="product-entry-copy"><strong>找回移除的分类</strong><span>在回收站保留期内恢复。</span></span>
   <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
 </a>
+{% if can_write %}<a class="product-button product-button--primary" href="/web/reference/category/new?ledger_id={{ selected_ledger_id }}&amp;month={{ target_month }}">添加分类 <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-right"/></svg></a>{% endif %}
 </div>
 {% endblock %}

@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import ERROR_MESSAGES, AppError
+from app.routes._web_draft_binding import browser_draft_scope
 from app.routes.web_common import (
     LocalOnly,
     _amount_yuan,
@@ -129,6 +130,7 @@ def _render_categories(
         category_reference_links=reference_links,
         inspected_category=inspected_category,
         inspection_failed=inspection_failed,
+        reference_draft_scope=browser_draft_scope(db, request),
         q="?ledger_id=" + selected_id,
     )
     return templates.TemplateResponse(
