@@ -121,11 +121,7 @@
       definition.updatePresentation?.(form, {phase, rejected: reviewable});
     }
     function stop(message) { blocked = true; controls(); notice(message); }
-    function restore(record) {
-      if (!store.matches(record.scope, scope, false) || !belongsToForm(record)) {
-        stop("这份原稿属于另一项任务，请从保留的" + taskLabel + "打开原任务。"); return false;
-      }
-      const saved = record.values;
+    function restoreFields(saved) {
       if (definition.restore) definition.restore(form, saved);
       else names.forEach(name => {
         let input = field(name);
@@ -149,6 +145,13 @@
         amount.placeholder = saved.amount_placeholder;
         amount.inputMode = saved.amount_inputmode;
       }
+    }
+    function restore(record) {
+      if (!store.matches(record.scope, scope, false) || !belongsToForm(record)) {
+        stop("这份原稿属于另一项任务，请从保留的" + taskLabel + "打开原任务。"); return false;
+      }
+      const saved = record.values;
+      restoreFields(saved);
       if (definition.present) definition.present(form, saved);
       else form.querySelector(selector("amount-label")).textContent =
         (isGoal ? "目标金额（" : "预计金额（") + (saved.home_currency_code || "币种待确认") + "）";
