@@ -64,7 +64,7 @@
     <h2 class="product-panel-title">当前已保存</h2>
     {% if current %}<div class="product-entry product-entry--static"><span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#tag"/></svg></span><span class="product-entry-copy"><strong>{{ current.name }}</strong><span>{{ current.usage_count }} 笔引用</span></span></div>
     <a href="/web/confirmed?ledger_id={{ selected_ledger_id }}&amp;tag={{ current.name | urlencode }}">查看相关账单</a>
-    {% else %}<p class="meta">标签已不可用，尚未执行上方修改。</p>{% endif %}
+    {% else %}<p class="meta">请先核对当前记录和回收站，再处理保留的原稿。</p>{% endif %}
     {% if current_target %}<p class="meta">当前目标：{{ current_target.name }} · {{ current_target.usage_count }} 笔引用</p>{% endif %}
   </section>
   {% if tag_draft_scope %}<details data-tag-draft-shelf hidden><summary>此浏览器保留的标签整理</summary><ul data-tag-draft-list></ul></details>{% endif %}
