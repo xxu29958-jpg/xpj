@@ -86,6 +86,30 @@ def appearances(j):
             native.capture(f"reference-{name}-{theme}")
 
 
+def _ledger_directory(native):
+    native.plan_home()
+    native.click("打开账户与设置")
+    native.click("账本和家庭成员")
+    native.click("账本")
+
+
+def _is_current_ledger(root, name):
+    rows = [[child.attrib.get("text", "") for child in node.iter("node")]
+            for node in root.iter("node") if node.attrib.get("clickable") == "true"]
+    named = [row for row in rows if name in row]
+    return len(named) == 1 and "当前" in named[0] and "切换" not in named[0]
+
+
+def _verify_current_ledger(native, name):
+    # A different ledger has its own navigation. Inspect the persisted current
+    # row after re-entering settings, not a message in the previous ledger's UI.
+    _ledger_directory(native)
+    native.reveal_any(name)
+    wait_for(lambda: _is_current_ledger(native.tree(), name),
+             f"The actual ledger directory did not mark {name} as current")
+    native.capture(f"reference-current-ledger-{name}")
+
+
 def identities(j):
     from sqlalchemy import select
 
@@ -93,16 +117,13 @@ def identities(j):
     from app.models import Ledger
 
     native = j.native
-    native.plan_home()
-    native.click("打开账户与设置")
-    native.click("账本和家庭成员")
-    native.click("账本")
+    _ledger_directory(native)
     native.reveal_any("新账本名称")
     native.fill("LibraryOther", label="新账本名称")
     native.click("创建账本", bottom=True)
     native.reveal_any("已新建账本")
     native.click_within("LibraryOther", "切换")
-    native.reveal_any("已切换到「LibraryOther」")
+    _verify_current_ledger(native, "LibraryOther")
     for label, forbidden in (("标签", "TripFinal"), ("商家", "RefShop"), ("分类规则", "RefShop")):
         j.native_open(label)
         assert not native.has(forbidden), "The new ledger exposed the previous ledger's reference data"
@@ -112,12 +133,9 @@ def identities(j):
         assert other is not None and other.ledger_id != j.fixture.ledger_id
         other_facts = facts(other.ledger_id)
         assert all(not value for value in other_facts.values()), "Switching copied reference or financial facts into another ledger"
-    native.plan_home()
-    native.click("打开账户与设置")
-    native.click("账本和家庭成员")
-    native.click("账本")
+    _ledger_directory(native)
     native.click_within(j.fixture.ledger_name, "切换")
-    native.reveal_any(f"已切换到「{j.fixture.ledger_name}」")
+    _verify_current_ledger(native, j.fixture.ledger_name)
     native.plan_home()
     native.click("打开账户与设置")
     native.click("数据与隐私")
