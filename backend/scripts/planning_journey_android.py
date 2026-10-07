@@ -304,7 +304,9 @@ class PlanningAndroid:
 
     def domain_home(self, label: str):
         for _ in range(5):
-            if any(node.attrib.get("text") == label for node in self.tree().iter("node")):
+            nodes = list(self.tree().iter("node"))
+            at_root = any(node.attrib.get("content-desc") == "打开账户与设置" for node in nodes)
+            if at_root and any(node.attrib.get("text") == label for node in nodes):
                 self.click(label, bottom=True)
             else:
                 self.back()

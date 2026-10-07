@@ -182,7 +182,7 @@ def post_restore_recycle_bin(
     resource_id: str = Form(default=""),
     expected_row_version: str = Form(default=""),
     intent_month: str | None = Form(default=None),
-    group: RecycleGroup = Query(default="all"),
+    group: RecycleGroup = Form(default="all"),
     db: Session = Depends(get_db),
     _local: None = LocalOnly,
 ) -> Response:

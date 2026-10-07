@@ -1,6 +1,6 @@
 """/web tag-management routes (ADR-0043 slice C).
 
-Mirror of ``web_merchants`` (OCC + soft-delete + 5s 撤销 banner), adapted to the
+Mirror of ``web_merchants`` (OCC + soft-delete + 撤销), adapted to the
 tag surface: list + usage count, rename (self-inverse), delete, merge A→B, and
 undo. Tags are created implicitly when an expense is tagged, so there is NO
 create form here — only governance of existing tags.
@@ -10,7 +10,7 @@ token refuses the mutation instead of clobbering a stale snapshot. Rename and
 merge keep the submitted editor for explicit review. Rename colliding with an
 existing key returns 409 ``tag_conflict``
 — the operator is told to use 合并 (契约 5). delete/merge soft-delete the source
-tag and offer a 5s 撤销 affordance that POSTs to the undo route with the
+tag and offer a 撤销 affordance that POSTs to the undo route with the
 mutation's handle + the soft-deleted tag's undo token (契约 2).
 """
 
@@ -235,7 +235,7 @@ def web_tag_delete(
         msg = _conflict_message(exc, unused)
         return _web_redirect("/web/tags", selected_id, unused=unused, msg=msg, flash_type="error")
     # ADR-0043 undo: pass the mutation handle + the soft-deleted tag's undo token
-    # so the page renders a 5s 撤销 banner; recoverable until cleanup purges it.
+    # so the page offers undo; recoverable until cleanup purges it.
     return _web_redirect(
         "/web/tags",
         selected_id,

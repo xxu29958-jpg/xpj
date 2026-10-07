@@ -103,7 +103,7 @@ class TagManagementViewModel(
         }
     }
 
-    fun renameTag(tag: ManagedTag, newName: String) {
+    fun renameTag(tag: ManagedTag, newName: String, requireOrphan: Boolean = false) {
         if (_uiState.value.busy) return
         if (newName.trim() == tag.name) return
         if (!tagRepository.canModifyLedger()) {
@@ -114,7 +114,7 @@ class TagManagementViewModel(
         }
         viewModelScope.launch {
             _uiState.update { it.copy(busy = true, message = null, messageTone = MessageTone.Neutral) }
-            tagRepository.renameTag(tag.publicId, tag.rowVersion, newName)
+            tagRepository.renameTag(tag.publicId, tag.rowVersion, newName, requireOrphan)
                 .onSuccess { finishWithReload(message = UiText.res(R.string.tag_management_renamed, newName.trim())) }
                 .onFailure { error -> handleRenameFailure(error, source = tag, attemptedName = newName) }
         }
@@ -167,7 +167,7 @@ class TagManagementViewModel(
         _uiState.update { it.copy(message = null, messageTone = MessageTone.Neutral) }
     }
 
-    fun deleteTag(tag: ManagedTag) {
+    fun deleteTag(tag: ManagedTag, requireOrphan: Boolean = false) {
         if (_uiState.value.busy) return
         if (!tagRepository.canModifyLedger()) {
             _uiState.update {
@@ -177,7 +177,7 @@ class TagManagementViewModel(
         }
         viewModelScope.launch {
             _uiState.update { it.copy(busy = true, message = null, messageTone = MessageTone.Neutral) }
-            tagRepository.deleteTag(tag.publicId, tag.rowVersion)
+            tagRepository.deleteTag(tag.publicId, tag.rowVersion, requireOrphan)
                 .onSuccess { result ->
                     finishWithReload(
                         message = UiText.res(R.string.tag_management_deleted, tag.name),
@@ -188,7 +188,7 @@ class TagManagementViewModel(
         }
     }
 
-    fun mergeTags(source: ManagedTag, target: ManagedTag) {
+    fun mergeTags(source: ManagedTag, target: ManagedTag, requireOrphan: Boolean = false) {
         if (_uiState.value.busy) return
         if (source.publicId == target.publicId) return
         if (!tagRepository.canModifyLedger()) {
@@ -199,7 +199,7 @@ class TagManagementViewModel(
         }
         viewModelScope.launch {
             _uiState.update { it.copy(busy = true, message = null, messageTone = MessageTone.Neutral) }
-            tagRepository.mergeTags(source.publicId, source.rowVersion, target.publicId, target.rowVersion)
+            tagRepository.mergeTags(source.publicId, source.rowVersion, target.publicId, target.rowVersion, requireOrphan)
                 .onSuccess { result ->
                     finishWithReload(
                         message = UiText.res(R.string.tag_management_merged, source.name, target.name),

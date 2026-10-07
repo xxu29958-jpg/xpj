@@ -444,11 +444,12 @@ def test_secondary_product_routes_follow_canonical_ownership(
     assert '<span class="topbar-domain">往来</span>' in repayment.text
     assert '<span class="topbar-title">还款捕获</span>' in repayment.text
 
-    # main 现状: /web/library 尚未存在 (C5c-1), 回收站是流水域普通二级页。
+    # Recovery is a focused task under the shipped reference library.
     recycle_bin = web_client.get("/web/recycle-bin?ledger_id=owner")
     assert recycle_bin.status_code == 200
     assert 'data-domain="transactions"' in recycle_bin.text
-    assert 'data-page="transactions" data-page-level="secondary"' in recycle_bin.text
+    assert 'data-page="transactions" data-page-level="tertiary"' in recycle_bin.text
+    assert 'href="/web/library?ledger_id=owner"' in recycle_bin.text
 
 
 def test_viewer_primary_page_keeps_read_only_shell(

@@ -403,6 +403,8 @@ button[disabled] {
     gap: var(--space-2);
 }
 
+.pill-row > .product-button { border-radius: var(--radius-pill); }
+
 /* W1: 反馈带 tonal — 状态色面承担语气, 不再描边。 */
 .dt-alert,
 .callout-info,

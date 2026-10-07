@@ -101,7 +101,7 @@ class BudgetRecovery:
         j = self.j
         key = "monthly_budget:" + j.month if kind == "budget" else "recurring_item:" + j.facts()["series_id"]
         j.goto("/web/recycle-bin")
-        self.page.locator(f'tr[data-restore-key="{key}"] button[type="submit"]').click()
+        self.page.locator(f'[data-restore-key="{key}"] form button[type="submit"]').click()
         self.page.locator("#tb-confirm-modal[open]").get_by_role("button", name="确认", exact=True).click()
         j.expect_fact("budget_archived" if kind == "budget" else "series_status", False if kind == "budget" else "active")
 

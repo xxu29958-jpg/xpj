@@ -100,8 +100,9 @@ def test_restore_occ_conflict_rerenders_422_anchored_to_row(web_client: TestClie
     public_id, row_version = _seed_archived_income(label="冲突收入")
 
     response = web_client.post(
-        "/web/recycle-bin/restore?group=plans",
+        "/web/recycle-bin/restore",
         data={
+            "group": "plans",
             "kind": "income_plan", "intent_month": current_accounting_month(),
             "resource_id": public_id,
             "expected_row_version": str(row_version + 1),  # 过期 OCC token
@@ -121,7 +122,8 @@ def test_restore_occ_conflict_rerenders_422_anchored_to_row(web_client: TestClie
     assert "data-restore-orphan" not in html
     assert STALE_MESSAGE in html
     assert 'group=plans" aria-current="page">计划</a>' in html
-    assert 'action="/web/recycle-bin/restore?group=plans"' in html
+    assert 'action="/web/recycle-bin/restore"' in html
+    assert 'name="group" value="plans"' in html
     # 零写入：状态与 row_version 均未变。
     assert _income_row(public_id) == ("archived", row_version)
 
@@ -286,7 +288,8 @@ def test_filtered_restore_keeps_scope_and_returns_to_the_same_group(web_client: 
     assert f'data-restore-key="category_rule:{rule_id}"' not in plans.text
     assert f'data-restore-key="category_rule:{rule_id}"' in references.text
     assert f'data-restore-key="income_plan:{public_id}"' not in references.text
-    response = web_client.post("/web/recycle-bin/restore?group=plans", data={
+    response = web_client.post("/web/recycle-bin/restore", data={
+        "group": "plans",
         "kind": "income_plan", "resource_id": public_id, "expected_row_version": str(row_version),
         "intent_month": current_accounting_month(),
     }, follow_redirects=False)

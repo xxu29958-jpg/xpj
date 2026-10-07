@@ -17,13 +17,14 @@ import com.ticketbox.domain.model.ledgerRoleCanModify
 interface TagActions {
     fun canModifyLedger(): Boolean
     suspend fun tags(): Result<List<ManagedTag>>
-    suspend fun renameTag(publicId: String, expectedRowVersion: Long, name: String): Result<Unit>
-    suspend fun deleteTag(publicId: String, expectedRowVersion: Long): Result<TagMutationResult>
+    suspend fun renameTag(publicId: String, expectedRowVersion: Long, name: String, requireOrphan: Boolean = false): Result<Unit>
+    suspend fun deleteTag(publicId: String, expectedRowVersion: Long, requireOrphan: Boolean = false): Result<TagMutationResult>
     suspend fun mergeTags(
         sourcePublicId: String,
         sourceRowVersion: Long,
         targetPublicId: String,
         targetRowVersion: Long,
+        requireOrphan: Boolean = false,
     ): Result<TagMutationResult>
     suspend fun undoTagMutation(mutationPublicId: String, expectedRowVersion: Long): Result<TagUndoResult>
 }
@@ -60,6 +61,7 @@ class TagRepository(
         publicId: String,
         expectedRowVersion: Long,
         name: String,
+        requireOrphan: Boolean,
     ): Result<Unit> =
         errorHandler.safeCall {
             val cleanPublicId = publicId.trim()
@@ -69,7 +71,7 @@ class TagRepository(
             ledgerRequestGuard.guardedCall { api ->
                 api.renameTag(
                     cleanPublicId,
-                    TagRenameRequest(expectedRowVersion = expectedRowVersion, name = cleanName),
+                    TagRenameRequest(expectedRowVersion = expectedRowVersion, name = cleanName, requireOrphan = requireOrphan),
                 )
             }
             Unit
@@ -78,6 +80,7 @@ class TagRepository(
     override suspend fun deleteTag(
         publicId: String,
         expectedRowVersion: Long,
+        requireOrphan: Boolean,
     ): Result<TagMutationResult> =
         errorHandler.safeCall {
             val cleanPublicId = publicId.trim()
@@ -85,7 +88,7 @@ class TagRepository(
             ledgerRequestGuard.guardedCall { api ->
                 api.deleteTag(
                     cleanPublicId,
-                    TagDeleteRequest(expectedRowVersion = expectedRowVersion),
+                    TagDeleteRequest(expectedRowVersion = expectedRowVersion, requireOrphan = requireOrphan),
                 ).toDomain()
             }
         }
@@ -95,6 +98,7 @@ class TagRepository(
         sourceRowVersion: Long,
         targetPublicId: String,
         targetRowVersion: Long,
+        requireOrphan: Boolean,
     ): Result<TagMutationResult> =
         errorHandler.safeCall {
             val cleanSource = sourcePublicId.trim()
@@ -108,6 +112,7 @@ class TagRepository(
                         expectedRowVersion = sourceRowVersion,
                         targetPublicId = cleanTarget,
                         targetRowVersion = targetRowVersion,
+                        requireOrphan = requireOrphan,
                     ),
                 ).toDomain()
             }

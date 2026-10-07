@@ -39,7 +39,9 @@
         <small class="meta">{{ row.kind_label }} · {{ '已归档' if row.kind in plan_kinds else '已移除' }} · {{ row.retention_label }}</small>
       </div>
       {% if can_write %}
-      <form method="post" action="/web/recycle-bin/restore?group={{ recycle_group }}" class="product-entry-actions" data-confirm="恢复「{{ row.title }}」？">
+      <form method="post" action="/web/recycle-bin/restore" class="product-entry-actions" data-confirm="恢复「{{ row.title }}」？">
+        {{ csrf_field|safe }}
+        <input type="hidden" name="group" value="{{ recycle_group }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
         <input type="hidden" name="kind" value="{{ row.kind }}">

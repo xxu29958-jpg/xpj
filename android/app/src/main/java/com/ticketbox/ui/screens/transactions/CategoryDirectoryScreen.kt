@@ -10,8 +10,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material3.AlertDialog
 import com.ticketbox.ui.components.AppPrimaryButton
 import androidx.compose.material3.CircularProgressIndicator
@@ -30,12 +28,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.vectorResource
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.domain.model.CategoryPreference
 import com.ticketbox.domain.model.CategoryReference
 import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
-import com.ticketbox.ui.components.AppContentCard
+import com.ticketbox.ui.components.SettingsEntryIcon
+import com.ticketbox.ui.screens.settings.SettingsDetailRow
+import com.ticketbox.ui.design.LocalThemeVisuals
+import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.components.AppListRow
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppSecondaryPageChrome
@@ -76,7 +79,10 @@ fun CategoryDirectoryScreen(
         chrome = AppSecondaryPageChrome(
             role = AppPageRole.Ledger,
             title = stringResource(R.string.category_directory_title),
-            subtitle = stringResource(
+            subtitle = if (state.customCategories.isEmpty() && (state.loading || state.loadFailed)) {
+                stringResource(if (state.loading) R.string.category_directory_loading
+                    else R.string.category_directory_load_failed)
+            } else stringResource(
                 R.string.category_directory_subtitle,
                 DEFAULT_EXPENSE_CATEGORIES.size,
                 state.customCategories.size,
@@ -101,19 +107,21 @@ fun CategoryDirectoryScreen(
             )
         }
         CategoryReferencesCard(state, onOpenReference)
-        DefaultCategoriesCard()
         CustomCategoriesCard(
             state = state,
             onRetry = viewModel::refresh,
             onDelete = { pendingDelete = it },
         )
+        DefaultCategoriesCard()
+        Text(stringResource(R.string.category_directory_creation_hint),
+            color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
     }
 }
 
 @Composable
 private fun CategoryReferencesCard(state: CategoryDirectoryUiState, onOpen: (CategoryReference) -> Unit) {
     if (!state.canModify || state.categoryReferences.isEmpty()) return
-    AppContentCard {
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
         Text(stringResource(R.string.category_directory_references), style = MaterialTheme.typography.titleSmall)
         state.categoryReferences.forEach { reference ->
             TextButton(enabled = state.busyCategoryId == null, onClick = { onOpen(reference) }) {
@@ -126,16 +134,11 @@ private fun CategoryReferencesCard(state: CategoryDirectoryUiState, onOpen: (Cat
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun DefaultCategoriesCard() {
-    AppContentCard {
-        Text(
-            text = stringResource(R.string.category_directory_default_title),
-            style = MaterialTheme.typography.titleMedium,
-        )
-        Text(
-            text = stringResource(R.string.category_directory_default_body),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodySmall,
-        )
+    SettingsDetailRow(
+        title = stringResource(R.string.category_directory_default_title),
+        subtitle = stringResource(R.string.category_directory_default_body),
+        icon = R.drawable.ic_lucide_shapes,
+    ) {
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
@@ -167,21 +170,26 @@ private fun CustomCategoriesCard(
     onRetry: () -> Unit,
     onDelete: (CategoryPreference) -> Unit,
 ) {
-    AppContentCard(
+    Column(
         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
     ) {
         Text(
             text = stringResource(R.string.category_directory_custom_title),
             style = MaterialTheme.typography.titleMedium,
         )
+        if (state.loadFailed && state.customCategories.isNotEmpty()) {
+            Text(stringResource(R.string.category_directory_stale),
+                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            TextButton(onClick = onRetry) { Text(stringResource(R.string.category_directory_retry)) }
+        }
         when {
-            state.loading -> Box(
+            state.loading && state.customCategories.isEmpty() -> Box(
                 modifier = Modifier.fillMaxWidth(),
                 contentAlignment = Alignment.Center,
             ) {
                 CircularProgressIndicator()
             }
-            state.loadFailed -> CategoryLoadFailed(onRetry = onRetry)
+            state.loadFailed && state.customCategories.isEmpty() -> CategoryLoadFailed(onRetry = onRetry)
             state.customCategories.isEmpty() -> Text(
                 text = stringResource(R.string.category_directory_custom_empty),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -230,13 +238,16 @@ private fun CategoryPreferenceRow(
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            SettingsEntryIcon(ImageVector.vectorResource(R.drawable.ic_lucide_shapes),
+                background = LocalThemeVisuals.current.surfaceApricot)
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
             ) {
                 Text(
                     text = category.name,
-                    style = MaterialTheme.typography.titleSmall,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = AppTextHierarchy.heading.weight,
                 )
                 Text(
                     text = stringResource(R.string.category_directory_usage_count, category.usageCount),
@@ -250,7 +261,7 @@ private fun CategoryPreferenceRow(
                     onClick = onDelete,
                 ) {
                     Icon(
-                        imageVector = Icons.Filled.DeleteOutline,
+                        imageVector = ImageVector.vectorResource(R.drawable.ic_lucide_trash_2),
                         contentDescription = stringResource(
                             R.string.category_directory_delete_description,
                             category.name,

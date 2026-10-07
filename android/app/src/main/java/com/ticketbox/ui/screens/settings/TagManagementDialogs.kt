@@ -25,7 +25,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
 import com.ticketbox.domain.model.ManagedTag
 import com.ticketbox.domain.model.MessageTone
@@ -259,8 +258,6 @@ private fun MergeTargetPicker(
                 } else {
                     target.name
                 },
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
             )
         }
     }

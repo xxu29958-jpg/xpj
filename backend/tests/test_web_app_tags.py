@@ -8,13 +8,18 @@ real carrier the browser submits), not read from the DB.
 from __future__ import annotations
 
 import re as _re
+from contextlib import closing
+from html import unescape
 from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
 
+from app.routes.web_auth import SESSION_COOKIE_NAME
 from tests._infra.tag_helpers import demote_owner_to_viewer, expense_row, manual_expense, tag_index, tag_links
+from tests._web_native_form_support import hidden_post_forms
+from tests._web_public_session_support import PUBLIC_HOST, mint_session, public_client
 
 
 def _unused_tag(client: TestClient, headers: dict[str, str]) -> dict:
@@ -90,28 +95,33 @@ def test_unused_tag_actions_cannot_rewrite_a_bill_that_reused_the_source_after_r
     assert history.status_code == 200 and history.json()["total"] == 1
 
 
-def test_unused_cleanup_native_form_and_undo_preserve_the_same_view(web_client: TestClient, *, identity) -> None:
-    unused = _unused_tag(web_client, identity.app_headers)
+def test_unused_cleanup_native_form_and_undo_preserve_the_same_view(client: TestClient, *, identity) -> None:
+    unused = _unused_tag(client, identity.app_headers)
     public_id = unused["public_id"]
-    page = web_client.get("/web/tags?ledger_id=owner&unused=1")
-    form = _re.search(rf'<form[^>]*action="/web/tags/{public_id}/delete"[^>]*>(.*?)</form>', page.text, _re.DOTALL)
-    assert form is not None
-    fields = dict(_re.findall(r'name="([^"]+)" value="([^"]*)"', form.group(1)))
-    assert fields["unused"] == "1"
-    deleted = web_client.post(f"/web/tags/{public_id}/delete", data=fields, follow_redirects=False)
-    assert deleted.status_code == 303
-    assert "工作" not in tag_index(web_client, identity.app_headers)
-    assert parse_qs(urlsplit(deleted.headers["location"]).query)["unused"] == ["1"]
-    undo_page = web_client.get(deleted.headers["location"])
-    undo = _re.search(r'<form[^>]*action="(/web/tags/mutations/[^/]+/undo)"[^>]*>(.*?)</form>', undo_page.text, _re.DOTALL)
-    assert undo is not None
-    undo_fields = dict(_re.findall(r'name="([^"]+)" value="([^"]*)"', undo.group(2)))
-    undone = web_client.post(undo.group(1), data=undo_fields, follow_redirects=False)
-    assert undone.status_code == 303
-    assert parse_qs(urlsplit(undone.headers["location"]).query)["unused"] == ["1"]
-    restored = tag_index(web_client, identity.app_headers)["工作"]
-    assert restored["public_id"] == public_id and restored["usage_count"] == 0
-    assert f'data-tag-key="{public_id}"' in web_client.get(undone.headers["location"]).text
+    session = mint_session(client, identity=identity)
+    with closing(public_client()) as web:
+        web.cookies.set(SESSION_COOKIE_NAME, session)
+        headers = {"Origin": f"https://{PUBLIC_HOST}"}
+        page = web.get("/web/tags?ledger_id=owner&unused=1")
+        path = f"/web/tags/{public_id}/delete"
+        fields = hidden_post_forms(page.text)[path]
+        assert fields["unused"] == "1" and fields["csrf_token"]
+        rejected = web.post(path, data={**fields, "csrf_token": ""}, headers=headers)
+        assert rejected.status_code == 403
+        assert tag_index(client, identity.app_headers)["工作"] == unused
+        deleted = web.post(path, data=fields, headers=headers, follow_redirects=False)
+        assert deleted.status_code == 303
+        assert "工作" not in tag_index(client, identity.app_headers)
+        assert parse_qs(urlsplit(deleted.headers["location"]).query)["unused"] == ["1"]
+        undo_page = web.get(deleted.headers["location"])
+        undo_path, undo_fields = next((path, fields) for path, fields in hidden_post_forms(undo_page.text).items()
+            if path.startswith("/web/tags/mutations/") and path.endswith("/undo"))
+        undone = web.post(undo_path, data=undo_fields, headers=headers, follow_redirects=False)
+        assert undone.status_code == 303
+        assert parse_qs(urlsplit(undone.headers["location"]).query)["unused"] == ["1"]
+        restored = tag_index(client, identity.app_headers)["工作"]
+        assert restored["public_id"] == public_id and restored["usage_count"] == 0
+        assert f'data-tag-key="{public_id}"' in web.get(undone.headers["location"]).text
 
 
 def _row_version_for(page_text: str, public_id: str, action: str) -> str:
@@ -132,9 +142,9 @@ def test_web_tags_local_returns_200(web_client: TestClient, *, identity) -> None
     assert "当前标签" in resp.text
     assert "出差" in resp.text
     # UI/UX 批 14: 旧「按标签看统计」(跳已删除的 /web/stats) 改成行级「看账单」,
-    # 跳已确认账单页并按本标签过滤(tag 经 urlencode;& 写字面量,不经 autoescape)。
+    # 跳已确认账单页并按本标签过滤；HTML 实体不改变实际查询参数。
     assert "看账单" in resp.text
-    assert "/web/confirmed?ledger_id=owner&tag=%E5%87%BA%E5%B7%AE" in resp.text
+    assert "/web/confirmed?ledger_id=owner&tag=%E5%87%BA%E5%B7%AE" in unescape(resp.text)
     assert "/web/stats" not in resp.text
 
 
@@ -189,7 +199,7 @@ def test_web_tag_rename_conflict_points_to_merge(web_client: TestClient, *, iden
 
 
 def test_web_tag_delete_then_undo_restores(web_client: TestClient, *, identity) -> None:
-    """ADR-0043 undo: /web delete offers a 5s 撤销 banner that restores the tag."""
+    """Deletion offers an undo action that restores the original tag."""
     manual_expense(web_client, identity.app_headers, tags="出差", merchant="A")
     public_id = tag_index(web_client, identity.app_headers)["出差"]["public_id"]
 

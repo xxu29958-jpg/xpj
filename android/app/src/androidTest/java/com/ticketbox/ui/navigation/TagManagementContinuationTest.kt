@@ -5,8 +5,10 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
@@ -29,8 +31,6 @@ import com.ticketbox.data.remote.dto.TagManagementListDto
 import com.ticketbox.data.remote.dto.TagMergeRequest
 import com.ticketbox.data.remote.dto.TagMutationDto
 import com.ticketbox.data.remote.dto.TagRenameRequest
-import com.ticketbox.domain.model.AppSkin
-import com.ticketbox.ui.theme.TicketboxTheme
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.After
@@ -55,13 +55,15 @@ class TagManagementContinuationTest {
     @Volatile private var renamed = false
     @Volatile private var merged = false
     @Volatile private var rejectReadAfterRename = false
+    private var unusedSource = false
     private val harness = FactEntryNavigationHarness(context) { delegate ->
         object : ApiService by delegate {
             override suspend fun listManagedTags(): TagManagementListDto {
                 if (renamed && rejectReadAfterRename) throw unavailable()
                 return TagManagementListDto(
                     if (merged) listOf(target) else listOf(
-                        if (renamed) source.copy(name = "九月出差", rowVersion = 4) else source,
+                        if (renamed) source.copy(name = "九月出差", rowVersion = 4)
+                        else source.copy(usageCount = if (unusedSource) 0 else source.usageCount),
                         target,
                     ),
                 )
@@ -102,6 +104,7 @@ class TagManagementContinuationTest {
         compose.waitUntil(5_000) { renames.size == 1 }
         compose.waitForIdle()
         compose.onNode(hasSetTextAction() and hasText("九月出差")).assertIsDisplayed()
+        captureReferenceLibraryStep(compose, context, "rename-error")
         assertEquals(false, renamed)
 
         reject = false
@@ -122,6 +125,7 @@ class TagManagementContinuationTest {
         compose.waitForIdle()
         compose.onNodeWithText(context.getString(R.string.tag_management_merge_dialog_title)).assertIsDisplayed()
         compose.onNodeWithText(targetLabel).assertIsDisplayed()
+        captureReferenceLibraryStep(compose, context, "merge-error")
         assertEquals(false, merged)
 
         reject = false
@@ -169,11 +173,31 @@ class TagManagementContinuationTest {
         assertEquals(listOf(TagRenameRequest(3, "九月出差")), renames)
     }
 
+    @Test fun unusedFilterKeepsUsedMergeTargetsAndReturnsToTheSameSelection() {
+        unusedSource = true
+        showTags()
+        compose.onNode(hasText("未使用") and hasClickAction()).performTouchInput { click() }
+        compose.onNodeWithText(target.name).assertDoesNotExist()
+        openSourceAction(R.string.tag_management_card_action_merge)
+        clickText(context.getString(R.string.tag_management_merge_dialog_target_with_count, target.name, 3))
+        clickText(context.getString(R.string.tag_management_merge_dialog_confirm))
+        compose.waitUntil(5_000) { merges.size == 1 }
+        compose.waitForIdle()
+        compose.onNodeWithText(context.getString(R.string.tag_management_merge_dialog_title)).assertIsDisplayed()
+        reject = false
+        clickText(context.getString(R.string.tag_management_merge_dialog_confirm))
+        waitForText(context.getString(R.string.tag_management_merged, source.name, target.name))
+        compose.onNode(hasText("未使用") and hasClickAction()).assertIsSelected()
+        compose.onNodeWithText(source.name).assertDoesNotExist()
+        compose.onNodeWithText(target.name).assertDoesNotExist()
+        assertEquals(listOf(true, true), merges.map { it.requireOrphan })
+    }
+
     private fun showTags() {
         compose.setContent {
             if (!mounted.value) return@setContent
             CompositionLocalProvider(LocalViewModelStoreOwner provides harness.models) {
-                TicketboxTheme(skin = AppSkin.Default) {
+                ReferenceLibraryTestTheme {
                     val outer = rememberNavController()
                     NavHost(outer, startDestination = MAIN_ROUTE) {
                         composable(MAIN_ROUTE) {
@@ -189,6 +213,7 @@ class TagManagementContinuationTest {
         waitForText(context.getString(R.string.transactions_library_tags_title))
         clickText(context.getString(R.string.transactions_library_tags_title))
         waitForText(source.name)
+        captureReferenceLibraryStep(compose, context, "tags")
     }
 
     private fun openSourceAction(label: Int) {

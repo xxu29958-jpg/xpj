@@ -5,6 +5,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -25,6 +26,7 @@ fun TagManagementScreen(
     chrome: ManagementPageChrome = ManagementPageChrome(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    var unusedOnly by rememberSaveable { mutableStateOf(false) }
     var renaming by remember { mutableStateOf<ManagedTag?>(null) }
     var merging by remember { mutableStateOf<ManagedTag?>(null) }
     var deleting by remember { mutableStateOf<ManagedTag?>(null) }
@@ -78,9 +80,9 @@ fun TagManagementScreen(
             messageTone = state.messageTone,
         ),
         actions = TagManagementDialogActions(
-            onRenameConfirm = viewModel::renameTag,
-            onMergeConfirm = viewModel::mergeTags,
-            onDeleteConfirm = viewModel::deleteTag,
+            onRenameConfirm = { tag, name -> viewModel.renameTag(tag, name, unusedOnly) },
+            onMergeConfirm = { source, target -> viewModel.mergeTags(source, target, unusedOnly) },
+            onDeleteConfirm = { tag -> viewModel.deleteTag(tag, unusedOnly) },
             onDismissRename = { renaming = null },
             onDismissMerge = {
                 merging = null
@@ -93,12 +95,14 @@ fun TagManagementScreen(
     TagManagementPageContent(
         state = state,
         readOnly = readOnly,
+        unusedOnly = unusedOnly,
         actions = TagManagementPageActions(
             onBack = onBack,
             rowActions = rowActions,
             onUndo = viewModel::undo,
             onDismissUndo = viewModel::dismissUndo,
             onReload = viewModel::loadTags,
+            onUnusedOnlyChange = { unusedOnly = it },
         ),
         chrome = chrome,
     )
@@ -110,12 +114,14 @@ private data class TagManagementPageActions(
     val onUndo: () -> Unit,
     val onDismissUndo: () -> Unit,
     val onReload: () -> Unit,
+    val onUnusedOnlyChange: (Boolean) -> Unit,
 )
 
 @Composable
 private fun TagManagementPageContent(
     state: TagManagementUiState,
     readOnly: Boolean,
+    unusedOnly: Boolean,
     actions: TagManagementPageActions,
     chrome: ManagementPageChrome,
 ) {
@@ -152,19 +158,21 @@ private fun TagManagementPageContent(
                 body = stringResource(R.string.tag_management_readonly_hint),
             )
         }
-        if (bodyState == TagManagementBodyState.Content || bodyState == TagManagementBodyState.Empty) {
-            TagSemanticsNote()
-        }
+        TagFilterRow(unusedOnly, actions.onUnusedOnlyChange)
         TagListSection(
             state = TagListState(
                 tags = state.tags,
                 bodyState = bodyState,
                 readOnly = readOnly,
                 busy = state.busy,
+                unusedOnly = unusedOnly,
             ),
             actions = actions.rowActions,
             onReload = actions.onReload,
         )
+        if (bodyState == TagManagementBodyState.Content || bodyState == TagManagementBodyState.Empty) {
+            TagSemanticsNote()
+        }
     }
 }
 

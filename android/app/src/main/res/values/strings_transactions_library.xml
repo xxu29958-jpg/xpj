@@ -23,6 +23,7 @@
     <string name="category_directory_default_title">内置分类</string>
     <string name="category_directory_default_body">跨账本保持一致，不可删除。</string>
     <string name="category_directory_custom_title">自定义分类</string>
+    <string name="category_directory_creation_hint">在记账时填写新分类，就能在这里管理使用情况和引用。移除不改写历史流水。</string>
     <string name="category_directory_custom_empty">还没有自定义分类。在新增或编辑交易时使用新分类，它会自动出现在这里。</string>
     <string name="category_directory_usage_count">已用于 %1$d 笔交易</string>
     <string name="category_directory_delete_description">移除分类“%1$s”</string>
@@ -31,6 +32,8 @@
     <string name="category_directory_delete_confirm">移除分类</string>
     <string name="category_directory_deleted">已将“%1$s”移到回收站</string>
     <string name="category_directory_load_failed">暂时无法读取自定义分类。</string>
+    <string name="category_directory_loading">正在读取分类…</string>
+    <string name="category_directory_stale">更新未成功，以下是上次读取的分类。</string>
     <string name="category_directory_delete_failed">暂时无法移除这个分类。</string>
     <string name="category_directory_retry">重新加载</string>
     <string name="category_directory_references">使用此分类的配置</string>

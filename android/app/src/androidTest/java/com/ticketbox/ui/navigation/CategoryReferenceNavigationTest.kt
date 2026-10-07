@@ -30,7 +30,6 @@ import com.ticketbox.data.remote.dto.GoalListResponseDto
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.AppThemeMode
 import com.ticketbox.domain.model.CurrencyCode
-import com.ticketbox.ui.theme.TicketboxTheme
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.After
@@ -51,6 +50,7 @@ class CategoryReferenceNavigationTest {
     @Volatile private var blocked = true
     @Volatile private var removed = false
     @Volatile private var reads = 0
+    @Volatile private var failDirectoryRead = false
     private var referenceKind = "rule"
     private var referenceId = "42"
     private var referenceLabel = "规则「bakery」"
@@ -60,6 +60,9 @@ class CategoryReferenceNavigationTest {
         object : ApiService by delegate {
             override suspend fun categoryPreferences(): CategoryPreferenceListResponseDto {
                 reads += 1
+                if (failDirectoryRead) throw HttpException(Response.error<CategoryPreferenceListResponseDto>(503,
+                    """{"error":"service_unavailable","message":"暂时无法更新分类。"}"""
+                        .toResponseBody("application/json".toMediaType())))
                 return CategoryPreferenceListResponseDto(if (removed) emptyList() else listOf(category))
             }
             override suspend fun deleteCategoryPreference(publicId: String,
@@ -152,16 +155,38 @@ class CategoryReferenceNavigationTest {
         assertDirectoryRefreshed(previousReads)
     }
 
+    @Test fun failedReturnRefreshKeepsKnownCategoriesAndOffersAReadRetry() {
+        showDirectory()
+        openReference()
+        waitForText(context.getString(R.string.category_rule_editor_submit_update))
+        failDirectoryRead = true
+        compose.onNodeWithContentDescription("返回分类").performScrollTo().performTouchInput { click() }
+        waitForText("暂时无法更新分类。")
+        compose.onNodeWithText("烘焙").assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.category_directory_stale)).assertIsDisplayed()
+        captureReferenceLibraryStep(compose, context, "category-refresh-error")
+        val previousReads = reads
+        failDirectoryRead = false
+        compose.onNodeWithText(context.getString(R.string.category_directory_retry)).performTouchInput { click() }
+        compose.waitUntil(5_000) { reads > previousReads }
+        compose.waitForIdle()
+        compose.onNodeWithText("烘焙").assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.category_directory_stale)).assertDoesNotExist()
+        assertEquals(false, removed)
+    }
+
     private fun showDirectory() {
         compose.setContent {
             if (!mounted.value) return@setContent
             CompositionLocalProvider(LocalViewModelStoreOwner provides harness.models) {
-                TicketboxTheme(skin = AppSkin.Default) {
+                ReferenceLibraryTestTheme {
                     ReferenceNavigation()
                 }
             }
         }
         compose.runOnIdle { navigation.navigate(TRANSACTIONS_LIBRARY_CATEGORIES_ROUTE) }
+        waitForText("烘焙")
+        captureReferenceLibraryStep(compose, context, "categories")
     }
 
     @Composable private fun ReferenceNavigation() {

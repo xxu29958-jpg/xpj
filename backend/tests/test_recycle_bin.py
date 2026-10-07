@@ -342,7 +342,8 @@ def test_web_recycle_bin_workbench_structure_owner(
     assert '已归档' in body
     assert '长期保留' in body
     # owner 可写：恢复表单与 OCC 隐藏字段在；行身份锚在。
-    assert 'action="/web/recycle-bin/restore?group=all"' in body
+    assert 'action="/web/recycle-bin/restore"' in body
+    assert 'name="group" value="all"' in body
     assert 'name="expected_row_version"' in body
     assert 'data-restore-key="income_plan:' in body
 
@@ -357,7 +358,7 @@ def test_web_recycle_bin_workbench_viewer_readonly(
 
     assert response.status_code == 200
     body = response.text
-    assert 'action="/web/recycle-bin/restore?group=all"' not in body
+    assert 'action="/web/recycle-bin/restore"' not in body
     assert ">恢复</button>" not in body
     assert "只读角色可以查看回收站" in body
     # 空账本 → 空态：标题 + 返回同域资料库的行动链接。

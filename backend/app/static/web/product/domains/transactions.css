@@ -810,12 +810,14 @@
 /* 分类 section 的月份筛选: 标签 + 查询按钮同行右对齐。 */
 .library-month-form {
     display: flex;
+    flex-wrap: wrap;
     align-items: end;
     gap: var(--space-3);
 }
 
 .library-month-form .product-field {
-    min-width: calc(var(--space-12) * 2);
+    flex: 1 1 12ch;
+    min-width: 0;
 }
 
 /* 规则表单里金额上下限并排, 占满表单网格一行。 */

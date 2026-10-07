@@ -2503,6 +2503,16 @@
             "title": "Expected Row Version",
             "type": "string"
           },
+          "group": {
+            "default": "all",
+            "enum": [
+              "all",
+              "reference",
+              "plans"
+            ],
+            "title": "Group",
+            "type": "string"
+          },
           "intent_month": {
             "anyOf": [
               {
@@ -22556,6 +22566,11 @@
           "expected_row_version": {
             "title": "Expected Row Version",
             "type": "integer"
+          },
+          "require_orphan": {
+            "default": false,
+            "title": "Require Orphan",
+            "type": "boolean"
           }
         },
         "required": [
@@ -22638,6 +22653,11 @@
           "expected_row_version": {
             "title": "Expected Row Version",
             "type": "integer"
+          },
+          "require_orphan": {
+            "default": false,
+            "title": "Require Orphan",
+            "type": "boolean"
           },
           "target_public_id": {
             "title": "Target Public Id",
@@ -22723,6 +22743,11 @@
             "minLength": 1,
             "title": "Name",
             "type": "string"
+          },
+          "require_orphan": {
+            "default": false,
+            "title": "Require Orphan",
+            "type": "boolean"
           }
         },
         "required": [
@@ -55129,23 +55154,6 @@
     "/web/recycle-bin/restore": {
       "post": {
         "operationId": "post_restore_recycle_bin_web_recycle_bin_restore_post",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "group",
-            "required": false,
-            "schema": {
-              "default": "all",
-              "enum": [
-                "all",
-                "reference",
-                "plans"
-              ],
-              "title": "Group",
-              "type": "string"
-            }
-          }
-        ],
         "requestBody": {
           "content": {
             "application/x-www-form-urlencoded": {

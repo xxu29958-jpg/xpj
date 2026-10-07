@@ -396,7 +396,7 @@ private class FakeTagActions(initial: List<ManagedTag>) : TagActions {
         return Result.success(tags.toList())
     }
 
-    override suspend fun renameTag(publicId: String, expectedRowVersion: Long, name: String): Result<Unit> {
+    override suspend fun renameTag(publicId: String, expectedRowVersion: Long, name: String, requireOrphan: Boolean): Result<Unit> {
         renameCalls++
         renameGate?.await()
         consumeFailure()?.let { return Result.failure(it) }
@@ -406,7 +406,7 @@ private class FakeTagActions(initial: List<ManagedTag>) : TagActions {
         return Result.success(Unit)
     }
 
-    override suspend fun deleteTag(publicId: String, expectedRowVersion: Long): Result<TagMutationResult> {
+    override suspend fun deleteTag(publicId: String, expectedRowVersion: Long, requireOrphan: Boolean): Result<TagMutationResult> {
         deleteCalls++
         consumeFailure()?.let { return Result.failure(it) }
         tags = tags.filterNot { it.publicId == publicId }.toMutableList()
@@ -420,6 +420,7 @@ private class FakeTagActions(initial: List<ManagedTag>) : TagActions {
         sourceRowVersion: Long,
         targetPublicId: String,
         targetRowVersion: Long,
+        requireOrphan: Boolean,
     ): Result<TagMutationResult> {
         mergeCalls++
         consumeFailure()?.let { return Result.failure(it) }
