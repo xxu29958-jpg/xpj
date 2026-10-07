@@ -137,7 +137,10 @@ def test_web_export_csv_uses_tag_filter(web_client: TestClient, *, identity) -> 
         tags="Shared",
     )
 
-    form = _CsvExportForm(web_client.get("/web/import?ledger_id=owner").text)
+    hub = web_client.get("/web/import?ledger_id=owner")
+    export_link = re.search(r'href="([^"]+task=export)"', hub.text)
+    assert export_link is not None
+    form = _CsvExportForm(web_client.get(unescape(export_link.group(1))).text)
     assert {"ledger_id", "month", "category", "tag"} <= form.fields.keys()
     form.fields.update(month="2026-05", category="餐饮", tag="Shared")
     response = web_client.get("/web/export.csv", params=form.fields)

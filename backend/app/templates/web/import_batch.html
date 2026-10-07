@@ -30,6 +30,7 @@
   {% if batch.total_rows == 0 %}<p class="product-state">文件中没有数据行。</p>{% endif %}
 </section>
 <p class="meta">已处理的行不会重复导入。离开后，仍可回到这次批次继续；消费草稿核对完成后才计入流水。</p>
+<section class="stack" aria-label="下一步">
 {% if can_write and progress.row_counts.remaining_valid_rows > 0 %}
 <form method="post" action="/web/import/{{ batch.public_id }}/apply" class="stack">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -47,6 +48,7 @@
 {% elif progress.row_counts.error_rows > 0 %}
 <a class="product-button product-button--primary" href="/web/import/{{ batch.public_id }}/errors.csv{{ q }}">下载需要修正的行</a>
 {% endif %}
+</section>
 {% if not can_write %}<p class="product-feedback" role="status">只读角色只能查看导入批次。</p>{% endif %}
 <details class="import-schema import-batch-rows" id="batch-rows"{% if status %} open{% endif %}>
   <summary>查看各行内容与处理结果</summary>

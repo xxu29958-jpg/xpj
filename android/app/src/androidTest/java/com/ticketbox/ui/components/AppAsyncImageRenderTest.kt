@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.AppSkin
@@ -36,6 +37,8 @@ class AppAsyncImageRenderTest {
         assertEquals(first, displayed.single())
 
         compose.runOnIdle { current.value = ProtectedImage(byteArrayOf(1, 2, 3), "image/png") }
+        // Invalid bytes first enter loading; the decoder later reports the failure.
+        compose.waitUntil(5_000) { compose.onAllNodesWithText(placeholder).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText(placeholder).assertIsDisplayed()
         compose.waitForIdle()
         assertEquals(listOf(first), displayed)
