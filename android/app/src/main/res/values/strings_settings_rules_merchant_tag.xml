@@ -124,6 +124,11 @@
     <string name="merchant_catalog_rename_dialog_title">重命名商家</string>
     <string name="merchant_catalog_rename_dialog_label">商家名称</string>
     <string name="merchant_catalog_rename_dialog_confirm">保存</string>
+    <string name="merchant_rename_review">核对最新商家</string>
+    <string name="merchant_rename_current_name">当前名称：%1$s</string>
+    <string name="merchant_rename_original_name">原商家：%1$s</string>
+    <string name="merchant_rename_reviewed">已读取这家商店的最新状态。你的填写已保留，核对后再保存。</string>
+    <string name="merchant_rename_unavailable">原商家已移除或合并，无法继续重命名。你的填写仍保留在这里。</string>
     <string name="merchant_catalog_merge_dialog_title">合并商家</string>
     <string name="merchant_catalog_merge_dialog_text">把「%1$s」合并到哪个商家？历史账单里的商家文字不会被改写。</string>
     <string name="merchant_catalog_merge_dialog_no_targets">没有可合并的目标商家。</string>

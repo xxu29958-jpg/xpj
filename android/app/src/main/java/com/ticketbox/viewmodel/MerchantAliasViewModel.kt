@@ -36,6 +36,7 @@ data class MerchantAliasUiState(
     val mergeSuggestion: MerchantCatalogMergeSuggestion? = null,
     val changedRevision: Int = 0,
     val editorCompletion: MerchantEditorCompletion? = null,
+    val renameReview: MerchantRenameReview? = null,
 )
 
 enum class MerchantEditorKind { CreateCatalog, CreateAlias, RenameCatalog, MergeCatalog, DeleteCatalog, DeleteAlias }
@@ -48,11 +49,15 @@ data class MerchantCatalogMergeSuggestion(
     val target: MerchantCatalog,
 )
 
+/** A user-requested read may update only the original editor's OCC snapshot. */
+data class MerchantRenameReview(val original: MerchantCatalog, val current: MerchantCatalog?)
+
 @Suppress("TooManyFunctions")
 class MerchantAliasViewModel(
     private val merchantRepository: MerchantRepository,
     private val repository: ExpenseRepository,
 ) : ViewModel() {
+    private val originalBinding = merchantRepository.captureBinding()
     private val _uiState = MutableStateFlow(MerchantAliasUiState())
     val uiState: StateFlow<MerchantAliasUiState> = _uiState.asStateFlow()
 
@@ -70,7 +75,7 @@ class MerchantAliasViewModel(
             if (clearMessage) {
                 _uiState.update { it.copy(message = null, messageTone = MessageTone.Neutral) }
             }
-            merchantRepository.merchantCatalog(includeHidden = true)
+            merchantRepository.merchantCatalog(includeHidden = true, expectedBinding = originalBinding)
                 .onSuccess { catalog -> _uiState.update { it.copy(merchantCatalog = catalog.sortedMerchantCatalog()) } }
                 .onFailure { error ->
                     _uiState.update {
@@ -212,6 +217,7 @@ class MerchantAliasViewModel(
                 publicId = item.publicId,
                 expectedRowVersion = item.rowVersion,
                 displayName = cleanName,
+                expectedBinding = originalBinding,
             )
                 .onSuccess { updated ->
                     _uiState.update { state ->
@@ -232,6 +238,33 @@ class MerchantAliasViewModel(
                 .onFailure { error -> handleCatalogRenameFailure(error, source = item) }
         }
     }
+
+    fun reviewMerchantRename(item: MerchantCatalog) {
+        if (_uiState.value.busy) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(busy = true, message = null, renameReview = null) }
+            merchantRepository.merchantCatalog(expectedBinding = originalBinding)
+                .onSuccess { catalog ->
+                    val current = catalog.find { it.publicId == item.publicId && it.deletedAt == null && !it.isMerged }
+                    _uiState.update {
+                        it.copy(
+                            busy = false,
+                            merchantCatalog = catalog.sortedMerchantCatalog(),
+                            renameReview = MerchantRenameReview(item, current),
+                            message = UiText.res(if (current == null) R.string.merchant_rename_unavailable
+                                else R.string.merchant_rename_reviewed),
+                            messageTone = MessageTone.Info,
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    _uiState.update { it.copy(busy = false,
+                        message = error.toUiText(R.string.merchant_catalog_load_failed), messageTone = MessageTone.Danger) }
+                }
+        }
+    }
+
+    fun consumeRenameReview() { _uiState.update { it.copy(renameReview = null) } }
 
     private fun handleCatalogRenameFailure(error: Throwable, source: MerchantCatalog) {
         val exception = error as? RepositoryException

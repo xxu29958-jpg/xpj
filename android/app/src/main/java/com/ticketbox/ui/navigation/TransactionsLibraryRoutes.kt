@@ -300,6 +300,7 @@ private fun MerchantDirectoryRoute(
             undoableAlias = state.undoableAlias,
             mergeSuggestion = state.mergeSuggestion,
             editorCompletion = state.editorCompletion,
+            renameReview = state.renameReview,
         ),
         actions = MerchantAliasesScreenActions(
             onBack = navController::popBackStack,
@@ -311,6 +312,8 @@ private fun MerchantDirectoryRoute(
                 onToggle = viewModel::toggleMerchantCatalog,
                 onMerge = viewModel::mergeMerchantCatalog,
                 onDelete = viewModel::deleteMerchantCatalog,
+                onReviewRename = viewModel::reviewMerchantRename,
+                onConsumeRenameReview = viewModel::consumeRenameReview,
             ),
             alias = MerchantAliasesAliasActions(
                 onCreate = viewModel::createMerchantAlias,

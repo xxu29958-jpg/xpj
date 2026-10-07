@@ -13,6 +13,7 @@ import com.ticketbox.data.repository.MerchantRepository
 import com.ticketbox.data.repository.RepositoryConflictDetails
 import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.data.repository.testServerSessionBinding
+import com.ticketbox.data.repository.TestSessionFixture
 import com.ticketbox.data.remote.dto.MerchantCatalogDto
 import com.ticketbox.domain.model.MerchantCatalogAliasPolicy
 import com.ticketbox.domain.model.MessageTone
@@ -221,6 +222,61 @@ class MerchantAliasViewModelTest {
         assertEquals(1, harness.api.merchantCatalogMergeRequests.size)
     }
 
+    @Test fun explicitRenameReviewReadsTheOriginalObjectWithoutPublishing() = merchantAlias {
+        val harness = harness()
+        val original = harness.vm.uiState.first { it.merchantCatalog.isNotEmpty() }.merchantCatalog.single()
+        harness.api.merchantCatalogItems = listOf(merchantCatalogDto(original.publicId, "他端改名", 9))
+
+        harness.vm.reviewMerchantRename(original)
+        val reviewed = harness.vm.uiState.first { it.renameReview != null }
+        assertEquals(original, reviewed.renameReview?.original)
+        assertEquals(9L, reviewed.renameReview?.current?.rowVersion)
+        assertEquals("他端改名", reviewed.renameReview?.current?.displayName)
+        assertEquals(0, reviewed.changedRevision)
+        assertEquals(null, reviewed.editorCompletion)
+        assertTrue(harness.api.merchantCatalogUpdateRequests.isEmpty())
+
+        harness.vm.renameMerchantCatalog(requireNotNull(reviewed.renameReview?.current), "原稿名称")
+        harness.vm.uiState.first { it.changedRevision == 1 }
+        assertEquals(listOf(original.publicId), harness.api.merchantCatalogPatchTargets)
+        assertEquals(9L, harness.api.merchantCatalogUpdateRequests.single().expectedRowVersion)
+    }
+
+    @Test fun renameReviewDoesNotRetargetDeletedMergedOrReplacedMerchants() = merchantAlias {
+        val harness = harness()
+        val original = harness.vm.uiState.first { it.merchantCatalog.isNotEmpty() }.merchantCatalog.single()
+        val current = merchantCatalogDto(original.publicId, original.displayName, 9)
+        for (items in listOf(emptyList(), listOf(current.copy(deletedAt = "2026-10-08T00:00:00Z")),
+            listOf(current.copy(status = "merged", mergedIntoPublicId = "target")), listOf(current.copy(publicId = "replacement")))) {
+            harness.api.merchantCatalogItems = items
+            harness.vm.reviewMerchantRename(original)
+            val reviewed = harness.vm.uiState.first { it.renameReview != null }
+            assertEquals(MerchantRenameReview(original, null), reviewed.renameReview)
+            assertEquals(UiText.res(R.string.merchant_rename_unavailable), reviewed.message)
+            assertEquals(0, reviewed.changedRevision)
+            harness.vm.consumeRenameReview()
+        }
+        assertTrue(harness.api.merchantCatalogUpdateRequests.isEmpty())
+    }
+
+    @Test fun anotherLedgerCannotReviewOrSubmitTheOriginalRename() = merchantAlias {
+        val harness = harness()
+        val original = harness.vm.uiState.first { it.merchantCatalog.isNotEmpty() }.merchantCatalog.single()
+        harness.session.switchLedgerForFixture("another-ledger", "另一账本")
+        harness.api.merchantCatalogItems = listOf(merchantCatalogDto(original.publicId, "另一账本同名对象", 20))
+
+        harness.vm.reviewMerchantRename(original)
+        val refused = harness.vm.uiState.first { !it.busy && it.messageTone == MessageTone.Danger }
+        assertEquals(null, refused.renameReview)
+        assertEquals(listOf(original), refused.merchantCatalog)
+        harness.vm.dismissMessage()
+        harness.vm.renameMerchantCatalog(original, "不能带入新账本的原稿")
+        harness.vm.uiState.first { !it.busy && it.messageTone == MessageTone.Danger }
+        advanceUntilIdle()
+        assertEquals(0, harness.vm.uiState.value.changedRevision)
+        assertTrue(harness.api.merchantCatalogUpdateRequests.isEmpty())
+    }
+
     private fun harness(
         role: String = "owner",
         configureApi: FakeApiService.() -> Unit = {},
@@ -265,12 +321,13 @@ class MerchantAliasViewModelTest {
             repository = expenseRepository,
         )
         activeViewModels += vm
-        return Harness(api = api, vm = vm)
+        return Harness(api = api, vm = vm, session = tokenStore)
     }
 
     private data class Harness(
         val api: FakeApiService,
         val vm: MerchantAliasViewModel,
+        val session: TestSessionFixture,
     )
 
     private companion object {

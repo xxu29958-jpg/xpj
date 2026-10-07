@@ -43,6 +43,7 @@ import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.viewmodel.MerchantCatalogMergeSuggestion
 import com.ticketbox.viewmodel.MerchantEditorCompletion
 import com.ticketbox.viewmodel.MerchantEditorKind
+import com.ticketbox.viewmodel.MerchantRenameReview
 import kotlinx.coroutines.delay
 
 @Composable
@@ -71,6 +72,8 @@ fun MerchantAliasesScreen(
             onRename = actions.catalog.onRename,
             onMerge = actions.catalog.onMerge,
             onDismissSuggestion = actions.mergeSuggestion.onDismiss,
+            onReviewRename = actions.catalog.onReviewRename,
+            onConsumeRenameReview = actions.catalog.onConsumeRenameReview,
         ),
     )
 
@@ -219,6 +222,7 @@ data class MerchantAliasesScreenState(
     val undoableAlias: MerchantAlias?,
     val mergeSuggestion: MerchantCatalogMergeSuggestion?,
     val editorCompletion: MerchantEditorCompletion?,
+    val renameReview: MerchantRenameReview? = null,
 )
 
 data class MerchantAliasesScreenActions(
@@ -237,6 +241,8 @@ data class MerchantAliasesCatalogActions(
     val onToggle: (MerchantCatalog) -> Unit,
     val onMerge: (MerchantCatalog, MerchantCatalog, MerchantCatalogAliasPolicy) -> Unit,
     val onDelete: (MerchantCatalog) -> Unit,
+    val onReviewRename: (MerchantCatalog) -> Unit,
+    val onConsumeRenameReview: () -> Unit,
 )
 
 data class MerchantAliasesAliasActions(

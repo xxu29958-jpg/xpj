@@ -146,6 +146,27 @@ class MerchantRepositoryCatalogTest {
         assertEquals("alias-created-by-merge", result.createdAliasPublicId)
     }
 
+    @Test fun originalRenameBindingCannotReadOrWriteThroughAnotherIdentity() = runTest {
+        val api = CatalogApiServiceStub()
+        val repository = repository(api)
+        val current = requireNotNull(repository.captureBinding())
+        val otherBindings = listOf(
+            current.copy(serverUrl = "https://other.example.com"), current.copy(ledgerId = "other-ledger"),
+            current.copy(ownerKey = "other-owner"), current.copy(sessionGeneration = "new-session"),
+            current.copy(bindingRevision = "new-binding"),
+        )
+        for (original in otherBindings) {
+            assertTrue(repository.merchantCatalog(expectedBinding = original).isFailure)
+            assertTrue(repository.updateMerchantCatalog("catalog-1", 7, displayName = "原稿",
+                expectedBinding = original).isFailure)
+        }
+        assertTrue(api.includeHiddenRequests.isEmpty())
+        assertTrue(api.updateRequests.isEmpty())
+        assertTrue(repository.merchantCatalog(expectedBinding = current).isSuccess)
+        assertEquals(8L, repository.updateMerchantCatalog("catalog-1", 7, displayName = "原稿",
+            expectedBinding = current).getOrThrow().rowVersion)
+    }
+
     private class TestApiServiceFactory(private val service: ApiService) : ApiServiceFactory {
         override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = service
     }

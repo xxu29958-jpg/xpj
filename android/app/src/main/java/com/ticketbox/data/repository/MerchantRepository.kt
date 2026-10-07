@@ -39,9 +39,14 @@ class MerchantRepository(
 
     fun canModifyLedger(): Boolean = ledgerRoleCanModify(binding.apiProvider.currentLedgerRole())
 
-    suspend fun merchantCatalog(includeHidden: Boolean = true): Result<List<MerchantCatalog>> =
+    fun captureBinding(): LogicalSessionBinding? = ledgerRequestGuard.captureLogicalBinding()
+
+    suspend fun merchantCatalog(
+        includeHidden: Boolean = true,
+        expectedBinding: LogicalSessionBinding? = captureBinding(),
+    ): Result<List<MerchantCatalog>> =
         errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api ->
+            ledgerRequestGuard.bindExact(expectedBinding ?: throw RepositoryException("登录状态已失效，请重新绑定。")).call { api ->
                 api.merchantCatalog(includeHidden = includeHidden).items.map { it.toDomain() }
             }
         }
@@ -62,11 +67,12 @@ class MerchantRepository(
         expectedRowVersion: Long,
         displayName: String? = null,
         status: String? = null,
+        expectedBinding: LogicalSessionBinding? = captureBinding(),
     ): Result<MerchantCatalog> =
         errorHandler.safeCall {
             val cleanPublicId = publicId.trim()
             require(cleanPublicId.isNotBlank()) { "请选择一个商家。" }
-            ledgerRequestGuard.guardedCall { api ->
+            ledgerRequestGuard.bindExact(expectedBinding ?: throw RepositoryException("登录状态已失效，请重新绑定。")).call { api ->
                 api.updateMerchantCatalog(
                     cleanPublicId,
                     MerchantCatalogUpdateRequest(

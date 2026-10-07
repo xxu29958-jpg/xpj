@@ -5,6 +5,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.click
@@ -23,6 +24,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.test.core.app.ApplicationProvider
+import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.espresso.Espresso.closeSoftKeyboard
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.semantics.SemanticsActions
@@ -61,10 +63,14 @@ class MerchantManagementContinuationTest {
     @Volatile private var alias: MerchantAliasDto? = null
     private var additionalAliases = emptyList<MerchantAliasDto>()
     @Volatile private var rejectAliasRead = false
+    @Volatile private var rejectCatalogRead = false
     private val completedAliasReads = CopyOnWriteArrayList<MerchantAliasListDto>()
     private val harness = FactEntryNavigationHarness(context) { delegate ->
         object : ApiService by delegate {
-            override suspend fun merchantCatalog(includeHidden: Boolean) = MerchantCatalogListDto(listOfNotNull(catalog))
+            override suspend fun merchantCatalog(includeHidden: Boolean): MerchantCatalogListDto {
+                if (rejectCatalogRead) throw unavailable()
+                return MerchantCatalogListDto(listOfNotNull(catalog))
+            }
             override suspend fun merchantAliases(): MerchantAliasListDto {
                 if (rejectAliasRead) throw unavailable()
                 return MerchantAliasListDto(listOfNotNull(alias) + additionalAliases).also { completedAliasReads += it }
@@ -94,7 +100,11 @@ class MerchantManagementContinuationTest {
                 assertEquals(catalog?.publicId, publicId)
                 updates += request
                 if (reject) throw unavailable()
-                return requireNotNull(catalog).copy(displayName = requireNotNull(request.displayName), rowVersion = 8)
+                val current = requireNotNull(catalog)
+                if (request.expectedRowVersion != current.rowVersion) throw HttpException(Response.error<Any>(409,
+                    """{"error":"state_conflict","message":"商家已被其他设备修改。"}"""
+                        .toResponseBody("application/json".toMediaType())))
+                return current.copy(displayName = requireNotNull(request.displayName), rowVersion = current.rowVersion + 1)
                     .also { catalog = it }
             }
         }
@@ -250,6 +260,67 @@ class MerchantManagementContinuationTest {
         assertEquals(2, updates.size)
         assertEquals(updates[0], updates[1])
         assertEquals(7L, updates.first().expectedRowVersion)
+    }
+
+    @Test fun conflictedRenameReviewsTheSameMerchantAndKeepsTheOriginalInput() {
+        catalog = MerchantCatalogDto("existing", "原商家", "原商家", "active", usageCount = 2,
+            createdAt = "2026-09-30T00:00:00Z", updatedAt = "2026-09-30T00:00:00Z", rowVersion = 7)
+        reject = false
+        showMerchants()
+        compose.onNodeWithText("原商家").performScrollTo().performTouchInput { click() }
+        clickText(R.string.merchant_detail_identity)
+        clickText(R.string.merchant_catalog_card_action_rename)
+        compose.onNode(hasSetTextAction() and hasText("原商家")).performTextReplacement("  我的原稿名称  ")
+        closeSoftKeyboard()
+        catalog = requireNotNull(catalog).copy(displayName = "另一台设备的名称", rowVersion = 8)
+        compose.onNodeWithText(context.getString(R.string.merchant_catalog_rename_dialog_confirm))
+            .assertIsEnabled().performTouchInput { click() }
+        compose.waitUntil(5_000) { updates.size == 1 }
+        compose.waitForIdle()
+        compose.onNode(hasSetTextAction() and hasText("  我的原稿名称  ")).assertIsDisplayed()
+        compose.onNodeWithText("核对最新商家").performScrollTo().assertIsDisplayed()
+
+        rejectCatalogRead = true
+        compose.onNodeWithText("核对最新商家").performScrollTo().performTouchInput { click() }
+        compose.waitForIdle()
+        assertEquals(1, updates.size)
+        compose.onNode(hasSetTextAction() and hasText("  我的原稿名称  ")).performScrollTo().assertIsDisplayed()
+        rejectCatalogRead = false
+        compose.onNodeWithText("核对最新商家").performScrollTo().performTouchInput { click() }
+        compose.waitUntil(5_000) {
+            compose.onAllNodesWithText("当前名称：另一台设备的名称").fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNode(hasSetTextAction() and hasText("  我的原稿名称  ")).performScrollTo().assertIsDisplayed()
+        assertEquals(1, updates.size)
+        assertEquals("另一台设备的名称", catalog?.displayName)
+        saveConsumerArtPreview("merchant-rename-reviewed",
+            requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        compose.onNodeWithText(context.getString(R.string.merchant_catalog_rename_dialog_confirm))
+            .assertIsEnabled().performTouchInput { click() }
+        compose.waitUntil(5_000) { catalog?.displayName == "我的原稿名称" }
+        assertEquals(listOf(7L, 8L), updates.map { it.expectedRowVersion })
+        assertEquals("existing", catalog?.publicId)
+        assertEquals(9L, catalog?.rowVersion)
+        assertTrue(catalogRequests.isEmpty() && aliasRequests.isEmpty())
+    }
+
+    @Test fun missingMerchantKeepsTheRenameInputWithoutSubmittingToAnotherObject() {
+        catalog = MerchantCatalogDto("existing", "原商家", "原商家", "active", usageCount = 2,
+            createdAt = "2026-09-30T00:00:00Z", updatedAt = "2026-09-30T00:00:00Z", rowVersion = 7)
+        showMerchants()
+        compose.onNodeWithText("原商家").performScrollTo().performTouchInput { click() }
+        clickText(R.string.merchant_detail_identity)
+        clickText(R.string.merchant_catalog_card_action_rename)
+        compose.onNode(hasSetTextAction() and hasText("原商家")).performTextReplacement("仍需保留的原稿")
+        closeSoftKeyboard()
+        catalog = null
+        compose.onNodeWithText("核对最新商家").performScrollTo().performTouchInput { click() }
+        waitForText(R.string.merchant_rename_unavailable)
+        compose.onNode(hasSetTextAction() and hasText("仍需保留的原稿")).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.merchant_catalog_rename_dialog_confirm)).assertIsNotEnabled()
+        assertTrue(updates.isEmpty() && catalogRequests.isEmpty() && aliasRequests.isEmpty())
+        saveConsumerArtPreview("merchant-rename-unavailable",
+            requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
     }
 
     private fun showMerchants() {

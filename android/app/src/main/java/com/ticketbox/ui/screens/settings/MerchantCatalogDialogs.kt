@@ -35,15 +35,20 @@ import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
+import com.ticketbox.viewmodel.MerchantRenameReview
 
 internal data class MerchantCatalogDialogHostActions(
     val onRename: (MerchantCatalog, String) -> Unit,
     val onMerge: (MerchantCatalog, MerchantCatalog, MerchantCatalogAliasPolicy) -> Unit,
     val onDismissSuggestion: () -> Unit,
+    val onReviewRename: (MerchantCatalog) -> Unit,
+    val onConsumeRenameReview: () -> Unit,
 )
 
 internal class MerchantCatalogDialogController {
     var renamingCatalog by mutableStateOf<MerchantCatalog?>(null)
+        private set
+    var renameUnavailable by mutableStateOf(false)
         private set
     var mergingCatalog by mutableStateOf<MerchantCatalog?>(null)
         private set
@@ -52,6 +57,13 @@ internal class MerchantCatalogDialogController {
 
     fun openRename(item: MerchantCatalog) {
         renamingCatalog = item
+        renameUnavailable = false
+    }
+
+    fun reviewRename(review: MerchantRenameReview) {
+        if (renamingCatalog != review.original) return
+        renameUnavailable = review.current == null
+        review.current?.let { renamingCatalog = it }
     }
 
     fun openMerge(item: MerchantCatalog) {
@@ -81,6 +93,12 @@ internal fun MerchantCatalogDialogHost(
     state: MerchantAliasesScreenState,
     actions: MerchantCatalogDialogHostActions,
 ) {
+    LaunchedEffect(state.renameReview) {
+        state.renameReview?.let {
+            controller.reviewRename(it)
+            actions.onConsumeRenameReview()
+        }
+    }
     LaunchedEffect(state.mergeSuggestion) {
         state.mergeSuggestion?.let { suggestion ->
             controller.openSuggestedMerge(suggestion.source, suggestion.target)
@@ -92,10 +110,12 @@ internal fun MerchantCatalogDialogHost(
         RenameMerchantCatalogDialog(
             catalog = item,
             state = state,
-            onConfirm = { newName ->
-                actions.onRename(item, newName)
-            },
-            onDismiss = controller::closeRename,
+            unavailable = controller.renameUnavailable,
+            actions = MerchantRenameActions(
+                onConfirm = { newName -> actions.onRename(item, newName) },
+                onReview = { actions.onReviewRename(item) },
+                onDismiss = controller::closeRename,
+            ),
         )
     }
 
@@ -127,40 +147,53 @@ internal fun MerchantCatalogDialogHost(
 private fun RenameMerchantCatalogDialog(
     catalog: MerchantCatalog,
     state: MerchantAliasesScreenState,
-    onConfirm: (String) -> Unit,
-    onDismiss: () -> Unit,
+    unavailable: Boolean,
+    actions: MerchantRenameActions,
 ) {
     var name by remember(catalog.publicId) { mutableStateOf(catalog.displayName) }
     AlertDialog(
-        onDismissRequest = { if (!state.busy) onDismiss() },
+        onDismissRequest = { if (!state.busy) actions.onDismiss() },
         title = { Text(stringResource(R.string.merchant_catalog_rename_dialog_title)) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+                Text(stringResource(if (unavailable) R.string.merchant_rename_original_name
+                    else R.string.merchant_rename_current_name, catalog.displayName))
                 SettingsDialogTextInput(
                     state = SettingsTextInputState(
                         label = stringResource(R.string.merchant_catalog_rename_dialog_label),
                         value = name,
-                        enabled = !state.busy,
+                        enabled = !state.busy && !state.readOnly,
                     ),
                     onValueChange = { name = it },
                     modifier = Modifier.fillMaxWidth(),
                 )
                 AppStatusBanner(message = state.message, tone = state.messageTone)
+                TextButton(enabled = !state.busy, onClick = actions.onReview) {
+                    Text(stringResource(R.string.merchant_rename_review))
+                }
             }
         },
         confirmButton = {
             TextButton(
-                enabled = !state.busy && name.trim().isNotBlank() && name.trim() != catalog.displayName,
-                onClick = { onConfirm(name) },
+                enabled = !state.busy && !state.readOnly && !unavailable &&
+                    name.trim().isNotBlank() && name.trim() != catalog.displayName,
+                onClick = { actions.onConfirm(name) },
             ) {
                 Text(stringResource(R.string.merchant_catalog_rename_dialog_confirm))
             }
         },
         dismissButton = {
-            TextButton(enabled = !state.busy, onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
+            TextButton(enabled = !state.busy, onClick = actions.onDismiss) { Text(stringResource(R.string.common_cancel)) }
         },
     )
 }
+
+private data class MerchantRenameActions(
+    val onConfirm: (String) -> Unit,
+    val onReview: () -> Unit,
+    val onDismiss: () -> Unit,
+)
 
 private data class MerchantCatalogMergeDialogState(
     val source: MerchantCatalog,
