@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Header, Query
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_app_context, get_current_writer_context
 from app.database import get_db
+from app.errors import AppError
 from app.schemas import (
     MerchantAliasCreateRequest,
     MerchantAliasDeleteRequest,
@@ -21,7 +23,11 @@ from app.schemas import (
     StatusResponse,
 )
 from app.services.idempotency import (
+    IdempotencyOutcome,
+    IdempotencyOutcomeKind,
+    claim_idempotency_key,
     claim_idempotent_request,
+    fingerprint_request,
     mark_idempotency_succeeded,
 )
 from app.services.merchant_alias_service import (
@@ -155,6 +161,18 @@ def post_merchant_alias(
     )
 
 
+def _accepted_alias_update(claim: IdempotencyOutcome, public_id: str, expected_row_version: int) -> MerchantAliasResponse:
+    try:
+        receipt = MerchantAliasResponse.model_validate(claim.row.response_body)
+        if (receipt.public_id != public_id or receipt.public_id != claim.row.resource_id
+                or receipt.row_version != expected_row_version + 1):
+            raise ValueError("Mismatched original alias receipt")
+        return receipt
+    except (ValidationError, ValueError) as exc:
+        raise AppError("merchant_alias_original_requires_review",
+            "原修改已被接受，但缺少可核对的原回执。请核对商家别名后继续。", status_code=409) from exc
+
+
 @router.patch("/aliases/{public_id}", response_model=MerchantAliasResponse)
 def patch_merchant_alias(
     public_id: str,
@@ -163,36 +181,39 @@ def patch_merchant_alias(
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> MerchantAliasResponse:
-    # ADR-0038 PR-2e: ``expected_row_version`` token gates the PATCH (409 on
-    # stale snapshot). ADR-0042: claim the Idempotency-Key before that OCC claim.
-    claim = claim_idempotent_request(
-        db,
-        idempotency_key=idempotency_key,
-        tenant_id=auth.tenant_id,
-        operation="update_merchant_alias",
-        target_id=public_id,
-        body=payload.model_dump(
-            mode="json", exclude_unset=True, exclude={"expected_row_version"}
-        ),
-        expected_row_version=payload.expected_row_version,
-        target_type="merchant_alias",
-    )
-    if claim is None:  # §4.6 HIT — re-serialise the current alias
-        return get_merchant_alias(db, tenant_id=auth.tenant_id, public_id=public_id)
+    # Keep the original fingerprint and claim before both OCC and a current-row
+    # read. Returning a peer's newer version would rebase the next outbox intent
+    # over an unseen edit; a deleted current row cannot erase an accepted result.
+    if not idempotency_key:
+        raise AppError("idempotency_key_required", status_code=422)
+    if len(idempotency_key) > 64:
+        raise AppError("invalid_request", status_code=422)
+    claim = claim_idempotency_key(db, tenant_id=auth.tenant_id, idempotency_key=idempotency_key,
+        operation="update_merchant_alias", target_type="merchant_alias", target_id=public_id,
+        request_fingerprint=fingerprint_request(operation="update_merchant_alias", target_id=public_id,
+            body=payload.model_dump(mode="json", exclude_unset=True, exclude={"expected_row_version"}),
+            expected_row_version=payload.expected_row_version))
+    if claim.kind is IdempotencyOutcomeKind.HIT:
+        return _accepted_alias_update(claim, public_id, payload.expected_row_version)
+    if claim.kind is IdempotencyOutcomeKind.IN_PROGRESS:
+        raise AppError("idempotency_key_in_progress", status_code=409)
+    if claim.kind is IdempotencyOutcomeKind.FINGERPRINT_MISMATCH:
+        raise AppError("idempotency_key_reused", status_code=422)
 
     item = get_merchant_alias(db, tenant_id=auth.tenant_id, public_id=public_id)
     field_updates = payload.model_dump(
         exclude={"expected_row_version"}, exclude_unset=True
     )
-    result = update_merchant_alias(
+    result = MerchantAliasResponse.model_validate(update_merchant_alias(
         db,
         item,
         expected_row_version=payload.expected_row_version,
         commit=False,
         **field_updates,
-    )
+    ))
     mark_idempotency_succeeded(
-        db, claim, resource_type="merchant_alias", resource_id=public_id
+        db, claim.row, resource_type="merchant_alias", resource_id=public_id,
+        response_body=result.model_dump(mode="json"),
     )
     db.commit()
     return result

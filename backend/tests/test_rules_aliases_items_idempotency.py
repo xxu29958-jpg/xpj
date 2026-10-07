@@ -3,13 +3,13 @@ mutations (category-rule update+delete, merchant-alias update+delete, items
 replace).
 
 Same uniform contract as Slice B's PATCH and Slice D-1's state machine: every
-outbox-routed mutate route claims an ``Idempotency-Key`` (via the shared
-``claim_idempotent_request``) BEFORE its OCC ``row_version`` claim. Two flavours
+outbox-routed mutate route claims an ``Idempotency-Key`` through the existing
+idempotency owner BEFORE its OCC ``row_version`` claim. Two flavours
 of HIT re-serialisation are exercised end-to-end here:
 
-* category-rule updates return the original accepted receipt, even after a
-  later edit. Alias and item updates retain their existing current-resource
-  responses. In each case a same-intent replay precedes OCC.
+* category-rule and alias updates return the original accepted receipt, even
+  after a later edit or deletion. Item updates retain their current-resource
+  response. In each case a same-intent replay precedes OCC.
 * deletes are idempotent by construction — a HIT just returns ``StatusResponse``
   without re-running the soft-delete.
 
@@ -245,14 +245,11 @@ def test_replace_items_replay_same_key_returns_canonical_not_409(
     assert replay.json()["row_version"] == v1  # canonical, not re-applied
 
 
-def test_update_alias_replay_same_key_returns_canonical_not_409(
-    client: TestClient, identity: TestIdentity
+@pytest.mark.parametrize("follow_up", ["edit", "delete"])
+def test_update_alias_replay_preserves_original_acceptance_after_peer_change(
+    client: TestClient, identity: TestIdentity, follow_up: str,
 ) -> None:
-    """Committed-but-unseen for the merchant-alias update — its HIT re-serialises
-    via ``get_merchant_alias``, a DISTINCT canonical path from rule-update
-    (``get_rule_for_tenant``) and items (``list_expense_items``). Same key + same
-    now-stale token returns the canonical (already-updated) alias, not the
-    false-409 the OCC claim would raise."""
+    """A replay must not lend a peer's newer OCC token to the next outbox intent."""
     alias = _create_alias(client, identity=identity)
     v0 = alias["row_version"]
     key = str(uuid4())
@@ -267,12 +264,75 @@ def test_update_alias_replay_same_key_returns_canonical_not_409(
     v1 = first.json()["row_version"]
     assert v1 != v0
 
+    later = client.request(
+        "PATCH" if follow_up == "edit" else "DELETE",
+        f"/api/merchants/aliases/{alias['public_id']}",
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"expected_row_version": v1, **({"alias": "他端修改", "enabled": True} if follow_up == "edit" else {})},
+    )
+    assert later.status_code == 200, later.text
+
     replay = client.patch(
         f"/api/merchants/aliases/{alias['public_id']}", headers=headers, json=body
     )
-    assert replay.status_code == 200, replay.text  # HIT via get_merchant_alias, not 409
-    assert replay.json()["enabled"] is False
-    assert replay.json()["row_version"] == v1  # canonical, not re-applied
+    assert replay.status_code == 200, replay.text
+    assert replay.json() == first.json()
+    # The next queued intention still conflicts with the peer, never overwrites it.
+    following = client.patch(f"/api/merchants/aliases/{alias['public_id']}",
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"expected_row_version": replay.json()["row_version"], "alias": "后续离线原稿"})
+    assert following.status_code == (409 if follow_up == "edit" else 404), following.text
+    current = client.get("/api/merchants/aliases", headers=identity.app_headers).json()["items"]
+    assert current == ([later.json()] if follow_up == "edit" else [])
+
+
+@pytest.mark.parametrize("receipt_damage", ["missing", "wrong_target", "wrong_version"])
+def test_alias_acceptance_without_verifiable_receipt_needs_review(
+    client: TestClient, identity: TestIdentity, receipt_damage: str,
+) -> None:
+    from sqlalchemy import select
+
+    alias = _create_alias(client, identity=identity)
+    key = str(uuid4())
+    headers = {**identity.app_headers, "Idempotency-Key": key}
+    body = {"enabled": False, "expected_row_version": alias["row_version"]}
+    first = client.patch(f"/api/merchants/aliases/{alias['public_id']}", headers=headers, json=body)
+    assert first.status_code == 200, first.text
+    with SessionLocal() as db:
+        claim = db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.idempotency_key == key))
+        assert claim is not None
+        claim.response_body = None if receipt_damage == "missing" else {
+            **first.json(), **({"public_id": str(uuid4())} if receipt_damage == "wrong_target"
+                             else {"row_version": first.json()["row_version"] + 1})}
+        db.commit()
+    replay = client.patch(f"/api/merchants/aliases/{alias['public_id']}", headers=headers, json=body)
+    assert replay.status_code == 409, replay.text
+    assert replay.json()["error"] == "merchant_alias_original_requires_review"
+    assert client.get("/api/merchants/aliases", headers=identity.app_headers).json()["items"] == [first.json()]
+
+
+def test_alias_and_accepted_receipt_roll_back_together(client: TestClient, identity: TestIdentity, monkeypatch) -> None:
+    from sqlalchemy import select
+
+    from app.errors import AppError
+    from app.routes import merchants
+
+    alias = _create_alias(client, identity=identity)
+    key = str(uuid4())
+    mark = merchants.mark_idempotency_succeeded
+
+    def fail_after_receipt(*args, **kwargs):
+        mark(*args, **kwargs)
+        raise AppError("server_error", status_code=500)
+
+    monkeypatch.setattr(merchants, "mark_idempotency_succeeded", fail_after_receipt)
+    refused = client.patch(f"/api/merchants/aliases/{alias['public_id']}",
+        headers={**identity.app_headers, "Idempotency-Key": key},
+        json={"enabled": False, "expected_row_version": alias["row_version"]})
+    assert refused.status_code == 500, refused.text
+    assert client.get("/api/merchants/aliases", headers=identity.app_headers).json()["items"] == [alias]
+    with SessionLocal() as db:
+        assert db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.idempotency_key == key)) is None
 
 
 # ---------------------------------------------------------------------------

@@ -61,6 +61,12 @@ REVIEWED_BOUNDARIES = {
         "test": "android/app/src/test/java/com/ticketbox/data/repository/NetworkErrorReportingTest.kt",
         "reason": "Sanitized message plus project frames, with no raw Throwable argument; an output failure cannot change the Result.",
     },
+    (ANDROID + "data/repository/UpdateMerchantAliasDispatcher.kt", "dispatch"): {
+        "sha256": "d044a4f8f66ecae3886b6d5b0cde72617fbee7e6f9798e8efc7492fa578b31e3",
+        "owner": "existing NetworkErrorHandler HTTP mapping and sanitized TicketboxNetwork Logcat",
+        "test": "android/app/src/test/java/com/ticketbox/data/repository/NetworkErrorReportingTest.kt::aliasReplayFailureReportsWithoutSettlingOrRetryingOriginal",
+        "reason": "Unexpected replay errors report through logNetworkWarning before a blocking Failure preserves the original key and payload. The user sees no raw exception text; cancellation still propagates and transport retries retain their existing owner.",
+    },
     ("backend/app/routes/web_expense_recognition.py", "web_text_recognition_post"): {
         "sha256": "4e5d8ec46cdaf791c901945acfae9e77b1cf2624b5ec1388ea7c74d76071563e",
         "owner": "retain_handled_error feeds the common HTTP reporter while preserving the original form",

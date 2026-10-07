@@ -1,6 +1,13 @@
 package com.ticketbox.data.repository
 
 import com.ticketbox.BuildConfig
+import com.squareup.moshi.Moshi
+import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import com.ticketbox.data.local.PendingMutationStatus
+import com.ticketbox.data.local.PendingMutationType
+import com.ticketbox.data.remote.ApiService
+import com.ticketbox.data.remote.dto.MerchantAliasDto
+import com.ticketbox.data.remote.dto.MerchantAliasUpdateRequest
 import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
@@ -109,6 +116,42 @@ class NetworkErrorReportingTest {
         val result = handler.safeCall<Unit> { attempts += 1; throw original }
         assertEquals(1, attempts)
         assertOriginalCause(original, result.exceptionOrNull()?.cause)
+    }
+
+    @Test
+    fun aliasReplayFailureReportsWithoutSettlingOrRetryingOriginal() = runTest {
+        val dao = FakePendingMutationDao()
+        val outbox = testOutboxRepository(dao = dao)
+        val payload = """{"expected_row_version":0,"enabled":false}"""
+        val originalId = outbox.enqueue(PendingMutationType.UpdateMerchantAlias, "merchant_alias:original", payload,
+            1L, idempotencyKey = "original-key")
+        var attempts = 0
+        val api = object : ApiService by FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0) {
+            override suspend fun updateMerchantAlias(
+                publicId: String, request: MerchantAliasUpdateRequest, idempotencyKey: String?,
+            ): MerchantAliasDto {
+                attempts += 1
+                throw IllegalStateException("password=synthetic-alias-secret", IOException("private financial text"))
+            }
+        }
+        val adapter = Moshi.Builder().add(KotlinJsonAdapterFactory()).build().adapter(MerchantAliasUpdateRequest::class.java)
+        val summary = OutboxDrainEngine(outbox, listOf(UpdateMerchantAliasDispatcher({ api }, adapter))).drainOnce()
+
+        assertEquals(1, attempts)
+        assertEquals(0, summary.done)
+        assertEquals(1, summary.failures)
+        val original = dao.rows.getValue(originalId)
+        assertEquals(PendingMutationStatus.Failed.wireValue, original.status)
+        assertEquals(payload, original.payload)
+        assertEquals("original-key", original.idempotencyKey)
+        val output = finalLog()
+        assertTrue(output.contains("operation=UpdateMerchantAlias"))
+        assertTrue(output.contains("UpdateMerchantAliasDispatcher.kt:"))
+        assertTrue(output.contains("source_tree_sha256=${BuildConfig.SOURCE_FINGERPRINT}"))
+        assertTrue(output.contains("IllegalStateException") && output.contains("IOException"))
+        assertFalse(output.contains("synthetic-alias-secret") || output.contains("private financial text"))
+        assertFalse(original.lastError.orEmpty().contains("synthetic-alias-secret"))
+        assertTrue(ShadowLog.getLogsForTag("TicketboxNetwork").all { it.throwable == null })
     }
 
     private fun assertLocated(output: String) {

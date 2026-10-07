@@ -166,9 +166,16 @@ def test_merchant_aliases_are_ledger_isolated(client: TestClient, *, identity) -
 
 def test_viewer_cannot_mutate_merchant_aliases(client: TestClient, *, identity) -> None:
     created = _create_alias(client, identity.app_headers)
+    original_headers = {**identity.app_headers, "Idempotency-Key": str(uuid4())}
+    original_body = {"expected_row_version": created["row_version"], "enabled": False}
+    accepted = client.patch(f"/api/merchants/aliases/{created['public_id']}",
+        headers=original_headers, json=original_body)
+    assert accepted.status_code == 200, accepted.text
     _demote_owner_ledger_to_viewer()
 
     checks = [
+        client.patch(f"/api/merchants/aliases/{created['public_id']}",
+            headers=original_headers, json=original_body),
         client.post(
             "/api/merchants/aliases",
             headers=identity.app_headers,
