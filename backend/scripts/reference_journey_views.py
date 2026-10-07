@@ -77,7 +77,7 @@ def appearances(j):
         native.click("外观与主题")
         native.click("浅色纸面 · 深绿点缀" if theme == "paper" else "柔和深色 · 浅绿点缀")
         for label, value, name in (("标签", "TripFinal", "tags"), ("商家", "RefPay", "merchants"),
-                                    ("自动规则", "RefShop", "rules"), ("分类", "Library", "categories")):
+                                    ("分类规则", "RefShop", "rules"), ("分类", "Library", "categories")):
             j.native_open(label)
             native.reveal_any(value, max_scrolls=16)
             native.capture(f"reference-{name}-{theme}")
@@ -99,7 +99,7 @@ def identities(j):
     native.reveal_any("已新建账本")
     native.click_within("LibraryOther", "切换")
     native.reveal_any("已切换到「LibraryOther」")
-    for label, forbidden in (("标签", "TripFinal"), ("商家", "RefShop"), ("自动规则", "RefShop")):
+    for label, forbidden in (("标签", "TripFinal"), ("商家", "RefShop"), ("分类规则", "RefShop")):
         j.native_open(label)
         assert not native.has(forbidden), "The new ledger exposed the previous ledger's reference data"
         native.capture(f"reference-other-ledger-{label}")

@@ -108,7 +108,7 @@ class RecycleBinContinuationTest {
     @Composable private fun Directory() {
         val navigation = rememberNavController()
         NavHost(navigation, startDestination = TRANSACTIONS_LIBRARY_ROUTE) {
-            transactionsLibraryGraph(navigation, harness.screenFactory, {}, {}, {})
+            transactionsLibraryGraph(navigation, harness.screenFactory, TransactionsLibraryWrites({}, {}, {}))
         }
     }
     private fun restore() {

@@ -26,6 +26,7 @@ fun TagManagementScreen(
     onBack: () -> Unit,
     onTagsChanged: () -> Unit = {},
     chrome: ManagementPageChrome = ManagementPageChrome(),
+    creation: @Composable (Boolean) -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var unusedOnly by rememberSaveable { mutableStateOf(false) }
@@ -62,7 +63,6 @@ fun TagManagementScreen(
 
     TagManagementPageContent(
         state = state,
-        readOnly = !state.canModify,
         unusedOnly = unusedOnly,
         actions = TagManagementPageActions(
             onBack = onBack,
@@ -73,6 +73,7 @@ fun TagManagementScreen(
             onUnusedOnlyChange = { unusedOnly = it },
         ),
         chrome = chrome,
+        creation = creation,
     )
 }
 
@@ -88,11 +89,12 @@ private data class TagManagementPageActions(
 @Composable
 private fun TagManagementPageContent(
     state: TagManagementUiState,
-    readOnly: Boolean,
     unusedOnly: Boolean,
     actions: TagManagementPageActions,
     chrome: ManagementPageChrome,
+    creation: @Composable (Boolean) -> Unit,
 ) {
+    val readOnly = !state.canModify
     val bodyState = remember(state.tags, state.loading, state.loadFailed) {
         tagManagementBodyState(
             hasTags = state.tags.isNotEmpty(),
@@ -144,6 +146,7 @@ private fun TagManagementPageContent(
         if (bodyState == TagManagementBodyState.Content || bodyState == TagManagementBodyState.Empty) {
             TagSemanticsNote()
         }
+        creation(!state.loading && !state.busy)
     }
 }
 

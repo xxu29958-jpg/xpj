@@ -206,7 +206,7 @@ class MerchantManagementContinuationTest {
                         composable(MAIN_ROUTE) {
                             val navigation = rememberNavController()
                             NavHost(navigation, startDestination = TRANSACTIONS_LIBRARY_ROUTE) {
-                                transactionsLibraryGraph(navigation, harness.screenFactory, {}, {}, {})
+                                transactionsLibraryGraph(navigation, harness.screenFactory, TransactionsLibraryWrites({}, {}, {}))
                             }
                         }
                     }

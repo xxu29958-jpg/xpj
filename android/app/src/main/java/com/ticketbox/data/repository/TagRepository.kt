@@ -43,6 +43,7 @@ interface TagActions {
 class TagRepository(
     private val apiProvider: ApiServiceProvider,
 ) : TagActions {
+    val creation: ReferenceCreationActions = ReferenceCreationRepository(apiProvider, ReferenceKind.Tag)
     private val ledgerRequestGuard = LedgerRequestGuard(apiProvider)
     private val errorHandler = NetworkErrorHandler(
         serverUrlProvider = { apiProvider.currentSession()?.serverUrl },

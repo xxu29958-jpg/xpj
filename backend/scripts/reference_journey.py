@@ -93,6 +93,7 @@ class ReferenceJourney:
         page.locator(f'input[name="ledger_id"][value="{self.fixture.ledger_id}"]').check()
         self.form("/web/auth/local").locator('button[type="submit"]').click()
         page.wait_for_url("**/web/expenses/new*")
+        self.native.bind(self.fixture.pairing_code, self.port)
         prepared = self.prepare_references()
         for index, (amount, category) in enumerate((("12.34", "其他"), ("25.00", "其他"), ("7.50", "Library")), 1):
             self.goto("/web/expenses/new")
@@ -116,18 +117,27 @@ class ReferenceJourney:
         form.get_by_role("button", name="保存这组查询", exact=True).click()
         self.expect(lambda state: len(state["views"]) == 1, "The actual saved view was not retained")
         assert self.facts()["views"][0]["tag_id"] == self.tag("Trip")["id"]
-        self.native.bind(self.fixture.pairing_code, self.port)
 
     def prepare_references(self):
         prepared = {}
         for kind, collection, label, name in (("tag", "tags", "标签", "Trip"),
                                               ("category", "categories", "分类", "Library")):
-            self.goto(f"/web/{collection}")
-            self.page.get_by_role("link", name=f"添加{label}", exact=True).click()
-            form = self.form(f"/web/reference/{kind}/create")
-            form.get_by_role("textbox", name=f"{label}名称", exact=True).fill(name)
-            form.get_by_role("button", name=f"添加{label}", exact=True).click()
-            self.page.wait_for_url(f"**/web/{collection}?*")
+            if kind == "category":
+                self.native_open(label)
+                self.native.click(f"添加{label}")
+                self.native.fill(name, label=f"{label}名称")
+                self.native.click(f"添加{label}", bottom=True)
+                wait_for(lambda name=name: self.native.has(f"已确认添加「{name}」。"), "The native creation did not confirm its receipt")
+                self.native.capture("reference-prepared-category-before-first-use")
+                self.goto(f"/web/{collection}")
+                assert name in self.page.inner_text("main"), "Web did not observe the native-created category"
+            else:
+                self.goto(f"/web/{collection}")
+                self.page.get_by_role("link", name=f"添加{label}", exact=True).click()
+                form = self.form(f"/web/reference/{kind}/create")
+                form.get_by_role("textbox", name=f"{label}名称", exact=True).fill(name)
+                form.get_by_role("button", name=f"添加{label}", exact=True).click()
+                self.page.wait_for_url(f"**/web/{collection}?*")
             self.expect(lambda state, name=name, collection=collection: any(row["name"] == name for row in state[collection]),
                 "Independent reference creation did not commit")
             assert not self.facts()["expenses"], "Preparing reference choices created a financial fact"

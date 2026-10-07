@@ -2,11 +2,20 @@ package com.ticketbox.ui.navigation
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.ViewModelStoreOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.ticketbox.ui.screens.settings.ReferenceCreationEntry
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavHostController
@@ -63,12 +72,17 @@ internal const val TRANSACTIONS_LIBRARY_RECYCLE_BIN_ROUTE = "$TRANSACTIONS_LIBRA
  * Transactions owns its vocabulary as an explicit subflow. Main navigation
  * only needs to install this graph and navigate to [TRANSACTIONS_LIBRARY_ROUTE].
  */
+internal data class TransactionsLibraryWrites(
+    val vocabularyChanged: () -> Unit,
+    val restoreCompleted: () -> Unit,
+    val transactionRowsChanged: () -> Unit,
+)
+
 internal fun NavGraphBuilder.transactionsLibraryGraph(
     navController: NavHostController,
     screenFactory: MainScreenFactory,
-    onVocabularyChanged: () -> Unit,
-    onRestoreCompleted: () -> Unit,
-    onTransactionRowsChanged: () -> Unit,
+    writes: TransactionsLibraryWrites,
+    creationOwner: () -> ViewModelStoreOwner = { navController.getBackStackEntry(TRANSACTIONS_LIBRARY_ROUTE) },
 ) {
     navigation(
         startDestination = TRANSACTIONS_LIBRARY_OVERVIEW_ROUTE,
@@ -90,30 +104,32 @@ internal fun NavGraphBuilder.transactionsLibraryGraph(
             CategoryDirectoryRoute(
                 navController = navController,
                 screenFactory = screenFactory,
-                onVocabularyChanged = onVocabularyChanged,
+                onVocabularyChanged = writes.vocabularyChanged,
+                creationOwner = creationOwner,
             )
         }
         composable(TRANSACTIONS_LIBRARY_MERCHANTS_ROUTE) {
             MerchantDirectoryRoute(
                 navController = navController,
                 screenFactory = screenFactory,
-                onVocabularyChanged = onVocabularyChanged,
+                onVocabularyChanged = writes.vocabularyChanged,
             )
         }
         composable(TRANSACTIONS_LIBRARY_TAGS_ROUTE) {
             TagDirectoryRoute(
                 navController = navController,
                 screenFactory = screenFactory,
-                onVocabularyChanged = onVocabularyChanged,
+                onVocabularyChanged = writes.vocabularyChanged,
+                creationOwner = creationOwner,
             )
         }
-        categoryRulesDestination(navController, screenFactory, onVocabularyChanged, onTransactionRowsChanged)
+        categoryRulesDestination(navController, screenFactory, writes.vocabularyChanged, writes.transactionRowsChanged)
         composable(TRANSACTIONS_LIBRARY_RECYCLE_BIN_ROUTE) {
             RecycleBinLibraryRoute(
                 navController = navController,
                 screenFactory = screenFactory,
-                onRestoreCompleted = onRestoreCompleted,
-                onTransactionRowsChanged = onTransactionRowsChanged,
+                onRestoreCompleted = writes.restoreCompleted,
+                onTransactionRowsChanged = writes.transactionRowsChanged,
             )
         }
     }
@@ -157,6 +173,7 @@ private fun TagDirectoryRoute(
     navController: NavHostController,
     screenFactory: MainScreenFactory,
     onVocabularyChanged: () -> Unit,
+    creationOwner: () -> ViewModelStoreOwner,
 ) {
     val viewModel: TagManagementViewModel = viewModel(
         key = transactionsLibraryViewModelKey(
@@ -165,11 +182,28 @@ private fun TagDirectoryRoute(
         ),
         factory = tagManagementViewModelFactory(screenFactory.tagRepository),
     )
+    var returningFromRecycle by rememberSaveable { mutableStateOf(false) }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle, viewModel) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && returningFromRecycle) {
+                returningFromRecycle = false
+                viewModel.loadTags()
+            }
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
     TagManagementScreen(
         viewModel = viewModel,
         onBack = navController::popBackStack,
         onTagsChanged = onVocabularyChanged,
         chrome = libraryManagementChrome(),
+        creation = { ready ->
+            ReferenceCreationEntry(screenFactory.tagRepository.creation, creationOwner(), ready,
+                onCreated = { viewModel.loadTags(); onVocabularyChanged() },
+                onRecycle = { returningFromRecycle = true; navController.navigate(TRANSACTIONS_LIBRARY_RECYCLE_BIN_ROUTE) })
+        },
     )
 }
 

@@ -39,7 +39,7 @@ def create_rule(j, initial_categories, original_rules):
 
 def resume_rule_edit(j, initial_categories, rule):
     native = j.native
-    j.native_open("自动规则")
+    j.native_open("分类规则")
     # The real installation includes its default rules. Locate this new rule
     # in that full list instead of treating it as the first/only database row.
     native.reveal_any("RefShop", max_scrolls=16)
@@ -52,7 +52,7 @@ def resume_rule_edit(j, initial_categories, rule):
         native.click("保存规则")
         native.reveal_any("这份规则提交尚未确认", toward_start=True, max_scrolls=16)
         native.restart()
-        j.native_open("自动规则")
+        j.native_open("分类规则")
         native.reveal_any("这份规则提交尚未确认")
         assert native.has("RefShop"), "The reopened submission lost its original rule"
         native.reveal_any("重新读取规则")
@@ -95,7 +95,7 @@ def preview_apply_and_rollback(j, initial_categories):
     first = j.facts()["expenses"][0]["id"]
     j.batch([first], "category", "Manual")
     native.restart()
-    j.native_open("自动规则")
+    j.native_open("分类规则")
     native.reveal_any("回退", max_scrolls=16)
     native.click("回退")
     native.click_within("回退这次应用？", "回退")

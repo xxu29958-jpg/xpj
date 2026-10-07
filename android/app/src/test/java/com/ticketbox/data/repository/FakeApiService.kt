@@ -258,6 +258,9 @@ internal class FakeApiService(
     override suspend fun categoryPreferences(): com.ticketbox.data.remote.dto.CategoryPreferenceListResponseDto =
         unsupported()
 
+    override suspend fun createCategoryPreference(key: String, request: com.ticketbox.data.remote.dto.ReferenceCreateRequestDto):
+        com.ticketbox.data.remote.dto.ReferenceCreatedDto = unsupported()
+
     override suspend fun inspectCategoryPreference(publicId: String):
         com.ticketbox.data.remote.dto.CategoryPreferenceInspectionDto = unsupported()
 
@@ -269,6 +272,8 @@ internal class FakeApiService(
     override suspend fun tags(): TagsDto = unsupported()
 
     override suspend fun listManagedTags(): com.ticketbox.data.remote.dto.TagManagementListDto = unsupported()
+    override suspend fun createTag(key: String, request: com.ticketbox.data.remote.dto.ReferenceCreateRequestDto):
+        com.ticketbox.data.remote.dto.ReferenceCreatedDto = unsupported()
     override suspend fun renameTag(publicId: String, request: com.ticketbox.data.remote.dto.TagRenameRequest): com.ticketbox.data.remote.dto.TagDetailDto = unsupported()
     override suspend fun deleteTag(publicId: String, request: com.ticketbox.data.remote.dto.TagDeleteRequest): com.ticketbox.data.remote.dto.TagMutationDto = unsupported()
     override suspend fun mergeTag(publicId: String, request: com.ticketbox.data.remote.dto.TagMergeRequest): com.ticketbox.data.remote.dto.TagMutationDto = unsupported()

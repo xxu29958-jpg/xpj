@@ -3,6 +3,8 @@ package com.ticketbox.ui.navigation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.ViewModelStoreOwner
+import com.ticketbox.ui.screens.settings.ReferenceCreationEntry
 import androidx.navigation.NavHostController
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.mutableStateOf
@@ -22,6 +24,7 @@ internal fun CategoryDirectoryRoute(
     navController: NavHostController,
     screenFactory: MainScreenFactory,
     onVocabularyChanged: () -> Unit,
+    creationOwner: () -> ViewModelStoreOwner,
 ) {
     val viewModel: CategoryDirectoryViewModel = viewModel(
         key = transactionsLibraryViewModelKey(
@@ -46,6 +49,11 @@ internal fun CategoryDirectoryRoute(
         viewModel = viewModel,
         onBack = navController::popBackStack,
         onCategoriesChanged = onVocabularyChanged,
+        creation = { ready ->
+            ReferenceCreationEntry(screenFactory.categoryPreferenceRepository.creation, creationOwner(), ready,
+                onCreated = { viewModel.refresh(); onVocabularyChanged() },
+                onRecycle = { returningFromReference = true; navController.navigate(TRANSACTIONS_LIBRARY_RECYCLE_BIN_ROUTE) })
+        },
         onOpenReference = {
             returningFromReference = true
             navController.navigate(categoryReferenceRoute(it))

@@ -251,7 +251,7 @@ class CategoryReferenceNavigationTest {
                         onBindingCleared = { error("Navigation preserves the identity") }),
                 )
                 NavHost(navigation, startDestination = TRANSACTIONS_LIBRARY_ROUTE) {
-                    transactionsLibraryGraph(navigation, harness.screenFactory, {}, {}, {})
+                    transactionsLibraryGraph(navigation, harness.screenFactory, TransactionsLibraryWrites({}, {}, {}))
                     addPlanRoutes(dependencies)
                 }
             }

@@ -52,6 +52,7 @@ fun CategoryDirectoryScreen(
     onBack: () -> Unit,
     onCategoriesChanged: () -> Unit = {},
     onOpenReference: (CategoryReference) -> Unit = {},
+    creation: @Composable (Boolean) -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
@@ -100,6 +101,7 @@ fun CategoryDirectoryScreen(
         DefaultCategoriesCard()
         Text(stringResource(R.string.category_directory_creation_hint),
             color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+        creation(!state.loading && state.busyCategoryId == null)
     }
 }
 

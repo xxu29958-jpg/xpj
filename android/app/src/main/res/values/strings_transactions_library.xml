@@ -19,12 +19,12 @@
 
     <string name="category_directory_title">分类</string>
     <string name="category_directory_subtitle">%1$d 个内置分类 · %2$d 个自定义分类</string>
-    <string name="category_directory_readonly">当前账本为只读角色，可以查看分类但不能移除。</string>
+    <string name="category_directory_readonly">当前账本为只读角色，可以查看分类但不能添加或移除。</string>
     <string name="category_directory_default_title">内置分类</string>
     <string name="category_directory_default_body">跨账本保持一致，不可删除。</string>
     <string name="category_directory_custom_title">自定义分类</string>
-    <string name="category_directory_creation_hint">在记账时填写新分类，就能在这里管理使用情况和引用。移除不改写历史流水。</string>
-    <string name="category_directory_custom_empty">还没有自定义分类。在新增或编辑交易时使用新分类，它会自动出现在这里。</string>
+    <string name="category_directory_creation_hint">可先添加分类，也可在记账时使用新分类。移除不改写历史流水。</string>
+    <string name="category_directory_custom_empty">还没有自定义分类。可先添加常用分类，也可在记账时填写新分类。</string>
     <string name="category_directory_usage_count">已用于 %1$d 笔交易</string>
     <string name="category_directory_delete_description">查看分类“%1$s”的使用与引用</string>
     <string name="category_directory_delete_body">它会从分类选项中隐藏，已有交易不会被删除；如仍被规则、预算或目标使用，需要先处理这些关联。</string>

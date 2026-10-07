@@ -19,12 +19,13 @@ interface CategoryPreferenceActions {
 /**
  * Ledger category-directory contract.
  *
- * The backend materializes custom categories after actual use. Removal is
+ * Custom categories can be prepared independently or materialized after use. Removal is
  * online-only and OCC-protected; restoration remains owned by the recycle bin.
  */
 class CategoryPreferenceRepository(
     private val apiProvider: ApiServiceProvider,
 ) : CategoryPreferenceActions {
+    val creation: ReferenceCreationActions = ReferenceCreationRepository(apiProvider, ReferenceKind.Category)
     private val ledgerRequestGuard = LedgerRequestGuard(apiProvider)
     private val errorHandler = NetworkErrorHandler(
         serverUrlProvider = { apiProvider.currentSession()?.serverUrl },

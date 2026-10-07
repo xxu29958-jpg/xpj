@@ -102,6 +102,8 @@ class OpenApiContractGateTest {
         Pairing(RecurringCandidatesResponseDto::class, "RecurringCandidatesResponse"),
         Pairing(DataQualitySummaryDto::class, "DataQualitySummaryResponse"),
         Pairing(TagListItemDto::class, "TagListItem"),
+        Pairing(ReferenceCreateRequestDto::class, "ReferenceCreateRequest"),
+        Pairing(ReferenceCreatedDto::class, "ReferenceCreatedResponse"),
         Pairing(TagManagementListDto::class, "TagManagementListResponse"),
         Pairing(TagDetailDto::class, "TagDetailResponse"),
         Pairing(TagMutationDto::class, "TagMutationResponse"),
