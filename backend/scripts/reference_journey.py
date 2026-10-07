@@ -64,6 +64,13 @@ class ReferenceJourney:
     def tag(self, name):
         return next(row for row in self.facts()["tags"] if row["name"] == name)
 
+    def tag_editor(self, public_id, action):
+        self.goto("/web/tags")
+        row = self.page.locator(f'#tag-{public_id}')
+        row.locator("summary").click()
+        row.locator(f'a[href*="action={action}"]').click()
+        return self.form(f"/web/tags/{public_id}/{action}")
+
     def rule(self, identity):
         return next(row for row in self.facts()["rules"] if row["id"] == identity)
 
@@ -109,8 +116,8 @@ class ReferenceJourney:
     def tag_edits(self):
         native, page = self.native, self.page
         original = self.tag("Trip")
-        self.goto("/web/tags")
-        stale = self.form(f'/web/tags/{original["id"]}/rename')
+        stale = self.tag_editor(original["id"], "rename")
+        original_version = stale.locator('[name="expected_row_version"]').input_value()
         stale.locator('[name="name"]').fill("WebDraft")
         self.native_open("标签")
         native.reveal_any("Trip")
@@ -132,17 +139,21 @@ class ReferenceJourney:
         native.click("保存")
         self.expect(lambda state: any(row["id"] == original["id"] and row["name"] == "TripNew" for row in state["tags"]),
                     "The original native rename could not continue")
-        stale.get_by_role("button", name="重命名", exact=True).click()
+        stale.locator('[data-tag-submit]').click()
+        wait_for(lambda: stale.get_attribute("data-tag-draft-phase") == "blocked", "The stale original was not refused")
         assert self.form(f'/web/tags/{original["id"]}/rename').locator('[name="name"]').input_value() == "WebDraft"
+        page.reload()
+        wait_for(lambda: stale.get_attribute("data-tag-draft-phase") == "blocked", "Reload did not resume the rejected rename")
+        assert stale.locator('[name="name"]').input_value() == "WebDraft"
+        assert stale.locator('[name="expected_row_version"]').input_value() == original_version
         assert self.tag("TripNew")["id"] == original["id"], "A stale Web editor overwrote the native result"
         self.capture("tag-stale-web-input")
         view = self.facts()["views"][0]
         self.goto(f'/web/saved-views/{view["id"]}/open')
         assert page.locator('.row-check').count() == 2 and "TripNew" in page.inner_text("main")
 
-        self.goto("/web/tags")
         merge_action = f'/web/tags/{original["id"]}/merge'
-        merge = self.form(merge_action)
+        merge = self.tag_editor(original["id"], "merge")
         target = self.tag("Monthly")
         original_target = f'{target["id"]}:{target["row_version"]}'
         original_version = merge.locator('[name="expected_row_version"]').input_value()
@@ -153,17 +164,25 @@ class ReferenceJourney:
         native.click("保存")
         self.expect(lambda state: any(row["id"] == target["id"] and row["name"] == "MonthlyNew" for row in state["tags"]),
                     "The native target rename did not establish the real Web merge conflict")
-        self.confirm(merge)
+        merge.locator('[data-tag-submit]').click()
+        wait_for(lambda: merge.get_attribute("data-tag-draft-phase") == "blocked", "The stale merge was not refused")
+        page.reload()
+        wait_for(lambda: merge.get_attribute("data-tag-draft-phase") == "blocked", "Reload did not resume the rejected merge")
         self.capture("tag-merge-conflict-original-choice")
         retained = self.form(merge_action)
         assert retained.locator('[name="target"]').input_value() == original_target, "The rejected Web merge lost its chosen target"
         assert retained.locator('[name="expected_row_version"]').input_value() == original_version
         assert not self.tag("TripNew")["deleted"], "The stale merge committed instead of refusing"
         refreshed_target = self.tag("MonthlyNew")
-        retained.locator('[name="target"]').select_option(f'{target["id"]}:{refreshed_target["row_version"]}')
-        self.confirm(retained)
+        before_review = self.facts()
+        with page.expect_navigation(wait_until="domcontentloaded"):
+            retained.locator('[data-tag-review]').click()
+        wait_for(lambda: retained.get_attribute("data-tag-draft-phase") == "editing", "Explicit review did not prepare the original merge")
+        assert self.facts() == before_review, "Review must not mutate reference or expense facts"
+        assert retained.locator('[name="target"]').input_value() == f'{target["id"]}:{refreshed_target["row_version"]}'
+        retained.locator('[data-tag-submit]').click()
         self.expect(lambda state: any(row["id"] == original["id"] and row["deleted"] for row in state["tags"]),
-                    "The explicitly reselected Web merge did not commit")
+                    "The explicitly reviewed Web merge did not commit")
         self.goto("/web/saved-views")
         assert "原标签已被删除或合并" in page.inner_text("main")
         assert page.locator(f'a[href*="/web/saved-views/{view["id"]}/open"]').count() == 0

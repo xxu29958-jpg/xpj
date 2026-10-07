@@ -23,9 +23,12 @@ def roles(j):
     with closing(j.page.context.browser.new_context()) as context:
         member = context.new_page()
         connect(member, j, "member")
+        row = member.locator(f'#tag-{original["id"]}')
+        row.locator("summary").click()
+        row.locator('a[href*="action=rename"]').click()
         form = member.locator(f'form[action="/web/tags/{original["id"]}/rename"]')
         form.locator('[name="name"]').fill("TripFinal")
-        form.get_by_role("button", name="重命名", exact=True).click()
+        form.locator('[data-tag-submit]').click()
         j.expect(lambda state: any(row["name"] == "TripFinal" and row["id"] == original["id"] for row in state["tags"]),
                  "The real member edit did not reach the shared tag")
         member.screenshot(path=j.evidence / "web-reference-member-rename.png", full_page=True)

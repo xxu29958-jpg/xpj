@@ -19,6 +19,7 @@ from tests._local_web_identity_support import (
     installed_web_setup,
 )
 from tests._runtime_protocol import current_protocol_headers
+from tests._web_native_form_support import hidden_post_forms
 
 pytestmark = [pytest.mark.real_db, pytest.mark.currency_binding_unbound]
 
@@ -68,7 +69,7 @@ def test_real_web_mutation_is_attributed_to_installation_account_and_browser_dev
         tag_public_id = tag.public_id
 
     page = installed_web.browser.get(
-        f"/web/tags?ledger_id={installed_web.shared_ledger_id}",
+        f"/web/tags/{tag_public_id}/edit?ledger_id={installed_web.shared_ledger_id}&action=rename",
         headers={"Cookie": f"{SESSION_COOKIE_NAME}={session_token}"},
     )
     token_match = re.search(
@@ -80,6 +81,7 @@ def test_real_web_mutation_is_attributed_to_installation_account_and_browser_dev
     renamed = installed_web.browser.post(
         f"/web/tags/{tag_public_id}/rename",
         data={
+            **hidden_post_forms(page.text)[f"/web/tags/{tag_public_id}/rename"],
             "csrf_token": csrf_token,
             "ledger_id": installed_web.shared_ledger_id,
             "expected_row_version": token_match.group(1),

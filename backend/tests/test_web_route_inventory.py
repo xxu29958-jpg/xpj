@@ -318,6 +318,7 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("GET", "/web/search"): "local-only-rendering",
     # Tags (ADR-0043 slice C)
     ("GET", "/web/tags"): "local-only-rendering",
+    ("GET", "/web/tags/{public_id}/edit"): "local-only-rendering",
     ("POST", "/web/tags/{public_id}/rename"): "writer-only",
     ("POST", "/web/tags/{public_id}/delete"): "writer-only",
     ("POST", "/web/tags/{public_id}/merge"): "writer-only",

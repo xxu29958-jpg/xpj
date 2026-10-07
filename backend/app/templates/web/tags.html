@@ -5,13 +5,19 @@
 {% set task_return_href = '/web/library' ~ q %}
 {% set task_return_label = '资料库' %}
 {% block title %}标签 · 资料库 · 小票夹{% endblock %}
+{% block page_scripts %}
+{% if tag_draft_scope %}
+<script defer src="/static/web/manual-drafts.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/tag-entry.js?v={{ asset_version }}"></script>
+{% endif %}
+{% endblock %}
 {% block content %}
 <div class="library-workspace stack">
 <header class="product-page-header">
   <div class="product-page-heading"><h1 class="page-title">标签</h1><p class="product-page-summary">用自己的方式，把记录串起来。</p></div>
 </header>
-{% with merge_items=merge_targets, merge_kind='tag' %}{% include 'partials/reference_merge_recovery.html' %}{% endwith %}
 {% if not can_write %}<div class="product-feedback" role="status">只读角色可以查看标签，但不能重命名、合并或删除。</div>{% endif %}
+{% if tag_draft_scope %}<div class="product-feedback" data-tag-catalog-scope="{{ tag_draft_scope | tojson | forceescape }}" hidden><p>此浏览器保留的标签整理</p><ul data-tag-draft-list></ul></div>{% endif %}
 {% if flash_message %}
 <div id="tag-result" class="product-feedback{% if flash_type == 'success' %} product-feedback--success{% elif flash_type == 'error' %} product-feedback--error{% endif %}" role="{% if flash_type == 'error' %}alert{% else %}status{% endif %}">
   <span>{{ flash_message }}</span>
@@ -31,53 +37,19 @@
   <a class="product-button {{ 'product-button--selected' if unused else 'product-button--quiet' }}" href="/web/tags?ledger_id={{ selected_ledger_id }}&amp;unused=1"{% if unused %} aria-current="page"{% endif %}>未使用</a>
 </nav>
 <section aria-label="当前标签">
-  {% if rename_error and rename_error_public_id not in (tags | map(attribute='public_id') | list) %}
-  <div class="product-feedback product-feedback--danger" role="alert" data-tag-key="{{ rename_error_public_id }}">{{ rename_error }}<p>原填写：{{ rename_error_value }}</p></div>
-  {% endif %}
   <div class="product-entry-list">
   {% for item in tags %}
-  {% set row_error = rename_error and rename_error_public_id == item.public_id %}
-  <details id="tag-{{ item.public_id }}" data-tag-key="{{ item.public_id }}"{% if row_error %} open aria-invalid="true" aria-describedby="tag-rename-error"{% endif %}>
+  <details id="tag-{{ item.public_id }}" data-tag-key="{{ item.public_id }}">
     <summary class="product-entry">
       <span class="product-entry-icon{% if loop.index0 % 3 == 1 %} product-entry-icon--apricot{% elif loop.index0 % 3 == 2 %} product-entry-icon--lilac{% endif %}" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#tag"/></svg></span>
       <span class="product-entry-copy"><strong>{{ item.name }}</strong><span>{{ item.usage_count ~ ' 笔引用' if item.usage_count else '未使用' }}</span></span>
       <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
     </summary>
-    <div class="stack">
+    <div class="pill-row">
       <a class="product-button product-button--quiet" href="/web/confirmed?ledger_id={{ selected_ledger_id }}&amp;tag={{ item.name | urlencode }}">看账单</a>
-      {% if row_error %}<div id="tag-rename-error" class="product-feedback product-feedback--danger" role="alert">{{ rename_error }}</div>{% endif %}
-      {% if can_write %}
-      <form method="post" action="/web/tags/{{ item.public_id }}/rename" class="stack">
-        {{ csrf_field|safe }}
-        <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-        {% if unused %}<input type="hidden" name="unused" value="1">{% endif %}
-        <input type="hidden" name="expected_row_version" value="{{ item.row_version }}">
-        <label class="product-field"><span>标签名称</span><input type="text" name="name" value="{{ rename_error_value if row_error else item.name }}" required maxlength="64" aria-label="重命名标签"{% if row_error %} aria-invalid="true" aria-describedby="tag-rename-error"{% endif %}></label>
-        <div><button type="submit" class="product-button">重命名</button></div>
-      </form>
-      {% if merge_targets|length > 1 and (not merge_draft or merge_draft.public_id != item.public_id) %}
-      <form method="post" action="/web/tags/{{ item.public_id }}/merge" class="stack" data-confirm="把标签「{{ item.name }}」合并到所选标签？{{ item.usage_count }} 笔账单将改用目标标签。">
-        {{ csrf_field|safe }}
-        <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-        {% if unused %}<input type="hidden" name="unused" value="1">{% endif %}
-        <input type="hidden" name="expected_row_version" value="{{ item.row_version }}">
-        <label class="product-field"><span>合并到</span><select name="target" required aria-label="合并到">
-          <option value="" disabled selected>选择保留的标签</option>
-          {% for other in merge_targets if other.public_id != item.public_id %}<option value="{{ other.public_id }}:{{ other.row_version }}">{{ other.name }}</option>{% endfor %}
-        </select></label>
-        <p class="meta">{{ item.usage_count }} 笔账单将改用目标标签，原标签不再单独显示。</p>
-        <div><button type="submit" class="product-button">合并</button></div>
-      </form>
-      {% endif %}
-      <form method="post" action="/web/tags/{{ item.public_id }}/delete" class="stack" data-confirm="删除标签「{{ item.name }}」？{% if item.usage_count %}（{{ item.usage_count }} 笔账单将移除该标签）{% endif %}">
-        {{ csrf_field|safe }}
-        <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-        {% if unused %}<input type="hidden" name="unused" value="1">{% endif %}
-        <input type="hidden" name="expected_row_version" value="{{ item.row_version }}">
-        <p class="meta">{% if item.usage_count %}删除会移除 {{ item.usage_count }} 笔账单上的这个标签。{% else %}当前没有账单使用。{% if unused %}提交时会再次检查。{% endif %}{% endif %}账单本身保留。</p>
-        <div><button type="submit" class="product-button product-button--danger">删除</button></div>
-      </form>
-      {% else %}<span class="readonly-inline">只读</span>{% endif %}
+      {% for action, label in [('rename', '重命名'), ('merge', '合并'), ('delete', '删除')] %}
+      <a class="product-button product-button--quiet" href="/web/tags/{{ item.public_id }}/edit?ledger_id={{ selected_ledger_id }}&amp;action={{ action }}{% if unused %}&amp;unused=1{% endif %}">{{ label if can_write else '查看' ~ label ~ '任务' }}</a>
+      {% endfor %}
     </div>
   </details>
   {% else %}
@@ -87,7 +59,7 @@
 </section>
 <div class="product-entry product-entry--static">
   <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#info"/></svg></span>
-  <span class="product-entry-copy"><strong>先核对影响，再合并</strong><span>合并失败可继续原选择。清理未使用标签时，会再次检查使用情况。</span></span>
+  <span class="product-entry-copy"><strong>先核对影响，再合并</strong><span>整理失败可继续原输入。清理未使用标签时，会再次检查使用情况。</span></span>
 </div>
 <details>
   <summary class="product-entry"><span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#history"/></svg></span><span class="product-entry-copy"><strong>添加与恢复标签</strong><span>随记账创建，在保留期内恢复。</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></summary>

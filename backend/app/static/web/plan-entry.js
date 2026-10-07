@@ -16,6 +16,7 @@
     const family = definition.family;
     const isGoal = family === "goal";
     const taskLabel = definition.label, listPath = definition.list;
+    const commandRefField = definition.commandRefField || "idempotency_key";
     const selector = suffix => "[data-" + family + "-" + suffix + "]";
     const data = suffix => form.dataset[family + suffix];
     const uuid = definition.validRef || /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
@@ -37,7 +38,7 @@
     const submit = form.querySelector(definition.submitSelector || '[type="submit"]:not([name="review_new"]):not([name="review_latest"])');
     if (!submit) return;
     const nativeLabel = submit.textContent;
-    const nativeRef = (definition.draftRefField && form.elements.namedItem(definition.draftRefField).value) || form.elements.namedItem("idempotency_key").value;
+    const nativeRef = (definition.draftRefField && form.elements.namedItem(definition.draftRefField).value) || form.elements.namedItem(commandRefField).value;
     const amount = definition.amount ? form.elements.namedItem(definition.amount) : null;
     const shelf = document.querySelector(selector("draft-shelf"));
     const review = form.querySelector(selector("review"));
@@ -219,7 +220,7 @@
       else names.forEach(name => body.set(name, record.values[name]));
       body.set("csrf_token", field("csrf_token").value);
       body.set("draft_scope", JSON.stringify(record.scope));
-      body.set("idempotency_key", commandKey(record));
+      body.set(commandRefField, commandKey(record));
       const response = await window.fetch(definition.action || form.action, {method: "POST", body, credentials: "same-origin",
         headers: {Accept: "application/json"}});
       const result = await response.json();
@@ -340,7 +341,7 @@
         return true;
       }
       const originalRejected = nativeResult === "rejected" &&
-        field("idempotency_key").value === commandKey(record) &&
+        field(commandRefField).value === commandKey(record) &&
         store.matches(JSON.parse(field("draft_scope").value), record.scope);
       if (nativeResult === "prepared" && (record.serverResult === "rejected" ||
           (definition.reviewWhileEditing && record.phase === "editing"))) {
@@ -386,7 +387,7 @@
           if (!record && (retained || (wanted && !nativeResult))) { stop("原稿已收起，请先核对" + taskLabel + "列表。"); return; }
           retained = !!record;
           held = true;
-          if (!definition.commandKeyField) field("idempotency_key").value = ref;
+          if (!definition.commandKeyField) field(commandRefField).value = ref;
           if (definition.draftRefField) field(definition.draftRefField).value = ref;
           if (!resumeDraft(record, nativeResult)) return;
           return new Promise(resolve => { release = resolve; });

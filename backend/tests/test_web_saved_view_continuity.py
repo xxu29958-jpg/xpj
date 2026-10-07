@@ -121,7 +121,7 @@ def test_role_refusal_preserves_original_query_and_ledger_form_cannot_retarget(b
 def test_real_tag_rename_follows_identity_but_merge_requires_explicit_view_repair(browser, client, identity):
     public_id, original = _create(browser, client, identity)
     source_id = original["tag_public_id"]
-    tag_page = browser.get("/web/tags?ledger_id=owner")
+    tag_page = browser.get(f"/web/tags/{source_id}/edit?ledger_id=owner&action=rename")
     rename = f"/web/tags/{source_id}/rename"
     renamed = _post(browser, rename, {**_tag_fields(tag_page.text, rename), "name": "假期"})
     assert renamed.status_code == 303, renamed.text
@@ -133,7 +133,7 @@ def test_real_tag_rename_follows_identity_but_merge_requires_explicit_view_repai
     with SessionLocal() as db:
         target = db.scalar(select(Tag).where(Tag.tenant_id == "owner", Tag.key == "家庭"))
         target_id, target_version = target.public_id, target.row_version
-    tag_page = browser.get("/web/tags?ledger_id=owner")
+    tag_page = browser.get(f"/web/tags/{source_id}/edit?ledger_id=owner&action=merge")
     merge = f"/web/tags/{source_id}/merge"
     merged = _post(browser, merge, {**_tag_fields(tag_page.text, merge), "target": f"{target_id}:{target_version}"})
     assert merged.status_code == 303, merged.text

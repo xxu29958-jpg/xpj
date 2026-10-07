@@ -7196,79 +7196,6 @@
         "title": "Body_web_submit_repayment_review_web_repayment_drafts__public_id__review_post",
         "type": "object"
       },
-      "Body_web_tag_delete_web_tags__public_id__delete_post": {
-        "properties": {
-          "expected_row_version": {
-            "default": "",
-            "title": "Expected Row Version",
-            "type": "string"
-          },
-          "ledger_id": {
-            "default": "",
-            "title": "Ledger Id",
-            "type": "string"
-          },
-          "unused": {
-            "default": "",
-            "title": "Unused",
-            "type": "string"
-          }
-        },
-        "title": "Body_web_tag_delete_web_tags__public_id__delete_post",
-        "type": "object"
-      },
-      "Body_web_tag_merge_web_tags__public_id__merge_post": {
-        "properties": {
-          "expected_row_version": {
-            "default": "",
-            "title": "Expected Row Version",
-            "type": "string"
-          },
-          "ledger_id": {
-            "default": "",
-            "title": "Ledger Id",
-            "type": "string"
-          },
-          "target": {
-            "default": "",
-            "title": "Target",
-            "type": "string"
-          },
-          "unused": {
-            "default": "",
-            "title": "Unused",
-            "type": "string"
-          }
-        },
-        "title": "Body_web_tag_merge_web_tags__public_id__merge_post",
-        "type": "object"
-      },
-      "Body_web_tag_rename_web_tags__public_id__rename_post": {
-        "properties": {
-          "expected_row_version": {
-            "default": "",
-            "title": "Expected Row Version",
-            "type": "string"
-          },
-          "ledger_id": {
-            "default": "",
-            "title": "Ledger Id",
-            "type": "string"
-          },
-          "name": {
-            "default": "",
-            "title": "Name",
-            "type": "string"
-          },
-          "unused": {
-            "default": "",
-            "title": "Unused",
-            "type": "string"
-          }
-        },
-        "title": "Body_web_tag_rename_web_tags__public_id__rename_post",
-        "type": "object"
-      },
       "Body_web_tag_undo_web_tags_mutations__mutation_public_id__undo_post": {
         "properties": {
           "expected_row_version": {
@@ -22620,6 +22547,67 @@
           "row_version"
         ],
         "title": "TagDetailResponse",
+        "type": "object"
+      },
+      "TagEditForm": {
+        "properties": {
+          "draft_ref": {
+            "default": "",
+            "title": "Draft Ref",
+            "type": "string"
+          },
+          "draft_scope": {
+            "default": "",
+            "title": "Draft Scope",
+            "type": "string"
+          },
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "name": {
+            "default": "",
+            "title": "Name",
+            "type": "string"
+          },
+          "review_latest": {
+            "default": false,
+            "title": "Review Latest",
+            "type": "boolean"
+          },
+          "source_name": {
+            "default": "",
+            "title": "Source Name",
+            "type": "string"
+          },
+          "source_usage_count": {
+            "default": "",
+            "title": "Source Usage Count",
+            "type": "string"
+          },
+          "target": {
+            "default": "",
+            "title": "Target",
+            "type": "string"
+          },
+          "target_name": {
+            "default": "",
+            "title": "Target Name",
+            "type": "string"
+          },
+          "unused": {
+            "default": "",
+            "title": "Unused",
+            "type": "string"
+          }
+        },
+        "title": "TagEditForm",
         "type": "object"
       },
       "TagListItem": {
@@ -57176,10 +57164,11 @@
           "content": {
             "application/x-www-form-urlencoded": {
               "schema": {
-                "$ref": "#/components/schemas/Body_web_tag_delete_web_tags__public_id__delete_post"
+                "$ref": "#/components/schemas/TagEditForm"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {
@@ -57209,6 +57198,83 @@
         ]
       }
     },
+    "/web/tags/{public_id}/edit": {
+      "get": {
+        "operationId": "web_tag_edit_web_tags__public_id__edit_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "action",
+            "required": false,
+            "schema": {
+              "default": "rename",
+              "enum": [
+                "rename",
+                "merge",
+                "delete"
+              ],
+              "title": "Action",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Ledger Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "unused",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Unused",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Tag Edit",
+        "tags": [
+          "web"
+        ]
+      }
+    },
     "/web/tags/{public_id}/merge": {
       "post": {
         "operationId": "web_tag_merge_web_tags__public_id__merge_post",
@@ -57227,10 +57293,11 @@
           "content": {
             "application/x-www-form-urlencoded": {
               "schema": {
-                "$ref": "#/components/schemas/Body_web_tag_merge_web_tags__public_id__merge_post"
+                "$ref": "#/components/schemas/TagEditForm"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {
@@ -57278,10 +57345,11 @@
           "content": {
             "application/x-www-form-urlencoded": {
               "schema": {
-                "$ref": "#/components/schemas/Body_web_tag_rename_web_tags__public_id__rename_post"
+                "$ref": "#/components/schemas/TagEditForm"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {
