@@ -5,12 +5,14 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
@@ -31,6 +33,8 @@ import com.ticketbox.data.remote.dto.TagManagementListDto
 import com.ticketbox.data.remote.dto.TagMergeRequest
 import com.ticketbox.data.remote.dto.TagMutationDto
 import com.ticketbox.data.remote.dto.TagRenameRequest
+import com.ticketbox.domain.model.ManagedTag
+import kotlinx.coroutines.runBlocking
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.After
@@ -97,7 +101,7 @@ class TagManagementContinuationTest {
     }
 
     @Test fun failedRenameKeepsTheOriginalInputAndCanContinue() {
-        showTags()
+        val restoration = showTags()
         openSourceAction(R.string.tag_management_card_action_rename)
         compose.onNode(hasSetTextAction() and hasText(source.name)).performTextReplacement("九月出差")
         clickText(context.getString(R.string.tag_management_rename_dialog_confirm))
@@ -106,6 +110,9 @@ class TagManagementContinuationTest {
         compose.onNode(hasSetTextAction() and hasText("九月出差")).assertIsDisplayed()
         captureReferenceLibraryStep(compose, context, "rename-error")
         assertEquals(false, renamed)
+
+        restoration.emulateSavedInstanceStateRestore()
+        compose.onNode(hasSetTextAction() and hasText("九月出差")).assertIsDisplayed()
 
         reject = false
         clickText(context.getString(R.string.tag_management_rename_dialog_confirm))
@@ -116,7 +123,7 @@ class TagManagementContinuationTest {
     }
 
     @Test fun failedMergeKeepsTheChosenTargetAndOriginalVersions() {
-        showTags()
+        val restoration = showTags()
         openSourceAction(R.string.tag_management_card_action_merge)
         val targetLabel = context.getString(R.string.tag_management_merge_dialog_target_with_count, target.name, 3)
         clickText(targetLabel)
@@ -125,8 +132,12 @@ class TagManagementContinuationTest {
         compose.waitForIdle()
         compose.onNodeWithText(context.getString(R.string.tag_management_merge_dialog_title)).assertIsDisplayed()
         compose.onNodeWithText(targetLabel).assertIsDisplayed()
+        compose.onNodeWithText("暂时无法保存，请保留当前填写后重试。").assertIsDisplayed()
         captureReferenceLibraryStep(compose, context, "merge-error")
         assertEquals(false, merged)
+
+        restoration.emulateSavedInstanceStateRestore()
+        compose.onNodeWithText(targetLabel).assertIsSelected()
 
         reject = false
         clickText(context.getString(R.string.tag_management_merge_dialog_confirm))
@@ -193,8 +204,44 @@ class TagManagementContinuationTest {
         assertEquals(listOf(true, true), merges.map { it.requireOrphan })
     }
 
-    private fun showTags() {
-        compose.setContent {
+    @Test fun roleLossKeepsTheDraftAndRoleRecoveryResumesTheOriginalRename() {
+        showTags()
+        openSourceAction(R.string.tag_management_card_action_rename)
+        compose.onNode(hasSetTextAction() and hasText(source.name)).performTextReplacement("九月出差")
+        compose.runOnIdle { harness.fixture.role("viewer") }
+        compose.waitForIdle()
+        compose.onNodeWithText(context.getString(R.string.tag_management_rename_dialog_confirm)).assertIsNotEnabled()
+        compose.onNode(hasSetTextAction() and hasText("九月出差")).assertIsDisplayed()
+        captureReferenceLibraryStep(compose, context, "rename-readonly")
+        assertEquals(emptyList<TagRenameRequest>(), renames)
+
+        compose.runOnIdle { harness.fixture.role("owner") }
+        reject = false
+        clickText(context.getString(R.string.tag_management_rename_dialog_confirm))
+        waitForText(context.getString(R.string.tag_management_renamed, "九月出差"))
+        assertEquals(listOf(TagRenameRequest(3, "九月出差")), renames)
+    }
+
+    @Test fun changedBindingCannotSubmitTheOriginalDraftAsTheNewSession() {
+        val restoration = showTags()
+        val repository = harness.screenFactory.tagRepository
+        val originalBinding = requireNotNull(repository.captureBinding())
+        openSourceAction(R.string.tag_management_card_action_rename)
+        compose.onNode(hasSetTextAction() and hasText(source.name)).performTextReplacement("九月出差")
+        compose.runOnIdle { harness.fixture.renewBinding() }
+        restoration.emulateSavedInstanceStateRestore()
+        compose.onNode(hasSetTextAction() and hasText("九月出差")).assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.tag_management_rename_dialog_confirm)).assertIsNotEnabled()
+        val bypassingUi = runBlocking {
+            repository.renameTag(originalBinding, ManagedTag(source.publicId, source.name, source.usageCount, source.rowVersion), "九月出差")
+        }
+        assertEquals(true, bypassingUi.isFailure)
+        assertEquals(emptyList<TagRenameRequest>(), renames)
+    }
+
+    private fun showTags(): StateRestorationTester {
+        val restoration = StateRestorationTester(compose)
+        restoration.setContent {
             if (!mounted.value) return@setContent
             CompositionLocalProvider(LocalViewModelStoreOwner provides harness.models) {
                 ReferenceLibraryTestTheme {
@@ -214,6 +261,7 @@ class TagManagementContinuationTest {
         clickText(context.getString(R.string.transactions_library_tags_title))
         waitForText(source.name)
         captureReferenceLibraryStep(compose, context, "tags")
+        return restoration
     }
 
     private fun openSourceAction(label: Int) {

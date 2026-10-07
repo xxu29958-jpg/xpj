@@ -299,6 +299,8 @@ fun tagManagementViewModelFactory(
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         return TagManagementViewModel(tagRepository) as T
     }
+    override fun <T : ViewModel> create(modelClass: Class<T>, extras: CreationExtras): T =
+        TagManagementViewModel(tagRepository, extras.createSavedStateHandle()) as T
 }
 
 @Suppress("UNCHECKED_CAST")

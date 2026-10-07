@@ -167,7 +167,6 @@ private fun TagDirectoryRoute(
     )
     TagManagementScreen(
         viewModel = viewModel,
-        readOnly = !screenFactory.repository.canModifyLedger(),
         onBack = navController::popBackStack,
         onTagsChanged = onVocabularyChanged,
         chrome = libraryManagementChrome(),

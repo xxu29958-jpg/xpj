@@ -12,89 +12,57 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.domain.model.ManagedTag
 import com.ticketbox.domain.model.MessageTone
+import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.viewmodel.TagManagementUiState
 import com.ticketbox.viewmodel.TagManagementViewModel
+import com.ticketbox.viewmodel.TagEditorAction
+import com.ticketbox.viewmodel.TagEditorDraft
 import kotlinx.coroutines.delay
 
 @Composable
 fun TagManagementScreen(
     viewModel: TagManagementViewModel,
-    readOnly: Boolean,
     onBack: () -> Unit,
     onTagsChanged: () -> Unit = {},
     chrome: ManagementPageChrome = ManagementPageChrome(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var unusedOnly by rememberSaveable { mutableStateOf(false) }
-    var renaming by remember { mutableStateOf<ManagedTag?>(null) }
-    var merging by remember { mutableStateOf<ManagedTag?>(null) }
-    var deleting by remember { mutableStateOf<ManagedTag?>(null) }
-    var preselectedMergeTarget by remember { mutableStateOf<ManagedTag?>(null) }
     val rowActions = rememberTagRowActions(
-        onRename = { tag ->
-            viewModel.dismissMessage()
-            renaming = tag
-        },
-        onMerge = { tag ->
-            viewModel.dismissMessage()
-            preselectedMergeTarget = null
-            merging = tag
-        },
-        onDelete = { tag ->
-            viewModel.dismissMessage()
-            deleting = tag
-        },
+        onRename = { viewModel.editDraft(TagEditorDraft(TagEditorAction.Rename, it, unusedOnly)) },
+        onMerge = { viewModel.editDraft(TagEditorDraft(TagEditorAction.Merge, it, unusedOnly)) },
+        onDelete = { viewModel.editDraft(TagEditorDraft(TagEditorAction.Delete, it, unusedOnly)) },
     )
 
     // After a committed tag mutation, refresh stats filters that may still show old names.
     LaunchedEffect(state.tagsChangedRevision) {
         if (state.tagsChangedRevision > 0) {
-            renaming = null
-            merging = null
-            deleting = null
-            preselectedMergeTarget = null
             onTagsChanged()
-        }
-    }
-
-    // Rename collisions become an explicit user-confirmed merge.
-    LaunchedEffect(state.mergeSuggestion) {
-        state.mergeSuggestion?.let { suggestion ->
-            renaming = null
-            preselectedMergeTarget = suggestion.target
-            merging = suggestion.source
-            viewModel.consumeMergeSuggestion()
         }
     }
 
     TagManagementDialogHost(
         state = TagManagementDialogState(
-            renaming = renaming,
-            merging = merging,
-            deleting = deleting,
+            editor = state.editor.takeIf { state.showOriginalDraft },
             tags = state.tags,
-            preselectedMergeTarget = preselectedMergeTarget,
             busy = state.busy,
+            readOnly = !state.canModify,
+            bindingChanged = state.bindingChanged,
             message = state.message,
             messageTone = state.messageTone,
         ),
         actions = TagManagementDialogActions(
-            onRenameConfirm = { tag, name -> viewModel.renameTag(tag, name, unusedOnly) },
-            onMergeConfirm = { source, target -> viewModel.mergeTags(source, target, unusedOnly) },
-            onDeleteConfirm = { tag -> viewModel.deleteTag(tag, unusedOnly) },
-            onDismissRename = { renaming = null },
-            onDismissMerge = {
-                merging = null
-                preselectedMergeTarget = null
-            },
-            onDismissDelete = { deleting = null },
+            onRenameConfirm = { tag, name -> viewModel.renameTag(tag, name, state.editor?.requireOrphan == true) },
+            onMergeConfirm = { source, target -> viewModel.mergeTags(source, target, state.editor?.requireOrphan == true) },
+            onDeleteConfirm = { tag -> viewModel.deleteTag(tag, state.editor?.requireOrphan == true) },
+            onEdit = viewModel::editDraft,
         ),
     )
 
     TagManagementPageContent(
         state = state,
-        readOnly = readOnly,
+        readOnly = !state.canModify,
         unusedOnly = unusedOnly,
         actions = TagManagementPageActions(
             onBack = onBack,
@@ -140,19 +108,22 @@ private fun TagManagementPageContent(
         ),
         onBack = actions.onBack,
         status = {
-            if (bodyState != TagManagementBodyState.LoadFailed || state.messageTone != MessageTone.Danger) {
+            if (state.bindingChanged) {
+                AppStatusBanner(UiText.res(R.string.tag_management_draft_binding_changed), MessageTone.Info)
+            } else if (state.editor == null &&
+                (bodyState != TagManagementBodyState.LoadFailed || state.messageTone != MessageTone.Danger)) {
                 AppStatusBanner(message = state.message, tone = state.messageTone)
             }
         },
     ) {
         state.undoable?.let { handle ->
-            TagUndoPanel(handle = handle, busy = state.busy, onUndo = actions.onUndo)
+            TagUndoPanel(handle = handle, busy = state.busy || readOnly, onUndo = actions.onUndo)
             LaunchedEffect(handle.mutationPublicId) {
                 delay(5000)
                 actions.onDismissUndo()
             }
         }
-        if (readOnly) {
+        if (readOnly && !state.bindingChanged) {
             SettingsInlineEmpty(
                 title = stringResource(R.string.tag_management_readonly_title),
                 body = stringResource(R.string.tag_management_readonly_hint),

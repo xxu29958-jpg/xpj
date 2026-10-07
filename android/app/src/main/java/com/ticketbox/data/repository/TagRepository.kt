@@ -8,6 +8,7 @@ import com.ticketbox.domain.model.ManagedTag
 import com.ticketbox.domain.model.TagMutationResult
 import com.ticketbox.domain.model.TagUndoResult
 import com.ticketbox.domain.model.ledgerRoleCanModify
+import kotlinx.coroutines.flow.Flow
 
 /**
  * Tag-management surface the [com.ticketbox.viewmodel.TagManagementViewModel]
@@ -16,17 +17,18 @@ import com.ticketbox.domain.model.ledgerRoleCanModify
  */
 interface TagActions {
     fun canModifyLedger(): Boolean
-    suspend fun tags(): Result<List<ManagedTag>>
-    suspend fun renameTag(publicId: String, expectedRowVersion: Long, name: String, requireOrphan: Boolean = false): Result<Unit>
-    suspend fun deleteTag(publicId: String, expectedRowVersion: Long, requireOrphan: Boolean = false): Result<TagMutationResult>
+    fun captureBinding(): LogicalSessionBinding?
+    fun observeLedgerAccess(): Flow<LedgerAccessContext?>
+    suspend fun tags(binding: LogicalSessionBinding): Result<List<ManagedTag>>
+    suspend fun renameTag(binding: LogicalSessionBinding, tag: ManagedTag, name: String, requireOrphan: Boolean = false): Result<Unit>
+    suspend fun deleteTag(binding: LogicalSessionBinding, tag: ManagedTag, requireOrphan: Boolean = false): Result<TagMutationResult>
     suspend fun mergeTags(
-        sourcePublicId: String,
-        sourceRowVersion: Long,
-        targetPublicId: String,
-        targetRowVersion: Long,
+        binding: LogicalSessionBinding,
+        source: ManagedTag,
+        target: ManagedTag,
         requireOrphan: Boolean = false,
     ): Result<TagMutationResult>
-    suspend fun undoTagMutation(mutationPublicId: String, expectedRowVersion: Long): Result<TagUndoResult>
+    suspend fun undoTagMutation(binding: LogicalSessionBinding, mutationPublicId: String, expectedRowVersion: Long): Result<TagUndoResult>
 }
 
 /**
@@ -50,68 +52,71 @@ class TagRepository(
 
     override fun canModifyLedger(): Boolean = ledgerRoleCanModify(apiProvider.currentLedgerRole())
 
-    override suspend fun tags(): Result<List<ManagedTag>> =
+    override fun captureBinding(): LogicalSessionBinding? = ledgerRequestGuard.captureLogicalBinding()
+
+    override fun observeLedgerAccess(): Flow<LedgerAccessContext?> = apiProvider.observeActiveLedgerAccess()
+
+    override suspend fun tags(binding: LogicalSessionBinding): Result<List<ManagedTag>> =
         errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api ->
+            ledgerRequestGuard.bindExact(binding).call { api ->
                 api.listManagedTags().items.map { it.toDomain() }
             }
         }
 
     override suspend fun renameTag(
-        publicId: String,
-        expectedRowVersion: Long,
+        binding: LogicalSessionBinding,
+        tag: ManagedTag,
         name: String,
         requireOrphan: Boolean,
     ): Result<Unit> =
         errorHandler.safeCall {
-            val cleanPublicId = publicId.trim()
+            val cleanPublicId = tag.publicId.trim()
             require(cleanPublicId.isNotBlank()) { "请选择一个标签。" }
             val cleanName = name.trim()
             require(cleanName.isNotBlank()) { "请输入标签名。" }
-            ledgerRequestGuard.guardedCall { api ->
+            ledgerRequestGuard.bindExact(binding).call { api ->
                 api.renameTag(
                     cleanPublicId,
-                    TagRenameRequest(expectedRowVersion = expectedRowVersion, name = cleanName, requireOrphan = requireOrphan),
+                    TagRenameRequest(expectedRowVersion = tag.rowVersion, name = cleanName, requireOrphan = requireOrphan),
                 )
             }
             Unit
         }
 
     override suspend fun deleteTag(
-        publicId: String,
-        expectedRowVersion: Long,
+        binding: LogicalSessionBinding,
+        tag: ManagedTag,
         requireOrphan: Boolean,
     ): Result<TagMutationResult> =
         errorHandler.safeCall {
-            val cleanPublicId = publicId.trim()
+            val cleanPublicId = tag.publicId.trim()
             require(cleanPublicId.isNotBlank()) { "请选择一个标签。" }
-            ledgerRequestGuard.guardedCall { api ->
+            ledgerRequestGuard.bindExact(binding).call { api ->
                 api.deleteTag(
                     cleanPublicId,
-                    TagDeleteRequest(expectedRowVersion = expectedRowVersion, requireOrphan = requireOrphan),
+                    TagDeleteRequest(expectedRowVersion = tag.rowVersion, requireOrphan = requireOrphan),
                 ).toDomain()
             }
         }
 
     override suspend fun mergeTags(
-        sourcePublicId: String,
-        sourceRowVersion: Long,
-        targetPublicId: String,
-        targetRowVersion: Long,
+        binding: LogicalSessionBinding,
+        source: ManagedTag,
+        target: ManagedTag,
         requireOrphan: Boolean,
     ): Result<TagMutationResult> =
         errorHandler.safeCall {
-            val cleanSource = sourcePublicId.trim()
-            val cleanTarget = targetPublicId.trim()
+            val cleanSource = source.publicId.trim()
+            val cleanTarget = target.publicId.trim()
             require(cleanSource.isNotBlank() && cleanTarget.isNotBlank()) { "请选择要合并的标签。" }
             require(cleanSource != cleanTarget) { "不能把标签合并到自身。" }
-            ledgerRequestGuard.guardedCall { api ->
+            ledgerRequestGuard.bindExact(binding).call { api ->
                 api.mergeTag(
                     cleanSource,
                     TagMergeRequest(
-                        expectedRowVersion = sourceRowVersion,
+                        expectedRowVersion = source.rowVersion,
                         targetPublicId = cleanTarget,
-                        targetRowVersion = targetRowVersion,
+                        targetRowVersion = target.rowVersion,
                         requireOrphan = requireOrphan,
                     ),
                 ).toDomain()
@@ -124,13 +129,14 @@ class TagRepository(
      * the 5-minute window has elapsed (cleanup purged the snapshot) → degrade.
      */
     override suspend fun undoTagMutation(
+        binding: LogicalSessionBinding,
         mutationPublicId: String,
         expectedRowVersion: Long,
     ): Result<TagUndoResult> =
         errorHandler.safeCall {
             val cleanId = mutationPublicId.trim()
             require(cleanId.isNotBlank()) { "撤销信息已失效。" }
-            ledgerRequestGuard.guardedCall { api ->
+            ledgerRequestGuard.bindExact(binding).call { api ->
                 api.undoTagMutation(
                     cleanId,
                     TagUndoRequest(expectedRowVersion = expectedRowVersion),

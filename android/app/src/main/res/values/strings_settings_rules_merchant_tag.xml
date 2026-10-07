@@ -213,7 +213,8 @@
     <string name="tag_management_rename_dialog_label">标签名</string>
     <string name="tag_management_rename_dialog_confirm">保存</string>
     <string name="tag_management_merge_dialog_title">合并标签</string>
-    <string name="tag_management_merge_dialog_text">把「%1$s」下的账单改用哪个标签？合并后「%1$s」会被移除。可立即撤销，或在资料库回收站的保留期内恢复；后来修改过的账单会跳过。</string>
+    <string name="tag_management_merge_dialog_text">将「%1$s」合并到：</string>
+    <string name="tag_management_merge_dialog_consequences">原标签的账单将改用所选标签，原标签会被移除。可立即撤销，或在回收站保留期内恢复；后来修改过的账单会跳过。</string>
     <string name="tag_management_merge_dialog_target_with_count">%1$s（%2$d 笔）</string>
     <string name="tag_management_merge_dialog_confirm">合并</string>
 
@@ -269,6 +270,8 @@
     <string name="tag_management_undo_done">已撤销「%1$s」</string>
     <string name="tag_management_error_state_conflict">标签已在其它端被修改，请刷新后重试。</string>
     <string name="tag_management_action_failed">操作没有成功，请稍后再试。</string>
+    <string name="tag_management_draft_readonly">当前只有查看权限。填写已保留，恢复编辑权限后可以继续。</string>
+    <string name="tag_management_draft_binding_changed">登录绑定或账本已变化。原稿已保留，不能在当前身份下提交。</string>
     <string name="tag_management_summary_empty">还没有标签</string>
     <string name="tag_management_summary_with_unused">共 %1$d 个 · %2$d 个未使用</string>
     <string name="tag_management_summary_count">共 %1$d 个标签</string>

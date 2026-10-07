@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -18,10 +17,6 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -31,14 +26,15 @@ import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.viewmodel.TagEditorAction
+import com.ticketbox.viewmodel.TagEditorDraft
 
 internal data class TagManagementDialogState(
-    val renaming: ManagedTag?,
-    val merging: ManagedTag?,
-    val deleting: ManagedTag?,
+    val editor: TagEditorDraft?,
     val tags: List<ManagedTag>,
-    val preselectedMergeTarget: ManagedTag?,
     val busy: Boolean,
+    val readOnly: Boolean,
+    val bindingChanged: Boolean,
     val message: UiText?,
     val messageTone: MessageTone,
 )
@@ -47,9 +43,7 @@ internal data class TagManagementDialogActions(
     val onRenameConfirm: (ManagedTag, String) -> Unit,
     val onMergeConfirm: (ManagedTag, ManagedTag) -> Unit,
     val onDeleteConfirm: (ManagedTag) -> Unit,
-    val onDismissRename: () -> Unit,
-    val onDismissMerge: () -> Unit,
-    val onDismissDelete: () -> Unit,
+    val onEdit: (TagEditorDraft?) -> Unit,
 )
 
 @Composable
@@ -57,40 +51,42 @@ internal fun TagManagementDialogHost(
     state: TagManagementDialogState,
     actions: TagManagementDialogActions,
 ) {
-    state.renaming?.let { tag ->
-        RenameTagDialog(
+    val editor = state.editor ?: return
+    val tag = editor.source
+    when (editor.action) {
+        TagEditorAction.Rename -> RenameTagDialog(
             tag = tag,
             state = state,
             onConfirm = { newName -> actions.onRenameConfirm(tag, newName) },
-            onDismiss = actions.onDismissRename,
+            onEdit = { actions.onEdit(editor.copy(name = it)) },
+            onDismiss = { actions.onEdit(null) },
         )
-    }
-    state.merging?.let { source ->
-        MergeTagDialog(
+        TagEditorAction.Merge -> MergeTagDialog(
             state = MergeTagDialogState(
-                source = source,
+                source = tag,
                 targets = mergeTargetOptions(
                     tags = state.tags,
-                    source = source,
-                    freshTarget = state.preselectedMergeTarget,
+                    source = tag,
+                    freshTarget = editor.target,
                 ),
-                initialTarget = state.preselectedMergeTarget,
+                selected = editor.target,
                 busy = state.busy,
+                readOnly = state.readOnly,
+                bindingChanged = state.bindingChanged,
                 message = state.message,
                 messageTone = state.messageTone,
             ),
             actions = MergeTagDialogActions(
-                onConfirm = { target -> actions.onMergeConfirm(source, target) },
-                onDismiss = actions.onDismissMerge,
+                onConfirm = { target -> actions.onMergeConfirm(tag, target) },
+                onSelected = { actions.onEdit(editor.copy(target = it)) },
+                onDismiss = { actions.onEdit(null) },
             ),
         )
-    }
-    state.deleting?.let { tag ->
-        DeleteTagDialog(
+        TagEditorAction.Delete -> DeleteTagDialog(
             tag = tag,
             state = state,
             onConfirm = { actions.onDeleteConfirm(tag) },
-            onDismiss = actions.onDismissDelete,
+            onDismiss = { actions.onEdit(null) },
         )
     }
 }
@@ -115,10 +111,11 @@ private fun DeleteTagDialog(
                     },
                 )
                 AppStatusBanner(message = state.message, tone = state.messageTone)
+                TagDraftAccessMessage(state.readOnly, state.bindingChanged)
             }
         },
         confirmButton = {
-            TextButton(enabled = !state.busy, onClick = onConfirm) {
+            TextButton(enabled = !state.busy && !state.readOnly, onClick = onConfirm) {
                 Text(
                     text = stringResource(R.string.tag_management_delete_dialog_confirm),
                     color = MaterialTheme.colorScheme.error,
@@ -136,9 +133,10 @@ private fun RenameTagDialog(
     tag: ManagedTag,
     state: TagManagementDialogState,
     onConfirm: (String) -> Unit,
+    onEdit: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var name by remember { mutableStateOf(tag.name) }
+    val name = state.editor?.name.orEmpty()
     AlertDialog(
         onDismissRequest = { if (!state.busy) onDismiss() },
         title = { Text(stringResource(R.string.tag_management_rename_dialog_title)) },
@@ -150,15 +148,16 @@ private fun RenameTagDialog(
                         value = name,
                         enabled = !state.busy,
                     ),
-                    onValueChange = { name = it },
+                    onValueChange = onEdit,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 AppStatusBanner(message = state.message, tone = state.messageTone)
+                TagDraftAccessMessage(state.readOnly, state.bindingChanged)
             }
         },
         confirmButton = {
             TextButton(
-                enabled = !state.busy && name.trim().isNotBlank() && name.trim() != tag.name,
+                enabled = !state.busy && !state.readOnly && name.trim().isNotBlank() && name.trim() != tag.name,
                 onClick = { onConfirm(name) },
             ) { Text(stringResource(R.string.tag_management_rename_dialog_confirm)) }
         },
@@ -171,14 +170,17 @@ private fun RenameTagDialog(
 private data class MergeTagDialogState(
     val source: ManagedTag,
     val targets: List<ManagedTag>,
-    val initialTarget: ManagedTag?,
+    val selected: ManagedTag?,
     val busy: Boolean,
+    val readOnly: Boolean,
+    val bindingChanged: Boolean,
     val message: UiText?,
     val messageTone: MessageTone,
 )
 
 private data class MergeTagDialogActions(
     val onConfirm: (ManagedTag) -> Unit,
+    val onSelected: (ManagedTag) -> Unit,
     val onDismiss: () -> Unit,
 )
 
@@ -187,43 +189,55 @@ private fun MergeTagDialog(
     state: MergeTagDialogState,
     actions: MergeTagDialogActions,
 ) {
-    // Fresh per dialog open, so the contract preselected target seeds here without a remember key.
-    var selected by remember { mutableStateOf(state.initialTarget) }
     AlertDialog(
         onDismissRequest = { if (!state.busy) actions.onDismiss() },
         title = { Text(stringResource(R.string.tag_management_merge_dialog_title)) },
-        text = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = AppSpacing.controlMinHeight * 8)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
-            ) {
-                Text(
-                    text = stringResource(R.string.tag_management_merge_dialog_text, state.source.name),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Spacer(Modifier.height(AppSpacing.tinyGap))
-                MergeTargetPicker(
-                    targets = state.targets,
-                    selected = selected,
-                    enabled = !state.busy,
-                    onSelected = { selected = it },
-                )
-                AppStatusBanner(message = state.message, tone = state.messageTone)
-            }
-        },
+        text = { MergeTagDialogBody(state, actions.onSelected) },
         confirmButton = {
             TextButton(
-                enabled = !state.busy && selected != null,
-                onClick = { selected?.let(actions.onConfirm) },
+                enabled = !state.busy && !state.readOnly && state.selected != null,
+                onClick = { state.selected?.let(actions.onConfirm) },
             ) { Text(stringResource(R.string.tag_management_merge_dialog_confirm)) }
         },
         dismissButton = {
             TextButton(enabled = !state.busy, onClick = actions.onDismiss) { Text(stringResource(R.string.common_cancel)) }
         },
+    )
+}
+
+@Composable
+private fun MergeTagDialogBody(state: MergeTagDialogState, onSelected: (ManagedTag) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+        AppStatusBanner(message = state.message, tone = state.messageTone)
+        TagDraftAccessMessage(state.readOnly, state.bindingChanged)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = AppSpacing.controlMinHeight * 8)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+        ) {
+            Text(
+                text = stringResource(R.string.tag_management_merge_dialog_text, state.source.name),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            MergeTargetPicker(state.targets, state.selected, !state.busy, onSelected)
+            Text(
+                text = stringResource(R.string.tag_management_merge_dialog_consequences),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+    }
+}
+
+@Composable
+private fun TagDraftAccessMessage(readOnly: Boolean, bindingChanged: Boolean) {
+    if (!readOnly) return
+    AppStatusBanner(
+        message = UiText.res(if (bindingChanged) R.string.tag_management_draft_binding_changed else R.string.tag_management_draft_readonly),
+        tone = MessageTone.Info,
     )
 }
 
