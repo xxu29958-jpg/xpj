@@ -23,7 +23,10 @@ internal fun ReferenceLibraryTestTheme(content: @Composable () -> Unit) {
 internal fun captureReferenceLibraryStep(rule: ComposeTestRule, context: Context, name: String) {
     val prefix = InstrumentationRegistry.getArguments().getString("visualCapture") ?: return
     rule.waitForIdle()
-    val bitmap = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
+    val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+    // Dialog windows animate outside Compose's test clock.
+    automation.waitForIdle(500, 3_000)
+    val bitmap = automation.takeScreenshot()
     File(context.getExternalFilesDir(null), "$prefix-$name.png").outputStream().use {
         bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
     }

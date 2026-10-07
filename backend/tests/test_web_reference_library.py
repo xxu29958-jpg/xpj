@@ -170,7 +170,7 @@ def test_custom_category_choice_can_be_removed_without_rewriting_history(
             if item.name == "咖啡"
         )
 
-    page = web_client.get("/web/categories?ledger_id=owner")
+    page = web_client.get(f"/web/categories?ledger_id=owner&inspect={preference.public_id}")
     assert page.status_code == 200
     assert "自定义分类" in page.text
     assert "咖啡" in page.text
@@ -252,11 +252,18 @@ def test_stale_category_removal_keeps_the_current_owner_retryable(
     assert "分类已在其它端被修改" in response.text
     assert 'role="alert"' in response.text
     assert f'data-category-key="{public_id}"' in response.text
-    assert (
-        f'action="/web/categories/preferences/{public_id}/delete"'
-        in response.text
-    )
-    assert f'value="{fresh_version}"' in response.text
+    remove_action = f"/web/categories/preferences/{public_id}/delete"
+    assert remove_action not in hidden_post_forms(response.text)
+    assert '重新检查引用' in response.text
+    assert f'name="inspect" value="{public_id}"' in response.text
+    refreshed = web_client.get("/web/categories", params={"ledger_id": "owner", "inspect": public_id})
+    assert refreshed.status_code == 200, refreshed.text
+    retry = hidden_post_forms(refreshed.text)[remove_action]
+    assert retry["expected_row_version"] == str(fresh_version)
+    removed = web_client.post(remove_action, data=retry, follow_redirects=False)
+    assert removed.status_code == 303, removed.text
+    with SessionLocal() as db:
+        assert db.scalar(select(CategoryPreference.deleted_at).where(CategoryPreference.public_id == public_id)) is not None
 
 
 def test_referenced_category_removal_explains_the_required_next_step(
@@ -301,17 +308,18 @@ def test_referenced_category_removal_explains_the_required_next_step(
 
     category_page = web_client.get("/web/categories?ledger_id=owner&month=2026-02")
     remove_action = f"/web/categories/preferences/{public_id}/delete"
-    response = web_client.post(remove_action,
-        data=hidden_post_forms(category_page.text)[remove_action], follow_redirects=False)
+    inspection_link = next(unescape(href) for href in re.findall(r'href="([^"]+)"', category_page.text)
+        if f"inspect={public_id}" in href)
+    response = web_client.get(inspection_link)
 
-    assert response.status_code == 422
-    assert "仍被规则、预算或目标使用" in response.text
-    assert "请先处理相关配置" in response.text
+    assert response.status_code == 200
+    assert "先处理以下引用" in response.text
+    assert remove_action not in hidden_post_forms(response.text)
     assert f'data-category-key="{public_id}"' in response.text
-    assert f'value="{row_version}"' in response.text
+    with SessionLocal() as db:
+        assert db.scalar(select(CategoryPreference.row_version).where(CategoryPreference.public_id == public_id)) == row_version
 
-    # A rejection must lead to the actual blocking object, not leave the user
-    # searching every rule and plan. Resolve it through the shipped editor.
+    # The read-only inspection opens the actual blocker without a delete attempt.
     editor_links = [unescape(href) for href in re.findall(r'href="([^"]+)"', response.text)
         if unescape(href).startswith(f"/web/rules/{rule_id}/edit?ledger_id=owner")]
     assert len(editor_links) == 1
@@ -387,21 +395,21 @@ def test_category_plan_reference_opens_the_saved_editor_and_returns_to_removal(
         read_url = f"/api/goals/{goal_id}"
     original_plan = web_client.get(read_url, headers=identity.app_headers).json()
     categories = web_client.get("/web/categories?ledger_id=owner&month=2026-02")
-    form_action = next(action for action in hidden_post_forms(categories.text)
-        if action.startswith("/web/categories/preferences/"))
-    preference_id = form_action.split("/")[-2]
-    form = hidden_post_forms(categories.text)[form_action]
-    rejected = web_client.post(form_action, data=form, follow_redirects=False)
-    assert rejected.status_code == 422, rejected.text
-    editor_links = [unescape(href) for href in re.findall(r'href="([^"]+)"', rejected.text)
+    inspection_link = next(unescape(href) for href in re.findall(r'href="([^"]+)"', categories.text) if "&amp;inspect=" in href)
+    preference_id = parse_qs(urlsplit(inspection_link).query)["inspect"][0]
+    form_action = f"/web/categories/preferences/{preference_id}/delete"
+    inspection = web_client.get(inspection_link)
+    assert inspection.status_code == 200, inspection.text
+    assert not hidden_post_forms(inspection.text)
+    editor_links = [unescape(href) for href in re.findall(r'href="([^"]+)"', inspection.text)
         if unescape(href).startswith(editor_url)]
     assert len(editor_links) == 1
     editor_url = editor_links[0]
     assert web_client.get(read_url, headers=identity.app_headers).json() == original_plan
     if source == "goal":
-        assert goal_name in unescape(rejected.text)
-        assert "烘焙 &lt;img" in rejected.text
-        assert '<img src=x onerror="alert(1)">' not in rejected.text
+        assert goal_name in unescape(inspection.text)
+        assert "烘焙 &lt;img" in inspection.text
+        assert '<img src=x onerror="alert(1)">' not in inspection.text
     editor = web_client.get(editor_url)
     assert editor.status_code == 200, editor.text
     original_form = hidden_post_forms(editor.text)[edit_action]

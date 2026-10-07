@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
 import com.ticketbox.ui.components.AppPrimaryButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -21,9 +20,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -58,22 +54,12 @@ fun CategoryDirectoryScreen(
     onOpenReference: (CategoryReference) -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    var pendingDelete by remember { mutableStateOf<CategoryPreference?>(null) }
 
     LaunchedEffect(state.changedRevision) {
         if (state.changedRevision > 0) onCategoriesChanged()
     }
 
-    pendingDelete?.let { category ->
-        CategoryDeleteDialog(
-            category = category,
-            onDismiss = { pendingDelete = null },
-            onConfirm = {
-                pendingDelete = null
-                viewModel.delete(category)
-            },
-        )
-    }
+    CategoryInspectionDialog(state, viewModel, onOpenReference)
 
     AppSecondaryScrollableColumn(
         chrome = AppSecondaryPageChrome(
@@ -106,28 +92,14 @@ fun CategoryDirectoryScreen(
                 style = MaterialTheme.typography.bodySmall,
             )
         }
-        CategoryReferencesCard(state, onOpenReference)
         CustomCategoriesCard(
             state = state,
             onRetry = viewModel::refresh,
-            onDelete = { pendingDelete = it },
+            onInspect = viewModel::inspect,
         )
         DefaultCategoriesCard()
         Text(stringResource(R.string.category_directory_creation_hint),
             color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
-    }
-}
-
-@Composable
-private fun CategoryReferencesCard(state: CategoryDirectoryUiState, onOpen: (CategoryReference) -> Unit) {
-    if (!state.canModify || state.categoryReferences.isEmpty()) return
-    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        Text(stringResource(R.string.category_directory_references), style = MaterialTheme.typography.titleSmall)
-        state.categoryReferences.forEach { reference ->
-            TextButton(enabled = state.busyCategoryId == null, onClick = { onOpen(reference) }) {
-                Text(reference.label)
-            }
-        }
     }
 }
 
@@ -168,7 +140,7 @@ private fun DefaultCategoriesCard() {
 private fun CustomCategoriesCard(
     state: CategoryDirectoryUiState,
     onRetry: () -> Unit,
-    onDelete: (CategoryPreference) -> Unit,
+    onInspect: (CategoryPreference) -> Unit,
 ) {
     Column(
         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
@@ -198,10 +170,9 @@ private fun CustomCategoriesCard(
             else -> state.customCategories.forEachIndexed { index, category ->
                 CategoryPreferenceRow(
                     category = category,
-                    canModify = state.canModify,
                     busy = state.busyCategoryId != null,
                     showDivider = index < state.customCategories.lastIndex,
-                    onDelete = { onDelete(category) },
+                    onInspect = { onInspect(category) },
                 )
             }
         }
@@ -227,10 +198,9 @@ private fun CategoryLoadFailed(
 @Composable
 private fun CategoryPreferenceRow(
     category: CategoryPreference,
-    canModify: Boolean,
     busy: Boolean,
     showDivider: Boolean,
-    onDelete: () -> Unit,
+    onInspect: () -> Unit,
 ) {
     AppListRow(showDivider = showDivider) {
         Row(
@@ -255,43 +225,18 @@ private fun CategoryPreferenceRow(
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
-            if (canModify) {
-                IconButton(
-                    enabled = !busy,
-                    onClick = onDelete,
-                ) {
-                    Icon(
-                        imageVector = ImageVector.vectorResource(R.drawable.ic_lucide_trash_2),
-                        contentDescription = stringResource(
-                            R.string.category_directory_delete_description,
-                            category.name,
-                        ),
-                    )
-                }
+            IconButton(
+                enabled = !busy,
+                onClick = onInspect,
+            ) {
+                Icon(
+                    imageVector = ImageVector.vectorResource(R.drawable.ic_lucide_chevron_right),
+                    contentDescription = stringResource(
+                        R.string.category_directory_delete_description,
+                        category.name,
+                    ),
+                )
             }
         }
     }
-}
-
-@Composable
-private fun CategoryDeleteDialog(
-    category: CategoryPreference,
-    onDismiss: () -> Unit,
-    onConfirm: () -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.category_directory_delete_title, category.name)) },
-        text = { Text(stringResource(R.string.category_directory_delete_body)) },
-        confirmButton = {
-            TextButton(onClick = onConfirm) {
-                Text(stringResource(R.string.category_directory_delete_confirm))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.common_cancel))
-            }
-        },
-    )
 }

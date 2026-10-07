@@ -13,6 +13,7 @@ from app.routes._original_file_response import OriginalFileResponse
 from app.schemas import (
     BackgroundTaskResponse,
     CategoriesResponse,
+    CategoryPreferenceInspectionResponse,
     CategoryPreferenceListResponse,
     CategoryPreferenceResponse,
     CategoryPreferenceTokenRequest,
@@ -44,6 +45,7 @@ from app.services.background_task_response import task_response_dicts
 from app.services.category_preference_service import (
     CategoryPreferenceView,
     delete_category_preference,
+    inspect_category_preference,
     list_category_preferences,
     restore_category_preference,
 )
@@ -214,6 +216,16 @@ def get_expense_category_preferences(
     return CategoryPreferenceListResponse(
         items=[_category_preference_response(item) for item in list_category_preferences(db, tenant_id=auth.tenant_id)]
     )
+
+
+@router.get("/categories/preferences/{public_id}", response_model=CategoryPreferenceInspectionResponse)
+def get_expense_category_preference(
+    public_id: str,
+    auth: AuthContext = Depends(get_current_app_context),
+    db: Session = Depends(get_db),
+) -> CategoryPreferenceInspectionResponse:
+    category, references = inspect_category_preference(db, tenant_id=auth.tenant_id, public_id=public_id)
+    return CategoryPreferenceInspectionResponse(category=_category_preference_response(category), references=references)
 
 
 @router.post(

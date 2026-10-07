@@ -123,6 +123,7 @@ from app.schemas._exchange import (
     ExchangeRateResponse,
 )
 from app.schemas._expense import (
+    CategoryPreferenceInspectionResponse,
     CategoryPreferenceListResponse,
     CategoryPreferenceResponse,
     CategoryPreferenceTokenRequest,
@@ -361,6 +362,7 @@ __all__ = [
     "CategoriesResponse",
     "CategoryRuleCreateRequest",
     "CategoryRuleDeleteRequest",
+    "CategoryPreferenceInspectionResponse",
     "CategoryPreferenceListResponse",
     "CategoryPreferenceResponse",
     "CategoryPreferenceTokenRequest",

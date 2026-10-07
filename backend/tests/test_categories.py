@@ -140,7 +140,9 @@ def test_web_categories_renders_with_navigation(web_client: TestClient) -> None:
     assert resp.status_code == 200
     # Canonical section lives under the real Reference Library hub.
     assert '<h1 class="page-title">分类</h1>' in resp.text
-    assert 'href="/web/library?ledger_id=owner">资料库</a>' in resp.text
+    assert 'data-page-level="tertiary"' in resp.text
+    assert any(href == "/web/library?ledger_id=owner" and "资料库" in label
+        for href, label in re.findall(r'<a[^>]*href="([^"]+)"[^>]*>(.*?)</a>', resp.text, re.S))
     assert 'href="/web/rules?ledger_id=owner"' in resp.text
     assert 'aria-label="选择分类月份"' in resp.text
 
@@ -359,6 +361,11 @@ def test_delete_category_preference_rejects_active_rule_reference(
         client, identity=identity, category="咖啡", client_ref="cat-pref-rule"
     )
     preference = _category_preference(client, identity=identity, name="咖啡")
+    preview_path = f"/api/expenses/categories/preferences/{preference['public_id']}"
+    assert client.get(preview_path).status_code == 401
+    before_reference = client.get(preview_path, headers=identity.app_headers)
+    assert before_reference.status_code == 200, before_reference.text
+    assert before_reference.json() == {"category": preference, "references": []}
     with SessionLocal() as db:
         now = now_utc()
         ensure_category_preference_for_name(db, tenant_id="owner", name="咖啡")
@@ -393,6 +400,14 @@ def test_delete_category_preference_rejects_active_rule_reference(
         ])
         db.commit()
         rule_id = rule.id
+
+    preview = client.get(preview_path, headers=identity.app_headers)
+    assert preview.status_code == 200, preview.text
+    assert preview.json()["category"] == preference
+    assert preview.json()["references"] == [
+        {"kind": "rule", "id": str(rule_id), "label": "规则「coffee」"},
+    ]
+    assert client.get(preview_path, headers=identity.gray_app_headers).status_code == 404
 
     deleted = client.post(
         f"/api/expenses/categories/preferences/{preference['public_id']}/delete",
@@ -429,12 +444,17 @@ def test_category_rejection_identifies_the_saved_plan_without_changing_it(client
         read_url = "/api/budgets/monthly?month=2026-10"
 
     original = client.get(read_url, headers=identity.app_headers).json()
+    preview = client.get(f"/api/expenses/categories/preferences/{preference['public_id']}", headers=identity.app_headers)
+    assert preview.status_code == 200, preview.text
+    assert [(item["kind"], item["id"]) for item in preview.json()["references"]] == [(kind, identifier)]
+    assert _category_preference(client, identity=identity, name="咖啡") == preference
     rejected = client.post(f"/api/expenses/categories/preferences/{preference['public_id']}/delete",
         headers=identity.app_headers, json={"expected_row_version": preference["row_version"]})
     assert rejected.status_code == 409, rejected.text
     references = rejected.json().get("category_references", [])
     assert [(item["kind"], item["id"]) for item in references] == [(kind, identifier)]
     assert "十月咖啡安排" in references[0]["label"] if kind == "goal" else "2026-10" in references[0]["label"]
+    assert preview.json()["references"] == references
     assert client.get(read_url, headers=identity.app_headers).json() == original
     assert _category_preference(client, identity=identity, name="咖啡") == preference
 

@@ -23,9 +23,11 @@ import androidx.test.core.app.ApplicationProvider
 import com.ticketbox.R
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.CategoryPreferenceDto
+import com.ticketbox.data.remote.dto.CategoryPreferenceInspectionDto
 import com.ticketbox.data.remote.dto.CategoryPreferenceListResponseDto
 import com.ticketbox.data.remote.dto.CategoryPreferenceTokenRequestDto
 import com.ticketbox.data.remote.dto.CategoryRuleDto
+import com.ticketbox.data.remote.dto.CategoryReferenceDto
 import com.ticketbox.data.remote.dto.GoalListResponseDto
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.AppThemeMode
@@ -51,6 +53,8 @@ class CategoryReferenceNavigationTest {
     @Volatile private var removed = false
     @Volatile private var reads = 0
     @Volatile private var failDirectoryRead = false
+    @Volatile private var failInspectionRead = false
+    private val deleteRequests = CopyOnWriteArrayList<CategoryPreferenceTokenRequestDto>()
     private var referenceKind = "rule"
     private var referenceId = "42"
     private var referenceLabel = "规则「bakery」"
@@ -65,8 +69,17 @@ class CategoryReferenceNavigationTest {
                         .toResponseBody("application/json".toMediaType())))
                 return CategoryPreferenceListResponseDto(if (removed) emptyList() else listOf(category))
             }
+            override suspend fun inspectCategoryPreference(publicId: String): CategoryPreferenceInspectionDto {
+                assertEquals(category.publicId, publicId)
+                if (failInspectionRead) throw HttpException(Response.error<CategoryPreferenceInspectionDto>(503,
+                    """{"error":"service_unavailable","message":"暂时无法核对分类引用。"}"""
+                        .toResponseBody("application/json".toMediaType())))
+                return CategoryPreferenceInspectionDto(category,
+                    if (blocked) listOf(CategoryReferenceDto(referenceKind, referenceId, referenceLabel)) else emptyList())
+            }
             override suspend fun deleteCategoryPreference(publicId: String,
                 request: CategoryPreferenceTokenRequestDto): CategoryPreferenceDto {
+                deleteRequests += request
                 assertEquals(category.publicId, publicId)
                 assertEquals(category.rowVersion, request.expectedRowVersion)
                 if (blocked) throw HttpException(Response.error<CategoryPreferenceDto>(409,
@@ -98,9 +111,9 @@ class CategoryReferenceNavigationTest {
     @Test fun blockedRemovalOpensItsRuleAndReturnsToRefreshedDirectory() {
         showDirectory()
         waitForText("烘焙")
-        removeCategory()
-        waitForText("这个分类仍被规则使用，请先处理相关配置。")
-        compose.onNodeWithText("烘焙").assertIsDisplayed()
+        inspectCategory()
+        waitForText(referenceLabel)
+        assertEquals(0, deleteRequests.size)
         compose.onNodeWithText("规则「bakery」").performScrollTo().performTouchInput { click() }
         waitForText(context.getString(R.string.category_rule_editor_submit_update))
         compose.onNode(hasSetTextAction() and hasText("bakery")).assertIsDisplayed()
@@ -115,6 +128,43 @@ class CategoryReferenceNavigationTest {
         waitForText(context.getString(R.string.category_directory_deleted, "烘焙"))
         compose.onNodeWithText("烘焙").assertDoesNotExist()
         assertEquals(true, removed)
+    }
+
+    @Test fun categoryReferencesAreReadBeforeConfirmingRemoval() {
+        showDirectory()
+        inspectCategory()
+        waitForText(referenceLabel)
+        compose.onNodeWithText("规则「bakery」").assertIsDisplayed()
+        assertEquals(0, deleteRequests.size)
+        assertEquals(false, removed)
+        captureReferenceLibraryStep(compose, context, "category-before-delete")
+    }
+
+    @Test fun failedInspectionCannotSubmitAndKeepsTheOriginalCategoryForReadRetry() {
+        showDirectory()
+        failInspectionRead = true
+        inspectCategory()
+        waitForText("暂时无法核对分类引用。")
+        compose.onNodeWithText(context.getString(R.string.category_directory_delete_confirm)).assertDoesNotExist()
+        assertEquals(0, deleteRequests.size)
+        failInspectionRead = false
+        compose.onNodeWithText(context.getString(R.string.category_directory_inspection_retry))
+            .performScrollTo().performTouchInput { click() }
+        waitForText(referenceLabel)
+        assertEquals(0, deleteRequests.size)
+    }
+
+    @Test fun aReferenceAddedAfterInspectionStillBlocksTheOriginalRemoval() {
+        blocked = false
+        showDirectory()
+        inspectCategory()
+        waitForText(context.getString(R.string.category_directory_no_references))
+        blocked = true
+        compose.onNodeWithText(context.getString(R.string.category_directory_delete_confirm)).performTouchInput { click() }
+        waitForText(referenceLabel)
+        assertEquals(listOf(CategoryPreferenceTokenRequestDto(category.rowVersion)), deleteRequests.toList())
+        assertEquals(false, removed)
+        compose.onNodeWithText(context.getString(R.string.category_directory_delete_confirm)).assertDoesNotExist()
     }
 
     @Test fun blockedRemovalOpensTheReferencedBudgetMonthAndReturnsToRefreshedDirectory() {
@@ -210,9 +260,9 @@ class CategoryReferenceNavigationTest {
 
     private fun openReference() {
         waitForText("烘焙")
-        removeCategory()
+        inspectCategory()
         waitForText(referenceLabel)
-        compose.onNodeWithText("烘焙").assertIsDisplayed()
+        assertEquals(0, deleteRequests.size)
         assertEquals(false, removed)
         compose.onNodeWithText(referenceLabel).performScrollTo().performTouchInput { click() }
     }
@@ -230,9 +280,14 @@ class CategoryReferenceNavigationTest {
     }
 
     private fun removeCategory() {
+        inspectCategory()
+        waitForText(context.getString(R.string.category_directory_delete_confirm))
+        compose.onNodeWithText(context.getString(R.string.category_directory_delete_confirm)).performTouchInput { click() }
+    }
+
+    private fun inspectCategory() {
         compose.onNodeWithContentDescription(context.getString(R.string.category_directory_delete_description, "烘焙"))
             .performScrollTo().performTouchInput { click() }
-        compose.onNodeWithText(context.getString(R.string.category_directory_delete_confirm)).performTouchInput { click() }
     }
 
     private fun rule(id: Long, keyword: String) = CategoryRuleDto(id, keyword, "烘焙", true, 10,

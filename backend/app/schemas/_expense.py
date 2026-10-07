@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_valid
 
 from app.schemas._accounting_time import AccountingTimeInput, AccountingTimeSnapshot
 from app.schemas._background_task import BackgroundTaskResponse
+from app.schemas._common import CategoryReferenceResponse
 from app.schemas._money import (
     NonNegativeCanonicalDecimalInput,
     NonNegativeMoneyAggregate,
@@ -30,6 +31,7 @@ ExpenseItemKind = Literal["product", "discount", "tax", "service_fee"]
 ItemsSumStatus = Literal["matched", "mismatch_known", "mismatch_acknowledged", "no_items"]
 
 __all__ = [
+    "CategoryPreferenceInspectionResponse",
     "CategoryPreferenceListResponse",
     "CategoryPreferenceResponse",
     "CategoryPreferenceTokenRequest",
@@ -248,6 +250,11 @@ class CategoryPreferenceResponse(BaseModel):
 
 class CategoryPreferenceListResponse(BaseModel):
     items: list[CategoryPreferenceResponse]
+
+
+class CategoryPreferenceInspectionResponse(BaseModel):
+    category: CategoryPreferenceResponse
+    references: list[CategoryReferenceResponse]
 
 
 class ExpenseRecognizeTextRequest(BaseModel):

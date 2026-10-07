@@ -80,7 +80,7 @@ def test_installed_loopback_logout_returns_to_local_confirmation(
         headers={"Cookie": f"{SESSION_COOKIE_NAME}={session_token}"},
     )
     assert page.status_code == 200, page.text
-    csrf = re.search(r'name="csrf_token" value="([^"]+)"', page.text)
+    csrf = re.search(r'<meta name="csrf-token" content="([^"]+)"', page.text)
     csrf_seed = page.cookies.get(CSRF_COOKIE_NAME)
     assert csrf is not None
     assert csrf_seed is not None

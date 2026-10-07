@@ -8772,6 +8772,26 @@
         "title": "CategoriesResponse",
         "type": "object"
       },
+      "CategoryPreferenceInspectionResponse": {
+        "properties": {
+          "category": {
+            "$ref": "#/components/schemas/CategoryPreferenceResponse"
+          },
+          "references": {
+            "items": {
+              "$ref": "#/components/schemas/CategoryReferenceResponse"
+            },
+            "title": "References",
+            "type": "array"
+          }
+        },
+        "required": [
+          "category",
+          "references"
+        ],
+        "title": "CategoryPreferenceInspectionResponse",
+        "type": "object"
+      },
       "CategoryPreferenceListResponse": {
         "properties": {
           "items": {
@@ -29157,6 +29177,90 @@
         ]
       }
     },
+    "/api/expenses/categories/preferences/{public_id}": {
+      "get": {
+        "operationId": "get_expense_category_preference_api_expenses_categories_preferences__public_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryPreferenceInspectionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Get Expense Category Preference",
+        "tags": [
+          "expenses"
+        ]
+      }
+    },
     "/api/expenses/categories/preferences/{public_id}/delete": {
       "post": {
         "operationId": "post_delete_expense_category_preference_api_expenses_categories_preferences__public_id__delete_post",
@@ -47622,6 +47726,16 @@
             "schema": {
               "default": "",
               "title": "Msg",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "inspect",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Inspect",
               "type": "string"
             }
           }

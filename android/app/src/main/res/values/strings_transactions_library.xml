@@ -26,8 +26,7 @@
     <string name="category_directory_creation_hint">在记账时填写新分类，就能在这里管理使用情况和引用。移除不改写历史流水。</string>
     <string name="category_directory_custom_empty">还没有自定义分类。在新增或编辑交易时使用新分类，它会自动出现在这里。</string>
     <string name="category_directory_usage_count">已用于 %1$d 笔交易</string>
-    <string name="category_directory_delete_description">移除分类“%1$s”</string>
-    <string name="category_directory_delete_title">移除“%1$s”？</string>
+    <string name="category_directory_delete_description">查看分类“%1$s”的使用与引用</string>
     <string name="category_directory_delete_body">它会从分类选项中隐藏，已有交易不会被删除；如仍被规则、预算或目标使用，需要先处理这些关联。</string>
     <string name="category_directory_delete_confirm">移除分类</string>
     <string name="category_directory_deleted">已将“%1$s”移到回收站</string>
@@ -37,5 +36,9 @@
     <string name="category_directory_delete_failed">暂时无法移除这个分类。</string>
     <string name="category_directory_retry">重新加载</string>
     <string name="category_directory_references">使用此分类的配置</string>
+    <string name="category_directory_inspection_title">分类“%1$s”</string>
+    <string name="category_directory_inspection_failed">暂时无法核实分类引用，请保留当前分类后重试。</string>
+    <string name="category_directory_inspection_retry">重新核对引用</string>
+    <string name="category_directory_no_references">当前没有规则、预算或目标引用。移除时会再次检查。</string>
     <string name="category_directory_back">返回分类</string>
 </resources>

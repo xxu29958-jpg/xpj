@@ -3,6 +3,7 @@ package com.ticketbox.viewmodel
 import com.ticketbox.R
 import com.ticketbox.data.repository.CategoryPreferenceActions
 import com.ticketbox.domain.model.CategoryPreference
+import com.ticketbox.domain.model.CategoryPreferenceInspection
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.Dispatchers
@@ -77,6 +78,9 @@ class CategoryDirectoryViewModelTest {
         val viewModel = CategoryDirectoryViewModel(repository)
         advanceUntilIdle()
 
+        viewModel.inspect(target)
+        advanceUntilIdle()
+        assertEquals(target, viewModel.uiState.value.inspection?.category)
         viewModel.delete(target)
         advanceUntilIdle()
 
@@ -128,6 +132,9 @@ private class FakeCategoryPreferenceActions(
 
     override suspend fun categoryPreferences(): Result<List<CategoryPreference>> =
         loadFailure?.let(Result.Companion::failure) ?: Result.success(items.toList())
+
+    override suspend fun inspectCategoryPreference(publicId: String): Result<CategoryPreferenceInspection> =
+        Result.success(CategoryPreferenceInspection(items.first { it.publicId == publicId }, emptyList()))
 
     override suspend fun deleteCategoryPreference(
         publicId: String,

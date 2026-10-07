@@ -28,7 +28,9 @@ from app.routes.web_common import (
     templates,
 )
 from app.services.category_preference_service import (
+    CategoryPreferenceView,
     delete_category_preference,
+    inspect_category_preference,
     list_category_preferences,
 )
 from app.services.category_service import (
@@ -58,6 +60,8 @@ def _render_categories(
     category_error: str = "",
     category_error_public_id: str = "",
     category_references: list[dict[str, str]] | None = None,
+    inspected_category: CategoryPreferenceView | None = None,
+    inspection_failed: bool = False,
     status_code: int = 200,
 ) -> HTMLResponse:
     timezone_name = default_accounting_timezone_name()
@@ -82,16 +86,17 @@ def _render_categories(
         selected_ledger_id=selected_id,
     )
     home = ctx["home_currency_code"]
+    selected_category = category_error_public_id or (inspected_category.public_id if inspected_category else "")
     reference_links = []
     for reference in category_references or []:
         identifier = quote(reference["id"], safe="")
-        origin = {"ledger_id": selected_id, "return_category": category_error_public_id, "return_month": target_month}
+        origin = {"ledger_id": selected_id, "return_category": selected_category, "return_month": target_month}
         query = urlencode(origin)
         if reference["kind"] == "rule":
             href = f"/web/rules/{identifier}/edit?{query}"
         elif reference["kind"] == "budget":
             href = "/web/budgets?" + urlencode({"ledger_id": selected_id, "month": reference["id"],
-                "return_category": category_error_public_id, "return_month": target_month})
+                "return_category": selected_category, "return_month": target_month})
         elif reference["kind"] == "goal":
             href = f"/web/goals/{identifier}/edit?{query}"
         else:
@@ -122,6 +127,8 @@ def _render_categories(
         category_error=category_error,
         category_error_public_id=category_error_public_id,
         category_reference_links=reference_links,
+        inspected_category=inspected_category,
+        inspection_failed=inspection_failed,
         q="?ledger_id=" + selected_id,
     )
     return templates.TemplateResponse(
@@ -138,11 +145,21 @@ def web_categories(
     ledger_id: str = "",
     month: str = "",
     msg: str = "",
+    inspect: str = "",
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
+    inspected = None
+    references = None
+    if inspect:
+        try:
+            inspected, references = inspect_category_preference(db, tenant_id=selected_id, public_id=inspect)
+        except AppError as exc:
+            return _render_categories(request, db, options=options, selected_id=selected_id, month=month,
+                category_error=exc.message, category_error_public_id=inspect, inspection_failed=True,
+                status_code=exc.status_code)
     return _render_categories(
         request,
         db,
@@ -150,6 +167,8 @@ def web_categories(
         selected_id=selected_id,
         month=month,
         msg=msg,
+        inspected_category=inspected,
+        category_references=references,
     )
 
 
@@ -184,6 +203,7 @@ def web_category_preference_delete(
             month=month,
             category_error="页面已过期，请使用当前分类状态重试。",
             category_error_public_id=public_id,
+            inspection_failed=True,
             status_code=422,
         )
     try:
@@ -209,6 +229,7 @@ def web_category_preference_delete(
             category_error=message,
             category_error_public_id=public_id,
             category_references=(exc.details or {}).get("category_references", []),
+            inspection_failed=True,
             status_code=422,
         )
     return _web_redirect(

@@ -258,6 +258,9 @@ internal class FakeApiService(
     override suspend fun categoryPreferences(): com.ticketbox.data.remote.dto.CategoryPreferenceListResponseDto =
         unsupported()
 
+    override suspend fun inspectCategoryPreference(publicId: String):
+        com.ticketbox.data.remote.dto.CategoryPreferenceInspectionDto = unsupported()
+
     override suspend fun deleteCategoryPreference(
         publicId: String,
         request: com.ticketbox.data.remote.dto.CategoryPreferenceTokenRequestDto,

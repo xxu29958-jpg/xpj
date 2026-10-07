@@ -56,21 +56,37 @@
   <div class="product-entry-list">
   {% for item in category_preferences %}
   {% set row_error = category_error and category_error_public_id == item.public_id %}
-  <details id="category-{{ item.public_id }}" data-category-key="{{ item.public_id }}"{% if row_error %} open aria-invalid="true" aria-describedby="category-preference-error"{% endif %}>
-    <summary class="product-entry">
+  {% set inspected = inspected_category and inspected_category.public_id == item.public_id %}
+  {% if inspected %}{% set item = inspected_category %}{% endif %}
+  <div id="category-{{ item.public_id }}" data-category-key="{{ item.public_id }}"{% if row_error %} aria-invalid="true" aria-describedby="category-preference-error"{% endif %}>
+    <a class="product-entry" href="/web/categories?ledger_id={{ selected_ledger_id }}&amp;month={{ target_month }}&amp;inspect={{ item.public_id }}#category-{{ item.public_id }}"{% if inspected %} aria-current="true"{% endif %}>
       <span class="product-entry-icon product-entry-icon--apricot" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#shapes"/></svg></span>
       <span class="product-entry-copy"><strong>{{ item.name }}</strong><span>{{ '已被 ' ~ item.usage_count ~ ' 笔流水使用' if item.usage_count else '暂无流水使用' }}</span></span>
       <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
-    </summary>
+    </a>
+    {% if row_error or inspected %}
     <div class="stack">
       {% if row_error %}
       <div id="category-preference-error" class="product-feedback product-feedback--danger" role="alert" data-category-key="{{ item.public_id }}">
         {{ category_error }}
-        {% for reference in category_reference_links %}<a class="product-button product-button--quiet" href="{{ reference.href }}">{{ reference.label }}</a>{% endfor %}
       </div>
       {% endif %}
+      {% if category_reference_links %}
+      <p class="meta">先处理以下引用，再移除分类。</p>
+      <nav class="stack" aria-label="使用此分类的配置">
+        {% for reference in category_reference_links %}<a class="product-button product-button--quiet" href="{{ reference.href }}">{{ reference.label }}</a>{% endfor %}
+      </nav>
+      {% elif not inspection_failed %}<p class="meta">当前没有规则、预算或目标引用。提交时会再次检查。</p>
+      {% else %}
+      <form method="get" action="/web/categories">
+        <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+        <input type="hidden" name="month" value="{{ target_month }}">
+        <input type="hidden" name="inspect" value="{{ item.public_id }}">
+        <button type="submit" class="product-button">重新检查引用</button>
+      </form>
+      {% endif %}
       <p class="meta">移除仅影响今后的可选分类，历史流水保持不变。有规则、预算或目标引用时，需要先处理引用。</p>
-      {% if can_write %}
+      {% if can_write and not category_reference_links and not inspection_failed %}
       <form method="post" action="/web/categories/preferences/{{ item.public_id }}/delete" data-confirm="把「{{ item.name }}」从可选分类移除？历史流水保持不变，需要时可从回收站恢复。">
         {{ csrf_field|safe }}
         <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
@@ -80,7 +96,8 @@
       </form>
       {% endif %}
     </div>
-  </details>
+    {% endif %}
+  </div>
   {% else %}
   <div class="product-state"><h3 class="product-state-title">还没有自定义分类</h3><p class="product-state-body">在记账时填写新分类，就能在这里管理它。</p></div>
   {% endfor %}

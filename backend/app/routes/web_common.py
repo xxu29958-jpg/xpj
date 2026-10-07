@@ -121,7 +121,8 @@ def category_return_url(ledger_id: str, category_id: str, month: str, *, message
     """Return only to the originating category row, never to a supplied path."""
     if not category_id:
         return ""
-    return _with_ledger("/web/categories", ledger_id, month=normalize_month_label(month) or "", msg=message) + (
+    return _with_ledger("/web/categories", ledger_id, month=normalize_month_label(month) or "", msg=message,
+        inspect=category_id) + (
         "#category-" + quote(category_id, safe="")
     )
 

@@ -2,6 +2,7 @@ package com.ticketbox.data.remote
 
 import com.ticketbox.data.remote.api.AuthApi
 import com.ticketbox.data.remote.api.ExpenseListApi
+import com.ticketbox.data.remote.api.CategoryPreferenceApi
 import com.ticketbox.data.remote.api.ExpenseDetailApi
 import com.ticketbox.data.remote.api.ExpenseCorrectionApi
 import com.ticketbox.data.remote.api.BillSplitApi
@@ -51,6 +52,7 @@ interface ApiService :
     com.ticketbox.data.remote.api.PortableExportApi,
     AuthApi,
     ExpenseListApi,
+    CategoryPreferenceApi,
     ExpenseDetailApi,
     ExpenseCorrectionApi,
     BillSplitApi,
