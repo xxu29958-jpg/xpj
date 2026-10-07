@@ -79,14 +79,26 @@
     <string name="category_rule_rollback_dialog_confirm">回退</string>
 
     <!-- MerchantAliasesScreen：设置→商家管理 屏（UI 标签；状态结果文案在 strings.xml 的 merchant_*） -->
-    <string name="merchant_aliases_page_title">商家管理</string>
+    <string name="merchant_aliases_page_title">常去的店</string>
+    <string name="merchant_directory_subtitle">名字统一，回头找更方便。</string>
+    <string name="merchant_directory_search">搜索商家或别名</string>
+    <string name="merchant_directory_all">全部</string>
+    <string name="merchant_directory_all_aliases">全部别名</string>
+    <string name="merchant_directory_all_aliases_hint">包括独立添加的别名</string>
+    <string name="merchant_directory_no_match">没有找到匹配的商家</string>
+    <string name="merchant_directory_no_match_hint">试试其它名称、别名或显示状态。</string>
+    <string name="merchant_catalog_usage">%1$d 笔记录 · %2$s</string>
+    <string name="merchant_detail_subtitle">管理同一家店的不同名字</string>
+    <string name="merchant_detail_identity">商家身份</string>
+    <string name="merchant_detail_identity_hint">改名、显示和合并都沿用原商家</string>
+    <string name="merchant_detail_missing">这个商家已不在当前目录</string>
+    <string name="merchant_detail_missing_hint">可返回目录或到回收站核对原对象。</string>
+    <string name="merchant_detail_matching_note">目录与别名不改写原始账单商家。匹配只提供建议。</string>
     <string name="merchant_aliases_undo_deleted">已删除「%1$s」</string>
     <string name="merchant_aliases_undo_button">撤销</string>
     <string name="merchant_management_readonly_title">只读模式</string>
     <string name="merchant_management_readonly_hint">当前角色只能查看商家目录和别名，不能新增、合并、隐藏或删除。</string>
     <string name="merchant_management_section_tools">整理工具</string>
-    <string name="merchant_management_tools_prompt_title">目录与别名</string>
-    <string name="merchant_management_tools_prompt_body">统一商家展示，归并不同写法。</string>
     <string name="merchant_management_tools_add_catalog">新增商家</string>
     <string name="merchant_management_tools_add_alias">新增别名</string>
     <string name="merchant_catalog_name_label">商家名称</string>
@@ -100,7 +112,6 @@
     <string name="merchant_catalog_delete_dialog_title">删除这个商家？</string>
     <string name="merchant_catalog_delete_dialog_text">「%1$s」会移入回收站；历史账单里的原始商家名不会被改写。</string>
     <string name="merchant_catalog_delete_dialog_confirm">确定删除</string>
-    <string name="merchant_catalog_card_key_usage">标准键 %1$s · 历史 %2$d 笔</string>
     <string name="merchant_catalog_card_merged_into">已合并到 %1$s</string>
     <string name="merchant_catalog_card_status_visible">显示</string>
     <string name="merchant_catalog_card_status_hidden">隐藏</string>
@@ -110,7 +121,6 @@
     <string name="merchant_catalog_card_action_hide">隐藏</string>
     <string name="merchant_catalog_card_action_show">显示</string>
     <string name="merchant_catalog_card_action_delete">删除</string>
-    <string name="merchant_catalog_actions_content_description">商家操作</string>
     <string name="merchant_catalog_rename_dialog_title">重命名商家</string>
     <string name="merchant_catalog_rename_dialog_label">商家名称</string>
     <string name="merchant_catalog_rename_dialog_confirm">保存</string>
@@ -133,15 +143,12 @@
     <string name="merchant_aliases_section_list">别名列表</string>
     <string name="merchant_aliases_list_empty_title">暂无别名</string>
     <string name="merchant_aliases_list_empty">还没有商家别名。添加后，分类规则可用标准商家命中不同写法的商家名。</string>
-    <string name="merchant_aliases_empty_combined_title">还没有商家资料</string>
     <string name="merchant_aliases_reload_hint">可重新读取查看最新结果，已完成的操作无需再次提交。</string>
     <string name="merchant_aliases_reload_button">重新读取别名</string>
-    <string name="merchant_aliases_empty_combined_body">新增商家或别名后，这里会帮你归并同一商家的不同写法。</string>
     <string name="merchant_aliases_delete_dialog_title">删除这个别名？</string>
     <string name="merchant_aliases_delete_dialog_text">删除后，「%1$s」不再自动归到「%2$s」。</string>
     <string name="merchant_aliases_delete_dialog_confirm">确定删除</string>
     <string name="merchant_aliases_card_canonical">归到 %1$s</string>
-    <string name="merchant_aliases_card_key_mapping">%1$s → %2$s</string>
     <string name="merchant_aliases_card_status_enabled">已启用</string>
     <string name="merchant_aliases_card_status_disabled">已停用</string>
     <string name="merchant_aliases_card_action_disable">停用</string>
@@ -257,8 +264,6 @@
     <string name="category_rule_form_validation_priority">优先级必须是数字。</string>
 
     <!-- ADR-0044 wave 2: MerchantAliasesScreen vertical-local helper 文案（状态结果文案复用 strings.xml 的 merchant_alias_*） -->
-    <string name="merchant_aliases_summary_empty">还没有商家目录或别名</string>
-    <string name="merchant_aliases_summary_count">%1$d 个商家 · %2$d 条启用别名 · 共 %3$d 条别名</string>
 
     <!-- ADR-0044 wave 2: TagManagementViewModel 用户可见状态/结果文案 + tagSummary helper -->
     <string name="tag_management_load_failed">标签暂时打不开。</string>

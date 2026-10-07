@@ -3,14 +3,10 @@ package com.ticketbox.ui.screens.settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -20,16 +16,17 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.MerchantAlias
@@ -37,9 +34,9 @@ import com.ticketbox.domain.model.MerchantCatalog
 import com.ticketbox.domain.model.MerchantCatalogAliasPolicy
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.ui.components.AppAction
-import com.ticketbox.ui.components.AppActionRow
 import com.ticketbox.ui.components.AppStatusBanner
+import com.ticketbox.ui.components.AppAdaptiveContentActionRow
+import com.ticketbox.ui.components.AppAdaptiveContentActionStyle
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
@@ -56,12 +53,15 @@ fun MerchantAliasesScreen(
 ) {
     val editors = remember { MerchantEditors() }
     val catalogDialogController = editors.catalogDialogs
-    // Resolve strings before non-composable click handlers need them.
-    val catalogValidationMessage = stringResource(R.string.merchant_catalog_create_validation)
-    val createValidationMessage = stringResource(R.string.merchant_aliases_create_validation)
 
     LaunchedEffect(state.editorCompletion) {
         state.editorCompletion?.let(editors::complete)
+    }
+    LaunchedEffect(state.undoableAlias?.publicId) {
+        if (state.undoableAlias != null) {
+            delay(5000)
+            actions.undo.onDismiss()
+        }
     }
 
     MerchantCatalogDialogHost(
@@ -130,161 +130,81 @@ fun MerchantAliasesScreen(
         )
     }
 
-    ManagementPageFrame(
-        header = ManagementPageHeader(
-            title = stringResource(R.string.merchant_aliases_page_title),
-            subtitle = merchantAliasSummary(state.catalog, state.aliases),
-            chrome = chrome,
-        ),
-        onBack = actions.onBack,
-        status = { AppStatusBanner(message = state.message, tone = state.messageTone) },
-    ) {
-        // Online deletes expose a short undo window.
-        state.undoableAlias?.let { undoable ->
-            LaunchedEffect(undoable.publicId) {
-                delay(5000)
-                actions.undo.onDismiss()
-            }
-            SettingsOpenPanel {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = AppSpacing.miniGap),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = stringResource(R.string.merchant_aliases_undo_deleted, undoable.alias),
-                        modifier = Modifier.weight(1f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Spacer(Modifier.width(AppSpacing.compactGap))
-                    TextButton(enabled = !state.busy, onClick = actions.undo.onUndoDelete) {
-                        Text(stringResource(R.string.merchant_aliases_undo_button))
-                    }
-                }
-            }
-        }
-
-        if (state.readOnly) {
-            SettingsInlineEmpty(
+    val selected = state.catalog.find { it.publicId == editors.selectedCatalogId }
+    val pages = rememberSaveableStateHolder()
+    val onBack = { if (editors.isDirectory) actions.onBack() else editors.back() }
+    BackHandler(enabled = !editors.isDirectory, onBack = onBack)
+    pages.SaveableStateProvider(editors.pageKey) {
+        ManagementPageFrame(
+            header = merchantPageHeader(editors, selected, chrome),
+            onBack = onBack,
+            status = { AppStatusBanner(message = state.message, tone = state.messageTone) },
+        ) {
+            MerchantUndoBanner(state, actions.undo)
+            if (state.readOnly) SettingsInlineEmpty(
                 title = stringResource(R.string.merchant_management_readonly_title),
                 body = stringResource(R.string.merchant_management_readonly_hint),
             )
+            when {
+                editors.activeCreateTool != null -> MerchantCreationTask(state, actions, editors)
+                editors.selectedCatalogId != null -> MerchantObjectTask(state, actions, editors, selected)
+                editors.showAllAliases -> MerchantAllAliasesTask(state, actions, editors)
+                else -> MerchantDirectoryTask(state, actions, editors)
+            }
         }
-
-        if (!state.readOnly) {
-            MerchantManagementToolsSection(
-                state = MerchantManagementToolState(
-                    activeTool = editors.activeCreateTool,
-                    catalogName = editors.catalogName,
-                    aliasDraft = MerchantAliasDraft(
-                        canonicalMerchant = editors.canonicalMerchant,
-                        aliasText = editors.aliasText,
-                    ),
-                    busy = state.busy,
-                    catalogMessage = editors.catalogMessage,
-                    aliasMessage = editors.aliasMessage,
-                ),
-                actions = MerchantManagementToolActions(
-                    onStartCatalog = {
-                        actions.onStartEditing()
-                        editors.activeCreateTool = MerchantCreateTool.Catalog
-                        editors.catalogMessage = null
-                        editors.aliasMessage = null
-                    },
-                    onStartAlias = {
-                        actions.onStartEditing()
-                        editors.activeCreateTool = MerchantCreateTool.Alias
-                        editors.catalogMessage = null
-                        editors.aliasMessage = null
-                    },
-                    onCatalogNameChange = { editors.catalogName = it },
-                    onAliasDraftChange = {
-                        editors.canonicalMerchant = it.canonicalMerchant
-                        editors.aliasText = it.aliasText
-                    },
-                    onSubmitCatalog = {
-                        if (editors.catalogName.isBlank()) {
-                            editors.catalogMessage = catalogValidationMessage
-                        } else {
-                            editors.catalogMessage = null
-                            actions.catalog.onCreate(editors.catalogName)
-                        }
-                    },
-                    onSubmitAlias = {
-                        if (editors.canonicalMerchant.isBlank() || editors.aliasText.isBlank()) {
-                            editors.aliasMessage = createValidationMessage
-                        } else {
-                            editors.aliasMessage = null
-                            actions.alias.onCreate(editors.canonicalMerchant, editors.aliasText)
-                        }
-                    },
-                    onCancel = {
-                        editors.activeCreateTool = null
-                        editors.catalogMessage = null
-                        editors.aliasMessage = null
-                    },
-                ),
-            )
-        }
-
-        MerchantReferenceLists(state, actions, editors)
     }
 }
 
 @Composable
-private fun MerchantReferenceLists(
-    state: MerchantAliasesScreenState,
-    actions: MerchantAliasesScreenActions,
+private fun merchantPageHeader(
     editors: MerchantEditors,
-) {
-    if (state.catalog.isEmpty() && state.aliases.isEmpty() && !state.aliasesLoadFailed) {
-        SettingsInlineEmpty(
-            title = stringResource(R.string.merchant_aliases_empty_combined_title),
-            body = stringResource(R.string.merchant_aliases_empty_combined_body),
-        )
-    } else {
-        MerchantCatalogListSection(
-            catalog = state.catalog,
-            readOnly = state.readOnly,
-            busy = state.busy,
-            actions = MerchantCatalogListActions(
-                onRename = {
-                    actions.onStartEditing()
-                    editors.catalogDialogs.openRename(it)
-                },
-                onToggle = actions.catalog.onToggle,
-                onMerge = {
-                    actions.onStartEditing()
-                    editors.catalogDialogs.openMerge(it)
-                },
-                onDelete = {
-                    actions.onStartEditing()
-                    editors.deletingCatalog = it
-                },
-            ),
-        )
+    selected: MerchantCatalog?,
+    chrome: ManagementPageChrome,
+): ManagementPageHeader {
+    val (title, subtitle) = when {
+        editors.activeCreateTool != null -> stringResource(
+            if (editors.activeCreateTool == MerchantCreateTool.Catalog) R.string.merchant_management_tools_add_catalog
+            else R.string.merchant_management_tools_add_alias,
+        ) to stringResource(R.string.merchant_detail_matching_note)
+        editors.selectedCatalogId != null -> (selected?.displayName ?: stringResource(R.string.merchant_detail_missing)) to
+            stringResource(R.string.merchant_detail_subtitle)
+        editors.showAllAliases -> stringResource(R.string.merchant_directory_all_aliases) to
+            stringResource(R.string.merchant_directory_all_aliases_hint)
+        else -> stringResource(R.string.merchant_aliases_page_title) to stringResource(R.string.merchant_directory_subtitle)
+    }
+    val directoryTitle = stringResource(R.string.merchant_catalog_section_list)
+    val parent = selected?.displayName ?: stringResource(
+        if (editors.showAllAliases) R.string.merchant_directory_all_aliases else R.string.merchant_catalog_section_list,
+    )
+    val back = if (editors.activeCreateTool != null) parent else directoryTitle
+    return ManagementPageHeader(title, subtitle, if (editors.isDirectory) chrome else chrome.copy(backText = back))
+}
 
-        if (state.aliasesLoadFailed) {
-            SettingsInlineEmpty(
-                title = stringResource(R.string.merchant_alias_load_failed),
-                body = stringResource(R.string.merchant_aliases_reload_hint),
-            )
-            TextButton(enabled = !state.busy, onClick = actions.onReloadAliases) {
-                Text(stringResource(R.string.merchant_aliases_reload_button))
+@Composable
+private fun MerchantUndoBanner(state: MerchantAliasesScreenState, actions: MerchantAliasesUndoActions) {
+    state.undoableAlias?.let { undoable ->
+        SettingsOpenPanel {
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.merchant_aliases_undo_deleted, undoable.alias), modifier = Modifier.weight(1f))
+                TextButton(enabled = !state.busy && !state.readOnly, onClick = actions.onUndoDelete) {
+                    Text(stringResource(R.string.merchant_aliases_undo_button))
+                }
             }
-        } else MerchantAliasListSection(
-            aliases = state.aliases,
-            readOnly = state.readOnly,
-            busy = state.busy,
-            onToggleAlias = actions.alias.onToggle,
-            onDeleteAlias = {
-                actions.onStartEditing()
-                editors.deletingAlias = it
-            },
-        )
+        }
+    }
+}
+
+@Composable
+internal fun MerchantAliasResults(state: MerchantAliasesScreenState, actions: MerchantAliasesScreenActions, editors: MerchantEditors) {
+    if (state.aliasesLoadFailed) {
+        SettingsInlineEmpty(title = stringResource(R.string.merchant_alias_load_failed),
+            body = stringResource(R.string.merchant_aliases_reload_hint))
+        TextButton(enabled = !state.busy, onClick = actions.onReloadAliases) {
+            Text(stringResource(R.string.merchant_aliases_reload_button))
+        }
+    } else MerchantAliasListSection(state.aliases, state.readOnly, state.busy, actions.alias.onToggle) {
+        actions.onStartEditing()
+        editors.deletingAlias = it
     }
 }
 
@@ -335,7 +255,25 @@ data class MerchantAliasesUndoActions(
 )
 
 
-private class MerchantEditors {
+internal class MerchantEditors {
+    var selectedCatalogId by mutableStateOf<String?>(null)
+    var showAllAliases by mutableStateOf(false)
+    var search by mutableStateOf("")
+    var status by mutableStateOf("all")
+    val isDirectory get() = selectedCatalogId == null && !showAllAliases && activeCreateTool == null
+    val pageKey get() = activeCreateTool?.name ?: selectedCatalogId?.let { "merchant:$it" } ?: if (showAllAliases) "aliases" else "directory"
+
+    fun back() {
+        if (activeCreateTool != null) activeCreateTool = null
+        else { selectedCatalogId = null; showAllAliases = false }
+    }
+
+    fun openCreation(tool: MerchantCreateTool) {
+        activeCreateTool = tool
+        catalogMessage = null
+        aliasMessage = null
+    }
+
     var catalogName by mutableStateOf("")
     var canonicalMerchant by mutableStateOf("")
     var aliasText by mutableStateOf("")
@@ -375,206 +313,7 @@ private class MerchantEditors {
     }
 }
 
-private enum class MerchantCreateTool {
-    Catalog,
-    Alias,
-}
-
-private data class MerchantAliasDraft(
-    val canonicalMerchant: String,
-    val aliasText: String,
-)
-
-private data class MerchantManagementToolState(
-    val activeTool: MerchantCreateTool?,
-    val catalogName: String,
-    val aliasDraft: MerchantAliasDraft,
-    val busy: Boolean,
-    val catalogMessage: String?,
-    val aliasMessage: String?,
-)
-
-private data class MerchantManagementToolActions(
-    val onStartCatalog: () -> Unit,
-    val onStartAlias: () -> Unit,
-    val onCatalogNameChange: (String) -> Unit,
-    val onAliasDraftChange: (MerchantAliasDraft) -> Unit,
-    val onSubmitCatalog: () -> Unit,
-    val onSubmitAlias: () -> Unit,
-    val onCancel: () -> Unit,
-)
-
-@Composable
-private fun MerchantManagementToolsSection(
-    state: MerchantManagementToolState,
-    actions: MerchantManagementToolActions,
-) {
-    SettingsSection(title = stringResource(R.string.merchant_management_section_tools)) {
-        when (state.activeTool) {
-            null -> SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
-                ) {
-                    Text(
-                        text = stringResource(R.string.merchant_management_tools_prompt_title),
-                        style = MaterialTheme.typography.titleSmall,
-                    )
-                    Text(
-                        text = stringResource(R.string.merchant_management_tools_prompt_body),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-                AppActionRow(
-                    primary = AppAction(
-                        text = stringResource(R.string.merchant_management_tools_add_catalog),
-                        enabled = !state.busy,
-                        icon = Icons.Filled.Add,
-                        onClick = actions.onStartCatalog,
-                    ),
-                    secondary = AppAction(
-                        text = stringResource(R.string.merchant_management_tools_add_alias),
-                        enabled = !state.busy,
-                        icon = Icons.Filled.Add,
-                        onClick = actions.onStartAlias,
-                    ),
-                )
-            }
-            MerchantCreateTool.Catalog -> MerchantCatalogCreateSection(
-                state = MerchantCatalogCreateState(
-                    catalogName = state.catalogName,
-                    busy = state.busy,
-                    message = state.catalogMessage,
-                ),
-                actions = MerchantCatalogCreateActions(
-                    onCatalogNameChange = actions.onCatalogNameChange,
-                    onSubmit = actions.onSubmitCatalog,
-                    onCancel = actions.onCancel,
-                ),
-            )
-            MerchantCreateTool.Alias -> MerchantAliasCreateSection(
-                state = MerchantAliasCreateState(
-                    draft = state.aliasDraft,
-                    busy = state.busy,
-                    message = state.aliasMessage,
-                ),
-                actions = MerchantAliasCreateActions(
-                    onDraftChange = actions.onAliasDraftChange,
-                    onSubmit = actions.onSubmitAlias,
-                    onCancel = actions.onCancel,
-                ),
-            )
-        }
-    }
-}
-
-private data class MerchantCatalogCreateState(
-    val catalogName: String,
-    val busy: Boolean,
-    val message: String?,
-)
-
-private data class MerchantCatalogCreateActions(
-    val onCatalogNameChange: (String) -> Unit,
-    val onSubmit: () -> Unit,
-    val onCancel: () -> Unit,
-)
-
-@Composable
-private fun MerchantCatalogCreateSection(
-    state: MerchantCatalogCreateState,
-    actions: MerchantCatalogCreateActions,
-) {
-    SettingsOpenPanel(
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-    ) {
-        SettingsDialogTextInput(
-            state = SettingsTextInputState(
-                label = stringResource(R.string.merchant_catalog_name_label),
-                value = state.catalogName,
-                placeholder = stringResource(R.string.merchant_catalog_name_placeholder),
-                enabled = !state.busy,
-            ),
-            onValueChange = actions.onCatalogNameChange,
-        )
-        AppActionRow(
-            primary = AppAction(
-                text = if (state.busy) {
-                    stringResource(R.string.merchant_catalog_create_busy)
-                } else {
-                    stringResource(R.string.merchant_catalog_create_button)
-                },
-                enabled = !state.busy,
-                onClick = actions.onSubmit,
-            ),
-            secondary = AppAction(
-                text = stringResource(R.string.common_cancel),
-                enabled = !state.busy,
-                onClick = actions.onCancel,
-            ),
-        )
-        state.message?.let { Text(it, color = MaterialTheme.colorScheme.secondary) }
-    }
-}
-
-private data class MerchantAliasCreateState(
-    val draft: MerchantAliasDraft,
-    val busy: Boolean,
-    val message: String?,
-)
-
-private data class MerchantAliasCreateActions(
-    val onDraftChange: (MerchantAliasDraft) -> Unit,
-    val onSubmit: () -> Unit,
-    val onCancel: () -> Unit,
-)
-
-@Composable
-private fun MerchantAliasCreateSection(
-    state: MerchantAliasCreateState,
-    actions: MerchantAliasCreateActions,
-) {
-    SettingsOpenPanel(
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-    ) {
-        SettingsDialogTextInput(
-            state = SettingsTextInputState(
-                label = stringResource(R.string.merchant_aliases_canonical_label),
-                value = state.draft.canonicalMerchant,
-                placeholder = stringResource(R.string.merchant_aliases_canonical_placeholder),
-                enabled = !state.busy,
-            ),
-            onValueChange = { actions.onDraftChange(state.draft.copy(canonicalMerchant = it)) },
-        )
-        SettingsDialogTextInput(
-            state = SettingsTextInputState(
-                label = stringResource(R.string.merchant_aliases_alias_label),
-                value = state.draft.aliasText,
-                placeholder = stringResource(R.string.merchant_aliases_alias_placeholder),
-                enabled = !state.busy,
-            ),
-            onValueChange = { actions.onDraftChange(state.draft.copy(aliasText = it)) },
-        )
-        AppActionRow(
-            primary = AppAction(
-                text = if (state.busy) {
-                    stringResource(R.string.merchant_aliases_create_busy)
-                } else {
-                    stringResource(R.string.merchant_aliases_create_button)
-                },
-                enabled = !state.busy,
-                onClick = actions.onSubmit,
-            ),
-            secondary = AppAction(
-                text = stringResource(R.string.common_cancel),
-                enabled = !state.busy,
-                onClick = actions.onCancel,
-            ),
-        )
-        state.message?.let { Text(it, color = MaterialTheme.colorScheme.secondary) }
-    }
-}
+internal enum class MerchantCreateTool { Catalog, Alias }
 
 @Composable
 private fun MerchantAliasListSection(
@@ -617,25 +356,18 @@ private fun MerchantAliasRow(
     onToggleAlias: () -> Unit,
     onDeleteAlias: () -> Unit,
 ) {
-    Row(
+    AppAdaptiveContentActionRow(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = AppSpacing.smallGap),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        MerchantAliasRowText(
-            alias = alias,
-            modifier = Modifier.weight(1f),
-        )
-        MerchantAliasStatus(enabled = alias.enabled)
-        if (!readOnly) {
-            MerchantAliasActionMenu(
-                alias = alias,
-                busy = busy,
-                onToggleAlias = onToggleAlias,
-                onDeleteAlias = onDeleteAlias,
-            )
+        style = AppAdaptiveContentActionStyle(compactAction = true),
+        content = { MerchantAliasRowText(alias) },
+    ) { actionModifier ->
+        Row(modifier = actionModifier, verticalAlignment = Alignment.CenterVertically) {
+            MerchantAliasStatus(enabled = alias.enabled)
+            if (!readOnly) {
+                MerchantAliasActionMenu(alias, busy, onToggleAlias, onDeleteAlias)
+            }
         }
     }
 }
@@ -653,26 +385,11 @@ private fun MerchantAliasRowText(
             text = alias.alias,
             style = MaterialTheme.typography.titleSmall,
             fontWeight = AppTextHierarchy.heading.weight,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
         )
         Text(
             text = stringResource(R.string.merchant_aliases_card_canonical, alias.canonicalMerchant),
             color = MaterialTheme.colorScheme.primary,
             style = MaterialTheme.typography.bodyMedium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Text(
-            text = stringResource(
-                R.string.merchant_aliases_card_key_mapping,
-                alias.aliasKey,
-                alias.canonicalKey,
-            ),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodySmall,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
         )
     }
 }
@@ -741,15 +458,5 @@ private fun MerchantAliasActionMenu(
                 onDeleteAlias()
             },
         )
-    }
-}
-
-@Composable
-private fun merchantAliasSummary(catalog: List<MerchantCatalog>, aliases: List<MerchantAlias>): String {
-    val enabled = aliases.count { it.enabled }
-    return if (catalog.isEmpty() && aliases.isEmpty()) {
-        stringResource(R.string.merchant_aliases_summary_empty)
-    } else {
-        stringResource(R.string.merchant_aliases_summary_count, catalog.size, enabled, aliases.size)
     }
 }

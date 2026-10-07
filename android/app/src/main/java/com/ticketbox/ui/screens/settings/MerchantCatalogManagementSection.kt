@@ -1,209 +1,149 @@
 package com.ticketbox.ui.screens.settings
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.MerchantCatalog
-import com.ticketbox.ui.design.AppAlpha
+import com.ticketbox.ui.components.AppAction
+import com.ticketbox.ui.components.AppActionRow
+import com.ticketbox.ui.components.AppFilterChip
+import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.AppTextHierarchy
-
-internal data class MerchantCatalogListActions(
-    val onRename: (MerchantCatalog) -> Unit,
-    val onToggle: (MerchantCatalog) -> Unit,
-    val onMerge: (MerchantCatalog) -> Unit,
-    val onDelete: (MerchantCatalog) -> Unit,
-)
 
 @Composable
-internal fun MerchantCatalogListSection(
-    catalog: List<MerchantCatalog>,
-    readOnly: Boolean,
-    busy: Boolean,
-    actions: MerchantCatalogListActions,
-) {
-    SettingsSection(title = stringResource(R.string.merchant_catalog_section_list)) {
-        if (catalog.isEmpty()) {
-            SettingsInlineEmpty(
-                title = stringResource(R.string.merchant_catalog_list_empty_title),
-                body = stringResource(R.string.merchant_catalog_list_empty),
-            )
-            return@SettingsSection
-        }
-        val catalogById = catalog.associateBy { it.publicId }
-        val activeCatalogCount = catalog.count { it.isActive }
-        SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(0.dp)) {
-            catalog.forEachIndexed { index, item ->
-                if (index > 0) {
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium))
-                }
-                MerchantCatalogRow(
-                    state = MerchantCatalogRowState(
-                        catalog = item,
-                        mergedTargetName = item.mergedIntoPublicId?.let { id -> catalogById[id]?.displayName ?: id },
-                        readOnly = readOnly,
-                        busy = busy,
-                        canMerge = activeCatalogCount > 0 && !item.isMerged && !(item.isActive && activeCatalogCount == 1),
-                    ),
-                    actions = actions,
-                )
-            }
-        }
+internal fun MerchantDirectoryTask(state: MerchantAliasesScreenState, actions: MerchantAliasesScreenActions, editors: MerchantEditors) {
+    MerchantDirectorySearch(editors)
+    val term = editors.search.trim()
+    val matchingKeys = state.aliases.filter {
+        it.alias.contains(term, ignoreCase = true) || it.canonicalMerchant.contains(term, ignoreCase = true)
+    }.map { it.canonicalKey }.toSet()
+    val visible = state.catalog.filter {
+        (editors.status == "all" || it.status == editors.status) &&
+            (it.displayName.contains(term, ignoreCase = true) || it.merchantKey in matchingKeys)
     }
+    if (visible.isEmpty()) SettingsInlineEmpty(
+        title = stringResource(if (state.catalog.isEmpty()) R.string.merchant_catalog_list_empty_title else R.string.merchant_directory_no_match),
+        body = stringResource(if (state.catalog.isEmpty()) R.string.merchant_catalog_list_empty else R.string.merchant_directory_no_match_hint),
+    )
+    visible.forEach { item ->
+        SettingsEntryRow(item.displayName, merchantCatalogSummary(item, state.catalog), R.drawable.ic_lucide_store,
+            onClick = { editors.selectedCatalogId = item.publicId })
+    }
+    SettingsSection(title = stringResource(R.string.merchant_management_section_tools)) {
+        SettingsEntryRow(stringResource(R.string.merchant_directory_all_aliases),
+            stringResource(R.string.merchant_directory_all_aliases_hint), R.drawable.ic_lucide_tag,
+            onClick = { editors.showAllAliases = true })
+        MerchantMatchingNote()
+    }
+    if (!state.readOnly) AppPrimaryButton(
+        text = stringResource(R.string.merchant_management_tools_add_catalog), enabled = !state.busy,
+        modifier = Modifier.fillMaxWidth(),
+        onClick = { actions.onStartEditing(); editors.openCreation(MerchantCreateTool.Catalog) },
+    )
 }
 
-private data class MerchantCatalogRowState(
-    val catalog: MerchantCatalog,
-    val mergedTargetName: String?,
-    val readOnly: Boolean,
-    val busy: Boolean,
-    val canMerge: Boolean,
-)
-
 @Composable
-private fun MerchantCatalogRow(
-    state: MerchantCatalogRowState,
-    actions: MerchantCatalogListActions,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = AppSpacing.smallGap),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
-        ) {
-            Text(
-                text = state.catalog.displayName,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = AppTextHierarchy.heading.weight,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = if (state.catalog.isMerged && state.mergedTargetName != null) {
-                    stringResource(R.string.merchant_catalog_card_merged_into, state.mergedTargetName)
-                } else {
-                    stringResource(
-                        R.string.merchant_catalog_card_key_usage,
-                        state.catalog.merchantKey,
-                        state.catalog.usageCount,
-                    )
-                },
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        Text(
-            text = merchantCatalogStatusText(state.catalog),
-            color = if (state.catalog.isActive) {
-                MaterialTheme.colorScheme.primary
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            },
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = AppTextHierarchy.body.weight,
-            maxLines = 1,
-        )
-        if (!state.readOnly && !state.catalog.isMerged) {
-            MerchantCatalogActionMenu(state, actions)
+private fun MerchantDirectorySearch(editors: MerchantEditors) {
+    SettingsDialogTextInput(state = SettingsTextInputState(label = stringResource(R.string.merchant_directory_search), value = editors.search),
+        onValueChange = { editors.search = it })
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap), verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+        listOf("all" to R.string.merchant_directory_all, "active" to R.string.merchant_catalog_card_status_visible,
+            "hidden" to R.string.merchant_catalog_card_status_hidden, "merged" to R.string.merchant_catalog_card_status_merged).forEach { (key, label) ->
+            AppFilterChip(stringResource(label), editors.status == key, { editors.status = key })
         }
     }
 }
 
 @Composable
-private fun MerchantCatalogActionMenu(
-    state: MerchantCatalogRowState,
-    actions: MerchantCatalogListActions,
+internal fun MerchantObjectTask(
+    state: MerchantAliasesScreenState,
+    actions: MerchantAliasesScreenActions,
+    editors: MerchantEditors,
+    item: MerchantCatalog?,
 ) {
-    var expanded by remember(state.catalog.publicId) { mutableStateOf(false) }
-    IconButton(
-        enabled = !state.busy,
-        onClick = { expanded = true },
-    ) {
-        Icon(
-            imageVector = Icons.Filled.MoreVert,
-            contentDescription = stringResource(R.string.merchant_catalog_actions_content_description),
-        )
+    if (item == null) {
+        SettingsInlineEmpty(stringResource(R.string.merchant_detail_missing), stringResource(R.string.merchant_detail_missing_hint))
+        return
     }
-    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-        DropdownMenuItem(
-            text = { Text(stringResource(R.string.merchant_catalog_card_action_rename)) },
-            onClick = {
-                expanded = false
-                actions.onRename(state.catalog)
-            },
-        )
-        DropdownMenuItem(
-            text = { Text(stringResource(R.string.merchant_catalog_card_action_merge)) },
-            enabled = state.canMerge,
-            onClick = {
-                expanded = false
-                actions.onMerge(state.catalog)
-            },
-        )
-        DropdownMenuItem(
-            text = {
-                Text(
-                    if (state.catalog.isActive) {
-                        stringResource(R.string.merchant_catalog_card_action_hide)
-                    } else {
-                        stringResource(R.string.merchant_catalog_card_action_show)
-                    },
-                )
-            },
-            onClick = {
-                expanded = false
-                actions.onToggle(state.catalog)
-            },
-        )
-        DropdownMenuItem(
-            text = {
-                Text(
-                    text = stringResource(R.string.merchant_catalog_card_action_delete),
-                    color = MaterialTheme.colorScheme.error,
-                )
-            },
-            onClick = {
-                expanded = false
-                actions.onDelete(state.catalog)
-            },
-        )
+    Text(merchantCatalogSummary(item, state.catalog), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+    if (item.isMerged) {
+        val target = state.catalog.find { it.publicId == item.mergedIntoPublicId }
+        if (target != null) SettingsEntryRow(target.displayName, stringResource(R.string.merchant_catalog_card_status_merged),
+            R.drawable.ic_lucide_git_branch, onClick = { editors.selectedCatalogId = target.publicId })
+    }
+    MerchantAliasResults(state.copy(aliases = state.aliases.filter { it.canonicalKey == item.merchantKey }), actions, editors)
+    MerchantMatchingNote()
+    if (!state.readOnly && !item.isMerged) {
+        MerchantAddAlias(state, actions, editors, item)
+        SettingsDetailRow(stringResource(R.string.merchant_detail_identity), stringResource(R.string.merchant_detail_identity_hint),
+            R.drawable.ic_lucide_store) {
+            MerchantObjectActions(item, state, actions, editors)
+        }
     }
 }
 
 @Composable
-private fun merchantCatalogStatusText(catalog: MerchantCatalog): String =
-    when {
-        catalog.isMerged -> stringResource(R.string.merchant_catalog_card_status_merged)
-        catalog.isActive -> stringResource(R.string.merchant_catalog_card_status_visible)
-        else -> stringResource(R.string.merchant_catalog_card_status_hidden)
+internal fun MerchantAllAliasesTask(state: MerchantAliasesScreenState, actions: MerchantAliasesScreenActions, editors: MerchantEditors) {
+    MerchantAliasResults(state, actions, editors)
+    MerchantMatchingNote()
+    if (!state.readOnly) MerchantAddAlias(state, actions, editors, null)
+}
+
+@Composable
+private fun MerchantAddAlias(
+    state: MerchantAliasesScreenState,
+    actions: MerchantAliasesScreenActions,
+    editors: MerchantEditors,
+    item: MerchantCatalog?,
+) {
+    AppPrimaryButton(text = stringResource(R.string.merchant_management_tools_add_alias), enabled = !state.busy,
+        modifier = Modifier.fillMaxWidth(), onClick = {
+            actions.onStartEditing()
+            // Reopening a different task must not replace an independently started alias draft.
+            if (editors.canonicalMerchant.isBlank() && item != null) editors.canonicalMerchant = item.displayName
+            editors.openCreation(MerchantCreateTool.Alias)
+        })
+}
+
+@Composable
+private fun MerchantObjectActions(item: MerchantCatalog, state: MerchantAliasesScreenState, actions: MerchantAliasesScreenActions, editors: MerchantEditors) {
+    AppActionRow(
+        primary = AppAction(stringResource(R.string.merchant_catalog_card_action_rename), enabled = !state.busy,
+            onClick = { actions.onStartEditing(); editors.catalogDialogs.openRename(item) }),
+        secondary = AppAction(stringResource(R.string.merchant_catalog_card_action_merge),
+            enabled = !state.busy && state.catalog.any { it.isActive && it.publicId != item.publicId },
+            onClick = { actions.onStartEditing(); editors.catalogDialogs.openMerge(item) }),
+    )
+    AppActionRow(
+        primary = AppAction(stringResource(if (item.isActive) R.string.merchant_catalog_card_action_hide else R.string.merchant_catalog_card_action_show),
+            enabled = !state.busy, onClick = { actions.catalog.onToggle(item) }),
+        secondary = AppAction(stringResource(R.string.merchant_catalog_card_action_delete), enabled = !state.busy,
+            onClick = { actions.onStartEditing(); editors.deletingCatalog = item }),
+    )
+    Text(stringResource(R.string.merchant_catalog_delete_dialog_text, item.displayName), style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant)
+}
+
+@Composable
+private fun MerchantMatchingNote() {
+    Text(stringResource(R.string.merchant_detail_matching_note), style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant)
+}
+
+@Composable
+private fun merchantCatalogSummary(item: MerchantCatalog, catalog: List<MerchantCatalog>): String {
+    val target = catalog.find { it.publicId == item.mergedIntoPublicId }
+    if (item.isMerged && target != null) return stringResource(R.string.merchant_catalog_card_merged_into, target.displayName)
+    val label = when {
+        item.isMerged -> R.string.merchant_catalog_card_status_merged
+        item.isActive -> R.string.merchant_catalog_card_status_visible
+        else -> R.string.merchant_catalog_card_status_hidden
     }
+    return stringResource(R.string.merchant_catalog_usage, item.usageCount, stringResource(label))
+}

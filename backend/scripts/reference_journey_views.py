@@ -80,6 +80,8 @@ def appearances(j):
         for label, value, name in (("标签", "TripFinal", "tags"), ("商家", "RefPay", "merchants"),
                                     ("分类规则", "RefShop", "rules"), ("分类", "Library", "categories")):
             j.native_open(label)
+            if label == "商家":
+                native.click("RefShop")
             native.reveal_any(value, max_scrolls=16)
             native.capture(f"reference-{name}-{theme}")
 
@@ -95,9 +97,9 @@ def identities(j):
     native.click("打开账户与设置")
     native.click("账本和家庭成员")
     native.click("账本")
-    native.reveal_any("账本名称")
-    native.fill("LibraryOther", label="账本名称")
-    native.click("新建账本", bottom=True)
+    native.reveal_any("新账本名称")
+    native.fill("LibraryOther", label="新账本名称")
+    native.click("创建账本", bottom=True)
     native.reveal_any("已新建账本")
     native.click_within("LibraryOther", "切换")
     native.reveal_any("已切换到「LibraryOther」")

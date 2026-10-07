@@ -5,16 +5,17 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
-import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performTouchInput
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
@@ -24,6 +25,8 @@ import androidx.navigation.compose.rememberNavController
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso.closeSoftKeyboard
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.text.TextLayoutResult
 import com.ticketbox.R
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.MerchantAliasDto
@@ -33,13 +36,12 @@ import com.ticketbox.data.remote.dto.MerchantCatalogCreateRequest
 import com.ticketbox.data.remote.dto.MerchantCatalogDto
 import com.ticketbox.data.remote.dto.MerchantCatalogListDto
 import com.ticketbox.data.remote.dto.MerchantCatalogUpdateRequest
-import com.ticketbox.domain.model.AppSkin
-import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.ui.saveConsumerArtPreview
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import retrofit2.HttpException
@@ -57,6 +59,7 @@ class MerchantManagementContinuationTest {
     @Volatile private var reject = true
     @Volatile private var catalog: MerchantCatalogDto? = null
     @Volatile private var alias: MerchantAliasDto? = null
+    private var additionalAliases = emptyList<MerchantAliasDto>()
     @Volatile private var rejectAliasRead = false
     private val completedAliasReads = CopyOnWriteArrayList<MerchantAliasListDto>()
     private val harness = FactEntryNavigationHarness(context) { delegate ->
@@ -64,7 +67,7 @@ class MerchantManagementContinuationTest {
             override suspend fun merchantCatalog(includeHidden: Boolean) = MerchantCatalogListDto(listOfNotNull(catalog))
             override suspend fun merchantAliases(): MerchantAliasListDto {
                 if (rejectAliasRead) throw unavailable()
-                return MerchantAliasListDto(listOfNotNull(alias)).also { completedAliasReads += it }
+                return MerchantAliasListDto(listOfNotNull(alias) + additionalAliases).also { completedAliasReads += it }
             }
             override suspend fun createMerchantCatalog(request: MerchantCatalogCreateRequest): MerchantCatalogDto {
                 catalogRequests += request
@@ -121,6 +124,50 @@ class MerchantManagementContinuationTest {
             catalogRequests)
     }
 
+    @Test fun directoryOpensTheOriginalMerchantAndReturnsToItsAliasSearch() {
+        catalog = MerchantCatalogDto("corner", "街角小馆", "街角小馆", "active", usageCount = 8,
+            createdAt = "2026-09-30T00:00:00Z", updatedAt = "2026-09-30T00:00:00Z", rowVersion = 7)
+        alias = MerchantAliasDto("corner-alias", "街角小馆", "街角小馆", "街角餐饮店", "街角餐饮店", true,
+            "2026-09-30T00:00:00Z", "2026-09-30T00:00:00Z", 3)
+        additionalAliases = listOf(requireNotNull(alias).copy(publicId = "independent", canonicalMerchant = "独立商家",
+            canonicalKey = "独立商家", alias = "独立支付名称", aliasKey = "独立支付名称"))
+        showMerchants()
+        clickText(R.string.merchant_catalog_card_status_hidden)
+        compose.onNodeWithText("街角小馆").assertDoesNotExist()
+        clickText(R.string.merchant_catalog_card_status_visible)
+        compose.onNodeWithText("街角小馆").performScrollTo().assertIsDisplayed()
+        saveConsumerArtPreview("merchant-directory", compose.onRoot().captureToImage().asAndroidBitmap())
+        compose.onNodeWithText("搜索商家或别名").assertIsDisplayed()
+        compose.onNode(hasSetTextAction()).performTextReplacement("街角餐饮店")
+        closeSoftKeyboard()
+        compose.onNodeWithText("街角小馆").performScrollTo().performTouchInput { click() }
+        compose.onNodeWithText("街角餐饮店").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("独立支付名称").assertDoesNotExist()
+        saveConsumerArtPreview("merchant-object-aliases", compose.onRoot().captureToImage().asAndroidBitmap())
+        for (label in listOf("街角餐饮店", "归到 街角小馆")) {
+            val layouts = mutableListOf<TextLayoutResult>()
+            compose.onNodeWithText(label).performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+            val layout = layouts.single()
+            // Intrinsic paragraph width can exceed shrink-wrapped Text; check the actual glyph bounds.
+            assertTrue("The complete identity must fit: $label, size=${layout.size}",
+                !layout.didOverflowHeight && (0 until layout.lineCount).all { line ->
+                    !layout.isLineEllipsized(line) && layout.getLineLeft(line) >= 0f &&
+                        layout.getLineRight(line) <= layout.size.width
+                })
+        }
+
+        compose.onNodeWithText("商家目录").performScrollTo().performTouchInput { click() }
+        compose.onNode(hasSetTextAction() and hasText("街角餐饮店")).assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.merchant_catalog_card_status_visible)).assertIsSelected()
+        saveConsumerArtPreview("merchant-directory-search", compose.onRoot().captureToImage().asAndroidBitmap())
+        compose.onNodeWithText("全部别名").performScrollTo().performTouchInput { click() }
+        compose.onNodeWithText("独立支付名称").performScrollTo().assertIsDisplayed()
+        assertEquals(emptyList<MerchantCatalogCreateRequest>(), catalogRequests)
+        assertEquals(emptyList<MerchantAliasRequest>(), aliasRequests)
+        assertEquals(emptyList<MerchantCatalogUpdateRequest>(), updates)
+        assertEquals("corner", catalog?.publicId)
+    }
+
     @Test fun failedAliasReadCanRetryWithoutClearingAnUnsentCatalogForm() {
         alias = MerchantAliasDto("original-alias", "常用商家", "常用商家", "原始别名", "原始别名", true,
             "2026-09-30T00:00:00Z", "2026-09-30T00:00:00Z", 1)
@@ -130,6 +177,8 @@ class MerchantManagementContinuationTest {
         fill(R.string.merchant_catalog_name_label, "尚未提交商家")
         closeSoftKeyboard()
         compose.waitForIdle()
+        clickText(R.string.common_cancel)
+        clickText(R.string.merchant_directory_all_aliases)
         waitForText(R.string.merchant_aliases_reload_button)
 
         rejectAliasRead = false
@@ -138,6 +187,8 @@ class MerchantManagementContinuationTest {
         compose.waitUntil(5_000) { compose.onAllNodesWithText("原始别名").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("原始别名").performScrollTo().assertIsDisplayed()
         saveConsumerArtPreview("merchants-reloaded-alias", compose.onRoot().captureToImage().asAndroidBitmap())
+        clickText(R.string.merchant_catalog_section_list)
+        clickText(R.string.merchant_management_tools_add_catalog)
         compose.onNode(hasSetTextAction() and hasText("尚未提交商家")).performScrollTo().assertIsDisplayed()
         assertEquals(emptyList<MerchantCatalogCreateRequest>(), catalogRequests)
         assertEquals(emptyList<MerchantAliasRequest>(), aliasRequests)
@@ -145,6 +196,7 @@ class MerchantManagementContinuationTest {
 
     @Test fun rejectedAliasCreationKeepsBothOriginalNamesUntilAccepted() {
         showMerchants()
+        clickText(R.string.merchant_directory_all_aliases)
         clickText(R.string.merchant_management_tools_add_alias)
         fill(R.string.merchant_aliases_canonical_label, "差旅商家")
         fill(R.string.merchant_aliases_alias_label, "PAY-差旅原始商家", index = 1)
@@ -171,10 +223,12 @@ class MerchantManagementContinuationTest {
         showMerchants()
         clickText(R.string.merchant_management_tools_add_catalog)
         fill(R.string.merchant_catalog_name_label, "尚未提交的新商家")
-        compose.onNodeWithContentDescription(context.getString(R.string.merchant_catalog_actions_content_description))
-            .performScrollTo().performTouchInput { click() }
+        closeSoftKeyboard()
+        clickText(R.string.common_cancel)
+        compose.onNodeWithText("原商家").performScrollTo().performTouchInput { click() }
+        clickText(R.string.merchant_detail_identity)
         compose.onNodeWithText(context.getString(R.string.merchant_catalog_card_action_rename))
-            .performTouchInput { click() }
+            .performScrollTo().assertIsDisplayed().performTouchInput { click() }
         compose.onNode(hasSetTextAction() and hasText("原商家")).performTextReplacement("改名后的商家")
         compose.onNodeWithText(context.getString(R.string.merchant_catalog_rename_dialog_confirm))
             .performTouchInput { click() }
@@ -189,6 +243,8 @@ class MerchantManagementContinuationTest {
         compose.waitUntil(5_000) { catalog?.displayName == "改名后的商家" }
         compose.waitForIdle()
         compose.onNodeWithText(context.getString(R.string.merchant_catalog_rename_dialog_title)).assertDoesNotExist()
+        clickText(R.string.merchant_catalog_section_list)
+        clickText(R.string.merchant_management_tools_add_catalog)
         compose.onNode(hasSetTextAction() and hasText("尚未提交的新商家")).performScrollTo().assertIsDisplayed()
         assertEquals(emptyList<MerchantCatalogCreateRequest>(), catalogRequests)
         assertEquals(2, updates.size)
@@ -200,7 +256,7 @@ class MerchantManagementContinuationTest {
         compose.setContent {
             if (!mounted.value) return@setContent
             CompositionLocalProvider(LocalViewModelStoreOwner provides harness.models) {
-                TicketboxTheme(skin = AppSkin.Default) {
+                ReferenceLibraryTestTheme {
                     val outer = rememberNavController()
                     NavHost(outer, startDestination = MAIN_ROUTE) {
                         composable(MAIN_ROUTE) {

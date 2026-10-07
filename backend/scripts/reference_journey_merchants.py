@@ -17,6 +17,7 @@ def create_catalog_and_alias(j):
     native.click("添加商家")
     j.expect(lambda state: any(row["name"] == "RefShop" for row in state["catalog"]),
              "The native merchant catalog creation did not commit")
+    native.click("RefShop")
     native.click("新增别名")
     native.fill("RefShop", label="标准商家名")
     native.fill("RefPay", label="别名")
@@ -66,8 +67,8 @@ def merge_after_target_changes(j):
 def change_catalog_visibility(j, target):
     # A second consumer changes the target while the original Web form stays open.
     # Hide/show preserves its name and the separate alias used by the rule journey.
+    j.native.click("商家身份")
     for choice, status in (("隐藏", "hidden"), ("显示", "active")):
-        j.native_row_action("RefShop", "商家操作")
         j.native.click(choice)
         j.expect(lambda state, status=status: any(row["id"] == target["id"] and row["status"] == status for row in state["catalog"]),
                  "The native target change did not commit")
