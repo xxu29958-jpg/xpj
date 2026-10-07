@@ -70,6 +70,23 @@ def _catalog_rename_error_message(exc: AppError) -> str:
     return _catalog_conflict_message(exc)
 
 
+def _merchant_directory_context(request: Request, ctx: dict) -> dict:
+    """Keep alias-aware filtering and the return location together."""
+    query = request.query_params
+    status = query.get("status", "all")
+    status = status if status in {"all", "active", "hidden", "merged"} else "all"
+    search = query.get("search", "").strip()[:255]
+    term = search.casefold()
+    matching_keys = {item.canonical_key for item in ctx["aliases"]
+                     if term in item.alias.casefold() or term in item.canonical_merchant.casefold()}
+    visible = [item for item in ctx["catalog"]
+               if (status == "all" or item.status == status)
+               and (not term or term in item.display_name.casefold() or item.merchant_key in matching_keys)]
+    directory_query = urlencode({"ledger_id": ctx["selected_ledger_id"], "status": status, "search": search})
+    return {"merchant_search": search, "merchant_status": status, "visible_catalog": visible,
+            "directory_href": "/web/merchants?" + directory_query}
+
+
 def _merchant_view_context(request: Request, ctx: dict) -> dict:
     """Project the existing directory and independent aliases into focused tasks."""
     query = request.query_params
@@ -85,19 +102,8 @@ def _merchant_view_context(request: Request, ctx: dict) -> dict:
         view = "merchant"
         public_id = ctx["rename_error_public_id"] or ctx["merge_draft"]["public_id"]
     selected = next((item for item in ctx["catalog"] if item.public_id == public_id), None)
-    status = query.get("status", "all")
-    status = status if status in {"all", "active", "hidden", "merged"} else "all"
-    search = query.get("search", "").strip()[:255]
-    term = search.casefold()
-    matching_keys = {item.canonical_key for item in ctx["aliases"]
-                     if term in item.alias.casefold() or term in item.canonical_merchant.casefold()}
-    visible = [item for item in ctx["catalog"]
-               if (status == "all" or item.status == status)
-               and (not term or term in item.display_name.casefold() or item.merchant_key in matching_keys)]
-    directory_query = urlencode({"ledger_id": ctx["selected_ledger_id"], "status": status, "search": search})
-    return {"merchant_view": view, "selected_merchant": selected, "merchant_search": search,
-            "merchant_status": status, "visible_catalog": visible,
-            "directory_href": "/web/merchants?" + directory_query,
+    return {"merchant_view": view, "selected_merchant": selected,
+            **_merchant_directory_context(request, ctx),
             "visible_aliases": [item for item in ctx["aliases"]
                                 if view != "merchant" or selected and item.canonical_key == selected.merchant_key]}
 
