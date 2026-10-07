@@ -1,0 +1,41 @@
+{% set item = selected_merchant %}
+{% if not item %}
+<div class="product-feedback product-feedback--danger" role="alert" data-catalog-key="{{ rename_error_public_id }}">{{ rename_error or '这个商家已被移除，请返回目录核对，或前往回收站。' }}</div>
+{% elif item.status not in ['active', 'hidden'] %}
+<div class="product-feedback" role="status">这个商家已合并，历史账单仍保留原来的商家。</div>
+{% if item.merged_into_public_id %}<a class="product-button" href="{{ directory_href }}&amp;view=merchant&amp;merchant={{ item.merged_into_public_id }}">查看合并后的商家</a>{% endif %}
+{% if rename_error %}<div class="product-feedback product-feedback--danger" role="alert">{{ rename_error }}</div>{% endif %}
+{% else %}
+<p class="meta">{{ item.usage_count }} 笔记录 · {{ '已隐藏' if item.status == 'hidden' else '显示中' }}</p>
+{{ forms.alias_list(visible_aliases) }}
+{% if can_write %}
+<details><summary class="product-entry"><span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#tag"/></svg></span><span class="product-entry-copy"><strong>添加别名</strong><span>管理同一家店的不同名字</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></summary>{{ forms.alias_create(item) }}</details>
+<section class="stack" data-catalog-key="{{ item.public_id }}">
+<h2 class="product-section-title">商家身份</h2>
+<details{% if rename_error_public_id == item.public_id %} open{% endif %}>
+<summary class="product-entry"><span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#pencil"/></svg></span><span class="product-entry-copy"><strong>重命名</strong><span>保留原商家身份和历史关联</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></summary>
+{% if rename_error %}<div id="merchant-rename-error" class="product-feedback product-feedback--danger" role="alert">{{ rename_error }} 原名称和版本仍保留，请先核对最新状态。</div>{% endif %}
+{% if rename_reviewed %}<div class="product-feedback" role="status">已核对最新商家「{{ item.display_name }}」。请确认保留的名称，再提交重命名。</div>{% endif %}
+<form method="post" action="/web/merchants/catalog/{{ item.public_id }}/rename" class="stack">
+{{ forms.scope(rename_original_version if rename_error_public_id == item.public_id else item.row_version) }}
+<label class="product-field"><span>商家名称</span><input type="text" name="display_name" value="{{ rename_error_value if rename_error_public_id == item.public_id else item.display_name }}" required maxlength="255"{% if rename_error %} aria-invalid="true" aria-describedby="merchant-rename-error"{% endif %}></label>
+{% if rename_error %}<button type="submit" name="review_latest" value="1" class="product-button">核对最新商家</button>{% else %}<button type="submit" class="product-button product-button--primary">重命名</button>{% endif %}
+</form></details>
+{% if catalog|length > 1 and (not merge_draft or merge_draft.public_id != item.public_id) %}
+<details><summary class="product-entry"><span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#git-branch"/></svg></span><span class="product-entry-copy"><strong>合并到另一个商家</strong><span>先核对目标，保留历史账单</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></summary>
+<form method="post" action="/web/merchants/catalog/{{ item.public_id }}/merge" class="stack" data-confirm="把商家「{{ item.display_name }}」合并到所选商家？历史账单不会被批量改写。">
+{{ forms.scope(item.row_version) }}
+<label class="product-field"><span>合并到</span><select name="target" required><option value="" disabled selected>选择目标商家</option>{% for other in catalog if other.public_id != item.public_id and other.status == 'active' %}<option value="{{ other.public_id }}:{{ other.row_version }}">{{ other.display_name }}</option>{% endfor %}</select></label>
+<label class="product-field"><span>来源别名处理</span><select name="alias_policy" required><option value="" disabled selected>选择别名处理方式</option><option value="create_source_alias">创建来源别名</option><option value="none">不创建别名</option></select></label>
+<p class="meta">合并不会批量改写历史账单。创建来源别名后，规则可将原名字匹配到目标商家。</p><button type="submit" class="product-button product-button--primary">合并</button>
+</form></details>{% endif %}
+<form method="post" action="/web/merchants/catalog/{{ item.public_id }}/toggle">{{ forms.scope(item.row_version) }}<button type="submit" class="product-button">{{ '隐藏商家' if item.status == 'active' else '显示商家' }}</button></form>
+<p class="meta">隐藏只影响目录和后续选择，仍保留历史关联。</p>
+<details><summary class="product-entry"><span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#history"/></svg></span><span class="product-entry-copy"><strong>移入回收站</strong><span>先处理仍启用的别名和固定支出引用</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></summary>
+<form method="post" action="/web/merchants/catalog/{{ item.public_id }}/delete" data-confirm="把商家「{{ item.display_name }}」移入回收站？历史账单不会改写。">{{ forms.scope(item.row_version) }}<button type="submit" class="product-button product-button--danger">移入回收站</button></form>
+</details></section>
+{% endif %}
+{% endif %}
+{% if rename_error_value and (not item or item.status not in ['active', 'hidden']) %}
+<label class="product-field"><span>原来填写的名称</span><input type="text" value="{{ rename_error_value }}" readonly></label>
+{% endif %}

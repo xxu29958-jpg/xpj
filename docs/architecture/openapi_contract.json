@@ -5117,6 +5117,11 @@
             "default": "",
             "title": "Ledger Id",
             "type": "string"
+          },
+          "review_latest": {
+            "default": "",
+            "title": "Review Latest",
+            "type": "string"
           }
         },
         "title": "Body_web_merchant_catalog_rename_web_merchants_catalog__public_id__rename_post",

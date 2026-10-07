@@ -74,8 +74,9 @@ def appearances(j):
                 j.capture(f"{path}-{width}-{theme}")
         native.plan_home()
         native.click("打开账户与设置")
+        native.click("通知与外观")
         native.click("外观与主题")
-        native.click("浅色纸面 · 深绿点缀" if theme == "paper" else "柔和深色 · 浅绿点缀")
+        native.click("晨纸" if theme == "paper" else "玄夜")
         for label, value, name in (("标签", "TripFinal", "tags"), ("商家", "RefPay", "merchants"),
                                     ("分类规则", "RefShop", "rules"), ("分类", "Library", "categories")):
             j.native_open(label)
@@ -92,6 +93,7 @@ def identities(j):
     native = j.native
     native.plan_home()
     native.click("打开账户与设置")
+    native.click("账本和家庭成员")
     native.click("账本")
     native.reveal_any("账本名称")
     native.fill("LibraryOther", label="账本名称")
@@ -110,11 +112,13 @@ def identities(j):
         assert all(not value for value in other_facts.values()), "Switching copied reference or financial facts into another ledger"
     native.plan_home()
     native.click("打开账户与设置")
+    native.click("账本和家庭成员")
     native.click("账本")
     native.click_within(j.fixture.ledger_name, "切换")
     native.reveal_any(f"已切换到「{j.fixture.ledger_name}」")
     native.plan_home()
     native.click("打开账户与设置")
+    native.click("数据与隐私")
     native.click("安全与隐私")
     native.click("退出账本")
     native.click("确定退出")

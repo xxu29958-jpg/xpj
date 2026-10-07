@@ -6,6 +6,8 @@ does not merge historical expenses or overwrite the original merchant text.
 
 from __future__ import annotations
 
+from urllib.parse import urlencode
+
 from fastapi import APIRouter, Depends, Form, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
@@ -61,9 +63,43 @@ def _catalog_conflict_message(exc: AppError) -> str:
 
 
 def _catalog_rename_error_message(exc: AppError) -> str:
+    if exc.error == "invalid_request":
+        return "请填写商家名称，最多255个字。"
     if exc.error == "state_conflict" and not exc.details:
         return "商家状态已变化，或仍被启用别名/固定支出引用；请根据当前信息重试。"
     return _catalog_conflict_message(exc)
+
+
+def _merchant_view_context(request: Request, ctx: dict) -> dict:
+    """Project the existing directory and independent aliases into focused tasks."""
+    query = request.query_params
+    view = query.get("view", "directory")
+    if view not in {"directory", "merchant", "new", "aliases"}:
+        view = "directory"
+    public_id = query.get("merchant", "")
+    if ctx["catalog_create_error"]:
+        view = "new"
+    if ctx["alias_create_error"]:
+        view = "aliases"
+    if ctx["rename_error_public_id"] or ctx["merge_draft"]:
+        view = "merchant"
+        public_id = ctx["rename_error_public_id"] or ctx["merge_draft"]["public_id"]
+    selected = next((item for item in ctx["catalog"] if item.public_id == public_id), None)
+    status = query.get("status", "all")
+    status = status if status in {"all", "active", "hidden", "merged"} else "all"
+    search = query.get("search", "").strip()[:255]
+    term = search.casefold()
+    matching_keys = {item.canonical_key for item in ctx["aliases"]
+                     if term in item.alias.casefold() or term in item.canonical_merchant.casefold()}
+    visible = [item for item in ctx["catalog"]
+               if (status == "all" or item.status == status)
+               and (not term or term in item.display_name.casefold() or item.merchant_key in matching_keys)]
+    directory_query = urlencode({"ledger_id": ctx["selected_ledger_id"], "status": status, "search": search})
+    return {"merchant_view": view, "selected_merchant": selected, "merchant_search": search,
+            "merchant_status": status, "visible_catalog": visible,
+            "directory_href": "/web/merchants?" + directory_query,
+            "visible_aliases": [item for item in ctx["aliases"]
+                                if view != "merchant" or selected and item.canonical_key == selected.merchant_key]}
 
 
 def _render_merchants(
@@ -77,6 +113,8 @@ def _render_merchants(
     rename_error: str = "",
     rename_error_public_id: str = "",
     rename_error_value: str = "",
+    rename_original_version: str = "",
+    rename_reviewed: bool = False,
     catalog_create_error: str = "",
     catalog_create_value: str = "",
     catalog_create_recycle: bool = False,
@@ -104,6 +142,8 @@ def _render_merchants(
         rename_error=rename_error,
         rename_error_public_id=rename_error_public_id,
         rename_error_value=rename_error_value,
+        rename_original_version=rename_original_version,
+        rename_reviewed=rename_reviewed,
         catalog_create_error=catalog_create_error,
         catalog_create_value=catalog_create_value,
         catalog_create_recycle=catalog_create_recycle,
@@ -113,6 +153,7 @@ def _render_merchants(
         merge_draft=merge_draft or {},
         q="?ledger_id=" + selected_id,
     )
+    ctx.update(_merchant_view_context(request, ctx))
     return templates.TemplateResponse(
         request=request,
         name="merchants.html",
@@ -177,7 +218,7 @@ def web_merchant_catalog_create(
                 if deleted_duplicate
                 else "商家已存在，无需重复添加。"
                 if is_conflict
-                else exc.message
+                else "请填写商家名称，最多255个字。" if exc.error == "invalid_request" else exc.message
             ),
             catalog_create_value=display_name,
             catalog_create_recycle=deleted_duplicate,
@@ -193,12 +234,23 @@ def web_merchant_catalog_rename(
     display_name: str = Form(""),
     ledger_id: str = Form(""),
     expected_row_version: str = Form(""),
+    review_latest: str = Form(""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
-) -> RedirectResponse:
+) -> Response:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
+    if review_latest == "1":
+        try:
+            current = get_merchant_catalog(db, tenant_id=selected_id, public_id=public_id)
+        except AppError as exc:
+            return _render_merchants(request, db, options=options, selected_id=selected_id,
+                rename_error=_catalog_rename_error_message(exc), rename_error_public_id=public_id,
+                rename_error_value=display_name, rename_original_version=expected_row_version, status_code=422)
+        return _render_merchants(request, db, options=options, selected_id=selected_id,
+            rename_error_public_id=public_id, rename_error_value=display_name,
+            rename_original_version=str(current.row_version), rename_reviewed=True)
     parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
         db.rollback()
@@ -210,6 +262,7 @@ def web_merchant_catalog_rename(
             rename_error="页面已过期，请使用当前商家状态重试。",
             rename_error_public_id=public_id,
             rename_error_value=display_name,
+            rename_original_version=expected_row_version,
             status_code=422,
         )
     try:
@@ -231,6 +284,7 @@ def web_merchant_catalog_rename(
             rename_error=_catalog_rename_error_message(exc),
             rename_error_public_id=public_id,
             rename_error_value=display_name,
+            rename_original_version=expected_row_version,
             status_code=422,
         )
     return _web_redirect("/web/merchants", selected_id, msg=msg)
@@ -392,7 +446,7 @@ def web_merchant_alias_create(
             db,
             options=options,
             selected_id=selected_id,
-            alias_create_error=exc.message,
+            alias_create_error=("请填写标准商家名和别名。" if exc.error == "invalid_request" else exc.message),
             alias_create_draft={
                 "canonical_merchant": canonical_merchant,
                 "alias": alias,

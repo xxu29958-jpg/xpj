@@ -1,0 +1,28 @@
+{% macro scope(version=none) %}
+{{ csrf_field|safe }}<input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+{% if version is not none %}<input type="hidden" name="expected_row_version" value="{{ version }}">{% endif %}
+{% endmacro %}
+{% macro catalog_create() %}
+{% if catalog_create_error %}<div id="merchant-create-error" class="product-feedback product-feedback--danger" role="alert">{{ catalog_create_error }}{% if catalog_create_recycle %} <a href="/web/recycle-bin{{ q }}">查看回收站</a>{% endif %}</div>{% endif %}
+{% if can_write %}<form method="post" action="/web/merchants/catalog/create" class="stack">
+{{ scope() }}<label class="product-field"><span>商家名称</span><input type="text" name="display_name" value="{{ catalog_create_value }}" required maxlength="255" placeholder="如：街角小馆"{% if catalog_create_error %} aria-invalid="true" aria-describedby="merchant-create-error"{% endif %}></label>
+<button type="submit" class="product-button product-button--primary">添加商家</button></form>{% endif %}
+{% endmacro %}
+{% macro alias_create(merchant=none) %}
+{% if alias_create_error %}<div id="alias-create-error" class="product-feedback product-feedback--danger" role="alert">{{ alias_create_error }}</div>{% endif %}
+<form method="post" action="/web/merchants/aliases/create" class="stack">
+{{ scope() }}<label class="product-field"><span>标准商家</span><input type="text" name="canonical_merchant" value="{{ alias_create_draft.canonical_merchant|default(merchant.display_name if merchant else '') }}" required maxlength="255"{% if alias_create_error %} aria-invalid="true" aria-describedby="alias-create-error"{% endif %}></label>
+<label class="product-field"><span>别名</span><input type="text" name="alias" value="{{ alias_create_draft.alias|default('') }}" required maxlength="255" placeholder="例如收款记录中的店名"{% if alias_create_error %} aria-invalid="true" aria-describedby="alias-create-error"{% endif %}></label>
+<p class="meta">一个别名只对应一个标准商家。可以独立添加，不必先创建商家目录。</p><button type="submit" class="product-button product-button--primary">添加别名</button></form>
+{% endmacro %}
+{% macro alias_list(items) %}
+<section class="product-entry-list" aria-label="商家别名">
+{% for item in items %}<div data-alias-key="{{ item.public_id }}">
+<div class="product-entry product-entry--static"><span class="product-entry-icon product-entry-icon--apricot" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#tag"/></svg></span><span class="product-entry-copy"><strong>{{ item.alias }}</strong><span>{{ item.canonical_merchant }} · {{ '启用' if item.enabled else '停用' }}</span></span></div>
+{% if can_write %}<div class="pill-row">
+<form method="post" action="/web/merchants/aliases/{{ item.public_id }}/toggle">{{ scope(item.row_version) }}<button type="submit" class="product-button product-button--quiet">{{ '停用' if item.enabled else '启用' }}</button></form>
+<form method="post" action="/web/merchants/aliases/{{ item.public_id }}/delete" data-confirm="删除商家别名「{{ item.alias }}」？">{{ scope(item.row_version) }}<button type="submit" class="product-button product-button--danger">删除</button></form>
+</div>{% endif %}</div>
+{% else %}<div class="product-state"><h2 class="product-state-title">还没有商家别名</h2><p class="product-state-body">添加这家店的其它写法，帮助后续规则匹配。</p></div>{% endfor %}
+</section>
+{% endmacro %}

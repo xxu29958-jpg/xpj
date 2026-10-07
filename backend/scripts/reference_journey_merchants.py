@@ -24,16 +24,21 @@ def create_catalog_and_alias(j):
     j.expect(lambda state: any(row["alias"] == "RefPay" and row["canonical"] == "RefShop" for row in state["aliases"]),
              "The native merchant alias did not reach the shared owner")
     j.goto("/web/merchants")
+    page.get_by_role("link", name="RefShop", exact=True).click()
     assert "RefPay" in page.inner_text("main") and "RefShop" in page.inner_text("main")
 
 
 def merge_after_target_changes(j):
+    j.page.get_by_role("link", name="商家目录", exact=True).click()
+    j.page.get_by_role("link", name="添加商家", exact=True).click()
     create = j.form("/web/merchants/catalog/create")
     create.locator('[name="display_name"]').fill("OldShop")
     create.get_by_role("button", name="添加商家", exact=True).click()
     j.expect(lambda state: any(row["name"] == "OldShop" for row in state["catalog"]), "The Web merchant was not retained")
     source = next(row for row in j.facts()["catalog"] if row["name"] == "OldShop")
     target = next(row for row in j.facts()["catalog"] if row["name"] == "RefShop")
+    j.page.get_by_role("link", name="OldShop", exact=True).click()
+    j.page.get_by_text("合并到另一个商家", exact=True).click()
     action = f'/web/merchants/catalog/{source["id"]}/merge'
     merge = j.form(action)
     original_target = f'{target["id"]}:{target["row_version"]}'
@@ -71,6 +76,7 @@ def change_catalog_visibility(j, target):
 def restore_alias(j):
     native, page = j.native, j.page
     alias = j.facts()["aliases"][0]
+    page.get_by_role("link", name="全部别名", exact=False).click()
     j.confirm(j.form(f'/web/merchants/aliases/{alias["id"]}/delete'))
     j.expect(lambda state: state["aliases"][0]["deleted"], "The Web alias removal did not commit")
     # Navigating through the actual library takes longer than the short undo banner;
@@ -83,5 +89,6 @@ def restore_alias(j):
     j.expect(lambda state: not state["aliases"][0]["deleted"], "The actual native recycle bin did not restore the alias")
     wait_for(lambda: not native.has("RefPay"), "The restored alias remained in the recycle bin")
     j.goto("/web/merchants")
+    page.get_by_role("link", name="全部别名", exact=False).click()
     assert "RefPay" in page.inner_text("main")
     j.capture("merchant-alias-restored-from-native")
