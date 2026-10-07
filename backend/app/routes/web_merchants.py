@@ -229,6 +229,25 @@ def web_merchants(
     )
 
 
+def _merchant_creation_failure(request: Request, db: Session, *, kind: str,
+    values: MerchantCreateForm, options: list, selected_id: str, exc: AppError) -> Response:
+    """Present the refusal beside its original input for both browser transports."""
+    db.rollback()
+    recycle = bool((exc.details or {}).get("conflict_merchant_deleted"))
+    message = ("同名商家已在回收站。请先恢复该商家，或改用其它名称。" if recycle
+        else "商家已存在，无需重复添加。" if kind == "catalog" and exc.error == "state_conflict"
+        else ("请填写商家名称，最多255个字。" if kind == "catalog" else "请填写标准商家名和别名。") if exc.error == "invalid_request"
+        else exc.message)
+    refusal = "rejected" if exc.error in {"invalid_request", "state_conflict", "merchant_alias_conflict", "idempotency_key_reused"} else "blocked"
+    return draft_error_response(request, AppError(exc.error, message, status_code=exc.status_code), refusal_result=refusal) or _render_merchants(
+        request, db, options=options, selected_id=selected_id,
+        creation_kind=kind, creation_form=values, creation_result=refusal,
+        catalog_create_error=message if kind == "catalog" else "", catalog_create_value=values.display_name,
+        catalog_create_recycle=recycle, alias_create_error=message if kind == "alias" else "",
+        alias_create_draft={"canonical_merchant": values.canonical_merchant, "alias": values.alias},
+        status_code=422 if refusal == "rejected" else exc.status_code)
+
+
 def _create_merchant(request: Request, db: Session, kind: str, values: MerchantCreateForm) -> Response:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, values.ledger_id or None, options, request=request)
@@ -258,20 +277,8 @@ def _create_merchant(request: Request, db: Session, kind: str, values: MerchantC
         receipt = submit_merchant_creation(db, tenant_id=selected_id, actor_account_id=actor,
             payload=payload, idempotency_key=values.idempotency_key)
     except AppError as exc:
-        db.rollback()
-        recycle = bool((exc.details or {}).get("conflict_merchant_deleted"))
-        message = ("同名商家已在回收站。请先恢复该商家，或改用其它名称。" if recycle
-            else "商家已存在，无需重复添加。" if kind == "catalog" and exc.error == "state_conflict"
-            else ("请填写商家名称，最多255个字。" if kind == "catalog" else "请填写标准商家名和别名。") if exc.error == "invalid_request"
-            else exc.message)
-        refusal = "rejected" if exc.error in {"invalid_request", "state_conflict", "merchant_alias_conflict", "idempotency_key_reused"} else "blocked"
-        return draft_error_response(request, AppError(exc.error, message, status_code=exc.status_code), refusal_result=refusal) or _render_merchants(
-            request, db, options=options, selected_id=selected_id,
-            creation_kind=kind, creation_form=values, creation_result=refusal,
-            catalog_create_error=message if kind == "catalog" else "", catalog_create_value=values.display_name,
-            catalog_create_recycle=recycle, alias_create_error=message if kind == "alias" else "",
-            alias_create_draft={"canonical_merchant": values.canonical_merchant, "alias": values.alias},
-            status_code=422 if refusal == "rejected" else exc.status_code)
+        return _merchant_creation_failure(request, db, kind=kind, values=values,
+            options=options, selected_id=selected_id, exc=exc)
     redirect = _web_redirect("/web/merchants", selected_id, search=values.search, status=values.status,
         view="directory" if kind == "catalog" else "aliases", msg="已确认添加" + label + "。")
     return draft_ack_response(request, draft_scope=values.draft_scope, idempotency_key=values.idempotency_key,
