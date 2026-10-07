@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from datetime import timedelta
 from uuid import uuid4
 
@@ -336,15 +335,14 @@ def test_web_recycle_bin_workbench_structure_owner(
     assert response.status_code == 200
     body = response.text
     # 五域 IA：回收站仍归流水域，但 section 父级已经收口到资料库 hub。
-    assert re.search(r'<nav\b[^>]*aria-label="面包屑"[^>]*>\s*<a[^>]*href="/web/library\?ledger_id=owner">资料库</a>', body)
+    assert 'href="/web/library?ledger_id=owner"' in body
     assert 'aria-label="可恢复项目"' in body
-    assert 'class="product-table"' in body
-    # ≤720px 表头留在无障碍树 (PR#252 P2 钉)：th 文本由 rb-sr-only 视觉隐藏，
-    # 不再 display:none 整个 thead —— 屏幕阅读器保留 保留状态/操作 列关联。
-    assert '<th><span class="rb-sr-only">保留状态</span></th>' in body
-    assert '<th><span class="rb-sr-only">操作</span></th>' in body
+    assert 'aria-label="回收站对象类型"' in body
+    assert 'aria-label="恢复 工作台结构收入"' in body
+    assert '已归档' in body
+    assert '长期保留' in body
     # owner 可写：恢复表单与 OCC 隐藏字段在；行身份锚在。
-    assert 'action="/web/recycle-bin/restore"' in body
+    assert 'action="/web/recycle-bin/restore?group=all"' in body
     assert 'name="expected_row_version"' in body
     assert 'data-restore-key="income_plan:' in body
 
@@ -359,12 +357,12 @@ def test_web_recycle_bin_workbench_viewer_readonly(
 
     assert response.status_code == 200
     body = response.text
-    assert 'action="/web/recycle-bin/restore"' not in body
+    assert 'action="/web/recycle-bin/restore?group=all"' not in body
     assert ">恢复</button>" not in body
     assert "只读角色可以查看回收站" in body
-    # 空账本 → 空态：标题 + 同域 (分类/商家/标签) 行动链接。
+    # 空账本 → 空态：标题 + 返回同域资料库的行动链接。
     assert "回收站是空的" in body
-    assert f'href="/web/categories?ledger_id={ledger_id}"' in body
+    assert f'href="/web/library?ledger_id={ledger_id}"' in body
 
 
 def _seed_archived_goal_for_label() -> None:

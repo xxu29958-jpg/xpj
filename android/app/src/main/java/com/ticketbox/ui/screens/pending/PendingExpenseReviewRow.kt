@@ -40,6 +40,7 @@ import com.ticketbox.domain.model.pendingNeedsCategory
 import com.ticketbox.domain.model.pendingNeedsFx
 import com.ticketbox.ui.components.AppAdaptiveAmountRowDefaults
 import com.ticketbox.ui.components.AppAdaptiveContentActionStateRow
+import com.ticketbox.ui.components.AppAdaptiveContentActionStyle
 import com.ticketbox.ui.components.AppAdaptiveEditActionLayout
 import com.ticketbox.ui.components.AppAdaptiveEditActionMode
 import com.ticketbox.ui.components.AppAsyncImage
@@ -102,8 +103,7 @@ internal fun PendingExpenseReviewRow(
             verticalArrangement = Arrangement.spacedBy(metrics.contentGap),
         ) {
             AppAdaptiveContentActionStateRow(
-                wideActionWeight = AppAdaptiveAmountRowDefaults.reviewTrailingWeight,
-                verticalAlignment = Alignment.CenterVertically,
+                style = AppAdaptiveContentActionStyle(wideActionWeight = AppAdaptiveAmountRowDefaults.reviewTrailingWeight),
                 content = {
                     Row(
                         modifier = Modifier

@@ -43,6 +43,7 @@ import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseLineageStatus
 import com.ticketbox.ui.components.AppAdaptiveAmountRowDefaults
 import com.ticketbox.ui.components.AppAdaptiveContentActionStateRow
+import com.ticketbox.ui.components.AppAdaptiveContentActionStyle
 import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.AppEndAlignedAmountStatusText
 import com.ticketbox.ui.components.autosizeMinFontSize
@@ -247,8 +248,7 @@ internal fun LedgerExpenseCard(
     ) {
         AppAdaptiveContentActionStateRow(
             modifier = Modifier.padding(horizontal = AppSpacing.cardPaddingTight, vertical = AppSpacing.contentGap),
-            wideActionWeight = AppAdaptiveAmountRowDefaults.trailingWeight,
-            verticalAlignment = Alignment.CenterVertically,
+            style = AppAdaptiveContentActionStyle(wideActionWeight = AppAdaptiveAmountRowDefaults.trailingWeight),
             content = {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -355,7 +355,6 @@ internal fun LedgerExpenseListRow(
     ) {
         AppAdaptiveContentActionStateRow(
             modifier = Modifier.padding(horizontal = AppSpacing.miniGap, vertical = rowMetrics.rowPadding),
-            verticalAlignment = Alignment.CenterVertically,
             content = {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -416,8 +415,7 @@ internal fun LedgerExpenseTableRow(
     ) {
         AppAdaptiveContentActionStateRow(
             modifier = Modifier.padding(horizontal = AppSpacing.cardPaddingTight, vertical = AppSpacing.contentGap),
-            wideActionWeight = AppAdaptiveAmountRowDefaults.trailingWeight,
-            verticalAlignment = Alignment.CenterVertically,
+            style = AppAdaptiveContentActionStyle(wideActionWeight = AppAdaptiveAmountRowDefaults.trailingWeight),
             content = {
                 Row(
                     modifier = Modifier.fillMaxWidth(),

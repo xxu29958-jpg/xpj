@@ -3,7 +3,7 @@
    页级 is_* 标志在 base.html 单一计算, 本 partial 只消费。
    上下文: q, _domain, is_* 标志, pending_count, suspected_duplicate_count。 #}
 {# 只渲染当前域的页级链接, 横向滚动; 工作区兜底域整行不渲染。 #}
-{% if _domain != 'workspace' and not (is_pending and inbox_is_empty|default(false)) and not _readonly_transactions|default(false) %}
+{% if _domain != 'workspace' and _path != '/web/library' and not (is_pending and inbox_is_empty|default(false)) and not _readonly_transactions|default(false) %}
 <nav class="mobile-plan-nav" aria-label="当前领域页面">
   {% if _domain == 'inbox' %}
     <a class="{% if is_pending %}active{% endif %}" href="/web/pending{{ q }}"{% if is_pending %} aria-current="page"{% endif %}>待确认{% if pending_count %}<span class="nav-badge">{{ pending_count }}</span>{% endif %}</a>

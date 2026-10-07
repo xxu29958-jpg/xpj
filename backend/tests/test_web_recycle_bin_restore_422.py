@@ -100,7 +100,7 @@ def test_restore_occ_conflict_rerenders_422_anchored_to_row(web_client: TestClie
     public_id, row_version = _seed_archived_income(label="冲突收入")
 
     response = web_client.post(
-        "/web/recycle-bin/restore",
+        "/web/recycle-bin/restore?group=plans",
         data={
             "kind": "income_plan", "intent_month": current_accounting_month(),
             "resource_id": public_id,
@@ -120,6 +120,8 @@ def test_restore_occ_conflict_rerenders_422_anchored_to_row(web_client: TestClie
     assert html.count('role="alert"') == 1
     assert "data-restore-orphan" not in html
     assert STALE_MESSAGE in html
+    assert 'group=plans" aria-current="page">计划</a>' in html
+    assert 'action="/web/recycle-bin/restore?group=plans"' in html
     # 零写入：状态与 row_version 均未变。
     assert _income_row(public_id) == ("archived", row_version)
 
@@ -272,4 +274,23 @@ def test_restore_past_recycle_window_rerenders_422_orphan(web_client: TestClient
     assert html.count('id="recycle-restore-error"') == 1
     assert GONE_MESSAGE in html
     # 超窗零写入：deleted_at 保持原样 (仍被软删)。
+    assert _rule_deleted_at(rule_id) is not None
+
+
+def test_filtered_restore_keeps_scope_and_returns_to_the_same_group(web_client: TestClient, identity) -> None:
+    public_id, row_version = _seed_archived_income(label="归档工资")
+    rule_id = _seed_deleted_rule()
+    plans = web_client.get("/web/recycle-bin?group=plans")
+    references = web_client.get("/web/recycle-bin?group=reference")
+    assert f'data-restore-key="income_plan:{public_id}"' in plans.text
+    assert f'data-restore-key="category_rule:{rule_id}"' not in plans.text
+    assert f'data-restore-key="category_rule:{rule_id}"' in references.text
+    assert f'data-restore-key="income_plan:{public_id}"' not in references.text
+    response = web_client.post("/web/recycle-bin/restore?group=plans", data={
+        "kind": "income_plan", "resource_id": public_id, "expected_row_version": str(row_version),
+        "intent_month": current_accounting_month(),
+    }, follow_redirects=False)
+    assert response.status_code == 303
+    assert "group=plans" in response.headers["location"]
+    assert _income_row(public_id)[0] == "active"
     assert _rule_deleted_at(rule_id) is not None

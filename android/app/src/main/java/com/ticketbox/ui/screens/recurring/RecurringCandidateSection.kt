@@ -16,6 +16,7 @@ import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.ui.components.AppAdaptiveAmountRowDefaults
 import com.ticketbox.ui.components.AppAdaptiveAmountRowStyle
 import com.ticketbox.ui.components.AppAdaptiveContentActionRow
+import com.ticketbox.ui.components.AppAdaptiveContentActionStyle
 import com.ticketbox.ui.components.AppAdaptiveEditAmountRow
 import com.ticketbox.ui.components.AppListStateContent
 import com.ticketbox.ui.components.AppListStateSpec
@@ -155,8 +156,7 @@ private fun RecurringCandidateRow(
     }
     if (canModify) {
         AppAdaptiveContentActionRow(
-            wideActionWeight = 0.46f,
-            verticalAlignment = Alignment.Top,
+            style = AppAdaptiveContentActionStyle(wideActionWeight = 0.46f, verticalAlignment = Alignment.Top),
             content = content,
             action = { actionModifier ->
                 AppSecondaryButton(

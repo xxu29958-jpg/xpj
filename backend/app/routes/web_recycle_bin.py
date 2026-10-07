@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
@@ -27,6 +29,8 @@ from app.services.recycle_bin_service import (
 )
 
 router = APIRouter(prefix="/web/recycle-bin", tags=["web"])
+RecycleGroup = Literal["all", "reference", "plans"]
+_PLAN_KINDS = {"monthly_budget", "income_plan", "recurring_item", "goal"}
 
 # C5b-2 硬门 (照 #248 web_debt_proposal_actions 422 原地重渲染+锚定范式)：
 # restore 失败不再 redirect+error flash，而是 db.rollback() 后走共享渲染入口 422
@@ -41,6 +45,7 @@ def page_recycle_bin(
     ledger_id: str | None = Query(default=None),
     message: str | None = Query(default=None),
     error: str | None = Query(default=None),
+    group: RecycleGroup = Query(default="all"),
     db: Session = Depends(get_db),
     _local: None = LocalOnly,
 ) -> HTMLResponse:
@@ -53,6 +58,7 @@ def page_recycle_bin(
         selected=selected,
         message=message,
         error=error,
+        group=group,
     )
 
 
@@ -67,6 +73,7 @@ def _render_recycle_bin(
     restore_error: str | None = None,
     restore_error_key: str | None = None,
     status_code: int = 200,
+    group: RecycleGroup = "all",
 ) -> HTMLResponse:
     """回收站页唯一渲染入口：GET 与 restore 失败 422 原地重渲染共用 (照
     ``web_debts._render_debt_detail`` 同页重渲染范式)，保证错误重渲染与正常渲染
@@ -79,6 +86,8 @@ def _render_recycle_bin(
     except AppError:
         can_write = False
     listing = list_recycle_bin_items(db, tenant_id=selected)
+    visible = [row for row in listing.items if group == "all" or
+               (row.kind in _PLAN_KINDS) == (group == "plans")]
     ctx = _base_ctx(
         request,
         db=db,
@@ -88,6 +97,9 @@ def _render_recycle_bin(
     )
     ctx.update(
         recycle_bin=listing,
+        visible_items=visible,
+        recycle_group=group,
+        plan_kinds=_PLAN_KINDS,
         can_write=can_write,
         message=message,
         error=error,
@@ -96,7 +108,7 @@ def _render_recycle_bin(
         restore_error_orphan=_restore_error_is_orphan(
             restore_error,
             restore_error_key,
-            listing,
+            RecycleBinListing(items=visible, short_window_count=listing.short_window_count),
         ),
     )
     return templates.TemplateResponse(
@@ -143,6 +155,7 @@ def _restore_error_rerender(
     kind: str,
     resource_id: str,
     exc: AppError,
+    group: RecycleGroup = "all",
 ) -> HTMLResponse:
     """restore 失败 (OCC 冲突/已恢复/超窗/不存在/参数缺失) → 422 原地重渲染：
     ``db.rollback()`` 归零写入，错误按 ``data-restore-key`` 身份锚定到被提交的
@@ -157,6 +170,7 @@ def _restore_error_rerender(
         restore_error=_restore_error_message(exc),
         restore_error_key=_restore_key(kind, resource_id),
         status_code=422,
+        group=group,
     )
 
 
@@ -168,6 +182,7 @@ def post_restore_recycle_bin(
     resource_id: str = Form(default=""),
     expected_row_version: str = Form(default=""),
     intent_month: str | None = Form(default=None),
+    group: RecycleGroup = Query(default="all"),
     db: Session = Depends(get_db),
     _local: None = LocalOnly,
 ) -> Response:
@@ -196,8 +211,9 @@ def post_restore_recycle_bin(
             kind=kind,
             resource_id=resource_id,
             exc=exc,
+            group=group,
         )
-    return _web_redirect("/web/recycle-bin", selected, message=message)
+    return _web_redirect("/web/recycle-bin", selected, message=message, group=group)
 
 
 def _actor_account_id(request: Request, db: Session) -> int | None:

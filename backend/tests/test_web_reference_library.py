@@ -62,7 +62,7 @@ def test_reference_library_hub_groups_existing_owner_surfaces(
 
     assert response.status_code == 200
     body = response.text
-    for group in ("常用查询", "交易字典", "自动化", "数据生命周期"):
+    for group in ("保存的查询", "交易资料", "整理工具"):
         assert group in body
     for href in (
         "/web/saved-views?ledger_id=owner",
@@ -78,7 +78,7 @@ def test_reference_library_hub_groups_existing_owner_surfaces(
     assert "商家" in body
     assert "标签" in body
     assert "规则" in body
-    assert "整个账本的已移除内容" in body
+    assert "项可恢复" in body
 
 
 def test_reference_library_counts_views_without_resolving_each_tag(web_client: TestClient, monkeypatch) -> None:

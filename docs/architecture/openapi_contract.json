@@ -55081,6 +55081,21 @@
               ],
               "title": "Error"
             }
+          },
+          {
+            "in": "query",
+            "name": "group",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "enum": [
+                "all",
+                "reference",
+                "plans"
+              ],
+              "title": "Group",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -55114,6 +55129,23 @@
     "/web/recycle-bin/restore": {
       "post": {
         "operationId": "post_restore_recycle_bin_web_recycle_bin_restore_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "group",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "enum": [
+                "all",
+                "reference",
+                "plans"
+              ],
+              "title": "Group",
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/x-www-form-urlencoded": {

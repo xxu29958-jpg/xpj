@@ -1,22 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="transactions_library_title">资料库</string>
-    <string name="transactions_library_subtitle">整理分类、商家和标签，找回删掉的内容</string>
-    <string name="transactions_library_back_to_transactions">交易</string>
+    <string name="transactions_library_subtitle">常用资料，整理在一起。</string>
+    <string name="transactions_library_back_to_transactions">流水</string>
     <string name="transactions_library_back_to_library">资料库</string>
-    <string name="transactions_library_group_vocabulary">整理名称</string>
-    <string name="transactions_library_group_automation">自动归类</string>
-    <string name="transactions_library_group_lifecycle">找回数据</string>
+    <string name="transactions_library_group_vocabulary">交易资料</string>
+    <string name="transactions_library_group_automation">整理工具</string>
     <string name="transactions_library_categories_title">分类</string>
-    <string name="transactions_library_categories_subtitle">查看内置分类，管理账本中的自定义分类</string>
+    <string name="transactions_library_categories_subtitle">支出类型与使用情况</string>
     <string name="transactions_library_merchants_title">商家</string>
-    <string name="transactions_library_merchants_subtitle">归一商家名称，维护别名与合并关系</string>
+    <string name="transactions_library_merchants_subtitle">常去的店与别名</string>
     <string name="transactions_library_tags_title">标签</string>
-    <string name="transactions_library_tags_subtitle">整理跨交易使用的标签与合并关系</string>
-    <string name="transactions_library_rules_title">自动规则</string>
-    <string name="transactions_library_rules_subtitle">用商家关键词自动建议分类</string>
+    <string name="transactions_library_tags_subtitle">按自己的习惯归类</string>
+    <string name="transactions_library_rules_title">分类规则</string>
+    <string name="transactions_library_rules_subtitle">预览后再应用</string>
     <string name="transactions_library_recycle_bin_title">回收站</string>
-    <string name="transactions_library_recycle_bin_subtitle">查看当前账本中仍可恢复的已移除数据</string>
+    <string name="transactions_library_recycle_bin_subtitle">找回最近移除的内容</string>
 
     <string name="category_directory_title">分类</string>
     <string name="category_directory_subtitle">%1$d 个内置分类 · %2$d 个自定义分类</string>

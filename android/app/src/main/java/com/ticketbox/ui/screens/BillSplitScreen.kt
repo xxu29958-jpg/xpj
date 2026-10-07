@@ -41,6 +41,7 @@ import com.ticketbox.domain.model.presentedStatus
 import com.ticketbox.ui.components.AppAdaptiveEditActionLayout
 import com.ticketbox.ui.components.AppAdaptiveEditActionMode
 import com.ticketbox.ui.components.AppAdaptiveContentActionRow
+import com.ticketbox.ui.components.AppAdaptiveContentActionStyle
 import com.ticketbox.ui.components.AppAdaptiveTrailingActionRow
 import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.AppErrorState
@@ -416,7 +417,7 @@ private fun BillSplitPartyAmountRow(
 ) {
     AppAdaptiveContentActionRow(
         modifier = Modifier.fillMaxWidth(),
-        wideActionWeight = BillSplitAmountWideWeight,
+        style = AppAdaptiveContentActionStyle(wideActionWeight = BillSplitAmountWideWeight),
         content = {
             Text(
                 text = name,

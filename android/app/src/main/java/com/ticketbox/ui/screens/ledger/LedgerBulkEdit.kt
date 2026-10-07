@@ -58,7 +58,6 @@ internal fun LedgerSelectionBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = AppSpacing.cardPaddingTight, vertical = AppSpacing.smallGap),
-            verticalAlignment = Alignment.CenterVertically,
             content = {
                 LedgerSelectionSummary(
                     selectedCount = selectedCount,
