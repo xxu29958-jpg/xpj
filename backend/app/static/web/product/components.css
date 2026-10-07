@@ -598,9 +598,10 @@ progress::-moz-progress-bar {
 }
 
 textarea {
-    min-height: calc(var(--space-12) * 2);
     resize: vertical;
 }
+
+textarea:not([rows]) { min-height: calc(var(--space-12) * 2); }
 
 .dt-input:hover,
 .product-input:hover,
@@ -1038,6 +1039,7 @@ fieldset.product-field { border: 0; padding: 0; margin: 0; }
 .product-comparison strong { font-size: var(--type-title-size); font-weight: var(--type-title-weight); }
 .product-comparison-proposed { background: var(--brand-primary-bg); border-radius: var(--radius-input); }
 .product-panel--highlight { background: var(--brand-primary-bg); }
+.product-panel--apricot { background: var(--surface-apricot); }
 
 .text-warning {
     color: var(--state-warn-fg);

@@ -40,11 +40,11 @@ def draft_refusal_result(exc: AppError) -> str:
         "expense_offset_not_active", "calendar_revision_conflict", "accounting_time_invalid"} else "blocked"
 
 
-def draft_error_response(request: Request, exc: AppError) -> JSONResponse | None:
+def draft_error_response(request: Request, exc: AppError, *, refusal_result: str | None = None) -> JSONResponse | None:
     if "application/json" not in request.headers.get("accept", ""):
         return None
     return JSONResponse({"error": exc.error, "message": exc.message,
-        "draft_result": draft_refusal_result(exc)}, status_code=exc.status_code,
+        "draft_result": refusal_result or draft_refusal_result(exc)}, status_code=exc.status_code,
         headers={"Cache-Control": "no-store"})
 
 

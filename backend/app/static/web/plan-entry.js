@@ -38,7 +38,7 @@
     if (!submit) return;
     const nativeLabel = submit.textContent;
     const nativeRef = (definition.draftRefField && form.elements.namedItem(definition.draftRefField).value) || form.elements.namedItem("idempotency_key").value;
-    const amount = form.elements.namedItem(definition.amount);
+    const amount = definition.amount ? form.elements.namedItem(definition.amount) : null;
     const shelf = document.querySelector(selector("draft-shelf"));
     const review = form.querySelector(selector("review"));
     const discard = form.querySelector(selector("discard"));
@@ -78,7 +78,7 @@
     }
     function values() {
       return {...(definition.read ? definition.read(form) : Object.fromEntries(names.map(name => [name, field(name)?.value || ""]))),
-        amount_placeholder: amount.placeholder, amount_inputmode: amount.inputMode};
+        amount_placeholder: amount?.placeholder || "", amount_inputmode: amount?.inputMode || ""};
     }
     function notice(message) { status.hidden = false; status.textContent = message; }
     function fieldsEditable() {
@@ -107,7 +107,7 @@
       updateFields(fieldsEditable());
       submit.hidden = archived && phase === "editing";
       submit.disabled = !commandAllowed() || actionUnavailable();
-      submit.textContent = phase === "editing" ? nativeLabel : "核实原" + taskLabel;
+      submit.textContent = phase === "editing" ? nativeLabel : definition.pendingLabel || "核实原" + taskLabel;
       review.hidden = !reviewAvailable();
       review.disabled = busy || accepted;
       discard.hidden = blocked || !retained;
@@ -118,7 +118,7 @@
       }
       form.querySelector(selector("review-note")).hidden = review.hidden;
       form.dataset[family + "DraftPhase"] = phase;
-      definition.updatePresentation?.(form);
+      definition.updatePresentation?.(form, {phase, rejected: reviewable});
     }
     function stop(message) { blocked = true; controls(); notice(message); }
     function restore(record) {
@@ -145,8 +145,10 @@
         label.append(field("income_month"));
         form.querySelector("fieldset").prepend(label);
       }
-      amount.placeholder = saved.amount_placeholder;
-      amount.inputMode = saved.amount_inputmode;
+      if (amount) {
+        amount.placeholder = saved.amount_placeholder;
+        amount.inputMode = saved.amount_inputmode;
+      }
       if (definition.present) definition.present(form, saved);
       else form.querySelector(selector("amount-label")).textContent =
         (isGoal ? "目标金额（" : "预计金额（") + (saved.home_currency_code || "币种待确认") + "）";

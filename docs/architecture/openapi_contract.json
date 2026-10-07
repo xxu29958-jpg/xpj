@@ -4582,6 +4582,16 @@
             "title": "Acknowledge Incomplete Lineage",
             "type": "string"
           },
+          "draft_client_ref": {
+            "default": "",
+            "title": "Draft Client Ref",
+            "type": "string"
+          },
+          "draft_scope": {
+            "default": "",
+            "title": "Draft Scope",
+            "type": "string"
+          },
           "exchange_rate_date": {
             "default": "",
             "title": "Exchange Rate Date",
@@ -4610,6 +4620,11 @@
           "reason": {
             "default": "",
             "title": "Reason",
+            "type": "string"
+          },
+          "review_latest": {
+            "default": "",
+            "title": "Review Latest",
             "type": "string"
           }
         },

@@ -1,6 +1,7 @@
 """Saved CSV event forms: real routes/templates, forbidden database connections."""
 
 import asyncio
+import json
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -42,6 +43,13 @@ def review_web(monkeypatch):
         "can_write": options[0].role != "viewer", "selected_ledger_id": "family", "csrf_token": "fixture-csrf",
     })
     monkeypatch.setattr(route, "_expense_view", lambda root: vars(root))
+    monkeypatch.setattr(route, "get_csv_import_batch", lambda *_a, **_k: SimpleNamespace(file_name="events.csv"))
+    monkeypatch.setattr(route, "rendered_draft_scope", lambda *_a: (None, False))
+    monkeypatch.setattr(route, "reviewed_draft_scope", lambda _db, _request, scope, **_k: scope)
+    monkeypatch.setattr(route, "expense_fact_bundle", lambda *_a, **_k: SimpleNamespace(
+        root=SimpleNamespace(row_version=9, original_currency_code="USD", home_currency="CNY"),
+        financial_summary=SimpleNamespace(status="partially_refunded", remaining_refundable_original_minor=200,
+                                         lineage_home_net_cents=1420), active_offsets=[]))
     return route
 
 
@@ -101,6 +109,7 @@ def submit(route, **changes):
     values = {"request": request(), "public_id": BATCH, "line_number": 3, "ledger_id": "family",
               "expense_id": "42", "expected_row_version": "5", "reason": "核对来源收据",
               "acknowledge_incomplete_lineage": "", "manual_exchange_rate": "", "exchange_rate_date": "",
+              "draft_scope": "", "draft_client_ref": "", "review_latest": "",
               "db": SimpleNamespace(rollback=lambda: None)}
     return route.web_import_event_submit(**{**values, **changes})
 
@@ -110,7 +119,7 @@ def test_review_submits_actor_scope_original_occ_and_reason(review_web, monkeypa
 
     def accept(_db, **kwargs):
         calls.append(kwargs)
-        return row(status="applied")
+        return row(status="applied", resolved_expense_id=42)
 
     monkeypatch.setattr(review_web, "review_csv_import_row", accept)
     response = submit(review_web)
@@ -175,7 +184,7 @@ def test_missing_root_search_stays_in_ledger_and_explicitly_selects(review_web, 
         query="Coffee", page=2, reason="保留说明", db=object())
     body = response.body.decode()
     assert ("search", {"tenant_id": "family", "query": "Coffee", "page": 2, "page_size": 20}) in calls
-    assert "选择此原单" in body and 'name="expense_id" value="42"' in body
+    assert "选择此原单" in body and 'name="review_latest" value="42"' in body
     assert 'name="reason" value="保留说明"' in body
     assert "补充上传原单（新页面）" in body and "已补充原单，重新读取关联" in body
     assert "确认原单并登记退款" not in body
@@ -190,8 +199,7 @@ def test_invalid_review_input_is_retained_without_command(review_web, monkeypatc
     assert 'role="alert"' in response.body.decode()
 
 
-def test_viewer_cannot_submit_and_has_no_mutation_form(review_web, monkeypatch):
-    from app.errors import AppError
+def test_viewer_cannot_submit_and_retains_readonly_original_form(review_web, monkeypatch):
     from app.routes.web_common import LedgerOption
 
     monkeypatch.setattr(review_web, "_list_ledger_options", lambda _: [LedgerOption("family", "Family", "viewer", False, 0, 0)])
@@ -201,10 +209,11 @@ def test_viewer_cannot_submit_and_has_no_mutation_form(review_web, monkeypatch):
     monkeypatch.setattr(review_web, "review_csv_import_row", lambda *_a, **_k: pytest.fail("viewer write"))
     arrange(monkeypatch, review_web, row(resolved_expense_id=42), root())
     response = review_web.web_import_event_review(request(), BATCH, 3, ledger_id="family", db=object())
-    assert 'method="post"' not in response.body.decode()
-    with pytest.raises(AppError) as caught:
-        submit(review_web)
-    assert caught.value.status_code == 403
+    assert 'data-csvreview-can-write="false"' in response.body.decode()
+    assert '<fieldset class="manual-expense-fields stack" disabled>' in response.body.decode()
+    response = submit(review_web)
+    assert response.status_code == 403
+    assert "核对来源收据" in response.body.decode()
 
 
 def test_ledger_switch_preserves_original_form_without_review(review_web, monkeypatch):
@@ -264,7 +273,8 @@ def test_completed_or_conflicting_event_keeps_result_and_correction_paths(review
         resolved_offset_public_id=EVENT), root())
     response = review_web.web_import_event_review(request(), BATCH, 3, ledger_id="family", db=object())
     body = response.body.decode()
-    assert 'method="post"' not in body
+    assert 'data-csvreview-archived="true"' in body
+    assert 'data-csvreview-ready="false"' in body
     assert "查看原单与退款记录" in body
     assert "返回原批次" in body and EVENT in body
     assert ("下载错误行 CSV" in body) == (status == "conflict")
@@ -288,7 +298,7 @@ def test_batch_lists_existing_drafts_reviews_and_confirmed_offsets_separately(re
     body = review_web.templates.env.get_template("import_batch.html").render(context)
     for expected in ("已有记录", "新消费草稿", "待复核", "事件已入账", "支出", "退款", "拒付", "冲销"):
         assert expected in body
-    assert "本批次新增 1 条消费草稿" in body
+    assert '<span data-import-count="inserted_count">1</span>' in body
     assert f'/web/import/{BATCH}/rows/3/review?ledger_id=family' in body
     assert 'name="status"' in body and 'value="matched"' in body and 'value="review"' in body
 
@@ -328,3 +338,52 @@ def test_upload_cannot_silently_move_to_the_new_live_ledger(review_web, monkeypa
     assert target["flash_type"] == ["error"]
     assert target["ledger_id"] == ["family"]
     assert "本次文件尚未导入" in target["msg"][0]
+
+
+@pytest.mark.parametrize("changes,expected", [({}, "7.10"), ({"offset_kind": "chargeback"}, "7.10"),
+    ({"offset_kind": "reversal", "original_amount_minor": 0, "amount_cents": 0}, "0.00"),
+    ({"original_amount_minor": 300}, None), ({"exchange_rate_date": None}, None),
+    ({"home_currency_code": "USD"}, None), ({"status": "applied"}, None)])
+def test_event_preview_uses_current_net_and_frozen_event_money(review_web, changes, expected):
+    result = review_web._event_net_preview(object(), "family", row(**changes), root())
+    assert result == ({"amount_label": "¥" + expected, "currency_code": "CNY"} if expected else None)
+
+
+def test_preview_does_not_use_newer_root_or_reverse_existing_refunds(review_web, monkeypatch):
+    bundle = review_web.expense_fact_bundle(None)
+    monkeypatch.setattr(review_web, "expense_fact_bundle", lambda *_a, **_k: bundle)
+    assert review_web._event_net_preview(object(), "family", row(), root(row_version=8)) is None
+    bundle.active_offsets = [object()]
+    assert review_web._event_net_preview(object(), "family", row(offset_kind="reversal"), root()) is None
+
+
+def test_explicit_root_selection_prepares_latest_without_registering_event(review_web, monkeypatch):
+    arrange(monkeypatch, review_web, row(), root(id=54))
+    monkeypatch.setattr(review_web, "review_csv_import_row", lambda *_a, **_k: pytest.fail("selection must not write"))
+    response = submit(review_web, review_latest="54", reason="保留关联说明")
+    body = response.body.decode()
+    assert response.status_code == 200
+    assert 'name="expense_id" value="54"' in body and 'name="expected_row_version" value="9"' in body
+    assert 'data-csvreview-native-result="prepared"' in body and "保留关联说明" in body
+
+
+def test_browser_receipt_is_bound_to_original_scope_and_saved_row(review_web, monkeypatch):
+    from app.routes import _web_draft_binding
+    scope = {"ledgerId": "family", "installationId": "fixture", "accountId": 17, "deviceId": 23}
+    monkeypatch.setattr(_web_draft_binding.manual_expense_draft_presenter, "manual_draft_scope", lambda *_a: scope)
+    req = request()
+    req.scope["headers"] = [(b"accept", b"application/json")]
+    monkeypatch.setattr(review_web, "review_csv_import_row", lambda *_a, **_k: row(status="applied", resolved_expense_id=42))
+    response = submit(review_web, request=req, draft_scope=json.dumps(scope), draft_client_ref=EVENT)
+    result = json.loads(response.body)
+    assert result["ack"] == {"scope": scope, "clientRef": EVENT}
+    assert result["receipt"] == {"public_id": BATCH, "line_number": 3, "status": "applied", "expense_id": 42}
+    monkeypatch.setattr(review_web, "review_csv_import_row", lambda *_a, **_k: row(status="matched", resolved_expense_id=99))
+    response = submit(review_web, request=req, draft_scope=json.dumps(scope), draft_client_ref=EVENT)
+    assert response.status_code == 409 and json.loads(response.body)["draft_result"] == "rejected"
+    assert "ack" not in json.loads(response.body)
+    monkeypatch.setattr(review_web, "review_csv_import_row", lambda *_a, **_k: pytest.fail("wrong identity write"))
+    response = submit(review_web, request=req, draft_scope=json.dumps({**scope, "deviceId": 88}), draft_client_ref=EVENT)
+    assert response.status_code == 409 and json.loads(response.body)["draft_result"] == "blocked"
+    response = submit(review_web, request=req, draft_client_ref=EVENT)
+    assert response.status_code == 409
