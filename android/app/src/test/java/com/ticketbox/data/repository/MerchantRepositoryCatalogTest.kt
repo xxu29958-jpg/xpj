@@ -129,10 +129,8 @@ class MerchantRepositoryCatalogTest {
         val api = CatalogApiServiceStub()
 
         val result = repository(api).mergeMerchantCatalog(
-            sourcePublicId = " source ",
-            sourceRowVersion = 3L,
-            targetPublicId = " target ",
-            targetRowVersion = 9L,
+            source = merchantCatalogDto(publicId = " source ").copy(rowVersion = 3).toDomain(),
+            target = merchantCatalogDto(publicId = " target ").copy(rowVersion = 9).toDomain(),
             aliasPolicy = MerchantCatalogAliasPolicy.CreateSourceAlias,
         ).getOrThrow()
 
@@ -148,7 +146,7 @@ class MerchantRepositoryCatalogTest {
         assertEquals("alias-created-by-merge", result.createdAliasPublicId)
     }
 
-    @Test fun originalRenameBindingCannotReadOrWriteThroughAnotherIdentity() = runTest {
+    @Test fun originalCatalogBindingCannotReadOrWriteThroughAnotherIdentity() = runTest {
         val api = CatalogApiServiceStub()
         val repository = repository(api)
         val current = requireNotNull(repository.captureBinding())
@@ -161,9 +159,13 @@ class MerchantRepositoryCatalogTest {
             assertTrue(repository.merchantCatalog(expectedBinding = original).isFailure)
             assertTrue(repository.updateMerchantCatalog("catalog-1", 7, displayName = "原稿",
                 expectedBinding = original).isFailure)
+            assertTrue(repository.mergeMerchantCatalog(merchantCatalogDto("catalog-1").copy(rowVersion = 7).toDomain(),
+                merchantCatalogDto("catalog-2").copy(rowVersion = 9).toDomain(),
+                MerchantCatalogAliasPolicy.None, expectedBinding = original).isFailure)
         }
         assertTrue(api.includeHiddenRequests.isEmpty())
         assertTrue(api.updateRequests.isEmpty())
+        assertTrue(api.mergeRequests.isEmpty())
         assertTrue(repository.merchantCatalog(expectedBinding = current).isSuccess)
         assertEquals(8L, repository.updateMerchantCatalog("catalog-1", 7, displayName = "原稿",
             expectedBinding = current).getOrThrow().rowVersion)

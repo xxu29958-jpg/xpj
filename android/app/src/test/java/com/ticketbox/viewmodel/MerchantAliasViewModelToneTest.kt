@@ -136,7 +136,7 @@ class MerchantAliasViewModelToneTest {
         vm.createMerchantAlias("Starbucks", "Starbucks Local")
         val accepted = vm.creations.state.first { it.drafts.any { draft -> draft.phase == "accepted" } }.drafts.single()
         vm.creations.acknowledge(accepted.kind, accepted.key)
-        val state = vm.uiState.first { it.message == UiText.raw("原添加已确认。") }
+        val state = vm.uiState.first { it.message == UiText.res(R.string.merchant_creation_confirmed) }
         advanceUntilIdle()
 
         assertEquals(MessageTone.Success, state.messageTone)

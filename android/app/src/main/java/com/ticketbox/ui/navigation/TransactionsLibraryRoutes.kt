@@ -301,6 +301,7 @@ private fun MerchantDirectoryRoute(
             mergeSuggestion = state.mergeSuggestion,
             editorCompletion = state.editorCompletion,
             renameReview = state.renameReview,
+            mergeReview = state.mergeReview,
             creation = state.creation,
         ),
         actions = MerchantAliasesScreenActions(
@@ -318,6 +319,8 @@ private fun MerchantDirectoryRoute(
                 onDelete = viewModel::deleteMerchantCatalog,
                 onReviewRename = viewModel::reviewMerchantRename,
                 onConsumeRenameReview = viewModel::consumeRenameReview,
+                onReviewMerge = viewModel::reviewMerchantMerge,
+                onConsumeMergeReview = viewModel::consumeMergeReview,
             ),
             alias = MerchantAliasesAliasActions(
                 onCreate = viewModel::createMerchantAlias,

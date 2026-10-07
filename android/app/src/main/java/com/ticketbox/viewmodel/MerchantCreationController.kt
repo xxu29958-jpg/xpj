@@ -1,5 +1,7 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.R
+import com.ticketbox.domain.model.UiText
 import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.MerchantCreationDraft
@@ -20,7 +22,7 @@ data class MerchantCreationState(
     val ready: Boolean = false,
     val canModify: Boolean = false,
     val busy: Boolean = false,
-    val error: String? = null,
+    val error: UiText? = null,
 ) {
     fun draft(kind: MerchantCreationKind) = drafts.firstOrNull { it.kind == kind }
 
@@ -65,7 +67,7 @@ class MerchantCreationController(
         _state.value = _state.value.copy(busy = true, error = null)
         scope.launch {
             repository.readCreationDrafts(original).onSuccess { retained = it; _state.value = _state.value.copy(ready = true) }
-                .onFailure { _state.value = _state.value.copy(error = "原稿暂时无法读取，请重试读取。") }
+                .onFailure { _state.value = _state.value.copy(error = UiText.res(R.string.merchant_creation_read_failed)) }
             _state.value = _state.value.copy(busy = false)
             publish()
         }
@@ -139,7 +141,7 @@ class MerchantCreationController(
                     retained = retained.filterNot { it.key == key }
                     publish()
                     if (_state.value.binding == draft.binding) onAccepted(draft)
-                }.onFailure { _state.value = _state.value.copy(error = "添加已确认，原稿暂未收起。请核对商家资料。") }
+                }.onFailure { _state.value = _state.value.copy(error = UiText.res(R.string.merchant_creation_acknowledge_failed)) }
             }
             _state.value = _state.value.copy(busy = false)
         }
@@ -152,7 +154,7 @@ class MerchantCreationController(
 
     private suspend fun persist(draft: MerchantCreationDraft): Boolean {
         val saved = repository.saveCreationDraft(draft)
-        _state.value = _state.value.copy(error = if (saved.isFailure) "原稿暂未保存，尚不能发出添加请求。请保留页面重试。" else null)
+        _state.value = _state.value.copy(error = if (saved.isFailure) UiText.res(R.string.merchant_creation_save_failed) else null)
         return saved.isSuccess
     }
 }

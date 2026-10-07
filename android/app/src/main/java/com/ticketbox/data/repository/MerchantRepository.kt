@@ -124,24 +124,23 @@ class MerchantRepository(
         }
 
     suspend fun mergeMerchantCatalog(
-        sourcePublicId: String,
-        sourceRowVersion: Long,
-        targetPublicId: String,
-        targetRowVersion: Long,
+        source: MerchantCatalog,
+        target: MerchantCatalog,
         aliasPolicy: MerchantCatalogAliasPolicy,
+        expectedBinding: LogicalSessionBinding? = captureBinding(),
     ): Result<MerchantCatalogMergeResult> =
         errorHandler.safeCall {
-            val cleanSource = sourcePublicId.trim()
-            val cleanTarget = targetPublicId.trim()
+            val cleanSource = source.publicId.trim()
+            val cleanTarget = target.publicId.trim()
             require(cleanSource.isNotBlank() && cleanTarget.isNotBlank()) { "请选择要合并的商家。" }
             require(cleanSource != cleanTarget) { "不能把商家合并到自身。" }
-            ledgerRequestGuard.guardedCall { api ->
+            ledgerRequestGuard.bindExact(expectedBinding ?: throw RepositoryException("登录状态已失效，请重新绑定。")).call { api ->
                 api.mergeMerchantCatalog(
                     cleanSource,
                     MerchantCatalogMergeRequest(
-                        expectedRowVersion = sourceRowVersion,
+                        expectedRowVersion = source.rowVersion,
                         targetPublicId = cleanTarget,
-                        targetRowVersion = targetRowVersion,
+                        targetRowVersion = target.rowVersion,
                         aliasPolicy = aliasPolicy.apiValue,
                         rewriteHistoricalExpenses = false,
                     ),

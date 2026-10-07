@@ -46,6 +46,7 @@ import com.ticketbox.viewmodel.MerchantEditorKind
 import com.ticketbox.viewmodel.MerchantCreationState
 import com.ticketbox.data.repository.MerchantCreationKind
 import com.ticketbox.viewmodel.MerchantRenameReview
+import com.ticketbox.viewmodel.MerchantMergeReview
 import kotlinx.coroutines.delay
 
 @Composable
@@ -77,6 +78,8 @@ fun MerchantAliasesScreen(
             onDismissSuggestion = actions.mergeSuggestion.onDismiss,
             onReviewRename = actions.catalog.onReviewRename,
             onConsumeRenameReview = actions.catalog.onConsumeRenameReview,
+            onReviewMerge = actions.catalog.onReviewMerge,
+            onConsumeMergeReview = actions.catalog.onConsumeMergeReview,
         ),
     )
 
@@ -226,6 +229,7 @@ data class MerchantAliasesScreenState(
     val mergeSuggestion: MerchantCatalogMergeSuggestion?,
     val editorCompletion: MerchantEditorCompletion?,
     val renameReview: MerchantRenameReview? = null,
+    val mergeReview: MerchantMergeReview? = null,
     val creation: MerchantCreationState = MerchantCreationState(),
 )
 
@@ -255,6 +259,8 @@ data class MerchantAliasesCatalogActions(
     val onDelete: (MerchantCatalog) -> Unit,
     val onReviewRename: (MerchantCatalog) -> Unit,
     val onConsumeRenameReview: () -> Unit,
+    val onReviewMerge: (MerchantCatalog, MerchantCatalog) -> Unit,
+    val onConsumeMergeReview: () -> Unit,
 )
 
 data class MerchantAliasesAliasActions(
@@ -307,7 +313,7 @@ internal class MerchantEditors {
                 if (catalogDialogs.renamingCatalog?.publicId == completed.publicId) catalogDialogs.closeRename()
             }
             MerchantEditorKind.MergeCatalog -> {
-                if (catalogDialogs.mergingCatalog?.publicId == completed.publicId) catalogDialogs.closeMerge()
+                if (catalogDialogs.mergingCatalog?.publicId == completed.publicId) catalogDialogs.finishMerge()
             }
             MerchantEditorKind.DeleteCatalog -> {
                 if (deletingCatalog?.publicId == completed.publicId) deletingCatalog = null

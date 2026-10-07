@@ -64,7 +64,7 @@ class MerchantAliasViewModelTest {
 
         assertEquals("  蓝瓶咖啡  ", harness.api.merchantCatalogCreateRequests.single().displayName)
         assertTrue(state.merchantCatalog.any { it.publicId == "catalog-created" })
-        assertEquals(UiText.raw("原添加已确认。"), state.message)
+        assertEquals(UiText.res(R.string.merchant_creation_confirmed), state.message)
         assertEquals(MessageTone.Success, state.messageTone)
         assertEquals(1, state.changedRevision)
     }
@@ -262,7 +262,40 @@ class MerchantAliasViewModelTest {
         assertTrue(harness.api.merchantCatalogUpdateRequests.isEmpty())
     }
 
-    @Test fun anotherLedgerCannotReviewOrSubmitTheOriginalRename() = merchantAlias {
+    @Test fun mergeReviewDoesNotRetargetUnavailableOrReplacedMerchants() = merchantAlias {
+        val harness = harness { merchantCatalogItems = listOf(
+            merchantCatalogDto("source", "原商家", 7), merchantCatalogDto("target", "目标商家", 11)) }
+        val original = harness.vm.uiState.first { it.merchantCatalog.size == 2 }.merchantCatalog
+        val source = original.single { it.publicId == "source" }
+        val target = original.single { it.publicId == "target" }
+        val currentSource = merchantCatalogDto("source", "他端原商家", 8)
+        val currentTarget = merchantCatalogDto("target", "目标商家", 12)
+        for (unavailable in listOf(null, currentTarget.copy(status = "hidden"),
+            currentTarget.copy(deletedAt = "2026-10-08T00:00:00Z"),
+            currentTarget.copy(status = "merged", mergedIntoPublicId = "replacement"),
+            currentTarget.copy(publicId = "same-name-replacement"))) {
+            harness.api.merchantCatalogItems = listOfNotNull(currentSource, unavailable)
+            harness.vm.reviewMerchantMerge(source, target)
+            val reviewed = harness.vm.uiState.first { it.mergeReview != null }
+            assertEquals(source, reviewed.mergeReview?.originalSource)
+            assertEquals(target, reviewed.mergeReview?.originalTarget)
+            assertEquals(8L, reviewed.mergeReview?.source?.rowVersion)
+            assertEquals(null, reviewed.mergeReview?.target)
+            assertEquals(UiText.res(R.string.merchant_merge_target_unavailable), reviewed.message)
+            harness.vm.consumeMergeReview()
+        }
+        harness.api.merchantCatalogItems = listOf(currentTarget)
+        harness.vm.reviewMerchantMerge(source, target)
+        val missingSource = harness.vm.uiState.first { it.mergeReview != null }
+        assertEquals(null, missingSource.mergeReview?.source)
+        assertEquals(12L, missingSource.mergeReview?.target?.rowVersion)
+        assertEquals(UiText.res(R.string.merchant_merge_source_unavailable), missingSource.message)
+        assertEquals(0, missingSource.changedRevision)
+        assertEquals(null, missingSource.editorCompletion)
+        assertTrue(harness.api.merchantCatalogMergeRequests.isEmpty())
+    }
+
+    @Test fun anotherLedgerCannotReviewOrSubmitTheOriginalCatalogEdits() = merchantAlias {
         val harness = harness()
         val original = harness.vm.uiState.first { it.merchantCatalog.isNotEmpty() }.merchantCatalog.single()
         harness.session.switchLedgerForFixture("another-ledger", "另一账本")
@@ -275,9 +308,18 @@ class MerchantAliasViewModelTest {
         harness.vm.dismissMessage()
         harness.vm.renameMerchantCatalog(original, "不能带入新账本的原稿")
         harness.vm.uiState.first { !it.busy && it.messageTone == MessageTone.Danger }
+        val target = original.copy(publicId = "target")
+        harness.vm.dismissMessage()
+        harness.vm.reviewMerchantMerge(original, target)
+        val refusedMerge = harness.vm.uiState.first { !it.busy && it.messageTone == MessageTone.Danger }
+        assertEquals(null, refusedMerge.mergeReview)
+        harness.vm.dismissMessage()
+        harness.vm.mergeMerchantCatalog(original, target, MerchantCatalogAliasPolicy.None)
+        harness.vm.uiState.first { !it.busy && it.messageTone == MessageTone.Danger }
         advanceUntilIdle()
         assertEquals(0, harness.vm.uiState.value.changedRevision)
         assertTrue(harness.api.merchantCatalogUpdateRequests.isEmpty())
+        assertTrue(harness.api.merchantCatalogMergeRequests.isEmpty())
     }
 
     private fun harness(

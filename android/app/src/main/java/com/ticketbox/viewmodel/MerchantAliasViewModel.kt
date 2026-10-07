@@ -38,6 +38,7 @@ data class MerchantAliasUiState(
     val changedRevision: Int = 0,
     val editorCompletion: MerchantEditorCompletion? = null,
     val renameReview: MerchantRenameReview? = null,
+    val mergeReview: MerchantMergeReview? = null,
     val creation: MerchantCreationState = MerchantCreationState(),
 )
 
@@ -54,6 +55,13 @@ data class MerchantCatalogMergeSuggestion(
 /** A user-requested read may update only the original editor's OCC snapshot. */
 data class MerchantRenameReview(val original: MerchantCatalog, val current: MerchantCatalog?)
 
+data class MerchantMergeReview(
+    val originalSource: MerchantCatalog,
+    val originalTarget: MerchantCatalog,
+    val source: MerchantCatalog?,
+    val target: MerchantCatalog?,
+)
+
 @Suppress("TooManyFunctions")
 class MerchantAliasViewModel(
     private val merchantRepository: MerchantRepository,
@@ -65,7 +73,7 @@ class MerchantAliasViewModel(
 
     val creations = MerchantCreationController(merchantRepository, viewModelScope) { draft ->
         _uiState.update { state -> state.copy(changedRevision = state.changedRevision + 1,
-            message = UiText.raw("原添加已确认。"), messageTone = MessageTone.Success,
+            message = UiText.res(R.string.merchant_creation_confirmed), messageTone = MessageTone.Success,
             editorCompletion = MerchantEditorCompletion(
                 if (draft.kind == MerchantCreationKind.Catalog) MerchantEditorKind.CreateCatalog else MerchantEditorKind.CreateAlias,
                 requireNotNull(draft.acceptedId), state.changedRevision + 1)) }
@@ -247,6 +255,30 @@ class MerchantAliasViewModel(
 
     fun consumeRenameReview() { _uiState.update { it.copy(renameReview = null) } }
 
+    fun reviewMerchantMerge(source: MerchantCatalog, target: MerchantCatalog) {
+        if (_uiState.value.busy) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(busy = true, message = null, mergeReview = null) }
+            merchantRepository.merchantCatalog(expectedBinding = originalBinding)
+                .onSuccess { catalog ->
+                    val currentSource = catalog.find { it.publicId == source.publicId && it.deletedAt == null && !it.isMerged }
+                    val currentTarget = catalog.find { it.publicId == target.publicId && it.isActive && it.deletedAt == null }
+                    val message = when {
+                        currentSource == null -> UiText.res(R.string.merchant_merge_source_unavailable)
+                        currentTarget == null -> UiText.res(R.string.merchant_merge_target_unavailable)
+                        else -> UiText.res(R.string.merchant_merge_reviewed, currentSource.displayName, currentTarget.displayName)
+                    }
+                    _uiState.update { it.copy(busy = false, merchantCatalog = catalog.sortedMerchantCatalog(),
+                        mergeReview = MerchantMergeReview(source, target, currentSource, currentTarget),
+                        message = message, messageTone = MessageTone.Info) }
+                }
+                .onFailure { error -> _uiState.update { it.copy(busy = false,
+                    message = error.toUiText(R.string.merchant_catalog_load_failed), messageTone = MessageTone.Danger) } }
+        }
+    }
+
+    fun consumeMergeReview() { _uiState.update { it.copy(mergeReview = null) } }
+
     private fun handleCatalogRenameFailure(error: Throwable, source: MerchantCatalog) {
         val exception = error as? RepositoryException
         val target = exception?.toMergeTarget(_uiState.value.merchantCatalog)
@@ -290,11 +322,10 @@ class MerchantAliasViewModel(
                 it.copy(busy = true, message = null, messageTone = MessageTone.Neutral, mergeSuggestion = null)
             }
             merchantRepository.mergeMerchantCatalog(
-                sourcePublicId = source.publicId,
-                sourceRowVersion = source.rowVersion,
-                targetPublicId = target.publicId,
-                targetRowVersion = target.rowVersion,
+                source = source,
+                target = target,
                 aliasPolicy = aliasPolicy,
+                expectedBinding = originalBinding,
             )
                 .onSuccess { result -> finishCatalogMerge(source, target, result, aliasPolicy) }
                 .onFailure { error ->

@@ -11,6 +11,8 @@ import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -38,6 +40,8 @@ import com.ticketbox.data.remote.dto.MerchantAliasRequest
 import com.ticketbox.data.remote.dto.MerchantCatalogCreateRequest
 import com.ticketbox.data.remote.dto.MerchantCatalogDto
 import com.ticketbox.data.remote.dto.MerchantCatalogListDto
+import com.ticketbox.data.remote.dto.MerchantCatalogMergeDto
+import com.ticketbox.data.remote.dto.MerchantCatalogMergeRequest
 import com.ticketbox.data.remote.dto.MerchantCatalogUpdateRequest
 import com.ticketbox.ui.saveConsumerArtPreview
 import okhttp3.MediaType.Companion.toMediaType
@@ -59,9 +63,11 @@ class MerchantManagementContinuationTest {
     private val catalogRequests = CopyOnWriteArrayList<MerchantCatalogCreateRequest>()
     private val aliasRequests = CopyOnWriteArrayList<MerchantAliasRequest>()
     private val updates = CopyOnWriteArrayList<MerchantCatalogUpdateRequest>()
+    private val merges = CopyOnWriteArrayList<MerchantCatalogMergeRequest>()
     private val creationKeys = mutableListOf<String>()
     @Volatile private var reject = true
     @Volatile private var catalog: MerchantCatalogDto? = null
+    @Volatile private var mergeTarget: MerchantCatalogDto? = null
     @Volatile private var alias: MerchantAliasDto? = null
     private var additionalAliases = emptyList<MerchantAliasDto>()
     @Volatile private var rejectAliasRead = false
@@ -71,7 +77,7 @@ class MerchantManagementContinuationTest {
         object : ApiService by delegate {
             override suspend fun merchantCatalog(includeHidden: Boolean): MerchantCatalogListDto {
                 if (rejectCatalogRead) throw unavailable()
-                return MerchantCatalogListDto(listOfNotNull(catalog))
+                return MerchantCatalogListDto(listOfNotNull(catalog, mergeTarget))
             }
             override suspend fun merchantAliases(): MerchantAliasListDto {
                 if (rejectAliasRead) throw unavailable()
@@ -105,11 +111,28 @@ class MerchantManagementContinuationTest {
                 updates += request
                 if (reject) throw unavailable()
                 val current = requireNotNull(catalog)
+                if (mergeTarget != null && request.displayName == mergeTarget?.displayName) throw HttpException(Response.error<Any>(409,
+                    """{"error":"state_conflict","conflict_merchant_public_id":"target","conflict_merchant_row_version":11,"conflict_merchant_display_name":"目标商家","conflict_merchant_status":"active","conflict_merchant_deleted":false}"""
+                        .toResponseBody("application/json".toMediaType())))
                 if (request.expectedRowVersion != current.rowVersion) throw HttpException(Response.error<Any>(409,
                     """{"error":"state_conflict","message":"商家已被其他设备修改。"}"""
                         .toResponseBody("application/json".toMediaType())))
                 return current.copy(displayName = requireNotNull(request.displayName), rowVersion = current.rowVersion + 1)
                     .also { catalog = it }
+            }
+
+            override suspend fun mergeMerchantCatalog(sourcePublicId: String, request: MerchantCatalogMergeRequest): MerchantCatalogMergeDto {
+                merges += request
+                val source = requireNotNull(catalog)
+                val target = requireNotNull(mergeTarget)
+                assertEquals(source.publicId, sourcePublicId)
+                assertEquals(target.publicId, request.targetPublicId)
+                if (request.expectedRowVersion != source.rowVersion || request.targetRowVersion != target.rowVersion) {
+                    throw HttpException(Response.error<Any>(409, """{"error":"state_conflict"}""".toResponseBody("application/json".toMediaType())))
+                }
+                catalog = source.copy(status = "merged", mergedIntoPublicId = target.publicId, rowVersion = source.rowVersion + 1)
+                mergeTarget = target.copy(rowVersion = target.rowVersion + 1)
+                return MerchantCatalogMergeDto(requireNotNull(catalog), requireNotNull(mergeTarget), null)
             }
         }
     }
@@ -334,6 +357,115 @@ class MerchantManagementContinuationTest {
         assertTrue(updates.isEmpty() && catalogRequests.isEmpty() && aliasRequests.isEmpty())
         saveConsumerArtPreview("merchant-rename-unavailable",
             requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+    }
+
+    @Test fun conflictedMergeReviewsBothOriginalMerchantsWithoutLosingTheAliasChoice() {
+        prepareMerge()
+        clickText(R.string.merchant_catalog_card_action_merge)
+        if (InstrumentationRegistry.getArguments().getString("visualMode") == "large") {
+            val titleLayouts = mutableListOf<TextLayoutResult>()
+            compose.onNodeWithText(context.getString(R.string.merchant_catalog_merge_dialog_title))
+                .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(titleLayouts) }
+            assertEquals("The dialog must use the requested large font scale", 2f,
+                titleLayouts.single().layoutInput.density.fontScale, 0.01f)
+        }
+        compose.onNodeWithText("目标商家").performScrollTo().performTouchInput { click() }
+        clickText(R.string.merchant_catalog_merge_alias_policy_none)
+        catalog = requireNotNull(catalog).copy(displayName = "他端修改的原商家", rowVersion = 8)
+        mergeTarget = requireNotNull(mergeTarget).copy(displayName = "他端修改的目标", rowVersion = 12)
+        compose.onNode(hasText(context.getString(R.string.merchant_catalog_merge_dialog_confirm)) and hasAnyAncestor(isDialog())).performTouchInput { click() }
+        waitForText(R.string.merchant_catalog_error_state_conflict)
+        saveConsumerArtPreview("merchant-merge-conflict-before",
+            requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        compose.onNodeWithText("核对双方商家").performScrollTo().assertIsDisplayed()
+        assertEquals(1, merges.size)
+        rejectCatalogRead = true
+        compose.onNodeWithText("核对双方商家").performTouchInput { click() }
+        compose.waitUntil(5_000) {
+            compose.onAllNodesWithText("暂时无法保存，请保留当前填写后重试。").fetchSemanticsNodes().isNotEmpty()
+        }
+        assertEquals(1, merges.size)
+        rejectCatalogRead = false
+        compose.onNodeWithText("核对双方商家").performScrollTo().performTouchInput { click() }
+        compose.waitUntil(5_000) { compose.onAllNodesWithText("他端修改的目标").fetchSemanticsNodes().isNotEmpty() }
+        assertEquals(1, merges.size)
+        compose.onNodeWithText(context.getString(R.string.merchant_catalog_merge_alias_policy_none)).performScrollTo().assertIsSelected()
+        compose.onNode(hasText(context.getString(R.string.merchant_merge_reviewed, "他端修改的原商家", "他端修改的目标")) and hasAnyAncestor(isDialog()))
+            .performScrollTo().assertIsDisplayed()
+        saveConsumerArtPreview("merchant-merge-reviewed",
+            requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        compose.onNode(hasText(context.getString(R.string.merchant_catalog_merge_dialog_confirm)) and hasAnyAncestor(isDialog())).assertIsEnabled().performTouchInput { click() }
+        compose.waitUntil(5_000) { catalog?.status == "merged" }
+        assertEquals(listOf(7L, 8L), merges.map { it.expectedRowVersion })
+        assertEquals(listOf(11L, 12L), merges.map { it.targetRowVersion })
+        assertTrue(merges.all { it.targetPublicId == "target" && it.aliasPolicy == "none" && !it.rewriteHistoricalExpenses })
+        assertTrue(catalogRequests.isEmpty() && aliasRequests.isEmpty() && updates.isEmpty())
+    }
+
+    @Test fun suggestedMergeCanReturnToOriginalRenameAndCloseAfterAcceptance() {
+        prepareMerge()
+        clickText(R.string.merchant_catalog_card_action_rename)
+        compose.onNode(hasSetTextAction() and hasText("原商家")).performTextReplacement("  目标商家  ")
+        closeSoftKeyboard()
+        compose.onNodeWithText(context.getString(R.string.merchant_catalog_rename_dialog_confirm)).performTouchInput { click() }
+        waitForText(R.string.merchant_catalog_merge_dialog_title)
+        catalog = requireNotNull(catalog).copy(displayName = "另一端已改名", rowVersion = 8)
+        clickText(R.string.merchant_merge_review)
+        compose.waitUntil(5_000) {
+            compose.onAllNodesWithText(context.getString(R.string.merchant_merge_reviewed, "另一端已改名", "目标商家"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText(context.getString(R.string.common_cancel)).performTouchInput { click() }
+        compose.onNodeWithText("当前名称：另一端已改名").performScrollTo().assertIsDisplayed()
+        compose.onNode(hasSetTextAction() and hasText("  目标商家  ")).assertIsDisplayed()
+        assertEquals(1, updates.size)
+        assertTrue(merges.isEmpty() && catalogRequests.isEmpty())
+        assertEquals("另一端已改名", catalog?.displayName)
+        compose.onNodeWithText(context.getString(R.string.merchant_catalog_rename_dialog_confirm)).performTouchInput { click() }
+        waitForText(R.string.merchant_catalog_merge_dialog_title)
+        clickText(R.string.merchant_catalog_merge_alias_policy_none)
+        compose.onNode(hasText(context.getString(R.string.merchant_catalog_merge_dialog_confirm)) and hasAnyAncestor(isDialog()))
+            .performTouchInput { click() }
+        compose.waitUntil(5_000) { catalog?.status == "merged" && compose.onAllNodes(isDialog()).fetchSemanticsNodes().isEmpty() }
+        assertEquals(1, merges.size)
+        assertEquals(2, updates.size)
+        assertEquals(listOf(7L, 8L), updates.map { it.expectedRowVersion })
+        assertEquals(8L, merges.single().expectedRowVersion)
+    }
+
+    @Test fun unavailableMergePairKeepsChoicesWithoutSubmittingToAReplacement() {
+        prepareMerge()
+        clickText(R.string.merchant_catalog_card_action_merge)
+        compose.onNodeWithText("目标商家").performScrollTo().performTouchInput { click() }
+        clickText(R.string.merchant_catalog_merge_alias_policy_none)
+        mergeTarget = requireNotNull(mergeTarget).copy(publicId = "replacement", rowVersion = 1)
+        clickText(R.string.merchant_merge_review)
+        waitForText(R.string.merchant_merge_target_unavailable)
+        compose.onNodeWithText("已选目标：目标商家").performScrollTo().assertIsDisplayed()
+        compose.onNode(hasText(context.getString(R.string.merchant_catalog_merge_dialog_confirm)) and hasAnyAncestor(isDialog()))
+            .assertIsNotEnabled()
+        compose.onNodeWithText("目标商家").performScrollTo().performTouchInput { click() }
+        compose.onNode(hasText(context.getString(R.string.merchant_catalog_merge_dialog_confirm)) and hasAnyAncestor(isDialog()))
+            .assertIsEnabled()
+        catalog = null
+        clickText(R.string.merchant_merge_review)
+        waitForText(R.string.merchant_merge_source_unavailable)
+        compose.onNodeWithText(context.getString(R.string.merchant_catalog_merge_alias_policy_none)).performScrollTo().assertIsSelected()
+        compose.onNode(hasText(context.getString(R.string.merchant_catalog_merge_dialog_confirm)) and hasAnyAncestor(isDialog()))
+            .assertIsNotEnabled()
+        saveConsumerArtPreview("merchant-merge-unavailable",
+            requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        assertTrue(merges.isEmpty() && updates.isEmpty() && catalogRequests.isEmpty() && aliasRequests.isEmpty())
+    }
+
+    private fun prepareMerge() {
+        catalog = MerchantCatalogDto("existing", "原商家", "原商家", "active", usageCount = 2,
+            createdAt = "2026-09-30T00:00:00Z", updatedAt = "2026-09-30T00:00:00Z", rowVersion = 7)
+        mergeTarget = requireNotNull(catalog).copy(publicId = "target", displayName = "目标商家", usageCount = 0, rowVersion = 11)
+        reject = false
+        showMerchants()
+        compose.onNodeWithText("原商家").performScrollTo().performTouchInput { click() }
+        clickText(R.string.merchant_detail_identity)
     }
 
     private fun reopenMerchantTask(aliasTask: Boolean) {
