@@ -456,7 +456,7 @@ def test_tag_conflict_keeps_original_versions_and_review_does_not_write(web_clie
     ready = hidden_post_forms(review.text)[path]
     ready["name"] = "保留的新名称"
     if action == "merge":
-        selected = _re.search(r'<option value="([^"]+)" selected>', review.text)
+        selected = _re.search(r'<select name="target"[^>]*>.*?<option value="([^"]+)" selected>', review.text, _re.DOTALL)
         assert selected is not None
         ready["target"] = selected.group(1)
         assert ready["target"] != original["target"]
