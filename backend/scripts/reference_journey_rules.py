@@ -28,7 +28,9 @@ def create_rule(j, initial_categories, original_rules):
 
     category = next(row for row in j.facts()["categories"] if row["name"] == "Library")
     j.goto("/web/categories")
-    j.confirm(j.form(f'/web/categories/preferences/{category["id"]}/delete'))
+    page.locator(f'#category-{category["id"]} > a').click()
+    assert "RefShop" in page.get_by_role("navigation", name="使用此分类的配置").inner_text()
+    assert j.form(f'/web/categories/preferences/{category["id"]}/delete').count() == 0
     assert "Library" in page.inner_text("main") and "规则" in page.inner_text("main")
     assert not next(row for row in j.facts()["categories"] if row["id"] == category["id"])["deleted"]
     j.capture("category-reference-blocks-delete")
@@ -135,6 +137,7 @@ def restore_rule_and_category(j, category, rule):
     j.expect(lambda state: any(row["id"] == rule["id"] and row["deleted"] for row in state["rules"]),
              "The Web rule delete did not commit")
     j.goto("/web/categories")
+    page.locator(f'#category-{category["id"]} > a').click()
     j.confirm(j.form(f'/web/categories/preferences/{category["id"]}/delete'))
     j.expect(lambda state: next(row for row in state["categories"] if row["id"] == category["id"])["deleted"],
              "The now-unreferenced custom category could not be removed")

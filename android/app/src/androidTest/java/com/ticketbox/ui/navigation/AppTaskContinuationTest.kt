@@ -20,12 +20,14 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performTouchInput
+import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.rememberNavController
+import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.test.core.app.ApplicationProvider
+import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.R
+import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.TagDetailDto
 import com.ticketbox.data.remote.dto.TagListItemDto
@@ -33,7 +35,14 @@ import com.ticketbox.data.remote.dto.TagManagementListDto
 import com.ticketbox.data.remote.dto.TagMergeRequest
 import com.ticketbox.data.remote.dto.TagMutationDto
 import com.ticketbox.data.remote.dto.TagRenameRequest
+import com.ticketbox.data.repository.ServerBindingRepository
+import com.ticketbox.domain.model.AppThemeMode
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ManagedTag
+import com.ticketbox.security.BiometricAuthManager
+import com.ticketbox.viewmodel.AppViewModel
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.ResponseBody.Companion.toResponseBody
@@ -45,8 +54,8 @@ import retrofit2.HttpException
 import retrofit2.Response
 import java.util.concurrent.CopyOnWriteArrayList
 
-/** Exercises the shipped library route, ViewModel and repository error decoding. */
-class TagManagementContinuationTest {
+/** Real App authentication gates, navigation, task drafts and repository admission; controlled remote IO. */
+class AppTaskContinuationTest {
     @get:Rule val compose = createComposeRule()
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val mounted = mutableStateOf(true)
@@ -62,6 +71,7 @@ class TagManagementContinuationTest {
     private var unusedSource = false
     private val harness = FactEntryNavigationHarness(context) { delegate ->
         object : ApiService by delegate {
+            override suspend fun debts(lens: String?) = com.ticketbox.data.remote.dto.DebtListResponseDto(emptyList(), "CNY")
             override suspend fun listManagedTags(): TagManagementListDto {
                 if (renamed && rejectReadAfterRename) throw unavailable()
                 return TagManagementListDto(
@@ -92,6 +102,25 @@ class TagManagementContinuationTest {
                 return TagMutationDto("merge-trip", "merge", publicId, 4, target.publicId, 8, 5)
             }
         }
+    }
+    private var sessionReady = true
+    private var verification = CompletableDeferred<Result<Unit>?>()
+    private val appViewModel by lazy {
+        AppViewModel(
+            object : ServerBindingRepository by harness.screenFactory.repositories.repository {
+                override fun isBusinessSessionReady() = sessionReady
+                override fun hasPendingBinding() = false
+                override suspend fun reconcileActiveSession() = verification.await()
+            },
+            object : TicketboxSettingsStore by harness.fixture.settingsStore {
+                override fun appThemeModeKey() = if (InstrumentationRegistry.getArguments().getString("visualMode") == "large")
+                    AppThemeMode.Midnight.storageKey else AppThemeMode.Default.storageKey
+                override fun currencyCodeKey() = CurrencyCode.Default.storageKey
+                override fun observeCurrencyCodeKey() = flowOf(currencyCodeKey())
+                override fun requiresUnlock() = false
+            },
+            requireLocalUnlock = false,
+        )
     }
 
     @After fun close() {
@@ -239,26 +268,120 @@ class TagManagementContinuationTest {
         assertEquals(emptyList<TagRenameRequest>(), renames)
     }
 
-    private fun showTags(): StateRestorationTester {
+    @Test fun sessionVerificationFailureAndRetryReturnToTheOriginalTagTask() {
+        val restoration = showTags()
+        openSourceAction(R.string.tag_management_card_action_rename)
+        compose.onNode(hasSetTextAction() and hasText(source.name)).performTextReplacement("九月出差")
+        compose.runOnIdle { sessionReady = false; appViewModel.refreshBindingState() }
+        waitForText(context.getString(R.string.app_session_verification_title))
+        compose.onNode(hasSetTextAction() and hasText("九月出差")).assertDoesNotExist()
+        compose.runOnIdle { verification.complete(Result.failure(unavailable())) }
+        waitForText(context.getString(R.string.app_session_verification_retry))
+        captureReferenceLibraryStep(compose, context, "session-verification-failed")
+        restoration.emulateSavedInstanceStateRestore()
+        compose.runOnIdle { verification = CompletableDeferred() }
+        clickText(context.getString(R.string.app_session_verification_retry))
+        compose.runOnIdle { sessionReady = true; verification.complete(Result.success(Unit)) }
+        captureReferenceLibraryStep(compose, context, "session-verification-returned")
+        waitForText("九月出差")
+        compose.onNode(hasSetTextAction() and hasText("九月出差")).assertIsDisplayed()
+        assertEquals(emptyList<TagRenameRequest>(), renames)
+        captureReferenceLibraryStep(compose, context, "session-verification-resumed")
+        reject = false
+        clickText(context.getString(R.string.tag_management_rename_dialog_confirm))
+        waitForText(context.getString(R.string.tag_management_renamed, "九月出差"))
+        assertEquals(listOf(TagRenameRequest(3, "九月出差")), renames)
+    }
+
+    @Test fun verificationForAnotherAccountCannotExposeOrConsumeTheOriginalTask() {
+        showTags()
+        openSourceAction(R.string.tag_management_card_action_rename)
+        compose.onNode(hasSetTextAction() and hasText(source.name)).performTextReplacement("九月出差")
+        compose.runOnIdle { sessionReady = false; appViewModel.refreshBindingState() }
+        waitForText(context.getString(R.string.app_session_verification_title))
+        compose.runOnIdle {
+            harness.fixture.switchAccount()
+            sessionReady = true
+            verification.complete(Result.success(Unit))
+        }
+        waitForText(context.getString(R.string.nav_domain_inbox))
+        compose.onNode(hasSetTextAction() and hasText("九月出差")).assertDoesNotExist()
+        assertEquals(emptyList<TagRenameRequest>(), renames)
+        compose.runOnIdle { harness.fixture.restoreOriginalSession() }
+        waitForText("九月出差")
+        compose.onNode(hasSetTextAction() and hasText("九月出差")).assertIsDisplayed()
+        reject = false
+        clickText(context.getString(R.string.tag_management_rename_dialog_confirm))
+        waitForText(context.getString(R.string.tag_management_renamed, "九月出差"))
+        assertEquals(listOf(TagRenameRequest(3, "九月出差")), renames)
+    }
+
+    @Test fun manualEntryKeepsItsInputAcrossTheSameVerificationGate() {
+        val restoration = showApp()
+        waitForText(context.getString(R.string.nav_domain_transactions))
+        clickText(context.getString(R.string.nav_domain_transactions))
+        waitForText(context.getString(R.string.ledger_header_add_button))
+        clickText(context.getString(R.string.ledger_header_add_button))
+        waitForText(context.getString(R.string.ledger_manual_sheet_title))
+        waitForText(context.getString(R.string.ledger_manual_merchant_label))
+        compose.onNode(hasSetTextAction() and hasText(context.getString(R.string.expense_edit_amount_field_label)))
+            .performScrollTo().performTextReplacement("123.45")
+        compose.onNode(hasSetTextAction() and hasText(context.getString(R.string.ledger_manual_merchant_label)))
+            .performScrollTo().performTextReplacement("会话恢复后的原商家")
+        captureReferenceLibraryStep(compose, context, "manual-entry-before-verification")
+        compose.runOnIdle { sessionReady = false; appViewModel.refreshBindingState() }
+        waitForText(context.getString(R.string.app_session_verification_title))
+        restoration.emulateSavedInstanceStateRestore()
+        compose.runOnIdle { sessionReady = true; verification.complete(Result.success(Unit)) }
+        waitForText(context.getString(R.string.ledger_manual_sheet_title))
+        waitForText(context.getString(R.string.ledger_manual_merchant_label))
+        captureReferenceLibraryStep(compose, context, "manual-entry-returned")
+        compose.onNode(hasSetTextAction() and hasText("123.45")).performScrollTo().assertIsDisplayed()
+        compose.onNode(hasSetTextAction() and hasText("会话恢复后的原商家")).performScrollTo().assertIsDisplayed()
+        assertEquals(emptyList<Map<String, String?>>(), harness.fixture.stored())
+        captureReferenceLibraryStep(compose, context, "manual-entry-resumed")
+        clickText(context.getString(R.string.ledger_manual_save_button))
+        compose.waitUntil(5_000) { harness.fixture.stored().size == 1 }
+        val original = harness.fixture.stored().single()
+        val payload = org.json.JSONObject(requireNotNull(original["payload"]))
+        assertEquals("123.45", payload.getString("original_amount"))
+        assertEquals("CNY", payload.getString("original_currency"))
+        assertEquals("会话恢复后的原商家", payload.getString("merchant"))
+        assertEquals("pending", original["status"])
+        assertEquals(emptyList<TagRenameRequest>(), renames)
+    }
+
+    private fun showApp(): StateRestorationTester {
         val restoration = StateRestorationTester(compose)
+        val dependencies = compose.runOnIdle { TicketboxAppDependencies(
+            repositories = harness.screenFactory.repositories,
+            viewModelFactories = TicketboxAppViewModelFactories(
+                appViewModelFactory = viewModelFactory { initializer { appViewModel } },
+                mainScreenFactories = harness.screenFactory.viewModelFactories,
+            ),
+            // This journey starts unlocked and does not invoke biometric APIs.
+            biometricAuthManager = BiometricAuthManager(FragmentActivity()),
+        ) }
         restoration.setContent {
             if (!mounted.value) return@setContent
             CompositionLocalProvider(LocalViewModelStoreOwner provides harness.models) {
-                ReferenceLibraryTestTheme {
-                    val outer = rememberNavController()
-                    NavHost(outer, startDestination = MAIN_ROUTE) {
-                        composable(MAIN_ROUTE) {
-                            val navigation = rememberNavController()
-                            NavHost(navigation, startDestination = TRANSACTIONS_LIBRARY_ROUTE) {
-                                transactionsLibraryGraph(navigation, harness.screenFactory, {}, {}, {})
-                            }
-                        }
-                    }
-                }
+                ReferenceLibraryTestTheme { TicketboxApp(dependencies) }
             }
         }
+        return restoration
+    }
+
+    private fun showTags(): StateRestorationTester {
+        val restoration = showApp()
+        waitForText(context.getString(R.string.nav_domain_transactions))
+        clickText(context.getString(R.string.nav_domain_transactions))
+        waitForText(context.getString(R.string.ledger_inline_filter))
+        clickText(context.getString(R.string.ledger_inline_filter))
+        compose.onNodeWithText(context.getString(R.string.transactions_library_title))
+            .performScrollTo().performTouchInput { click() }
         waitForText(context.getString(R.string.transactions_library_tags_title))
-        clickText(context.getString(R.string.transactions_library_tags_title))
+        compose.onNodeWithText(context.getString(R.string.transactions_library_tags_title))
+            .performScrollTo().performTouchInput { click() }
         waitForText(source.name)
         captureReferenceLibraryStep(compose, context, "tags")
         return restoration

@@ -61,7 +61,7 @@ def appearances(j):
     page, native = j.page, j.native
     for theme in ("paper", "midnight"):
         page.set_viewport_size({"width": 1280, "height": 960})
-        j.goto("/web/tags")
+        j.goto("/web/confirmed")
         page.locator("#appearance > summary").click()
         page.locator(f'#appearance [data-theme-mode="{theme}"]').click()
         page.wait_for_function("theme => document.documentElement.dataset.theme === theme", arg=theme)

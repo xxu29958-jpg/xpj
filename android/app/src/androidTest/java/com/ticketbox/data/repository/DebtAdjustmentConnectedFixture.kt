@@ -59,7 +59,7 @@ internal class DebtAdjustmentConnectedFixture(private val context: Context, priv
     // Read-retirement markers must survive a reader's cancellation and the Room reopen.
     private val readSettings = LocalSettingsStore(settingsContext)
     private var database: AppDatabase? = null
-    private val clock: Clock = Clock.fixed(Instant.parse("2026-09-30T15:30:00Z"), ZoneOffset.UTC)
+    val clock: Clock = Clock.fixed(Instant.parse("2026-09-30T15:30:00Z"), ZoneOffset.UTC)
     val network = DebtAdjustmentConnectedNetwork()
     private val adapters = OutboxAdapterGraph()
     var session = debtAdjustmentConnectedSession()

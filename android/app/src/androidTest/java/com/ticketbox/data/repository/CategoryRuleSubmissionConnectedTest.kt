@@ -84,8 +84,10 @@ class CategoryRuleSubmissionConnectedTest {
         val reopened = fixture.reopen()
         assertEquals(original, fixture.stored().single())
         val adapters = OutboxAdapterGraph()
+        // Admission and replay share the fixture clock; wall time must not age this fresh intent.
         val engine = OutboxDrainEngine(fixture.outbox, listOf(CategoryRuleDispatcher(PendingMutationType.CreateCategoryRule,
-            { api }, adapters.categoryRuleSubmissionAdapter, adapters.categoryRuleReceiptAdapter)), maxAttempts = 1)
+            { api }, adapters.categoryRuleSubmissionAdapter, adapters.categoryRuleReceiptAdapter)),
+            maxAttempts = 1, now = fixture.clock::millis)
         runBlocking {
             assertEquals(1, engine.drainOnce().failures)
             val owner = reopened.ruleRepository

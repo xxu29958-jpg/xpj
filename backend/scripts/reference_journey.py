@@ -110,7 +110,7 @@ class ReferenceJourney:
         page.get_by_text("保存当前视图", exact=True).click()
         form = self.form("/web/saved-views")
         form.locator('[name="name"]').fill("TripView")
-        form.get_by_role("button", name="保存视图", exact=True).click()
+        form.get_by_role("button", name="保存这组查询", exact=True).click()
         self.expect(lambda state: len(state["views"]) == 1, "The actual saved view was not retained")
         assert self.facts()["views"][0]["tag_id"] == self.tag("Trip")["id"]
         self.native.bind(self.fixture.pairing_code, self.port)
@@ -186,8 +186,11 @@ class ReferenceJourney:
         self.expect(lambda state: any(row["id"] == original["id"] and row["deleted"] for row in state["tags"]),
                     "The explicitly reviewed Web merge did not commit")
         self.goto("/web/saved-views")
-        assert "原标签已被删除或合并" in page.inner_text("main")
+        assert "原标签待修复" in page.inner_text("main")
         assert page.locator(f'a[href*="/web/saved-views/{view["id"]}/open"]').count() == 0
+        page.locator(f'a.product-entry[href*="edit={view["id"]}"]').click()
+        assert "原标签已被删除或合并" in page.inner_text("main")
+        assert self.facts()["views"][0] == view, "Opening the repair task changed the saved query"
         self.capture("missing-tag-view-requires-repair")
         records = self.facts()["expenses"]
         self.batch([records[0]["id"]], "tags", "Later")
