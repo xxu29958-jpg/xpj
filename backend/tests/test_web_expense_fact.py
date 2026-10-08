@@ -504,6 +504,7 @@ def test_legacy_confirmed_web_mutations_are_rejected(web_client: TestClient, *, 
             "ledger_id": "owner",
             "expected_row_version": str(_row_version(web_client, expense_id, identity)),
             "merchant": "旧路径直写",
+            "reject_idempotency_key": str(uuid4()),
         },
         follow_redirects=False,
     )

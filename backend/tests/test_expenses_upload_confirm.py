@@ -187,6 +187,7 @@ def test_public_web_confirm_records_browser_account_and_device(
                     "expected_row_version",
                 ),
                 "idempotency_key": _html_form_value(form.text, "idempotency_key"),
+                "draft_scope": _html_form_value(form.text, "draft_scope"),
             },
             follow_redirects=False,
         )

@@ -558,9 +558,10 @@ internal fun reconcileActiveSheet(sheet: PendingSheet, items: List<Expense>): Pe
     if (sheet is PendingSheet.None || sheet is PendingSheet.BulkConfirm) return sheet
     val latestById = items.associateBy { it.id }
     return when (sheet) {
-        is PendingSheet.QuickCategory -> latestById[sheet.expense.id]?.let(PendingSheet::QuickCategory) ?: PendingSheet.None
-        is PendingSheet.QuickMerchant -> latestById[sheet.expense.id]?.let(PendingSheet::QuickMerchant) ?: PendingSheet.None
-        is PendingSheet.MissingAmount -> latestById[sheet.expense.id]?.let(PendingSheet::MissingAmount) ?: PendingSheet.None
+        // An open input belongs to its reviewed version; a refreshed list cannot rebase that intent.
+        is PendingSheet.QuickCategory -> sheet.takeIf { sheet.expense.id in latestById } ?: PendingSheet.None
+        is PendingSheet.QuickMerchant -> sheet.takeIf { sheet.expense.id in latestById } ?: PendingSheet.None
+        is PendingSheet.MissingAmount -> sheet.takeIf { sheet.expense.id in latestById } ?: PendingSheet.None
         is PendingSheet.Duplicate -> latestById[sheet.expense.id]?.let(PendingSheet::Duplicate) ?: PendingSheet.None
         is PendingSheet.None,
         is PendingSheet.BulkConfirm,

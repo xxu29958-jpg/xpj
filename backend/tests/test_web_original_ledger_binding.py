@@ -152,6 +152,27 @@ def test_original_ledger_match_continues_to_the_existing_owner_without_reading_o
     assert fields == {"ledger_id": "owner", "idempotency_key": "original-key", "expected_row_version": "3"}
 
 
+@pytest.mark.parametrize("accept", ["text/html", "application/json"])
+def test_refused_original_form_preserves_native_input_or_json_refusal(retained_form_context, accept):
+    from app.errors import AppError
+
+    request = _request("/web/expenses/42/reject", role="viewer")
+    request.scope["headers"] = [(b"accept", accept.encode())]
+    fields = {"ledger_id": "new-ledger", "merchant": "原商家", "expected_row_version": "3",
+        "reject_idempotency_key": "original-reject"}
+    db = Mock()
+    response = web_common.preserve_original_ledger_form(request, db, options=[], selected="new-ledger",
+        fields=fields, task="继续原忽略操作", error=AppError("permission_denied", "当前只读", status_code=403))
+    assert response.status_code == 403
+    assert not db.mock_calls
+    if accept == "application/json":
+        assert response.headers["content-type"].startswith("application/json")
+        assert json.loads(response.body) == {"error": "permission_denied", "message": "当前只读", "draft_result": "blocked"}
+    else:
+        native = hidden_post_forms(response.body.decode())["/web/expenses/42/reject"]
+        assert all(native[key] == value for key, value in fields.items())
+
+
 def test_final_debt_submit_after_rate_recovery_cannot_follow_a_switched_session(
     monkeypatch, retained_form_context,
 ):

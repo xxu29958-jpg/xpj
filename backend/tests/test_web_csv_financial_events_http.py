@@ -40,10 +40,15 @@ def _confirm_visible_root(browser, review, expense_id):
     form["note"] = unescape(note.group(1)) if note else ""
     confirmed = _post(browser, edit, f"/web/expenses/{expense_id}/confirm", form)
     assert confirmed.status_code == 303, confirmed.text
-    target = urlsplit(confirmed.headers["location"])
+    receipt = browser.get(confirmed.headers["location"])
+    assert receipt.status_code == 200 and "这张，记好了" in receipt.text
+    finish = re.search(r'<a\b[^>]*href="([^"]+)"[^>]*data-confirmation-finish', receipt.text)
+    assert finish is not None, receipt.text
+    return_href = unescape(finish.group(1))
+    target = urlsplit(return_href)
     assert target.path == urlsplit(str(review.url)).path
     assert parse_qs(target.query)["expense_id"] == [str(expense_id)]
-    return browser.get(confirmed.headers["location"])
+    return browser.get(return_href)
 
 
 def test_foreign_web_csv_resume_confirm_occ_retry_csrf_and_viewer(web_client, identity):

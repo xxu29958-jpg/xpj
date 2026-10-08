@@ -99,12 +99,10 @@
       <input type="hidden" name="keep_idempotency_key" value="{{ keep_idempotency_key }}">
       <input type="hidden" name="save_before_confirm" value="1">
       {% for name, value in edit_return_fields.items() %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
-      {% include "_expense_review_draft.html" %}
-      {# 隐式提交守卫：tree-order 首个 submit 是浏览器 Enter 的默认按钮。没有这个
-         shim 时首个 submit 是「忽略草稿」(formaction=/reject)——在输入框按 Enter
-         会直接软删。shim 无 formaction,Enter 走表单自身 action(/save),载荷与
-         点「保存草稿」一致。#}
+      {# 浏览器 Enter 使用 tree-order 首个 submit。此按钮位于原稿核对和其它动作之前，
+         没有 formaction，确保输入框的隐式提交沿表单自身 action(/save) 保存原稿。#}
       {% if can_write %}<button type="submit" hidden tabindex="-1" aria-hidden="true"{% if expense_review_basis_changed %} disabled{% endif %}></button>{% endif %}
+      {% include "_expense_review_draft.html" %}
 
       {% set core_fields_prefix = 'drawer-expense-' ~ e.id %}
       {% set core_fields_reload_href = edit_current_href %}

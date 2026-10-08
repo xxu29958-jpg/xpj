@@ -325,7 +325,7 @@ class ExpenseConfirmationReceipt(BaseModel):
     amount_cents: NonNegativeMoneyMinor
     home_currency: str
     original_currency_code: str
-    original_amount_minor: NonNegativeMoneyMinor
+    original_amount_minor: NonNegativeMoneyMinor | None
     exchange_rate_to_cny: Decimal | None
     exchange_rate_date: date | None
     exchange_rate_source: str | None

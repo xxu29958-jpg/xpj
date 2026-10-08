@@ -46,10 +46,10 @@ internal data class PendingReviewSheetHostState(
 )
 
 data class PendingReviewSheetHostActions(
-    val onSaveQuickCategory: (Long, String) -> Unit,
-    val onSaveQuickMerchant: (Long, String) -> Unit,
-    val onSaveAmountDraft: (Long, Long) -> Unit,
-    val onSaveAmountAndConfirm: (Long, Long) -> Unit,
+    val onSaveQuickCategory: (Expense, String) -> Unit,
+    val onSaveQuickMerchant: (Expense, String) -> Unit,
+    val onSaveAmountDraft: (Expense, Long) -> Unit,
+    val onSaveAmountAndConfirm: (Expense, Long) -> Unit,
     val onSkipReviewField: () -> Unit,
     val onKeepBoth: (Expense) -> Unit,
     val onIgnoreCurrent: (Expense) -> Unit,
@@ -169,20 +169,20 @@ private fun PendingReviewSheetContent(
             expense = sheet.expense,
             options = state.categoryOptions,
             chrome = chromeFor(sheet.expense.id),
-            onSave = { value -> actions.onSaveQuickCategory(sheet.expense.id, value) },
+            onSave = { value -> actions.onSaveQuickCategory(sheet.expense, value) },
             onDismiss = actions.onDismiss,
         )
         is PendingSheet.QuickMerchant -> QuickMerchantSheetContent(
             expense = sheet.expense,
             chrome = chromeFor(sheet.expense.id),
-            onSave = { value -> actions.onSaveQuickMerchant(sheet.expense.id, value) },
+            onSave = { value -> actions.onSaveQuickMerchant(sheet.expense, value) },
             onDismiss = actions.onDismiss,
         )
         is PendingSheet.MissingAmount -> MissingAmountSheetContent(
             expense = sheet.expense,
             chrome = chromeFor(sheet.expense.id),
-            onSaveDraft = { cents -> actions.onSaveAmountDraft(sheet.expense.id, cents) },
-            onSaveAndConfirm = { cents -> actions.onSaveAmountAndConfirm(sheet.expense.id, cents) },
+            onSaveDraft = { cents -> actions.onSaveAmountDraft(sheet.expense, cents) },
+            onSaveAndConfirm = { cents -> actions.onSaveAmountAndConfirm(sheet.expense, cents) },
         )
         is PendingSheet.Duplicate -> DuplicateConfirmSheetContent(
             expense = sheet.expense,

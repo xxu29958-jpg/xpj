@@ -40,7 +40,7 @@ internal class PendingViewModelReviewSheetAndStateTest : PendingViewModelReviewT
         assertTrue(vm.uiState.value.readOnly)
         assertFalse(vm.acceptUploads(UploadBatchRequest(UPLOAD_TEST_BATCH, listOf("blocked"), uploadTestBinding(), "Asia/Shanghai") { error("viewer must not prepare") }))
         vm.openQuickCategory(target)
-        vm.saveQuickCategory(target.id, "交通")
+        vm.saveQuickCategory(target, "交通")
         vm.confirm(target)
         vm.reject(target)
         vm.markNotDuplicate(target)
@@ -73,13 +73,13 @@ internal class PendingViewModelReviewSheetAndStateTest : PendingViewModelReviewT
     }
 
     @Test
-    fun reconcileActiveSheetUsesLatestExpenseSnapshot() = review {
+    fun reconcileActiveSheetPreservesTheReviewedExpenseSnapshot() = review {
         val stale = expense(id = 60L, category = "其他")
         val latest = stale.copy(category = "交通", updatedAt = "2025-01-01T00:01:00Z")
 
         val reconciled = reconcileActiveSheet(PendingSheet.QuickCategory(stale), listOf(latest))
 
-        assertEquals(PendingSheet.QuickCategory(latest), reconciled)
+        assertEquals(PendingSheet.QuickCategory(stale), reconciled)
     }
 
     @Test
@@ -92,7 +92,7 @@ internal class PendingViewModelReviewSheetAndStateTest : PendingViewModelReviewT
     }
 
     @Test
-    fun reducerRefreshKeepsOnlyActiveThumbnailsAndUpdatesOpenSheet() = review {
+    fun reducerRefreshUpdatesTheListWithoutRebasingOpenInput() = review {
         val stale = expense(id = 70L, category = "其他")
         val latest = stale.copy(category = "交通", updatedAt = "2025-01-01T00:01:00Z")
         val activeImage = image("active")
@@ -109,7 +109,7 @@ internal class PendingViewModelReviewSheetAndStateTest : PendingViewModelReviewT
         assertEquals(listOf(latest), next.items)
         assertTrue(next.thumbnails[latest.id] === activeImage)
         assertFalse(next.thumbnails.containsKey(99L))
-        assertEquals(PendingSheet.QuickCategory(latest), next.activeSheet)
+        assertEquals(PendingSheet.QuickCategory(stale), next.activeSheet)
         assertFalse(next.loading)
     }
 
@@ -172,7 +172,7 @@ internal class PendingViewModelReviewSheetAndStateTest : PendingViewModelReviewT
     }
 
     @Test
-    fun reducerUpdatedReplacesItemAndRefreshesOpenSheetSnapshot() = review {
+    fun reducerUpdatedReplacesTheListItemAndPreservesOpenInputBasis() = review {
         val stale = expense(id = 74L, merchant = "旧商家")
         val updated = stale.copy(merchant = "新商家", updatedAt = "2025-01-01T00:02:00Z")
         val state = PendingUiState(
@@ -190,7 +190,7 @@ internal class PendingViewModelReviewSheetAndStateTest : PendingViewModelReviewT
 
         assertEquals(listOf(updated), next.items)
         assertTrue(next.actionInProgressIds.isEmpty())
-        assertEquals(PendingSheet.QuickMerchant(updated), next.activeSheet)
+        assertEquals(PendingSheet.QuickMerchant(stale), next.activeSheet)
         assertEquals(UiText.res(R.string.pending_review_merchant_updated), next.message)
     }
 

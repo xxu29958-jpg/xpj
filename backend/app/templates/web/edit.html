@@ -100,7 +100,7 @@
           {% if expense_review_scope or (e.status == 'pending' and not e.fx_pending and not fx_revision_changed) %}
           <button class="product-button product-button--primary"
                   type="submit"
-                  formaction="/web/expenses/{{ e.id }}/{{ 'save' if expense_review_action == 'save' and expense_review_result in ['blocked', 'rejected'] else 'confirm' }}" data-expensereview-submit{% if not can_write or (expense_review_basis_changed and not expense_review_result) %} disabled{% endif %}>{{ '核实这次保存' if expense_review_action == 'save' and expense_review_result in ['blocked', 'rejected'] else '确认入账' }}</button>
+                  formaction="/web/expenses/{{ e.id }}/{{ 'save' if expense_review_action == 'save' and expense_review_result in ['blocked', 'rejected'] else 'confirm' }}" data-expensereview-submit{% if not can_write %} hidden{% endif %}{% if not can_write or (expense_review_basis_changed and not expense_review_result) %} disabled{% endif %}>{{ '核实这次保存' if expense_review_action == 'save' and expense_review_result in ['blocked', 'rejected'] else '确认入账' }}</button>
           {% endif %}
           <a class="product-button product-button--quiet" href="{{ edit_return_href }}" data-expensereview-later hidden>稍后继续</a>
           {% endif %}

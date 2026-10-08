@@ -314,7 +314,8 @@ def test_fx_status_keeps_original_form_and_offers_review_when_current_bill_no_lo
             expense.original_amount_minor, expense.amount_cents) == ("CNY", "CNY", 2, 240, 240)
         assert "载入最新账单（替换未保存填写）" in body
         assert f'href="{escape(response.context["edit_current_href"])}" data-drawer-reload' in body
-        assert 'formaction="/web/expenses/41/confirm"' not in body
+        confirmations = re.findall(r'<button\b([^>]*formaction="/web/expenses/41/confirm"[^>]*)>', body)
+        assert all('name="review_latest"' in attributes for attributes in confirmations)
     db.commit.assert_not_called()
 
 

@@ -382,7 +382,6 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /web/bill-splits/{public_id}/accept": Exempt("terminal_flag_flip", "bill_split", _BILL_SPLIT, "medium"),
     "POST /web/bill-splits/{public_id}/cancel": Exempt("terminal_flag_flip", "bill_split", _BILL_SPLIT),
     "POST /web/bill-splits/{public_id}/reject": Exempt("terminal_flag_flip", "bill_split", _BILL_SPLIT),
-    "POST /web/categories/uncategorized/bulk-set": Exempt("batch_db_write", "expenses", ("expenses",)),
     "POST /web/dashboard/cards/reset": Exempt("upsert_bucket", "budget", _DASHBOARD),
     "POST /web/dashboard/cards/save": Exempt("upsert_bucket", "budget", _DASHBOARD),
     "POST /web/family/invitations": Exempt("create_row", "identity", ("invitations",)),

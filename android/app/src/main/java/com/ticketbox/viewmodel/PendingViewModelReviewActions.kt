@@ -85,17 +85,17 @@ fun PendingViewModel.skipReviewField() {
     )
 }
 
-fun PendingViewModel.saveQuickCategory(expenseId: Long, category: String) {
+fun PendingViewModel.saveQuickCategory(expense: Expense, category: String) {
     if (blockReadOnlyWrite(closeSheet = true)) return
     patchExpense(
-        expenseId = expenseId,
+        expense = expense,
         field = ReviewField.CATEGORY,
         draft = blankDraft().copy(category = category.trim()),
         failureMessageFallback = R.string.pending_review_category_save_failed,
     )
 }
 
-fun PendingViewModel.saveQuickMerchant(expenseId: Long, merchant: String) {
+fun PendingViewModel.saveQuickMerchant(expense: Expense, merchant: String) {
     if (blockReadOnlyWrite(closeSheet = true)) return
     val cleaned = merchant.trim()
     if (cleaned.isEmpty()) {
@@ -103,47 +103,45 @@ fun PendingViewModel.saveQuickMerchant(expenseId: Long, merchant: String) {
         return
     }
     patchExpense(
-        expenseId = expenseId,
+        expense = expense,
         field = ReviewField.MERCHANT,
         draft = blankDraft().copy(merchant = cleaned),
         failureMessageFallback = R.string.pending_review_merchant_save_failed,
     )
 }
 
-fun PendingViewModel.saveAmountDraft(expenseId: Long, originalAmountMinor: Long) {
+fun PendingViewModel.saveAmountDraft(expense: Expense, originalAmountMinor: Long) {
     if (blockReadOnlyWrite(closeSheet = true)) return
     if (originalAmountMinor <= 0L) {
         _uiState.update { it.copy(message = UiText.res(R.string.pending_review_amount_not_positive)) }
         return
     }
-    val expense = _uiState.value.items.firstOrNull { it.id == expenseId }
     if (originalCurrencyUnsupportedOf(expense)) return
     patchExpense(
-        expenseId = expenseId,
+        expense = expense,
         field = ReviewField.AMOUNT,
         draft = blankDraft().copy(
-            originalCurrencyCode = expense?.originalCurrencyCode,
+            originalCurrencyCode = expense.originalCurrencyCode,
             originalAmountMinor = originalAmountMinor,
         ),
         failureMessageFallback = R.string.pending_review_amount_save_failed,
     )
 }
 
-fun PendingViewModel.saveAmountAndConfirm(expenseId: Long, originalAmountMinor: Long) {
+fun PendingViewModel.saveAmountAndConfirm(expense: Expense, originalAmountMinor: Long) {
     if (blockReadOnlyWrite(closeSheet = true)) return
     if (originalAmountMinor <= 0L) {
         _uiState.update { it.copy(message = UiText.res(R.string.pending_review_amount_not_positive)) }
         return
     }
-    val expense = _uiState.value.items.firstOrNull { it.id == expenseId } ?: return
     if (originalCurrencyUnsupportedOf(expense)) return
     val draft = blankDraft().copy(originalCurrencyCode = expense.originalCurrencyCode, originalAmountMinor = originalAmountMinor)
     submitPendingCommand(
         expense,
         R.string.pending_review_amount_save_failed,
         onAccepted = {
-            reviewSkippedIds.add(expenseId)
-            advanceReviewOrClose(ReviewField.AMOUNT, expenseId, UiText.res(R.string.expense_command_accepted))
+            reviewSkippedIds.add(expense.id)
+            advanceReviewOrClose(ReviewField.AMOUNT, expense.id, UiText.res(R.string.expense_command_accepted))
         },
     ) { binding ->
         repository.saveAndConfirmExpense(binding, expense, draft)
@@ -245,22 +243,21 @@ private fun PendingViewModel.advanceReviewOrClose(
 }
 
 private fun PendingViewModel.patchExpense(
-    expenseId: Long,
+    expense: Expense,
     field: ReviewField,
     draft: ExpenseDraft,
     @StringRes failureMessageFallback: Int,
 ) {
     if (blockReadOnlyWrite(closeSheet = true)) return
-    val baseline = _uiState.value.items.firstOrNull { it.id == expenseId } ?: return
     submitPendingCommand(
-        baseline,
+        expense,
         failureMessageFallback,
         onAccepted = {
-            reviewSkippedIds.add(expenseId)
-            advanceReviewOrClose(field, expenseId, UiText.res(R.string.expense_command_accepted))
+            reviewSkippedIds.add(expense.id)
+            advanceReviewOrClose(field, expense.id, UiText.res(R.string.expense_command_accepted))
         },
     ) { binding ->
-        repository.saveExpenseAllowingOffline(binding, expenseId, draft, baseline)
+        repository.saveExpenseAllowingOffline(binding, expense.id, draft, expense)
     }
 }
 

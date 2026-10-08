@@ -12,7 +12,7 @@ from pathlib import Path
 from urllib.parse import quote, urlencode
 
 from fastapi import Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
@@ -26,6 +26,7 @@ from app.routes._web_dashboard_calculations import (
     previous_month_string,
     recurring_status_counts,
 )
+from app.routes._web_draft_binding import draft_error_response
 from app.routes._web_money_views import (
     _amount_segments,
     _amount_yuan,
@@ -127,11 +128,13 @@ def category_return_url(ledger_id: str, category_id: str, month: str, *, message
     )
 
 
-def preserve_original_ledger_form(request, db, *, options, selected, fields, task, error: AppError | None = None) -> HTMLResponse | None:
+def preserve_original_ledger_form(request, db, *, options, selected, fields, task, error: AppError | None = None) -> Response | None:
     """Keep an original form in its ledger instead of retargeting it to the live session."""
     original = str(fields.get("ledger_id") or "")
     if original == selected and error is None:
         return None
+    if error is not None and (response := draft_error_response(request, error)) is not None:
+        return response
     ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected, page_title="原提交已保留")
     ctx.update(original_fields=fields, original_ledger_id=original, original_task=task, original_error=error)
     return templates.TemplateResponse(request=request, name="original_ledger_form.html", context=ctx,

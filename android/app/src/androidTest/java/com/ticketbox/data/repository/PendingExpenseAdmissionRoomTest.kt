@@ -1,6 +1,13 @@
 package com.ticketbox.data.repository
 
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.SavedStateHandle
 import androidx.test.platform.app.InstrumentationRegistry
@@ -13,9 +20,19 @@ import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ExpenseDraft
+import com.ticketbox.domain.model.AppSkin
+import com.ticketbox.ui.asString
+import com.ticketbox.ui.saveConsumerArtPreview
+import com.ticketbox.ui.screens.pending.PendingReviewSheetHost
+import com.ticketbox.ui.screens.pending.PendingReviewSheetHostState
+import com.ticketbox.ui.screens.pending.PendingReviewSheetHostActions
+import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.ExpenseEditViewModel
 import com.ticketbox.viewmodel.PendingViewModel
 import com.ticketbox.viewmodel.confirmReadyExpenses
+import com.ticketbox.viewmodel.openQuickCategory
+import com.ticketbox.viewmodel.saveQuickCategory
+import com.ticketbox.viewmodel.closeSheet
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
@@ -63,6 +80,60 @@ class PendingExpenseAdmissionRoomTest {
     @After fun close() {
         compose.runOnIdle { editor?.viewModelScope?.cancel(); pending?.viewModelScope?.cancel() }
         fixture.close()
+    }
+
+    @Test
+    fun quickCategoryKeepsTheOpenedVersionAndSelectedValueInRoomAfterAPeerRefresh() = runBlocking {
+        current = fixture.network.current.copy(status = "pending", confirmedAt = null, category = "")
+        val repository = fixture.reopen().expenseRepository
+        lateinit var vm: PendingViewModel
+        compose.runOnIdle { vm = PendingViewModel(repository, fixture.uploadIntents); pending = vm }
+        compose.waitUntil(10_000) { vm.uiState.value.items.size == 1 && !vm.uiState.value.readOnly }
+        val original = vm.uiState.value.items.single()
+        showQuickCategory(vm)
+        compose.runOnIdle { vm.openQuickCategory(original) }
+        compose.onNode(hasSetTextAction()).performTextInput("购物")
+        current = current.copy(category = "医疗", rowVersion = current.rowVersion + 1)
+        compose.runOnIdle { vm.refresh() }
+        compose.waitUntil(10_000) { vm.uiState.value.items.single().rowVersion == current.rowVersion }
+        compose.onNode(hasSetTextAction() and hasText("购物")).assertExists()
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        compose.waitForIdle()
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.uiAutomation.waitForIdle(250, 5_000)
+        saveConsumerArtPreview("quick-category-original-basis", instrumentation.uiAutomation.takeScreenshot())
+        compose.onNodeWithText("保存分类").performClick()
+        compose.waitUntil(10_000) { fixture.stored().size == 1 }
+
+        val originals = fixture.stored()
+        val row = originals.single()
+        assertEquals(original.rowVersion.toString(), row["expectedRowVersion"])
+        val payload = requireNotNull(OutboxAdapterGraph().patchExpenseAdapter.fromJson(requireNotNull(row["payload"])))
+        assertEquals("购物", payload.category)
+        assertEquals(null, payload.originalAmount)
+        assertEquals("医疗", current.category)
+        assertEquals(original.rowVersion + 1, current.rowVersion)
+        assertEquals(original.amountCents, current.amountCents)
+        assertEquals("pending", current.status)
+        assertTrue("Only the existing worker may deliver this original intent", requests.isEmpty())
+        compose.runOnIdle { vm.viewModelScope.cancel(); pending = null }
+        fixture.reopen()
+        assertEquals(originals, fixture.stored())
+    }
+
+    private fun showQuickCategory(vm: PendingViewModel) {
+        compose.setContent { TicketboxTheme(skin = AppSkin.Paper) {
+            val state by vm.uiState.collectAsState()
+            PendingReviewSheetHost(
+                state = PendingReviewSheetHostState(state.activeSheet, state.categoryOptions,
+                    state.actionInProgressIds, 0, 0, 0, false, 0, 0, state.reviewRemaining, state.message?.asString()),
+                actions = PendingReviewSheetHostActions(
+                    onSaveQuickCategory = vm::saveQuickCategory, onSaveQuickMerchant = { _, _ -> },
+                    onSaveAmountDraft = { _, _ -> }, onSaveAmountAndConfirm = { _, _ -> },
+                    onSkipReviewField = {}, onKeepBoth = {}, onIgnoreCurrent = {},
+                    onConfirmReady = {}, onDismiss = vm::closeSheet),
+            )
+        } }
     }
 
     @Test

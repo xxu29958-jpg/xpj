@@ -304,7 +304,7 @@ def test_web_drawer_fragment_renders_return_to_pending_hidden(
     page by design)."""
     expense_id = _create_pending(web_client, identity=identity)
     drawer = web_client.get(
-        f"/web/expenses/{expense_id}/edit?ledger_id=owner&fragment=1"
+        f"/web/expenses/{expense_id}/edit?ledger_id=owner&return_to=pending&fragment=1"
     )
     assert drawer.status_code == 200
     assert 'name="return_to"' in drawer.text

@@ -13,7 +13,7 @@ data class ExpenseConfirmationReceiptDto(
     @param:Json(name = "amount_cents") val amountCents: Long,
     @param:Json(name = "home_currency") val homeCurrency: String,
     @param:Json(name = "original_currency_code") val originalCurrencyCode: String,
-    @param:Json(name = "original_amount_minor") val originalAmountMinor: Long,
+    @param:Json(name = "original_amount_minor") val originalAmountMinor: Long?,
     @param:Json(name = "exchange_rate_to_cny") val exchangeRateToCny: String?,
     @param:Json(name = "exchange_rate_date") val exchangeRateDate: String?,
     @param:Json(name = "exchange_rate_source") val exchangeRateSource: String?,

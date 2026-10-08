@@ -43,7 +43,7 @@ def _rejection_expense(*, status="pending", row_version=3) -> Expense:
 def test_accepted_local_operation_replays_when_legacy_creation_receipt_is_missing(monkeypatch, operation):
     db = Mock(spec=Session)
     auth = SimpleNamespace(tenant_id="owner", account_id=1, device_id=7)
-    expense = _rejection_expense() if operation == "reject" else SimpleNamespace(
+    expense = _rejection_expense() if operation in {"confirm", "reject"} else SimpleNamespace(
         id=42, row_version=3, source="手动记账", status="pending")
     state = SimpleNamespace(claim=None, creation=SimpleNamespace(id=42, row_version=3), writes=0, claim_calls=0)
     prepare_fx = Mock(return_value=None)
@@ -72,24 +72,31 @@ def test_accepted_local_operation_replays_when_legacy_creation_receipt_is_missin
     monkeypatch.setattr(owner, "get_expense", lambda *_a, **_k: expense)
     monkeypatch.setattr(expense_review_command_service, "cleanup_after_confirm", lambda *_a: False)
     monkeypatch.setattr(expenses, "expense_to_response", lambda _db, *, expense, tenant_id: expense)
-    if operation == "reject":
+    if operation in {"confirm", "reject"}:
         monkeypatch.setattr(expense_review_command_service, "claim_idempotency_key", claim)
         monkeypatch.setattr(expense_review_command_service, "expense_to_response",
             lambda _db, *, expense, tenant_id: ExpenseResponse.model_validate(expense))
+        monkeypatch.setattr(expenses, "expense_to_response",
+            lambda _db, *, expense, tenant_id: ExpenseResponse.model_validate(expense))
+        monkeypatch.setattr(expenses, "get_expense", lambda *_a, **_k: expense)
     route, payload = {
         "patch": (expenses.patch_expense, ExpenseUpdateRequest(expected_row_version=0, note="Original edit")),
         "confirm": (expenses.post_confirm_expense, ExpenseConfirmRequest(expected_row_version=0)),
         "reject": (expenses.post_reject_expense, ExpenseRejectRequest(expected_row_version=0)),
     }[operation]
     first = route("local:original", payload, "original-operation", auth, db)
-    if operation == "reject":
+    if operation in {"confirm", "reject"}:
         assert isinstance(first, ExpenseResponse)
-        original = first.model_dump(mode="json")
+        original = first.confirmation_receipt if operation == "confirm" else first
         assert state.writes == 1
         state.creation = None
         expense.amount_cents, expense.row_version, expense.status = 900, 9, "confirmed"
         replay = route("local:original", payload, "original-operation", auth, db)
-        assert replay.model_dump(mode="json") == original
+        if operation == "confirm":
+            assert replay.confirmation_receipt == original
+            assert (replay.amount_cents, replay.row_version) == (900, 9)
+        else:
+            assert replay == original
     else:
         assert first is expense
         assert state.writes == 1

@@ -56,7 +56,8 @@ class FinancialJourney:
             # Keep the stale list used to exercise peer-change review. Refunds
             # later share this merchant and require the original amount anchor.
             self.native.click(state["merchant"])
-        wait_for(lambda: self.native.has("账单详情"), "The native fact did not open")
+        wait_for(lambda: self.native.has("原消费") and self.native.has(state["merchant"]),
+            "The original fact and its money summary did not open")
 
     def correction(self):
         state = self.facts()
@@ -207,6 +208,7 @@ class FinancialJourney:
         wait_for(lambda: native.has("WebFinal"), "Updating the native ledger did not read the peer correction")
         native.capture("financial-ledger-after-explicit-peer-refresh")
         self.native_open()
+        native.click("退回与冲销")
         native.click("登记退款")
         native.reveal_any("生效日期")
         native.capture("financial-refund-default-day")
@@ -221,8 +223,11 @@ class FinancialJourney:
         try:
             native.restart()
             self.native_open()
+            native.click("完整历史")
             native.reveal_any("显示上次读取的历史")
             native.capture("financial-history-cold-offline")
+            native.back()
+            native.click("退回与冲销")
             native.reveal_any("继续登记退款", toward_start=True)
             native.click("继续登记退款")
             assert native.has("NativeRefund") and native.has("3.00"), "The cold refund draft lost its raw fields"
@@ -243,9 +248,10 @@ class FinancialJourney:
         state = self.facts()
         offset = state["offsets"][0]
         self.goto(f'/web/expenses/{state["id"]}/edit')
+        self.page.locator("details.fact-disclosure > summary").filter(has_text="退款与冲销").click()
         suffix = f'/offsets/{offset["public_id"]}/voids'
         form = self.form(f'/web/expenses/{state["id"]}{suffix}')
-        form.locator("xpath=ancestor::details").locator("summary").click()
+        form.locator("xpath=ancestor::details[1]").locator(":scope > summary").click()
         form.locator('[name="void_reason"]').fill("RefundRecalled")
         self.lost_reply(form, "[data-offset-submit]", suffix, "void")
         assert self.facts()["net"] == 1725 and self.facts()["offsets"][0]["status"] == "voided"
@@ -258,7 +264,7 @@ class FinancialJourney:
         assert state["net"] == 0 and len(state["offsets"]) == 2
         reversal_id = state["offsets"][1]["public_id"]
         form = self.form(f'/web/expenses/{state["id"]}/offsets/{reversal_id}/voids')
-        form.locator("xpath=ancestor::details").locator("summary").click()
+        form.locator("xpath=ancestor::details[1]").locator(":scope > summary").click()
         form.locator('[name="void_reason"]').fill("KeepFact")
         form.locator("[data-offset-submit]").click()
         self.expect(lambda value: value["net"] == 1725, "Voiding the reversal did not restore the original contribution")

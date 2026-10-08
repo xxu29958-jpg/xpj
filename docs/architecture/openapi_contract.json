@@ -12648,11 +12648,18 @@
             "title": "Merchant"
           },
           "original_amount_minor": {
-            "format": "int64",
-            "maximum": 9000000000000.0,
-            "minimum": 0.0,
-            "title": "Original Amount Minor",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Amount Minor"
           },
           "original_currency_code": {
             "title": "Original Currency Code",

@@ -112,7 +112,7 @@
     function controls() {
       if (disposed) return;
       updateFields(fieldsEditable());
-      submit.hidden = archived && phase === "editing";
+      submit.hidden = !canWrite || (archived && phase === "editing");
       submit.disabled = !commandAllowed() || actionUnavailable();
       submit.textContent = phase === "editing" ? nativeLabel : definition.pendingLabel || "核实原" + taskLabel;
       review.hidden = !reviewAvailable();

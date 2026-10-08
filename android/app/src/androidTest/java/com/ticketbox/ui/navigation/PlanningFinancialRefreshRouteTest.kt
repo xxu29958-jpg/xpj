@@ -225,6 +225,8 @@ class PlanningFinancialRefreshRouteTest {
             harness.fixture.stored().any { it["type"] == PendingMutationType.ConfirmExpense.wireValue }
         }
         runBlocking { harness.fixture.drainExpenseLifecycle() }
+        waitForText(context.getString(R.string.expense_confirmation_title))
+        compose.onNodeWithText(context.getString(R.string.expense_confirmation_return)).performClick()
         compose.waitUntil(5_000) { harness.fixture.network.current.status == "confirmed" &&
             outer.currentBackStackEntry?.destination?.route == MAIN_ROUTE }
         compose.waitForIdle()

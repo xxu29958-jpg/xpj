@@ -47,7 +47,8 @@ def installed_web(monkeypatch) -> Iterator[_InstalledWeb]:
 def _hidden_fields(html: str) -> dict[str, str]:
     from tests._web_native_form_support import accounting_time_fields
 
-    return {**dict(re.findall(r'<input type="hidden" name="([^"]+)" value="([^"]*)"', html)),
+    return {**{name: unescape(value) for name, value in
+        re.findall(r'<input type="hidden" name="([^"]+)" value="([^"]*)"', html)},
         **accounting_time_fields(html)}
 
 
@@ -297,13 +298,19 @@ def test_period_payment_fx_confirm_return_then_explicit_link_zeros_reserve_once(
         follow_redirects=False,
     )
     assert confirmed.status_code == 303, confirmed.text
-    confirm_target = urlsplit(confirmed.headers["location"])
+    receipt = browser.get(confirmed.headers["location"],
+        headers={"Cookie": f"{SESSION_COOKIE_NAME}={session_token}"})
+    assert receipt.status_code == 200 and "这张，记好了" in receipt.text
+    finish = re.search(r'<a\b[^>]*href="([^"]+)"[^>]*data-confirmation-finish', receipt.text)
+    assert finish is not None, receipt.text
+    return_href = unescape(finish.group(1))
+    confirm_target = urlsplit(return_href)
     assert confirm_target.path == occurrence_path
     assert parse_qs(confirm_target.query) == {
         "ledger_id": [ledger_id], "month": [_SERIES_PERIOD], "payment_id": [str(created_id)],
     }
     focused_page = browser.get(
-        confirmed.headers["location"],
+        return_href,
         headers={"Cookie": f"{SESSION_COOKIE_NAME}={session_token}"},
     )
     assert focused_page.status_code == 200, focused_page.text

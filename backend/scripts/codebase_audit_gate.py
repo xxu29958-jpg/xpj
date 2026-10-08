@@ -139,11 +139,11 @@ def evaluate_debt(counts: DebtCounts) -> int:
 # main. See ``_audit_pr_delta_metrics.py`` docstring for what each
 # counter is and how it's computed.
 STRICT_EQUALITY_BASELINE: DebtCounts = {
-    "mutate_token_carriers": 140,  # + saved-query API edit/delete share the existing OCC command owner.
-    "mutate_token_exempted": 148,  # + native saved-query create; no predecessor row exists.
+    "mutate_token_carriers": 141,  # Uncategorized bulk-set now carries the original selection's OCC versions.
+    "mutate_token_exempted": 147,  # That bulk-set no longer qualifies for the batch-write exemption.
     "mutate_token_reason_admin_single_writer": 16,
     "mutate_token_reason_append_only_fact": 3,
-    "mutate_token_reason_batch_db_write": 17,
+    "mutate_token_reason_batch_db_write": 16,
     "mutate_token_reason_create_row": 42,  # New rows with original-key receipts; existing OCC routes unchanged.
     "mutate_token_reason_enqueue_task": 2,
     "mutate_token_reason_external_side_effect": 8,
@@ -185,9 +185,10 @@ _MUTATE_TOKEN_EXEMPTION_ADMISSIONS = (
     # tag API, shared Web create adapter and native saved-query create have no predecessor row. Their
     # common command keeps original actor/key receipts and unique ledger names;
     # duplicates never restore old objects. All 138 original OCC carriers stay protected,
-    # with two new saved-query API carriers. The Web saved-query create remains unchanged.
+    # with two new saved-query API carriers. Uncategorized bulk-set graduates from
+    # its old batch exemption to original-selection OCC, so the net admission is three.
     # Admit only this exact base/count transition, not general exemption growth.
-    ("92983e731072c2daa538bb61a3e782a5c4e60d5e", 144, 148),
+    ("92983e731072c2daa538bb61a3e782a5c4e60d5e", 144, 147),
     # One existing Ledger.name fact; three adapters share the Owner/credential
     # lock and field CAS. No financial OCC carrier or persistence owner changes.
     ("30beaeca2db6e76e72d7bd5acc5cd54a37212883", 141, 144),

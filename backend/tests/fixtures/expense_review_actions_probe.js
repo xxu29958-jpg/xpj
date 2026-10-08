@@ -26,7 +26,7 @@
     return originalFetch(url,options);
   };
   async function reviewOriginal() {
-    await wait(() => form()?.dataset.expensereviewDraftPhase === "editing");
+    await wait(() => form()?.dataset.expensereviewDraftPhase === "editing" && !form().elements.merchant.readOnly);
     state.input_retained = form().elements.merchant.value === "相关操作前的填写" && form().elements.idempotency_key.value === state.key;
     assert(state.input_retained, "related action discarded the original input: " + JSON.stringify({merchant:form().elements.merchant.value,key:form().elements.idempotency_key.value,notice:form().querySelector("[data-expensereview-draft-status]").textContent,hash:location.hash}));
     assert(primary().disabled && !form().querySelector("[data-expensereview-review]").disabled, "stale original could be confirmed without reviewing the updated bill");

@@ -173,7 +173,8 @@ def test_web_original_save_is_accepted_after_later_currency_and_status_changes(c
             "后来确认的商家", "confirmed", "USD", 9)
 
 
-def test_api_keeps_original_financial_receipt_beside_current_fact_and_original_disposal(confirmation_store, monkeypatch):
+@pytest.mark.parametrize("currency,minor", [("JPY", 2850), ("CNY", None)])
+def test_api_keeps_original_financial_receipt_beside_current_fact_and_original_disposal(confirmation_store, monkeypatch, currency, minor):
     from app.routes import expenses
 
     def dispose(db, row):
@@ -190,10 +191,13 @@ def test_api_keeps_original_financial_receipt_beside_current_fact_and_original_d
             "original-confirm", auth, db).model_dump(mode="json")
 
     with Session(confirmation_store) as db:
+        original = db.get(Expense, 42)
+        original.original_currency_code, original.original_amount_minor = currency, minor
+        db.commit()
         first = submit(db)
         receipt = first["confirmation_receipt"]
         assert (receipt["merchant"], receipt["amount_cents"], receipt["original_currency_code"],
-            receipt["original_amount_minor"], receipt["row_version"]) == ("首次便利店", 12860, "JPY", 2850, 5)
+            receipt["original_amount_minor"], receipt["row_version"]) == ("首次便利店", 12860, currency, minor, 5)
         assert first["image_deleted_at"] is not None and first["thumbnail_deleted_at"] is not None
         assert "image_deleted_at" not in receipt
     with Session(confirmation_store) as db:

@@ -82,21 +82,25 @@ def test_native_uncategorized_updates_only_selected_pending_row(web_client, iden
         assert response.status_code == 200, response.text
         created.append(response.json()["id"])
     with TestClient(app, base_url="http://127.0.0.1", client=("127.0.0.1", 53008)) as browser:
-        page = browser.get("/web/categories/uncategorized?ledger_id=tester_1")
+        page = browser.get("/web/categories/uncategorized?ledger_id=tester_1&filter=including_other")
         assert page.status_code == 200
         action = "/web/categories/uncategorized/bulk-set"
+        selected = re.search(rf'name="expense_snapshot" value="({created[0]}:[0-9]+)"', page.text)
+        assert selected is not None, page.text
         changed = browser.post(
             action,
-            data={**hidden_post_forms(page.text)[action], "expense_ids": str(created[0]), "category": "餐饮"},
+            data={**hidden_post_forms(page.text)[action], "expense_snapshot": selected.group(1), "category": "餐饮"},
             headers={"Origin": "http://127.0.0.1", "Referer": str(page.url)},
             follow_redirects=False,
         )
-        assert changed.status_code == 303, changed.text
+        assert changed.status_code == 200, changed.text
+        assert "分类已补好，再核对金额" in changed.text
         for expense_id, category in zip(created, ("餐饮", "其他"), strict=True):
             response = browser.get(f"/api/expenses/{expense_id}", headers=identity.gray_app_headers)
             assert response.status_code == 200
             assert response.json()["category"] == category
             assert response.json()["status"] == "pending"
+            assert response.json()["amount_cents"] == 1850
         outside_scope = browser.get(f"/api/expenses/{created[0]}", headers=identity.app_headers)
         assert outside_scope.status_code == 404
 

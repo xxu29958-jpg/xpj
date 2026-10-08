@@ -150,7 +150,7 @@ class FactEntryNavigationTest {
         assertTrue(requireNotNull(rows.single()["payload"]).contains(request.batchId))
     }
 
-    @Test fun confirmCompletesTheEditorAndRefreshesInboxInsteadOfBecomingAnUnfinishedFactRoute() {
+    @Test fun confirmedReceiptCompletesTheEditorAndRefreshesInboxAfterExplicitReturn() {
         harness.fixture.network.current = harness.fixture.network.current.copy(status = "pending", confirmedAt = null)
         installMainGraph()
         compose.runOnIdle { outer.navigate(expenseRoute(42L)) }
@@ -158,6 +158,9 @@ class FactEntryNavigationTest {
         waitForText(confirm)
         compose.onNodeWithText(confirm).performClick()
         drainAdmittedConfirm()
+        waitForText(context.getString(R.string.expense_confirmation_title))
+        compose.runOnIdle { assertEquals(EXPENSE_ROUTE, outer.currentBackStackEntry?.destination?.route) }
+        compose.onNodeWithText(context.getString(R.string.expense_confirmation_return)).performClick()
         compose.waitUntil(5_000) { harness.shell.expenseEditCompletionRevision == 1 }
         compose.waitForIdle()
         compose.runOnIdle {
@@ -234,6 +237,8 @@ class FactEntryNavigationTest {
         waitForText(confirm)
         compose.onNodeWithText(confirm).performClick()
         drainAdmittedConfirm()
+        waitForText(context.getString(R.string.expense_confirmation_title))
+        compose.onNodeWithText(context.getString(R.string.expense_confirmation_return)).performClick()
         compose.waitUntil(5_000) { harness.shell.expenseEditCompletionRevision == 1 && network.failedPendingReads > 0 }
         compose.waitForIdle()
         compose.onAllNodesWithText(requireNotNull(network.current.merchant)).assertCountEquals(0)
