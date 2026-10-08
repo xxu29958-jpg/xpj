@@ -38,7 +38,14 @@ sealed class PendingSheet {
     data class QuickCategory(val expense: Expense) : PendingSheet()
     data class QuickMerchant(val expense: Expense) : PendingSheet()
     data class MissingAmount(val expense: Expense) : PendingSheet()
-    data class Duplicate(val expense: Expense) : PendingSheet()
+    data class Duplicate(
+        val expense: Expense,
+        val reference: Expense? = null,
+        val referenceLoading: Boolean = false,
+        val referenceMessage: UiText? = null,
+        val referenceThumbnail: ProtectedImage? = null,
+        val keepBothConfirmed: Boolean = false,
+    ) : PendingSheet()
     object BulkConfirm : PendingSheet()
 }
 
@@ -101,10 +108,11 @@ data class PendingUiState(
 class PendingViewModel(
     internal val repository: PendingReviewActions,
     private val uploadIntents: UploadIntentActions,
-    private val thumbnailLoader: PendingThumbnailLoader = PendingThumbnailLoader(repository),
+    internal val expenseReader: com.ticketbox.data.repository.ExpenseRootReadActions,
     private val enrichmentTaskReader: PendingEnrichmentTaskReader? = null,
     internal val onDataChanged: () -> Unit = {},
 ) : ViewModel() {
+    private val thumbnailLoader = PendingThumbnailLoader(repository)
     /** Fired ONLY when a pending action lands in confirmed expenses (the
      *  budget advisor's input set): confirm paths. Upload / reject /
      *  pending-side edits never fire it. var per the repository seam idiom —
@@ -562,7 +570,7 @@ internal fun reconcileActiveSheet(sheet: PendingSheet, items: List<Expense>): Pe
         is PendingSheet.QuickCategory -> sheet.takeIf { sheet.expense.id in latestById } ?: PendingSheet.None
         is PendingSheet.QuickMerchant -> sheet.takeIf { sheet.expense.id in latestById } ?: PendingSheet.None
         is PendingSheet.MissingAmount -> sheet.takeIf { sheet.expense.id in latestById } ?: PendingSheet.None
-        is PendingSheet.Duplicate -> latestById[sheet.expense.id]?.let(PendingSheet::Duplicate) ?: PendingSheet.None
+        is PendingSheet.Duplicate -> sheet.takeIf { sheet.expense.id in latestById } ?: PendingSheet.None
         is PendingSheet.None,
         is PendingSheet.BulkConfirm,
         -> sheet

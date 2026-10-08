@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
+import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.ui.components.AppAdaptiveSupportingPane
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.design.AppSpacing
@@ -43,6 +44,8 @@ internal data class PendingReviewSheetHostState(
     val bulkTotal: Int,
     val reviewRemaining: Int,
     val statusMessage: String?,
+    val readOnly: Boolean = false,
+    val thumbnails: Map<Long, ProtectedImage> = emptyMap(),
 )
 
 data class PendingReviewSheetHostActions(
@@ -55,6 +58,10 @@ data class PendingReviewSheetHostActions(
     val onIgnoreCurrent: (Expense) -> Unit,
     val onConfirmReady: () -> Unit,
     val onDismiss: () -> Unit,
+    val onOpenExpense: (Long) -> Unit = {},
+    val onCompareOriginals: (List<Long>) -> Unit = {},
+    val onRetryDuplicateReference: () -> Unit = {},
+    val onDuplicateDecisionChange: (Boolean) -> Unit = {},
 )
 
 /**
@@ -185,10 +192,9 @@ private fun PendingReviewSheetContent(
             onSaveAndConfirm = { cents -> actions.onSaveAmountAndConfirm(sheet.expense, cents) },
         )
         is PendingSheet.Duplicate -> DuplicateConfirmSheetContent(
-            expense = sheet.expense,
-            inProgress = sheet.expense.id in state.actionInProgressIds,
-            onKeepBoth = { actions.onKeepBoth(sheet.expense) },
-            onIgnoreCurrent = { actions.onIgnoreCurrent(sheet.expense) },
+            sheet = sheet,
+            state = state,
+            actions = actions,
         )
         is PendingSheet.BulkConfirm -> BulkConfirmSheetContent(
             state = BulkConfirmSheetState(

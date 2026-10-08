@@ -40,11 +40,9 @@ import com.ticketbox.viewmodel.verifyReviewedImage
 
 @Composable
 fun OriginalAttachmentPanel(state: OriginalAttachmentUiState, viewModel: OriginalAttachmentViewModel,
-    onSelectFile: () -> Unit, onResumeSelection: () -> Unit) {
+    onSelectFile: () -> Unit, onResumeSelection: () -> Unit, initiallyExpanded: Boolean = false) {
     var expandedOverride by rememberSaveable(state.access?.binding) { mutableStateOf<Boolean?>(null) }
-    val needsAttention = state.localIntent || state.commands.any { !it.delivered } ||
-        state.health?.state in setOf("unverified", "missing", "corrupt", "unreadable")
-    val expanded = expandedOverride ?: needsAttention
+    val expanded = expandedOverride ?: (state.originalNeedsAttention() || initiallyExpanded)
     LaunchedEffect(expanded, state.access?.binding, state.health?.state) {
         if (expanded && state.canReadOriginal && state.image == null && !state.imageLoading) viewModel.loadImage()
     }
@@ -71,6 +69,9 @@ fun OriginalAttachmentPanel(state: OriginalAttachmentUiState, viewModel: Origina
         }
     }
 }
+
+private fun OriginalAttachmentUiState.originalNeedsAttention() = localIntent || commands.any { !it.delivered } ||
+    health?.state in setOf("unverified", "missing", "corrupt", "unreadable")
 
 @Composable
 private fun originalHealthLabel(state: OriginalAttachmentUiState, compact: Boolean = false): String {

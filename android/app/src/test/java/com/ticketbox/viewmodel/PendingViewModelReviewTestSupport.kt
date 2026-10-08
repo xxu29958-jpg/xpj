@@ -57,7 +57,8 @@ internal abstract class PendingViewModelReviewTestBase {
         enrichmentTaskReader: PendingEnrichmentTaskReader? = null,
         onDataChanged: () -> Unit = {},
     ): PendingViewModel = PendingViewModel(
-        fake.also { it.commandAccessSource = uploadIntents }, uploadIntents, enrichmentTaskReader = enrichmentTaskReader, onDataChanged = onDataChanged,
+        fake.also { it.commandAccessSource = uploadIntents }, uploadIntents, expenseReader = fake.expenseReader,
+        enrichmentTaskReader = enrichmentTaskReader, onDataChanged = onDataChanged,
     ).also { viewModels.put("pending-${nextViewModel++}", it) }
 
     protected fun clearPendingViewModels() = viewModels.clear()
@@ -150,6 +151,14 @@ internal class FakeReviewActions(
     // A3: 本地缓存种子源，与 [pending]（网络源）分开，便于测「缓存先铺、网络后替」。
     var cachedPending: List<Expense> = emptyList()
     var cachedConfirmed: List<Expense> = emptyList()
+    var expenseResponder: (suspend (Long, LogicalSessionBinding?) -> Result<Expense>)? = null
+    val expenseReader = object : com.ticketbox.data.repository.ExpenseRootReadActions {
+        override suspend fun fetchExpense(id: Long, expectedBinding: LogicalSessionBinding?): Result<Expense> =
+            expenseResponder?.invoke(id, expectedBinding) ?: fetchExpenseFromLocalCache(id, expectedBinding)
+        override suspend fun fetchExpenseFromLocalCache(id: Long, expectedBinding: LogicalSessionBinding?): Result<Expense> =
+            (pending + cachedConfirmed).firstOrNull { it.id == id }?.let { Result.success(it) }
+                ?: Result.failure(IllegalStateException("missing test expense"))
+    }
     var getCachedPendingResponder: (suspend () -> Result<List<Expense>>)? = null
 
     var updateResponder: (suspend (Long, ExpenseDraft) -> Result<Expense>)? = null

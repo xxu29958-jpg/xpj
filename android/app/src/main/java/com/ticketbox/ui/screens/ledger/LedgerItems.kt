@@ -38,9 +38,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
-import com.ticketbox.domain.model.DefaultExpenseCategories
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseLineageStatus
+import com.ticketbox.ui.components.ExpenseCategoryMark
 import com.ticketbox.ui.components.AppAdaptiveAmountRowDefaults
 import com.ticketbox.ui.components.AppAdaptiveContentActionStateRow
 import com.ticketbox.ui.components.AppAdaptiveContentActionStyle
@@ -258,7 +258,7 @@ internal fun LedgerExpenseCard(
                     if (state.selection.enabled) {
                         Checkbox(checked = state.selection.selected, onCheckedChange = null)
                     }
-                    LedgerCategoryMark(category = expense.category, density = AppListDensity.Standard)
+                    ExpenseCategoryMark(category = expense.category, density = AppListDensity.Standard)
                     Column(
                         modifier = Modifier.weight(1f),
                         verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
@@ -364,7 +364,7 @@ internal fun LedgerExpenseListRow(
                     if (state.selection.enabled) {
                         Checkbox(checked = state.selection.selected, onCheckedChange = null)
                     }
-                    LedgerCategoryMark(category = expense.category, density = AppListDensity.Compact)
+                    ExpenseCategoryMark(category = expense.category, density = AppListDensity.Compact)
                     LedgerListTextBlock(
                         expense = expense,
                         metaText = metaText,
@@ -510,67 +510,5 @@ private fun LedgerAmountOrPending(
             text = unavailable,
             role = AppAmountRole.Medium,
         )
-    }
-}
-
-/**
- * W2-B: 默认分类从单调首字块升级为语义图标（展示助读，分类文本仍是事实）；
- * 自定义/未知分类回退首字，不为无事实的分类硬造图形。
- */
-private val ledgerCategoryIcons: Map<String, Int> = mapOf(
-    DefaultExpenseCategories.DINING to R.drawable.ic_lucide_utensils,
-    DefaultExpenseCategories.TRANSIT to R.drawable.ic_lucide_bus,
-    DefaultExpenseCategories.SHOPPING to R.drawable.ic_lucide_shopping_bag,
-    DefaultExpenseCategories.ENTERTAINMENT to R.drawable.ic_lucide_clapperboard,
-    DefaultExpenseCategories.MEDICAL to R.drawable.ic_lucide_briefcase_medical,
-    DefaultExpenseCategories.EDUCATION to R.drawable.ic_lucide_graduation_cap,
-    DefaultExpenseCategories.HOUSING to R.drawable.ic_lucide_house,
-    DefaultExpenseCategories.TELECOM to R.drawable.ic_lucide_phone,
-    DefaultExpenseCategories.AI_SUBSCRIPTION to R.drawable.ic_lucide_bot,
-    DefaultExpenseCategories.DIGITAL to R.drawable.ic_lucide_monitor_smartphone,
-    DefaultExpenseCategories.GAMES to R.drawable.ic_lucide_gamepad_2,
-    DefaultExpenseCategories.LIFE to R.drawable.ic_lucide_sofa,
-)
-
-@Composable
-internal fun LedgerCategoryMark(category: String, density: AppListDensity) {
-    val visuals = LocalThemeVisuals.current
-    val rowMetrics = AppDensity.rowMetrics(density)
-    val background = when (category) {
-        DefaultExpenseCategories.DINING -> visuals.surfaceApricot
-        DefaultExpenseCategories.TRANSIT -> visuals.surfaceLilac
-        else -> visuals.brandPrimaryBg
-    }
-    Box(
-        modifier = Modifier
-            .size(rowMetrics.markSize)
-            .clip(RoundedCornerShape(AppRadius.small))
-            .background(background),
-        contentAlignment = Alignment.Center,
-    ) {
-        val icon = ledgerCategoryIcons[category]
-        if (icon != null) {
-            Icon(
-                imageVector = ImageVector.vectorResource(icon),
-                contentDescription = null,
-                tint = visuals.primary,
-                modifier = Modifier.size(
-                    if (density == AppListDensity.Compact) 18.dp else 20.dp,
-                ),
-            )
-        } else {
-            val markFallback = stringResource(R.string.ledger_item_category_mark_fallback)
-            Text(
-                text = category.take(1).ifBlank { markFallback },
-                color = visuals.primary,
-                style = if (density == AppListDensity.Compact) {
-                    MaterialTheme.typography.labelLarge
-                } else {
-                    MaterialTheme.typography.titleMedium
-                },
-                fontWeight = AppTypography.cardTitle.weight,
-                textAlign = TextAlign.Center,
-            )
-        }
     }
 }

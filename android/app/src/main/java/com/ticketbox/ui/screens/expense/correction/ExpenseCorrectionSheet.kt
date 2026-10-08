@@ -138,11 +138,6 @@ private fun CorrectionFormContent(state: ExpenseFactUiState, basis: com.ticketbo
             )
         }
         availability.review?.let { CorrectionReviewPanel(it, state, actions.onReview, actions.onRefreshFact) }
-        if (availability.review == null) {
-            com.ticketbox.viewmodel.correctionScalarComparisons(basis, basis, state.correction).forEach {
-                CorrectionComparison(it)
-            }
-        }
         val inputState = state.copy(expense = basis,
             correction = state.correction.copy(saving = state.correction.saving || !availability.canEditInput))
         CorrectionReasonSection(state = inputState, actions = actions)
@@ -154,6 +149,12 @@ private fun CorrectionFormContent(state: ExpenseFactUiState, basis: com.ticketbo
             CorrectionScalarSection(state = inputState, actions = actions)
             CorrectionScoreSection(state = inputState, actions = actions)
             TextButton(onClick = { fieldsExpanded = false }) { Text(stringResource(R.string.expense_correction_preview)) }
+        }
+        // Live comparisons grow as fields change; keep them after the editor so typing cannot push its focus off-screen.
+        if (availability.review == null) {
+            com.ticketbox.viewmodel.correctionScalarComparisons(basis, basis, state.correction).forEach {
+                CorrectionComparison(it)
+            }
         }
         AppContentCard { CorrectionCollectionEntries(state, availability, actions) }
     }

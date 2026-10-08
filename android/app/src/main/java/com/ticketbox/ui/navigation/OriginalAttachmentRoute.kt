@@ -22,7 +22,7 @@ import com.ticketbox.viewmodel.selectedSource
 
 /** Both pending editing and confirmed facts continue the same original task on their existing bill. */
 @Composable
-internal fun OriginalAttachmentRoute(expenseId: Long, screenFactory: MainScreenFactory, onAccepted: () -> Unit = {}) {
+internal fun OriginalAttachmentRoute(expenseId: Long, screenFactory: MainScreenFactory, onAccepted: () -> Unit = {}, initiallyExpanded: Boolean = false) {
     val originals = screenFactory.repositories.originalAttachments ?: return
     val context = LocalContext.current.applicationContext
     val vm: OriginalAttachmentViewModel = viewModel(key = "original-$expenseId", factory = viewModelFactory {
@@ -39,5 +39,5 @@ internal fun OriginalAttachmentRoute(expenseId: Long, screenFactory: MainScreenF
     LaunchedEffect(state.access?.binding) { vm.resumeSelectedSource(prepare) }
     OriginalAttachmentPanel(state, vm, onSelectFile = {
         if (vm.beginSelection()) picker.launch(arrayOf("image/*"))
-    }, onResumeSelection = { vm.resumeSelectedSource(prepare) })
+    }, onResumeSelection = { vm.resumeSelectedSource(prepare) }, initiallyExpanded = initiallyExpanded)
 }

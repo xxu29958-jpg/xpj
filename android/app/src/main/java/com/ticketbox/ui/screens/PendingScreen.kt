@@ -165,6 +165,10 @@ fun PendingScreen(
     )
 
     fun resolvePrimaryAction(expense: Expense) {
+        if (readOnly && expense.duplicateStatus == DuplicateStatusValues.SUSPECTED) {
+            reviewActions.duplicate.onOpenDuplicate(expense)
+            return
+        }
         when (pendingPrimaryReviewAction(expense)) {
             PendingPrimaryReviewAction.MissingAmount -> reviewActions.quickFix.onMissingAmount(expense)
             PendingPrimaryReviewAction.DuplicateReview -> reviewActions.duplicate.onOpenDuplicate(expense)
@@ -233,6 +237,8 @@ fun PendingScreen(
         bulkTotal = state.bulkConfirm.total,
         reviewRemaining = state.reviewRemaining,
         statusMessage = state.message?.asString(),
+        readOnly = state.readOnly,
+        thumbnails = state.thumbnails,
     )
     // expanded 下复核由 supporting pane 常驻承接，其余宽度维持现有 modal sheet；
     // 两种形态互斥，复用同一份 state/actions，不新造 review owner。

@@ -87,11 +87,13 @@ class PendingExpenseAdmissionRoomTest {
         current = fixture.network.current.copy(status = "pending", confirmedAt = null, category = "")
         val repository = fixture.reopen().expenseRepository
         lateinit var vm: PendingViewModel
-        compose.runOnIdle { vm = PendingViewModel(repository, fixture.uploadIntents); pending = vm }
+        compose.runOnIdle { vm = PendingViewModel(repository, fixture.uploadIntents, expenseReader = repository); pending = vm }
         compose.waitUntil(10_000) { vm.uiState.value.items.size == 1 && !vm.uiState.value.readOnly }
         val original = vm.uiState.value.items.single()
         showQuickCategory(vm)
         compose.runOnIdle { vm.openQuickCategory(original) }
+        compose.waitForIdle()
+        saveConsumerArtPreview("quick-category-context", InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot())
         compose.onNode(hasSetTextAction()).performTextInput("购物")
         current = current.copy(category = "医疗", rowVersion = current.rowVersion + 1)
         compose.runOnIdle { vm.refresh() }
@@ -122,7 +124,8 @@ class PendingExpenseAdmissionRoomTest {
     }
 
     private fun showQuickCategory(vm: PendingViewModel) {
-        compose.setContent { TicketboxTheme(skin = AppSkin.Paper) {
+        compose.setContent { TicketboxTheme(skin = if (InstrumentationRegistry.getArguments().getString("captureSkin") == "midnight")
+            AppSkin.Midnight else AppSkin.Paper) {
             val state by vm.uiState.collectAsState()
             PendingReviewSheetHost(
                 state = PendingReviewSheetHostState(state.activeSheet, state.categoryOptions,
@@ -215,7 +218,7 @@ class PendingExpenseAdmissionRoomTest {
         secondPending = current.copy(id = 43, publicId = "expense-43")
         val repository = fixture.reopen().expenseRepository
         lateinit var vm: PendingViewModel
-        compose.runOnIdle { vm = PendingViewModel(repository, fixture.uploadIntents); pending = vm }
+        compose.runOnIdle { vm = PendingViewModel(repository, fixture.uploadIntents, expenseReader = repository); pending = vm }
         compose.waitUntil(10_000) { vm.uiState.value.items.size == 2 && !vm.uiState.value.readOnly }
         compose.runOnIdle { vm.confirmReadyExpenses() }
         compose.waitUntil(10_000) { vm.uiState.value.bulkConfirm.total == 2 && !vm.uiState.value.bulkConfirm.running }

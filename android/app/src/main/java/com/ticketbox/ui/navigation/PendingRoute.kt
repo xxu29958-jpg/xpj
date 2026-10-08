@@ -9,6 +9,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.platform.LocalContext
@@ -31,6 +34,8 @@ import com.ticketbox.viewmodel.closeSheet
 import com.ticketbox.viewmodel.confirmReadyExpenses
 import com.ticketbox.viewmodel.openBulkConfirm
 import com.ticketbox.viewmodel.openDuplicateAction
+import com.ticketbox.viewmodel.loadDuplicateReference
+import com.ticketbox.viewmodel.setDuplicateDecision
 import com.ticketbox.viewmodel.openMissingAmount
 import com.ticketbox.viewmodel.openQuickCategory
 import com.ticketbox.viewmodel.openQuickMerchant
@@ -61,23 +66,10 @@ internal fun PendingRoute(
         }
     }
     val state by pendingViewModel.uiState.collectAsStateWithLifecycle()
+    var originalIds by rememberSaveable(state.uploadBinding) { mutableStateOf(emptyList<Long>()) }
     val context = LocalContext.current
 
-    // Targeted entries (data-quality remediation) land on the PRESERVED
-    // PendingViewModel with only a client-side filter — unlike Transactions
-    // (applyDataQualityFilter syncs). Re-sync so the filtered list can't be
-    // stale when the data changed off-page (PR #230 round 9).
-    LaunchedEffect(shellState.pendingFilterRequest.pending) {
-        if (shellState.pendingFilterRequest.pending != null) {
-            pendingViewModel.refresh()
-        }
-    }
-
-    LaunchedEffect(shellState.expenseEditCompletionRevision) {
-        if (shellState.expenseEditCompletionRevision > 0) {
-            pendingViewModel.refresh()
-        }
-    }
+    PendingReturnRefresh(pendingViewModel, shellState)
 
     val imagePickerLauncher = rememberImageUploadLauncher(shellState)
     val launchImagePicker: () -> Boolean = {
@@ -110,8 +102,29 @@ internal fun PendingRoute(
         ),
         itemActions = pendingExpenseQueueActions(navController, pendingViewModel),
         reviewActions = pendingReviewFlowActions(pendingViewModel),
-        sheetActions = pendingReviewSheetActions(pendingViewModel),
+        sheetActions = pendingReviewSheetActions(pendingViewModel).copy(
+            onOpenExpense = navController::openExpense,
+            onCompareOriginals = { originalIds = it },
+        ),
     )
+    if (originalIds.isNotEmpty()) PendingOriginalComparison(originalIds, screenFactory, onAccepted = {
+        pendingViewModel.refresh()
+        pendingViewModel.loadDuplicateReference()
+    }) { originalIds = emptyList() }
+}
+
+/** Re-entry updates the queue and reference query without replacing the open command basis. */
+@Composable
+private fun PendingReturnRefresh(viewModel: PendingViewModel, shellState: MainShellState) {
+    LaunchedEffect(shellState.pendingFilterRequest.pending) {
+        if (shellState.pendingFilterRequest.pending != null) viewModel.refresh()
+    }
+    LaunchedEffect(shellState.expenseEditCompletionRevision) {
+        if (shellState.expenseEditCompletionRevision > 0) {
+            viewModel.refresh()
+            viewModel.loadDuplicateReference()
+        }
+    }
 }
 
 internal data class PendingInboxNavigationActions(
@@ -180,6 +193,8 @@ private fun pendingReviewSheetActions(viewModel: PendingViewModel): PendingRevie
         onIgnoreCurrent = viewModel::ignoreDuplicate,
         onConfirmReady = viewModel::confirmReadyExpenses,
         onDismiss = viewModel::closeSheet,
+        onRetryDuplicateReference = viewModel::loadDuplicateReference,
+        onDuplicateDecisionChange = viewModel::setDuplicateDecision,
     )
 
 /**

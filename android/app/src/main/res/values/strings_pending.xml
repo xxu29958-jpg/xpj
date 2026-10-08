@@ -230,13 +230,29 @@
     <string name="pending_bulk_sheet_confirm_button">确认 %1$d 条</string>
 
     <!-- DuplicateConfirmSheet -->
-    <string name="pending_duplicate_sheet_title">核对疑似重复</string>
-    <string name="pending_duplicate_sheet_hint">先确认当前草稿是否还需要保留。系统不会自动删除或自动入账。</string>
+    <string name="pending_duplicate_sheet_title">像是同一张小票</string>
+    <string name="pending_duplicate_sheet_hint">对照金额、时间和原件，再决定是否保留两笔。</string>
     <string name="pending_duplicate_sheet_merchant_missing">未填写商家</string>
     <string name="pending_duplicate_sheet_reason">可能原因：%1$s</string>
     <string name="pending_duplicate_sheet_processing">处理中…</string>
-    <string name="pending_duplicate_sheet_keep_both">保留两笔（不是重复）</string>
-    <string name="pending_duplicate_sheet_ignore_current">删除当前草稿</string>
+    <string name="pending_duplicate_sheet_keep_both">保留两笔</string>
+    <string name="pending_duplicate_sheet_ignore_current">忽略本次收到的小票</string>
+    <string name="pending_duplicate_current">本次收到</string>
+    <string name="pending_duplicate_reference">相似账单</string>
+    <string name="pending_duplicate_reference_ignored">已忽略</string>
+    <string name="pending_duplicate_reference_loading">正在读取相似账单…</string>
+    <string name="pending_duplicate_reference_failed">暂时无法读取相似账单，请重试。</string>
+    <string name="pending_duplicate_reference_absent">尚未关联可供对照的账单，请打开本张核对原件。</string>
+    <string name="pending_duplicate_reference_cached">当前显示本机保存的账单，联网后可重试更新。</string>
+    <string name="pending_duplicate_different">这两张不是同一笔</string>
+    <string name="pending_duplicate_keep_current">保留本张</string>
+    <string name="pending_duplicate_keep_current_check">这张小票需要保留，之后仍需核对入账</string>
+    <string name="pending_duplicate_originals">对照两张原件</string>
+    <string name="pending_duplicate_return">返回相似核对</string>
+    <string name="pending_review_amount_currency">%1$s · %2$s</string>
+    <string name="pending_category_more">更多分类</string>
+    <string name="pending_category_less">收起分类</string>
+    <string name="pending_category_choose">选择分类</string>
 
     <!-- EnrichmentStatusBand：队列头的识别状态带（ambient，非第二队列） -->
     <string name="pending_enrichment_active">正在识别 %1$d 张小票</string>

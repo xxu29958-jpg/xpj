@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import replace
+from html import unescape
 from uuid import UUID, uuid4
 
 import pytest
@@ -28,7 +29,7 @@ _PUBLIC_WEB_ORIGIN = "https://api.example.com"
 def _html_form_value(html: str, name: str) -> str:
     match = re.search(rf'name="{re.escape(name)}" value="([^"]*)"', html)
     assert match is not None, f"missing {name} form field"
-    return match.group(1)
+    return unescape(match.group(1))
 
 
 def _open_public_web_session(client: TestClient, *, identity) -> tuple[TestClient, dict[str, str]]:

@@ -65,6 +65,7 @@ private fun PendingViewModel.finishCompletedExpenseCommands(byId: Map<Long, Pend
     _uiState.update {
         it.copy(
             actionInProgressIds = it.actionInProgressIds - finished.toSet() - abandoned.toSet(),
+            activeSheet = if ((it.activeSheet as? PendingSheet.Duplicate)?.expense?.id in finished) PendingSheet.None else it.activeSheet,
             message = if (finished.isNotEmpty()) UiText.res(R.string.expense_command_completed) else it.message,
         )
     }

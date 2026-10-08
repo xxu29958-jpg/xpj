@@ -29,7 +29,7 @@
     return response;
   };
   async function afterReplay(){
-    await wait(()=>form()?.dataset.expensereviewDraftPhase==="editing");
+    await wait(()=>form()?.dataset.expensereviewDraftPhase==="editing" && !form().elements.merchant.readOnly);
     const record=JSON.parse(localStorage.getItem(prefix+state.ref));
     assert(record?.phase==="editing" && record.values.merchant==="非重复前的原填写" && record.values.idempotency_key===state.confirmKey,
       "accepted related decision consumed the financial draft");
@@ -41,7 +41,7 @@
     form().requestSubmit(form().querySelector("[data-expensereview-review]"));
   }
   async function startOriginalDecision(){
-    await wait(()=>!primary().disabled);
+    await wait(()=>!primary().disabled && !form().elements.merchant.readOnly);
     form().elements.merchant.value="非重复前的原填写";form().elements.merchant.dispatchEvent(new Event("input",{bubbles:true}));
     state.ref=form().elements.draft_ref.value;state.confirmKey=form().elements.idempotency_key.value;state.keepKey=form().elements.keep_idempotency_key.value;
     if(state.fault==="rejected")await originalFetch("/keep-later",{method:"POST"});
@@ -56,7 +56,7 @@
     state.stage="reloaded";save();location.reload();return;
   }
   async function replayOriginalDecision(){
-    await wait(()=>!primary().disabled);
+    await wait(()=>!primary().disabled && primary().textContent==="核实这次非重复决定");
     assert(form().elements.merchant.value==="非重复前的原填写" && form().elements.expected_row_version.value==="4" &&
       form().elements.keep_idempotency_key.value===state.keepKey && form().elements.idempotency_key.value===state.confirmKey, "reload replaced the original intent");
     assert(form().elements.merchant.readOnly && primary().textContent==="核实这次非重复决定", "reload lost the frozen original decision");
@@ -86,7 +86,7 @@
       await replayOriginalDecision();
     }else if(state.stage==="replayed")await afterReplay();
     else if(state.stage==="reviewed"){
-      await wait(()=>!primary().disabled);
+      await wait(()=>!primary().disabled && !form().elements.merchant.readOnly);
       assert(form().elements.expected_row_version.value==="9" && form().elements.merchant.value==="非重复前的原填写", "explicit review failed to preserve the draft");
       assert(form().elements.idempotency_key.value!==state.confirmKey && form().elements.keep_idempotency_key.value!==state.keepKey &&
         form().elements.command_action.value==="confirm", "explicit review did not prepare a new financial command");

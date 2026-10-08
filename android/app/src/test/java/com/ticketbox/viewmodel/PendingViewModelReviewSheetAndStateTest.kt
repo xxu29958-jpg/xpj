@@ -83,6 +83,84 @@ internal class PendingViewModelReviewSheetAndStateTest : PendingViewModelReviewT
     }
 
     @Test
+    fun duplicateReviewKeepsTheComparedPairAndCommandBasisAcrossRefresh() = review {
+        val compared = expense(id = 60L).copy(duplicateOfId = 20L, duplicateStatus = "suspected")
+        val changed = compared.copy(duplicateOfId = 30L, rowVersion = 2L)
+
+        val opened = PendingSheet.Duplicate(compared, keepBothConfirmed = true)
+        val reconciled = reconcileActiveSheet(opened, listOf(changed))
+
+        assertEquals(opened, reconciled)
+    }
+
+    @Test
+    fun viewerCanOpenDuplicateComparisonWithoutAdmittingACommand() = review {
+        val compared = expense(id = 60L).copy(duplicateOfId = 20L, duplicateStatus = "suspected")
+        val fake = FakeReviewActions(pending = listOf(compared), canModifyLedger = false)
+        val reference = expense(id = 20L, amountCents = 2345L, merchant = "Reference").copy(status = "confirmed")
+        fake.expenseResponder = { id, binding ->
+            assertEquals(20L, id)
+            assertEquals(fake.uploadIntents.currentUploadBinding(), binding)
+            Result.success(reference)
+        }
+        val vm = pendingViewModel(fake)
+        advanceUntilIdle()
+
+        vm.openDuplicateAction(compared)
+        advanceUntilIdle()
+
+        assertTrue(vm.uiState.value.activeSheet is PendingSheet.Duplicate)
+        assertEquals(reference, (vm.uiState.value.activeSheet as PendingSheet.Duplicate).reference)
+        assertTrue(vm.uiState.value.readOnly)
+        assertTrue(fake.admissions.isEmpty())
+    }
+
+    @Test
+    fun offlineComparisonLabelsItsCacheAndAccessDenialDoesNotExposeThatCache() = review {
+        val compared = expense(id = 60L).copy(duplicateOfId = 20L)
+        val reference = expense(id = 20L).copy(status = "confirmed")
+        val fake = FakeReviewActions(pending = listOf(compared))
+        fake.cachedConfirmed = listOf(reference)
+        fake.expenseResponder = { _, _ -> Result.failure(java.io.IOException("offline")) }
+        val vm = pendingViewModel(fake)
+        advanceUntilIdle()
+        vm.openDuplicateAction(compared)
+        advanceUntilIdle()
+        val cached = vm.uiState.value.activeSheet as PendingSheet.Duplicate
+        assertEquals(reference, cached.reference)
+        assertEquals(UiText.res(R.string.pending_duplicate_reference_cached), cached.referenceMessage)
+
+        fake.expenseResponder = { _, _ -> Result.failure(com.ticketbox.data.repository.RepositoryException("revoked", httpStatusCode = 403)) }
+        vm.loadDuplicateReference()
+        advanceUntilIdle()
+        val denied = vm.uiState.value.activeSheet as PendingSheet.Duplicate
+        assertEquals(null, denied.reference)
+        assertFalse(denied.referenceLoading)
+        assertTrue(denied.referenceMessage != null)
+        assertTrue(fake.admissions.isEmpty())
+    }
+
+    @Test
+    fun delayedComparisonCannotReturnAnOldLedgerIntoTheNewSheet() = review {
+        val ledgers = MutableStateFlow<String?>("owner")
+        val compared = expense(id = 60L).copy(duplicateOfId = 20L)
+        val response = CompletableDeferred<Result<Expense>>()
+        val fake = FakeReviewActions(pending = listOf(compared), activeLedgerFlow = ledgers)
+        fake.expenseResponder = { _, _ -> response.await() }
+        val vm = pendingViewModel(fake)
+        advanceUntilIdle()
+        vm.openDuplicateAction(compared)
+        advanceUntilIdle()
+        fake.pending = listOf(compared.copy(merchant = "New ledger"))
+        ledgers.value = "family"
+        advanceUntilIdle()
+        response.complete(Result.success(expense(id = 20L, merchant = "Old ledger private bill")))
+        advanceUntilIdle()
+        assertEquals(PendingSheet.None, vm.uiState.value.activeSheet)
+        assertEquals("New ledger", vm.uiState.value.items.single().merchant)
+    }
+
+    @Test
     fun reconcileActiveSheetClosesWhenExpenseLeavesPendingList() = review {
         val stale = expense(id = 61L, amountCents = null)
 

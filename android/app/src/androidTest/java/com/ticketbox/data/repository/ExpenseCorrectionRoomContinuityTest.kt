@@ -13,6 +13,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.click
 import androidx.lifecycle.viewModelScope
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.R
@@ -22,6 +24,7 @@ import com.ticketbox.domain.model.ExpenseCorrectionDraft
 import com.ticketbox.ui.screens.expense.fact.ExpenseFactScreen
 import com.ticketbox.ui.screens.settings.SyncStatusScreen
 import com.ticketbox.ui.theme.TicketboxTheme
+import com.ticketbox.ui.RealKeyboard
 import com.ticketbox.viewmodel.ExpenseDetailDataLoadState
 import com.ticketbox.viewmodel.ExpenseFactViewModel
 import com.ticketbox.viewmodel.CorrectionScalarField
@@ -44,6 +47,7 @@ import org.junit.Test
 /** Actual Save and Retry UI, disk Room reopen and shared sender. Transport models response loss; no real process death or PG. */
 class ExpenseCorrectionRoomContinuityTest {
     @get:Rule val compose = createComposeRule()
+    @get:Rule val keyboard = RealKeyboard()
     private val fixture = ExpenseCorrectionConnectedFixture(InstrumentationRegistry.getInstrumentation().targetContext)
     private val model = mutableStateOf<ExpenseFactViewModel?>(null)
     private var global: OutboxStatusViewModel? = null
@@ -104,6 +108,12 @@ class ExpenseCorrectionRoomContinuityTest {
             model.value?.uiState?.value?.authoritativeRootReady == true }
         compose.onNodeWithText("更正这笔账单").performScrollTo().performClick()
         compose.onAllNodes(hasSetTextAction())[0].performScrollTo().performTextReplacement("  核对原小票  ")
+        keyboard.dismissAndWait(compose)
+        compose.onNode(hasSetTextAction() and hasText(requireNotNull(fixture.network.current.merchant)))
+            .performScrollTo().performTouchInput { click() }.performTextReplacement("NativeShop")
+        keyboard.assertActionAboveKeyboard(compose, "保存更正", "correction-merchant-keyboard")
+        compose.onNode(hasSetTextAction() and hasText("NativeShop")).assertIsDisplayed()
+        keyboard.dismissAndWait(compose)
         compose.onNode(hasSetTextAction() and hasText("10.00")).performScrollTo().performTextReplacement(" 00012.00 ")
         compose.onNodeWithText("保留原稿并关闭").performClick()
         compose.waitUntil(10_000) { model.value?.uiState?.value?.factInputWriting == false &&
@@ -120,6 +130,7 @@ class ExpenseCorrectionRoomContinuityTest {
         compose.onNodeWithText("继续更正账单").performScrollTo().performClick()
         compose.onNode(hasSetTextAction() and hasText("  核对原小票  ")).performScrollTo().assertIsDisplayed()
         compose.onNode(hasSetTextAction() and hasText(" 00012.00 ")).performScrollTo().assertIsDisplayed()
+        compose.onNode(hasSetTextAction() and hasText("NativeShop")).performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("保存更正").assertIsNotEnabled()
         assertEquals(original, runBlocking {
             fixture.graph.expenseRepository.loadFactInputs(original.binding, original.expenseId).getOrThrow().single()

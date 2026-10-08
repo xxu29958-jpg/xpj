@@ -224,15 +224,15 @@ private fun PendingExpenseAmountBlock(
         PendingAmountValue(expense = expense)
         PendingExpenseExchangeMetaText(expense = expense, stacked = stacked)
         // Viewer 无写命令：不渲染 mutation CTA；busy 经 canMutate 只禁用。
-        if (!readOnly) {
+        if (!readOnly || expense.duplicateStatus == DuplicateStatusValues.SUSPECTED) {
             TextButton(
-                enabled = actions.canMutate,
+                enabled = actions.canMutate || readOnly,
                 onClick = actions.onPrimaryAction,
                 modifier = Modifier.heightIn(min = AppSpacing.controlMinHeight),
                 contentPadding = PaddingValues(horizontal = AppSpacing.smallGap, vertical = AppSpacing.none),
             ) {
                 Text(
-                    text = stringResource(pendingPrimaryActionLabelRes(expense)),
+                    text = stringResource(if (readOnly) R.string.pending_row_action_duplicate else pendingPrimaryActionLabelRes(expense)),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )

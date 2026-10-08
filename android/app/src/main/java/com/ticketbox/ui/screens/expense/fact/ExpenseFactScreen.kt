@@ -26,7 +26,7 @@ import com.ticketbox.ui.components.AppSecondaryScrollableColumn
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppListDensity
-import com.ticketbox.ui.screens.ledger.LedgerCategoryMark
+import com.ticketbox.ui.components.ExpenseCategoryMark
 import com.ticketbox.ui.screens.settings.SettingsDetailRow
 import com.ticketbox.ui.screens.expense.ExpenseBillSplitInvitePanel
 import com.ticketbox.ui.screens.expense.ExpenseBillSplitInvitePanelActions
@@ -83,7 +83,7 @@ fun ExpenseFactScreen(
             ),
             slots = AppSecondaryPageSlots(headingPrefix = {
                 state.expense?.takeUnless { state.timelineExpanded }?.let {
-                    LedgerCategoryMark(it.category, AppListDensity.Standard)
+                    ExpenseCategoryMark(it.category, AppListDensity.Standard)
                 }
             }),
         ) {

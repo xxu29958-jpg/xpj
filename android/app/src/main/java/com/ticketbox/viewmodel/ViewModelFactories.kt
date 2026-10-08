@@ -67,6 +67,7 @@ fun repositoryViewModelFactory(
         return when (modelClass) {
             PendingViewModel::class.java -> PendingViewModel(
                 repository = repository,
+                expenseReader = repository,
                 uploadIntents = repositories.uploads,
                 enrichmentTaskReader = repository.pendingEnrichmentTasks,
                 onDataChanged = onExpenseDataChanged,

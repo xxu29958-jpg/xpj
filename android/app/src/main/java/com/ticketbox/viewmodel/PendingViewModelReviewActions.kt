@@ -46,10 +46,10 @@ private fun PendingViewModel.openReviewSheet(sheet: PendingSheet) {
 
 fun PendingViewModel.openDuplicateAction(expense: Expense) {
     dismissUndoable()
-    if (blockReadOnlyWrite()) return
     // 重复 sheet 不参与连续审阅推进；它打开时仍清掉上一轮残留的快补计数/跳过集。
     reviewSkippedIds.clear()
     _uiState.update { it.copy(activeSheet = PendingSheet.Duplicate(expense), message = null, reviewRemaining = 0) }
+    loadDuplicateReference()
 }
 
 fun PendingViewModel.openBulkConfirm() {
