@@ -2,6 +2,7 @@ package com.ticketbox.data.repository
 
 import com.ticketbox.data.local.PersistedLedgerIdentity
 
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -28,6 +29,8 @@ class ExpenseRepositoryRuleGovernanceTest {
         }
         val apiService = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0)
         val tokenStore = TestSessionFixture().apply { saveToken("session-token") }
+        val queue = testOutboxRepository(FakePendingMutationDao())
+        val adapters = com.ticketbox.OutboxAdapterGraph()
         val apiClient = FakeApiServiceFactory(apiService)
         val expenseRepository = com.ticketbox.data.repository.expenseRepositoryFixture(
             expenseDao = dao,
@@ -44,17 +47,24 @@ class ExpenseRepositoryRuleGovernanceTest {
                 settingsStore = settingsStore,
                 tokenStore = tokenStore,
             ),
-            onConfirmedChanged = { expenseRepository.syncConfirmed() },
+            onConfirmedChanged = { expenseRepository.syncConfirmed().map { } },
+            offlineMutations = CategoryRuleOfflineMutationWiring(outbox = queue,
+                applicationAdapter = adapters.ruleApplicationAdapter, applicationReceiptAdapter = adapters.ruleApplicationReceiptAdapter),
         )
 
         val preview = ruleRepository.previewApplyConfirmedRules().getOrThrow()
-        val confirmed = ruleRepository.confirmApplyConfirmedRules(requireNotNull(preview.previewToken)).getOrThrow()
+        val binding = requireNotNull(ruleRepository.currentAccess()).binding
+        ruleRepository.confirmApplyConfirmedRules(binding, preview).getOrThrow()
+        assertEquals(listOf(false), apiService.applyConfirmedRequests.map { it.confirm })
+        val dispatcher = ApplyConfirmedRulesDispatcher({ apiService }, adapters.ruleApplicationAdapter,
+            adapters.ruleApplicationReceiptAdapter) { ruleRepository.refreshAcceptedApplication(it).getOrThrow() }
+        assertEquals(1, OutboxDrainEngine(queue, listOf(dispatcher)).drainOnce().done)
 
         assertTrue(preview.dryRun)
         assertEquals(1, preview.changedCount)
         assertEquals(listOf(false, true), apiService.applyConfirmedRequests.map { it.confirm })
         assertEquals(listOf(null, "preview-token"), apiService.applyConfirmedRequests.map { it.previewToken })
-        assertEquals(1, confirmed.changedCount)
+        assertEquals(1, ruleRepository.observeApplications(binding).first().single().receipt?.changedCount)
         assertEquals("高德", dao.getConfirmed("owner").single().merchant)
     }
 

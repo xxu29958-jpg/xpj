@@ -467,6 +467,8 @@ data class RuleApplyConfirmedResult(
     val previewToken: String?,
     val unavailableCount: Int = 0,
     val missingCurrencyCodes: List<String> = emptyList(),
+    val commandKey: String? = null,
+    val applicationPublicId: String? = null,
 )
 
 class ProtectedImage(

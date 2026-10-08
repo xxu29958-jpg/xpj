@@ -7,6 +7,8 @@ import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.RuleRepository
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.PendingCategoryRuleSubmission
+import com.ticketbox.data.repository.PendingRuleApplication
+import com.ticketbox.data.repository.toDomain
 import com.ticketbox.data.repository.asRequest
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.domain.model.CategoryRule
@@ -26,6 +28,7 @@ data class CategoryRulesUiState(
     val binding: LogicalSessionBinding? = null,
     val canModify: Boolean = false,
     val pendingSubmissions: List<PendingCategoryRuleSubmission> = emptyList(),
+    val pendingApplications: List<PendingRuleApplication> = emptyList(),
     val selectedSubmissionId: Long? = null,
     val submittedRevision: Int = 0,
     val categoryRules: List<CategoryRule> = emptyList(),
@@ -55,13 +58,12 @@ private fun CategoryRulesUiState.withRuleHistory(result: Result<List<RuleApplica
 )
 
 private fun CategoryRulesUiState.afterRuleApplication(result: RuleApplyConfirmedResult): CategoryRulesUiState = copy(
-    confirmedRulesPreview = result,
+    confirmedRulesPreview = null,
     busy = false,
     message = when {
         result.unavailableCount > 0 -> UiText.res(R.string.category_rule_apply_currency_unavailable,
             result.unavailableCount, result.missingCurrencyCodes.joinToString("、"))
-        result.changedCount == 0 -> UiText.res(R.string.category_rules_apply_none_changed)
-        else -> UiText.res(R.string.category_rules_apply_changed, result.changedCount)
+        else -> UiText.res(R.string.rule_application_verified, result.changedCount)
     },
     messageTone = if (result.changedCount == 0) MessageTone.Info else MessageTone.Success,
     applicationRevision = if (result.changedCount > 0) applicationRevision + 1 else applicationRevision,
@@ -80,6 +82,7 @@ class CategoryRulesViewModel(
 
     private var observation: Job? = null
     private var deliveredIds: Set<Long> = emptySet()
+    private var deliveredApplicationIds: Set<Long> = emptySet()
     private var requestedSubmissionId: Long? = null
 
     init {
@@ -88,6 +91,7 @@ class CategoryRulesViewModel(
                 if (_uiState.value.binding != access?.binding) {
                     observation?.cancel()
                     deliveredIds = emptySet()
+                    deliveredApplicationIds = emptySet()
                     val selected = requestedSubmissionId.takeIf { _uiState.value.binding == null }
                     requestedSubmissionId = null
                     _uiState.value = CategoryRulesUiState(binding = access?.binding, canModify = access?.canModify == true,
@@ -96,8 +100,15 @@ class CategoryRulesViewModel(
                         loadCategoryRules(clearMessage = false)
                         loadRuleApplications(clearMessage = false)
                         observation = launch {
-                            ruleRepository.observeSubmissions(access.binding).collect { rows ->
-                                if (ruleRepository.currentAccess()?.binding == access.binding) acceptSubmissions(rows)
+                            launch {
+                                ruleRepository.observeSubmissions(access.binding).collect { rows ->
+                                    if (ruleRepository.currentAccess()?.binding == access.binding) acceptSubmissions(rows)
+                                }
+                            }
+                            launch {
+                                ruleRepository.observeApplications(access.binding).collect { rows ->
+                                    if (ruleRepository.currentAccess()?.binding == access.binding) acceptApplications(rows)
+                                }
                             }
                         }
                     }
@@ -125,6 +136,30 @@ class CategoryRulesViewModel(
 
     private fun canModifyCurrentLedger(): Boolean {
         return ledgerRoleCanModify(repository.currentLedgerRole())
+    }
+
+    private fun acceptApplications(rows: List<PendingRuleApplication>) {
+        val current = _uiState.value
+        val activeIds = current.pendingApplications.filter { !it.isDone }.map { it.row.id }.toSet() + listOfNotNull(current.selectedSubmissionId)
+        val received = rows.filter { it.isDone && it.receipt != null && it.row.id !in deliveredApplicationIds && it.row.id in activeIds }
+        deliveredApplicationIds = rows.filter { it.isDone && it.receipt != null }.map { it.row.id }.toSet()
+        _uiState.update { state ->
+            val updated = state.copy(pendingApplications = rows)
+            received.lastOrNull()?.receipt?.let { updated.afterRuleApplication(it.toDomain()) } ?: updated
+        }
+        if (received.isNotEmpty()) loadRuleApplications(clearMessage = false)
+    }
+
+    fun recoverApplication(pending: PendingRuleApplication, drop: Boolean) {
+        val origin = _uiState.value.binding ?: return
+        if (_uiState.value.busy) return
+        _uiState.update { it.copy(busy = true, message = null) }
+        viewModelScope.launch {
+            val result = ruleRepository.recoverApplication(origin, pending, drop)
+            if (_uiState.value.binding != origin || ruleRepository.currentAccess()?.binding != origin) return@launch
+            _uiState.update { it.copy(busy = false, selectedSubmissionId = if (drop && result.isSuccess) null else it.selectedSubmissionId,
+                message = result.exceptionOrNull()?.toUiText(R.string.category_rules_apply_failed), messageTone = MessageTone.Danger) }
+        }
     }
 
     fun loadCategoryRules(clearMessage: Boolean = true) {
@@ -256,6 +291,7 @@ class CategoryRulesViewModel(
 
     fun previewApplyConfirmedRules() {
         val origin = _uiState.value.binding ?: return
+        if (_uiState.value.busy || _uiState.value.pendingApplications.any { !it.isDone }) return
         viewModelScope.launch {
             if (ruleRepository.currentAccess()?.binding != origin) return@launch
             _uiState.update { it.copy(busy = true, message = null, messageTone = MessageTone.Neutral) }
@@ -293,6 +329,7 @@ class CategoryRulesViewModel(
 
     fun confirmApplyConfirmedRules() {
         val origin = _uiState.value.binding ?: return
+        if (_uiState.value.busy || _uiState.value.pendingApplications.any { !it.isDone }) return
         if (!canModifyCurrentLedger()) {
             _uiState.update {
                 it.copy(busy = false, message = UiText.res(R.string.common_readonly_ledger), messageTone = MessageTone.Danger)
@@ -301,8 +338,8 @@ class CategoryRulesViewModel(
         }
         viewModelScope.launch {
             if (ruleRepository.currentAccess()?.binding != origin) return@launch
-            val previewToken = _uiState.value.confirmedRulesPreview?.previewToken
-            if (previewToken.isNullOrBlank()) {
+            val preview = _uiState.value.confirmedRulesPreview
+            if (preview?.previewToken.isNullOrBlank()) {
                 _uiState.update {
                     it.copy(
                         busy = false,
@@ -313,12 +350,11 @@ class CategoryRulesViewModel(
                 return@launch
             }
             _uiState.update { it.copy(busy = true, message = null, messageTone = MessageTone.Neutral) }
-            ruleRepository.confirmApplyConfirmedRules(previewToken)
-                .onSuccess { result ->
+            ruleRepository.confirmApplyConfirmedRules(origin, requireNotNull(preview))
+                .onSuccess { id ->
                     if (ruleRepository.currentAccess()?.binding != origin) return@onSuccess
-                    val history = ruleRepository.ruleApplications()
-                    if (ruleRepository.currentAccess()?.binding != origin) return@onSuccess
-                    _uiState.update { it.withRuleHistory(history).afterRuleApplication(result) }
+                    _uiState.update { it.copy(busy = false, selectedSubmissionId = id, confirmedRulesPreview = null,
+                        message = UiText.res(R.string.rule_application_queued), messageTone = MessageTone.Info) }
                 }
                 .onFailure { error ->
                     if (ruleRepository.currentAccess()?.binding != origin) return@onFailure

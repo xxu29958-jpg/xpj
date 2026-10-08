@@ -1,6 +1,8 @@
 """v0.4-alpha3 Smart Ledger Engine — Rules preview/apply + Recurring candidates."""
 from __future__ import annotations
 
+from uuid import uuid4
+
 from api_contract_helpers import patch_expense, upload_png
 from fastapi.testclient import TestClient
 
@@ -30,7 +32,7 @@ def _apply_pending_rules(client: TestClient, *, identity, max_scan: int = 500):
     token = preview.json()["preview_token"]
     return client.post(
         f"/api/rules/apply-pending?max_scan={max_scan}",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"confirm": True, "preview_token": token},
     )
 

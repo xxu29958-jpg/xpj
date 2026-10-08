@@ -183,10 +183,9 @@ interface PendingMutationDao {
 
     @Query("""
         UPDATE pending_mutations SET lastError = NULL
-        WHERE id = :id AND status = 'done' AND type = 'save_monthly_budget'
-          AND lastError = 'budget_read_refresh_required' AND receiptJson = :receiptJson
+        WHERE id = :id AND status = 'done' AND lastError = :expectedError AND receiptJson = :receiptJson
     """)
-    suspend fun clearBudgetReadRefresh(id: Long, receiptJson: String): Int
+    suspend fun clearAcceptedReadRefresh(id: Long, receiptJson: String, expectedError: String): Int
 
     @Query(
         """

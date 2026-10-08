@@ -147,6 +147,7 @@ class CategoryRulesViewModelTest {
                     request: RuleApplyConfirmedRequestDto,
                     limit: Int,
                     maxScan: Int,
+                    idempotencyKey: String?,
                 ): RuleApplyConfirmedResponseDto {
                     throw RepositoryException("")
                 }
@@ -187,18 +188,32 @@ class CategoryRulesViewModelTest {
     fun confirmApplyWithChangesBumpsApplicationRevisionOnly() = rulesTest {
         // 应用规则改写确认流水的分类：走 applicationRevision（流水行重同步），
         // 不再 bump changedRevision（字典并未变化）。
-        val vm = harness(FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0))
+        val api = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0)
+        val queue = com.ticketbox.data.repository.testOutboxRepository(com.ticketbox.data.repository.FakePendingMutationDao())
+        val vm = harness(api, queue = queue)
         awaitInitialLoads(vm)
 
         vm.previewApplyConfirmedRules()
         vm.uiState.first { it.confirmedRulesPreview != null }
         vm.confirmApplyConfirmedRules()
+        vm.uiState.first { it.selectedSubmissionId != null }
+        assertEquals(0, vm.uiState.value.applicationRevision)
+        assertEquals(listOf(false), api.applyConfirmedRequests.map { it.confirm })
+        val adapters = com.ticketbox.OutboxAdapterGraph()
+        val dispatcher = com.ticketbox.data.repository.ApplyConfirmedRulesDispatcher({ api },
+            adapters.ruleApplicationAdapter, adapters.ruleApplicationReceiptAdapter, {})
+        com.ticketbox.data.repository.OutboxDrainEngine(queue, listOf(dispatcher)).drainOnce()
         val state = vm.uiState.first { it.applicationRevision > 0 }
         runCurrent()
 
         assertEquals(1, state.applicationRevision)
         assertEquals(0, state.changedRevision)
         assertEquals(MessageTone.Success, state.messageTone)
+        assertEquals(null, state.confirmedRulesPreview, "An original receipt must not become a current preview")
+        val reopened = harness(api, queue = queue)
+        awaitInitialLoads(reopened)
+        reopened.uiState.first { it.pendingApplications.isNotEmpty() }
+        assertEquals(0, reopened.uiState.value.applicationRevision, "Opening an old receipt does not announce another application")
     }
 
     @Test
@@ -260,7 +275,7 @@ class CategoryRulesViewModelTest {
         val finish = CompletableDeferred<Unit>()
         val vm = harness(object : ApiService by FakeApiService(mutableListOf(), 0) {
             override suspend fun applyConfirmedRules(request: RuleApplyConfirmedRequestDto, limit: Int,
-                maxScan: Int): RuleApplyConfirmedResponseDto {
+                maxScan: Int, idempotencyKey: String?): RuleApplyConfirmedResponseDto {
                 started.complete(Unit)
                 finish.await()
                 return RuleApplyConfirmedResponseDto(dryRun = true, confirmedScanned = 1, changedCount = 1, previewToken = "original-ledger-preview")
@@ -346,7 +361,8 @@ class CategoryRulesViewModelTest {
             ),
             offlineMutations = com.ticketbox.data.repository.CategoryRuleOfflineMutationWiring(queue,
                 adapters.categoryRuleUpdateAdapter, adapters.categoryRuleDeleteAdapter,
-                adapters.categoryRuleSubmissionAdapter, adapters.categoryRuleReceiptAdapter),
+                adapters.categoryRuleSubmissionAdapter, adapters.categoryRuleReceiptAdapter,
+                adapters.ruleApplicationAdapter, adapters.ruleApplicationReceiptAdapter),
             definitionInputs = RuleDefinitionDraftStore(InputDao()),
         )
         val expenseRepository = com.ticketbox.data.repository.expenseRepositoryFixture(

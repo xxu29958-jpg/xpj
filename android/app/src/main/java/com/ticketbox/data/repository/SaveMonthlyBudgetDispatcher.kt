@@ -40,7 +40,7 @@ class SaveMonthlyBudgetDispatcher(
                     // Verified acceptance is final; only local projection repair remains.
                     true
                 }
-                DispatchResult.Success(receiptJson = receiptJson, budgetReadRefreshRequired = refreshRequired)
+                DispatchResult.Success(receiptJson = receiptJson, acceptedReadRefreshRequired = refreshRequired)
             }
         } catch (error: HttpException) {
             // A month without a budget returns an unconfigured response, never 404.

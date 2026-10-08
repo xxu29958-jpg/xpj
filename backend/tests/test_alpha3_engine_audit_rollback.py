@@ -4,6 +4,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from uuid import uuid4
 
+import pytest
 from api_contract_helpers import patch_expense, upload_png
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -43,7 +44,7 @@ def _apply_pending_rules(client: TestClient, *, identity, max_scan: int = 500):
     token = preview.json()["preview_token"]
     return client.post(
         f"/api/rules/apply-pending?max_scan={max_scan}",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"confirm": True, "preview_token": token},
     )
 
@@ -111,6 +112,7 @@ def test_rule_application_audit_and_rollback_integration(client: TestClient, *, 
     assert history["rolled_back_at"] == rollback.json()["rolled_back_at"]
 
 
+@pytest.mark.real_db
 def test_rule_application_rollback_safety_boundaries_integration(client: TestClient, *, identity) -> None:
     """One integration path covers manual edits, cross-ledger hiding, and writer guard."""
     pending_id = upload_png(client, identity=identity)

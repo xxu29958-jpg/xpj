@@ -264,7 +264,7 @@ def test_rules_preview_and_apply_use_enabled_merchant_alias(client: TestClient, 
     assert bulk_preview.status_code == 200, bulk_preview.text
     apply = client.post(
         "/api/rules/apply-pending",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"confirm": True, "preview_token": bulk_preview.json()["preview_token"]},
     )
     assert apply.status_code == 200, apply.text

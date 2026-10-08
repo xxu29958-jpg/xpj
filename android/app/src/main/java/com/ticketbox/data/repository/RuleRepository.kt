@@ -24,7 +24,7 @@ import com.ticketbox.domain.model.normalizeExpenseCategory
  */
 class RuleRepository(
     private val binding: ServerSessionBinding,
-    private val onConfirmedChanged: suspend () -> Unit = { },
+    private val onConfirmedChanged: suspend () -> Result<Unit> = { Result.success(Unit) },
     private val offlineMutations: CategoryRuleOfflineMutationWiring = CategoryRuleOfflineMutationWiring(),
     val definitionInputs: RuleDefinitionDraftStore? = null,
 ) {
@@ -159,19 +159,53 @@ class RuleRepository(
             }
         }
 
-    suspend fun confirmApplyConfirmedRules(previewToken: String): Result<RuleApplyConfirmedResult> =
+    suspend fun confirmApplyConfirmedRules(expected: LogicalSessionBinding, preview: RuleApplyConfirmedResult): Result<Long> =
         errorHandler.safeCall {
-            val cleanPreviewToken = previewToken.trim()
-            require(cleanPreviewToken.isNotBlank()) { "请先预览影响范围。" }
-            ledgerRequestGuard.guardedCall { api ->
-                val result = api.applyConfirmedRules(
-                    request = RuleApplyConfirmedRequestDto(confirm = true, previewToken = cleanPreviewToken),
-                ).toDomain()
-                requireStillActive()
-                if (result.changedCount > 0) {
-                    onConfirmedChanged()
-                }
-                result
+            val bound = ledgerRequestGuard.bindExact(expected)
+            require(canModifyLedger()) { "当前角色为只读，无法应用规则。" }
+            require(preview.dryRun && !preview.previewToken.isNullOrBlank() && preview.changedCount > 0) { "请先预览影响范围。" }
+            val payload = RuleApplicationPayload(previewToken = requireNotNull(preview.previewToken), maxScan = preview.scanLimit,
+                scanned = preview.confirmedScanned, expectedChanges = preview.changedCount)
+            enqueue(bound, PendingMutationIntent(PendingMutationType.ApplyConfirmedRules, RULE_APPLICATION_TARGET,
+                requireNotNull(offlineMutations.applicationAdapter).toJson(payload), 0, UUID.randomUUID().toString()))
+        }
+
+    fun describeApplication(row: OutboxRow): PendingRuleApplication? {
+        val current = currentAccess()?.binding ?: return null
+        if (row.type != PendingMutationType.ApplyConfirmedRules || row.ownerKey != current.ownerKey || row.ledgerId != current.ledgerId ||
+            canonicalServerOriginOrNull(row.serverUrl) != canonicalServerOriginOrNull(current.serverUrl)) return null
+        val original = runCatching { requireNotNull(offlineMutations.applicationAdapter).fromJson(row.payloadJson) }.getOrNull()
+        val receipt = row.receiptJson?.let { runCatching { requireNotNull(offlineMutations.applicationReceiptAdapter).fromJson(it) }.getOrNull() }
+            ?.takeIf { original?.accepts(row, it) == true }
+        return PendingRuleApplication(row, original, receipt)
+    }
+
+    fun observeApplications(expected: LogicalSessionBinding): Flow<List<PendingRuleApplication>> =
+        requireNotNull(outbox).observeActiveByTypes(setOf(PendingMutationType.ApplyConfirmedRules), includeCompleted = true).map { rows ->
+            if (currentAccess()?.binding != expected) emptyList() else rows.mapNotNull(::describeApplication)
+        }
+
+    suspend fun refreshAcceptedApplication(row: OutboxRow): Result<Unit> = errorHandler.safeCall {
+        require(describeApplication(row) != null) { "请恢复原身份与账本后刷新流水。" }
+        val bound = ledgerRequestGuard.bindExact(requireNotNull(currentAccess()).binding)
+        onConfirmedChanged().getOrThrow()
+        bound.requireStillActive()
+    }
+
+    suspend fun recoverApplication(expected: LogicalSessionBinding, pending: PendingRuleApplication, drop: Boolean): Result<Unit> =
+        errorHandler.safeCall {
+            val bound = ledgerRequestGuard.bindExact(expected)
+            val queue = requireNotNull(outbox)
+            if (!drop && pending.needsRefresh && pending.receipt != null) {
+                refreshAcceptedApplication(pending.row).getOrThrow()
+                queue.acknowledgeRuleApplicationRefresh(bound, pending.row)
+            } else {
+                val current = queue.activeForTarget(bound, pending.row.targetId).firstOrNull { it.id == pending.row.id }
+                require(current == pending.row) { "原应用状态已变化，请重新核对。" }
+                val original = requireNotNull(describeApplication(requireNotNull(current)))
+                require(if (drop) original.canDrop else original.canRetry && canModifyLedger()) { "请先核对原应用。" }
+                check(if (current.status == PendingMutationStatus.Conflict) queue.resolveConflict(current.id, ConflictResolution.DropMine, bound)
+                    else queue.resolveFailed(current.id, if (drop) FailedResolution.Drop else FailedResolution.Retry(), bound))
             }
         }
 

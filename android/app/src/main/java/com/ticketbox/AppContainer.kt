@@ -251,6 +251,9 @@ class AppContainer(context: Context) {
                 outboxAdapters.categoryRuleSubmissionAdapter, outboxAdapters.categoryRuleReceiptAdapter),
             CategoryRuleDispatcher(PendingMutationType.DeleteCategoryRule, ::outboxApi,
                 outboxAdapters.categoryRuleSubmissionAdapter, outboxAdapters.categoryRuleReceiptAdapter),
+            com.ticketbox.data.repository.ApplyConfirmedRulesDispatcher(::outboxApi,
+                outboxAdapters.ruleApplicationAdapter, outboxAdapters.ruleApplicationReceiptAdapter,
+                refreshConfirmed = { row -> ruleRepository.refreshAcceptedApplication(row).getOrThrow() }),
             // PR-2g.5: DELETE /api/merchants/aliases/{publicId} via outbox.
             DeleteMerchantAliasDispatcher(
                 apiProvider = ::outboxApi,

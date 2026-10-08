@@ -6088,48 +6088,6 @@
         "title": "Body_web_rules_application_rollback_web_rules_applications__public_id__rollback_post",
         "type": "object"
       },
-      "Body_web_rules_apply_confirmed_web_rules_apply_confirmed_post": {
-        "properties": {
-          "ledger_id": {
-            "default": "",
-            "title": "Ledger Id",
-            "type": "string"
-          },
-          "preview_confirmed": {
-            "default": "",
-            "title": "Preview Confirmed",
-            "type": "string"
-          },
-          "preview_token": {
-            "default": "",
-            "title": "Preview Token",
-            "type": "string"
-          }
-        },
-        "title": "Body_web_rules_apply_confirmed_web_rules_apply_confirmed_post",
-        "type": "object"
-      },
-      "Body_web_rules_apply_pending_web_rules_apply_pending_post": {
-        "properties": {
-          "ledger_id": {
-            "default": "",
-            "title": "Ledger Id",
-            "type": "string"
-          },
-          "preview_confirmed": {
-            "default": "",
-            "title": "Preview Confirmed",
-            "type": "string"
-          },
-          "preview_token": {
-            "default": "",
-            "title": "Preview Token",
-            "type": "string"
-          }
-        },
-        "title": "Body_web_rules_apply_pending_web_rules_apply_pending_post",
-        "type": "object"
-      },
       "Body_web_rules_delete_web_rules__rule_id__delete_post": {
         "properties": {
           "expected_row_version": {
@@ -21682,6 +21640,66 @@
         "title": "RuleApplicationBatchResponse",
         "type": "object"
       },
+      "RuleApplicationForm": {
+        "properties": {
+          "apply_status": {
+            "default": "pending",
+            "enum": [
+              "pending",
+              "confirmed"
+            ],
+            "title": "Apply Status",
+            "type": "string"
+          },
+          "draft_ref": {
+            "default": "",
+            "title": "Draft Ref",
+            "type": "string"
+          },
+          "draft_scope": {
+            "default": "",
+            "title": "Draft Scope",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "original_changed": {
+            "default": 0,
+            "title": "Original Changed",
+            "type": "integer"
+          },
+          "original_scanned": {
+            "default": 0,
+            "title": "Original Scanned",
+            "type": "integer"
+          },
+          "preview_confirmed": {
+            "default": "",
+            "title": "Preview Confirmed",
+            "type": "string"
+          },
+          "preview_token": {
+            "default": "",
+            "title": "Preview Token",
+            "type": "string"
+          },
+          "review_new": {
+            "default": false,
+            "title": "Review New",
+            "type": "boolean"
+          }
+        },
+        "title": "RuleApplicationForm",
+        "type": "object"
+      },
       "RuleApplicationListResponse": {
         "properties": {
           "items": {
@@ -21762,9 +21780,31 @@
       },
       "RuleApplyConfirmedResponse": {
         "properties": {
+          "application_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Application Public Id"
+          },
           "changed_count": {
             "title": "Changed Count",
             "type": "integer"
+          },
+          "command_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Command Key"
           },
           "confirmed_scanned": {
             "title": "Confirmed Scanned",
@@ -21992,9 +22032,24 @@
       },
       "RuleApplyPendingResponse": {
         "properties": {
+          "application_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Application Public Id"
+          },
           "changed_count": {
             "title": "Changed Count",
             "type": "integer"
+          },
+          "command_key": {
+            "title": "Command Key",
+            "type": "string"
           },
           "missing_currency_codes": {
             "items": {
@@ -22024,6 +22079,8 @@
           }
         },
         "required": [
+          "command_key",
+          "application_public_id",
           "pending_scanned",
           "changed_count"
         ],
@@ -42814,6 +42871,24 @@
             }
           },
           {
+            "description": "Required when confirm=true; previews do not create a command.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required when confirm=true; previews do not create a command.",
+              "title": "Idempotency-Key"
+            }
+          },
+          {
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -42921,6 +42996,22 @@
               "minimum": 1,
               "title": "Max Scan",
               "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
             }
           },
           {
@@ -56593,10 +56684,11 @@
           "content": {
             "application/x-www-form-urlencoded": {
               "schema": {
-                "$ref": "#/components/schemas/Body_web_rules_apply_confirmed_web_rules_apply_confirmed_post"
+                "$ref": "#/components/schemas/RuleApplicationForm"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {
@@ -56633,10 +56725,11 @@
           "content": {
             "application/x-www-form-urlencoded": {
               "schema": {
-                "$ref": "#/components/schemas/Body_web_rules_apply_pending_web_rules_apply_pending_post"
+                "$ref": "#/components/schemas/RuleApplicationForm"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {

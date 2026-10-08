@@ -566,9 +566,11 @@ class OutboxRepository private constructor(
     }
 
     suspend fun markDone(id: Long, cacheRefreshVersion: Long? = null, receiptJson: String? = null,
-        budgetReadRefreshRequired: Boolean = false, acceptedRow: OutboxRow? = null) {
-        val refreshError = if (budgetReadRefreshRequired) BUDGET_READ_REFRESH_REQUIRED
-            else cacheRefreshVersion?.let { "$EXPENSE_REFRESH_PREFIX$it" }
+        acceptedReadRefreshRequired: Boolean = false, acceptedRow: OutboxRow? = null) {
+        val refreshError = if (acceptedReadRefreshRequired) mapOf(
+            PendingMutationType.SaveMonthlyBudget to BUDGET_READ_REFRESH_REQUIRED,
+            PendingMutationType.ApplyConfirmedRules to RULE_APPLICATION_READ_REFRESH,
+        ).getValue(requireNotNull(acceptedRow).type) else cacheRefreshVersion?.let { "$EXPENSE_REFRESH_PREFIX$it" }
         val recurringAccepted = acceptedRow?.let(::affectsRecurringReads) == true
         val debtAccepted = acceptedRow?.type in DEBT_QUERY_MUTATION_TYPES
         val incomeAccepted = acceptedRow?.type in INCOME_QUERY_MUTATION_TYPES
@@ -597,9 +599,17 @@ class OutboxRepository private constructor(
             .filter { it.requiresBudgetReadRefresh() }
         for (row in rows) {
             cleanup(row)
-            dao.clearBudgetReadRefresh(row.id, requireNotNull(row.receiptJson))
+            dao.clearAcceptedReadRefresh(row.id, requireNotNull(row.receiptJson), BUDGET_READ_REFRESH_REQUIRED)
         }
     }
+
+    internal suspend fun acknowledgeRuleApplicationRefresh(bound: BoundLedgerRequest, original: OutboxRow) =
+        withActiveBinding(bound) { binding ->
+            val current = dao.activeRowsForTarget(binding, RULE_APPLICATION_TARGET, listOf(PendingMutationStatus.Done.wireValue))
+                .firstOrNull { it.id == original.id }
+            require(current == original && original.requiresRuleApplicationRefresh()) { "原应用状态已变化，请重新核对。" }
+            check(dao.clearAcceptedReadRefresh(original.id, requireNotNull(original.receiptJson), RULE_APPLICATION_READ_REFRESH) == 1)
+        }
 
     internal suspend fun acknowledgeExpenseRefresh(boundRequest: BoundLedgerRequest, versions: Map<Long, Long>) =
         bindingTransitionLease.withLock {

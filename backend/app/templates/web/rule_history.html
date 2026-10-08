@@ -6,12 +6,14 @@
 {% set task_return_href = '/web/rules' ~ q %}
 {% set task_return_label = '分类规则' %}
 {% block title %}规则应用记录 · 小票夹{% endblock %}
+{% block page_scripts %}{% include 'partials/rule_draft_scripts.html' %}{% endblock %}
 {% block content %}
 <div class="library-workspace stack">
 <header class="product-page-header"><div class="product-page-heading"><h1 class="page-title">每次修改都有记录</h1><p class="product-page-summary">回退只恢复仍符合原变更的账单，后来修改过的记录会跳过。</p></div></header>
 {% if flash_message %}<p class="product-feedback" role="status">{{ flash_message }}</p>{% endif %}
 {% if not can_write %}<p class="product-feedback">当前角色为只读，可以查看应用和回退记录。</p>{% endif %}
 <p class="meta">最近 {{ rule_applications|length }} 次应用，最多显示 100 次。回退数量记录首次处理结果，不代表账单现在的分类。</p>
+{% include 'partials/rule_draft_shelf.html' %}
 <div class="fact-entries">
 {% for batch in rule_applications %}
 {% set outcomes = rule_application_outcomes.get(batch.id, {}) %}

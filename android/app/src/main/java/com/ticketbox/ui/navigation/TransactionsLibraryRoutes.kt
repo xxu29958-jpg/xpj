@@ -231,10 +231,7 @@ private fun CategoryRulesLibraryRoute(
             rules = CategoryRulesRuleListState(rules = state.categoryRules, loading = state.categoryRulesLoading,
                 loadFailed = state.categoryRulesLoadFailed,
             ),
-            interaction = CategoryRulesInteractionState(
-                busy = state.busy,
-                readOnly = !state.canModify,
-            ),
+            interaction = CategoryRulesInteractionState(busy = state.busy, readOnly = !state.canModify),
             status = CategoryRulesStatusState(state.message, state.messageTone),
             applications = CategoryRulesApplicationState(
                 history = state.ruleApplications,
@@ -244,6 +241,7 @@ private fun CategoryRulesLibraryRoute(
             ),
             undoableRule = state.undoableRule,
             submissions = state.pendingSubmissions, selectedSubmissionId = state.selectedSubmissionId,
+            applicationSubmissions = state.pendingApplications,
             submittedRevision = state.submittedRevision, binding = state.binding,
             definitions = definitions,
         ),
@@ -264,6 +262,7 @@ private fun CategoryRulesLibraryRoute(
                 onConfirmApplyConfirmedRules = viewModel::confirmApplyConfirmedRules,
                 onRollbackRuleApplication = viewModel::rollbackRuleApplication,
                 onReload = { viewModel.loadRuleApplications() },
+                onRecover = viewModel::recoverApplication,
             ),
             undo = CategoryRulesUndoActions(
                 onUndoDelete = viewModel::undoDelete,

@@ -73,6 +73,7 @@ enum class PendingMutationType(val wireValue: String) {
     ReplaceSplits("replace_splits"),
     AcknowledgeItemsMismatch("acknowledge_items_mismatch"),
     CreateCategoryRule("create_category_rule"),
+    ApplyConfirmedRules("apply_confirmed_rules"),
     UpdateCategoryRule("update_category_rule"),
     DeleteCategoryRule("delete_category_rule"),
     UpdateMerchantAlias("update_merchant_alias"),

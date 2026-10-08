@@ -32,6 +32,7 @@ internal data class SyncStatusDropSelection(
     val goalCreation: com.ticketbox.data.repository.PendingGoalCreation? = null,
     val goalEdit: com.ticketbox.data.repository.PendingGoalEdit? = null,
     val categoryRule: com.ticketbox.data.repository.PendingCategoryRuleSubmission? = null,
+    val ruleApplication: com.ticketbox.data.repository.PendingRuleApplication? = null,
     val arrangement: com.ticketbox.data.repository.PendingMonthlyArrangement? = null,
 )
 
@@ -63,6 +64,7 @@ internal fun SyncStatusDropDialog(
                 }
                 selection.goalCreation?.let { com.ticketbox.ui.screens.GoalCreationIntentSummary(it) }
                 selection.categoryRule?.let { com.ticketbox.ui.screens.settings.categoryrules.CategoryRuleSubmissionSummary(it) }
+                selection.ruleApplication?.let { com.ticketbox.ui.screens.settings.categoryrules.RuleApplicationSubmissionSummary(it) }
                 selection.recurringOriginal?.let { com.ticketbox.ui.screens.recurring.RecurringManualIntentSummary(it) }
                 selection.budgetSave?.let { com.ticketbox.ui.screens.budget.BudgetSaveIntentSummary(it) }
                 selection.arrangement?.let { com.ticketbox.ui.screens.plan.MonthlyArrangementIntentSummary(it) }
@@ -127,6 +129,7 @@ private fun dropConfirmationText(selection: SyncStatusDropSelection): DropConfir
 }
 
 private val originalCreationStopLabels = mapOf(
+    PendingMutationType.ApplyConfirmedRules to (R.string.rule_application_stop to R.string.rule_application_stop_body),
     PendingMutationType.SaveManualExchangeRate to (R.string.advice_rate_stop to R.string.advice_rate_stop_body),
     PendingMutationType.CreateExpense to (R.string.manual_submission_stop to R.string.manual_submission_stop_body),
     PendingMutationType.CapturePaymentNotification to (R.string.notification_capture_stop to R.string.notification_capture_stop_explanation),

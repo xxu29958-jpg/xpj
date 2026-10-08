@@ -580,3 +580,16 @@ def test_catalog_merge_receipt_export_keeps_both_original_snapshots(records):
     rows = _rows(records, "accepted_operations")
     assert len(rows) == 1 and rows[0]["id"] == 1
     assert _receipt_record(dict(rows[0]))["response_body"] == original
+
+
+def test_application_export_retains_original_zero_and_changed_results_with_ledger_scope(records):
+    from app.services.portable_export_archive import _receipt_record
+
+    for id_, ledger, changed in ((1, "selected", 0), (2, "selected", 2), (3, "other", 4)):
+        _seed(records, m.ApiIdempotencyKey, id=id_, tenant_id=ledger, status="succeeded",
+            resource_type="rule_application_batch", resource_id=f"batch-{id_}" if changed else None,
+            operation="apply_confirmed_rules", response_body=json.dumps({"command_key": f"key-{id_}",
+                "application_public_id": f"batch-{id_}" if changed else None, "changed_count": changed}))
+    rows = _rows(records, "accepted_operations")
+    assert [row["id"] for row in rows] == [1, 2]
+    assert [_receipt_record(dict(row))["response_body"]["changed_count"] for row in rows] == [0, 2]

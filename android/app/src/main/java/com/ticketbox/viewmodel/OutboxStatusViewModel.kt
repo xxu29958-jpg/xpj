@@ -38,6 +38,7 @@ private val recurringSubmissionTypes = setOf(
 )
 internal val categoryRuleSubmissionTypes = setOf(
     PendingMutationType.CreateCategoryRule, PendingMutationType.UpdateCategoryRule, PendingMutationType.DeleteCategoryRule,
+    PendingMutationType.ApplyConfirmedRules,
 )
 internal val incomePlanSubmissionTypes = setOf(PendingMutationType.CreateIncomePlan, PendingMutationType.UpdateIncomePlan)
 private val writerSubmissionTypes = setOf(
@@ -62,6 +63,7 @@ private val submissionFailureResources = mapOf(
     PendingMutationType.CreateCategoryRule to R.string.category_rule_submission_unavailable,
     PendingMutationType.UpdateCategoryRule to R.string.category_rule_submission_unavailable,
     PendingMutationType.DeleteCategoryRule to R.string.category_rule_submission_unavailable,
+    PendingMutationType.ApplyConfirmedRules to R.string.rule_application_unverified,
 )
 
 /**
@@ -135,6 +137,9 @@ class OutboxStatusViewModel(
                     }.toMap(),
                     categoryRules = (status.failed + status.conflicts).mapNotNull { row ->
                         recoveries.rules.describeSubmission(row)?.let { row.id to it }
+                    }.toMap(),
+                    ruleApplications = (status.failed + status.conflicts + status.refreshRequired).mapNotNull { row ->
+                        recoveries.rules.describeApplication(row)?.let { row.id to it }
                     }.toMap(),
                     arrangements = (status.failed + status.conflicts).mapNotNull { row -> recoveries.budgetSaves.describeArrangement(row)?.let { row.id to it } }.toMap(),
                     budgetSaves = (status.failed + status.conflicts + status.refreshRequired).mapNotNull { row ->
@@ -319,6 +324,9 @@ class OutboxStatusViewModel(
             val result = if (row.type == PendingMutationType.SaveMonthlyBudget) {
                 val pending = _uiState.value.budgetSaves[row.id] ?: return@resolve
                 recoveries.budgetSaves.recoverSave(binding, pending, false)
+            } else if (row.type == PendingMutationType.ApplyConfirmedRules) {
+                val pending = _uiState.value.ruleApplications[row.id] ?: return@resolve
+                recoveries.rules.recoverApplication(binding, pending, false)
             } else {
                 val id = expenseRefreshTargetId(row.targetId, row.receiptJson)
                 if (id == null) {
@@ -384,6 +392,7 @@ data class OutboxStatusUiState(
     val budgetSaves: Map<Long, com.ticketbox.data.repository.PendingBudgetSave> = emptyMap(),
     val recurringItems: Map<Long, com.ticketbox.data.repository.RecurringPendingIntent> = emptyMap(),
     val categoryRules: Map<Long, com.ticketbox.data.repository.PendingCategoryRuleSubmission> = emptyMap(),
+    val ruleApplications: Map<Long, com.ticketbox.data.repository.PendingRuleApplication> = emptyMap(),
     val debtWrites: Map<Long, com.ticketbox.data.repository.PendingDebtWrite> = emptyMap(),
     val waitingDebtWrites: List<com.ticketbox.data.repository.PendingDebtWrite> = emptyList(),
     val retryableOffsetIds: Set<Long> = emptySet(),
@@ -395,7 +404,7 @@ data class OutboxStatusUiState(
     fun offersRetry(row: OutboxRow): Boolean {
         if (row.refusesRetry(correctionObservation)) return false
         return when (row.type) {
-            in categoryRuleSubmissionTypes -> categoryRules[row.id]?.canRetry == true
+            in categoryRuleSubmissionTypes -> offersRuleRetry(row)
             PendingMutationType.CreateRecurringItem, PendingMutationType.UpdateRecurringItem ->
                 recurringItems[row.id]?.canRetry == true
             PendingMutationType.SetRecurringOccurrencePayment ->
@@ -411,6 +420,9 @@ data class OutboxStatusUiState(
             else -> !row.requiresManualCreateReview()
         }
     }
+
+    private fun offersRuleRetry(row: OutboxRow): Boolean = if (row.type == PendingMutationType.ApplyConfirmedRules)
+        ruleApplications[row.id]?.canRetry == true else categoryRules[row.id]?.canRetry == true
 }
 
 private fun OutboxRow.refusesKeepMine(): Boolean =
@@ -453,9 +465,7 @@ private suspend fun OutboxRecoveryRepositories.recoverPlanningSubmission(
     in incomePlanSubmissionTypes -> incomePlans.describeSubmission(row)?.let {
         incomePlans.recoverSubmission(binding, it, drop)
     } ?: Result.failure(IllegalStateException())
-    in categoryRuleSubmissionTypes -> rules.describeSubmission(row)?.let {
-        rules.recoverSubmission(binding, it, drop)
-    } ?: Result.failure(IllegalStateException())
+    in categoryRuleSubmissionTypes -> recoverRuleSubmission(binding, row, drop)
     PendingMutationType.CreateGoal, PendingMutationType.UpdateGoal -> recoverGoalSubmission(binding, row, drop)
     PendingMutationType.SaveMonthlyArrangement, PendingMutationType.SaveMonthlyBudget,
     PendingMutationType.SaveManualExchangeRate -> recoverBudgetSubmission(binding, row, drop)
@@ -465,6 +475,11 @@ private suspend fun OutboxRecoveryRepositories.recoverPlanningSubmission(
         recurringOccurrences?.recover(binding, row, drop) ?: Result.failure(IllegalStateException())
     else -> null
 }
+
+private suspend fun OutboxRecoveryRepositories.recoverRuleSubmission(binding: LogicalSessionBinding, row: OutboxRow, drop: Boolean): Result<Unit> =
+    if (row.type == PendingMutationType.ApplyConfirmedRules) rules.describeApplication(row)?.let { rules.recoverApplication(binding, it, drop) }
+        ?: Result.failure(IllegalStateException())
+    else rules.describeSubmission(row)?.let { rules.recoverSubmission(binding, it, drop) } ?: Result.failure(IllegalStateException())
 
 private suspend fun OutboxRecoveryRepositories.recoverGoalSubmission(binding: LogicalSessionBinding, row: OutboxRow, drop: Boolean): Result<Unit> =
     if (row.type == PendingMutationType.CreateGoal) goalEdits.describeCreation(row)?.let { goalEdits.recoverCreation(binding, it, drop) }

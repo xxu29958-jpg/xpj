@@ -38,7 +38,7 @@ def _apply_pending_rules(client: TestClient, *, identity, max_scan: int = 500):
     token = preview.json()["preview_token"]
     return client.post(
         f"/api/rules/apply-pending?max_scan={max_scan}",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"confirm": True, "preview_token": token},
     )
 
@@ -144,7 +144,7 @@ def test_rule_apply_pending_requires_fresh_preview_token(client: TestClient, *, 
 
     missing = client.post(
         "/api/rules/apply-pending",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"confirm": True},
     )
     assert missing.status_code == 409
@@ -165,7 +165,7 @@ def test_rule_apply_pending_requires_fresh_preview_token(client: TestClient, *, 
     assert changed_rule.status_code == 200
     stale = client.post(
         "/api/rules/apply-pending",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"confirm": True, "preview_token": token},
     )
     assert stale.status_code == 409

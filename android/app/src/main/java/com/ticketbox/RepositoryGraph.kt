@@ -221,13 +221,15 @@ internal class RepositoryGraph(
     val ruleRepository = RuleRepository(
         binding = serverSessionBinding,
         definitionInputs = com.ticketbox.data.repository.RuleDefinitionDraftStore(database.ruleDefinitionInputDao()),
-        onConfirmedChanged = { expenseRepository.syncConfirmed() },
+        onConfirmedChanged = { expenseRepository.syncConfirmed().map { } },
         offlineMutations = CategoryRuleOfflineMutationWiring(
             outbox = outbox,
             updateAdapter = outboxAdapters.categoryRuleUpdateAdapter,
             deleteAdapter = outboxAdapters.categoryRuleDeleteAdapter,
             submissionAdapter = outboxAdapters.categoryRuleSubmissionAdapter,
             receiptAdapter = outboxAdapters.categoryRuleReceiptAdapter,
+            applicationAdapter = outboxAdapters.ruleApplicationAdapter,
+            applicationReceiptAdapter = outboxAdapters.ruleApplicationReceiptAdapter,
         ),
     )
 

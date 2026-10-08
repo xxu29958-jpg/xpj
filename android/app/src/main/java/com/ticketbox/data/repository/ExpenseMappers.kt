@@ -575,6 +575,8 @@ fun RuleApplyPreviewItemDto.toDomain(): RuleApplyPreviewItem = RuleApplyPreviewI
 )
 
 fun RuleApplyConfirmedResponseDto.toDomain(): RuleApplyConfirmedResult = RuleApplyConfirmedResult(
+    commandKey = commandKey,
+    applicationPublicId = applicationPublicId,
     dryRun = dryRun,
     confirmedScanned = confirmedScanned,
     changedCount = changedCount,

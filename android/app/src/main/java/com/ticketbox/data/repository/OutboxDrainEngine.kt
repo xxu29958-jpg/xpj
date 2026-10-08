@@ -148,6 +148,7 @@ class OutboxDrainEngine(
             PendingMutationType.UpdateRecurringItem,
             PendingMutationType.SetRecurringOccurrencePayment,
             PendingMutationType.VoidExpenseOffset,
+            PendingMutationType.ApplyConfirmedRules,
         )
     }
 
@@ -257,11 +258,11 @@ class OutboxDrainEngine(
         val summary = DrainSummary(1, 0, 0, 0)
         return when (result) {
             is DispatchResult.Success -> {
-                // Once a budget receipt is verified, cancellation may leave only local read repair.
-                withContext(if (row.type == PendingMutationType.SaveMonthlyBudget) NonCancellable
+                // A verified first receipt survives cancellation of the subsequent read.
+                withContext(if (row.type in setOf(PendingMutationType.SaveMonthlyBudget, PendingMutationType.ApplyConfirmedRules)) NonCancellable
                     else kotlin.coroutines.EmptyCoroutineContext) {
                     outbox.markDone(row.id, cacheRefreshVersion = result.cacheRefreshVersion, receiptJson = result.receiptJson,
-                        budgetReadRefreshRequired = result.budgetReadRefreshRequired, acceptedRow = row)
+                        acceptedReadRefreshRequired = result.acceptedReadRefreshRequired, acceptedRow = row)
                 }
                 outbox.noteAcceptedReplay()
                 result.newRowVersion?.takeIf { it != 0L && row.type != PendingMutationType.CreateExpense }

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from uuid import uuid4
 
 from api_contract_helpers import insert_confirmed_expense, patch_expense
 from fastapi.testclient import TestClient
@@ -32,7 +33,7 @@ def _apply_pending_rules(client: TestClient, *, identity, max_scan: int = 500):
     token = preview.json()["preview_token"]
     return client.post(
         f"/api/rules/apply-pending?max_scan={max_scan}",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"confirm": True, "preview_token": token},
     )
 

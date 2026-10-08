@@ -5,13 +5,18 @@
 {% set task_return_href = '/web/rules' ~ q %}
 {% set task_return_label = '分类规则' %}
 {% set result = confirmed_bulk_preview or bulk_preview %}
-{% set confirmed = confirmed_bulk_preview is not none %}
+{% set confirmed = application_status == 'confirmed' %}
 {% set target = '已确认' if confirmed else '待确认' %}
+{% set frozen = application_result in ['blocked', 'rejected'] %}
 {% block title %}规则影响预览 · 小票夹{% endblock %}
+{% block page_scripts %}{% include 'partials/rule_draft_scripts.html' %}{% endblock %}
 {% block content %}
 <div class="library-workspace stack">
-<header class="product-page-header"><div class="product-page-heading"><h1 class="page-title">这次会改哪些账单</h1><p class="product-page-summary">已扫描 {{ result.confirmed_scanned if confirmed else result.pending_scanned }} 笔{{ target }}账单。现在是预览，尚未应用。</p></div></header>
-{% if flash_message %}<p class="product-feedback" role="status">{{ flash_message }}</p>{% endif %}
+<header class="product-page-header"><div class="product-page-heading"><h1 class="page-title" data-ruleapplication-heading>{{ '核实这次规则应用' if frozen else '这次会改哪些账单' }}</h1></div></header>
+{% if error %}<p class="product-feedback product-feedback--danger" role="alert">{{ error }} 原应用任务仍保留。</p>{% endif %}
+<div class="stack" data-ruleapplication-impact{% if frozen %} hidden{% endif %}>
+{% if result %}
+<p class="product-page-summary">已扫描 {{ result.confirmed_scanned if confirmed else result.pending_scanned }} 笔{{ target }}账单。现在是预览，尚未应用。</p>
 <section class="rule-impact-total" aria-label="预览影响">
   <span>将改写分类</span><strong>{{ result.changed_count }} 笔</strong><span>仅更新仍为「其他／未分类」的{{ target }}账单{% if not confirmed %}，不会自动确认入账{% endif %}。</span>
 </section>
@@ -28,13 +33,21 @@
 </details>
 {% else %}<p class="product-feedback">本次没有需要改写的{{ target }}账单。</p>{% endif %}
 <div class="product-entry product-entry--static"><span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#info"/></svg></span><span class="product-entry-copy"><strong>修改会留在历史里</strong><span>确认时会再次核对预览；后来的人工更正不会被本批次回退覆盖。</span></span></div>
-{% if can_write and result.changed_count > 0 %}
-<form method="post" action="/web/rules/apply-{{ 'confirmed' if confirmed else 'pending' }}" class="stack" data-confirm="确认将规则应用到这次预览的{{ target }}账单？">
-  {{ csrf_field|safe }}<input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}"><input type="hidden" name="preview_confirmed" value="yes"><input type="hidden" name="preview_token" value="{{ result.preview_token }}">
-  <button type="submit" class="product-button product-button--primary">确认应用到{{ target }} · {{ result.changed_count }} 笔 <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-right"/></svg></button>
+{% else %}<p class="product-feedback">从此浏览器保留的原任务核实提交结果；要应用新的范围，请先重新预览。</p>{% endif %}
+</div>
+<form method="post" action="/web/rules/apply-{{ application_status }}" class="stack" data-rule-application
+{% if rule_draft_scope %} data-ruleapplication-draft-scope="{{ rule_draft_scope|tojson|forceescape }}" data-ruleapplication-can-write="{{ 'true' if can_write else 'false' }}" data-ruleapplication-native-result="{{ application_result }}"{% endif %}>
+{{ csrf_field|safe }}
+{% for name in ['ledger_id', 'apply_status', 'preview_confirmed', 'preview_token', 'idempotency_key', 'draft_ref', 'draft_scope', 'original_scanned', 'original_changed'] %}<input type="hidden" name="{{ name }}" value="{{ application_form[name] }}">{% endfor %}
+<p class="product-page-summary" data-ruleapplication-original{% if not frozen %} hidden{% endif %}>原预览扫描 {{ application_form.original_scanned }} 笔{{ target }}，预计改写 {{ application_form.original_changed }} 笔。</p>
+<p class="product-feedback" data-ruleapplication-draft-status role="status" aria-live="polite"{% if can_write %} hidden{% endif %}>{% if not can_write %}当前角色为只读，可预览影响，不能应用规则。{% endif %}</p>
+<button type="submit" class="product-button product-button--primary"{% if not can_write or not frozen and (not result or result.changed_count == 0) %} disabled{% endif %}>{{ '核实原应用' if frozen else '确认应用到' ~ target ~ ' · ' ~ application_form.original_changed ~ ' 笔' }}</button>
+<p class="meta" data-ruleapplication-review-note{% if application_result != 'rejected' %} hidden{% endif %}>原提交已被拒绝。重新读取当前影响后，需再次确认才会应用。</p>
+<button type="submit" name="review_new" value="true" formnovalidate class="product-button product-button--quiet" data-ruleapplication-review{% if not can_write or application_result != 'rejected' %} hidden{% endif %}>重新核对影响</button>
+{% if rule_draft_scope %}<button type="button" class="product-button product-button--quiet" data-ruleapplication-discard hidden>放弃此浏览器的原任务</button>{% endif %}
 </form>
-{% elif not can_write %}<p class="product-feedback">当前角色为只读，可预览影响，不能应用规则。</p>{% endif %}
-<a class="product-button product-button--quiet" href="/web/rules{{ q }}&amp;{{ 'confirmed_preview' if confirmed else 'apply_preview' }}=1">重新预览</a>
+<a class="product-button product-button--quiet" data-ruleapplication-new{% if frozen %} hidden{% endif %} href="/web/rules{{ q }}&amp;{{ 'confirmed_preview' if confirmed else 'apply_preview' }}=1">重新预览</a>
 <a class="product-button product-button--quiet" href="/web/rules{{ q }}&amp;view=history">查看规则应用记录</a>
+{% include 'partials/rule_draft_shelf.html' %}
 </div>
 {% endblock %}

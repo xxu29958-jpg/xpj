@@ -617,6 +617,7 @@ internal class FakeApiService(
         request: RuleApplyConfirmedRequestDto,
         limit: Int,
         maxScan: Int,
+        idempotencyKey: String?,
     ): RuleApplyConfirmedResponseDto {
         applyConfirmedRequests += request
         return RuleApplyConfirmedResponseDto(
@@ -640,6 +641,8 @@ internal class FakeApiService(
             noMatchCount = 8,
             scanLimit = maxScan,
             previewToken = if (request.confirm) null else "preview-token",
+            commandKey = if (request.confirm) idempotencyKey else null,
+            applicationPublicId = if (request.confirm) "application-1" else null,
         )
     }
 

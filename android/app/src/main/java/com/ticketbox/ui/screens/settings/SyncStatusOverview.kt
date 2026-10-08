@@ -27,15 +27,12 @@ internal fun SyncStatusOriginalIntentSummary(row: OutboxRow, state: OutboxStatus
     NotificationCaptureIntentSummary(row)
     OffsetRateRecovery(row, state, actions)
     ArrangementOriginalRecovery(row, state, actions)
+    com.ticketbox.ui.screens.settings.categoryrules.RuleSubmissionRecovery(state.categoryRules[row.id], state.ruleApplications[row.id]) {
+        actions.onOpenRuleSubmission(row.id)
+    }
     state.manualRates[row.id]?.let { original ->
         com.ticketbox.ui.screens.plan.ManualRateSubmissionSummary(original)
         TextButton(onClick = { actions.onOpenRateSubmission(row.id) }) { Text(stringResource(R.string.advice_rate_submission_open)) }
-    }
-    state.categoryRules[row.id]?.let { original ->
-        com.ticketbox.ui.screens.settings.categoryrules.CategoryRuleSubmissionSummary(original)
-        TextButton(onClick = { actions.onOpenRuleSubmission(row.id) }) {
-            Text(stringResource(R.string.category_rule_submission_open))
-        }
     }
     state.goalEdits[row.id]?.let { original ->
         original.request?.let { request ->

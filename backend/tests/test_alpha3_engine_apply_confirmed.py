@@ -44,7 +44,7 @@ def _apply_pending_rules(client: TestClient, *, identity, max_scan: int = 500):
     token = preview.json()["preview_token"]
     return client.post(
         f"/api/rules/apply-pending?max_scan={max_scan}",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"confirm": True, "preview_token": token},
     )
 
@@ -126,7 +126,7 @@ def _assert_confirmed_apply_preview_is_non_mutating(
 def _confirm_confirmed_apply_preview(client: TestClient, *, identity, preview_token: str) -> None:
     response = client.post(
         "/api/rules/apply-confirmed",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"confirm": True, "preview_token": preview_token},
     )
     assert response.status_code == 200
@@ -219,13 +219,13 @@ def test_rule_apply_confirmed_reports_scan_limit(client: TestClient, *, identity
     preview = client.post("/api/rules/apply-confirmed?max_scan=1&limit=1", headers=identity.app_headers)
     first_apply = client.post(
         "/api/rules/apply-confirmed?max_scan=1",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"confirm": True, "preview_token": preview.json()["preview_token"]},
     )
     second_preview = client.post("/api/rules/apply-confirmed?max_scan=1&limit=1", headers=identity.app_headers)
     second_apply = client.post(
         "/api/rules/apply-confirmed?max_scan=1",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"confirm": True, "preview_token": second_preview.json()["preview_token"]},
     )
 
@@ -274,7 +274,7 @@ def test_rule_apply_confirmed_rejects_stale_preview_token(client: TestClient, *,
 
     stale_apply = client.post(
         "/api/rules/apply-confirmed",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"confirm": True, "preview_token": token},
     )
     assert stale_apply.status_code == 409
@@ -287,7 +287,7 @@ def test_rule_apply_confirmed_rejects_stale_preview_token(client: TestClient, *,
     fresh_preview = client.post("/api/rules/apply-confirmed", headers=identity.app_headers)
     fresh_apply = client.post(
         "/api/rules/apply-confirmed",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"confirm": True, "preview_token": fresh_preview.json()["preview_token"]},
     )
     assert fresh_apply.status_code == 200
@@ -340,14 +340,14 @@ def test_rule_apply_confirmed_viewer_denied_and_cross_ledger_isolated(
 
     owner_denied = client.post(
         "/api/rules/apply-confirmed",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"confirm": True},
     )
     tester_preview = client.post("/api/rules/apply-confirmed", headers=identity.gray_app_headers)
     assert tester_preview.status_code == 200
     tester_apply = client.post(
         "/api/rules/apply-confirmed",
-        headers=identity.gray_app_headers,
+        headers={**identity.gray_app_headers, "Idempotency-Key": str(uuid4())},
         json={"confirm": True, "preview_token": tester_preview.json()["preview_token"]},
     )
 

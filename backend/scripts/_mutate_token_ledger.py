@@ -355,8 +355,8 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /api/maintenance/cleanup-learning": Exempt("batch_db_write", "maintenance", _LEARNING_PRUNE, "medium"),
     "POST /api/maintenance/cleanup-orphans": Exempt("external_side_effect", "maintenance", ()),
     "POST /api/maintenance/cleanup-rejected": Exempt("batch_db_write", "maintenance", ("expenses",)),
-    "POST /api/rules/apply-confirmed": Exempt("batch_db_write", "rules", _RULES_APPLY, "medium"),
-    "POST /api/rules/apply-pending": Exempt("batch_db_write", "rules", _RULES_APPLY, "medium"),
+    "POST /api/rules/apply-confirmed": Exempt("batch_db_write", "rules", _RULES_APPLY + ("api_idempotency_keys",), "medium"),
+    "POST /api/rules/apply-pending": Exempt("batch_db_write", "rules", _RULES_APPLY + ("api_idempotency_keys",), "medium"),
     "POST /api/rules/apply-pending/preview": Exempt("read_only_compute", "rules", ()),
     "POST /api/rules/applications/{public_id}/rollback": Exempt("batch_db_write", "rules", _RULES_APPLY, "medium"),
     "POST /api/rules/preview": Exempt("read_only_compute", "rules", ()),
@@ -428,8 +428,8 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /web/recurring/confirm-candidate": Exempt("create_row", "recurring", _RECURRING),
     "POST /web/recurring/{public_id}/archive": Exempt("terminal_flag_flip", "recurring", _RECURRING),
     "POST /web/rules/applications/{public_id}/rollback": Exempt("batch_db_write", "rules", _RULES_APPLY, "medium"),
-    "POST /web/rules/apply-confirmed": Exempt("batch_db_write", "rules", _RULES_APPLY, "medium"),
-    "POST /web/rules/apply-pending": Exempt("batch_db_write", "rules", _RULES_APPLY, "medium"),
+    "POST /web/rules/apply-confirmed": Exempt("batch_db_write", "rules", _RULES_APPLY + ("api_idempotency_keys",), "medium"),
+    "POST /web/rules/apply-pending": Exempt("batch_db_write", "rules", _RULES_APPLY + ("api_idempotency_keys",), "medium"),
     "POST /web/rules/create": Exempt("create_row", "rules", ("category_rules",)),
     "POST /web/rules/{rule_id}/undo": Exempt(
         "terminal_flag_flip", "rules", ("category_rules", "ledger_audit_logs")

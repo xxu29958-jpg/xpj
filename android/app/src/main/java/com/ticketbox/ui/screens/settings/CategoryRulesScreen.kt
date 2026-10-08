@@ -24,6 +24,7 @@ import com.ticketbox.R
 import com.ticketbox.data.remote.dto.CategoryRuleRequest
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.PendingCategoryRuleSubmission
+import com.ticketbox.data.repository.PendingRuleApplication
 import com.ticketbox.ui.screens.settings.categoryrules.CategoryRuleSubmissionCards
 import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.MessageTone
@@ -50,6 +51,7 @@ data class CategoryRulesScreenState(
     val applications: CategoryRulesApplicationState,
     val undoableRule: CategoryRule?,
     val submissions: List<PendingCategoryRuleSubmission> = emptyList(),
+    val applicationSubmissions: List<PendingRuleApplication> = emptyList(),
     val selectedSubmissionId: Long? = null,
     val submittedRevision: Int = 0,
     val binding: LogicalSessionBinding? = null,
@@ -109,6 +111,7 @@ data class CategoryRulesApplicationActions(
     val onConfirmApplyConfirmedRules: () -> Unit,
     val onRollbackRuleApplication: (RuleApplicationBatch) -> Unit,
     val onReload: () -> Unit,
+    val onRecover: (PendingRuleApplication, Boolean) -> Unit = { _, _ -> },
 )
 
 data class CategoryRulesUndoActions(
@@ -139,16 +142,8 @@ fun CategoryRulesScreen(
     var deletingRule by remember(state.binding) { mutableStateOf<CategoryRule?>(null) }
     var rollbackApplication by remember(state.binding) { mutableStateOf<RuleApplicationBatch?>(null) }
 
-    CategoryRuleDeleteDialogHost(
-        rule = deletingRule,
-        onDismiss = { deletingRule = null },
-        onConfirm = actions.rules.onDelete,
-    )
-    CategoryRuleRollbackDialogHost(
-        application = rollbackApplication,
-        onDismiss = { rollbackApplication = null },
-        onConfirm = actions.applications.onRollbackRuleApplication,
-    )
+    CategoryRuleDeleteDialogHost(deletingRule, { deletingRule = null }, actions.rules.onDelete)
+    CategoryRuleRollbackDialogHost(rollbackApplication, { rollbackApplication = null }, actions.applications.onRollbackRuleApplication)
 
     ManagementPageFrame(
         header = ManagementPageHeader(
@@ -173,8 +168,11 @@ fun CategoryRulesScreen(
                 onClick = { actions.definitions.onOpen(draft) })
         }
         key(state.binding) {
-            CategoryRuleSubmissionCards(state.submissions, state.selectedSubmissionId, state.interaction.busy,
+            val definitionSelection = state.selectedSubmissionId.takeUnless { id -> state.applicationSubmissions.any { it.row.id == id } }
+            CategoryRuleSubmissionCards(state.submissions, definitionSelection, state.interaction.busy,
                 state.interaction.readOnly, actions.rules.onRecoverSubmission)
+            com.ticketbox.ui.screens.settings.categoryrules.RuleApplicationSubmissionCards(state.applicationSubmissions,
+                state.selectedSubmissionId, state.interaction.busy, state.interaction.readOnly, actions.applications.onRecover)
         }
         CategoryRulesContent(
             state = state.contentState(),
@@ -197,9 +195,11 @@ private data class CategoryRulesContentState(
     val confirmedPreview: RuleApplyConfirmedResult?,
     val undoableRule: CategoryRule?,
     val definitionsReady: Boolean,
+    val applicationPending: Boolean,
 )
 
 private fun CategoryRulesScreenState.contentState() = CategoryRulesContentState(
+    applicationPending = applicationSubmissions.any { !it.isDone },
     rules = rules.rules, rulesLoading = rules.loading, rulesLoadFailed = rules.loadFailed, busy = interaction.busy,
     readOnly = interaction.readOnly, applications = applications.history,
     applicationsLoading = applications.loading, confirmedPreview = applications.confirmedPreview,
@@ -261,7 +261,7 @@ private fun CategoryRulesContent(
         actions = actions,
         onRequestDelete = onRequestDelete,
     )
-    SettingsSection(title = stringResource(R.string.category_rules_section_confirmed_apply)) {
+    if (!state.applicationPending) SettingsSection(title = stringResource(R.string.category_rules_section_confirmed_apply)) {
         ConfirmedRuleApplyPanel(
             preview = state.confirmedPreview,
             busy = state.busy,

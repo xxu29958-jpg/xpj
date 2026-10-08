@@ -88,7 +88,7 @@ def preview_apply_and_rollback(j, initial_categories):
     page.get_by_role("link", name="预览已确认账单").click()
     assert [row["category"] for row in j.facts()["expenses"]] == initial_categories
     j.capture("rule-web-preview")
-    j.confirm(j.form("/web/rules/apply-confirmed"))
+    j.form("/web/rules/apply-confirmed").get_by_role("button", name="确认应用到已确认").click()
     j.expect(lambda state: len(state["applications"]) == 1, "Explicit rule application was not recorded")
     assert [row["category"] for row in j.facts()["expenses"]] == ["Library", "Library", "Library"]
     assert j.facts()["applications"][0]["changed"] == 2

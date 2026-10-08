@@ -203,8 +203,8 @@ Authorization: Bearer <admin_token>
 | `/api/rules/categories/{id}` | PATCH | `backend/app/routes/rules.py` | `updateCategoryRule(id,request)` | `CategoryRuleRequest` | `CategoryRuleDto` | Session Token，owner/member 写权限 | `backend/tests/test_alpha3_engine.py` | v0.7 条件规则字段 |
 | `/api/rules/categories/{id}` | DELETE | `backend/app/routes/rules.py` | `deleteCategoryRule(id)` | path `id` | `StatusDto` | Session Token | `backend/tests/test_expenses.py`, `AuthDtoContractTest` | internal/高级入口 |
 | `/api/rules/apply-pending/preview` | POST | `backend/app/routes/rules.py` | 无 | query `limit/max_scan` | `RuleApplyPendingPreviewResponse` | Session Token | `backend/tests/test_alpha3_engine.py` | dry-run；默认最多扫描 500 条可自动填充账单 |
-| `/api/rules/apply-pending` | POST | `backend/app/routes/rules.py` | 无 | query `max_scan` | `RuleApplyPendingResponse` | Session Token，owner/member 写权限 | `backend/tests/test_alpha3_engine.py`, `backend/tests/test_viewer_write_guards.py` | 只改待确认账单的默认分类 |
-| `/api/rules/apply-confirmed` | POST | `backend/app/routes/rules.py` | `applyConfirmedRules(request)` | `RuleApplyConfirmedRequest`；query `limit/max_scan` | `RuleApplyConfirmedResponse` | Session Token；`confirm=true` 需 owner/member 写权限 | `backend/tests/test_alpha3_engine.py`, `ExpenseRepositoryBindingTest` | dry-run 默认；确认必须带 `preview_token` |
+| `/api/rules/apply-pending` | POST | `backend/app/routes/rules.py` | 无 | `RuleApplyPendingRequest`；query `max_scan`；header `Idempotency-Key` | `RuleApplyPendingResponse` | Session Token，owner/member 写权限 | `backend/tests/test_rule_application_commands.py`, `backend/tests/test_viewer_write_guards.py` | 只改待确认账单的默认分类；原 key 返回首次结果 |
+| `/api/rules/apply-confirmed` | POST | `backend/app/routes/rules.py` | `applyConfirmedRules(request, idempotencyKey)` | `RuleApplyConfirmedRequest`；query `limit/max_scan`；确认时 header `Idempotency-Key` | `RuleApplyConfirmedResponse` | Session Token；`confirm=true` 需 owner/member 写权限 | `backend/tests/test_rule_application_commands.py`, `RuleApplicationCommandTest` | dry-run 默认；确认必须带 `preview_token` 和原 key |
 | `/api/tags` | GET | `backend/app/routes/tags.py` | `listManagedTags()` | 无 | `TagManagementListDto`（每项含 `usage_count` + `row_version`） | Session Token；viewer 可读 | `backend/tests/test_tag_management.py`, `TagDtoContractTest` | ADR-0043 标签管理列表（online-only，无 Idempotency-Key） |
 | `/api/tags/{public_id}/rename` | POST | `backend/app/routes/tags.py` | `renameTag(publicId,request)` | `TagRenameRequest`（`expected_row_version` + `name`） | `TagDetailDto` | Session Token，owner/member 写权限 | `backend/tests/test_tag_management.py` | ADR-0043 重命名；撞 key→409 `tag_conflict`，错误信封顶层回带 `conflict_tag_public_id`/`conflict_tag_row_version`（契约 5） |
 | `/api/tags/{public_id}/delete` | POST | `backend/app/routes/tags.py` | `deleteTag(publicId,request)` | `TagDeleteRequest`（`expected_row_version`） | `TagMutationDto`（`mutation_public_id` + source undo token） | Session Token，owner/member 写权限 | `backend/tests/test_tag_management.py`, `backend/tests/test_tag_undo.py` | ADR-0043 软删 + 同事务 undo 快照（契约 1） |
@@ -1689,7 +1689,7 @@ Idempotency-Key: <uuid-v4>
 }
 ```
 
-响应包含 `preview_token`。真正写入已确认历史账单时必须带回同一个 token：
+响应包含 `preview_token`。真正写入已确认历史账单时必须带回同一个 token，并携带本次提交的 `Idempotency-Key`：
 
 ```json
 {
@@ -1698,7 +1698,9 @@ Idempotency-Key: <uuid-v4>
 }
 ```
 
-如果规则、别名或候选账单在预览后发生变化，确认写入返回：
+应用与首次回执在同一数据库事务内提交。回执包含 `command_key` 和 `application_public_id`；没有改写时仍保留回执，批次 ID 为 `null`。接受后丢回复，重放原 key、token 和 `max_scan` 返回首次结果，不再依据今天的候选重算或覆盖后来事实；同 key 异意图返回 `422 idempotency_key_reused`。当前账本权限仍在读取回执前执行。`limit` 仅控制预览样本，不改变命令身份。
+
+尚未接受的提交中，如果规则、别名或候选账单在预览后发生变化，确认写入返回：
 
 ```json
 {
@@ -1707,7 +1709,7 @@ Idempotency-Key: <uuid-v4>
 }
 ```
 
-`apply-pending` 与 `apply-confirmed` 默认只扫描前 500 条仍可自动填充分类的账单，最大 1000。响应中的 `scan_limit_reached=true` 表示还有剩余候选账单，需要再次预览并应用。
+`apply-pending` 使用同样的原 key、预览与首次回执规则。两条应用路径默认只扫描前 500 条仍可自动填充分类的账单，最大 1000。响应中的 `scan_limit_reached=true` 表示还有剩余候选账单，需要明确重新预览并准备新的提交。原回执随既有可移植出口的 `accepted_operations` 保留。
 
 ### GET /api/rules/applications
 

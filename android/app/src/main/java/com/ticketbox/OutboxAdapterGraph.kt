@@ -78,6 +78,12 @@ internal class OutboxAdapterGraph {
     val categoryRuleReceiptAdapter: JsonAdapter<com.ticketbox.data.remote.dto.CategoryRuleDto> = lazyJsonAdapter {
         moshi.adapter(com.ticketbox.data.remote.dto.CategoryRuleDto::class.java)
     }
+    val ruleApplicationAdapter: JsonAdapter<com.ticketbox.data.repository.RuleApplicationPayload> = lazyJsonAdapter {
+        moshi.adapter(com.ticketbox.data.repository.RuleApplicationPayload::class.java)
+    }
+    val ruleApplicationReceiptAdapter: JsonAdapter<com.ticketbox.data.remote.dto.RuleApplyConfirmedResponseDto> = lazyJsonAdapter {
+        moshi.adapter(com.ticketbox.data.remote.dto.RuleApplyConfirmedResponseDto::class.java)
+    }
 
     val categoryRuleUpdateAdapter: JsonAdapter<CategoryRuleUpdateRequest> = lazyJsonAdapter {
         moshi.adapter(CategoryRuleUpdateRequest::class.java)

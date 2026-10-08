@@ -34,6 +34,7 @@ from app.routes.web_common import (
     preserve_original_ledger_form,
     templates,
 )
+from app.routes.web_rule_application_forms import RuleApplicationForm, render_rule_application, submit_rule_application
 from app.routes.web_rule_edit import render_rule_definition
 from app.routes.web_rule_forms import (
     RuleDefinitionForm,
@@ -43,18 +44,13 @@ from app.routes.web_rule_forms import (
 )
 from app.schemas import CategoryRuleCreateRequest, CategoryRuleUpdateRequest
 from app.services.classify_service import (
-    apply_rules_to_confirmed,
-    apply_rules_to_pending,
     delete_rule,
     find_rule_for_tenant,
     list_rule_applications,
     list_rules,
-    preview_apply_rules_to_confirmed,
-    preview_apply_rules_to_pending,
     preview_rule_for_pending,
     rollback_rule_application,
     undo_delete_rule,
-    validate_rule_application_preview,
 )
 from app.services.rule_application_service import rule_application_change_counts
 from app.services.rule_command_service import create_rule_idempotently, update_rule_idempotently
@@ -114,6 +110,10 @@ def _render_rules(
 ) -> HTMLResponse:
     if request.query_params.get("view") == "new":
         return render_rule_definition(request, db, options, selected_id)
+    if apply_preview or confirmed_preview or request.query_params.get("view") == "application":
+        return render_rule_application(request, db, options=options, selected_id=selected_id,
+            status="confirmed" if confirmed_preview or request.query_params.get("target") == "confirmed" else "pending",
+            preview=apply_preview or confirmed_preview)
     rules = list_rules(db, selected_id)
     history_view = request.query_params.get("view") == "history"
     rule_applications = list_rule_applications(db, tenant_id=selected_id, limit=100 if history_view else 8)
@@ -123,20 +123,6 @@ def _render_rules(
         preview_keyword=preview_keyword,
         preview_category=preview_category,
     )
-    bulk_preview = None
-    if apply_preview:
-        bulk_preview = preview_apply_rules_to_pending(
-            db,
-            tenant_id=selected_id,
-            limit=20,
-        )
-    confirmed_bulk_preview = None
-    if confirmed_preview:
-        confirmed_bulk_preview = preview_apply_rules_to_confirmed(
-            db,
-            tenant_id=selected_id,
-            limit=20,
-        )
     ctx = _base_ctx(
         request, db=db, options=options, selected_ledger_id=selected_id,
     )
@@ -151,8 +137,6 @@ def _render_rules(
         ),
         preview=preview,
         preview_error=preview_error,
-        bulk_preview=bulk_preview,
-        confirmed_bulk_preview=confirmed_bulk_preview,
         preview_keyword=preview_keyword,
         preview_category=preview_category,
         flash_message=msg,
@@ -164,7 +148,7 @@ def _render_rules(
     )
     return templates.TemplateResponse(
         request=request,
-        name="rule_impact.html" if apply_preview or confirmed_preview else "rule_history.html" if history_view else "rules.html",
+        name="rule_history.html" if history_view else "rules.html",
         context=ctx,
         status_code=status_code,
     )
@@ -363,80 +347,22 @@ def web_rules_undo(
 @router.post("/rules/apply-pending", response_class=HTMLResponse)
 def web_rules_apply_pending(
     request: Request,
-    ledger_id: str = Form(""),
-    preview_confirmed: str = Form(""),
-    preview_token: str = Form(""),
+    form: Annotated[RuleApplicationForm, Form()],
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
-) -> RedirectResponse:
+) -> Response:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
-    _require_selected_ledger_write(options, selected_id)
-    if preview_confirmed != "yes":
-        msg = "请先预览影响范围，再确认应用规则。"
-        return _web_redirect("/web/rules", selected_id, apply_preview="1", msg=msg)
-    try:
-        current_preview = validate_rule_application_preview(
-            db,
-            tenant_id=selected_id,
-            status="pending",
-            preview_token=preview_token,
-        )
-    except AppError:
-        current_preview = None
-    if not preview_token or not current_preview or current_preview["preview_token"] != preview_token:
-        msg = "待确认账单预览已过期，请重新预览后再确认应用。"
-        return _web_redirect("/web/rules", selected_id, apply_preview="1", msg=msg)
-    actor_account_id, actor_device_id = resolve_web_actor(db, request, selected_id)
-    try:
-        pending_scanned, changed_count, limited = apply_rules_to_pending(
-            db, tenant_id=selected_id, preview_token=preview_token,
-            actor_account_id=actor_account_id, actor_device_id=actor_device_id,
-        )
-    except AppError as exc:
-        db.rollback()
-        return _web_redirect("/web/rules", selected_id, apply_preview="1", msg=exc.message)
-    suffix = " 还有未扫描账单，可再次预览并应用。" if limited else ""
-    msg = f"扫描了 {pending_scanned} 条待确认；改写了 {changed_count} 条分类。{suffix}"
-    return _web_redirect("/web/rules", selected_id, msg=msg)
+    selected_id = _resolve_selected_ledger_id(db, form.ledger_id or None, options, request=request)
+    return submit_rule_application(request, db, options=options, selected_id=selected_id, status="pending", form=form)
 
 
 @router.post("/rules/apply-confirmed", response_class=HTMLResponse)
 def web_rules_apply_confirmed(
     request: Request,
-    ledger_id: str = Form(""),
-    preview_confirmed: str = Form(""),
-    preview_token: str = Form(""),
+    form: Annotated[RuleApplicationForm, Form()],
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
-) -> RedirectResponse:
+) -> Response:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
-    _require_selected_ledger_write(options, selected_id)
-    if preview_confirmed != "yes":
-        msg = "历史账单修改必须先预览影响范围，再确认应用。"
-        return _web_redirect("/web/rules", selected_id, confirmed_preview="1", msg=msg)
-    try:
-        current_preview = validate_rule_application_preview(
-            db,
-            tenant_id=selected_id,
-            status="confirmed",
-            preview_token=preview_token,
-        )
-    except AppError:
-        current_preview = None
-    if not preview_token or not current_preview or current_preview["preview_token"] != preview_token:
-        msg = "历史账单预览已过期，请重新预览后再确认应用。"
-        return _web_redirect("/web/rules", selected_id, confirmed_preview="1", msg=msg)
-    actor_account_id, actor_device_id = resolve_web_actor(db, request, selected_id)
-    try:
-        confirmed_scanned, changed_count, limited = apply_rules_to_confirmed(
-            db, tenant_id=selected_id, preview_token=preview_token,
-            actor_account_id=actor_account_id, actor_device_id=actor_device_id,
-        )
-    except AppError as exc:
-        db.rollback()
-        return _web_redirect("/web/rules", selected_id, confirmed_preview="1", msg=exc.message)
-    suffix = " 还有未扫描账单，可再次预览并应用。" if limited else ""
-    msg = f"扫描了 {confirmed_scanned} 条已确认；改写了 {changed_count} 条分类。{suffix}"
-    return _web_redirect("/web/rules", selected_id, msg=msg)
+    selected_id = _resolve_selected_ledger_id(db, form.ledger_id or None, options, request=request)
+    return submit_rule_application(request, db, options=options, selected_id=selected_id, status="confirmed", form=form)

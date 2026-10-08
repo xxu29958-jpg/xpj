@@ -60,15 +60,25 @@ private fun SyncStatusCorrectionRow(pending: PendingExpenseCorrection, state: Ou
 @Composable
 private fun SyncStatusAcceptedRow(row: OutboxRow, state: OutboxStatusUiState, actions: SyncStatusActions) {
     val budget = state.budgetSaves[row.id]
+    val application = state.ruleApplications[row.id]
     SettingsDetailRow(
         title = stringResource(syncStatusMutationLabelResources.getValue(row.type)),
-        subtitle = stringResource(if (budget != null) R.string.budget_saved_read_pending else R.string.sync_status_refresh_required),
+        subtitle = stringResource(when {
+            application != null -> R.string.rule_application_refresh
+            budget != null -> R.string.budget_saved_read_pending
+            else -> R.string.sync_status_refresh_required
+        }),
         icon = R.drawable.ic_lucide_rotate_ccw,
     ) {
         budget?.let { com.ticketbox.ui.screens.budget.BudgetSaveIntentSummary(it) }
+        application?.let { com.ticketbox.ui.screens.settings.categoryrules.RuleApplicationSubmissionSummary(it) }
         AppOutlinedButton(onClick = { actions.onRefreshAcceptedResult(row) },
             options = AppOutlinedButtonOptions(enabled = state.busyRowId == null)) {
-            Text(stringResource(if (budget != null) R.string.budget_read_recover else R.string.sync_status_refresh_expense))
+            Text(stringResource(when {
+                application != null -> R.string.rule_application_refresh_action
+                budget != null -> R.string.budget_read_recover
+                else -> R.string.sync_status_refresh_expense
+            }))
         }
         budget?.intent?.takeIf { budget.hasSupportedIntent }?.let { intent ->
             TextButton(onClick = { actions.onOpenBudget(intent.month) }) {
