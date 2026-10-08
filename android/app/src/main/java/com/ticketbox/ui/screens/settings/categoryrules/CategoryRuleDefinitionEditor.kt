@@ -59,6 +59,6 @@ internal fun CategoryRuleDefinitionEditor(
                     onFailure = { localMessage = UiText.res((it as? CategoryRuleInputError)?.resourceId
                         ?: R.string.category_rule_validation_fields) })
             },
-            onCancel = close)
+            onCancel = actions.onClose)
     }
 }
