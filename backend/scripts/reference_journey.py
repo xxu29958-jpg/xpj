@@ -59,16 +59,24 @@ class ReferenceJourney:
                     _, y1, right, y2 = self.native.bounds(text)
                     if right <= left and top <= (y1 + y2) // 2 <= bottom:
                         matches.append(button)
-            scrollable = [node for node in root.iter("node") if node.get("scrollable") == "true"]
-            if not matches and len(labels) == 1 and scrollable and scrolls < 2:
-                _, top, _, bottom = self.native.bounds(max(scrollable, key=lambda node: self.native.bounds(node)[3]))
-                if self.native.bounds(labels[0])[1] > top + (bottom - top) * 3 // 4:
-                    # The label's first pixels can be visible while its adjacent menu is still below the viewport.
-                    self.native.scroll_viewport(list(root.iter("node")), toward_start=False)
-                    scrolls += 1
+            if not matches:
+                scrolls = self._reveal_row_menu(root, labels, scrolls)
             return matches if len(matches) == 1 else None
         button = wait_for(locate, f"The visible {action} beside {label} cannot be identified")[0]
         self.native.tap(button)
+
+    def _reveal_row_menu(self, root, labels, scrolls):
+        if len(labels) != 1 or scrolls >= 2:
+            return scrolls
+        scrollable = [node for node in root.iter("node") if node.get("scrollable") == "true"]
+        if not scrollable:
+            return scrolls
+        _, top, _, bottom = self.native.bounds(max(scrollable, key=lambda node: self.native.bounds(node)[3]))
+        if self.native.bounds(labels[0])[1] <= top + (bottom - top) * 3 // 4:
+            return scrolls
+        # The label's first pixels can be visible while its adjacent menu is still below the viewport.
+        self.native.scroll_viewport(list(root.iter("node")), toward_start=False)
+        return scrolls + 1
 
     def tag(self, name):
         return next(row for row in self.facts()["tags"] if row["name"] == name)
