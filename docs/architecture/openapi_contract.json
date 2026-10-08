@@ -21625,6 +21625,13 @@
       },
       "RuleApplicationBatchResponse": {
         "properties": {
+          "change_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Change Counts",
+            "type": "object"
+          },
           "changed_count": {
             "title": "Changed Count",
             "type": "integer"
@@ -21669,6 +21676,7 @@
           "status",
           "pending_scanned",
           "changed_count",
+          "change_counts",
           "created_at"
         ],
         "title": "RuleApplicationBatchResponse",

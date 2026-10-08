@@ -2,6 +2,7 @@ package com.ticketbox.data.remote.dto
 
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import com.ticketbox.data.repository.toDomain
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -33,11 +34,12 @@ class CategoryRuleDtoContractTest {
                   "items": [
                     {
                       "public_id": "batch-1",
-                      "status": "applied",
+                      "status": "rollback_partial",
                       "pending_scanned": 20,
                       "changed_count": 3,
                       "created_at": "2026-05-13T00:00:00Z",
-                      "rolled_back_at": null
+                      "rolled_back_at": "2026-05-14T00:00:00Z",
+                      "change_counts": {"rolled_back": 2, "skipped": 1}
                     }
                   ]
                 }
@@ -49,6 +51,10 @@ class CategoryRuleDtoContractTest {
         assertEquals("batch-1", item.publicId)
         assertEquals(20, item.pendingScanned)
         assertEquals(3, item.changedCount)
+        assertEquals(mapOf("rolled_back" to 2, "skipped" to 1), item.toDomain().changeCounts)
+        val legacy = requireNotNull(moshi.adapter(RuleApplicationBatchDto::class.java).fromJson(
+            """{"public_id":"old","status":"rolled_back","pending_scanned":3,"changed_count":3,"created_at":"2026-05-13T00:00:00Z"}"""))
+        assertEquals(null, legacy.toDomain().changeCounts, "An old response must not invent zero outcomes")
     }
 
     @Test

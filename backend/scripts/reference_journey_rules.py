@@ -85,7 +85,7 @@ def preview_apply_and_rollback(j, initial_categories):
     assert not j.facts()["applications"] and not j.facts()["rule_changes"], "Preview wrote an application"
     native.capture("reference-rule-native-preview")
     j.goto("/web/rules")
-    page.get_by_role("button", name="预览已确认影响", exact=True).click()
+    page.get_by_role("link", name="预览已确认账单").click()
     assert [row["category"] for row in j.facts()["expenses"]] == initial_categories
     j.capture("rule-web-preview")
     j.confirm(j.form("/web/rules/apply-confirmed"))
@@ -105,7 +105,9 @@ def preview_apply_and_rollback(j, initial_categories):
     native.reveal_any("部分回退", max_scrolls=16)
     native.capture("reference-rule-partial-rollback")
     j.goto("/web/rules")
-    assert "部分回滚" in page.inner_text("main")
+    page.get_by_role("link", name="规则应用记录").click()
+    assert "部分回退" in page.inner_text("main")
+    assert "已恢复 1 笔 · 跳过 1 笔" in page.inner_text("main")
     j.capture("rule-partial-rollback-from-native")
 
 
@@ -134,6 +136,7 @@ def apply_and_rollback_from_native(j):
 
 def restore_rule_and_category(j, category, rule):
     native, page = j.native, j.page
+    j.goto("/web/rules")
     j.confirm(j.form(f'/web/rules/{rule["id"]}/delete'))
     j.expect(lambda state: any(row["id"] == rule["id"] and row["deleted"] for row in state["rules"]),
              "The Web rule delete did not commit")
@@ -153,4 +156,7 @@ def restore_rule_and_category(j, category, rule):
     assert not j.rule(rule["id"])["deleted"]
     assert not next(row for row in j.facts()["categories"] if row["id"] == category["id"])["deleted"]
     j.goto("/web/rules")
-    assert "RefShop" in page.inner_text("main") and "部分回滚" in page.inner_text("main")
+    assert "RefShop" in page.inner_text("main")
+    page.get_by_role("link", name="规则应用记录").click()
+    assert "部分回退" in page.inner_text("main")
+    assert "已恢复 1 笔 · 跳过 1 笔" in page.inner_text("main")

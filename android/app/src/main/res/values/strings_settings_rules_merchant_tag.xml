@@ -81,9 +81,12 @@
     <string name="category_rule_apply_history_status_partial">部分回退</string>
     <string name="category_rule_apply_history_status_skipped">已跳过回退</string>
     <string name="category_rule_apply_history_status_applied">已应用</string>
-    <string name="category_rule_apply_history_changed_count">%1$d 笔</string>
+    <string name="category_rule_apply_history_changed_count">当时更新 %1$d 笔</string>
+    <string name="category_rule_apply_history_outcomes">已恢复 %1$d 笔 · 跳过 %2$d 笔</string>
+    <string name="category_rule_apply_history_outcomes_unknown">此服务端未提供回退明细。</string>
+    <string name="category_rule_apply_history_outcome_hint">回退数量记录首次处理结果，不代表账单现在的分类。</string>
     <string name="category_rule_apply_history_scanned">扫描 %1$d 笔 · %2$s</string>
-    <string name="category_rule_apply_history_rolled_back_at">回退时间：%1$s</string>
+    <string name="category_rule_apply_history_rolled_back_at">首次回退：%1$s</string>
     <string name="category_rule_apply_history_rollback_button">回退</string>
 
     <!-- CategoryRuleDialogs（categoryrules/）：删除/回退对话框 -->

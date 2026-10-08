@@ -130,7 +130,7 @@ def test_web_rule_create_error_keeps_the_complete_draft(web_client: TestClient) 
 
     assert response.status_code == 422
     assert 'data-body-stack="product"' in response.text
-    assert 'id="rule-create-error"' in response.text
+    assert 'data-rule-definition' in response.text
     assert 'role="alert"' in response.text
     assert "金额下限不能大于上限" in response.text
     for field in (
@@ -424,11 +424,12 @@ def test_web_rules_apply_pending_audit_and_rollback_integration(
     detail = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
     assert "餐饮" in detail.text
 
-    page = web_client.get("/web/rules?ledger_id=owner")
+    directory = web_client.get("/web/rules?ledger_id=owner")
+    assert 'view=history' in directory.text
+    page = web_client.get("/web/rules?ledger_id=owner&view=history")
     assert page.status_code == 200
-    assert "规则应用记录" in page.text
     assert "已应用" in page.text
-    assert "回滚" in page.text
+    assert "回退这次应用" in page.text
     batch_match = re.search(r"/web/rules/applications/([^/]+)/rollback", page.text)
     assert batch_match, page.text[:1000]
 
@@ -438,6 +439,10 @@ def test_web_rules_apply_pending_audit_and_rollback_integration(
         follow_redirects=False,
     )
     assert rolled_back.status_code in {303, 307}
+    assert "view=history" in rolled_back.headers["location"]
+    history = web_client.get(rolled_back.headers["location"])
+    assert "已恢复 1 笔 · 跳过 0 笔" in history.text
+    assert "首次回退于" in history.text
     restored = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
     assert "其他" in restored.text
 

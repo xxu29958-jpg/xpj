@@ -95,6 +95,8 @@ data class RuleApplicationBatchDto(
     val createdAt: String,
     @param:Json(name = "rolled_back_at")
     val rolledBackAt: String? = null,
+    @param:Json(name = "change_counts")
+    val changeCounts: Map<String, Int>? = null,
 )
 
 data class RuleApplicationListDto(

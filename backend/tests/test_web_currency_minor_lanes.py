@@ -299,11 +299,11 @@ def test_zero_fraction_no_js_forms_and_dashboard_share_input_contract(
     assert 'name="target_amount_yuan" value="" inputmode="numeric"' in goals.text
     assert "目标金额（JPY，仅支持整数）" in goals.text
 
-    rules = web_client.get("/web/rules?ledger_id=owner")
+    rules = web_client.get("/web/rules?ledger_id=owner&view=new")
     assert rules.status_code == 200, rules.text
     assert 'type="text" name="amount_min_yuan" inputmode="numeric"' in rules.text
     assert 'name="home_currency_code" value="JPY"' in rules.text
-    assert "金额下限（JPY，可选）" in rules.text
+    assert "金额下限（JPY，可选）" in re.sub(r"<[^>]+>", "", rules.text)
 
 
 @pytest.mark.currency_binding_unbound

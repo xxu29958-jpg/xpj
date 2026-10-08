@@ -56,6 +56,7 @@ from app.services.classify_service import (
     undo_delete_rule,
     validate_rule_application_preview,
 )
+from app.services.rule_application_service import rule_application_change_counts
 from app.services.rule_command_service import create_rule_idempotently, update_rule_idempotently
 
 if TYPE_CHECKING:
@@ -114,7 +115,8 @@ def _render_rules(
     if request.query_params.get("view") == "new":
         return render_rule_definition(request, db, options, selected_id)
     rules = list_rules(db, selected_id)
-    rule_applications = list_rule_applications(db, tenant_id=selected_id, limit=8)
+    history_view = request.query_params.get("view") == "history"
+    rule_applications = list_rule_applications(db, tenant_id=selected_id, limit=100 if history_view else 8)
     preview, preview_error = _rule_preview(
         db,
         selected_id=selected_id,
@@ -144,6 +146,9 @@ def _render_rules(
         rule_draft_scope=browser_draft_scope(db, request),
         rules=rules,
         rule_applications=rule_applications,
+        rule_application_outcomes=rule_application_change_counts(
+            db, tenant_id=selected_id, batch_ids=[batch.id for batch in rule_applications],
+        ),
         preview=preview,
         preview_error=preview_error,
         bulk_preview=bulk_preview,
@@ -159,7 +164,7 @@ def _render_rules(
     )
     return templates.TemplateResponse(
         request=request,
-        name="rules.html",
+        name="rule_impact.html" if apply_preview or confirmed_preview else "rule_history.html" if history_view else "rules.html",
         context=ctx,
         status_code=status_code,
     )
@@ -247,10 +252,11 @@ def web_rules_application_rollback(
             actor_account_id=actor_account_id,
             actor_device_id=actor_device_id,
         )
-        msg = f"已回滚规则应用：恢复 {changed} 条，跳过 {skipped} 条。"
+        msg = f"本批次回退结果：恢复 {changed} 条，跳过 {skipped} 条。"
     except AppError as exc:
-        msg = "回滚失败：" + (exc.message or "规则应用批次不存在。")
-    return _web_redirect("/web/rules", selected_id, msg=msg)
+        db.rollback()
+        msg = "回退失败：" + (exc.message or "规则应用批次不存在。")
+    return _web_redirect("/web/rules", selected_id, view="history", msg=msg)
 
 
 def _get_rule(db: Session, rule_id: int, tenant_id: str) -> CategoryRule | None:
@@ -381,9 +387,11 @@ def web_rules_apply_pending(
     if not preview_token or not current_preview or current_preview["preview_token"] != preview_token:
         msg = "待确认账单预览已过期，请重新预览后再确认应用。"
         return _web_redirect("/web/rules", selected_id, apply_preview="1", msg=msg)
+    actor_account_id, actor_device_id = resolve_web_actor(db, request, selected_id)
     try:
         pending_scanned, changed_count, limited = apply_rules_to_pending(
             db, tenant_id=selected_id, preview_token=preview_token,
+            actor_account_id=actor_account_id, actor_device_id=actor_device_id,
         )
     except AppError as exc:
         db.rollback()

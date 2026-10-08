@@ -302,6 +302,7 @@ class RuleApplicationBatchResponse(BaseModel):
     status: str
     pending_scanned: int
     changed_count: int
+    change_counts: dict[str, int]
     created_at: datetime
     rolled_back_at: datetime | None = None
 

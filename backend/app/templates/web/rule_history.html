@@ -1,0 +1,40 @@
+{% extends 'base.html' %}
+{% from '_history_time.html' import saved_time %}
+{% set page_title = '规则应用记录' %}
+{% set product_body_domain = 'transactions' %}
+{% set page_surface = 'tertiary' %}
+{% set task_return_href = '/web/rules' ~ q %}
+{% set task_return_label = '分类规则' %}
+{% block title %}规则应用记录 · 小票夹{% endblock %}
+{% block content %}
+<div class="library-workspace stack">
+<header class="product-page-header"><div class="product-page-heading"><h1 class="page-title">每次修改都有记录</h1><p class="product-page-summary">回退只恢复仍符合原变更的账单，后来修改过的记录会跳过。</p></div></header>
+{% if flash_message %}<p class="product-feedback" role="status">{{ flash_message }}</p>{% endif %}
+{% if not can_write %}<p class="product-feedback">当前角色为只读，可以查看应用和回退记录。</p>{% endif %}
+<p class="meta">最近 {{ rule_applications|length }} 次应用，最多显示 100 次。回退数量记录首次处理结果，不代表账单现在的分类。</p>
+<div class="fact-entries">
+{% for batch in rule_applications %}
+{% set outcomes = rule_application_outcomes.get(batch.id, {}) %}
+<article class="rule-history-entry stack" aria-label="应用批次 {{ batch.public_id }}">
+  <div class="product-entry product-entry--static">
+    <span class="product-entry-icon product-entry-icon--lilac" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#history"/></svg></span>
+    <span class="product-entry-copy"><strong>{% if batch.status == 'rolled_back' %}已回退{% elif batch.status == 'rollback_partial' %}部分回退{% elif batch.status == 'rollback_skipped' %}已跳过回退{% elif batch.status == 'applied_confirmed' %}已应用到已确认账单{% else %}已应用到待确认账单{% endif %}</strong><span>当时更新 {{ batch.changed_count }} 笔 · 扫描 {{ batch.pending_scanned }} 笔</span></span>
+  </div>
+  <p class="meta">应用于 {{ saved_time(batch.created_at) }} · 批次 {{ batch.public_id[:8] }}</p>
+  {% if batch.rolled_back_at %}
+  <p><strong>已恢复 {{ outcomes.get('rolled_back', 0) }} 笔 · 跳过 {{ outcomes.get('skipped', 0) }} 笔</strong></p>
+  <p class="meta">首次回退于 {{ saved_time(batch.rolled_back_at) }}。跳过的记录保持当时事实，不会强行恢复。</p>
+  {% elif can_write %}
+  <form method="post" action="/web/rules/applications/{{ batch.public_id }}/rollback" data-confirm="回退这次规则应用？只恢复仍符合原变更的账单，后来修改过的会跳过。">
+    {{ csrf_field|safe }}<input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+    <button type="submit" class="product-button product-button--quiet">回退这次应用</button>
+  </form>
+  {% endif %}
+</article>
+{% else %}
+<div class="product-state"><div class="product-state-title">还没有规则应用记录</div><div class="product-state-body">先预览影响，再确认应用；只有实际更新账单的操作才会形成批次。</div></div>
+{% endfor %}
+</div>
+<a class="product-button product-button--quiet" href="{{ task_return_href }}">返回规则列表</a>
+</div>
+{% endblock %}

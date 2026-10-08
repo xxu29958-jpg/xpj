@@ -1,0 +1,40 @@
+{% extends 'base.html' %}
+{% set page_title = '分类规则' %}
+{% set product_body_domain = 'transactions' %}
+{% set page_surface = 'tertiary' %}
+{% set task_return_href = '/web/rules' ~ q %}
+{% set task_return_label = '分类规则' %}
+{% set result = confirmed_bulk_preview or bulk_preview %}
+{% set confirmed = confirmed_bulk_preview is not none %}
+{% set target = '已确认' if confirmed else '待确认' %}
+{% block title %}规则影响预览 · 小票夹{% endblock %}
+{% block content %}
+<div class="library-workspace stack">
+<header class="product-page-header"><div class="product-page-heading"><h1 class="page-title">这次会改哪些账单</h1><p class="product-page-summary">已扫描 {{ result.confirmed_scanned if confirmed else result.pending_scanned }} 笔{{ target }}账单。现在是预览，尚未应用。</p></div></header>
+{% if flash_message %}<p class="product-feedback" role="status">{{ flash_message }}</p>{% endif %}
+<section class="rule-impact-total" aria-label="预览影响">
+  <span>将改写分类</span><strong>{{ result.changed_count }} 笔</strong><span>仅更新仍为「其他／未分类」的{{ target }}账单{% if not confirmed %}，不会自动确认入账{% endif %}。</span>
+</section>
+<div class="fact-entries">
+<div class="product-entry product-entry--static"><span class="product-entry-icon product-entry-icon--apricot" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#shield-check"/></svg></span><span class="product-entry-copy"><strong>保留已有分类</strong><span>{{ result.skipped_non_default_category }} 笔分类不覆盖；这些记录未纳入待更新扫描。</span></span></div>
+<div class="product-entry product-entry--static"><span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#check"/></svg></span><span class="product-entry-copy"><strong>扫描后无需改写</strong><span>未命中 {{ result.no_match_count }} 笔 · 分类不变 {{ result.unchanged_count }} 笔</span></span></div>
+{% if result.unavailable_count %}<div class="product-feedback product-feedback--warning" role="status">{{ result.unavailable_count }} 笔因币种元数据不可用而跳过（{{ result.missing_currency_codes|join('、') }}）。其它可用记录仍可应用。</div>{% endif %}
+</div>
+{% if result.scan_limit_reached %}<p class="product-feedback">本次只扫描最新的 {{ result.scan_limit }} 笔候选。还有未扫描账单，可在这次处理后再次预览。</p>{% endif %}
+{% if result['items'] %}
+<details class="fact-disclosure">
+  <summary class="product-entry"><span class="product-entry-icon product-entry-icon--lilac" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#search"/></svg></span><span class="product-entry-copy"><strong>查看 {{ result['items']|length }} 笔改写样本</strong><span>完整影响数量以上方预览为准。</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-down"/></svg></summary>
+  {% for item in result['items'] %}<div class="product-entry product-entry--static"><span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#tag"/></svg></span><span class="product-entry-copy"><strong>{{ item.merchant or '未填写商家' }}</strong><span>{{ item.current_category or '未分类' }} → {{ item.suggested_category }} · 规则「{{ item.rule_keyword }}」</span><span>账单 #{{ item.id }}</span></span></div>{% endfor %}
+</details>
+{% else %}<p class="product-feedback">本次没有需要改写的{{ target }}账单。</p>{% endif %}
+<div class="product-entry product-entry--static"><span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#info"/></svg></span><span class="product-entry-copy"><strong>修改会留在历史里</strong><span>确认时会再次核对预览；后来的人工更正不会被本批次回退覆盖。</span></span></div>
+{% if can_write and result.changed_count > 0 %}
+<form method="post" action="/web/rules/apply-{{ 'confirmed' if confirmed else 'pending' }}" class="stack" data-confirm="确认将规则应用到这次预览的{{ target }}账单？">
+  {{ csrf_field|safe }}<input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}"><input type="hidden" name="preview_confirmed" value="yes"><input type="hidden" name="preview_token" value="{{ result.preview_token }}">
+  <button type="submit" class="product-button product-button--primary">确认应用到{{ target }} · {{ result.changed_count }} 笔 <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-right"/></svg></button>
+</form>
+{% elif not can_write %}<p class="product-feedback">当前角色为只读，可预览影响，不能应用规则。</p>{% endif %}
+<a class="product-button product-button--quiet" href="/web/rules{{ q }}&amp;{{ 'confirmed_preview' if confirmed else 'apply_preview' }}=1">重新预览</a>
+<a class="product-button product-button--quiet" href="/web/rules{{ q }}&amp;view=history">查看规则应用记录</a>
+</div>
+{% endblock %}

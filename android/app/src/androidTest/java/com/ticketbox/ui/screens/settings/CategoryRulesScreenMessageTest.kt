@@ -3,9 +3,13 @@ package com.ticketbox.ui.screens.settings
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performScrollTo
+import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
+import com.ticketbox.domain.model.RuleApplicationBatch
+import com.ticketbox.ui.saveConsumerArtPreview
 import com.ticketbox.ui.theme.TicketboxTheme
 import org.junit.Rule
 import org.junit.Test
@@ -40,18 +44,32 @@ class CategoryRulesScreenMessageTest {
         composeRule.onNodeWithText("规则保存失败").assertDoesNotExist()
     }
 
-    private fun setScreenContent(message: UiText?) {
+    @Test
+    fun historySeparatesOriginalUpdatesFromRetainedRollbackCounts() {
+        val original = RuleApplicationBatch("batch-first", "rollback_partial", 7, 3,
+            "2026-10-07T10:00:00Z", "2026-10-07T11:00:00Z", mapOf("rolled_back" to 2, "skipped" to 1))
+        setScreenContent(null, listOf(original, original.copy(publicId = "legacy", changeCounts = null)))
+        composeRule.onNodeWithText("已恢复 2 笔 · 跳过 1 笔").performScrollTo().assertIsDisplayed()
+        composeRule.waitForIdle()
+        InstrumentationRegistry.getInstrumentation().uiAutomation.waitForIdle(250, 5_000)
+        saveConsumerArtPreview("rule-history-outcomes", requireNotNull(
+            InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        composeRule.onNodeWithText("此服务端未提供回退明细。").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("回退", substring = false).assertDoesNotExist()
+    }
+
+    private fun setScreenContent(message: UiText?, history: List<RuleApplicationBatch> = emptyList()) {
         composeRule.setContent {
             TicketboxTheme(skin = AppSkin.Default) {
                 CategoryRulesScreen(
-                    state = categoryRulesScreenWithHeaderMessage(message),
+                    state = categoryRulesScreenWithHeaderMessage(message, history),
                     actions = categoryRulesActionsUnusedByMessageSlot(),
                 )
             }
         }
     }
 
-    private fun categoryRulesScreenWithHeaderMessage(message: UiText?): CategoryRulesScreenState =
+    private fun categoryRulesScreenWithHeaderMessage(message: UiText?, history: List<RuleApplicationBatch>): CategoryRulesScreenState =
         CategoryRulesScreenState(
             rules = CategoryRulesRuleListState(
                 rules = emptyList(),
@@ -66,7 +84,7 @@ class CategoryRulesScreenMessageTest {
                 messageTone = MessageTone.Danger,
             ),
             applications = CategoryRulesApplicationState(
-                history = emptyList(),
+                history = history,
                 loading = false,
                 confirmedPreview = null,
             ),

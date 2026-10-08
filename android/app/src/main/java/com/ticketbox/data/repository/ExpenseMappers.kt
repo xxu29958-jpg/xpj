@@ -554,6 +554,7 @@ fun RuleApplicationBatchDto.toDomain(): RuleApplicationBatch = RuleApplicationBa
     changedCount = changedCount,
     createdAt = createdAt,
     rolledBackAt = rolledBackAt,
+    changeCounts = changeCounts,
 )
 
 fun RuleApplicationRollbackDto.toDomain(): RuleApplicationRollback = RuleApplicationRollback(

@@ -44,6 +44,7 @@ from app.services.idempotency import (
     mark_idempotency_succeeded,
 )
 from app.services.permission_service import require_write_expense
+from app.services.rule_application_service import rule_application_change_counts
 from app.services.rule_command_service import create_rule_idempotently, update_rule_idempotently
 from app.tenants import AuthContext
 
@@ -201,7 +202,12 @@ def get_rule_applications(
     db: Session = Depends(get_db),
 ) -> RuleApplicationListResponse:
     batches = list_rule_applications(db, tenant_id=auth.tenant_id, limit=limit)
-    return RuleApplicationListResponse(items=[RuleApplicationBatchResponse.model_validate(batch) for batch in batches])
+    outcomes = rule_application_change_counts(db, tenant_id=auth.tenant_id, batch_ids=[batch.id for batch in batches])
+    return RuleApplicationListResponse(items=[RuleApplicationBatchResponse(
+        public_id=batch.public_id, status=batch.status, pending_scanned=batch.pending_scanned,
+        changed_count=batch.changed_count, change_counts=outcomes.get(batch.id, {}),
+        created_at=batch.created_at, rolled_back_at=batch.rolled_back_at,
+    ) for batch in batches])
 
 
 @router.post(

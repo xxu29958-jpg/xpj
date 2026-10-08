@@ -431,6 +431,7 @@ data class RuleApplicationBatch(
     val changedCount: Int,
     val createdAt: String,
     val rolledBackAt: String?,
+    val changeCounts: Map<String, Int>? = null,
 ) {
     val isRolledBack: Boolean = status == "rolled_back" || rolledBackAt != null
 }

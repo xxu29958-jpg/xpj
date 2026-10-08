@@ -162,7 +162,9 @@ def test_viewer_connects_and_reads_but_native_web_write_is_denied(
         follow_redirects=False,
     )
     assert denied.status_code == 403, denied.text
-    assert denied.json()["error"] == "permission_denied"
+    assert 'role="alert"' in denied.text
+    assert '当前角色为只读' in denied.text
+    assert 'value="不应写入"' in denied.text
     with SessionLocal() as db:
         assert db.scalar(
             select(CategoryRule.id)

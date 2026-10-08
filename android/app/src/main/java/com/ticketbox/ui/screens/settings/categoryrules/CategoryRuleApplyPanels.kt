@@ -2,7 +2,6 @@ package com.ticketbox.ui.screens.settings.categoryrules
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.HorizontalDivider
@@ -169,9 +168,9 @@ private fun RuleApplicationRow(
             .padding(vertical = AppSpacing.smallGap),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
     ) {
-            Row(
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
             ) {
                 Text(
                     text = stringResource(when {
@@ -197,10 +196,20 @@ private fun RuleApplicationRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             application.rolledBackAt?.let {
+                val outcomes = application.changeCounts
+                Text(
+                    text = if (outcomes == null) stringResource(R.string.category_rule_apply_history_outcomes_unknown)
+                    else stringResource(R.string.category_rule_apply_history_outcomes,
+                        outcomes["rolled_back"] ?: 0, outcomes["skipped"] ?: 0),
+                    style = MaterialTheme.typography.titleSmall,
+                )
                 Text(
                     text = stringResource(R.string.category_rule_apply_history_rolled_back_at, displayTime(it)),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                Text(stringResource(R.string.category_rule_apply_history_outcome_hint),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall)
             }
             if (!readOnly && !application.isRolledBack) {
                 AppSecondaryButton(

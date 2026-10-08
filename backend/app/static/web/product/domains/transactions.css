@@ -1574,3 +1574,8 @@
 .import-export-cover { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4); }
 .import-export-cover > div { flex: 1 1 12em; min-inline-size: 0; }
 .import-export-cover img { inline-size: 25%; block-size: auto; margin-inline-start: auto; }
+
+.rule-impact-total { display: grid; gap: var(--space-3); padding: var(--space-6); border-radius: var(--radius-lg); background: var(--brand-primary-bg); }
+.rule-impact-total strong { font-family: var(--font-numeric); font-size: var(--type-display-size); line-height: var(--type-display-line); }
+.rule-history-entry { padding-block: var(--space-5); border-block-end: 1px solid var(--border-card); overflow-wrap: anywhere; }
+.rule-history-entry p { margin: 0; }
