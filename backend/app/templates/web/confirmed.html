@@ -95,7 +95,7 @@
    ledger 与 month 或跨月 filter 上下文，回到第 1 页;
    不重建通用 query — Jinja 是 HTML escape 不是 URL encode, 且 msg/flash_type
    等过时反馈本就不该跨导航存活。 #}
-{% set _clear_href = '/web/confirmed?' ~ ({'ledger_id':selected_ledger_id, 'month':month, 'filter':filter, 'home_currency_code':home_currency_code, 'q':query_text, 'category':category}|urlencode) %}
+{% set _clear_href = '/web/confirmed?' ~ ({'ledger_id':selected_ledger_id, 'month':month, 'filter':filter, 'home_currency_code':home_currency_code, 'q':query_text, 'category':category}|dictsort|rejectattr('1', 'equalto', '')|list|urlencode) %}
 <div class="ledger-active-filter" role="status">
   <span class="product-status product-status--info">标签：{{ tag }}</span>
   <span class="ledger-active-filter-copy">当前只显示带这个标签的账单。</span>

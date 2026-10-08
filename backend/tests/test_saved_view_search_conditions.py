@@ -9,8 +9,9 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
-from sqlalchemy import JSON, Column, MetaData, Table, create_engine, select
+from sqlalchemy import JSON, Column, MetaData, Table, create_engine, event, select
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session
 
@@ -29,14 +30,26 @@ from app.models import (
     Tag,
 )
 from app.routes import web_saved_views
+from app.services import saved_view_service
 from app.services.expense_service import _query
 from app.services.idempotency import fingerprint_request
-from app.services.saved_view_service import create_view, resolve_view_query, update_view
+from app.services.saved_view_service import create_view, delete_view, resolve_view_query, update_view
 
 
 @pytest.fixture
 def saved_search(tmp_path, monkeypatch):
     engine = create_engine(f"sqlite:///{tmp_path / 'queries.sqlite'}")
+
+    @event.listens_for(engine, "connect")
+    def use_explicit_transactions(connection, record):
+        # Python 3.11 sqlite3 otherwise releases the first SAVEPOINT independently
+        # of the Session transaction, unlike the supported PostgreSQL runtime.
+        connection.isolation_level = None
+
+    @event.listens_for(engine, "begin")
+    def begin(connection):
+        connection.exec_driver_sql("BEGIN")
+
     for model in (Account, Ledger, LedgerMember, Tag, SavedView, ApiIdempotencyKey):
         model.__table__.create(engine)
     with Session(engine) as db:
@@ -81,6 +94,34 @@ def test_native_form_reopens_the_saved_keyword_and_category_after_database_reope
         "q": "便利店", "category": "购物"}
 
 
+def test_app_reads_the_same_web_saved_query_and_original_command_result(saved_search):
+    from app.auth import get_current_app_context, get_current_writer_context
+    from app.main import app as production_app
+    from app.routes import saved_views
+
+    client, engine = saved_search
+    assert any(getattr(route, "path", "") == "/api/saved-views" for route in production_app.routes)
+    client.app.include_router(saved_views.router)
+    auth = SimpleNamespace(tenant_id="owner", ledger_id="owner", account_id=1)
+    client.app.dependency_overrides[get_current_app_context] = lambda: auth
+    client.app.dependency_overrides[get_current_writer_context] = lambda: auth
+    assert client.post("/web/saved-views", data=_fields(), follow_redirects=False).status_code == 303
+    catalog = client.get("/api/saved-views")
+    assert catalog.status_code == 200, catalog.text
+    saved = catalog.json()["items"][0]
+    assert (saved["query_text"], saved["category"], saved["home_currency_code"]) == ("便利店", "购物", "JPY")
+    definition = {key: value for key, value in _fields().items() if key not in {"ledger_id", "idempotency_key"}}
+    command = {**definition, "expected_row_version": saved["row_version"], "query_text": "超市"}
+    route = f"/api/saved-views/{saved['public_id']}"
+    first = client.patch(route, json=command, headers={"Idempotency-Key": "app-edit"})
+    assert first.status_code == 200 and first.json()["query_text"] == "超市"
+    assert client.patch(route, json=command, headers={"Idempotency-Key": "app-edit"}).json() == first.json()
+    with Session(engine) as db:
+        assert resolve_view_query(db, tenant_id="owner", actor_account_id=1, public_id=saved["public_id"])["q"] == "超市"
+    auth.tenant_id = auth.ledger_id = "unavailable-ledger"
+    assert client.get("/api/saved-views").status_code == 404
+
+
 def test_original_saved_query_receipt_is_stable_after_a_later_edit(saved_search):
     client, engine = saved_search
     assert client.post("/web/saved-views", data=_fields(), follow_redirects=False).status_code == 303
@@ -89,6 +130,7 @@ def test_original_saved_query_receipt_is_stable_after_a_later_edit(saved_search)
         original = create_view(db, tenant_id="owner", actor_account_id=1,
             idempotency_key="original-query", **definition)
         changed = update_view(db, tenant_id="owner", actor_account_id=1,
+            idempotency_key="later-edit",
             public_id=original.public_id, expected_row_version=original.row_version,
             **{**definition, "query_text": "超市", "category": "餐饮"})
         replay = create_view(db, tenant_id="owner", actor_account_id=1,
@@ -122,6 +164,74 @@ def test_legacy_key_replays_the_original_receipt_without_new_empty_fields(saved_
     with Session(engine) as db:
         assert db.scalar(select(SavedView)) is None
         assert db.scalar(select(ApiIdempotencyKey)).response_body == original
+
+
+def test_original_web_edit_reply_survives_a_later_change(saved_search, monkeypatch):
+    client, engine = saved_search
+    monkeypatch.setattr(web_saved_views, "_render_views", lambda *args, **kwargs:
+        JSONResponse({"error": kwargs.get("error")}, status_code=kwargs.get("status_code", 200)))
+    assert client.post("/web/saved-views", data=_fields(), follow_redirects=False).status_code == 303
+    with Session(engine) as db:
+        saved = db.scalar(select(SavedView))
+        public_id = saved.public_id
+    fields = _fields(name="修改后的查询", idempotency_key="original-edit", expected_row_version="1")
+    route = f"/web/saved-views/{public_id}/rename"
+    first = client.post(route, data=fields, follow_redirects=False)
+    assert first.status_code == 303, first.text
+    with Session(engine) as db:
+        definition = {key: value for key, value in fields.items()
+            if key not in {"ledger_id", "idempotency_key", "expected_row_version"}}
+        update_view(db, tenant_id="owner", actor_account_id=1, public_id=public_id,
+            expected_row_version=2, idempotency_key="later-edit", **{**definition, "query_text": "后来人工修改"})
+    replay = client.post(route, data=fields, follow_redirects=False)
+    assert replay.status_code == 303, replay.text
+    with Session(engine) as db:
+        current = resolve_view_query(db, tenant_id="owner", actor_account_id=1, public_id=public_id)
+        assert current["q"] == "后来人工修改"
+        receipt = db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.idempotency_key == "original-edit"))
+        assert receipt.response_body["row_version"] == 2
+        assert receipt.response_body["query_text"] == "便利店"
+        db.scalar(select(LedgerMember)).role = "viewer"
+        db.commit()
+    assert client.post(route, data=fields, follow_redirects=False).status_code == 403
+
+
+def test_deleted_saved_query_returns_its_original_receipt_without_recreating_it(saved_search):
+    client, engine = saved_search
+    assert client.post("/web/saved-views", data=_fields(), follow_redirects=False).status_code == 303
+    with Session(engine) as db:
+        row = db.scalar(select(SavedView))
+        command = {"tenant_id": "owner", "actor_account_id": 1, "public_id": row.public_id,
+            "expected_row_version": row.row_version, "idempotency_key": "original-delete"}
+        original = delete_view(db, **command)
+    with Session(engine) as db:
+        assert delete_view(db, **command) == original
+        assert original.name == "每月日用" and db.scalar(select(SavedView)) is None
+        with pytest.raises(AppError) as mismatch:
+            delete_view(db, **{**command, "expected_row_version": 2})
+        assert mismatch.value.error == "idempotency_key_reused"
+
+
+def test_saved_query_change_and_receipt_roll_back_together(saved_search, monkeypatch):
+    client, engine = saved_search
+    assert client.post("/web/saved-views", data=_fields(), follow_redirects=False).status_code == 303
+    definition = {key: value for key, value in _fields().items() if key not in {"ledger_id", "idempotency_key"}}
+
+    def fail_receipt(*args, **kwargs):
+        raise RuntimeError("injected receipt failure")
+
+    monkeypatch.setattr(saved_view_service, "mark_idempotency_succeeded", fail_receipt)
+    with Session(engine) as db:
+        row = db.scalar(select(SavedView))
+        with pytest.raises(RuntimeError, match="injected receipt failure"):
+            update_view(db, tenant_id="owner", actor_account_id=1, public_id=row.public_id,
+                expected_row_version=row.row_version, idempotency_key="failed-edit",
+                **{**definition, "query_text": "不应保存"})
+        db.rollback()
+    with Session(engine) as db:
+        current = db.scalar(select(SavedView))
+        assert current.query_text == "便利店" and current.row_version == 1
+        assert db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.idempotency_key == "failed-edit")) is None
 
 
 def test_keyword_and_category_filter_before_paging_and_keep_matching_refund_events(saved_search, monkeypatch):

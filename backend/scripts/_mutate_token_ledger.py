@@ -413,6 +413,7 @@ ALLOWLIST: dict[str, Exempt] = {
     # Name uniqueness and the original actor/key receipt prevent replacement;
     # subsequent edits/deletes carry the existing SavedView row_version.
     "POST /web/saved-views": Exempt("create_row", "saved_views", ("saved_views", "api_idempotency_keys")),
+    "POST /api/saved-views": Exempt("create_row", "saved_views", ("saved_views", "api_idempotency_keys")),
     "POST /web/merchants/catalog/create": Exempt("create_row", "merchants", _MERCHANT_CATALOG),
     "POST /web/merchants/aliases/create": Exempt("create_row", "merchants", ("merchant_aliases",)),
     "POST /web/merchants/aliases/{public_id}/undo": Exempt(

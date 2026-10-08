@@ -38,6 +38,14 @@ class OpenApiContractGateTest {
 
     private val pairs = listOf(
         Pairing(ErrorDto::class, "ErrorResponse"),
+        Pairing(SavedViewDto::class, "SavedViewDetail"),
+        Pairing(SavedViewListDto::class, "SavedViewListResponse"),
+        Pairing(SavedViewDefinitionRequestDto::class, "SavedViewDefinitionRequest"),
+        Pairing(SavedViewUpdateRequestDto::class, "SavedViewUpdateRequest"),
+        Pairing(SavedViewDeleteRequestDto::class, "SavedViewDeleteRequest"),
+        Pairing(SavedViewDeletionReceiptDto::class, "SavedViewDeletionReceipt"),
+        Pairing(SavedViewResultsDto::class, "SavedViewResultsResponse"),
+        Pairing(SavedViewResultRowDto::class, "SavedViewResultRow"),
         Pairing(CategoryReferenceDto::class, "CategoryReferenceResponse"),
         Pairing(AuthCheckDto::class, "AuthCheckResponse"),
         Pairing(AccountProfileDto::class, "AccountProfileResponse"),

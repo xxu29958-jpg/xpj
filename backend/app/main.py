@@ -66,6 +66,7 @@ from app.routes import (
     repayment_drafts,
     reports,
     rules,
+    saved_views,
     settings,
     stats,
     tags,
@@ -370,6 +371,7 @@ app.include_router(debt_split_changes.router)
 app.include_router(repayment_drafts.router)
 app.include_router(dashboard.router)
 app.include_router(rules.router)
+app.include_router(saved_views.router)
 app.include_router(settings.router)
 app.include_router(currency_system.router)
 app.include_router(stats.router)

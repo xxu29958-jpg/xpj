@@ -26,6 +26,21 @@ def _assert_original_query_return(browser, current, expense_id):
     assert any(expected.items() <= params.items() for params in return_queries)
 
 
+def _assert_app_reads_shared_saved_results(client, identity, public_id):
+    catalog = client.get("/api/saved-views", headers=identity.app_headers)
+    assert catalog.status_code == 200, catalog.text
+    saved = next(row for row in catalog.json()["items"] if row["public_id"] == public_id)
+    assert (saved["query_text"], saved["category"]) == ("九月", "购物")
+    response = client.get(f"/api/saved-views/{public_id}/results", headers=identity.app_headers)
+    assert response.status_code == 200, response.text
+    results = response.json()
+    assert results["conditions"]["home_currency_code"] == "CNY" and results["total"] == 2
+    assert {row["entry"]["root"]["merchant"] for row in results["items"]} == {"九月原账单", "后来记入的九月账单"}
+    for row in results["items"]:
+        assert row["projected_amount_cents"] == row["entry"]["stream_amount_cents"]
+        assert row["projection_gap"] is None
+
+
 def test_saved_view_reopens_the_same_query_and_reads_new_facts_without_changing_originals(client, identity) -> None:
     original = manual_expense(client, identity.app_headers, tags="旅行", merchant="九月原账单", category="购物",
                               expense_time="2026-09-03T10:00:00Z")
@@ -69,9 +84,9 @@ def test_saved_view_reopens_the_same_query_and_reads_new_facts_without_changing_
     try:
         views = reopened.get("/web/saved-views?ledger_id=owner")
         assert views.status_code == 200 and "九月旅行" in views.text
-        actions = hidden_post_forms(views.text)
-        delete_action = next(action for action in actions if action.endswith("/delete"))
-        public_id = delete_action.split("/")[-2]
+        open_link = re.search(r'/web/saved-views/([^/]+)/open\?ledger_id=owner', views.text)
+        assert open_link is not None
+        public_id = open_link.group(1)
         search = reopened.get("/web/search?ledger_id=owner&q=旅行")
         assert search.status_code == 200 and "九月旅行" in search.text
         assert f"/web/saved-views/{public_id}/open?ledger_id=owner" in search.text
@@ -90,6 +105,7 @@ def test_saved_view_reopens_the_same_query_and_reads_new_facts_without_changing_
         for excluded in ("九月其他标签账单", "九月关键词但十月账单", "九月其他分类账单", "不同关键词账单"):
             assert excluded not in current.text
         _assert_original_query_return(reopened, current, original['id'])
+        _assert_app_reads_shared_saved_results(client, identity, public_id)
     finally:
         reopened.close()
 

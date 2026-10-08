@@ -86,6 +86,12 @@ internal class FakeApiService(
     private val serverSettingsResult: ServerSettingsDto? = null,
     private val merchantApi: FakeMerchantApi = FakeMerchantApi(),
 ) : ApiService {
+    override suspend fun savedViews(): com.ticketbox.data.remote.dto.SavedViewListDto = error("Saved queries not configured")
+    override suspend fun savedView(publicId: String): com.ticketbox.data.remote.dto.SavedViewDto = error("Saved query not configured")
+    override suspend fun savedViewResults(publicId: String, page: Int): com.ticketbox.data.remote.dto.SavedViewResultsDto = error("Saved query results not configured")
+    override suspend fun createSavedView(request: com.ticketbox.data.remote.dto.SavedViewDefinitionRequestDto, idempotencyKey: String): com.ticketbox.data.remote.dto.SavedViewDto = error("Saved query creation not configured")
+    override suspend fun updateSavedView(publicId: String, request: com.ticketbox.data.remote.dto.SavedViewUpdateRequestDto, idempotencyKey: String): com.ticketbox.data.remote.dto.SavedViewDto = error("Saved query edit not configured")
+    override suspend fun deleteSavedView(publicId: String, request: com.ticketbox.data.remote.dto.SavedViewDeleteRequestDto, idempotencyKey: String): com.ticketbox.data.remote.dto.SavedViewDeletionReceiptDto = error("Saved query deletion not configured")
     override suspend fun portableExportLedgers(): com.ticketbox.data.remote.dto.LedgerListResponseDto =
         error("Portable export not configured")
     override fun portableExport(ledgerId: String, download: com.ticketbox.data.remote.PortableDownloadRequest): retrofit2.Call<ResponseBody> =

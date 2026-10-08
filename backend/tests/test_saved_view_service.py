@@ -69,7 +69,7 @@ def test_saved_view_replay_is_original_receipt_and_tag_identity_needs_repair():
         db.commit()
         assert resolve_view_query(db, tenant_id="owner", actor_account_id=owner_id,
                                   public_id=original.public_id)["tag"] == "假期"
-        renamed = update_view(db, tenant_id="owner", actor_account_id=owner_id,
+        renamed = update_view(db, idempotency_key=str(uuid4()), tenant_id="owner", actor_account_id=owner_id,
             public_id=original.public_id, expected_row_version=original.row_version,
             **_definition(name="我的旅行", tag_public_id=tag_id))
         assert renamed.row_version == original.row_version + 1
@@ -92,7 +92,7 @@ def test_saved_view_replay_is_original_receipt_and_tag_identity_needs_repair():
                                   public_id=original.public_id)["tag"] == "假期"
         tag.deleted_at = now_utc()
         db.commit()
-        repaired = update_view(db, tenant_id="owner", actor_account_id=owner_id,
+        repaired = update_view(db, idempotency_key=str(uuid4()), tenant_id="owner", actor_account_id=owner_id,
             public_id=original.public_id, expected_row_version=renamed.row_version,
             **_definition(name="我的旅行", tag_public_id=None))
         assert repaired.repair_reason is None and repaired.tag_public_id is None
@@ -185,7 +185,7 @@ def test_saved_view_shared_read_viewer_denied_write_and_occ():
         assert query == {"ledger_id": "owner", "filter": "missing_accounting_date",
                          "home_currency_code": "JPY"}
         with pytest.raises(AppError) as exc:
-            delete_view(db, tenant_id="owner", actor_account_id=viewer.id,
+            delete_view(db, idempotency_key=str(uuid4()), tenant_id="owner", actor_account_id=viewer.id,
                         public_id=created.public_id, expected_row_version=created.row_version)
         assert exc.value.error == "permission_denied"
         db.rollback()
@@ -194,12 +194,12 @@ def test_saved_view_shared_read_viewer_denied_write_and_occ():
                 idempotency_key=str(uuid4()), **_definition())
         assert exc.value.error == "saved_view_conflict"
         db.rollback()
-        changed = update_view(db, tenant_id="owner", actor_account_id=owner_id,
+        changed = update_view(db, idempotency_key=str(uuid4()), tenant_id="owner", actor_account_id=owner_id,
             public_id=created.public_id, expected_row_version=created.row_version,
             **_definition(name="缺少账务日期", month_mode="current", month=None,
                           filter="missing_accounting_date"))
         with pytest.raises(AppError) as exc:
-            delete_view(db, tenant_id="owner", actor_account_id=owner_id,
+            delete_view(db, idempotency_key=str(uuid4()), tenant_id="owner", actor_account_id=owner_id,
                         public_id=created.public_id, expected_row_version=created.row_version)
         assert exc.value.error == "state_conflict"
         db.rollback()
@@ -211,7 +211,7 @@ def test_saved_view_shared_read_viewer_denied_write_and_occ():
             count_views(db, tenant_id="owner", actor_account_id=999999)
         assert exc.value.error == "ledger_not_found"
         db.rollback()
-        delete_view(db, tenant_id="owner", actor_account_id=owner_id,
+        delete_view(db, idempotency_key=str(uuid4()), tenant_id="owner", actor_account_id=owner_id,
                     public_id=created.public_id, expected_row_version=changed.row_version)
         assert list_views(db, tenant_id="owner", actor_account_id=viewer.id) == []
         assert count_views(db, tenant_id="owner", actor_account_id=viewer.id) == 0
@@ -262,7 +262,7 @@ def test_create_retry_rejects_different_intent_or_actor_and_does_not_revive_dele
         assert exc.value.error == "idempotency_key_reused"
         db.rollback()
         assert list_views(db, tenant_id="owner", actor_account_id=owner_id) == [original]
-        delete_view(db, tenant_id="owner", actor_account_id=owner_id,
+        delete_view(db, idempotency_key=str(uuid4()), tenant_id="owner", actor_account_id=owner_id,
                     public_id=original.public_id, expected_row_version=original.row_version)
         assert list_views(db, tenant_id="owner", actor_account_id=owner_id) == []
         assert create_view(db, tenant_id="owner", actor_account_id=owner_id,
@@ -296,13 +296,13 @@ def test_second_ledger_member_cannot_cross_view_scope_or_read_after_revocation()
         assert exc.value.error == "saved_view_not_found"
         db.rollback()
         with pytest.raises(AppError) as exc:
-            update_view(db, tenant_id=other_id, actor_account_id=member_id,
+            update_view(db, idempotency_key=str(uuid4()), tenant_id=other_id, actor_account_id=member_id,
                 public_id=original.public_id, expected_row_version=original.row_version,
                 **_definition(name="越界修改"))
         assert exc.value.error == "saved_view_not_found"
         db.rollback()
         with pytest.raises(AppError) as exc:
-            delete_view(db, tenant_id=other_id, actor_account_id=member_id,
+            delete_view(db, idempotency_key=str(uuid4()), tenant_id=other_id, actor_account_id=member_id,
                         public_id=original.public_id, expected_row_version=original.row_version)
         assert exc.value.error == "saved_view_not_found"
         db.rollback()

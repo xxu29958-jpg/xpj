@@ -139,12 +139,12 @@ def evaluate_debt(counts: DebtCounts) -> int:
 # main. See ``_audit_pr_delta_metrics.py`` docstring for what each
 # counter is and how it's computed.
 STRICT_EQUALITY_BASELINE: DebtCounts = {
-    "mutate_token_carriers": 138,  # + Web budget archive with its captured expected row version.
-    "mutate_token_exempted": 147,  # +3 independent reference creates: category API, tag API, shared Web form.
+    "mutate_token_carriers": 140,  # + saved-query API edit/delete share the existing OCC command owner.
+    "mutate_token_exempted": 148,  # + native saved-query create; no predecessor row exists.
     "mutate_token_reason_admin_single_writer": 16,
     "mutate_token_reason_append_only_fact": 3,
     "mutate_token_reason_batch_db_write": 17,
-    "mutate_token_reason_create_row": 41,  # New rows with original-key receipts; existing OCC routes unchanged.
+    "mutate_token_reason_create_row": 42,  # New rows with original-key receipts; existing OCC routes unchanged.
     "mutate_token_reason_enqueue_task": 2,
     "mutate_token_reason_external_side_effect": 8,
     "mutate_token_reason_governance_action": 8,
@@ -182,11 +182,12 @@ BASELINE_RATCHET_DOWN: frozenset[str] = frozenset(
 )
 _MUTATE_TOKEN_EXEMPTION_ADMISSIONS = (
     # ADR-0038 create_row / Rev3.2 section 6.6 Reference Library: category API,
-    # tag API and the shared Web create adapter have no predecessor row. Their
+    # tag API, shared Web create adapter and native saved-query create have no predecessor row. Their
     # common command keeps original actor/key receipts and unique ledger names;
-    # duplicates never restore old objects. All 138 OCC carriers stay protected.
+    # duplicates never restore old objects. All 138 original OCC carriers stay protected,
+    # with two new saved-query API carriers. The Web saved-query create remains unchanged.
     # Admit only this exact base/count transition, not general exemption growth.
-    ("92983e731072c2daa538bb61a3e782a5c4e60d5e", 144, 147),
+    ("92983e731072c2daa538bb61a3e782a5c4e60d5e", 144, 148),
     # One existing Ledger.name fact; three adapters share the Owner/credential
     # lock and field CAS. No financial OCC carrier or persistence owner changes.
     ("30beaeca2db6e76e72d7bd5acc5cd54a37212883", 141, 144),

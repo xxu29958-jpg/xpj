@@ -9,14 +9,21 @@
 {% endmacro %}
 
 {% macro editor(fields, public_id, selected_ledger_id, tag_options, currency_codes, csrf_field, can_write, category_options=[]) %}
-<form method="post" action="/web/saved-views{% if public_id %}/{{ public_id }}/rename{% endif %}">
+{% set family = 'querydelete' if command_kind == 'delete' else 'savedquery' %}
+{% set frozen = command_result in ['blocked', 'rejected'] %}
+<form method="post" action="/web/saved-views{% if public_id %}/{{ public_id }}/{{ 'delete' if command_kind == 'delete' else 'rename' }}{% endif %}" class="stack" data-saved-query="{{ family }}"
+{% if saved_view_scope %} data-{{ family }}-draft-scope="{{ saved_view_scope|tojson|forceescape }}" data-{{ family }}-can-write="{{ 'true' if can_write else 'false' }}" data-{{ family }}-plan-id="{{ public_id }}" data-{{ family }}-archived="{{ 'false' if command_available else 'true' }}" data-{{ family }}-native-result="{{ command_result }}"{% endif %}>
   {{ csrf_field|safe }}
   <input type="hidden" name="ledger_id" value="{{ fields.ledger_id|default(selected_ledger_id) }}">
+  <input type="hidden" name="idempotency_key" value="{{ fields.idempotency_key }}">
+  {% for name in ['public_id', 'draft_ref', 'draft_scope'] %}<input type="hidden" name="{{ name }}" value="{{ fields.get(name, '') }}">{% endfor %}
   {% if public_id %}
   <input type="hidden" name="expected_row_version" value="{{ fields.expected_row_version|default(fields.row_version) }}">
-  {% else %}
-  <input type="hidden" name="idempotency_key" value="{{ fields.idempotency_key }}">
   {% endif %}
+  {% if command_kind == 'delete' %}
+  <label class="product-field"><span>原查询名称</span><input class="input" name="name" value="{{ fields.name }}" readonly></label>
+  <p class="product-feedback">只移除这组常用查询，账单及原件保持不变。</p>
+  {% else %}
   <div class="product-form-grid">
     <label class="product-field"><span>视图名称</span>
       <input class="input" name="name" maxlength="120" required value="{{ fields.name }}">
@@ -29,7 +36,7 @@
       </select>
       <span class="hint">固定月保持不变；账本当前月随打开时间更新。</span>
     </label>
-    <label class="product-field"><span>固定月份（仅固定账务月使用）</span>
+    <label class="product-field" data-query-fixed-month><span>固定月份（仅固定账务月使用）</span>
       <input class="input" name="month" type="month" value="{{ fields.month or '' }}">
     </label>
     <label class="product-field"><span>关键词</span>
@@ -48,6 +55,10 @@
         {% for tag in tag_options %}<option value="{{ tag.public_id }}"{% if fields.tag_public_id == tag.public_id %} selected{% endif %}>{{ tag.name }}</option>{% endfor %}
       </select>
     </label>
+  </div>
+  <details data-query-presentation{% if fields.filter %} open{% endif %}>
+    <summary class="product-entry"><span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#sliders-horizontal"/></svg></span><span class="product-entry-copy"><strong>流水范围与金额呈现</strong><span data-query-basis>{{ fields.home_currency_code }}</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-down"/></svg></summary>
+    <div class="product-form-grid">
     <label class="product-field"><span>账单范围</span>
       <select class="select" name="filter">
         {% if fields.filter not in ['', 'missing_category', 'missing_accounting_date'] %}<option value="{{ fields.filter }}" selected>原筛选无效</option>{% endif %}
@@ -62,8 +73,14 @@
         {% for code in currency_codes %}<option value="{{ code }}"{% if fields.home_currency_code == code %} selected{% endif %}>{{ code }}</option>{% endfor %}
       </select>
     </label>
-  </div>
+    </div>
   <p class="hint">待补分类和账务日期待核对始终查询全部月份。币种只影响金额呈现，不改变原账单；缺少汇率时仍会提示。</p>
-  <button class="product-button product-button--primary" type="submit">{% if not can_write %}权限恢复后重试原提交{% elif public_id %}保存更改{% else %}保存这组查询{% endif %}</button>
+  </details>
+  {% endif %}
+  <p class="product-feedback" data-{{ family }}-draft-status role="status" aria-live="polite" hidden></p>
+  <button class="product-button {{ 'product-button--danger' if command_kind == 'delete' else 'product-button--primary' }}" type="submit" data-{{ family }}-submit>{% if not can_write %}权限恢复后重试原提交{% elif frozen %}核实原提交{% elif command_kind == 'delete' %}确认删除这组查询{% elif public_id %}保存更改{% else %}保存这组查询{% endif %}</button>
+  <p class="meta" data-{{ family }}-review-note{% if not public_id and command_result != 'rejected' and not binding_required %} hidden{% endif %}>核对只读取当前版本并保留原输入，再次确认才会提交。</p>
+  <button class="product-button product-button--quiet" type="submit" name="{{ 'review_latest' if public_id else 'review_new' }}" value="true" formnovalidate data-{{ family }}-review{% if not can_write or not command_available or not binding_required and (frozen and command_result != 'rejected' or not public_id and command_result != 'rejected') %} hidden{% endif %}>核对后保留输入，继续修改</button>
+  {% if saved_view_scope %}<button class="product-button product-button--quiet" type="button" data-{{ family }}-discard hidden>放弃此浏览器的原稿</button>{% endif %}
 </form>
 {% endmacro %}

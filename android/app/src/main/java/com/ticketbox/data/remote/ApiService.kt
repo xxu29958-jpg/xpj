@@ -10,6 +10,7 @@ import com.ticketbox.data.remote.api.ExpenseStateApi
 import com.ticketbox.data.remote.api.ExpenseMediaApi
 import com.ticketbox.data.remote.api.CategoryRuleApi
 import com.ticketbox.data.remote.api.MerchantApi
+import com.ticketbox.data.remote.api.SavedViewApi
 import com.ticketbox.data.remote.api.TagApi
 import com.ticketbox.data.remote.api.ServerSettingsApi
 import com.ticketbox.data.remote.api.RuntimeCompatibilityApi
@@ -60,6 +61,7 @@ interface ApiService :
     ExpenseMediaApi,
     CategoryRuleApi,
     MerchantApi,
+    SavedViewApi,
     TagApi,
     ServerSettingsApi,
     ReportsApi,

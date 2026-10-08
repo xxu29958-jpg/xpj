@@ -1,5 +1,6 @@
 """Native saved-view forms preserve the original query through refusals and repair."""
 
+import json
 import re
 from html import unescape
 from urllib.parse import parse_qs, urlsplit
@@ -24,8 +25,9 @@ def browser(client, identity):
     web.close()
 
 
-def _post(browser, action, fields):
-    return browser.post(action, data=fields, headers={"Origin": f"https://{PUBLIC_HOST}"},
+def _post(browser, action, fields, *, json_reply=False):
+    return browser.post(action, data=fields, headers={"Origin": f"https://{PUBLIC_HOST}",
+                        "Accept": "application/json" if json_reply else "text/html"},
                         follow_redirects=False)
 
 
@@ -71,7 +73,8 @@ def test_conflicting_names_and_stale_forms_keep_input_without_overwriting_new_co
     retained = hidden_post_forms(duplicate.text)["/web/saved-views"]
     assert retained["idempotency_key"] == "other-creation" and retained["ledger_id"] == "owner"
     action, old_fields = _editor(browser, public_id, original)
-    changed = _post(browser, action, {**old_fields, "name": "最新名称", "month": "2026-10"})
+    _, other_fields = _editor(browser, public_id, original)
+    changed = _post(browser, action, {**other_fields, "name": "最新名称", "month": "2026-10"})
     assert changed.status_code == 303, changed.text
     stale = _post(browser, action, {**old_fields, "name": "保留我的输入", "query_text": "保留的关键词", "category": "保留的分类"})
     assert stale.status_code == 409 and 'value="保留我的输入"' in stale.text
@@ -79,6 +82,9 @@ def test_conflicting_names_and_stale_forms_keep_input_without_overwriting_new_co
     assert hidden_post_forms(stale.text)[action]["expected_row_version"] == old_fields["expected_row_version"]
     refused_delete = _post(browser, f"/web/saved-views/{public_id}/delete", old_fields)
     assert refused_delete.status_code == 409, refused_delete.text
+    retained_delete = hidden_post_forms(refused_delete.text)[f"/web/saved-views/{public_id}/delete"]
+    for field in ("expected_row_version", "idempotency_key", "draft_scope"):
+        assert retained_delete[field] == old_fields[field]
     opened = browser.get(f"/web/saved-views/{public_id}/open?ledger_id=owner", follow_redirects=False)
     assert opened.status_code == 303 and parse_qs(urlsplit(opened.headers["location"]).query)["month"] == ["2026-10"]
     with SessionLocal() as db:
@@ -151,3 +157,33 @@ def test_real_tag_rename_follows_identity_but_merge_requires_explicit_view_repai
     assert opened.status_code == 303 and parse_qs(urlsplit(opened.headers["location"]).query)["tag"] == ["家庭"]
     current = browser.get(opened.headers["location"])
     assert "原旅行账单" in current.text and "原家庭账单" in current.text
+
+
+def test_bound_edit_and_delete_keep_the_first_result_after_later_change_and_row_removal(browser, client, identity):
+    public_id, original = _create(browser, client, identity)
+    action, fields = _editor(browser, public_id, original)
+    fields.update(query_text="原修改关键词", name="原修改名称")
+    first = _post(browser, action, fields, json_reply=True)
+    assert first.status_code == 200, first.text
+    first_body = first.json()
+    assert first_body["ack"] == {"scope": json.loads(fields["draft_scope"]), "clientRef": fields["idempotency_key"]}
+    assert first_body["receipt"]["query_text"] == "原修改关键词"
+    assert first_body["receipt"]["row_version"] == 2
+    _, later = _editor(browser, public_id, original)
+    assert _post(browser, action, {**later, "query_text": "后来人工关键词"}).status_code == 303
+    replay = _post(browser, action, fields, json_reply=True)
+    assert replay.status_code == 200 and replay.json() == first_body
+    with SessionLocal() as db:
+        current = db.scalar(select(SavedView).where(SavedView.public_id == public_id))
+        assert (current.row_version, current.query_text) == (3, "后来人工关键词")
+    page = browser.get(f"/web/saved-views?ledger_id=owner&delete={public_id}")
+    delete_action = f"/web/saved-views/{public_id}/delete"
+    delete_fields = hidden_post_forms(page.text)[delete_action]
+    deleted = _post(browser, delete_action, delete_fields, json_reply=True)
+    assert deleted.status_code == 200, deleted.text
+    assert deleted.json()["receipt"]["row_version"] == 3
+    assert browser.get(f"/web/saved-views?ledger_id=owner&delete={public_id}").status_code == 200
+    retried = _post(browser, delete_action, delete_fields, json_reply=True)
+    assert retried.status_code == 200 and retried.json() == deleted.json()
+    with SessionLocal() as db:
+        assert db.scalar(select(SavedView).where(SavedView.public_id == public_id)) is None

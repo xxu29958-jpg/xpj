@@ -7,7 +7,7 @@ from alembic import command
 from sqlalchemy import text
 
 from app.database import SessionLocal, engine
-from app.services.saved_view_service import create_view, resolve_view_query
+from app.services.saved_view_service import create_view, resolve_view_query, update_view
 from tests._infra.c07_money_migration import reset_schema, run_alembic, seed_owner
 from tests._infra.currency import activate_test_currency_authority
 
@@ -55,7 +55,8 @@ def test_saved_views_addition_preserves_original_bill_and_downgrade_refuses_save
         reset_schema()
 
 
-def test_search_addition_preserves_old_queries_and_refuses_loss_of_new_conditions_or_receipts():
+@pytest.mark.parametrize("operation", ["create", "update"])
+def test_search_addition_preserves_old_queries_and_refuses_loss_of_new_conditions_or_receipts(operation):
     reset_schema()
     try:
         run_alembic(command.upgrade, "20260930_0001")
@@ -75,7 +76,9 @@ def test_search_addition_preserves_old_queries_and_refuses_loss_of_new_condition
         with SessionLocal() as db:
             assert resolve_view_query(db, tenant_id="owner", actor_account_id=owner_id,
                 public_id=public_id)["month"] == "2026-09"
-            saved = create_view(db, tenant_id="owner", actor_account_id=owner_id,
+            save = create_view if operation == "create" else update_view
+            changed = {} if operation == "create" else {"public_id": public_id, "expected_row_version": 1}
+            saved = save(db, tenant_id="owner", actor_account_id=owner_id, **changed,
                 idempotency_key=str(uuid4()), name="日用关键词", month_mode="fixed", month="2026-10",
                 filter="", tag_public_id=None, home_currency_code="JPY", query_text="便利店", category="购物")
         with pytest.raises(RuntimeError, match="cannot erase saved search conditions"):

@@ -41,6 +41,13 @@ class SavedViewDetail:
     category: str = ""
 
 
+@dataclass(frozen=True)
+class SavedViewDeletionReceipt:
+    public_id: str
+    row_version: int
+    name: str
+
+
 def _require_ledger_role(db: Session, *, tenant_id: str, actor_account_id: int, write: bool = False) -> None:
     role = db.scalar(
         select(LedgerMember.role)
@@ -93,6 +100,12 @@ def _view(db: Session, tenant_id: str, public_id: str) -> SavedView:
     if row is None:
         raise AppError("saved_view_not_found", status_code=404)
     return row
+
+
+def read_view(db: Session, *, tenant_id: str, actor_account_id: int, public_id: str) -> SavedViewDetail:
+    _require_ledger_role(db, tenant_id=tenant_id, actor_account_id=actor_account_id)
+    row = _view(db, tenant_id, public_id)
+    return _detail(row, _tag(db, tenant_id, row.tag_public_id))
 
 
 def list_views(db: Session, *, tenant_id: str, actor_account_id: int) -> list[SavedViewDetail]:
@@ -207,18 +220,50 @@ def _retained_search_fields(values: dict) -> dict:
     return {key: value for key, value in values.items() if key not in {"query_text", "category"} or value}
 
 
+def _claim_change(db, *, tenant_id, actor_account_id, public_id, expected_row_version,
+                  idempotency_key, operation, definition):
+    if not idempotency_key or len(idempotency_key) > 64:
+        raise AppError("idempotency_key_required", status_code=422)
+    claim = claim_idempotency_key(db, tenant_id=tenant_id, idempotency_key=idempotency_key,
+        operation=operation, target_type="saved_view", target_id=public_id,
+        request_fingerprint=fingerprint_request(operation=operation, target_id=public_id,
+            body={**definition, "actor_account_id": actor_account_id}, expected_row_version=expected_row_version))
+    if claim.kind is IdempotencyOutcomeKind.FINGERPRINT_MISMATCH:
+        raise AppError("idempotency_key_reused", status_code=422)
+    if claim.kind is IdempotencyOutcomeKind.IN_PROGRESS:
+        raise AppError("idempotency_key_in_progress", status_code=409)
+    if claim.kind is IdempotencyOutcomeKind.HIT and not claim.row.response_body:
+        raise AppError("state_conflict", "原操作已完成，但原回执不可用，请核对视图库。", status_code=409)
+    return claim
+
+
+def _finish_change(db, claim, receipt):
+    mark_idempotency_succeeded(db, claim.row, resource_type="saved_view", resource_id=receipt.public_id,
+        response_body=asdict(receipt))
+    db.commit()
+    return receipt
+
+
 def update_view(
     db: Session, *, tenant_id: str, actor_account_id: int, public_id: str,
-    expected_row_version: int, name: str, month_mode: str, month: str | None,
+    expected_row_version: int, idempotency_key: str, name: str, month_mode: str, month: str | None,
     filter: str, tag_public_id: str | None, home_currency_code: str,
     query_text: str = "", category: str = "",
 ) -> SavedViewDetail:
     _require_ledger_role(db, tenant_id=tenant_id, actor_account_id=actor_account_id, write=True)
-    row = _view(db, tenant_id, public_id)
     definition = _validated_definition(db, tenant_id=tenant_id, name=name, month_mode=month_mode,
                                        month=month, filter=filter, tag_public_id=tag_public_id,
-                                       home_currency_code=home_currency_code,
+                                       home_currency_code=home_currency_code, check_tag=False,
                                        query_text=query_text, category=category)
+    claim = _claim_change(db, tenant_id=tenant_id, actor_account_id=actor_account_id,
+        public_id=public_id, expected_row_version=expected_row_version, idempotency_key=idempotency_key,
+        operation="update_saved_view", definition=definition)
+    if claim.kind is IdempotencyOutcomeKind.HIT:
+        return SavedViewDetail(**claim.row.response_body)
+    row = _view(db, tenant_id, public_id)
+    tag = _tag(db, tenant_id, tag_public_id)
+    if tag_public_id and (tag is None or tag.deleted_at is not None):
+        raise AppError("saved_view_tag_repair_required", status_code=409)
     conflicting = db.scalar(select(SavedView.id).where(SavedView.tenant_id == tenant_id,
         SavedView.name_key == definition["name_key"], SavedView.id != row.id))
     if conflicting is not None:
@@ -232,22 +277,27 @@ def update_view(
         raise AppError("saved_view_conflict", status_code=409) from exc
     if changed != 1:
         raise AppError("state_conflict", status_code=409)
-    db.commit()
     db.expire_all()
     row = _view(db, tenant_id, public_id)
-    return _detail(row, _tag(db, row.tenant_id, row.tag_public_id))
+    return _finish_change(db, claim, _detail(row, _tag(db, row.tenant_id, row.tag_public_id)))
 
 
 def delete_view(
     db: Session, *, tenant_id: str, actor_account_id: int, public_id: str,
-    expected_row_version: int,
-) -> None:
+    expected_row_version: int, idempotency_key: str,
+) -> SavedViewDeletionReceipt:
     _require_ledger_role(db, tenant_id=tenant_id, actor_account_id=actor_account_id, write=True)
+    claim = _claim_change(db, tenant_id=tenant_id, actor_account_id=actor_account_id,
+        public_id=public_id, expected_row_version=expected_row_version, idempotency_key=idempotency_key,
+        operation="delete_saved_view", definition={})
+    if claim.kind is IdempotencyOutcomeKind.HIT:
+        return SavedViewDeletionReceipt(**claim.row.response_body)
     row = _view(db, tenant_id, public_id)
+    receipt = SavedViewDeletionReceipt(row.public_id, row.row_version, row.name)
     if delete_row_with_token(db, SavedView, pk_id=row.id, tenant_id=tenant_id,
                              expected_row_version=expected_row_version) != 1:
         raise AppError("state_conflict", status_code=409)
-    db.commit()
+    return _finish_change(db, claim, receipt)
 
 
 def resolve_view_query(

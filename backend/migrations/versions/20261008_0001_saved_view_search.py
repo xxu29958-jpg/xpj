@@ -30,7 +30,7 @@ def downgrade():
     has_conditions = bind.scalar(sa.text("SELECT EXISTS (SELECT 1 FROM saved_views "
         "WHERE query_text <> '' OR category <> '')"))
     has_receipts = bind.scalar(sa.text("SELECT EXISTS (SELECT 1 FROM api_idempotency_keys "
-        "WHERE operation = 'create_saved_view' AND "
+        "WHERE operation IN ('create_saved_view', 'update_saved_view') AND "
         "(COALESCE(response_body->>'query_text', '') <> '' OR COALESCE(response_body->>'category', '') <> ''))"))
     if has_conditions or has_receipts:
         raise RuntimeError("cannot erase saved search conditions or accepted receipts")

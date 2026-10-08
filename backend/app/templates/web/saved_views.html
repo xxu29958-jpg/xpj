@@ -1,16 +1,21 @@
 {% extends "base.html" %}
-{% from 'partials/saved_view_editor.html' import editor, entry %}
+{% from 'partials/saved_view_editor.html' import editor, entry with context %}
 {% set page_title = '保存的视图' %}
 {% set product_body_domain = 'transactions' %}
 {% set page_surface = 'tertiary' %}
 {% set task_return_href = ('/web/saved-views' if draft else '/web/search') ~ '?ledger_id=' ~ selected_ledger_id %}
 {% set task_return_label = '常用查询' if draft else '搜索' %}
 {% block title %}保存的视图 · 小票夹{% endblock %}
+{% block page_scripts %}{% if saved_view_scope %}
+<script defer src="/static/web/manual-drafts.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/plan-entry.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/saved-query-entry.js?v={{ asset_version }}"></script>
+{% endif %}{% endblock %}
 {% block content %}
 <div{% if draft %} class="saved-view-editor"{% endif %}>
 <header class="product-page-header">
   <div class="product-page-heading">
-    <h1 class="page-title">{{ ('修改这组查询' if editing_public_id else '下次一键找到') if draft else '常用查询' }}</h1>
+    <h1 class="page-title">{{ ('删除这组查询' if command_kind == 'delete' else '修改这组查询' if editing_public_id else '下次一键找到') if draft else '常用查询' }}</h1>
     <p class="product-page-summary">保存筛选条件，结果会随记录更新。当前账本的参与者都能查看。</p>
   </div>
   {% if not draft %}<a class="product-button product-button--quiet" href="/web/confirmed{{ q }}">去流水设置筛选</a>{% endif %}
@@ -20,10 +25,12 @@
 {% if not can_write %}<p class="product-feedback" role="status">当前角色只读，可以打开视图；修改条件请联系有写入权限的成员。</p>{% endif %}
 {% if draft %}
 <section aria-label="保留的视图输入">
+  {% if binding_required %}<p class="product-feedback">请先核对当前浏览器身份，原输入不会自动转移。</p>{% endif %}
+  {% if not command_available %}<p class="product-feedback">原查询已不可修改，仍可核实已经发出的原请求。输入不会转移给其它查询。</p>{% endif %}
+  {% if command_result == 'prepared' %}<p class="product-feedback" role="status">已核对{{ '当前查询「' ~ current_view.name ~ '」' if current_view else '新建任务' }}，原输入仍保留。再次确认才会{{ '删除' if command_kind == 'delete' else '保存' }}。</p>{% endif %}
   {% if draft.repair_reason %}<p class="product-feedback product-feedback--error" role="alert">原标签已被删除或合并，视图暂不能打开。请明确选择替代标签或不限标签；也可在原标签可撤销时将其恢复。</p>{% endif %}
   <p class="meta">使用 {{ selected_ledger_name }} · 只保存条件，不固定今天的结果。</p>
   {{ editor(draft, editing_public_id, selected_ledger_id, tag_options, currency_codes, csrf_field, can_write, category_options|default([])) }}
-  {% if editing_public_id and error %}<a class="product-button product-button--quiet" href="/web/saved-views{{ q }}&amp;edit={{ editing_public_id }}">重新载入最新条件</a>{% endif %}
 </section>
 {% else %}
 <div class="library-section">
@@ -35,12 +42,7 @@
     <summary class="product-button product-button--quiet">管理 {{ view.name }}</summary>
     <div class="product-actions">
       <a class="product-button" href="/web/saved-views{{ q }}&amp;edit={{ view.public_id }}">修改名称或条件</a>
-      <form method="post" action="/web/saved-views/{{ view.public_id }}/delete">
-        {{ csrf_field|safe }}
-        <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-        <input type="hidden" name="expected_row_version" value="{{ view.row_version }}">
-        <button class="product-button product-button--quiet" type="submit" data-confirm="删除这个保存的视图？账单不会改变。">删除视图</button>
-      </form>
+      <a class="product-button product-button--quiet" href="/web/saved-views{{ q }}&amp;delete={{ view.public_id }}">删除视图</a>
     </div>
   </details>
   {% endif %}
@@ -52,6 +54,11 @@
 </section>
 {% endfor %}
 </div>
+{% endif %}
+{% if saved_view_scope %}
+{% for family, label in [('savedquery', '查询输入'), ('querydelete', '删除任务')] %}
+<details data-{{ family }}-draft-shelf data-query-scope="{{ saved_view_scope|tojson|forceescape }}" hidden><summary>此浏览器保留的{{ label }}</summary><ul data-{{ family }}-draft-list></ul></details>
+{% endfor %}
 {% endif %}
 </div>
 {% endblock %}
