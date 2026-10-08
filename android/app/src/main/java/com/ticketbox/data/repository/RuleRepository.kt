@@ -26,6 +26,7 @@ class RuleRepository(
     private val binding: ServerSessionBinding,
     private val onConfirmedChanged: suspend () -> Unit = { },
     private val offlineMutations: CategoryRuleOfflineMutationWiring = CategoryRuleOfflineMutationWiring(),
+    val definitionInputs: RuleDefinitionDraftStore? = null,
 ) {
     private val outbox get() = offlineMutations.outbox
     private val categoryRuleUpdateAdapter get() = offlineMutations.updateAdapter
@@ -64,46 +65,55 @@ class RuleRepository(
             if (currentAccess()?.binding != expected) emptyList() else rows.mapNotNull(::describeSubmission)
         }
 
-    suspend fun createCategoryRule(expected: LogicalSessionBinding, request: CategoryRuleRequest): Result<Long> =
+    suspend fun createCategoryRule(expected: LogicalSessionBinding, request: CategoryRuleRequest,
+        input: RuleDefinitionDraft? = null): Result<Long> =
         errorHandler.safeCall {
             val bound = ledgerRequestGuard.bindExact(expected)
             require(canModifyLedger()) { "当前角色为只读，无法修改规则。" }
             val clean = request.cleanRule()
-            val key = UUID.randomUUID().toString()
-            enqueue(bound, PendingMutationType.CreateCategoryRule, "category_rule_create:$key", CategoryRuleSubmissionPayload(expectedRowVersion = 0, request = clean), key)
+            require(input == null || input.binding == expected && input.baseline == null)
+            val key = input?.key ?: UUID.randomUUID().toString()
+            val payload = CategoryRuleSubmissionPayload(version = if (input == null) 1 else 2,
+                expectedRowVersion = 0, request = clean, originalInput = input?.originalFields())
+            enqueue(bound, PendingMutationIntent(PendingMutationType.CreateCategoryRule, "category_rule_create:$key",
+                requireNotNull(offlineMutations.submissionAdapter).toJson(payload), 0, key), input)
         }
 
     suspend fun updateCategoryRule(expected: LogicalSessionBinding, baseline: CategoryRule,
-        request: CategoryRuleRequest): Result<Long> = errorHandler.safeCall {
+        request: CategoryRuleRequest, input: RuleDefinitionDraft? = null): Result<Long> = errorHandler.safeCall {
         val bound = ledgerRequestGuard.bindExact(expected)
         require(canModifyLedger()) { "当前角色为只读，无法修改规则。" }
         val clean = request.cleanRule()
+        require(input == null || input.binding == expected && input.baseline == baseline)
         require(baseline.id > 0 && baseline.rowVersion > 0) { "请重新打开原规则。" }
         require(baseline.homeCurrencyCode == null || clean.homeCurrencyCode == baseline.homeCurrencyCode) { "原规则币种不能改贴，请核对。" }
         require((baseline.amountMinCents == null && baseline.amountMaxCents == null) || baseline.homeCurrencyCode != null) {
             "原规则金额币种尚未确认，已保留原数值，请先核对。"
         }
-        enqueue(bound, PendingMutationType.UpdateCategoryRule, "category_rule:${baseline.id}",
-            CategoryRuleSubmissionPayload(expectedRowVersion = baseline.rowVersion, request = clean), UUID.randomUUID().toString())
+        val payload = CategoryRuleSubmissionPayload(version = if (input == null) 1 else 2,
+            expectedRowVersion = baseline.rowVersion, request = clean, originalInput = input?.originalFields())
+        enqueue(bound, PendingMutationIntent(PendingMutationType.UpdateCategoryRule, "category_rule:${baseline.id}",
+            requireNotNull(offlineMutations.submissionAdapter).toJson(payload), baseline.rowVersion,
+            input?.key ?: UUID.randomUUID().toString()), input)
     }
 
     suspend fun deleteCategoryRule(expected: LogicalSessionBinding, rule: CategoryRule): Result<Long> = errorHandler.safeCall {
         val bound = ledgerRequestGuard.bindExact(expected)
         require(canModifyLedger()) { "当前角色为只读，无法修改规则。" }
         require(rule.id > 0 && rule.rowVersion > 0) { "请重新打开原规则。" }
-        enqueue(bound, PendingMutationType.DeleteCategoryRule, "category_rule:${rule.id}",
-            CategoryRuleSubmissionPayload(expectedRowVersion = rule.rowVersion, request = rule.asRequest()), UUID.randomUUID().toString())
+        val payload = CategoryRuleSubmissionPayload(expectedRowVersion = rule.rowVersion, request = rule.asRequest())
+        enqueue(bound, PendingMutationIntent(PendingMutationType.DeleteCategoryRule, "category_rule:${rule.id}",
+            requireNotNull(offlineMutations.submissionAdapter).toJson(payload), rule.rowVersion, UUID.randomUUID().toString()))
     }
 
-    private suspend fun enqueue(bound: BoundLedgerRequest, type: PendingMutationType, target: String,
-        payload: CategoryRuleSubmissionPayload, key: String): Long = requireNotNull(outbox).enqueue(
+    private suspend fun enqueue(bound: BoundLedgerRequest, intent: PendingMutationIntent,
+        input: RuleDefinitionDraft? = null): Long = requireNotNull(outbox).enqueue(
         boundRequest = bound,
-        intent = PendingMutationIntent(type, target,
-            requireNotNull(offlineMutations.submissionAdapter).toJson(payload),
-            payload.expectedRowVersion, key),
+        intent = intent,
         validateTargetRows = { rows -> require(rows.none { it.status != PendingMutationStatus.Done }) {
             "原规则还有待处理的提交，请先核对。"
         } },
+        afterPersisted = { input?.let { requireNotNull(definitionInputs).consume(it) } },
     )
 
     suspend fun recoverSubmission(expected: LogicalSessionBinding, pending: PendingCategoryRuleSubmission,

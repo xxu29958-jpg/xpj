@@ -4,12 +4,13 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.cancelAndJoin
 
 import com.ticketbox.data.local.PersistedLedgerIdentity
+import com.ticketbox.data.local.RuleDefinitionInputDao
+import com.ticketbox.data.local.RuleDefinitionInputEntity
 
 import com.ticketbox.R
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.CategoryRuleDto
-import com.ticketbox.data.remote.dto.CategoryRuleRequest
 import com.ticketbox.data.remote.dto.RuleApplicationBatchDto
 import com.ticketbox.data.remote.dto.RuleApplicationListDto
 import com.ticketbox.data.remote.dto.RuleApplicationRollbackDto
@@ -21,6 +22,8 @@ import com.ticketbox.data.repository.TestSessionFixture
 import com.ticketbox.data.repository.FakeTicketboxSettingsStore
 import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.data.repository.RuleRepository
+import com.ticketbox.data.repository.RuleDefinitionDraftStore
+import com.ticketbox.ui.screens.settings.categoryrules.CategoryRuleDraftForm
 import com.ticketbox.data.repository.testServerSessionBinding
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
@@ -126,7 +129,7 @@ class CategoryRulesViewModelTest {
         val vm = harness(FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0))
         awaitInitialLoads(vm)
         val confirmed = vm.uiState.value.categoryRules
-        vm.createCategoryRule(CategoryRuleRequest("高德", "交通", true, 8, 1200, homeCurrencyCode = "JPY"))
+        submitDefinition(vm, CategoryRuleDraftForm("高德", "交通", "8", minimumAmount = "1200", homeCurrencyCode = "JPY"))
         val state = vm.uiState.first { it.submittedRevision > 0 }
         runCurrent()
         assertFalse(state.busy)
@@ -284,7 +287,7 @@ class CategoryRulesViewModelTest {
             override suspend fun categoryRules(): List<CategoryRuleDto> = canonical
         }, queue = queue)
         awaitInitialLoads(vm)
-        vm.createCategoryRule(CategoryRuleRequest("旅行", "交通", true, 10, 1200, homeCurrencyCode = "JPY"))
+        submitDefinition(vm, CategoryRuleDraftForm("旅行", "交通", "10", minimumAmount = "1200", homeCurrencyCode = "JPY"))
         val pending = vm.uiState.first { it.pendingSubmissions.isNotEmpty() }.pendingSubmissions.single()
         queue.markDone(pending.row.id, receiptJson = com.ticketbox.OutboxAdapterGraph().categoryRuleReceiptAdapter.toJson(accepted))
         vm.uiState.first { it.pendingSubmissions.singleOrNull()?.confirmed?.homeCurrencyCode == "JPY" }
@@ -293,6 +296,29 @@ class CategoryRulesViewModelTest {
         val refreshed = vm.uiState.first { !it.categoryRulesLoading && it.categoryRules.isEmpty() }
         assertTrue(refreshed.categoryRules.isEmpty())
         assertEquals("JPY", refreshed.pendingSubmissions.single().confirmed?.homeCurrencyCode)
+    }
+
+    private suspend fun submitDefinition(vm: CategoryRulesViewModel, form: CategoryRuleDraftForm) {
+        vm.definitions.state.first { it.ready }
+        vm.definitions.begin(form)
+        vm.definitions.submit(requireNotNull(vm.definitions.state.value.selected), form.toRequest().getOrThrow())
+    }
+
+    private class InputDao : RuleDefinitionInputDao {
+        private val rows = mutableListOf<RuleDefinitionInputEntity>()
+        override suspend fun get(server: String, owner: String, ledger: String) = rows.filter {
+            it.serverUrl == server && it.ownerKey == owner && it.ledgerId == ledger
+        }
+        override suspend fun put(input: RuleDefinitionInputEntity) {
+            rows.removeAll { it.serverUrl == input.serverUrl && it.ownerKey == input.ownerKey &&
+                it.ledgerId == input.ledgerId && it.slot == input.slot }
+            rows.add(input)
+        }
+        override suspend fun consume(server: String, owner: String, ledger: String, slot: String, original: String): Int {
+            val originalRows = get(server, owner, ledger).filter { it.slot == slot && it.inputJson == original }
+            rows.removeAll(originalRows.toSet())
+            return originalRows.size
+        }
     }
 
     private fun harness(api: ApiService, tokenStore: TestSessionFixture = TestSessionFixture().apply { saveToken("session-token") },
@@ -321,6 +347,7 @@ class CategoryRulesViewModelTest {
             offlineMutations = com.ticketbox.data.repository.CategoryRuleOfflineMutationWiring(queue,
                 adapters.categoryRuleUpdateAdapter, adapters.categoryRuleDeleteAdapter,
                 adapters.categoryRuleSubmissionAdapter, adapters.categoryRuleReceiptAdapter),
+            definitionInputs = RuleDefinitionDraftStore(InputDao()),
         )
         val expenseRepository = com.ticketbox.data.repository.expenseRepositoryFixture(
             expenseDao = FakeExpenseDao(),

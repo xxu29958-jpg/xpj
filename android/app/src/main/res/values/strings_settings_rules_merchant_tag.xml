@@ -42,7 +42,23 @@
     <string name="category_rule_editor_submit_busy">处理中</string>
     <string name="category_rule_editor_submit_create">添加规则</string>
     <string name="category_rule_editor_submit_update">保存规则</string>
-    <string name="category_rule_editor_cancel">取消编辑</string>
+    <string name="category_rule_editor_cancel">返回规则列表</string>
+    <string name="category_rule_definition_title">让分类更省心</string>
+    <string name="category_rule_definition_subtitle">遇到这样的账单，建议这样归类。</string>
+    <string name="category_rule_definition_hint">保存规则不会修改已有账单。同步后，先预览真实影响，再决定是否应用。</string>
+    <string name="category_rule_definition_amount">金额范围</string>
+    <string name="category_rule_definition_conditions">来源与标签条件</string>
+    <string name="category_rule_definition_optional">可选</string>
+    <string name="category_rule_definition_configured">已填写，展开核对</string>
+    <string name="category_rule_definition_source">来源包含</string>
+    <string name="category_rule_definition_tag">标签包含</string>
+    <string name="category_rule_draft_retained">未提交 · 继续填写</string>
+    <string name="category_rule_draft_read_failed">原规则输入暂时读不到，请重新读取后继续。</string>
+    <string name="category_rule_draft_save_failed">原规则输入尚未保存，请保留页面并重试。</string>
+    <string name="category_rule_draft_binding_changed">原输入已保留。登录状态已变化，请核对当前身份后继续。</string>
+    <string name="category_rule_draft_review_binding">确认当前身份，继续原输入</string>
+    <string name="category_rule_submission_original_input">提交时的原输入</string>
+    <string name="category_rule_submission_original_field">%1$s：%2$s</string>
 
     <!-- CategoryRuleList（categoryrules/）：列表空态 -->
     <string name="category_rule_list_empty">还没有分类规则。添加后，命中商家关键词的账单会自动填上分类。</string>

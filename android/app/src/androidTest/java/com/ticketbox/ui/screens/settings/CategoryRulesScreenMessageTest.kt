@@ -76,9 +76,8 @@ class CategoryRulesScreenMessageTest {
     private fun categoryRulesActionsUnusedByMessageSlot(): CategoryRulesScreenActions =
         CategoryRulesScreenActions(
             onBack = {},
+            definitions = CategoryRuleDefinitionActions({}, {}, {}, { _, _ -> }, {}, {}, {}),
             rules = CategoryRulesRuleActions(
-                onCreate = {},
-                onUpdate = { _, _ -> },
                 onToggle = {},
                 onDelete = {},
                 onRecoverSubmission = { _, _ -> },

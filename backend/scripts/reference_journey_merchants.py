@@ -1,5 +1,7 @@
 """The directory and aliases keep historical expense merchant facts intact."""
 
+from playwright.sync_api import expect
+
 from scripts.planning_journey_android import wait_for
 
 
@@ -47,8 +49,9 @@ def merge_after_target_changes(j):
     merge.locator('[name="target"]').select_option(original_target)
     merge.locator('[name="alias_policy"]').select_option("none")
     change_catalog_visibility(j, target)
-    j.confirm(merge)
+    merge.get_by_role("button", name="合并商家", exact=True).click()
     retained = j.form(action)
+    expect(retained.locator('[data-catalogmerge-draft-status]')).to_contain_text("原稿仍保留")
     assert retained.locator('[name="target"]').input_value() == original_target, "The failed merchant merge lost its target"
     assert retained.locator('[name="alias_policy"]').input_value() == "none", "The failed merchant merge changed the user's alias choice"
     assert retained.locator('[name="expected_row_version"]').input_value() == original_version
@@ -57,9 +60,9 @@ def merge_after_target_changes(j):
     current = next(row for row in j.facts()["catalog"] if row["id"] == target["id"])
     retained.get_by_role("button", name="核对双方商家", exact=True).click()
     retained = j.form(action)
-    assert retained.locator('[name="target"]').input_value() == f'{target["id"]}:{current["row_version"]}'
+    expect(retained.locator('[name="target"]')).to_have_value(f'{target["id"]}:{current["row_version"]}')
     assert next(row for row in j.facts()["catalog"] if row["id"] == source["id"])["target"] is None
-    j.confirm(retained)
+    retained.get_by_role("button", name="合并商家", exact=True).click()
     j.expect(lambda state: any(row["id"] == source["id"] and row["target"] == target["id"] for row in state["catalog"]),
              "The explicit Web merchant merge did not commit")
     assert len(j.facts()["aliases"]) == 1, "The no-alias choice silently created a new alias"

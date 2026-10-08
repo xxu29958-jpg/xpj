@@ -7,7 +7,6 @@ import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.RuleRepository
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.PendingCategoryRuleSubmission
-import com.ticketbox.data.remote.dto.CategoryRuleRequest
 import com.ticketbox.data.repository.asRequest
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.domain.model.CategoryRule
@@ -74,6 +73,10 @@ class CategoryRulesViewModel(
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(CategoryRulesUiState())
     val uiState: StateFlow<CategoryRulesUiState> = _uiState.asStateFlow()
+    val definitions = RuleDefinitionDraftController(ruleRepository, viewModelScope) { id ->
+        _uiState.update { it.copy(selectedSubmissionId = id, submittedRevision = it.submittedRevision + 1,
+            message = UiText.res(R.string.category_rule_submission_saved), messageTone = MessageTone.Info) }
+    }
 
     private var observation: Job? = null
     private var deliveredIds: Set<Long> = emptySet()
@@ -177,15 +180,9 @@ class CategoryRulesViewModel(
         }
     }
 
-    fun createCategoryRule(request: CategoryRuleRequest) = submitRule { origin ->
-        ruleRepository.createCategoryRule(origin, request)
+    fun toggleCategoryRule(rule: CategoryRule) = submitRule { origin ->
+        ruleRepository.updateCategoryRule(origin, rule, rule.asRequest().copy(enabled = !rule.enabled))
     }
-
-    fun updateCategoryRule(rule: CategoryRule, request: CategoryRuleRequest) = submitRule { origin ->
-        ruleRepository.updateCategoryRule(origin, rule, request)
-    }
-
-    fun toggleCategoryRule(rule: CategoryRule) = updateCategoryRule(rule, rule.asRequest().copy(enabled = !rule.enabled))
 
     fun deleteCategoryRule(rule: CategoryRule) = submitRule { origin -> ruleRepository.deleteCategoryRule(origin, rule) }
 

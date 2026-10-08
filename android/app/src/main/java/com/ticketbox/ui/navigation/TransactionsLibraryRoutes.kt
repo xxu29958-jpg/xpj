@@ -223,13 +223,12 @@ private fun CategoryRulesLibraryRoute(
     )
     LaunchedEffect(viewModel, originalSubmissionId) { originalSubmissionId?.let(viewModel::openSubmission) }
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val definitions by viewModel.definitions.state.collectAsStateWithLifecycle()
     ReportSuccessfulLibraryWrites(viewModel.uiState, onVocabularyChanged) { it.changedRevision }
     ReportSuccessfulLibraryWrites(viewModel.uiState, onTransactionRowsChanged) { it.applicationRevision }
     CategoryRulesScreen(
         state = CategoryRulesScreenState(
-            rules = CategoryRulesRuleListState(
-                rules = state.categoryRules,
-                loading = state.categoryRulesLoading,
+            rules = CategoryRulesRuleListState(rules = state.categoryRules, loading = state.categoryRulesLoading,
                 loadFailed = state.categoryRulesLoadFailed,
             ),
             interaction = CategoryRulesInteractionState(
@@ -246,12 +245,15 @@ private fun CategoryRulesLibraryRoute(
             undoableRule = state.undoableRule,
             submissions = state.pendingSubmissions, selectedSubmissionId = state.selectedSubmissionId,
             submittedRevision = state.submittedRevision, binding = state.binding,
+            definitions = definitions,
         ),
         actions = CategoryRulesScreenActions(
             onBack = navController::popBackStack,
+            definitions = com.ticketbox.ui.screens.settings.CategoryRuleDefinitionActions(
+                viewModel.definitions::begin, viewModel.definitions::open, viewModel.definitions::change,
+                viewModel.definitions::submit, viewModel.definitions::close, viewModel.definitions::reviewBinding,
+                viewModel.definitions::reload),
             rules = CategoryRulesRuleActions(
-                onCreate = viewModel::createCategoryRule,
-                onUpdate = viewModel::updateCategoryRule,
                 onToggle = viewModel::toggleCategoryRule,
                 onDelete = viewModel::deleteCategoryRule,
                 onRecoverSubmission = viewModel::recoverSubmission,

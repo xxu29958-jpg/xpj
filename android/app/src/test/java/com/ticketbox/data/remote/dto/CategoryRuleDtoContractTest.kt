@@ -12,6 +12,19 @@ class CategoryRuleDtoContractTest {
         .build()
 
     @Test
+    fun newDefinitionClearsTextConditionsWithoutChangingTheOriginalLegacyReplayBody() {
+        val request = CategoryRuleRequest("早餐", "餐饮", true, 10)
+        val legacy = com.ticketbox.data.repository.CategoryRuleSubmissionPayload(expectedRowVersion = 7, request = request)
+        val adapter = moshi.adapter(CategoryRuleUpdateRequest::class.java)
+        assertEquals("""{"expected_row_version":7,"keyword":"早餐","category":"餐饮","enabled":true,"priority":10}""",
+            adapter.toJson(legacy.updateRequest()))
+        val current = legacy.copy(version = 2, originalInput = mapOf("source_contains" to "", "tag_contains" to ""))
+        val wire = requireNotNull(moshi.adapter(Map::class.java).fromJson(adapter.toJson(current.updateRequest())))
+        assertEquals("", wire["source_contains"], "An absent field leaves the old condition in place")
+        assertEquals("", wire["tag_contains"], "An absent field leaves the old condition in place")
+    }
+
+    @Test
     fun ruleApplicationListParsesGovernanceHistory() {
         val dto = requireNotNull(
             moshi.adapter(RuleApplicationListDto::class.java).fromJson(

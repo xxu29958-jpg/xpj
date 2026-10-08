@@ -220,6 +220,7 @@ internal class RepositoryGraph(
 
     val ruleRepository = RuleRepository(
         binding = serverSessionBinding,
+        definitionInputs = com.ticketbox.data.repository.RuleDefinitionDraftStore(database.ruleDefinitionInputDao()),
         onConfirmedChanged = { expenseRepository.syncConfirmed() },
         offlineMutations = CategoryRuleOfflineMutationWiring(
             outbox = outbox,

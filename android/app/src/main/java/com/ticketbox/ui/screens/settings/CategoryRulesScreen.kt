@@ -1,15 +1,11 @@
 package com.ticketbox.ui.screens.settings
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Category
-import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -37,14 +33,15 @@ import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.settings.categoryrules.CategoryRuleDraftForm
-import com.ticketbox.ui.screens.settings.categoryrules.CategoryRuleInputError
-import com.ticketbox.ui.screens.settings.categoryrules.CategoryRuleEditorCard
 import com.ticketbox.ui.screens.settings.categoryrules.CategoryRuleList
 import com.ticketbox.ui.screens.settings.categoryrules.ConfirmedRuleApplyPanel
 import com.ticketbox.ui.screens.settings.categoryrules.DeleteCategoryRuleDialog
 import com.ticketbox.ui.screens.settings.categoryrules.RuleApplicationHistory
 import com.ticketbox.ui.screens.settings.categoryrules.RollbackRuleApplicationDialog
 import kotlinx.coroutines.delay
+import com.ticketbox.data.repository.RuleDefinitionDraft
+import com.ticketbox.viewmodel.RuleDefinitionDraftState
+import com.ticketbox.ui.screens.settings.categoryrules.CategoryRuleDefinitionEditor
 
 data class CategoryRulesScreenState(
     val rules: CategoryRulesRuleListState,
@@ -56,6 +53,7 @@ data class CategoryRulesScreenState(
     val selectedSubmissionId: Long? = null,
     val submittedRevision: Int = 0,
     val binding: LogicalSessionBinding? = null,
+    val definitions: RuleDefinitionDraftState = RuleDefinitionDraftState(),
 )
 
 data class CategoryRulesRuleListState(
@@ -86,11 +84,20 @@ data class CategoryRulesScreenActions(
     val rules: CategoryRulesRuleActions,
     val applications: CategoryRulesApplicationActions,
     val undo: CategoryRulesUndoActions,
+    val definitions: CategoryRuleDefinitionActions,
+)
+
+data class CategoryRuleDefinitionActions(
+    val onBegin: (CategoryRuleDraftForm) -> Unit,
+    val onOpen: (RuleDefinitionDraft) -> Unit,
+    val onChange: (RuleDefinitionDraft) -> Unit,
+    val onSubmit: (RuleDefinitionDraft, CategoryRuleRequest) -> Unit,
+    val onClose: () -> Unit,
+    val onReviewBinding: () -> Unit,
+    val onReload: () -> Unit,
 )
 
 data class CategoryRulesRuleActions(
-    val onCreate: (CategoryRuleRequest) -> Unit,
-    val onUpdate: (CategoryRule, CategoryRuleRequest) -> Unit,
     val onToggle: (CategoryRule) -> Unit,
     val onDelete: (CategoryRule) -> Unit,
     val onRecoverSubmission: (PendingCategoryRuleSubmission, Boolean) -> Unit,
@@ -116,17 +123,19 @@ fun CategoryRulesScreen(
     chrome: ManagementPageChrome = ManagementPageChrome(),
     initialRuleId: Long? = null,
 ) {
-    var form by remember(state.binding) { mutableStateOf<CategoryRuleDraftForm?>(null) }
     var initialRuleOpened by remember(state.binding, initialRuleId) { mutableStateOf(false) }
-    LaunchedEffect(initialRuleId, state.rules.rules, state.interaction.readOnly) {
-        if (!initialRuleOpened && !state.interaction.readOnly) {
+    LaunchedEffect(initialRuleId, state.rules.rules, state.interaction.readOnly, state.definitions.ready) {
+        if (!initialRuleOpened && !state.interaction.readOnly && state.definitions.ready) {
             state.rules.rules.find { it.id == initialRuleId }?.let {
-                form = CategoryRuleDraftForm.fromRule(it)
+                actions.definitions.onBegin(CategoryRuleDraftForm.fromRule(it))
                 initialRuleOpened = true
             }
         }
     }
-    LaunchedEffect(state.submittedRevision) { if (state.submittedRevision > 0) form = null }
+    if (state.definitions.selected != null) {
+        CategoryRuleDefinitionEditor(state.definitions, actions.definitions, chrome)
+        return
+    }
     var deletingRule by remember(state.binding) { mutableStateOf<CategoryRule?>(null) }
     var rollbackApplication by remember(state.binding) { mutableStateOf<RuleApplicationBatch?>(null) }
 
@@ -154,16 +163,21 @@ fun CategoryRulesScreen(
         onBack = actions.onBack,
         status = { AppStatusBanner(message = state.status.message, tone = state.status.messageTone) },
     ) {
+        state.definitions.error?.let {
+            AppStatusBanner(message = it, tone = MessageTone.Danger)
+            TextButton(onClick = actions.definitions.onReload) { Text(stringResource(R.string.category_rules_reload)) }
+        }
+        state.definitions.drafts.forEach { draft ->
+            SettingsEntryRow(title = draft.keyword.ifBlank { stringResource(R.string.category_rules_section_create) },
+                subtitle = stringResource(R.string.category_rule_draft_retained), icon = R.drawable.ic_lucide_tag,
+                onClick = { actions.definitions.onOpen(draft) })
+        }
         key(state.binding) {
             CategoryRuleSubmissionCards(state.submissions, state.selectedSubmissionId, state.interaction.busy,
                 state.interaction.readOnly, actions.rules.onRecoverSubmission)
         }
         CategoryRulesContent(
             state = state.contentState(),
-            editor = CategoryRulesEditorBinding(
-                form = form,
-                onFormChange = { form = it },
-            ),
             actions = actions,
             onRequestDelete = { deletingRule = it },
             onRequestRollback = { rollbackApplication = it },
@@ -182,6 +196,7 @@ private data class CategoryRulesContentState(
     val applicationsLoadFailed: Boolean,
     val confirmedPreview: RuleApplyConfirmedResult?,
     val undoableRule: CategoryRule?,
+    val definitionsReady: Boolean,
 )
 
 private fun CategoryRulesScreenState.contentState() = CategoryRulesContentState(
@@ -190,11 +205,7 @@ private fun CategoryRulesScreenState.contentState() = CategoryRulesContentState(
     applicationsLoading = applications.loading, confirmedPreview = applications.confirmedPreview,
     applicationsLoadFailed = applications.loadFailed,
     undoableRule = undoableRule,
-)
-
-private data class CategoryRulesEditorBinding(
-    val form: CategoryRuleDraftForm?,
-    val onFormChange: (CategoryRuleDraftForm?) -> Unit,
+    definitionsReady = definitions.ready,
 )
 
 @Composable
@@ -236,7 +247,6 @@ private fun CategoryRuleRollbackDialogHost(
 @Composable
 private fun CategoryRulesContent(
     state: CategoryRulesContentState,
-    editor: CategoryRulesEditorBinding,
     actions: CategoryRulesScreenActions,
     onRequestDelete: (CategoryRule) -> Unit,
     onRequestRollback: (RuleApplicationBatch) -> Unit,
@@ -248,7 +258,6 @@ private fun CategoryRulesContent(
     )
     CategoryRuleListSection(
         state = state,
-        editor = editor,
         actions = actions,
         onRequestDelete = onRequestDelete,
     )
@@ -271,18 +280,16 @@ private fun CategoryRulesContent(
 @Composable
 private fun CategoryRuleListSection(
     state: CategoryRulesContentState,
-    editor: CategoryRulesEditorBinding,
     actions: CategoryRulesScreenActions,
     onRequestDelete: (CategoryRule) -> Unit,
 ) {
-    val form = editor.form
     SettingsSection(
         title = stringResource(R.string.category_rules_section_list),
-        trailing = if (!state.readOnly && form == null) {
+        trailing = if (!state.readOnly) {
             {
                 TextButton(
-                    enabled = !state.busy,
-                    onClick = { editor.onFormChange(CategoryRuleDraftForm()) },
+                    enabled = !state.busy && state.definitionsReady,
+                    onClick = { actions.definitions.onBegin(CategoryRuleDraftForm()) },
                 ) {
                     Text(stringResource(R.string.category_rule_editor_submit_create))
                 }
@@ -291,18 +298,9 @@ private fun CategoryRuleListSection(
             null
         },
     ) {
-        CategoryRuleListNote(readOnly = state.readOnly, hasActiveForm = form != null)
-        if (form != null && !state.readOnly) {
-            CategoryRuleEditorSlot(
-                form = form,
-                busy = state.busy,
-                editor = editor,
-                actions = actions,
-            )
-        }
+        CategoryRuleListNote(readOnly = state.readOnly)
         CategoryRuleListBody(
             state = state,
-            editor = editor,
             actions = actions,
             onRequestDelete = onRequestDelete,
         )
@@ -312,7 +310,6 @@ private fun CategoryRuleListSection(
 @Composable
 private fun CategoryRuleListNote(
     readOnly: Boolean,
-    hasActiveForm: Boolean,
 ) {
     if (readOnly) {
         Text(
@@ -320,7 +317,7 @@ private fun CategoryRuleListNote(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
         )
-    } else if (!hasActiveForm) {
+    } else {
         Text(
             text = stringResource(R.string.category_rules_create_prompt_body),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -332,7 +329,6 @@ private fun CategoryRuleListNote(
 @Composable
 private fun CategoryRuleListBody(
     state: CategoryRulesContentState,
-    editor: CategoryRulesEditorBinding,
     actions: CategoryRulesScreenActions,
     onRequestDelete: (CategoryRule) -> Unit,
 ) {
@@ -361,7 +357,7 @@ private fun CategoryRuleListBody(
             onToggleRule = actions.rules.onToggle,
             onEditRule = { rule ->
                 if (!state.readOnly) {
-                    editor.onFormChange(CategoryRuleDraftForm.fromRule(rule))
+                    actions.definitions.onBegin(CategoryRuleDraftForm.fromRule(rule))
                 }
             },
             onDeleteRule = { rule ->
@@ -371,40 +367,6 @@ private fun CategoryRuleListBody(
             },
         )
     }
-}
-
-@Composable
-private fun CategoryRuleEditorSlot(
-    form: CategoryRuleDraftForm,
-    busy: Boolean,
-    editor: CategoryRulesEditorBinding,
-    actions: CategoryRulesScreenActions,
-) {
-    Text(
-        text = stringResource(
-            if (form.editingRule == null) {
-                R.string.category_rules_section_create
-            } else {
-                R.string.category_rules_section_edit
-            },
-        ),
-        style = MaterialTheme.typography.titleSmall,
-    )
-    CategoryRuleEditorCard(
-        form = form,
-        busy = busy,
-        onFormChange = editor.onFormChange,
-        onSubmit = {
-            form.toRequest().fold(
-                onSuccess = { request ->
-                    val rule = form.editingRule
-                    if (rule == null) actions.rules.onCreate(request) else actions.rules.onUpdate(rule, request)
-                },
-                onFailure = { error -> editor.onFormChange(form.copy(localMessage = UiText.res((error as? CategoryRuleInputError)?.resourceId ?: R.string.category_rule_validation_fields))) },
-            )
-        },
-        onCancel = { editor.onFormChange(null) },
-    )
 }
 
 @Composable
