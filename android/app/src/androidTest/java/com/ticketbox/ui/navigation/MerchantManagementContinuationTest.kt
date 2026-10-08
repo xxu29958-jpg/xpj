@@ -517,31 +517,21 @@ class MerchantManagementContinuationTest {
         assertTrue(merges.isEmpty() && updates.isEmpty() && catalogRequests.isEmpty() && aliasRequests.isEmpty())
     }
 
-    @Test fun acceptedRenameReopensItsOriginalReceiptWithoutReplacingLaterFacts() = acceptedCommandReopens(MerchantDraftKind.Rename)
-    @Test fun acceptedVisibilityReplaysItsOriginalChoiceAfterAnotherDeviceShowsTheMerchant() = acceptedCommandReopens(MerchantDraftKind.Visibility)
-    @Test fun acceptedDeleteReplaysAfterAnotherDeviceRestoresTheMerchant() = acceptedCommandReopens(MerchantDraftKind.Delete)
-    @Test fun acceptedMergeReopensFromTheShelfAfterTheSourceDisappears() = acceptedCommandReopens(MerchantDraftKind.Merge)
+    @Test fun acceptedRenameReopensItsOriginalReceiptWithoutReplacingLaterFacts() = acceptedCommandReopens(
+        MerchantDraftKind.Rename, R.string.merchant_catalog_card_action_rename,
+        R.string.merchant_catalog_rename_dialog_title, R.string.merchant_catalog_rename_dialog_confirm)
+    @Test fun acceptedVisibilityReplaysItsOriginalChoiceAfterAnotherDeviceShowsTheMerchant() = acceptedCommandReopens(
+        MerchantDraftKind.Visibility, R.string.merchant_catalog_card_action_hide,
+        R.string.merchant_command_visibility, R.string.merchant_catalog_card_action_hide)
+    @Test fun acceptedDeleteReplaysAfterAnotherDeviceRestoresTheMerchant() = acceptedCommandReopens(
+        MerchantDraftKind.Delete, R.string.merchant_catalog_card_action_delete,
+        R.string.merchant_catalog_delete_dialog_title, R.string.merchant_catalog_delete_dialog_confirm)
+    @Test fun acceptedMergeReopensFromTheShelfAfterTheSourceDisappears() = acceptedCommandReopens(
+        MerchantDraftKind.Merge, R.string.merchant_catalog_card_action_merge,
+        R.string.merchant_catalog_merge_dialog_title, R.string.merchant_catalog_merge_dialog_confirm)
 
-    private fun acceptedCommandReopens(kind: MerchantDraftKind) {
+    private fun acceptedCommandReopens(kind: MerchantDraftKind, action: Int, title: Int, confirm: Int) {
         prepareMerge()
-        val action = when (kind) {
-            MerchantDraftKind.Rename -> R.string.merchant_catalog_card_action_rename
-            MerchantDraftKind.Merge -> R.string.merchant_catalog_card_action_merge
-            MerchantDraftKind.Delete -> R.string.merchant_catalog_card_action_delete
-            else -> R.string.merchant_catalog_card_action_hide
-        }
-        val title = when (kind) {
-            MerchantDraftKind.Rename -> R.string.merchant_catalog_rename_dialog_title
-            MerchantDraftKind.Merge -> R.string.merchant_catalog_merge_dialog_title
-            MerchantDraftKind.Delete -> R.string.merchant_catalog_delete_dialog_title
-            else -> R.string.merchant_command_visibility
-        }
-        val confirm = when (kind) {
-            MerchantDraftKind.Rename -> R.string.merchant_catalog_rename_dialog_confirm
-            MerchantDraftKind.Merge -> R.string.merchant_catalog_merge_dialog_confirm
-            MerchantDraftKind.Delete -> R.string.merchant_catalog_delete_dialog_confirm
-            else -> R.string.merchant_catalog_card_action_hide
-        }
         clickText(action)
         if (kind == MerchantDraftKind.Rename) {
             compose.onNode(hasSetTextAction() and hasText("原商家")).performTextReplacement("  原来想改的名称  ")

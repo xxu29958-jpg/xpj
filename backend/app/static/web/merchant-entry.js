@@ -13,9 +13,9 @@
     else next.searchParams.set("new_" + kind + "creation", "1");
     return next.href;
   }
-  for (const form of document.querySelectorAll("form[data-merchant-create]")) {
+  function mountCreation(form) {
     const kind = form.dataset.merchantCreate, family = kind + "creation", names = fields(kind);
-    if (!form.dataset[family + "DraftScope"]) continue;
+    if (!form.dataset[family + "DraftScope"]) return;
     window.TicketboxPlanEntry.mount(form, {family, label: kind === "catalog" ? "商家添加任务" : "别名添加任务",
       list: "/web/merchants", create: names, edit: names, validRef: uuid,
       titleField: kind === "catalog" ? "display_name" : "alias", pendingLabel: "核实原添加", reviewRequiresRejection: true,
@@ -25,7 +25,7 @@
         typeof receipt[kind === "catalog" ? "display_name" : "canonical_merchant"] === "string",
     });
   }
-  for (const shelf of document.querySelectorAll("[data-merchant-shelf-kind]")) {
+  function renderCreationShelf(shelf) {
     try {
       const kind = shelf.dataset.merchantShelfKind, scope = JSON.parse(shelf.dataset.merchantScope);
       const store = window.TicketboxDraftStore.createStore({prefix: "ticketbox:" + kind + "creation-create-draft:v1:",
@@ -63,9 +63,9 @@
     }
     return kind === "delete" ? !!source.deleted_at : kind !== "toggle" || source.status === saved.next_status;
   }
-  for (const form of document.querySelectorAll("form[data-merchant-command]")) {
+  function mountCommand(form) {
     const kind = form.dataset.merchantCommand, family = "catalog" + kind, names = commandFields(kind);
-    if (!form.dataset[family + "DraftScope"]) continue;
+    if (!form.dataset[family + "DraftScope"]) return;
     const read = current => {
       const saved = Object.fromEntries(names.map(name => [name, current.elements.namedItem(name)?.value || ""]));
       if (kind === "merge" && saved.target) saved.target_name = current.elements.target.selectedOptions[0].textContent;
@@ -85,9 +85,9 @@
       },
     });
   }
-  for (const shelf of document.querySelectorAll("[data-merchant-command-shelf]")) {
+  function renderCommandShelf(shelf) {
     const kind = shelf.dataset.merchantCommandShelf;
-    if (document.querySelector('form[data-merchant-command="' + kind + '"]')) continue;
+    if (document.querySelector('form[data-merchant-command="' + kind + '"]')) return;
     try {
       const scope = JSON.parse(shelf.dataset.merchantScope);
       const store = window.TicketboxDraftStore.createStore({prefix: "ticketbox:catalog" + kind + "-edit-draft:v1:",
@@ -103,4 +103,8 @@
       shelf.hidden = !list.childElementCount;
     } catch (_) { /* Retained commands remain in their existing store when storage is unavailable. */ }
   }
+  document.querySelectorAll("form[data-merchant-create]").forEach(mountCreation);
+  document.querySelectorAll("[data-merchant-shelf-kind]").forEach(renderCreationShelf);
+  document.querySelectorAll("form[data-merchant-command]").forEach(mountCommand);
+  document.querySelectorAll("[data-merchant-command-shelf]").forEach(renderCommandShelf);
 })(window, document);
