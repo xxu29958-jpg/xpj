@@ -1,0 +1,34 @@
+{% extends 'base.html' %}
+{% set page_title = '分类规则' %}
+{% set product_body_domain = 'transactions' %}
+{% set page_surface = 'tertiary' %}
+{% set task_return_href = category_return_url or ('/web/rules' ~ q) %}
+{% set task_return_label = '分类' if category_return_url else '分类规则' %}
+{% set definition_frozen = definition_result in ['blocked', 'rejected'] %}
+{% block title %}{{ '编辑' if rule_id else '添加' }}分类规则 · 小票夹{% endblock %}
+{% block page_scripts %}{% include 'partials/rule_draft_scripts.html' %}{% endblock %}
+{% block content %}
+<div class="library-workspace stack">
+<header class="product-page-header"><div class="product-page-heading"><h1 class="page-title">让分类更省心</h1><p class="product-page-summary">遇到这样的账单，建议这样归类。</p></div></header>
+{% if error %}<div class="product-feedback product-feedback--danger" role="alert">{{ error }} 原输入仍保留。{% if definition_result == 'rejected' %}请核对后再继续。{% endif %}</div>{% endif %}
+{% if recycle %}<p class="product-feedback">请先恢复分类，再{{ '保存规则' if rule_id else '创建规则' }}。<a href="/web/recycle-bin{{ q }}">查看回收站</a></p>{% endif %}
+{% if binding_required %}<p class="product-feedback">请明确核对当前浏览器身份，原输入不会自动转移。</p>{% endif %}
+{% if not can_write %}<p class="product-feedback">当前角色为只读，仍可查看原输入。</p>{% endif %}
+{% if not definition_available %}<p class="product-feedback">原规则已不可修改，或原金额币种尚未确认。输入仍保留；已经发出的提交可核实原结果，不会转移到另一条规则。</p>{% endif %}
+{% if definition_result == 'prepared' %}<p class="product-feedback" role="status">已核对{{ '原规则的当前版本' if rule_id else '新建任务' }}，原输入仍保留。再次确认才会保存。</p>{% endif %}
+<form method="post" action="{{ '/web/rules/' ~ rule_id ~ '/edit' if rule_id else '/web/rules/create' }}" class="stack" data-rule-definition
+{% if rule_draft_scope %} data-ruledefinition-draft-scope="{{ rule_draft_scope|tojson|forceescape }}" data-ruledefinition-can-write="{{ 'true' if can_write else 'false' }}" data-ruledefinition-plan-id="{{ rule_id or '' }}" data-ruledefinition-archived="{{ 'false' if definition_available else 'true' }}" data-ruledefinition-native-result="{{ definition_result }}"{% endif %}>
+{{ csrf_field|safe }}
+{% for name in ['ledger_id', 'rule_id', 'expected_row_version', 'draft_scope', 'draft_ref', 'return_category', 'return_month'] %}<input type="hidden" name="{{ name }}" value="{{ rule_draft.get(name, '') }}">{% endfor %}
+{% include 'partials/rule_fields.html' %}
+<div class="product-entry product-entry--static"><span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#info"/></svg></span><span class="product-entry-copy"><strong>保存规则不会修改已有账单</strong><span>保存后，先预览真实影响，再决定是否应用。</span></span></div>
+<p class="product-feedback" data-ruledefinition-draft-status role="status" aria-live="polite" hidden></p>
+<button type="submit" class="product-button product-button--primary" data-ruledefinition-submit{% if not can_write or not definition_available and not definition_frozen %} disabled{% endif %}>{{ '核实原提交' if definition_frozen else '保存规则' if rule_id else '添加规则' }} <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-right"/></svg></button>
+<p class="meta" data-ruledefinition-review-note{% if not rule_id and definition_result != 'rejected' and not binding_required %} hidden{% endif %}>核对只读取当前记录，保留原文字和币种。再次确认才会保存。</p>
+<button type="submit" name="{{ 'review_latest' if rule_id else 'review_new' }}" value="true" formnovalidate class="product-button product-button--quiet" data-ruledefinition-review{% if not can_write or not definition_available or not binding_required and (definition_frozen and definition_result != 'rejected' or not rule_id and definition_result != 'rejected') %} hidden{% endif %}>{{ '核对当前规则，保留输入' if rule_id else '核对后保留输入，继续修改' }}</button>
+{% if rule_draft_scope %}<button type="button" class="product-button product-button--quiet" data-ruledefinition-discard hidden>放弃此浏览器的原稿</button>{% endif %}
+</form>
+<a class="product-button product-button--quiet" href="{{ task_return_href }}">{{ '返回分类继续移除' if category_return_url else '返回规则列表' }}</a>
+{% include 'partials/rule_draft_shelf.html' %}
+</div>
+{% endblock %}

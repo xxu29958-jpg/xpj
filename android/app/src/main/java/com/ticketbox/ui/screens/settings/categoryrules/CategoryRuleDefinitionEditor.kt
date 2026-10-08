@@ -25,17 +25,20 @@ internal fun CategoryRuleDefinitionEditor(
     state: RuleDefinitionDraftState,
     actions: CategoryRuleDefinitionActions,
     chrome: ManagementPageChrome,
+    onReturnToCaller: (() -> Unit)?,
 ) {
     val draft = state.selected ?: return
     var localMessage by remember(draft.key) { mutableStateOf<UiText?>(null) }
     val form = CategoryRuleDraftForm.fromDraft(draft).copy(localMessage = localMessage)
     val bindingChanged = draft.binding != state.binding
-    BackHandler(onBack = actions.onClose)
+    val close = { actions.onClose(); onReturnToCaller?.invoke(); Unit }
+    val editorChrome = if (onReturnToCaller != null) chrome else
+        chrome.copy(backText = stringResource(R.string.category_rules_page_title))
+    BackHandler(onBack = close)
     ManagementPageFrame(
         header = ManagementPageHeader(stringResource(R.string.category_rule_definition_title),
-            stringResource(R.string.category_rule_definition_subtitle),
-            chrome.copy(backText = stringResource(R.string.category_rules_page_title))),
-        onBack = actions.onClose,
+            stringResource(R.string.category_rule_definition_subtitle), editorChrome),
+        onBack = close,
         status = { AppStatusBanner(state.error, MessageTone.Danger) },
     ) {
         if (bindingChanged) {
@@ -56,6 +59,6 @@ internal fun CategoryRuleDefinitionEditor(
                     onFailure = { localMessage = UiText.res((it as? CategoryRuleInputError)?.resourceId
                         ?: R.string.category_rule_validation_fields) })
             },
-            onCancel = actions.onClose)
+            onCancel = close)
     }
 }

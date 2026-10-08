@@ -31,6 +31,17 @@ JPY_INPUT = {"currency_code": "JPY", "currency_symbol": "¥", "amount_step": "1"
              "amount_placeholder": "0", "amount_example": "1200", "positive_amount_min": "1", "amount_input_hint": "整数"}
 
 
+def _rule_definition(kind, common, scope, key):
+    editing = kind == "rule-edit"
+    draft = {"ledger_id": "owner", "rule_id": "41" if editing else "", "keyword": "原规则", "category": "餐饮",
+        "priority": "10", "home_currency_code": "JPY" if HITS[kind] == 1 else "CNY", "amount_min_yuan": "1200",
+        "amount_max_yuan": "", "source_contains": "", "tag_contains": "", "expected_row_version": str(HITS[kind]),
+        "draft_scope": json.dumps(scope), "draft_ref": str(uuid4()), "idempotency_key": key,
+        "return_category": "", "return_month": ""}
+    return ENV.get_template("rule_definition.html").render(**common, rule_draft=draft, rule_id=41 if editing else None,
+        rule_draft_scope=scope, rule_currency_input=JPY_INPUT, definition_available=True, definition_result="", q="?ledger_id=owner")
+
+
 def render(kind, values=None, native_result=""):
     HITS[kind] = HITS.get(kind, 0) + 1
     key = str(uuid4())
@@ -41,6 +52,8 @@ def render(kind, values=None, native_result=""):
                   "currency_input": JPY_INPUT, "currency_options": ["JPY", "CNY", "USD"],
                   "csrf_token": "synthetic", "csrf_field": '<input name="csrf_token" type="hidden" value="synthetic">',
                   "asset_version": "preflight", "request": {"query_params": {}}, "status_filter": ""}
+    if kind in {"rule-create", "rule-edit"}:
+        return _rule_definition(kind, common, scope, key)
     if kind.startswith("catalog-"):
         command = kind.removeprefix("catalog-")
         item = {"public_id": "merchant-original", "display_name": "原商家", "status": "active", "row_version": 7}
@@ -174,6 +187,10 @@ class RecoveryHandler(Handler):
             "receipt": {"public_id": values.get("public_id") or "00000000-0000-0000-0000-000000000001",
                 "kind": values.get("kind"), "month": values.get("month"), "row_version": 8},
             "next": destination + "?ledger_id=owner"}
+        if self.path.startswith("/web/rules/"):
+            result["receipt"] = {"id": int(values["rule_id"] or "43"), "row_version": int(values["expected_row_version"]) + 1 if values["rule_id"] else 1,
+                "keyword": values["keyword"].strip(), "category": values["category"].strip()}
+            result["next"] = "/web/rules?ledger_id=owner"
         if self.path.startswith("/web/merchants/"):
             result["receipt"].update(row_version=1, display_name=values.get("display_name"), canonical_merchant=values.get("canonical_merchant"))
             result["next"] = "/web/merchants?ledger_id=owner"
@@ -246,7 +263,7 @@ def test_planning_and_reference_entries_replay_original_body_after_unknown_reply
     assert not MISSING, MISSING
     assert {row["entry"] for row in result["results"]} == {
         "budget", "arrangement", "recurring-create", "recurring-edit", "tag-create", "category-create",
-        "merchant-create", "alias-create", "catalog-rename", "catalog-toggle", "catalog-delete", "catalog-merge"}
+        "merchant-create", "alias-create", "catalog-rename", "catalog-toggle", "catalog-delete", "catalog-merge", "rule-create", "rule-edit"}
     assert len(POSTS) == 2 * len(result["results"])
     for first, replay in zip(POSTS[::2], POSTS[1::2], strict=True):
         assert first == replay, "Retry must retain repeated fields, original scope, currency, month, version and key"

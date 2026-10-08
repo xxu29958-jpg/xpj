@@ -6077,82 +6077,6 @@
         "title": "Body_web_review_bulk_web_review_bulk_post",
         "type": "object"
       },
-      "Body_web_rule_save_web_rules__rule_id__edit_post": {
-        "properties": {
-          "amount_max_yuan": {
-            "default": "",
-            "title": "Amount Max Yuan",
-            "type": "string"
-          },
-          "amount_min_yuan": {
-            "default": "",
-            "title": "Amount Min Yuan",
-            "type": "string"
-          },
-          "category": {
-            "default": "",
-            "title": "Category",
-            "type": "string"
-          },
-          "expected_row_version": {
-            "default": "",
-            "title": "Expected Row Version",
-            "type": "string"
-          },
-          "home_currency_code": {
-            "default": "",
-            "title": "Home Currency Code",
-            "type": "string"
-          },
-          "idempotency_key": {
-            "default": "",
-            "title": "Idempotency Key",
-            "type": "string"
-          },
-          "keyword": {
-            "default": "",
-            "title": "Keyword",
-            "type": "string"
-          },
-          "ledger_id": {
-            "default": "",
-            "title": "Ledger Id",
-            "type": "string"
-          },
-          "priority": {
-            "default": "100",
-            "title": "Priority",
-            "type": "string"
-          },
-          "return_category": {
-            "default": "",
-            "title": "Return Category",
-            "type": "string"
-          },
-          "return_month": {
-            "default": "",
-            "title": "Return Month",
-            "type": "string"
-          },
-          "review_latest": {
-            "default": false,
-            "title": "Review Latest",
-            "type": "boolean"
-          },
-          "source_contains": {
-            "default": "",
-            "title": "Source Contains",
-            "type": "string"
-          },
-          "tag_contains": {
-            "default": "",
-            "title": "Tag Contains",
-            "type": "string"
-          }
-        },
-        "title": "Body_web_rule_save_web_rules__rule_id__edit_post",
-        "type": "object"
-      },
       "Body_web_rules_application_rollback_web_rules_applications__public_id__rollback_post": {
         "properties": {
           "ledger_id": {
@@ -6204,67 +6128,6 @@
           }
         },
         "title": "Body_web_rules_apply_pending_web_rules_apply_pending_post",
-        "type": "object"
-      },
-      "Body_web_rules_create_web_rules_create_post": {
-        "properties": {
-          "amount_max_yuan": {
-            "default": "",
-            "title": "Amount Max Yuan",
-            "type": "string"
-          },
-          "amount_min_yuan": {
-            "default": "",
-            "title": "Amount Min Yuan",
-            "type": "string"
-          },
-          "category": {
-            "default": "",
-            "title": "Category",
-            "type": "string"
-          },
-          "home_currency_code": {
-            "default": "",
-            "title": "Home Currency Code",
-            "type": "string"
-          },
-          "idempotency_key": {
-            "default": "",
-            "title": "Idempotency Key",
-            "type": "string"
-          },
-          "keyword": {
-            "default": "",
-            "title": "Keyword",
-            "type": "string"
-          },
-          "ledger_id": {
-            "default": "",
-            "title": "Ledger Id",
-            "type": "string"
-          },
-          "priority": {
-            "default": "100",
-            "title": "Priority",
-            "type": "string"
-          },
-          "review_new": {
-            "default": false,
-            "title": "Review New",
-            "type": "boolean"
-          },
-          "source_contains": {
-            "default": "",
-            "title": "Source Contains",
-            "type": "string"
-          },
-          "tag_contains": {
-            "default": "",
-            "title": "Tag Contains",
-            "type": "string"
-          }
-        },
-        "title": "Body_web_rules_create_web_rules_create_post",
         "type": "object"
       },
       "Body_web_rules_delete_web_rules__rule_id__delete_post": {
@@ -22157,6 +22020,193 @@
           "changed_count"
         ],
         "title": "RuleApplyPendingResponse",
+        "type": "object"
+      },
+      "RuleDefinitionForm": {
+        "properties": {
+          "amount_max_yuan": {
+            "default": "",
+            "title": "Amount Max Yuan",
+            "type": "string"
+          },
+          "amount_min_yuan": {
+            "default": "",
+            "title": "Amount Min Yuan",
+            "type": "string"
+          },
+          "category": {
+            "default": "",
+            "title": "Category",
+            "type": "string"
+          },
+          "draft_ref": {
+            "default": "",
+            "title": "Draft Ref",
+            "type": "string"
+          },
+          "draft_scope": {
+            "default": "",
+            "title": "Draft Scope",
+            "type": "string"
+          },
+          "home_currency_code": {
+            "default": "",
+            "title": "Home Currency Code",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "keyword": {
+            "default": "",
+            "title": "Keyword",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "priority": {
+            "default": "100",
+            "title": "Priority",
+            "type": "string"
+          },
+          "return_category": {
+            "default": "",
+            "title": "Return Category",
+            "type": "string"
+          },
+          "return_month": {
+            "default": "",
+            "title": "Return Month",
+            "type": "string"
+          },
+          "review_latest": {
+            "default": false,
+            "title": "Review Latest",
+            "type": "boolean"
+          },
+          "review_new": {
+            "default": false,
+            "title": "Review New",
+            "type": "boolean"
+          },
+          "rule_id": {
+            "default": "",
+            "title": "Rule Id",
+            "type": "string"
+          },
+          "source_contains": {
+            "default": "",
+            "title": "Source Contains",
+            "type": "string"
+          },
+          "tag_contains": {
+            "default": "",
+            "title": "Tag Contains",
+            "type": "string"
+          }
+        },
+        "title": "RuleDefinitionForm",
+        "type": "object"
+      },
+      "RuleEditForm": {
+        "properties": {
+          "amount_max_yuan": {
+            "default": "",
+            "title": "Amount Max Yuan",
+            "type": "string"
+          },
+          "amount_min_yuan": {
+            "default": "",
+            "title": "Amount Min Yuan",
+            "type": "string"
+          },
+          "category": {
+            "default": "",
+            "title": "Category",
+            "type": "string"
+          },
+          "draft_ref": {
+            "default": "",
+            "title": "Draft Ref",
+            "type": "string"
+          },
+          "draft_scope": {
+            "default": "",
+            "title": "Draft Scope",
+            "type": "string"
+          },
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "home_currency_code": {
+            "default": "",
+            "title": "Home Currency Code",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "keyword": {
+            "default": "",
+            "title": "Keyword",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "priority": {
+            "default": "100",
+            "title": "Priority",
+            "type": "string"
+          },
+          "return_category": {
+            "default": "",
+            "title": "Return Category",
+            "type": "string"
+          },
+          "return_month": {
+            "default": "",
+            "title": "Return Month",
+            "type": "string"
+          },
+          "review_latest": {
+            "default": false,
+            "title": "Review Latest",
+            "type": "boolean"
+          },
+          "review_new": {
+            "default": false,
+            "title": "Review New",
+            "type": "boolean"
+          },
+          "rule_id": {
+            "default": "",
+            "title": "Rule Id",
+            "type": "string"
+          },
+          "source_contains": {
+            "default": "",
+            "title": "Source Contains",
+            "type": "string"
+          },
+          "tag_contains": {
+            "default": "",
+            "title": "Tag Contains",
+            "type": "string"
+          }
+        },
+        "title": "RuleEditForm",
         "type": "object"
       },
       "RulePreviewItem": {
@@ -56615,10 +56665,11 @@
           "content": {
             "application/x-www-form-urlencoded": {
               "schema": {
-                "$ref": "#/components/schemas/Body_web_rules_create_web_rules_create_post"
+                "$ref": "#/components/schemas/RuleDefinitionForm"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {
@@ -56787,10 +56838,11 @@
           "content": {
             "application/x-www-form-urlencoded": {
               "schema": {
-                "$ref": "#/components/schemas/Body_web_rule_save_web_rules__rule_id__edit_post"
+                "$ref": "#/components/schemas/RuleEditForm"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {

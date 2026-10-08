@@ -118,6 +118,7 @@ class CategoryReferenceNavigationTest {
         waitForText(context.getString(R.string.category_rule_editor_submit_update))
         compose.onNode(hasSetTextAction() and hasText("bakery")).assertIsDisplayed()
         compose.runOnIdle { assertEquals("42", navigation.currentBackStackEntry?.arguments?.getString("rule")) }
+        captureReferenceLibraryStep(compose, context, "category-rule-return-context")
 
         val previousReads = reads
         blocked = false // The referenced configuration is resolved while this directory is away.

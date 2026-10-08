@@ -33,6 +33,7 @@ from app.routes import (
 )
 from app.routes._web_expense_return_context import ExpenseReturnContext
 from app.routes._web_session_common import LedgerOption
+from app.routes.web_rule_forms import RuleDefinitionForm, RuleEditForm
 from tests._web_native_form_support import hidden_post_forms
 
 CASES = [
@@ -99,11 +100,17 @@ def test_switched_session_keeps_original_form_before_any_object_read_or_command(
         "public_id": "original-object", "rule_id": 17, "enabled": False, "action": "clear", "amount_cents": "1200",
         "return_category": "original-category", "return_month": "2026-02"}
     values.update({key: value for key, value in supplied.items() if key in inspect.signature(handler).parameters})
+    if function in {"web_rules_create", "web_rule_save"}:
+        form_type = RuleEditForm if function == "web_rule_save" else RuleDefinitionForm
+        values["form"] = form_type(**{name: str(value) if name == "rule_id" else value
+            for name, value in supplied.items() if name in form_type.model_fields})
     response = handler(_request(path, current_role), **values, db=Mock(), _local=None)
     assert response.status_code == 409
     html = response.body.decode()
     assert 'name="ledger_id" value="old-ledger"' in html
     assert f'action="{path}"' in html
+    if "form" in values:
+        values = values["form"].model_dump()
     for field in ("idempotency_key", "expected_row_version", "amount_yuan", "baseline_amount_yuan", "target_amount_yuan",
         "total_amount_yuan", "rollover_amount_yuan", "non_monthly_amount_yuan", "return_category", "return_month"):
         if field in values:

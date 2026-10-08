@@ -5,11 +5,12 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
+from fastapi import Request
 from jinja2 import ChoiceLoader, DictLoader, Environment, FileSystemLoader
 
 from app.errors import AppError
 from app.routes import web_rules
-from app.routes.web_rule_forms import rule_amount_label
+from app.routes.web_rule_forms import RuleDefinitionForm, RuleEditForm, rule_amount_label
 from app.services.currency_common import currency_input_metadata
 
 
@@ -17,7 +18,11 @@ def _render(**context):
     context.setdefault("rule_currency_input", {})
     loader = ChoiceLoader([DictLoader({"base.html": "{% block content %}{% endblock %}"}),
         FileSystemLoader(Path(__file__).parents[1] / "app" / "templates" / "web")])
-    return Environment(loader=loader, autoescape=True).get_template("rules.html").render(
+    template = "rules.html"
+    if "rule_draft" in context:
+        template = "rule_definition.html"
+        context.update(definition_available=True, definition_result="")
+    return Environment(loader=loader, autoescape=True).get_template(template).render(
         can_write=True, currency_input=currency_input_metadata("CNY"),
         home_currency_symbol="¥", home_currency_code="CNY", selected_ledger_id="owner",
         rule_amount_label=rule_amount_label, new_rule_key=lambda: "visible-command-key",
@@ -36,7 +41,7 @@ def test_rule_list_uses_captured_currency_and_exposes_edit(currency):
 
 
 def test_rule_create_form_retains_raw_values_currency_and_retry_key():
-    html = _render(rules=[], rule_form_draft={"amount_min_yuan": " 01200.00 ",
+    html = _render(rules=[], rule_draft={"amount_min_yuan": " 01200.00 ",
         "home_currency_code": "JPY", "idempotency_key": "original-rule-key"},
         rule_currency_input=currency_input_metadata("JPY"))
     assert 'name="home_currency_code" value="JPY"' in html
@@ -52,10 +57,10 @@ def test_create_passes_captured_currency_to_command_without_reading_new_default(
     monkeypatch.setattr(web_rules, "_require_selected_ledger_write", lambda *a: None)
     command = Mock(return_value=SimpleNamespace(keyword="Shop", category="购物"))
     monkeypatch.setattr(web_rules, "create_rule_idempotently", command, raising=False)
-    response = web_rules.web_rules_create(Mock(), keyword="Shop", category="购物",
+    response = web_rules.web_rules_create(Request({"type": "http", "headers": []}), form=RuleDefinitionForm(keyword="Shop", category="购物",
         priority="10", amount_min_yuan="1200", amount_max_yuan="", source_contains="",
         tag_contains="", ledger_id="owner", home_currency_code="JPY",
-        idempotency_key="same-original-key", review_new=False, _local=None, db=db)
+        idempotency_key="same-original-key", review_new=False), _local=None, db=db)
     assert response.status_code == 303
     payload = command.call_args.kwargs["payload"]
     assert payload.home_currency_code == "JPY" and payload.amount_min_cents == 1200
@@ -74,24 +79,26 @@ def test_rule_edit_refusal_retains_raw_amount_original_currency_key_and_occ(monk
     command = Mock(side_effect=AppError("state_conflict" if rule else "rule_not_found", status_code=409 if rule else 404))
     monkeypatch.setattr(editor, "update_rule_idempotently", command)
     render = Mock(return_value="retained")
-    monkeypatch.setattr(editor, "_render_editor", render)
+    monkeypatch.setattr(editor, "render_rule_definition", render)
     fields = {"keyword": "Shop", "category": "购物", "priority": "10", "amount_min_yuan": "1200",
         "amount_max_yuan": "", "source_contains": "", "tag_contains": "", "home_currency_code": "JPY",
         "expected_row_version": "2", "idempotency_key": "original-rule-key", "review_latest": False,
         "return_category": "original-category", "return_month": "2026-02"}
-    assert editor.web_rule_save(Mock(), 3, ledger_id="owner", _local=None, db=Mock(), **fields) == "retained"
+    request = Request({"type": "http", "headers": []})
+    assert editor.web_rule_save(request, 3, form=RuleEditForm(ledger_id="owner", **fields), _local=None, db=Mock()) == "retained"
     values = render.call_args.kwargs["values"]
     for name in ("amount_min_yuan", "home_currency_code", "expected_row_version", "idempotency_key", "return_category", "return_month"):
         assert values[name] == fields[name]
     fields["review_latest"] = True
-    editor.web_rule_save(Mock(), 3, ledger_id="owner", _local=None, db=Mock(), **fields)
+    editor.web_rule_save(request, 3, form=RuleEditForm(ledger_id="owner", **fields), _local=None, db=Mock())
     assert command.call_count == 1
     reviewed = render.call_args.kwargs["values"]
     if rule:
         assert reviewed["expected_row_version"] == "9"
         assert reviewed["idempotency_key"] != "original-rule-key"
     else:
-        assert reviewed == values
+        assert {name: reviewed[name] for name in values if name != "review_latest"} == {
+            name: value for name, value in values.items() if name != "review_latest"}
 
 
 @pytest.mark.parametrize("rule_exists", [True, False])

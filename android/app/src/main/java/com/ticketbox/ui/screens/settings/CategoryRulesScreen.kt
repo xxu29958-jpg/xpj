@@ -133,7 +133,7 @@ fun CategoryRulesScreen(
         }
     }
     if (state.definitions.selected != null) {
-        CategoryRuleDefinitionEditor(state.definitions, actions.definitions, chrome)
+        CategoryRuleDefinitionEditor(state.definitions, actions.definitions, chrome, initialRuleId?.let { actions.onBack })
         return
     }
     var deletingRule by remember(state.binding) { mutableStateOf<CategoryRule?>(null) }

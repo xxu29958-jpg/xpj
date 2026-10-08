@@ -5,7 +5,7 @@ Split from ``web_app.py`` in v0.4-alpha3 slice 2.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Annotated
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Form, Request, Response
@@ -15,6 +15,13 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
+from app.routes._web_draft_binding import (
+    browser_draft_scope,
+    draft_ack_response,
+    draft_error_response,
+    require_draft_binding,
+    reviewed_draft_scope,
+)
 from app.routes._web_session_common import resolve_web_actor
 from app.routes.web_common import (
     LocalOnly,
@@ -27,10 +34,12 @@ from app.routes.web_common import (
     preserve_original_ledger_form,
     templates,
 )
+from app.routes.web_rule_edit import render_rule_definition
 from app.routes.web_rule_forms import (
+    RuleDefinitionForm,
     parse_rule_form,
     rule_amount_label,
-    rule_currency_input,
+    rule_form_failure,
 )
 from app.schemas import CategoryRuleCreateRequest, CategoryRuleUpdateRequest
 from app.services.classify_service import (
@@ -97,15 +106,13 @@ def _render_rules(
     confirmed_preview: bool = False,
     msg: str = "",
     undo: str = "",
-    rule_form_error: str = "",
-    rule_form_draft: dict[str, str] | None = None,
-    rule_form_recycle: bool = False,
-    rule_form_review: bool = False,
     rule_toggle_error: str = "",
     rule_toggle_rule_id: int | None = None,
     rule_toggle_recycle: bool = False,
     status_code: int = 200,
 ) -> HTMLResponse:
+    if request.query_params.get("view") == "new":
+        return render_rule_definition(request, db, options, selected_id)
     rules = list_rules(db, selected_id)
     rule_applications = list_rule_applications(db, tenant_id=selected_id, limit=8)
     preview, preview_error = _rule_preview(
@@ -131,13 +138,10 @@ def _render_rules(
     ctx = _base_ctx(
         request, db=db, options=options, selected_ledger_id=selected_id,
     )
-    draft = rule_form_draft if rule_form_draft is not None else {
-        "home_currency_code": ctx["home_currency_code"] or "", "idempotency_key": str(uuid4()),
-    }
     ctx.update(
         rule_amount_label=rule_amount_label,
-        rule_currency_input=rule_currency_input(draft.get("home_currency_code")),
         new_rule_key=lambda: str(uuid4()),
+        rule_draft_scope=browser_draft_scope(db, request),
         rules=rules,
         rule_applications=rule_applications,
         preview=preview,
@@ -148,10 +152,6 @@ def _render_rules(
         preview_category=preview_category,
         flash_message=msg,
         undo_rule_id=undo,
-        rule_form_error=rule_form_error,
-        rule_form_draft=draft,
-        rule_form_recycle=rule_form_recycle,
-        rule_form_review=rule_form_review,
         rule_toggle_error=rule_toggle_error,
         rule_toggle_rule_id=rule_toggle_rule_id,
         rule_toggle_recycle=rule_toggle_recycle,
@@ -195,63 +195,36 @@ def web_rules(
 
 
 @router.post("/rules/create", response_class=HTMLResponse)
-def web_rules_create(
-    request: Request,
-    keyword: str = Form(""),
-    category: str = Form(""),
-    priority: str = Form("100"),
-    amount_min_yuan: str = Form(""),
-    amount_max_yuan: str = Form(""),
-    source_contains: str = Form(""),
-    tag_contains: str = Form(""),
-    home_currency_code: str = Form(""),
-    idempotency_key: str = Form(""),
-    review_new: bool = Form(False),
-    ledger_id: str = Form(""),
-    _local: None = LocalOnly,
-    db: Session = Depends(get_db),
-) -> Response:
+def web_rules_create(request: Request, form: Annotated[RuleDefinitionForm, Form()],
+                     _local: None = LocalOnly, db: Session = Depends(get_db)) -> Response:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
-    draft = {
-        "keyword": keyword,
-        "category": category,
-        "priority": priority,
-        "amount_min_yuan": amount_min_yuan,
-        "amount_max_yuan": amount_max_yuan,
-        "source_contains": source_contains,
-        "tag_contains": tag_contains,
-        "home_currency_code": home_currency_code,
-        "idempotency_key": idempotency_key,
-    }
-    retained = preserve_original_ledger_form(request, db, options=options, selected=selected_id,
-        fields={**draft, "ledger_id": ledger_id, "review_new": review_new}, task="添加分类规则")
-    if retained is not None:
-        return retained
-    _require_selected_ledger_write(options, selected_id)
-    if review_new:
-        draft["idempotency_key"] = str(uuid4())
-        return _render_rules(request, db, options=options, selected_id=selected_id, rule_form_draft=draft)
+    selected_id = _resolve_selected_ledger_id(db, form.ledger_id or None, options, request=request)
+    draft = form.model_dump()
+    if "application/json" not in request.headers.get("accept", ""):
+        retained = preserve_original_ledger_form(request, db, options=options, selected=selected_id,
+            fields=draft, task="添加分类规则")
+        if retained is not None:
+            return retained
     try:
-        result = create_rule_idempotently(
-            db, tenant_id=selected_id, payload=CategoryRuleCreateRequest(**parse_rule_form(draft)),
-            idempotency_key=idempotency_key,
-        )
-        msg = f"已新增规则：{result.keyword} → {result.category}"
+        _require_selected_ledger_write(options, selected_id)
+        if form.ledger_id != selected_id or form.rule_id:
+            raise AppError("session_binding_changed", "原账本或新建任务无法确认，原输入仍保留。", status_code=409)
+        draft["draft_scope"] = reviewed_draft_scope(db, request, form.draft_scope, review=form.review_new)
+        require_draft_binding(db, request, ledger_id=form.ledger_id, draft_scope=draft["draft_scope"], require_session=False)
+        if form.review_new:
+            draft["idempotency_key"] = str(uuid4())
+            return render_rule_definition(request, db, options, selected_id, values=draft, result="prepared")
+        receipt = create_rule_idempotently(db, tenant_id=selected_id,
+            payload=CategoryRuleCreateRequest(**parse_rule_form(draft)), idempotency_key=form.idempotency_key)
     except (AppError, ValidationError) as exc:
         db.rollback()
-        return _render_rules(
-            request,
-            db,
-            options=options,
-            selected_id=selected_id,
-            rule_form_error=exc.message if isinstance(exc, AppError) else "请检查关键词、分类和金额条件。输入已保留。",
-            rule_form_draft=draft,
-            rule_form_recycle=isinstance(exc, AppError) and exc.error == "rule_category_deleted",
-            rule_form_review=isinstance(exc, AppError) and exc.error == "idempotency_key_reused",
-            status_code=exc.status_code if isinstance(exc, AppError) else 422,
-        )
-    return _web_redirect("/web/rules", selected_id, msg=msg)
+        error, result = rule_form_failure(exc)
+        return draft_error_response(request, error, refusal_result=result) or render_rule_definition(
+            request, db, options, selected_id, values=draft, error=error.message, result=result,
+            recycle=error.error == "rule_category_deleted", status_code=error.status_code)
+    redirect = _web_redirect("/web/rules", selected_id, msg=f"已新增规则：{receipt.keyword} → {receipt.category}。已有账单需预览后明确应用。")
+    return draft_ack_response(request, draft_scope=draft["draft_scope"], idempotency_key=form.idempotency_key,
+        receipt=receipt, next_href=redirect.headers["location"]) or redirect
 
 
 @router.post("/rules/applications/{public_id}/rollback", response_class=HTMLResponse)

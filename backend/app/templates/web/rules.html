@@ -8,6 +8,7 @@
    已有流水必须先预览、显式确认后才回溯改写, 批次可回滚。
    全部表单 action/hidden/preview_token/expected_row_version/data-confirm/
    can_write 分支原样保留; 影响统计复用 transactions.css 的 import-metrics 事实条。 #}
+{% block page_scripts %}{% include 'partials/rule_draft_scripts.html' %}{% endblock %}
 {% block content %}
 <nav class="library-breadcrumb" aria-label="面包屑">
   <a class="library-breadcrumb-parent" href="/web/library{{ q }}">资料库</a>
@@ -39,36 +40,9 @@
 </div>
 {% endif %}
 
+{% include 'partials/rule_draft_shelf.html' %}
+{% if can_write %}<a class="product-button product-button--primary" href="/web/rules{{ q }}&amp;view=new">添加规则 <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-right"/></svg></a>{% endif %}
 <div class="library-panels">
-  <section class="product-panel product-panel--padded">
-    <div class="product-panel-header">
-      <div class="product-panel-title">新增规则</div>
-    </div>
-    {# C5c-1 最终增量 (合同 C): 金额条件/范围非法时 422 原页重渲染,
-       rule_form_error 锚到本表单, rule_form_draft 七字段原样回填;
-       浏览器不做金额解析/校验, 文案以 Owner 为准。变量缺席时一切如旧。 #}
-    {% set rule_draft = rule_form_draft or {} %}
-    {% if rule_form_error %}
-    <div id="rule-create-error" class="product-feedback product-feedback--danger" role="alert">{{ rule_form_error }}{% if rule_form_recycle %} 请先恢复分类，再创建规则。<a class="product-feedback-link" href="/web/recycle-bin{{ q }}">查看回收站</a>{% endif %}</div>
-    {% endif %}
-    {% if can_write %}
-    <form method="post" action="/web/rules/create" class="product-form-grid"{% if rule_form_error %} aria-describedby="rule-create-error"{% endif %}>
-      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-      {% include 'partials/rule_fields.html' %}
-      <div class="actions">
-        {% if rule_form_review %}
-        <p class="meta">这份表单已提交过。请先核对下方规则列表；继续将保留输入并准备一个新规则，这一步不会保存。</p>
-        <button type="submit" name="review_new" value="true" class="product-button">已核对，准备新规则</button>
-        {% else %}
-        <button type="submit" class="product-button product-button--primary">添加规则</button>
-        {% endif %}
-      </div>
-    </form>
-    {% else %}
-    <p class="meta">只读角色无法新增分类规则。</p>
-    {% endif %}
-  </section>
-
   <section class="product-panel product-panel--padded">
     <div class="product-panel-header">
       <div class="product-panel-title">预览匹配</div>

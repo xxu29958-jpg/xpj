@@ -51,7 +51,7 @@
     <string name="category_rule_definition_optional">可选</string>
     <string name="category_rule_definition_configured">已填写，展开核对</string>
     <string name="category_rule_definition_source">来源包含</string>
-    <string name="category_rule_definition_tag">标签包含</string>
+    <string name="category_rule_definition_tag">标签等于</string>
     <string name="category_rule_draft_retained">未提交 · 继续填写</string>
     <string name="category_rule_draft_read_failed">原规则输入暂时读不到，请重新读取后继续。</string>
     <string name="category_rule_draft_save_failed">原规则输入尚未保存，请保留页面并重试。</string>

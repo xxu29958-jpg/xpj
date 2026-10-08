@@ -20,6 +20,8 @@
     {kind:"catalog-toggle", family:"catalogtoggle", action:"/web/merchants/catalog/merchant-original/toggle", fields:{next_status:"hidden"}},
     {kind:"catalog-delete", family:"catalogdelete", action:"/web/merchants/catalog/merchant-original/delete", fields:{}},
     {kind:"catalog-merge", family:"catalogmerge", action:"/web/merchants/catalog/merchant-original/merge", fields:{target:"merchant-target:1",alias_policy:"create_source_alias"}},
+    {kind:"rule-create", family:"ruledefinition", action:"/web/rules/create", fields:{keyword:"  原规则创建  ",category:"家庭餐饮",priority:"10",amount_min_yuan:"001200",source_contains:"  原来源  ",tag_contains:"  原标签  "}},
+    {kind:"rule-edit", family:"ruledefinition", action:"/web/rules/41/edit", fields:{keyword:"  原规则编辑  ",category:"家庭交通",priority:"20",amount_min_yuan:"001500",source_contains:"",tag_contains:""}},
   ];
   for (const spec of specs) {
     const frame=document.createElement("iframe"); document.body.append(frame);

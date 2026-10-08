@@ -1,0 +1,3 @@
+{% if rule_draft_scope %}
+<details data-ruledefinition-draft-shelf data-rule-scope="{{ rule_draft_scope|tojson|forceescape }}" hidden><summary>此浏览器保留的规则任务</summary><ul data-ruledefinition-draft-list></ul></details>
+{% endif %}

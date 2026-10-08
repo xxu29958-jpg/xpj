@@ -17,6 +17,7 @@ def organize_rules(j):
 def create_rule(j, initial_categories, original_rules):
     page = j.page
     j.goto("/web/rules")
+    page.get_by_role("link", name="添加规则", exact=True).click()
     create = j.form("/web/rules/create")
     create.locator('[name="keyword"]').fill("RefShop")
     create.locator('[name="category"]').fill("Library")
@@ -45,7 +46,7 @@ def resume_rule_edit(j, initial_categories, rule):
     native.reveal_any("RefShop", max_scrolls=16)
     j.native_row_action("RefShop", "分类规则操作")
     native.click("编辑")
-    native.reveal_any("编辑规则", toward_start=True, max_scrolls=16)
+    native.reveal_any("让分类更省心", toward_start=True, max_scrolls=16)
     native.fill("101", label="优先级")
     native.connection(j.port, online=False)
     try:
