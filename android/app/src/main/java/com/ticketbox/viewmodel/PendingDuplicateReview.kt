@@ -37,7 +37,7 @@ fun PendingViewModel.loadDuplicateReference() {
             val image = repository.fetchThumbnail(reference.id).getOrNull()
             if (holdsCommandBinding(binding)) _uiState.update {
                 val current = it.activeSheet as? PendingSheet.Duplicate
-                if (current != null && current.expense === loaded.expense && current.reference === reference && !current.referenceLoading) {
+                if (current != null && current.reference === reference) {
                     it.copy(activeSheet = current.copy(referenceThumbnail = image))
                 } else it
             }
