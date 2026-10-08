@@ -46,6 +46,7 @@
   <span>{{ flash_message }}</span>
   {% if undo_expense_id %}
   <form method="post" action="/web/expenses/{{ undo_expense_id }}/undo" class="undo-banner-action">
+    <input type="hidden" name="draft_scope" value="{{ (undo_draft_scope | tojson if undo_draft_scope else '') | forceescape }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
     <input type="hidden" name="expected_row_version" value="{{ undo_expected_row_version }}">

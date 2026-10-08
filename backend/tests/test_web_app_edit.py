@@ -405,7 +405,7 @@ def test_web_confirm_stale_token_on_missing_expense_redirects_with_flash(
 def test_web_reject_missing_expense_redirects_with_flash(web_client: TestClient) -> None:
     resp = web_client.post(
         "/web/expenses/999999/reject",
-        data={"ledger_id": "owner", "expected_row_version": "1"},
+        data={"ledger_id": "owner", "expected_row_version": "1", "reject_idempotency_key": str(uuid4())},
         follow_redirects=False,
     )
     assert resp.status_code == 303, resp.text

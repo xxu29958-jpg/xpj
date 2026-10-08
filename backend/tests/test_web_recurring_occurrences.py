@@ -291,7 +291,7 @@ def test_occurrence_reject_undo_uses_payment_expense_id_parser(monkeypatch) -> N
 
     sentinel = object()
     for raw in ("²", "0", "-1", "1" * 5000, "2147483648", "12.3", "", None):
-        assert _occurrence_reject_undo(sentinel, selected_id="owner", undo=raw) == (None, None)
+        assert _occurrence_reject_undo(sentinel, selected_id="owner", undo=raw, undo_version="7") == (None, None)
 
     seen: dict[str, object] = {}
 
@@ -303,6 +303,8 @@ def test_occurrence_reject_undo_uses_payment_expense_id_parser(monkeypatch) -> N
         "app.routes.web_recurring_occurrences.fetch_expense_row_version_in_status",
         fetch_expense_row_version_in_status,
     )
-    assert _occurrence_reject_undo(sentinel, selected_id="owner", undo="41") == (41, 7)
+    assert _occurrence_reject_undo(sentinel, selected_id="owner", undo="41", undo_version="7") == (41, 7)
+    assert _occurrence_reject_undo(sentinel, selected_id="owner", undo="41", undo_version="6") == (None, None)
+    assert _occurrence_reject_undo(sentinel, selected_id="owner", undo="41", undo_version=None) == (None, None)
     assert seen == {"db": sentinel, "expense_id": 41, "tenant_id": "owner", "status": "rejected"}
 

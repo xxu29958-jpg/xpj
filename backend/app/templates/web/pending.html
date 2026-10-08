@@ -1,6 +1,9 @@
 {% extends "base.html" %}
 {% block title %}待我处理 · 小票夹{% endblock %}
-{% block page_scripts %}{% include "_attachment_scripts.html" %}{% endblock %}
+{% block page_scripts %}{% include "_attachment_scripts.html" %}
+<script defer src="/static/web/plan-entry.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/expense-review-entry.js?v={{ asset_version }}"></script>
+{% endblock %}
 
 {# One queue and command owner. Native upload, selection snapshots, CSRF, OCC,
    conflict/undo and recognition feedback remain usable without enhancement. #}
@@ -11,7 +14,7 @@
     <h1 class="page-title">小票收件箱</h1>
     <p class="product-page-summary">
       {% if pending_count %}
-      {{ pending_count }} 张待整理，确认后计入流水
+      <span data-pending-count>{{ pending_count }}</span> 张待整理，确认后计入流水
       {% else %}
       当前账本没有待处理记录。
       {% endif %}
@@ -32,6 +35,11 @@
 
 <div class="inbox-workspace">
 <div class="inbox-queue">
+{% if upload_intent.scope %}
+<details class="product-panel product-panel--padded" data-expensereview-draft-shelf data-expensereview-scope='{{ upload_intent.scope | tojson }}' hidden>
+  <summary>保留的核对任务</summary><ul data-expensereview-draft-list></ul>
+</details>
+{% endif %}
 {% if pending_count %}
 {% if can_write %}
 <details class="inbox-capture-panel">
@@ -94,8 +102,11 @@
   {# csrf_token explicit so the form works even if csrf.js fails to load —
      belt-and-braces vs the JS auto-injection in /static/shared/csrf.js. #}
   <form method="post" action="/web/expenses/{{ undo_expense_id }}/undo" class="undo-banner-action">
+    <input type="hidden" name="draft_scope" value="{{ (upload_intent.scope | tojson if upload_intent.scope else '') | forceescape }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+    <input type="hidden" name="return_to" value="pending">
+    <input type="hidden" name="return_filter" value="{{ filter }}">
     {# ADR-0038/0041: OCC token = rejected row's monotonic row_version at banner seed. #}
     <input type="hidden" name="expected_row_version" value="{{ undo_expected_row_version }}">
     <input type="hidden" name="idempotency_key" value="{{ undo_idempotency_key }}">
@@ -147,7 +158,8 @@
 
 {% if filter != 'all' %}
 <p class="inbox-filter-note" aria-live="polite">
-    当前筛选命中 {{ filtered_count }} 笔；切回“全部”可查看完整队列。
+    当前筛选命中 <span data-filtered-count>{{ filtered_count }}</span> 笔；切回“全部”可查看完整队列。
+    {% if filter == 'missing_category' %}<a href="/web/categories/uncategorized{{ _q }}">{{ '批量补分类' if can_write else '查看待补分类' }}</a>{% endif %}
 </p>
 {% endif %}
 {% endif %}
@@ -215,8 +227,8 @@
       {% endif %}
     </div>
     <a class="exp-row-detail"
-       href="/web/expenses/{{ e.id }}/edit{{ _q }}"
-       data-fragment-url="/web/expenses/{{ e.id }}/edit{{ _q }}&fragment=1">
+       href="/web/expenses/{{ e.id }}/edit{{ _q }}&return_to=pending&return_filter={{ filter }}"
+       data-fragment-url="/web/expenses/{{ e.id }}/edit{{ _q }}&return_to=pending&return_filter={{ filter }}&confirmation_task=1&fragment=1">
       <div class="exp-row-picture">
         {% if e.image_state == 'available' %}
         <div class="exp-thumb exp-thumb-receipt" data-receipt-thumb>
@@ -281,7 +293,7 @@
   {% endfor %}
 </section>
 {% if expenses %}
-<div class="inbox-review-start"><a class="product-button product-button--primary" href="/web/expenses/{{ expenses[0].id }}/edit{{ _q }}" data-inbox-review-start>开始核对 {{ expenses|length }} 张 <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-right"/></svg></a></div>
+<div class="inbox-review-start"><a class="product-button product-button--primary" href="/web/expenses/{{ expenses[0].id }}/edit{{ _q }}&return_to=pending&return_filter={{ filter }}" data-inbox-review-start>开始核对 <span data-filtered-count>{{ expenses|length }}</span> 张 <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-right"/></svg></a></div>
 {% endif %}
 {% if pending_count %}{% include "_recent_recognition_tasks.html" %}{% endif %}
 

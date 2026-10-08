@@ -24,9 +24,9 @@
     const planId = data("PlanId") || "";
     const names = planId ? editNames : createNames;
     const createStore = window.TicketboxDraftStore.createStore({prefix: "ticketbox:" + family + "-create-draft:v1:",
-      fields: [...createNames, "amount_placeholder", "amount_inputmode"], validRef: uuid});
+      fields: [...createNames, "amount_placeholder", "amount_inputmode"], validRef: uuid, legacyMissing: definition.legacyMissing || []});
     const editStore = window.TicketboxDraftStore.createStore({prefix: "ticketbox:" + family + "-edit-draft:v1:",
-      fields: [...editNames, "amount_placeholder", "amount_inputmode"], validRef: uuid});
+      fields: [...editNames, "amount_placeholder", "amount_inputmode"], validRef: uuid, legacyMissing: definition.legacyMissing || []});
     const store = planId ? editStore : createStore;
     const anchor = "#" + family + (planId ? "-edit-" : "-create-");
     const reviewName = definition.reviewName || (planId ? "review_latest" : "review_new");
@@ -40,18 +40,23 @@
     const nativeLabel = submit.textContent;
     const nativeRef = (definition.draftRefField && form.elements.namedItem(definition.draftRefField).value) || form.elements.namedItem(commandRefField).value;
     const amount = definition.amount ? form.elements.namedItem(definition.amount) : null;
-    const shelf = document.querySelector(selector("draft-shelf"));
+    const shelf = form.querySelector(selector("draft-shelf")) || document.querySelector(selector("draft-shelf"));
     const review = form.querySelector(selector("review"));
     const discard = form.querySelector(selector("discard"));
     const originalResult = form.querySelector(selector("original-result"));
     const permanentReadonly = new Set([...form.elements].filter(input => input.readOnly));
     const permanentDisabled = new Set([...form.elements].filter(input => input.matches(":disabled")));
     let ref = nativeRef, phase = "editing", held = false, retained = false, busy = false, accepted = false;
-    let release = null, onlineOnly = false, blocked = false, reviewable = false;
-    let leaseVersion = 0;
+    let release = null, leaseRequest = null, onlineOnly = false, blocked = false, reviewable = false;
+    let leaseVersion = 0, disposed = false, unretained = false;
+    const lifecycle = new AbortController();
 
     function field(name) { return form.elements.namedItem(name); }
-    function commandKey(record) { return definition.commandKeyField ? record.values[definition.commandKeyField] : ref; }
+    function commandField(record) { return typeof definition.commandKeyField === "function" ? definition.commandKeyField(record.values) : commandRefField; }
+    function commandKey(record) {
+      const name = typeof definition.commandKeyField === "function" ? commandField(record) : definition.commandKeyField;
+      return name ? record.values[name] : ref;
+    }
     function belongsToForm(record) { return !planId || record.values[definition.idField || "public_id"] === planId; }
     function freshHref() {
       if (definition.href) return definition.href(null, scope, form);
@@ -81,7 +86,7 @@
       return {...(definition.read ? definition.read(form) : Object.fromEntries(names.map(name => [name, field(name)?.value || ""]))),
         amount_placeholder: amount?.placeholder || "", amount_inputmode: amount?.inputMode || ""};
     }
-    function notice(message) { status.hidden = false; status.textContent = message; }
+    function notice(message) { if (!disposed) { status.hidden = false; status.textContent = message; } }
     function fieldsEditable() {
       return editsAllowed && !blocked && phase === "editing" && (held || onlineOnly);
     }
@@ -105,6 +110,7 @@
       });
     }
     function controls() {
+      if (disposed) return;
       updateFields(fieldsEditable());
       submit.hidden = archived && phase === "editing";
       submit.disabled = !commandAllowed() || actionUnavailable();
@@ -119,11 +125,11 @@
       }
       form.querySelector(selector("review-note")).hidden = review.hidden;
       form.dataset[family + "DraftPhase"] = phase;
-      definition.updatePresentation?.(form, {phase, rejected: reviewable});
+      definition.updatePresentation?.(form, {phase, rejected: reviewable, editable: fieldsEditable(), busy});
     }
     function stop(message) { blocked = true; controls(); notice(message); }
-    function restoreFields(saved) {
-      if (definition.restore) definition.restore(form, saved);
+    function restoreFields(saved, originalPhase) {
+      if (definition.restore) definition.restore(form, saved, originalPhase);
       else names.forEach(name => {
         let input = field(name);
         if (!input) {
@@ -152,7 +158,7 @@
         stop("这份原稿属于另一项任务，请从保留的" + taskLabel + "打开原任务。"); return false;
       }
       const saved = record.values;
-      restoreFields(saved);
+      restoreFields(saved, record.phase);
       if (definition.present) definition.present(form, saved);
       else if (amount) form.querySelector(selector("amount-label")).textContent =
         (isGoal ? "目标金额（" : "预计金额（") + (saved.home_currency_code || "币种待确认") + "）";
@@ -171,15 +177,16 @@
     function pointTo() {
       // Reload must use the readable task address, including after a native review POST.
       // The same address also retains a void target absent from the current active list.
-      const next = new URL(recordHref(store.read(ref)));
+      const next = new URL(definition.embedded ? window.location.href : recordHref(store.read(ref)));
       const current = new URL(window.location.href);
       // A standard editor keeps its current read month beside the original intent month.
       if (!definition.href && next.pathname === current.pathname) next.search = current.search;
       if (definition.idField === "month") next.searchParams.set("month", field("month").value);
       next.hash = anchor + ref;
-      window.history.replaceState(null, "", next.href);
+      window.history.replaceState(window.history.state, "", next.href);
     }
     function renderShelf() {
+      if (disposed) return [];
       const creates = createStore.list(scope), edits = editStore.list(scope);
       const records = (planId ? edits : creates).filter(belongsToForm);
       const list = shelf.querySelector(selector("draft-list"));
@@ -202,11 +209,14 @@
         throw Error("draft_binding_changed");
       }
       const record = store.save(scope, ref, nextPhase, values(), serverResult);
+      unretained = false;
       retained = true; phase = nextPhase; pointTo(); renderShelf();
       return record;
     }
     function capture() {
+      if (onlineOnly && editsAllowed && phase === "editing") { unretained = true; return; }
       if (!editsAllowed || !held || busy || accepted || blocked || phase !== "editing") return;
+      unretained = true;
       try { persist("editing"); controls(); notice("输入已保留在此浏览器，尚未提交。"); }
       catch (_) { notice("最新输入未能保留，请暂勿关闭此页；恢复浏览器存储后可继续提交。"); }
     }
@@ -220,8 +230,9 @@
       else names.forEach(name => body.set(name, record.values[name]));
       body.set("csrf_token", field("csrf_token").value);
       body.set("draft_scope", JSON.stringify(record.scope));
-      body.set(commandRefField, commandKey(record));
-      const response = await window.fetch(definition.action || form.action, {method: "POST", body, credentials: "same-origin",
+      body.set(commandField(record), commandKey(record));
+      const action = typeof definition.action === "function" ? definition.action(record.values) : definition.action || form.action;
+      const response = await window.fetch(action, {method: "POST", body, credentials: "same-origin",
         headers: {Accept: "application/json"}});
       const result = await response.json();
       if (!held || sentLease !== leaseVersion) throw Error("draft_lease_changed");
@@ -234,9 +245,11 @@
       }
       const next = receiptDestination(result, record);
       accepted = true;
-      if (!store.acknowledge({...result.ack, clientRef: ref})) throw Error("original_not_acknowledged");
-      notice(taskLabel + "已保存，正在返回…");
-      window.location.assign(next.href);
+      if (!store.acknowledge({...result.ack, clientRef: ref}, definition.continueAfterAcceptance?.(record.values))) throw Error("original_not_acknowledged");
+      notice("这次操作已接受，正在返回…");
+      if (definition.onAccepted) await definition.onAccepted({result, next, values: record.values});
+      else if (next.href === window.location.href) window.location.reload();
+      else window.location.assign(next.href);
     }
     function receiptDestination(result, record) {
       const receiptMatches = definition.receiptMatches ? definition.receiptMatches(result.receipt, record.values) :
@@ -284,6 +297,7 @@
     });
     function allowNativeSubmission(submitter) {
       if (definition.relatedAction?.(submitter) && canWrite && held && !busy && !blocked) {
+        capture();
         enableNativeValues();
         return true;
       }
@@ -298,12 +312,17 @@
       return false;
     }
     form.addEventListener("submit", async event => {
-      if (onlineOnly || allowNativeSubmission(event.submitter)) return;
+      if (onlineOnly) { unretained = false; return; }
+      if (unretained && definition.relatedAction?.(event.submitter)) {
+        capture();
+        if (unretained) { event.preventDefault(); return; }
+      }
+      if (allowNativeSubmission(event.submitter)) return;
       event.preventDefault();
       if (!commandAllowed() || !held || busy || accepted || blocked) return;
       busy = true; controls(); notice("正在提交原" + taskLabel + "…");
       try { await send(); }
-      catch (_) { notice(accepted ? taskLabel + "已保存，本地原稿暂未收起；请核对列表。" :
+      catch (_) { notice(accepted ? "这次操作已接受，本地原稿暂未处理完；请恢复浏览器存储后重新打开核实。" :
         "暂未收到保存回执。原稿仍保留，恢复连接后可核实原" + taskLabel + "。"); }
       finally { busy = false; controls(); renderShelf(); }
     });
@@ -341,7 +360,7 @@
         return true;
       }
       const originalRejected = nativeResult === "rejected" &&
-        field(commandRefField).value === commandKey(record) &&
+        field(commandField(record)).value === commandKey(record) &&
         store.matches(JSON.parse(field("draft_scope").value), record.scope);
       if (nativeResult === "prepared" && (record.serverResult === "rejected" ||
           (definition.reviewWhileEditing && record.phase === "editing"))) {
@@ -380,7 +399,7 @@
         const wanted = selected.wanted;
         ref = selected.ref;
         if (!uuid.test(ref)) { stop("原稿编号无法核对，请从保留的" + taskLabel + "重新打开。"); return; }
-        window.navigator.locks.request(store.key(ref), {ifAvailable: true}, async lock => {
+        leaseRequest = window.navigator.locks.request(store.key(ref), {ifAvailable: true}, async lock => {
           if (currentLease !== leaseVersion) return;
           if (!lock) { stop("这份原稿正在另一标签页使用。关闭那一页后，重新打开即可继续。"); return; }
           const record = store.read(ref);
@@ -394,12 +413,14 @@
         }).catch(() => { if (!held) allowOnline(); else stop("原稿暂时无法恢复，请保留此页并检查浏览器存储。"); });
       } catch (_) { allowOnline(); }
     }
-    window.addEventListener("pagehide", () => { leaseVersion += 1; held = false; if (release) release(); release = null; });
-    window.addEventListener("pageshow", event => { if (event.persisted && !accepted) activate(); });
+    function releaseLease() { leaseVersion += 1; held = false; if (release) release(); release = null; return leaseRequest; }
+    window.addEventListener("pagehide", releaseLease, {signal: lifecycle.signal});
+    window.addEventListener("pageshow", event => { if (event.persisted && !accepted) activate(); }, {signal: lifecycle.signal});
     window.addEventListener("hashchange", () => {
       if (window.location.hash.startsWith(anchor)) window.location.reload();
-    });
+    }, {signal: lifecycle.signal});
     activate();
+    return {hasUnretainedInput: () => unretained, dispose() { disposed = true; lifecycle.abort(); return releaseLease(); }};
   }
   window.TicketboxPlanEntry = {mount};
   for (const [family, definition] of Object.entries(definitions)) {

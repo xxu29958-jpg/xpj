@@ -38,13 +38,14 @@ internal suspend fun PendingMutationDao.refusesExpenseRecovery(
     val original = observeActiveByTypes(
         binding.ownerStorageKey,
         binding.ledgerId,
-        listOf(PendingMutationType.UndoExpense.wireValue, PendingMutationType.RejectExpense.wireValue,
+        listOf(PendingMutationType.UndoExpense.wireValue, PendingMutationType.RejectExpense.wireValue, PendingMutationType.ConfirmExpense.wireValue,
             PendingMutationType.SplitAgreement.wireValue),
         listOf(status.wireValue),
     ).first().firstOrNull { it.id == id } ?: return false
     return (original.type == PendingMutationType.SplitAgreement.wireValue &&
         (freshToken != null || original.lastError in SPLIT_SHARE_REFUSALS)) ||
         original.lastError == EXPENSE_REJECTION_ORIGINAL_REQUIRES_REVIEW ||
+        original.lastError == EXPENSE_CONFIRMATION_ORIGINAL_REQUIRES_REVIEW ||
         (original.type == PendingMutationType.UndoExpense.wireValue &&
             (freshToken != null || original.lastError == "expense_not_found"))
 }

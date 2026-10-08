@@ -22,7 +22,7 @@ from app.schemas import ExpenseUpdateRequest
 from app.schemas._accounting_time import AccountingTimeInput
 from app.services.currency_common import normalize_currency_code
 from app.services.data_quality_service import is_uncategorized_expense_category
-from app.services.expense_edit_command_service import edit_expense_submission
+from app.services.expense_edit_command_service import edit_expense_submission, expense_edit_was_accepted
 from app.services.expense_service import get_expense
 from app.services.ledger_calendar_service import calendar_revision
 from app.services.tag_service import normalize_tags
@@ -39,6 +39,7 @@ class WebExpenseSaveOutcome:
     field_errors: dict[str, str] | None = None
     row_version: int | None = None
     conflict: bool = False
+    error_code: str = ""
 
 
 class _ExpenseCurrencySnapshot(Protocol):
@@ -94,6 +95,13 @@ def _submitted_form_values(
 def _edit_intent_body(form_values: dict[str, str]) -> dict[str, object]:
     metadata = {"expected_row_version", "idempotency_key"}
     return {key: value for key, value in form_values.items() if key not in metadata}
+
+
+def expense_edit_form_values(form: WebExpenseEditForm) -> dict[str, str]:
+    values = _submitted_form_values(expected_row_version=form.expected_row_version, idempotency_key=form.idempotency_key,
+        amount_yuan=form.amount_yuan, original_currency=form.original_currency, manual_exchange_rate=form.manual_exchange_rate,
+        merchant=form.merchant, category=form.category, note=form.note, tags=form.tags, expense_time=form.expense_time)
+    return {**values, **(form.time_fields or {})}
 
 
 def _validated_currency_snapshot(
@@ -168,6 +176,7 @@ def _failure(
     field_errors: dict[str, str] | None = None,
     status_code: int = 422,
     conflict: bool = False,
+    error_code: str = "invalid_request",
 ) -> WebExpenseSaveOutcome:
     return WebExpenseSaveOutcome(
         error=message,
@@ -175,6 +184,7 @@ def _failure(
         form_values=form_values,
         field_errors=field_errors or {},
         conflict=conflict,
+        error_code=error_code,
     )
 
 
@@ -346,28 +356,24 @@ def apply_web_expense_form(
     initiator_device_id: int | None,
     form: WebExpenseEditForm,
 ) -> WebExpenseSaveOutcome:
-    """Validate browser input against the persisted currency snapshot, then save."""
-
-    payload, prepared = prepare_web_expense_form(
-        db,
-        expense_id=expense_id,
-        selected_ledger_id=selected_ledger_id,
-        expected_row_version=form.expected_row_version,
-        idempotency_key=form.idempotency_key,
-        amount_yuan=form.amount_yuan,
-        original_currency=form.original_currency,
-        manual_exchange_rate=form.manual_exchange_rate,
-        merchant=form.merchant,
-        category=form.category,
-        note=form.note,
-        tags=form.tags,
-        expense_time=form.expense_time,
-        time_fields=form.time_fields,
-    )
-    if payload is None:
-        return prepared
-
+    """Resolve an accepted original or validate and save the new pending edit."""
+    form_values = expense_edit_form_values(form)
     try:
+        version = parse_form_row_version_token(form.expected_row_version)
+        if form.idempotency_key and version is not None and expense_edit_was_accepted(
+            db, tenant_id=selected_ledger_id, expense_id=expense_id, idempotency_key=form.idempotency_key,
+            intent_body=_edit_intent_body(form_values), expected_row_version=version,
+        ):
+            return WebExpenseSaveOutcome(form_values=form_values)
+        payload, prepared = prepare_web_expense_form(
+            db, expense_id=expense_id, selected_ledger_id=selected_ledger_id,
+            expected_row_version=form.expected_row_version, idempotency_key=form.idempotency_key,
+            amount_yuan=form.amount_yuan, original_currency=form.original_currency,
+            manual_exchange_rate=form.manual_exchange_rate, merchant=form.merchant, category=form.category,
+            note=form.note, tags=form.tags, expense_time=form.expense_time, time_fields=form.time_fields,
+        )
+        if payload is None:
+            return prepared
         updated = edit_expense_submission(
             db,
             expense_id=expense_id,
@@ -384,7 +390,6 @@ def apply_web_expense_form(
         db.rollback()
         conflict = exc.error == "state_conflict"
         message = "账单已在其它端被修改，请刷新后重试。" if conflict else exc.message
-        form_values = prepared.form_values
         if form_values and exc.error in {
             "idempotency_key_required",
             "idempotency_key_reused",
@@ -403,6 +408,7 @@ def apply_web_expense_form(
             field_errors=field_errors,
             status_code=web_form_error_status(exc),
             conflict=conflict,
+            error_code=exc.error,
         )
     return WebExpenseSaveOutcome(
         form_values=prepared.form_values,

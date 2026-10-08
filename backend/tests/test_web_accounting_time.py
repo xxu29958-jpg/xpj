@@ -118,6 +118,7 @@ def test_merchant_edit_after_calendar_change_keeps_unknown_time_evidence(monkeyp
     monkeypatch.setattr(command, "get_expense", lambda *_: expense)
     submit = Mock(return_value=SimpleNamespace(row_version=8))
     monkeypatch.setattr(command, "edit_expense_submission", submit)
+    monkeypatch.setattr(command, "expense_edit_was_accepted", lambda *args, **kwargs: False)
 
     result = command.apply_web_expense_form(db, expense_id=1, selected_ledger_id="owner",
         initiator_account_id=13, initiator_device_id=17, form=WebExpenseEditForm(

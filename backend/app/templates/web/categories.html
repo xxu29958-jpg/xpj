@@ -19,10 +19,10 @@
   <label class="product-field"><span>月份</span><input type="month" name="month" value="{{ target_month }}" aria-label="选择分类月份"></label>
   <button type="submit" class="product-button">查看</button>
 </form>
-{% if uncategorized_pending %}
-<a class="product-entry" href="/web/categories/uncategorized{{ q }}">
+{% if uncategorized_pending or other_pending %}
+<a class="product-entry" href="/web/categories/uncategorized{{ q }}{% if not uncategorized_pending %}&amp;filter=including_other{% endif %}">
   <span class="product-entry-icon product-entry-icon--apricot" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#shapes"/></svg></span>
-  <span class="product-entry-copy"><strong>{{ uncategorized_pending }} 条待确认还未分类</strong><span>{{ '去整理' if can_write else '查看未分类' }}</span></span>
+  <span class="product-entry-copy"><strong>{% if uncategorized_pending %}{{ uncategorized_pending }} 条待确认还未分类{% else %}{{ other_pending }} 条待确认使用「其他」分类{% endif %}</strong><span>{{ '去整理' if can_write else '查看分类' }}</span></span>
   <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
 </a>
 {% endif %}

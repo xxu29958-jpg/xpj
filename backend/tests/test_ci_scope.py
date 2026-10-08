@@ -299,9 +299,16 @@ def test_web_edge_runtime_consumer_and_fixtures_select_windows_desktop_job() -> 
     _assert_path_scopes(
         (
             "backend/tests/test_web_edge_runtime_contract.py",
+            "backend/tests/test_web_expense_review_runtime.py",
+            "backend/tests/test_web_expense_confirmation_page.py",
+            "backend/tests/test_expense_confirmation_receipt.py",
+            "backend/tests/fixtures/expense_review_recovery_probe.js",
+            "backend/tests/fixtures/expense_review_navigation_probe.js",
+            "backend/tests/fixtures/expense_review_actions_probe.js",
+            "backend/tests/fixtures/expense_review_keep_recovery_probe.js",
             "backend/tests/fixtures/bulk_bar_announcement_contract.html",
             "backend/tests/fixtures/bulk_bar_empty_reload_contract.html",
-            "backend/tests/fixtures/drawer_bulk_occ_contract.html",
+            "backend/tests/fixtures/expense_review_drawer_probe.js",
             "backend/tests/fixtures/review_keyboard_contract.html",
             "backend/tests/fixtures/shell_keyboard_contract.html",
         ),

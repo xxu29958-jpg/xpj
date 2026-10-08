@@ -8,7 +8,7 @@
   </div>
 </header>
 <section class="product-panel product-panel--padded" aria-label="保留的原提交">
-  <p class="product-feedback" role="alert">{% if original_ledger_id %}账本已切换。本次提交没有在当前账本执行，请切回原账本后继续。{% else %}这份表单的原账本无法确认，尚未执行。请核对下方输入，再打开对应任务准备新提交。{% endif %}</p>
+  <p class="product-feedback{% if original_error %} product-feedback--error{% endif %}" role="alert">{% if original_error %}{{ original_error.message }}{% elif original_ledger_id %}账本已切换。本次提交没有在当前账本执行，请切回原账本后继续。{% else %}这份表单的原账本无法确认，尚未执行。请核对下方输入，再打开对应任务准备新提交。{% endif %}</p>
   <p>输入保持原样；这不会撤销可能已在服务端完成的原提交。</p>
   <dl>
     {% for field, label in [('name', '名称'), ('label', '名称'), ('merchant', '商家'), ('keyword', '关键词'), ('category', '分类'), ('amount_yuan', '预计金额'), ('target_amount_yuan', '目标金额'), ('baseline_amount_yuan', '预计金额'), ('total_amount_yuan', '月度预算'), ('rollover_amount_yuan', '结转金额'), ('non_monthly_amount_yuan', '非月度预留'), ('amount_min_yuan', '金额下限'), ('amount_max_yuan', '金额上限'), ('home_currency_code', '币种'), ('month', '月份'), ('intent_month', '生效月份'), ('income_month', '预计月份'), ('next_expected_date', '预计日期'), ('pay_day', '预计收入日')] %}
@@ -29,8 +29,11 @@
     {% endif %}{% endfor %}
     {% if original_ledger_id %}
       {% if request.state.web_session_platform != 'desktop' %}<a class="product-button" href="/web/auth/ledgers" target="_blank" rel="noopener">另页选择原账本</a>{% else %}<p>请在应用中切回原账本后，继续这份保留提交。</p>{% endif %}
-      <button class="product-button product-button--primary" type="submit">已切回原账本，重试原提交</button>
+      <button class="product-button product-button--primary" type="submit">{{ '核实原提交' if original_error else '已切回原账本，重试原提交' }}</button>
     {% endif %}
   </form>
+  {% if original_fields.get('expense_id') %}
+  <p><a href="/web/expenses/{{ original_fields.expense_id }}/edit?ledger_id={{ original_ledger_id | urlencode }}{% for field, value in original_fields.items() if field.startswith('return_') and value %}&{{ field | urlencode }}={{ value | urlencode }}{% endfor %}">查看账单当前状态</a></p>
+  {% endif %}
 </section>
 {% endblock %}

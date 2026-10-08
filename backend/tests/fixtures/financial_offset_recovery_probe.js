@@ -28,6 +28,10 @@
     await wait(() => form.dataset.offsetDraftPhase === "blocked" && !form.querySelector('[data-offset-submit]').disabled);
     const frozen = form.elements.namedItem(id === 12 ? "void_reason" : "reason").readOnly &&
       [...form.querySelectorAll('[type="radio"]')].every(input => input.disabled);
+    const originalKey = "ticketbox:offset-edit-draft:v1:" + ref;
+    const originalRecord = JSON.parse(localStorage.getItem(originalKey));
+    delete originalRecord.values.return_duplicate_expense_id;
+    localStorage.setItem(originalKey, JSON.stringify(originalRecord));
     const reloaded = new Promise(resolve => { frame.onload = resolve; }); frame.contentWindow.location.reload(); await reloaded;
     form = await wait(() => {
       const node = frame.contentDocument.querySelector('[data-offset-plan-id="' + id + ':' + kind + '"]');

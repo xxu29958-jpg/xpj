@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 import pytest
 from api_contract_helpers import confirm_expense_api, patch_expense, web_duplicates_action
 from fastapi.testclient import TestClient
@@ -12,6 +14,7 @@ from app.errors import AppError
 from app.main import app
 from app.models import Expense
 from app.routes.web_app import _require_local as _web_require_local
+from tests._web_native_form_support import hidden_post_forms
 
 
 @pytest.fixture()
@@ -95,9 +98,9 @@ def test_web_duplicates_renders_pair(web_client: TestClient, *, identity) -> Non
     resp = web_client.get("/web/duplicates?ledger_id=owner")
     assert resp.status_code == 200
     body = resp.text
-    assert f"#{second}" in body
-    assert f"#{first}" in body
-    assert "保留两条" in body
+    assert f'/web/expenses/{second}/edit?' in body
+    assert f'/web/expenses/{first}/edit?' in body
+    assert "保留两笔" in body
     assert "图片一致" in body
     assert "% 相似" not in body
     assert "置信度" not in body
@@ -317,9 +320,10 @@ def test_web_duplicates_stale_token_renders_error_style(web_client: TestClient, 
     成功动作仍按成功样式渲染。"""
     _, second = _seed_duplicate_pair(web_client, identity=identity)
 
+    fields = hidden_post_forms(web_client.get("/web/duplicates?ledger_id=owner").text)[f"/web/duplicates/{second}/keep"]
     stale = web_client.post(
         f"/web/duplicates/{second}/keep",
-        data={"ledger_id": "owner", "expected_row_version": "not-a-token"},
+        data={**fields, "expected_row_version": "not-a-token"},
         follow_redirects=False,
     )
     assert stale.status_code == 303
@@ -330,10 +334,9 @@ def test_web_duplicates_stale_token_renders_error_style(web_client: TestClient, 
     assert "product-feedback--error" in page.text
     assert "账单已在其它端被修改" in page.text
 
-    token = _token(web_client, second, identity=identity)
     ok = web_client.post(
         f"/web/duplicates/{second}/keep",
-        data={"ledger_id": "owner", "expected_row_version": token},
+        data=fields,
         follow_redirects=False,
     )
     assert ok.status_code == 303
@@ -393,11 +396,10 @@ def test_web_duplicate_keep_fragment_success_returns_marker(
     success returns a 200 marker (the client re-fetches the now-unflagged drawer),
     not a redirect, and the flag is actually cleared."""
     _, second = _seed_duplicate_pair(web_client, identity=identity)
+    fields = hidden_post_forms(web_client.get(f"/web/expenses/{second}/edit?ledger_id=owner&fragment=1").text)[f"/web/expenses/{second}/save"]
     resp = web_client.post(
         f"/web/duplicates/{second}/keep",
-        data={"ledger_id": "owner", "expected_row_version": _token(
-            web_client, second, identity=identity
-        ), "fragment": "1"},
+        data={**fields, "fragment": "1"},
         follow_redirects=False,
     )
     assert resp.status_code == 200, resp.text
@@ -416,7 +418,7 @@ def test_web_duplicate_keep_fragment_missing_expense_returns_readable_html(
     snippet at the row's status, not bare JSON injected into the drawer."""
     resp = web_client.post(
         "/web/duplicates/99999/keep",
-        data={"ledger_id": "owner", "expected_row_version": "1", "fragment": "1"},
+        data={"ledger_id": "owner", "expected_row_version": "1", "fragment": "1", "keep_idempotency_key": str(uuid4())},
         follow_redirects=False,
     )
     assert resp.status_code == 404, resp.text

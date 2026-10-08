@@ -981,9 +981,12 @@ jobs:
         run: .\.ci-venv\Scripts\python.exe -m pytest -q
 
       - name: Real Web runtime consumers
+        working-directory: backend
         run: |
           $reportPath = Join-Path $env:RUNNER_TEMP 'web-edge-runtime-results.xml'
-          .\.ci-venv\Scripts\python.exe -m pytest --noconftest -q ../backend/tests/test_web_edge_runtime_contract.py ../backend/tests/test_web_planning_draft_runtime.py --junitxml=$reportPath
+          ..\desktop\.ci-venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ..\desktop\.ci-venv\Scripts\python.exe -m pytest --noconftest -q tests/test_web_edge_runtime_contract.py tests/test_web_planning_draft_runtime.py tests/test_web_expense_review_runtime.py --junitxml=$reportPath
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           [xml]$report = Get-Content -LiteralPath $reportPath -Raw
           if (@($report.SelectNodes('//testcase')).Count -eq 0 -or @($report.SelectNodes('//skipped')).Count -gt 0) {

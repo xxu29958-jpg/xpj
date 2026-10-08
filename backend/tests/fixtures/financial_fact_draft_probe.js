@@ -24,6 +24,15 @@
     form.dispatchEvent(new frame.contentWindow.Event("input", {bubbles: true}));
   }
   const before = read(form);
+  // A retained v1 correction can predate receipt-return navigation fields.
+  const oldKey = Object.keys(localStorage).find(key => key.startsWith("ticketbox:correction-edit-draft:v1:"));
+  const oldRecord = JSON.parse(localStorage.getItem(oldKey));
+  delete oldRecord.values.return_receipt_key;
+  delete oldRecord.values.return_receipt_expense_id;
+  delete oldRecord.values.return_review_ref;
+  delete oldRecord.values.return_review_expense_id;
+  delete oldRecord.values.return_duplicate_expense_id;
+  localStorage.setItem(oldKey, JSON.stringify(oldRecord));
   form = await load();
   window.__financialDraftProbe = {before, after: read(form)};
 })().catch(error => { window.__financialDraftProbe = {error: String(error), stack: error.stack}; });

@@ -127,15 +127,15 @@ def category_return_url(ledger_id: str, category_id: str, month: str, *, message
     )
 
 
-def preserve_original_ledger_form(request, db, *, options, selected, fields, task) -> HTMLResponse | None:
+def preserve_original_ledger_form(request, db, *, options, selected, fields, task, error: AppError | None = None) -> HTMLResponse | None:
     """Keep an original form in its ledger instead of retargeting it to the live session."""
     original = str(fields.get("ledger_id") or "")
-    if original == selected:
+    if original == selected and error is None:
         return None
     ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected, page_title="原提交已保留")
-    ctx.update(original_fields=fields, original_ledger_id=original, original_task=task)
+    ctx.update(original_fields=fields, original_ledger_id=original, original_task=task, original_error=error)
     return templates.TemplateResponse(request=request, name="original_ledger_form.html", context=ctx,
-        status_code=409, headers={"Cache-Control": "no-store"})
+        status_code=error.status_code if error else 409, headers={"Cache-Control": "no-store"})
 
 _VALID_UI_THEMES = {"paper", "midnight"}
 

@@ -396,7 +396,9 @@ def web_fact_context(
 
     return_values = return_context.as_kwargs()
     ctx = web_edit_context(db, request, options, selected_id, expense_id, return_context=return_context)
-    if not clean_return_to(return_context.return_to):
+    if not clean_return_to(return_context.return_to) and not any(
+        ctx["edit_return_fields"].get(name) for name in ("return_review_ref", "return_receipt_key")
+    ):
         ctx["edit_return_href"] = return_href(
             "",
             ledger_id=selected_id,

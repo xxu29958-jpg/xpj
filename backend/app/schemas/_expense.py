@@ -313,10 +313,41 @@ class PendingDuplicateCandidateResponse(BaseModel):
     algorithm_version: str
 
 
+class ExpenseConfirmationReceipt(BaseModel):
+    """The accepted financial snapshot; original-file availability remains a current read."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    public_id: str
+    row_version: int
+    fact_revision: int
+    status: Literal["confirmed"]
+    amount_cents: NonNegativeMoneyMinor
+    home_currency: str
+    original_currency_code: str
+    original_amount_minor: NonNegativeMoneyMinor
+    exchange_rate_to_cny: Decimal | None
+    exchange_rate_date: date | None
+    exchange_rate_source: str | None
+    merchant: str | None
+    category: str
+    accounting_time: AccountingTimeSnapshot | None = None
+    confirmed_at: datetime | None
+
+    @field_serializer("confirmed_at")
+    def serialize_confirmed_at(self, value: datetime | None) -> str | None:
+        return to_iso(value)
+
+    @field_serializer("exchange_rate_to_cny")
+    def serialize_rate(self, value: Decimal | None) -> str | None:
+        return format(value, "f") if value is not None else None
+
+
 class ExpenseResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     accounting_time: AccountingTimeSnapshot | None = None
+    confirmation_receipt: ExpenseConfirmationReceipt | None = None
     id: int
     public_id: str
     amount_cents: NonNegativeMoneyMinor | None
@@ -367,6 +398,8 @@ class ExpenseResponse(BaseModel):
         data = handler(self)
         if "accounting_time" not in self.model_fields_set:
             data.pop("accounting_time", None)
+        if "confirmation_receipt" not in self.model_fields_set:
+            data.pop("confirmation_receipt", None)
         return data
 
     @field_serializer(

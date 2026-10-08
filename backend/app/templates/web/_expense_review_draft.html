@@ -1,0 +1,25 @@
+<input type="hidden" name="expense_id" value="{{ e.id }}">
+<input type="hidden" name="draft_scope" value="{{ expense_review_scope_value }}">
+<input type="hidden" name="draft_ref" value="{{ expense_review_ref }}">
+<input type="hidden" name="command_action" value="{{ expense_review_action }}">
+<div class="expense-review-recovery" data-expensereview-recovery hidden>
+  <h1>正在确认这次结果</h1>
+  <p data-expensereview-summary></p>
+</div>
+<p class="product-feedback" data-expensereview-draft-status role="status" hidden></p>
+<div class="inbox-read-links" data-expensereview-links hidden>
+  <a class="inbox-state-row" href="{{ edit_current_href }}" data-expensereview-current><span class="inbox-state-icon"><svg width="24" height="24" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#book-open"/></svg></span><span><strong>{{ selected_ledger_name }}</strong><span>查看账单当前事实</span></span><svg width="20" height="20" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></a>
+  <a class="inbox-state-row" href="/web/expenses/{{ e.id }}/original?ledger_id={{ selected_ledger_id }}"><span class="inbox-state-icon"><svg width="24" height="24" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#receipt-text"/></svg></span><span><strong>本次原件</strong><span>查看与记录关联的原件状态</span></span><svg width="20" height="20" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></a>
+</div>
+<div class="product-page-actions expense-review-refresh">
+  <button class="product-button" type="submit" name="review_latest" value="true"
+    formaction="/web/expenses/{{ e.id }}/{{ expense_review_action }}" formnovalidate data-expensereview-review{% if not expense_review_binding_required and not expense_review_basis_changed %} hidden{% endif %}>核对当前记录，保留填写</button>
+</div>
+<p class="hint" data-expensereview-review-note{% if not expense_review_basis_changed %} hidden{% endif %}>核对只更新提交依据，不会入账。请对照当前账单后再次确认。</p>
+{% if expense_review_current %}
+<div class="product-feedback" role="status"><strong>账本当前记录</strong><p>{{ expense_review_current.merchant }} · {{ expense_review_current.amount_label }} · {{ expense_review_current.category }}</p><p>下方仍是你的填写，确认后才会入账。</p></div>
+{% endif %}
+<details class="expense-review-local" data-expensereview-draft-shelf hidden>
+  <summary>保留的核对任务</summary><ul data-expensereview-draft-list></ul>
+  <button class="product-button product-button--quiet" type="button" data-expensereview-discard hidden>放弃本地原稿</button>
+</details>

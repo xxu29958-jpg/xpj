@@ -6,6 +6,8 @@ import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
+import com.ticketbox.data.remote.dto.ExpenseDto
+import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import com.ticketbox.data.remote.dto.MerchantAliasDto
 import com.ticketbox.data.remote.dto.MerchantAliasUpdateRequest
 import android.util.Log
@@ -151,6 +153,44 @@ class NetworkErrorReportingTest {
         assertTrue(output.contains("IllegalStateException") && output.contains("IOException"))
         assertFalse(output.contains("synthetic-alias-secret") || output.contains("private financial text"))
         assertFalse(original.lastError.orEmpty().contains("synthetic-alias-secret"))
+        assertTrue(ShadowLog.getLogsForTag("TicketboxNetwork").all { it.throwable == null })
+    }
+
+    @Test
+    fun confirmReplayFailureReportsSafelyAndKeepsItsOriginalCommand() = runTest {
+        val dao = FakePendingMutationDao()
+        val outbox = testOutboxRepository(dao = dao)
+        val payload = """{"expected_row_version":0}"""
+        val originalId = outbox.enqueue(PendingMutationType.ConfirmExpense, "expense:42", payload,
+            7L, idempotencyKey = "original-confirm-key")
+        var attempts = 0
+        val api = object : ApiService by FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0) {
+            override suspend fun confirmExpense(id: String, request: ExpenseStateTokenRequest, idempotencyKey: String?): ExpenseDto {
+                attempts += 1
+                assertEquals("42", id)
+                assertEquals(7L, request.expectedRowVersion)
+                assertEquals("original-confirm-key", idempotencyKey)
+                throw IllegalStateException("password=synthetic-confirm-secret", IOException("private financial text"))
+            }
+        }
+        val adapter = Moshi.Builder().add(KotlinJsonAdapterFactory()).build().adapter(ExpenseStateTokenRequest::class.java)
+        val summary = OutboxDrainEngine(outbox, listOf(ConfirmExpenseDispatcher({ api }, adapter) { _, _ ->
+            error("A failed response must not publish a fact")
+        })).drainOnce()
+        assertEquals(1, attempts)
+        assertEquals(0, summary.done)
+        assertEquals(1, summary.failures)
+        val original = dao.rows.getValue(originalId)
+        assertEquals(PendingMutationStatus.Failed.wireValue, original.status)
+        assertEquals(payload, original.payload)
+        assertEquals(7L, original.expectedRowVersion)
+        assertEquals("original-confirm-key", original.idempotencyKey)
+        assertEquals("确认结果暂时无法核实，请稍后重试。原提交仍保留。", original.lastError)
+        val output = finalLog()
+        assertTrue(output.contains("operation=ConfirmExpense"))
+        assertTrue(output.contains("ConfirmExpenseDispatcher.kt:"))
+        assertTrue(output.contains("IllegalStateException") && output.contains("IOException"))
+        assertFalse(output.contains("synthetic-confirm-secret") || output.contains("private financial text"))
         assertTrue(ShadowLog.getLogsForTag("TicketboxNetwork").all { it.throwable == null })
     }
 

@@ -31,7 +31,6 @@ _BULK_BAR_FIXTURE = _REPO_ROOT / "backend" / "tests" / "fixtures" / "bulk_bar_an
 _BULK_EMPTY_RELOAD_FIXTURE = (
     _REPO_ROOT / "backend" / "tests" / "fixtures" / "bulk_bar_empty_reload_contract.html"
 )
-_DRAWER_BULK_OCC_FIXTURE = _REPO_ROOT / "backend" / "tests" / "fixtures" / "drawer_bulk_occ_contract.html"
 _DRAWER_JS = _REPO_ROOT / "backend" / "app" / "static" / "web" / "desktop" / "drawer.js"
 _REVIEW_KEYBOARD_FIXTURE = (
     _REPO_ROOT / "backend" / "tests" / "fixtures" / "review_keyboard_contract.html"
@@ -277,8 +276,8 @@ def test_drawer_fx_status_and_retry_keep_draft_until_explicit_load_in_real_edge(
     assert value == {
         "posts": [{"url": f"/web/expenses/1/{action}", "version": "11", "key": "original-key",
             "merchant": "Unsent merchant"} for action in ("fx-status", "fx")],
-        "retained": {"reads": 1, "version": "11", "key": "original-key", "merchant": "Unsent merchant", "rowVersion": "11"},
-        "loaded": {"reads": 2, "version": "12", "merchant": "Saved merchant", "rowVersion": "12"},
+        "retained": {"reads": 1, "listReads": 0, "version": "11", "key": "original-key", "merchant": "Unsent merchant", "rowVersion": "11"},
+        "loaded": {"reads": 2, "listReads": 1, "version": "12", "merchant": "Saved merchant", "rowVersion": "12"},
     }
 
 
@@ -536,45 +535,7 @@ def test_bulk_async_feedback_has_announcement_semantics_in_real_edge(
     _assert_bulk_queue_exhaustion_reloads_authoritative_page(tmp_path)
 
 
-def test_drawer_save_resynchronizes_selected_row_occ_consumers_in_real_edge(
-    tmp_path: Path,
-) -> None:
-    page = _write_fixture(
-        tmp_path,
-        "drawer-bulk-occ-contract.html",
-        _DRAWER_BULK_OCC_FIXTURE.read_text(encoding="utf-8")
-        .replace("__CORE_URI__", html.escape(_DRAWER_JS.with_name("core.js").as_uri(), quote=True))
-        .replace("__SHELL_KEYBOARD_URI__", html.escape(_SHELL_KEYBOARD_JS.as_uri(), quote=True))
-        .replace(
-            "__BULK_BAR_URI__",
-            html.escape(_BULK_BAR_JS.as_uri(), quote=True),
-        )
-        .replace(
-            "__DRAWER_URI__",
-            html.escape(_DRAWER_JS.as_uri(), quote=True),
-        ),
-    )
-    probe = _evaluate_fixture(
-        tmp_path,
-        page=page,
-        width=1440,
-        height=900,
-        profile_name="edge-drawer-bulk-occ-contract",
-    )
-
-    assert probe == {
-        "menuEscape": True,
-        "refreshPreservesTarget": True,
-        "retained": {"sameForm": True, "merchant": "Unsaved merchant", "version": "11",
-            "key": "original-confirm-key", "fetches": 2, "queueOperable": True, "bulkBlocked": True},
-        "drawerOpenedWhileSelected": True,
-        "checkboxChecked": True,
-        "checkboxDataRowVersion": "12",
-        "checkboxValue": "1:12",
-        "quickConfirmSnapshot": "1:12",
-        "bulkTokens": ["12"],
-        "selectedCount": "1",
-    }, probe
+def test_review_keyboard_behaves_in_real_edge(tmp_path: Path) -> None:
     _assert_review_keyboard_behaves_in_real_edge(tmp_path)
 
 

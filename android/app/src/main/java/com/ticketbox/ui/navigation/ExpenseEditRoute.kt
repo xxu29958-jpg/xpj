@@ -11,7 +11,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -81,12 +80,7 @@ internal fun ExpenseEditRoute(
     val editState by editViewModel.uiState.collectAsStateWithLifecycle()
     val expense = editState.expense
 
-    LaunchedEffect(editState.done) {
-        if (editState.done && editViewModel.consumeDone()) {
-            exit.onCompleted(editViewModel.consumeDoneAdviceInputsChanged())
-        }
-    }
-    if (editState.done) return
+    if (editViewModel.ExpenseEditorCompletion(editState, screenFactory, exit, related, financialDataRevision)) return
 
     if (expense == null) {
         ExpenseEditLoadingRoute(

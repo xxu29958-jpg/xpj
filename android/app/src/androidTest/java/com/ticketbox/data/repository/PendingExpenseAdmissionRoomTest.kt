@@ -2,6 +2,7 @@ package com.ticketbox.data.repository
 
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.SavedStateHandle
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.data.local.PendingMutationType
@@ -35,6 +36,7 @@ class PendingExpenseAdmissionRoomTest {
     private var secondPending: ExpenseDto? = null
     @Volatile private var holdTransport = false
     private val requests = CopyOnWriteArrayList<String>()
+    private lateinit var admissionApi: ApiService
     private val fixture = ExpenseCorrectionConnectedFixture(InstrumentationRegistry.getInstrumentation().targetContext) { api ->
         object : ApiService by api {
             override suspend fun expense(id: Long): ExpenseDto = current
@@ -52,9 +54,10 @@ class PendingExpenseAdmissionRoomTest {
                 val original = if (id == current.id.toString()) current else requireNotNull(secondPending)
                 check(id == original.id.toString() && request.expectedRowVersion == original.rowVersion)
                 return original.copy(status = "confirmed", confirmedAt = "2026-09-06T00:01:00Z",
-                    rowVersion = original.rowVersion + 1).also { if (it.id == current.id) current = it else secondPending = it }
+                    rowVersion = original.rowVersion + 1).withConfirmationReceipt()
+                    .also { if (it.id == current.id) current = it else secondPending = it }
             }
-        }
+        }.also { admissionApi = it }
     }
 
     @After fun close() {
@@ -175,6 +178,44 @@ class PendingExpenseAdmissionRoomTest {
         assertEquals(null, patch.originalCurrency)
         assertEquals("2026-09-06T00:00:00Z", patch.spentAt)
         assertEquals(null, patch.expectedRowVersion)
+    }
+
+    @Test
+    fun selectedOriginalCommandsRestoreTheirFirstReceiptAcrossRoomReopen() = runBlocking {
+        current = fixture.network.current.copy(status = "pending", confirmedAt = null)
+        val saved = SavedStateHandle()
+        var repository = fixture.reopen().expenseRepository
+        compose.runOnIdle { editor = ExpenseEditViewModel(42, repository, savedState = saved) }
+        compose.waitUntil(10_000) { editor?.uiState?.value?.expenseLoading == false }
+        compose.runOnIdle { editor!!.confirm(draft()) }
+        compose.waitUntil(10_000) { editor!!.uiState.value.commandRowIds.size == 2 }
+        val originalIds = editor!!.uiState.value.commandRowIds
+        val restored = SavedStateHandle(saved.keys().associateWith { saved.get<Any>(it) })
+        compose.runOnIdle { editor!!.viewModelScope.cancel() }
+        repository = fixture.reopen().expenseRepository
+        compose.runOnIdle { editor = ExpenseEditViewModel(42, repository, savedState = restored) }
+        compose.waitUntil(10_000) { editor?.uiState?.value?.expenseLoading == false }
+        assertEquals(originalIds, editor!!.uiState.value.commandRowIds)
+        assertEquals(false, editor!!.uiState.value.done)
+        val adapters = OutboxAdapterGraph()
+        OutboxDrainEngine(fixture.outbox, listOf(
+            PatchExpenseDispatcher({ admissionApi }, adapters.patchExpenseAdapter, fixture::publishExpense),
+            ConfirmExpenseDispatcher({ admissionApi }, adapters.expenseStateTokenAdapter, fixture::publishExpense),
+        ), now = fixture.clock::millis).drainOnce()
+        compose.waitUntil(10_000) { editor!!.uiState.value.confirmationReceipt != null }
+        val firstReceipt = editor!!.uiState.value.confirmationReceipt
+        assertEquals("自己输入的商家", firstReceipt?.merchant)
+        compose.runOnIdle { editor!!.viewModelScope.cancel() }
+        current = current.copy(merchant = "后来人工更正", rowVersion = current.rowVersion + 1, confirmationReceipt = null)
+        repository = fixture.reopen().expenseRepository
+        compose.runOnIdle { editor = ExpenseEditViewModel(42, repository, savedState = restored) }
+        compose.waitUntil(10_000) { editor!!.uiState.value.confirmationReceipt != null && !editor!!.uiState.value.expenseLoading }
+        assertEquals(firstReceipt, editor!!.uiState.value.confirmationReceipt)
+        assertEquals("后来人工更正", editor!!.uiState.value.expense?.merchant)
+        fixture.switchLedger()
+        compose.waitUntil(10_000) { editor!!.uiState.value.confirmationReceipt == null }
+        assertEquals(originalIds, editor!!.uiState.value.commandRowIds)
+        assertEquals(false, editor!!.uiState.value.done)
     }
 
     private fun draft() = ExpenseDraft(amountCents = 1234, ledgerHomeCurrency = CurrencyCode.CNY,

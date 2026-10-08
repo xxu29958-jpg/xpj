@@ -2,13 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from app.errors import AppError
 from app.models import CategoryRule, Expense
 from app.money_contract import projection_sum_to_int
-from app.schemas import ExpenseUpdateRequest
 from app.services.category_common import (
     DEFAULT_CATEGORIES,
     LEGACY_CATEGORY_ALIASES,
@@ -144,21 +142,6 @@ def normalize_existing_expense_categories(db: Session, tenant_id: str) -> None:
 # ── /web/categories dashboard (v0.4-alpha3 slice 2 / M3 / T12-T13) ─────────
 
 
-def _is_cleanup_pending_category(value: str | None) -> bool:
-    """Triage-backlog caliber for the cleanup workflow: the shared
-    uncategorized tokens (blank / 未分类 / 未分類 / none / null,
-    case-insensitive, ported in data_quality_service) PLUS 「其他」.
-
-    The two legs have different intents, deliberately: data-quality's
-    missing_category treats 其他 as a valid user category (it doesn't defeat
-    stats slicing), while this workflow exists to triage the upload backlog —
-    and uploads default to 其他 (expense_service/_create), so the
-    not-yet-triaged rows live there. Keeping 其他 is codified by main's own
-    tests (test_web_categories_counts_pending_uncategorized /
-    test_web_uncategorized_lists_only_uncategorized)."""
-    return (value or "").strip() == "其他" or is_uncategorized_expense_category(value)
-
-
 @dataclass
 class CategorySummary:
     category: str
@@ -181,7 +164,7 @@ def _display_category(key: str) -> str:
 
 
 def _is_uncategorized_category(key: str) -> bool:
-    return _is_cleanup_pending_category(key)
+    return is_uncategorized_expense_category(key)
 
 
 def _pending_counts_by_category(db: Session, *, tenant_id: str) -> dict[str, int]:
@@ -193,7 +176,7 @@ def _pending_counts_by_category(db: Session, *, tenant_id: str) -> dict[str, int
     ).all()
     pending_by_category: dict[str, int] = {}
     for category, count in pending_rows:
-        key = normalize_category(category)
+        key = "" if is_uncategorized_expense_category(category) else normalize_category(category)
         pending_by_category[key] = pending_by_category.get(key, 0) + int(count)
     return pending_by_category
 
@@ -224,7 +207,7 @@ def _confirmed_summaries_by_category(
 
     aggregated: dict[str, CategorySummary] = {}
     for category, count, amount in confirmed_rows:
-        key = normalize_category(category)
+        key = "" if is_uncategorized_expense_category(category) else normalize_category(category)
         confirmed_count = int(count)
         confirmed_amount = projection_sum_to_int(
             amount,
@@ -316,10 +299,8 @@ def list_category_summary(
     )
 
 
-def list_uncategorized_pending(db: Session, *, tenant_id: str) -> list[Expense]:
-    """Return pending rows in the triage backlog (see
-    ``_is_cleanup_pending_category``): blank / 其他 / 未分类 / 未分類 /
-    none / null, case-insensitive."""
+def list_uncategorized_pending(db: Session, *, tenant_id: str, include_other: bool = False) -> list[Expense]:
+    """Use the inbox's missing-category caliber; optionally include valid 其他 rows for sorting."""
     categories = (
         db.execute(
             select(Expense.category).where(Expense.tenant_id == tenant_id).where(Expense.status == "pending").distinct()
@@ -327,7 +308,8 @@ def list_uncategorized_pending(db: Session, *, tenant_id: str) -> list[Expense]:
         .scalars()
         .all()
     )
-    matching = [category for category in categories if _is_cleanup_pending_category(category)]
+    matching = [category for category in categories if is_uncategorized_expense_category(category)
+        or (include_other and (category or "").strip() == "其他")]
     if not matching:
         return []
     rows = (
@@ -335,52 +317,12 @@ def list_uncategorized_pending(db: Session, *, tenant_id: str) -> list[Expense]:
             select(Expense)
             .where(Expense.tenant_id == tenant_id)
             .where(Expense.status == "pending")
-            .where(Expense.category.in_(matching))
-            .order_by(Expense.created_at.desc())
+            .where(or_(Expense.category.in_([value for value in matching if value is not None]),
+                Expense.category.is_(None) if None in matching else False))
+            .order_by(Expense.created_at.desc(), Expense.id.desc())
             .limit(200)
         )
         .scalars()
         .all()
     )
     return list(rows)
-
-
-def bulk_set_category(db: Session, *, tenant_id: str, expense_ids: list[int], category: str) -> int:
-    """Set ``category`` on the given pending rows. Returns the changed count.
-
-    Skips any id not visible to ``tenant_id`` or not in ``pending`` status,
-    instead of raising — the bulk action is best-effort and the page will
-    re-render the remaining rows after the redirect.
-    """
-    if not expense_ids:
-        return 0
-    authorize_currency_metadata_write(db)
-    cleaned_category = (category or "").strip()
-    if not cleaned_category:
-        raise AppError("invalid_request", "请选择一个分类。", status_code=400)
-    if not expense_ids:
-        return 0
-    from app.services.expense_service import update_expense  # lazy import: expense_service imports from this module
-
-    rows = (
-        db.execute(
-            select(Expense)
-            .where(Expense.tenant_id == tenant_id)
-            .where(Expense.id.in_(expense_ids))
-            .where(Expense.status == "pending")
-        )
-        .scalars()
-        .all()
-    )
-    changed = 0
-    # ADR-0038 PR-2a / ADR-0041: 服务端 bulk 操作刚读到 row.row_version，可以直接
-    # 当作 expected_row_version 喂给 update_expense（保留 PATCH 路径的原子
-    # UPDATE WHERE row_version 语义，但不要求外部调用方携带 token）。
-    for row in rows:
-        payload = ExpenseUpdateRequest(
-            category=cleaned_category,
-            expected_row_version=row.row_version,
-        )
-        update_expense(db, row.id, tenant_id, payload)
-        changed += 1
-    return changed

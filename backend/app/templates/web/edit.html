@@ -1,8 +1,13 @@
 {% set product_body_domain = 'inbox' %}
 {% set page_surface = 'tertiary' %}
-{% set page_title = '完整整理账单' %}
+{% set page_title = '账单当前记录' if expense_review_inspection else '完整整理账单' %}
 {% extends "base.html" %}
 {% block title %}完整整理账单 #{{ expense.id }} — 小票夹{% endblock %}
+{% block page_scripts %}
+<script defer src="/static/web/manual-drafts.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/plan-entry.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/expense-review-entry.js?v={{ asset_version }}"></script>
+{% endblock %}
 {% block content %}
 {# 收件域收口片: pending 完整整理页 (confirmed 落地 expense_fact.html, 本模板
    只服务 pending)。product 正文标记, product_body_domain='inbox' 断旧栈;
@@ -12,12 +17,15 @@
    明细/家庭拆账子表单仍由本页表单提供。 #}
 {% set e = expense %}
 {% set _q = '?ledger_id=' ~ selected_ledger_id %}
-<header class="product-page-header review-full-heading" id="review" tabindex="-1" data-review-stage="primary">
+<header class="product-page-header review-full-heading" id="review" tabindex="-1" data-review-stage="primary"{% if expense_review_inspection %} data-review-current-record{% endif %}>
   <div class="product-page-heading">
-    <h1 class="page-title">核对这张小票</h1>
+    <h1 class="page-title">{{ '账单当前记录' if expense_review_inspection else '核对这张小票' }}</h1>
     <p class="product-page-summary">
+      {% if expense_review_inspection %}这里显示账本当前保存的内容。你的原填写和提交仍保留在原核对任务中。
+      {% else %}
       核对金额和分类，确认后计入流水。
       {% if e.is_split_received %}· 来自家庭拆账的账单，金额、商家和消费时间按协定冻结，分类、标签和备注仍可整理。{% endif %}
+      {% endif %}
     </p>
   </div>
   <div class="product-page-actions">
@@ -43,26 +51,40 @@
 <div class="detail-layout expense-detail-layout" data-review-stage="primary">
   <div class="detail-main product-drawer-form">
     <section class="product-panel product-panel--padded" aria-label="账单字段">
-      <form method="post" action="/web/expenses/{{ e.id }}/save" class="edit-form" data-review-form>
+      <form method="post" action="/web/expenses/{{ e.id }}/save" class="edit-form" data-review-form
+        {% if expense_review_scope %}data-expensereview-draft-scope='{{ expense_review_scope | tojson }}'{% endif %}
+        data-expensereview-plan-id="{{ e.id }}" data-expensereview-can-write="{{ 'true' if can_write else 'false' }}"
+            data-expensereview-row-version="{{ expense_review_row_version|default(e.row_version) }}"
+        data-expensereview-archived="{{ 'false' if e.status == 'pending' else 'true' }}"
+        data-expensereview-native-result="{{ expense_review_result }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
         <input type="hidden" name="original_currency" value="{{ e.original_currency_code }}">
         <input type="hidden" name="expected_row_version" value="{{ e.row_version }}">
         <input type="hidden" name="idempotency_key" value="{{ confirm_idempotency_key }}">
         <input type="hidden" name="reject_idempotency_key" value="{{ reject_idempotency_key }}">
+        <input type="hidden" name="keep_idempotency_key" value="{{ keep_idempotency_key }}">
         <input type="hidden" name="save_before_confirm" value="1">
         {% for field_name, field_value in edit_return_fields.items() %}<input type="hidden" name="{{ field_name }}" value="{{ field_value }}">{% endfor %}
         {# 隐式提交守卫 (与抽屉同合同): Enter 走 /save, 不触发忽略。 #}
-        {% if can_write %}<button type="submit" hidden tabindex="-1" aria-hidden="true"></button>{% endif %}
+        {% if can_write %}<button type="submit" hidden tabindex="-1" aria-hidden="true"{% if expense_review_basis_changed %} disabled{% endif %}></button>{% endif %}
+
+        {% if not expense_review_inspection %}{% include "_expense_review_draft.html" %}{% endif %}
 
         {% set core_fields_prefix = 'expense-' ~ e.id %}
         {% set core_fields_reload_href = edit_current_href %}
         {% set core_fields_compact = true %}
         {% set core_fields_subtasks = true %}
-        {% include "_expense_core_fields.html" %}
+        <details class="expense-review-original" data-expensereview-original open>
+          <summary class="product-button product-button--quiet" data-expensereview-original-toggle hidden>查看本次填写的内容</summary>
+          {% include "_expense_core_fields.html" %}
+        </details>
 
-        {% if can_write %}
         <div class="product-page-actions detail-form-actions product-drawer-actions">
+          {% if expense_review_inspection %}
+          <a class="product-button product-button--primary" href="{{ edit_return_href }}">返回原核对任务</a>
+          {% else %}
+          {% if can_write and e.status == 'pending' %}
           <button class="product-button product-button--danger"
                   type="submit"
                   formaction="/web/expenses/{{ e.id }}/reject"
@@ -73,14 +95,16 @@
                   formaction="/web/duplicates/{{ e.id }}/keep">标为非重复</button>
           {% endif %}
           <div class="spacer"></div>
-          <button class="product-button" type="submit">保存草稿</button>
-          {% if e.status == 'pending' and not e.fx_pending and not fx_revision_changed %}
+          <button class="product-button" type="submit"{% if expense_review_basis_changed %} disabled{% endif %}>保存草稿</button>
+          {% endif %}
+          {% if expense_review_scope or (e.status == 'pending' and not e.fx_pending and not fx_revision_changed) %}
           <button class="product-button product-button--primary"
                   type="submit"
-                  formaction="/web/expenses/{{ e.id }}/confirm">确认入账</button>
+                  formaction="/web/expenses/{{ e.id }}/{{ 'save' if expense_review_action == 'save' and expense_review_result in ['blocked', 'rejected'] else 'confirm' }}" data-expensereview-submit{% if not can_write or (expense_review_basis_changed and not expense_review_result) %} disabled{% endif %}>{{ '核实这次保存' if expense_review_action == 'save' and expense_review_result in ['blocked', 'rejected'] else '确认入账' }}</button>
+          {% endif %}
+          <a class="product-button product-button--quiet" href="{{ edit_return_href }}" data-expensereview-later hidden>稍后继续</a>
           {% endif %}
         </div>
-        {% endif %}
       </form>
     </section>
   </div>
@@ -166,7 +190,7 @@
         <button type="submit" class="product-button">保存明细</button>
       </div>
       {% else %}
-      <div class="readonly-inline">只读角色，无法修改小票明细。</div>
+      <div class="readonly-inline">{{ '这里查看当前小票明细；请返回原核对任务继续处理。' if expense_review_inspection else '只读角色，无法修改小票明细。' }}</div>
       {% endif %}
     </form>
   </section>
@@ -201,7 +225,7 @@
         <button type="submit" class="product-button product-button--primary">保存拆账并返回</button>
       </div>
       {% else %}
-      <div class="readonly-inline">只读角色，无法修改家庭拆账。</div>
+      <div class="readonly-inline">{{ '这里查看当前家庭拆账；请返回原核对任务继续处理。' if expense_review_inspection else '只读角色，无法修改家庭拆账。' }}</div>
       {% endif %}
     </form>
   </section>

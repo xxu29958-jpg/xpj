@@ -6,6 +6,7 @@ route files don't have to import from each other.
 
 from __future__ import annotations
 
+import json
 from uuid import uuid4
 
 from fastapi import Request
@@ -18,6 +19,7 @@ from app.routes._web_accounting_time import (
     time_form_projection,
     time_form_values,
 )
+from app.routes._web_draft_binding import rendered_draft_scope
 from app.routes._web_expense_manual_fx_presenter import project_manual_fx_edit_views
 from app.routes._web_expense_return_context import (
     ExpenseReturnContext,
@@ -130,6 +132,7 @@ def drawer_fragment_error(
     form_values: dict[str, str] | None = None,
     field_errors: dict[str, str] | None = None,
     conflict: bool = False,
+    return_context: ExpenseReturnContext = ExpenseReturnContext(return_to="pending"),
 ) -> Response:
     """批10: re-render ``_edit_drawer.html`` carrying ``error_msg`` for a failed
     fetch-mutation — or the readable empty-cell snippet when the row vanished.
@@ -152,7 +155,7 @@ def drawer_fragment_error(
             form_values=form_values,
             field_errors=field_errors,
             conflict=conflict,
-            return_context=ExpenseReturnContext(return_to="pending"),
+            return_context=return_context,
         )
     except AppError as exc:
         return HTMLResponse(
@@ -233,12 +236,23 @@ def web_edit_context(
     if form_values and not conflict and form_values.get("expected_row_version"):
         expense_view["row_version"] = form_values["expected_row_version"]
     ctx["expense"] = expense_view
+    ctx["expense_review_row_version"] = expense.row_version
+    ctx["expense_review_basis_changed"] = str(expense_view["row_version"]) != str(expense.row_version)
     ctx["expense_fx"] = expense_fx_view(db, expense=expense)
     ctx["fx_revision_changed"] = str(expense_view["row_version"]) != str(expense.row_version)
     ctx["manual_draft_ack"] = manual_draft_ack(db, getattr(request.state, "web_session_auth", None), expense)
     ctx["conflict_current"] = current_expense_view if conflict else None
     ctx["confirm_idempotency_key"] = (form_values or {}).get("idempotency_key") or str(uuid4())
+    captured = (form_values or {}).get("draft_scope")
+    review_scope, binding_required = rendered_draft_scope(db, request, captured)
+    ctx.update(expense_review_scope=review_scope, expense_review_binding_required=binding_required,
+        expense_review_scope_value=captured if captured is not None else json.dumps(review_scope) if review_scope else "",
+        expense_review_ref=(form_values or {}).get("draft_ref") or str(uuid4()),
+        expense_review_result=(form_values or {}).get("review_result", ""),
+        expense_review_action="save" if (form_values or {}).get("command_action") == "save" else "confirm",
+        expense_review_task=request.query_params.get("confirmation_task") == "1")
     ctx["reject_idempotency_key"] = (form_values or {}).get("reject_idempotency_key") or str(uuid4())
+    ctx["keep_idempotency_key"] = (form_values or {}).get("keep_idempotency_key") or str(uuid4())
     ctx["ocr_idempotency_key"] = str(uuid4())
     ctx["text_ocr_idempotency_key"] = str(uuid4())
     ctx["error"] = None
@@ -351,6 +365,7 @@ def confirm_reject_error(
             form_values=form_values,
             field_errors=field_errors,
             conflict=conflict,
+            return_context=return_context,
         )
     return _edit_page_or_flash_redirect(
         db,
@@ -396,6 +411,7 @@ def web_save_response(
                 form_values=form_values,
                 field_errors=field_errors,
                 conflict=conflict,
+                return_context=return_context,
             )
         return _edit_page_or_flash_redirect(
             db,

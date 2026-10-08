@@ -15,6 +15,7 @@ from app.services.expense_accounting_time_service import refresh_legacy_expense_
 from tests._infra.assets import PNG_BYTES
 from tests._infra.env import TEST_UPLOAD_DIR
 from tests._infra.identity import TestIdentity
+from tests._web_native_form_support import hidden_post_forms
 
 
 def web_save_expense(
@@ -258,16 +259,12 @@ def web_reject_expense(
     ledger_id: str = "owner",
     follow_redirects: bool = False,
 ) -> httpx.Response:
-    snapshot = client.get(
-        f"/api/expenses/{expense_id}", headers=identity.app_headers
-    )
-    assert snapshot.status_code == 200, snapshot.text
+    page = client.get(f"/web/expenses/{expense_id}/edit", params={"ledger_id": ledger_id})
+    assert page.status_code == 200, page.text
+    fields = hidden_post_forms(page.text)[f"/web/expenses/{expense_id}/save"]
     return client.post(
         f"/web/expenses/{expense_id}/reject",
-        data={
-            "ledger_id": ledger_id,
-            "expected_row_version": snapshot.json()["row_version"],
-        },
+        data=fields,
         follow_redirects=follow_redirects,
     )
 
@@ -293,12 +290,17 @@ def web_undo_expense(
         with SessionLocal() as db:
             row = db.scalar(_select_expense_for_test(expense_id))
             expected_row_version = row.row_version if row else None
+    action = f"/web/expenses/{expense_id}/undo"
+    page = client.get("/web/pending", params={"ledger_id": ledger_id, "undo": expense_id,
+        "undo_version": expected_row_version or ""})
+    fields = hidden_post_forms(page.text).get(action)
+    # Refusal tests deliberately target a pending, absent or foreign row,
+    # for which the UI correctly provides no undo action.
+    if fields is None:
+        fields = {"ledger_id": ledger_id, "expected_row_version": expected_row_version, "idempotency_key": str(uuid4())}
     return client.post(
-        f"/web/expenses/{expense_id}/undo",
-        data={
-            "ledger_id": ledger_id,
-            "expected_row_version": expected_row_version,
-        },
+        action,
+        data=fields,
         follow_redirects=follow_redirects,
     )
 
@@ -321,28 +323,12 @@ def web_duplicates_action(
 ) -> httpx.Response:
     """ADR-0038 PR-2b: /web/duplicates/{id}/{action} where action ∈
     {keep, reject-current, reject-original}; carries client's token."""
-    snapshot = client.get(
-        f"/api/expenses/{expense_id}", headers=identity.app_headers
-    )
-    assert snapshot.status_code == 200, snapshot.text
-    data = {
-        "ledger_id": ledger_id,
-        "expected_row_version": snapshot.json()["row_version"],
-    }
-    if action == "reject-original":
-        original_id = snapshot.json()["duplicate_of_id"]
-        original = client.get(
-            f"/api/expenses/{original_id}", headers=identity.app_headers
-        )
-        assert original.status_code == 200, original.text
-        data.update(
-            {
-                "original_expense_id": original_id,
-                "expected_original_row_version": original.json()["row_version"],
-            }
-        )
+    page = client.get("/web/duplicates", params={"ledger_id": ledger_id})
+    assert page.status_code == 200, page.text
+    path = f"/web/duplicates/{expense_id}/{action}"
+    data = hidden_post_forms(page.text)[path]
     return client.post(
-        f"/web/duplicates/{expense_id}/{action}",
+        path,
         data=data,
         follow_redirects=follow_redirects,
     )

@@ -72,10 +72,14 @@
           throw Error("submitted_snapshot_is_immutable");
         }
       }
-      const raw = JSON.stringify(next);
+      return write(next);
+    }
+
+    function write(record) {
+      const raw = JSON.stringify(record);
       if (raw.length > 131072) throw Error("draft_too_large");
-      window.localStorage.setItem(key(ref), raw);
-      return next;
+      window.localStorage.setItem(key(record.clientRef), raw);
+      return record;
     }
 
     function list(scope) {
@@ -90,10 +94,15 @@
       return records.sort((left, right) => right.updatedAt - left.updatedAt);
     }
 
-    function acknowledge(ack) {
+    function acknowledge(ack, continuedValues) {
       const record = read(ack.clientRef);
       if (!record || !matches(record.scope, scopeValue(ack.scope))) return false;
-      window.localStorage.removeItem(key(ack.clientRef));
+      if (continuedValues === undefined) window.localStorage.removeItem(key(ack.clientRef));
+      else {
+        const next = {...record, phase: "editing", values: fieldValues(continuedValues), updatedAt: Date.now()};
+        delete next.serverResult;
+        write(next);
+      }
       return true;
     }
 

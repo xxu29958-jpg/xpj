@@ -28,7 +28,8 @@
     const url="/fixture?kind="+spec.kind;
     const getForm=()=>frame.contentDocument.querySelector('form[method="post"][action="'+spec.action+'"]');
     const submit=form=>form.querySelector("[data-"+spec.family+"-submit]");
-    await load(frame,url); await until(()=>getForm() && !submit(getForm()).disabled,"draft lease unavailable");
+    const ready=()=>getForm()?.dataset[spec.family+"DraftPhase"] && !submit(getForm()).disabled;
+    await load(frame,url); await until(ready,"draft lease unavailable: "+spec.kind);
     let form=getForm();
     for (const [name,value] of Object.entries(spec.fields)) {
       const input=form.elements.namedItem(name); input.value=value;
@@ -43,12 +44,12 @@
     if (spec.kind === "catalog-delete") form.dispatchEvent(new frame.contentWindow.Event("change",{bubbles:true}));
     const storageRef=form.elements.namedItem("draft_ref")?.value || ref;
     const storageKey=Object.keys(localStorage).find(key=>key.endsWith(storageRef));
-    if (!storageKey) throw Error("Original draft not retained");
+    if (!storageKey) throw Error("Original draft not retained: "+spec.kind+" phase="+form.dataset[spec.family+"DraftPhase"]);
     form.requestSubmit(submit(form));
     await until(()=>form.dataset[spec.family+"DraftPhase"]==="blocked" && !submit(form).disabled,"unknown receipt did not retain original");
     if (!form.querySelector("[data-"+spec.family+"-review]").hidden) throw Error("Unknown original must not offer a replacement key");
     const original=JSON.parse(localStorage.getItem(storageKey));
-    await load(frame,url); await until(()=>getForm() && !submit(getForm()).disabled,"reopened original unavailable");
+    await load(frame,url); await until(ready,"reopened original unavailable: "+spec.kind);
     form=getForm();
     const frozen=Object.keys(spec.fields).every(name=>form.elements.namedItem(name).readOnly || form.elements.namedItem(name).disabled);
     if (form.elements.namedItem("idempotency_key").value!==ref || JSON.stringify(JSON.parse(localStorage.getItem(storageKey)).values)!==JSON.stringify(original.values)) {
@@ -62,4 +63,8 @@
     frame.remove();
   }
   window.__planningRecovery={results};
-})().catch(error=>window.__planningRecovery={error:String(error),stack:error.stack});
+})().catch(async error=>window.__planningRecovery={error:String(error),stack:error.stack,
+  locks:await navigator.locks.query(),
+  frames:[...document.querySelectorAll('iframe')].map(frame=>({url:frame.contentWindow.location.href,
+    forms:[...frame.contentDocument.querySelectorAll('form')].map(form=>({action:form.action,dataset:{...form.dataset},
+      status:form.querySelector('[role="status"]')?.textContent,buttons:[...form.querySelectorAll('button[type="submit"]')].map(button=>({text:button.textContent,disabled:button.disabled}))}))}))});

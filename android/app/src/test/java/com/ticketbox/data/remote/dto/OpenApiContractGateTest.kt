@@ -57,6 +57,7 @@ class OpenApiContractGateTest {
         Pairing(LedgerSwitchResponseDto::class, "LedgerSwitchResponse"),
         Pairing(LedgerRenameRequestDto::class, "LedgerRenameRequest"),
         Pairing(ExpenseDto::class, "ExpenseResponse"),
+        Pairing(ExpenseConfirmationReceiptDto::class, "ExpenseConfirmationReceipt"),
         Pairing(UploadResponseDto::class, "UploadResponse"),
         // Dedicated manual-create DTO (no OCC-token field) + the PATCH body it
         // was split from — the forward check is the forbid-protection: a DTO

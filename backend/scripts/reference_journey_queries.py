@@ -35,7 +35,7 @@ def saved_queries(j):
     form = j.form(f'/web/saved-views/{original["id"]}/rename')
     form.locator('[name="name"]').fill("TripWebLater")
     form.locator('[name="category"]').fill("Library")
-    form.get_by_role("button", name="保存这组查询", exact=True).click()
+    form.get_by_role("button", name="保存更改", exact=True).click()
     j.expect(lambda state: state["views"][0]["name"] == "TripWebLater" and state["views"][0]["category"] == "Library",
         "The later Web query edit did not commit")
     native.restart()
@@ -49,6 +49,6 @@ def saved_queries(j):
     j.goto(f'/web/saved-views?edit={original["id"]}')
     form = j.form(f'/web/saved-views/{original["id"]}/rename')
     form.locator('[name="category"]').fill("")
-    form.get_by_role("button", name="保存这组查询", exact=True).click()
+    form.get_by_role("button", name="保存更改", exact=True).click()
     wait_for(lambda: j.facts()["views"][0]["category"] == "", "The shared query did not restore its original category range")
     assert j.facts()["expenses"] == financial_before

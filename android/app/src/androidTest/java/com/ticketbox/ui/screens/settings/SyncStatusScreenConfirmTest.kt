@@ -33,6 +33,24 @@ class SyncStatusScreenConfirmTest {
     val composeRule = createComposeRule()
 
     @Test
+    fun unverifiableConfirmationKeepsTheOriginalAndOffersFactReviewInsteadOfRetry() {
+        var opened: Long? = null
+        val original = outboxRow(PendingMutationStatus.Failed, "expense_confirmation_original_requires_review")
+            .copy(type = PendingMutationType.ConfirmExpense)
+        setScreenContent(failed = listOf(original), actions = SyncStatusActions(onRefreshAcceptedResult = {}, onRepairCorrectionRate = { _, _ -> }, onOpenRateSubmission = {}, onOpenIncomeSubmission = {}, onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {},
+            onOpenExpense = { opened = it }, onKeepMine = { error("Accepted confirmation cannot be rebased") }, onDropMine = {},
+            onRetry = { error("Unverifiable confirmation cannot be resubmitted") }, onDropFailed = {}, onClearQuarantined = {},
+        ))
+        val context = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext
+        composeRule.onNodeWithText("重试").assertDoesNotExist()
+        composeRule.onNodeWithText(context.getString(com.ticketbox.R.string.sync_status_expense_original_requires_review))
+            .performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(com.ticketbox.R.string.expense_offset_review_current))
+            .performScrollTo().performClick()
+        composeRule.runOnIdle { assertEquals(7L, opened) }
+    }
+
+    @Test
     fun offsetConflictOpensTheCurrentFactWithoutOfferingAnOverwrite() {
         var opened: Long? = null
         val original = outboxRow(PendingMutationStatus.Conflict, "state_conflict")

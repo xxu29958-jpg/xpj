@@ -17,6 +17,7 @@ RETURN_TO_PATHS: dict[str, str] = {
     "confirmed": "/web/confirmed",
     "reports": "/web/reports",
     "duplicates": "/web/duplicates",
+    "uncategorized": "/web/categories/uncategorized",
     "search": "/web/search",
     "bill_splits_inbox": "/web/bill-splits/inbox",
     "bill_splits_sent": "/web/bill-splits/sent",
@@ -28,6 +29,7 @@ RETURN_TO_LABELS: dict[str, str] = {
     "confirmed": "返回已确认流水",
     "reports": "返回原月份月报",
     "duplicates": "返回重复检查",
+    "uncategorized": "返回补分类",
     "search": "返回搜索结果",
     "bill_splits_inbox": "返回拆账收件箱",
     "bill_splits_sent": "返回已发拆账",
@@ -45,6 +47,7 @@ _PENDING_FILTERS = {
 }
 _MONTH_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 _EDIT_KEY_BY_LIST_KEY = {
+    "focus": "return_duplicate_expense_id",
     "filter": "return_filter",
     "month": "return_month",
     "page": "return_page",
@@ -78,6 +81,11 @@ class ExpenseReturnContext:
     return_import_public_id: str = ""
     return_import_line_number: str = ""
     return_import_expense_id: str = ""
+    return_receipt_key: str = ""
+    return_receipt_expense_id: str = ""
+    return_review_ref: str = ""
+    return_review_expense_id: str = ""
+    return_duplicate_expense_id: str = ""
 
     def as_kwargs(self) -> dict[str, str]:
         return asdict(self)
@@ -100,6 +108,11 @@ def expense_return_query_context(
     return_import_public_id: str = "",
     return_import_line_number: str = "",
     return_import_expense_id: str = "",
+    return_receipt_key: str = "",
+    return_receipt_expense_id: str = "",
+    return_review_ref: str = "",
+    return_review_expense_id: str = "",
+    return_duplicate_expense_id: str = "",
 ) -> ExpenseReturnContext:
     return ExpenseReturnContext(
         return_to=return_to,
@@ -118,6 +131,11 @@ def expense_return_query_context(
         return_import_public_id=return_import_public_id,
         return_import_line_number=return_import_line_number,
         return_import_expense_id=return_import_expense_id,
+        return_receipt_key=return_receipt_key,
+        return_receipt_expense_id=return_receipt_expense_id,
+        return_review_ref=return_review_ref,
+        return_review_expense_id=return_review_expense_id,
+        return_duplicate_expense_id=return_duplicate_expense_id,
     )
 
 
@@ -138,6 +156,11 @@ def expense_return_form_context(
     return_import_public_id: str = Form(default=""),
     return_import_line_number: str = Form(default=""),
     return_import_expense_id: str = Form(default=""),
+    return_receipt_key: str = Form(default=""),
+    return_receipt_expense_id: str = Form(default=""),
+    return_review_ref: str = Form(default=""),
+    return_review_expense_id: str = Form(default=""),
+    return_duplicate_expense_id: str = Form(default=""),
 ) -> ExpenseReturnContext:
     return ExpenseReturnContext(
         return_to=return_to,
@@ -156,6 +179,11 @@ def expense_return_form_context(
         return_import_public_id=return_import_public_id,
         return_import_line_number=return_import_line_number,
         return_import_expense_id=return_import_expense_id,
+        return_receipt_key=return_receipt_key,
+        return_receipt_expense_id=return_receipt_expense_id,
+        return_review_ref=return_review_ref,
+        return_review_expense_id=return_review_expense_id,
+        return_duplicate_expense_id=return_duplicate_expense_id,
     )
 
 
@@ -255,6 +283,11 @@ def return_context_params(return_to: str, **origin: str) -> dict[str, str]:
     if token == "pending":
         clean_filter = (origin.get("return_filter") or "").strip()
         return {"filter": clean_filter} if clean_filter in _PENDING_FILTERS else {}
+    if token == "duplicates":
+        focus = _payment_expense_id(origin.get("return_duplicate_expense_id", ""))
+        return {"focus": focus} if focus else {}
+    if token == "uncategorized":
+        return {"filter": "including_other"} if origin.get("return_filter") == "including_other" else {}
     if token == "confirmed":
         return _confirmed_return_params(origin)
     if token == "reports":
@@ -317,17 +350,35 @@ def edit_context_params(return_to: str, **origin: str) -> dict[str, str]:
     """Keep a validated origin attached while the user remains in edit."""
     token = clean_return_to(return_to)
     if token == "csv_import_event":
-        return _csv_import_origin(origin)
-    if token == "recurring_occurrence":
-        return recurring_occurrence_origin(
+        kept = _csv_import_origin(origin)
+    elif token == "recurring_occurrence":
+        kept = recurring_occurrence_origin(
             return_recurring_public_id=origin.get("return_recurring_public_id", ""),
             return_month=origin.get("return_month", ""),
             return_payment_expense_id=origin.get("return_payment_expense_id", ""),
         ) or {}
-    if not token:
-        return {}
-    list_params = return_context_params(token, **origin)
-    return {"return_to": token, **{_EDIT_KEY_BY_LIST_KEY[key]: value for key, value in list_params.items()}}
+    elif token:
+        list_params = return_context_params(token, **origin)
+        kept = {"return_to": token, **{_EDIT_KEY_BY_LIST_KEY[key]: value for key, value in list_params.items()}}
+    else:
+        kept = {}
+    return {**kept, **(_review_origin(origin) or _receipt_origin(origin))}
+
+
+def _review_origin(origin: dict[str, str]) -> dict[str, str]:
+    ref = _public_uuid(origin.get("return_review_ref", ""))
+    expense_id = _payment_expense_id(origin.get("return_review_expense_id", ""))
+    if ref and expense_id:
+        return {"return_review_ref": ref, "return_review_expense_id": expense_id}
+    return {}
+
+
+def _receipt_origin(origin: dict[str, str]) -> dict[str, str]:
+    key = origin.get("return_receipt_key", "")
+    expense_id = _payment_expense_id(origin.get("return_receipt_expense_id", ""))
+    if expense_id and re.fullmatch(r"[A-Za-z0-9_-]{1,64}", key):
+        return {"return_receipt_key": key, "return_receipt_expense_id": expense_id}
+    return {}
 
 
 def flow_href(path: str, *, ledger_id: str, return_to: str = "", **origin: str) -> str:
@@ -341,6 +392,15 @@ def return_label(return_to: str, *, default: str = "返回流水") -> str:
 
 
 def return_href(return_to: str, *, ledger_id: str, default_path: str, **origin: str) -> str:
+    if review := _review_origin(origin):
+        path = f"/web/expenses/{review['return_review_expense_id']}/edit"
+        href = flow_href(path, ledger_id=ledger_id, return_to=return_to,
+            **{key: value for key, value in origin.items() if key not in review and key not in _receipt_origin(origin)})
+        return f"{href}&confirmation_task=1#expensereview-edit-{review['return_review_ref']}"
+    if receipt := _receipt_origin(origin):
+        path = f"/web/expenses/{receipt['return_receipt_expense_id']}/confirmation/{receipt['return_receipt_key']}"
+        return flow_href(path, ledger_id=ledger_id, return_to=return_to,
+            **{key: value for key, value in origin.items() if key not in receipt})
     path = resolve_return_to(return_to, default_path, **origin)
     params = {"ledger_id": ledger_id, **return_context_params(return_to, **origin)}
     return f"{path}?{urlencode(params)}"
@@ -367,5 +427,6 @@ def edit_navigation_view(context: ExpenseReturnContext, *, expense_id: int, ledg
         "edit_return_fields": edit_context_params(**params),
         "edit_current_href": flow_href(f"/web/expenses/{expense_id}/edit", ledger_id=ledger_id, **params),
         "edit_return_href": return_href(ledger_id=ledger_id, default_path="/web/pending", **params),
-        "edit_return_label": return_label(context.return_to),
+        "edit_return_label": "返回原核对任务" if _review_origin(params) else "返回确认回执" if _receipt_origin(params) else return_label(context.return_to),
+        "expense_review_inspection": bool(_review_origin(params)),
     }

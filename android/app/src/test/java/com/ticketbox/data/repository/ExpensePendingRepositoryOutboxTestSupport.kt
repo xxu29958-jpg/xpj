@@ -173,6 +173,19 @@ internal abstract class ExpensePendingRepositoryOutboxTestBase {
             rejectedAt = null,
         )
 
+    protected fun confirmationResponse(expense: ExpenseDto = successExpenseDto().copy(status = "confirmed",
+        originalAmountMinor = 12345L, confirmedAt = "2026-05-20T13:00:00Z")): ExpenseDto = expense.copy(
+        confirmationReceipt = com.ticketbox.data.remote.dto.ExpenseConfirmationReceiptDto(
+            id = expense.id, publicId = requireNotNull(expense.publicId), rowVersion = expense.rowVersion,
+            factRevision = expense.factRevision, status = expense.status, amountCents = requireNotNull(expense.amountCents),
+            homeCurrency = requireNotNull(expense.homeCurrency), originalCurrencyCode = requireNotNull(expense.originalCurrencyCode),
+            originalAmountMinor = requireNotNull(expense.originalAmountMinor), exchangeRateToCny = expense.exchangeRateToCny,
+            exchangeRateDate = expense.exchangeRateDate, exchangeRateSource = expense.exchangeRateSource,
+            merchant = expense.merchant, category = expense.category, accountingTime = expense.accountingTime,
+            confirmedAt = expense.confirmedAt,
+        ),
+    )
+
     protected fun mismatchKnownItems(): ExpenseItems = ExpenseItems(
         expenseId = 42L,
         parentAmountCents = 12345L,

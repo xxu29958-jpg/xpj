@@ -30,6 +30,12 @@ class WebExpenseEditForm:
     fragment: int
     return_context: ExpenseReturnContext
     time_fields: dict[str, str] | None = None
+    draft_scope: str = ""
+    draft_ref: str = ""
+    review_latest: bool = False
+    command_action: str = "confirm"
+    keep_idempotency_key: str = ""
+    reject_idempotency_key: str = ""
 
 
 def web_expense_edit_form(
@@ -48,6 +54,12 @@ def web_expense_edit_form(
     fragment: int = Form(default=0),
     return_context: ExpenseReturnContext = Depends(expense_return_form_context),
     time_fields: dict[str, str] | None = Depends(accounting_time_form_fields),
+    draft_scope: str = Form(default=""),
+    draft_ref: str = Form(default=""),
+    review_latest: bool = Form(default=False),
+    command_action: str = Form(default="confirm"),
+    keep_idempotency_key: str = Form(default=""),
+    reject_idempotency_key: str = Form(default=""),
 ) -> WebExpenseEditForm:
     """Bind one raw browser intent without giving the HTTP handler ownership."""
 
@@ -67,4 +79,10 @@ def web_expense_edit_form(
         fragment=fragment,
         return_context=return_context,
         time_fields=time_fields,
+        draft_scope=draft_scope,
+        draft_ref=draft_ref,
+        review_latest=review_latest,
+        command_action=command_action,
+        keep_idempotency_key=keep_idempotency_key,
+        reject_idempotency_key=reject_idempotency_key,
     )

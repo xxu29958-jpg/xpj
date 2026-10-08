@@ -336,6 +336,10 @@ def test_confirm_delete_after_confirm_hides_image_and_thumbnail(
     assert payload["status"] == "confirmed"
     assert payload["image_deleted_at"] is not None
     assert payload["thumbnail_deleted_at"] is not None
+    receipt = payload["confirmation_receipt"]
+    assert (receipt["id"], receipt["status"], receipt["amount_cents"], receipt["merchant"]) == (
+        expense_id, "confirmed", 1851, "A")
+    assert "image_deleted_at" not in receipt
     assert not image_path.exists()
     assert not thumbnail_path.exists()
 

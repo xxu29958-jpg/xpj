@@ -322,6 +322,8 @@ fun expenseEditViewModelFactory(
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         return ExpenseEditViewModel(expenseId, repository, originalBinding) as T
     }
+    override fun <T : ViewModel> create(modelClass: Class<T>, extras: CreationExtras): T =
+        requireNotNull(modelClass.cast(ExpenseEditViewModel(expenseId, repository, originalBinding, extras.createSavedStateHandle())))
 }
 
 /**

@@ -1,19 +1,30 @@
-/* 未分类核对页: 表头「全选」联动本页所有 expense_ids 勾选框。
-   原 uncategorized.html 内联 <script> 在 CSP script-src 'self' 下从不执行 ——
-   全选对开启 JS 的用户也一直失效; 此外部脚本是同一行为的合规载体。
-   无 JS 时逐勾提交仍完全可用 (noJS fallback); 只读角色的禁用勾选框不受联动。 */
+/* Native category snapshots remain the command; enhance only selection feedback. */
 (function (window, document) {
   "use strict";
 
   function init() {
     var all = document.getElementById("select-all");
     if (!all) return;
+    var form = all.closest("form");
+    var boxes = Array.from(form.querySelectorAll('input[name="expense_snapshot"]'));
+    var button = form.querySelector("[data-category-apply]");
+    all.closest("label").hidden = false;
+    function refresh() {
+      var count = boxes.filter(function (box) { return box.checked; }).length;
+      all.checked = count === boxes.length;
+      all.indeterminate = count > 0 && count < boxes.length;
+      button.textContent = count ? "应用到 " + count + " 笔" : "先选择账单";
+      button.disabled = count === 0;
+    }
     all.addEventListener("change", function () {
-      var boxes = document.querySelectorAll('input[name="expense_ids"]');
       boxes.forEach(function (box) {
         if (!box.disabled) box.checked = all.checked;
       });
+      refresh();
     });
+    boxes.forEach(function (box) { box.addEventListener("change", refresh); });
+    window.addEventListener("pageshow", refresh);
+    refresh();
   }
 
   if (document.readyState === "loading") {

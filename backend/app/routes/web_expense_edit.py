@@ -2,14 +2,24 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from fastapi import APIRouter, Depends, Form, Query, Request
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
 from app.routes._web_confirmed_write_guard import confirmed_write_guard_response
+from app.routes._web_draft_binding import (
+    draft_ack_response,
+    draft_error_response,
+    draft_refusal_result,
+    require_draft_binding,
+    reviewed_draft_scope,
+)
+from app.routes._web_expense_confirmation import confirmation_draft_fields, render_confirmation_task
 from app.routes._web_expense_edit_command import apply_web_expense_form
 from app.routes._web_expense_edit_form import WebExpenseEditForm, web_expense_edit_form
 from app.routes._web_expense_fact import web_fact_context
@@ -88,7 +98,7 @@ def web_edit_get(
     # A1: confirmed 账单落地页 = read-first 事实详情（更正走显式命令）；
     # pending 保持原编辑表单。抽屉只服务待确认队列，confirmed 的 fragment
     # 请求给一个只读指引片段，不渲染可写表单。
-    if ctx["expense"]["status"] == "confirmed":
+    if ctx["expense"]["status"] == "confirmed" and not ctx["expense_review_task"]:
         if fragment:
             return HTMLResponse(
                 '<div class="empty-cell">这笔账单已确认：请在完整页面查看事实与变更记录，'
@@ -107,6 +117,10 @@ def web_edit_get(
             return_context=return_context,
         )
         return templates.TemplateResponse(request=request, name="expense_fact.html", context=fact_ctx)
+    if ctx["expense_review_inspection"]:
+        # Inspect the server's pending/rejected fields without restoring a local
+        # command or opening another submission. The original task owns editing.
+        ctx.update(can_write=False, expense_review_scope=None)
     # ?fragment=1 returns the drawer fragment fetched by desktop.js.
     if fragment:
         return templates.TemplateResponse(request=request, name="_edit_drawer.html", context=ctx)
@@ -125,19 +139,27 @@ def web_save(
     selected_id = _resolve_selected_ledger_id(
         db, form.ledger_id or None, options, request=request
     )
-    _require_selected_ledger_write(options, selected_id)
-    guarded = confirmed_write_guard_response(
-        db,
-        request,
-        options,
-        selected_id,
-        expense_id,
-        error_code="expense_correction_required",
-        fragment=bool(form.fragment),
-        return_context=form.return_context,
-    )
-    if guarded is not None:
-        return guarded
+    form = replace(form, command_action="save")
+    if "application/json" not in request.headers.get("accept", ""):
+        retained = preserve_original_ledger_form(request, db, options=options, selected=selected_id,
+            fields=confirmation_draft_fields(form), task="继续原账单的草稿保存")
+        if retained is not None:
+            return retained
+    try:
+        _require_selected_ledger_write(options, selected_id)
+        form = replace(form, draft_scope=reviewed_draft_scope(db, request, form.draft_scope, review=form.review_latest))
+        require_draft_binding(db, request, ledger_id=selected_id, draft_scope=form.draft_scope, require_session=False)
+        if form.draft_scope and form.ledger_id != selected_id:
+            raise AppError("session_binding_changed", "原账本已切换，请保留输入并切回原账本。", status_code=409)
+        if form.review_latest:
+            return render_confirmation_task(request, db, options=options, ledger_id=selected_id,
+                expense_id=expense_id, form=form, result="prepared")
+    except AppError as exc:
+        response = draft_error_response(request, exc)
+        if response is not None:
+            return response
+        return render_confirmation_task(request, db, options=options, ledger_id=selected_id,
+            expense_id=expense_id, form=form, error=exc.message, result="blocked", status=exc.status_code)
     account_id, device_id = resolve_web_actor(db, request, selected_id)
     outcome = apply_web_expense_form(
         db,
@@ -147,6 +169,27 @@ def web_save(
         initiator_device_id=device_id,
         form=form,
     )
+    if outcome.error is not None:
+        error = AppError(outcome.error_code or "invalid_request", outcome.error, status_code=outcome.error_status)
+        response = draft_error_response(request, error)
+        if response is not None:
+            return response
+        if form.draft_scope:
+            return render_confirmation_task(request, db, options=options, ledger_id=selected_id,
+                expense_id=expense_id, form=form, error=error.message, result=draft_refusal_result(error), status=error.status_code)
+        guarded = confirmed_write_guard_response(db, request, options, selected_id, expense_id,
+            error_code="expense_correction_required", fragment=bool(form.fragment), return_context=form.return_context)
+        if guarded is not None:
+            return guarded
+    elif form.draft_scope:
+        href = _with_ledger(f"/web/expenses/{expense_id}/edit", selected_id, new_expensereview="1",
+            msg="这次草稿保存已完成。请核对账单当前记录，再继续操作。", **edit_context_params(**form.return_context.as_kwargs()))
+        response = draft_ack_response(request, draft_scope=form.draft_scope, idempotency_key=form.idempotency_key,
+            receipt={"operation": "patch_expense", "expense_id": expense_id, "accepted": True}, next_href=href)
+        if response is not None:
+            return response
+        if not form.fragment:
+            return RedirectResponse(href, status_code=303)
     return web_save_response(
         db,
         request,

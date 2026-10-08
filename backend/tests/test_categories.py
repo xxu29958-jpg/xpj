@@ -148,13 +148,15 @@ def test_web_categories_renders_with_navigation(web_client: TestClient) -> None:
 
 
 def test_web_categories_counts_pending_uncategorized(web_client: TestClient, *, identity) -> None:
-    # Two pending rows still in the default "其他" bucket.
+    # A missing category is distinct from the user's valid choice of 其他.
+    missing = _create_pending(web_client, identity=identity)
     _create_pending(web_client, identity=identity)
-    _create_pending(web_client, identity=identity)
+    with SessionLocal() as db:
+        db.get(Expense, missing).category = ""
+        db.commit()
     resp = web_client.get("/web/categories?ledger_id=owner")
     assert resp.status_code == 200
-    # Both pending rows should land under the uncategorized chip.
-    assert "未分类" in resp.text
+    assert "1 条待确认还未分类" in resp.text
     # A direct entry to the cleanup workflow is rendered.
     assert "/web/categories/uncategorized?ledger_id=owner" in resp.text
 
@@ -491,28 +493,44 @@ def test_web_uncategorized_lists_only_uncategorized(web_client: TestClient, *, i
         web_client, eid_food, identity=identity,
         amount_yuan="12.34", merchant="星巴克", category="餐饮",
     )
+    dashboard = web_client.get("/web/categories?ledger_id=owner")
+    assert "1 条待确认使用「其他」分类" in dashboard.text
+    assert "filter=including_other" in dashboard.text
+    eid_missing = _create_pending(web_client, identity=identity)
+    with SessionLocal() as db:
+        db.get(Expense, eid_missing).category = "未分類"
+        db.commit()
     resp = web_client.get("/web/categories/uncategorized?ledger_id=owner")
     assert resp.status_code == 200
-    ids = set(re.findall(r'name="expense_ids" value="(\d+)"', resp.text))
-    assert str(eid_other) in ids
+    ids = set(re.findall(r'name="expense_snapshot" value="(\d+):', resp.text))
+    assert str(eid_missing) in ids
+    assert str(eid_other) not in ids
     assert str(eid_food) not in ids
+    including_other = web_client.get("/web/categories/uncategorized?ledger_id=owner&filter=including_other")
+    assert f'name="expense_snapshot" value="{eid_other}:' in including_other.text
 
 
 def test_web_uncategorized_bulk_set_category(web_client: TestClient, *, identity) -> None:
     eid = _create_pending(web_client, identity=identity)
+    original = web_client.get("/web/categories/uncategorized?ledger_id=owner&filter=including_other")
+    snapshot = re.search(rf'name="expense_snapshot" value="({eid}:\d+)"', original.text)[1]
     resp = web_client.post(
         "/web/categories/uncategorized/bulk-set",
         data={
             "ledger_id": "owner",
-            "expense_ids": [str(eid)],
+            "expense_snapshot": [snapshot],
             "category": "餐饮",
         },
         follow_redirects=False,
     )
-    assert resp.status_code == 303
+    assert resp.status_code == 200, resp.text
+    assert 'aria-label="继续逐笔核对"' in resp.text
+    with SessionLocal() as db:
+        row = db.get(Expense, eid)
+        assert row.status == "pending" and row.category == "餐饮"
     follow = web_client.get("/web/categories/uncategorized?ledger_id=owner")
     assert follow.status_code == 200
-    ids = set(re.findall(r'name="expense_ids" value="(\d+)"', follow.text))
+    ids = set(re.findall(r'name="expense_snapshot" value="(\d+):', follow.text))
     # Row flipped out of the uncategorized bucket.
     assert str(eid) not in ids
 
@@ -523,9 +541,8 @@ def test_web_uncategorized_bulk_requires_selection(web_client: TestClient) -> No
         data={"ledger_id": "owner", "category": "餐饮"},
         follow_redirects=False,
     )
-    assert resp.status_code == 303
-    loc = resp.headers.get("location", "")
-    assert "/web/categories/uncategorized" in loc and "msg=" in loc
+    assert resp.status_code == 422
+    assert "请勾选要修改的账单。" in resp.text
 
 
 # ── Loopback gate + secret-leak guard ─────────────────────────────────────
@@ -549,10 +566,7 @@ def test_web_categories_no_secret_leak(web_client: TestClient, *, identity) -> N
 
 
 def test_web_uncategorized_includes_dirty_tokens(web_client: TestClient, *, identity) -> None:
-    """218-B3 round 9: the cleanup workflow triages the shared dirty tokens
-    (未分類 / none / null, case-insensitive) in addition to the historic
-    blank / 其他 / 未分类 set — uploads keep landing in the backlog via the
-    其他 default, while real categories stay out."""
+    """Legacy missing tokens use the same caliber as the inbox and data quality."""
     with SessionLocal() as db:
         token_none = Expense(
             tenant_id="owner", amount_cents=100, merchant="商家甲", category="none",
@@ -572,7 +586,7 @@ def test_web_uncategorized_includes_dirty_tokens(web_client: TestClient, *, iden
 
     resp = web_client.get("/web/categories/uncategorized?ledger_id=owner")
     assert resp.status_code == 200
-    ids = set(re.findall(r'name="expense_ids" value="(\d+)"', resp.text))
+    ids = set(re.findall(r'name="expense_snapshot" value="(\d+):', resp.text))
     assert str(none_id) in ids
     assert str(trad_id) in ids
     assert str(cat_id) not in ids

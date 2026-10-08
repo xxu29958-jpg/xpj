@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
+from app.routes._web_draft_binding import browser_draft_scope
 from app.routes._web_expense_return_context import (
     _payment_expense_id,
     edit_context_params,
@@ -25,6 +26,7 @@ from app.routes.web_common import (
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
     _web_redirect,
+    parse_form_row_version_token,
     preserve_original_ledger_form,
     templates,
 )
@@ -84,15 +86,16 @@ def _payments(db, *, ledger_id, month, query, item, occurrence):
     ], len(rows) > 100
 
 
-def _occurrence_reject_undo(db, *, selected_id: str, undo: str | None) -> tuple[int | None, int | None]:
+def _occurrence_reject_undo(db, *, selected_id: str, undo: str | None, undo_version: str | None) -> tuple[int | None, int | None]:
     parsed = _payment_expense_id(undo or "")
-    if not parsed:
+    original_version = parse_form_row_version_token(undo_version or "")
+    if not parsed or original_version is None:
         return None, None
     candidate = int(parsed)
     row_version = fetch_expense_row_version_in_status(
         db, expense_id=candidate, tenant_id=selected_id, status="rejected",
     )
-    if row_version is None:
+    if row_version != original_version:
         return None, None
     return candidate, row_version
 
@@ -153,7 +156,7 @@ def _occurrence_page_projection(*, item, occurrence, payments, focused, selected
 
 def _page(
     request: Request, db: Session, *, public_id: str, ledger_id: str | None, month=None, payment_month=None,
-    query="", message=None, error=None, retry=None, payment_id=None, undo=None, flash_type=None,
+    query="", message=None, error=None, retry=None, payment_id=None, undo=None, undo_version=None, flash_type=None,
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
@@ -178,13 +181,14 @@ def _page(
         flash_message=message or "",
         flash_type=flash_type if flash_type in {"success", "error"} else ("success" if message else ""),
         undo_expense_id=None, undo_expected_row_version=None, undo_idempotency_key="",
+        undo_draft_scope=browser_draft_scope(db, request),
         **_occurrence_page_projection(
             item=item, occurrence=occurrence, payments=payments, focused=focused,
             selected=selected, can_write=context["can_write"],
         ),
     )
     undo_expense_id, undo_expected_row_version = _occurrence_reject_undo(
-        db, selected_id=selected, undo=undo,
+        db, selected_id=selected, undo=undo, undo_version=undo_version,
     )
     context["undo_expense_id"] = undo_expense_id
     context["undo_expected_row_version"] = undo_expected_row_version
@@ -201,13 +205,14 @@ def web_recurring_occurrence(
     month: str | None = None, payment_month: str | None = None,
     q: str = Query(default="", max_length=150), message: str | None = None,
     msg: str | None = None, flash_type: str | None = None, undo: str | None = None,
+    undo_version: str | None = None,
     payment_id: str = "",
     _local: None = LocalOnly, db: Session = Depends(get_db),
 ):
     return _page(
         request, db, public_id=public_id, ledger_id=ledger_id, month=month,
         payment_month=payment_month, query=q.strip(), message=message or msg,
-        payment_id=payment_id, undo=undo, flash_type=flash_type,
+        payment_id=payment_id, undo=undo, undo_version=undo_version, flash_type=flash_type,
     )
 
 

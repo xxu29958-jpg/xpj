@@ -18,6 +18,7 @@ from app.schemas import (
     CategoryPreferenceResponse,
     CategoryPreferenceTokenRequest,
     ExpenseAcknowledgeItemsMismatchRequest,
+    ExpenseConfirmationReceipt,
     ExpenseConfirmRequest,
     ExpenseItemReplaceRequest,
     ExpenseItemsResponse,
@@ -58,7 +59,11 @@ from app.services.expense_response_service import (
     expense_raw_text_by_id,
     expense_to_response,
 )
-from app.services.expense_review_command_service import confirm_expense_submission, submit_expense_rejection
+from app.services.expense_review_command_service import (
+    confirm_expense_submission,
+    submit_expense_duplicate_decision,
+    submit_expense_rejection,
+)
 from app.services.expense_service import (
     create_manual_expense,
     create_notification_draft,
@@ -68,7 +73,6 @@ from app.services.expense_service import (
     get_expense,
     list_confirmed,
     list_pending,
-    mark_expense_not_duplicate,
     resolve_expense_for_mutation,
 )
 from app.services.expense_split_service import list_expense_splits, replace_expense_splits
@@ -592,7 +596,7 @@ def post_confirm_expense(
         device_id=auth.device_id,
         expected_row_version=payload.expected_row_version,
     )
-    expense = confirm_expense_submission(
+    receipt = confirm_expense_submission(
         db,
         expense_id=expense_pk,
         idempotency_key=idempotency_key,
@@ -605,7 +609,9 @@ def post_confirm_expense(
         actor_device_id=auth.device_id,
         require_idempotency=True,
     )
-    return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
+    current = expense_to_response(db, tenant_id=auth.tenant_id, expense=get_expense(db, expense_pk, auth.tenant_id))
+    current.confirmation_receipt = ExpenseConfirmationReceipt.model_validate(receipt)
+    return current
 
 
 @router.post("/{expense_id}/reject", response_model=ExpenseResponse)
@@ -775,29 +781,9 @@ def post_mark_not_duplicate(
         device_id=auth.device_id,
         expected_row_version=payload.expected_row_version,
     )
-    claim = claim_idempotent_request(
-        db,
-        idempotency_key=idempotency_key,
-        tenant_id=auth.tenant_id,
-        operation="mark_not_duplicate",
-        target_id=str(expense_pk),
-        body=payload.model_dump(mode="json", exclude_unset=True, exclude={"expected_row_version"}),
-        expected_row_version=payload.expected_row_version,
-    )
-    if claim is None:
-        expense = get_expense(db, expense_pk, auth.tenant_id)
-        return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
-
-    expense = mark_expense_not_duplicate(
-        db,
-        expense_pk,
-        auth.tenant_id,
-        expected_row_version=effective_row_version,
-        commit=False,
-    )
-    mark_idempotency_succeeded(db, claim, resource_type="expense", resource_id=str(expense_pk))
-    db.commit()
-    db.refresh(expense)
+    expense = submit_expense_duplicate_decision(db, tenant_id=auth.tenant_id, expense_id=expense_pk,
+        idempotency_key=idempotency_key, expected_row_version=effective_row_version,
+        request_expected_row_version=payload.expected_row_version)
     return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
 
 

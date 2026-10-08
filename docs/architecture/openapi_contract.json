@@ -2730,6 +2730,11 @@
             "title": "Return Category",
             "type": "string"
           },
+          "return_duplicate_expense_id": {
+            "default": "",
+            "title": "Return Duplicate Expense Id",
+            "type": "string"
+          },
           "return_filter": {
             "default": "",
             "title": "Return Filter",
@@ -2790,9 +2795,29 @@
             "title": "Return Ranking Metric",
             "type": "string"
           },
+          "return_receipt_expense_id": {
+            "default": "",
+            "title": "Return Receipt Expense Id",
+            "type": "string"
+          },
+          "return_receipt_key": {
+            "default": "",
+            "title": "Return Receipt Key",
+            "type": "string"
+          },
           "return_recurring_public_id": {
             "default": "",
             "title": "Return Recurring Public Id",
+            "type": "string"
+          },
+          "return_review_expense_id": {
+            "default": "",
+            "title": "Return Review Expense Id",
+            "type": "string"
+          },
+          "return_review_ref": {
+            "default": "",
+            "title": "Return Review Ref",
             "type": "string"
           },
           "return_tag": {
@@ -3082,6 +3107,21 @@
             "title": "Category",
             "type": "string"
           },
+          "command_action": {
+            "default": "confirm",
+            "title": "Command Action",
+            "type": "string"
+          },
+          "draft_ref": {
+            "default": "",
+            "title": "Draft Ref",
+            "type": "string"
+          },
+          "draft_scope": {
+            "default": "",
+            "title": "Draft Scope",
+            "type": "string"
+          },
           "expected_row_version": {
             "default": "",
             "title": "Expected Row Version",
@@ -3106,6 +3146,11 @@
           "idempotency_key": {
             "default": "",
             "title": "Idempotency Key",
+            "type": "string"
+          },
+          "keep_idempotency_key": {
+            "default": "",
+            "title": "Keep Idempotency Key",
             "type": "string"
           },
           "ledger_id": {
@@ -3139,9 +3184,19 @@
             "title": "Original Currency",
             "type": "string"
           },
+          "reject_idempotency_key": {
+            "default": "",
+            "title": "Reject Idempotency Key",
+            "type": "string"
+          },
           "return_category": {
             "default": "",
             "title": "Return Category",
+            "type": "string"
+          },
+          "return_duplicate_expense_id": {
+            "default": "",
+            "title": "Return Duplicate Expense Id",
             "type": "string"
           },
           "return_filter": {
@@ -3204,9 +3259,29 @@
             "title": "Return Ranking Metric",
             "type": "string"
           },
+          "return_receipt_expense_id": {
+            "default": "",
+            "title": "Return Receipt Expense Id",
+            "type": "string"
+          },
+          "return_receipt_key": {
+            "default": "",
+            "title": "Return Receipt Key",
+            "type": "string"
+          },
           "return_recurring_public_id": {
             "default": "",
             "title": "Return Recurring Public Id",
+            "type": "string"
+          },
+          "return_review_expense_id": {
+            "default": "",
+            "title": "Return Review Expense Id",
+            "type": "string"
+          },
+          "return_review_ref": {
+            "default": "",
+            "title": "Return Review Ref",
             "type": "string"
           },
           "return_tag": {
@@ -3218,6 +3293,11 @@
             "default": "",
             "title": "Return To",
             "type": "string"
+          },
+          "review_latest": {
+            "default": false,
+            "title": "Review Latest",
+            "type": "boolean"
           },
           "save_before_confirm": {
             "default": 0,
@@ -3489,6 +3569,11 @@
             "title": "Return Category",
             "type": "string"
           },
+          "return_duplicate_expense_id": {
+            "default": "",
+            "title": "Return Duplicate Expense Id",
+            "type": "string"
+          },
           "return_filter": {
             "default": "",
             "title": "Return Filter",
@@ -3549,9 +3634,29 @@
             "title": "Return Ranking Metric",
             "type": "string"
           },
+          "return_receipt_expense_id": {
+            "default": "",
+            "title": "Return Receipt Expense Id",
+            "type": "string"
+          },
+          "return_receipt_key": {
+            "default": "",
+            "title": "Return Receipt Key",
+            "type": "string"
+          },
           "return_recurring_public_id": {
             "default": "",
             "title": "Return Recurring Public Id",
+            "type": "string"
+          },
+          "return_review_expense_id": {
+            "default": "",
+            "title": "Return Review Expense Id",
+            "type": "string"
+          },
+          "return_review_ref": {
+            "default": "",
+            "title": "Return Review Ref",
             "type": "string"
           },
           "return_tag": {
@@ -3749,6 +3854,11 @@
             "title": "Return Category",
             "type": "string"
           },
+          "return_duplicate_expense_id": {
+            "default": "",
+            "title": "Return Duplicate Expense Id",
+            "type": "string"
+          },
           "return_filter": {
             "default": "",
             "title": "Return Filter",
@@ -3809,9 +3919,29 @@
             "title": "Return Ranking Metric",
             "type": "string"
           },
+          "return_receipt_expense_id": {
+            "default": "",
+            "title": "Return Receipt Expense Id",
+            "type": "string"
+          },
+          "return_receipt_key": {
+            "default": "",
+            "title": "Return Receipt Key",
+            "type": "string"
+          },
           "return_recurring_public_id": {
             "default": "",
             "title": "Return Recurring Public Id",
+            "type": "string"
+          },
+          "return_review_expense_id": {
+            "default": "",
+            "title": "Return Review Expense Id",
+            "type": "string"
+          },
+          "return_review_ref": {
+            "default": "",
+            "title": "Return Review Ref",
             "type": "string"
           },
           "return_tag": {
@@ -4180,56 +4310,66 @@
       },
       "Body_web_duplicate_keep_web_duplicates__expense_id__keep_post": {
         "properties": {
+          "amount_yuan": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Yuan"
+          },
+          "category": {
+            "default": "",
+            "title": "Category",
+            "type": "string"
+          },
+          "command_action": {
+            "default": "confirm",
+            "title": "Command Action",
+            "type": "string"
+          },
+          "draft_ref": {
+            "default": "",
+            "title": "Draft Ref",
+            "type": "string"
+          },
+          "draft_scope": {
+            "default": "",
+            "title": "Draft Scope",
+            "type": "string"
+          },
           "expected_row_version": {
             "default": "",
             "title": "Expected Row Version",
             "type": "string"
+          },
+          "expense_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expense Time"
           },
           "fragment": {
             "default": 0,
             "title": "Fragment",
             "type": "integer"
           },
-          "ledger_id": {
-            "default": "",
-            "title": "Ledger Id",
-            "type": "string"
-          }
-        },
-        "title": "Body_web_duplicate_keep_web_duplicates__expense_id__keep_post",
-        "type": "object"
-      },
-      "Body_web_duplicate_reject_current_web_duplicates__expense_id__reject_current_post": {
-        "properties": {
-          "expected_row_version": {
-            "default": "",
-            "title": "Expected Row Version",
-            "type": "string"
-          },
           "idempotency_key": {
             "default": "",
             "title": "Idempotency Key",
             "type": "string"
           },
-          "ledger_id": {
+          "keep_idempotency_key": {
             "default": "",
-            "title": "Ledger Id",
-            "type": "string"
-          }
-        },
-        "title": "Body_web_duplicate_reject_current_web_duplicates__expense_id__reject_current_post",
-        "type": "object"
-      },
-      "Body_web_duplicate_reject_original_web_duplicates__expense_id__reject_original_post": {
-        "properties": {
-          "expected_original_row_version": {
-            "default": "",
-            "title": "Expected Original Row Version",
-            "type": "string"
-          },
-          "expected_row_version": {
-            "default": "",
-            "title": "Expected Row Version",
+            "title": "Keep Idempotency Key",
             "type": "string"
           },
           "ledger_id": {
@@ -4237,35 +4377,45 @@
             "title": "Ledger Id",
             "type": "string"
           },
-          "original_expense_id": {
+          "manual_exchange_rate": {
             "default": "",
-            "title": "Original Expense Id",
-            "type": "string"
-          }
-        },
-        "title": "Body_web_duplicate_reject_original_web_duplicates__expense_id__reject_original_post",
-        "type": "object"
-      },
-      "Body_web_expense_undo_web_expenses__expense_id__undo_post": {
-        "properties": {
-          "expected_row_version": {
-            "default": "",
-            "title": "Expected Row Version",
+            "title": "Manual Exchange Rate",
             "type": "string"
           },
-          "idempotency_key": {
+          "merchant": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merchant"
+          },
+          "note": {
             "default": "",
-            "title": "Idempotency Key",
+            "title": "Note",
             "type": "string"
           },
-          "ledger_id": {
+          "original_currency": {
             "default": "",
-            "title": "Ledger Id",
+            "title": "Original Currency",
+            "type": "string"
+          },
+          "reject_idempotency_key": {
+            "default": "",
+            "title": "Reject Idempotency Key",
             "type": "string"
           },
           "return_category": {
             "default": "",
             "title": "Return Category",
+            "type": "string"
+          },
+          "return_duplicate_expense_id": {
+            "default": "",
+            "title": "Return Duplicate Expense Id",
             "type": "string"
           },
           "return_filter": {
@@ -4328,9 +4478,242 @@
             "title": "Return Ranking Metric",
             "type": "string"
           },
+          "return_receipt_expense_id": {
+            "default": "",
+            "title": "Return Receipt Expense Id",
+            "type": "string"
+          },
+          "return_receipt_key": {
+            "default": "",
+            "title": "Return Receipt Key",
+            "type": "string"
+          },
           "return_recurring_public_id": {
             "default": "",
             "title": "Return Recurring Public Id",
+            "type": "string"
+          },
+          "return_review_expense_id": {
+            "default": "",
+            "title": "Return Review Expense Id",
+            "type": "string"
+          },
+          "return_review_ref": {
+            "default": "",
+            "title": "Return Review Ref",
+            "type": "string"
+          },
+          "return_tag": {
+            "default": "",
+            "title": "Return Tag",
+            "type": "string"
+          },
+          "return_to": {
+            "default": "",
+            "title": "Return To",
+            "type": "string"
+          },
+          "review_latest": {
+            "default": false,
+            "title": "Review Latest",
+            "type": "boolean"
+          },
+          "save_before_confirm": {
+            "default": 0,
+            "title": "Save Before Confirm",
+            "type": "integer"
+          },
+          "tags": {
+            "default": "",
+            "title": "Tags",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_duplicate_keep_web_duplicates__expense_id__keep_post",
+        "type": "object"
+      },
+      "Body_web_duplicate_reject_current_web_duplicates__expense_id__reject_current_post": {
+        "properties": {
+          "draft_scope": {
+            "default": "",
+            "title": "Draft Scope",
+            "type": "string"
+          },
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "return_duplicate_expense_id": {
+            "default": "",
+            "title": "Return Duplicate Expense Id",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_duplicate_reject_current_web_duplicates__expense_id__reject_current_post",
+        "type": "object"
+      },
+      "Body_web_duplicate_reject_original_web_duplicates__expense_id__reject_original_post": {
+        "properties": {
+          "draft_scope": {
+            "default": "",
+            "title": "Draft Scope",
+            "type": "string"
+          },
+          "expected_original_row_version": {
+            "default": "",
+            "title": "Expected Original Row Version",
+            "type": "string"
+          },
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "original_expense_id": {
+            "default": "",
+            "title": "Original Expense Id",
+            "type": "string"
+          },
+          "return_duplicate_expense_id": {
+            "default": "",
+            "title": "Return Duplicate Expense Id",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_duplicate_reject_original_web_duplicates__expense_id__reject_original_post",
+        "type": "object"
+      },
+      "Body_web_expense_undo_web_expenses__expense_id__undo_post": {
+        "properties": {
+          "draft_scope": {
+            "default": "",
+            "title": "Draft Scope",
+            "type": "string"
+          },
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "return_category": {
+            "default": "",
+            "title": "Return Category",
+            "type": "string"
+          },
+          "return_duplicate_expense_id": {
+            "default": "",
+            "title": "Return Duplicate Expense Id",
+            "type": "string"
+          },
+          "return_filter": {
+            "default": "",
+            "title": "Return Filter",
+            "type": "string"
+          },
+          "return_granularity": {
+            "default": "",
+            "title": "Return Granularity",
+            "type": "string"
+          },
+          "return_home_currency_code": {
+            "default": "",
+            "title": "Return Home Currency Code",
+            "type": "string"
+          },
+          "return_import_expense_id": {
+            "default": "",
+            "title": "Return Import Expense Id",
+            "type": "string"
+          },
+          "return_import_line_number": {
+            "default": "",
+            "title": "Return Import Line Number",
+            "type": "string"
+          },
+          "return_import_public_id": {
+            "default": "",
+            "title": "Return Import Public Id",
+            "type": "string"
+          },
+          "return_merchant_category": {
+            "default": "",
+            "title": "Return Merchant Category",
+            "type": "string"
+          },
+          "return_month": {
+            "default": "",
+            "title": "Return Month",
+            "type": "string"
+          },
+          "return_page": {
+            "default": "",
+            "title": "Return Page",
+            "type": "string"
+          },
+          "return_payment_expense_id": {
+            "default": "",
+            "title": "Return Payment Expense Id",
+            "type": "string"
+          },
+          "return_query": {
+            "default": "",
+            "title": "Return Query",
+            "type": "string"
+          },
+          "return_ranking_metric": {
+            "default": "",
+            "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_receipt_expense_id": {
+            "default": "",
+            "title": "Return Receipt Expense Id",
+            "type": "string"
+          },
+          "return_receipt_key": {
+            "default": "",
+            "title": "Return Receipt Key",
+            "type": "string"
+          },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
+            "type": "string"
+          },
+          "return_review_expense_id": {
+            "default": "",
+            "title": "Return Review Expense Id",
+            "type": "string"
+          },
+          "return_review_ref": {
+            "default": "",
+            "title": "Return Review Ref",
             "type": "string"
           },
           "return_tag": {
@@ -4785,6 +5168,11 @@
             "title": "Return Category",
             "type": "string"
           },
+          "return_duplicate_expense_id": {
+            "default": "",
+            "title": "Return Duplicate Expense Id",
+            "type": "string"
+          },
           "return_filter": {
             "default": "",
             "title": "Return Filter",
@@ -4845,9 +5233,29 @@
             "title": "Return Ranking Metric",
             "type": "string"
           },
+          "return_receipt_expense_id": {
+            "default": "",
+            "title": "Return Receipt Expense Id",
+            "type": "string"
+          },
+          "return_receipt_key": {
+            "default": "",
+            "title": "Return Receipt Key",
+            "type": "string"
+          },
           "return_recurring_public_id": {
             "default": "",
             "title": "Return Recurring Public Id",
+            "type": "string"
+          },
+          "return_review_expense_id": {
+            "default": "",
+            "title": "Return Review Expense Id",
+            "type": "string"
+          },
+          "return_review_ref": {
+            "default": "",
+            "title": "Return Review Ref",
             "type": "string"
           },
           "return_tag": {
@@ -4929,6 +5337,11 @@
             "title": "Return Category",
             "type": "string"
           },
+          "return_duplicate_expense_id": {
+            "default": "",
+            "title": "Return Duplicate Expense Id",
+            "type": "string"
+          },
           "return_filter": {
             "default": "",
             "title": "Return Filter",
@@ -4989,9 +5402,29 @@
             "title": "Return Ranking Metric",
             "type": "string"
           },
+          "return_receipt_expense_id": {
+            "default": "",
+            "title": "Return Receipt Expense Id",
+            "type": "string"
+          },
+          "return_receipt_key": {
+            "default": "",
+            "title": "Return Receipt Key",
+            "type": "string"
+          },
           "return_recurring_public_id": {
             "default": "",
             "title": "Return Recurring Public Id",
+            "type": "string"
+          },
+          "return_review_expense_id": {
+            "default": "",
+            "title": "Return Review Expense Id",
+            "type": "string"
+          },
+          "return_review_ref": {
+            "default": "",
+            "title": "Return Review Ref",
             "type": "string"
           },
           "return_tag": {
@@ -5081,6 +5514,11 @@
             "title": "Return Category",
             "type": "string"
           },
+          "return_duplicate_expense_id": {
+            "default": "",
+            "title": "Return Duplicate Expense Id",
+            "type": "string"
+          },
           "return_filter": {
             "default": "",
             "title": "Return Filter",
@@ -5141,9 +5579,29 @@
             "title": "Return Ranking Metric",
             "type": "string"
           },
+          "return_receipt_expense_id": {
+            "default": "",
+            "title": "Return Receipt Expense Id",
+            "type": "string"
+          },
+          "return_receipt_key": {
+            "default": "",
+            "title": "Return Receipt Key",
+            "type": "string"
+          },
           "return_recurring_public_id": {
             "default": "",
             "title": "Return Recurring Public Id",
+            "type": "string"
+          },
+          "return_review_expense_id": {
+            "default": "",
+            "title": "Return Review Expense Id",
+            "type": "string"
+          },
+          "return_review_ref": {
+            "default": "",
+            "title": "Return Review Ref",
             "type": "string"
           },
           "return_tag": {
@@ -5539,6 +5997,21 @@
             "title": "Category",
             "type": "string"
           },
+          "command_action": {
+            "default": "confirm",
+            "title": "Command Action",
+            "type": "string"
+          },
+          "draft_ref": {
+            "default": "",
+            "title": "Draft Ref",
+            "type": "string"
+          },
+          "draft_scope": {
+            "default": "",
+            "title": "Draft Scope",
+            "type": "string"
+          },
           "expected_row_version": {
             "default": "",
             "title": "Expected Row Version",
@@ -5563,6 +6036,11 @@
           "idempotency_key": {
             "default": "",
             "title": "Idempotency Key",
+            "type": "string"
+          },
+          "keep_idempotency_key": {
+            "default": "",
+            "title": "Keep Idempotency Key",
             "type": "string"
           },
           "ledger_id": {
@@ -5596,9 +6074,19 @@
             "title": "Original Currency",
             "type": "string"
           },
+          "reject_idempotency_key": {
+            "default": "",
+            "title": "Reject Idempotency Key",
+            "type": "string"
+          },
           "return_category": {
             "default": "",
             "title": "Return Category",
+            "type": "string"
+          },
+          "return_duplicate_expense_id": {
+            "default": "",
+            "title": "Return Duplicate Expense Id",
             "type": "string"
           },
           "return_filter": {
@@ -5661,9 +6149,29 @@
             "title": "Return Ranking Metric",
             "type": "string"
           },
+          "return_receipt_expense_id": {
+            "default": "",
+            "title": "Return Receipt Expense Id",
+            "type": "string"
+          },
+          "return_receipt_key": {
+            "default": "",
+            "title": "Return Receipt Key",
+            "type": "string"
+          },
           "return_recurring_public_id": {
             "default": "",
             "title": "Return Recurring Public Id",
+            "type": "string"
+          },
+          "return_review_expense_id": {
+            "default": "",
+            "title": "Return Review Expense Id",
+            "type": "string"
+          },
+          "return_review_ref": {
+            "default": "",
+            "title": "Return Review Ref",
             "type": "string"
           },
           "return_tag": {
@@ -5675,6 +6183,11 @@
             "default": "",
             "title": "Return To",
             "type": "string"
+          },
+          "review_latest": {
+            "default": false,
+            "title": "Review Latest",
+            "type": "boolean"
           },
           "save_before_confirm": {
             "default": 0,
@@ -5713,112 +6226,6 @@
       },
       "Body_web_reject_web_expenses__expense_id__reject_post": {
         "properties": {
-          "expected_row_version": {
-            "default": "",
-            "title": "Expected Row Version",
-            "type": "string"
-          },
-          "fragment": {
-            "default": 0,
-            "title": "Fragment",
-            "type": "integer"
-          },
-          "ledger_id": {
-            "default": "",
-            "title": "Ledger Id",
-            "type": "string"
-          },
-          "reject_idempotency_key": {
-            "default": "",
-            "title": "Reject Idempotency Key",
-            "type": "string"
-          },
-          "return_category": {
-            "default": "",
-            "title": "Return Category",
-            "type": "string"
-          },
-          "return_filter": {
-            "default": "",
-            "title": "Return Filter",
-            "type": "string"
-          },
-          "return_granularity": {
-            "default": "",
-            "title": "Return Granularity",
-            "type": "string"
-          },
-          "return_home_currency_code": {
-            "default": "",
-            "title": "Return Home Currency Code",
-            "type": "string"
-          },
-          "return_import_expense_id": {
-            "default": "",
-            "title": "Return Import Expense Id",
-            "type": "string"
-          },
-          "return_import_line_number": {
-            "default": "",
-            "title": "Return Import Line Number",
-            "type": "string"
-          },
-          "return_import_public_id": {
-            "default": "",
-            "title": "Return Import Public Id",
-            "type": "string"
-          },
-          "return_merchant_category": {
-            "default": "",
-            "title": "Return Merchant Category",
-            "type": "string"
-          },
-          "return_month": {
-            "default": "",
-            "title": "Return Month",
-            "type": "string"
-          },
-          "return_page": {
-            "default": "",
-            "title": "Return Page",
-            "type": "string"
-          },
-          "return_payment_expense_id": {
-            "default": "",
-            "title": "Return Payment Expense Id",
-            "type": "string"
-          },
-          "return_query": {
-            "default": "",
-            "title": "Return Query",
-            "type": "string"
-          },
-          "return_ranking_metric": {
-            "default": "",
-            "title": "Return Ranking Metric",
-            "type": "string"
-          },
-          "return_recurring_public_id": {
-            "default": "",
-            "title": "Return Recurring Public Id",
-            "type": "string"
-          },
-          "return_tag": {
-            "default": "",
-            "title": "Return Tag",
-            "type": "string"
-          },
-          "return_to": {
-            "default": "",
-            "title": "Return To",
-            "type": "string"
-          }
-        },
-        "title": "Body_web_reject_web_expenses__expense_id__reject_post",
-        "type": "object"
-      },
-      "Body_web_request_expense_fx_web_expenses__expense_id__fx_post": {
-        "properties": {
           "amount_yuan": {
             "anyOf": [
               {
@@ -5833,6 +6240,21 @@
           "category": {
             "default": "",
             "title": "Category",
+            "type": "string"
+          },
+          "command_action": {
+            "default": "confirm",
+            "title": "Command Action",
+            "type": "string"
+          },
+          "draft_ref": {
+            "default": "",
+            "title": "Draft Ref",
+            "type": "string"
+          },
+          "draft_scope": {
+            "default": "",
+            "title": "Draft Scope",
             "type": "string"
           },
           "expected_row_version": {
@@ -5859,6 +6281,11 @@
           "idempotency_key": {
             "default": "",
             "title": "Idempotency Key",
+            "type": "string"
+          },
+          "keep_idempotency_key": {
+            "default": "",
+            "title": "Keep Idempotency Key",
             "type": "string"
           },
           "ledger_id": {
@@ -5892,9 +6319,19 @@
             "title": "Original Currency",
             "type": "string"
           },
+          "reject_idempotency_key": {
+            "default": "",
+            "title": "Reject Idempotency Key",
+            "type": "string"
+          },
           "return_category": {
             "default": "",
             "title": "Return Category",
+            "type": "string"
+          },
+          "return_duplicate_expense_id": {
+            "default": "",
+            "title": "Return Duplicate Expense Id",
             "type": "string"
           },
           "return_filter": {
@@ -5957,9 +6394,29 @@
             "title": "Return Ranking Metric",
             "type": "string"
           },
+          "return_receipt_expense_id": {
+            "default": "",
+            "title": "Return Receipt Expense Id",
+            "type": "string"
+          },
+          "return_receipt_key": {
+            "default": "",
+            "title": "Return Receipt Key",
+            "type": "string"
+          },
           "return_recurring_public_id": {
             "default": "",
             "title": "Return Recurring Public Id",
+            "type": "string"
+          },
+          "return_review_expense_id": {
+            "default": "",
+            "title": "Return Review Expense Id",
+            "type": "string"
+          },
+          "return_review_ref": {
+            "default": "",
+            "title": "Return Review Ref",
             "type": "string"
           },
           "return_tag": {
@@ -5971,6 +6428,235 @@
             "default": "",
             "title": "Return To",
             "type": "string"
+          },
+          "review_latest": {
+            "default": false,
+            "title": "Review Latest",
+            "type": "boolean"
+          },
+          "save_before_confirm": {
+            "default": 0,
+            "title": "Save Before Confirm",
+            "type": "integer"
+          },
+          "tags": {
+            "default": "",
+            "title": "Tags",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_reject_web_expenses__expense_id__reject_post",
+        "type": "object"
+      },
+      "Body_web_request_expense_fx_web_expenses__expense_id__fx_post": {
+        "properties": {
+          "amount_yuan": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Yuan"
+          },
+          "category": {
+            "default": "",
+            "title": "Category",
+            "type": "string"
+          },
+          "command_action": {
+            "default": "confirm",
+            "title": "Command Action",
+            "type": "string"
+          },
+          "draft_ref": {
+            "default": "",
+            "title": "Draft Ref",
+            "type": "string"
+          },
+          "draft_scope": {
+            "default": "",
+            "title": "Draft Scope",
+            "type": "string"
+          },
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "expense_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expense Time"
+          },
+          "fragment": {
+            "default": 0,
+            "title": "Fragment",
+            "type": "integer"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "keep_idempotency_key": {
+            "default": "",
+            "title": "Keep Idempotency Key",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "manual_exchange_rate": {
+            "default": "",
+            "title": "Manual Exchange Rate",
+            "type": "string"
+          },
+          "merchant": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merchant"
+          },
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          },
+          "original_currency": {
+            "default": "",
+            "title": "Original Currency",
+            "type": "string"
+          },
+          "reject_idempotency_key": {
+            "default": "",
+            "title": "Reject Idempotency Key",
+            "type": "string"
+          },
+          "return_category": {
+            "default": "",
+            "title": "Return Category",
+            "type": "string"
+          },
+          "return_duplicate_expense_id": {
+            "default": "",
+            "title": "Return Duplicate Expense Id",
+            "type": "string"
+          },
+          "return_filter": {
+            "default": "",
+            "title": "Return Filter",
+            "type": "string"
+          },
+          "return_granularity": {
+            "default": "",
+            "title": "Return Granularity",
+            "type": "string"
+          },
+          "return_home_currency_code": {
+            "default": "",
+            "title": "Return Home Currency Code",
+            "type": "string"
+          },
+          "return_import_expense_id": {
+            "default": "",
+            "title": "Return Import Expense Id",
+            "type": "string"
+          },
+          "return_import_line_number": {
+            "default": "",
+            "title": "Return Import Line Number",
+            "type": "string"
+          },
+          "return_import_public_id": {
+            "default": "",
+            "title": "Return Import Public Id",
+            "type": "string"
+          },
+          "return_merchant_category": {
+            "default": "",
+            "title": "Return Merchant Category",
+            "type": "string"
+          },
+          "return_month": {
+            "default": "",
+            "title": "Return Month",
+            "type": "string"
+          },
+          "return_page": {
+            "default": "",
+            "title": "Return Page",
+            "type": "string"
+          },
+          "return_payment_expense_id": {
+            "default": "",
+            "title": "Return Payment Expense Id",
+            "type": "string"
+          },
+          "return_query": {
+            "default": "",
+            "title": "Return Query",
+            "type": "string"
+          },
+          "return_ranking_metric": {
+            "default": "",
+            "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_receipt_expense_id": {
+            "default": "",
+            "title": "Return Receipt Expense Id",
+            "type": "string"
+          },
+          "return_receipt_key": {
+            "default": "",
+            "title": "Return Receipt Key",
+            "type": "string"
+          },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
+            "type": "string"
+          },
+          "return_review_expense_id": {
+            "default": "",
+            "title": "Return Review Expense Id",
+            "type": "string"
+          },
+          "return_review_ref": {
+            "default": "",
+            "title": "Return Review Ref",
+            "type": "string"
+          },
+          "return_tag": {
+            "default": "",
+            "title": "Return Tag",
+            "type": "string"
+          },
+          "return_to": {
+            "default": "",
+            "title": "Return To",
+            "type": "string"
+          },
+          "review_latest": {
+            "default": false,
+            "title": "Review Latest",
+            "type": "boolean"
           },
           "save_before_confirm": {
             "default": 0,
@@ -6008,6 +6694,11 @@
             "title": "Return Category",
             "type": "string"
           },
+          "return_duplicate_expense_id": {
+            "default": "",
+            "title": "Return Duplicate Expense Id",
+            "type": "string"
+          },
           "return_filter": {
             "default": "",
             "title": "Return Filter",
@@ -6068,9 +6759,29 @@
             "title": "Return Ranking Metric",
             "type": "string"
           },
+          "return_receipt_expense_id": {
+            "default": "",
+            "title": "Return Receipt Expense Id",
+            "type": "string"
+          },
+          "return_receipt_key": {
+            "default": "",
+            "title": "Return Receipt Key",
+            "type": "string"
+          },
           "return_recurring_public_id": {
             "default": "",
             "title": "Return Recurring Public Id",
+            "type": "string"
+          },
+          "return_review_expense_id": {
+            "default": "",
+            "title": "Return Review Expense Id",
+            "type": "string"
+          },
+          "return_review_ref": {
+            "default": "",
+            "title": "Return Review Ref",
             "type": "string"
           },
           "return_tag": {
@@ -6233,6 +6944,21 @@
             "title": "Category",
             "type": "string"
           },
+          "command_action": {
+            "default": "confirm",
+            "title": "Command Action",
+            "type": "string"
+          },
+          "draft_ref": {
+            "default": "",
+            "title": "Draft Ref",
+            "type": "string"
+          },
+          "draft_scope": {
+            "default": "",
+            "title": "Draft Scope",
+            "type": "string"
+          },
           "expected_row_version": {
             "default": "",
             "title": "Expected Row Version",
@@ -6257,6 +6983,11 @@
           "idempotency_key": {
             "default": "",
             "title": "Idempotency Key",
+            "type": "string"
+          },
+          "keep_idempotency_key": {
+            "default": "",
+            "title": "Keep Idempotency Key",
             "type": "string"
           },
           "ledger_id": {
@@ -6290,9 +7021,19 @@
             "title": "Original Currency",
             "type": "string"
           },
+          "reject_idempotency_key": {
+            "default": "",
+            "title": "Reject Idempotency Key",
+            "type": "string"
+          },
           "return_category": {
             "default": "",
             "title": "Return Category",
+            "type": "string"
+          },
+          "return_duplicate_expense_id": {
+            "default": "",
+            "title": "Return Duplicate Expense Id",
             "type": "string"
           },
           "return_filter": {
@@ -6355,9 +7096,29 @@
             "title": "Return Ranking Metric",
             "type": "string"
           },
+          "return_receipt_expense_id": {
+            "default": "",
+            "title": "Return Receipt Expense Id",
+            "type": "string"
+          },
+          "return_receipt_key": {
+            "default": "",
+            "title": "Return Receipt Key",
+            "type": "string"
+          },
           "return_recurring_public_id": {
             "default": "",
             "title": "Return Recurring Public Id",
+            "type": "string"
+          },
+          "return_review_expense_id": {
+            "default": "",
+            "title": "Return Review Expense Id",
+            "type": "string"
+          },
+          "return_review_ref": {
+            "default": "",
+            "title": "Return Review Ref",
             "type": "string"
           },
           "return_tag": {
@@ -6369,6 +7130,11 @@
             "default": "",
             "title": "Return To",
             "type": "string"
+          },
+          "review_latest": {
+            "default": false,
+            "title": "Review Latest",
+            "type": "boolean"
           },
           "save_before_confirm": {
             "default": 0,
@@ -6506,6 +7272,11 @@
             "title": "Return Category",
             "type": "string"
           },
+          "return_duplicate_expense_id": {
+            "default": "",
+            "title": "Return Duplicate Expense Id",
+            "type": "string"
+          },
           "return_expense_id": {
             "default": 0,
             "title": "Return Expense Id",
@@ -6571,9 +7342,29 @@
             "title": "Return Ranking Metric",
             "type": "string"
           },
+          "return_receipt_expense_id": {
+            "default": "",
+            "title": "Return Receipt Expense Id",
+            "type": "string"
+          },
+          "return_receipt_key": {
+            "default": "",
+            "title": "Return Receipt Key",
+            "type": "string"
+          },
           "return_recurring_public_id": {
             "default": "",
             "title": "Return Recurring Public Id",
+            "type": "string"
+          },
+          "return_review_expense_id": {
+            "default": "",
+            "title": "Return Review Expense Id",
+            "type": "string"
+          },
+          "return_review_ref": {
+            "default": "",
+            "title": "Return Review Ref",
             "type": "string"
           },
           "return_tag": {
@@ -6618,6 +7409,11 @@
           "return_category": {
             "default": "",
             "title": "Return Category",
+            "type": "string"
+          },
+          "return_duplicate_expense_id": {
+            "default": "",
+            "title": "Return Duplicate Expense Id",
             "type": "string"
           },
           "return_filter": {
@@ -6680,9 +7476,29 @@
             "title": "Return Ranking Metric",
             "type": "string"
           },
+          "return_receipt_expense_id": {
+            "default": "",
+            "title": "Return Receipt Expense Id",
+            "type": "string"
+          },
+          "return_receipt_key": {
+            "default": "",
+            "title": "Return Receipt Key",
+            "type": "string"
+          },
           "return_recurring_public_id": {
             "default": "",
             "title": "Return Recurring Public Id",
+            "type": "string"
+          },
+          "return_review_expense_id": {
+            "default": "",
+            "title": "Return Review Expense Id",
+            "type": "string"
+          },
+          "return_review_ref": {
+            "default": "",
+            "title": "Return Review Ref",
             "type": "string"
           },
           "return_tag": {
@@ -6731,6 +7547,11 @@
             "title": "Return Category",
             "type": "string"
           },
+          "return_duplicate_expense_id": {
+            "default": "",
+            "title": "Return Duplicate Expense Id",
+            "type": "string"
+          },
           "return_filter": {
             "default": "",
             "title": "Return Filter",
@@ -6791,9 +7612,29 @@
             "title": "Return Ranking Metric",
             "type": "string"
           },
+          "return_receipt_expense_id": {
+            "default": "",
+            "title": "Return Receipt Expense Id",
+            "type": "string"
+          },
+          "return_receipt_key": {
+            "default": "",
+            "title": "Return Receipt Key",
+            "type": "string"
+          },
           "return_recurring_public_id": {
             "default": "",
             "title": "Return Recurring Public Id",
+            "type": "string"
+          },
+          "return_review_expense_id": {
+            "default": "",
+            "title": "Return Review Expense Id",
+            "type": "string"
+          },
+          "return_review_ref": {
+            "default": "",
+            "title": "Return Review Ref",
             "type": "string"
           },
           "return_tag": {
@@ -6913,6 +7754,19 @@
             "title": "Category",
             "type": "string"
           },
+          "draft_scope": {
+            "default": "",
+            "title": "Draft Scope",
+            "type": "string"
+          },
+          "expected_row_version": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Expected Row Version",
+            "type": "array"
+          },
           "expense_ids": {
             "default": [],
             "items": {
@@ -6920,6 +7774,19 @@
             },
             "title": "Expense Ids",
             "type": "array"
+          },
+          "expense_snapshot": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Expense Snapshot",
+            "type": "array"
+          },
+          "filter": {
+            "default": "",
+            "title": "Filter",
+            "type": "string"
           },
           "ledger_id": {
             "default": "",
@@ -7013,6 +7880,11 @@
             "title": "Return Category",
             "type": "string"
           },
+          "return_duplicate_expense_id": {
+            "default": "",
+            "title": "Return Duplicate Expense Id",
+            "type": "string"
+          },
           "return_filter": {
             "default": "",
             "title": "Return Filter",
@@ -7073,9 +7945,29 @@
             "title": "Return Ranking Metric",
             "type": "string"
           },
+          "return_receipt_expense_id": {
+            "default": "",
+            "title": "Return Receipt Expense Id",
+            "type": "string"
+          },
+          "return_receipt_key": {
+            "default": "",
+            "title": "Return Receipt Key",
+            "type": "string"
+          },
           "return_recurring_public_id": {
             "default": "",
             "title": "Return Recurring Public Id",
+            "type": "string"
+          },
+          "return_review_expense_id": {
+            "default": "",
+            "title": "Return Review Expense Id",
+            "type": "string"
+          },
+          "return_review_ref": {
+            "default": "",
+            "title": "Return Review Ref",
             "type": "string"
           },
           "return_tag": {
@@ -11663,6 +12555,143 @@
         "title": "ExpenseConfirmRequest",
         "type": "object"
       },
+      "ExpenseConfirmationReceipt": {
+        "description": "The accepted financial snapshot; original-file availability remains a current read.",
+        "properties": {
+          "accounting_time": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AccountingTimeSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 0.0,
+            "title": "Amount Cents",
+            "type": "integer"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "confirmed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed At"
+          },
+          "exchange_rate_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exchange Rate Date"
+          },
+          "exchange_rate_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exchange Rate Source"
+          },
+          "exchange_rate_to_cny": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exchange Rate To Cny"
+          },
+          "fact_revision": {
+            "title": "Fact Revision",
+            "type": "integer"
+          },
+          "home_currency": {
+            "title": "Home Currency",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "merchant": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merchant"
+          },
+          "original_amount_minor": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 0.0,
+            "title": "Original Amount Minor",
+            "type": "integer"
+          },
+          "original_currency_code": {
+            "title": "Original Currency Code",
+            "type": "string"
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "status": {
+            "const": "confirmed",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "public_id",
+          "row_version",
+          "fact_revision",
+          "status",
+          "amount_cents",
+          "home_currency",
+          "original_currency_code",
+          "original_amount_minor",
+          "exchange_rate_to_cny",
+          "exchange_rate_date",
+          "exchange_rate_source",
+          "merchant",
+          "category",
+          "confirmed_at"
+        ],
+        "title": "ExpenseConfirmationReceipt",
+        "type": "object"
+      },
       "ExpenseCorrectionRequest": {
         "additionalProperties": false,
         "description": "One explicit correction intent against a confirmed fact snapshot.",
@@ -13171,6 +14200,16 @@
               }
             ],
             "title": "Confidence"
+          },
+          "confirmation_receipt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExpenseConfirmationReceipt"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "confirmed_at": {
             "anyOf": [
@@ -49543,6 +50582,16 @@
               "title": "Msg",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "filter",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Filter",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -51657,6 +52706,16 @@
               "title": "Flash Type",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "focus",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Focus",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -51885,6 +52944,287 @@
         ]
       }
     },
+    "/web/expenses/{expense_id}/confirmation/{command_key}": {
+      "get": {
+        "operationId": "web_confirmation_receipt_web_expenses__expense_id__confirmation__command_key__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "expense_id",
+            "required": true,
+            "schema": {
+              "title": "Expense Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "command_key",
+            "required": true,
+            "schema": {
+              "title": "Command Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Ledger Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "fragment",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "title": "Fragment",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_to",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return To",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_month",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Month",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_filter",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Filter",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_page",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Page",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_tag",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Tag",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_query",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Query",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_category",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Category",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_home_currency_code",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Home Currency Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_granularity",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Granularity",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_ranking_metric",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Ranking Metric",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_merchant_category",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Merchant Category",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_recurring_public_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Recurring Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_payment_expense_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Payment Expense Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_import_public_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Import Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_import_line_number",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Import Line Number",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_import_expense_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Import Expense Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_receipt_key",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Receipt Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_receipt_expense_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Receipt Expense Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_review_ref",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Review Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_review_expense_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Review Expense Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_duplicate_expense_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Duplicate Expense Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Confirmation Receipt",
+        "tags": [
+          "web"
+        ]
+      }
+    },
     "/web/expenses/{expense_id}/correct": {
       "get": {
         "operationId": "web_correct_get_web_expenses__expense_id__correct_get",
@@ -52071,6 +53411,56 @@
             "schema": {
               "default": "",
               "title": "Return Import Expense Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_receipt_key",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Receipt Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_receipt_expense_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Receipt Expense Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_review_ref",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Review Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_review_expense_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Review Expense Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_duplicate_expense_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Duplicate Expense Id",
               "type": "string"
             }
           }
@@ -52454,6 +53844,56 @@
             "schema": {
               "default": "",
               "title": "Return Import Expense Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_receipt_key",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Receipt Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_receipt_expense_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Receipt Expense Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_review_ref",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Review Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_review_expense_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Review Expense Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_duplicate_expense_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Duplicate Expense Id",
               "type": "string"
             }
           }
@@ -55826,6 +57266,22 @@
           },
           {
             "in": "query",
+            "name": "undo_version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Undo Version"
+            }
+          },
+          {
+            "in": "query",
             "name": "undo_id",
             "required": false,
             "schema": {
@@ -56674,6 +58130,22 @@
                 }
               ],
               "title": "Undo"
+            }
+          },
+          {
+            "in": "query",
+            "name": "undo_version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Undo Version"
             }
           },
           {

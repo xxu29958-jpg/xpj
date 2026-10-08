@@ -1,31 +1,36 @@
 """/web/categories pages (v0.4-alpha3 slice 2 / M3 / T12-T13).
 
-Read-only category dashboard plus an uncategorized cleanup workflow.
-No new schema, no migrations. Bulk-set-category delegates to the existing
-``expense_service.update_expense`` so all classify side-effects stay
-consistent with the API and the /web/pending bulk path.
+Category dashboard and the missing-category task, using the pending bulk command owner.
 """
 
 from __future__ import annotations
 
+import json
 from urllib.parse import quote, urlencode
 
 from fastapi import APIRouter, Depends, Form, Request, Response
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.error_reporting import retain_handled_error
 from app.errors import ERROR_MESSAGES, AppError
-from app.routes._web_draft_binding import browser_draft_scope
+from app.routes._web_bulk_snapshot import parse_bulk_snapshot
+from app.routes._web_draft_binding import browser_draft_scope, require_draft_binding
+from app.routes._web_expense_return_context import flow_href
+from app.routes._web_pending_bulk_response import format_bulk_message
 from app.routes.web_common import (
     LocalOnly,
     _amount_yuan,
     _base_ctx,
+    _expense_view,
     _list_ledger_options,
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
     _web_redirect,
     parse_form_row_version_token,
+    preserve_original_ledger_form,
     templates,
 )
 from app.services.category_preference_service import (
@@ -35,17 +40,14 @@ from app.services.category_preference_service import (
     list_category_preferences,
 )
 from app.services.category_service import (
-    DEFAULT_CATEGORIES,
-    bulk_set_category,
     list_category_summary,
+    list_ledger_category_options,
     list_uncategorized_pending,
-    merge_categories,
 )
+from app.services.expense_service import list_expenses_by_ids
 from app.services.ledger_calendar_service import current_ledger_month
-from app.services.spending_contract_service import (
-    accounting_datetime_label,
-    default_accounting_timezone_name,
-)
+from app.services.pending_review_bulk_service import BulkResult, apply_review_bulk
+from app.services.spending_contract_service import default_accounting_timezone_name
 
 router = APIRouter(prefix="/web", tags=["web"])
 
@@ -120,6 +122,7 @@ def _render_categories(
         target_month=target_month,
         rule_count=dashboard.rule_count,
         uncategorized_pending=dashboard.uncategorized_pending,
+        other_pending=sum(row.pending_count for row in dashboard.summaries if row.category == "其他"),
         category_preferences=list_category_preferences(
             db,
             tenant_id=selected_id,
@@ -250,35 +253,46 @@ def web_uncategorized(
     request: Request,
     ledger_id: str = "",
     msg: str = "",
+    filter: str = "",
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
+    return _render_uncategorized(request, db, options=options, selected_id=selected_id, filter=filter, message=msg)
+
+
+def _render_uncategorized(request, db, *, options, selected_id: str, filter: str = "",
+    message: str = "", category: str = "", snapshots: dict[int, int] | None = None,
+    result: BulkResult | None = None, error: AppError | None = None) -> HTMLResponse:
     ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id)
-    home = ctx["home_currency_code"]
-    rows = list_uncategorized_pending(db, tenant_id=selected_id)
-    items = []
-    for r in rows:
-        items.append(
-            {
-                "id": r.id,
-                "merchant": (r.merchant or "").strip(),
-                "amount_yuan": _amount_yuan(r.amount_cents, home),
-                "category": r.category or "",
-                "note": (r.note or "").strip(),
-                "created_at": accounting_datetime_label(r.created_at),
-            }
-        )
-    available = merge_categories([r.category for r in rows if r.category])
-    ctx["uncategorized_items"] = items
-    ctx["available_categories"] = available
-    ctx["default_categories"] = DEFAULT_CATEGORIES
-    ctx["flash_message"] = msg
-    ctx["q"] = "?ledger_id=" + selected_id
-    return templates.TemplateResponse(
-        request=request, name="uncategorized.html", context=ctx
-    )
+    include_other = filter == "including_other"
+    rows = list_uncategorized_pending(db, tenant_id=selected_id, include_other=include_other)
+    successful = set(result.success_ids) if result else set()
+    remaining = {identity: version for identity, version in (snapshots or {}).items() if identity not in successful}
+    # Failed selections remain visible even when a later edit moved them out of this filter.
+    extra = list_expenses_by_ids(db, tenant_id=selected_id, expense_ids=list(remaining.keys() | successful))
+    combined = {row.id: row for row in rows}
+    combined.update((row.id, row) for row in extra)
+    items, updated = [], []
+    for row in combined.values():
+        view = _expense_view(row, presentation_currency_code=ctx["home_currency_code"])
+        view.update(selected=row.id in remaining, snapshot_version=remaining.get(row.id, row.row_version),
+            detail_href=flow_href(f"/web/expenses/{row.id}/edit", ledger_id=selected_id,
+                return_to="uncategorized", return_filter=filter))
+        (updated if row.id in successful else items).append(view)
+    scope = browser_draft_scope(db, request)
+    categories = list_ledger_category_options(db, tenant_id=selected_id)
+    primary = [name for name in ("购物", "餐饮", "交通", "住房", "医疗", "其他") if name in categories]
+    more = [name for name in categories if name not in primary]
+    if category and category not in categories:
+        more.append(category)
+    ctx.update(uncategorized_items=items, updated_items=updated, primary_categories=primary, more_categories=more,
+        category=category, filter="including_other" if include_other else "", flash_message=message,
+        flash_error=error is not None or bool(result and result.skipped_reasons),
+        draft_scope=json.dumps(scope) if scope else "", q="?ledger_id=" + quote(selected_id, safe=""))
+    return templates.TemplateResponse(request=request, name="uncategorized.html", context=ctx,
+        status_code=error.status_code if error else 200, headers={"Cache-Control": "no-store"})
 
 
 @router.post("/categories/uncategorized/bulk-set")
@@ -286,22 +300,46 @@ def web_uncategorized_bulk_set(
     request: Request,
     ledger_id: str = Form(""),
     expense_ids: list[int] = Form(default=[]),
+    expected_row_version: list[str] = Form(default=[]),
+    expense_snapshot: list[str] = Form(default=[]),
     category: str = Form(""),
+    filter: str = Form(""),
+    draft_scope: str = Form(""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
-) -> RedirectResponse:
+) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
-    _require_selected_ledger_write(options, selected_id)
-    if not expense_ids:
-        return _web_redirect(
-            "/web/categories/uncategorized", selected_id, msg="请勾选要修改的账单。"
-        )
+    fields = {"ledger_id": ledger_id, "category": category, "filter": filter, "draft_scope": draft_scope,
+        "expense_ids": expense_ids, "expected_row_version": expected_row_version, "expense_snapshot": expense_snapshot}
+    retained = preserve_original_ledger_form(request, db, options=options, selected=selected_id,
+        fields=fields, task="给所选账单补分类")
+    if retained is not None:
+        return retained
     try:
-        changed = bulk_set_category(
-            db, tenant_id=selected_id, expense_ids=expense_ids, category=category
-        )
-        msg = f"已将 {changed} 条账单设置为「{category.strip()}」。"
+        _require_selected_ledger_write(options, selected_id)
+        require_draft_binding(db, request, ledger_id=selected_id, draft_scope=draft_scope, require_session=False)
     except AppError as exc:
-        msg = exc.message
-    return _web_redirect("/web/categories/uncategorized", selected_id, msg=msg)
+        return preserve_original_ledger_form(request, db, options=options, selected=selected_id,
+            fields=fields, task="给所选账单补分类", error=exc)
+    snapshot = parse_bulk_snapshot(expense_ids, expected_row_version, expense_snapshot)
+    if snapshot is None:
+        return preserve_original_ledger_form(request, db, options=options, selected=selected_id, fields=fields,
+            task="给所选账单补分类", error=AppError("state_conflict", "原选择的版本无法确认，请重新打开账单核对。", status_code=409))
+    identities, versions = snapshot
+    try:
+        if not identities:
+            raise AppError("invalid_request", "请勾选要修改的账单。", status_code=422)
+        result = apply_review_bulk(db, tenant_id=selected_id, action="set_category", expense_ids=identities,
+            expected_row_version_by_id=versions, category=category)
+    except AppError as exc:
+        return _render_uncategorized(request, db, options=options, selected_id=selected_id, filter=filter,
+            category=category, snapshots=versions, message=exc.message, error=exc)
+    except SQLAlchemyError as exc:
+        retain_handled_error(request, exc)
+        db.rollback()
+        return preserve_original_ledger_form(request, db, options=options, selected=selected_id, fields=fields,
+            task="核对本次补分类结果", error=AppError("internal_error",
+                "暂时无法核实全部结果。原选择和分类仍保留，请恢复连接后核实；已经保存的分类不会自动撤销。", status_code=503))
+    return _render_uncategorized(request, db, options=options, selected_id=selected_id, filter=filter,
+        category=category, snapshots=versions, result=result, message=format_bulk_message("set_category", result))

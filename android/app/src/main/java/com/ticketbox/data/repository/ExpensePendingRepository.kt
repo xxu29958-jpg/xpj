@@ -41,7 +41,8 @@ internal class ExpensePendingRepository(private val core: ExpenseRepositoryCore)
                 val current = access.takeIf { core.ledgerRequestGuard.captureLogicalBinding() == it.binding }
                 ExpenseCommandObservation(current, if (current == null) emptyList() else rows.filter {
                     it.ownerKey == current.binding.ownerKey && it.ledgerId == current.binding.ledgerId
-                }.map { row -> PendingExpenseCommand(row, expenseAcceptanceReceiptSnapshot(row)?.toDomain()) })
+                }.map { row -> PendingExpenseCommand(row, expenseAcceptanceReceiptSnapshot(row)?.toDomain(),
+                    expenseConfirmationReceiptSnapshot(row)) })
             }.distinctUntilChanged()
         }.distinctUntilChanged()
 

@@ -40,6 +40,7 @@ import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.DebtCreationIntentSummary
 import com.ticketbox.data.repository.EXPENSE_REJECTION_ORIGINAL_REQUIRES_REVIEW
+import com.ticketbox.data.repository.EXPENSE_CONFIRMATION_ORIGINAL_REQUIRES_REVIEW
 import com.ticketbox.viewmodel.OutboxStatusUiState
 import com.ticketbox.viewmodel.OutboxStatusViewModel
 
@@ -297,7 +298,8 @@ internal fun ConflictCard(
 ) {
     // Only expense mutations can refresh state and retry as "keep mine".
     val originalOffset = row.type == PendingMutationType.CreateExpenseOffset
-    val reviewOriginal = row.type == PendingMutationType.UndoExpense || row.lastError == EXPENSE_REJECTION_ORIGINAL_REQUIRES_REVIEW
+    val reviewOriginal = row.type == PendingMutationType.UndoExpense || row.lastError in setOf(
+        EXPENSE_REJECTION_ORIGINAL_REQUIRES_REVIEW, EXPENSE_CONFIRMATION_ORIGINAL_REQUIRES_REVIEW)
     val canKeep = !reviewOriginal && row.type !in com.ticketbox.viewmodel.incomePlanSubmissionTypes && !originalOffset && row.type !in com.ticketbox.viewmodel.categoryRuleSubmissionTypes &&
         row.type !in setOf(PendingMutationType.CreateExpense, PendingMutationType.CorrectExpense, PendingMutationType.CreateBillSplitInvitation) && row.targetId.startsWith("expense:")
     SettingsOpenPanel(
@@ -349,7 +351,7 @@ internal fun FailedCard(
 ) {
     val expired = isExpiredFailure(row.lastError)
     val reviewMessage = when {
-        row.lastError == EXPENSE_REJECTION_ORIGINAL_REQUIRES_REVIEW ->
+        row.lastError in setOf(EXPENSE_REJECTION_ORIGINAL_REQUIRES_REVIEW, EXPENSE_CONFIRMATION_ORIGINAL_REQUIRES_REVIEW) ->
             R.string.sync_status_expense_original_requires_review
         row.type == PendingMutationType.UndoExpense && row.lastError == "expense_not_found" ->
             R.string.sync_status_undo_unavailable

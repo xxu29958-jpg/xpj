@@ -48,8 +48,9 @@ data class ExpenseCommandAcceptance(val expense: Expense, val rowIds: List<Long>
 
 data class ExpenseCommandObservation(val access: LedgerAccessContext?, val commands: List<PendingExpenseCommand>)
 
-/** Rejection/undo retain the original snapshot; other commands need only the original row. */
-data class PendingExpenseCommand(val row: OutboxRow, val acceptedExpense: Expense?)
+/** Command receipts remain distinct from the latest expense query. */
+data class PendingExpenseCommand(val row: OutboxRow, val acceptedExpense: Expense?,
+    val confirmationReceipt: com.ticketbox.data.remote.dto.ExpenseConfirmationReceiptDto? = null)
 
 internal val PENDING_EXPENSE_COMMAND_TYPES = setOf(
     PendingMutationType.PatchExpense, PendingMutationType.ConfirmExpense, PendingMutationType.RejectExpense,

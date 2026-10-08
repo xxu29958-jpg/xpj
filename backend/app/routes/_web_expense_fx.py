@@ -6,6 +6,7 @@ from fastapi import Request
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
+from app.routes._web_draft_binding import require_draft_binding
 from app.routes._web_expense_edit_form import WebExpenseEditForm
 from app.routes._web_expense_helpers import web_edit_context
 from app.routes._web_session_common import parse_form_row_version_token, resolve_web_actor
@@ -34,9 +35,10 @@ def render_web_fx_action(db: Session, request: Request, expense_id: int, form: W
         return retained
     error, status = None, 200
     if start:
-        _require_selected_ledger_write(options, selected)
-        account_id, device_id = resolve_web_actor(db, request, selected)
         try:
+            _require_selected_ledger_write(options, selected)
+            require_draft_binding(db, request, ledger_id=selected, draft_scope=form.draft_scope, require_session=False)
+            account_id, device_id = resolve_web_actor(db, request, selected)
             version = parse_form_row_version_token(form.expected_row_version)
             if version is None:
                 raise AppError("invalid_request", "请载入账单后再获取汇率。", status_code=422)
@@ -47,8 +49,9 @@ def render_web_fx_action(db: Session, request: Request, expense_id: int, form: W
             error, status = exc.message, exc.status_code
     ctx = web_edit_context(db, request, options, selected, expense_id, form_values=values,
         return_context=form.return_context)
-    ctx["error"] = error
+    ctx.update(error=error, expense_review_task=True)
     if ctx["expense"]["status"] != "pending":
         ctx["can_write"] = False
     return templates.TemplateResponse(request=request,
-        name="_edit_drawer.html" if form.fragment else "edit.html", context=ctx, status_code=status)
+        name="_edit_drawer.html" if form.fragment else "edit.html", context=ctx, status_code=status,
+        headers={"Cache-Control": "no-store"})

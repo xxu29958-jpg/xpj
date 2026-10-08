@@ -171,6 +171,10 @@ internal class ExpenseCorrectionConnectedFixture(
             while (cursor.moveToNext()) add(cursor.columnNames.mapIndexed { index, column -> column to cursor.getString(index) }.toMap())
         } }
 
+    suspend fun publishExpense(ledgerId: String, expense: ExpenseDto) {
+        requireNotNull(database).expenseDao().applyServerExpense(ledgerId, expense.toEntity(ledgerId))
+    }
+
     fun blockBudgetReadDeletion(block: Boolean) {
         requireNotNull(database).openHelper.writableDatabase.execSQL(if (block)
             "CREATE TRIGGER fail_budget_read_delete BEFORE DELETE ON stats_projection_cache " +
@@ -299,7 +303,7 @@ internal class CorrectionConnectedNetwork {
             check(!idempotencyKey.isNullOrBlank())
             editCalls += "confirm"
             return current.copy(status = "confirmed", rowVersion = current.rowVersion + 1,
-                confirmedAt = "2026-09-07T00:00:00Z").also { current = it }
+                confirmedAt = "2026-09-07T00:00:00Z").withConfirmationReceipt().also { current = it }
         }
         override suspend fun expenseThumbnail(id: Long): Response<ResponseBody> = Response.error(404,
             """{"error":"not_found","message":"图片不存在。"}""".toResponseBody("application/json".toMediaType()))

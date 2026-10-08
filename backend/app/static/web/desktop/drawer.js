@@ -1,29 +1,5 @@
-/* Pending expense edit drawer.
- *
- * 批10: the drawer is the /web review pipeline. On top of opening the edit
- * fragment, the drawer form's save / 确认 / 标为非重复 submit are upgraded to
- * fetch-mutations (progressive enhancement):
- *   - 确认 success → remove the row, decrement the filter count, auto-open the
- *     next pending row's drawer (= 确认并下一笔).
- *   - save / 标为非重复 success → re-fetch the row fragment (fresh OCC token /
- *     cleared duplicate flag) so the open drawer stays usable.
- *   - any failure → swap the drawer fragment carrying the inline error back in,
- *     so the reviewer never loses their place.
- *   - fetch rejected (offline) → fall through to a native full-page submit
- *     (the hidden return_to=pending field still lands a save back on the queue).
- *
- * 删除草稿 keeps its data-confirm dialog and is intentionally left on the native
- * full-page path: that preserves the ADR-0038 5s 撤销 banner (which the fetch
- * path would silently drop) and avoids forking confirm-modal's dialog.
- *
- * 218-D S4 (移植自产品矿, 适配 main): 补齐矿的模态语义 (aria-hidden 开关 +
- * 焦点圈禁 + 背景 inert 锁)。批选不挂起导航: bulk-bar.js 不再给行挂
- * aria-disabled, 点击与程序化 open 始终可用; 两处 aria-disabled 检查仅作
- * 防御守卫保留。
- * S4-R1: 勾选控件移出行链接 (HTML 禁嵌交互控件), 行结构回到 #218 同构 —
- * 容器 .exp-row 内 选择槽 + a.exp-row-detail 兄弟节点; 抽屉操作的是行链接,
- * 移除/找下一行落到外层容器, 高亮经 is-current 类落在容器 (inbox.css)。
- */
+/* Pending review uses the shared durable task; the drawer owns queue navigation and presentation.
+ * Ignore retains its native confirmation and undo banner. FX/duplicate actions retain their existing owners. */
 (function (window, document) {
   "use strict";
 
@@ -110,17 +86,27 @@
     let restoreFocusTo = null;
     let backgroundState = [];
     const wideReview = window.matchMedia("(min-width: 80rem)");
-    const retainedForms = new Map();
+    let reviewController = null, continuation = null;
     let opening = 0;
     let submitting = false;
+    let activeExpenseId = "";
+    const batchKey = window.location.pathname + window.location.search;
+    const previousBatch = window.history.state?.expenseReviewBatch;
+    const batchIds = previousBatch?.key === batchKey ? previousBatch.ids :
+      [...document.querySelectorAll(".exp-row[data-expense-id]")].map(row => row.dataset.expenseId);
+    window.history.replaceState({...window.history.state, expenseReviewBatch: {key: batchKey, ids: batchIds}}, "");
 
-    // Keep the actual unsaved form, including its original OCC/key, when moving
-    // between queue rows. No re-created payload or second persistence owner.
-    function retainCurrent() {
-      if (!currentRow || !drawer.querySelector('[data-drawer-form][data-edited="true"]')) return;
-      const fragment = document.createDocumentFragment();
-      while (drawer.firstChild) fragment.appendChild(drawer.firstChild);
-      retainedForms.set(currentRow, fragment);
+    function releaseCurrent() {
+      const released = reviewController?.dispose(); reviewController = null;
+      window.clearTimeout(continuation); continuation = null;
+      window.TicketboxExpenseReview?.refreshShelf();
+      return released;
+    }
+    function clearTaskAnchor() {
+      if (window.location.hash.startsWith("#expensereview-edit-")) {
+        const next = new URL(window.location.href); next.hash = "";
+        window.history.replaceState(window.history.state, "", next);
+      }
     }
 
     function syncReviewLayout() {
@@ -130,12 +116,13 @@
       else unlockBackground();
     }
     wideReview.addEventListener("change", syncReviewLayout);
-    preserveReviewOnLeave(() => !submitting && (retainedForms.size || drawer.querySelector('[data-drawer-form][data-edited="true"]')));
+    preserveReviewOnLeave(() => !submitting && (reviewController ? reviewController.hasUnretainedInput() : drawer.querySelector('[data-drawer-form][data-edited="true"]')));
 
     function close() {
-      if (submitting) return;
+      if (submitting || reviewController?.hasUnretainedInput()) return;
       opening += 1;
-      retainCurrent();
+      releaseCurrent();
+      clearTaskAnchor();
       drawer.classList.remove("on");
       scrim.classList.remove("on");
       drawer.setAttribute("aria-hidden", "true");
@@ -146,6 +133,7 @@
       currentRow = null;
       unlockBackground();
       restoreFocus();
+      if (!document.querySelector(".exp-row[data-expense-id]")) window.location.assign(window.location.href);
     }
 
     function rememberFocus(row) {
@@ -249,8 +237,8 @@
     function bindFragment() {
       app.bindReviewFields(drawer);
       drawer.querySelectorAll("[data-review-position]").forEach(function (position) {
-        const rows = Array.from(document.querySelectorAll(".exp-row-detail[data-fragment-url]"));
-        position.textContent = "第 " + (rows.indexOf(currentRow) + 1) + " / " + rows.length + " 张";
+        const index = batchIds.indexOf(activeExpenseId);
+        position.textContent = index < 0 ? "原核对任务" : "第 " + (index + 1) + " / " + batchIds.length + " 张";
       });
       const image = drawer.querySelector(".product-drawer-receipt img");
       if (image) app.bindReceiptControls(drawer, image);
@@ -272,8 +260,8 @@
     // Fetch the edit fragment for a row and swap it into the open drawer. On a
     // fetch error fall back to the row's full-page edit link (unchanged
     // behaviour for the open action).
-    function openRow(row) {
-      if (!row || submitting) return;
+    function openRow(row, resume = false) {
+      if (!row || submitting || reviewController?.hasUnretainedInput()) return;
       if (row === currentRow && drawer.classList.contains("on")) return;
       // 防御守卫（无当前生产者：批选不再挂 aria-disabled）：行链接被显式
       // 禁用时，程序化入口（review-keyboard 的 drawerApi.open）同样让路。
@@ -281,10 +269,12 @@
       const url = row.getAttribute("data-fragment-url");
       if (!url) return;
       rememberFocus(row);
-      retainCurrent();
+      releaseCurrent();
+      if (!resume) clearTaskAnchor();
       drawer.inert = true;
       if (currentRow) currentRow.setAttribute("aria-expanded", "false");
       currentRow = row;
+      activeExpenseId = row.closest(".exp-row")?.dataset.expenseId || row.dataset.expenseId;
       const generation = ++opening;
       function showFragment(html) {
         if (generation !== opening) return;
@@ -299,11 +289,6 @@
         row.setAttribute("aria-expanded", "true");
         bindFragment();
         focusDrawer();
-      }
-      if (retainedForms.has(row)) {
-        showFragment(retainedForms.get(row));
-        retainedForms.delete(row);
-        return;
       }
       fetch(url, { credentials: "same-origin", headers: { "Accept": "text/html" } })
         .then(function (res) { return res.text(); })
@@ -323,12 +308,16 @@
       const generation = opening;
       return fetch(url, { credentials: "same-origin", headers: { "Accept": "text/html" } })
         .then(function (res) { return res.text(); })
-        .then(function (html) {
+        .then(async function (html) {
           if (generation !== opening) return;
+          await releaseCurrent();
+          if (generation !== opening) return;
+          clearTaskAnchor();
           drawer.innerHTML = html;
           bindFragment();
           resyncRowConsumers();
           focusDrawer();
+          return syncSavedRow(generation);
         })
         .catch(function () {
           if (generation !== opening) return;
@@ -381,10 +370,10 @@
     function removeCurrentRow() {
       if (!currentRow) return null;
       const next = nextRow(currentRow);
-      const container = currentRow.closest(".exp-row") || currentRow;
-      if (container.parentNode) container.parentNode.removeChild(container);
-      decrementCounts();
+      const container = currentRow.closest(".exp-row");
+      if (container) { container.remove(); decrementCounts(); }
       currentRow = null;
+      app.refreshBulkBar?.();
       return next;
     }
 
@@ -393,35 +382,24 @@
     }
 
     function nextRow(row) {
-      const container = row.closest(".exp-row") || row;
-      let el = container.nextElementSibling;
-      while (el && !el.classList.contains("exp-row")) el = el.nextElementSibling;
-      if (el) return rowLink(el);
-      // No following row: fall back to the previous one so the reviewer keeps
-      // moving instead of dead-ending.
-      el = container.previousElementSibling;
-      while (el && !el.classList.contains("exp-row")) el = el.previousElementSibling;
-      return el ? rowLink(el) : null;
+      const rows = [...document.querySelectorAll(".exp-row[data-expense-id]")].filter(container => rowLink(container) !== row);
+      const current = batchIds.indexOf(activeExpenseId);
+      const next = rows.find(container => batchIds.indexOf(container.dataset.expenseId) > current) || rows[0];
+      return next ? rowLink(next) : null;
     }
 
     function decrementCounts() {
       const seen = [];
       const active = document.querySelector(".filter-tab.is-active .count");
       const total = document.querySelector(".filter-tab .count"); // 全部 is first
-      [active, total].forEach(function (node) {
+      [active, total, ...document.querySelectorAll('[data-pending-count], [data-filtered-count], a[href^="/web/pending"] > .nav-badge')].forEach(function (node) {
         if (!node || seen.indexOf(node) !== -1) return;
         seen.push(node);
         const n = parseInt(node.textContent, 10);
         if (!isNaN(n) && n > 0) node.textContent = String(n - 1);
       });
-    }
-
-    function advanceAfterRemoval(next) {
-      if (next) {
-        openRow(next);
-      } else {
-        // 队列耗尽：重取服务端权威页面（空态/计数/焦点），不在 JS 复制文案。
-        window.location.reload();
+      if (!document.querySelector(".exp-row[data-expense-id]")) {
+        document.querySelectorAll(".inbox-review-start, [data-bulk-select]").forEach(node => { node.hidden = true; });
       }
     }
 
@@ -431,11 +409,10 @@
       const form = drawer.querySelector("[data-drawer-form]");
       if (!form || form.getAttribute("data-fetch-bound") === "1") return;
       form.setAttribute("data-fetch-bound", "1");
+      reviewController = window.TicketboxExpenseReview?.mount(form, {embedded: true, onAccepted: showAccepted});
       form.addEventListener("input", function () { form.dataset.edited = "true"; });
       form.addEventListener("submit", function (e) {
-        // Offline-fallback re-entry guard: requestSubmit() below re-fires this
-        // listener; let the native submit through instead of looping.
-        if (form.getAttribute("data-native-fallback") === "1") return;
+        if (e.defaultPrevented) return;
         const submitter = e.submitter || document.activeElement;
         // 删除草稿 (data-confirm) stays on the native path: confirm-modal owns
         // the dialog and the full-page submit preserves the 撤销 banner.
@@ -444,15 +421,109 @@
           (submitter && submitter.getAttribute && submitter.getAttribute("formaction")) ||
           form.getAttribute("action");
         if (!actionUrl) return;
+        // Save/confirm/keep belong to the shared durable task. Without enhancement,
+        // their original native form is submitted exactly once.
+        if (["save", "confirm", "keep"].includes(actionKind(actionUrl)) || submitter?.name === "review_latest") return;
         e.preventDefault();
         submitDrawer(form, actionUrl);
       });
     }
 
+    async function showAccepted({next, values}) {
+      const generation = opening;
+      const confirmation = !["save", "keep"].includes(values.command_action);
+      const following = confirmation ? removeCurrentRow() : null;
+      const url = new URL(next); url.searchParams.set("fragment", "1");
+      try {
+        const response = await fetch(url, {credentials: "same-origin", headers: {Accept: "text/html"}});
+        if (!response.ok) throw Error("accepted_view_unavailable");
+        const html = await response.text();
+        if (generation !== opening) return;
+        // A recovered save may now belong to a confirmed bill. Its current
+        // read-only detail remains the native consumer, not another edit form.
+        if (!confirmation && !new DOMParser().parseFromString(html, "text/html").querySelector("[data-drawer-form]")) {
+          window.location.assign(next.href); return;
+        }
+        await releaseCurrent();
+        if (generation !== opening) return;
+        clearTaskAnchor();
+        drawer.innerHTML = html; bindFragment(); resyncRowConsumers(); focusDrawer();
+        if (!confirmation) {
+          try { await syncSavedRow(generation); }
+          catch (_) {
+            if (generation === opening) {
+              const notice = document.createElement("p"); notice.className = "product-feedback product-feedback--warning";
+              notice.setAttribute("role", "status"); notice.textContent = values.command_action === "keep"
+                ? "非重复决定已保存，收件列表暂未刷新。原填写仍保留，返回列表后可重新读取。"
+                : "草稿已保存，收件列表暂未刷新。当前填写仍可继续，返回列表后可重新读取。";
+              drawer.querySelector(".product-drawer-form").prepend(notice);
+            }
+          }
+          return;
+        }
+        const button = drawer.querySelector("[data-confirmation-next]");
+        if (!following || !button) return;
+        button.hidden = false; button.onclick = () => openRow(following);
+        const note = drawer.querySelector("[data-confirmation-next-note]");
+        note.hidden = false; note.textContent = "这张已入账，接着核对下一张。";
+        drawer.querySelector("[data-confirmation-finish]").classList.replace("product-button--primary", "product-button--quiet");
+        continuation = window.setTimeout(() => {
+          if (generation === opening) openRow(following);
+        }, 1500);
+        const receipt = drawer.querySelector("[data-expense-confirmation]");
+        for (const event of ["pointerdown", "keydown"]) receipt.addEventListener(event, () => window.clearTimeout(continuation));
+      } catch (_) {
+        if (generation !== opening) return;
+        releaseCurrent(); clearTaskAnchor();
+        const panel = document.createElement("section"), title = document.createElement("h2"), notice = document.createElement("p"), link = document.createElement("a"), back = document.createElement("button");
+        panel.className = "product-panel product-panel--padded";
+        title.textContent = confirmation ? "这次确认已入账" : "这次草稿已保存";
+        notice.textContent = "展示结果暂时未能读取。可重新打开结果，无需再次提交。";
+        link.href = next.href; link.textContent = "重新打开结果"; link.className = "product-button product-button--primary";
+        back.type = "button"; back.textContent = "返回收件箱"; back.className = "product-button product-button--quiet"; back.onclick = close;
+        panel.append(title, notice, link, back); drawer.replaceChildren(panel); focusDrawer();
+      }
+    }
+
+    async function syncSavedRow(generation) {
+      const row = currentRow;
+      if (!row) return;
+      const response = await fetch(window.location.href, {credentials: "same-origin", headers: {Accept: "text/html"}});
+      if (!response.ok) throw Error("saved_list_unavailable");
+      const page = new DOMParser().parseFromString(await response.text(), "text/html");
+      if (generation !== opening) return;
+      const container = row.closest(".exp-row");
+      if (!container) return;
+      const fresh = page.querySelector('.exp-row[data-expense-id="' + activeExpenseId + '"]');
+      if (!fresh) container.remove();
+      else {
+        row.innerHTML = fresh.querySelector(".exp-row-detail").innerHTML;
+        const check = container.querySelector(".row-check"), latest = fresh.querySelector(".row-check");
+        if (check && latest) { check.value = latest.value; check.dataset.rowVersion = latest.dataset.rowVersion; }
+        container.querySelector(".exp-flags").innerHTML = fresh.querySelector(".exp-flags").innerHTML;
+      }
+      document.querySelectorAll(".filter-tab").forEach(tab => {
+        const freshTab = [...page.querySelectorAll(".filter-tab")].find(item => item.getAttribute("href") === tab.getAttribute("href"));
+        if (freshTab) tab.querySelector(".count").textContent = freshTab.querySelector(".count").textContent;
+      });
+      document.querySelectorAll("[data-filtered-count]").forEach(count => {
+        count.textContent = String(page.querySelectorAll(".exp-row[data-expense-id]").length);
+      });
+      const navSelector = ':is(.nav-primary, .nav-subnav, .mobile-primary-nav, .mobile-plan-nav) > a:is([href^="/web/pending"], [href^="/web/duplicates"])';
+      const freshLinks = [...page.querySelectorAll(navSelector)];
+      document.querySelectorAll(navSelector).forEach(link => {
+        const freshLink = freshLinks.find(item => item.getAttribute("href") === link.getAttribute("href"));
+        if (!freshLink) return;
+        const badge = freshLink.querySelector(":scope > .nav-badge");
+        link.querySelector(":scope > .nav-badge")?.remove();
+        if (badge) link.append(badge.cloneNode(true));
+      });
+      app.refreshBulkBar?.();
+    }
+
     function submitDrawer(form, actionUrl) {
       if (submitting) return;
       submitting = true;
-      const kind = actionKind(actionUrl);
       const body = new FormData(form);
       body.append("fragment", "1"); // server returns a 200 marker / error fragment
       setDrawerBusy(form, true);
@@ -461,15 +532,11 @@
       // present. Same-origin source + token satisfies the /web CSRF gate.
       fetch(actionUrl, { method: "POST", credentials: "same-origin", body: body })
         .then(function (res) {
-          if (res.ok && kind !== "fx") {
-            delete form.dataset.edited;
-            if (kind === "confirm" || kind === "reject") submitting = false;
-            return Promise.resolve(onMutationOk(kind)).then(function () { submitting = false; });
-          }
           // FX status/retry returns the original form and OCC with saved-bill
           // status alongside it. Only explicit reload may replace that draft.
           // Errors likewise return the fragment with its inline message.
-          return res.text().then(function (html) {
+          return res.text().then(async function (html) {
+            await releaseCurrent();
             drawer.innerHTML = html;
             const edited = drawer.querySelector("[data-drawer-form]");
             if (edited) edited.dataset.edited = "true";
@@ -481,29 +548,13 @@
         .catch(function () {
           submitting = false;
           setDrawerBusy(form, false);
-          // Offline / network failure → native full-page submit. No fragment
-          // field is on the form itself, so the server redirects normally;
-          // return_to=pending keeps a save on the queue. requestSubmit (not
-          // .submit()) on purpose: it fires the real submit event so csrf.js's
-          // capture listener injects the csrf_token field — the programmatic
-          // .submit() skips the event and the native POST would 403.
-          form.setAttribute("action", actionUrl);
-          form.setAttribute("data-native-fallback", "1");
-          if (typeof form.requestSubmit === "function") {
-            form.requestSubmit();
-          } else {
-            HTMLFormElement.prototype.submit.call(form);
-          }
+          const notice = document.createElement("p"); notice.className = "product-feedback product-feedback--warning";
+          notice.setAttribute("role", "status");
+          notice.textContent = "暂未收到操作结果，填写仍保留。请核对当前账单后继续。";
+          notice.tabIndex = -1;
+          form.prepend(notice);
+          notice.focus();
         });
-    }
-
-    function onMutationOk(kind) {
-      if (kind === "confirm" || kind === "reject") {
-        advanceAfterRemoval(removeCurrentRow());
-      } else {
-        // save / keep: the row stays; refresh the drawer for a fresh token.
-        return refetchCurrent();
-      }
     }
 
     function setDrawerBusy(form, busy) {
@@ -559,16 +610,22 @@
       isOpen: function () { return drawer.classList.contains("on"); },
       currentRow: function () { return currentRow; },
       hasUnsavedChanges: function () {
-        return submitting || retainedForms.size > 0 || !!drawer.querySelector('[data-drawer-form][data-edited="true"]');
+        return submitting || !!drawer.querySelector('[data-drawer-form][data-edited="true"]') ||
+          !!document.querySelector('[data-expensereview-scope] [data-expensereview-ref]');
       },
       submitConfirm: function () {
         const form = drawer.querySelector("[data-drawer-form]");
         if (!form) return false;
-        const btn = form.querySelector('button[formaction$="/confirm"]');
+        const btn = form.querySelector('[data-expensereview-submit]') || form.querySelector('button[formaction$="/confirm"]');
         if (!btn || btn.disabled) return false;
         btn.click(); // routes through the form submit → fetch pipeline above
         return true;
       }
     };
+    const resumeRef = window.location.hash.startsWith("#expensereview-edit-") ? window.location.hash.slice("#expensereview-edit-".length) : "";
+    if (resumeRef) {
+      const task = [...document.querySelectorAll("[data-expensereview-ref]")].find(link => link.dataset.expensereviewRef === resumeRef);
+      if (task) openRow(document.querySelector('.exp-row[data-expense-id="' + task.dataset.expenseId + '"] .exp-row-detail') || task, true);
+    }
   };
 })(window, document);

@@ -9,6 +9,8 @@
    退化为按账单状态归属(pending→收件, 其余→流水, 与矿的默认推导一致)。 #}
 {% set _edit_origin = (
   edit_return_to if edit_return_to is defined else
+  (original_fields.get('return_to') or 'pending') if (original_fields is defined and
+    _path.startswith('/web/expenses/') and (_path.endswith('/undo') or _path.endswith('/reject'))) else
   ('pending' if (expense is defined and expense.status == 'pending') else 'confirmed')
 ) %}
 {% set _is_inbox_context = (
@@ -34,7 +36,8 @@
   '/budgets' in _path or
   ('/goals' in _path and '/debt-goals' not in _path) or
   '/debt-goals' in _path or
-  '/income-plans' in _path or '/budget-advise' in _path or '/recurring' in _path
+  '/income-plans' in _path or '/budget-advise' in _path or '/recurring' in _path or
+  ('/expenses/' in _path and _edit_origin == 'recurring_occurrence')
 ) %}
 {% set _is_insights_context = (
   '/overview' in _path or '/reports' in _path or '/data-quality' in _path or '/dashboard/cards' in _path
@@ -82,7 +85,7 @@
 {% set is_debt_goals = '/debt-goals' in _path %}
 {% set is_income_plans = '/income-plans' in _path %}
 {% set is_budget_advise = '/budget-advise' in _path %}
-{% set is_recurring = '/recurring' in _path %}
+{% set is_recurring = '/recurring' in _path or ('/expenses/' in _path and _edit_origin == 'recurring_occurrence') %}
 {% set is_overview = '/overview' in _path %}
 {% set is_dashboard_cards = '/dashboard/cards' in _path %}
 {% set is_reports = '/reports' in _path %}
@@ -90,7 +93,7 @@
 
 {# 页级三态：primary=五域首屏；tertiary=详情工作区(追加 detail.css)；
    其余=secondary。页级不决定样式新旧，所有正文均使用产品栈。 #}
-{% set _is_expense_detail = '/expenses/' in _path and _path.endswith('/edit') %}
+{% set _is_expense_detail = expense_review_task|default(false) or ('/expenses/' in _path and _path.endswith('/edit')) %}
 {% set _inbox_task = _is_expense_detail and _domain == 'inbox' %}
 {% set _is_debt_detail = _path.startswith('/web/debts/') and _path != '/web/debts/new' %}
 {% set _is_import_detail = _path.startswith('/web/import/') %}
@@ -209,8 +212,8 @@
       <span class="topbar-spacer"></span><span class="product-eyebrow">{{ page_title }}</span>
       {% elif _is_expense_detail %}
       <a class="product-button product-button--quiet" href="{{ edit_return_href }}" data-review-stage="primary"><svg width="20" height="20" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-left"/></svg> {{ edit_return_label or ('收件箱' if _inbox_task else '流水') }}</a>
-      <a class="product-button product-button--quiet" href="#review" data-review-stage="details" hidden><svg width="20" height="20" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-left"/></svg> 核对小票</a>
-      <span class="topbar-spacer"></span><span class="product-eyebrow" data-review-stage="primary">{{ '核对小票' if expense.status == 'pending' else '账单详情' }}</span>
+      <a class="product-button product-button--quiet" href="#review" data-review-stage="details" hidden><svg width="20" height="20" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-left"/></svg> {{ '当前记录' if expense_review_inspection else '核对小票' }}</a>
+      <span class="topbar-spacer"></span><span class="product-eyebrow" data-review-stage="primary">{{ '当前记录' if expense_review_inspection and expense.status != 'confirmed' else '核对小票' if expense.status == 'pending' else '账单详情' }}</span>
       {% elif _page_level == 'tertiary' and _domain == 'inbox' %}
       <a class="product-button product-button--quiet" href="{{ current_href }}"><svg width="20" height="20" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-left"/></svg> 返回账单</a>
       <span class="topbar-spacer"></span><span class="product-eyebrow">识别小票</span>
