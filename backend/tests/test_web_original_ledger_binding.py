@@ -71,6 +71,29 @@ def retained_form_context(monkeypatch):
     monkeypatch.setattr(web_common, "_base_ctx", lambda *_a, **_k: {})
 
 
+def _original_form_input(handler):
+    """Produce each real route's input shape and the raw fields it must retain."""
+    values = {name: parameter.default.default for name, parameter in inspect.signature(handler).parameters.items()
+        if isinstance(parameter.default, Form)}
+    supplied = {"ledger_id": "old-ledger", "name": "原目标", "label": "原收入", "merchant": "原固定支出",
+        "keyword": "原规则", "category": "transport", "source_type": "salary", "frequency": "monthly",
+        "home_currency_code": "JPY", "month": "2026-09", "intent_month": "2026-09", "amount_yuan": "1200",
+        "target_amount_yuan": "1200", "baseline_amount_yuan": "1200", "amount_min_yuan": "1200",
+        "total_amount_yuan": "1200", "rollover_amount_yuan": "-20", "non_monthly_amount_yuan": "100",
+        "excluded_category": ["医疗", "报销"], "category_budget_category": ["餐饮", "交通"],
+        "category_budget_amount_yuan": ["100", "020"], "category_budget_remove": [1, 0],
+        "pay_day": "10", "expected_row_version": "3", "idempotency_key": "original-key",
+        "public_id": "original-object", "rule_id": 17, "enabled": False, "action": "clear", "amount_cents": "1200",
+        "return_category": "original-category", "return_month": "2026-02"}
+    values.update({key: value for key, value in supplied.items() if key in inspect.signature(handler).parameters})
+    form_type = {"web_rules_create": RuleDefinitionForm, "web_rule_save": RuleEditForm}.get(handler.__name__)
+    if form_type is not None:
+        values["form"] = form_type(**{name: str(value) if name == "rule_id" else value
+            for name, value in supplied.items() if name in form_type.model_fields})
+        return values, values["form"].model_dump()
+    return values, values
+
+
 @pytest.mark.parametrize("current_role", ["owner", "viewer"])
 @pytest.mark.parametrize("module,function,path", CASES, ids=[case[1] for case in CASES])
 def test_switched_session_keeps_original_form_before_any_object_read_or_command(monkeypatch, retained_form_context,
@@ -87,37 +110,19 @@ def test_switched_session_keeps_original_form_before_any_object_read_or_command(
             monkeypatch.setattr(module, name, spy)
             stopped.append(spy)
     handler = getattr(module, function)
-    values = {name: parameter.default.default for name, parameter in inspect.signature(handler).parameters.items()
-        if isinstance(parameter.default, Form)}
-    supplied = {"ledger_id": "old-ledger", "name": "原目标", "label": "原收入", "merchant": "原固定支出",
-        "keyword": "原规则", "category": "transport", "source_type": "salary", "frequency": "monthly",
-        "home_currency_code": "JPY", "month": "2026-09", "intent_month": "2026-09", "amount_yuan": "1200",
-        "target_amount_yuan": "1200", "baseline_amount_yuan": "1200", "amount_min_yuan": "1200",
-        "total_amount_yuan": "1200", "rollover_amount_yuan": "-20", "non_monthly_amount_yuan": "100",
-        "excluded_category": ["医疗", "报销"], "category_budget_category": ["餐饮", "交通"],
-        "category_budget_amount_yuan": ["100", "020"], "category_budget_remove": [1, 0],
-        "pay_day": "10", "expected_row_version": "3", "idempotency_key": "original-key",
-        "public_id": "original-object", "rule_id": 17, "enabled": False, "action": "clear", "amount_cents": "1200",
-        "return_category": "original-category", "return_month": "2026-02"}
-    values.update({key: value for key, value in supplied.items() if key in inspect.signature(handler).parameters})
-    if function in {"web_rules_create", "web_rule_save"}:
-        form_type = RuleEditForm if function == "web_rule_save" else RuleDefinitionForm
-        values["form"] = form_type(**{name: str(value) if name == "rule_id" else value
-            for name, value in supplied.items() if name in form_type.model_fields})
+    values, fields = _original_form_input(handler)
     response = handler(_request(path, current_role), **values, db=Mock(), _local=None)
     assert response.status_code == 409
     html = response.body.decode()
     assert 'name="ledger_id" value="old-ledger"' in html
     assert f'action="{path}"' in html
-    if "form" in values:
-        values = values["form"].model_dump()
     for field in ("idempotency_key", "expected_row_version", "amount_yuan", "baseline_amount_yuan", "target_amount_yuan",
         "total_amount_yuan", "rollover_amount_yuan", "non_monthly_amount_yuan", "return_category", "return_month"):
-        if field in values:
-            assert f'name="{field}" value="{values[field]}"' in html
+        if field in fields:
+            assert f'name="{field}" value="{fields[field]}"' in html
     for field in ("excluded_category", "category_budget_category", "category_budget_amount_yuan", "category_budget_remove"):
-        if field in values:
-            assert re.findall(rf'name="{field}" value="([^"]*)"', html) == [str(value) for value in values[field]]
+        if field in fields:
+            assert re.findall(rf'name="{field}" value="([^"]*)"', html) == [str(value) for value in fields[field]]
     assert "切回原账本" in html
     if module is web_budgets:
         assert "<dt>月度预算</dt><dd>1200</dd>" in html
