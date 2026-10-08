@@ -31,8 +31,11 @@ class ApplyConfirmedRulesDispatcher(
                 val refreshRequired = try {
                     if (receipt.changedCount > 0) refreshConfirmed(row)
                     false
-                } catch (_: Exception) {
+                } catch (error: Exception) {
                     // The verified first receipt survives cancellation or failure of the later read.
+                    if (error !is CancellationException && error !is RepositoryException) {
+                        logNetworkWarning("operation=ApplyConfirmedRules accepted read failed", error)
+                    }
                     true
                 }
                 DispatchResult.Success(receiptJson = receiptAdapter.toJson(receipt), acceptedReadRefreshRequired = refreshRequired)
@@ -47,7 +50,8 @@ class ApplyConfirmedRulesDispatcher(
             DispatchResult.RetryableFailure("连接中断，保留原应用等待核实。")
         } catch (error: CancellationException) {
             throw error
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            logNetworkWarning("operation=ApplyConfirmedRules unexpected replay failure", error)
             DispatchResult.Failure(RULE_APPLICATION_UNVERIFIED)
         }
     }

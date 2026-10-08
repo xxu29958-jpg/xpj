@@ -10,12 +10,46 @@ import kotlinx.coroutines.test.runTest
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.ResponseBody.Companion.toResponseBody
 import retrofit2.HttpException
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowLog
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [35], manifest = Config.NONE)
 class RuleApplicationCommandTest {
+    @Test fun unexpectedApplicationFailureReportsWithoutSettlingOrReplacingOriginal() = runTest {
+        ShadowLog.clear()
+        val f = CategoryRuleCommandFixture()
+        f.repository.confirmApplyConfirmedRules(f.binding, f.repository.previewApplyConfirmedRules().getOrThrow()).getOrThrow()
+        val original = f.repository.observeApplications(f.binding).first().single().row
+        var calls = 0
+        val api = object : ApiService by f.api {
+            override suspend fun applyConfirmedRules(request: RuleApplyConfirmedRequestDto, limit: Int, maxScan: Int,
+                idempotencyKey: String?): RuleApplyConfirmedResponseDto {
+                calls += 1
+                throw IllegalStateException("password=application-secret", IOException("private financial text"))
+            }
+        }
+        val writer = ApplyConfirmedRulesDispatcher({ api }, f.adapters.ruleApplicationAdapter, f.adapters.ruleApplicationReceiptAdapter, {})
+        assertEquals(1, OutboxDrainEngine(f.outbox, listOf(writer)).drainOnce().failures)
+        val retained = f.repository.observeApplications(f.binding).first().single()
+        assertEquals(original.payloadJson, retained.row.payloadJson)
+        assertEquals(original.idempotencyKey, retained.row.idempotencyKey)
+        assertEquals(1, calls)
+        val logs = ShadowLog.getLogsForTag("TicketboxNetwork")
+        assertEquals(1, logs.size)
+        val output = logs.single().msg.orEmpty()
+        assertTrue(output.contains("operation=ApplyConfirmedRules") && output.contains("ApplyConfirmedRulesDispatcher.kt:"))
+        assertTrue(output.contains("source_tree_sha256="))
+        assertFalse(output.contains("application-secret") || output.contains("private financial text"))
+        assertTrue(logs.all { it.throwable == null })
+    }
+
     @Test fun lostReplyRetainsFirstCommandThenAcceptedReadFailureOnlyRefreshes() = runTest {
         var readFails = true
         var reads = 0

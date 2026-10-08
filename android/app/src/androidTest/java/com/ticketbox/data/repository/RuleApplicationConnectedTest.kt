@@ -118,7 +118,7 @@ class RuleApplicationConnectedTest {
         val active = requireNotNull(model)
         val state by active.uiState.collectAsStateWithLifecycle()
         val definitions by active.definitions.state.collectAsStateWithLifecycle()
-        TicketboxTheme(skin = AppSkin.Default) {
+        TicketboxTheme(skin = AppSkin.valueOf(InstrumentationRegistry.getArguments().getString("ruleSkin") ?: "Paper")) {
             CategoryRulesScreen(CategoryRulesScreenState(
                 CategoryRulesRuleListState(state.categoryRules, state.categoryRulesLoading, state.categoryRulesLoadFailed),
                 CategoryRulesInteractionState(state.busy, !state.canModify), CategoryRulesStatusState(state.message, state.messageTone),

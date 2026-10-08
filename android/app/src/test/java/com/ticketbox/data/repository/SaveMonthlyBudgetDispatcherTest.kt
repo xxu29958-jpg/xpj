@@ -11,12 +11,20 @@ import kotlinx.coroutines.test.runTest
 import okhttp3.ResponseBody.Companion.toResponseBody
 import retrofit2.HttpException
 import retrofit2.Response
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowLog
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
+import kotlin.test.assertFalse
 
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [35], manifest = Config.NONE)
 class SaveMonthlyBudgetDispatcherTest {
     private val adapters = OutboxAdapterGraph()
     private val acceptedRows = mutableListOf<OutboxRow>()
@@ -88,6 +96,7 @@ class SaveMonthlyBudgetDispatcherTest {
     }
 
     @Test fun verifiedReceiptRemainsAcceptedWhenLocalReadCleanupFails() = runTest {
+        ShadowLog.clear()
         val accepted = receipt()
         val stub = BudgetSaveStub(Result.success(accepted))
         val writer = SaveMonthlyBudgetDispatcher({ stub }, adapters.budgetSaveAdapter, adapters.budgetReceiptAdapter,
@@ -102,6 +111,27 @@ class SaveMonthlyBudgetDispatcherTest {
         assertNull(result.newRowVersion, "Local recovery cannot rebase any original budget command")
         assertEquals(1, stub.requests.size)
         assertEquals(listOf<String?>("original-budget-key"), stub.keys)
+        assertTrue(result.acceptedReadRefreshRequired)
+        val logs = ShadowLog.getLogsForTag("TicketboxNetwork")
+        assertEquals(1, logs.size)
+        assertTrue(logs.single().msg.orEmpty().contains("operation=SaveMonthlyBudget accepted read failed"))
+        assertTrue(logs.single().msg.orEmpty().contains("SaveMonthlyBudgetDispatcher.kt:"))
+        assertEquals(null, logs.single().throwable)
+    }
+
+    @Test fun unexpectedReplayReportsWithoutAcceptingOrRetryingBudget() = runTest {
+        ShadowLog.clear()
+        val stub = BudgetSaveStub(Result.failure(IllegalStateException("password=budget-secret")))
+        val original = row()
+        assertIs<DispatchResult.Failure>(dispatcher(stub).dispatch(original))
+        assertEquals(1, stub.requests.size)
+        assertEquals(listOf<String?>(original.idempotencyKey), stub.keys)
+        assertEquals(emptyList(), acceptedRows)
+        val logs = ShadowLog.getLogsForTag("TicketboxNetwork")
+        assertEquals(1, logs.size)
+        assertTrue(logs.single().msg.orEmpty().contains("operation=SaveMonthlyBudget unexpected replay failure"))
+        assertFalse(logs.single().msg.orEmpty().contains("budget-secret"))
+        assertEquals(null, logs.single().throwable)
     }
 
     private fun dispatcher(api: ApiService) = SaveMonthlyBudgetDispatcher({ api }, adapters.budgetSaveAdapter,

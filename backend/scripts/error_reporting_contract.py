@@ -67,6 +67,18 @@ REVIEWED_BOUNDARIES = {
         "test": "android/app/src/test/java/com/ticketbox/data/repository/NetworkErrorReportingTest.kt::aliasReplayFailureReportsWithoutSettlingOrRetryingOriginal",
         "reason": "Unexpected replay errors report through logNetworkWarning before a blocking Failure preserves the original key and payload. The user sees no raw exception text; cancellation still propagates and transport retries retain their existing owner.",
     },
+    (ANDROID + "data/repository/ApplyConfirmedRulesDispatcher.kt", "dispatch"): {
+        "sha256": "05c182564cf7ba8c855da84ad741a40e11473d5bcb5fb47d8e53a77404ce2a65",
+        "owner": "NetworkErrorHandler for read/HTTP errors; sanitized TicketboxNetwork output for unexpected replay failures",
+        "test": "android/app/src/test/java/com/ticketbox/data/repository/RuleApplicationCommandTest.kt",
+        "reason": "A verified first receipt survives a later read failure or cancellation with a retained read-recovery flag. Repository read failures already use NetworkErrorHandler; unexpected callback and replay faults use logNetworkWarning without raw messages, changing keys, retrying or claiming acceptance.",
+    },
+    (ANDROID + "data/repository/SaveMonthlyBudgetDispatcher.kt", "dispatch"): {
+        "sha256": "456969319e417619bf74dcafe9b254abd21dcf565d2727337e65626568c679bb",
+        "owner": "existing HTTP mapping and sanitized TicketboxNetwork output for read cleanup/replay faults",
+        "test": "android/app/src/test/java/com/ticketbox/data/repository/SaveMonthlyBudgetDispatcherTest.kt",
+        "reason": "Verified budget acceptance remains final when read cleanup fails; unexpected failures report through logNetworkWarning and retain the first receipt or unresolved original as appropriate. Cancellation before acceptance propagates; after acceptance only read repair remains. No raw exception text enters the UI or Logcat.",
+    },
     ("backend/app/routes/web_expense_recognition.py", "web_text_recognition_post"): {
         "sha256": "4e5d8ec46cdaf791c901945acfae9e77b1cf2624b5ec1388ea7c74d76071563e",
         "owner": "retain_handled_error feeds the common HTTP reporter while preserving the original form",
