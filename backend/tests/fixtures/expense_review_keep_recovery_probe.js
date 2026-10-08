@@ -40,6 +40,35 @@
     state.original_preserved=true;state.stage="reviewed";save();
     form().requestSubmit(form().querySelector("[data-expensereview-review]"));
   }
+  async function startOriginalDecision(){
+    await wait(()=>!primary().disabled);
+    form().elements.merchant.value="非重复前的原填写";form().elements.merchant.dispatchEvent(new Event("input",{bubbles:true}));
+    state.ref=form().elements.draft_ref.value;state.confirmKey=form().elements.idempotency_key.value;state.keepKey=form().elements.keep_idempotency_key.value;
+    if(state.fault==="rejected")await originalFetch("/keep-later",{method:"POST"});
+    state.stage="started";save();form().querySelector('.review-more-actions summary')?.click();
+    form().querySelector('button[formaction$="/keep"]').click();
+    await wait(()=>state.storeFailed || ((state.lost || state.rejected) && !primary().disabled));
+    const original=JSON.parse(localStorage.getItem(prefix+state.ref));
+    assert(original.phase===(state.rejected?"blocked":"submitted") && original.values.command_action==="keep", "keep decision has no durable original");
+    if(state.rejected)assert(original.serverResult==="rejected", "known rejection was not retained for explicit review");
+    assert(primary().textContent==="核实这次非重复决定", "unknown keep decision has no recovery action");
+    if(!state.rejected)await originalFetch("/keep-later",{method:"POST"});
+    state.stage="reloaded";save();location.reload();return;
+  }
+  async function replayOriginalDecision(){
+    await wait(()=>!primary().disabled);
+    assert(form().elements.merchant.value==="非重复前的原填写" && form().elements.expected_row_version.value==="4" &&
+      form().elements.keep_idempotency_key.value===state.keepKey && form().elements.idempotency_key.value===state.confirmKey, "reload replaced the original intent");
+    assert(form().elements.merchant.readOnly && primary().textContent==="核实这次非重复决定", "reload lost the frozen original decision");
+    if(state.rejected){
+      const review=form().querySelector("[data-expensereview-review]");
+      assert(!review.hidden && !review.disabled, "known rejection cannot rejoin explicit review");
+      state.original_preserved=true;state.stage="reviewed";save();form().requestSubmit(review);return;
+    }
+    state.stage="replayed";save();primary().click();
+    if(state.entry==="full")return;
+    await afterReplay();
+  }
   try{
     if(document.querySelector("[data-expense-confirmation]")){
       state.confirmed=document.body.textContent.includes("非重复前的原填写");window.__expenseReviewResult=state;return;
@@ -50,34 +79,11 @@
     }
     await wait(()=>form()?.dataset.expensereviewDraftPhase);
     if(state.stage==="edit"){
-      await wait(()=>!primary().disabled);
-      form().elements.merchant.value="非重复前的原填写";form().elements.merchant.dispatchEvent(new Event("input",{bubbles:true}));
-      state.ref=form().elements.draft_ref.value;state.confirmKey=form().elements.idempotency_key.value;state.keepKey=form().elements.keep_idempotency_key.value;
-      if(state.fault==="rejected")await originalFetch("/keep-later",{method:"POST"});
-      state.stage="started";save();form().querySelector('.review-more-actions summary')?.click();
-      form().querySelector('button[formaction$="/keep"]').click();
-      await wait(()=>state.storeFailed || ((state.lost || state.rejected) && !primary().disabled));
-      const original=JSON.parse(localStorage.getItem(prefix+state.ref));
-      assert(original.phase===(state.rejected?"blocked":"submitted") && original.values.command_action==="keep", "keep decision has no durable original");
-      if(state.rejected)assert(original.serverResult==="rejected", "known rejection was not retained for explicit review");
-      assert(primary().textContent==="核实这次非重复决定", "unknown keep decision has no recovery action");
-      if(!state.rejected)await originalFetch("/keep-later",{method:"POST"});
-      state.stage="reloaded";save();location.reload();return;
+      await startOriginalDecision(); return;
     }
     if(state.stage==="started")throw Error("full keep navigated away without retaining its pending decision");
     if(state.stage==="reloaded"){
-      await wait(()=>!primary().disabled);
-      assert(form().elements.merchant.value==="非重复前的原填写" && form().elements.expected_row_version.value==="4" &&
-        form().elements.keep_idempotency_key.value===state.keepKey && form().elements.idempotency_key.value===state.confirmKey, "reload replaced the original intent");
-      assert(form().elements.merchant.readOnly && primary().textContent==="核实这次非重复决定", "reload lost the frozen original decision");
-      if(state.rejected){
-        const review=form().querySelector("[data-expensereview-review]");
-        assert(!review.hidden && !review.disabled, "known rejection cannot rejoin explicit review");
-        state.original_preserved=true;state.stage="reviewed";save();form().requestSubmit(review);return;
-      }
-      state.stage="replayed";save();primary().click();
-      if(state.entry==="full")return;
-      await afterReplay();
+      await replayOriginalDecision();
     }else if(state.stage==="replayed")await afterReplay();
     else if(state.stage==="reviewed"){
       await wait(()=>!primary().disabled);

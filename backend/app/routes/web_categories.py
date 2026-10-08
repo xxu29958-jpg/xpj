@@ -262,10 +262,7 @@ def web_uncategorized(
     return _render_uncategorized(request, db, options=options, selected_id=selected_id, filter=filter, message=msg)
 
 
-def _render_uncategorized(request, db, *, options, selected_id: str, filter: str = "",
-    message: str = "", category: str = "", snapshots: dict[int, int] | None = None,
-    result: BulkResult | None = None, error: AppError | None = None) -> HTMLResponse:
-    ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id)
+def _uncategorized_task_items(db, *, selected_id: str, home: str, filter: str, snapshots, result):
     include_other = filter == "including_other"
     rows = list_uncategorized_pending(db, tenant_id=selected_id, include_other=include_other)
     successful = set(result.success_ids) if result else set()
@@ -276,11 +273,21 @@ def _render_uncategorized(request, db, *, options, selected_id: str, filter: str
     combined.update((row.id, row) for row in extra)
     items, updated = [], []
     for row in combined.values():
-        view = _expense_view(row, presentation_currency_code=ctx["home_currency_code"])
+        view = _expense_view(row, presentation_currency_code=home)
         view.update(selected=row.id in remaining, snapshot_version=remaining.get(row.id, row.row_version),
             detail_href=flow_href(f"/web/expenses/{row.id}/edit", ledger_id=selected_id,
                 return_to="uncategorized", return_filter=filter))
         (updated if row.id in successful else items).append(view)
+    return items, updated
+
+
+def _render_uncategorized(request, db, *, options, selected_id: str, filter: str = "",
+    message: str = "", category: str = "", snapshots: dict[int, int] | None = None,
+    result: BulkResult | None = None, error: AppError | None = None) -> HTMLResponse:
+    ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id)
+    include_other = filter == "including_other"
+    items, updated = _uncategorized_task_items(db, selected_id=selected_id, home=ctx["home_currency_code"],
+        filter=filter, snapshots=snapshots, result=result)
     scope = browser_draft_scope(db, request)
     categories = list_ledger_category_options(db, tenant_id=selected_id)
     primary = [name for name in ("购物", "餐饮", "交通", "住房", "医疗", "其他") if name in categories]

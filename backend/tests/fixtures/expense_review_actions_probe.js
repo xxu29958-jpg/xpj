@@ -36,6 +36,49 @@
     assert(commandPosts===before, "implicit submit sent the stale original before explicit review");
     state.stage="reviewed"; save(); form().requestSubmit(form().querySelector("[data-expensereview-review]"));
   }
+  async function beginRelatedAction() {
+    await wait(() => !primary().disabled);
+    if (state.legacy_edit_seeded) {
+      state.legacy_edit_restored=form().elements.merchant.value==="相关操作前的填写" &&
+        form().elements.idempotency_key.value===state.key && !!form().elements.keep_idempotency_key.value;
+      assert(state.legacy_edit_restored, "older editable draft cannot use the newly connected related decision");
+    }
+    form().elements.merchant.value="相关操作前的填写";
+    form().elements.merchant.dispatchEvent(new Event("input",{bubbles:true}));
+    state.ref=form().elements.draft_ref.value; state.key=form().elements.idempotency_key.value;
+    if (state.action==="keep" && state.entry==="full" && !state.legacy_edit_seeded) {
+      const record=JSON.parse(localStorage.getItem(prefix+state.ref));
+      const laterFields=["command_action", "keep_idempotency_key", "reject_idempotency_key"];
+      laterFields.forEach(name=>delete record.values[name]);
+      record.values.present_fields=JSON.stringify(JSON.parse(record.values.present_fields).filter(name=>!laterFields.includes(name)));
+      localStorage.setItem(prefix+state.ref,JSON.stringify(record));
+      state.legacy_edit_seeded=true; save(); location.reload(); return;
+    }
+    const button=form().querySelector('button[formaction$="/'+(state.action==="keep"?"keep":"reject")+'"]');
+    assert(button, "related action missing");
+    form().querySelector('.review-more-actions summary')?.click();
+    assert(button.checkVisibility(), "related action cannot be reached from the actual menu");
+    if (state.action==="reject") {
+      state.stage="rejected"; save(); button.click();
+      await wait(() => document.querySelector("#tb-confirm-modal[open]"));
+      document.querySelector("#tb-confirm-modal .tb-confirm-ok").click(); return;
+    }
+    state.stage="kept"; save(); const before=form(); button.click();
+    if (state.entry==="full") return;
+    await wait(() => form().dataset.expensereviewDraftPhase==="submitted" && !primary().disabled);
+    assert(form().querySelector('[data-expensereview-recovery] h1').textContent==="正在核实这次非重复决定",
+      "lost reply did not retain the related operation");
+    assert(form()===before && form().elements.merchant.value==="相关操作前的填写" && form().elements.idempotency_key.value===state.key,
+      "lost related-action reply discarded the original input");
+    state.unknown_retained=true; save(); primary().click();
+    await wait(() => form() !== before && form()?.dataset.expensereviewDraftPhase);
+    await wait(() => !document.querySelector('.exp-row[data-expense-id="42"]'));
+    assert(document.querySelector('.filter-tab.is-active .count').textContent==="0", "duplicate count stayed stale");
+    assert(!document.querySelector('nav a[href^="/web/duplicates"] > .nav-badge'), "navigation still reports the cleared duplicate");
+    assert(!document.querySelector('.filter-tab .nav-badge'), "queue filters acquired a second navigation count");
+    assert(document.querySelector('nav a[href^="/web/pending"] > .nav-badge').textContent==="1", "clearing duplicate incorrectly removed the pending bill");
+    await reviewOriginal();
+  }
   try {
     if (state.stage === "confirm") {
       await wait(() => document.querySelector("[data-expense-confirmation]"));
@@ -57,47 +100,7 @@
     }
     await wait(() => form()?.dataset.expensereviewDraftPhase);
     if (state.stage === "edit") {
-      await wait(() => !primary().disabled);
-      if (state.legacy_edit_seeded) {
-        state.legacy_edit_restored=form().elements.merchant.value==="相关操作前的填写" &&
-          form().elements.idempotency_key.value===state.key && !!form().elements.keep_idempotency_key.value;
-        assert(state.legacy_edit_restored, "older editable draft cannot use the newly connected related decision");
-      }
-      form().elements.merchant.value="相关操作前的填写";
-      form().elements.merchant.dispatchEvent(new Event("input",{bubbles:true}));
-      state.ref=form().elements.draft_ref.value; state.key=form().elements.idempotency_key.value;
-      if (state.action==="keep" && state.entry==="full" && !state.legacy_edit_seeded) {
-        const record=JSON.parse(localStorage.getItem(prefix+state.ref));
-        const laterFields=["command_action", "keep_idempotency_key", "reject_idempotency_key"];
-        laterFields.forEach(name=>delete record.values[name]);
-        record.values.present_fields=JSON.stringify(JSON.parse(record.values.present_fields).filter(name=>!laterFields.includes(name)));
-        localStorage.setItem(prefix+state.ref,JSON.stringify(record));
-        state.legacy_edit_seeded=true; save(); location.reload(); return;
-      }
-      const button=form().querySelector('button[formaction$="/'+(state.action==="keep"?"keep":"reject")+'"]');
-      assert(button, "related action missing");
-      form().querySelector('.review-more-actions summary')?.click();
-      assert(button.checkVisibility(), "related action cannot be reached from the actual menu");
-      if (state.action==="reject") {
-        state.stage="rejected"; save(); button.click();
-        await wait(() => document.querySelector("#tb-confirm-modal[open]"));
-        document.querySelector("#tb-confirm-modal .tb-confirm-ok").click(); return;
-      }
-      state.stage="kept"; save(); const before=form(); button.click();
-      if (state.entry==="full") return;
-      await wait(() => form().dataset.expensereviewDraftPhase==="submitted" && !primary().disabled);
-      assert(form().querySelector('[data-expensereview-recovery] h1').textContent==="正在核实这次非重复决定",
-        "lost reply did not retain the related operation");
-      assert(form()===before && form().elements.merchant.value==="相关操作前的填写" && form().elements.idempotency_key.value===state.key,
-        "lost related-action reply discarded the original input");
-      state.unknown_retained=true; save(); primary().click();
-      await wait(() => form() !== before && form()?.dataset.expensereviewDraftPhase);
-      await wait(() => !document.querySelector('.exp-row[data-expense-id="42"]'));
-      assert(document.querySelector('.filter-tab.is-active .count').textContent==="0", "duplicate count stayed stale");
-      assert(!document.querySelector('nav a[href^="/web/duplicates"] > .nav-badge'), "navigation still reports the cleared duplicate");
-      assert(!document.querySelector('.filter-tab .nav-badge'), "queue filters acquired a second navigation count");
-      assert(document.querySelector('nav a[href^="/web/pending"] > .nav-badge').textContent==="1", "clearing duplicate incorrectly removed the pending bill");
-      await reviewOriginal();
+      await beginRelatedAction();
     } else if (state.stage==="undone" || (state.stage==="kept" && state.entry==="full")) await reviewOriginal();
     else if (state.stage==="reviewed") {
       await wait(() => !primary().disabled);

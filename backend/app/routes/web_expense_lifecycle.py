@@ -86,9 +86,8 @@ def web_confirm(
     try:
         _require_selected_ledger_write(options, selected_id)
         form = replace(form, draft_scope=reviewed_draft_scope(db, request, form.draft_scope, review=form.review_latest))
-        require_draft_binding(db, request, ledger_id=selected_id, draft_scope=form.draft_scope, require_session=False)
-        if form.draft_scope and form.ledger_id != selected_id:
-            raise AppError("session_binding_changed", "原账本已切换，请保留输入并切回原账本。", status_code=409)
+        require_draft_binding(db, request, ledger_id=selected_id, draft_scope=form.draft_scope,
+            require_session=False, original_ledger_id=form.ledger_id)
         if form.review_latest:
             return render_confirmation_task(request, db, options=options, ledger_id=selected_id,
                 expense_id=expense_id, form=form, result="prepared")

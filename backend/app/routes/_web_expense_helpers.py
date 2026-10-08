@@ -203,6 +203,21 @@ def _overlay_submitted_expense_values(
             expense_view["amount_symbol"] = currency_input["currency_symbol"]
 
 
+def _review_submission_context(db: Session, request: Request, form_values: dict | None) -> dict:
+    values = form_values or {}
+    captured = values.get("draft_scope")
+    review_scope, binding_required = rendered_draft_scope(db, request, captured)
+    return {"confirm_idempotency_key": values.get("idempotency_key") or str(uuid4()),
+        "expense_review_scope": review_scope, "expense_review_binding_required": binding_required,
+        "expense_review_scope_value": captured if captured is not None else json.dumps(review_scope) if review_scope else "",
+        "expense_review_ref": values.get("draft_ref") or str(uuid4()),
+        "expense_review_result": values.get("review_result", ""),
+        "expense_review_action": "save" if values.get("command_action") == "save" else "confirm",
+        "expense_review_task": request.query_params.get("confirmation_task") == "1",
+        "reject_idempotency_key": values.get("reject_idempotency_key") or str(uuid4()),
+        "keep_idempotency_key": values.get("keep_idempotency_key") or str(uuid4())}
+
+
 def web_edit_context(
     db: Session,
     request: Request,
@@ -242,17 +257,7 @@ def web_edit_context(
     ctx["fx_revision_changed"] = str(expense_view["row_version"]) != str(expense.row_version)
     ctx["manual_draft_ack"] = manual_draft_ack(db, getattr(request.state, "web_session_auth", None), expense)
     ctx["conflict_current"] = current_expense_view if conflict else None
-    ctx["confirm_idempotency_key"] = (form_values or {}).get("idempotency_key") or str(uuid4())
-    captured = (form_values or {}).get("draft_scope")
-    review_scope, binding_required = rendered_draft_scope(db, request, captured)
-    ctx.update(expense_review_scope=review_scope, expense_review_binding_required=binding_required,
-        expense_review_scope_value=captured if captured is not None else json.dumps(review_scope) if review_scope else "",
-        expense_review_ref=(form_values or {}).get("draft_ref") or str(uuid4()),
-        expense_review_result=(form_values or {}).get("review_result", ""),
-        expense_review_action="save" if (form_values or {}).get("command_action") == "save" else "confirm",
-        expense_review_task=request.query_params.get("confirmation_task") == "1")
-    ctx["reject_idempotency_key"] = (form_values or {}).get("reject_idempotency_key") or str(uuid4())
-    ctx["keep_idempotency_key"] = (form_values or {}).get("keep_idempotency_key") or str(uuid4())
+    ctx.update(_review_submission_context(db, request, form_values))
     ctx["ocr_idempotency_key"] = str(uuid4())
     ctx["text_ocr_idempotency_key"] = str(uuid4())
     ctx["error"] = None

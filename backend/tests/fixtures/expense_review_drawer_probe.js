@@ -32,6 +32,23 @@
     }
     return response;
   };
+  async function verifyUnretainedInput() {
+    const write = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (name, value) {
+      if (name.startsWith(prefix)) throw Error("storage unavailable");
+      return write.call(this, name, value);
+    };
+    form().elements.merchant.value = "尚未落盘的填写";
+    form().elements.merchant.dispatchEvent(new Event("input", {bubbles:true}));
+    assert(form().querySelector("[data-expensereview-draft-status]").textContent.includes("未能保留"), "storage failure was hidden");
+    const current = form(); TicketboxWeb.drawerApi.close();
+    assert(form() === current && form().elements.merchant.value === "尚未落盘的填写", "closing discarded unretained input");
+    Storage.prototype.setItem = write;
+    form().elements.merchant.dispatchEvent(new Event("input", {bubbles:true}));
+    TicketboxWeb.drawerApi.close();
+    assert(!TicketboxWeb.drawerApi.isOpen(), "restored persistence did not allow leaving");
+    window.__expenseReviewResult = {storage_recovered: true, requests: state.requests}; return;
+  }
   try {
     await wait(() => window.TicketboxWeb?.drawerApi);
     const mount = window.TicketboxExpenseReview.mount;
@@ -42,21 +59,7 @@
     if (!window.TicketboxWeb.drawerApi.isOpen()) document.querySelector('.exp-row[data-expense-id="42"] .exp-row-detail').click();
     await wait(() => form()?.dataset.expensereviewDraftPhase && primary() && !primary().disabled);
     if (storageFailure) {
-      const write = Storage.prototype.setItem;
-      Storage.prototype.setItem = function (name, value) {
-        if (name.startsWith(prefix)) throw Error("storage unavailable");
-        return write.call(this, name, value);
-      };
-      form().elements.merchant.value = "尚未落盘的填写";
-      form().elements.merchant.dispatchEvent(new Event("input", {bubbles:true}));
-      assert(form().querySelector("[data-expensereview-draft-status]").textContent.includes("未能保留"), "storage failure was hidden");
-      const current = form(); TicketboxWeb.drawerApi.close();
-      assert(form() === current && form().elements.merchant.value === "尚未落盘的填写", "closing discarded unretained input");
-      Storage.prototype.setItem = write;
-      form().elements.merchant.dispatchEvent(new Event("input", {bubbles:true}));
-      TicketboxWeb.drawerApi.close();
-      assert(!TicketboxWeb.drawerApi.isOpen(), "restored persistence did not allow leaving");
-      window.__expenseReviewResult = {storage_recovered: true, requests: state.requests}; return;
+      await verifyUnretainedInput(); return;
     }
     if (receiptReadFailure) {
       const ref = form().elements.draft_ref.value;

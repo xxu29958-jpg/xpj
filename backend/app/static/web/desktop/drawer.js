@@ -449,16 +449,7 @@
         clearTaskAnchor();
         drawer.innerHTML = html; bindFragment(); resyncRowConsumers(); focusDrawer();
         if (!confirmation) {
-          try { await syncSavedRow(generation); }
-          catch (_) {
-            if (generation === opening) {
-              const notice = document.createElement("p"); notice.className = "product-feedback product-feedback--warning";
-              notice.setAttribute("role", "status"); notice.textContent = values.command_action === "keep"
-                ? "非重复决定已保存，收件列表暂未刷新。原填写仍保留，返回列表后可重新读取。"
-                : "草稿已保存，收件列表暂未刷新。当前填写仍可继续，返回列表后可重新读取。";
-              drawer.querySelector(".product-drawer-form").prepend(notice);
-            }
-          }
+          await refreshAcceptedRow(generation, values.command_action);
           return;
         }
         const button = drawer.querySelector("[data-confirmation-next]");
@@ -477,11 +468,24 @@
         releaseCurrent(); clearTaskAnchor();
         const panel = document.createElement("section"), title = document.createElement("h2"), notice = document.createElement("p"), link = document.createElement("a"), back = document.createElement("button");
         panel.className = "product-panel product-panel--padded";
-        title.textContent = confirmation ? "这次确认已入账" : "这次草稿已保存";
+        title.textContent = confirmation ? "这次确认已入账" : values.command_action === "keep" ? "这次非重复决定已保存" : "这次草稿已保存";
         notice.textContent = "展示结果暂时未能读取。可重新打开结果，无需再次提交。";
         link.href = next.href; link.textContent = "重新打开结果"; link.className = "product-button product-button--primary";
         back.type = "button"; back.textContent = "返回收件箱"; back.className = "product-button product-button--quiet"; back.onclick = close;
         panel.append(title, notice, link, back); drawer.replaceChildren(panel); focusDrawer();
+      }
+    }
+
+    async function refreshAcceptedRow(generation, action) {
+      try { await syncSavedRow(generation); }
+      catch (_) {
+        if (generation === opening) {
+          const notice = document.createElement("p"); notice.className = "product-feedback product-feedback--warning";
+          notice.setAttribute("role", "status"); notice.textContent = action === "keep"
+            ? "非重复决定已保存，收件列表暂未刷新。原填写仍保留，返回列表后可重新读取。"
+            : "草稿已保存，收件列表暂未刷新。当前填写仍可继续，返回列表后可重新读取。";
+          drawer.querySelector(".product-drawer-form").prepend(notice);
+        }
       }
     }
 

@@ -133,6 +133,38 @@ def _load_pair(db: Session, *, tenant_id: str, expense_id: int) -> tuple[Expense
     return expense, other
 
 
+def _duplicate_pair_view(row, original, *, home: str, selected_id: str) -> dict:
+    reason = row.duplicate_reason or ""
+    reason_label, evidence_label, evidence_tone = _duplicate_evidence(reason)
+    current_view = _duplicate_expense_view(
+        row,
+        presentation_currency_code=home,
+    )
+    original_view = (
+        _duplicate_expense_view(
+            original,
+            presentation_currency_code=home,
+        )
+        if original is not None
+        else None
+    )
+    diff_fields: list[str] = []
+    if original_view:
+        if current_view.get("merchant") != original_view.get("merchant"):
+            diff_fields.append("merchant")
+        if any(current_view.get(key) != original_view.get(key)
+            for key in ("original_currency_code", "original_amount_minor", "amount_cents")):
+            diff_fields.append("amount")
+        if current_view.get("expense_time") != original_view.get("expense_time"):
+            diff_fields.append("time")
+    for view in (current_view, original_view):
+        if view:
+            view["detail_href"] = flow_href(f"/web/expenses/{view['id']}/edit", ledger_id=selected_id,
+                return_to="duplicates", return_duplicate_expense_id=str(row.id))
+    return {"current": current_view, "original": original_view, "reason_label": reason_label,
+        "evidence_label": evidence_label, "evidence_tone": evidence_tone, "diff_fields": diff_fields}
+
+
 @router.get("/duplicates", response_class=HTMLResponse)
 def web_duplicates(
     request: Request,
@@ -154,50 +186,8 @@ def web_duplicates(
         for e in list_expenses_by_ids(db, tenant_id=selected_id, expense_ids=original_ids)
     }
     home = require_runtime_home_currency_code(db)
-    pairs = []
-    for row in rows:
-        original = (
-            originals_by_id.get(row.duplicate_of_id)
-            if row.duplicate_of_id is not None
-            else None
-        )
-        reason = row.duplicate_reason or ""
-        reason_label, evidence_label, evidence_tone = _duplicate_evidence(reason)
-        current_view = _duplicate_expense_view(
-            row,
-            presentation_currency_code=home,
-        )
-        original_view = (
-            _duplicate_expense_view(
-                original,
-                presentation_currency_code=home,
-            )
-            if original is not None
-            else None
-        )
-        diff_fields: list[str] = []
-        if original_view:
-            if current_view.get("merchant") != original_view.get("merchant"):
-                diff_fields.append("merchant")
-            if any(current_view.get(key) != original_view.get(key)
-                for key in ("original_currency_code", "original_amount_minor", "amount_cents")):
-                diff_fields.append("amount")
-            if current_view.get("expense_time") != original_view.get("expense_time"):
-                diff_fields.append("time")
-        for view in (current_view, original_view):
-            if view:
-                view["detail_href"] = flow_href(f"/web/expenses/{view['id']}/edit", ledger_id=selected_id,
-                    return_to="duplicates", return_duplicate_expense_id=str(row.id))
-        pairs.append(
-            {
-                "current": current_view,
-                "original": original_view,
-                "reason_label": reason_label,
-                "evidence_label": evidence_label,
-                "evidence_tone": evidence_tone,
-                "diff_fields": diff_fields,
-            }
-        )
+    pairs = [_duplicate_pair_view(row, originals_by_id.get(row.duplicate_of_id), home=home, selected_id=selected_id)
+        for row in rows]
     ctx = _base_ctx(
         request,
         db=db,
@@ -264,6 +254,10 @@ def web_duplicate_keep(
                 status_code=exc.status_code, form_values=values, return_context=form.return_context)
         if exc.status_code in {401, 403}:
             raise
+    return _duplicate_keep_response(request, db, options, selected_id, expense_id, form, values, error_msg)
+
+
+def _duplicate_keep_response(request, db, options, selected_id, expense_id, form, values, error_msg) -> Response:
     if error_msg is None:
         next_href = flow_href(f"/web/expenses/{expense_id}/edit", ledger_id=selected_id, **form.return_context.as_kwargs())
         response = draft_ack_response(request, draft_scope=form.draft_scope, idempotency_key=form.keep_idempotency_key,

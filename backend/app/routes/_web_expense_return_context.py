@@ -293,9 +293,7 @@ def return_context_params(return_to: str, **origin: str) -> dict[str, str]:
     if token == "reports":
         return _report_return_params(origin)
     if token == "search":
-        query = (origin.get("return_query") or "").strip()
-        if query and len(query) <= MAX_QUERY_LENGTH:
-            return {"q": query}
+        return _search_return_params(origin)
     if token == "recurring_occurrence":
         return _recurring_list_return_params(origin)
     if token == "csv_import_event":
@@ -303,6 +301,11 @@ def return_context_params(return_to: str, **origin: str) -> dict[str, str]:
         selected = kept.get("return_import_expense_id")
         return {"expense_id": selected} if selected else {}
     return {}
+
+
+def _search_return_params(origin: dict[str, str]) -> dict[str, str]:
+    query = (origin.get("return_query") or "").strip()
+    return {"q": query} if query and len(query) <= MAX_QUERY_LENGTH else {}
 
 
 def _report_return_params(origin: dict[str, str]) -> dict[str, str]:

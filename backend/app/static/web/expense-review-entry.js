@@ -29,6 +29,15 @@
     else next.searchParams.set("new_expensereview", "1");
     return next.href;
   }
+  function receiptMatches(receipt, saved) {
+    return saved.command_action === "keep" ?
+        receipt?.operation === "mark_not_duplicate" && receipt.expense_id === Number(saved.expense_id) &&
+        receipt.accepted === true && receipt.decision_key === saved.keep_idempotency_key : saved.command_action === "save" ?
+        receipt?.operation === "patch_expense" && receipt.expense_id === Number(saved.expense_id) && receipt.accepted === true :
+        receipt?.id === Number(saved.expense_id) && receipt.status === "confirmed" &&
+        Number.isInteger(receipt.amount_cents) && receipt.amount_cents >= 0 &&
+        typeof receipt.home_currency === "string" && typeof receipt.confirmed_at === "string";
+  }
   function mount(form, options = {}) {
     if (!form.dataset.expensereviewDraftScope) return;
     form.addEventListener("submit", event => {
@@ -71,13 +80,7 @@
       relatedAction: submitter => form.dataset.expensereviewDraftPhase === "editing" &&
         submitter?.name !== "review_latest" && submitter?.hasAttribute("formaction") &&
         !/\/(save|confirm|keep)$/.test(new URL(submitter.getAttribute("formaction"), window.location.href).pathname),
-      receiptMatches: (receipt, saved) => saved.command_action === "keep" ?
-        receipt?.operation === "mark_not_duplicate" && receipt.expense_id === Number(saved.expense_id) &&
-        receipt.accepted === true && receipt.decision_key === saved.keep_idempotency_key : saved.command_action === "save" ?
-        receipt?.operation === "patch_expense" && receipt.expense_id === Number(saved.expense_id) && receipt.accepted === true :
-        receipt?.id === Number(saved.expense_id) && receipt.status === "confirmed" &&
-        Number.isInteger(receipt.amount_cents) && receipt.amount_cents >= 0 &&
-        typeof receipt.home_currency === "string" && typeof receipt.confirmed_at === "string",
+      receiptMatches,
       acceptsDestination: (next, saved) => saved.command_action === "keep" ?
         next.pathname === "/web/expenses/" + saved.expense_id + "/edit" && next.hash === "#expensereview-edit-" + saved.draft_ref : saved.command_action === "save" ?
         next.pathname === "/web/expenses/" + saved.expense_id + "/edit" && next.searchParams.get("new_expensereview") === "1" :
