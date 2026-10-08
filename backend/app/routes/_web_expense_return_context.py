@@ -302,13 +302,11 @@ def _confirmed_return_params(origin: dict[str, str]) -> dict[str, str]:
     clean_page = (origin.get("return_page") or "").strip()
     if clean_page.isdigit() and 1 <= int(clean_page) <= 100_000:
         params["page"] = clean_page
-    clean_tag = (origin.get("return_tag") or "").strip()
-    if clean_tag and len(clean_tag) <= 64:
-        params["tag"] = clean_tag
     home = (origin.get("return_home_currency_code") or "").strip()
     if home in supported_currency_codes():
         params["home_currency_code"] = home
-    for field, key, limit in (("return_query", "q", MAX_QUERY_LENGTH), ("return_category", "category", 64)):
+    for field, key, limit in (("return_tag", "tag", 64), ("return_query", "q", MAX_QUERY_LENGTH),
+                              ("return_category", "category", 64)):
         value = (origin.get(field) or "").strip()
         if value and len(value) <= limit:
             params[key] = value

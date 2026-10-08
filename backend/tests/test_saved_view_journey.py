@@ -14,6 +14,18 @@ from tests._web_public_session_support import PUBLIC_HOST, mint_session, public_
 pytestmark = pytest.mark.real_db
 
 
+def _assert_original_query_return(browser, current, expense_id):
+    detail_links = [unescape(link) for link in re.findall(r'href="([^"]+)"', current.text)
+        if f"/web/expenses/{expense_id}/edit?" in link]
+    assert len(detail_links) == 1
+    detail = browser.get(detail_links[0])
+    assert detail.status_code == 200
+    return_queries = [parse_qs(urlsplit(unescape(link)).query)
+        for link in re.findall(r'href="([^"]+)"', detail.text) if link.startswith("/web/confirmed?")]
+    expected = {"q": ["九月"], "category": ["购物"], "tag": ["旅行"], "month": ["2026-09"]}
+    assert any(expected.items() <= params.items() for params in return_queries)
+
+
 def test_saved_view_reopens_the_same_query_and_reads_new_facts_without_changing_originals(client, identity) -> None:
     original = manual_expense(client, identity.app_headers, tags="旅行", merchant="九月原账单", category="购物",
                               expense_time="2026-09-03T10:00:00Z")
@@ -68,24 +80,16 @@ def test_saved_view_reopens_the_same_query_and_reads_new_facts_without_changing_
         location = urlsplit(opened.headers["location"])
         assert location.path == "/web/confirmed"
         query = parse_qs(location.query)
-        assert {key: query[key] for key in ("ledger_id", "month", "tag", "home_currency_code")} == {
+        assert {key: query[key] for key in ("ledger_id", "month", "tag", "home_currency_code", "q", "category")} == {
             "ledger_id": ["owner"], "month": ["2026-09"], "tag": ["旅行"], "home_currency_code": ["CNY"],
+            "q": ["九月"], "category": ["购物"],
         }
-        assert query["q"] == ["九月"] and query["category"] == ["购物"]
         current = reopened.get(opened.headers["location"])
         assert current.status_code == 200
         assert "九月原账单" in current.text and "后来记入的九月账单" in current.text
         for excluded in ("九月其他标签账单", "九月关键词但十月账单", "九月其他分类账单", "不同关键词账单"):
             assert excluded not in current.text
-        detail_links = [unescape(link) for link in re.findall(r'href="([^"]+)"', current.text)
-            if f"/web/expenses/{original['id']}/edit?" in link]
-        assert len(detail_links) == 1
-        detail = reopened.get(detail_links[0])
-        assert detail.status_code == 200
-        return_queries = [parse_qs(urlsplit(unescape(link)).query)
-            for link in re.findall(r'href="([^"]+)"', detail.text) if link.startswith("/web/confirmed?")]
-        assert any(params.get("q") == ["九月"] and params.get("category") == ["购物"]
-            and params.get("tag") == ["旅行"] and params.get("month") == ["2026-09"] for params in return_queries)
+        _assert_original_query_return(reopened, current, original['id'])
     finally:
         reopened.close()
 
