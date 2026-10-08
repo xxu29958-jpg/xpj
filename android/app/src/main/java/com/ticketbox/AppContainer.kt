@@ -454,6 +454,7 @@ class AppContainer(context: Context) {
     val reportsRepository = repositories.reportsRepository
     val goalEditRepository = repositories.goalEditRepository
     val ruleRepository = repositories.ruleRepository
+    val savedQueryRepository = repositories.savedQueryRepository
     val merchantRepository = repositories.merchantRepository
     val tagRepository = repositories.tagRepository
     val categoryPreferenceRepository = repositories.categoryPreferenceRepository

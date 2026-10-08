@@ -27,6 +27,7 @@ internal class MainScreenFactory(
     val recurringRepository: RecurringRepository get() = repositories.recurringRepository
     val budgetRepository: BudgetRepository get() = repositories.budgetRepository
     val ruleRepository get() = repositories.ruleRepository
+    val savedQueryRepository get() = repositories.savedQueryRepository
     val goalEditRepository get() = repositories.goalEditRepository
     val reportsRepository: ReportsActions get() = repositories.reportsRepository
     val incomePlanRepository: IncomePlanActions get() = repositories.incomePlanRepository
@@ -95,6 +96,7 @@ internal data class MainFeatureRepositories(
     val categoryPreferenceRepository: CategoryPreferenceRepository,
     val ledgerCalendarRepository: com.ticketbox.data.repository.LedgerCalendarRepository? = null,
     val originalAttachments: com.ticketbox.data.repository.OriginalAttachmentActions? = null,
+    val savedQueryRepository: com.ticketbox.data.repository.SavedQueryRepository,
 )
 
 internal data class MainScreenViewModelFactories(

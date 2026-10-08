@@ -104,6 +104,8 @@ internal class ExpenseCorrectionConnectedFixture(
             else -> error("Unexpected settings: $method")
         }
     }) {
+        override fun recentSearches(): List<String> = readSettings.recentSearches()
+        override fun saveRecentSearches(queries: List<String>) = readSettings.saveRecentSearches(queries)
         override fun snapshotReadAccessDenial(bindingKey: String, monthlyBindingKey: String): Int? =
             readSettings.snapshotReadAccessDenial(bindingKey, monthlyBindingKey)
         override fun saveSnapshotReadAccessDenial(bindingKey: String, monthlyBindingKey: String, statusCode: Int?) =

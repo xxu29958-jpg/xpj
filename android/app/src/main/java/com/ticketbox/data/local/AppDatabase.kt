@@ -9,11 +9,12 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.ticketbox.domain.model.FxContract
 
 @Database(
-    entities = [RuleDefinitionInputEntity::class, MerchantCreationInputEntity::class, ExpenseEntity::class, PendingMutationEntity::class, ExpenseOffsetStreamEntity::class, StatsProjectionCacheEntity::class, GoalQueryCacheEntity::class, MonthlyArrangementCacheEntity::class, RepaymentReviewInputEntity::class, ExpenseFactQueryCacheEntity::class, ExpenseFactInputEntity::class],
-    version = 26,
+    entities = [SavedQueryInputEntity::class, RuleDefinitionInputEntity::class, MerchantCreationInputEntity::class, ExpenseEntity::class, PendingMutationEntity::class, ExpenseOffsetStreamEntity::class, StatsProjectionCacheEntity::class, GoalQueryCacheEntity::class, MonthlyArrangementCacheEntity::class, RepaymentReviewInputEntity::class, ExpenseFactQueryCacheEntity::class, ExpenseFactInputEntity::class],
+    version = 27,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
+    abstract fun savedQueryInputDao(): SavedQueryInputDao
     abstract fun ruleDefinitionInputDao(): RuleDefinitionInputDao
     abstract fun merchantCreationInputDao(): MerchantCreationInputDao
     abstract fun expenseDao(): ExpenseDao
@@ -601,6 +602,12 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        internal val Migration26To27 = object : Migration(26, 27) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS saved_query_inputs (serverUrl TEXT NOT NULL, ownerKey TEXT NOT NULL, ledgerId TEXT NOT NULL, slot TEXT NOT NULL, inputJson TEXT NOT NULL, PRIMARY KEY(serverUrl, ownerKey, ledgerId, slot))")
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -634,6 +641,7 @@ abstract class AppDatabase : RoomDatabase() {
                         Migration23To24,
                         Migration24To25,
                         Migration25To26,
+                        Migration26To27,
                     )
                     .build()
                     .also { instance = it }

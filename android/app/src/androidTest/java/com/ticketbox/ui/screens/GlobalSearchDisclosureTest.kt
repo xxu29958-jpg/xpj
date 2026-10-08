@@ -37,6 +37,13 @@ class GlobalSearchDisclosureTest {
     @get:Rule
     val composeRule = createComposeRule()
 
+    @Test fun savedQueryDirectoryIsReachableFromSearch() {
+        var opened = false
+        render(GlobalSearchUiState(), onSavedQueries = { opened = true })
+        composeRule.onNodeWithText("常用查询").performScrollTo().performClick()
+        composeRule.runOnIdle { assertTrue(opened) }
+    }
+
     @Test
     fun categoriesCollapsedByDefaultAndExpandOnDemand() {
         render(GlobalSearchUiState(availableCategories = listOf("餐饮", "交通")))
@@ -97,7 +104,7 @@ class GlobalSearchDisclosureTest {
         composeRule.runOnIdle { assertEquals(42L, opened) }
     }
 
-    private fun render(state: GlobalSearchUiState, onOpenExpense: (Long) -> Unit = {}) {
+    private fun render(state: GlobalSearchUiState, onSavedQueries: () -> Unit = {}, onOpenExpense: (Long) -> Unit = {}) {
         composeRule.setContent {
             val skin = if (InstrumentationRegistry.getArguments().getString("captureSkin") == "midnight")
                 AppSkin.Midnight else AppSkin.Paper
@@ -114,6 +121,7 @@ class GlobalSearchDisclosureTest {
                         onClearRecentSearches = {},
                         onRefreshPending = {},
                         onOpenExpense = onOpenExpense,
+                        onOpenSavedQueries = onSavedQueries,
                     ),
                     onBack = {},
                 )

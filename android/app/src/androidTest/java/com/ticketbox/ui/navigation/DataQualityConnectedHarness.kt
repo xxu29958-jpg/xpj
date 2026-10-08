@@ -110,6 +110,8 @@ internal class DataQualityConnectedHarness : AutoCloseable {
         val coordinator = com.ticketbox.data.repository.LocalLedgerSessionCoordinator(settingsStore, sessionStore, database.expenseDao(), outbox)
         val debtQueries = com.ticketbox.data.repository.DebtQueryReader(apiProvider, database.expenseDao(), coordinator)
         val repositories = MainFeatureRepositories(
+            savedQueryRepository = com.ticketbox.data.repository.SavedQueryRepository(apiProvider,
+                com.ticketbox.data.repository.SavedQueryDraftStore(database.savedQueryInputDao())),
             accountProfile = com.ticketbox.data.repository.AccountProfileRepository(apiProvider, coordinator),
             uploadIntents = com.ticketbox.data.repository.UploadIntentRepository(apiProvider, outbox,
                 com.ticketbox.data.repository.UploadIntentFileStore(context), adapters.uploadPayloadAdapter,

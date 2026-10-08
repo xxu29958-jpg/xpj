@@ -119,9 +119,11 @@ internal fun NavGraphBuilder.addTransactionRoutes(
             SearchRoute(
                 navController = runtime.navController,
                 screenFactory = screenFactory,
+                onOpenSavedQuery = { route -> navController.navigate(route) },
                 onBack = onBack,
             )
         }
+        savedQueryRoute(dependencies)
         transactionsLibraryGraph(
             navController = navController,
             screenFactory = screenFactory,

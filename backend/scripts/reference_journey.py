@@ -261,6 +261,7 @@ class ReferenceJourney:
 
     def run(self):
         from scripts.reference_journey_merchants import organize_merchants
+        from scripts.reference_journey_queries import saved_queries
         from scripts.reference_journey_rules import organize_rules
         from scripts.reference_journey_views import qualify_consumers
 
@@ -268,6 +269,7 @@ class ReferenceJourney:
         self.tag_edits()
         organize_merchants(self)
         organize_rules(self)
+        saved_queries(self)
         qualify_consumers(self)
         result = self.facts()
         assert [row["amount"] for row in result["expenses"]] == [1234, 2500, 750]

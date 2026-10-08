@@ -218,6 +218,10 @@ internal class RepositoryGraph(
         }
     }
 
+    val savedQueryRepository = com.ticketbox.data.repository.SavedQueryRepository(
+        apiServiceProvider, com.ticketbox.data.repository.SavedQueryDraftStore(database.savedQueryInputDao()),
+    )
+
     val ruleRepository = RuleRepository(
         binding = serverSessionBinding,
         definitionInputs = com.ticketbox.data.repository.RuleDefinitionDraftStore(database.ruleDefinitionInputDao()),
