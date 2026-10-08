@@ -55,7 +55,10 @@ def merge_after_target_changes(j):
     assert next(row for row in j.facts()["catalog"] if row["id"] == source["id"])["target"] is None
     j.capture("merchant-conflict-keeps-original-choices")
     current = next(row for row in j.facts()["catalog"] if row["id"] == target["id"])
-    retained.locator('[name="target"]').select_option(f'{target["id"]}:{current["row_version"]}')
+    retained.get_by_role("button", name="核对双方商家", exact=True).click()
+    retained = j.form(action)
+    assert retained.locator('[name="target"]').input_value() == f'{target["id"]}:{current["row_version"]}'
+    assert next(row for row in j.facts()["catalog"] if row["id"] == source["id"])["target"] is None
     j.confirm(retained)
     j.expect(lambda state: any(row["id"] == source["id"] and row["target"] == target["id"] for row in state["catalog"]),
              "The explicit Web merchant merge did not commit")
@@ -70,6 +73,7 @@ def change_catalog_visibility(j, target):
     j.native.click("商家身份")
     for choice, status in (("隐藏", "hidden"), ("显示", "active")):
         j.native.click(choice)
+        j.native.click_within("显示与隐藏", choice)
         j.expect(lambda state, status=status: any(row["id"] == target["id"] and row["status"] == status for row in state["catalog"]),
                  "The native target change did not commit")
 

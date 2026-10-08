@@ -10,15 +10,15 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.ui.asString
-import com.ticketbox.data.repository.MerchantCreationDraft
-import com.ticketbox.data.repository.MerchantCreationKind
+import com.ticketbox.data.repository.MerchantDraft
+import com.ticketbox.data.repository.MerchantDraftKind
 import com.ticketbox.ui.components.AppAction
 import com.ticketbox.ui.components.AppActionRow
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.viewmodel.MerchantCreationState
+import com.ticketbox.viewmodel.MerchantDraftState
 
 @Composable
-internal fun MerchantCreationReceiptEffect(state: MerchantCreationState, actions: MerchantCreationActions) {
+internal fun MerchantCreationReceiptEffect(state: MerchantDraftState, actions: MerchantCreationActions) {
     LaunchedEffect(state.drafts, state.binding, state.busy) {
         if (!state.busy && state.error == null) state.drafts.filter { it.phase == "accepted" && it.binding == state.binding }
             .forEach { actions.onAccepted(it.kind, it.key) }
@@ -27,28 +27,28 @@ internal fun MerchantCreationReceiptEffect(state: MerchantCreationState, actions
 
 @Composable
 internal fun MerchantCreationTask(state: MerchantAliasesScreenState, actions: MerchantAliasesScreenActions, editors: MerchantEditors) {
-    val kind = if (editors.activeCreateTool == MerchantCreateTool.Catalog) MerchantCreationKind.Catalog else MerchantCreationKind.Alias
-    val creation = state.creation
+    val kind = if (editors.activeCreateTool == MerchantCreateTool.Catalog) MerchantDraftKind.Catalog else MerchantDraftKind.Alias
+    val creation = state.drafts
     val draft = creation.draft(kind)
     val pending = draft != null && draft.phase != "editing"
     SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
         MerchantCreationInputs(creation, kind, actions.creation)
         MerchantCreationFeedback(creation, draft, kind, actions.creation)
         AppActionRow(primary = AppAction(
-            text = stringResource(if (pending) R.string.merchant_creation_verify else if (kind == MerchantCreationKind.Catalog)
+            text = stringResource(if (pending) R.string.merchant_creation_verify else if (kind == MerchantDraftKind.Catalog)
                 R.string.merchant_catalog_create_button else R.string.merchant_aliases_create_button),
             enabled = creation.canSubmit(kind) && !state.busy,
-            onClick = { if (kind == MerchantCreationKind.Catalog) actions.catalog.onCreate(draft?.displayName.orEmpty())
+            onClick = { if (kind == MerchantDraftKind.Catalog) actions.catalog.onCreate(draft?.displayName.orEmpty())
                 else actions.alias.onCreate(draft?.canonicalMerchant.orEmpty(), draft?.alias.orEmpty()) },
         ), secondary = AppAction(text = stringResource(R.string.merchant_creation_back), enabled = true, onClick = editors::back))
     }
 }
 
 @Composable
-private fun MerchantCreationInputs(state: MerchantCreationState, kind: MerchantCreationKind, actions: MerchantCreationActions) {
+private fun MerchantCreationInputs(state: MerchantDraftState, kind: MerchantDraftKind, actions: MerchantCreationActions) {
     val draft = state.draft(kind)
     val readOnly = !state.canEdit(kind)
-    if (kind == MerchantCreationKind.Catalog) {
+    if (kind == MerchantDraftKind.Catalog) {
         SettingsDialogTextInput(SettingsTextInputState(label = stringResource(R.string.merchant_catalog_name_label), value = draft?.displayName.orEmpty(),
             placeholder = stringResource(R.string.merchant_creation_name_example), enabled = state.ready, readOnly = readOnly),
             onValueChange = { actions.onEdit(kind, it, "", "") })
@@ -63,7 +63,7 @@ private fun MerchantCreationInputs(state: MerchantCreationState, kind: MerchantC
 }
 
 @Composable
-private fun MerchantCreationFeedback(state: MerchantCreationState, draft: MerchantCreationDraft?, kind: MerchantCreationKind, actions: MerchantCreationActions) {
+private fun MerchantCreationFeedback(state: MerchantDraftState, draft: MerchantDraft?, kind: MerchantDraftKind, actions: MerchantCreationActions) {
     val changed = draft != null && draft.binding != state.binding
     Text(state.error?.asString() ?: stringResource(creationNotice(state, draft)), color = MaterialTheme.colorScheme.onSurfaceVariant)
     if (!state.ready && state.error != null) TextButton(enabled = !state.busy, onClick = actions.onReload) {
@@ -79,7 +79,7 @@ private fun MerchantCreationFeedback(state: MerchantCreationState, draft: Mercha
 }
 
 @StringRes
-private fun creationNotice(state: MerchantCreationState, draft: MerchantCreationDraft?): Int = when {
+private fun creationNotice(state: MerchantDraftState, draft: MerchantDraft?): Int = when {
     draft != null && draft.binding != state.binding -> R.string.merchant_creation_identity_changed
     draft?.phase == "rejected" -> R.string.merchant_creation_rejected
     draft?.phase == "accepted" -> R.string.merchant_creation_returning

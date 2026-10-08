@@ -31,24 +31,43 @@ class AppDatabaseMigrationTest {
             }
         }
         val binding = com.ticketbox.data.repository.LogicalSessionBinding("https://isolated.invalid", "owner", "original-owner", "session", "revision")
-        val input = com.ticketbox.data.repository.MerchantCreationDraft(binding,
-            com.ticketbox.data.repository.MerchantCreationKind.Alias, "original-create-key",
+        val input = com.ticketbox.data.repository.MerchantDraft(binding,
+            com.ticketbox.data.repository.MerchantDraftKind.Alias, "original-create-key",
             canonicalMerchant = "  原标准商家  ", alias = "  原别名  ", phase = "unconfirmed")
+        val source = com.ticketbox.domain.model.MerchantCatalog("source", "原商家", "原商家", "active", null, 2,
+            "2026-10-08T00:00:00Z", "2026-10-08T00:00:00Z", 7, null)
+        val rename = com.ticketbox.data.repository.MerchantDraft(binding, com.ticketbox.data.repository.MerchantDraftKind.Rename,
+            "original-rename-key", displayName = "  原改名  ", source = source)
+        val otherRename = rename.copy(key = "other-rename-key", source = source.copy(publicId = "other"), displayName = "  另一原稿  ")
+        val firstSource = com.ticketbox.data.remote.dto.MerchantCatalogDto("source", "原商家", "原商家", "merged", "target", 2,
+            "2026-10-08T00:00:00Z", "2026-10-08T00:00:00Z", 8)
+        val firstReceipt = com.ticketbox.data.remote.dto.MerchantCatalogMergeDto(firstSource,
+            firstSource.copy(publicId = "target", status = "active", mergedIntoPublicId = null, rowVersion = 12), null)
+        val merge = rename.copy(kind = com.ticketbox.data.repository.MerchantDraftKind.Merge, key = "original-merge-key",
+            target = source.copy(publicId = "target", rowVersion = 11), aliasPolicy = com.ticketbox.domain.model.MerchantCatalogAliasPolicy.None,
+            parentRenameKey = rename.key, phase = "accepted", mergeReceipt = firstReceipt)
+        val originals = setOf(input, rename, otherRename, merge)
         var room = androidx.room.Room.databaseBuilder(context, AppDatabase::class.java, name).build()
         try {
             kotlinx.coroutines.runBlocking {
-                com.ticketbox.data.repository.MerchantCreationDraftStore(room.merchantCreationInputDao()).write(input)
+                room.merchantCreationInputDao().put(MerchantCreationInputEntity(binding.serverUrl, binding.ownerKey, binding.ledgerId,
+                    "Alias", input.key, """{"binding":{"serverUrl":"https://isolated.invalid","ledgerId":"owner","ownerKey":"original-owner",
+                    "sessionGeneration":"session","bindingRevision":"revision"},"kind":"Alias","key":"original-create-key",
+                    "displayName":"","canonicalMerchant":"  原标准商家  ","alias":"  原别名  ","phase":"unconfirmed"}"""))
+                com.ticketbox.data.repository.MerchantDraftStore(room.merchantCreationInputDao()).writeAll(listOf(rename, otherRename, merge))
             }
             room.close()
             room = androidx.room.Room.databaseBuilder(context, AppDatabase::class.java, name).build()
             kotlinx.coroutines.runBlocking {
-                val store = com.ticketbox.data.repository.MerchantCreationDraftStore(room.merchantCreationInputDao())
-                assertEquals(listOf(input), store.read(binding))
+                val store = com.ticketbox.data.repository.MerchantDraftStore(room.merchantCreationInputDao())
+                assertEquals(originals, store.read(binding).toSet())
                 assertTrue(store.read(binding.copy(ownerKey = "another-owner")).isEmpty())
                 assertTrue(store.read(binding.copy(ledgerId = "another-ledger")).isEmpty())
                 assertTrue(store.read(binding.copy(serverUrl = "https://another.invalid")).isEmpty())
                 store.remove(input.copy(key = "not-original"))
-                assertEquals(listOf(input), store.read(binding))
+                assertEquals(originals, store.read(binding).toSet())
+                store.acknowledge(merge)
+                assertEquals(setOf(input, otherRename), store.read(binding).toSet())
             }
         } finally {
             room.close()

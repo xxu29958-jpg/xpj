@@ -46,7 +46,7 @@ def test_merchant_catalog_crud_soft_delete_and_recycle_restore(
 
     hidden = client.patch(
         f"/api/merchants/catalog/{created['public_id']}",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"expected_row_version": created["row_version"], "status": "hidden"},
     )
     assert hidden.status_code == 200, hidden.text
@@ -62,7 +62,7 @@ def test_merchant_catalog_crud_soft_delete_and_recycle_restore(
     deleted = client.request(
         "DELETE",
         f"/api/merchants/catalog/{created['public_id']}",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"expected_row_version": hidden.json()["row_version"]},
     )
     assert deleted.status_code == 200, deleted.text
@@ -126,7 +126,7 @@ def test_merchant_catalog_is_ledger_isolated_and_conflict_checked(
 
     cross_patch = client.patch(
         f"/api/merchants/catalog/{owner['public_id']}",
-        headers=identity.gray_app_headers,
+        headers={**identity.gray_app_headers, "Idempotency-Key": str(uuid4())},
         json={"expected_row_version": owner["row_version"], "status": "hidden"},
     )
     assert cross_patch.status_code == 404
@@ -148,18 +148,18 @@ def test_viewer_cannot_mutate_merchant_catalog(
         ),
         client.patch(
             f"/api/merchants/catalog/{created['public_id']}",
-            headers=identity.app_headers,
+            headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
             json={"expected_row_version": created["row_version"], "status": "hidden"},
         ),
         client.request(
             "DELETE",
             f"/api/merchants/catalog/{created['public_id']}",
-            headers=identity.app_headers,
+            headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
             json={"expected_row_version": created["row_version"]},
         ),
         client.post(
             f"/api/merchants/catalog/{created['public_id']}/merge",
-            headers=identity.app_headers,
+            headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
             json={
                 "expected_row_version": created["row_version"],
                 "target_public_id": target["public_id"],
@@ -190,7 +190,7 @@ def test_merchant_catalog_delete_blocks_live_config_not_historical_facts(
     blocked_by_alias = client.request(
         "DELETE",
         f"/api/merchants/catalog/{created['public_id']}",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"expected_row_version": created["row_version"]},
     )
     assert blocked_by_alias.status_code == 409
@@ -201,7 +201,7 @@ def test_merchant_catalog_delete_blocks_live_config_not_historical_facts(
     blocked_by_recurring = client.request(
         "DELETE",
         f"/api/merchants/catalog/{created['public_id']}",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"expected_row_version": created["row_version"]},
     )
     assert blocked_by_recurring.status_code == 409
@@ -213,7 +213,7 @@ def test_merchant_catalog_delete_blocks_live_config_not_historical_facts(
     deleted = client.request(
         "DELETE",
         f"/api/merchants/catalog/{created['public_id']}",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"expected_row_version": created["row_version"]},
     )
     assert deleted.status_code == 200, deleted.text
@@ -237,7 +237,7 @@ def test_merchant_catalog_key_changing_rename_blocks_live_config_not_historical_
 
     occupied_conflict = client.patch(
         f"/api/merchants/catalog/{created['public_id']}",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "expected_row_version": created["row_version"],
             "display_name": "Occupied Rename Target",
@@ -256,7 +256,7 @@ def test_merchant_catalog_key_changing_rename_blocks_live_config_not_historical_
 
     blocked_by_alias = client.patch(
         f"/api/merchants/catalog/{created['public_id']}",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "expected_row_version": created["row_version"],
             "display_name": "Rename Target",
@@ -269,7 +269,7 @@ def test_merchant_catalog_key_changing_rename_blocks_live_config_not_historical_
 
     blocked_by_recurring = client.patch(
         f"/api/merchants/catalog/{created['public_id']}",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "expected_row_version": created["row_version"],
             "display_name": "Rename Target",
@@ -283,7 +283,7 @@ def test_merchant_catalog_key_changing_rename_blocks_live_config_not_historical_
 
     renamed = client.patch(
         f"/api/merchants/catalog/{created['public_id']}",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "expected_row_version": created["row_version"],
             "display_name": "Rename Target",
@@ -302,14 +302,14 @@ def test_merchant_catalog_stale_tokens_return_conflict(
     created = _create_catalog(client, identity.app_headers)
     updated = client.patch(
         f"/api/merchants/catalog/{created['public_id']}",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"expected_row_version": created["row_version"], "status": "hidden"},
     )
     assert updated.status_code == 200, updated.text
 
     stale_patch = client.patch(
         f"/api/merchants/catalog/{created['public_id']}",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"expected_row_version": created["row_version"], "status": "active"},
     )
     assert stale_patch.status_code == 409
@@ -318,7 +318,7 @@ def test_merchant_catalog_stale_tokens_return_conflict(
     stale_delete = client.request(
         "DELETE",
         f"/api/merchants/catalog/{created['public_id']}",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"expected_row_version": created["row_version"]},
     )
     assert stale_delete.status_code == 409

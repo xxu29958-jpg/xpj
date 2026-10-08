@@ -565,7 +565,8 @@ internal class FakeApiService(
     override suspend fun mergeMerchantCatalog(
         sourcePublicId: String,
         request: MerchantCatalogMergeRequest,
-    ): MerchantCatalogMergeDto = merchantApi.mergeMerchantCatalog(sourcePublicId, request)
+        idempotencyKey: String,
+    ): MerchantCatalogMergeDto = merchantApi.mergeMerchantCatalog(sourcePublicId, request, idempotencyKey)
 
     override suspend fun merchantAliases(): MerchantAliasListDto =
         merchantApi.merchantAliases()

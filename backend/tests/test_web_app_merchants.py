@@ -7,6 +7,8 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
+from tests._web_native_form_support import hidden_post_forms
+
 
 def test_web_merchants_local_returns_200(web_client: TestClient) -> None:
     resp = web_client.get("/web/merchants?ledger_id=owner")
@@ -33,7 +35,7 @@ def test_web_merchant_catalog_rename_conflict_points_to_merge(web_client: TestCl
 
     conflict = web_client.post(
         f"/web/merchants/catalog/{source_id}/rename",
-        data={
+        data={"idempotency_key": str(uuid4()),
             "ledger_id": "owner",
             "expected_row_version": source_rv,
             "display_name": "目标商家",
@@ -44,13 +46,13 @@ def test_web_merchant_catalog_rename_conflict_points_to_merge(web_client: TestCl
     assert conflict.status_code == 422
     assert 'data-body-stack="product"' in conflict.text
     assert f'data-catalog-key="{source_id}"' in conflict.text
-    assert 'aria-describedby="merchant-rename-error"' in conflict.text
+    assert 'aria-describedby="merchant-command-error"' in conflict.text
     assert 'role="alert"' in conflict.text
     assert 'name="display_name" value="目标商家"' in conflict.text
     assert _catalog_action_token(web_client, conflict.text, source_id, "rename", _re) == source_rv
     assert "商家名已被「目标商家」占用" in conflict.text
     assert "如需归并请使用『合并』" in conflict.text
-    assert f"/web/merchants/catalog/{source_id}/merge" in conflict.text
+    assert f"merchant={source_id}&amp;command=merge" in conflict.text
 
 
 def test_web_merchant_catalog_create_conflict_keeps_the_draft(web_client: TestClient) -> None:
@@ -86,7 +88,7 @@ def test_web_merchant_catalog_create_conflict_points_to_recycled_entry(
     public_id = _catalog_public_id_for_name(page.text, "待恢复商家", _re)
     deleted = web_client.post(
         f"/web/merchants/catalog/{public_id}/delete",
-        data={
+        data={"idempotency_key": str(uuid4()),
             "ledger_id": "owner",
             "expected_row_version": _catalog_action_token(web_client,
                 page.text,
@@ -192,13 +194,13 @@ def test_web_merchant_catalog_merge_retains_choice_after_conflict_then_creates_a
 
     renamed = web_client.post(
         f"/web/merchants/catalog/{target_id}/rename",
-        data={"ledger_id": "owner", "expected_row_version": target_rv, "display_name": "New Shop Updated"},
+        data={"idempotency_key": str(uuid4()), "ledger_id": "owner", "expected_row_version": target_rv, "display_name": "New Shop Updated"},
     )
     assert renamed.status_code == 200
     original_choice = f"{target_id}:{target_rv}"
     conflict = web_client.post(
         f"/web/merchants/catalog/{source_id}/merge",
-        data={"ledger_id": "owner", "expected_row_version": source_rv,
+        data={"idempotency_key": str(uuid4()), "ledger_id": "owner", "expected_row_version": source_rv,
               "target": original_choice, "alias_policy": "create_source_alias"},
         follow_redirects=False,
     )
@@ -206,13 +208,21 @@ def test_web_merchant_catalog_merge_retains_choice_after_conflict_then_creates_a
     assert f'value="{original_choice}" selected' in conflict.text
     assert 'value="create_source_alias" selected' in conflict.text
     assert _catalog_action_token(web_client, conflict.text, source_id, "merge", _re) == source_rv
-    assert f"/web/merchants/catalog/{source_id}/rename" in conflict.text, "The refused merge changed its source"
-    assert "还没有商家别名" in conflict.text, "The refused merge created an alias"
+    source_page = web_client.get(f"/web/merchants?ledger_id=owner&view=merchant&merchant={source_id}")
+    assert 'command=rename' in source_page.text, "The refused merge changed its source"
+    assert "还没有商家别名" in source_page.text, "The refused merge created an alias"
     target_rv = _catalog_action_token(web_client, conflict.text, target_id, "rename", _re)
 
+    original_form = hidden_post_forms(conflict.text)[f"/web/merchants/catalog/{source_id}/merge"]
+    reviewed = web_client.post(f"/web/merchants/catalog/{source_id}/merge", data={"idempotency_key": str(uuid4()), **original_form,
+        "target": original_choice, "alias_policy": "create_source_alias", "review_latest": "true"})
+    assert reviewed.status_code == 200
+    prepared = hidden_post_forms(reviewed.text)[f"/web/merchants/catalog/{source_id}/merge"]
+    assert prepared["idempotency_key"] != original_form["idempotency_key"]
+    assert f'value="{target_id}:{target_rv}" selected' in reviewed.text
     merged = web_client.post(
         f"/web/merchants/catalog/{source_id}/merge",
-        data={
+        data={"idempotency_key": str(uuid4()),
             "ledger_id": "owner",
             "expected_row_version": source_rv,
             "target": f"{target_id}:{target_rv}",
@@ -257,7 +267,7 @@ def _catalog_action_token(web_client: TestClient, html: str, public_id: str, act
     pattern = rf'/web/merchants/catalog/{public_id}/{action}.*?expected_row_version"\s*value="([^"]+)"'
     match = re_module.search(pattern, html, flags=re_module.DOTALL)
     if match is None:
-        page = web_client.get(f"/web/merchants?ledger_id=owner&view=merchant&merchant={public_id}")
+        page = web_client.get(f"/web/merchants?ledger_id=owner&view=merchant&merchant={public_id}&command={action}")
         assert page.status_code == 200
         match = re_module.search(pattern, page.text, flags=re_module.DOTALL)
     assert match, f"merchant task has no {action} form for {public_id}"
@@ -279,7 +289,7 @@ def _exercise_web_catalog_create_toggle_delete(web_client: TestClient, re_module
 
 
     catalog_public_id = _catalog_public_id_for_name(page.text, "星巴克", re_module)
-    page = web_client.get(f"/web/merchants?ledger_id=owner&view=merchant&merchant={catalog_public_id}")
+    page = web_client.get(f"/web/merchants?ledger_id=owner&view=merchant&merchant={catalog_public_id}&command=toggle")
     catalog_toggle_token = re_module.search(
         rf"/web/merchants/catalog/{catalog_public_id}/toggle.*?expected_row_version\"\s*value=\"([^\"]+)\"",
         page.text,
@@ -288,13 +298,13 @@ def _exercise_web_catalog_create_toggle_delete(web_client: TestClient, re_module
     assert catalog_toggle_token, page.text[:1500]
     hidden = web_client.post(
         f"/web/merchants/catalog/{catalog_public_id}/toggle",
-        data={"ledger_id": "owner", "expected_row_version": catalog_toggle_token.group(1)},
+        data={"idempotency_key": str(uuid4()), "ledger_id": "owner", "expected_row_version": catalog_toggle_token.group(1), "next_status": "hidden"},
         follow_redirects=False,
     )
     assert hidden.status_code in {303, 307}
     page = web_client.get("/web/merchants?ledger_id=owner")
     assert "隐藏" in page.text
-    page = web_client.get(f"/web/merchants?ledger_id=owner&view=merchant&merchant={catalog_public_id}")
+    page = web_client.get(f"/web/merchants?ledger_id=owner&view=merchant&merchant={catalog_public_id}&command=delete")
 
     catalog_delete_token = re_module.search(
         rf"/web/merchants/catalog/{catalog_public_id}/delete.*?expected_row_version\"\s*value=\"([^\"]+)\"",
@@ -304,7 +314,7 @@ def _exercise_web_catalog_create_toggle_delete(web_client: TestClient, re_module
     assert catalog_delete_token, page.text[:1500]
     catalog_deleted = web_client.post(
         f"/web/merchants/catalog/{catalog_public_id}/delete",
-        data={
+        data={"idempotency_key": str(uuid4()),
             "ledger_id": "owner",
             "expected_row_version": catalog_delete_token.group(1),
         },
@@ -463,7 +473,7 @@ def test_public_merchant_native_form_keeps_original_version_until_explicit_revie
         assert created.status_code == 303
         directory = web.get(created.headers["location"])
         public_id = _catalog_public_id_for_name(directory.text, "原商家", re)
-        detail = web.get(f"/web/merchants?ledger_id=owner&view=merchant&merchant={public_id}")
+        detail = web.get(f"/web/merchants?ledger_id=owner&view=merchant&merchant={public_id}&command=rename")
         rename_path = f"/web/merchants/catalog/{public_id}/rename"
         forms = hidden_post_forms(detail.text)
         original = forms[rename_path]
@@ -473,7 +483,8 @@ def test_public_merchant_native_form_keeps_original_version_until_explicit_revie
                                 if key != "csrf_token"})
         assert denied.status_code == 403
         toggle_path = f"/web/merchants/catalog/{public_id}/toggle"
-        changed = web.post(toggle_path, data=forms[toggle_path], headers=headers, follow_redirects=False)
+        toggle_page = web.get(f"/web/merchants?ledger_id=owner&view=merchant&merchant={public_id}&command=toggle")
+        changed = web.post(toggle_path, data=hidden_post_forms(toggle_page.text)[toggle_path], headers=headers, follow_redirects=False)
         assert changed.status_code == 303
         conflict = web.post(rename_path, data={**original, "display_name": draft}, headers=headers)
         assert conflict.status_code == 422 and f'value="{draft}"' in conflict.text
@@ -496,3 +507,24 @@ def test_public_merchant_native_form_keeps_original_version_until_explicit_revie
         with SessionLocal() as db:
             row = db.get(MerchantCatalog, original_id)
             assert row.public_id == public_id and row.display_name == draft.strip() and row.status == "hidden"
+        later_page = web.get(f"/web/merchants?ledger_id=owner&view=merchant&merchant={public_id}&command=rename")
+        later = hidden_post_forms(later_page.text)[rename_path]
+        assert web.post(rename_path, data={**later, "display_name": "后来人工确认的商家"}, headers=headers,
+                        follow_redirects=False).status_code == 303
+        replay = web.post(rename_path, data={**reviewed, "display_name": draft},
+                          headers={**headers, "Accept": "application/json"})
+        assert replay.status_code == 200
+        assert replay.json()["receipt"]["display_name"] == draft.strip()
+        assert replay.json()["ack"]["clientRef"] == reviewed["idempotency_key"]
+        with SessionLocal() as db:
+            assert db.get(MerchantCatalog, original_id).display_name == "后来人工确认的商家"
+        wrong_scope = web.post(rename_path, data={**reviewed, "display_name": draft, "ledger_id": "gray"},
+                               headers={**headers, "Accept": "application/json"})
+        assert wrong_scope.status_code == 409
+        assert wrong_scope.json()["error"] == "session_binding_changed"
+        from tests._infra.merchant_catalog import demote_owner_ledger_to_viewer
+
+        demote_owner_ledger_to_viewer()
+        denied_replay = web.post(rename_path, data={**reviewed, "display_name": draft},
+                                 headers={**headers, "Accept": "application/json"})
+        assert denied_replay.status_code == 403

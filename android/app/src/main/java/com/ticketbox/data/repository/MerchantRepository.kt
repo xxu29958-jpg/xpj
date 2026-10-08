@@ -6,13 +6,8 @@ import com.ticketbox.data.remote.dto.MerchantAliasDeleteRequest
 import com.ticketbox.data.remote.dto.MerchantAliasRequest
 import com.ticketbox.data.remote.dto.MerchantAliasUpdateRequest
 import com.ticketbox.data.remote.dto.MerchantCatalogCreateRequest
-import com.ticketbox.data.remote.dto.MerchantCatalogDeleteRequest
-import com.ticketbox.data.remote.dto.MerchantCatalogMergeRequest
-import com.ticketbox.data.remote.dto.MerchantCatalogUpdateRequest
 import com.ticketbox.domain.model.MerchantAlias
-import com.ticketbox.domain.model.MerchantCatalogAliasPolicy
 import com.ticketbox.domain.model.MerchantCatalog
-import com.ticketbox.domain.model.MerchantCatalogMergeResult
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import java.io.IOException
 import java.util.UUID
@@ -25,7 +20,7 @@ import java.util.UUID
 @Suppress("TooManyFunctions")
 class MerchantRepository(
     private val binding: ServerSessionBinding,
-    val creationDrafts: MerchantCreationDraftStore? = null,
+    val draftStore: MerchantDraftStore? = null,
     private val offlineMutations: MerchantAliasOfflineMutationWiring = MerchantAliasOfflineMutationWiring(),
 ) {
     private val outbox get() = offlineMutations.outbox
@@ -54,97 +49,34 @@ class MerchantRepository(
 
     fun observeAccess() = binding.apiProvider.observeActiveLedgerAccess()
 
-    suspend fun readCreationDrafts(owner: LogicalSessionBinding): Result<List<MerchantCreationDraft>> =
-        errorHandler.safeCall { requireNotNull(creationDrafts).read(owner) }
+    suspend fun readMerchantDrafts(owner: LogicalSessionBinding): Result<List<MerchantDraft>> =
+        errorHandler.safeCall { requireNotNull(draftStore).read(owner) }
 
-    suspend fun saveCreationDraft(draft: MerchantCreationDraft): Result<Unit> =
-        errorHandler.safeCall { requireNotNull(creationDrafts).write(draft) }
+    suspend fun saveMerchantDrafts(drafts: List<MerchantDraft>): Result<Unit> =
+        errorHandler.safeCall { requireNotNull(draftStore).writeAll(drafts) }
 
-    suspend fun removeCreationDraft(draft: MerchantCreationDraft): Result<Unit> =
-        errorHandler.safeCall { requireNotNull(creationDrafts).remove(draft) }
+    suspend fun acknowledgeMerchantDraft(draft: MerchantDraft): Result<Unit> =
+        errorHandler.safeCall { requireNotNull(draftStore).acknowledge(draft) }
 
-    suspend fun submitCreation(draft: MerchantCreationDraft): Result<MerchantCreationDraft> =
+    suspend fun submitDraft(draft: MerchantDraft): Result<MerchantDraft> =
         errorHandler.safeCall {
             ledgerRequestGuard.bindExact(draft.binding).call { api ->
                 when (draft.kind) {
-                    MerchantCreationKind.Catalog -> {
+                    MerchantDraftKind.Catalog -> {
                         require(draft.displayName.isNotBlank()) { "请输入商家名称。" }
                         val receipt = api.createMerchantCatalog(MerchantCatalogCreateRequest(displayName = draft.displayName), draft.key)
                         check(receipt.rowVersion == 1L && receipt.publicId.isNotBlank()) { "返回的原添加回执无法核对。" }
                         draft.copy(phase = "accepted", catalogReceipt = receipt, error = null)
                     }
-                    MerchantCreationKind.Alias -> {
+                    MerchantDraftKind.Alias -> {
                         require(draft.canonicalMerchant.isNotBlank() && draft.alias.isNotBlank()) { "请输入标准商家和别名。" }
                         val receipt = api.createMerchantAlias(MerchantAliasRequest(canonicalMerchant = draft.canonicalMerchant,
                             alias = draft.alias, enabled = true), draft.key)
                         check(receipt.rowVersion == 1L && receipt.publicId.isNotBlank()) { "返回的原添加回执无法核对。" }
                         draft.copy(phase = "accepted", aliasReceipt = receipt, error = null)
                     }
+                    else -> api.submitCatalogDraft(draft)
                 }
-            }
-        }
-
-    suspend fun updateMerchantCatalog(
-        publicId: String,
-        expectedRowVersion: Long,
-        displayName: String? = null,
-        status: String? = null,
-        expectedBinding: LogicalSessionBinding? = captureBinding(),
-    ): Result<MerchantCatalog> =
-        errorHandler.safeCall {
-            val cleanPublicId = publicId.trim()
-            require(cleanPublicId.isNotBlank()) { "请选择一个商家。" }
-            ledgerRequestGuard.bindExact(expectedBinding ?: throw RepositoryException("登录状态已失效，请重新绑定。")).call { api ->
-                api.updateMerchantCatalog(
-                    cleanPublicId,
-                    MerchantCatalogUpdateRequest(
-                        expectedRowVersion = expectedRowVersion,
-                        displayName = displayName?.trim()?.takeIf { it.isNotBlank() },
-                        status = status?.trim()?.takeIf { it.isNotBlank() },
-                    ),
-                    UUID.randomUUID().toString(),
-                ).toDomain()
-            }
-        }
-
-    suspend fun deleteMerchantCatalog(
-        publicId: String,
-        expectedRowVersion: Long,
-    ): Result<MerchantCatalog> =
-        errorHandler.safeCall {
-            val cleanPublicId = publicId.trim()
-            require(cleanPublicId.isNotBlank()) { "请选择一个商家。" }
-            ledgerRequestGuard.guardedCall { api ->
-                api.deleteMerchantCatalog(
-                    cleanPublicId,
-                    MerchantCatalogDeleteRequest(expectedRowVersion = expectedRowVersion),
-                    UUID.randomUUID().toString(),
-                ).toDomain()
-            }
-        }
-
-    suspend fun mergeMerchantCatalog(
-        source: MerchantCatalog,
-        target: MerchantCatalog,
-        aliasPolicy: MerchantCatalogAliasPolicy,
-        expectedBinding: LogicalSessionBinding? = captureBinding(),
-    ): Result<MerchantCatalogMergeResult> =
-        errorHandler.safeCall {
-            val cleanSource = source.publicId.trim()
-            val cleanTarget = target.publicId.trim()
-            require(cleanSource.isNotBlank() && cleanTarget.isNotBlank()) { "请选择要合并的商家。" }
-            require(cleanSource != cleanTarget) { "不能把商家合并到自身。" }
-            ledgerRequestGuard.bindExact(expectedBinding ?: throw RepositoryException("登录状态已失效，请重新绑定。")).call { api ->
-                api.mergeMerchantCatalog(
-                    cleanSource,
-                    MerchantCatalogMergeRequest(
-                        expectedRowVersion = source.rowVersion,
-                        targetPublicId = cleanTarget,
-                        targetRowVersion = target.rowVersion,
-                        aliasPolicy = aliasPolicy.apiValue,
-                        rewriteHistoricalExpenses = false,
-                    ),
-                ).toDomain()
             }
         }
 

@@ -9,6 +9,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
+import com.ticketbox.data.repository.MerchantDraftKind
 import com.ticketbox.domain.model.MerchantCatalog
 import com.ticketbox.ui.components.AppAction
 import com.ticketbox.ui.components.AppActionRow
@@ -18,6 +19,7 @@ import com.ticketbox.ui.design.AppSpacing
 
 @Composable
 internal fun MerchantDirectoryTask(state: MerchantAliasesScreenState, actions: MerchantAliasesScreenActions, editors: MerchantEditors) {
+    MerchantCommandShelf(state, actions, editors)
     MerchantDirectorySearch(editors)
     val term = editors.search.trim()
     val matchingKeys = state.aliases.filter {
@@ -106,8 +108,8 @@ private fun MerchantAddAlias(
         modifier = Modifier.fillMaxWidth(), onClick = {
             actions.onStartEditing()
             // Reopening a different task must not replace an independently started alias draft.
-            if (state.creation.draft(com.ticketbox.data.repository.MerchantCreationKind.Alias) == null && item != null)
-                actions.creation.onEdit(com.ticketbox.data.repository.MerchantCreationKind.Alias, "", item.displayName, "")
+            if (state.drafts.draft(com.ticketbox.data.repository.MerchantDraftKind.Alias) == null && item != null)
+                actions.creation.onEdit(com.ticketbox.data.repository.MerchantDraftKind.Alias, "", item.displayName, "")
             editors.openCreation(MerchantCreateTool.Alias)
         })
 }
@@ -115,17 +117,17 @@ private fun MerchantAddAlias(
 @Composable
 private fun MerchantObjectActions(item: MerchantCatalog, state: MerchantAliasesScreenState, actions: MerchantAliasesScreenActions, editors: MerchantEditors) {
     AppActionRow(
-        primary = AppAction(stringResource(R.string.merchant_catalog_card_action_rename), enabled = !state.busy,
-            onClick = { actions.onStartEditing(); editors.catalogDialogs.openRename(item) }),
+        primary = AppAction(stringResource(R.string.merchant_catalog_card_action_rename), enabled = !state.busy && state.drafts.ready,
+            onClick = { actions.onStartEditing(); actions.catalog.onBegin(MerchantDraftKind.Rename, item); editors.catalogDialogs.open(MerchantDraftKind.Rename, item.publicId) }),
         secondary = AppAction(stringResource(R.string.merchant_catalog_card_action_merge),
-            enabled = !state.busy && state.catalog.any { it.isActive && it.publicId != item.publicId },
-            onClick = { actions.onStartEditing(); editors.catalogDialogs.openMerge(item) }),
+            enabled = !state.busy && state.drafts.ready && state.catalog.any { it.isActive && it.publicId != item.publicId },
+            onClick = { actions.onStartEditing(); actions.catalog.onBegin(MerchantDraftKind.Merge, item); editors.catalogDialogs.open(MerchantDraftKind.Merge, item.publicId) }),
     )
     AppActionRow(
         primary = AppAction(stringResource(if (item.isActive) R.string.merchant_catalog_card_action_hide else R.string.merchant_catalog_card_action_show),
-            enabled = !state.busy, onClick = { actions.catalog.onToggle(item) }),
-        secondary = AppAction(stringResource(R.string.merchant_catalog_card_action_delete), enabled = !state.busy,
-            onClick = { actions.onStartEditing(); editors.deletingCatalog = item }),
+            enabled = !state.busy && state.drafts.ready, onClick = { actions.catalog.onBegin(MerchantDraftKind.Visibility, item); editors.catalogDialogs.open(MerchantDraftKind.Visibility, item.publicId) }),
+        secondary = AppAction(stringResource(R.string.merchant_catalog_card_action_delete), enabled = !state.busy && state.drafts.ready,
+            onClick = { actions.onStartEditing(); actions.catalog.onBegin(MerchantDraftKind.Delete, item); editors.catalogDialogs.open(MerchantDraftKind.Delete, item.publicId) }),
     )
     Text(stringResource(R.string.merchant_catalog_delete_dialog_text, item.displayName), style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -147,4 +149,21 @@ private fun merchantCatalogSummary(item: MerchantCatalog, catalog: List<Merchant
         else -> R.string.merchant_catalog_card_status_hidden
     }
     return stringResource(R.string.merchant_catalog_usage, item.usageCount, stringResource(label))
+}
+
+@Composable
+private fun MerchantCommandShelf(state: MerchantAliasesScreenState, actions: MerchantAliasesScreenActions, editors: MerchantEditors) {
+    val originals = state.drafts.drafts.filter { !it.kind.isCreation }
+    if (originals.isEmpty()) return
+    SettingsSection(title = stringResource(R.string.merchant_command_tasks)) {
+        originals.forEach { draft ->
+            SettingsEntryRow(stringResource(R.string.merchant_command_task, stringResource(merchantCommandTitle(draft.kind)),
+                requireNotNull(draft.source).displayName),
+                stringResource(if (draft.phase == "unconfirmed") R.string.merchant_command_unconfirmed else R.string.merchant_command_editing),
+                R.drawable.ic_lucide_store, onClick = {
+                    actions.onStartEditing()
+                    editors.catalogDialogs.open(draft.kind, draft.source.publicId)
+                })
+        }
+    }
 }

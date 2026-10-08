@@ -9,9 +9,9 @@ import com.ticketbox.data.remote.dto.MerchantCatalogDto
 import com.ticketbox.data.repository.FakeApiService
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.repository.FakeTicketboxSettingsStore
-import com.ticketbox.data.repository.MerchantCreationKind
+import com.ticketbox.data.repository.MerchantDraftKind
 import com.ticketbox.data.repository.MerchantRepository
-import com.ticketbox.data.repository.fakeMerchantCreationDraftStore
+import com.ticketbox.data.repository.fakeMerchantDraftStore
 import com.ticketbox.data.repository.ledgerSessionFixture
 import com.ticketbox.data.repository.testServerSessionBinding
 import kotlinx.coroutines.CoroutineScope
@@ -28,9 +28,9 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class MerchantCreationControllerTest {
+class MerchantDraftControllerTest {
     @Test fun recreatedControllerKeepsBothOriginalInputsAndAcceptedReceiptAfterLostReply() = runTest {
-        for (kind in MerchantCreationKind.entries) {
+        for (kind in listOf(MerchantDraftKind.Catalog, MerchantDraftKind.Alias)) {
             val keys = mutableListOf<String>()
             val bodies = mutableListOf<List<String>>()
             val accepted = mutableMapOf<String, Any>()
@@ -63,9 +63,9 @@ class MerchantCreationControllerTest {
                 override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = api
             },
                 settingsStore = settings, tokenStore = ledgerSessionFixture("owner", "Ledger")),
-                fakeMerchantCreationDraftStore { if (refuseRemoval) throw IOException("Local receipt removal failed") })
+                fakeMerchantDraftStore { if (refuseRemoval) throw IOException("Local receipt removal failed") })
             val firstScope = CoroutineScope(coroutineContext + SupervisorJob())
-            val first = MerchantCreationController(repository, firstScope) {}
+            val first = MerchantDraftController(repository, firstScope) {}
             first.state.first { it.ready && it.canModify }
             first.edit(kind, "  原商家  ", "  标准商家  ", "  原别名  ")
             first.submit(kind)
@@ -79,7 +79,7 @@ class MerchantCreationControllerTest {
 
             val resumedScope = CoroutineScope(coroutineContext + SupervisorJob())
             var completed = 0
-            val resumed = MerchantCreationController(repository, resumedScope) { completed++ }
+            val resumed = MerchantDraftController(repository, resumedScope) { completed++ }
             resumed.state.first { it.ready && it.canModify }
             assertEquals(original, resumed.state.value.draft(kind))
             resumed.submit(kind)
@@ -96,7 +96,7 @@ class MerchantCreationControllerTest {
             refuseRemoval = true
             resumed.acknowledge(kind, original.key)
             resumed.state.first { it.error != null && !it.busy }
-            assertEquals("accepted", repository.readCreationDrafts(original.binding).getOrThrow().single().phase)
+            assertEquals("accepted", repository.readMerchantDrafts(original.binding).getOrThrow().single().phase)
             assertEquals(0, completed)
             assertEquals(2, keys.size)
             refuseRemoval = false
@@ -104,7 +104,7 @@ class MerchantCreationControllerTest {
             resumed.state.first { it.draft(kind) == null && !it.busy }
             assertEquals(1, completed)
             assertNull(resumed.state.value.draft(kind))
-            assertEquals(emptyList(), repository.readCreationDrafts(original.binding).getOrThrow())
+            assertEquals(emptyList(), repository.readMerchantDrafts(original.binding).getOrThrow())
             resumedScope.cancel()
         }
     }

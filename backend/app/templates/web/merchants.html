@@ -16,14 +16,15 @@
 {% block content %}
 <div class="library-workspace stack">
 <header class="product-page-header"><div class="product-page-heading">
-<h1 class="page-title">{% if merchant_view == 'new' %}添加商家{% elif merchant_view == 'aliases' %}商家别名{% elif merchant_view == 'merchant' %}{{ selected_merchant.display_name if selected_merchant else '原商家已不可用' }}{% else %}常去的店{% endif %}</h1>
-<p class="product-page-summary">{% if merchant_view == 'merchant' %}管理这家店的名字与别名，保留原有记录。{% elif merchant_view == 'aliases' %}把同一家店的不同写法关联起来。{% else %}名字统一，回头找更方便。{% endif %}</p>
+<h1 class="page-title">{% if merchant_view == 'command' %}{{ command_label }}{% elif merchant_view == 'new' %}添加商家{% elif merchant_view == 'aliases' %}商家别名{% elif merchant_view == 'merchant' %}{{ selected_merchant.display_name if selected_merchant else '原商家已不可用' }}{% else %}常去的店{% endif %}</h1>
+<p class="product-page-summary">{% if merchant_view in ['merchant', 'command'] %}管理这家店的名字与别名，保留原有记录。{% elif merchant_view == 'aliases' %}把同一家店的不同写法关联起来。{% else %}名字统一，回头找更方便。{% endif %}</p>
 </div></header>
 {% if not can_write %}<div class="product-feedback" role="status">只读角色可以查看商家目录和别名，不能添加或修改。</div>{% endif %}
 {% if flash_message %}<div class="product-feedback" role="status"><span>{{ flash_message }}</span>
 {% if undo_public_id and can_write %}<form method="post" action="/web/merchants/aliases/{{ undo_public_id }}/undo" class="undo-banner-action">{{ csrf_field|safe }}<input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}"><button class="product-button" type="submit">撤销</button></form>{% endif %}</div>{% endif %}
-{% with merge_items=catalog, merge_kind='merchant' %}{% include 'partials/reference_merge_recovery.html' %}{% endwith %}
-{% if merchant_view == 'new' %}
+{% if merchant_view == 'command' %}
+{% include 'partials/merchant_command.html' %}
+{% elif merchant_view == 'new' %}
 {{ forms.catalog_create() }}
 {% elif merchant_view == 'merchant' %}
 {% include 'partials/merchant_detail.html' %}
@@ -53,6 +54,9 @@
 {% endif %}
 {% if merchant_draft_scope %}{% for kind, label in [('catalog', '商家'), ('alias', '别名')] %}
 <details data-{{ kind }}creation-draft-shelf{% if merchant_view == 'directory' %} data-merchant-shelf-kind="{{ kind }}" data-merchant-scope="{{ merchant_draft_scope|tojson|forceescape }}"{% endif %} hidden><summary>此浏览器保留的{{ label }}添加任务</summary><ul data-{{ kind }}creation-draft-list></ul></details>
+{% endfor %}{% endif %}
+{% if merchant_draft_scope %}{% for kind, label in [('rename', '重命名'), ('merge', '合并'), ('toggle', '显示与隐藏'), ('delete', '回收站')] %}
+<details data-catalog{{ kind }}-draft-shelf data-merchant-command-shelf="{{ kind }}" data-merchant-scope="{{ merchant_draft_scope|tojson|forceescape }}" hidden><summary>此浏览器保留的商家{{ label }}任务</summary><ul data-catalog{{ kind }}-draft-list></ul></details>
 {% endfor %}{% endif %}
 <div class="product-entry product-entry--static"><span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#info"/></svg></span><span class="product-entry-copy"><strong>保留你确认的商家</strong><span>目录和别名不会覆盖原始账单商家。匹配只提供建议。</span></span></div>
 {% if merchant_view == "directory" %}{% if can_write %}<a class="product-button product-button--primary" href="{{ directory_href }}&amp;view=new">添加商家 <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-right"/></svg></a>{% endif %}{% endif %}

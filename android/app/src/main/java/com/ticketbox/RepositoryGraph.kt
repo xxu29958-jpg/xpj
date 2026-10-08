@@ -232,7 +232,7 @@ internal class RepositoryGraph(
 
     val merchantRepository = MerchantRepository(
         binding = serverSessionBinding,
-        creationDrafts = com.ticketbox.data.repository.MerchantCreationDraftStore(database.merchantCreationInputDao()),
+        draftStore = com.ticketbox.data.repository.MerchantDraftStore(database.merchantCreationInputDao()),
         // PR-2g.5: outbox + delete adapter.
         // PR-2g.6: + update adapter for updateMerchantAliasAllowingOffline.
         offlineMutations = MerchantAliasOfflineMutationWiring(

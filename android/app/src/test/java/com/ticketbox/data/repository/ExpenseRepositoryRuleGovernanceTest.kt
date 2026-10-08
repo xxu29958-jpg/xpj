@@ -115,8 +115,8 @@ class ExpenseRepositoryRuleGovernanceTest {
         )
 
         val listed = merchantRepository.merchantAliases().getOrThrow()
-        val created = requireNotNull(merchantRepository.submitCreation(MerchantCreationDraft(
-            requireNotNull(merchantRepository.captureBinding()), MerchantCreationKind.Alias, "alias-original-key",
+        val created = requireNotNull(merchantRepository.submitDraft(MerchantDraft(
+            requireNotNull(merchantRepository.captureBinding()), MerchantDraftKind.Alias, "alias-original-key",
             canonicalMerchant = " 星巴克 ", alias = " Starbucks ")).getOrThrow().aliasReceipt)
         // ADR-0038 PR-2e: PATCH/DELETE require the token; pass the freshly
         // created alias's rowVersion so the fixture sees a real token shape.

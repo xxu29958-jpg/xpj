@@ -37,11 +37,9 @@ from app.services.merchant_alias_service import (
     undo_delete_merchant_alias,
     update_merchant_alias,
 )
+from app.services.merchant_catalog_command_service import submit_catalog_command
 from app.services.merchant_catalog_service import (
-    delete_merchant_catalog,
     list_merchant_catalog,
-    merge_merchant_catalog,
-    update_merchant_catalog,
 )
 from app.services.merchant_creation_service import submit_merchant_creation
 from app.tenants import AuthContext
@@ -82,32 +80,24 @@ def post_merchant_catalog(
 def patch_merchant_catalog(
     public_id: str,
     payload: MerchantCatalogUpdateRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> MerchantCatalogResponse:
-    return update_merchant_catalog(
-        db,
-        tenant_id=auth.tenant_id,
-        public_id=public_id,
-        expected_row_version=payload.expected_row_version,
-        display_name=payload.display_name,
-        status=payload.status,
-    )
+    return submit_catalog_command(db, tenant_id=auth.tenant_id, actor_account_id=auth.account_id,
+        public_id=public_id, payload=payload, idempotency_key=idempotency_key)
 
 
 @router.delete("/catalog/{public_id}", response_model=MerchantCatalogResponse)
 def delete_merchant_catalog_route(
     public_id: str,
     payload: MerchantCatalogDeleteRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> MerchantCatalogResponse:
-    return delete_merchant_catalog(
-        db,
-        tenant_id=auth.tenant_id,
-        public_id=public_id,
-        expected_row_version=payload.expected_row_version,
-    )
+    return submit_catalog_command(db, tenant_id=auth.tenant_id, actor_account_id=auth.account_id,
+        public_id=public_id, payload=payload, idempotency_key=idempotency_key)
 
 
 @router.post(
@@ -117,19 +107,12 @@ def delete_merchant_catalog_route(
 def merge_merchant_catalog_route(
     source_public_id: str,
     payload: MerchantCatalogMergeRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> MerchantCatalogMergeResponse:
-    return merge_merchant_catalog(
-        db,
-        tenant_id=auth.tenant_id,
-        source_public_id=source_public_id,
-        expected_row_version=payload.expected_row_version,
-        target_public_id=payload.target_public_id,
-        target_row_version=payload.target_row_version,
-        alias_policy=payload.alias_policy,
-        rewrite_historical_expenses=payload.rewrite_historical_expenses,
-    )
+    return submit_catalog_command(db, tenant_id=auth.tenant_id, actor_account_id=auth.account_id,
+        public_id=source_public_id, payload=payload, idempotency_key=idempotency_key)
 
 
 @router.get("/aliases", response_model=MerchantAliasListResponse)

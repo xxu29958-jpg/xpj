@@ -25,6 +25,12 @@ from app.routes._web_draft_binding import (
     require_draft_binding,
     reviewed_draft_scope,
 )
+from app.routes._web_merchant_catalog import (
+    MerchantCommandForm,
+    catalog_form_context,
+    catalog_payload,
+    review_catalog_form,
+)
 from app.routes._web_session_common import resolve_web_actor
 from app.routes.web_common import (
     LocalOnly,
@@ -45,13 +51,8 @@ from app.services.merchant_alias_service import (
     undo_delete_merchant_alias,
     update_merchant_alias,
 )
-from app.services.merchant_catalog_service import (
-    delete_merchant_catalog,
-    get_merchant_catalog,
-    list_merchant_catalog,
-    merge_merchant_catalog,
-    update_merchant_catalog,
-)
+from app.services.merchant_catalog_command_service import submit_catalog_command
+from app.services.merchant_catalog_service import list_merchant_catalog
 from app.services.merchant_creation_service import submit_merchant_creation
 
 router = APIRouter(prefix="/web", tags=["web"])
@@ -85,7 +86,7 @@ def _catalog_conflict_message(exc: AppError) -> str:
         return f"商家名已被「{conflict_name}」占用；如需归并请使用『合并』。"
     if "conflict_alias_public_id" in details:
         return "来源商家名已被现有别名占用，无法自动创建来源别名；请先处理该别名，或选择不创建别名。"
-    return "商家已在其它端被修改，或仍被启用别名/固定支出引用；请刷新后重试。"
+    return "商家已在其它端被修改，或仍被启用别名/固定支出引用；请核对最新资料后再确认。"
 
 
 def _catalog_rename_error_message(exc: AppError) -> str:
@@ -124,9 +125,6 @@ def _merchant_view_context(request: Request, ctx: dict) -> dict:
         view = "new"
     if ctx["alias_create_error"]:
         view = "aliases"
-    if ctx["rename_error_public_id"] or ctx["merge_draft"]:
-        view = "merchant"
-        public_id = ctx["rename_error_public_id"] or ctx["merge_draft"]["public_id"]
     selected = next((item for item in ctx["catalog"] if item.public_id == public_id), None)
     return {"merchant_view": view, "selected_merchant": selected,
             **_merchant_directory_context(request, ctx),
@@ -142,18 +140,15 @@ def _render_merchants(
     selected_id: str,
     msg: str = "",
     undo: str = "",
-    rename_error: str = "",
-    rename_error_public_id: str = "",
-    rename_error_value: str = "",
-    rename_original_version: str = "",
-    rename_reviewed: bool = False,
     catalog_create_error: str = "",
     catalog_create_value: str = "",
     catalog_create_recycle: bool = False,
     alias_create_error: str = "",
     alias_create_draft: dict[str, str] | None = None,
-    merge_error: str = "",
-    merge_draft: dict[str, str] | None = None,
+    command_kind: str = "",
+    command_form: MerchantCommandForm | None = None,
+    command_result: str = "",
+    command_error: str = "",
     creation_kind: str = "",
     creation_form: MerchantCreateForm | None = None,
     creation_result: str = "",
@@ -174,18 +169,11 @@ def _render_merchants(
         aliases=list_merchant_aliases(db, selected_id),
         flash_message=msg,
         undo_public_id=undo,
-        rename_error=rename_error,
-        rename_error_public_id=rename_error_public_id,
-        rename_error_value=rename_error_value,
-        rename_original_version=rename_original_version,
-        rename_reviewed=rename_reviewed,
         catalog_create_error=catalog_create_error,
         catalog_create_value=catalog_create_value,
         catalog_create_recycle=catalog_create_recycle,
         alias_create_error=alias_create_error,
         alias_create_draft=alias_create_draft or {},
-        merge_error=merge_error,
-        merge_draft=merge_draft or {},
         q="?ledger_id=" + selected_id,
     )
     ctx.update(_merchant_view_context(request, ctx))
@@ -199,6 +187,8 @@ def _render_merchants(
         ctx.update(merchant_view="new" if creation_kind == "catalog" else "aliases",
             directory_href="/web/merchants?" + urlencode({"ledger_id": creation_form.ledger_id,
                 "search": creation_form.search, "status": creation_form.status}))
+    ctx.update(catalog_form_context(request, ctx, scope, kind=command_kind, values=command_form,
+        result=command_result, error=command_error))
     return templates.TemplateResponse(
         request=request,
         name="merchants.html",
@@ -291,196 +281,72 @@ def web_merchant_catalog_create(request: Request, values: Annotated[MerchantCrea
     return _create_merchant(request, db, "catalog", values)
 
 
-@router.post("/merchants/catalog/{public_id}/rename", response_class=HTMLResponse)
-def web_merchant_catalog_rename(
-    request: Request,
-    public_id: str,
-    display_name: str = Form(""),
-    ledger_id: str = Form(""),
-    expected_row_version: str = Form(""),
-    review_latest: str = Form(""),
-    _local: None = LocalOnly,
-    db: Session = Depends(get_db),
-) -> Response:
+def _catalog_command_failure(request: Request, db: Session, *, kind: str, values: MerchantCommandForm,
+    options: list, selected_id: str, exc: AppError) -> Response:
+    db.rollback()
+    message = _catalog_rename_error_message(exc) if kind == "rename" else _catalog_conflict_message(exc)
+    refusal = "rejected" if exc.error in {"state_conflict", "invalid_request", "idempotency_key_reused", "idempotency_key_required", "not_found"} else "blocked"
+    return draft_error_response(request, AppError(exc.error, message, status_code=exc.status_code), refusal_result=refusal) or _render_merchants(
+        request, db, options=options, selected_id=selected_id, command_kind=kind, command_form=values,
+        command_result=refusal, command_error=message, status_code=422 if refusal == "rejected" else exc.status_code)
+
+
+def _catalog_command(request: Request, db: Session, public_id: str, kind: str, values: MerchantCommandForm) -> Response:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
-    _require_selected_ledger_write(options, selected_id)
-    if review_latest == "1":
-        try:
-            current = get_merchant_catalog(db, tenant_id=selected_id, public_id=public_id)
-        except AppError as exc:
-            return _render_merchants(request, db, options=options, selected_id=selected_id,
-                rename_error=_catalog_rename_error_message(exc), rename_error_public_id=public_id,
-                rename_error_value=display_name, rename_original_version=expected_row_version, status_code=422)
-        return _render_merchants(request, db, options=options, selected_id=selected_id,
-            rename_error_public_id=public_id, rename_error_value=display_name,
-            rename_original_version=str(current.row_version), rename_reviewed=True)
-    parsed = parse_form_row_version_token(expected_row_version)
-    if parsed is None:
-        db.rollback()
-        return _render_merchants(
-            request,
-            db,
-            options=options,
-            selected_id=selected_id,
-            rename_error="页面已过期，请使用当前商家状态重试。",
-            rename_error_public_id=public_id,
-            rename_error_value=display_name,
-            rename_original_version=expected_row_version,
-            status_code=422,
-        )
+    selected_id = _resolve_selected_ledger_id(db, values.ledger_id or None, options, request=request)
+    if "application/json" not in request.headers.get("accept", ""):
+        retained = preserve_original_ledger_form(request, db, options=options, selected=selected_id,
+            fields=values.model_dump(), task="商家操作")
+        if retained is not None:
+            return retained
     try:
-        item = update_merchant_catalog(
-            db,
-            tenant_id=selected_id,
-            public_id=public_id,
-            expected_row_version=parsed,
-            display_name=display_name,
-        )
-        msg = f"商家已重命名为「{item.display_name}」。"
+        _require_selected_ledger_write(options, selected_id)
+        if values.ledger_id != selected_id or values.merchant not in {"", public_id}:
+            raise AppError("session_binding_changed", "原账本或商家无法确认，原输入仍保留。", status_code=409)
+        values.merchant = public_id
+        values.draft_scope = reviewed_draft_scope(db, request, values.draft_scope, review=values.review_latest)
+        require_draft_binding(db, request, ledger_id=values.ledger_id,
+            draft_scope=values.draft_scope, require_session=False)
+        if values.review_latest:
+            reviewed = review_catalog_form(db, kind, values)
+            reviewed.idempotency_key = str(uuid4())
+            return _render_merchants(request, db, options=options, selected_id=selected_id,
+                command_kind=kind, command_form=reviewed, command_result="prepared")
+        actor, _ = resolve_web_actor(db, request, selected_id)
+        receipt = submit_catalog_command(db, tenant_id=selected_id, actor_account_id=actor, public_id=public_id,
+            payload=catalog_payload(kind, values), idempotency_key=values.idempotency_key)
     except AppError as exc:
-        db.rollback()
-        return _render_merchants(
-            request,
-            db,
-            options=options,
-            selected_id=selected_id,
-            rename_error=_catalog_rename_error_message(exc),
-            rename_error_public_id=public_id,
-            rename_error_value=display_name,
-            rename_original_version=expected_row_version,
-            status_code=422,
-        )
-    return _web_redirect("/web/merchants", selected_id, msg=msg)
+        return _catalog_command_failure(request, db, kind=kind, values=values, options=options, selected_id=selected_id, exc=exc)
+    message = (f"商家「{receipt.source.display_name}」已合并到「{receipt.target.display_name}」。历史账单不会改写；"
+        + ("已创建来源别名。" if receipt.created_alias_public_id else "未创建来源别名。") if kind == "merge"
+        else f"已确认商家「{receipt.display_name}」的原操作。")
+    redirect = _web_redirect("/web/merchants", selected_id, search=values.search, status=values.status, msg=message)
+    return draft_ack_response(request, draft_scope=values.draft_scope, idempotency_key=values.idempotency_key,
+        receipt=receipt, next_href=redirect.headers["location"]) or redirect
+
+
+@router.post("/merchants/catalog/{public_id}/rename", response_class=HTMLResponse)
+def web_merchant_catalog_rename(request: Request, public_id: str, values: Annotated[MerchantCommandForm, Form()],
+    _local: None = LocalOnly, db: Session = Depends(get_db)) -> Response:
+    return _catalog_command(request, db, public_id, "rename", values)
 
 
 @router.post("/merchants/catalog/{public_id}/merge", response_class=HTMLResponse)
-def web_merchant_catalog_merge(
-    request: Request,
-    public_id: str,
-    target: str = Form(""),
-    alias_policy: str = Form(""),
-    ledger_id: str = Form(""),
-    expected_row_version: str = Form(""),
-    _local: None = LocalOnly,
-    db: Session = Depends(get_db),
-) -> HTMLResponse:
-    options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
-    _require_selected_ledger_write(options, selected_id)
-    source_rv = parse_form_row_version_token(expected_row_version)
-    target_public_id, _, target_rv_raw = target.rpartition(":")
-    target_rv = parse_form_row_version_token(target_rv_raw)
-    draft = {
-        "public_id": public_id, "target": target, "expected_row_version": expected_row_version,
-        "alias_policy": alias_policy,
-    }
-    if (
-        source_rv is None
-        or not target_public_id
-        or target_rv is None
-        or alias_policy not in {"none", "create_source_alias"}
-    ):
-        db.rollback()
-        return _render_merchants(
-            request, db, options=options, selected_id=selected_id,
-            merge_error="页面已过期，请核对当前商家、合并目标和别名处理。", merge_draft=draft, status_code=422,
-        )
-    try:
-        result = merge_merchant_catalog(
-            db,
-            tenant_id=selected_id,
-            source_public_id=public_id,
-            expected_row_version=source_rv,
-            target_public_id=target_public_id,
-            target_row_version=target_rv,
-            alias_policy=alias_policy,
-            rewrite_historical_expenses=False,
-        )
-    except AppError as exc:
-        db.rollback()
-        return _render_merchants(
-            request, db, options=options, selected_id=selected_id,
-            merge_error=_catalog_conflict_message(exc), merge_draft=draft, status_code=422,
-        )
-    alias_msg = (
-        "已创建来源别名，后续规则会折叠到目标商家。"
-        if result.created_alias_public_id
-        else "未创建来源别名。"
-    )
-    return _web_redirect(
-        "/web/merchants",
-        selected_id,
-        msg=(
-            f"商家「{result.source.display_name}」已合并到「{result.target.display_name}」。"
-            f"历史账单不会改写；{alias_msg}"
-        ),
-    )
+def web_merchant_catalog_merge(request: Request, public_id: str, values: Annotated[MerchantCommandForm, Form()],
+    _local: None = LocalOnly, db: Session = Depends(get_db)) -> Response:
+    return _catalog_command(request, db, public_id, "merge", values)
 
 
 @router.post("/merchants/catalog/{public_id}/toggle", response_class=HTMLResponse)
-def web_merchant_catalog_toggle(
-    request: Request,
-    public_id: str,
-    ledger_id: str = Form(""),
-    expected_row_version: str = Form(""),
-    _local: None = LocalOnly,
-    db: Session = Depends(get_db),
-) -> RedirectResponse:
-    options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
-    _require_selected_ledger_write(options, selected_id)
-    parsed = parse_form_row_version_token(expected_row_version)
-    if parsed is None:
-        return _stale_catalog_redirect(selected_id)
-    try:
-        item = get_merchant_catalog(db, tenant_id=selected_id, public_id=public_id)
-        next_status = "hidden" if item.status == "active" else "active"
-        updated = update_merchant_catalog(
-            db,
-            tenant_id=selected_id,
-            public_id=public_id,
-            expected_row_version=parsed,
-            status=next_status,
-        )
-        msg = f"商家「{updated.display_name}」{'已显示' if updated.status == 'active' else '已隐藏'}。"
-    except AppError as exc:
-        msg = _catalog_conflict_message(exc)
-    return _web_redirect("/web/merchants", selected_id, msg=msg)
+def web_merchant_catalog_toggle(request: Request, public_id: str, values: Annotated[MerchantCommandForm, Form()],
+    _local: None = LocalOnly, db: Session = Depends(get_db)) -> Response:
+    return _catalog_command(request, db, public_id, "toggle", values)
 
 
 @router.post("/merchants/catalog/{public_id}/delete", response_class=HTMLResponse)
-def web_merchant_catalog_delete(
-    request: Request,
-    public_id: str,
-    ledger_id: str = Form(""),
-    expected_row_version: str = Form(""),
-    _local: None = LocalOnly,
-    db: Session = Depends(get_db),
-) -> RedirectResponse:
-    options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
-    _require_selected_ledger_write(options, selected_id)
-    parsed = parse_form_row_version_token(expected_row_version)
-    if parsed is None:
-        return _stale_catalog_redirect(selected_id)
-    try:
-        item = get_merchant_catalog(db, tenant_id=selected_id, public_id=public_id)
-        display_name = item.display_name
-        delete_merchant_catalog(
-            db,
-            tenant_id=selected_id,
-            public_id=public_id,
-            expected_row_version=parsed,
-        )
-    except AppError as exc:
-        msg = _catalog_conflict_message(exc)
-        return _web_redirect("/web/merchants", selected_id, msg=msg)
-    return _web_redirect(
-        "/web/merchants",
-        selected_id,
-        msg=f"商家「{display_name}」已移入回收站。",
-    )
+def web_merchant_catalog_delete(request: Request, public_id: str, values: Annotated[MerchantCommandForm, Form()],
+    _local: None = LocalOnly, db: Session = Depends(get_db)) -> Response:
+    return _catalog_command(request, db, public_id, "delete", values)
 
 
 @router.post("/merchants/aliases/create", response_class=HTMLResponse)

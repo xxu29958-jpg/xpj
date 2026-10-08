@@ -41,6 +41,18 @@ def render(kind, values=None, native_result=""):
                   "currency_input": JPY_INPUT, "currency_options": ["JPY", "CNY", "USD"],
                   "csrf_token": "synthetic", "csrf_field": '<input name="csrf_token" type="hidden" value="synthetic">',
                   "asset_version": "preflight", "request": {"query_params": {}}, "status_filter": ""}
+    if kind.startswith("catalog-"):
+        command = kind.removeprefix("catalog-")
+        item = {"public_id": "merchant-original", "display_name": "原商家", "status": "active", "row_version": 7}
+        command_form = {"ledger_id": "owner", "merchant": item["public_id"], "search": "原筛选", "status": "all",
+            "source_name": item["display_name"], "target_name": "", "expected_row_version": "7", "display_name": "原商家",
+            "next_status": "hidden", "target": "", "alias_policy": "", "idempotency_key": key,
+            "draft_ref": str(uuid4()), "draft_scope": json.dumps(scope)}
+        return ENV.get_template("merchants.html").render(**common, merchant_draft_scope=scope,
+            merchant_view="command", command_kind=command, command_form=command_form, command_result="", command_error="",
+            command_available=True, command_label="确认商家操作", selected_merchant=item, catalog=[item,
+                {"public_id": "merchant-target", "display_name": "原目标", "status": "active", "row_version": HITS[kind]}],
+            directory_href="/web/merchants?ledger_id=owner", q="?ledger_id=owner")
     if kind in {"merchant-create", "alias-create"}:
         creation = {"ledger_id": "owner", "search": "原筛选", "status": "all", "merchant": "",
             "display_name": "", "canonical_merchant": "", "alias": "", "draft_scope": json.dumps(scope), "idempotency_key": key}
@@ -165,6 +177,14 @@ class RecoveryHandler(Handler):
         if self.path.startswith("/web/merchants/"):
             result["receipt"].update(row_version=1, display_name=values.get("display_name"), canonical_merchant=values.get("canonical_merchant"))
             result["next"] = "/web/merchants?ledger_id=owner"
+            if values.get("merchant"):
+                result["receipt"].update(public_id=values["merchant"], row_version=int(values["expected_row_version"]) + 1,
+                    status=values.get("next_status", "active"), deleted_at="2026-10-08T00:00:00Z" if self.path.endswith("/delete") else None)
+            if self.path.endswith("/merge"):
+                target, version = values["target"].rsplit(":", 1)
+                result["receipt"].update(status="merged", merged_into_public_id=target)
+                result["receipt"] = {"source": result["receipt"], "target": {"public_id": target, "row_version": int(version) + 1},
+                    "created_alias_public_id": "original-alias" if values["alias_policy"] == "create_source_alias" else None}
         return self.reply(json.dumps(result), "application/json")
 
 
@@ -224,7 +244,10 @@ def test_planning_and_reference_entries_replay_original_body_after_unknown_reply
         ensure_ascii=False, indent=2), encoding="utf-8")
     assert not result.get("error"), result
     assert not MISSING, MISSING
-    assert len(POSTS) == 16 and len(result["results"]) == 8
+    assert {row["entry"] for row in result["results"]} == {
+        "budget", "arrangement", "recurring-create", "recurring-edit", "tag-create", "category-create",
+        "merchant-create", "alias-create", "catalog-rename", "catalog-toggle", "catalog-delete", "catalog-merge"}
+    assert len(POSTS) == 2 * len(result["results"])
     for first, replay in zip(POSTS[::2], POSTS[1::2], strict=True):
         assert first == replay, "Retry must retain repeated fields, original scope, currency, month, version and key"
     assert all(row["confirmed"] and row["originalRemoved"] and row["frozen"] for row in result["results"]), result

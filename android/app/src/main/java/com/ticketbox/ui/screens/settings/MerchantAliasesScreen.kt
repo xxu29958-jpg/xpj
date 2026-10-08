@@ -29,9 +29,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
+import com.ticketbox.ui.asString
 import com.ticketbox.domain.model.MerchantAlias
 import com.ticketbox.domain.model.MerchantCatalog
-import com.ticketbox.domain.model.MerchantCatalogAliasPolicy
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.AppStatusBanner
@@ -43,10 +43,9 @@ import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.viewmodel.MerchantCatalogMergeSuggestion
 import com.ticketbox.viewmodel.MerchantEditorCompletion
 import com.ticketbox.viewmodel.MerchantEditorKind
-import com.ticketbox.viewmodel.MerchantCreationState
-import com.ticketbox.data.repository.MerchantCreationKind
-import com.ticketbox.viewmodel.MerchantRenameReview
-import com.ticketbox.viewmodel.MerchantMergeReview
+import com.ticketbox.viewmodel.MerchantDraftState
+import com.ticketbox.data.repository.MerchantDraftKind
+import com.ticketbox.data.repository.MerchantDraft
 import kotlinx.coroutines.delay
 
 @Composable
@@ -57,7 +56,7 @@ fun MerchantAliasesScreen(
 ) {
     val editors = remember { MerchantEditors() }
     val catalogDialogController = editors.catalogDialogs
-    MerchantCreationReceiptEffect(state.creation, actions.creation)
+    MerchantCreationReceiptEffect(state.drafts, actions.creation)
 
     LaunchedEffect(state.editorCompletion) {
         state.editorCompletion?.let(editors::complete)
@@ -69,47 +68,7 @@ fun MerchantAliasesScreen(
         }
     }
 
-    MerchantCatalogDialogHost(
-        controller = catalogDialogController,
-        state = state,
-        actions = MerchantCatalogDialogHostActions(
-            onRename = actions.catalog.onRename,
-            onMerge = actions.catalog.onMerge,
-            onDismissSuggestion = actions.mergeSuggestion.onDismiss,
-            onReviewRename = actions.catalog.onReviewRename,
-            onConsumeRenameReview = actions.catalog.onConsumeRenameReview,
-            onReviewMerge = actions.catalog.onReviewMerge,
-            onConsumeMergeReview = actions.catalog.onConsumeMergeReview,
-        ),
-    )
-
-    editors.deletingCatalog?.let { item ->
-        AlertDialog(
-            onDismissRequest = { if (!state.busy) editors.deletingCatalog = null },
-            title = { Text(stringResource(R.string.merchant_catalog_delete_dialog_title)) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-                    Text(
-                        stringResource(R.string.merchant_catalog_delete_dialog_text, item.displayName),
-                    )
-                    AppStatusBanner(message = state.message, tone = state.messageTone)
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    enabled = !state.busy,
-                    onClick = { actions.catalog.onDelete(item) },
-                ) {
-                    Text(stringResource(R.string.merchant_catalog_delete_dialog_confirm), color = MaterialTheme.colorScheme.error)
-                }
-            },
-            dismissButton = {
-                TextButton(enabled = !state.busy, onClick = { editors.deletingCatalog = null }) {
-                    Text(stringResource(R.string.common_cancel))
-                }
-            },
-        )
-    }
+    MerchantCatalogDialogHost(catalogDialogController, state, actions)
 
     editors.deletingAlias?.let { item ->
         AlertDialog(
@@ -150,6 +109,12 @@ fun MerchantAliasesScreen(
             status = { AppStatusBanner(message = state.message, tone = state.messageTone) },
         ) {
             MerchantUndoBanner(state, actions.undo)
+            if (!state.drafts.ready) {
+                Text(state.drafts.error?.asString() ?: stringResource(R.string.merchant_creation_loading))
+                if (state.drafts.error != null) TextButton(enabled = !state.busy, onClick = actions.creation.onReload) {
+                    Text(stringResource(R.string.merchant_creation_retry_read))
+                }
+            }
             if (state.readOnly) SettingsInlineEmpty(
                 title = stringResource(R.string.merchant_management_readonly_title),
                 body = stringResource(R.string.merchant_management_readonly_hint),
@@ -228,9 +193,7 @@ data class MerchantAliasesScreenState(
     val undoableAlias: MerchantAlias?,
     val mergeSuggestion: MerchantCatalogMergeSuggestion?,
     val editorCompletion: MerchantEditorCompletion?,
-    val renameReview: MerchantRenameReview? = null,
-    val mergeReview: MerchantMergeReview? = null,
-    val creation: MerchantCreationState = MerchantCreationState(),
+    val drafts: MerchantDraftState = MerchantDraftState(),
 )
 
 data class MerchantAliasesScreenActions(
@@ -245,22 +208,19 @@ data class MerchantAliasesScreenActions(
 )
 
 data class MerchantCreationActions(
-    val onEdit: (MerchantCreationKind, String, String, String) -> Unit = { _, _, _, _ -> },
-    val onReview: (MerchantCreationKind) -> Unit = {},
-    val onAccepted: (MerchantCreationKind, String) -> Unit = { _, _ -> },
+    val onEdit: (MerchantDraftKind, String, String, String) -> Unit = { _, _, _, _ -> },
+    val onReview: (MerchantDraftKind) -> Unit = {},
+    val onAccepted: (MerchantDraftKind, String) -> Unit = { _, _ -> },
     val onReload: () -> Unit = {},
 )
 
 data class MerchantAliasesCatalogActions(
     val onCreate: (String) -> Unit,
-    val onRename: (MerchantCatalog, String) -> Unit,
-    val onToggle: (MerchantCatalog) -> Unit,
-    val onMerge: (MerchantCatalog, MerchantCatalog, MerchantCatalogAliasPolicy) -> Unit,
-    val onDelete: (MerchantCatalog) -> Unit,
-    val onReviewRename: (MerchantCatalog) -> Unit,
-    val onConsumeRenameReview: () -> Unit,
-    val onReviewMerge: (MerchantCatalog, MerchantCatalog) -> Unit,
-    val onConsumeMergeReview: () -> Unit,
+    val onBegin: (MerchantDraftKind, MerchantCatalog) -> Unit,
+    val onChange: (MerchantDraft) -> Unit,
+    val onSubmit: (MerchantDraftKind, String?) -> Unit,
+    val onReview: (MerchantDraftKind, String?) -> Unit,
+    val onSuggestMerge: (MerchantCatalog, MerchantCatalog) -> Unit,
 )
 
 data class MerchantAliasesAliasActions(
@@ -297,7 +257,6 @@ internal class MerchantEditors {
     }
 
     var activeCreateTool by mutableStateOf<MerchantCreateTool?>(null)
-    var deletingCatalog by mutableStateOf<MerchantCatalog?>(null)
     var deletingAlias by mutableStateOf<MerchantAlias?>(null)
     val catalogDialogs = MerchantCatalogDialogController()
 
@@ -309,15 +268,10 @@ internal class MerchantEditors {
             MerchantEditorKind.CreateAlias -> {
                 if (activeCreateTool == MerchantCreateTool.Alias) activeCreateTool = null
             }
-            MerchantEditorKind.RenameCatalog -> {
-                if (catalogDialogs.renamingCatalog?.publicId == completed.publicId) catalogDialogs.closeRename()
-            }
-            MerchantEditorKind.MergeCatalog -> {
-                if (catalogDialogs.mergingCatalog?.publicId == completed.publicId) catalogDialogs.finishMerge()
-            }
-            MerchantEditorKind.DeleteCatalog -> {
-                if (deletingCatalog?.publicId == completed.publicId) deletingCatalog = null
-            }
+            MerchantEditorKind.RenameCatalog -> catalogDialogs.complete(MerchantDraftKind.Rename, completed.publicId)
+            MerchantEditorKind.MergeCatalog -> catalogDialogs.complete(MerchantDraftKind.Merge, completed.publicId)
+            MerchantEditorKind.VisibilityCatalog -> catalogDialogs.complete(MerchantDraftKind.Visibility, completed.publicId)
+            MerchantEditorKind.DeleteCatalog -> catalogDialogs.complete(MerchantDraftKind.Delete, completed.publicId)
             MerchantEditorKind.DeleteAlias -> {
                 if (deletingAlias?.publicId == completed.publicId) deletingAlias = null
             }

@@ -63,7 +63,8 @@ internal class FakeMerchantApi : MerchantApi {
             publicId = publicId,
             displayName = request.displayName ?: "星巴克",
             status = request.status ?: "active",
-        )
+        ).copy(rowVersion = request.expectedRowVersion + 1)
+            .also { result -> merchantCatalogItems = merchantCatalogItems.map { if (it.publicId == publicId) result else it } }
     }
 
     override suspend fun deleteMerchantCatalog(
@@ -77,12 +78,14 @@ internal class FakeMerchantApi : MerchantApi {
             publicId = publicId,
             displayName = "星巴克",
             status = "active",
-        ).copy(deletedAt = "2026-05-13T00:10:00Z")
+        ).copy(deletedAt = "2026-05-13T00:10:00Z", rowVersion = request.expectedRowVersion + 1)
+            .also { merchantCatalogItems = merchantCatalogItems.filterNot { it.publicId == publicId } }
     }
 
     override suspend fun mergeMerchantCatalog(
         sourcePublicId: String,
         request: MerchantCatalogMergeRequest,
+        idempotencyKey: String,
     ): MerchantCatalogMergeDto {
         merchantCatalogMergeTargets += sourcePublicId
         merchantCatalogMergeRequests += request
@@ -101,7 +104,8 @@ internal class FakeMerchantApi : MerchantApi {
                 status = "active",
             ).copy(rowVersion = request.targetRowVersion + 1),
             createdAliasPublicId = if (request.aliasPolicy == "create_source_alias") "alias-created-by-merge" else null,
-        )
+        ).also { result -> merchantCatalogItems = merchantCatalogItems.map {
+            when (it.publicId) { sourcePublicId -> result.source; request.targetPublicId -> result.target; else -> it } } }
     }
 
     override suspend fun merchantAliases(): MerchantAliasListDto {

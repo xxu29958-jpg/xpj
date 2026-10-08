@@ -49,6 +49,7 @@ interface MerchantApi {
     suspend fun mergeMerchantCatalog(
         @Path("sourcePublicId") sourcePublicId: String,
         @Body request: MerchantCatalogMergeRequest,
+        @Header("Idempotency-Key") idempotencyKey: String,
     ): MerchantCatalogMergeDto
 
     @GET("api/merchants/aliases")

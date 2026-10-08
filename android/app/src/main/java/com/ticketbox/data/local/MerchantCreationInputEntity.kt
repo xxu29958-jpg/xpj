@@ -25,6 +25,12 @@ interface MerchantCreationInputDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun put(input: MerchantCreationInputEntity)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun putAll(inputs: List<MerchantCreationInputEntity>)
+
     @Query("DELETE FROM merchant_creation_inputs WHERE serverUrl = :server AND ownerKey = :owner AND ledgerId = :ledger AND kind = :kind AND originalKey = :key")
     suspend fun remove(server: String, owner: String, ledger: String, kind: String, key: String)
+
+    @Query("DELETE FROM merchant_creation_inputs WHERE serverUrl = :server AND ownerKey = :owner AND ledgerId = :ledger AND originalKey IN (:keys)")
+    suspend fun removeKeys(server: String, owner: String, ledger: String, keys: List<String>)
 }

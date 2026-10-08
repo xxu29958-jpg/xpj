@@ -564,3 +564,19 @@ def test_merchant_receipts_remain_exportable_after_the_object_is_deleted(records
     assert [(row["id"], row["operation"]) for row in _rows(records, "accepted_operations")] == [
         (1, "create_" + resource), (2, "update_" + resource)]
     assert [row["response_body"]["row_version"] for row in _rows(records, "accepted_operations")] == [1, 2]
+
+
+def test_catalog_merge_receipt_export_keeps_both_original_snapshots(records):
+    from app.services.portable_export_archive import _receipt_record
+
+    original = {"source": {"public_id": "source", "row_version": 2, "status": "merged"},
+                "target": {"public_id": "target", "row_version": 6, "status": "active"},
+                "created_alias_public_id": "original-alias"}
+    for id_, ledger in ((1, "selected"), (2, "other")):
+        _seed(records, m.ApiIdempotencyKey, id=id_, tenant_id=ledger, status="succeeded",
+            resource_type="merchant_catalog", resource_id="source", operation="merge_merchant_catalog",
+            response_body=json.dumps(original))
+    _seed(records, m.MerchantCatalog, id=1, public_id="target", tenant_id="selected", row_version=12, status="hidden")
+    rows = _rows(records, "accepted_operations")
+    assert len(rows) == 1 and rows[0]["id"] == 1
+    assert _receipt_record(dict(rows[0]))["response_body"] == original

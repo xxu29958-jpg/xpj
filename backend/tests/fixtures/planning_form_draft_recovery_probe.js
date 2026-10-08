@@ -16,6 +16,10 @@
     {kind:"category-create", family:"categorycreation", action:"/web/reference/category/create", fields:{name:"  原分类添加  "}},
     {kind:"merchant-create", family:"catalogcreation", action:"/web/merchants/catalog/create", fields:{display_name:"  原商家添加  "}},
     {kind:"alias-create", family:"aliascreation", action:"/web/merchants/aliases/create", fields:{canonical_merchant:"  原标准商家  ",alias:"  原别名添加  "}},
+    {kind:"catalog-rename", family:"catalogrename", action:"/web/merchants/catalog/merchant-original/rename", fields:{display_name:"  原商家改名  "}},
+    {kind:"catalog-toggle", family:"catalogtoggle", action:"/web/merchants/catalog/merchant-original/toggle", fields:{next_status:"hidden"}},
+    {kind:"catalog-delete", family:"catalogdelete", action:"/web/merchants/catalog/merchant-original/delete", fields:{}},
+    {kind:"catalog-merge", family:"catalogmerge", action:"/web/merchants/catalog/merchant-original/merge", fields:{target:"merchant-target:1",alias_policy:"create_source_alias"}},
   ];
   for (const spec of specs) {
     const frame=document.createElement("iframe"); document.body.append(frame);
@@ -34,7 +38,9 @@
       form.dispatchEvent(new frame.contentWindow.Event("change",{bubbles:true}));
     }
     const ref=form.elements.namedItem("idempotency_key").value;
-    const storageKey=Object.keys(localStorage).find(key=>key.endsWith(ref));
+    if (spec.kind === "catalog-delete") form.dispatchEvent(new frame.contentWindow.Event("change",{bubbles:true}));
+    const storageRef=form.elements.namedItem("draft_ref")?.value || ref;
+    const storageKey=Object.keys(localStorage).find(key=>key.endsWith(storageRef));
     if (!storageKey) throw Error("Original draft not retained");
     form.requestSubmit(submit(form));
     await until(()=>form.dataset[spec.family+"DraftPhase"]==="blocked" && !submit(form).disabled,"unknown receipt did not retain original");
@@ -42,7 +48,7 @@
     const original=JSON.parse(localStorage.getItem(storageKey));
     await load(frame,url); await until(()=>getForm() && !submit(getForm()).disabled,"reopened original unavailable");
     form=getForm();
-    const frozen=Object.keys(spec.fields).every(name=>form.elements.namedItem(name).readOnly);
+    const frozen=Object.keys(spec.fields).every(name=>form.elements.namedItem(name).readOnly || form.elements.namedItem(name).disabled);
     if (form.elements.namedItem("idempotency_key").value!==ref || JSON.stringify(JSON.parse(localStorage.getItem(storageKey)).values)!==JSON.stringify(original.values)) {
       throw Error("Reopening changed the original body: " + JSON.stringify({entry: spec.kind,
         originalRef: ref, reopenedRef: form.elements.namedItem("idempotency_key").value,
