@@ -23,6 +23,7 @@ from app.routes.web_common import (
     templates,
 )
 from app.services import saved_view_service as saved_views
+from app.services.category_service import list_ledger_category_options
 from app.services.currency_common import supported_currency_codes
 from app.services.tag_management_service import list_tags_with_usage
 
@@ -63,6 +64,7 @@ def _render_views(request, db, *, options, selected, message="", error="", draft
     ctx.update(views=[asdict(view) for view in views], flash_message=message, error=error,
         draft=draft, editing_public_id=editing_public_id,
         tag_options=list_tags_with_usage(db, selected), currency_codes=sorted(supported_currency_codes()),
+        category_options=list_ledger_category_options(db, tenant_id=selected),
         q="?" + urlencode({"ledger_id": selected}))
     return templates.TemplateResponse(request=request, name="saved_views.html", context=ctx,
                                       status_code=status_code, headers={"Cache-Control": "no-store"})
@@ -72,11 +74,13 @@ def _render_views(request, db, *, options, selected, message="", error="", draft
 def web_saved_views(request: Request, ledger_id: str = "", msg: str = "",
                     edit: str = "", create: bool = False, month_mode: str = "current",
                     month: str = "", filter: str = "", tag_public_id: str = "", home_currency_code: str = "",
+                    query_text: str = "", category: str = "",
                     _local: None = LocalOnly, db: Session = Depends(get_db)) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     draft = {"name": "", "ledger_id": selected, "month_mode": month_mode, "month": month, "filter": filter,
         "tag_public_id": tag_public_id, "home_currency_code": home_currency_code,
+        "query_text": query_text, "category": category,
         "idempotency_key": str(uuid4())} if create and not edit else None
     return _render_views(request, db, options=options, selected=selected, message=msg,
                          draft=draft, editing_public_id=edit)
@@ -107,7 +111,7 @@ def _save_view(request, db, *, fields, public_id="") -> Response:
         return retained
     actor = resolve_web_actor_account_id(db, request, selected)
     definition = {key: fields[key] for key in (
-        "name", "month_mode", "month", "filter", "tag_public_id", "home_currency_code")}
+        "name", "month_mode", "month", "filter", "tag_public_id", "home_currency_code", "query_text", "category")}
     try:
         _require_selected_ledger_write(options, selected)
         if public_id:
@@ -132,11 +136,13 @@ def web_saved_view_create(
     request: Request, ledger_id: str = Form(""), name: str = Form(""),
     month_mode: str = Form("fixed"), month: str = Form(""), filter: str = Form(""),
     tag_public_id: str = Form(""), home_currency_code: str = Form(""),
+    query_text: str = Form(""), category: str = Form(""),
     idempotency_key: str = Form(""), _local: None = LocalOnly, db: Session = Depends(get_db),
 ) -> Response:
     return _save_view(request, db, fields={"ledger_id": ledger_id, "name": name,
         "month_mode": month_mode, "month": month, "filter": filter, "tag_public_id": tag_public_id,
-        "home_currency_code": home_currency_code, "idempotency_key": idempotency_key})
+        "home_currency_code": home_currency_code, "idempotency_key": idempotency_key,
+        "query_text": query_text, "category": category})
 
 
 @router.post("/saved-views/{public_id}/rename", response_class=HTMLResponse)
@@ -144,11 +150,13 @@ def web_saved_view_update(
     request: Request, public_id: str, ledger_id: str = Form(""), name: str = Form(""),
     month_mode: str = Form("fixed"), month: str = Form(""), filter: str = Form(""),
     tag_public_id: str = Form(""), home_currency_code: str = Form(""),
+    query_text: str = Form(""), category: str = Form(""),
     expected_row_version: str = Form(""), _local: None = LocalOnly, db: Session = Depends(get_db),
 ) -> Response:
     return _save_view(request, db, public_id=public_id, fields={"ledger_id": ledger_id, "name": name,
         "month_mode": month_mode, "month": month, "filter": filter, "tag_public_id": tag_public_id,
-        "home_currency_code": home_currency_code, "expected_row_version": expected_row_version})
+        "home_currency_code": home_currency_code, "expected_row_version": expected_row_version,
+        "query_text": query_text, "category": category})
 
 
 @router.post("/saved-views/{public_id}/delete", response_class=HTMLResponse)

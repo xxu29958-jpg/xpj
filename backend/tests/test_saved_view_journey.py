@@ -15,7 +15,7 @@ pytestmark = pytest.mark.real_db
 
 
 def test_saved_view_reopens_the_same_query_and_reads_new_facts_without_changing_originals(client, identity) -> None:
-    original = manual_expense(client, identity.app_headers, tags="旅行", merchant="九月原账单",
+    original = manual_expense(client, identity.app_headers, tags="旅行", merchant="九月原账单", category="购物",
                               expense_time="2026-09-03T10:00:00Z")
     before = client.get(f"/api/expenses/{original['id']}", headers=identity.app_headers)
     assert before.status_code == 200, before.text
@@ -24,7 +24,7 @@ def test_saved_view_reopens_the_same_query_and_reads_new_facts_without_changing_
     browser.cookies.set(SESSION_COOKIE_NAME, token, domain=PUBLIC_HOST, path="/")
     try:
         source = browser.get("/web/confirmed", params={"ledger_id": "owner", "month": "2026-09",
-                                                     "tag": "旅行", "home_currency_code": "CNY"})
+                                                     "tag": "旅行", "home_currency_code": "CNY", "q": "九月", "category": "购物"})
         assert source.status_code == 200, source.text
         entry = re.search(r'<a\b(?=[^>]*\bdata-save-view\b)[^>]*\bhref="([^"]+)"', source.text)
         assert entry is not None, "The current financial query has no save-view entry"
@@ -42,12 +42,16 @@ def test_saved_view_reopens_the_same_query_and_reads_new_facts_without_changing_
     finally:
         browser.close()
 
-    manual_expense(client, identity.app_headers, tags="旅行", merchant="后来记入的九月账单",
+    manual_expense(client, identity.app_headers, tags="旅行", merchant="后来记入的九月账单", category="购物",
                    expense_time="2026-09-15T10:00:00Z")
-    manual_expense(client, identity.app_headers, tags="出差", merchant="同月其他标签账单",
+    manual_expense(client, identity.app_headers, tags="出差", merchant="九月其他标签账单", category="购物",
                    expense_time="2026-09-15T10:00:00Z")
-    manual_expense(client, identity.app_headers, tags="旅行", merchant="十月旅行账单",
+    manual_expense(client, identity.app_headers, tags="旅行", merchant="九月关键词但十月账单", category="购物",
                    expense_time="2026-10-03T10:00:00Z")
+    manual_expense(client, identity.app_headers, tags="旅行", merchant="九月其他分类账单", category="餐饮",
+                   expense_time="2026-09-15T10:00:00Z")
+    manual_expense(client, identity.app_headers, tags="旅行", merchant="不同关键词账单", category="购物",
+                   expense_time="2026-09-15T10:00:00Z")
     reopened = public_client()
     reopened.cookies.set(SESSION_COOKIE_NAME, token, domain=PUBLIC_HOST, path="/")
     try:
@@ -67,10 +71,21 @@ def test_saved_view_reopens_the_same_query_and_reads_new_facts_without_changing_
         assert {key: query[key] for key in ("ledger_id", "month", "tag", "home_currency_code")} == {
             "ledger_id": ["owner"], "month": ["2026-09"], "tag": ["旅行"], "home_currency_code": ["CNY"],
         }
+        assert query["q"] == ["九月"] and query["category"] == ["购物"]
         current = reopened.get(opened.headers["location"])
         assert current.status_code == 200
         assert "九月原账单" in current.text and "后来记入的九月账单" in current.text
-        assert "同月其他标签账单" not in current.text and "十月旅行账单" not in current.text
+        for excluded in ("九月其他标签账单", "九月关键词但十月账单", "九月其他分类账单", "不同关键词账单"):
+            assert excluded not in current.text
+        detail_links = [unescape(link) for link in re.findall(r'href="([^"]+)"', current.text)
+            if f"/web/expenses/{original['id']}/edit?" in link]
+        assert len(detail_links) == 1
+        detail = reopened.get(detail_links[0])
+        assert detail.status_code == 200
+        return_queries = [parse_qs(urlsplit(unescape(link)).query)
+            for link in re.findall(r'href="([^"]+)"', detail.text) if link.startswith("/web/confirmed?")]
+        assert any(params.get("q") == ["九月"] and params.get("category") == ["购物"]
+            and params.get("tag") == ["旅行"] and params.get("month") == ["2026-09"] for params in return_queries)
     finally:
         reopened.close()
 

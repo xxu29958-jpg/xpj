@@ -84,7 +84,7 @@ _LEDGER_RECORDS = (
         "updated_at row_version deleted_at"),
     (m.CategoryPreference, "id public_id tenant_id name key kind created_at updated_at row_version deleted_at"),
     (m.Tag, "id public_id tenant_id name key created_at updated_at row_version deleted_at"),
-    (m.SavedView, "id public_id tenant_id name name_key month_mode month filter tag_public_id "
+    (m.SavedView, "id public_id tenant_id name name_key month_mode month filter query_text category tag_public_id "
         "home_currency_code created_by_account_id created_at updated_at row_version"),
     (m.TagMutationUndoGroup, "id mutation_public_id tenant_id op source_tag_public_id source_tag_name "
         "target_tag_public_id target_tag_name created_at consumed_at"),

@@ -130,7 +130,8 @@ def apply_and_rollback_from_native(j):
     j.expect(lambda state: len(state["applications"]) == 2, "The actual native application was not recorded")
     assert [row["category"] for row in j.facts()["expenses"]] == ["Manual", "Library", "Library"]
     native.reveal_any("首次结果：改写 1 笔", toward_start=True, max_scrolls=16)
-    assert not native.has("确认应用"), "An accepted result still offers its old confirmation"
+    assert not any(node.get("text") == "确认应用" for node in native.tree().iter("node")), \
+        "An accepted result still offers its old confirmation"
     native.capture("reference-rule-native-accepted")
     native.reveal_any("规则应用记录", max_scrolls=16)
     native.click("规则应用记录")

@@ -18,7 +18,7 @@ from __future__ import annotations
 from urllib.parse import urlencode
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
@@ -41,6 +41,7 @@ from app.routes.web_common import (
     templates,
 )
 from app.routes.web_saved_views import confirmed_save_context
+from app.services.category_service import list_ledger_category_options
 from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.currency_common import average_minor_amount, normalize_currency_code
 from app.services.expense_service import list_confirmed
@@ -91,6 +92,7 @@ def _confirmed_redirect(
     msg: str = "",
     filter: str = "",
     home_currency_code: str = "",
+    query_text: str = "", category: str = "",
 ) -> RedirectResponse:
     page_value = str(page) if page > 1 else ""
     return _web_redirect(
@@ -102,6 +104,7 @@ def _confirmed_redirect(
         msg=msg,
         filter=filter if filter in CONFIRMED_CROSS_PERIOD_FILTERS else "",
         home_currency_code=home_currency_code,
+        q=query_text, category=category,
     )
 
 
@@ -187,6 +190,7 @@ def _confirmed_edit_query(
     tag: str | None,
     filter: str = "",
     home_currency_code: str = "",
+    query_text: str = "", category: str = "",
 ) -> str:
     return urlencode(
         {
@@ -198,6 +202,7 @@ def _confirmed_edit_query(
                 return_tag=tag or "",
                 return_filter=filter,
                 return_home_currency_code=home_currency_code,
+                return_query=query_text, return_category=category,
             ),
         }
     )
@@ -212,6 +217,7 @@ def _confirmed_page_rows(
     tag: str | None,
     filter: str = "",
     home_currency_code: str | None = None,
+    query_text: str = "", category: str = "",
 ) -> tuple[str, str, list[dict], int, int, str, int]:
     timezone_name = accounting_timezone_key()
     missing_category = filter == "missing_category"
@@ -226,6 +232,10 @@ def _confirmed_page_rows(
         "timezone_name": timezone_name,
         "missing_category": missing_category,
     }
+    if query_text:
+        query["query_text"] = query_text
+    if category:
+        query["category"] = category
     if filter == "missing_accounting_date":
         query["missing_accounting_date"] = True
     entries, total = list_confirmed(db, page=page, **query)
@@ -240,6 +250,7 @@ def _confirmed_page_rows(
     if tag:
         pager_params["tag"] = tag
     pager_params["home_currency_code"] = home
+    pager_params.update({key: value for key, value in {"q": query_text, "category": category}.items() if value})
     return (
         effective_month,
         home,
@@ -251,10 +262,10 @@ def _confirmed_page_rows(
     )
 
 
-def _confirmed_money_context(db, *, selected_id, month, home, tag, items) -> dict:
+def _confirmed_money_context(db, *, selected_id, month, home, tag, items, search_active=False) -> dict:
     """One page publishes its month and page-subtotal projections together."""
     context = _confirmed_month_context(db, selected_id=selected_id, effective_month=month,
-        currency_code=home, tag=tag) if month else {}
+        currency_code=home, tag=tag) if month and not search_active else {}
     day_values = {}
     for row in items:
         day_values.setdefault(row["stream_date"], []).append(row["projected_amount_cents"])
@@ -263,7 +274,7 @@ def _confirmed_money_context(db, *, selected_id, month, home, tag, items) -> dic
         missing_rates=ordered_projection_gaps((*context.get("missing_rates", ()),
             *(row["projection_gap"] for row in items if row["projection_gap"] is not None))),
         money_incomplete=any(value is None for value in totals.values()) or (
-            bool(month) and context["month_total_amount_yuan"] is None))
+            bool(month) and not search_active and context["month_total_amount_yuan"] is None))
     return context
 
 
@@ -286,10 +297,13 @@ def _render_confirmed_page(
     batch_reason_input: str = "",
     batch_idempotency_key: str = "",
     home_currency_code: str | None = None,
+    query_text: str = "", category: str = "",
 ) -> HTMLResponse:
+    query_text, category = query_text.strip(), category.strip()
     effective_month, home, items, total, total_pages, pager_query, page = _confirmed_page_rows(
         db, selected_id=selected_id, page=page, month=month, tag=tag, filter=filter,
         home_currency_code=home_currency_code,
+        query_text=query_text, category=category,
     )
     ctx = _base_ctx(
         request,
@@ -309,6 +323,8 @@ def _render_confirmed_page(
         total=total,
         month=effective_month,
         tag=tag or "",
+        query_text=query_text, category=category,
+        category_options=list_ledger_category_options(db, tenant_id=selected_id),
         filter=filter if filter in CONFIRMED_CROSS_PERIOD_FILTERS else "",
         pager_query=pager_query,
         confirmed_edit_query=_confirmed_edit_query(
@@ -318,12 +334,14 @@ def _render_confirmed_page(
             tag=tag,
             filter=filter,
             home_currency_code=home,
+            query_text=query_text, category=category,
         ),
     )
     ctx.update(_confirmed_money_context(db, selected_id=selected_id, month=effective_month,
-        home=home, tag=tag, items=items))
+        home=home, tag=tag, items=items, search_active=bool(query_text or category)))
     ctx["money_task"] = {"ledger_id": selected_id, "month": effective_month, "home_currency_code": home,
-        "tag": tag or "", "page": str(page), "filter": filter, "return_to": "confirmed"}
+        "tag": tag or "", "page": str(page), "filter": filter, "return_to": "confirmed",
+        "q": query_text, "category": category}
     ctx["month_picker_query"] = {key: value for key, value in ctx["money_task"].items() if key != "return_to"}
     ctx.update(
         flash_message=msg or "",
@@ -354,6 +372,8 @@ def web_confirmed(
     msg: str | None = None,
     filter: str = "",
     home_currency_code: str | None = None,
+    q: str = Query(default="", max_length=80),
+    category: str = Query(default="", max_length=64),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
@@ -370,6 +390,7 @@ def web_confirmed(
         msg=msg,
         filter=filter,
         home_currency_code=home_currency_code,
+        query_text=q, category=category,
     )
 
 

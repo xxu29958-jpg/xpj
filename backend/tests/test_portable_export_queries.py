@@ -105,6 +105,7 @@ def test_saved_view_export_keeps_ledger_query_configuration_and_stable_tag_refer
         _seed(records, m.SavedView, id=id_, public_id=f"view-{id_}", tenant_id=ledger,
             name="九月旅行", name_key="九月旅行", month_mode="fixed", month="2026-09",
             filter="", tag_public_id="stable-tag-id", home_currency_code="JPY",
+            query_text="便利店", category="购物",
             created_by_account_id=7, created_at="2026-09-28 00:00:00",
             updated_at="2026-09-28 00:00:00", row_version=1)
         _seed(records, m.ApiIdempotencyKey, id=id_, tenant_id=ledger, resource_type="saved_view",
@@ -115,6 +116,7 @@ def test_saved_view_export_keeps_ledger_query_configuration_and_stable_tag_refer
     assert len(rows) == 1
     assert (rows[0]["tenant_id"], rows[0]["month"], rows[0]["tag_public_id"],
             rows[0]["home_currency_code"]) == ("selected", "2026-09", "stable-tag-id", "JPY")
+    assert (rows[0]["query_text"], rows[0]["category"]) == ("便利店", "购物")
     accepted = _rows(records, "accepted_operations")
     assert len(accepted) == 1
     assert (accepted[0]["idempotency_key"], accepted[0]["resource_id"], accepted[0]["response_body"]) == (

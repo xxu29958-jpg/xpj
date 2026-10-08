@@ -25,6 +25,7 @@
   </div>
   <button class="product-button" type="submit" aria-label="搜索"><svg width="22" height="22" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#search"/></svg></button>
 </form>
+{% if search_query and not search_error %}<a class="product-button product-button--quiet" href="/web/confirmed?{{ {'ledger_id':selected_ledger_id, 'q':search_query}|urlencode }}">在流水中筛选并保存查询</a>{% endif %}
 
 {% if search_error %}
 <div id="search-query-error" class="product-feedback product-feedback--danger" role="alert">{{ search_error }}</div>
@@ -68,7 +69,7 @@
 {% endif %}
 <section class="library-section" aria-label="常用查询">
   <div class="product-panel-header"><h2 class="product-panel-title">常用查询</h2><a href="/web/saved-views?ledger_id={{ selected_ledger_id|urlencode }}">管理</a></div>
-  {% for view in saved_views %}{{ entry(view, selected_ledger_id) }}{% else %}<p class="meta">在流水选好月份与标签，可保存为常用查询。</p>{% endfor %}
+  {% for view in saved_views %}{{ entry(view, selected_ledger_id) }}{% else %}<p class="meta">在流水选好关键词、分类、月份与标签，可保存为常用查询。</p>{% endfor %}
 </section>
 </div>
 {% endblock %}

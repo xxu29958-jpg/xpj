@@ -167,10 +167,10 @@ def test_return_target_cannot_become_an_arbitrary_redirect(task):
 
 @pytest.mark.parametrize("origin,scope", [
     ("overview", {"month": ["2026-08"]}),
-    ("confirmed", {"month": ["2026-08"], "page": ["3"], "tag": ["旅行"]}),
+    ("confirmed", {"month": ["2026-08"], "page": ["3"], "tag": ["旅行"], "q": ["便利店"], "category": ["购物"]}),
 ])
 def test_rate_save_returns_original_overview_or_confirmed_task(task, origin, scope):
-    fields = _form(return_to=origin, page="3", tag="旅行", filter="")
+    fields = _form(return_to=origin, page="3", tag="旅行", filter="", q="便利店", category="购物")
     response = task.client.post("/web/budget-advise/rates", data=fields, follow_redirects=False)
     assert response.status_code == 303
     target = urlsplit(response.headers["location"])
@@ -183,10 +183,10 @@ def test_rate_save_returns_original_overview_or_confirmed_task(task, origin, sco
 
 def test_rate_conflict_retains_original_confirmed_filters_and_key(task):
     task.saved.side_effect = AppError("state_conflict", status_code=409)
-    fields = _form(return_to="confirmed", page="3", tag="旅行", filter="missing_category")
+    fields = _form(return_to="confirmed", page="3", tag="旅行", filter="missing_category", q="便利店", category="历史分类")
     response = task.client.post("/web/budget-advise/rates", data=fields)
     assert response.status_code == 409
-    for name in ("return_to", "page", "tag", "filter", "month", "home_currency_code", "idempotency_key", "expected_row_version"):
+    for name in ("return_to", "page", "tag", "filter", "month", "home_currency_code", "idempotency_key", "expected_row_version", "q", "category"):
         assert f'name="{name}" value="{fields[name]}"' in response.text
     assert "/web/confirmed?" in response.text
 

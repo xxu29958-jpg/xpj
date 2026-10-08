@@ -37,9 +37,9 @@ def _tag_fields(html, action):
 
 
 def _create(browser, client, identity):
-    manual_expense(client, identity.app_headers, tags="旅行", merchant="原旅行账单",
+    manual_expense(client, identity.app_headers, tags="旅行", merchant="原旅行账单", category="购物",
                    expense_time="2026-09-03T10:00:00Z")
-    page = browser.get("/web/confirmed?ledger_id=owner&month=2026-09&tag=旅行&home_currency_code=CNY")
+    page = browser.get("/web/confirmed?ledger_id=owner&month=2026-09&tag=旅行&home_currency_code=CNY&q=原&category=购物")
     assert page.status_code == 200, page.text
     entry = re.search(r'<a\b(?=[^>]*\bdata-save-view\b)[^>]*\bhref="([^"]+)"', page.text)
     assert entry is not None
@@ -73,8 +73,9 @@ def test_conflicting_names_and_stale_forms_keep_input_without_overwriting_new_co
     action, old_fields = _editor(browser, public_id, original)
     changed = _post(browser, action, {**old_fields, "name": "最新名称", "month": "2026-10"})
     assert changed.status_code == 303, changed.text
-    stale = _post(browser, action, {**old_fields, "name": "保留我的输入"})
+    stale = _post(browser, action, {**old_fields, "name": "保留我的输入", "query_text": "保留的关键词", "category": "保留的分类"})
     assert stale.status_code == 409 and 'value="保留我的输入"' in stale.text
+    assert 'value="保留的关键词"' in stale.text and 'value="保留的分类"' in stale.text
     assert hidden_post_forms(stale.text)[action]["expected_row_version"] == old_fields["expected_row_version"]
     refused_delete = _post(browser, f"/web/saved-views/{public_id}/delete", old_fields)
     assert refused_delete.status_code == 409, refused_delete.text
@@ -128,7 +129,7 @@ def test_real_tag_rename_follows_identity_but_merge_requires_explicit_view_repai
     opened = browser.get(f"/web/saved-views/{public_id}/open?ledger_id=owner", follow_redirects=False)
     assert opened.status_code == 303 and parse_qs(urlsplit(opened.headers["location"]).query)["tag"] == ["假期"]
     assert "原旅行账单" in browser.get(opened.headers["location"]).text
-    manual_expense(client, identity.app_headers, tags="家庭", merchant="原家庭账单",
+    manual_expense(client, identity.app_headers, tags="家庭", merchant="原家庭账单", category="购物",
                    expense_time="2026-09-06T10:00:00Z")
     with SessionLocal() as db:
         target = db.scalar(select(Tag).where(Tag.tenant_id == "owner", Tag.key == "家庭"))

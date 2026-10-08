@@ -4,7 +4,7 @@
   const scalars = ["ledger_id", "expense_id", "expected_row_version", "fact_basis", "idempotency_key", "draft_client_ref", "reason", "amount_yuan",
     "original_currency", "merchant", "category", "note", "tags", "expense_time", "value_score", "regret_score",
     "time_precision", "calendar_revision", "user_local_date", "source_timezone", "source_utc_offset_seconds", "accounting_date",
-    "return_to", "return_month", "return_filter", "return_page", "return_tag", "return_query", "return_home_currency_code",
+    "return_to", "return_month", "return_filter", "return_page", "return_tag", "return_query", "return_category", "return_home_currency_code",
     "return_granularity", "return_ranking_metric", "return_merchant_category", "return_recurring_public_id",
     "return_payment_expense_id", "return_import_public_id", "return_import_line_number", "return_import_expense_id"];
   const itemNames = ["item_public_id", "item_name", "item_kind", "item_quantity", "item_unit_price_yuan", "item_amount_yuan", "item_category"];

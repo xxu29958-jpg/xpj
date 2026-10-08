@@ -32,7 +32,7 @@ from app.services.ledger_calendar_service import current_ledger_month
 router = APIRouter(prefix="/rates", tags=["web"])
 _TASK_FIELDS = ("ledger_id", "month", "home_currency_code", "savings_target_yuan", "reserved_buffer_yuan",
     "arrangement_version", "arrangement_key", "arrangement_currency_code",
-    "return_to", "granularity", "ranking_metric", "merchant_category", "tag", "page", "filter")
+    "return_to", "granularity", "ranking_metric", "merchant_category", "tag", "page", "filter", "q", "category")
 _RATE_FIELDS = ("currency_code", "rate_date", "rate_to_cny", "expected_row_version", "idempotency_key")
 
 
@@ -54,6 +54,8 @@ class BudgetRateForm(BaseModel):
     tag: str = ""
     page: str = ""
     filter: str = ""
+    q: str = ""
+    category: str = ""
     currency_code: str = ""
     rate_date: str = ""
     rate_to_cny: str = ""
@@ -67,7 +69,8 @@ def _task_return(values):
     if values["return_to"] == "overview":
         return "/web/overview", params, "总览"
     if values["return_to"] == "confirmed":
-        params = return_context_params("confirmed", **{f"return_{key}": values[key]
+        params = return_context_params("confirmed", return_query=values.get("q", ""),
+            return_category=values.get("category", ""), **{f"return_{key}": values[key]
             for key in ("month", "home_currency_code", "tag", "page", "filter")})
         return "/web/confirmed", params, "已确认流水"
     if values["return_to"] == "reports":

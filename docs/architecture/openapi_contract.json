@@ -2725,6 +2725,11 @@
             ],
             "title": "Regret Score"
           },
+          "return_category": {
+            "default": "",
+            "title": "Return Category",
+            "type": "string"
+          },
           "return_filter": {
             "default": "",
             "title": "Return Filter",
@@ -3134,6 +3139,11 @@
             "title": "Original Currency",
             "type": "string"
           },
+          "return_category": {
+            "default": "",
+            "title": "Return Category",
+            "type": "string"
+          },
           "return_filter": {
             "default": "",
             "title": "Return Filter",
@@ -3287,6 +3297,18 @@
             "default": 1,
             "title": "Page",
             "type": "integer"
+          },
+          "query_category": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Query Category",
+            "type": "string"
+          },
+          "query_text": {
+            "default": "",
+            "maxLength": 80,
+            "title": "Query Text",
+            "type": "string"
           },
           "reason": {
             "default": "",
@@ -3461,6 +3483,11 @@
               }
             ],
             "title": "Regret Score"
+          },
+          "return_category": {
+            "default": "",
+            "title": "Return Category",
+            "type": "string"
           },
           "return_filter": {
             "default": "",
@@ -3715,6 +3742,11 @@
           "reason": {
             "default": "",
             "title": "Reason",
+            "type": "string"
+          },
+          "return_category": {
+            "default": "",
+            "title": "Return Category",
             "type": "string"
           },
           "return_filter": {
@@ -4231,6 +4263,11 @@
             "title": "Ledger Id",
             "type": "string"
           },
+          "return_category": {
+            "default": "",
+            "title": "Return Category",
+            "type": "string"
+          },
           "return_filter": {
             "default": "",
             "title": "Return Filter",
@@ -4743,6 +4780,11 @@
             "title": "Ledger Id",
             "type": "string"
           },
+          "return_category": {
+            "default": "",
+            "title": "Return Category",
+            "type": "string"
+          },
           "return_filter": {
             "default": "",
             "title": "Return Filter",
@@ -4880,6 +4922,11 @@
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",
+            "type": "string"
+          },
+          "return_category": {
+            "default": "",
+            "title": "Return Category",
             "type": "string"
           },
           "return_filter": {
@@ -5027,6 +5074,11 @@
           "fx_expected_row_version": {
             "default": "",
             "title": "Fx Expected Row Version",
+            "type": "string"
+          },
+          "return_category": {
+            "default": "",
+            "title": "Return Category",
             "type": "string"
           },
           "return_filter": {
@@ -5544,6 +5596,11 @@
             "title": "Original Currency",
             "type": "string"
           },
+          "return_category": {
+            "default": "",
+            "title": "Return Category",
+            "type": "string"
+          },
           "return_filter": {
             "default": "",
             "title": "Return Filter",
@@ -5674,6 +5731,11 @@
           "reject_idempotency_key": {
             "default": "",
             "title": "Reject Idempotency Key",
+            "type": "string"
+          },
+          "return_category": {
+            "default": "",
+            "title": "Return Category",
             "type": "string"
           },
           "return_filter": {
@@ -5830,6 +5892,11 @@
             "title": "Original Currency",
             "type": "string"
           },
+          "return_category": {
+            "default": "",
+            "title": "Return Category",
+            "type": "string"
+          },
           "return_filter": {
             "default": "",
             "title": "Return Filter",
@@ -5934,6 +6001,11 @@
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",
+            "type": "string"
+          },
+          "return_category": {
+            "default": "",
+            "title": "Return Category",
             "type": "string"
           },
           "return_filter": {
@@ -6218,6 +6290,11 @@
             "title": "Original Currency",
             "type": "string"
           },
+          "return_category": {
+            "default": "",
+            "title": "Return Category",
+            "type": "string"
+          },
           "return_filter": {
             "default": "",
             "title": "Return Filter",
@@ -6309,6 +6386,11 @@
       },
       "Body_web_saved_view_create_web_saved_views_post": {
         "properties": {
+          "category": {
+            "default": "",
+            "title": "Category",
+            "type": "string"
+          },
           "filter": {
             "default": "",
             "title": "Filter",
@@ -6344,6 +6426,11 @@
             "title": "Name",
             "type": "string"
           },
+          "query_text": {
+            "default": "",
+            "title": "Query Text",
+            "type": "string"
+          },
           "tag_public_id": {
             "default": "",
             "title": "Tag Public Id",
@@ -6371,6 +6458,11 @@
       },
       "Body_web_saved_view_update_web_saved_views__public_id__rename_post": {
         "properties": {
+          "category": {
+            "default": "",
+            "title": "Category",
+            "type": "string"
+          },
           "expected_row_version": {
             "default": "",
             "title": "Expected Row Version",
@@ -6404,6 +6496,11 @@
           "name": {
             "default": "",
             "title": "Name",
+            "type": "string"
+          },
+          "query_text": {
+            "default": "",
+            "title": "Query Text",
             "type": "string"
           },
           "tag_public_id": {
@@ -6532,6 +6629,11 @@
             "title": "Ledger Id",
             "type": "string"
           },
+          "return_category": {
+            "default": "",
+            "title": "Return Category",
+            "type": "string"
+          },
           "return_expense_id": {
             "default": 0,
             "title": "Return Expense Id",
@@ -6641,6 +6743,11 @@
             "title": "Receiver Account Id",
             "type": "integer"
           },
+          "return_category": {
+            "default": "",
+            "title": "Return Category",
+            "type": "string"
+          },
           "return_filter": {
             "default": "",
             "title": "Return Filter",
@@ -6745,6 +6852,11 @@
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",
+            "type": "string"
+          },
+          "return_category": {
+            "default": "",
+            "title": "Return Category",
             "type": "string"
           },
           "return_filter": {
@@ -7022,6 +7134,11 @@
           "original_currency_code": {
             "default": "",
             "title": "Original Currency Code",
+            "type": "string"
+          },
+          "return_category": {
+            "default": "",
+            "title": "Return Category",
             "type": "string"
           },
           "return_filter": {
@@ -8138,6 +8255,11 @@
             "title": "Arrangement Version",
             "type": "string"
           },
+          "category": {
+            "default": "",
+            "title": "Category",
+            "type": "string"
+          },
           "currency_code": {
             "default": "",
             "title": "Currency Code",
@@ -8186,6 +8308,11 @@
           "page": {
             "default": "",
             "title": "Page",
+            "type": "string"
+          },
+          "q": {
+            "default": "",
+            "title": "Q",
             "type": "string"
           },
           "ranking_metric": {
@@ -48550,6 +48677,28 @@
               ],
               "title": "Home Currency Code"
             }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 80,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 64,
+              "title": "Category",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -50790,6 +50939,16 @@
           },
           {
             "in": "query",
+            "name": "return_category",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Category",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
             "name": "return_home_currency_code",
             "required": false,
             "schema": {
@@ -51158,6 +51317,16 @@
             "schema": {
               "default": "",
               "title": "Return Query",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_category",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Category",
               "type": "string"
             }
           },
@@ -57167,6 +57336,26 @@
             "schema": {
               "default": "",
               "title": "Home Currency Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "query_text",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Query Text",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Category",
               "type": "string"
             }
           }

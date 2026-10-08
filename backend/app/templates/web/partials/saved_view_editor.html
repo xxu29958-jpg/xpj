@@ -1,4 +1,4 @@
-{% macro conditions(view) %}{% if view.filter == 'missing_category' %}待补分类 · 全部月份{% elif view.filter == 'missing_accounting_date' %}账务日期待核对 · 全部月份{% elif view.month_mode == 'current' %}账本当前月{% else %}{{ view.month }} · 固定账务月{% endif %} · {{ view.tag_name or ('原标签待修复' if view.tag_public_id else '不限标签') }} · {{ view.home_currency_code }}{% endmacro %}
+{% macro conditions(view) %}{% if view.filter == 'missing_category' %}待补分类 · 全部月份{% elif view.filter == 'missing_accounting_date' %}账务日期待核对 · 全部月份{% elif view.month_mode == 'current' %}账本当前月{% else %}{{ view.month }} · 固定账务月{% endif %}{% if view.query_text %} · {{ view.query_text }}{% endif %}{% if view.category %} · {{ view.category }}{% endif %} · {{ view.tag_name or ('原标签待修复' if view.tag_public_id else '不限标签') }} · {{ view.home_currency_code }}{% endmacro %}
 
 {% macro entry(view, selected_ledger_id) %}
 <a class="product-entry" href="{% if view.repair_reason %}/web/saved-views?ledger_id={{ selected_ledger_id|urlencode }}&amp;edit={{ view.public_id|urlencode }}{% else %}/web/saved-views/{{ view.public_id }}/open?ledger_id={{ selected_ledger_id|urlencode }}{% endif %}">
@@ -8,7 +8,7 @@
 </a>
 {% endmacro %}
 
-{% macro editor(fields, public_id, selected_ledger_id, tag_options, currency_codes, csrf_field, can_write) %}
+{% macro editor(fields, public_id, selected_ledger_id, tag_options, currency_codes, csrf_field, can_write, category_options=[]) %}
 <form method="post" action="/web/saved-views{% if public_id %}/{{ public_id }}/rename{% endif %}">
   {{ csrf_field|safe }}
   <input type="hidden" name="ledger_id" value="{{ fields.ledger_id|default(selected_ledger_id) }}">
@@ -25,19 +25,19 @@
       <select class="select" name="month_mode">
         {% if fields.month_mode not in ['fixed', 'current'] %}<option value="{{ fields.month_mode }}" selected>原月份方式无效，请重新选择</option>{% endif %}
         <option value="fixed"{% if fields.month_mode == 'fixed' %} selected{% endif %}>固定账务月</option>
-        <option value="current"{% if fields.month_mode == 'current' %} selected{% endif %}>每次打开时的账本当前月</option>
+        <option value="current"{% if fields.month_mode == 'current' %} selected{% endif %}>账本当前月</option>
       </select>
+      <span class="hint">固定月保持不变；账本当前月随打开时间更新。</span>
     </label>
     <label class="product-field"><span>固定月份（仅固定账务月使用）</span>
       <input class="input" name="month" type="month" value="{{ fields.month or '' }}">
     </label>
-    <label class="product-field"><span>账单范围</span>
-      <select class="select" name="filter">
-        {% if fields.filter not in ['', 'missing_category', 'missing_accounting_date'] %}<option value="{{ fields.filter }}" selected>原筛选无效，请重新选择</option>{% endif %}
-        <option value=""{% if not fields.filter %} selected{% endif %}>已确认流水 · 使用上述月份</option>
-        <option value="missing_category"{% if fields.filter == 'missing_category' %} selected{% endif %}>待补分类 · 全部月份</option>
-        <option value="missing_accounting_date"{% if fields.filter == 'missing_accounting_date' %} selected{% endif %}>账务日期待核对 · 全部月份</option>
-      </select>
+    <label class="product-field"><span>关键词</span>
+      <input class="input" name="query_text" maxlength="80" value="{{ fields.query_text|default('') }}" placeholder="不限关键词">
+    </label>
+    <label class="product-field"><span>分类</span>
+      <input class="input" name="category" maxlength="64" value="{{ fields.category|default('') }}" list="saved-query-categories" placeholder="全部分类">
+      <datalist id="saved-query-categories">{% for category in category_options %}<option value="{{ category }}">{% endfor %}</datalist>
     </label>
     <label class="product-field"><span>标签</span>
       <select class="select" name="tag_public_id">
@@ -46,6 +46,14 @@
         {% endif %}
         <option value=""{% if not fields.tag_public_id %} selected{% endif %}>不限标签</option>
         {% for tag in tag_options %}<option value="{{ tag.public_id }}"{% if fields.tag_public_id == tag.public_id %} selected{% endif %}>{{ tag.name }}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="product-field"><span>账单范围</span>
+      <select class="select" name="filter">
+        {% if fields.filter not in ['', 'missing_category', 'missing_accounting_date'] %}<option value="{{ fields.filter }}" selected>原筛选无效</option>{% endif %}
+        <option value=""{% if not fields.filter %} selected{% endif %}>已确认流水</option>
+        <option value="missing_category"{% if fields.filter == 'missing_category' %} selected{% endif %}>待补分类</option>
+        <option value="missing_accounting_date"{% if fields.filter == 'missing_accounting_date' %} selected{% endif %}>日期待核对</option>
       </select>
     </label>
     <label class="product-field"><span>金额呈现币种</span>

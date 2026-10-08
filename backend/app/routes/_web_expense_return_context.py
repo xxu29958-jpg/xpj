@@ -50,6 +50,7 @@ _EDIT_KEY_BY_LIST_KEY = {
     "page": "return_page",
     "tag": "return_tag",
     "q": "return_query",
+    "category": "return_category",
     "home_currency_code": "return_home_currency_code",
     "granularity": "return_granularity",
     "ranking_metric": "return_ranking_metric",
@@ -67,6 +68,7 @@ class ExpenseReturnContext:
     return_page: str = ""
     return_tag: str = ""
     return_query: str = ""
+    return_category: str = ""
     return_home_currency_code: str = ""
     return_granularity: str = ""
     return_ranking_metric: str = ""
@@ -88,6 +90,7 @@ def expense_return_query_context(
     return_page: str = "",
     return_tag: str = "",
     return_query: str = "",
+    return_category: str = "",
     return_home_currency_code: str = "",
     return_granularity: str = "",
     return_ranking_metric: str = "",
@@ -105,6 +108,7 @@ def expense_return_query_context(
         return_page=return_page,
         return_tag=return_tag,
         return_query=return_query,
+        return_category=return_category,
         return_home_currency_code=return_home_currency_code,
         return_granularity=return_granularity,
         return_ranking_metric=return_ranking_metric,
@@ -124,6 +128,7 @@ def expense_return_form_context(
     return_page: str = Form(default=""),
     return_tag: str = Form(default=""),
     return_query: str = Form(default=""),
+    return_category: str = Form(default=""),
     return_home_currency_code: str = Form(default=""),
     return_granularity: str = Form(default=""),
     return_ranking_metric: str = Form(default=""),
@@ -141,6 +146,7 @@ def expense_return_form_context(
         return_page=return_page,
         return_tag=return_tag,
         return_query=return_query,
+        return_category=return_category,
         return_home_currency_code=return_home_currency_code,
         return_granularity=return_granularity,
         return_ranking_metric=return_ranking_metric,
@@ -302,6 +308,10 @@ def _confirmed_return_params(origin: dict[str, str]) -> dict[str, str]:
     home = (origin.get("return_home_currency_code") or "").strip()
     if home in supported_currency_codes():
         params["home_currency_code"] = home
+    for field, key, limit in (("return_query", "q", MAX_QUERY_LENGTH), ("return_category", "category", 64)):
+        value = (origin.get(field) or "").strip()
+        if value and len(value) <= limit:
+            params[key] = value
     return params
 
 

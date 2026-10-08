@@ -33,7 +33,7 @@
     <p class="product-page-summary">全部月份 · 共 {{ total }} 笔已确认账单 · {% if can_write %}打开详情或勾选账单更正分类{% else %}打开详情查看，当前角色只读{% endif %}。</p>
     <a href="/web/data-quality?ledger_id={{ selected_ledger_id }}">返回数据体检</a>
     {% else %}
-    <h1 class="page-title">流水</h1>
+    <h1 class="page-title">{{ '找一笔账' if query_text or category else '流水' }}</h1>
     <p class="product-page-summary">{% if not can_write %}{{ selected_ledger_name|default('当前账本') }} · 只读{% else %}每笔花费，都有来处。{% endif %}</p>
     {% endif %}
   </div>
@@ -48,7 +48,30 @@
 {% block content %}
 
 {% include '_ledger_readonly_tools.html' %}
-{% if filter not in ['missing_category', 'missing_accounting_date'] %}
+{% set _has_search = query_text or category %}
+<form method="get" action="/web/confirmed" aria-label="流水查询">
+  <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+  <input type="hidden" name="month" value="{{ month }}">
+  <input type="hidden" name="filter" value="{{ filter }}">
+  <input type="hidden" name="home_currency_code" value="{{ home_currency_code }}">
+  <div class="ledger-search-form">
+    <div class="product-field"><label class="sr-only" for="confirmed-query">流水关键词</label><input id="confirmed-query" class="product-input" type="search" name="q" maxlength="80" value="{{ query_text|default('') }}" placeholder="商家、备注或原件文字"></div>
+    <button class="product-button" type="submit" aria-label="查找流水"><svg width="22" height="22" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#search"/></svg></button>
+  </div>
+  <details class="saved-view-actions">
+    <summary class="product-button product-button--quiet">分类与标签{% if category %} · {{ category }}{% endif %}{% if tag %} · {{ tag }}{% endif %}</summary>
+    <div class="product-form-grid">
+      <label class="product-field"><span>分类</span><input class="input" name="category" value="{{ category|default('') }}" maxlength="64" placeholder="全部分类" list="confirmed-categories"></label>
+      <datalist id="confirmed-categories">{% for item in category_options %}<option value="{{ item }}">{% endfor %}</datalist>
+      <label class="product-field"><span>标签</span><input class="input" name="tag" value="{{ tag }}" maxlength="64" placeholder="不限标签"></label>
+    </div>
+    <button class="product-button product-button--quiet" type="submit">应用筛选</button>
+  </details>
+</form>
+{% if _has_search %}
+<div class="ledger-active-filter" role="status"><span>找到 {{ total }} 条流水{% if query_text %} · {{ query_text }}{% endif %}{% if category %} · {{ category }}{% endif %}</span><a href="/web/confirmed?{{ {'ledger_id':selected_ledger_id, 'month':month, 'filter':filter, 'tag':tag, 'home_currency_code':home_currency_code}|urlencode }}">清除关键词与分类</a></div>
+{% endif %}
+{% if filter not in ['missing_category', 'missing_accounting_date'] and not _has_search %}
 <div class="ledger-summary">
   <div><p class="product-page-summary">本月净支出 · {{ home_currency_code }}</p><p class="confirmed-hero-amount"><span class="sr-only">{{ month }} 合计 </span>{% if month_total_amount_yuan is not none %}{{ home_currency_symbol }}{{ month_total_amount_yuan }}{% elif ledger_undated_expense_count|default(0) %}待核对账务日期{% else %}待补齐换算信息{% endif %}</p></div>
 {% endif %}
@@ -57,12 +80,12 @@
   <a class="product-button product-button--quiet" href="/web/saved-views?ledger_id={{ selected_ledger_id }}">保存的视图</a>
   {% if can_write %}
   {% if save_view_error %}<p class="product-feedback" role="status">{{ save_view_error }}</p>{% else %}
-  <a class="product-button product-button--quiet" data-save-view href="/web/saved-views?{{ {'ledger_id':selected_ledger_id, 'create':'true', 'month_mode':('current' if filter else 'fixed'), 'month':month, 'filter':filter, 'tag_public_id':save_view_tag_public_id, 'home_currency_code':home_currency_code}|urlencode }}">保存当前视图</a>
+  <a class="product-button product-button--quiet" data-save-view href="/web/saved-views?{{ {'ledger_id':selected_ledger_id, 'create':'true', 'month_mode':('current' if filter else 'fixed'), 'month':month, 'filter':filter, 'tag_public_id':save_view_tag_public_id, 'home_currency_code':home_currency_code, 'query_text':query_text, 'category':category}|urlencode }}">保存当前视图</a>
   {% endif %}
   {% endif %}
 </div>
 {% endif %}
-{% if filter not in ['missing_category', 'missing_accounting_date'] %}</div>{% endif %}
+{% if filter not in ['missing_category', 'missing_accounting_date'] and not _has_search %}</div>{% endif %}
 {% if missing_rates or (money_incomplete is defined and money_incomplete) %}
 {% include 'partials/budget_fx_gaps.html' %}
 {% endif %}
@@ -72,12 +95,11 @@
    ledger 与 month 或跨月 filter 上下文，回到第 1 页;
    不重建通用 query — Jinja 是 HTML escape 不是 URL encode, 且 msg/flash_type
    等过时反馈本就不该跨导航存活。 #}
-{% set _clear_scope = '&filter=' ~ filter if filter in ['missing_category', 'missing_accounting_date'] else '&month=' ~ month %}
-{% set _clear_href = '/web/confirmed?ledger_id=' ~ selected_ledger_id ~ _clear_scope ~ '&home_currency_code=' ~ home_currency_code %}
+{% set _clear_href = '/web/confirmed?' ~ ({'ledger_id':selected_ledger_id, 'month':month, 'filter':filter, 'home_currency_code':home_currency_code, 'q':query_text, 'category':category}|urlencode) %}
 <div class="ledger-active-filter" role="status">
   <span class="product-status product-status--info">标签：{{ tag }}</span>
   <span class="ledger-active-filter-copy">当前只显示带这个标签的账单。</span>
-  <a class="ledger-active-filter-clear" href="{{ _clear_href }}">清除筛选，查看全部</a>
+  <a class="ledger-active-filter-clear" href="{{ _clear_href }}">清除标签筛选</a>
 </div>
 {% endif %}
 
@@ -184,7 +206,10 @@
   {% include "product/_pagination.html" %}
   {% else %}
   <div class="product-state">
-    {% if filter == 'missing_accounting_date' %}
+    {% if _has_search %}
+    <div class="product-state-title">这组条件下没有流水</div>
+    <div class="product-state-body">关键词、分类和其他筛选仍保留。可以调整条件后再次查找。</div>
+    {% elif filter == 'missing_accounting_date' %}
     <div class="product-state-title">{% if tag %}这个标签下{% else %}当前账本{% endif %}没有账务日期待核对的账单</div>
     <div class="product-state-body">更正日期后，原账单会进入所选月份，并从此清单移除。</div>
     <a class="product-state-action" href="/web/confirmed?ledger_id={{ selected_ledger_id }}">返回流水</a>
@@ -213,7 +238,7 @@
 {# 本月概况: 次要信息区, 下沉到流水之后; 每日分布按 server-owned typed stream
    净贡献 (含退款/拒付/冲销, 与列表日合计同一投影), 原始账单来源是 root-only
    入账渠道。 #}
-{% if filter not in ['missing_category', 'missing_accounting_date'] %}
+{% if filter not in ['missing_category', 'missing_accounting_date'] and not _has_search %}
 <details class="ledger-read-overview"><summary>本月概况</summary>
 <p class="product-page-summary">{{ selected_month }} · 共 {{ month_total_count }} 笔 · 合计 {% if month_total_amount_yuan is not none %}{{ home_currency_symbol }}{{ month_total_amount_yuan }}{% elif ledger_undated_expense_count|default(0) %}待核对账务日期{% else %}待补齐换算信息{% endif %}</p>
 {% if expenses %}<p>本页按日合计</p><dl class="ledger-read-day-totals">{% for day, amount in page_day_totals.items() %}<dt>{{ day or '账务日期待核对' }}</dt><dd>{{ home_amount_label(amount) }}</dd>{% endfor %}</dl>{% endif %}
@@ -289,6 +314,8 @@
   <input type="hidden" name="home_currency_code" value="{{ home_currency_code }}">
   <input type="hidden" name="month" value="{{ month }}">
   <input type="hidden" name="filter" value="{{ filter }}">
+  <input type="hidden" name="query_text" value="{{ query_text|default('') }}">
+  <input type="hidden" name="query_category" value="{{ category|default('') }}">
   <input type="hidden" name="tag" value="{{ tag }}">
   <input type="hidden" name="page" value="{{ page }}">
   <input type="hidden" name="idempotency_key" value="{{ batch_idempotency_key }}">

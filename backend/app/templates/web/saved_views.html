@@ -22,7 +22,7 @@
 <section aria-label="保留的视图输入">
   {% if draft.repair_reason %}<p class="product-feedback product-feedback--error" role="alert">原标签已被删除或合并，视图暂不能打开。请明确选择替代标签或不限标签；也可在原标签可撤销时将其恢复。</p>{% endif %}
   <p class="meta">使用 {{ selected_ledger_name }} · 只保存条件，不固定今天的结果。</p>
-  {{ editor(draft, editing_public_id, selected_ledger_id, tag_options, currency_codes, csrf_field, can_write) }}
+  {{ editor(draft, editing_public_id, selected_ledger_id, tag_options, currency_codes, csrf_field, can_write, category_options|default([])) }}
   {% if editing_public_id and error %}<a class="product-button product-button--quiet" href="/web/saved-views{{ q }}&amp;edit={{ editing_public_id }}">重新载入最新条件</a>{% endif %}
 </section>
 {% else %}
@@ -48,7 +48,7 @@
 {% else %}
 <section class="product-state">
   <h2 class="product-state-title">还没有保存的视图</h2>
-  <p>在已确认流水中选好月份、标签或待处理范围，再选择“保存当前视图”。</p>
+  <p>在已确认流水中选好关键词、分类、月份、标签或待处理范围，再选择“保存当前视图”。</p>
 </section>
 {% endfor %}
 </div>
