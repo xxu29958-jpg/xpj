@@ -58,9 +58,12 @@ def resume_rule_edit(j, initial_categories, rule):
         assert native.has("RefShop"), "The reopened submission lost its original rule"
         native.reveal_any("重新读取规则")
         assert native.has("规则暂时打不开"), "A failed rule read was presented as an empty dictionary"
+        native.reveal_any("规则应用记录", toward_start=True)
+        native.click("规则应用记录")
         native.reveal_any("重新读取应用记录")
         assert native.has("应用记录暂时打不开"), "A failed history read was presented as an empty history"
         native.capture("reference-rule-offline-reopened")
+        native.back()
         native.reveal_any("这份规则提交尚未确认", toward_start=True)
         assert j.rule(rule["id"])["priority"] == 100
     finally:
@@ -69,19 +72,21 @@ def resume_rule_edit(j, initial_categories, rule):
         native.click("重试原提交")
     j.expect(lambda state: any(row["id"] == rule["id"] and row["priority"] == 101 for row in state["rules"]),
              "The original persisted rule edit did not resume")
-    native.reveal_any("重新读取应用记录", max_scrolls=16)
-    native.click("重新读取应用记录")
+    native.reveal_any("规则应用记录", max_scrolls=16)
+    native.click("规则应用记录")
     native.reveal_any("还没有应用记录。")
     assert not j.facts()["applications"], "Retrying a history read replayed an application"
     native.capture("reference-rule-history-read-recovered")
+    native.back()
     assert [row["category"] for row in j.facts()["expenses"]] == initial_categories
 
 
 def preview_apply_and_rollback(j, initial_categories):
     native, page = j.native, j.page
-    native.reveal_any("已入账应用", max_scrolls=16)
-    native.click("预览")
-    native.reveal_any("可更新 2 笔")
+    native.reveal_any("预览已确认账单", max_scrolls=16)
+    native.click("预览已确认账单")
+    native.reveal_any("将改写分类")
+    assert any(node.get("text") == "2 笔" for node in native.tree().iter("node")), "The native preview lost its actual proposed update count"
     assert not j.facts()["applications"] and not j.facts()["rule_changes"], "Preview wrote an application"
     native.capture("reference-rule-native-preview")
     j.goto("/web/rules")
@@ -97,6 +102,8 @@ def preview_apply_and_rollback(j, initial_categories):
     j.batch([first], "category", "Manual")
     native.restart()
     j.native_open("分类规则")
+    native.reveal_any("规则应用记录", max_scrolls=16)
+    native.click("规则应用记录")
     native.reveal_any("回退", max_scrolls=16)
     native.click("回退")
     native.click_within("回退这次应用？", "回退")
@@ -113,19 +120,20 @@ def preview_apply_and_rollback(j, initial_categories):
 
 def apply_and_rollback_from_native(j):
     native = j.native
-    native.reveal_any("已入账应用", toward_start=True, max_scrolls=16)
-    native.click("预览")
-    native.reveal_any("可更新 1 笔")
+    native.back()
+    native.reveal_any("预览已确认账单", toward_start=True, max_scrolls=16)
+    native.click("预览已确认账单")
+    native.reveal_any("将改写分类")
+    assert any(node.get("text") == "1 笔" for node in native.tree().iter("node")), "The next preview did not reflect the remaining candidate"
+    native.reveal_any("确认应用", max_scrolls=16)
     native.click("确认应用")
     j.expect(lambda state: len(state["applications"]) == 2, "The actual native application was not recorded")
     assert [row["category"] for row in j.facts()["expenses"]] == ["Manual", "Library", "Library"]
-    native.reveal_any("已更新 1 笔")
-    native.reveal_any("确认应用")
-    controls = [node for node in native.tree().iter("node") if node.get("clickable") == "true" and
-                any(child.get("text") == "确认应用" for child in node.iter("node"))]
-    assert len(controls) == 1 and controls[0].get("enabled") == "false", "An accepted result still offers its old confirmation"
+    native.reveal_any("首次结果：改写 1 笔", toward_start=True, max_scrolls=16)
+    assert not native.has("确认应用"), "An accepted result still offers its old confirmation"
     native.capture("reference-rule-native-accepted")
-    native.reveal_any("最近应用记录", max_scrolls=16)
+    native.reveal_any("规则应用记录", max_scrolls=16)
+    native.click("规则应用记录")
     native.click("回退")
     native.click_within("回退这次应用？", "回退")
     j.expect(lambda state: state["applications"][1]["status"] == "rolled_back", "The native application could not be rolled back")

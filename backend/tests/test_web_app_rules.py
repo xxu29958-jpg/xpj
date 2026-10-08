@@ -510,4 +510,5 @@ def test_web_rules_apply_confirmed_requires_preview_then_applies(
 
     page = web_client.get("/web/rules?ledger_id=owner&view=history")
     assert page.status_code == 200
-    assert "已应用历史" in page.text
+    assert "已应用到已确认账单" in page.text
+    assert "当时更新 1 笔" in page.text

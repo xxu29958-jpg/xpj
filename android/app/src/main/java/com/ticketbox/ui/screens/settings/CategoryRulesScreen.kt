@@ -1,5 +1,6 @@
 package com.ticketbox.ui.screens.settings
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -15,6 +16,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -119,6 +122,8 @@ data class CategoryRulesUndoActions(
     val onDismiss: () -> Unit,
 )
 
+private enum class RuleWorkspacePage { Directory, Preview, History }
+
 @Composable
 fun CategoryRulesScreen(
     state: CategoryRulesScreenState,
@@ -126,6 +131,11 @@ fun CategoryRulesScreen(
     chrome: ManagementPageChrome = ManagementPageChrome(),
     initialRuleId: Long? = null,
 ) {
+    var page by rememberSaveable(state.binding) { mutableStateOf(RuleWorkspacePage.Directory) }
+    val pages = key(state.binding) { rememberSaveableStateHolder() }
+    LaunchedEffect(state.selectedSubmissionId) {
+        if (state.selectedSubmissionId != null) page = RuleWorkspacePage.Directory
+    }
     var initialRuleOpened by remember(state.binding, initialRuleId) { mutableStateOf(false) }
     LaunchedEffect(initialRuleId, state.rules.rules, state.interaction.readOnly, state.definitions.ready) {
         if (!initialRuleOpened && !state.interaction.readOnly && state.definitions.ready) {
@@ -145,6 +155,31 @@ fun CategoryRulesScreen(
     CategoryRuleDeleteDialogHost(deletingRule, { deletingRule = null }, actions.rules.onDelete)
     CategoryRuleRollbackDialogHost(rollbackApplication, { rollbackApplication = null }, actions.applications.onRollbackRuleApplication)
 
+    val backToDirectory = { page = RuleWorkspacePage.Directory }
+    val openHistory = { page = RuleWorkspacePage.History; actions.applications.onReload() }
+    BackHandler(enabled = page != RuleWorkspacePage.Directory, onBack = backToDirectory)
+    key(state.binding) {
+        pages.SaveableStateProvider(page.name) {
+            if (page == RuleWorkspacePage.Directory) {
+                CategoryRulesDirectoryPage(state, actions.copy(
+                    rules = actions.rules.copy(onDelete = { deletingRule = it }),
+                    applications = actions.applications.copy(onReload = openHistory,
+                        onPreviewApplyConfirmedRules = { page = RuleWorkspacePage.Preview; actions.applications.onPreviewApplyConfirmedRules() })),
+                    chrome)
+            } else {
+                CategoryRulesApplicationPage(state, actions.copy(onBack = backToDirectory,
+                    applications = actions.applications.copy(onRollbackRuleApplication = { rollbackApplication = it })), chrome, page)
+            }
+        }
+    }
+}
+
+@Composable
+private fun CategoryRulesDirectoryPage(
+    state: CategoryRulesScreenState,
+    actions: CategoryRulesScreenActions,
+    chrome: ManagementPageChrome,
+) {
     ManagementPageFrame(
         header = ManagementPageHeader(
             title = stringResource(R.string.category_rules_page_title),
@@ -177,9 +212,38 @@ fun CategoryRulesScreen(
         CategoryRulesContent(
             state = state.contentState(),
             actions = actions,
-            onRequestDelete = { deletingRule = it },
-            onRequestRollback = { rollbackApplication = it },
+            onRequestDelete = actions.rules.onDelete,
+            onPreview = actions.applications.onPreviewApplyConfirmedRules,
+            onHistory = actions.applications.onReload,
         )
+    }
+}
+
+@Composable
+private fun CategoryRulesApplicationPage(
+    state: CategoryRulesScreenState,
+    actions: CategoryRulesScreenActions,
+    chrome: ManagementPageChrome,
+    page: RuleWorkspacePage,
+) {
+    val preview = page == RuleWorkspacePage.Preview
+    ManagementPageFrame(
+        ManagementPageHeader(
+            stringResource(if (preview) R.string.category_rule_impact_title else R.string.category_rule_history_entry),
+            if (!preview) stringResource(R.string.category_rule_history_subtitle)
+            else state.applications.confirmedPreview?.let { stringResource(R.string.category_rule_impact_scanned, it.confirmedScanned) }
+                ?: stringResource(R.string.category_rule_apply_panel_hint),
+            chrome.copy(backText = stringResource(R.string.category_rule_editor_cancel))),
+        onBack = actions.onBack,
+        status = { AppStatusBanner(state.status.message, state.status.messageTone) },
+    ) {
+        if (preview) {
+            ConfirmedRuleApplyPanel(state.applications.confirmedPreview, state.interaction.busy, state.interaction.readOnly,
+                actions.applications.onPreviewApplyConfirmedRules, actions.applications.onConfirmApplyConfirmedRules)
+        } else {
+            RuleApplicationHistory(state.applications, state.interaction,
+                actions.applications.onRollbackRuleApplication, actions.applications.onReload)
+        }
     }
 }
 
@@ -189,10 +253,6 @@ private data class CategoryRulesContentState(
     val rulesLoadFailed: Boolean,
     val busy: Boolean,
     val readOnly: Boolean,
-    val applications: List<RuleApplicationBatch>,
-    val applicationsLoading: Boolean,
-    val applicationsLoadFailed: Boolean,
-    val confirmedPreview: RuleApplyConfirmedResult?,
     val undoableRule: CategoryRule?,
     val definitionsReady: Boolean,
     val applicationPending: Boolean,
@@ -201,9 +261,7 @@ private data class CategoryRulesContentState(
 private fun CategoryRulesScreenState.contentState() = CategoryRulesContentState(
     applicationPending = applicationSubmissions.any { !it.isDone },
     rules = rules.rules, rulesLoading = rules.loading, rulesLoadFailed = rules.loadFailed, busy = interaction.busy,
-    readOnly = interaction.readOnly, applications = applications.history,
-    applicationsLoading = applications.loading, confirmedPreview = applications.confirmedPreview,
-    applicationsLoadFailed = applications.loadFailed,
+    readOnly = interaction.readOnly,
     undoableRule = undoableRule,
     definitionsReady = definitions.ready,
 )
@@ -249,31 +307,25 @@ private fun CategoryRulesContent(
     state: CategoryRulesContentState,
     actions: CategoryRulesScreenActions,
     onRequestDelete: (CategoryRule) -> Unit,
-    onRequestRollback: (RuleApplicationBatch) -> Unit,
+    onPreview: () -> Unit,
+    onHistory: () -> Unit,
 ) {
     CategoryRuleUndoPanel(
         undoableRule = state.undoableRule,
         onUndoDelete = actions.undo.onUndoDelete,
         onDismissUndo = actions.undo.onDismiss,
     )
+    if (!state.applicationPending) {
+        SettingsEntryRow(stringResource(R.string.category_rule_preview_entry),
+            stringResource(R.string.category_rule_apply_panel_hint), R.drawable.ic_lucide_scan_line,
+            onClick = onPreview.takeUnless { state.busy })
+    }
+    SettingsEntryRow(stringResource(R.string.category_rule_history_entry),
+        stringResource(R.string.category_rule_history_subtitle), R.drawable.ic_lucide_rotate_ccw, onHistory)
     CategoryRuleListSection(
         state = state,
         actions = actions,
         onRequestDelete = onRequestDelete,
-    )
-    if (!state.applicationPending) SettingsSection(title = stringResource(R.string.category_rules_section_confirmed_apply)) {
-        ConfirmedRuleApplyPanel(
-            preview = state.confirmedPreview,
-            busy = state.busy,
-            readOnly = state.readOnly,
-            onPreview = actions.applications.onPreviewApplyConfirmedRules,
-            onConfirm = actions.applications.onConfirmApplyConfirmedRules,
-        )
-    }
-    RuleApplicationHistorySection(
-        state = state,
-        onRequestRollback = onRequestRollback,
-        onReload = actions.applications.onReload,
     )
 }
 
@@ -366,42 +418,6 @@ private fun CategoryRuleListBody(
                 }
             },
         )
-    }
-}
-
-@Composable
-private fun RuleApplicationHistorySection(
-    state: CategoryRulesContentState,
-    onRequestRollback: (RuleApplicationBatch) -> Unit,
-    onReload: () -> Unit,
-) {
-    SettingsSection(title = stringResource(R.string.category_rules_section_history)) {
-        if (state.applicationsLoadFailed) {
-            SettingsInlineEmpty(
-                title = stringResource(R.string.category_rule_history_read_failed_title),
-                body = stringResource(R.string.category_rules_read_failed_body),
-            )
-            TextButton(enabled = !state.busy, onClick = onReload) { Text(stringResource(R.string.category_rule_history_reload)) }
-        } else if (state.applications.isEmpty()) {
-            SettingsListStateSlot(
-                loading = state.applicationsLoading,
-                hasData = false,
-                copy = SettingsStateSlotCopy(
-                    loadingTitle = stringResource(R.string.category_rule_apply_history_loading_title),
-                    loadingBody = stringResource(R.string.category_rule_apply_history_loading_body),
-                    emptyText = stringResource(R.string.category_rule_apply_history_empty),
-                    emptyTitle = stringResource(R.string.category_rule_apply_history_empty),
-                    emptyBody = stringResource(R.string.category_rule_apply_history_empty),
-                ),
-            )
-        } else {
-            RuleApplicationHistory(
-                applications = state.applications,
-                readOnly = state.readOnly,
-                busy = state.busy,
-                onRollback = onRequestRollback,
-            )
-        }
     }
 }
 

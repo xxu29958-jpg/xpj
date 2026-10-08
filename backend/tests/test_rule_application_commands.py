@@ -13,6 +13,7 @@ from sqlalchemy import select
 from app.database import SessionLocal
 from app.errors import AppError
 from app.models import ApiIdempotencyKey, Expense, LedgerMember, RuleApplicationBatch
+from app.services.currency_binding_service import resolve_write_capability
 from app.services.rule_application_service import _commands
 
 
@@ -22,6 +23,7 @@ def _expense(status: str) -> int:
         expense_time=now, confirmed_at=now)
     if status == "pending":
         with SessionLocal() as db:
+            resolve_write_capability(db)
             db.get(Expense, expense_id).status = "pending"
             db.get(Expense, expense_id).confirmed_at = None
             db.commit()
@@ -56,6 +58,7 @@ def test_original_application_concurrent_replay_retains_first_result_and_later_f
     receipt = first.json()
     assert receipt["command_key"] == key and receipt["changed_count"] == 1
     with SessionLocal() as db:
+        resolve_write_capability(db)
         batch = db.scalar(select(RuleApplicationBatch).where(RuleApplicationBatch.public_id == receipt["application_public_id"]))
         assert batch is not None and batch.changed_count == 1
         stored = db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.idempotency_key == key))

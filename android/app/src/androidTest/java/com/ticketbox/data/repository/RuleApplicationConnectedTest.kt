@@ -58,7 +58,7 @@ class RuleApplicationConnectedTest {
         reopen()
         showScreen()
         compose.waitUntil(10_000) { model!!.uiState.value.binding != null }
-        compose.onNodeWithText("预览", substring = false).performScrollTo().performClick()
+        compose.onNodeWithText("预览已确认账单", substring = false).performScrollTo().performClick()
         compose.waitUntil(10_000) { model!!.uiState.value.confirmedRulesPreview != null }
         compose.onNodeWithText("确认应用", substring = false).performScrollTo().performClick()
         compose.waitUntil(10_000) { model!!.uiState.value.pendingApplications.isNotEmpty() }
@@ -69,7 +69,7 @@ class RuleApplicationConnectedTest {
         assertEquals(1, drain().failures)
         compose.waitUntil(10_000) { model!!.uiState.value.pendingApplications.singleOrNull()?.canRetry == true }
         compose.onNodeWithText("原预览扫描 9 笔已确认账单，预计改写 1 笔。").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("预览", substring = false).assertDoesNotExist()
+        compose.onNodeWithText("预览已确认账单", substring = false).assertDoesNotExist()
         capture("rule-application-original")
         network.currentCategory = "医疗"
         network.loseReply = false

@@ -55,7 +55,8 @@ def test_alpha3_endpoints_no_secret_leak(client: TestClient, *, identity) -> Non
         if method == "GET":
             response = client.get(path, headers=identity.app_headers)
         else:
-            response = client.post(path, headers=identity.app_headers, json=body)
+            headers = {**identity.app_headers, "Idempotency-Key": str(uuid4())} if body and body.get("confirm") else identity.app_headers
+            response = client.post(path, headers=headers, json=body)
         assert response.status_code == 200
         text = response.text
         assert "token_hash" not in text

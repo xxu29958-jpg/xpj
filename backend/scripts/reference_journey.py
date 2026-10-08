@@ -41,7 +41,9 @@ class ReferenceJourney:
     def native_row_action(self, label, action):
         # Compose exposes these list labels as siblings in one panel, not row
         # ancestors. Match the live touch bounds of the button beside the label.
+        scrolls = 0
         def locate():
+            nonlocal scrolls
             root = self.native.tree()
             parents = {child: parent for parent in root.iter() for child in parent}
             labels = [node for node in root.iter("node") if node.get("text") == label]
@@ -57,6 +59,13 @@ class ReferenceJourney:
                     _, y1, right, y2 = self.native.bounds(text)
                     if right <= left and top <= (y1 + y2) // 2 <= bottom:
                         matches.append(button)
+            scrollable = [node for node in root.iter("node") if node.get("scrollable") == "true"]
+            if not matches and len(labels) == 1 and scrollable and scrolls < 2:
+                _, top, _, bottom = self.native.bounds(max(scrollable, key=lambda node: self.native.bounds(node)[3]))
+                if self.native.bounds(labels[0])[1] > top + (bottom - top) * 3 // 4:
+                    # The label's first pixels can be visible while its adjacent menu is still below the viewport.
+                    self.native.scroll_viewport(list(root.iter("node")), toward_start=False)
+                    scrolls += 1
             return matches if len(matches) == 1 else None
         button = wait_for(locate, f"The visible {action} beside {label} cannot be identified")[0]
         self.native.tap(button)
