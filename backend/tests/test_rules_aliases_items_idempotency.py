@@ -7,9 +7,9 @@ outbox-routed mutate route claims an ``Idempotency-Key`` through the existing
 idempotency owner BEFORE its OCC ``row_version`` claim. Two flavours
 of HIT re-serialisation are exercised end-to-end here:
 
-* category-rule and alias updates return the original accepted receipt, even
-  after a later edit or deletion. Item updates retain their current-resource
-  response. In each case a same-intent replay precedes OCC.
+* category-rule, alias and item updates return the original accepted receipt,
+  even after a later edit. A same-intent replay precedes OCC and cannot lend
+  a peer's later version to the next queued command.
 * deletes are idempotent by construction — a HIT just returns ``StatusResponse``
   without re-running the soft-delete.
 
@@ -217,13 +217,10 @@ def test_update_rule_stale_token_with_different_key_still_409s(
     assert stale.json()["error"] == "state_conflict"
 
 
-def test_replace_items_replay_same_key_returns_canonical_not_409(
+def test_replace_items_replay_preserves_original_acceptance_after_peer_change(
     client: TestClient, identity: TestIdentity
 ) -> None:
-    """Committed-but-unseen for the items replace (HIT re-serialises via
-    ``list_expense_items`` — a different canonical path than the rule/alias
-    ``get_*``): same key + same stale token returns the canonical item list,
-    not the false-409 the OCC claim would raise."""
+    """An accepted replay keeps its first result after a later peer edit."""
     expense_id = _create_items_expense(client, identity=identity)
     v0 = _expense_row_version(client, expense_id, identity=identity)
     key = str(uuid4())
@@ -239,10 +236,20 @@ def test_replace_items_replay_same_key_returns_canonical_not_409(
     v1 = first.json()["row_version"]
     assert v1 != v0
 
+    peer = client.put(f"/api/expenses/{expense_id}/items",
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"expected_row_version": v1, "items": [{"name": "他端后来填写", "amount_cents": 700, "category": "餐饮"}]})
+    assert peer.status_code == 200, peer.text
+
     replay = client.put(f"/api/expenses/{expense_id}/items", headers=headers, json=body)
-    assert replay.status_code == 200, replay.text  # HIT, not 409
-    assert [item["name"] for item in replay.json()["items"]] == ["拿铁"]
-    assert replay.json()["row_version"] == v1  # canonical, not re-applied
+    assert replay.status_code == 200, replay.text
+    assert replay.json() == first.json()
+    following = client.put(f"/api/expenses/{expense_id}/items",
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={**body, "expected_row_version": replay.json()["row_version"]})
+    assert following.status_code == 409, following.text
+    assert following.json()["error"] == "state_conflict"
+    assert client.get(f"/api/expenses/{expense_id}/items", headers=identity.app_headers).json() == peer.json()
 
 
 @pytest.mark.parametrize("follow_up", ["edit", "delete"])

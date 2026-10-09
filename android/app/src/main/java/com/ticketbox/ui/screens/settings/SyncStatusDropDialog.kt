@@ -143,6 +143,9 @@ private fun legacyDropConfirmationText(selection: SyncStatusDropSelection): Drop
     val expired = selection.failed && isExpiredFailure(row.lastError)
     val debtCreation = row.type == PendingMutationType.CreateDebt
     return when {
+    row.lastError in com.ticketbox.data.repository.EXPENSE_ORIGINAL_REVIEW_ERRORS -> DropConfirmationText(
+        stringResource(R.string.sync_status_accepted_stop_title), stringResource(R.string.sync_status_accepted_stop_body),
+        stringResource(R.string.sync_status_accepted_stop))
     !selection.failed -> DropConfirmationText(
         stringResource(R.string.sync_status_conflict_drop_dialog_title),
         stringResource(R.string.sync_status_conflict_drop_dialog_text, label),

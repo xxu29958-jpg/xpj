@@ -22,6 +22,18 @@ import kotlin.test.assertTrue
  */
 class SyncStatusFailureTest {
 
+    @Test fun `accepted expense without a verifiable receipt is counted for review rather than failed delivery`() {
+        for (code in com.ticketbox.data.repository.EXPENSE_ORIGINAL_REVIEW_ERRORS) {
+            val original = row(id = 43).copy(type = PendingMutationType.ReplaceItems,
+                status = PendingMutationStatus.Failed, lastError = code)
+            val overview = syncStatusOverview(OutboxStatus(0, emptyList(), listOf(original)), emptyList(), emptyList())
+            assertEquals(1, overview.reviewRequiredCount)
+            assertEquals(1, overview.needsActionCount)
+            assertEquals(0, overview.failedCount)
+            assertFalse(overview.isSettled)
+        }
+    }
+
     @Test fun `changed binding needs local action before delivery and is counted once after failure`() {
         val waiting = com.ticketbox.data.repository.PendingDebtWrite(
             row(id = 81).copy(type = PendingMutationType.RecordDebtRepayment, status = PendingMutationStatus.Pending), null)

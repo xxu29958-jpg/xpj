@@ -11,6 +11,7 @@ import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.PendingExpenseCorrection
+import com.ticketbox.data.repository.EXPENSE_ORIGINAL_REVIEW_ERRORS
 import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppOutlinedButtonOptions
 import com.ticketbox.ui.design.AppSpacing
@@ -22,6 +23,25 @@ import com.ticketbox.viewmodel.OutboxStatusUiState
 /** Original-command recovery stays ahead of read-only refresh and identity quarantine. */
 @Composable
 internal fun SyncStatusExpenseReviewSection(state: OutboxStatusUiState, actions: SyncStatusActions) {
+    val originals = state.status.failed.filter { it.lastError in EXPENSE_ORIGINAL_REVIEW_ERRORS }
+    if (originals.isNotEmpty()) SettingsSection(title = stringResource(R.string.sync_status_section_needs_action)) {
+        originals.forEach { row -> key(state.binding, row.id) {
+            SettingsDetailRow(title = stringResource(syncStatusMutationLabelResources.getValue(row.type)),
+                subtitle = stringResource(R.string.sync_status_review_entry_hint),
+                icon = R.drawable.ic_lucide_git_branch) {
+                Text(stringResource(R.string.sync_status_expense_original_requires_review))
+                com.ticketbox.data.repository.expenseRefreshTargetId(row.targetId, row.receiptJson)?.let { id ->
+                    AppOutlinedButton(onClick = { actions.onOpenExpense(id) },
+                        options = AppOutlinedButtonOptions(enabled = state.busyRowId == null)) {
+                        Text(stringResource(R.string.expense_offset_review_current))
+                    }
+                }
+                TextButton(onClick = { actions.onDropFailed(row) }, enabled = state.busyRowId == null) {
+                    Text(stringResource(R.string.sync_status_accepted_stop))
+                }
+            }
+        } }
+    }
     (state.status.conflicts + state.status.failed).filter { it.type == PendingMutationType.OriginalAttachment }.forEach { row ->
         val id = row.targetId.removePrefix("expense:").toLongOrNull()
         Text(stringResource(R.string.original_attention))

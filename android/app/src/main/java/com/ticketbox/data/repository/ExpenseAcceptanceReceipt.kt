@@ -10,6 +10,9 @@ import com.ticketbox.data.remote.dto.ExpenseConfirmationReceiptDto
 
 internal const val EXPENSE_REJECTION_ORIGINAL_REQUIRES_REVIEW = "expense_rejection_original_requires_review"
 internal const val EXPENSE_CONFIRMATION_ORIGINAL_REQUIRES_REVIEW = "expense_confirmation_original_requires_review"
+internal const val EXPENSE_SUBTASK_ORIGINAL_REQUIRES_REVIEW = "expense_subtask_original_requires_review"
+internal val EXPENSE_ORIGINAL_REVIEW_ERRORS = setOf(EXPENSE_REJECTION_ORIGINAL_REQUIRES_REVIEW,
+    EXPENSE_CONFIRMATION_ORIGINAL_REQUIRES_REVIEW, EXPENSE_SUBTASK_ORIGINAL_REQUIRES_REVIEW)
 
 /** Acceptance belongs to the same Outbox row; read-cache identity is disposable. */
 @JsonClass(generateAdapter = true)
