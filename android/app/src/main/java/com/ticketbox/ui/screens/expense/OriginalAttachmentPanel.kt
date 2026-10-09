@@ -130,9 +130,12 @@ private fun OriginalReadAndRepair(state: OriginalAttachmentUiState, viewModel: O
         verify = false
         viewModel.verifyReviewedImage()
     }, { verify = false })
-    if (state.health?.expectedSha256 != null && state.health.state in setOf("missing", "corrupt", "cleaned", "unreadable")) {
-        Text(stringResource(R.string.original_replenish_context), style = MaterialTheme.typography.bodyMedium)
-        AppPrimaryButton(text = stringResource(R.string.original_replenish), modifier = Modifier.fillMaxWidth(),
+    if (state.selectionOperation != null) {
+        val (action, explanation) = if (state.selectionOperation == "attach_original")
+            R.string.original_attach to R.string.original_attach_context
+        else R.string.original_replenish to R.string.original_replenish_context
+        Text(stringResource(explanation), style = MaterialTheme.typography.bodyMedium)
+        AppPrimaryButton(text = stringResource(action), modifier = Modifier.fillMaxWidth(),
             onClick = onSelectFile, enabled = state.canSubmit)
     }
 }
@@ -179,7 +182,7 @@ private fun OriginalLocalSelection(state: OriginalAttachmentUiState, retry: () -
 @Composable
 private fun OriginalCommandCard(command: PendingOriginalCommand, busy: Boolean, canModify: Boolean, recover: (Boolean) -> Unit) {
     var stop by remember(command.row.id) { mutableStateOf(false) }
-    val operationLabels = mapOf("verify_original" to R.string.original_verify, "replenish_original" to R.string.original_replenish,
+    val operationLabels = mapOf("attach_original" to R.string.original_attach, "verify_original" to R.string.original_verify, "replenish_original" to R.string.original_replenish,
         "retry_original_cleanup" to R.string.original_cleanup_retry, "cancel_original_cleanup" to R.string.original_cleanup_cancel)
     val label = stringResource(operationLabels[command.payload?.operation] ?: R.string.original_title)
     if (command.delivered) {
@@ -202,6 +205,7 @@ private fun originalFailureLabel(code: String?): Int = when (code) {
     "original_review_conflict" -> R.string.error_original_review_conflict
     "attachment_cleanup_changed" -> R.string.error_attachment_cleanup_changed
     "original_already_verified" -> R.string.error_original_already_verified
+    "original_already_associated" -> R.string.error_original_already_associated
     "original_identity_unverified" -> R.string.error_original_identity_unverified
     "attachment_cleanup_invalid" -> R.string.error_attachment_cleanup_invalid
     else -> R.string.original_attention

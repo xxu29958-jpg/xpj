@@ -1,6 +1,6 @@
 <resources>
     <string name="original_title">原件</string>
-    <string name="original_status_none">手动记录，无需原件</string>
+    <string name="original_status_none">没有原件，也可以记账</string>
     <string name="original_status_cleaned">已按保留策略清理</string>
     <string name="original_status_replenish">原件需要补回，账单仍保留</string>
     <string name="original_status_unverified">查看并核对原件</string>
@@ -25,6 +25,8 @@
     <string name="original_check">检查原件</string>
     <string name="original_view">查看原图</string>
     <string name="original_replenish">补回同一原件</string>
+    <string name="original_attach">添加小票或截图</string>
+    <string name="original_attach_context">可为这笔账单添加原件。选择属于这笔消费的图片，不会重新记账或改变已填内容。</string>
     <string name="original_verify">我已核对这张原图</string>
     <string name="original_verify_explanation">仅为当前看过的文件建立摘要基准，不证明历史拍摄时间或未经处理的来源。</string>
     <string name="original_checked_at">检查于 %1$s</string>

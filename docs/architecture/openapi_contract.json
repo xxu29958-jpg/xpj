@@ -19812,6 +19812,7 @@
           },
           "operation": {
             "enum": [
+              "attach_original",
               "verify_original",
               "replenish_original",
               "retry_original_cleanup",
@@ -23939,6 +23940,11 @@
             "title": "Debt Activity Read Version",
             "type": "integer"
           },
+          "original_attachment_create_version": {
+            "minimum": 1.0,
+            "title": "Original Attachment Create Version",
+            "type": "integer"
+          },
           "original_attachment_version": {
             "minimum": 1.0,
             "title": "Original Attachment Version",
@@ -23954,6 +23960,7 @@
           "upload_original_receipt_version",
           "accounting_time_input_version",
           "original_attachment_version",
+          "original_attachment_create_version",
           "debt_activity_read_version",
           "currency"
         ],
@@ -34267,6 +34274,142 @@
           }
         },
         "summary": "Get Original Health",
+        "tags": [
+          "expenses"
+        ]
+      }
+    },
+    "/api/expenses/{expense_id}/original/attach": {
+      "post": {
+        "operationId": "post_original_attachment_api_expenses__expense_id__original_attach_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "expense_id",
+            "required": true,
+            "schema": {
+              "title": "Expense Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "expected_row_version",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "title": "Expected Row Version",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "file": {
+                    "format": "binary",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "file"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/OriginalCommandReceipt"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Post Original Attachment",
         "tags": [
           "expenses"
         ]

@@ -33,7 +33,7 @@ internal suspend fun UploadIntentRepository.acceptOriginalAttachment(request: Or
     requireOriginalWriter()
     try {
         files.acceptBatch(
-            sources = if (request.payload.operation == "replenish_original") listOf(
+            sources = if (request.payload.operation in setOf("attach_original", "replenish_original")) listOf(
                 UploadIntentFileSource(request.key, request.payload.file) { request.prepareOriginalSource() },
             ) else emptyList(),
             beforePrepare = {

@@ -36,6 +36,11 @@ data class OriginalAttachmentUiState(
         !localIntent && commands.none { !it.delivered }
     val canVerify: Boolean get() = canSubmit && health?.state == "unverified" &&
         reviewedDigest != null && reviewedDigest == image?.originalSha256
+    val selectionOperation: String? get() = when {
+        health?.state == "none" && health.cleanup == null && health.cleanupError == null -> "attach_original"
+        health?.expectedSha256 != null && health.state in setOf("missing", "corrupt", "cleaned", "unreadable") -> "replenish_original"
+        else -> null
+    }
 }
 
 /** Ephemeral detail presentation; the existing UploadIntentRepository/Room owns every submitted command. */

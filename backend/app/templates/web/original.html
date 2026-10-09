@@ -11,7 +11,7 @@
 {% set needs_replenish = original.expected_sha256 and original.state in ['missing','corrupt','cleaned','unreadable'] %}
 <header class="product-page-header"><div class="product-page-heading">
   <h1 class="page-title">{{ '把原件补回来' if needs_replenish else '账单原件' }}</h1>
-  <p class="product-page-summary">{{ original_expense.merchant or '未填写商家' }} · {{ original_amount_label }}</p>
+  <p class="product-page-summary">{{ original_expense.merchant or '未填写商家' }} · {{ original_amount_label }} {{ original_currency_label or '币种待核对' }}</p>
 </div></header>
 {% if message %}<p class="product-feedback" role="status">{{ message }}</p>{% endif %}
 <div class="detail-layout">
@@ -29,8 +29,8 @@
   <button class="product-button product-button--quiet" type="button" data-original-preview data-image-href="/web/expenses/{{ original.expense_id }}/image?ledger_id={{ selected_ledger_id }}">打开实际原图</button>
   <noscript><p>请<a href="/web/expenses/{{ original.expense_id }}/image?ledger_id={{ selected_ledger_id }}">打开实际原图</a>查看或下载。核验摘要需要启用脚本后读取并核对图片。</p></noscript>
 {% else %}
-  <div class="product-panel product-panel--padded fact-hero"><span class="meta">对应账单</span><strong class="fact-amount">{{ original_amount_label }}</strong><p>{{ original_expense.merchant or '未填写商家' }}</p></div>
-  <p class="product-feedback">{{ labels[original.state] }}。{% if original.state == 'none' %}手动账单可以没有原件，无需补回。{% else %}这笔账单、金额与历史记录仍然保留。{% endif %}</p>
+  <div class="product-panel product-panel--padded fact-hero"><span class="meta">对应账单 · {{ original_currency_label or '币种待核对' }}</span><strong class="fact-amount">{{ original_amount_label }}</strong><p>{{ original_expense.merchant or '未填写商家' }}</p></div>
+  <p class="product-feedback">{{ labels[original.state] }}。{% if original.state == 'none' %}没有小票也可以记账；有小票或截图时，可以添加到这笔账单。{% else %}这笔账单、金额与历史记录仍然保留。{% endif %}</p>
 {% endif %}
 </section>
 <aside class="detail-aside" aria-label="原件操作与状态">
@@ -42,7 +42,7 @@
       data-attachment-available="{{ 'true' if available else 'false' }}" {% if not available %}hidden{% endif %}
       {% if binary %}enctype="multipart/form-data"{% endif %} {% if action == 'verify' %}data-original-verification{% endif %}>
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-  {% if binary %}<div class="product-field"><label for="original-file">选择同一张小票</label><input class="product-input" id="original-file" type="file" name="file" accept="image/*" required><p class="meta">核对所选图片属于这笔账单。补回会检查原件内容，不会另建账单。</p></div>{% endif %}
+  {% if binary %}<label class="file-picker" for="original-{{ action }}-file"><strong>{{ '选择小票或截图' if action == 'attach' else '选择同一张小票' }}</strong><span>{{ '选择属于这笔账单的图片。只添加原件，不会重新记账或改变已填内容。' if action == 'attach' else '核对所选图片属于这笔账单。补回会检查原件内容，不会另建账单。' }}</span><input class="file-picker-input" id="original-{{ action }}-file" type="file" name="file" accept="image/*" required></label>{% endif %}
   {% if action == 'verify' %}
   <input type="hidden" name="reviewed_sha256" value="">
   <label class="product-check"><input type="checkbox" data-original-reviewed disabled required><span>我已看清上方实际原图，确认它属于这笔账单。</span></label>
@@ -52,6 +52,7 @@
   <p class="meta" data-attachment-status role="status">未完成的操作可从下方继续。</p>
 </form>
 {% endmacro %}
+{{ intent_form('attach', '添加到这笔账单', original.state == 'none' and not original.cleanup and not original.cleanup_error, true) }}
 {{ intent_form('verify', '确认所见原件', original.state == 'unverified') }}
 {{ intent_form('replenish', '核对并补回原件', needs_replenish, true) }}
 {% if original.cleanup %}<section><h2 class="product-panel-title">尚未结束的清理</h2><p class="meta">请求时间 {{ saved_time(original.cleanup.requested_at) }}。原图：{{ original.cleanup.image or '不涉及' }}；缩略图：{{ original.cleanup.thumbnail or '不涉及' }}。</p>

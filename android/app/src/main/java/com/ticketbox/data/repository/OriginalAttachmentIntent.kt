@@ -49,7 +49,7 @@ internal val ORIGINAL_REVIEW_ERRORS = setOf("image_replenishment_mismatch", "ori
     "original_review_conflict", "original_already_verified", "attachment_cleanup_changed", "attachment_cleanup_invalid",
     "state_conflict", "idempotency_key_reused", "original_intent_unsupported",
     "original_receipt_invalid", "upload_original_unavailable", "expense_not_found", "image_not_found",
-    "original_replenishment_not_needed")
+    "original_replenishment_not_needed", "original_already_associated")
 internal val originalPayloadAdapter = Moshi.Builder().build().adapter(OriginalAttachmentPayload::class.java)
 internal val originalReceiptAdapter = Moshi.Builder().build().adapter(OriginalCommandReceiptDto::class.java)
 internal val originalHealthAdapter = Moshi.Builder().build().adapter(OriginalHealthDto::class.java)
@@ -67,6 +67,7 @@ internal fun OriginalAttachmentPayload.supported(): Boolean = revision == 1 && e
     origin.sessionGeneration.isNotBlank() && origin.bindingRevision.isNotBlank() && operationSupported()
 
 private fun OriginalAttachmentPayload.operationSupported(): Boolean = when (operation) {
+        "attach_original" -> sha256 == null && file != null && cleanupRequestId == null
         "verify_original" -> sha256.isOriginalDigest() && file == null && cleanupRequestId == null
         "replenish_original" -> sha256.isOriginalDigest() && file != null && cleanupRequestId == null
         "retry_original_cleanup", "cancel_original_cleanup" ->

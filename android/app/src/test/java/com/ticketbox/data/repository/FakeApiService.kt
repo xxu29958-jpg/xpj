@@ -98,6 +98,7 @@ internal class FakeApiService(
         error("Portable export not configured")
     override suspend fun originalHealth(id: Long): com.ticketbox.data.remote.dto.OriginalHealthDto = error("Original health not configured")
     override suspend fun verifyOriginal(id: Long, body: com.ticketbox.data.remote.dto.OriginalVerificationRequestDto, idempotencyKey: String): com.ticketbox.data.remote.dto.OriginalCommandReceiptDto = error("Original verification not configured")
+    override suspend fun attachOriginal(id: Long, file: okhttp3.MultipartBody.Part, expectedRowVersion: Long, idempotencyKey: String): com.ticketbox.data.remote.dto.OriginalCommandReceiptDto = error("Original attachment not configured")
     override suspend fun replenishOriginal(id: Long, file: okhttp3.MultipartBody.Part, expectedRowVersion: Long, expectedSha256: String, idempotencyKey: String): com.ticketbox.data.remote.dto.OriginalCommandReceiptDto = error("Original replenishment not configured")
     override suspend fun retryOriginalCleanup(id: Long, body: com.ticketbox.data.remote.dto.OriginalCleanupRequestDto, idempotencyKey: String): com.ticketbox.data.remote.dto.OriginalCommandReceiptDto = error("Original cleanup not configured")
     override suspend fun cancelOriginalCleanup(id: Long, body: com.ticketbox.data.remote.dto.OriginalCleanupRequestDto, idempotencyKey: String): com.ticketbox.data.remote.dto.OriginalCommandReceiptDto = error("Original cleanup not configured")

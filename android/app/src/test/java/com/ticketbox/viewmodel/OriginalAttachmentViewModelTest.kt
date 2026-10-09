@@ -31,6 +31,30 @@ class OriginalAttachmentViewModelTest {
         try { block() } finally { Dispatchers.resetMain() }
     }
 
+    @Test fun firstAttachmentSelectionRestoresOriginalBillAndKeyWithoutFinancialCreation() = checkTask {
+        val owner = OriginalActionsFake().apply { healthState = "none" }
+        val handle = SavedStateHandle()
+        val vm = OriginalAttachmentViewModel(7, owner, { error("No original exists yet") }, handle)
+        advanceUntilIdle()
+        assertTrue(vm.beginSelection())
+        vm.selectedSource("content://controlled/original")
+        vm.resumeSelectedSource { error("Controlled owner retains the original request before file admission") }
+        advanceUntilIdle()
+        val first = owner.submissions.single()
+        assertEquals("attach_original", first.payload.operation)
+        assertEquals(7L, first.payload.expenseId)
+        assertEquals(4L, first.payload.expectedRowVersion)
+        assertNull(first.payload.sha256)
+        val restored = OriginalAttachmentViewModel(7, owner, { error("No original exists yet") },
+            SavedStateHandle(handle.keys().associateWith { handle.get<Any?>(it) }))
+        advanceUntilIdle()
+        assertTrue(restored.state.value.selectedSource)
+        restored.resumeSelectedSource { null }
+        advanceUntilIdle()
+        assertEquals(first.key, owner.submissions.last().key)
+        assertEquals(first.payload, owner.submissions.last().payload)
+    }
+
     @Test fun onlyRenderedActualOriginalCanBeReviewedAndFailedAdmissionKeepsExactIntent() = checkTask {
         val owner = OriginalActionsFake()
         val handle = SavedStateHandle()
@@ -136,8 +160,9 @@ private class OriginalActionsFake : OriginalAttachmentActions {
     override fun currentOriginalBinding() = binding
     override fun observeOriginalCommands() = observations
     var healthFailure: Throwable? = null
+    var healthState = "unverified"
     override suspend fun fetchOriginalHealth(id: Long): Result<OriginalHealthDto> = healthFailure?.let { Result.failure(it) } ?: Result.success(OriginalHealthDto(id, "expense-$id", 4,
-        "unverified", "2026-09-20T00:00:00Z", observedSha256 = "a".repeat(64)))
+        healthState, "2026-09-20T00:00:00Z", observedSha256 = "a".repeat(64)))
     override suspend fun submitOriginal(request: OriginalSubmission): Result<Long> {
         submissions += request
         return Result.failure(IOException("Synthetic local admission failure"))

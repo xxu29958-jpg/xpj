@@ -41,10 +41,13 @@ class OriginalAttachmentDispatcherTest {
         assertEquals(0, engine.drainOnce().attempted)
     }
 
-    @Test fun lostAckReplaysSameBillBytesKeyAndOccWithoutCreatingPendingExpense() = runTest {
+    @Test fun lostAckReplaysSameBillBytesKeyAndOccWithoutCreatingPendingExpense() = lostAcknowledgement("replenish_original")
+    @Test fun firstAttachmentRetainsItsOwnKeyAndFileAcrossLostAcceptance() = lostAcknowledgement("attach_original")
+
+    private fun lostAcknowledgement(operation: String) = runTest {
         val dao = FakePendingMutationDao()
         val outbox = testOutboxRepository(dao)
-        val payload = payload()
+        val payload = payload().let { it.copy(operation = operation, sha256 = if (operation == "attach_original") null else it.sha256) }
         val key = requireNotNull(payload.file).key
         val json = originalPayloadAdapter.toJson(payload)
         val id = outbox.enqueue(PendingMutationType.OriginalAttachment, "expense:8", json, 4L, key)
@@ -52,13 +55,23 @@ class OriginalAttachmentDispatcherTest {
         val api = object : ApiService by FakeApiService(mutableListOf(), 0) {
             override suspend fun replenishOriginal(id: Long, file: MultipartBody.Part, expectedRowVersion: Long,
                 expectedSha256: String, idempotencyKey: String): OriginalCommandReceiptDto {
+                assertEquals("replenish_original", operation)
+                assertEquals(payload.sha256, expectedSha256)
+                return accept(id, file, expectedRowVersion, idempotencyKey)
+            }
+            override suspend fun attachOriginal(id: Long, file: MultipartBody.Part, expectedRowVersion: Long,
+                idempotencyKey: String): OriginalCommandReceiptDto {
+                assertEquals("attach_original", operation)
+                return accept(id, file, expectedRowVersion, idempotencyKey)
+            }
+            private fun accept(id: Long, file: MultipartBody.Part, expectedRowVersion: Long,
+                idempotencyKey: String): OriginalCommandReceiptDto {
                 assertEquals(8L, id)
                 assertEquals(4L, expectedRowVersion)
-                assertEquals(payload.sha256, expectedSha256)
                 assertEquals("admitted original", Buffer().also { file.body.writeTo(it) }.readUtf8())
                 sends += idempotencyKey
                 if (sends.size == 1) throw IOException("accepted response lost")
-                return receipt()
+                return receipt().copy(operation = operation)
             }
         }
         val engine = OutboxDrainEngine(outbox, listOf(OriginalAttachmentDispatcher({ api }) { "admitted original".encodeToByteArray() }))
@@ -68,7 +81,7 @@ class OriginalAttachmentDispatcherTest {
         assertEquals(listOf(key, key), sends)
         assertEquals(json, dao.rows.getValue(id).payload)
         assertEquals(4L, dao.rows.getValue(id).expectedRowVersion)
-        assertEquals(receipt(), originalReceiptAdapter.fromJson(requireNotNull(dao.rows.getValue(id).receiptJson)))
+        assertEquals(receipt().copy(operation = operation), originalReceiptAdapter.fromJson(requireNotNull(dao.rows.getValue(id).receiptJson)))
         assertEquals(0, engine.drainOnce().attempted)
     }
 

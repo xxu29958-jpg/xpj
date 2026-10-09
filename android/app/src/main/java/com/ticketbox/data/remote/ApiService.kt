@@ -93,6 +93,15 @@ interface ApiService :
     ): OriginalCommandReceiptDto
 
     @Multipart
+    @POST("api/expenses/{id}/original/attach")
+    suspend fun attachOriginal(
+        @Path("id") id: Long,
+        @Part file: MultipartBody.Part,
+        @Query("expected_row_version") expectedRowVersion: Long,
+        @Header("Idempotency-Key") idempotencyKey: String,
+    ): OriginalCommandReceiptDto
+
+    @Multipart
     @POST("api/expenses/{id}/original/replenish")
     suspend fun replenishOriginal(
         @Path("id") id: Long,

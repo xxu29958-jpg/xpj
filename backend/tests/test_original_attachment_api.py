@@ -2,6 +2,7 @@
 
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
+from datetime import timedelta
 from threading import Event
 from uuid import uuid4
 
@@ -13,12 +14,58 @@ from app.config import get_settings
 from app.database import SessionLocal
 from app.models import Expense, Ledger, LedgerMember
 from app.services.attachment_cleanup_service import execute_attachment_cleanup
+from app.services.cleanup_service import cleanup_confirmed_images
 from app.services.currency_binding_service import authorize_currency_metadata_write
 from app.services.file_service import resolve_upload_path_for_tenant, save_upload_bytes
 from app.services.time_service import now_utc
 from tests._infra.assets import PNG_BYTES
 
 pytestmark = pytest.mark.real_db
+
+
+def test_manual_bill_accepts_first_original_without_another_fact_and_replays_its_receipt(client, identity, monkeypatch):
+    import hashlib
+
+    created = client.post("/api/expenses/manual", headers=identity.app_headers, json={
+        "client_ref": str(uuid4()), "home_currency_code": "CNY", "amount_cents": 1234,
+    })
+    assert created.status_code == 200, created.text
+    expense_id = created.json()["id"]
+    with SessionLocal() as db:
+        authorize_currency_metadata_write(db)
+        db.get(Expense, expense_id).confirmed_at = now_utc() - timedelta(days=90)
+        db.commit()
+    before = _financial_snapshot(expense_id)
+    path = f"/api/expenses/{expense_id}/original"
+    health = client.get(path, headers=identity.app_headers).json()
+    assert health["state"] == "none"
+    headers = {**identity.app_headers, "Idempotency-Key": "first-original"}
+    query = {"expected_row_version": health["row_version"]}
+    files = {"file": ("receipt.png", PNG_BYTES, "image/png")}
+    accepted = client.post(f"{path}/attach", headers=headers, params=query, files=files)
+    assert accepted.status_code == 200, accepted.text
+    receipt = accepted.json()
+    assert (receipt["operation"], receipt["expense_id"]) == ("attach_original", expense_id)
+    original = client.get(f"/api/expenses/{expense_id}/image", headers=identity.app_headers)
+    assert original.status_code == 200
+    assert hashlib.sha256(original.content).hexdigest() == receipt["sha256"]
+    assert _financial_snapshot(expense_id) == before
+    assert client.post(f"{path}/attach", headers=headers, params=query, files=files).json() == receipt
+    fresh = client.get(path, headers=identity.app_headers).json()
+    assert fresh["state"] == "verified" and fresh["row_version"] == health["row_version"] + 1
+    refused = client.post(f"{path}/attach", headers={**headers, "Idempotency-Key": "another-first-original"},
+        params={"expected_row_version": fresh["row_version"]}, files=files)
+    assert refused.status_code == 409 and refused.json()["error"] == "original_already_associated"
+    assert _financial_snapshot(expense_id) == before
+    assert client.get("/api/system/runtime-compatibility", headers=identity.app_headers).json()[
+        "capabilities"]["original_attachment_create_version"] == 1
+    settings = replace(get_settings(), delete_image_after_days=30)
+    monkeypatch.setattr("app.services.cleanup_service.get_settings", lambda: settings)
+    with SessionLocal() as db:
+        cleaned = cleanup_confirmed_images(db, "owner")
+        assert cleaned.deleted_images == 0
+        assert resolve_upload_path_for_tenant(db.get(Expense, expense_id).image_path, "owner").is_file()
+    assert _financial_snapshot(expense_id) == before
 
 
 def _bill(client, identity, *, legacy=False):
@@ -220,6 +267,9 @@ def test_every_original_mutation_requires_authenticated_writer(client, identity)
     version = client.get(f"/api/expenses/{expense_id}/original", headers=identity.app_headers).json()["row_version"]
     cleanup = {"expected_row_version": version, "request_id": str(uuid4())}
     commands = (
+        (f"/api/expenses/{expense_id}/original/attach",
+            {"params": {"expected_row_version": version},
+             "files": {"file": ("receipt.png", PNG_BYTES, "image/png")}}),
         (f"/api/expenses/{expense_id}/original/verify",
             {"json": {"expected_row_version": version, "reviewed_sha256": saved.image_hash}}),
         (f"/api/expenses/{expense_id}/original/replenish",

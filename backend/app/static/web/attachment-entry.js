@@ -6,7 +6,7 @@
   function taskPage(action) {
     const url = new URL(action, window.location.href);
     const path = url.pathname === "/web/pending/upload" ? "/web/pending" :
-      url.pathname.replace(/\/original\/(verify|replenish|cleanup\/(retry|cancel))$/, "/original");
+      url.pathname.replace(/\/original\/(attach|verify|replenish|cleanup\/(retry|cancel))$/, "/original");
     return path + "?ledger_id=" + encodeURIComponent(url.searchParams.get("ledger_id"));
   }
   function shelf(scope) {
@@ -147,7 +147,7 @@
       const result = await response.json();
       if (!response.ok) {
         store.save(scope, ref, "blocked", record.values);
-        if (["state_conflict", "image_replenishment_mismatch", "original_replenishment_not_needed"].includes(result.error)) {
+        if (["state_conflict", "image_replenishment_mismatch", "original_replenishment_not_needed", "original_already_associated"].includes(result.error)) {
           rejection = {scope, clientRef: ref, values: record.values, serverResult: "rejected"};
           discard.hidden = false;
         }

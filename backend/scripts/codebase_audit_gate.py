@@ -139,7 +139,7 @@ def evaluate_debt(counts: DebtCounts) -> int:
 # main. See ``_audit_pr_delta_metrics.py`` docstring for what each
 # counter is and how it's computed.
 STRICT_EQUALITY_BASELINE: DebtCounts = {
-    "mutate_token_carriers": 141,  # Uncategorized bulk-set now carries the original selection's OCC versions.
+    "mutate_token_carriers": 142,  # First-original association carries the existing bill's OCC version.
     "mutate_token_exempted": 148,  # Adds duplicate-decision read-only review; bulk-set retains OCC.
     "mutate_token_reason_admin_single_writer": 16,
     "mutate_token_reason_append_only_fact": 3,

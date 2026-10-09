@@ -8,7 +8,7 @@
   });
   function validateAction(scope, ref, values) {
     const url = new URL(values.action, window.location.href);
-    const allowed = /^\/web\/(pending\/upload|expenses\/[1-9]\d*\/original\/(verify|replenish|cleanup\/(retry|cancel)))$/;
+    const allowed = /^\/web\/(pending\/upload|expenses\/[1-9]\d*\/original\/(attach|verify|replenish|cleanup\/(retry|cancel)))$/;
     if (url.origin !== window.location.origin || !allowed.test(url.pathname) ||
         url.searchParams.get("idempotency_key") !== ref || url.searchParams.get("ledger_id") !== scope.ledgerId ||
         !store.matches(JSON.parse(url.searchParams.get("draft_scope")), scope)) throw Error("invalid_attachment_target");

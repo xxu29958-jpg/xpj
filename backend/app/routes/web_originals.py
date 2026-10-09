@@ -23,13 +23,19 @@ from app.routes.web_common import (
     templates,
 )
 from app.schemas._original_attachment import (
+    OriginalAttachmentRequest,
     OriginalCleanupRequest,
     OriginalCommandReceipt,
     OriginalReplenishmentRequest,
     OriginalVerificationRequest,
 )
 from app.services.expense_query import get_expense, list_original_inspection_expenses
-from app.services.original_command_service import continue_original_cleanup, replenish_original, verify_original
+from app.services.original_command_service import (
+    attach_original,
+    continue_original_cleanup,
+    replenish_original,
+    verify_original,
+)
 from app.services.original_health_service import inspect_expense_original
 
 router = APIRouter(prefix="/web", tags=["web"])
@@ -77,13 +83,30 @@ def web_original(request: Request, expense_id: int, ledger_id: str | None = None
     ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected, page_title="账单原件")
     root = f"/web/expenses/{expense_id}/original"
     intents = {action: attachment_form_context(db, request, action=f"{root}/{action}", ledger_id=selected)
-               for action in ("verify", "replenish", "cleanup/retry", "cleanup/cancel")}
+               for action in ("attach", "verify", "replenish", "cleanup/retry", "cleanup/cancel")}
     ctx.update(original=health, original_expense=expense, original_intents=intents,
                message=request.query_params.get("msg", ""))
     ctx["original_amount_label"], _ = _expense_amount_labels(expense,
         presentation_currency_code=ctx.get("home_currency_code"))
+    ctx["original_currency_label"] = (
+        expense.original_currency_code if getattr(expense, "original_amount_minor", None) is not None
+        else expense.home_currency_code
+    )
     ctx["max_upload_size_bytes"] = get_settings().max_upload_size_bytes
     return templates.TemplateResponse(request=request, name="original.html", context=ctx)
+
+
+@router.post("/expenses/{expense_id}/original/attach", include_in_schema=False)
+async def web_original_attach(request: Request, expense_id: int, expected_row_version: int = Query(gt=0),
+                              ledger_id: str = Query(), draft_scope: str = Query(max_length=2048),
+                              idempotency_key: str = Query(min_length=1, max_length=64),
+                              _local: None = LocalOnly, db: Session = Depends(get_db)) -> Response:
+    auth = _writer(db, request, ledger_id, draft_scope)
+    content, _timing = await read_request_upload(request)
+    receipt = attach_original(db, expense_id=expense_id, auth=auth,
+        payload=OriginalAttachmentRequest(expected_row_version=expected_row_version),
+        data=content.data, filename=content.filename, content_type=content.content_type, idempotency_key=idempotency_key)
+    return _accepted(request, receipt, ledger_id=ledger_id, draft_scope=draft_scope, idempotency_key=idempotency_key)
 
 
 @router.post("/expenses/{expense_id}/original/verify", include_in_schema=False)

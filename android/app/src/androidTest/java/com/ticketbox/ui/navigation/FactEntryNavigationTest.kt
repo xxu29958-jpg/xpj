@@ -191,6 +191,19 @@ class FactEntryNavigationTest {
         saveConsumerArtPreview("original-actions", requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
     }
 
+    @Test fun imagelessBillOffersFirstAttachmentWithoutReadingOrChangingAFinancialFact() {
+        harness.fixture.network.current = harness.fixture.network.current.copy(imagePath = null, thumbnailPath = null)
+        val before = harness.fixture.network.current
+        installMainGraph()
+        openFact()
+        waitForText(context.getString(R.string.original_status_none))
+        compose.onNodeWithText(context.getString(R.string.original_title)).performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.original_attach)).performScrollTo().assertIsEnabled()
+        assertTrue(harness.fixture.network.imageReads.isEmpty())
+        assertEquals(before, harness.fixture.network.current)
+        saveConsumerArtPreview("original-first-attachment", requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+    }
+
     @Test fun missingOriginalKeepsTheBillAndReplenishEntry() {
         harness.fixture.network.originalMissing = true
         installMainGraph()

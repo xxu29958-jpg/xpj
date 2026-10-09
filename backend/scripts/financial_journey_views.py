@@ -89,7 +89,7 @@ def appearances(j):
     expense_id = j.facts()["id"]
     for theme in ("paper", "midnight"):
         page.set_viewport_size({"width": 1280, "height": 960})
-        j.goto(f"/web/expenses/{expense_id}/edit")
+        j.goto("/web/confirmed")
         page.locator("#appearance > summary").click()
         page.locator(f'#appearance [data-theme-mode="{theme}"]').click()
         wait_for(lambda theme=theme: page.locator("html").get_attribute("data-theme") == theme,

@@ -26,8 +26,9 @@ fun OriginalAttachmentViewModel.continueCleanup(cancel: Boolean) {
 /** Freeze target and OCC before opening the picker. Rotation/process restore keeps this original task. */
 fun OriginalAttachmentViewModel.beginSelection(): Boolean {
     if (saved.get<String>("original_payload") != null) return false
-    val payload = command("replenish_original")?.copy(sha256 = state.value.health?.expectedSha256) ?: return false
-    if (payload.sha256 == null) return false
+    val health = state.value.health ?: return false
+    val operation = state.value.selectionOperation ?: return false
+    val payload = command(operation)?.copy(sha256 = health.expectedSha256) ?: return false
     saved["original_payload"] = originalPayloadAdapter.toJson(payload)
     saved["original_key"] = UUID.randomUUID().toString()
     mutableState.update { it.copy(localIntent = true, localIntentBound = true) }
@@ -49,7 +50,7 @@ fun OriginalAttachmentViewModel.resumeSelectedSource(prepare: suspend (String) -
     val payload = runCatching { originalPayloadAdapter.fromJson(json) }.getOrNull() ?: return
     val key = saved.get<String>("original_key") ?: return
     if (payload.origin != originals.currentOriginalBinding() || state.value.busy) return
-    if (payload.operation == "replenish_original" && uri == null) return
+    if (payload.operation in setOf("attach_original", "replenish_original") && uri == null) return
     deliver(OriginalSubmission(key, payload, uri?.let { source -> { prepare(source) } })) { clearOriginalSelection() }
 }
 

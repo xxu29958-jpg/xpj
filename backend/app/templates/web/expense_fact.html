@@ -35,7 +35,7 @@
     <div class="fact-entries">
     <a class="product-entry" href="/web/expenses/{{ expense.id }}/original{{ q }}">
       <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#receipt-text"/></svg></span>
-      <span class="product-entry-copy"><strong>原件</strong><span>{% if expense.has_image %}查看图片与文件状态{% elif expense.image_state == 'cleaned' %}图片已清理，查看或继续补回{% else %}检查原件或继续补回任务{% endif %}</span></span>
+      <span class="product-entry-copy"><strong>原件</strong><span>{% if expense.has_image %}查看图片与文件状态{% elif expense.image_state == 'cleaned' %}图片已清理，查看或继续补回{% elif expense.image_state == 'none' %}可添加小票或截图，也可以不添加{% else %}检查原件或继续补回任务{% endif %}</span></span>
       <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
     </a>
     <details class="fact-disclosure" {% if items_error %}open{% endif %}>
