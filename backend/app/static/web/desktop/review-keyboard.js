@@ -67,8 +67,7 @@
       if (NAV_KEYS.indexOf(e.key) === -1) return;
       // 精确作用域：真实焦点必须在可用的行链接上。
       const active = document.activeElement;
-      if (!active || !active.matches || !active.matches(ROW_SELECTOR)) return;
-      if (active.getAttribute("aria-disabled") === "true") return;
+      if (!active?.matches(ROW_SELECTOR + ':not([aria-disabled="true"])')) return;
       e.preventDefault();
       moveFrom(active, e.key);
     });

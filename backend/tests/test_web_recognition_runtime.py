@@ -5,10 +5,13 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi.responses import FileResponse
+from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.models import Expense
+from app.middleware.logging import SanitizedLoggingMiddleware
+from app.models import ApiIdempotencyKey, Expense
 from app.routes import web_expense_recognition
 from app.services import expense_ocr_command_service as command
 from tests import test_web_expense_review_runtime as review_tests
@@ -136,3 +139,31 @@ def test_recognition_keeps_unsaved_text_in_page_when_browser_cannot_retain_it(re
     assert not result.get("error"), result
     assert result["leaving_prevented"] and result["retained_in_page"], result
     assert "未能保留" in result["warning"] and not accepted
+
+
+@pytest.mark.parametrize("suffix", ["recognize-text", "ocr/retry"])
+def test_recognition_failure_preserves_original_and_reports_through_http_owner(recognition_browser, confirmation_store, monkeypatch, caplog, suffix):
+    client, _, _, _ = recognition_browser
+    client.app.add_middleware(SanitizedLoggingMiddleware)
+    path = "/web/expenses/42/" + suffix
+    fields = _fields(client, path)
+    failure = SQLAlchemyError("controlled recognition storage interruption")
+
+    def fail(*args, **kwargs):
+        raise failure
+
+    monkeypatch.setattr(command, "prepare_pending_expense_fx", fail)
+    native = client.post(path, data=fields)
+    retained = hidden_post_forms(native.text)[path]
+    for name in ("idempotency_key", "expected_row_version", "draft_scope", "draft_ref"):
+        assert retained[name] == fields[name]
+    enhanced = client.post(path, data=fields, headers={"Accept": "application/json"})
+    assert enhanced.json()["draft_result"] == "blocked" and "ack" not in enhanced.json()
+    for response in (native, enhanced):
+        assert response.status_code == 503 and str(failure) not in response.text
+        assert any(record.name == "ticketbox.http" and record.exc_info and record.exc_info[1] is failure
+            and response.headers["X-Request-Id"] in record.getMessage() for record in caplog.records)
+    with Session(confirmation_store) as db:
+        current = db.get(Expense, 42)
+        assert (current.row_version, current.merchant) == (4, "首次便利店")
+        assert db.scalar(select(ApiIdempotencyKey)) is None

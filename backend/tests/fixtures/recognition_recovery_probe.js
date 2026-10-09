@@ -10,19 +10,34 @@
   const fields = form => Object.fromEntries([...new FormData(form)].filter(([name]) => name !== "csrf_token")
     .map(([name, value]) => [name, name === "draft_scope" ? JSON.stringify(JSON.parse(value)) : value]));
   const input = (field, value) => { field.value = value; field.dispatchEvent(new Event("input", {bubbles: true})); };
+  async function openTask() {
+    const kind = new URL(location.href).searchParams.get("recognition_probe");
+    if (!kind) return;
+    const form = await wait(() => document.querySelector("form[data-expensereview-draft-scope]"), "financial form");
+    await wait(() => form.expenseReviewContinuity, "financial draft owner");
+    await wait(() => !form.elements.merchant.readOnly, "financial lease");
+    input(form.elements.merchant, "主核对未保存商家");
+    keep({kind, phase: "open", financial: fields(form), requests: []});
+    const suffix = kind === "image" ? "ocr/retry" : "recognize-text";
+    document.querySelector('a[href*="/42/' + suffix + '"]').click();
+  }
+  function prepareOriginal(form, state) {
+    if (state.phase !== "open") return false;
+    if (state.kind === "text") {
+      input(form.elements.raw_text, "便利店\n合计 JPY 2850\n原粘贴文字");
+      for (const modifier of ["ctrlKey", "metaKey"]) {
+        const event = new KeyboardEvent("keydown", {key: "Enter", [modifier]: true, bubbles: true, cancelable: true});
+        form.elements.raw_text.dispatchEvent(event);
+        if (event.defaultPrevented) throw Error("Recognition text triggered the bill confirmation shortcut");
+      }
+    }
+    state.original = fields(form); state.phase = "send"; keep(state);
+    if (state.kind === "text") { location.reload(); return true; }
+    return false;
+  }
   try {
     let state = saved();
-    if (!state) {
-      const kind = new URL(location.href).searchParams.get("recognition_probe");
-      if (!kind) return;
-      const form = await wait(() => document.querySelector("form[data-expensereview-draft-scope]"), "financial form");
-      await wait(() => form.expenseReviewContinuity, "financial draft owner");
-      await wait(() => !form.elements.merchant.readOnly, "financial lease");
-      input(form.elements.merchant, "主核对未保存商家");
-      state = {kind, phase: "open", financial: fields(form), requests: []}; keep(state);
-      const suffix = kind === "image" ? "ocr/retry" : "recognize-text";
-      document.querySelector('a[href*="/42/' + suffix + '"]').click(); return;
-    }
+    if (!state) { await openTask(); return; }
     if (state.phase === "returned") {
       const form = await wait(() => document.querySelector("form[data-expensereview-draft-scope]"), "returned financial form");
       await wait(() => form.elements.merchant.value === "主核对未保存商家", "financial draft restore");
@@ -52,18 +67,7 @@
         warning: form.querySelector('[role="status"]').textContent};
       return;
     }
-    if (state.phase === "open") {
-      if (state.kind === "text") {
-        input(form.elements.raw_text, "便利店\n合计 JPY 2850\n原粘贴文字");
-        for (const modifier of ["ctrlKey", "metaKey"]) {
-          const event = new KeyboardEvent("keydown", {key: "Enter", [modifier]: true, bubbles: true, cancelable: true});
-          form.elements.raw_text.dispatchEvent(event);
-          if (event.defaultPrevented) throw Error("Recognition text triggered the bill confirmation shortcut");
-        }
-      }
-      state.original = fields(form); state.phase = "send"; keep(state);
-      if (state.kind === "text") { location.reload(); return; }
-    }
+    if (prepareOriginal(form, state)) return;
     const restored = fields(form);
     if (!Object.keys(state.original).every(name => restored[name] === state.original[name])) throw Error("Original recognition changed after reload");
     state.restored = true; keep(state);

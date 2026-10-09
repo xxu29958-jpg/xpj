@@ -91,11 +91,11 @@ REVIEWED_BOUNDARIES = {
         "test": "android/app/src/test/java/com/ticketbox/viewmodel/OriginalAttachmentViewModelTest.kt::firstAttachmentSelectionRestoresOriginalBillAndKeyWithoutFinancialCreation",
         "reason": "Local source read failures report a fixed operation label through logNetworkWarning, whose existing NetworkErrorReportingTest proves the sanitized sink. The UI uses a resource without provider exception text; original URI, key, payload and displayed bytes remain available for retry. File retention and reload use the existing safeCall owner; only a durable descriptor enables admission. Cancellation propagates, and a changed binding cannot receive the image or error.",
     },
-    ("backend/app/routes/web_expense_recognition.py", "web_text_recognition_post"): {
-        "sha256": "4e5d8ec46cdaf791c901945acfae9e77b1cf2624b5ec1388ea7c74d76071563e",
+    ("backend/app/routes/web_expense_recognition.py", "web_recognition_post"): {
+        "sha256": "3deb3d71c61d1cacd6987fffa263f4f784e49269a07e0a5ed2083db075169632",
         "owner": "retain_handled_error feeds the common HTTP reporter while preserving the original form",
-        "test": "backend/tests/test_web_text_recognition.py",
-        "reason": "Expected AppError refusals keep their existing 4xx UI; only 5xx/SQL failures retain the exception for reporting.",
+        "test": "backend/tests/test_web_recognition_runtime.py::test_recognition_failure_preserves_original_and_reports_through_http_owner",
+        "reason": "Text and image consumers share the original OCR commands. Expected 4xx refusals preserve input; 5xx/SQL failures roll back and retain the exception for the common HTTP reporter. Native and JSON responses preserve the original identity, key and version without exposing the cause or acknowledging a failed command.",
     },
     ("backend/packaging/launch.py", "_build_log_config"): {
         "sha256": "e2e66d7e5752900a201b3cd2c9b9b18c4d969dc095b7ae327c3fe18b88f551ee", "owner": "existing shared rotating file and optional console handlers",
