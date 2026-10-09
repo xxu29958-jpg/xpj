@@ -84,7 +84,8 @@ def test_real_edge_manual_intent_survives_reload_and_unknown_response(tmp_path: 
                            b'<script src="/manual-drafts.js"></script><script src="/probe.js"></script></body></html>')
             elif url.path == "/form":
                 self.reply(_form(parse_qs(url.query)))
-            elif url.path in {"/manual-drafts.js", "/manual-entry.js", "/manual-draft-ack.js"}:
+            elif url.path in {"/manual-drafts.js", "/manual-entry.js", "/manual-draft-ack.js",
+                              "/manual-draft-files.js", "/attachment-drafts.js", "/manual-original.js"}:
                 self.reply((_WEB / url.path.removeprefix("/")).read_bytes(), content_type="text/javascript")
             elif url.path == "/probe.js":
                 self.reply((Path(__file__).parent / "fixtures/web_manual_draft_probe.js").read_bytes(), content_type="text/javascript")
@@ -100,7 +101,9 @@ def test_real_edge_manual_intent_survives_reload_and_unknown_response(tmp_path: 
                 return
             ack = html.escape(json.dumps({"scope": _SCOPE, "clientRef": form["client_ref"][0]}))
             self.reply((f'<span data-manual-draft-ack="{ack}"></span><p hidden data-manual-draft-ack-status></p>'
-                        '<script src="/manual-drafts.js"></script><script src="/manual-draft-ack.js"></script>').encode())
+                        '<script src="/manual-drafts.js"></script><script data-upload-max-bytes="1048576" src="/manual-draft-files.js"></script>'
+                        '<script src="/attachment-drafts.js"></script><script src="/manual-original.js"></script>'
+                        '<script src="/manual-draft-ack.js"></script>').encode())
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)

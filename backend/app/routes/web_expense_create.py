@@ -15,6 +15,7 @@ from pydantic import ValidationError
 from sqlalchemy.orm import Session
 from starlette.responses import Response
 
+from app.config import get_settings
 from app.database import get_db
 from app.errors import AppError
 from app.routes._web_accounting_time import (
@@ -59,7 +60,7 @@ from app.services.currency_common import (
 )
 from app.services.expense_service import create_manual_expense, read_manual_creation_receipt, resolve_expense
 from app.services.ledger_calendar_service import current_calendar
-from app.services.manual_expense_draft_presenter import manual_draft_scope
+from app.services.manual_expense_draft_presenter import manual_creation_ack, manual_draft_scope
 from app.services.recurring_service import get_recurring_item
 from app.services.time_service import now_utc
 from app.tenants import AuthContext
@@ -91,7 +92,7 @@ def web_manual_expense_result(
         "receipt_amount": minor_amount_label(receipt.amount_cents, receipt.home_currency) if receipt and receipt.amount_cents is not None else None,
         "receipt_original": minor_amount_label(receipt.original_amount_minor, receipt.original_currency_code) if receipt and receipt.original_amount_minor is not None else None,
         "receipt_date": receipt.accounting_time.accounting_date if receipt and receipt.accounting_time else None,
-        "manual_draft_ack": {"scope": json.loads(draft_scope), "clientRef": client_ref} if receipt else None,
+        "manual_draft_ack": manual_creation_ack(json.loads(draft_scope), client_ref, receipt) if receipt else None,
         "manual_detail_href": flow_href(f"/web/expenses/{current.id}/edit", ledger_id=selected_id, **origin) if current else None,
         "task_return_href": return_href(ledger_id=selected_id, default_path="/web/confirmed", **origin) if receipt else original_href,
         "task_return_label": return_label(return_context.return_to, default="返回流水") if receipt else "返回原稿",
@@ -159,6 +160,7 @@ def _manual_expense_context(
             "form_device_public_id": form_device_public_id,
             "manual_draft_scope": manual_draft_scope(db, _session_writer_auth(request, selected_id)),
             "manual_draft_result": draft_result,
+            "max_upload_size_bytes": get_settings().max_upload_size_bytes,
             "manual_review_href": (
                 flow_href(
                     f"/web/expenses/{review_expense_id}/edit",

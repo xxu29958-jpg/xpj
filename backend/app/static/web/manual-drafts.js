@@ -148,6 +148,6 @@
       "return_to", "return_recurring_public_id", "return_month", "return_payment_expense_id"],
     legacyMissing: ["home_currency_code", "return_to", "return_recurring_public_id", "return_month", "return_payment_expense_id"],
     optionalFields: ["time_precision", "calendar_revision", "user_local_date", "source_timezone",
-      "source_utc_offset_seconds", "accounting_date"],
+      "source_utc_offset_seconds", "accounting_date", "original_file"],
   });
 })(window);

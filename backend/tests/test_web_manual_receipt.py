@@ -9,6 +9,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.errors import AppError, app_error_handler
 from app.models import ApiIdempotencyKey, Expense
 from app.routes import web_expense_create
@@ -36,7 +37,9 @@ def test_opening_current_fact_requires_matching_original_receipt_before_draft_ac
 
     ack = presenter.manual_draft_ack(object(), auth, expense)
 
-    assert ack == ({"scope": scope, "clientRef": ref} if receipt_id == expense.id else None)
+    assert ack == ({"scope": scope, "clientRef": ref,
+        "originalTarget": {"expenseId": 7, "rowVersion": 1},
+        "uploadMaxBytes": get_settings().max_upload_size_bytes} if receipt_id == expense.id else None)
 
 
 @pytest.fixture
@@ -90,6 +93,7 @@ def test_reading_manual_first_result_after_later_edits_is_read_only_even_for_vie
     assert ("创建时已入账" if status == "confirmed" else "创建时待核对，尚未入账") in body
     assert ("128.60" in body) == (status == "confirmed")
     assert 'data-manual-draft-ack=' in body and '"clientRef": "' + "a" * 32 + '"' in body
+    assert '"originalTarget": {"expenseId": 42, "rowVersion": 4}' in body
     assert "/web/expenses/42/edit?ledger_id=owner&return_to=confirmed" in body
     assert response.headers["cache-control"] == "no-store"
     with Session(confirmation_store) as db:

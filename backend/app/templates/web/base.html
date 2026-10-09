@@ -193,6 +193,9 @@
   {% block page_scripts %}{% endblock %}
   {% if manual_draft_ack %}
   <script defer src="/static/web/manual-drafts.js?v={{ asset_version }}"></script>
+  <script defer data-upload-max-bytes="{{ manual_draft_ack.uploadMaxBytes }}" src="/static/web/manual-draft-files.js?v={{ asset_version }}"></script>
+  <script defer src="/static/web/attachment-drafts.js?v={{ asset_version }}"></script>
+  <script defer src="/static/web/manual-original.js?v={{ asset_version }}"></script>
   <script defer src="/static/web/manual-draft-ack.js?v={{ asset_version }}"></script>
   {% endif %}
   <script defer src="/static/web/desktop.js?v={{ asset_version }}"></script>
@@ -287,11 +290,12 @@
         <a href="/web/confirmed?ledger_id={{ selected_ledger_id }}&amp;filter=missing_accounting_date">查看并核对日期</a>
       </div>
       {% endif %}
-      {% block content %}{% endblock %}
       {% if manual_draft_ack %}
       <span hidden data-manual-draft-ack="{{ manual_draft_ack | tojson | forceescape }}"></span>
       <p hidden data-manual-draft-ack-status role="status" class="product-feedback"></p>
+      <a hidden data-manual-original-continue class="product-button product-button--primary">继续添加所选原件 <span aria-hidden="true">→</span></a>
       {% endif %}
+      {% block content %}{% endblock %}
     </main>
     {# W1 IA-B: 五域主导航在 ≤64rem 是 fixed 底部 nav (拇指区), >64rem 由
        CSS 隐藏 (桌面 sidebar 域轨是唯一主导航)。 #}

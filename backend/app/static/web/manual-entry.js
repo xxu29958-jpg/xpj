@@ -24,6 +24,12 @@
   let epoch = 0;
   let retained = false;
   let posting = false;
+  const original = form.querySelector("[data-manual-original]");
+  const file = form.querySelector("[data-manual-original-file]");
+  const removeFile = form.querySelector("[data-manual-original-remove]");
+  const preview = window.TicketboxAttachmentEntry?.originalSelection(form);
+  let selecting = false;
+  let selectionFailed = false;
 
   function notice(message, state) {
     status.textContent = message;
@@ -68,6 +74,10 @@
       if (control.tagName === "SELECT") control.disabled = value || omitted.has(control.name);
       else control.readOnly = value;
     });
+    if (file) {
+      file.disabled = removeFile.disabled = value || selecting;
+      removeFile.hidden = !form.elements.namedItem("original_file").value;
+    }
   }
 
   function blocked(message) {
@@ -95,7 +105,7 @@
     if (heading) heading.textContent = restored ? "上次的记录还在" : "记一笔";
     fields.disabled = false;
     readOnly(phase !== "editing");
-    submit.disabled = phase === "blocked";
+    submit.disabled = phase === "blocked" || selecting || selectionFailed;
     submit.textContent = phase === "submitted" ? "继续原提交" : "记下这笔支出";
     actions.hidden = phase === "editing";
     if (phase === "submitted") {
@@ -166,12 +176,64 @@
     return match ? match[1] : null;
   }
 
+  function showOriginal() {
+    if (!original) return;
+    const ref = currentRef, turn = epoch;
+    const metadata = form.elements.namedItem("original_file").value;
+    original.querySelector("[data-manual-original-label]").textContent = metadata ? "已保留所选图片" : "没有小票也可以记账";
+    original.open = !!metadata;
+    void preview.show(async () => {
+      try { return await window.TicketboxManualOriginal.read(scope, ref, metadata); }
+      catch (error) {
+        if (turn === epoch) {
+          selectionFailed = true;
+          submit.disabled = true;
+          notice("所选原文件暂时无法读取。原稿仍保留，请恢复浏览器存储，或重新选择图片。", "storage-error");
+        }
+        throw error;
+      }
+    }, phase !== "editing");
+  }
+
+  async function selectOriginal(source) {
+    if (!held || phase !== "editing" || selecting) return;
+    const turn = epoch, ref = currentRef;
+    selecting = true;
+    readOnly(true);
+    submit.disabled = true;
+    notice("正在保留所选图片，请暂时留在此页…", "selecting");
+    try {
+      persist("editing");
+      const metadata = source ? await window.TicketboxManualOriginal.retain(scope, ref, source) : "";
+      if (turn !== epoch) return;
+      form.elements.namedItem("original_file").value = metadata;
+      omitted.delete("original_file");
+      persist("editing");
+      selectionFailed = false;
+      file.value = "";
+      showOriginal();
+      notice("原稿与所选图片已保留，尚未提交。", "editing");
+    } catch (_) {
+      if (turn !== epoch) return;
+      selectionFailed = true;
+      notice("图片尚未保留，这次没有发送。请保留此页，检查浏览器存储或重新选择图片。", "storage-error");
+    } finally {
+      if (turn === epoch) {
+        selecting = false;
+        readOnly(phase !== "editing");
+        submit.disabled = selectionFailed || phase === "blocked";
+      }
+    }
+  }
+
   function activate(ref, mustExist) {
     const turn = ++epoch;
     if (release) release();
     held = false;
     release = null;
     posting = false;
+    selecting = selectionFailed = false;
+    preview?.show(async () => null, false);
     result.hidden = true;
     fields.disabled = true;
     submit.disabled = true;
@@ -204,8 +266,9 @@
         // refused command may be retried unchanged, never edited into a new one.
         if (phase === "blocked" && !nativeResult) phase = "submitted";
         if (ref === nativeRef && nativeResult === "rejected") {
-          showValues(nativeValues);
-          drafts.save(scope, ref, "editing", nativeValues, "rejected");
+          const rejectedValues = {...nativeValues, original_file: record?.values.original_file};
+          showValues(rejectedValues);
+          drafts.save(scope, ref, "editing", rejectedValues, "rejected");
           retained = true;
           phase = "editing";
         } else if (record) {
@@ -218,6 +281,7 @@
           if (record) drafts.save(scope, ref, phase, record.values);
         }
         showPhase(record);
+        showOriginal();
       }
       nativeResult = "";
       return new Promise(resolve => { release = resolve; });
@@ -251,7 +315,7 @@
 
   form.addEventListener("input", function () {
     showSummaries();
-    if (!held || phase !== "editing") return;
+    if (!held || phase !== "editing" || selecting || selectionFailed) return;
     try {
       persist("editing");
       notice("草稿已保留在此浏览器，尚未提交。", "editing");
@@ -261,7 +325,7 @@
   });
 
   form.addEventListener("submit", function (event) {
-    if (!held || phase === "blocked" || posting) {
+    if (!held || phase === "blocked" || posting || selecting || selectionFailed) {
       event.preventDefault();
       return;
     }
@@ -296,6 +360,14 @@
     if (release) release();
     release = null;
   });
+  if (original) {
+    original.hidden = false;
+    file.addEventListener("change", () => { if (file.files[0]) void selectOriginal(file.files[0]); });
+    removeFile.addEventListener("click", () => { void selectOriginal(null); });
+    window.addEventListener("beforeunload", event => {
+      if (selecting || selectionFailed) { event.preventDefault(); event.returnValue = ""; }
+    });
+  }
   window.addEventListener("pageshow", function (event) {
     if (event.persisted) {
       const requested = fragmentRef();

@@ -7,7 +7,7 @@ import re
 import socket
 import threading
 import time
-from datetime import date
+from datetime import date, timedelta
 from html import unescape
 from pathlib import Path
 from types import SimpleNamespace
@@ -34,6 +34,7 @@ from app.routes import (
     expenses,
     web_categories,
     web_duplicates,
+    web_expense_create,
     web_expense_edit,
     web_expense_lifecycle,
     web_pending,
@@ -47,6 +48,7 @@ from app.services import (
     manual_expense_draft_presenter,
     pending_review_bulk_service,
 )
+from app.services.manual_expense_receipt import _manual_receipt_key
 from tests import test_web_edge_runtime_contract as browser_runtime
 from tests import test_web_expense_confirmation_page as page_tests
 from tests import test_web_first_original as original_tests
@@ -59,6 +61,7 @@ first_original_web = original_tests.first_original_web
 
 @pytest.fixture
 def slow_confirmation_script(monkeypatch):
+    browser_runtime._discover_edge()
     respond = StaticFiles.get_response
     pending = True
 
@@ -72,6 +75,66 @@ def slow_confirmation_script(monkeypatch):
     monkeypatch.setattr(StaticFiles, "get_response", delayed)
     yield
     assert not pending, "The delayed shared confirmation script was not requested"
+
+
+def test_manual_original_follows_its_creation_receipt_without_losing_file_or_recreating_bill(
+    first_original_web, monkeypatch, tmp_path,
+):
+    """Real native form/receipt/attachment; only financial creation and identity are controlled."""
+    case = first_original_web
+    case.client.app.include_router(web_expense_create.router)
+    case.client.app.mount("/static", StaticFiles(directory=Path(__file__).parents[1] / "app/static"))
+    monkeypatch.setattr(web_expense_create, "_list_ledger_options", lambda db: case.options)
+    monkeypatch.setattr(web_expense_create, "_resolve_selected_ledger_id", lambda *a, **k: "owner")
+    monkeypatch.setattr(web_expense_create, "_sidebar_counts", lambda *a: (0, 1))
+    monkeypatch.setattr(web_expense_create, "manual_draft_scope", lambda *a: original_tests.SCOPE)
+    monkeypatch.setattr(web_expense_create, "current_calendar", lambda *a, **k: SimpleNamespace(revision=1, timezone_name="Asia/Shanghai"))
+    monkeypatch.setattr(web_expense_create, "list_ledger_category_options", lambda *a, **k: ["其他"])
+    creations = []
+
+    def create(db, payload, auth):
+        assert payload.amount_cents == 1234 and payload.merchant == "原稿商家" and auth == original_tests.AUTH
+        assert not creations, "The original creation must not be posted again to transfer its file"
+        creations.append(payload.client_ref)
+        row = db.get(Expense, 42)
+        row.draft_idempotency_key = f"7:{payload.client_ref}"
+        row.merchant, row.amount_cents = payload.merchant, payload.amount_cents
+        row.original_currency_code, row.original_amount_minor = "CNY", payload.amount_cents
+        snapshot = ExpenseResponse.model_validate(row).model_dump(mode="json")
+        db.add(ApiIdempotencyKey(tenant_id="owner", idempotency_key=_manual_receipt_key(7, payload.client_ref),
+            operation="create_manual_expense", request_fingerprint="b" * 64, status="succeeded",
+            resource_type="expense", resource_id="42", response_body=snapshot,
+            expires_at=row.created_at + timedelta(days=30)))
+        db.commit()
+        return row
+
+    monkeypatch.setattr(web_expense_create, "create_manual_expense", create)
+    sample = base64.b64encode(original_tests._camera_jpeg()).decode()
+    probe = (Path(__file__).parent / "fixtures/manual_original_probe.js").read_text(encoding="utf-8")
+
+    @case.client.app.middleware("http")
+    async def manual_original_probe(request, call_next):
+        response = await call_next(request)
+        if "text/html" not in response.headers.get("content-type", ""):
+            return response
+        body = b"".join([chunk async for chunk in response.body_iterator])
+        script = "<script>window.__originalSample=" + json.dumps(sample) + ";" + probe + "</script>"
+        headers = dict(response.headers)
+        headers.pop("content-length", None)
+        return Response(body.replace(b"</body>", script.encode() + b"</body>"), status_code=response.status_code, headers=headers)
+
+    result = _run_review_page(case.client, tmp_path, "/web/expenses/new?ledger_id=owner&return_to=confirmed")
+    assert "error" not in result, result
+    assert result["rejected_preserved"] and result["transfer_retried"] and result["explicit_original_confirmation"]
+    assert creations == [result["ref"]]
+    with Session(case.engine) as db:
+        row = db.get(Expense, 42)
+        assert (row.merchant, row.amount_cents, row.row_version) == ("原稿商家", 1234, 5)
+        assert row.image_path and row.image_hash
+        receipts = db.scalars(select(ApiIdempotencyKey)).all()
+        assert len(receipts) == 2
+        original = next(r for r in receipts if r.operation == "attach_original")
+        assert original.idempotency_key == result["ref"] and original.response_body["sha256"] == row.image_hash
 
 
 @pytest.fixture

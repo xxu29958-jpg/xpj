@@ -39,6 +39,11 @@ assert.equal(record.values.calendar_revision, undefined);
 assert.equal(drafts.save(scope, ref, 'submitted', fields).values.calendar_revision, undefined);
 assert.throws(() => drafts.save(scope, ref, 'submitted', {...fields, calendar_revision:'2'}));
 drafts.save(scope, ref, 'editing', fields, 'rejected');
+const originalFile = JSON.stringify({file_sha256:'f'.repeat(64), file_name:'original.jpg', file_type:'image/jpeg', file_last_modified:'1'});
+drafts.save(scope, ref, 'submitted', {...fields, original_file:originalFile});
+assert.equal(drafts.read(ref).values.original_file, originalFile);
+assert.throws(() => drafts.save(scope, ref, 'submitted', {...fields, original_file:''}));
+drafts.save(scope, ref, 'editing', fields, 'rejected');
 const timedRef = 'c'.repeat(32);
 const timeFields = {time_precision:'date_only', calendar_revision:'1', user_local_date:'2026-09-06',
  source_timezone:'Asia/Shanghai', source_utc_offset_seconds:'', accounting_date:''};

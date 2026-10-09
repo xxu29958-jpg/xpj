@@ -6,7 +6,8 @@
 {% set task_return_label = edit_return_label %}
 {% block title %}手动记一笔 · 流水 · 小票夹{% endblock %}
 {% block page_scripts %}
-<script defer src="/static/web/manual-drafts.js?v={{ asset_version }}"></script>
+{% include '_attachment_scripts.html' %}
+<script defer src="/static/web/manual-original.js?v={{ asset_version }}"></script>
 <script defer src="/static/web/manual-entry.js?v={{ asset_version }}"></script>
 {% endblock %}
 
@@ -30,6 +31,7 @@
     <input type="hidden" name="expected_device_public_id" value="{{ form_device_public_id }}">
     <input type="hidden" name="client_ref" value="{{ client_ref }}">
     <input type="hidden" name="home_currency_code" value="{{ form_home_currency_code }}">
+    <input type="hidden" name="original_file" value="">
     {% for field_name, field_value in edit_return_fields.items() %}
     <input type="hidden" name="{{ field_name }}" value="{{ field_value }}">
     {% endfor %}
@@ -82,6 +84,16 @@
         <label for="manual-expense-note">备注（可选）</label>
         <textarea id="manual-expense-note" class="product-input" name="note" rows="3" placeholder="补充这笔支出的用途">{{ values.note or '' }}</textarea>
       </div>
+      </details>
+      <details class="manual-expense-options product-field--wide" data-manual-original hidden>
+        <summary>添加原件 <span data-manual-original-label>没有小票也可以记账</span></summary>
+        <label class="file-picker" for="manual-original-file">
+          <strong>选择小票或截图</strong>
+          <span>图片随原稿保留；账单保存后，再确认添加到这笔账单。</span>
+          <input class="file-picker-input" id="manual-original-file" data-manual-original-file type="file" accept="image/*">
+        </label>
+        {% with original_confirmation=false %}{% include '_original_selection.html' %}{% endwith %}
+        <button class="product-button product-button--quiet" type="button" data-manual-original-remove hidden>移除所选图片</button>
       </details>
       </div>
     <div class="product-entry">

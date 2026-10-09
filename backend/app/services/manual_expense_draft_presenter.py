@@ -6,6 +6,7 @@ import re
 
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.models import Expense
 from app.services.dataset_authority_service import read_dataset_authority
 from app.services.expense_service import read_manual_creation_receipt
@@ -23,6 +24,12 @@ def manual_draft_scope(db: Session, auth: AuthContext) -> dict[str, str]:
     }
 
 
+def manual_creation_ack(scope: dict[str, str], client_ref: str, receipt) -> dict:
+    return {"scope": scope, "clientRef": client_ref,
+        "originalTarget": {"expenseId": receipt.id, "rowVersion": receipt.row_version},
+        "uploadMaxBytes": get_settings().max_upload_size_bytes}
+
+
 def manual_draft_ack(db: Session, auth: AuthContext | None, expense: Expense) -> dict | None:
     if auth is None or auth.ledger_id != expense.tenant_id or expense.source != "手动记账":
         return None
@@ -37,4 +44,4 @@ def manual_draft_ack(db: Session, auth: AuthContext | None, expense: Expense) ->
         device_id=auth.device_id, client_ref=client_ref)
     if receipt is None or receipt.id != expense.id:
         return None
-    return {"scope": manual_draft_scope(db, auth), "clientRef": client_ref}
+    return manual_creation_ack(manual_draft_scope(db, auth), client_ref, receipt)

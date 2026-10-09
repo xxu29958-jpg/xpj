@@ -49,10 +49,7 @@
     <img src="/static/web/product/art/receipt-clip.png" alt="" aria-hidden="true">
     <input class="file-picker-input" id="original-{{ action }}-file" type="file" name="file" accept="image/*" required>
   </label>
-  <img class="original-selected-image" data-attachment-selected-image hidden alt="本次选择的原件图片">
-  <p class="meta" data-attachment-selection-status role="status">选择图片后，先预览再确认。</p>
-  <a class="product-button product-button--quiet" data-attachment-selected-open hidden download>下载原文件核对</a>
-  <label class="product-check"><input type="checkbox" data-attachment-selected-check required><span data-attachment-selected-label>这是这笔账单对应的原件</span></label>
+  {% with original_confirmation=true %}{% include '_original_selection.html' %}{% endwith %}
   {% endif %}
   {% if action == 'verify' %}
   <input type="hidden" name="reviewed_sha256" value="">

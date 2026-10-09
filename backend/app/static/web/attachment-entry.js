@@ -11,37 +11,41 @@
     const open = form.querySelector("[data-attachment-selected-open]");
     const status = form.querySelector("[data-attachment-selection-status]");
     let imageUrl;
-    check.disabled = true;
-    open.addEventListener("click", () => { if (form.dataset.attachmentPhase === "editing") check.disabled = false; });
+    let revision = 0;
+    if (check) check.disabled = true;
+    open.addEventListener("click", () => { if (check && form.dataset.attachmentPhase === "editing") check.disabled = false; });
     window.addEventListener("pagehide", () => { if (imageUrl) window.URL.revokeObjectURL(imageUrl); });
     return {
-      needsReview: () => !check.checked,
-      freeze() { check.checked = true; check.disabled = true; },
+      needsReview: () => !!check && !check.checked,
+      freeze() { if (check) { check.checked = true; check.disabled = true; } },
       async show(source, fixed) {
-        check.checked = fixed;
-        check.disabled = true;
+        const turn = ++revision;
+        if (check) { check.checked = fixed; check.disabled = true; }
         image.hidden = true;
         open.hidden = true;
-        reviewLabel.textContent = "这是这笔账单对应的原件";
+        if (reviewLabel) reviewLabel.textContent = "这是这笔账单对应的原件";
         if (imageUrl) window.URL.revokeObjectURL(imageUrl);
         imageUrl = null;
         status.textContent = "正在打开所选图片…";
         let file;
         try {
           file = await source();
+          if (turn !== revision) return;
           if (!file) { status.textContent = "选择图片后，先预览再确认。"; return; }
           imageUrl = window.URL.createObjectURL(file);
           open.href = imageUrl;
           open.download = file.name;
           image.src = imageUrl;
           await image.decode();
+          if (turn !== revision) return;
           image.hidden = false;
-          check.disabled = fixed;
-          status.textContent = file.name + (fixed ? " · 已提交的原文件；重试仍使用此文件。" : " · 请核对图片是否属于这笔账单。");
+          if (check) check.disabled = fixed;
+          status.textContent = file.name + (!check ? " · 账单保存后继续确认关联。" : fixed ? " · 已提交的原文件；重试仍使用此文件。" : " · 请核对图片是否属于这笔账单。");
         } catch (_) {
+          if (turn !== revision) return;
           if (file && imageUrl) {
             open.hidden = false;
-            reviewLabel.textContent = "我已在图片应用核对原文件，确认它属于这笔账单";
+            if (reviewLabel) reviewLabel.textContent = "我已在图片应用核对原文件，确认它属于这笔账单";
             status.textContent = fixed ? "浏览器无法显示原文件；重试仍使用已确认的文件。" :
               "浏览器无法打开这张图片。请下载原文件，在图片应用中查看后再确认；也可以重新选择。";
           } else { status.textContent = "原文件暂时无法读取，尚未发送。请恢复浏览器存储后继续原任务。"; }
@@ -336,7 +340,7 @@
       },
     };
   }
-  window.TicketboxAttachmentEntry = {init, shelf};
+  window.TicketboxAttachmentEntry = {init, shelf, originalSelection};
   document.querySelectorAll("[data-attachment-scope]:not([data-inbox-batch])").forEach(form => {
     try { init(form, {onReady: () => form.dispatchEvent(new Event("attachment-ready"))}); }
     catch (_) { form.querySelector("[data-attachment-status]").textContent = "原任务无法读取，请保留页面并核对浏览器存储。"; }

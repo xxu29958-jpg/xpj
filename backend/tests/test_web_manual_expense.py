@@ -11,6 +11,7 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import delete, func, select
 
+from app.config import get_settings
 from app.database import SessionLocal
 from app.middleware.csrf import CSRF_COOKIE_NAME
 from app.models import Account, ApiIdempotencyKey, AuthToken, Device, Expense, ExpenseRevision, LedgerMember
@@ -243,6 +244,8 @@ def test_manual_expense_replay_uses_web_device_and_creates_one_confirmed_fact(
     assert _draft_attribute(landed.text, "data-manual-draft-ack") == {
         "scope": _expected_draft_scope(installed_web, session_token),
         "clientRef": client_ref.group(1),
+        "originalTarget": {"expenseId": int(first.headers["location"].split("/")[3]), "rowVersion": 1},
+        "uploadMaxBytes": get_settings().max_upload_size_bytes,
     }
     query = {"ledger_id": installed_web.shared_ledger_id, "client_ref": client_ref.group(1),
         "draft_scope": json.dumps(_expected_draft_scope(installed_web, session_token)), "return_to": "confirmed"}
@@ -372,6 +375,8 @@ def test_missing_fx_keeps_same_created_expense_in_pending_recovery(
     assert _draft_attribute(recovery.text, "data-manual-draft-ack") == {
         "scope": _expected_draft_scope(installed_web, session_token),
         "clientRef": client_ref.group(1),
+        "originalTarget": {"expenseId": expense.id, "rowVersion": 1},
+        "uploadMaxBytes": get_settings().max_upload_size_bytes,
     }
 
 

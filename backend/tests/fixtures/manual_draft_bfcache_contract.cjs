@@ -23,7 +23,7 @@ const form = {
   dataset:{manualDraftScope:JSON.stringify(scope), manualDraftResult:''},
   elements:{namedItem:name => elements[name]}, addEventListener(){},
   querySelectorAll:selector => selector === '.manual-expense-options' ? [options] : [],
-  querySelector:selector => selector.includes('edit-fields') ? fields :
+  querySelector:selector => selector.includes('manual-original') ? null : selector.includes('edit-fields') ? fields :
     selector.includes('submit') ? submit : selector.includes('status') ? status : selector.includes('result') ? result : options,
 };
 const document = {
