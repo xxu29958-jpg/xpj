@@ -103,12 +103,19 @@ class PlanningAndroid:
     def fill(self, value: str, *, previous: str | None = None, label: str | None = None):
         if not re.fullmatch(r"[A-Za-z0-9.:/_-]+", value):
             raise ValueError("This journey types only its numeric or ASCII inputs")
+        scrolls = 0
         def locate():
+            nonlocal scrolls
             root = self.tree()
             fields = self.labeled_fields(root, label) if label else [
                 node for node in root.iter("node") if node.attrib.get("class") == "android.widget.EditText"]
             fields = [node for node in fields if node.attrib.get("enabled") != "false"]
-            return [node for node in fields if re.fullmatch(previous, node.attrib.get("text", ""))] if previous is not None else fields
+            if previous is not None:
+                fields = [node for node in fields if re.fullmatch(previous, node.attrib.get("text", ""))]
+            if len(fields) == 1 and self.scroll_clipped_control(root, fields[0], remaining=4 - scrolls):
+                scrolls += 1
+                return []
+            return fields
         fields = wait_for(locate, "The native input did not finish loading")
         if len(fields) != 1:
             raise AssertionError("The native input cannot be identified from its actual value")
@@ -140,24 +147,9 @@ class PlanningAndroid:
                 any(label in (part.attrib.get("text", "") + "\n" + part.attrib.get("content-desc", ""))
                     for part in node.iter("node"))]
             assert len(matches) <= 1, f"The native switch label is ambiguous: {label}"
-            if matches:
-                parents = {child: parent for parent in root.iter() for child in parent}
-                viewport = parents.get(matches[0])
-                while viewport is not None and viewport.attrib.get("scrollable") != "true":
-                    viewport = parents.get(viewport)
-                if viewport is not None:
-                    left, top, right, bottom = self.bounds(viewport)
-                    _, switch_top, _, switch_bottom = self.bounds(matches[0])
-                    # A label can be visible while its switch is under the system gesture area.
-                    if switch_top < top or switch_bottom > bottom:
-                        assert scrolls < 4, f"The native switch remains clipped: {label}"
-                        start, end = top + (bottom - top) * 3 // 4, top + (bottom - top) // 4
-                        if switch_top < top:
-                            start, end = end, start
-                        self.adb("shell", "input", "swipe", str((left + right) // 2), str(start),
-                            str((left + right) // 2), str(end), "350")
-                        scrolls += 1
-                        return []
+            if matches and self.scroll_clipped_control(root, matches[0], remaining=4 - scrolls):
+                scrolls += 1
+                return []
             return matches
 
         matches = wait_for(locate, f"The actual native switch is not named: {label}")
@@ -166,6 +158,21 @@ class PlanningAndroid:
             self.tap(matches[0])
         wait_for(lambda: bool(found := locate()) and found[0].attrib.get("checked") == expected,
             f"The actual native switch did not change: {label}")
+
+    def scroll_clipped_control(self, root, control, *, remaining: int):
+        parents = {child: parent for parent in root.iter() for child in parent}
+        viewport = parents.get(control)
+        while viewport is not None and viewport.attrib.get("scrollable") != "true":
+            viewport = parents.get(viewport)
+        if viewport is None:
+            return False
+        _, top, _, bottom = self.bounds(viewport)
+        _, control_top, _, control_bottom = self.bounds(control)
+        # A label can be visible while the control is behind a sticky footer.
+        if control_top >= top and control_bottom <= bottom:
+            return False
+        assert remaining > 0, "The actual native control remains outside its scroll viewport"
+        return self.scroll_viewport([viewport], toward_start=control_top < top)
 
     def click_counted_tab(self, label: str):
         def locate():

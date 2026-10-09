@@ -93,3 +93,34 @@ def test_domain_return_uses_navigation_instead_of_a_same_named_recycle_filter():
     native = Native()
     native.domain_home("计划")
     assert native.visited == ["library", "ledger", "budget", "plans"]
+
+
+def test_fill_scrolls_the_input_above_the_sticky_footer_before_typing():
+    class Native(PlanningAndroid):
+        def __init__(self):
+            self.value = "PeerNote"
+            self.focused = False
+            self.field_bounds = "[63,1975][1017,2101]"
+
+        def tree(self):
+            root = ET.Element("hierarchy")
+            viewport = ET.SubElement(root, "node", scrollable="true", bounds="[0,255][1080,2021]")
+            ET.SubElement(viewport, "node", attrib={"class": "android.widget.EditText",
+                "text": self.value, "focused": str(self.focused).lower(), "bounds": self.field_bounds})
+            return root
+
+        def adb(self, *args, **_kwargs):
+            assert args[:2] == ("shell", "input")
+            if args[2] == "swipe":
+                self.field_bounds = "[63,1200][1017,1326]"
+            elif args[2] == "tap":
+                assert 255 < int(args[4]) < 2021, "The input center is hidden behind the sticky footer"
+                self.focused = True
+            elif args[2:] == ("keyevent", "67"):
+                self.value = self.value[:-1]
+            elif args[2] == "text":
+                self.value += args[3]
+
+    native = Native()
+    native.fill("LaterNote", previous="PeerNote")
+    assert native.value == "LaterNote"

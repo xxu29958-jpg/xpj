@@ -4348,6 +4348,42 @@
         "title": "Body_web_device_revoke_web_settings_devices__public_id__revoke_post",
         "type": "object"
       },
+      "Body_web_duplicate_decision_review_web_duplicates__expense_id__decision_post": {
+        "properties": {
+          "action": {
+            "default": "keep",
+            "enum": [
+              "keep",
+              "reject-current",
+              "reject-original"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "draft_ref": {
+            "default": "",
+            "title": "Draft Ref",
+            "type": "string"
+          },
+          "draft_scope": {
+            "default": "",
+            "title": "Draft Scope",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "return_duplicate_expense_id": {
+            "default": "",
+            "title": "Return Duplicate Expense Id",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_duplicate_decision_review_web_duplicates__expense_id__decision_post",
+        "type": "object"
+      },
       "Body_web_duplicate_keep_web_duplicates__expense_id__keep_post": {
         "properties": {
           "amount_yuan": {
@@ -4628,6 +4664,11 @@
           "expected_row_version": {
             "default": "",
             "title": "Expected Row Version",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
             "type": "string"
           },
           "ledger_id": {
@@ -52968,6 +53009,132 @@
           }
         },
         "summary": "Web Duplicates",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/duplicates/{expense_id}/decision": {
+      "get": {
+        "operationId": "web_duplicate_decision_task_web_duplicates__expense_id__decision_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "expense_id",
+            "required": true,
+            "schema": {
+              "title": "Expense Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Ledger Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "action",
+            "required": false,
+            "schema": {
+              "default": "keep",
+              "enum": [
+                "keep",
+                "reject-current",
+                "reject-original"
+              ],
+              "title": "Action",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "original_expense_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Original Expense Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Duplicate Decision Task",
+        "tags": [
+          "web"
+        ]
+      },
+      "post": {
+        "operationId": "web_duplicate_decision_review_web_duplicates__expense_id__decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "expense_id",
+            "required": true,
+            "schema": {
+              "title": "Expense Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_duplicate_decision_review_web_duplicates__expense_id__decision_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Duplicate Decision Review",
         "tags": [
           "web"
         ]

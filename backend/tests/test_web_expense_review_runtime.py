@@ -394,6 +394,9 @@ def test_ignore_and_undo_preserve_original_identity_before_mutation(
     response = related_review_browser.post(path, data=fields, follow_redirects=False)
     assert response.status_code == 409, response.text
     assert 'name="draft_scope"' in response.text
+    refused = related_review_browser.post(path, data=fields, headers={"Accept": "application/json"})
+    assert refused.status_code == 409 and refused.json()["draft_result"] == "blocked"
+    assert "ack" not in refused.json()
     with Session(confirmation_store) as db:
         row = db.get(Expense, 42)
         assert (row.row_version, row.status) == (4, "rejected" if action == "undo" else "pending")
@@ -683,7 +686,8 @@ def test_related_keep_refuses_changed_or_missing_original_identity(related_revie
         assert db.get(Expense, 42).row_version == 4
 
 
-def test_standalone_duplicate_form_carries_its_original_decision_and_browser_identity(related_review_browser, confirmation_store):
+@pytest.mark.parametrize("action", ["keep", "reject-current", "reject-original"])
+def test_standalone_duplicate_form_carries_its_original_decision_and_browser_identity(related_review_browser, confirmation_store, action):
     with Session(confirmation_store) as db:
         current = db.get(Expense, 42)
         db.add(Expense(**{column.name: getattr(current, column.name) for column in Expense.__table__.columns
@@ -691,25 +695,109 @@ def test_standalone_duplicate_form_carries_its_original_decision_and_browser_ide
         current.duplicate_status, current.duplicate_of_id = "suspected", 43
         db.commit()
     page = related_review_browser.get("/web/duplicates?ledger_id=owner")
-    fields = hidden_post_forms(page.text)["/web/duplicates/42/keep"]
-    assert fields["keep_idempotency_key"] and json.loads(fields["draft_scope"])["deviceId"] == "browser"
-    response = related_review_browser.post("/web/duplicates/42/keep", data=fields, follow_redirects=False)
+    path = f"/web/duplicates/42/{action}"
+    fields = hidden_post_forms(page.text)[path]
+    key = fields["idempotency_key"]
+    assert json.loads(fields["draft_scope"])["deviceId"] == "browser"
+    response = related_review_browser.post(path, data=fields, follow_redirects=False)
     assert response.status_code == 303 and response.headers["location"].startswith("/web/duplicates?")
     with Session(confirmation_store) as db:
-        assert (db.get(Expense, 42).duplicate_status, db.get(Expense, 42).row_version) == ("none", 5)
+        current, original = db.get(Expense, 42), db.get(Expense, 43)
+        assert (current.status, original.status) == (
+            ("rejected", "pending") if action == "reject-current" else
+            ("pending", "rejected") if action == "reject-original" else ("pending", "pending"))
+        current.merchant, current.row_version, current.duplicate_status = "后来修改本次", 9, "suspected"
+        original.merchant, original.row_version, original.status = "后来修改参考", 11, "confirmed"
+        db.commit()
+    replay = related_review_browser.post(path, data=fields, headers={"Accept": "application/json"}, follow_redirects=False)
+    assert replay.status_code == 200, replay.text
+    assert replay.json()["ack"]["clientRef"] == key
+    assert replay.json()["next"].startswith("/web/duplicates?")
+    assert replay.json()["receipt"]["accepted"] is True
+    with Session(confirmation_store) as db:
+        assert (db.get(Expense, 42).merchant, db.get(Expense, 42).row_version, db.get(Expense, 42).duplicate_status) == ("后来修改本次", 9, "suspected")
+        assert (db.get(Expense, 43).merchant, db.get(Expense, 43).row_version, db.get(Expense, 43).status) == ("后来修改参考", 11, "confirmed")
+        assert len(db.scalars(select(ApiIdempotencyKey)).all()) == 1
 
 
-def test_standalone_keep_preserves_writer_permission_denial(related_review_browser, confirmation_store, monkeypatch):
+@pytest.mark.parametrize("action", ["keep", "reject-current", "reject-original", "decision"])
+def test_standalone_decision_preserves_writer_permission_denial(related_review_browser, confirmation_store, monkeypatch, action):
     related_review_browser.app.add_exception_handler(AppError, app_error_handler)
     monkeypatch.setattr(web_duplicates, "_list_ledger_options", lambda db: [SimpleNamespace(
         ledger_id="owner", name="家庭账本", role="viewer", is_default=True)])
-    response = related_review_browser.post("/web/duplicates/42/keep", data={"ledger_id": "owner"},
+    response = related_review_browser.post(f"/web/duplicates/42/{action}", data={"ledger_id": "owner"},
         headers={"Accept": "application/json"}, follow_redirects=False)
     assert response.status_code == 403, response.text
     assert response.json()["error"] == "permission_denied"
     with Session(confirmation_store) as db:
         assert db.get(Expense, 42).row_version == 4
         assert db.scalar(select(ApiIdempotencyKey)) is None
+
+
+@pytest.mark.parametrize("action,command", [("keep", "submit_expense_duplicate_decision"),
+    ("reject-current", "submit_expense_rejection"), ("reject-original", "reject_duplicate_original_keep_current")])
+def test_standalone_decision_storage_failure_retains_original_and_reports_cause(
+    related_review_browser, confirmation_store, monkeypatch, caplog, action, command,
+):
+    failure = SQLAlchemyError("controlled duplicate storage interruption")
+
+    def fail(*args, **kwargs):
+        raise failure
+
+    monkeypatch.setattr(web_duplicates, command, fail)
+    related_review_browser.app.add_middleware(SanitizedLoggingMiddleware)
+    fields = {**_related_keep_fields(), "original_expense_id": "43", "expected_original_row_version": "4",
+        "return_duplicate_expense_id": "44", "save_before_confirm": "0"}
+    path = f"/web/duplicates/42/{action}"
+    native = related_review_browser.post(path, data=fields, follow_redirects=False)
+    retained = hidden_post_forms(native.text)[path]
+    for name in ("expected_row_version", "idempotency_key", "draft_scope", "return_duplicate_expense_id"):
+        assert retained[name] == fields[name]
+    enhanced = related_review_browser.post(path, data=fields, headers={"Accept": "application/json"})
+    assert enhanced.json()["draft_result"] == "blocked" and "ack" not in enhanced.json()
+    for response in (native, enhanced):
+        assert response.status_code == 503 and str(failure) not in response.text
+        assert any(record.name == "ticketbox.http" and record.exc_info and record.exc_info[1] is failure
+            and response.headers["X-Request-Id"] in record.getMessage() for record in caplog.records)
+    with Session(confirmation_store) as db:
+        assert db.get(Expense, 42).row_version == 4
+        assert db.scalar(select(ApiIdempotencyKey)) is None
+
+
+@pytest.mark.parametrize("action,fault", [("keep", "reply"), ("reject-current", "reply"), ("reject-original", "reply"), ("keep", "conflict")])
+def test_standalone_decision_recovers_original_or_explicitly_reviews_a_refusal(related_review_browser, confirmation_store, tmp_path, action, fault):
+    client = related_review_browser
+    with Session(confirmation_store) as db:
+        row = db.get(Expense, 42)
+        db.add(Expense(**{c.name: getattr(row, c.name) for c in Expense.__table__.columns
+            if c.name not in {"id", "public_id"}}, id=43, public_id="original-comparison"))
+        row.duplicate_status, row.duplicate_of_id = "suspected", 43
+        db.commit()
+
+    @client.app.get("/duplicate-probe.js")
+    def probe():
+        return FileResponse(Path(__file__).parent / "fixtures/duplicate_decision_recovery_probe.js", media_type="text/javascript")
+
+    @client.app.post("/duplicate-peer")
+    def peer():
+        with Session(confirmation_store) as db:
+            current, original = db.get(Expense, 42), db.get(Expense, 43)
+            current.merchant, current.row_version, current.duplicate_status = "后来修改本次", 9, "suspected"
+            original.merchant, original.row_version, original.status = "后来修改参考", 11, "confirmed"
+            db.commit()
+        return {"changed": True}
+
+    @client.app.get("/duplicate-facts")
+    def facts():
+        with Session(confirmation_store) as db:
+            current, original = db.get(Expense, 42), db.get(Expense, 43)
+            return {"current_version": current.row_version, "current_merchant": current.merchant,
+                "current_duplicate": current.duplicate_status, "original_version": original.row_version, "original_merchant": original.merchant}
+
+    client.app.state.expense_review_probe = "duplicate-probe.js"
+    result = _run_review_page(client, tmp_path, f"/web/duplicates?ledger_id=owner&choice={action}&fault={fault}", width=393)
+    assert "error" not in result, json.dumps(result, ensure_ascii=False)
+    assert result["complete"]
 
 
 @pytest.mark.parametrize("first_surface", ["api", "web"])

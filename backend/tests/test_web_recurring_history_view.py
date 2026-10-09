@@ -54,7 +54,8 @@ def occurrence_context(recorded=True):
     request = Request({"type":"http", "headers":[], "scheme":"http", "server":("test",80), "path":"/web/recurring/series-one/occurrence"})
     return {"request":request, "selected_ledger_id":"owner", "item":SimpleNamespace(public_id="series-one",merchant_name="当前人民币定义"),
         "occurrence":occurrence, "planned_amount":"90.00", "reserved_amount":"0.00", "paid_amount":"1200",
-        "recorded_definition_amount":"1200", "can_associate":False, "payments":[], "limited":False}
+        "recorded_definition_amount":"1200", "can_associate":False, "payments":[], "limited":False,
+        "undo_draft_scope":None}
 
 
 @pytest.mark.parametrize("recorded", [True, False])

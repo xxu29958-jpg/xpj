@@ -355,6 +355,8 @@ body:has(:is(.inbox-capture-panel, .inbox-empty-capture)[open]) .content { max-w
 .duplicate-original .product-button { margin-top: var(--space-3); }
 .duplicate-reason { margin-block: var(--space-5); }
 .duplicate-decision { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; }
+.duplicate-decision-form { display: grid; gap: var(--space-3); min-inline-size: 0; }
+.duplicate-decision-form > .hint { margin: 0; }
 .duplicate-decision > p { flex-basis: 100%; margin: var(--space-3) 0 0; }
 @media (max-width: 56rem) {
     .duplicate-compare { grid-template-columns: minmax(0, 1fr); gap: var(--space-6); }

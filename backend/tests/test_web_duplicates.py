@@ -8,11 +8,12 @@ import pytest
 from api_contract_helpers import confirm_expense_api, patch_expense, web_duplicates_action
 from fastapi.testclient import TestClient
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.database import SessionLocal
 from app.errors import AppError
 from app.main import app
-from app.models import Expense
+from app.models import ApiIdempotencyKey, Expense
 from app.routes.web_app import _require_local as _web_require_local
 from tests._web_native_form_support import hidden_post_forms
 
@@ -191,9 +192,9 @@ def test_web_duplicates_reject_original_keeps_current(web_client: TestClient, *,
         before = db.scalar(select(Expense).where(Expense.id == second))
         assert before is not None
         before_row_version = before.row_version
-    resp = web_duplicates_action(
-        web_client, second, identity=identity, action="reject-original"
-    )
+    path = f"/web/duplicates/{second}/reject-original"
+    fields = hidden_post_forms(web_client.get("/web/duplicates?ledger_id=owner").text)[path]
+    resp = web_client.post(path, data=fields, follow_redirects=False)
     assert resp.status_code == 303
     with SessionLocal() as db:
         kept = db.scalar(select(Expense).where(Expense.id == second))
@@ -204,6 +205,25 @@ def test_web_duplicates_reject_original_keeps_current(web_client: TestClient, *,
         assert kept.duplicate_of_id is None
         assert kept.row_version == before_row_version + 1
         assert rejected.status == "rejected"
+        receipt = db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.idempotency_key == fields["idempotency_key"]))
+        assert receipt.status == "succeeded"
+        original_receipt = dict(receipt.response_body)
+        assert original_receipt == {"operation": "reject_duplicate_original", "expense_id": second,
+            "original_expense_id": first, "accepted": True, "decision_key": fields["idempotency_key"]}
+
+    changed = patch_expense(web_client, second, headers=identity.app_headers, fields={"note": "Later manual fact"})
+    assert changed.status_code == 200, changed.text
+    replay = web_client.post(path, data=fields, follow_redirects=False)
+    assert replay.status_code == 303 and replay.headers["location"] == resp.headers["location"]
+    reused = web_client.post(path, data={**fields, "expected_original_row_version": str(int(fields["expected_original_row_version"]) + 1)},
+        headers={"Accept": "application/json"}, follow_redirects=False)
+    assert reused.status_code == 422 and reused.json()["error"] == "idempotency_key_reused"
+    with SessionLocal() as db:
+        kept = db.get(Expense, second)
+        assert (kept.note, kept.row_version) == ("Later manual fact", changed.json()["row_version"])
+        assert db.get(Expense, first).status == "rejected"
+        receipt = db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.idempotency_key == fields["idempotency_key"]))
+        assert receipt.response_body == original_receipt
 
 
 def test_web_duplicates_confirmed_original_never_dispatches_generic_reject(
@@ -230,6 +250,7 @@ def test_web_duplicates_confirmed_original_never_dispatches_generic_reject(
             "expected_row_version": current_token,
             "original_expense_id": original,
             "expected_original_row_version": original_token,
+            "idempotency_key": str(uuid4()),
         },
         follow_redirects=False,
     )
@@ -246,18 +267,25 @@ def test_web_duplicates_confirmed_original_never_dispatches_generic_reject(
         assert reference.status == "confirmed"
 
 
+@pytest.mark.parametrize("failure_at,error,status", [
+    ("reject_expense", AppError("state_conflict", status_code=409), 303),
+    ("mark_idempotency_succeeded", SQLAlchemyError("controlled receipt write failure"), 503),
+])
 def test_web_duplicates_reject_original_is_atomic(
-    web_client: TestClient, *, identity, monkeypatch: pytest.MonkeyPatch
+    web_client: TestClient, *, identity, monkeypatch: pytest.MonkeyPatch, failure_at, error, status,
 ) -> None:
     first, second = _seed_duplicate_pair(web_client, identity=identity)
     token = _token(web_client, second, identity=identity)
     original_token = _token(web_client, first, identity=identity)
+    key = str(uuid4())
+    reached_failure = []
 
     def fail_reject(*args, **kwargs):
-        raise AppError("state_conflict", status_code=409)
+        reached_failure.append(True)
+        raise error
 
     monkeypatch.setattr(
-        "app.services.expense_review_command_service.reject_expense",
+        f"app.services.expense_review_command_service.{failure_at}",
         fail_reject,
     )
     resp = web_client.post(
@@ -267,11 +295,14 @@ def test_web_duplicates_reject_original_is_atomic(
             "expected_row_version": token,
             "original_expense_id": first,
             "expected_original_row_version": original_token,
+            "idempotency_key": key,
         },
         follow_redirects=False,
     )
-    assert resp.status_code == 303
-    assert "flash_type=error" in resp.headers.get("location", "")
+    assert reached_failure, "The command must reach the intended transactional failure"
+    assert resp.status_code == status
+    if status == 303:
+        assert "flash_type=error" in resp.headers.get("location", "")
 
     with SessionLocal() as db:
         kept = db.scalar(select(Expense).where(Expense.id == second))
@@ -281,6 +312,8 @@ def test_web_duplicates_reject_original_is_atomic(
         assert kept.duplicate_of_id == first
         assert kept.row_version == int(token)
         assert original.status == "pending"
+        assert original.row_version == int(original_token)
+        assert db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.idempotency_key == key)) is None
 
     monkeypatch.undo()
     changed = patch_expense(
@@ -298,6 +331,7 @@ def test_web_duplicates_reject_original_is_atomic(
             "expected_row_version": token,
             "original_expense_id": first,
             "expected_original_row_version": original_token,
+            "idempotency_key": key,
         },
         follow_redirects=False,
     )

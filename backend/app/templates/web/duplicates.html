@@ -1,21 +1,31 @@
 {% extends "base.html" %}
 {% set page_surface = 'tertiary' %}
 {% set product_body_domain = 'inbox' %}
-{% set task_return_href = '/web/pending?ledger_id=' ~ selected_ledger_id %}
-{% set task_return_label = '收件箱' %}
+{% set task_return_href = ('/web/duplicates' if duplicate_task_action else '/web/pending') ~ '?ledger_id=' ~ selected_ledger_id %}
+{% set task_return_label = '返回相似账单' if duplicate_task_action else '收件箱' %}
 {% block title %}相似账单 · 收件 · 小票夹{% endblock %}
+{% block page_scripts %}
+<script defer src="/static/web/manual-drafts.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/plan-entry.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/duplicate-choice-entry.js?v={{ asset_version }}"></script>
+{% endblock %}
 {% block content %}
 <header class="product-page-header">
   <div class="product-page-heading">
-    <h1 class="page-title">像是同一张小票</h1>
-    <p class="product-page-summary">对照金额、时间和原件，再决定保留哪张。</p>
+    <h1 class="page-title">{{ "核实原来的决定" if duplicate_task_action else "像是同一张小票" }}</h1>
+    <p class="product-page-summary">{{ "下方是两笔账单的当前记录。核实会沿用原决定，不覆盖后来修改。" if duplicate_task_action else "对照金额、时间和原件，再决定保留哪张。" }}</p>
   </div>
   <div class="product-page-actions">
-    <span class="product-status">{{ duplicate_pairs | length }} 组待核对</span>
+    <span class="product-status">{{ "原决定待核实" if duplicate_task_action else (duplicate_pairs | length ~ " 组待核对") }}</span>
   </div>
 </header>
 {% if flash_message %}
 <div class="product-feedback{% if flash_type == 'success' %} product-feedback--success{% elif flash_type == 'error' %} product-feedback--error{% endif %}" role="{{ 'alert' if flash_type == 'error' else 'status' }}">{{ flash_message }}</div>
+{% endif %}
+{% if duplicate_draft_scope %}
+<details class="product-panel product-panel--padded" data-duplicatechoice-scope="{{ duplicate_draft_scope | forceescape }}" hidden>
+  <summary>继续原来的相似账单决定</summary><ul></ul>
+</details>
 {% endif %}
 {% if not duplicate_pairs %}
 <div class="product-state">
@@ -27,8 +37,9 @@
 <div class="duplicate-case-list">
   {% for pair in duplicate_pairs %}
   {% set cur, orig = pair.current, pair.original %}
-  {% set next_id = duplicate_pairs[loop.index].current.id if not loop.last else (duplicate_pairs[loop.index0 - 1].current.id if not loop.first else cur.id) %}
-  <section class="duplicate-case" id="duplicate-{{ cur.id }}" aria-label="第 {{ loop.index }} 组相似账单" tabindex="-1"{% if duplicate_focus == cur.id %} autofocus{% endif %}>
+  {% set current_id = cur.id if cur else duplicate_task_expense_id %}
+  {% set next_id = duplicate_task_next or (duplicate_pairs[loop.index].current.id if not loop.last else (duplicate_pairs[loop.index0 - 1].current.id if not loop.first else current_id)) %}
+  <section class="duplicate-case" id="duplicate-{{ current_id }}" aria-label="第 {{ loop.index }} 组相似账单" tabindex="-1"{% if duplicate_focus == current_id %} autofocus{% endif %}>
     <div class="duplicate-case-heading">
       <span class="meta">第 {{ loop.index }} 组</span>
       <span class="product-status{% if pair.evidence_tone %} product-status--{{ pair.evidence_tone }}{% endif %}">{{ pair.evidence_label }}</span>
@@ -59,7 +70,7 @@
           <svg class="exp-row-chevron" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
         </a>
         {% else %}
-        <p class="meta">参考账单已不可用。请先核对本次收到的账单。</p>
+        <p class="meta">{{ label }}当前不可用。原决定仍保留，请恢复访问后核对。</p>
         {% endif %}
       </article>
       {% endfor %}
@@ -86,38 +97,13 @@
     </details>
     <p class="duplicate-reason meta">{{ pair.reason_label }}。请按实际消费判断；保留两笔后仍需核对待确认账单。</p>
     <div class="duplicate-decision">
-      {% if can_write %}
-      <form method="post" action="/web/duplicates/{{ cur.id }}/keep" class="product-inline-form">
-        <input type="hidden" name="return_to" value="duplicates">
-        <input type="hidden" name="return_duplicate_expense_id" value="{{ next_id }}">
-        <input type="hidden" name="draft_scope" value="{{ duplicate_draft_scope }}">
-        <input type="hidden" name="keep_idempotency_key" value="{{ cur.keep_idempotency_key }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-        <input type="hidden" name="expected_row_version" value="{{ cur.row_version }}">
-        <button class="product-button product-button--primary" type="submit">不是重复，保留两笔</button>
-      </form>
-      <form method="post" action="/web/duplicates/{{ cur.id }}/reject-current" class="product-inline-form" data-confirm="将本次收到的账单移入回收站。继续吗？">
-        <input type="hidden" name="return_duplicate_expense_id" value="{{ next_id }}">
-        <input type="hidden" name="draft_scope" value="{{ duplicate_draft_scope }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-        <input type="hidden" name="expected_row_version" value="{{ cur.row_version }}">
-        <input type="hidden" name="idempotency_key" value="{{ cur.reject_idempotency_key }}">
-        <button class="product-button product-button--quiet" type="submit">忽略本次收到的账单</button>
-      </form>
-      {% if orig and orig.status == 'pending' %}
-      <form method="post" action="/web/duplicates/{{ cur.id }}/reject-original" class="product-inline-form" data-confirm="将参考账单移入回收站，并保留本次收到的账单。继续吗？">
-        <input type="hidden" name="return_duplicate_expense_id" value="{{ next_id }}">
-        <input type="hidden" name="draft_scope" value="{{ duplicate_draft_scope }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-        <input type="hidden" name="expected_row_version" value="{{ cur.row_version }}">
-        <input type="hidden" name="original_expense_id" value="{{ orig.id }}">
-        <input type="hidden" name="expected_original_row_version" value="{{ orig.row_version }}">
-        <button class="product-button product-button--quiet" type="submit">忽略参考账单，保留本次收到</button>
-      </form>
-      {% elif orig and orig.status == 'confirmed' %}
+      {% if can_write or duplicate_task_action %}
+      {% for decision, decision_label in [('keep', '不是重复，保留两笔'), ('reject-current', '忽略本次收到的账单'), ('reject-original', '忽略参考账单，保留本次收到')] %}
+      {% if (not duplicate_task_action or duplicate_task_action == decision) and (decision != 'reject-original' or (orig and orig.status == 'pending') or duplicate_task_action) %}
+      {% include "_duplicate_decision_form.html" %}
+      {% endif %}
+      {% endfor %}
+      {% if orig and orig.status == 'confirmed' %}
       <p class="meta">已入账参考记录不能在重复核对中忽略。需要调整时，请打开该账单查看更正方式。</p>
       {% endif %}
       {% else %}

@@ -270,10 +270,17 @@ def reject_duplicate_original_keep_current(
     tenant_id: str,
     expected_row_version: int,
     expected_original_row_version: int,
+    idempotency_key: str,
 ) -> None:
-    """Apply a two-snapshot duplicate decision as one transaction."""
+    """Accept the original two-snapshot decision and its receipt atomically."""
 
     try:
+        claim = claim_idempotent_request(db, tenant_id=tenant_id, idempotency_key=idempotency_key,
+            operation="reject_duplicate_original", target_id=str(current_expense_id),
+            body={"original_expense_id": original_expense_id, "expected_original_row_version": expected_original_row_version},
+            expected_row_version=expected_row_version)
+        if claim is None:
+            return
         rows = list(
             db.scalars(
                 select(Expense)
@@ -316,6 +323,9 @@ def reject_duplicate_original_keep_current(
             expected_row_version=expected_original_row_version,
             commit=False,
         )
+        mark_idempotency_succeeded(db, claim, resource_type="expense", resource_id=str(current_expense_id),
+            response_body={"operation": "reject_duplicate_original", "expense_id": current_expense_id,
+                "original_expense_id": original_expense_id, "accepted": True, "decision_key": idempotency_key})
         db.commit()
     except (AppError, SQLAlchemyError):
         db.rollback()

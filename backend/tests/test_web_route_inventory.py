@@ -188,6 +188,8 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("POST", "/web/debts/{public_id}/split-changes/{proposal_public_id}/withdraw"): "writer-only",
     # Duplicates
     ("GET", "/web/duplicates"): "local-only-rendering",
+    ("GET", "/web/duplicates/{expense_id}/decision"): "local-only-rendering",
+    ("POST", "/web/duplicates/{expense_id}/decision"): "writer-only",
     ("POST", "/web/duplicates/{expense_id}/keep"): "writer-only",
     ("POST", "/web/duplicates/{expense_id}/reject-current"): "writer-only",
     ("POST", "/web/duplicates/{expense_id}/reject-original"): "writer-only",
