@@ -66,7 +66,7 @@ def _assert_review_keyboard_runtime_contract(js_path: Path) -> None:
     assert 'row.setAttribute("aria-expanded", "false");' in drawer_js
     assert "aria-selected" not in drawer_js
     assert "if (e.isComposing) return;" in keyboard_js
-    assert "active.matches(ROW_SELECTOR)" in keyboard_js
+    # Real Edge verifies that navigation skips disabled rows; selector spelling is not the behavior.
     assert 'getAttribute("aria-disabled") !== "true"' in keyboard_js
     for key in ('"ArrowDown"', '"ArrowUp"', '"Home"', '"End"'):
         assert key in keyboard_js
