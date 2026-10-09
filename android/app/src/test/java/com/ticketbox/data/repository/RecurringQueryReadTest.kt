@@ -16,6 +16,9 @@ import com.ticketbox.data.remote.dto.RecurringItemListResponseDto
 import com.ticketbox.data.remote.dto.RecurringOccurrenceDto
 import com.ticketbox.data.remote.dto.RecurringRevisionDto
 import java.net.ConnectException
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneOffset
 import java.util.TimeZone
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
@@ -29,6 +32,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 internal class RecurringQueryReadTest : ExpensePendingRepositoryOutboxTestBase() {
+    private val readClock = Clock.fixed(Instant.parse("2026-10-10T01:00:00Z"), ZoneOffset.UTC)
     @Test fun cachedPayloadCannotReturnAfterAnotherOwnerRetiresItBetweenReadAndDecode() = runTest {
         lateinit var api: RecurringReadProbe
         var afterCacheRead: (suspend () -> Unit)? = null
@@ -329,9 +333,9 @@ internal class RecurringQueryReadTest : ExpensePendingRepositoryOutboxTestBase()
         val saved = FakeExpenseDao()
         var failWrites = false
         val dao = object : ExpenseDao by saved {
-            override suspend fun saveRecurringSnapshotIfCurrent(snapshot: StatsProjectionCacheEntity, expectedEpoch: Long) {
+            override suspend fun saveRecurringSnapshotIfCurrent(snapshot: StatsProjectionCacheEntity, expectedEpoch: Long, aliasMonth: String?) {
                 if (failWrites) throw SQLiteException("projection unavailable")
-                saved.saveRecurringSnapshotIfCurrent(snapshot, expectedEpoch)
+                saved.saveRecurringSnapshotIfCurrent(snapshot, expectedEpoch, aliasMonth)
             }
         }
         val fixture = GoalReadFixture(decorateDao = { dao }, decorate = { RecurringReadProbe(it).also { probe -> api = probe } })
@@ -523,7 +527,7 @@ internal class RecurringQueryReadTest : ExpensePendingRepositoryOutboxTestBase()
         }
     }
 
-    @Test fun newerCurrentPaymentAndSameVersionReviewStateRemainVisibleWhenOfflineChoosingItsExplicitMonth() = runTest {
+    @Test fun currentAndExplicitMonthKeepLatestReadAtTheSameInstantWhenReopenedOffline() = runTest {
         var offline = false
         var response = RecurringOccurrenceDto("recurring", "2026-09", 9, 0, "unfulfilled", 2400, 2400, null, null, null,
             homeCurrencyCode = "JPY")
@@ -533,7 +537,7 @@ internal class RecurringQueryReadTest : ExpensePendingRepositoryOutboxTestBase()
                 return response
             }
         } })
-        val reader = RecurringQueryReader(fixture.provider, fixture.dao, fixture.coordinator)
+        val reader = RecurringQueryReader(fixture.provider, fixture.dao, fixture.coordinator, readClock)
         reader.occurrence(fixture.binding, "recurring", "2026-09").getOrThrow()
         response = response.copy(rowVersion = 1, state = "fulfilled", reservedAmountCents = 0,
             expensePublicId = "paid-original", paidAmountCents = 2400, paidHomeCurrencyCode = "JPY")
@@ -547,35 +551,47 @@ internal class RecurringQueryReadTest : ExpensePendingRepositoryOutboxTestBase()
         val reviewed = reader.occurrence(fixture.binding, "recurring", "current").getOrThrow()
         offline = true
         assertEquals(reviewed.copy(fromCache = true), cold.occurrence(fixture.binding, "recurring", "2026-09").getOrThrow())
+        assertEquals(reviewed.copy(fromCache = true), cold.occurrence(fixture.binding, "recurring", "current").getOrThrow())
+        offline = false
+        response = response.copy(state = "fulfilled")
+        val resolved = reader.occurrence(fixture.binding, "recurring", "2026-09").getOrThrow()
+        assertEquals(reviewed.fetchedAt, resolved.fetchedAt)
+        offline = true
+        assertEquals(resolved.copy(fromCache = true), cold.occurrence(fixture.binding, "recurring", "current").getOrThrow())
+        assertEquals(resolved.copy(fromCache = true), cold.occurrence(fixture.binding, "recurring", "2026-09").getOrThrow())
         assertTrue(cold.occurrence(fixture.binding, "recurring", "2026-08").isFailure)
     }
 
-    @Test fun lateCurrentReadCannotReplaceNewerExplicitPeriodAndOfflineNeverInventsAnotherMonth() = runTest {
-        val started = CompletableDeferred<Unit>()
-        val release = CompletableDeferred<Unit>()
-        var offline = false
-        val earlier = RecurringOccurrenceDto("recurring", "2026-09", 9, 0, "unfulfilled", 2400, 2400, null, null, null,
-            homeCurrencyCode = "JPY")
-        val newer = earlier.copy(seriesRowVersion = 10, plannedAmountCents = 3600, reservedAmountCents = 3600)
-        val fixture = GoalReadFixture(decorate = { delegate -> object : ApiService by delegate {
-            override suspend fun recurringOccurrence(publicId: String, month: String): RecurringOccurrenceDto {
-                if (offline) throw ConnectException("offline period")
-                if (month != "current") return newer
-                started.complete(Unit)
-                release.await()
-                return earlier
-            }
-        } })
-        val reader = RecurringQueryReader(fixture.provider, fixture.dao, fixture.coordinator)
-        val current = async { reader.occurrence(fixture.binding, "recurring", "current") }
-        started.await()
-        val explicit = reader.occurrence(fixture.binding, "recurring", "2026-09").getOrThrow()
-        release.complete(Unit)
-        current.await().getOrThrow()
-        offline = true
-        val reopened = RecurringQueryReader(fixture.provider, fixture.dao, fixture.coordinator)
-        assertEquals(explicit.copy(fromCache = true), reopened.occurrence(fixture.binding, "recurring", "2026-09").getOrThrow())
-        assertTrue(reopened.occurrence(fixture.binding, "recurring", "2026-08").isFailure)
+    @Test fun lateAliasReadCannotReplaceNewerPeriodStateOrInventAnotherMonth() = runTest {
+        for (oldPeriod in listOf("2026-09", "current")) for (advanceVersion in listOf(false, true)) {
+            val started = CompletableDeferred<Unit>()
+            val release = CompletableDeferred<Unit>()
+            var offline = false
+            val earlier = RecurringOccurrenceDto("recurring", "2026-09", 9, 1, "fulfilled", 2400, 0,
+                "paid-original", 2400, null, homeCurrencyCode = "JPY", paidHomeCurrencyCode = "JPY")
+            val newer = earlier.copy(seriesRowVersion = if (advanceVersion) 10 else 9, state = "needs_review")
+            val fixture = GoalReadFixture(decorate = { delegate -> object : ApiService by delegate {
+                override suspend fun recurringOccurrence(publicId: String, month: String): RecurringOccurrenceDto {
+                    if (offline) throw ConnectException("offline period")
+                    if (month != oldPeriod) return newer
+                    started.complete(Unit)
+                    release.await()
+                    return earlier
+                }
+            } })
+            val reader = RecurringQueryReader(fixture.provider, fixture.dao, fixture.coordinator, readClock)
+            val pending = async { reader.occurrence(fixture.binding, "recurring", oldPeriod) }
+            started.await()
+            val freshPeriod = if (oldPeriod == "current") "2026-09" else "current"
+            val fresh = reader.occurrence(fixture.binding, "recurring", freshPeriod).getOrThrow()
+            release.complete(Unit)
+            pending.await().getOrThrow()
+            offline = true
+            val reopened = RecurringQueryReader(fixture.provider, fixture.dao, fixture.coordinator)
+            assertEquals(fresh.copy(fromCache = true), reopened.occurrence(fixture.binding, "recurring", "2026-09").getOrThrow())
+            assertEquals(fresh.copy(fromCache = true), reopened.occurrence(fixture.binding, "recurring", "current").getOrThrow())
+            assertTrue(reopened.occurrence(fixture.binding, "recurring", "2026-08").isFailure)
+        }
     }
 
 }

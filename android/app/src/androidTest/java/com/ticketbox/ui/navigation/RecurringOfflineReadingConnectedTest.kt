@@ -5,6 +5,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
@@ -18,10 +19,12 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso
+import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.R
 import com.ticketbox.data.remote.buildApiService
 import com.ticketbox.data.repository.RecurringItemPatch
 import com.ticketbox.domain.model.AppSkin
+import com.ticketbox.ui.saveConsumerArtPreview
 import com.ticketbox.ui.theme.TicketboxTheme
 import java.net.ConnectException
 import java.util.concurrent.CopyOnWriteArrayList
@@ -54,6 +57,7 @@ class RecurringOfflineReadingConnectedTest {
     private val releaseLate = CountDownLatch(1)
     @Volatile private var offline = false
     @Volatile private var holdReads = false
+    @Volatile private var occurrenceState = "fulfilled"
     private val wire = buildApiService("https://recurring-offline.example.test/", OkHttpClient.Builder().addInterceptor { chain ->
         val request = chain.request()
         requests += request
@@ -80,7 +84,11 @@ class RecurringOfflineReadingConnectedTest {
         mount()
         val repository = harness.screenFactory.recurringRepository
         val binding = runBlocking { requireNotNull(repository.observeActiveLedgerAccess().first()).binding }
-        val originalPeriod = runBlocking { repository.occurrences.fetch(binding, "offline-active", "2026-09").getOrThrow() }
+        val earlierPeriod = runBlocking { repository.occurrences.fetch(binding, "offline-active", "2026-09").getOrThrow() }
+        occurrenceState = "needs_review"
+        val originalPeriod = runBlocking { repository.occurrences.fetch(binding, "offline-active", "current").getOrThrow() }
+        assertEquals(earlierPeriod.value.rowVersion, originalPeriod.value.rowVersion)
+        assertEquals(earlierPeriod.value.seriesRowVersion, originalPeriod.value.seriesRowVersion)
         openHistory()
         waitForText("原日元安排")
         Espresso.pressBack()
@@ -97,6 +105,16 @@ class RecurringOfflineReadingConnectedTest {
         waitForText("原日元固定支出")
         waitForText(context.getString(R.string.recurring_read_cached_title))
         compose.onNodeWithTag("recurring-item-offline-active").assertExists()
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        automation.waitForIdle(300, 3_000)
+        saveConsumerArtPreview("recurring-list-offline", requireNotNull(automation.takeScreenshot()))
+        compose.onNodeWithText(context.getString(R.string.occurrence_open)).performScrollTo().performClick()
+        waitForText(context.getString(R.string.occurrence_review))
+        compose.onNodeWithText(context.getString(R.string.occurrence_show_period)).performScrollTo().performClick()
+        compose.onNodeWithTag("occurrence-state").performScrollTo().assertTextEquals(context.getString(R.string.occurrence_review))
+        automation.waitForIdle(300, 3_000)
+        saveConsumerArtPreview("recurring-occurrence-review", requireNotNull(automation.takeScreenshot()))
+        Espresso.pressBack()
         openHistory()
         waitForText("原日元安排")
         compose.onNodeWithText("更早的记录").performScrollTo().performClick()
@@ -114,6 +132,7 @@ class RecurringOfflineReadingConnectedTest {
             assertEquals(originalPeriod.value, period.value)
             assertEquals(originalPeriod.fetchedAt, period.fetchedAt)
             assertTrue(period.fromCache)
+            assertEquals(period, reopened.occurrences.fetch(binding, "offline-active", "current").getOrThrow())
             assertTrue(reopened.occurrences.fetch(binding, "offline-active", "2026-08").isFailure)
             val listing = reopened.items(binding, includeArchived = true).getOrThrow()
             assertEquals(originalList.fetchedAt, listing.fetchedAt)
@@ -180,7 +199,8 @@ class RecurringOfflineReadingConnectedTest {
     private fun mount() {
         compose.setContent {
             if (mounted.value) CompositionLocalProvider(LocalViewModelStoreOwner provides harness.models) {
-                TicketboxTheme(skin = AppSkin.Paper) {
+                TicketboxTheme(skin = if (InstrumentationRegistry.getArguments().getString("captureSkin") == "midnight")
+                    AppSkin.Midnight else AppSkin.Paper) {
                     NavHost(rememberNavController(), startDestination = ProductSecondaryPage.Recurring.route) {
                         composable(ProductSecondaryPage.Recurring.route) { RecurringRoute(harness.screenFactory, {}) }
                     }
@@ -246,8 +266,9 @@ class RecurringOfflineReadingConnectedTest {
         "baseline_amount_cents":1200,"next_expected_date":"2026-09-09","status":"${if (archived) "archived" else "active"}","source":"manual"}"""
 
     private fun occurrenceJson(): String = """{"series_public_id":"offline-active","period":"2026-09",
-        "series_row_version":9,"row_version":3,"state":"unfulfilled","planned_amount_cents":2400,
-        "reserved_amount_cents":2400,"expense_public_id":null,"paid_amount_cents":null,
+        "series_row_version":9,"row_version":3,"state":"$occurrenceState","planned_amount_cents":2400,
+        "reserved_amount_cents":${if (occurrenceState == "fulfilled") 0 else 2400},
+        "expense_public_id":"withdrawn-payment","paid_amount_cents":2400,"paid_home_currency_code":"JPY",
         "next_due_date":"2026-10-09","home_currency_code":"JPY",
         "recorded_definition":{"series_row_version":7,"recorded_at":"2026-09-12T12:30:00Z",
         "snapshot":${definitionJson("首次记录依据")}}}"""
