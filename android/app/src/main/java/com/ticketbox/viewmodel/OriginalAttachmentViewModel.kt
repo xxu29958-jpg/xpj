@@ -6,11 +6,14 @@ import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.remote.dto.OriginalHealthDto
 import com.ticketbox.data.repository.LedgerAccessContext
+import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.OriginalAttachmentActions
 import com.ticketbox.data.repository.PendingOriginalCommand
+import com.ticketbox.data.repository.logNetworkWarning
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.upload.PreparedUploadImage
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -138,6 +141,24 @@ class OriginalAttachmentViewModel(
     fun selectedImageDisplayed(image: ProtectedImage) {
         if (state.value.selection?.preview !== image || !state.value.localIntentBound) return
         mutableState.update { it.copy(selectionDisplayed = true) }
+    }
+
+    internal fun loadSelectedImage(uri: String, binding: LogicalSessionBinding, prepare: suspend (String) -> PreparedUploadImage?) {
+        mutableState.update { it.copy(busy = true, message = null) }
+        viewModelScope.launch {
+            try {
+                val source = requireNotNull(prepare(uri))
+                if (binding != originals.currentOriginalBinding() || saved.get<String>("original_uri") != uri) return@launch
+                mutableState.update { it.copy(selection = OriginalImageSelection(source)) }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) {
+                logNetworkWarning("operation=OriginalSelection source read failed", error)
+                if (binding == originals.currentOriginalBinding())
+                    mutableState.update { it.copy(message = UiText.res(R.string.original_source_unavailable)) }
+            } finally {
+                if (binding == originals.currentOriginalBinding()) mutableState.update { it.copy(busy = false) }
+            }
+        }
     }
 
     fun confirmImageSelection(confirmed: Boolean) {

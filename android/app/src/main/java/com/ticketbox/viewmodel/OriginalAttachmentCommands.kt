@@ -8,7 +8,6 @@ import com.ticketbox.data.repository.originalPayloadAdapter
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.upload.PreparedUploadImage
 import java.util.UUID
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -58,20 +57,7 @@ fun OriginalAttachmentViewModel.resumeSelectedSource(prepare: suspend (String) -
         return
     }
     if (uri == null || state.value.selection != null) return
-    mutableState.update { it.copy(busy = true, message = null) }
-    viewModelScope.launch {
-        try {
-            val source = requireNotNull(prepare(uri))
-            if (payload.origin != originals.currentOriginalBinding() || saved.get<String>("original_uri") != uri) return@launch
-            mutableState.update { it.copy(selection = OriginalImageSelection(source)) }
-        } catch (cancelled: CancellationException) { throw cancelled }
-        catch (error: Exception) {
-            if (payload.origin == originals.currentOriginalBinding())
-                mutableState.update { it.copy(message = error.toUiText(R.string.original_source_unavailable)) }
-        } finally {
-            if (payload.origin == originals.currentOriginalBinding()) mutableState.update { it.copy(busy = false) }
-        }
-    }
+    loadSelectedImage(uri, payload.origin, prepare)
 }
 
 /** Admit the exact bytes displayed and confirmed, never reopen a mutable provider URI here. */

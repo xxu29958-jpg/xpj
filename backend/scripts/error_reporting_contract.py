@@ -85,6 +85,12 @@ REVIEWED_BOUNDARIES = {
         "test": "android/app/src/test/java/com/ticketbox/data/repository/SaveMonthlyBudgetDispatcherTest.kt",
         "reason": "Verified budget acceptance remains final when read cleanup fails; unexpected failures report through logNetworkWarning and retain the first receipt or unresolved original as appropriate. Cancellation before acceptance propagates; after acceptance only read repair remains. No raw exception text enters the UI or Logcat.",
     },
+    (ANDROID + "viewmodel/OriginalAttachmentViewModel.kt", "loadSelectedImage"): {
+        "sha256": "b9675290a8b00a72b86a10ea9f54ef06e265dd46801c4f144e3945a2efdf99a6",
+        "owner": "existing sanitized TicketboxNetwork output and original selection presentation",
+        "test": "android/app/src/test/java/com/ticketbox/viewmodel/OriginalAttachmentViewModelTest.kt::firstAttachmentSelectionRestoresOriginalBillAndKeyWithoutFinancialCreation",
+        "reason": "Local source read failures report a fixed operation label through logNetworkWarning, whose existing NetworkErrorReportingTest proves the sanitized sink. The UI uses a resource without provider exception text; original URI, key and payload remain available for retry. Cancellation propagates, and a changed binding cannot receive the image or error.",
+    },
     ("backend/app/routes/web_expense_recognition.py", "web_text_recognition_post"): {
         "sha256": "4e5d8ec46cdaf791c901945acfae9e77b1cf2624b5ec1388ea7c74d76071563e",
         "owner": "retain_handled_error feeds the common HTTP reporter while preserving the original form",

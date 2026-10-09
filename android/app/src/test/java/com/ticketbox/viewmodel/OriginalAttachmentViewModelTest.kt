@@ -1,6 +1,7 @@
 package com.ticketbox.viewmodel
 
 import androidx.lifecycle.SavedStateHandle
+import com.ticketbox.R
 import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.OriginalAttachmentActions
@@ -13,6 +14,7 @@ import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.OriginalHealthDto
 import com.ticketbox.domain.model.ProtectedImage
+import com.ticketbox.domain.model.UiText
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CompletableDeferred
@@ -45,6 +47,13 @@ class OriginalAttachmentViewModelTest {
         advanceUntilIdle()
         assertTrue(vm.beginSelection())
         vm.selectedSource("content://controlled/original")
+        val retainedKey = handle.get<String>("original_key")
+        vm.resumeSelectedSource { throw IOException("content://private-provider/original cannot be read") }
+        advanceUntilIdle()
+        assertEquals(UiText.res(R.string.original_source_unavailable), vm.state.value.message)
+        assertEquals(retainedKey, handle.get<String>("original_key"))
+        assertEquals("content://controlled/original", handle.get<String>("original_uri"))
+        assertTrue(owner.submissions.isEmpty())
         vm.resumeSelectedSource { com.ticketbox.upload.PreparedUploadImage("original.jpg", "image/jpeg", byteArrayOf(1, 2, 3), 3) }
         advanceUntilIdle()
         assertTrue(owner.submissions.isEmpty(), "Selecting an original must wait for preview and explicit confirmation")

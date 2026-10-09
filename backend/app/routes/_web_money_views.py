@@ -213,6 +213,17 @@ def _expense_time_view(expense) -> dict:
     }
 
 
+def _expense_image_state(expense) -> str:
+    if expense.image_path and not expense.image_deleted_at:
+        return "available"
+    if expense.image_deleted_at is not None:
+        return "cleaned"
+    if not hasattr(expense, "image_hash"):
+        # A typed projection without digest history cannot establish first-association eligibility.
+        return "unknown"
+    return "none" if expense.image_hash is None else "missing"
+
+
 def _expense_view(
     expense,
     *,
@@ -228,16 +239,8 @@ def _expense_view(
     )
     original_code = getattr(expense, "original_currency_code", None) or home_code
     original_minor = getattr(expense, "original_amount_minor", None)
-    has_image = bool(expense.image_path) and not expense.image_deleted_at
-    if has_image:
-        image_state = "available"
-    elif expense.image_deleted_at is not None:
-        image_state = "cleaned"
-    elif getattr(expense, "image_hash", None) is None:
-        # Typed projections omit digest history; absence there does not prove first association is available.
-        image_state = "none" if hasattr(expense, "image_hash") else "unknown"
-    else:
-        image_state = "missing"
+    image_state = _expense_image_state(expense)
+    has_image = image_state == "available"
     source_raw = getattr(expense, "source", "") or ""
     source_label = web_stats_service.source_label(source_raw, "未知")
     is_split_received = source_raw == bill_split_service.SPLIT_RECEIVED_SOURCE

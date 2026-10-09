@@ -136,7 +136,7 @@
       form.dataset.attachmentPhase = record?.phase || "editing";
       if (file) { file.disabled = fixed || busy; file.required = !record?.values.file_sha256; }
       if (fixed) selection?.freeze();
-      button.textContent = fixed ? "重试原任务" : label;
+      button.textContent = fixed ? "重试原任务" : label + (onlineOnly ? "（仅当前页在线提交）" : "");
       for (const name of ["reviewed_sha256", "request_id"]) {
         const input = form.elements.namedItem(name);
         if (input) input.readOnly = fixed;
@@ -156,20 +156,19 @@
     }
     async function capture() {
       if (!held || busy || accepted) return;
-      const record = store.read(ref);
+      let record = store.read(ref);
       if (record && record.phase !== "editing") return;
       busy = true;
       button.disabled = true;
-      if (file) file.disabled = true;
+      controls(record);
       notice("正在保留原文件和任务，请暂勿关闭此页…");
       try {
-        const saved = await drafts.retain(scope, ref, values(), file?.files[0]);
+        record = await drafts.retain(scope, ref, values(), file?.files[0]);
         retained = true;
-        controls(saved);
         await selection?.show(async () => (await drafts.readSource(scope, ref)).file, false);
         captureError = false;
         if (!options.batch) window.history.replaceState(null, "", "#attachment-" + ref);
-        notice(options.batch ? "原图已保留 · 准备上传" : (saved.values.file_name || "原件任务") + " 已保留在此浏览器，尚未提交。");
+        notice(options.batch ? "原图已保留 · 准备上传" : (record.values.file_name || "原件任务") + " 已保留在此浏览器，尚未提交。");
         shelf(scope);
       } catch (error) {
         captureError = true;
@@ -181,7 +180,7 @@
         if (!allowOnlineOnly()) notice("最新文件未能保留，本次不会发送。原任务仍在；请保留页面，或重新检查后另开表单选择。");
       } finally {
         busy = false;
-        if (file) file.disabled = form.dataset.attachmentPhase !== "editing";
+        controls(record);
         if (!onlineOnly) button.disabled = !held || captureError || needsOriginalReview();
         changed();
       }
