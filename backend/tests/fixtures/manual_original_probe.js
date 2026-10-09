@@ -52,6 +52,41 @@
     document.querySelector("[data-manual-original-continue]").click();
     return;
   }
+  function continueFromDraft(form, record, file, fill) {
+    if (state.stage === "rejected") {
+      assert(form.dataset.manualDraftResult === "rejected" && form.elements.namedItem("amount_major").value === "wrong", "Expected the actual native validation refusal");
+      fill("amount_major", "12.34");
+      state.rejected_preserved = true;
+      save("restored");
+      location.reload();
+    } else if (state.stage === "restored") {
+      save("permission-blocked");
+      form.requestSubmit();
+    } else if (state.stage === "permission-blocked") {
+      assert(record.phase === "blocked" && form.querySelector("[data-manual-submit]").disabled, "Revoked permission left the original command available");
+      assert(file.disabled && form.elements.namedItem("amount_major").value === "12.34" && form.elements.namedItem("merchant").value === "原稿商家", "Revocation changed the original input or file");
+      assert(!document.querySelector('[data-manual-draft-actions] a[href^="/web/expenses/new"]'), "Read-only retained draft still offers a new expense");
+      state.draftKey = window.TicketboxManualDrafts.key(state.ref);
+      state.retained = localStorage.getItem(state.draftKey);
+      save("permission-result");
+      document.querySelector("[data-manual-result]").click();
+    } else if (state.stage === "permission-retry") {
+      assert(form.dataset.manualDraftState === "submitted" && file.disabled && form.elements.namedItem("amount_major").readOnly, "Readmission must continue the fixed original request");
+      assert(JSON.stringify(record.values) === JSON.stringify(JSON.parse(state.retained).values), "Readmission changed the original request");
+      state.permission_restored = true;
+      form.addEventListener("submit", async event => {
+        event.preventDefault();
+        const response = await fetch(form.action, {method: "POST", body: new FormData(form), redirect: "manual"});
+        assert(response.type === "opaqueredirect", "The native creation must succeed before dropping its reply");
+        save("lost-create");
+        location.reload();
+      }, {once: true});
+      form.requestSubmit();
+    } else {
+      assert(record.phase === "submitted" && file.disabled, "Unknown creation result must fix the original selection");
+      document.querySelector("[data-manual-result]").click();
+    }
+  }
   try {
     if (location.pathname === "/web/expenses/new") {
       const form = document.querySelector("[data-manual-draft-scope]");
@@ -83,39 +118,7 @@
       assert(record.values.original_file === state.meta, "Native rejection/reload changed the original selection");
       assert(form.elements.namedItem("client_ref").value === state.ref, "Manual ref changed");
       await wait(() => !form.querySelector("[data-attachment-selected-image]").hidden);
-      if (state.stage === "rejected") {
-        assert(form.dataset.manualDraftResult === "rejected" && form.elements.namedItem("amount_major").value === "wrong", "Expected the actual native validation refusal");
-        fill("amount_major", "12.34");
-        state.rejected_preserved = true;
-        save("restored");
-        location.reload();
-      } else if (state.stage === "restored") {
-        save("permission-blocked");
-        form.requestSubmit();
-      } else if (state.stage === "permission-blocked") {
-        assert(record.phase === "blocked" && form.querySelector("[data-manual-submit]").disabled, "Revoked permission left the original command available");
-        assert(file.disabled && form.elements.namedItem("amount_major").value === "12.34" && form.elements.namedItem("merchant").value === "原稿商家", "Revocation changed the original input or file");
-        assert(!document.querySelector('[data-manual-draft-actions] a[href^="/web/expenses/new"]'), "Read-only retained draft still offers a new expense");
-        state.draftKey = drafts.key(state.ref);
-        state.retained = localStorage.getItem(state.draftKey);
-        save("permission-result");
-        document.querySelector("[data-manual-result]").click();
-      } else if (state.stage === "permission-retry") {
-        assert(form.dataset.manualDraftState === "submitted" && file.disabled && form.elements.namedItem("amount_major").readOnly, "Readmission must continue the fixed original request");
-        assert(JSON.stringify(record.values) === JSON.stringify(JSON.parse(state.retained).values), "Readmission changed the original request");
-        state.permission_restored = true;
-        form.addEventListener("submit", async event => {
-          event.preventDefault();
-          const response = await fetch(form.action, {method: "POST", body: new FormData(form), redirect: "manual"});
-          assert(response.type === "opaqueredirect", "The native creation must succeed before dropping its reply");
-          save("lost-create");
-          location.reload();
-        }, {once: true});
-        form.requestSubmit();
-      } else {
-        assert(record.phase === "submitted" && file.disabled, "Unknown creation result must fix the original selection");
-        document.querySelector("[data-manual-result]").click();
-      }
+      continueFromDraft(form, record, file, fill);
       return;
     }
     if (location.pathname.endsWith("/result")) { await continueFromReceipt(); return; }

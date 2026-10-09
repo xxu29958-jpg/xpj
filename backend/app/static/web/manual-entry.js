@@ -140,7 +140,7 @@
         add("return_payment_expense_id", payment);
       }
     }
-    if (saved.return_to === "confirmed" || saved.return_to === "pending") {
+    if (["confirmed", "pending"].includes(saved.return_to)) {
       add("return_to", saved.return_to);
       for (const name of ["return_month", "return_filter", "return_page", "return_tag", "return_query", "return_category", "return_home_currency_code"]) {
         if (saved[name]) add(name, saved[name]);
