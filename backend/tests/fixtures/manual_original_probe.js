@@ -17,6 +17,30 @@
       return put.call(this, value, key);
     };
   }
+  async function continueFromReceipt() {
+    await wait(() => window.TicketboxManualDrafts && !document.querySelector("[data-manual-draft-ack-status]").hidden);
+    if (state.stage === "lost-create") {
+      assert(window.TicketboxManualDrafts.read(state.ref).values.original_file === state.meta, "Failed handoff discarded the original");
+      assert(!window.TicketboxAttachmentDrafts.store.read(state.ref), "Failed handoff published a task without its file");
+      save("transfer-retry");
+      document.querySelector("[data-manual-original-continue]").click();
+      return;
+    }
+    await wait(() => !document.querySelector("[data-manual-original-continue]").hidden);
+    assert(!window.TicketboxManualDrafts.read(state.ref), "Only the receipt and durable transfer may collect the manual draft");
+    const task = window.TicketboxAttachmentDrafts.store.read(state.ref);
+    assert(task.phase === "editing" && task.values.file_sha256 === JSON.parse(state.meta).file_sha256, "Transfer changed the original file");
+    assert(new URL(task.values.action).searchParams.get("expected_row_version") === "4", "Attachment must keep the first receipt basis");
+    if (state.stage === "transfer-retry") {
+      save("transferred");
+      location.reload();
+      return;
+    }
+    state.transfer_retried = true;
+    save("original");
+    document.querySelector("[data-manual-original-continue]").click();
+    return;
+  }
   try {
     if (location.pathname === "/web/expenses/new") {
       const form = document.querySelector("[data-manual-draft-scope]");
@@ -67,30 +91,7 @@
       }
       return;
     }
-    if (location.pathname.endsWith("/result")) {
-      await wait(() => window.TicketboxManualDrafts && !document.querySelector("[data-manual-draft-ack-status]").hidden);
-      if (state.stage === "lost-create") {
-        assert(window.TicketboxManualDrafts.read(state.ref).values.original_file === state.meta, "Failed handoff discarded the original");
-        assert(!window.TicketboxAttachmentDrafts.store.read(state.ref), "Failed handoff published a task without its file");
-        save("transfer-retry");
-        document.querySelector("[data-manual-original-continue]").click();
-        return;
-      }
-      await wait(() => !document.querySelector("[data-manual-original-continue]").hidden);
-      assert(!window.TicketboxManualDrafts.read(state.ref), "Only the receipt and durable transfer may collect the manual draft");
-      const task = window.TicketboxAttachmentDrafts.store.read(state.ref);
-      assert(task.phase === "editing" && task.values.file_sha256 === JSON.parse(state.meta).file_sha256, "Transfer changed the original file");
-      assert(new URL(task.values.action).searchParams.get("expected_row_version") === "4", "Attachment must keep the first receipt basis");
-      if (state.stage === "transfer-retry") {
-        save("transferred");
-        location.reload();
-        return;
-      }
-      state.transfer_retried = true;
-      save("original");
-      document.querySelector("[data-manual-original-continue]").click();
-      return;
-    }
+    if (location.pathname.endsWith("/result")) { await continueFromReceipt(); return; }
     const form = document.querySelector('form[action*="/original/attach?"]');
     await wait(() => form.dataset.attachmentPhase === "editing" && !form.querySelector("[data-attachment-selected-image]").hidden);
     const check = form.querySelector("[data-attachment-selected-check]");

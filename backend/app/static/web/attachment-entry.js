@@ -12,18 +12,23 @@
     const status = form.querySelector("[data-attachment-selection-status]");
     let imageUrl;
     let revision = 0;
-    if (check) check.disabled = true;
+    function reviewState(checked, disabled, external = false) {
+      if (!check) return;
+      check.checked = checked;
+      check.disabled = disabled;
+      reviewLabel.textContent = external ? "我已在图片应用核对原文件，确认它属于这笔账单" : "这是这笔账单对应的原件";
+    }
+    reviewState(false, true);
     open.addEventListener("click", () => { if (check && form.dataset.attachmentPhase === "editing") check.disabled = false; });
     window.addEventListener("pagehide", () => { if (imageUrl) window.URL.revokeObjectURL(imageUrl); });
     return {
       needsReview: () => !!check && !check.checked,
-      freeze() { if (check) { check.checked = true; check.disabled = true; } },
+      freeze() { reviewState(true, true); },
       async show(source, fixed) {
         const turn = ++revision;
-        if (check) { check.checked = fixed; check.disabled = true; }
+        reviewState(fixed, true);
         image.hidden = true;
         open.hidden = true;
-        if (reviewLabel) reviewLabel.textContent = "这是这笔账单对应的原件";
         if (imageUrl) window.URL.revokeObjectURL(imageUrl);
         imageUrl = null;
         status.textContent = "正在打开所选图片…";
@@ -39,13 +44,13 @@
           await image.decode();
           if (turn !== revision) return;
           image.hidden = false;
-          if (check) check.disabled = fixed;
+          reviewState(fixed, fixed);
           status.textContent = file.name + (!check ? " · 账单保存后继续确认关联。" : fixed ? " · 已提交的原文件；重试仍使用此文件。" : " · 请核对图片是否属于这笔账单。");
         } catch (_) {
           if (turn !== revision) return;
           if (file && imageUrl) {
             open.hidden = false;
-            if (reviewLabel) reviewLabel.textContent = "我已在图片应用核对原文件，确认它属于这笔账单";
+            reviewState(fixed, true, true);
             status.textContent = fixed ? "浏览器无法显示原文件；重试仍使用已确认的文件。" :
               "浏览器无法打开这张图片。请下载原文件，在图片应用中查看后再确认；也可以重新选择。";
           } else { status.textContent = "原文件暂时无法读取，尚未发送。请恢复浏览器存储后继续原任务。"; }
