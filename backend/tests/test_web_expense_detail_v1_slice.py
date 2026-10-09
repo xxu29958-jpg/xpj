@@ -478,8 +478,8 @@ def test_web_detail_rows_are_read_only_for_viewer(web_client: TestClient) -> Non
     assert page.status_code == 200
     assert "牛奶" in page.text
     assert "我先记" in page.text
-    assert "保存明细" not in page.text
-    assert "保存拆账" not in page.text
+    assert 'data-expenseitems-can-write="false"' in page.text
+    assert 'data-expensesplits-can-write="false"' in page.text
     assert "只读角色，无法修改小票明细" in page.text
     assert "disabled" in page.text
 
@@ -488,7 +488,7 @@ def test_web_detail_rows_are_read_only_for_viewer(web_client: TestClient) -> Non
         data={"ledger_id": "owner", "item_name": ["不该写入"], "item_amount_yuan": ["0.01"]},
     )
     assert item_write.status_code == 403
-    assert item_write.json()["error"] == "permission_denied"
+    assert "不该写入" in item_write.text
 
     split_write = web_client.post(
         f"/web/expenses/{expense_id}/splits/save",
@@ -499,4 +499,4 @@ def test_web_detail_rows_are_read_only_for_viewer(web_client: TestClient) -> Non
         },
     )
     assert split_write.status_code == 403
-    assert split_write.json()["error"] == "permission_denied"
+    assert 'value="0.01"' in split_write.text

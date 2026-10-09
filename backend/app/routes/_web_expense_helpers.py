@@ -62,6 +62,7 @@ def _edit_page_or_flash_redirect(
     split_form_rows: list[dict] | None = None,
     subtask_expected_version: str | None = None,
     subtask_reviewed: bool = False,
+    subtask_values: dict | None = None,
     return_context: ExpenseReturnContext = ExpenseReturnContext(),
 ) -> Response:
     """Re-render edit.html with ``error_msg`` — or flash-redirect when the row
@@ -98,6 +99,11 @@ def _edit_page_or_flash_redirect(
             **return_context_params(**return_context.as_kwargs()),
         )
     ctx[error_key] = error_msg
+    if subtask_values is not None:
+        kind = subtask_values["kind"]
+        ctx["expense_subtasks"][kind].update(subtask_values)
+        ctx["expense_subtasks"][kind]["scope"] = rendered_draft_scope(db, request, subtask_values["draft_scope"])[0]
+        ctx["expense_subtask"] = "items" if kind == "ack" else kind
     if subtask_expected_version is not None:
         kind = "items" if receipt_item_rows is not None else "splits"
         current_version = ctx["expense"]["row_version"]
@@ -228,7 +234,10 @@ def _review_submission_context(db: Session, request: Request, form_values: dict 
         "expense_review_action": "save" if values.get("command_action") == "save" else "confirm",
         "expense_review_task": request.query_params.get("confirmation_task") == "1",
         "reject_idempotency_key": values.get("reject_idempotency_key") or str(uuid4()),
-        "keep_idempotency_key": values.get("keep_idempotency_key") or str(uuid4())}
+        "keep_idempotency_key": values.get("keep_idempotency_key") or str(uuid4()),
+        "expense_subtasks": {kind: {"idempotency_key": str(uuid4()), "draft_ref": str(uuid4()),
+            "scope": review_scope, "draft_scope": json.dumps(review_scope) if review_scope else "", "result": ""}
+            for kind in ("items", "splits", "ack")}}
 
 
 def web_edit_context(

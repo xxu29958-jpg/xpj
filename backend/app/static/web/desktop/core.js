@@ -85,6 +85,49 @@
     });
   };
 
+  app.readReviewRows = function readReviewRows(form, columns) {
+    return [...form.querySelectorAll('[name="' + columns[0] + '"]')].map(input => {
+      const row = input.closest("[data-review-line]");
+      return Object.fromEntries(columns.map(name => [name, row.querySelector('[name="' + name + '"]').value]));
+    });
+  };
+  app.putReviewField = function putReviewField(input, value) {
+    if (input.tagName === "SELECT" && ![...input.options].some(option => option.value === value)) {
+      input.add(new Option(value || "原选择为空", value));
+    }
+    if (["number", "date", "datetime-local"].includes(input.type)) {
+      input.value = value;
+      if (input.value !== value) input.type = "text";
+    }
+    input.value = value;
+  };
+  app.restoreReviewRows = function restoreReviewRows(form, columns, encoded) {
+    const original = form.querySelector('[name="' + columns[0] + '"]');
+    const prototype = original.closest("[data-review-line]").cloneNode(true);
+    const parent = original.closest(".expense-lines-editor");
+    const additions = parent.querySelector(".expense-line-additions")?.cloneNode(true);
+    additions?.querySelectorAll("[data-review-line]").forEach(row => row.remove());
+    if (additions) additions.open = false;
+    const rows = JSON.parse(encoded);
+    const lastData = rows.findLastIndex(values => columns.some(name => name !== "item_kind" && values[name]));
+    parent.replaceChildren();
+    rows.forEach((values, index) => {
+      const row = prototype.cloneNode(true);
+      row.hidden = index > lastData && !additions; row.open = index === lastData + 1;
+      row.querySelectorAll("[data-bound]").forEach(node => node.removeAttribute("data-bound"));
+      row.querySelectorAll(".field-error, .meta").forEach(node => node.remove());
+      row.querySelectorAll("[aria-describedby]").forEach(node => node.removeAttribute("aria-describedby"));
+      columns.forEach(name => {
+        const input = row.querySelector('[name="' + name + '"]');
+        app.putReviewField(input, values[name]);
+        if (input.hasAttribute("aria-label")) input.setAttribute("aria-label", input.getAttribute("aria-label").replace(/第 \d+ 行/, "第 " + (index + 1) + " 行"));
+      });
+      if (index === lastData + 1 && additions) parent.append(additions);
+      (index > lastData && additions ? additions : parent).append(row);
+    });
+    app.bindReviewFields(parent);
+  };
+
   app.homeMinorToMajorText = function homeMinorToMajorText(value) {
     let raw;
     if (typeof value === "bigint") {

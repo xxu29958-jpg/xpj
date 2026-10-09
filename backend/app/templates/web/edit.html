@@ -9,6 +9,7 @@
 {% block page_scripts %}
 <script defer src="/static/web/manual-drafts.js?v={{ asset_version }}"></script>
 <script defer src="/static/web/plan-entry.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/expense-subtask-entry.js?v={{ asset_version }}"></script>
 <script defer src="/static/web/expense-review-entry.js?v={{ asset_version }}"></script>
 {% endblock %}
 {% block content %}
@@ -19,6 +20,7 @@
    _expense_core_fields.html (presentation-only); hidden command fields、
    明细/家庭拆账子表单仍由本页表单提供。 #}
 {% set e = expense %}
+{% import '_expense_subtask_draft.html' as subtask_draft with context %}
 {% set _q = '?ledger_id=' ~ selected_ledger_id %}
 <header class="product-page-header review-full-heading" id="review" tabindex="-1" data-review-stage="primary"{% if expense_review_inspection %} data-review-current-record{% endif %}>
   <div class="product-page-heading">
@@ -78,6 +80,7 @@
         {% set core_fields_reload_href = edit_current_href %}
         {% set core_fields_compact = true %}
         {% set core_fields_subtasks = true %}
+        {% set core_fields_subtask_href = '' %}
         <details class="expense-review-original" data-expensereview-original open>
           <summary class="product-button product-button--quiet" data-expensereview-original-toggle hidden>查看本次填写的内容</summary>
           {% include "_expense_core_fields.html" %}
@@ -156,23 +159,18 @@
 
     {# ADR-0035: items_sum_status banner — mismatch_known 时提示用户确认或修正 #}
     {% if receipt_items.status == 'mismatch_known' %}
-    <div class="product-feedback product-feedback--warning" role="status">
-      明细合计与账单金额差 {{ currency_input.currency_symbol }}{{ receipt_items.mismatch_yuan }}。检查明细，或如果原小票本身如此，点下面“原小票如此”确认。
+    <div class="product-feedback product-feedback--warning" role="status" data-items-mismatch>
+      明细合计与账单金额差 {{ currency_input.currency_symbol }}{{ receipt_items.mismatch_yuan }}。{% if can_write and not expense_review_inspection %}检查明细，或如果原小票本身如此，点下面“原小票如此”确认。{% endif %}
     </div>
-    <form method="post" action="/web/expenses/{{ e.id }}/items/acknowledge-mismatch" class="product-inline-form">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-      <input type="hidden" name="expected_row_version" value="{{ e.row_version }}">
-      {% for field_name, field_value in edit_return_fields.items() %}<input type="hidden" name="{{ field_name }}" value="{{ field_value }}">{% endfor %}
-      {% if can_write %}<button type="submit" class="product-button">原小票如此</button>{% endif %}
-    </form>
     {% elif receipt_items.status == 'mismatch_acknowledged' %}
     <div class="product-feedback" role="status">
       已确认原小票合计与明细存在 {{ currency_input.currency_symbol }}{{ receipt_items.mismatch_yuan }} 差异；后续编辑不再弹警告。
     </div>
     {% endif %}
+    {{ subtask_draft.acknowledge() }}
 
-    <form method="post" action="/web/expenses/{{ e.id }}/items/save" data-review-form>
+    <form method="post" action="/web/expenses/{{ e.id }}/items/save" data-review-form {{ subtask_draft.binding('items') }}>
+      {{ subtask_draft.fields('items', '商品明细') }}
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="hidden" name="expected_row_version" value="{{ items_review.expected_row_version if items_review else e.row_version }}">
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
@@ -181,11 +179,10 @@
       {% include "_expense_items_table.html" %}
       {% if receipt_items.total_yuan %}<div class="fact-reconcile"><span>已存明细合计 · {{ currency_input.currency_code }}</span><strong>{{ currency_input.currency_symbol }}{{ receipt_items.total_yuan }}</strong></div>{% endif %}
       <p class="hint">金额按 {{ currency_input.currency_code }} 记录。这里仅保存商品明细，回到核对后再确认入账。</p>
-      {% if can_write %}
       <div class="product-form-actions">
-        <button type="submit" class="product-button"{% if items_review.needs_review %} disabled{% endif %}>保存明细</button>
+        <button type="submit" class="product-button" data-subtask-submit{% if not can_write %} hidden{% endif %}{% if not can_write or items_review.needs_review %} disabled{% endif %}>保存明细</button>
       </div>
-      {% else %}
+      {% if not can_write %}
       <div class="readonly-inline">{{ '这里查看当前小票明细；请返回原核对任务继续处理。' if expense_review_inspection else '只读角色，无法修改小票明细。' }}</div>
       {% endif %}
     </form>
@@ -209,7 +206,8 @@
       {% if split_rows.reconcile_state == 'overallocated' %}<span class="error-text">· 已拆超出 {{ currency_input.currency_symbol }}{{ split_rows.reconcile_delta_yuan }}</span>{% endif %}
     </div>
     {% endif %}
-    <form method="post" action="/web/expenses/{{ e.id }}/splits/save" data-review-form>
+    <form method="post" action="/web/expenses/{{ e.id }}/splits/save" data-review-form {{ subtask_draft.binding('splits') }}>
+      {{ subtask_draft.fields('splits', '家庭拆账') }}
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="hidden" name="expected_row_version" value="{{ splits_review.expected_row_version if splits_review else e.row_version }}">
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
@@ -217,11 +215,10 @@
       {% with subtask_review=splits_review, subtask_kind='splits', subtask_label='家庭拆账' %}{% include '_expense_subtask_review.html' %}{% endwith %}
       {% include "_expense_splits_table.html" %}
       <p class="hint">金额按 {{ currency_input.currency_code }} 记录。这里仅保存家庭分摊，回到核对后再确认入账。</p>
-      {% if can_write %}
       <div class="product-form-actions">
-        <button type="submit" class="product-button product-button--primary"{% if splits_review.needs_review %} disabled{% endif %}>保存拆账并返回</button>
+        <button type="submit" class="product-button product-button--primary" data-subtask-submit{% if not can_write %} hidden{% endif %}{% if not can_write or splits_review.needs_review %} disabled{% endif %}>保存拆账并返回</button>
       </div>
-      {% else %}
+      {% if not can_write %}
       <div class="readonly-inline">{{ '这里查看当前家庭拆账；请返回原核对任务继续处理。' if expense_review_inspection else '只读角色，无法修改家庭拆账。' }}</div>
       {% endif %}
     </form>

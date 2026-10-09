@@ -91,6 +91,7 @@ class ExpenseReturnContext:
     return_receipt_expense_id: str = ""
     return_review_ref: str = ""
     return_review_expense_id: str = ""
+    return_review_family: str = ""
     return_duplicate_expense_id: str = ""
     return_category_draft_ref: str = ""
     return_category_receipt_key: str = ""
@@ -121,6 +122,7 @@ def expense_return_query_context(
     return_receipt_expense_id: str = "",
     return_review_ref: str = "",
     return_review_expense_id: str = "",
+    return_review_family: str = "",
     return_duplicate_expense_id: str = "",
     return_category_draft_ref: str = "",
     return_category_receipt_key: str = "",
@@ -147,6 +149,7 @@ def expense_return_query_context(
         return_receipt_expense_id=return_receipt_expense_id,
         return_review_ref=return_review_ref,
         return_review_expense_id=return_review_expense_id,
+        return_review_family=return_review_family,
         return_duplicate_expense_id=return_duplicate_expense_id,
         return_category_draft_ref=return_category_draft_ref,
         return_category_receipt_key=return_category_receipt_key,
@@ -175,6 +178,7 @@ def expense_return_form_context(
     return_receipt_expense_id: str = Form(default=""),
     return_review_ref: str = Form(default=""),
     return_review_expense_id: str = Form(default=""),
+    return_review_family: str = Form(default=""),
     return_duplicate_expense_id: str = Form(default=""),
     return_category_draft_ref: str = Form(default=""),
     return_category_receipt_key: str = Form(default=""),
@@ -201,6 +205,7 @@ def expense_return_form_context(
         return_receipt_expense_id=return_receipt_expense_id,
         return_review_ref=return_review_ref,
         return_review_expense_id=return_review_expense_id,
+        return_review_family=return_review_family,
         return_duplicate_expense_id=return_duplicate_expense_id,
         return_category_draft_ref=return_category_draft_ref,
         return_category_receipt_key=return_category_receipt_key,
@@ -403,7 +408,9 @@ def _review_origin(origin: dict[str, str]) -> dict[str, str]:
     ref = _public_uuid(origin.get("return_review_ref", ""))
     expense_id = _payment_expense_id(origin.get("return_review_expense_id", ""))
     if ref and expense_id:
-        return {"return_review_ref": ref, "return_review_expense_id": expense_id}
+        family = origin.get("return_review_family", "")
+        return {"return_review_ref": ref, "return_review_expense_id": expense_id,
+            **({"return_review_family": family} if family in {"expenseitems", "expensesplits", "expenseack"} else {})}
     return {}
 
 
@@ -430,7 +437,8 @@ def return_href(return_to: str, *, ledger_id: str, default_path: str, **origin: 
         path = f"/web/expenses/{review['return_review_expense_id']}/edit"
         href = flow_href(path, ledger_id=ledger_id, return_to=return_to,
             **{key: value for key, value in origin.items() if key not in review and key not in _receipt_origin(origin)})
-        return f"{href}&confirmation_task=1#expensereview-edit-{review['return_review_ref']}"
+        family = review.get("return_review_family", "expensereview")
+        return f"{href}&confirmation_task=1#{family}-edit-{review['return_review_ref']}"
     if receipt := _receipt_origin(origin):
         path = f"/web/expenses/{receipt['return_receipt_expense_id']}/confirmation/{receipt['return_receipt_key']}"
         return flow_href(path, ledger_id=ledger_id, return_to=return_to,

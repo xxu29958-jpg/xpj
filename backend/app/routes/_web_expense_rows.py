@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from pydantic import ValidationError
 
 from app.errors import AppError
@@ -18,14 +16,6 @@ from app.schemas import (
 EXPENSE_ROW_ERROR_MESSAGES = {
     "state_conflict": "账单已更新，你的填写尚未保存。请核对当前记录后再保存。",
 }
-
-
-@dataclass(frozen=True)
-class WebExpenseRowsOutcome:
-    rows: list[dict]
-    error: str | None = None
-    error_status: int = 422
-    reviewed: bool = False
 
 
 def item_replace_payload(

@@ -7,45 +7,13 @@
     "return_to", "return_month", "return_filter", "return_page", "return_tag", "return_query", "return_category", "return_home_currency_code",
     "return_granularity", "return_ranking_metric", "return_merchant_category", "return_recurring_public_id",
     "return_payment_expense_id", "return_import_public_id", "return_import_line_number", "return_import_expense_id",
-    "return_receipt_key", "return_receipt_expense_id", "return_review_ref", "return_review_expense_id", "return_duplicate_expense_id"];
+    "return_receipt_key", "return_receipt_expense_id", "return_review_ref", "return_review_expense_id", "return_review_family", "return_duplicate_expense_id"];
   const itemNames = ["item_public_id", "item_name", "item_kind", "item_quantity", "item_unit_price_yuan", "item_amount_yuan", "item_category"];
   const splitNames = ["split_public_id", "split_member_id", "split_amount_yuan", "split_note"];
   const names = [...scalars, "present_fields", "item_rows", "split_rows"];
-  const readRows = (form, columns) => [...form.querySelectorAll('[name="' + columns[0] + '"]')].map(input => {
-    const row = input.closest("[data-review-line]");
-    return Object.fromEntries(columns.map(name => [name, row.querySelector('[name="' + name + '"]').value]));
-  });
-  function put(input, value) {
-    if (input.tagName === "SELECT" && ![...input.options].some(option => option.value === value)) {
-      input.add(new Option(value || "原选择为空", value));
-    }
-    if (["number", "date", "datetime-local"].includes(input.type)) {
-      input.value = value;
-      if (input.value !== value) input.type = "text";
-    }
-    input.value = value;
-  }
-  function restoreRows(form, columns, encoded) {
-    const original = form.querySelector('[name="' + columns[0] + '"]');
-    const prototype = original.closest("[data-review-line]").cloneNode(true);
-    const parent = original.closest(".expense-lines-editor");
-    parent.replaceChildren();
-    JSON.parse(encoded).forEach((values, index) => {
-      const row = prototype.cloneNode(true);
-      row.hidden = false;
-      row.open = false;
-      row.querySelectorAll("[data-bound]").forEach(node => node.removeAttribute("data-bound"));
-      row.querySelectorAll(".field-error, .meta").forEach(node => node.remove());
-      row.querySelectorAll("[aria-describedby]").forEach(node => node.removeAttribute("aria-describedby"));
-      columns.forEach(name => {
-        const input = row.querySelector('[name="' + name + '"]');
-        put(input, values[name]);
-        if (input.hasAttribute("aria-label")) input.setAttribute("aria-label", input.getAttribute("aria-label").replace(/第 \d+ 行/, "第 " + (index + 1) + " 行"));
-      });
-      parent.append(row);
-    });
-    window.TicketboxWeb.bindReviewFields(parent);
-  }
+  const readRows = window.TicketboxWeb.readReviewRows;
+  const put = window.TicketboxWeb.putReviewField;
+  const restoreRows = window.TicketboxWeb.restoreReviewRows;
   function renderCorrectionComparison(form) {
     form.querySelectorAll("[data-correction-comparison]").forEach(row => {
       const fields = JSON.parse(row.dataset.fields), current = JSON.parse(row.dataset.current);
@@ -79,7 +47,7 @@
     const field = name => form.elements.namedItem(name);
     window.TicketboxPlanEntry.mount(form, {family: "correction", label: "账单更正", list: "/web/confirmed",
       idField: "expense_id", titleField: "merchant", amount: "amount_yuan", create: names, edit: names,
-      legacyMissing: ["return_receipt_key", "return_receipt_expense_id", "return_review_ref", "return_review_expense_id", "return_duplicate_expense_id"],
+      legacyMissing: ["return_receipt_key", "return_receipt_expense_id", "return_review_ref", "return_review_expense_id", "return_review_family", "return_duplicate_expense_id"],
       draftRefField: "draft_client_ref", commandKeyField: "idempotency_key",
       repeated: [...itemNames, ...splitNames], reviewName: "review_latest", reviewRequiresRejection: true,
       reviewWhileEditing: true, submitSelector: "[data-correction-submit]",

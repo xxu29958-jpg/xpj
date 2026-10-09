@@ -42,11 +42,14 @@
     preserveReviewOnLeave(() => {
       const submitted = submittingForm;
       submittingForm = null;
-      return forms.some(form => form.dataset.edited && form !== submitted);
+      return forms.some(form => form !== submitted && (form.expenseReviewContinuity
+        ? form.expenseReviewContinuity.hasUnretainedInput() : form.dataset.edited));
     });
     let showingRelated = null;
     function showReviewStage() {
-      const target = window.location.hash;
+      const hash = window.location.hash;
+      const target = /^#expense(items|ack)-edit-/.test(hash) ? "#expense-items" :
+        hash.startsWith("#expensesplits-edit-") ? "#expense-splits" : hash;
       const next = target === "#expense-items" || target === "#expense-splits";
       document.querySelectorAll("[data-review-stage]").forEach(node => {
         node.hidden = (node.dataset.reviewStage === "details") !== next;

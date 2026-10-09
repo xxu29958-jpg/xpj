@@ -57,13 +57,13 @@
         form.elements.command_action.value = action.pathname.split("/").pop();
       }
     });
-    return window.TicketboxPlanEntry.mount(form, {
+    const continuity = window.TicketboxPlanEntry.mount(form, {
       family: "expensereview", label: "核对任务", list: "/web/pending", create: names, edit: names,
       idField: "expense_id", titleField: "merchant", commandKeyField: saved =>
         ["keep", "reject"].includes(saved.command_action) ? saved.command_action + "_idempotency_key" : "idempotency_key", draftRefField: "draft_ref",
       submitSelector: "[data-expensereview-submit]", pendingLabel: "核实这次结果",
       legacyMissing: ["command_action", "keep_idempotency_key", "reject_idempotency_key", "reject_row_version", "undo_idempotency_key"],
-      embedded: options.embedded, onAccepted: options.onAccepted,
+      embedded: options.embedded, onAccepted: options.onAccepted, multiple: !options.embedded,
       action: saved => saved.command_action === "keep" ? "/web/duplicates/" + saved.expense_id + "/keep" :
         "/web/expenses/" + saved.expense_id + "/" + (saved.command_action || "confirm"),
       continueAfterAcceptance: (saved, receipt) => saved.command_action === "reject" ?
@@ -156,6 +156,8 @@
         }
       },
     });
+    form.expenseReviewContinuity = continuity;
+    return continuity;
   }
   function requiresReview(form) {
     return !!form.dataset.expensereviewRowVersion && form.dataset.expensereviewRowVersion !== form.elements.expected_row_version.value;
@@ -178,6 +180,7 @@
           "原浏览器身份，待核对" : record.phase === "editing" ? "未提交" : record.values.command_action === "reject" ? "原忽略待核实" : record.values.command_action === "keep" ? "原非重复决定待核实" : record.values.command_action === "save" ? "原保存待核实" : "原确认待核实");
         item.append(link); list.append(item);
       }
+      window.TicketboxExpenseSubtasks?.appendShelf(scope, list);
       element.hidden = !list.childElementCount;
     } catch (_) {
       element.hidden = false;

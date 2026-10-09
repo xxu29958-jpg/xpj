@@ -11,7 +11,6 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
-from uuid import uuid4
 
 from fastapi import Request
 from fastapi.responses import Response
@@ -20,6 +19,7 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.routes._web_accounting_time import accounting_snapshot_label
 from app.routes._web_bill_split_context import build_split_invite_context
+from app.routes._web_draft_binding import rendered_draft_scope
 from app.routes._web_expense_fact_pager import fact_timeline_page_context
 from app.routes._web_expense_helpers import web_edit_context
 from app.routes._web_expense_offset_fact import expense_offset_fact_view
@@ -422,7 +422,8 @@ def web_fact_context(
         accounting_datetime_label(expense.confirmed_at) if expense.confirmed_at else ""
     )
     ctx["page_title"] = "账单详情"
-    ctx["items_ack_idempotency_key"] = str(uuid4())
+    if ctx["expense_review_inspection"]:
+        ctx["expense_subtasks"] = {}
     ctx["message"] = message if message is not None else request.query_params.get("msg")
     ctx["flash_type"] = flash_type if flash_type in _FACT_FLASH_TYPES else ""
     ctx["error"] = error
@@ -470,6 +471,7 @@ def web_fact_error_response(
     message: str,
     *,
     status_code: int = 409,
+    subtask_values: dict | None = None,
     return_context: ExpenseReturnContext = ExpenseReturnContext(),
 ) -> Response:
     """confirmed 命中已失权的旧 Web 命令（save/items/splits/reject）时的诚实
@@ -494,6 +496,9 @@ def web_fact_error_response(
             flash_type="error",
             **return_context_params(**return_context.as_kwargs()),
         )
+    if subtask_values is not None:
+        ctx["expense_subtasks"]["ack"].update(subtask_values)
+        ctx["expense_subtasks"]["ack"]["scope"] = rendered_draft_scope(db, request, subtask_values["draft_scope"])[0]
     return templates.TemplateResponse(
         request=request,
         name="expense_fact.html",

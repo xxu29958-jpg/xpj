@@ -125,7 +125,7 @@
       }
       form.querySelector(selector("review-note")).hidden = review.hidden;
       form.dataset[family + "DraftPhase"] = phase;
-      definition.updatePresentation?.(form, {phase, rejected: reviewable, editable: fieldsEditable(), busy});
+      definition.updatePresentation?.(form, {phase, retained, rejected: reviewable, editable: fieldsEditable(), busy});
     }
     function stop(message) { blocked = true; controls(); notice(message); }
     function restoreFields(saved, originalPhase) {
@@ -183,6 +183,11 @@
       if (!definition.href && next.pathname === current.pathname) next.search = current.search;
       if (definition.idField === "month") next.searchParams.set("month", field("month").value);
       next.hash = anchor + ref;
+      // Coexisting editors must not pull focus/navigation back when a field's
+      // change event retains input during a move to another subtask.
+      if (definition.multiple && next.pathname === current.pathname && current.hash && !current.hash.startsWith(anchor)) {
+        next.hash = current.hash;
+      }
       window.history.replaceState(window.history.state, "", next.href);
     }
     function renderShelf() {

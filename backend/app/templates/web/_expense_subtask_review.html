@@ -7,6 +7,5 @@
       <li>{% if subtask_kind == 'items' %}{{ row.name }} · {{ {'product': '商品', 'discount': '优惠/折扣', 'tax': '税', 'service_fee': '服务费'}.get(row.kind, row.kind) }} · 数量 {{ row.quantity_text or '未填' }} · 单价 {{ row.unit_price_yuan or '未填' }} · 分类 {{ row.category or '未填' }}{% else %}{{ row.account_name or '原成员' }}{% if row.disabled %}（已停用）{% endif %}{% if row.note %} · {{ row.note }}{% endif %}{% endif %} · 金额 {{ row.amount_yuan or '未填' }}</li>
     {% else %}<li>尚未记录{{ subtask_label }}。</li>{% endfor %}</ul>
   </details>
-  {% if subtask_review.needs_review and can_write %}<button type="submit" name="review_latest" value="true" formnovalidate class="product-button">已核对当前记录，保留本次填写</button>{% endif %}
 </div>
 {% endif %}

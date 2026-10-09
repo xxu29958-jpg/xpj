@@ -86,7 +86,8 @@ def test_fact_page_hides_acknowledge_action_for_viewer(
 
     assert page.status_code == 200, page.text
     assert "明细合计与账单金额差" in page.text
-    assert _ack_form_html(page.text, expense_id) is None
+    form = _ack_form_html(page.text, expense_id)
+    assert form is not None and 'hidden disabled' in form
 
 
 def test_fact_acknowledge_conflict_stays_on_fact_owner(
@@ -103,15 +104,19 @@ def test_fact_acknowledge_conflict_stays_on_fact_owner(
         data={
             "ledger_id": "owner",
             "expected_row_version": str(row_version - 1),
+            "idempotency_key": "original-conflicting-ack",
         },
         follow_redirects=False,
     )
 
     assert response.status_code == 409, response.text
-    assert "账单已在其它端被修改" in response.text
+    assert "账单已更新" in response.text
     assert "账单详情" in response.text
     assert f'action="/web/expenses/{expense_id}/save"' not in response.text
-    assert _ack_form_html(response.text, expense_id) is not None
+    form = _ack_form_html(response.text, expense_id)
+    assert form is not None
+    assert _hidden_value(form, "expected_row_version") == str(row_version - 1)
+    assert _hidden_value(form, "idempotency_key") == "original-conflicting-ack"
 
 
 def test_fact_acknowledge_replays_the_same_form_intent_without_a_second_revision(

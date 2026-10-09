@@ -120,7 +120,7 @@ def web_edit_get(
     if ctx["expense_review_inspection"]:
         # Inspect the server's pending/rejected fields without restoring a local
         # command or opening another submission. The original task owns editing.
-        ctx.update(can_write=False, expense_review_scope=None)
+        ctx.update(can_write=False, expense_review_scope=None, expense_subtasks={})
     # ?fragment=1 returns the drawer fragment fetched by desktop.js.
     if fragment:
         return templates.TemplateResponse(request=request, name="_edit_drawer.html", context=ctx)

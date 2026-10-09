@@ -3,7 +3,7 @@
   window.TicketboxWeb.initDrawer();
   const pause = () => new Promise(resolve => setTimeout(resolve, 40));
   const form = document.querySelector("form.edit-form");
-  const items = document.querySelector('#expense-items form[data-review-form]');
+  const items = document.querySelector('#expense-items form[action$="/items/save"]');
   const put = (input, value) => {
     input.value = value;
     input.dispatchEvent(new Event("input", {bubbles: true}));

@@ -88,6 +88,9 @@ def test_acknowledge_mismatch_replay_preserves_original_acceptance_after_peer_ch
     v1 = first.json()["row_version"]
     assert v1 != v0
 
+    matched = replace_items_api(client, expense_id, headers=identity.app_headers,
+        items=[{"name": "他端先核对一致", "amount_cents": 3500}])
+    assert matched.status_code == 200 and matched.json()["items_sum_status"] == "matched", matched.text
     peer = replace_items_api(client, expense_id, headers=identity.app_headers,
         items=[{"name": "他端后来填写", "amount_cents": 4000}])
     assert peer.status_code == 200, peer.text

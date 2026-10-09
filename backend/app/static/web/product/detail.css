@@ -134,6 +134,9 @@
 
 .expense-subtask-nav {
     grid-column: 1 / -1;
+    flex-wrap: wrap;
+    overflow: visible;
+    border-radius: 0;
 }
 
 .split-invite-form {
