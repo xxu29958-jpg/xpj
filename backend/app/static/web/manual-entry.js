@@ -83,7 +83,14 @@
     const restored = !!record;
     form.dataset.manualDraftRestored = String(restored);
     result.hidden = !restored;
-    if (record) result.href = draftHref(record, true);
+    if (record) {
+      const href = new URL(draftHref(record), window.location.href);
+      href.pathname += "/result";
+      href.hash = "";
+      href.searchParams.set("client_ref", record.clientRef);
+      href.searchParams.set("draft_scope", JSON.stringify(record.scope));
+      result.href = href.href;
+    }
     const heading = document.querySelector("[data-manual-heading]");
     if (heading) heading.textContent = restored ? "上次的记录还在" : "记一笔";
     fields.disabled = false;
@@ -100,7 +107,7 @@
     }
   }
 
-  function draftHref(record, viewResult) {
+  function draftHref(record) {
     const saved = record.values;
     const parts = [];
     function add(name, value) {
@@ -123,12 +130,7 @@
       }
     }
     if (saved.return_to === "confirmed" || saved.return_to === "pending") add("return_to", saved.return_to);
-    if (viewResult) {
-      add("client_ref", record.clientRef);
-      add("draft_scope", JSON.stringify(record.scope));
-    }
-    return "/web/expenses/new" + (viewResult ? "/result" : "") + (parts.length ? "?" + parts.join("&") : "") +
-      (viewResult ? "" : "#manual-" + record.clientRef);
+    return "/web/expenses/new" + (parts.length ? "?" + parts.join("&") : "") + "#manual-" + record.clientRef;
   }
 
   function renderShelf() {

@@ -792,7 +792,8 @@ def test_standalone_decision_recovers_original_or_explicitly_reviews_a_refusal(r
         with Session(confirmation_store) as db:
             current, original = db.get(Expense, 42), db.get(Expense, 43)
             return {"current_version": current.row_version, "current_merchant": current.merchant,
-                "current_duplicate": current.duplicate_status, "original_version": original.row_version, "original_merchant": original.merchant}
+                "current_duplicate": current.duplicate_status, "original_version": original.row_version, "original_merchant": original.merchant,
+                "receipt_count": len(db.scalars(select(ApiIdempotencyKey)).all())}
 
     client.app.state.expense_review_probe = "duplicate-probe.js"
     result = _run_review_page(client, tmp_path, f"/web/duplicates?ledger_id=owner&choice={action}&fault={fault}", width=393)

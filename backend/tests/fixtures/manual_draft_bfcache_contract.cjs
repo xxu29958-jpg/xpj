@@ -36,7 +36,7 @@ const window = {
     getItem:key => entries.get(key) ?? null, setItem:(key, value) => entries.set(key, value),
     removeItem:key => entries.delete(key),
   },
-  location:{hash:'#manual-' + original}, history:{replaceState(){}},
+  location:{href:'https://ticketbox.test/web/expenses/new', hash:'#manual-' + original}, history:{replaceState(){}},
   addEventListener:(name, handler) => {handlers[name] = handler;},
   navigator:{locks:{request:(key, _options, callback) => {
     requests.push(key);
@@ -46,7 +46,7 @@ const window = {
 vm.runInNewContext(fs.readFileSync(process.argv[2], 'utf8'), {window});
 const drafts = window.TicketboxManualDrafts;
 drafts.save(scope, original, 'submitted', {...Object.fromEntries(names.map((name, i) => [name, defaults[i]])), amount_major:'28.50', currency_code:'CNY', home_currency_code:'CNY'});
-vm.runInNewContext(fs.readFileSync(process.argv[3], 'utf8'), {window, document});
+vm.runInNewContext(fs.readFileSync(process.argv[3], 'utf8'), {window, document, URL});
 (async function () {
   await Promise.resolve(); await Promise.resolve();
   assert.equal(form.dataset.manualDraftState, 'locked');

@@ -100,7 +100,8 @@ def test_manual_original_time_survives_real_draft_restoration(tmp_path: Path, ra
     assert probe["values"]["client_ref"] == ref and probe["record"] == record
     result_url = urlsplit(probe["resultHref"])
     result_query = parse_qs(result_url.query)
-    assert result_url.path == "/web/expenses/new/result" and not result_url.fragment
+    file_drive = f"/{tmp_path.drive}" if tmp_path.drive else ""
+    assert result_url.path == file_drive + "/web/expenses/new/result" and not result_url.fragment
     assert result_query["client_ref"] == [ref] and json.loads(result_query["draft_scope"][0]) == scope
     assert result_query["return_to"] == ["recurring_occurrence"]
     assert result_query["return_month"] == ["2026-11"]

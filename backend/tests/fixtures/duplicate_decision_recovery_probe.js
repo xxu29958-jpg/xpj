@@ -64,7 +64,8 @@
     await wait(() => form()?.dataset.duplicatechoiceDraftPhase === "editing" && !submit().disabled);
     assert(form().elements.expected_row_version.value === "9" && form().elements.idempotency_key.value !== state.command, "explicit review did not adopt fresh basis and key");
     const facts = await (await originalFetch("/duplicate-facts")).json();
-    assert(facts.current_version === 9 && facts.original_version === 11 && state.requests.length === 1, "review itself submitted another decision");
+    assert(facts.current_version === 9 && facts.original_version === 11 && facts.receipt_count === 0 && state.requests.length === 1,
+      "review itself changed a fact or wrote a receipt");
     state.stage = "done"; save(); submit().click();
   }
   async function finish() {

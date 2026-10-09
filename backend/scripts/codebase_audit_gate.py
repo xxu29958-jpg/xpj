@@ -140,7 +140,7 @@ def evaluate_debt(counts: DebtCounts) -> int:
 # counter is and how it's computed.
 STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_carriers": 141,  # Uncategorized bulk-set now carries the original selection's OCC versions.
-    "mutate_token_exempted": 147,  # That bulk-set no longer qualifies for the batch-write exemption.
+    "mutate_token_exempted": 148,  # Adds duplicate-decision read-only review; bulk-set retains OCC.
     "mutate_token_reason_admin_single_writer": 16,
     "mutate_token_reason_append_only_fact": 3,
     "mutate_token_reason_batch_db_write": 16,
@@ -148,7 +148,7 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_reason_enqueue_task": 2,
     "mutate_token_reason_external_side_effect": 8,
     "mutate_token_reason_governance_action": 8,
-    "mutate_token_reason_read_only_compute": 5,
+    "mutate_token_reason_read_only_compute": 6,
     "mutate_token_reason_session_rotation": 8,
     "mutate_token_reason_terminal_flag_flip": 35,
     "mutate_token_reason_upsert_bucket": 4,
@@ -186,9 +186,12 @@ _MUTATE_TOKEN_EXEMPTION_ADMISSIONS = (
     # common command keeps original actor/key receipts and unique ledger names;
     # duplicates never restore old objects. All 138 original OCC carriers stay protected,
     # with two new saved-query API carriers. Uncategorized bulk-set graduates from
-    # its old batch exemption to original-selection OCC, so the net admission is three.
+    # its old batch exemption to original-selection OCC. The duplicate decision
+    # review adds ADR-0038 read_only_compute: it reads the pair without changing
+    # a fact or writing a receipt, as the existing refusal/recovery browser gate
+    # verifies. Its later keep/reject commands retain OCC; the net admission is four.
     # Admit only this exact base/count transition, not general exemption growth.
-    ("92983e731072c2daa538bb61a3e782a5c4e60d5e", 144, 147),
+    ("92983e731072c2daa538bb61a3e782a5c4e60d5e", 144, 148),
     # One existing Ledger.name fact; three adapters share the Owner/credential
     # lock and field CAS. No financial OCC carrier or persistence owner changes.
     ("30beaeca2db6e76e72d7bd5acc5cd54a37212883", 141, 144),

@@ -421,6 +421,10 @@ ALLOWLIST: dict[str, Exempt] = {
     # Native Inbox capture creates a new pending expense after the selected
     # ledger's writer guard; there is no pre-existing row to version-fence.
     "POST /web/pending/upload": Exempt("create_row", "expenses", ("expenses",)),
+    # Explicit review only reads the current pair and prepares a new browser
+    # command. It writes neither Expense nor a receipt; the subsequent keep /
+    # reject commands still consume their original OCC and idempotency key.
+    "POST /web/duplicates/{expense_id}/decision": Exempt("read_only_compute", "expenses", ()),
     # 218-C5a: POST /web/pending/batch-reject 与 POST /web/review/bulk 现在携带
     # 页面快照 expected_row_version(fail-closed 409),schema 自动判定为 carrier,
     # 不再占用 batch_db_write 豁免。
