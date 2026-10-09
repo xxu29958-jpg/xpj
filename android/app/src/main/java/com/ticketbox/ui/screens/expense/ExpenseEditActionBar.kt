@@ -55,10 +55,10 @@ internal data class ExpenseEditActionBarState(
     val statusMessage: String?,
     val statusTone: MessageTone,
     val forceCompact: Boolean = false,
-    val submissionBlocked: Boolean = false,
+    val originalReviewRequired: Boolean = false,
 ) {
     val canSubmit: Boolean
-        get() = !saving && !submissionBlocked
+        get() = !saving && !originalReviewRequired
 
     val showBackAction: Boolean
         get() = !allowConfirm || (!allowSave && !allowReject)
@@ -94,11 +94,14 @@ internal fun ExpenseEditActionBar(
 ) {
     val keyboardVisible = LocalAppImeVisible.current
     val compactMode = keyboardVisible || state.forceCompact
+    val statusMessage = state.statusMessage ?: if (state.originalReviewRequired) {
+        stringResource(R.string.original_edit_review_needed)
+    } else null
     AppFloatingActionBar(compact = compactMode) {
         state.validationMessage?.let {
             ExpenseEditActionMessage(it, LocalStateTokens.current.danger.fg)
         }
-        state.statusMessage?.let {
+        statusMessage?.let {
             ExpenseEditActionMessage(it, LocalStateTokens.current.forTone(state.statusTone).fg)
         }
         ExpenseEditResponsiveActionRows(state = state, actions = actions, compactMode = compactMode)
