@@ -461,7 +461,7 @@
         clearTaskAnchor();
         drawer.innerHTML = html; bindFragment(); resyncRowConsumers(); focusDrawer();
         if (!confirmation) {
-          await refreshAcceptedRow(generation, values.command_action);
+          await refreshReviewRow(generation, values.command_action);
           return;
         }
         const button = drawer.querySelector("[data-confirmation-next]");
@@ -488,14 +488,14 @@
       }
     }
 
-    async function refreshAcceptedRow(generation, action) {
+    async function refreshReviewRow(generation, action) {
       try { await syncSavedRow(generation); }
       catch (_) {
         if (generation === opening) {
           const notice = document.createElement("p"); notice.className = "product-feedback product-feedback--warning";
-          notice.setAttribute("role", "status"); notice.textContent = action === "keep"
-            ? "非重复决定已保存，收件列表暂未刷新。原填写仍保留，返回列表后可重新读取。"
-            : "草稿已保存，收件列表暂未刷新。当前填写仍可继续，返回列表后可重新读取。";
+          const outcome = {keep: "非重复决定已保存", save: "草稿已保存", fx: "汇率状态已更新"}[action];
+          notice.setAttribute("role", "status");
+          notice.textContent = outcome + "，收件列表暂未刷新。原填写仍保留，返回列表后可重新读取。";
           drawer.querySelector(".product-drawer-form").prepend(notice);
         }
       }
@@ -539,6 +539,7 @@
 
     function submitDrawer(form, actionUrl) {
       if (submitting) return;
+      const generation = opening;
       submitting = true;
       const body = new FormData(form);
       body.append("fragment", "1"); // server returns a 200 marker / error fragment
@@ -559,6 +560,8 @@
             bindFragment();
             focusDrawer();
             submitting = false;
+            // The list reads current facts; its version must not replace the retained form's OCC.
+            await refreshReviewRow(generation, "fx");
           });
         })
         .catch(function () {

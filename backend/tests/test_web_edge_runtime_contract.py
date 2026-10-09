@@ -313,8 +313,8 @@ def test_drawer_fx_status_and_retry_keep_draft_until_explicit_load_in_real_edge(
     assert value == {
         "posts": [{"url": f"/web/expenses/1/{action}", "version": "11", "key": "original-key",
             "merchant": "Unsent merchant"} for action in ("fx-status", "fx")],
-        "retained": {"reads": 1, "listReads": 0, "version": "11", "key": "original-key", "merchant": "Unsent merchant", "rowVersion": "11"},
-        "loaded": {"reads": 2, "listReads": 1, "version": "12", "merchant": "Saved merchant", "rowVersion": "12"},
+        "retained": {"reads": 1, "listReads": 2, "version": "11", "key": "original-key", "merchant": "Unsent merchant", "rowVersion": "12"},
+        "loaded": {"reads": 2, "listReads": 3, "version": "12", "merchant": "Saved merchant", "rowVersion": "12"},
     }
 
 

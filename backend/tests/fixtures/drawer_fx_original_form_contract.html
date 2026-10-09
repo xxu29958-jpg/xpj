@@ -53,8 +53,8 @@ function nextContent(action, target = document.getElementById("drawer")) {
   window.TicketboxWeb.initDrawer();
   await nextContent(() => document.getElementById("row").click());
   document.querySelector('[name="merchant"]').value = "Unsent merchant";
-  await nextContent(() => document.getElementById("fx-status").click());
-  await nextContent(() => document.getElementById("fx-retry").click());
+  await nextContent(() => document.getElementById("fx-status").click(), document.getElementById("row"));
+  await nextContent(() => document.getElementById("fx-retry").click(), document.getElementById("row"));
   const retained = {reads, listReads, version: document.querySelector('[name="expected_row_version"]').value,
     key: document.querySelector('[name="idempotency_key"]').value,
     merchant: document.querySelector('[name="merchant"]').value,
