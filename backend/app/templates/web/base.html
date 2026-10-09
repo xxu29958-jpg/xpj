@@ -253,7 +253,7 @@
         <summary aria-label="新增记录"><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#plus"/></svg></summary>
         <div class="topbar-create-menu">
           <a href="/web/pending{{ q }}#capture" data-shell-shortcut="capture" aria-keyshortcuts="U">拍照或选小票</a>
-          {% if request.state.web_session_auth %}<a href="/web/expenses/new{{ q }}" data-shell-shortcut="manual-expense" aria-keyshortcuts="N">手动记一笔</a>{% endif %}
+          {% if request.state.web_session_auth %}<a href="{{ manual_create_href|default('/web/expenses/new' ~ q) }}" data-shell-shortcut="manual-expense" aria-keyshortcuts="N">手动记一笔</a>{% endif %}
           <a href="/web/import{{ q }}">导入账单</a>
         </div>
       </details>

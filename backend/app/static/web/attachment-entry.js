@@ -58,12 +58,6 @@
       },
     };
   }
-  function taskPage(action) {
-    const url = new URL(action, window.location.href);
-    const path = url.pathname === "/web/pending/upload" ? "/web/pending" :
-      url.pathname.replace(/\/original\/(attach|verify|replenish|cleanup\/(retry|cancel))$/, "/original");
-    return path + "?ledger_id=" + encodeURIComponent(url.searchParams.get("ledger_id"));
-  }
   function shelf(scope) {
     const host = document.querySelector("[data-attachment-shelf]");
     if (!host) return;
@@ -71,7 +65,7 @@
     store.list(scope).forEach(record => {
       if (host.hasAttribute("data-capture-originals") && new URL(record.values.action).pathname === "/web/pending/upload") return;
       const link = document.createElement("a");
-      link.href = taskPage(record.values.action) + "#attachment-" + record.clientRef;
+      link.href = drafts.taskPage(record.values.action) + "#attachment-" + record.clientRef;
       link.textContent = (record.values.file_name || "原件核对任务") +
         (store.matches(record.scope, scope) ? " · 继续原任务" : " · 旧浏览器身份，保留待核对");
       const item = document.createElement("p");

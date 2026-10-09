@@ -95,6 +95,7 @@
     result.hidden = !restored;
     if (record) {
       const href = new URL(draftHref(record), window.location.href);
+      window.history.replaceState(null, "", href);
       href.pathname += "/result";
       href.hash = "";
       href.searchParams.set("client_ref", record.clientRef);
@@ -139,7 +140,12 @@
         add("return_payment_expense_id", payment);
       }
     }
-    if (saved.return_to === "confirmed" || saved.return_to === "pending") add("return_to", saved.return_to);
+    if (saved.return_to === "confirmed" || saved.return_to === "pending") {
+      add("return_to", saved.return_to);
+      for (const name of ["return_month", "return_filter", "return_page", "return_tag", "return_query", "return_category", "return_home_currency_code"]) {
+        if (saved[name]) add(name, saved[name]);
+      }
+    }
     return "/web/expenses/new" + (parts.length ? "?" + parts.join("&") : "") + "#manual-" + record.clientRef;
   }
 
@@ -167,7 +173,7 @@
     if (retained && !drafts.read(currentRef)) throw Error("draft_removed");
     const record = drafts.save(scope, currentRef, nextPhase, values());
     retained = true;
-    window.history.replaceState(null, "", "#manual-" + currentRef);
+    window.history.replaceState(null, "", draftHref(record));
     return record;
   }
 

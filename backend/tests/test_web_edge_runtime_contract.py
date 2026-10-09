@@ -69,6 +69,7 @@ def test_accounting_time_subseconds_survive_the_actual_browser_control(tmp_path:
 
 @pytest.mark.parametrize("raw", ["2026-11-01T01:30:15.123456", "2026-11-01 01:30:15"])
 def test_manual_original_time_survives_real_draft_restoration(tmp_path: Path, raw: str) -> None:
+    edge = _discover_edge()
     scope = {"datasetId": "dataset", "clientGeneration": "generation", "accountId": "account", "ledgerId": "ledger", "deviceId": "device"}
     time_values = {"time_precision": "instant", "calendar_revision": "1", "user_local_date": "2026-11-01",
         "source_timezone": "America/New_York", "source_utc_offset_seconds": "-18000", "accounting_date": ""}
@@ -87,21 +88,48 @@ def test_manual_original_time_survives_real_draft_restoration(tmp_path: Path, ra
         values={"currency_code": "CNY"}, currency_options=["CNY"], category_options=[], edit_return_fields={},
         time_form={**time_values, "wall_time": "2026-11-01T01:30:15", "wall_input_type": "datetime-local", "offset_options": []},
         csrf_token="synthetic", currency_input={}, asset_version="time-contract")
-    for name in ("manual-drafts.js", "manual-entry.js"):
-        body = body.replace(f'/static/web/{name}?v=time-contract', (_REPO_ROOT / "backend/app/static/web" / name).as_uri())
     body += '<script>const timer=setInterval(()=>{const form=document.querySelector("[data-manual-draft-scope]");' + \
         'if(form.dataset.manualDraftState==="submitted"){clearInterval(timer);window.__webConsumerProbe={' + \
         'resultHref:form.querySelector("[data-manual-result]").getAttribute("href"),' + \
         'values:Object.fromEntries(new FormData(form).entries()),record:JSON.parse(localStorage.getItem(' + \
         json.dumps("ticketbox:manual-draft:v1:" + ref) + '))};}},25);</script>'
-    page = _write_fixture(tmp_path, "original-time.html", body)
-    probe = _evaluate_fixture(tmp_path, page=page, width=390, height=960, profile_name="edge-original-time")
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *_args):
+            pass
+
+        def do_GET(self):
+            path = urlsplit(self.path).path
+            static = (_REPO_ROOT / "backend/app/static").resolve()
+            resource = (static / path.removeprefix("/static/")).resolve()
+            if path == "/web/expenses/new":
+                content, kind = body.encode("utf-8"), "text/html; charset=utf-8"
+            elif path.startswith("/static/") and resource.is_relative_to(static) and resource.is_file():
+                content, kind = resource.read_bytes(), "text/javascript"
+            else:
+                self.send_error(404)
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", kind)
+            self.send_header("Content-Length", str(len(content)))
+            self.end_headers()
+            self.wfile.write(content)
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        probe = _edge_cdp().evaluate_page(edge, profile=tmp_path / "edge-original-time",
+            prepare_url=lambda _: f"http://127.0.0.1:{server.server_port}/web/expenses/new",
+            width=390, height=960, expression="window.__webConsumerProbe || undefined")
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
     assert probe["values"]["spent_at"] == raw, "Reopening changed the original command's known instant"
     assert probe["values"]["client_ref"] == ref and probe["record"] == record
     result_url = urlsplit(probe["resultHref"])
     result_query = parse_qs(result_url.query)
-    file_drive = f"/{tmp_path.drive}" if tmp_path.drive else ""
-    assert result_url.path == file_drive + "/web/expenses/new/result" and not result_url.fragment
+    assert result_url.path == "/web/expenses/new/result" and not result_url.fragment
     assert result_query["client_ref"] == [ref] and json.loads(result_query["draft_scope"][0]) == scope
     assert result_query["return_to"] == ["recurring_occurrence"]
     assert result_query["return_month"] == ["2026-11"]

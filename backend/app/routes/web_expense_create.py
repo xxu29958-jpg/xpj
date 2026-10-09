@@ -141,6 +141,7 @@ def _manual_expense_context(
         "return_month",
         "return_recurring_public_id",
         "return_payment_expense_id",
+        "return_filter", "return_page", "return_tag", "return_query", "return_category", "return_home_currency_code",
     ):
         return_fields.setdefault(name, origin.get(name, ""))
     context.update(
@@ -172,6 +173,7 @@ def _manual_expense_context(
             "spent_at": current_values.get("spent_at", time_values["wall_time"] if time_values else ""),
             "values": current_values,
             "edit_return_fields": return_fields,
+            "manual_create_href": flow_href("/web/expenses/new", ledger_id=selected_id, **origin),
             "edit_return_href": (
                 return_href(ledger_id=selected_id, default_path="/web/confirmed", **origin)
                 if return_fields else f"/web/confirmed?ledger_id={selected_id}"
@@ -443,14 +445,10 @@ def web_manual_expense_create(
         return_fields = edit_context_params(
             **replace(return_context, return_payment_expense_id=str(created.id)).as_kwargs()
         )
-        return _web_redirect(
-            f"/web/expenses/{created.id}/edit",
-            selected_id,
-            **return_fields,
-        )
-    return_to = "pending" if created.status == "pending" else "confirmed"
+    if not return_fields:
+        return_fields = {"return_to": "pending" if created.status == "pending" else "confirmed"}
     return _web_redirect(
         f"/web/expenses/{created.id}/edit",
         selected_id,
-        return_to=return_to,
+        **return_fields,
     )

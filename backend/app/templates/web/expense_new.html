@@ -110,7 +110,7 @@
   </form>
   <div class="manual-draft-actions" data-manual-draft-actions hidden>
     <a class="product-state-action" href="/web/confirmed?ledger_id={{ selected_ledger_id }}">核对已有流水</a>
-    <a class="product-state-action" href="/web/expenses/new?ledger_id={{ selected_ledger_id }}">另记一笔</a>
+    {% if can_write %}<a class="product-state-action" href="{{ manual_create_href }}">另记一笔</a>{% endif %}
   </div>
 </section>
 <details class="manual-draft-shelf" data-manual-draft-shelf hidden>

@@ -148,6 +148,7 @@
       "return_to", "return_recurring_public_id", "return_month", "return_payment_expense_id"],
     legacyMissing: ["home_currency_code", "return_to", "return_recurring_public_id", "return_month", "return_payment_expense_id"],
     optionalFields: ["time_precision", "calendar_revision", "user_local_date", "source_timezone",
-      "source_utc_offset_seconds", "accounting_date", "original_file"],
+      "source_utc_offset_seconds", "accounting_date", "original_file",
+      "return_filter", "return_page", "return_tag", "return_query", "return_category", "return_home_currency_code"],
   });
 })(window);

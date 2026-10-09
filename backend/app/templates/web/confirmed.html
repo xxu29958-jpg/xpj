@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% from 'partials/category_icon.html' import category_icon %}
 {% set product_body_domain = 'transactions' %}
+{% set manual_create_href = '/web/expenses/new?' ~ confirmed_edit_query %}
 {% block title %}已确认 · 小票夹{% endblock %}
 
 {# C6 流水主入口迁入 product 正文栈:
@@ -39,7 +40,7 @@
   </div>
   {% if can_write and request.state.web_session_auth and (expenses or tag or filter in ['missing_category', 'missing_accounting_date']) %}
   <div class="product-page-actions">
-    <a class="product-button product-button--primary" href="/web/expenses/new"><svg width="20" height="20" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#plus"/></svg>记一笔</a>
+    <a class="product-button product-button--primary" href="{{ manual_create_href }}"><svg width="20" height="20" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#plus"/></svg>记一笔</a>
   </div>
   {% endif %}
 </header>
@@ -225,7 +226,7 @@
     <div class="product-state-title">这个月还没有已确认账单</div>
     <div class="product-state-body">新确认入账的账单会按日期出现在这里。</div>
     {% if can_write and request.state.web_session_auth %}
-    <a class="product-button product-button--primary product-state-action" href="/web/expenses/new">手动记一笔</a>
+    <a class="product-button product-button--primary product-state-action" href="{{ manual_create_href }}">手动记一笔</a>
     {% endif %}
     <a class="product-state-action" href="/web/pending?ledger_id={{ selected_ledger_id }}">查看待处理队列</a>
     {% endif %}

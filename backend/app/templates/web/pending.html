@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% set manual_create_href = '/web/expenses/new?' ~ ({'ledger_id': selected_ledger_id, 'return_to': 'pending', 'return_filter': filter}|urlencode) %}
 {% block title %}待我处理 · 小票夹{% endblock %}
 {% block page_scripts %}{% include "_attachment_scripts.html" %}
 <script defer src="/static/web/plan-entry.js?v={{ asset_version }}"></script>
@@ -54,7 +55,7 @@
   </summary>
   <div class="inbox-capture-content">
     {% include "_inbox_capture.html" %}
-    <a href="/web/expenses/new">手动记一笔</a>
+    <a href="{{ manual_create_href }}">手动记一笔</a>
   </div>
 </details>
 {% endif %}

@@ -7,10 +7,12 @@ import re
 import socket
 import threading
 import time
+from dataclasses import replace
 from datetime import date, timedelta
 from html import unescape
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
 
 import pytest
@@ -91,6 +93,10 @@ def test_manual_original_follows_its_creation_receipt_without_losing_file_or_rec
     monkeypatch.setattr(web_expense_create, "current_calendar", lambda *a, **k: SimpleNamespace(revision=1, timezone_name="Asia/Shanghai"))
     monkeypatch.setattr(web_expense_create, "list_ledger_category_options", lambda *a, **k: ["其他"])
     creations = []
+    native_statuses = []
+    created_locations = []
+    viewer_results = []
+    initial_facts = original_tests._facts(case)
 
     def create(db, payload, auth):
         assert payload.amount_cents == 1234 and payload.merchant == "原稿商家" and auth == original_tests.AUTH
@@ -114,7 +120,22 @@ def test_manual_original_follows_its_creation_receipt_without_losing_file_or_rec
 
     @case.client.app.middleware("http")
     async def manual_original_probe(request, call_next):
+        native_post = request.method == "POST" and request.url.path == "/web/expenses/new"
+        if native_post and native_statuses == [422]:
+            case.auth = replace(original_tests.AUTH, role="viewer")
+            case.options[0].role = "viewer"
         response = await call_next(request)
+        if native_post:
+            native_statuses.append(response.status_code)
+            if response.status_code == 303:
+                created_locations.append(response.headers["location"])
+        if request.url.path == "/web/expenses/new/result" and case.auth.role == "viewer":
+            viewer_results.append(response.status_code)
+            assert not creations and original_tests._facts(case) == initial_facts
+            # Another member restores the role after this read-only result lookup.
+            # The original form must still get fresh server admission before retry.
+            case.auth = original_tests.AUTH
+            case.options[0].role = "owner"
         if "text/html" not in response.headers.get("content-type", ""):
             return response
         body = b"".join([chunk async for chunk in response.body_iterator])
@@ -123,9 +144,13 @@ def test_manual_original_follows_its_creation_receipt_without_losing_file_or_rec
         headers.pop("content-length", None)
         return Response(body.replace(b"</body>", script.encode() + b"</body>"), status_code=response.status_code, headers=headers)
 
-    result = _run_review_page(case.client, tmp_path, "/web/expenses/new?ledger_id=owner&return_to=confirmed")
+    result = _run_review_page(case.client, tmp_path, "/web/expenses/new?ledger_id=owner&return_to=confirmed"
+        "&return_month=2026-08&return_page=3&return_query=原稿&return_category=餐饮&return_tag=重要&return_home_currency_code=JPY")
     assert "error" not in result, result
     assert result["rejected_preserved"] and result["transfer_retried"] and result["explicit_original_confirmation"]
+    assert result["permission_restored"] and native_statuses == [422, 403, 303] and viewer_results == [200]
+    redirect_query = parse_qs(urlsplit(created_locations[0]).query)
+    assert all(redirect_query.get(name) == [value] for name, value in result["origin"])
     assert creations == [result["ref"]]
     with Session(case.engine) as db:
         row = db.get(Expense, 42)

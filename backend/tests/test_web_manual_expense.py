@@ -7,6 +7,7 @@ import json
 import re
 from collections.abc import Iterator
 from decimal import Decimal
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from sqlalchemy import delete, func, select
@@ -175,6 +176,13 @@ def test_member_can_open_native_manual_expense_form(
     assert _draft_attribute(response.text, "data-manual-draft-scope") == _expected_draft_scope(
         installed_web, session_token,
     )
+    pending = installed_web.browser.get("/web/pending?filter=ready",
+        headers={"Cookie": f"{SESSION_COOKIE_NAME}={session_token}"})
+    entry = html.unescape(re.search(r'href="(/web/expenses/new[^\"]*)"', pending.text)[1])
+    assert parse_qs(urlsplit(entry).query) == {"ledger_id": [installed_web.shared_ledger_id],
+        "return_to": ["pending"], "return_filter": ["ready"]}
+    original = installed_web.browser.get(entry, headers={"Cookie": f"{SESSION_COOKIE_NAME}={session_token}"})
+    assert f'/web/pending?ledger_id={installed_web.shared_ledger_id}&filter=ready' in html.unescape(original.text)
 
 
 def test_manual_expense_replay_uses_web_device_and_creates_one_confirmed_fact(
@@ -185,8 +193,14 @@ def test_manual_expense_replay_uses_web_device_and_creates_one_confirmed_fact(
         next_url="/web/expenses/new",
     )
     session_cookie = f"{SESSION_COOKIE_NAME}={session_token}"
+    origin = installed_web.browser.get("/web/confirmed?month=2026-08", headers={"Cookie": session_cookie})
+    entries = {html.unescape(href) for href in re.findall(r'href="(/web/expenses/new[^\"]*)"', origin.text)}
+    assert len(entries) == 1, origin.text
+    entry = entries.pop()
+    entry_query = parse_qs(urlsplit(entry).query)
+    assert entry_query["return_to"] == ["confirmed"] and entry_query["return_month"] == ["2026-08"]
     page = installed_web.browser.get(
-        "/web/expenses/new",
+        entry,
         headers={"Cookie": session_cookie},
     )
     csrf = re.search(r'name="csrf_token" value="([^"]+)"', page.text)
@@ -228,6 +242,7 @@ def test_manual_expense_replay_uses_web_device_and_creates_one_confirmed_fact(
     assert first.status_code == 303, first.text
     assert replay.status_code == 303, replay.text
     assert replay.headers["location"] == first.headers["location"]
+    assert parse_qs(urlsplit(first.headers["location"]).query)["return_month"] == ["2026-08"]
     _assert_confirmed_manual_fact(
         installed_web,
         session_token=session_token,
@@ -247,6 +262,10 @@ def test_manual_expense_replay_uses_web_device_and_creates_one_confirmed_fact(
         "originalTarget": {"expenseId": int(first.headers["location"].split("/")[3]), "rowVersion": 1},
         "uploadMaxBytes": get_settings().max_upload_size_bytes,
     }
+    returns = [html.unescape(href) for href in re.findall(r'href="(/web/confirmed\?[^\"]*)"', landed.text)]
+    back = next(href for href in returns if parse_qs(urlsplit(href).query).get("month") == ["2026-08"])
+    returned = installed_web.browser.get(back, headers={"Cookie": session_cookie})
+    assert returned.status_code == 200 and 'name="month" value="2026-08"' in returned.text
     query = {"ledger_id": installed_web.shared_ledger_id, "client_ref": client_ref.group(1),
         "draft_scope": json.dumps(_expected_draft_scope(installed_web, session_token)), "return_to": "confirmed"}
     result = installed_web.browser.get("/web/expenses/new/result", params=query, headers={"Cookie": session_cookie})
@@ -407,7 +426,7 @@ def test_viewer_neither_sees_nor_opens_manual_expense_entry(
     )
 
     assert confirmed.status_code == 200, confirmed.text
-    assert 'href="/web/expenses/new"' not in confirmed.text
+    assert 'href="/web/expenses/new' not in confirmed.text
     assert 'data-shell-shortcut="manual-expense"' not in confirmed.text
     assert direct.status_code == 403, direct.text
     with SessionLocal() as db:
@@ -548,5 +567,7 @@ def test_open_manual_form_cannot_write_after_its_binding_changes(
     assert "旧表单的商家" in response.text
     assert f'name="client_ref" value="{client_ref.group(1)}"' in response.text
     assert 'name="ledger_id" value="shared_household"' in response.text
+    if change == "permission":
+        assert "另记一笔" not in response.text
     with SessionLocal() as db:
         assert db.scalar(select(func.count()).select_from(Expense)) == 0

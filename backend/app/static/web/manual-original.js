@@ -23,6 +23,10 @@
     const action = new URL("/web/expenses/" + target.expenseId + "/original/attach", window.location.origin);
     action.search = new URLSearchParams({ledger_id: ack.scope.ledgerId, draft_scope: JSON.stringify(ack.scope),
       idempotency_key: ack.clientRef, expected_row_version: String(target.rowVersion)});
+    const origin = task ? Object.fromEntries(new URL(task.values.action).searchParams) : record.values;
+    manual.fields.filter(name => name.startsWith("return_")).forEach(name => {
+      if (origin[name]) action.searchParams.set(name, origin[name]);
+    });
     await window.navigator.locks.request(attachments.store.key(ack.clientRef), {ifAvailable: true}, async lock => {
       if (!lock) throw Error("original_task_busy");
       const existing = attachments.store.read(ack.clientRef);
@@ -37,7 +41,7 @@
         await attachments.retain(ack.scope, ack.clientRef, {action: action.href, reviewed_sha256: "", request_id: ""}, file);
       }
     });
-    return "/web/expenses/" + target.expenseId + "/original?ledger_id=" + encodeURIComponent(ack.scope.ledgerId) + "#attachment-" + ack.clientRef;
+    return attachments.taskPage(action.href) + "#attachment-" + ack.clientRef;
   }
   window.TicketboxManualOriginal = {read, retain, handoff};
 })(window);

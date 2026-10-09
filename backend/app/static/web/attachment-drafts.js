@@ -13,6 +13,14 @@
         url.searchParams.get("idempotency_key") !== ref || url.searchParams.get("ledger_id") !== scope.ledgerId ||
         !store.matches(JSON.parse(url.searchParams.get("draft_scope")), scope)) throw Error("invalid_attachment_target");
   }
+  function taskPage(action) {
+    const url = new URL(action, window.location.href);
+    const path = url.pathname === "/web/pending/upload" ? "/web/pending" :
+      url.pathname.replace(/\/original\/(attach|verify|replenish|cleanup\/(retry|cancel))$/, "/original");
+    const query = new URLSearchParams({ledger_id: url.searchParams.get("ledger_id")});
+    url.searchParams.forEach((value, name) => { if (name.startsWith("return_")) query.set(name, value); });
+    return path + "?" + query;
+  }
   async function retain(scope, ref, values, file) {
     validateAction(scope, ref, values);
     const previous = store.read(ref);
@@ -60,5 +68,5 @@
     await window.TicketboxDraftFiles.remove(store.key(clientRef));
     return store.discardLocal({scope, clientRef, values: record.values, decision: "discard-local"});
   }
-  window.TicketboxAttachmentDrafts = {store, retain, readSource, submitted, acknowledge, discardRejected, discardEditing};
+  window.TicketboxAttachmentDrafts = {store, taskPage, retain, readSource, submitted, acknowledge, discardRejected, discardEditing};
 })(window);
