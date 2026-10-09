@@ -282,8 +282,7 @@ def _duplicate_decision_result(request, *, ledger_id, expense_id, action, key, s
         receipt=receipt, next_href=destination.headers["location"]) or destination
 
 
-def _duplicate_storage_error(request, db, *, options, selected_id, fields, exc) -> Response:
-    retain_handled_error(request, exc)
+def _duplicate_storage_error(request, db, *, options, selected_id, fields) -> Response:
     db.rollback()
     error = AppError("internal_error", "暂时无法核实这次相似账单决定。原提交仍保留，恢复连接后可核实。", status_code=503)
     return draft_error_response(request, error) or preserve_original_ledger_form(request, db,
@@ -334,7 +333,8 @@ def web_duplicate_keep(
         if exc.status_code in {401, 403}:
             raise
     except SQLAlchemyError as exc:
-        return _duplicate_storage_error(request, db, options=options, selected_id=selected_id, fields=fields, exc=exc)
+        retain_handled_error(request, exc)
+        return _duplicate_storage_error(request, db, options=options, selected_id=selected_id, fields=fields)
     return _duplicate_keep_response(request, db, options, selected_id, expense_id, form, values, error_msg)
 
 
@@ -396,7 +396,6 @@ def web_duplicate_reject_current(
         return draft_error_response(request, AppError("invalid_request", _STALE_DUPLICATE_MSG, status_code=422)) or _web_redirect(
             "/web/duplicates", selected_id, msg=_STALE_DUPLICATE_MSG, flash_type="error", focus=str(expense_id)
         )
-    error_msg: str | None = None
     try:
         submit_expense_rejection(
             db,
@@ -408,26 +407,17 @@ def web_duplicate_reject_current(
             idempotency_key=idempotency_key,
             actor_account_id=None,
         )
-        msg = "已忽略当前记录。"
     except AppError as exc:
         db.rollback()
         if response := draft_error_response(request, exc):
             return response
         error_msg = _STALE_DUPLICATE_MSG if exc.error == "state_conflict" else exc.message
-        msg = error_msg
+        return _web_redirect("/web/duplicates", selected_id, msg=error_msg, flash_type="error", focus=str(expense_id))
     except SQLAlchemyError as exc:
-        return _duplicate_storage_error(request, db, options=options, selected_id=selected_id, fields=fields, exc=exc)
-    if error_msg is None:
-        return _duplicate_decision_result(request, ledger_id=selected_id, expense_id=expense_id, action="reject-current",
-            key=idempotency_key, scope=draft_scope, next_id=return_duplicate_expense_id)
-    return _web_redirect(
-        "/web/duplicates",
-        selected_id,
-        msg=msg,
-        flash_type="error" if error_msg is not None else "success",
-        focus=str(expense_id) if error_msg else return_context_params("duplicates",
-            return_duplicate_expense_id=return_duplicate_expense_id).get("focus", ""),
-    )
+        retain_handled_error(request, exc)
+        return _duplicate_storage_error(request, db, options=options, selected_id=selected_id, fields=fields)
+    return _duplicate_decision_result(request, ledger_id=selected_id, expense_id=expense_id, action="reject-current",
+        key=idempotency_key, scope=draft_scope, next_id=return_duplicate_expense_id)
 
 
 @router.post("/duplicates/{expense_id}/reject-original")
@@ -468,8 +458,6 @@ def web_duplicate_reject_original(
         return draft_error_response(request, AppError("invalid_request", _STALE_DUPLICATE_MSG, status_code=422)) or _web_redirect(
             "/web/duplicates", selected_id, msg=_STALE_DUPLICATE_MSG, flash_type="error", focus=str(expense_id)
         )
-    msg = "已忽略参考记录，并保留当前记录。"
-    error_msg: str | None = None
     try:
         reject_duplicate_original_keep_current(
             db,
@@ -485,17 +473,9 @@ def web_duplicate_reject_original(
         if response := draft_error_response(request, exc):
             return response
         error_msg = _STALE_DUPLICATE_MSG if exc.error == "state_conflict" else exc.message
-        msg = error_msg
+        return _web_redirect("/web/duplicates", selected_id, msg=error_msg, flash_type="error", focus=str(expense_id))
     except SQLAlchemyError as exc:
-        return _duplicate_storage_error(request, db, options=options, selected_id=selected_id, fields=fields, exc=exc)
-    if error_msg is None:
-        return _duplicate_decision_result(request, ledger_id=selected_id, expense_id=expense_id, action="reject-original",
-            key=idempotency_key, scope=draft_scope, next_id=return_duplicate_expense_id, original_id=parsed_original_id)
-    return _web_redirect(
-        "/web/duplicates",
-        selected_id,
-        msg=msg,
-        flash_type="error" if error_msg is not None else "success",
-        focus=str(expense_id) if error_msg else return_context_params("duplicates",
-            return_duplicate_expense_id=return_duplicate_expense_id).get("focus", ""),
-    )
+        retain_handled_error(request, exc)
+        return _duplicate_storage_error(request, db, options=options, selected_id=selected_id, fields=fields)
+    return _duplicate_decision_result(request, ledger_id=selected_id, expense_id=expense_id, action="reject-original",
+        key=idempotency_key, scope=draft_scope, next_id=return_duplicate_expense_id, original_id=parsed_original_id)
