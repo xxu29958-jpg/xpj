@@ -3,6 +3,7 @@
 {% block page_scripts %}{% include "_attachment_scripts.html" %}
 <script defer src="/static/web/plan-entry.js?v={{ asset_version }}"></script>
 <script defer src="/static/web/expense-review-entry.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/expense-undo-entry.js?v={{ asset_version }}"></script>
 {% endblock %}
 
 {# One queue and command owner. Native upload, selection snapshots, CSRF, OCC,
@@ -38,6 +39,9 @@
 {% if upload_intent.scope %}
 <details class="product-panel product-panel--padded" data-expensereview-draft-shelf data-expensereview-scope='{{ upload_intent.scope | tojson }}' hidden>
   <summary>保留的核对任务</summary><ul data-expensereview-draft-list></ul>
+</details>
+<details class="product-panel product-panel--padded" data-expenseundo-scope='{{ upload_intent.scope | tojson }}' hidden>
+  <summary>待核实的撤销</summary><ul></ul>
 </details>
 {% endif %}
 {% if pending_count %}
@@ -99,19 +103,9 @@
     <button type="submit" class="product-button">撤销 {{ undo_items|length }} 条</button>
   </form>
   {% elif undo_expense_id %}
-  {# csrf_token explicit so the form works even if csrf.js fails to load —
-     belt-and-braces vs the JS auto-injection in /static/shared/csrf.js. #}
-  <form method="post" action="/web/expenses/{{ undo_expense_id }}/undo" class="undo-banner-action">
-    <input type="hidden" name="draft_scope" value="{{ (upload_intent.scope | tojson if upload_intent.scope else '') | forceescape }}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-    <input type="hidden" name="return_to" value="pending">
-    <input type="hidden" name="return_filter" value="{{ filter }}">
-    {# ADR-0038/0041: OCC token = rejected row's monotonic row_version at banner seed. #}
-    <input type="hidden" name="expected_row_version" value="{{ undo_expected_row_version }}">
-    <input type="hidden" name="idempotency_key" value="{{ undo_idempotency_key }}">
-    <button type="submit" class="product-button">撤销</button>
-  </form>
+  {% with undo_scope=upload_intent.scope, undo_origin={'return_to':'pending', 'return_filter':filter} %}
+    {% include "_expense_undo_task.html" %}
+  {% endwith %}
   {% endif %}
 </div>
 {% endif %}

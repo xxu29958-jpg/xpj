@@ -35,8 +35,12 @@ from app.routes._web_expense_return_context import (
     confirm_return_redirect,
     expense_return_form_context,
     expense_return_query_context,
-    resolve_return_to,
-    return_context_params,
+)
+from app.routes._web_expense_undo import (
+    rejection_queue_response,
+    rejection_result_response,
+    render_undo_task,
+    undo_result_href,
 )
 from app.routes._web_session_common import resolve_web_actor
 from app.routes.web_common import (
@@ -152,14 +156,21 @@ def web_reject(
 ) -> Response:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, form.ledger_id or None, options, request=request)
+    form = replace(form, command_action="reject")
     values = {**confirmation_draft_fields(form), "fragment": str(form.fragment), "expense_id": str(expense_id)}
-    retained = preserve_original_ledger_form(request, db, options=options, selected=selected_id,
-        fields=values, task="继续原忽略操作并保留核对填写")
-    if retained is not None:
-        return retained
+    if "application/json" not in request.headers.get("accept", ""):
+        retained = preserve_original_ledger_form(request, db, options=options, selected=selected_id,
+            fields=values, task="继续原忽略操作并保留核对填写")
+        if retained is not None:
+            return retained
     try:
         _require_selected_ledger_write(options, selected_id)
-        require_draft_binding(db, request, ledger_id=selected_id, draft_scope=form.draft_scope, require_session=False)
+        form = replace(form, draft_scope=reviewed_draft_scope(db, request, form.draft_scope, review=form.review_latest))
+        require_draft_binding(db, request, ledger_id=selected_id, draft_scope=form.draft_scope,
+            require_session=False, original_ledger_id=form.ledger_id)
+        if form.review_latest:
+            return render_confirmation_task(request, db, options=options, ledger_id=selected_id,
+                expense_id=expense_id, form=form, result="prepared")
         parsed = parse_form_row_version_token(form.expected_row_version)
         if parsed is None:
             raise AppError("state_conflict", "页面已过期，请核对当前账单后继续。", status_code=422)
@@ -175,6 +186,9 @@ def web_reject(
         )
     except AppError as exc:
         db.rollback()
+        response = draft_error_response(request, exc)
+        if response is not None:
+            return response
         if exc.error in {"invalid_token", "session_binding_changed", "permission_denied"}:
             return preserve_original_ledger_form(request, db, options=options, selected=selected_id,
                 fields=values, task="原忽略操作与核对填写仍保留", error=exc)
@@ -186,24 +200,27 @@ def web_reject(
         message = "账单已在其它端被修改，请刷新后重新操作。" if exc.error == "state_conflict" else exc.message
         return confirm_reject_error(db, request, options, selected_id, expense_id, message, form.fragment,
             status_code=web_form_error_status(exc), form_values=values, return_context=form.return_context)
-    if form.fragment:
-        return drawer_fragment_ok("reject")
-    origin = form.return_context.as_kwargs()
-    if origin.get("return_to") == "recurring_occurrence":
-        path = resolve_return_to("recurring_occurrence", "/web/pending", **origin)
-        params = return_context_params(**origin)
-    else:
-        path = "/web/pending"
-        params = return_context_params("pending", return_filter=form.return_context.return_filter)
-    return _web_redirect(
-        path,
-        selected_id,
-        msg="已接受这次忽略，请以账单当前状态为准。",
-        undo=str(expense_id),
-        undo_version=str(receipt.row_version),
-        flash_type="success",
-        **params,
-    )
+    except SQLAlchemyError as exc:
+        retain_handled_error(request, exc)
+        db.rollback()
+        error = AppError("internal_error", "暂时无法核实忽略结果。原提交与填写仍保留，恢复连接后请核实这次操作。", status_code=503)
+        response = draft_error_response(request, error)
+        if response is not None:
+            return response
+        return preserve_original_ledger_form(request, db, options=options, selected=selected_id,
+            fields=values, task="核实原忽略操作", error=error)
+    return rejection_result_response(request, ledger_id=selected_id, expense_id=expense_id, form=form, receipt=receipt)
+
+
+@router.get("/expenses/{expense_id}/undo", response_class=HTMLResponse)
+def web_expense_undo_task(request: Request, expense_id: int, ledger_id: str = "", undo_version: str = "", undo_key: str = "",
+    return_context: ExpenseReturnContext = Depends(expense_return_query_context),
+    _local: None = LocalOnly, db: Session = Depends(get_db),
+) -> Response:
+    options = _list_ledger_options(db)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
+    return render_undo_task(request, db, options=options, ledger_id=selected_id, expense_id=expense_id,
+        version=undo_version, key=undo_key, origin=return_context)
 
 
 @router.post("/expenses/{expense_id}/undo", response_class=HTMLResponse)
@@ -222,39 +239,28 @@ def web_expense_undo(
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     fields = {"ledger_id": ledger_id, "expense_id": str(expense_id), "expected_row_version": expected_row_version,
         "idempotency_key": idempotency_key, "draft_scope": draft_scope, **return_context.as_kwargs()}
-    retained = preserve_original_ledger_form(request, db, options=options, selected=selected_id,
-        fields=fields, task="核实原撤销操作")
-    if retained is not None:
-        return retained
+    if "application/json" not in request.headers.get("accept", ""):
+        retained = preserve_original_ledger_form(request, db, options=options, selected=selected_id,
+            fields=fields, task="核实原撤销操作")
+        if retained is not None:
+            return retained
     try:
         _require_selected_ledger_write(options, selected_id)
-        require_draft_binding(db, request, ledger_id=selected_id, draft_scope=draft_scope, require_session=False)
+        require_draft_binding(db, request, ledger_id=selected_id, draft_scope=draft_scope,
+            require_session=False, original_ledger_id=ledger_id)
     except AppError as exc:
-        return preserve_original_ledger_form(request, db, options=options, selected=selected_id,
+        return draft_error_response(request, exc, refusal_result="blocked") or preserve_original_ledger_form(request, db, options=options, selected=selected_id,
             fields=fields, task="原撤销操作仍保留", error=exc)
     parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
-        origin = return_context.as_kwargs()
-        if origin.get("return_to") == "recurring_occurrence":
-            path = resolve_return_to("recurring_occurrence", "/web/pending", **origin)
-            params = return_context_params(**origin)
-            return _web_redirect(
-                path,
-                selected_id,
-                msg="页面已过期，请刷新后重新操作。",
-                flash_type="error",
-                **params,
-            )
-        return _web_redirect(
-            "/web/pending",
-            selected_id,
-            msg="页面已过期，请刷新后重新操作。",
-            flash_type="error",
-            **return_context_params("pending", return_filter=return_context.return_filter),
-        )
+        response = draft_error_response(request, AppError("invalid_request", "这次忽略的原操作信息不完整，请保留原提交并核对。",
+            status_code=422), refusal_result="blocked")
+        if response is not None:
+            return response
+        return rejection_queue_response(selected_id, return_context, message="页面已过期，请刷新后重新操作。", flash_type="error")
     actor_account_id, _ = resolve_web_actor(db, request, selected_id)
     try:
-        submit_expense_rejection(
+        receipt = submit_expense_rejection(
             db,
             operation="undo_expense",
             expense_id=expense_id,
@@ -269,18 +275,18 @@ def web_expense_undo(
         db.rollback()
         if exc.error == "expense_not_found":
             exc = AppError(exc.error, "这次忽略当前无法撤销，请查看账单状态；原提交仍保留。", status_code=exc.status_code)
-        return preserve_original_ledger_form(request, db, options=options, selected=selected_id,
+        elif exc.error == "state_conflict":
+            exc = AppError(exc.error, "账单已变化，这次忽略不能按原状态撤销。请查看当前记录；原提交仍保留。", status_code=exc.status_code)
+        return draft_error_response(request, exc, refusal_result="blocked") or preserve_original_ledger_form(request, db, options=options, selected=selected_id,
             fields=fields, task="原撤销操作仍保留", error=exc)
     except SQLAlchemyError as exc:
         retain_handled_error(request, exc)
         db.rollback()
-        return preserve_original_ledger_form(request, db, options=options, selected=selected_id,
-            fields=fields, task="核实原撤销操作", error=AppError("internal_error",
-                "暂时无法确认撤销结果。原提交仍保留，恢复连接后请核实这次操作。", status_code=503))
-    origin = return_context.as_kwargs()
-    if origin.get("return_to") == "recurring_occurrence":
-        path = resolve_return_to("recurring_occurrence", "/web/pending", **origin)
-        params = return_context_params(**origin)
-        return _web_redirect(path, selected_id, msg=message, flash_type=flash_type, **params)
-    return _web_redirect("/web/pending", selected_id, msg=message, flash_type=flash_type,
-        **return_context_params("pending", return_filter=return_context.return_filter))
+        error = AppError("internal_error", "暂时无法确认撤销结果。原提交仍保留，恢复连接后请核实这次操作。", status_code=503)
+        return draft_error_response(request, error, refusal_result="blocked") or preserve_original_ledger_form(request, db, options=options, selected=selected_id,
+            fields=fields, task="核实原撤销操作", error=error)
+    response = draft_ack_response(request, draft_scope=draft_scope, idempotency_key=idempotency_key,
+        receipt=receipt, next_href=undo_result_href(selected_id, return_context))
+    if response is not None:
+        return response
+    return rejection_queue_response(selected_id, return_context, message=message, flash_type=flash_type)

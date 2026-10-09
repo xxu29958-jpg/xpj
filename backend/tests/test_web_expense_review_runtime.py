@@ -431,6 +431,9 @@ def test_ignore_or_undo_replay_recognizes_original_after_later_confirmation(
         db.commit()
     replay = related_review_browser.post(path, data=fields, follow_redirects=False)
     assert replay.status_code == 303, replay.text
+    receipt = related_review_browser.post(path, data=fields, headers={"Accept": "application/json"}).json()
+    assert (receipt["receipt"]["status"], receipt["receipt"]["row_version"]) == ("rejected" if action == "reject" else "pending", 5)
+    assert receipt["ack"]["clientRef"] == fields["reject_idempotency_key" if action == "reject" else "idempotency_key"]
     with Session(confirmation_store) as db:
         row = db.get(Expense, 42)
         assert (row.status, row.row_version, row.merchant) == ("confirmed", 9, "后来入账")
@@ -439,7 +442,7 @@ def test_ignore_or_undo_replay_recognizes_original_after_later_confirmation(
 
 @pytest.mark.parametrize("failure,status", [(AppError("state_conflict", status_code=409), 409), (SQLAlchemyError("storage unavailable"), 503)])
 @pytest.mark.parametrize("origin,domain", [("pending", "inbox"), ("recurring_occurrence", "plans")])
-def test_undo_failure_retains_original_command_without_claiming_expiry(
+def test_ignore_and_undo_failures_retain_original_command_without_claiming_expiry(
     related_review_browser, confirmation_store, monkeypatch, caplog, failure, status, origin, domain,
 ):
     def fail(*args, **kwargs):
@@ -458,11 +461,20 @@ def test_undo_failure_retains_original_command_without_claiming_expiry(
     retained = hidden_post_forms(response.text)["/web/expenses/42/undo"]
     for name in ("idempotency_key", "expected_row_version", "draft_scope", "return_filter"):
         assert retained[name] == fields[name]
+    responses = [response]
+    for action in ("reject", "undo"):
+        refused = related_review_browser.post(f"/web/expenses/42/{action}", data=fields,
+            headers={"Accept": "application/json"})
+        assert refused.status_code == status, refused.text
+        assert refused.json()["draft_result"] == ("rejected" if action == "reject" and status == 409 else "blocked")
+        assert "ack" not in refused.json()
+        responses.append(refused)
     errors = [record for record in caplog.records if record.name == "ticketbox.http"]
     if status >= 500:
-        assert any(record.exc_info and record.exc_info[1] is failure
-            and response.headers["X-Request-Id"] in record.getMessage() for record in errors)
-        assert str(failure) not in response.text
+        for failed_response in responses:
+            assert any(record.exc_info and record.exc_info[1] is failure
+                and failed_response.headers["X-Request-Id"] in record.getMessage() for record in errors)
+            assert str(failure) not in failed_response.text
     else:
         assert not errors
     with Session(confirmation_store) as db:
@@ -475,6 +487,8 @@ def test_ignore_and_undo_refuse_viewer_before_loading_a_missing_target(related_r
         ledger_id="owner", name="家庭账本", role="viewer", is_default=True)])
     response = related_review_browser.post(f"/web/expenses/999/{action}", data=_related_keep_fields(), follow_redirects=False)
     assert response.status_code == 403, response.text
+    refused = related_review_browser.post(f"/web/expenses/999/{action}", data=_related_keep_fields(), headers={"Accept": "application/json"})
+    assert refused.status_code == 403 and refused.json()["draft_result"] == "blocked"
 
 
 def test_original_ignore_banner_does_not_acquire_a_later_rejection(related_review_browser, confirmation_store):
@@ -488,6 +502,50 @@ def test_original_ignore_banner_does_not_acquire_a_later_rejection(related_revie
         db.commit()
     reopened = related_review_browser.get(first.headers["location"])
     assert '/web/expenses/42/undo' not in hidden_post_forms(reopened.text), "original banner retargeted a later ignore"
+    task = related_review_browser.get(f'/web/expenses/42/undo?ledger_id=owner&undo_version=5&undo_key={original["idempotency_key"]}')
+    resumed = hidden_post_forms(task.text)["/web/expenses/42/undo"]
+    assert (resumed["expected_row_version"], resumed["idempotency_key"]) == ("5", original["idempotency_key"])
+    refused = related_review_browser.post("/web/expenses/42/undo", data=resumed, headers={"Accept": "application/json"})
+    assert refused.status_code == 409 and refused.json()["draft_result"] == "blocked"
+    with Session(confirmation_store) as db:
+        assert (db.get(Expense, 42).row_version, db.get(Expense, 42).status) == (9, "rejected")
+
+
+@pytest.mark.parametrize("entry,later_ignore", [("drawer", False), ("full", True)])
+def test_ignore_and_undo_unknown_results_recover_original_commands_and_financial_input(
+    related_review_browser, confirmation_store, tmp_path, entry, later_ignore,
+):
+    client = related_review_browser
+
+    @client.app.get("/ignore-recovery-probe.js")
+    def probe():
+        return FileResponse(Path(__file__).parent / "fixtures/expense_review_ignore_recovery_probe.js", media_type="text/javascript")
+
+    @client.app.post("/ignore-later")
+    def later():
+        with Session(confirmation_store) as db:
+            row = db.get(Expense, 42)
+            assert (row.status, row.row_version) == ("pending", 6)
+            row.status, row.row_version, row.merchant = "rejected", 9, "同伴后来再次忽略"
+            db.commit()
+        return {"changed": True}
+
+    @client.app.get("/ignore-current")
+    def current():
+        with Session(confirmation_store) as db:
+            row = db.get(Expense, 42)
+            return {"version": row.row_version, "status": row.status, "merchant": row.merchant}
+
+    client.app.state.expense_review_probe = "ignore-recovery-probe.js"
+    path = "/web/pending?ledger_id=owner&filter=ready" if entry == "drawer" else "/web/expenses/42/edit?ledger_id=owner&return_to=pending&return_filter=ready"
+    result = _run_review_page(client, tmp_path, path + f"&entry={entry}&later={int(later_ignore)}", width=1440)
+    assert "error" not in result, json.dumps(result, ensure_ascii=False)
+    assert result["financial_retained"] and result["reject_lost"] and result["undo_lost"]
+    assert result["requests"]["reject"][0] == result["requests"]["reject"][1]
+    assert result["requests"]["undo"][0] == result["requests"]["undo"][1]
+    with Session(confirmation_store) as db:
+        row = db.get(Expense, 42)
+        assert (row.status, row.merchant) == (("rejected", "同伴后来再次忽略") if later_ignore else ("confirmed", "忽略前的原填写"))
 
 
 def test_duplicate_review_keeps_both_originals_currency_and_group_return(related_review_browser, fact_review_browser, confirmation_store):

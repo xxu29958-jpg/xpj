@@ -17,6 +17,7 @@ from app.routes._web_expense_return_context import (
     edit_context_params,
     flow_href,
 )
+from app.routes._web_expense_undo import undo_command_key
 from app.routes._web_session_common import resolve_web_actor
 from app.routes.web_common import (
     LocalOnly,
@@ -192,7 +193,7 @@ def _page(
     )
     context["undo_expense_id"] = undo_expense_id
     context["undo_expected_row_version"] = undo_expected_row_version
-    context["undo_idempotency_key"] = str(uuid4()) if undo_expense_id is not None else ""
+    context["undo_idempotency_key"] = undo_command_key(request.query_params.get("undo_key")) if undo_expense_id is not None else ""
     return templates.TemplateResponse(
         request=request, name="recurring_occurrence.html", context=context,
         status_code=error.status_code if error else 200,

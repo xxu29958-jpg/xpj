@@ -1,5 +1,5 @@
 /* Pending review uses the shared durable task; the drawer owns queue navigation and presentation.
- * Ignore retains its native confirmation and undo banner. FX/duplicate actions retain their existing owners. */
+ * Ignore keeps its confirmation dialog, original command and undo result. FX actions retain their existing owner. */
 (function (window, document) {
   "use strict";
 
@@ -414,22 +414,22 @@
       form.addEventListener("submit", function (e) {
         if (e.defaultPrevented) return;
         const submitter = e.submitter || document.activeElement;
-        // 删除草稿 (data-confirm) stays on the native path: confirm-modal owns
-        // the dialog and the full-page submit preserves the 撤销 banner.
-        if (submitter && submitter.closest && submitter.closest("[data-confirm]")) return;
         const actionUrl =
           (submitter && submitter.getAttribute && submitter.getAttribute("formaction")) ||
           form.getAttribute("action");
         if (!actionUrl) return;
-        // Save/confirm/keep belong to the shared durable task. Without enhancement,
+        // Save/confirm/keep/reject belong to the shared durable task. Without enhancement,
         // their original native form is submitted exactly once.
-        if (["save", "confirm", "keep"].includes(actionKind(actionUrl)) || submitter?.name === "review_latest") return;
+        if (["save", "confirm", "keep", "reject"].includes(actionKind(actionUrl)) || submitter?.name === "review_latest") return;
         e.preventDefault();
         submitDrawer(form, actionUrl);
       });
     }
 
     async function showAccepted({next, values}) {
+      if (values.command_action === "reject") {
+        await releaseCurrent(); clearTaskAnchor(); window.location.assign(next.href); return;
+      }
       const generation = opening;
       const confirmation = !["save", "keep"].includes(values.command_action);
       const following = confirmation ? removeCurrentRow() : null;

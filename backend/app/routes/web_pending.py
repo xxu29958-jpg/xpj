@@ -19,6 +19,7 @@ from app.database import get_db
 from app.errors import AppError
 from app.routes._web_attachment_intent import attachment_form_context
 from app.routes._web_bulk_snapshot import parse_bulk_snapshot
+from app.routes._web_expense_undo import undo_command_key
 from app.routes._web_pending_bulk_response import (
     REMOVAL_ACTIONS,
     bulk_error_json,
@@ -209,7 +210,7 @@ def web_pending(
         undo=undo, undo_version=undo_version)
     ctx["undo_expense_id"] = undo_expense_id
     ctx["undo_expected_row_version"] = undo_expected_row_version
-    ctx["undo_idempotency_key"] = str(uuid4()) if undo_expense_id is not None else ""
+    ctx["undo_idempotency_key"] = undo_command_key(request.query_params.get("undo_key")) if undo_expense_id is not None else ""
     ctx["undo_items"] = _resolve_batch_undo_items(db, selected_id=selected_id, undo_ids=undo_id, undo_tokens=undo_rv)
     ctx["needs_amount_count"] = filter_counts["missing_amount"]
     ctx["missing_fx_count"] = filter_counts["missing_fx"]

@@ -54834,6 +54834,306 @@
       }
     },
     "/web/expenses/{expense_id}/undo": {
+      "get": {
+        "operationId": "web_expense_undo_task_web_expenses__expense_id__undo_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "expense_id",
+            "required": true,
+            "schema": {
+              "title": "Expense Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Ledger Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "undo_version",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Undo Version",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "undo_key",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Undo Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_to",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return To",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_month",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Month",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_filter",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Filter",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_page",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Page",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_tag",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Tag",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_query",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Query",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_category",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Category",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_home_currency_code",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Home Currency Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_granularity",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Granularity",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_ranking_metric",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Ranking Metric",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_merchant_category",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Merchant Category",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_recurring_public_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Recurring Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_payment_expense_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Payment Expense Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_import_public_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Import Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_import_line_number",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Import Line Number",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_import_expense_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Import Expense Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_receipt_key",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Receipt Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_receipt_expense_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Receipt Expense Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_review_ref",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Review Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_review_expense_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Review Expense Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_duplicate_expense_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Duplicate Expense Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_category_draft_ref",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Category Draft Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_category_receipt_key",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Category Receipt Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Expense Undo Task",
+        "tags": [
+          "web"
+        ]
+      },
       "post": {
         "operationId": "web_expense_undo_web_expenses__expense_id__undo_post",
         "parameters": [

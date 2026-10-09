@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import re
 from datetime import timedelta
+from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
 
 from api_contract_helpers import web_reject_expense, web_undo_expense
@@ -70,6 +71,11 @@ def test_web_reject_redirects_with_undo_query_and_success_flash(
     assert f"undo={expense_id}" in location
     assert "msg=" in location  # 已忽略这笔账单。 banner text
     assert "flash_type=success" in location  # review P2 #1: green banner
+    original = parse_qs(urlsplit(location).query)
+    task = web_client.get(f'/web/expenses/{expense_id}/undo', params={"ledger_id": "owner",
+        "undo_version": original["undo_version"][0], "undo_key": original["undo_key"][0]})
+    fields = hidden_post_forms(task.text)[f"/web/expenses/{expense_id}/undo"]
+    assert (fields["expected_row_version"], fields["idempotency_key"]) == (original["undo_version"][0], original["undo_key"][0])
 
 
 def test_web_reject_from_recurring_occurrence_returns_to_the_original_period(

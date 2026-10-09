@@ -222,6 +222,7 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     # ADR-0038 undo: restore a recently-rejected expense within the 5-min window.
     # Writer-only same as reject (only writers can reject in the first place).
     ("POST", "/web/expenses/{expense_id}/undo"): "writer-only",
+    ("GET", "/web/expenses/{expense_id}/undo"): "local-only-rendering",
     # Media — handler is in web_media.py (the duplicate in web_app.py was
     # removed in PR #55). Auth happens inside ensure_image_file /
     # ensure_thumbnail_file via ledger_scoped_select.

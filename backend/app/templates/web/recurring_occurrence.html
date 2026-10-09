@@ -2,6 +2,11 @@
 {% from '_history_time.html' import saved_time %}
 {% set product_body_domain = 'plans' %}
 {% block title %}本期固定支出 · 小票夹{% endblock %}
+{% block page_scripts %}
+<script defer src="/static/web/manual-drafts.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/plan-entry.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/expense-undo-entry.js?v={{ asset_version }}"></script>
+{% endblock %}
 {% macro command_fields(action, key, expense=None, revision=None) %}
   {{ csrf_field|safe }}
   <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
@@ -26,6 +31,9 @@
   <a class="product-button product-button--quiet" href="/web/recurring/{{ item.public_id }}/history?ledger_id={{ selected_ledger_id|urlencode }}&amp;month={{ occurrence.period|urlencode }}&amp;return_occurrence=true">修改记录</a>
 </header>
 <div class="plan-flow">
+<details class="product-panel product-panel--padded" data-expenseundo-scope='{{ undo_draft_scope | tojson }}' hidden>
+  <summary>待核实的撤销</summary><ul></ul>
+</details>
 <section class="product-panel product-panel--padded" aria-label="本期首次关联所据定义">
   <h2 class="product-panel-title">本期首次关联所据定义</h2>
   {% if occurrence.recorded_definition %}
@@ -45,18 +53,10 @@
      role="{% if flash_type == 'error' %}alert{% else %}status{% endif %}">
   <span>{{ flash_message }}</span>
   {% if undo_expense_id %}
-  <form method="post" action="/web/expenses/{{ undo_expense_id }}/undo" class="undo-banner-action">
-    <input type="hidden" name="draft_scope" value="{{ (undo_draft_scope | tojson if undo_draft_scope else '') | forceescape }}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-    <input type="hidden" name="expected_row_version" value="{{ undo_expected_row_version }}">
-    <input type="hidden" name="idempotency_key" value="{{ undo_idempotency_key }}">
-    <input type="hidden" name="return_to" value="recurring_occurrence">
-    <input type="hidden" name="return_recurring_public_id" value="{{ item.public_id }}">
-    <input type="hidden" name="return_month" value="{{ occurrence.period }}">
-    {% if focused_payment %}<input type="hidden" name="return_payment_expense_id" value="{{ focused_payment.id }}">{% endif %}
-    <button type="submit" class="product-button">撤销</button>
-  </form>
+  {% with undo_scope=undo_draft_scope, undo_origin={'return_to':'recurring_occurrence', 'return_recurring_public_id':item.public_id,
+      'return_month':occurrence.period, 'return_payment_expense_id':focused_payment.id|string if focused_payment else ''} %}
+    {% include "_expense_undo_task.html" %}
+  {% endwith %}
   {% endif %}
 </div>
 {% endif %}

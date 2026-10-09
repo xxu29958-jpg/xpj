@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% set edit_return_to = undo_origin.return_to or 'pending' %}
+{% set product_body_domain = 'plans' if edit_return_to == 'recurring_occurrence' else 'inbox' %}
+{% set page_surface = 'tertiary' %}
+{% block title %}撤销这次忽略 · 小票夹{% endblock %}
+{% block page_scripts %}
+<script defer src="/static/web/manual-drafts.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/plan-entry.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/expense-undo-entry.js?v={{ asset_version }}"></script>
+{% endblock %}
+{% block content %}
+<header class="product-page-header"><div class="product-page-heading">
+  <a href="{{ undo_return_href }}">返回原任务</a>
+  <h1 class="page-title">撤销这次忽略</h1>
+  <p class="product-page-summary">仅撤销原来的那次忽略。账单后来有变化时，先核对当前记录。</p>
+</div></header>
+<section class="product-panel product-panel--padded">
+  {% if undo_current %}
+  <h2 class="product-panel-title">{{ undo_current.merchant or '未填写商家' }}</h2>
+  <p>{% if undo_current.original_amount_minor is not none %}{{ undo_current.original_currency_code }} {{ undo_current.original_amount_value }}{% else %}原币金额未记录 · {{ undo_current.home_currency_code }} {{ undo_current.amount_yuan }}{% endif %} · {{ {'pending':'待确认', 'confirmed':'已入账', 'rejected':'已忽略'}.get(undo_current.status, '请查看当前记录') }}</p>
+  <p class="hint">这里是账本当前记录，不替代原操作结果。</p>
+  {% endif %}
+  {% if error %}<p class="product-feedback product-feedback--warning" role="alert">{{ error }}</p>{% endif %}
+  {% include "_expense_undo_task.html" %}
+  <div class="product-page-actions">
+    <a class="product-button product-button--quiet" href="{{ undo_current_href }}">查看账单当前记录</a>
+    <a class="product-button product-button--quiet" href="{{ undo_return_href }}">稍后继续</a>
+  </div>
+</section>
+{% endblock %}

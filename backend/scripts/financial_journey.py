@@ -233,7 +233,7 @@ class FinancialJourney:
             native.reveal_any("继续登记退回", toward_start=True)
             native.click("继续登记退回")
             assert native.has("NativeRefund") and native.has("3.00"), "The cold refund draft lost its raw fields"
-            native.click("登记退款", bottom=True)
+            native.click("确认登记退回", bottom=True)
             wait_for(lambda: native.has("原操作已保存") or native.has("待同步"), "The offline refund was not retained")
             assert self.facts()["offsets"] == [], "An offline intent was presented as a committed refund"
             native.capture("financial-refund-offline-submission")

@@ -33,13 +33,13 @@ def render_confirmation_task(request: Request, db: Session, *, options, ledger_i
         current = get_expense(db, expense_id, ledger_id)
         if current.status != "pending":
             original = read_expense_confirmation_receipt(db, tenant_id=ledger_id, expense_id=expense_id,
-                idempotency_key=form.idempotency_key) if form.idempotency_key and form.command_action not in {"save", "keep"} else None
+                idempotency_key=form.idempotency_key) if form.idempotency_key and form.command_action not in {"save", "keep", "reject"} else None
             if original is not None:
                 return RedirectResponse(confirmation_href(expense_id, form.idempotency_key, ledger_id, form.return_context), status_code=303)
             raise AppError("expense_correction_required", "这笔账单已离开待确认状态，请查看当前账单。", status_code=409)
         fields.update(expected_row_version=str(current.row_version), idempotency_key=str(uuid4()),
             keep_idempotency_key=str(uuid4()), reject_idempotency_key=str(uuid4()),
-            command_action="confirm" if form.command_action == "keep" else form.command_action)
+            command_action="confirm" if form.command_action in {"keep", "reject"} else form.command_action)
     ctx = web_edit_context(db, request, options, ledger_id, expense_id,
         form_values=fields, return_context=form.return_context)
     ctx.update(error=error, expense_review_task=True,
