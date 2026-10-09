@@ -25,6 +25,7 @@ import com.ticketbox.ui.components.expenseTimeLabel
 import com.ticketbox.ui.components.AppSecondaryScrollableColumn
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.AppAdaptiveContentWidth
 import com.ticketbox.ui.design.AppListDensity
 import com.ticketbox.ui.components.ExpenseCategoryMark
 import com.ticketbox.ui.screens.settings.SettingsDetailRow
@@ -79,6 +80,7 @@ fun ExpenseFactScreen(
                 backText = stringResource(if (state.timelineExpanded) R.string.expense_fact_title else R.string.expense_edit_primary_back_button),
                 onBack = if (state.timelineExpanded) viewModel::toggleTimelineExpanded else onBack,
                 hasBottomBar = false,
+                contentWidth = AppAdaptiveContentWidth.Focus,
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
             ),
             slots = AppSecondaryPageSlots(headingPrefix = {

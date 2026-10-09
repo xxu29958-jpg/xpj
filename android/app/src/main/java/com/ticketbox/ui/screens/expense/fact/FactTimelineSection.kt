@@ -24,6 +24,8 @@ import androidx.annotation.StringRes
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.ui.components.AppSectionHeader
+import com.ticketbox.ui.components.AppAdaptiveContentActionRow
+import com.ticketbox.ui.components.AppAdaptiveContentActionStyle
 import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.design.AppSpacing
@@ -56,10 +58,15 @@ internal fun FactTimelineSection(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
     ) {
-        if (!state.timelineExpanded) AppSectionHeader(title = stringResource(R.string.expense_fact_recent_changes))
-        if (!state.timelineExpanded) TextButton(onClick = onToggleExpanded) {
-            Text(stringResource(R.string.expense_fact_history_entry))
-        }
+        if (!state.timelineExpanded) AppAdaptiveContentActionRow(
+            style = AppAdaptiveContentActionStyle(compactAction = true),
+            content = { AppSectionHeader(title = stringResource(R.string.expense_fact_recent_changes)) },
+            action = { modifier ->
+                TextButton(onClick = onToggleExpanded, modifier = modifier) {
+                    Text(stringResource(R.string.expense_fact_history_entry))
+                }
+            },
+        )
         FactTimelineStateContent(state, currency, onRetryLoad, onLoadOlder)
         if (state.timelineExpanded) Text(stringResource(R.string.expense_fact_history_preserved),
             color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
