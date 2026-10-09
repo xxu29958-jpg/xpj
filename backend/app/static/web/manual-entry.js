@@ -7,6 +7,7 @@
   const fields = form.querySelector("[data-manual-edit-fields]");
   const submit = form.querySelector("[data-manual-submit]");
   const status = form.querySelector("[data-manual-draft-status]");
+  const result = form.querySelector("[data-manual-result]");
   const options = form.querySelector("[data-manual-options]");
   const actions = document.querySelector("[data-manual-draft-actions]");
   const shelf = document.querySelector("[data-manual-draft-shelf]");
@@ -78,8 +79,11 @@
     notice(message, "blocked");
   }
 
-  function showPhase(restored) {
+  function showPhase(record) {
+    const restored = !!record;
     form.dataset.manualDraftRestored = String(restored);
+    result.hidden = !restored;
+    if (record) result.href = draftHref(record, true);
     const heading = document.querySelector("[data-manual-heading]");
     if (heading) heading.textContent = restored ? "上次的记录还在" : "记一笔";
     fields.disabled = false;
@@ -88,7 +92,7 @@
     submit.textContent = phase === "submitted" ? "继续原提交" : "记下这笔支出";
     actions.hidden = phase === "editing";
     if (phase === "submitted") {
-      notice("还未确认保存结果。输入已锁定；重试会提交原来这一笔，也可以先核对流水。", "submitted");
+      notice("还未确认保存结果。可以先查看结果；继续提交仍是原来这一笔。", "submitted");
     } else if (phase === "blocked") {
       notice("这份草稿暂不能提交，输入仍在。请先核对流水与当前账号、账本。", "blocked");
     } else {
@@ -96,7 +100,7 @@
     }
   }
 
-  function draftHref(record) {
+  function draftHref(record, viewResult) {
     const saved = record.values;
     const parts = [];
     function add(name, value) {
@@ -118,7 +122,13 @@
         add("return_payment_expense_id", payment);
       }
     }
-    return "/web/expenses/new" + (parts.length ? "?" + parts.join("&") : "") + "#manual-" + record.clientRef;
+    if (saved.return_to === "confirmed" || saved.return_to === "pending") add("return_to", saved.return_to);
+    if (viewResult) {
+      add("client_ref", record.clientRef);
+      add("draft_scope", JSON.stringify(record.scope));
+    }
+    return "/web/expenses/new" + (viewResult ? "/result" : "") + (parts.length ? "?" + parts.join("&") : "") +
+      (viewResult ? "" : "#manual-" + record.clientRef);
   }
 
   function renderShelf() {
@@ -160,6 +170,7 @@
     held = false;
     release = null;
     posting = false;
+    result.hidden = true;
     fields.disabled = true;
     submit.disabled = true;
     notice("正在打开草稿…", "opening");
@@ -204,7 +215,7 @@
           // record. Do not manufacture a current-binding draft from that body.
           if (record) drafts.save(scope, ref, phase, record.values);
         }
-        showPhase(!!record);
+        showPhase(record);
       }
       nativeResult = "";
       return new Promise(resolve => { release = resolve; });

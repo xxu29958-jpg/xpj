@@ -90,6 +90,7 @@
     </div>
     </fieldset>
 
+    <a class="product-button product-button--quiet" data-manual-result hidden>查看保存结果 <span aria-hidden="true">→</span></a>
     <div class="product-page-actions">
       <button class="product-button product-button--primary" type="submit" data-manual-submit{% if manual_draft_result == 'blocked' %} disabled{% endif %}>记下这笔支出</button>
     </div>
@@ -97,7 +98,7 @@
   </form>
   <div class="manual-draft-actions" data-manual-draft-actions hidden>
     <a class="product-state-action" href="/web/confirmed?ledger_id={{ selected_ledger_id }}">核对已有流水</a>
-    <a class="product-state-action" href="/web/expenses/new">另记一笔</a>
+    <a class="product-state-action" href="/web/expenses/new?ledger_id={{ selected_ledger_id }}">另记一笔</a>
   </div>
 </section>
 <details class="manual-draft-shelf" data-manual-draft-shelf hidden>

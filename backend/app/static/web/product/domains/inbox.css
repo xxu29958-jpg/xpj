@@ -655,14 +655,6 @@ body[data-page="expense-detail"][data-domain="inbox"] .receipt-preview { positio
     padding: var(--space-3) var(--space-7);
 }
 
-.expense-confirmation { display: flex; flex-direction: column; gap: var(--space-6); width: min(100%, 44rem); margin-inline: auto; min-height: calc(100dvh - var(--space-12) * 3); }
-.expense-confirmation-heading { display: flex; flex-direction: column; align-items: center; gap: var(--space-5); padding-block: var(--space-8) var(--space-3); text-align: center; }
-.expense-confirmation-mark { display: grid; place-items: center; width: calc(var(--space-10) * 2); aspect-ratio: 1; border-radius: 50%; background: var(--brand-primary-bg); color: var(--brand-primary); }
-.expense-confirmation h1 { margin: 0; font-size: var(--type-hero-size); line-height: var(--type-hero-line); }
-.expense-confirmation p { margin: 0; color: var(--text-muted); }
-.expense-confirmation-amount { display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-6); border-radius: var(--radius-xl); background: var(--brand-primary-bg); }
-.expense-confirmation-amount strong { font-size: var(--type-display-size); line-height: var(--type-display-line); overflow-wrap: anywhere; }
-.expense-confirmation-actions { display: grid; gap: var(--space-3); margin-top: auto; padding-block: var(--space-5); }
 .expense-confirmation > .review-task-header { display: flex; }
 .expense-review-pending .review-full-heading,
 .expense-review-pending .detail-aside,

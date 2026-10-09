@@ -38,7 +38,7 @@ def _original(j, *, expected_net):
     assert download.failure() is None
     assert hashlib.sha256(target.read_bytes()).hexdigest() == j.original_digest, (
         "The authenticated original no longer matches its recorded bytes")
-    j.page.get_by_role("button", name="打开实际原图", exact=True).click()
+    # The current original page reads the authenticated image on entry.
     image = j.page.locator("[data-original-reviewed-image]")
     wait_for(lambda: image.is_visible() and image.evaluate("image => image.complete && image.naturalWidth > 0"),
         "The authenticated original did not render its actual image bytes")

@@ -46,8 +46,9 @@ def _form(query: dict[str, list[str]]) -> bytes:
   <input name="csrf_token" type="hidden" value="synthetic-not-a-credential">
   <fieldset data-manual-edit-fields>
     {inputs}<select name="currency_code"><option>CNY</option><option>EUR</option></select>
-    <details open data-manual-options data-start-expanded="false"><summary hidden>补充资料</summary></details>
+    <details class="manual-expense-options" open data-manual-options data-start-expanded="false"><summary hidden>补充资料</summary></details>
   </fieldset>
+  <a data-manual-result hidden>查看保存结果</a>
   <button type="submit" data-manual-submit>记下这笔支出</button>
   <p hidden data-manual-draft-status></p>
 </form>

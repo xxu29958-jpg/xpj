@@ -19,10 +19,9 @@ def record_payment(j, path, payment_date):
     page.get_by_role("link", name="记录本期付款", exact=True).click()
     form = j.form("/web/expenses/new")
     form.locator('[name="amount_major"]').fill("1400.00")
-    options = form.locator("details.manual-expense-options")
-    if not options.get_attribute("open") and not form.locator('[name="merchant"]').is_visible():
-        options.locator(":scope > summary").click()
     form.locator('[name="merchant"]').fill(SERIES)
+    if not form.locator('[name="time_precision"]').is_visible():
+        form.locator("[data-manual-time] > summary").click()
     form.locator('[name="time_precision"]').select_option("date_only")
     form.locator('[name="user_local_date"]').fill(payment_date)
     accounting = form.locator('[name="accounting_date"]')

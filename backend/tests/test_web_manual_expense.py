@@ -169,8 +169,8 @@ def test_member_can_open_native_manual_expense_form(
     assert 'name="currency_code"' in response.text
     assert ">CNY</option>" in response.text
     assert 'href="/web/expenses/new?ledger_id=shared_household"' in response.text
-    assert 'data-shell-shortcut="manual-expense"' in response.text
-    assert 'aria-keyshortcuts="N"' in response.text
+    assert 'href="/web/confirmed?ledger_id=shared_household"' in response.text
+    assert 'data-manual-result hidden' in response.text
     assert _draft_attribute(response.text, "data-manual-draft-scope") == _expected_draft_scope(
         installed_web, session_token,
     )
@@ -244,6 +244,14 @@ def test_manual_expense_replay_uses_web_device_and_creates_one_confirmed_fact(
         "scope": _expected_draft_scope(installed_web, session_token),
         "clientRef": client_ref.group(1),
     }
+    query = {"ledger_id": installed_web.shared_ledger_id, "client_ref": client_ref.group(1),
+        "draft_scope": json.dumps(_expected_draft_scope(installed_web, session_token)), "return_to": "confirmed"}
+    result = installed_web.browser.get("/web/expenses/new/result", params=query, headers={"Cookie": session_cookie})
+    assert result.status_code == 200, result.text
+    assert "创建时已入账" in result.text and "社区超市" in result.text and "23.45" in result.text
+    assert _draft_attribute(result.text, "data-manual-draft-ack") == _draft_attribute(landed.text, "data-manual-draft-ack")
+    _assert_confirmed_manual_fact(installed_web, session_token=session_token,
+        client_ref=client_ref.group(1), location=first.headers["location"])
 
     installed_web.browser.cookies.clear()
     replacement = _connect_local_session(installed_web)
@@ -253,6 +261,10 @@ def test_manual_expense_replay_uses_web_device_and_creates_one_confirmed_fact(
     )
     assert other_device.status_code == 200, other_device.text
     assert "data-manual-draft-ack=" not in other_device.text
+    wrong_browser_result = installed_web.browser.get("/web/expenses/new/result", params=query,
+        headers={"Cookie": f"{SESSION_COOKIE_NAME}={replacement}"})
+    assert wrong_browser_result.status_code == 409, wrong_browser_result.text
+    assert "社区超市" not in wrong_browser_result.text and "data-manual-draft-ack=" not in wrong_browser_result.text
 
 
 def test_form_money_maps_to_the_existing_manual_expense_payload() -> None:

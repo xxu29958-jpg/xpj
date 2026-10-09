@@ -1,0 +1,39 @@
+{% set product_body_domain = 'transactions' %}
+{% set page_surface = 'tertiary' %}
+{% set page_title = '保存结果' %}
+{% extends "base.html" %}
+{% block title %}保存结果 — 小票夹{% endblock %}
+{% block content %}
+<section class="expense-confirmation">
+  {% if receipt %}
+  <div class="expense-confirmation-heading" role="status">
+    <span class="expense-confirmation-mark"><svg width="36" height="36" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#check"/></svg></span>
+    <h1>这笔记录，已保存</h1>
+    <p>{{ receipt.merchant or '未填写商家' }} · {{ selected_ledger_name }}</p>
+  </div>
+  <div class="expense-confirmation-amount">
+    <p>{{ '创建时已入账' if receipt.status == 'confirmed' else '创建时待核对，尚未入账' }}</p>
+    {% if receipt_amount is not none %}
+    <strong class="money-value">{{ receipt_amount }}</strong>
+    <p>{{ receipt.home_currency }}</p>
+    {% else %}<p>本位币金额待核对</p>{% endif %}
+    {% if receipt.original_currency_code != receipt.home_currency %}<p>原币 {{ receipt_original if receipt_original is not none else '金额待核对' }} · {{ receipt.original_currency_code }}</p>{% endif %}
+    <p>{{ receipt_date or '账务日期待核对' }}{% if receipt.category %} · {{ receipt.category }}{% endif %}</p>
+  </div>
+  <p>这里保留首次创建时的结果。后续修改请在当前账单中查看。</p>
+  {% else %}
+  <h1>还未核实保存结果</h1>
+  <p class="product-feedback product-feedback--warning" role="status">没有读到首次创建回执，不能据此判断没有保存。原稿仍保留，请返回继续核实。</p>
+  {% endif %}
+  {% if manual_detail_href %}
+  <a class="product-entry" href="{{ manual_detail_href }}">
+    <span class="product-entry-icon"><svg width="24" height="24" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#receipt-text"/></svg></span>
+    <span class="product-entry-copy"><strong>查看当前账单</strong><span>查看最新内容、状态与原件</span></span>
+    <svg width="20" height="20" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
+  </a>
+  {% endif %}
+  <div class="expense-confirmation-actions">
+    <a class="product-button product-button--primary" href="{{ task_return_href }}">{{ '完成并返回' if receipt else '返回原稿' }}</a>
+  </div>
+</section>
+{% endblock %}

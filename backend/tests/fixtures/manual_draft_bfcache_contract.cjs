@@ -15,7 +15,7 @@ for (const [name, value] of Object.entries({time_precision:'instant', calendar_r
  user_local_date:'2026-09-06', source_timezone:'America/New_York', source_utc_offset_seconds:'-14400', accounting_date:''})) {
   elements[name] = {name, value, tagName:name === 'time_precision' ? 'SELECT' : 'INPUT'};
 }
-const fields = {}, submit = {}, status = {}, summary = {};
+const fields = {}, submit = {}, status = {}, summary = {}, result = {};
 const options = {dataset:{startExpanded:'false'}, querySelector:() => summary, contains:() => false};
 const actions = {}, list = {replaceChildren(){}, appendChild(){}}, count = {};
 const shelf = {querySelector:selector => selector.includes('list') ? list : count};
@@ -24,7 +24,7 @@ const form = {
   elements:{namedItem:name => elements[name]}, addEventListener(){},
   querySelectorAll:selector => selector === '.manual-expense-options' ? [options] : [],
   querySelector:selector => selector.includes('edit-fields') ? fields :
-    selector.includes('submit') ? submit : selector.includes('status') ? status : options,
+    selector.includes('submit') ? submit : selector.includes('status') ? status : selector.includes('result') ? result : options,
 };
 const document = {
   querySelector:selector => selector.includes('scope') ? form : selector.includes('actions') ? actions : shelf,
