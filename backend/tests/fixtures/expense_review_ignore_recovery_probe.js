@@ -45,7 +45,8 @@
     state.stage = "rejectSent"; save();
     form().querySelector(".review-more-actions summary")?.click();
     form().querySelector('button[formaction$="/reject"]').click();
-    await wait(() => document.querySelector("#tb-confirm-modal[open]"));
+    await wait(() => document.querySelector("#tb-confirm-modal[open]") || state.requests.reject.length);
+    assert(state.requests.reject.length === 0, "ignore was sent before human confirmation opened");
     document.querySelector("#tb-confirm-modal .tb-confirm-ok").click();
     await wait(() => state.reject_lost && !primary().disabled);
     assert(JSON.parse(localStorage.getItem(prefix + state.ref)).values.command_action === "reject", "ignore original missing");

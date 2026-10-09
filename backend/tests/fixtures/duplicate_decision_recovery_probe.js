@@ -30,7 +30,8 @@
     await wait(() => form()?.dataset.duplicatechoiceDraftPhase === "editing" && !submit().disabled);
     state.ref = form().elements.draft_ref.value; state.command = form().elements.idempotency_key.value;
     if (state.action !== "keep") {
-      submit().click(); await wait(() => document.querySelector("#tb-confirm-modal[open]"));
+      submit().click(); await wait(() => document.querySelector("#tb-confirm-modal[open]") || state.requests.length);
+      assert(state.requests.length === 0, "a decision was sent before human confirmation opened");
       document.querySelector(".tb-confirm-cancel").click();
       await new Promise(resolve => setTimeout(resolve, 50));
       assert(state.requests.length === 0, "cancel already mutated a bill");

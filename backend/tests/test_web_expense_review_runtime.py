@@ -1,4 +1,5 @@
 """Actual expense review consumers, with real command keys and controlled identity/financial transitions."""
+import asyncio
 import base64
 import io
 import json
@@ -54,6 +55,23 @@ from tests._web_native_form_support import hidden_post_forms
 confirmation_store = page_tests.confirmation_store
 confirmation_web = page_tests.confirmation_web
 first_original_web = original_tests.first_original_web
+
+
+@pytest.fixture
+def slow_confirmation_script(monkeypatch):
+    respond = StaticFiles.get_response
+    pending = True
+
+    async def delayed(self, path, scope):
+        nonlocal pending
+        if pending and Path(path).as_posix() == "shared/confirm-modal.js":
+            pending = False
+            await asyncio.sleep(2)
+        return await respond(self, path, scope)
+
+    monkeypatch.setattr(StaticFiles, "get_response", delayed)
+    yield
+    assert not pending, "The delayed shared confirmation script was not requested"
 
 
 @pytest.fixture
@@ -520,7 +538,7 @@ def test_original_ignore_banner_does_not_acquire_a_later_rejection(related_revie
 
 @pytest.mark.parametrize("entry,later_ignore", [("drawer", False), ("full", True)])
 def test_ignore_and_undo_unknown_results_recover_original_commands_and_financial_input(
-    related_review_browser, confirmation_store, tmp_path, entry, later_ignore,
+    related_review_browser, confirmation_store, tmp_path, entry, later_ignore, slow_confirmation_script,
 ):
     client = related_review_browser
 
@@ -769,7 +787,9 @@ def test_standalone_decision_storage_failure_retains_original_and_reports_cause(
 
 
 @pytest.mark.parametrize("action,fault", [("keep", "reply"), ("reject-current", "reply"), ("reject-original", "reply"), ("keep", "conflict")])
-def test_standalone_decision_recovers_original_or_explicitly_reviews_a_refusal(related_review_browser, confirmation_store, tmp_path, action, fault):
+def test_standalone_decision_recovers_original_or_explicitly_reviews_a_refusal(
+    related_review_browser, confirmation_store, tmp_path, action, fault, slow_confirmation_script,
+):
     client = related_review_browser
     with Session(confirmation_store) as db:
         row = db.get(Expense, 42)

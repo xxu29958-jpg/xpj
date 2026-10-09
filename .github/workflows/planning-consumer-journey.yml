@@ -110,8 +110,8 @@ jobs:
         run: |
           ./.ci-venv/bin/python -m pip install -r requirements-ocr.txt
           sudo apt-get install -y fonts-noto-cjk
-      - name: Install the sample receipt font for the original maintenance journey
-        if: ${{ env.TICKETBOX_JOURNEY_GROUP == 'original-maintenance' }}
+      - name: Install the sample receipt font for original and financial journeys
+        if: ${{ env.TICKETBOX_JOURNEY_GROUP == 'original-maintenance' || env.TICKETBOX_JOURNEY_GROUP == 'financial-facts' }}
         run: sudo apt-get install -y fonts-noto-cjk
       - name: Prepare the existing sealed smoke database
         working-directory: backend
