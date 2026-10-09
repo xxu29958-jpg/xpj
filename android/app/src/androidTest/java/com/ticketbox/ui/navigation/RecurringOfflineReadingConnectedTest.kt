@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -12,6 +13,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextReplacement
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.navigation.compose.NavHost
@@ -106,8 +108,8 @@ class RecurringOfflineReadingConnectedTest {
         offline = true
         restart()
         // This is the first missing business postcondition on the frozen production source.
-        waitForText("原日元固定支出")
         waitForText(context.getString(R.string.recurring_read_cached_title))
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("原日元固定支出"))
         compose.onNodeWithTag("recurring-item-offline-active").assertExists()
         val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
         automation.waitForIdle(300, 3_000)
@@ -213,7 +215,8 @@ class RecurringOfflineReadingConnectedTest {
                 }
             }
         }
-        waitForText("原日元固定支出")
+        waitForText(context.getString(R.string.recurring_read_title))
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("原日元固定支出"))
     }
 
     private fun restart() {
@@ -232,11 +235,13 @@ class RecurringOfflineReadingConnectedTest {
 
     private fun showArchived() {
         selectTab(R.string.recurring_tab_archived)
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("原美元归档固定支出"))
         waitForText("原美元归档固定支出")
     }
 
     private fun selectTab(label: Int) {
         val title = context.getString(R.string.recurring_tab_label_count, context.getString(label), 1)
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(title))
         compose.onNodeWithText(title).performScrollTo().performClick()
     }
 

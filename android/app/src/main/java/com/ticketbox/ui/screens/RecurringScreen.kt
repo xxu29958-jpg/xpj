@@ -1,7 +1,6 @@
 package com.ticketbox.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.material.icons.Icons
@@ -18,7 +17,8 @@ import com.ticketbox.data.repository.RecurringItemDraft
 import com.ticketbox.data.repository.RecurringItemPatch
 import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.domain.model.RecurringItem
-import com.ticketbox.ui.components.AppFilterChip
+import com.ticketbox.ui.components.AppSegmentedControl
+import com.ticketbox.ui.components.AppSegmentedItem
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppButtonIcons
 import com.ticketbox.ui.components.AppPrimaryButton
@@ -265,23 +265,24 @@ private fun RecurringTabRow(
     counts: RecurringTabCounts,
     onSelect: (RecurringTab) -> Unit,
 ) {
-    Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        RecurringTab.entries.forEach { tab ->
+    AppSegmentedControl(
+        options = RecurringTab.entries.map { tab ->
             val count = when (tab) {
                 RecurringTab.Upcoming -> counts.upcoming
                 RecurringTab.Active -> counts.active
                 RecurringTab.Paused -> counts.paused
                 RecurringTab.Archived -> counts.archived
             }
-            AppFilterChip(
-                selected = selected == tab,
-                onClick = { onSelect(tab) },
+            AppSegmentedItem(
+                value = tab,
                 label = if (counts.factual) {
                     stringResource(R.string.recurring_tab_label_count, stringResource(tab.labelRes), count)
                 } else {
                     stringResource(tab.labelRes)
                 },
             )
-        }
-    }
+        },
+        selectedValue = selected,
+        onValueChange = onSelect,
+    )
 }
