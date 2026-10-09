@@ -34,20 +34,6 @@
 <details class="product-panel product-panel--padded" data-expenseundo-scope='{{ undo_draft_scope | tojson }}' hidden>
   <summary>待核实的撤销</summary><ul></ul>
 </details>
-<section class="product-panel product-panel--padded" aria-label="本期首次关联所据定义">
-  <h2 class="product-panel-title">本期首次关联所据定义</h2>
-  {% if occurrence.recorded_definition %}
-  {% set definition = occurrence.recorded_definition %}{% set snapshot = definition.snapshot %}
-  <p>版本 {{ definition.series_row_version }} · 记录保存时间 {{ saved_time(definition.recorded_at) }}</p>
-  <p><strong>{{ snapshot.merchant }}</strong> · {{ snapshot.home_currency_code or '' }} {{ recorded_definition_amount }} · {{ '月度' if snapshot.frequency == 'monthly' else snapshot.frequency }}</p>
-  <p>计划日期 {{ snapshot.next_expected_date or '未设置' }} · {{ {'active':'活跃', 'paused':'暂停', 'archived':'已归档'}[snapshot.status] }}</p>
-  <p class="hint">这是首次记录本期付款关联时所据的定义，不代表该账务月生效的计划。解除或重新关联付款后，这份依据仍保留。</p>
-  {% elif occurrence.row_version == 0 %}
-  <p>尚未建立本期关联记录，首次关联所据定义尚未记录。</p>
-  {% else %}
-  <p>首次关联所据定义未记录，原定义与发生时间未知；不能用当前定义补作旧计划。</p>
-  {% endif %}
-</section>
 {% if flash_message or undo_expense_id %}
 <div class="product-feedback{% if flash_type == 'success' %} product-feedback--success{% elif flash_type == 'error' %} product-feedback--error{% endif %}{% if undo_expense_id %} undo-banner{% endif %}"
      role="{% if flash_type == 'error' %}alert{% else %}status{% endif %}">
@@ -85,7 +71,14 @@
   <p>账单金额 {{ occurrence.paid_home_currency_code or '' }} {{ paid_amount }}。本期固定支出已不再额外预留。</p>
   {% elif occurrence.state == 'needs_review' %}
   <h2>付款需要重新核对</h2>
-  <p>原账单已撤回或冲销，本期重新列为待履约。关联记录仍保留。</p>
+  {% set review_explanations = {
+    'reversed': '原账单已冲销，暂不能作为本期付款依据。',
+    'not_confirmed': '原账单当前未确认，暂不能作为本期付款依据。',
+    'negative_amount': '原账单金额为负，不能作为本期付款依据。',
+    'unavailable': '关联的原账单暂不可用，请刷新后重新核对。'
+  } %}
+  <p class="product-feedback product-feedback--warning" role="status">{{ review_explanations.get(occurrence.payment_review_reason, '请查看原账单核对当前状态，具体原因未随这份记录提供。') }}</p>
+  <p class="hint">关联记录仍保留，本期暂不能视为已付。</p>
   {% else %}
   <h2>本期尚未关联付款</h2>
   <p>选一张已确认账单，明确它已经付清本期义务。名称相同不会自动算作已付。</p>
@@ -101,6 +94,20 @@
   {% endif %}
   {% endif %}
   <p>下一次提醒：{{ occurrence.next_due_date or '未设置日期' }}。修改提醒日期仍在固定支出编辑中。</p>
+</section>
+<section class="product-panel product-panel--padded" aria-label="本期首次关联所据定义">
+  <h2 class="product-panel-title">本期首次关联所据定义</h2>
+  {% if occurrence.recorded_definition %}
+  {% set definition = occurrence.recorded_definition %}{% set snapshot = definition.snapshot %}
+  <p>版本 {{ definition.series_row_version }} · 记录保存时间 {{ saved_time(definition.recorded_at) }}</p>
+  <p><strong>{{ snapshot.merchant }}</strong> · {{ snapshot.home_currency_code or '' }} {{ recorded_definition_amount }} · {{ '月度' if snapshot.frequency == 'monthly' else snapshot.frequency }}</p>
+  <p>计划日期 {{ snapshot.next_expected_date or '未设置' }} · {{ {'active':'活跃', 'paused':'暂停', 'archived':'已归档'}[snapshot.status] }}</p>
+  <p class="hint">这是首次记录本期付款关联时所据的定义，不代表该账务月生效的计划。解除或重新关联付款后，这份依据仍保留。</p>
+  {% elif occurrence.row_version == 0 %}
+  <p>尚未建立本期关联记录，首次关联所据定义尚未记录。</p>
+  {% else %}
+  <p>首次关联所据定义未记录，原定义与发生时间未知；不能用当前定义补作旧计划。</p>
+  {% endif %}
 </section>
 <form class="product-panel product-panel--padded budget-form" method="get">
   <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">

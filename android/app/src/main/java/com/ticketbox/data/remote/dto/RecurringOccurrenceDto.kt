@@ -19,6 +19,7 @@ data class RecurringOccurrenceDto(
     @param:Json(name = "home_currency_code") val homeCurrencyCode: String? = null,
     @param:Json(name = "paid_home_currency_code") val paidHomeCurrencyCode: String? = null,
     @param:Json(name = "recorded_definition") val recordedDefinition: RecurringRecordedDefinitionDto? = null,
+    @param:Json(name = "payment_review_reason") val paymentReviewReason: String? = null,
 )
 
 /** Explicit action is mandatory: a missing payment field must never mean "clear". */

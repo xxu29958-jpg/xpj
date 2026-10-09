@@ -83,7 +83,7 @@ def _record_payment_href(html: str, *, series_id: str, period: str, ledger_id: s
     raise AssertionError("The period payment entry must open the existing manual-expense owner")
 
 
-def test_unpaid_period_record_payment_is_not_the_global_manual_entry(monkeypatch) -> None:
+def test_period_payment_entries_and_review_keep_the_original_task(monkeypatch) -> None:
     from fastapi import Request
 
     from app.middleware import csrf
@@ -126,6 +126,31 @@ def test_unpaid_period_record_payment_is_not_the_global_manual_entry(monkeypatch
     assert occurrence.state == "unfulfilled"
     assert occurrence.reserved_amount_cents == 2000
     assert occurrence.expense_public_id is None
+
+    for reason, explanation in (
+        ("reversed", "原账单已冲销，暂不能作为本期付款依据。"),
+        ("not_confirmed", "原账单当前未确认，暂不能作为本期付款依据。"),
+        ("negative_amount", "原账单金额为负，不能作为本期付款依据。"),
+        (None, "请查看原账单核对当前状态，具体原因未随这份记录提供。"),
+    ):
+        reviewed = occurrence.model_copy(update={
+            "state": "needs_review", "row_version": 4,
+            "expense_public_id": "original-payment", "expense_id": 41,
+            "expense_row_version": 9, "payment_review_reason": reason,
+        })
+        monkeypatch.setattr(web, "occurrence_response", lambda *a, value=reviewed, **kw: value)
+        reviewed_page = web._page(request, object(), public_id=series_id, ledger_id="owner", month="2026-08")
+        reviewed_html = reviewed_page.body.decode()
+        assert explanation in reviewed_html
+        assert "原账单已撤回或冲销" not in reviewed_html
+        assert "本期已关联付款" not in reviewed_html
+        original_task = _form(reviewed_html, "clear")
+        assert original_task["month"] == "2026-08"
+        assert original_task["expected_row_version"] == "4"
+        assert original_task["expected_series_row_version"] == "3"
+        assert "return_recurring_public_id=" + series_id in reviewed_html
+        assert "return_month=2026-08" in reviewed_html
+        assert reviewed.expense_id == 41 and reviewed.reserved_amount_cents == 2000
 
 
 def test_expense_return_adapter_keeps_the_original_series_and_period() -> None:

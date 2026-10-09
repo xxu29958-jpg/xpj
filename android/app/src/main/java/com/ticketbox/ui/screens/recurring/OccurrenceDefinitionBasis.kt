@@ -33,6 +33,10 @@ internal fun OccurrenceCurrentSummary(occurrence: RecurringOccurrenceDto) {
             verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
             Text(stringResource(occurrenceStateLabel(occurrence.state)), Modifier.testTag("occurrence-state"),
                 color = palette.fg, style = MaterialTheme.typography.titleMedium)
+            if (occurrence.state == "needs_review") {
+                Text(stringResource(occurrenceReviewReasonLabel(occurrence.paymentReviewReason)),
+                    style = MaterialTheme.typography.bodyMedium)
+            }
             Text(stringResource(R.string.occurrence_summary_period, occurrence.period), style = MaterialTheme.typography.bodySmall)
             Text(stringResource(R.string.occurrence_planned_amount), style = MaterialTheme.typography.bodyMedium)
             AppAmountText(recurringRecordedAmountText(occurrence.plannedAmountCents, occurrence.homeCurrencyCode), role = AppAmountRole.Hero)
@@ -66,4 +70,12 @@ private fun occurrenceStateLabel(state: String): Int = when (state) {
     "needs_review" -> R.string.occurrence_review
     "unfulfilled" -> R.string.occurrence_unfulfilled
     else -> R.string.occurrence_unknown
+}
+
+private fun occurrenceReviewReasonLabel(reason: String?): Int = when (reason) {
+    "reversed" -> R.string.occurrence_review_reversed
+    "not_confirmed" -> R.string.occurrence_review_not_confirmed
+    "negative_amount" -> R.string.occurrence_review_negative_amount
+    "unavailable" -> R.string.occurrence_review_unavailable
+    else -> R.string.occurrence_review_unknown_reason
 }

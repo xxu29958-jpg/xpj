@@ -21604,6 +21604,23 @@
             ],
             "title": "Paid Home Currency Code"
           },
+          "payment_review_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "not_confirmed",
+                  "negative_amount",
+                  "reversed",
+                  "unavailable"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Review Reason"
+          },
           "period": {
             "title": "Period",
             "type": "string"

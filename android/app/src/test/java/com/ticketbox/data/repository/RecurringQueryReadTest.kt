@@ -547,14 +547,18 @@ internal class RecurringQueryReadTest : ExpensePendingRepositoryOutboxTestBase()
         assertEquals(paid.copy(fromCache = true), cold.occurrence(fixture.binding, "recurring", "2026-09").getOrThrow())
         offline = false
         reader.occurrence(fixture.binding, "recurring", "2026-09").getOrThrow()
-        response = response.copy(state = "needs_review")
+        response = response.copy(state = "needs_review", paymentReviewReason = "reversed",
+            paidAmountCents = null, paidHomeCurrencyCode = null, reservedAmountCents = 2400)
         val reviewed = reader.occurrence(fixture.binding, "recurring", "current").getOrThrow()
+        assertEquals("reversed", reviewed.value.paymentReviewReason)
         offline = true
         assertEquals(reviewed.copy(fromCache = true), cold.occurrence(fixture.binding, "recurring", "2026-09").getOrThrow())
         assertEquals(reviewed.copy(fromCache = true), cold.occurrence(fixture.binding, "recurring", "current").getOrThrow())
         offline = false
-        response = response.copy(state = "fulfilled")
+        response = response.copy(state = "fulfilled", paymentReviewReason = null,
+            paidAmountCents = 2400, paidHomeCurrencyCode = "JPY", reservedAmountCents = 0)
         val resolved = reader.occurrence(fixture.binding, "recurring", "2026-09").getOrThrow()
+        assertEquals(null, resolved.value.paymentReviewReason)
         assertEquals(reviewed.fetchedAt, resolved.fetchedAt)
         offline = true
         assertEquals(resolved.copy(fromCache = true), cold.occurrence(fixture.binding, "recurring", "current").getOrThrow())

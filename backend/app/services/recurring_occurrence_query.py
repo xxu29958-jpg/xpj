@@ -14,7 +14,7 @@ from app.schemas._recurring_occurrence import RecurringOccurrenceResponse
 from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.money_projection_service import ProjectionGap, ProjectionReference
 from app.services.recurring_history_service import recorded_occurrence_definition
-from app.services.recurring_payment_query import eligible_payment_query
+from app.services.recurring_payment_query import eligible_payment_query, payment_review_reason_expression
 from app.services.recurring_service import recurring_monthly_total
 from app.services.spending_contract_service import (
     calendar_month_bounds,
@@ -104,10 +104,12 @@ def occurrence_response(
     db: Session, *, item: RecurringItem, period: date,
 ) -> RecurringOccurrenceResponse:
     row = get_occurrence(db, tenant_id=item.tenant_id, series_id=item.id, period=period)
-    expense = db.scalar(select(Expense).where(
+    linked_payment = db.execute(select(Expense, payment_review_reason_expression()).where(
         Expense.tenant_id == item.tenant_id,
         Expense.id == row.expense_id,
-    )) if row is not None and row.expense_id is not None else None
+    )).one_or_none() if row is not None and row.expense_id is not None else None
+    expense = linked_payment[0] if linked_payment else None
+    review_reason = linked_payment[1] if linked_payment else "unavailable"
     paid = fulfilled_periods(db, tenant_id=item.tenant_id, series_ids=[item.id]).get(item.id, set())
     valid = period in paid
     state = "fulfilled" if valid else "needs_review" if row and row.expense_id else "unfulfilled"
@@ -119,6 +121,7 @@ def occurrence_response(
         series_row_version=item.row_version,
         row_version=row.row_version if row else 0,
         state=state,
+        payment_review_reason=review_reason if state == "needs_review" else None,
         home_currency_code=item.home_currency_code,
         planned_amount_cents=baseline,
         reserved_amount_cents=baseline if item.status == "active" and not valid else 0,
