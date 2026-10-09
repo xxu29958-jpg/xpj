@@ -141,6 +141,17 @@ internal class FakeReviewActions(
     private val activeLedgerIdProvider: () -> String? = { null },
     val enrichmentTasks: FakePendingEnrichmentTaskReader = FakePendingEnrichmentTaskReader(),
 ) : PendingReviewActions {
+    private val originalInputStore = FakeExpenseFactActions()
+    var inputWriteFailure: Throwable? = null
+    var inputReadFailure: Throwable? = null
+    override val originalInputs = object : com.ticketbox.data.repository.ExpenseFactInputActions by originalInputStore {
+        override suspend fun loadPendingReviewInputs(binding: LogicalSessionBinding) = inputReadFailure?.let {
+            Result.failure<List<com.ticketbox.data.repository.ExpenseFactOriginalInput>>(it)
+        } ?: originalInputStore.loadPendingReviewInputs(binding)
+        override suspend fun saveFactInput(expected: com.ticketbox.data.repository.ExpenseFactOriginalInput?,
+            input: com.ticketbox.data.repository.ExpenseFactOriginalInput) = inputWriteFailure?.let { Result.failure(it) }
+                ?: originalInputStore.saveFactInput(expected, input)
+    }
     // Mutable so tests can simulate backend role demotion mid-flow (V11):
     // the existing canModifyLedger = false ctor arg still works for
     // "viewer from the start" scenarios.
@@ -266,20 +277,23 @@ internal class FakeReviewActions(
 
     override suspend fun saveExpenseAllowingOffline(
         expectedBinding: LogicalSessionBinding, id: Long, draft: ExpenseDraft, baseline: Expense,
+        originalInput: com.ticketbox.data.repository.ExpenseFactOriginalInput?,
     ): Result<ExpenseCommandAcceptance> {
         updateCalls += 1
         val projection = saveResponder?.invoke(expectedBinding, baseline, draft)
             ?: updateResponder?.invoke(id, draft) ?: error("save responder not set")
         return projection.map { admit(expectedBinding, it, listOf(PendingMutationType.PatchExpense)) }
+            .onSuccess { originalInput?.let { originalInputStore.discardFactInput(expectedBinding, it).getOrThrow() } }
     }
 
     override suspend fun saveAndConfirmExpense(
         expectedBinding: LogicalSessionBinding, expense: Expense, draft: ExpenseDraft,
+        originalInput: com.ticketbox.data.repository.ExpenseFactOriginalInput?,
     ): Result<ExpenseCommandAcceptance> {
         saveAndConfirmCalls += 1
         return requireNotNull(saveAndConfirmResponder)(expectedBinding, expense, draft).map {
             admit(expectedBinding, it, listOf(PendingMutationType.PatchExpense, PendingMutationType.ConfirmExpense))
-        }
+        }.onSuccess { originalInput?.let { originalInputStore.discardFactInput(expectedBinding, it).getOrThrow() } }
     }
 
     override suspend fun confirmExpenses(
@@ -300,9 +314,11 @@ internal class FakeReviewActions(
 
     override suspend fun rejectExpenseAllowingOffline(
         expectedBinding: LogicalSessionBinding, expense: Expense,
+        originalInput: com.ticketbox.data.repository.ExpenseFactOriginalInput?,
     ): Result<ExpenseCommandAcceptance> {
         rejectCalls += 1
         return Result.success(admit(expectedBinding, expense, listOf(PendingMutationType.RejectExpense)))
+            .onSuccess { originalInput?.let { originalInputStore.discardFactInput(expectedBinding, it).getOrThrow() } }
     }
 
     override suspend fun undoRejectExpense(
@@ -314,9 +330,11 @@ internal class FakeReviewActions(
 
     override suspend fun markNotDuplicateAllowingOffline(
         expectedBinding: LogicalSessionBinding, expense: Expense,
+        originalInput: com.ticketbox.data.repository.ExpenseFactOriginalInput?,
     ): Result<ExpenseCommandAcceptance> {
         markNotDuplicateCalls += 1
         return Result.success(admit(expectedBinding, expense, listOf(PendingMutationType.MarkNotDuplicate)))
+            .onSuccess { originalInput?.let { originalInputStore.discardFactInput(expectedBinding, it).getOrThrow() } }
     }
 
     override suspend fun categories(): Result<List<String>> = Result.success(categoryOptions)

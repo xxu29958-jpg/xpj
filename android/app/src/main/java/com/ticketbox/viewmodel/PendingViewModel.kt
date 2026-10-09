@@ -82,6 +82,12 @@ data class PendingUiState(
     val message: UiText? = null,
     val activeSheet: PendingSheet = PendingSheet.None,
     val categoryOptions: List<String> = emptyList(),
+    val reviewInputValues: PendingReviewValues = PendingReviewValues(),
+    val reviewInputReady: Boolean = true,
+    val reviewInputWriting: Boolean = false,
+    val reviewInputNeedsReview: Boolean = false,
+    val reviewInputError: UiText? = null,
+    val reviewTasks: List<PendingReviewTask> = emptyList(),
     val bulkConfirm: BulkConfirmRunState = BulkConfirmRunState(),
     /** Original accepted rejection receipt; the server decides whether Undo remains valid. */
     val undoableExpense: Expense? = null,
@@ -150,6 +156,8 @@ class PendingViewModel(
     internal val seenCommandCompletions = mutableSetOf<Long>()
     internal val ignoredRejectRows = mutableSetOf<Long>()
     internal val bulkCommandRows = mutableSetOf<Long>()
+    internal var reviewInputSession: ExpenseFactInputSession? = null
+    internal var reviewInputGeneration = 0L
 
     // 连续审阅（批量过堆积待确认票）本轮已「跳过」的票 id。快补 sheet 的
     // 保存并下一笔 / 跳过都朝列表后方推进，跳过的票留在 pending 列表里、不出队、
@@ -196,6 +204,8 @@ class PendingViewModel(
             enrichmentObserver = null
             cancelUndoTimer()
             reviewSkippedIds.clear()
+            reviewInputSession = null
+            reviewInputGeneration++
             pendingCacheSeeded = false
             _uiState.value = PendingUiState(
                 readOnly = isReadOnly(), upload = observation.toPendingUploadUiState(),
@@ -256,6 +266,7 @@ class PendingViewModel(
     }
 
     fun refresh(clearMessage: Boolean = true) {
+        refreshReviewInputs()
         // Issued synchronously (not inside the launch) so call order always
         // matches sequence order even if the coroutine body runs later.
         val binding = uploadObservation?.access?.binding ?: return
@@ -480,7 +491,7 @@ class PendingViewModel(
     }
 
     fun reject(expense: Expense) = submitPendingCommand(expense, R.string.pending_msg_reject_failed) { binding ->
-        repository.rejectExpenseAllowingOffline(binding, expense)
+        repository.rejectExpenseAllowingOffline(binding, expense, null)
     }
 
     fun undoReject() {
@@ -544,14 +555,14 @@ class PendingViewModel(
     fun ignoreDuplicate(expense: Expense) {
         dismissUndoable()
         submitPendingCommand(expense, R.string.pending_msg_ignore_duplicate_failed, offerUndo = false) { binding ->
-            repository.rejectExpenseAllowingOffline(binding, expense)
+            admitOriginalReviewInput(expense) { repository.rejectExpenseAllowingOffline(binding, expense, it) }
         }
     }
 
     fun markNotDuplicate(expense: Expense) {
         dismissUndoable()
         submitPendingCommand(expense, R.string.pending_msg_keep_failed) { binding ->
-            repository.markNotDuplicateAllowingOffline(binding, expense)
+            admitOriginalReviewInput(expense) { repository.markNotDuplicateAllowingOffline(binding, expense, it) }
         }
     }
 

@@ -2,6 +2,8 @@ package com.ticketbox.data.repository
 
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -33,6 +35,8 @@ import com.ticketbox.viewmodel.confirmReadyExpenses
 import com.ticketbox.viewmodel.openQuickCategory
 import com.ticketbox.viewmodel.saveQuickCategory
 import com.ticketbox.viewmodel.closeSheet
+import com.ticketbox.viewmodel.changeReviewInput
+import com.ticketbox.viewmodel.reviewCurrentInputBasis
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
@@ -48,7 +52,7 @@ import org.junit.Test
 class PendingExpenseAdmissionRoomTest {
     @get:Rule val compose = createComposeRule()
     private var editor: ExpenseEditViewModel? = null
-    private var pending: PendingViewModel? = null
+    private var pending by mutableStateOf<PendingViewModel?>(null)
     @Volatile private lateinit var current: ExpenseDto
     private var secondPending: ExpenseDto? = null
     @Volatile private var holdTransport = false
@@ -85,13 +89,14 @@ class PendingExpenseAdmissionRoomTest {
     @Test
     fun quickCategoryKeepsTheOpenedVersionAndSelectedValueInRoomAfterAPeerRefresh() = runBlocking {
         current = fixture.network.current.copy(status = "pending", confirmedAt = null, category = "")
-        val repository = fixture.reopen().expenseRepository
+        var repository = fixture.reopen().expenseRepository
         lateinit var vm: PendingViewModel
         compose.runOnIdle { vm = PendingViewModel(repository, fixture.uploadIntents, expenseReader = repository); pending = vm }
         compose.waitUntil(10_000) { vm.uiState.value.items.size == 1 && !vm.uiState.value.readOnly }
         val original = vm.uiState.value.items.single()
-        showQuickCategory(vm)
+        showQuickCategory()
         compose.runOnIdle { vm.openQuickCategory(original) }
+        compose.waitUntil(10_000) { vm.uiState.value.reviewInputReady }
         compose.waitForIdle()
         saveConsumerArtPreview("quick-category-context", InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot())
         compose.onNode(hasSetTextAction()).performTextInput("购物")
@@ -99,6 +104,27 @@ class PendingExpenseAdmissionRoomTest {
         compose.runOnIdle { vm.refresh() }
         compose.waitUntil(10_000) { vm.uiState.value.items.single().rowVersion == current.rowVersion }
         compose.onNode(hasSetTextAction() and hasText("购物")).assertExists()
+        compose.runOnIdle { vm.closeSheet() }
+        compose.waitUntil(10_000) { vm.uiState.value.activeSheet == com.ticketbox.viewmodel.PendingSheet.None }
+        compose.runOnIdle { vm.openQuickCategory(vm.uiState.value.items.single()) }
+        compose.waitUntil(10_000) { vm.uiState.value.reviewInputReady }
+        compose.waitForIdle()
+        compose.onNode(hasSetTextAction() and hasText("购物")).assertExists()
+        assertEquals(original.rowVersion, (vm.uiState.value.activeSheet as com.ticketbox.viewmodel.PendingSheet.QuickCategory).expense.rowVersion)
+        compose.runOnIdle { vm.closeSheet() }
+        compose.waitUntil(10_000) { vm.uiState.value.activeSheet == com.ticketbox.viewmodel.PendingSheet.None }
+        val binding = requireNotNull(repository.captureDeferredLedgerBinding())
+        val retained = repository.loadPendingReviewInputs(binding).getOrThrow().single()
+        compose.runOnIdle { vm.viewModelScope.cancel(); pending = null }
+        compose.waitForIdle()
+        repository = fixture.reopen().expenseRepository
+        compose.runOnIdle { vm = PendingViewModel(repository, fixture.uploadIntents, expenseReader = repository); pending = vm }
+        compose.waitUntil(10_000) { vm.uiState.value.reviewTasks.size == 1 && vm.uiState.value.items.size == 1 }
+        assertEquals(retained, vm.uiState.value.reviewTasks.single().original)
+        compose.runOnIdle { vm.openQuickCategory(vm.uiState.value.items.single()) }
+        compose.waitUntil(10_000) { vm.uiState.value.reviewInputReady }
+        compose.onNode(hasSetTextAction() and hasText("购物")).assertExists()
+        assertEquals(original.rowVersion, (vm.uiState.value.activeSheet as com.ticketbox.viewmodel.PendingSheet.QuickCategory).expense.rowVersion)
         androidx.test.espresso.Espresso.closeSoftKeyboard()
         compose.waitForIdle()
         val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -117,24 +143,31 @@ class PendingExpenseAdmissionRoomTest {
         assertEquals(original.rowVersion + 1, current.rowVersion)
         assertEquals(original.amountCents, current.amountCents)
         assertEquals("pending", current.status)
+        assertTrue(repository.loadPendingReviewInputs(binding).getOrThrow().isEmpty())
         assertTrue("Only the existing worker may deliver this original intent", requests.isEmpty())
         compose.runOnIdle { vm.viewModelScope.cancel(); pending = null }
         fixture.reopen()
         assertEquals(originals, fixture.stored())
     }
 
-    private fun showQuickCategory(vm: PendingViewModel) {
-        compose.setContent { TicketboxTheme(skin = if (InstrumentationRegistry.getArguments().getString("captureSkin") == "midnight")
+    private fun showQuickCategory() {
+        compose.setContent {
+            val vm = pending ?: return@setContent
+            TicketboxTheme(skin = if (InstrumentationRegistry.getArguments().getString("captureSkin") == "midnight")
             AppSkin.Midnight else AppSkin.Paper) {
             val state by vm.uiState.collectAsState()
             PendingReviewSheetHost(
                 state = PendingReviewSheetHostState(state.activeSheet, state.categoryOptions,
-                    state.actionInProgressIds, 0, 0, 0, false, 0, 0, state.reviewRemaining, state.message?.asString()),
+                    state.actionInProgressIds, 0, 0, 0, false, 0, 0, state.reviewRemaining, state.message?.asString(),
+                    inputValues = state.reviewInputValues, inputReady = state.reviewInputReady, inputWriting = state.reviewInputWriting,
+                    inputNeedsReview = state.reviewInputNeedsReview, inputError = state.reviewInputError?.asString(),
+                    inputSaved = state.reviewTasks.isNotEmpty()),
                 actions = PendingReviewSheetHostActions(
                     onSaveQuickCategory = vm::saveQuickCategory, onSaveQuickMerchant = { _, _ -> },
                     onSaveAmountDraft = { _, _ -> }, onSaveAmountAndConfirm = { _, _ -> },
                     onSkipReviewField = {}, onKeepBoth = {}, onIgnoreCurrent = {},
-                    onConfirmReady = {}, onDismiss = vm::closeSheet),
+                    onConfirmReady = {}, onDismiss = vm::closeSheet, onReviewInputChange = vm::changeReviewInput,
+                    onReviewCurrentBasis = vm::reviewCurrentInputBasis),
             )
         } }
     }

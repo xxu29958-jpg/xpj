@@ -73,8 +73,11 @@ class FinancialJourney:
         for name, value in values.items():
             form.locator(f'[name="{name}"]').fill(value)
         if split:
-            form.locator('[name="split_member_id"]').first.locator("xpath=ancestor::details").locator("summary").click()
-            form.locator('[name="split_member_id"]').first.select_option(index=1)
+            member = form.locator('[name="split_member_id"]').first
+            for disclosure in member.locator("xpath=ancestor::details").all():
+                if disclosure.get_attribute("open") is None:
+                    disclosure.locator(":scope > summary").click()
+            member.select_option(index=1)
             form.locator('[name="split_amount_yuan"]').first.fill("6.00")
             form.locator('[name="split_note"]').first.fill("SplitKeep")
         form.locator("[data-correction-submit]").click()

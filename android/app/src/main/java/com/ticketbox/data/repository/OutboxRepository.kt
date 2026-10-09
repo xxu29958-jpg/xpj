@@ -405,11 +405,12 @@ class OutboxRepository private constructor(
     internal suspend fun enqueueExpenseBatch(
         boundRequest: BoundLedgerRequest,
         intents: List<PendingMutationIntent>,
+        afterPersisted: suspend () -> Unit = {},
         validateTargetRows: (List<OutboxRow>) -> Unit,
     ): List<Long> {
         val ids = withActiveBinding(boundRequest) { binding ->
             binding.requireReadyForEnqueue()
-            dao.insertExpenseCommands(binding, intents, nowIso(), validateTargetRows)
+            dao.insertExpenseCommands(binding, intents, nowIso(), validateTargetRows, afterPersisted)
         }
         schedulePending()
         return ids
@@ -950,6 +951,7 @@ private suspend fun PendingMutationDao.insertExpenseCommands(
     intents: List<PendingMutationIntent>,
     createdAt: String,
     validateTargetRows: (List<OutboxRow>) -> Unit,
+    afterPersisted: suspend () -> Unit,
 ): List<Long> {
     require(intents.isNotEmpty() && intents.all { it.type in PENDING_EXPENSE_COMMAND_TYPES })
     for (targetId in intents.map { it.targetId }.distinct()) {
@@ -958,5 +960,5 @@ private suspend fun PendingMutationDao.insertExpenseCommands(
                 PendingMutationStatus.Failed, PendingMutationStatus.Done).map { it.wireValue }).map { it.toDomain() }
         validateTargetRows(expenseAdmissionRows(binding, targetId, targetRows))
     }
-    return insertBatch(intents.map { it.toEntity(binding, createdAt) })
+    return insertBatchAndPublish(intents.map { it.toEntity(binding, createdAt) }, afterPersisted)
 }

@@ -8,14 +8,6 @@ import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-fun PendingViewModel.setDuplicateDecision(confirmed: Boolean) {
-    _uiState.update { state ->
-        val sheet = state.activeSheet as? PendingSheet.Duplicate
-        if (sheet == null || state.readOnly || sheet.referenceLoading || sheet.expense.id in state.actionInProgressIds) state
-        else state.copy(activeSheet = sheet.copy(keepBothConfirmed = confirmed))
-    }
-}
-
 /** Comparison is a bound query. The open expense remains the original command basis. */
 fun PendingViewModel.loadDuplicateReference() {
     val sheet = _uiState.value.activeSheet as? PendingSheet.Duplicate ?: return

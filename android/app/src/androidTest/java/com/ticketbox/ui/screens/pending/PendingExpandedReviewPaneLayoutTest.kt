@@ -40,6 +40,7 @@ class PendingExpandedReviewPaneLayoutTest {
     @Test
     fun expandedReviewPaneKeepsTheOriginalJpyDraftActionAboveTheKeyboard() {
         val drafts = mutableListOf<Pair<Long, Long>>()
+        val input = androidx.compose.runtime.mutableStateOf(com.ticketbox.viewmodel.PendingReviewValues())
         composeRule.setContent {
             TicketboxTheme(skin = AppSkin.Default) {
                 Box(modifier = Modifier.width(420.dp).height(760.dp)) {
@@ -47,8 +48,8 @@ class PendingExpandedReviewPaneLayoutTest {
                         content = PendingSupportingPaneContent.Review(
                             PendingSheet.MissingAmount(missingAmountExpense()),
                         ),
-                        reviewState = reviewState(PendingSheet.MissingAmount(missingAmountExpense())),
-                        reviewActions = reviewActions { id, amount -> drafts += id to amount },
+                        reviewState = reviewState(PendingSheet.MissingAmount(missingAmountExpense())).copy(inputValues = input.value),
+                        reviewActions = reviewActions { id, amount -> drafts += id to amount }.copy(onReviewInputChange = { input.value = it }),
                         triageContent = {},
                     )
                 }
@@ -89,6 +90,7 @@ private fun reviewActions(saveDraft: (Long, Long) -> Unit) = PendingReviewSheetH
     onIgnoreCurrent = {},
     onConfirmReady = {},
     onDismiss = {},
+    onReviewInputChange = {},
 )
 
 private fun missingAmountExpense(): Expense = Expense(

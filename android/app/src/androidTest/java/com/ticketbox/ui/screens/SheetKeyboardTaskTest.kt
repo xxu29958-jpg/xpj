@@ -30,8 +30,9 @@ import com.ticketbox.ui.screens.expense.ItemsEditorSheetState
 import com.ticketbox.ui.screens.ledger.LedgerBulkEditSheet
 import com.ticketbox.ui.screens.ledger.LedgerBulkEditSheetActions
 import com.ticketbox.ui.screens.ledger.LedgerBulkEditSheetState
-import com.ticketbox.ui.screens.pending.sheets.QuickMerchantSheetContent
-import com.ticketbox.ui.screens.pending.sheets.ReviewSheetChrome
+import com.ticketbox.ui.screens.pending.PendingReviewSheetHost
+import com.ticketbox.ui.screens.pending.PendingReviewSheetHostState
+import com.ticketbox.ui.screens.pending.PendingReviewSheetHostActions
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.EditableItem
 import org.junit.Assert.assertEquals
@@ -49,29 +50,32 @@ class SheetKeyboardTaskTest {
     @Test fun merchantRetryKeepsItsInputAndOriginalSaveCommandAboveTheKeyboard() {
         val sent = mutableListOf<String>()
         var saving by mutableStateOf(false)
+        var originalInput by mutableStateOf(com.ticketbox.viewmodel.PendingReviewValues())
         val failure = "刚才没有保存，请保留原输入再试。"
         compose.setContent {
             TicketboxTheme(skin = AppSkin.Midnight) {
-                ModalBottomSheet(onDismissRequest = {},
-                    sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-                    QuickMerchantSheetContent(
-                        expense = pendingExpense(),
-                        chrome = ReviewSheetChrome(saving, 31, failure, onSkip = {}),
-                        onSave = { sent += it; saving = true },
-                        onDismiss = {},
-                    )
-                }
+                PendingReviewSheetHost(
+                    state = PendingReviewSheetHostState(com.ticketbox.viewmodel.PendingSheet.QuickMerchant(pendingExpense()),
+                        emptyList(), if (saving) setOf(1L) else emptySet(), 0, 0, 0, false, 0, 0, 31, failure,
+                        inputValues = originalInput, inputSaved = originalInput.value != null),
+                    actions = PendingReviewSheetHostActions(onSaveQuickCategory = { _, _ -> },
+                        onSaveQuickMerchant = { _, value -> sent += value; saving = true },
+                        onSaveAmountDraft = { _, _ -> }, onSaveAmountAndConfirm = { _, _ -> },
+                        onSkipReviewField = {}, onKeepBoth = {}, onIgnoreCurrent = {}, onConfirmReady = {},
+                        onDismiss = {}, onReviewInputChange = { originalInput = it }),
+                )
             }
         }
         compose.onNode(hasSetTextAction()).performTouchInput { click() }
             .performTextReplacement("  小满便利店  ")
         val save = text(R.string.pending_quick_merchant_save_button)
         keyboard.assertActionAboveKeyboard(compose, save, "quick-merchant-keyboard-retry")
+        compose.onNode(hasSetTextAction()).assertIsDisplayed()
         compose.onNodeWithText(failure).assertIsDisplayed()
         compose.onNodeWithText(save).performTouchInput { click() }
         compose.runOnIdle { assertEquals(listOf("小满便利店"), sent) }
         compose.onNodeWithText("  小满便利店  ").assertIsNotEnabled()
-        compose.onNodeWithText(text(R.string.common_cancel)).assertIsNotEnabled()
+        compose.onNodeWithText(text(R.string.expense_fact_input_close)).assertIsNotEnabled()
     }
 
     @Test fun nestedItemEditingKeepsSaveVisibleAndPreservesUntouchedRows() {

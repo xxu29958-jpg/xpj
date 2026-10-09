@@ -66,6 +66,7 @@ internal class PendingViewModelReviewSheetAndStateTest : PendingViewModelReviewT
         vm.openQuickCategory(target)
         assertEquals(PendingSheet.QuickCategory(target), vm.uiState.value.activeSheet)
         vm.closeSheet()
+        advanceUntilIdle()
         assertEquals(PendingSheet.None, vm.uiState.value.activeSheet)
 
         vm.openBulkConfirm()

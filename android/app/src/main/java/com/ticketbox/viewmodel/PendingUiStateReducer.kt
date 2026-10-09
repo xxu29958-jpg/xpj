@@ -26,7 +26,8 @@ internal object PendingUiStateReducer {
         return current.copy(
             items = expenses,
             thumbnails = current.thumbnails.filterKeys { id -> id in activeIds },
-            activeSheet = reconcileActiveSheet(current.activeSheet, expenses),
+            activeSheet = if (current.reviewTasks.any { it.expense.id == current.activeSheet.reviewExpense()?.id })
+                current.activeSheet else reconcileActiveSheet(current.activeSheet, expenses),
             readOnly = readOnly,
             showingCachedSnapshot = false,
             listLoadState = PendingListLoadState.Loaded,

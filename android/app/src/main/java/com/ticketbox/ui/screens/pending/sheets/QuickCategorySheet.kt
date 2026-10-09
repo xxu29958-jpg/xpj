@@ -52,8 +52,8 @@ internal fun QuickCategorySheetContent(
 ) {
     val saving = chrome.saving
     val initial = quickCategoryInitialSelection(expense.serverCategory, expense.category)
-    var selected by rememberSaveable(expense.id) { mutableStateOf(initial) }
-    var custom by rememberSaveable(expense.id) { mutableStateOf("") }
+    val selected = chrome.input.value ?: initial
+    val custom = chrome.input.custom
 
     ReviewSheetScaffold(
         title = stringResource(R.string.quick_category_sheet_title),
@@ -71,7 +71,7 @@ internal fun QuickCategorySheetContent(
                     },
                 ),
                 secondary = AppSheetAction(
-                    text = stringResource(R.string.common_cancel),
+                    text = stringResource(R.string.expense_fact_input_close),
                     enabled = !saving,
                     onClick = onDismiss,
                 ),
@@ -79,20 +79,21 @@ internal fun QuickCategorySheetContent(
         },
     ) {
         ReviewExpenseSummary(expense)
+        Text(stringResource(R.string.pending_review_current_category, expense.category), style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(stringResource(R.string.pending_category_choose), style = MaterialTheme.typography.titleMedium)
         QuickCategoryOptions(
             options = options,
             selected = selected.takeIf { custom.isBlank() }.orEmpty(),
             enabled = !saving,
             onSelect = {
-                selected = it
-                custom = ""
+                chrome.onInputChange(chrome.input.copy(value = it, custom = ""))
             },
         )
         QuickCategoryCustomInput(
             custom = custom,
             saving = saving,
-            onCustomChange = { custom = it.take(20) },
+            onCustomChange = { chrome.onInputChange(chrome.input.copy(custom = it.take(20))) },
         )
     }
 }

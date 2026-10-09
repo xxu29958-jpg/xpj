@@ -24,6 +24,10 @@ interface ExpenseFactInputDao {
     @Query("SELECT * FROM expense_fact_inputs WHERE ownerKey = :owner AND ledgerId = :ledger AND expenseId = :expense")
     suspend fun factInputs(owner: String, ledger: String, expense: Long): List<ExpenseFactInputEntity>
 
+    @Query("SELECT * FROM expense_fact_inputs WHERE ownerKey = :owner AND ledgerId = :ledger " +
+        "AND formKey IN ('pending_category', 'pending_merchant', 'pending_amount', 'pending_duplicate')")
+    suspend fun pendingReviewInputs(owner: String, ledger: String): List<ExpenseFactInputEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun putFactInput(input: ExpenseFactInputEntity)
 

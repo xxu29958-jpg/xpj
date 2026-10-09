@@ -31,26 +31,12 @@ internal fun DuplicateConfirmSheetContent(
     actions: PendingReviewSheetHostActions,
 ) {
     val expense = sheet.expense
-    val busy = expense.id in state.actionInProgressIds
+    val busy = expense.id in state.actionInProgressIds || !state.inputReady || state.inputNeedsReview
     ReviewSheetScaffold(
         title = stringResource(R.string.pending_duplicate_sheet_title),
         subtitle = stringResource(R.string.pending_duplicate_sheet_hint),
         actions = {
-            if (state.readOnly) Text(stringResource(R.string.common_readonly_ledger))
-            else AppSheetActionFeedback(
-                primary = AppSheetAction(
-                    text = stringResource(when {
-                        busy -> R.string.pending_duplicate_sheet_processing
-                        sheet.reference != null -> R.string.pending_duplicate_sheet_keep_both
-                        else -> R.string.pending_duplicate_keep_current
-                    }),
-                    enabled = !busy && sheet.keepBothConfirmed && !sheet.referenceLoading,
-                    onClick = { actions.onKeepBoth(expense) },
-                ),
-                state = AppSheetActionFeedbackState(statusMessage = state.statusMessage),
-            )
-            if (!state.readOnly) TextButton(onClick = { actions.onIgnoreCurrent(expense) }, enabled = !busy,
-                modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.pending_duplicate_sheet_ignore_current)) }
+            DuplicateDecisionActions(sheet, state, actions, busy)
         },
     ) {
         AppAdaptiveMetricGrid(itemCount = 2) { index, modifier ->
@@ -77,6 +63,7 @@ internal fun DuplicateConfirmSheetContent(
                 Text(stringResource(R.string.pending_duplicate_originals))
             }
         }
+        com.ticketbox.ui.screens.pending.PendingReviewInputStatus(state, actions)
     }
 }
 
@@ -99,4 +86,25 @@ private fun DuplicateReference(sheet: PendingSheet.Duplicate, actions: PendingRe
             Text(stringResource(R.string.common_retry))
         }
     }
+}
+
+@Composable
+private fun DuplicateDecisionActions(sheet: PendingSheet.Duplicate, state: PendingReviewSheetHostState,
+    actions: PendingReviewSheetHostActions, busy: Boolean) {
+    val expense = sheet.expense
+    if (state.readOnly) Text(stringResource(R.string.common_readonly_ledger))
+    else AppSheetActionFeedback(
+        primary = AppSheetAction(
+            text = stringResource(when {
+                busy -> R.string.pending_duplicate_sheet_processing
+                sheet.reference != null -> R.string.pending_duplicate_sheet_keep_both
+                else -> R.string.pending_duplicate_keep_current
+            }),
+            enabled = !busy && sheet.keepBothConfirmed && !sheet.referenceLoading,
+            onClick = { actions.onKeepBoth(expense) },
+        ),
+        state = AppSheetActionFeedbackState(statusMessage = state.statusMessage),
+    )
+    if (!state.readOnly) TextButton(onClick = { actions.onIgnoreCurrent(expense) }, enabled = !busy,
+        modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.pending_duplicate_sheet_ignore_current)) }
 }

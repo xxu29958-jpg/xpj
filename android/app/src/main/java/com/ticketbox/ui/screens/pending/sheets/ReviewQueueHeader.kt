@@ -31,6 +31,9 @@ internal data class ReviewSheetChrome(
     val statusMessage: String?,
     val statusTone: MessageTone = MessageTone.Danger,
     val onSkip: () -> Unit,
+    val input: com.ticketbox.viewmodel.PendingReviewValues,
+    val onInputChange: (com.ticketbox.viewmodel.PendingReviewValues) -> Unit,
+    val inputStatus: @Composable () -> Unit = {},
 )
 
 /**

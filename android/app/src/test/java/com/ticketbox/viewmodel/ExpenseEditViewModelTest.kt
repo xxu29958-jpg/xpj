@@ -785,6 +785,7 @@ internal class FakeExpenseEditActions : ExpenseEditActions {
 
     override suspend fun saveExpenseAllowingOffline(
         expectedBinding: LogicalSessionBinding, id: Long, draft: ExpenseDraft, baseline: Expense,
+        originalInput: com.ticketbox.data.repository.ExpenseFactOriginalInput?,
     ): Result<ExpenseCommandAcceptance> {
         saveCalls += 1
         submittedBindings += expectedBinding
@@ -794,6 +795,7 @@ internal class FakeExpenseEditActions : ExpenseEditActions {
 
     override suspend fun saveAndConfirmExpense(
         expectedBinding: LogicalSessionBinding, expense: Expense, draft: ExpenseDraft,
+        originalInput: com.ticketbox.data.repository.ExpenseFactOriginalInput?,
     ): Result<ExpenseCommandAcceptance> {
         saveAndConfirmCalls += 1
         submittedBindings += expectedBinding
@@ -810,6 +812,7 @@ internal class FakeExpenseEditActions : ExpenseEditActions {
 
     override suspend fun rejectExpenseAllowingOffline(
         expectedBinding: LogicalSessionBinding, expense: Expense,
+        originalInput: com.ticketbox.data.repository.ExpenseFactOriginalInput?,
     ): Result<ExpenseCommandAcceptance> = error("reject not exercised in these tests")
 
     override suspend fun retryOcrAllowingOffline(
@@ -822,6 +825,7 @@ internal class FakeExpenseEditActions : ExpenseEditActions {
 
     override suspend fun markNotDuplicateAllowingOffline(
         expectedBinding: LogicalSessionBinding, expense: Expense,
+        originalInput: com.ticketbox.data.repository.ExpenseFactOriginalInput?,
     ): Result<ExpenseCommandAcceptance> = error("markNotDuplicate not exercised in these tests")
 
     override suspend fun fetchExpenseItems(id: Long): Result<ExpenseItems> {

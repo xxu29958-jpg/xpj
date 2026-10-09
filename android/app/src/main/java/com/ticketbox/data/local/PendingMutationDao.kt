@@ -46,6 +46,13 @@ interface PendingMutationDao {
         return id
     }
 
+    @Transaction
+    suspend fun insertBatchAndPublish(rows: List<PendingMutationEntity>, publish: suspend () -> Unit): List<Long> {
+        val ids = insertBatch(rows)
+        publish()
+        return ids
+    }
+
     @Query(
         "SELECT * FROM pending_mutations WHERE serverUrl = :serverUrl AND ownerKey = :ownerKey " +
             "AND ledgerId = :ledgerId AND type = :type AND idempotencyKey = :idempotencyKey ORDER BY id",

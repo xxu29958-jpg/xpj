@@ -46,6 +46,12 @@ internal data class PendingReviewSheetHostState(
     val statusMessage: String?,
     val readOnly: Boolean = false,
     val thumbnails: Map<Long, ProtectedImage> = emptyMap(),
+    val inputValues: com.ticketbox.viewmodel.PendingReviewValues = com.ticketbox.viewmodel.PendingReviewValues(),
+    val inputReady: Boolean = true,
+    val inputWriting: Boolean = false,
+    val inputNeedsReview: Boolean = false,
+    val inputError: String? = null,
+    val inputSaved: Boolean = false,
 )
 
 data class PendingReviewSheetHostActions(
@@ -62,6 +68,11 @@ data class PendingReviewSheetHostActions(
     val onCompareOriginals: (List<Long>) -> Unit = {},
     val onRetryDuplicateReference: () -> Unit = {},
     val onDuplicateDecisionChange: (Boolean) -> Unit = {},
+    val onReviewInputChange: (com.ticketbox.viewmodel.PendingReviewValues) -> Unit,
+    val onRetryReviewInput: () -> Unit = {},
+    val onReviewCurrentBasis: () -> Unit = {},
+    val onResumeReviewInput: (com.ticketbox.viewmodel.PendingReviewTask) -> Unit = {},
+    val onDiscardReviewInput: () -> Unit = {},
 )
 
 /**
@@ -165,10 +176,13 @@ private fun PendingReviewSheetContent(
 ) {
     // Quick-fix sheets share the same review chrome and saving-state rule.
     fun chromeFor(expenseId: Long) = ReviewSheetChrome(
-        saving = expenseId in state.actionInProgressIds,
+        saving = expenseId in state.actionInProgressIds || !state.inputReady || state.inputNeedsReview || state.readOnly,
         remaining = state.reviewRemaining,
         statusMessage = state.statusMessage,
         onSkip = actions.onSkipReviewField,
+        input = state.inputValues,
+        onInputChange = actions.onReviewInputChange,
+        inputStatus = { PendingReviewInputStatus(state, actions) },
     )
     when (sheet) {
         is PendingSheet.None -> Unit

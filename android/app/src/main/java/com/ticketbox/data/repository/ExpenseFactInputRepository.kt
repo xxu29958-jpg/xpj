@@ -13,6 +13,7 @@ data class ExpenseFactOriginalInput(
 )
 
 interface ExpenseFactInputActions {
+    suspend fun loadPendingReviewInputs(binding: LogicalSessionBinding): Result<List<ExpenseFactOriginalInput>>
     suspend fun loadFactInputs(binding: LogicalSessionBinding, id: Long): Result<List<ExpenseFactOriginalInput>>
     suspend fun saveFactInput(expected: ExpenseFactOriginalInput?, input: ExpenseFactOriginalInput): Result<Unit>
     suspend fun discardFactInput(binding: LogicalSessionBinding, input: ExpenseFactOriginalInput): Result<Unit>
@@ -24,12 +25,18 @@ internal class ExpenseFactInputRepository(private val core: ExpenseRepositoryCor
     override suspend fun loadFactInputs(binding: LogicalSessionBinding, id: Long) = core.errorHandler.safeCall {
         val bound = core.ledgerRequestGuard.bindExact(binding)
         core.offlineMutations.outbox.withActiveBinding(bound) {
-            core.expenseDao.factInputs(binding.ownerKey, binding.ledgerId, id).map { row ->
-                ExpenseFactOriginalInput(requireNotNull(bindingAdapter.fromJson(row.bindingJson)), row.expenseId,
-                    row.formKey, row.originalKey, row.inputJson)
-            }
+            core.expenseDao.factInputs(binding.ownerKey, binding.ledgerId, id).map(::original)
         }
     }
+
+    override suspend fun loadPendingReviewInputs(binding: LogicalSessionBinding) = core.errorHandler.safeCall {
+        core.offlineMutations.outbox.withActiveBinding(core.ledgerRequestGuard.bindExact(binding)) {
+            core.expenseDao.pendingReviewInputs(binding.ownerKey, binding.ledgerId).map(::original)
+        }
+    }
+
+    private fun original(row: ExpenseFactInputEntity) = ExpenseFactOriginalInput(
+        requireNotNull(bindingAdapter.fromJson(row.bindingJson)), row.expenseId, row.formKey, row.originalKey, row.inputJson)
 
     override suspend fun saveFactInput(expected: ExpenseFactOriginalInput?, input: ExpenseFactOriginalInput) = core.errorHandler.safeCall {
         require(input.expenseId > 0 && input.formKey.isNotBlank() && input.originalKey.isNotBlank())

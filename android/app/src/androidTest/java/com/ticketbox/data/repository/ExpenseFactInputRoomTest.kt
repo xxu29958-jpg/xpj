@@ -2,6 +2,9 @@ package com.ticketbox.data.repository
 
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.domain.model.ExpenseCorrectionDraft
+import com.ticketbox.domain.model.ExpenseDraft
+import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.viewmodel.PendingReviewValues
 import com.ticketbox.viewmodel.ExpenseFactInputCodec
 import com.ticketbox.viewmodel.ExpenseFactInputDraft
 import com.ticketbox.viewmodel.initialCorrectionFormState
@@ -89,5 +92,41 @@ class ExpenseFactInputRoomTest {
             reason = "  尚未完成的原稿  ", amountText = " 0012.00 ", note = "原始说明", timeFormJson = "{\"raw\":true}")
         return ExpenseFactOriginalInput(binding, expense.id, "correction", "original-input-key",
             ExpenseFactInputCodec.encode(ExpenseFactInputDraft(expense, correction = form.originalValues())))
+    }
+
+    @Test fun pendingAmountRequiresAdoptionAndCommitsBothCommandsTogetherWithOriginalConsumption() = runBlocking {
+        fixture.network.current = fixture.network.current.copy(status = "pending", confirmedAt = null)
+        val repository = fixture.reopen().expenseRepository
+        val expense = fixture.network.current.toDomain()
+        val original = input(repository).copy(formKey = "pending_amount", json = ExpenseFactInputCodec.encode(
+            ExpenseFactInputDraft(expense, pendingReview = PendingReviewValues(value = " 0043.21 "))))
+        repository.saveFactInput(null, original).getOrThrow()
+        fixture.renewBinding()
+        val binding = requireNotNull(repository.captureDeferredLedgerBinding())
+        assertEquals(original, repository.loadPendingReviewInputs(binding).getOrThrow().single())
+        val draft = ExpenseDraft(amountCents = null, merchant = null, category = null, note = null,
+            expenseTime = null, tags = null, valueScore = null, regretScore = null,
+            originalCurrencyCode = CurrencyCode.CNY, originalAmountMinor = 4321)
+        assertTrue(repository.saveAndConfirmExpense(binding, expense, draft, original).isFailure)
+        assertTrue(fixture.stored().isEmpty())
+        val adopted = original.copy(binding = binding, originalKey = "explicitly-reviewed-pending-input")
+        repository.saveFactInput(original, adopted).getOrThrow()
+        assertTrue(repository.saveFactInput(original, original.copy(json = original.json + " ")).isFailure)
+        val changed = adopted.copy(json = adopted.json + " ")
+        repository.saveFactInput(adopted, changed).getOrThrow()
+        assertTrue(repository.saveAndConfirmExpense(binding, expense, draft, adopted).isFailure)
+        assertTrue("A stale input must roll back the whole two-command insert", fixture.stored().isEmpty())
+        assertEquals(0, fixture.schedules)
+        assertEquals(changed, repository.loadPendingReviewInputs(binding).getOrThrow().single())
+        repository.saveAndConfirmExpense(binding, expense, draft, changed).getOrThrow()
+        val cold = fixture.reopen().expenseRepository
+        val rows = fixture.stored()
+        assertEquals(listOf("patch_expense", "confirm_expense"), rows.map { it["type"] })
+        assertEquals(listOf("7", "7"), rows.map { it["expectedRowVersion"] })
+        assertEquals(rows.map { java.util.UUID.nameUUIDFromBytes("${changed.originalKey}:${it["type"]}".toByteArray()).toString() },
+            rows.map { it["idempotencyKey"] })
+        assertTrue(cold.loadPendingReviewInputs(binding).getOrThrow().isEmpty())
+        assertEquals(1, fixture.schedules)
+        assertTrue(fixture.network.calls.isEmpty())
     }
 }

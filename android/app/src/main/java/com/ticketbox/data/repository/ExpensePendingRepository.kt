@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.map
 import java.util.UUID
 
 internal class ExpensePendingRepository(private val core: ExpenseRepositoryCore) : PendingReviewActions {
+    override val originalInputs = ExpenseFactInputRepository(core)
     private val pendingSyncCoordinator = PendingSyncCoordinator()
     private val outbox get() = core.offlineMutations.outbox
 
@@ -48,17 +49,19 @@ internal class ExpensePendingRepository(private val core: ExpenseRepositoryCore)
 
     override suspend fun saveExpenseAllowingOffline(
         expectedBinding: LogicalSessionBinding, id: Long, draft: ExpenseDraft, baseline: Expense,
+        originalInput: com.ticketbox.data.repository.ExpenseFactOriginalInput?,
     ): Result<ExpenseCommandAcceptance> = core.errorHandler.safeCall {
         require(id == baseline.id) { "账单已变化，请重新打开。" }
         ExpenseCommandAcceptance(projectOptimisticExpense(baseline, draft),
-            admit(expectedBinding, listOf(patchIntent(baseline, draft))))
+            admit(expectedBinding, listOf(patchIntent(baseline, draft)), originalInput))
     }
 
     override suspend fun saveAndConfirmExpense(
         expectedBinding: LogicalSessionBinding, expense: Expense, draft: ExpenseDraft,
+        originalInput: com.ticketbox.data.repository.ExpenseFactOriginalInput?,
     ): Result<ExpenseCommandAcceptance> = core.errorHandler.safeCall {
         ExpenseCommandAcceptance(projectOptimisticExpense(expense, draft), admit(expectedBinding,
-            listOf(patchIntent(expense, draft), stateIntent(PendingMutationType.ConfirmExpense, expense))))
+            listOf(patchIntent(expense, draft), stateIntent(PendingMutationType.ConfirmExpense, expense)), originalInput))
     }
 
     override suspend fun confirmExpenses(
@@ -77,11 +80,13 @@ internal class ExpensePendingRepository(private val core: ExpenseRepositoryCore)
 
     override suspend fun rejectExpenseAllowingOffline(
         expectedBinding: LogicalSessionBinding, expense: Expense,
-    ): Result<ExpenseCommandAcceptance> = acceptState(expectedBinding, expense, PendingMutationType.RejectExpense)
+        originalInput: com.ticketbox.data.repository.ExpenseFactOriginalInput?,
+    ): Result<ExpenseCommandAcceptance> = acceptState(expectedBinding, expense, PendingMutationType.RejectExpense, originalInput)
 
     override suspend fun markNotDuplicateAllowingOffline(
         expectedBinding: LogicalSessionBinding, expense: Expense,
-    ): Result<ExpenseCommandAcceptance> = acceptState(expectedBinding, expense, PendingMutationType.MarkNotDuplicate)
+        originalInput: com.ticketbox.data.repository.ExpenseFactOriginalInput?,
+    ): Result<ExpenseCommandAcceptance> = acceptState(expectedBinding, expense, PendingMutationType.MarkNotDuplicate, originalInput)
 
     override suspend fun undoRejectExpense(
         expectedBinding: LogicalSessionBinding, expense: Expense,
@@ -109,15 +114,25 @@ internal class ExpensePendingRepository(private val core: ExpenseRepositoryCore)
 
     private suspend fun acceptState(
         binding: LogicalSessionBinding, expense: Expense, type: PendingMutationType,
+        originalInput: ExpenseFactOriginalInput? = null,
     ): Result<ExpenseCommandAcceptance> = core.errorHandler.safeCall {
-        ExpenseCommandAcceptance(expense, admit(binding, listOf(stateIntent(type, expense))))
+        ExpenseCommandAcceptance(expense, admit(binding, listOf(stateIntent(type, expense)), originalInput))
     }
 
-    private suspend fun admit(binding: LogicalSessionBinding, intents: List<PendingMutationIntent>): List<Long> =
-        outbox.enqueueExpenseBatch(core.ledgerRequestGuard.bindExact(binding), intents) { rows ->
+    private suspend fun admit(binding: LogicalSessionBinding, intents: List<PendingMutationIntent>,
+        originalInput: ExpenseFactOriginalInput? = null): List<Long> {
+        val commands = if (originalInput == null) intents else {
+            require(originalInput.binding == binding && intents.all { it.targetId == "expense:${originalInput.expenseId}" })
+            require(originalInput.formKey in setOf("pending_category", "pending_merchant", "pending_amount", "pending_duplicate"))
+            intents.map { it.copy(idempotencyKey = UUID.nameUUIDFromBytes(
+                "${originalInput.originalKey}:${it.type.wireValue}".toByteArray()).toString()) }
+        }
+        return outbox.enqueueExpenseBatch(core.ledgerRequestGuard.bindExact(binding), commands,
+            afterPersisted = { originalInput?.let { originalInputs.consume(it, binding, it.expenseId, it.formKey) } }) { rows ->
             if (!core.canModifyLedger()) throw RepositoryException("当前角色为只读，无法修改账本。")
             requireExpenseRefreshComplete(rows)
         }
+    }
 
     private fun requireBaseline(expense: Expense) {
         require(expense.hasExpenseMutationBaseline()) { "缺少账单版本，请重新打开后操作。" }

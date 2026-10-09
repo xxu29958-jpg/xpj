@@ -1,5 +1,8 @@
 package com.ticketbox.ui.screens
 
+import com.ticketbox.viewmodel.reviewExpense
+import com.ticketbox.viewmodel.reviewInputKey
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.lazy.items
@@ -239,6 +242,13 @@ fun PendingScreen(
         statusMessage = state.message?.asString(),
         readOnly = state.readOnly,
         thumbnails = state.thumbnails,
+        inputValues = state.reviewInputValues,
+        inputReady = state.reviewInputReady,
+        inputWriting = state.reviewInputWriting,
+        inputNeedsReview = state.reviewInputNeedsReview,
+        inputError = state.reviewInputError?.asString(),
+        inputSaved = state.reviewTasks.any { it.expense.id == state.activeSheet.reviewExpense()?.id &&
+            it.original.formKey == state.activeSheet.reviewInputKey() },
     )
     // expanded 下复核由 supporting pane 常驻承接，其余宽度维持现有 modal sheet；
     // 两种形态互斥，复用同一份 state/actions，不新造 review owner。
@@ -318,6 +328,10 @@ fun PendingScreen(
             item { PendingClearCelebration(visible = showCelebration) }
         }
 
+        if (state.reviewTasks.isNotEmpty() || state.reviewInputError != null) item(key = "pending-original-inputs") {
+            com.ticketbox.ui.screens.pending.PendingReviewTasks(state.reviewTasks,
+                state.reviewInputError?.asString(), sheetActions.onRetryReviewInput, sheetActions.onResumeReviewInput)
+        }
         state.undoableExpense?.let { undoable ->
             item(key = "undo-${undoable.id}") {
                 PendingUndoRejectBanner(expense = undoable, onUndo = reviewActions.queue.onUndoReject)

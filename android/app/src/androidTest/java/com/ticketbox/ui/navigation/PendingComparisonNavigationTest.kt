@@ -80,6 +80,15 @@ class PendingComparisonNavigationTest {
         compose.onNodeWithText(context.getString(R.string.pending_duplicate_sheet_keep_both)).assertIsNotEnabled()
         capture("duplicate-native")
         compose.onNode(isToggleable()).performScrollTo().performClick()
+        androidx.test.espresso.Espresso.pressBack()
+        val resume = context.getString(R.string.pending_review_input_resume,
+            context.getString(R.string.pending_row_action_duplicate), "本次便利店")
+        waitText(resume)
+        capture("duplicate-input-entry")
+        compose.onNodeWithText(resume).performScrollTo().performClick()
+        waitText("参考便利店")
+        compose.onNode(isToggleable()).assertIsOn()
+        capture("duplicate-input-resumed")
         compose.onNode(hasText("本次便利店") and hasClickAction()).performScrollTo().performClick()
         waitText(context.getString(R.string.expense_edit_header_title))
         compose.runOnIdle { outer.popBackStack() }

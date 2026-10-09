@@ -1,5 +1,11 @@
 package com.ticketbox.ui.navigation
 
+import com.ticketbox.viewmodel.changeReviewInput
+import com.ticketbox.viewmodel.retryReviewInput
+import com.ticketbox.viewmodel.reviewCurrentInputBasis
+import com.ticketbox.viewmodel.resumeReviewInput
+import com.ticketbox.viewmodel.discardReviewInput
+
 import android.net.Uri
 import androidx.activity.compose.ManagedActivityResultLauncher
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -195,6 +201,11 @@ private fun pendingReviewSheetActions(viewModel: PendingViewModel): PendingRevie
         onDismiss = viewModel::closeSheet,
         onRetryDuplicateReference = viewModel::loadDuplicateReference,
         onDuplicateDecisionChange = viewModel::setDuplicateDecision,
+        onReviewInputChange = viewModel::changeReviewInput,
+        onRetryReviewInput = viewModel::retryReviewInput,
+        onReviewCurrentBasis = viewModel::reviewCurrentInputBasis,
+        onResumeReviewInput = viewModel::resumeReviewInput,
+        onDiscardReviewInput = viewModel::discardReviewInput,
     )
 
 /**

@@ -40,7 +40,8 @@ private fun PendingViewModel.openReviewSheet(sheet: PendingSheet) {
     dismissUndoable()
     if (blockReadOnlyWrite()) return
     reviewSkippedIds.clear()
-    _uiState.update { it.copy(activeSheet = sheet, message = null) }
+    _uiState.update { it.copy(message = null) }
+    loadReviewInput(sheet)
     recomputeReviewRemaining()
 }
 
@@ -48,8 +49,8 @@ fun PendingViewModel.openDuplicateAction(expense: Expense) {
     dismissUndoable()
     // 重复 sheet 不参与连续审阅推进；它打开时仍清掉上一轮残留的快补计数/跳过集。
     reviewSkippedIds.clear()
-    _uiState.update { it.copy(activeSheet = PendingSheet.Duplicate(expense), message = null, reviewRemaining = 0) }
-    loadDuplicateReference()
+    _uiState.update { it.copy(message = null, reviewRemaining = 0) }
+    loadReviewInput(PendingSheet.Duplicate(expense))
 }
 
 fun PendingViewModel.openBulkConfirm() {
@@ -61,8 +62,11 @@ fun PendingViewModel.openBulkConfirm() {
 
 fun PendingViewModel.closeSheet() {
     // 关闭 sheet 结束本轮连续审阅：清跳过集 + 计数归 0。
-    reviewSkippedIds.clear()
-    _uiState.update { it.copy(activeSheet = PendingSheet.None, reviewRemaining = 0) }
+    leaveReviewInput {
+        reviewInputGeneration++
+        reviewSkippedIds.clear()
+        _uiState.update { it.copy(activeSheet = PendingSheet.None, reviewRemaining = 0) }
+    }
 }
 
 /**
@@ -77,12 +81,10 @@ fun PendingViewModel.skipReviewField() {
     val currentId = reviewSheetExpenseId(sheet) ?: return
     // 当前票若仍在进行中（保存请求在途）则不跳，避免与推进竞态。
     if (currentId in _uiState.value.actionInProgressIds) return
-    reviewSkippedIds.add(currentId)
-    advanceReviewOrClose(
-        field = field,
-        handledId = currentId,
-        exhaustedMessage = UiText.res(R.string.pending_review_queue_skip_last),
-    )
+    leaveReviewInput {
+        reviewSkippedIds.add(currentId)
+        advanceReviewOrClose(field, currentId, UiText.res(R.string.pending_review_queue_skip_last))
+    }
 }
 
 fun PendingViewModel.saveQuickCategory(expense: Expense, category: String) {
@@ -144,7 +146,7 @@ fun PendingViewModel.saveAmountAndConfirm(expense: Expense, originalAmountMinor:
             advanceReviewOrClose(ReviewField.AMOUNT, expense.id, UiText.res(R.string.expense_command_accepted))
         },
     ) { binding ->
-        repository.saveAndConfirmExpense(binding, expense, draft)
+        admitOriginalReviewInput(expense) { repository.saveAndConfirmExpense(binding, expense, draft, it) }
     }
 }
 
@@ -238,7 +240,7 @@ private fun PendingViewModel.advanceReviewOrClose(
     }
     // 推进到下一条：清掉上一条的状态文案（成功提示），这样 sheet 内的状态行
     // 只会显示**失败**（保存失败时不推进、文案留在当前票）；成功推进保持安静。
-    _uiState.update { it.copy(activeSheet = sheetForReviewField(field, next)) }
+    loadReviewInput(sheetForReviewField(field, next))
     recomputeReviewRemaining()
 }
 
@@ -257,7 +259,7 @@ private fun PendingViewModel.patchExpense(
             advanceReviewOrClose(field, expense.id, UiText.res(R.string.expense_command_accepted))
         },
     ) { binding ->
-        repository.saveExpenseAllowingOffline(binding, expense.id, draft, expense)
+        admitOriginalReviewInput(expense) { repository.saveExpenseAllowingOffline(binding, expense.id, draft, expense, it) }
     }
 }
 

@@ -65,6 +65,8 @@ internal abstract class ExpenseFactViewModelTestBase {
 @Suppress("TooManyFunctions")
 internal class FakeExpenseFactActions : ExpenseFactActions {
     val originalInputs = mutableListOf<com.ticketbox.data.repository.ExpenseFactOriginalInput>()
+    override suspend fun loadPendingReviewInputs(binding: LogicalSessionBinding) = Result.success(originalInputs.filter {
+        it.binding.ownerKey == binding.ownerKey && it.binding.ledgerId == binding.ledgerId && it.formKey.startsWith("pending_") })
     override suspend fun loadFactInputs(binding: LogicalSessionBinding, id: Long) = Result.success(originalInputs.filter {
         it.binding.ownerKey == binding.ownerKey && it.binding.ledgerId == binding.ledgerId && it.expenseId == id
     })

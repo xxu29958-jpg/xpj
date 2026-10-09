@@ -1,6 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- 待确认页用户可见中文。 -->
 <resources>
+    <string name="pending_review_input_loading">正在读取原稿…</string>
+    <string name="pending_review_input_no_longer_pending">账单已不在待确认状态，原输入仍保留。请打开账单详情核对。</string>
+    <string name="pending_review_input_basis_loaded">已载入当前账单，请核对保留的输入后再保存。</string>
+    <string name="pending_review_input_review_current">核对当前账单</string>
+    <string name="pending_review_input_resume">继续%1$s · %2$s</string>
+    <string name="pending_review_input_summary">%1$s · %2$s · %3$s</string>
+    <string name="pending_review_current_category">原稿依据中的分类：%1$s</string>
     <!-- PendingScreen：列表行左右滑动动作标签 -->
     <string name="pending_swipe_confirm_label">确认入账</string>
     <string name="pending_swipe_ignore_label">删除</string>
