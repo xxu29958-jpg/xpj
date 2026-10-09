@@ -382,8 +382,18 @@ class FactEntryNavigationTest {
         keyboard.dismissAndWait(compose)
         compose.onNodeWithText(baseline).performScrollTo().assertIsDisplayed()
         saveConsumerArtPreview("pending-original-baseline", requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        network.failReads = true
+        compose.onNodeWithText(context.getString(R.string.original_edit_review)).performScrollTo().performClick()
+        val failure = "暂时连不上小票夹，请稍后再试。"
+        waitForText(failure)
+        compose.onNodeWithText(confirm).assertIsNotEnabled()
+        compose.onNodeWithTag(TAG_TAGS_FIELD).performScrollTo().assertTextContains(tags)
+        assertTrue(network.editCalls.isEmpty())
+        saveConsumerArtPreview("pending-original-review-failure", requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        network.failReads = false
         compose.onNodeWithText(context.getString(R.string.original_edit_review)).performScrollTo().performClick()
         compose.waitUntil(5_000) { compose.onAllNodesWithText(baseline).fetchSemanticsNodes().isEmpty() }
+        compose.onAllNodesWithText(failure).assertCountEquals(0)
         compose.onNodeWithTag(TAG_TAGS_FIELD).performScrollTo().assertTextContains(tags)
         compose.onNodeWithText(confirm).assertIsEnabled().performClick()
         compose.waitUntil(5_000) { harness.fixture.stored().any { it["type"] == PendingMutationType.PatchExpense.wireValue } }
