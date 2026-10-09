@@ -92,6 +92,10 @@
     });
   };
   app.putReviewField = function putReviewField(input, value) {
+    if (!input.tagName) {
+      [...input].forEach(option => { option.checked = option.value === value; });
+      return;
+    }
     if (input.tagName === "SELECT" && ![...input.options].some(option => option.value === value)) {
       input.add(new Option(value || "原选择为空", value));
     }

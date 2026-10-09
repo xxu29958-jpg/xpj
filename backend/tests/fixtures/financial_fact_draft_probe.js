@@ -16,7 +16,9 @@
   let form = await load();
   for (const [name, value] of Object.entries({reason: " 原更正依据 ", merchant: "原稿商家", amount_yuan: "0005.50",
       note: "原备注\n第二行", value_score: "4", regret_score: ""})) {
-    form.elements.namedItem(name).value = value;
+    const input = form.elements.namedItem(name);
+    if (typeof input.dispatchEvent === "function") input.value = value;
+    else [...input].find(radio => radio.value === value).click();
     form.dispatchEvent(new frame.contentWindow.Event("input", {bubbles: true}));
   }
   for (const [name, value] of Object.entries({item_name: "原商品修改", split_note: "原拆账输入"})) {

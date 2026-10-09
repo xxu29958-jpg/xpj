@@ -111,6 +111,7 @@ def prepare_web_expense_confirmation(
         tags=form.tags,
         expense_time=form.expense_time,
         time_fields=form.time_fields,
+        score_fields=form.score_fields,
     )
     if payload is None:
         return WebExpenseConfirmPreparation(

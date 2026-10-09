@@ -1103,65 +1103,6 @@
     gap: var(--space-3);
 }
 
-/* 评价 radiogroup：原生语义 + pill 视觉（radio 透明覆盖，:checked/:focus-visible
-   驱动 pill 态；键盘方向键与读屏走原生 input）。 */
-.score-row {
-    border: 0;
-    margin: 0;
-    padding: 0;
-}
-
-.score-row legend {
-    padding: 0;
-    font-size: var(--type-caption-size);
-    color: var(--text-faint);
-}
-
-.score-seg {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-2);
-}
-
-.score-seg-option {
-    position: relative;
-    cursor: pointer;
-}
-
-.score-seg-option input {
-    position: absolute;
-    inset: 0;
-    opacity: 0;
-    margin: 0;
-}
-
-.score-seg-pill {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: var(--space-9);
-    padding: var(--space-2) var(--space-3);
-    border: 1px solid var(--border-input);
-    border-radius: var(--radius-pill);
-    background: var(--surface-card);
-    color: var(--text-muted);
-    font-size: var(--type-body-size);
-    transition: background var(--motion-fast) var(--ease-standard),
-        color var(--motion-fast) var(--ease-standard),
-        border-color var(--motion-fast) var(--ease-standard);
-}
-
-.score-seg-option input:checked + .score-seg-pill {
-    background: var(--brand-primary);
-    border-color: var(--brand-primary);
-    color: var(--text-on-primary);
-}
-
-.score-seg-option input:focus-visible + .score-seg-pill {
-    outline: var(--space-1) solid var(--brand-focus-ring);
-    outline-offset: var(--space-1);
-}
-
 /* 保存动作收尾于正流（两端一致）。不做 sticky 吸底：sticky 在表单超出视口时
    会悬浮覆盖途经的编辑字段；折叠后约 1.5 视口、reason 锚点在顶，正流收尾
    同时保住行动可达与编辑无遮挡。 */

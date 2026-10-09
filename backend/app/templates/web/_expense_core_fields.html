@@ -251,4 +251,5 @@
               {% if not can_write %}disabled{% endif %}>{{ e.note }}</textarea>
   </label>
   {% if core_fields_compact|default(false) %}</details>{% endif %}
+  {% include "_expense_scores.html" %}
 </div>

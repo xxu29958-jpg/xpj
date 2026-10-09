@@ -3204,6 +3204,17 @@
             "title": "Original Currency",
             "type": "string"
           },
+          "regret_score": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Regret Score"
+          },
           "reject_idempotency_key": {
             "default": "",
             "title": "Reject Idempotency Key",
@@ -3348,6 +3359,17 @@
             "default": "",
             "title": "Tags",
             "type": "string"
+          },
+          "value_score": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value Score"
           }
         },
         "title": "Body_web_confirm_web_expenses__expense_id__confirm_post",
@@ -4519,6 +4541,17 @@
             "title": "Original Currency",
             "type": "string"
           },
+          "regret_score": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Regret Score"
+          },
           "reject_idempotency_key": {
             "default": "",
             "title": "Reject Idempotency Key",
@@ -4663,6 +4696,17 @@
             "default": "",
             "title": "Tags",
             "type": "string"
+          },
+          "value_score": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value Score"
           }
         },
         "title": "Body_web_duplicate_keep_web_duplicates__expense_id__keep_post",
@@ -6330,6 +6374,17 @@
             "title": "Original Currency",
             "type": "string"
           },
+          "regret_score": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Regret Score"
+          },
           "reject_idempotency_key": {
             "default": "",
             "title": "Reject Idempotency Key",
@@ -6474,6 +6529,17 @@
             "default": "",
             "title": "Tags",
             "type": "string"
+          },
+          "value_score": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value Score"
           }
         },
         "title": "Body_web_refresh_expense_fx_web_expenses__expense_id__fx_status_post",
@@ -6595,6 +6661,17 @@
             "title": "Original Currency",
             "type": "string"
           },
+          "regret_score": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Regret Score"
+          },
           "reject_idempotency_key": {
             "default": "",
             "title": "Reject Idempotency Key",
@@ -6739,6 +6816,17 @@
             "default": "",
             "title": "Tags",
             "type": "string"
+          },
+          "value_score": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value Score"
           }
         },
         "title": "Body_web_reject_web_expenses__expense_id__reject_post",
@@ -6839,6 +6927,17 @@
             "title": "Original Currency",
             "type": "string"
           },
+          "regret_score": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Regret Score"
+          },
           "reject_idempotency_key": {
             "default": "",
             "title": "Reject Idempotency Key",
@@ -6983,6 +7082,17 @@
             "default": "",
             "title": "Tags",
             "type": "string"
+          },
+          "value_score": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value Score"
           }
         },
         "title": "Body_web_request_expense_fx_web_expenses__expense_id__fx_post",
@@ -7357,6 +7467,17 @@
             "title": "Original Currency",
             "type": "string"
           },
+          "regret_score": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Regret Score"
+          },
           "reject_idempotency_key": {
             "default": "",
             "title": "Reject Idempotency Key",
@@ -7501,6 +7622,17 @@
             "default": "",
             "title": "Tags",
             "type": "string"
+          },
+          "value_score": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value Score"
           }
         },
         "title": "Body_web_save_web_expenses__expense_id__save_post",

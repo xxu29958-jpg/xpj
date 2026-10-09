@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from fastapi import Depends, Form
 
 from app.routes._web_accounting_time import accounting_time_form_fields
+from app.routes._web_expense_form import expense_score_form_fields
 from app.routes._web_expense_return_context import (
     ExpenseReturnContext,
     expense_return_form_context,
@@ -36,6 +37,7 @@ class WebExpenseEditForm:
     command_action: str = "confirm"
     keep_idempotency_key: str = ""
     reject_idempotency_key: str = ""
+    score_fields: dict[str, str] | None = None
 
 
 def web_expense_edit_form(
@@ -60,6 +62,7 @@ def web_expense_edit_form(
     command_action: str = Form(default="confirm"),
     keep_idempotency_key: str = Form(default=""),
     reject_idempotency_key: str = Form(default=""),
+    score_fields: dict[str, str] = Depends(expense_score_form_fields),
 ) -> WebExpenseEditForm:
     """Bind one raw browser intent without giving the HTTP handler ownership."""
 
@@ -85,4 +88,5 @@ def web_expense_edit_form(
         command_action=command_action,
         keep_idempotency_key=keep_idempotency_key,
         reject_idempotency_key=reject_idempotency_key,
+        score_fields=score_fields,
     )

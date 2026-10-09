@@ -15,6 +15,7 @@ from app.routes._web_expense_edit_form import WebExpenseEditForm
 from app.routes._web_expense_form import (
     parse_expense_time_local,
     parse_original_amount_minor,
+    score_change,
     web_form_error_status,
 )
 from app.routes._web_session_common import parse_form_row_version_token
@@ -51,6 +52,8 @@ class _ExpenseCurrencySnapshot(Protocol):
     note: str | None
     tags: str | None
     expense_time: object | None
+    value_score: int | None
+    regret_score: int | None
 
 _SCHEMA_ERROR_MESSAGES = {
     "merchant": "商家最多 255 个字符。",
@@ -101,7 +104,7 @@ def expense_edit_form_values(form: WebExpenseEditForm) -> dict[str, str]:
     values = _submitted_form_values(expected_row_version=form.expected_row_version, idempotency_key=form.idempotency_key,
         amount_yuan=form.amount_yuan, original_currency=form.original_currency, manual_exchange_rate=form.manual_exchange_rate,
         merchant=form.merchant, category=form.category, note=form.note, tags=form.tags, expense_time=form.expense_time)
-    return {**values, **(form.time_fields or {})}
+    return {**values, **(form.time_fields or {}), **(form.score_fields or {})}
 
 
 def _validated_currency_snapshot(
@@ -335,6 +338,14 @@ def _validated_update_request(
         # PATCH as amount/date edits so the server derives home amount,
         # provenance and effective rate date atomically.
         payload_args["manual_exchange_rate"] = manual_exchange_rate.strip()
+    for name in ("value_score", "regret_score"):
+        if name not in form_values:
+            continue
+        changed, value, error = score_change(form_values[name], getattr(expense, name), present=True)
+        if error:
+            return None, _failure(error, form_values=form_values, field_errors={name: error})
+        if changed:
+            payload_args[name] = value
     try:
         payload = ExpenseUpdateRequest(**payload_args)
     except ValidationError as exc:
@@ -371,6 +382,7 @@ def apply_web_expense_form(
             amount_yuan=form.amount_yuan, original_currency=form.original_currency,
             manual_exchange_rate=form.manual_exchange_rate, merchant=form.merchant, category=form.category,
             note=form.note, tags=form.tags, expense_time=form.expense_time, time_fields=form.time_fields,
+            score_fields=form.score_fields,
         )
         if payload is None:
             return prepared
@@ -434,6 +446,7 @@ def prepare_web_expense_form(
     allow_currency_change: bool = False,
     manual_exchange_rate: str | None = None,
     time_fields: dict[str, str] | None = None,
+    score_fields: dict[str, str] | None = None,
 ) -> tuple[ExpenseUpdateRequest | None, WebExpenseSaveOutcome]:
     """Parse one browser snapshot without owning its write transaction."""
 
@@ -451,6 +464,7 @@ def prepare_web_expense_form(
     )
     if time_fields is not None:
         form_values.update(time_fields)
+    form_values.update(score_fields or {})
     try:
         expense = get_expense(db, expense_id, selected_ledger_id)
         time_input = None

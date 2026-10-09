@@ -25,7 +25,7 @@ pytestmark = pytest.mark.real_db
 def _anchors(body: str) -> list[dict[str, str]]:
     return [
         {name: unescape(value) for name, value in re.findall(r'([\w-]+)="([^"]*)"', tag)}
-        for tag in re.findall(r"<a\b[^>]*>", body)
+        for tag in re.findall(r'<a\b[^>]*\shref="[^"]*"[^>]*>', body)
     ]
 
 

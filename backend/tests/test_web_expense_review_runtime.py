@@ -1127,6 +1127,7 @@ def test_actual_review_browser_resolves_original_action_before_starting_next_com
         assert len(next_command) == 1 and next_command[0]["path"].endswith("/confirm")
     else:
         assert not next_command
+        assert not {"value_score", "regret_score"}.intersection(dict(first["fields"]))
     with Session(confirmation_store) as db:
         current = db.get(Expense, 42)
         assert current.status == "confirmed" and current.merchant == "浏览器原填写"
@@ -1144,7 +1145,7 @@ def test_fx_action_checks_original_binding_and_keeps_inputs_and_confirmation_bas
     monkeypatch.setattr(_web_expense_fx, "request_pending_expense_fx", request_fx)
     fields = {"ledger_id": "owner", "expected_row_version": "4", "idempotency_key": str(uuid4()),
         "merchant": "未保存的原填写", "amount_yuan": "2850", "original_currency": "JPY", "category": "购物",
-        "save_before_confirm": "1", "draft_ref": str(uuid4()), "return_to": "pending",
+        "save_before_confirm": "1", "draft_ref": str(uuid4()), "return_to": "pending", "value_score": "", "regret_score": "5",
         "draft_scope": json.dumps({**scope, "deviceId": "previous-browser"})}
     refused = client.post("/web/expenses/42/fx", data=fields)
     assert refused.status_code == 409, refused.text
@@ -1157,6 +1158,8 @@ def test_fx_action_checks_original_binding_and_keeps_inputs_and_confirmation_bas
     assert 'value="未保存的原填写"' in accepted.text
     assert 'name="expected_row_version" value="4"' in accepted.text
     assert f'name="idempotency_key" value="{fields["idempotency_key"]}"' in accepted.text
+    for name, value in (("value_score", ""), ("regret_score", "5")):
+        assert re.search(rf'name="{name}" value="{value}"\s+checked', accepted.text)
     with Session(confirmation_store) as db:
         current = db.get(Expense, 42)
         assert (current.merchant, current.status, current.row_version) == ("首次便利店", "pending", 5)

@@ -43,6 +43,27 @@ def test_web_edit_save_updates_amount(web_client: TestClient, *, identity) -> No
     assert "测试商家" in detail.text
 
 
+def test_web_pending_scores_keep_omission_and_clear_before_confirmation(web_client: TestClient, *, identity) -> None:
+    expense_id = _create_pending(web_client, identity=identity)
+    fields = {"ledger_id": "owner", "amount_yuan": "12.34", "merchant": "评分原商家", "category": "餐饮", "note": ""}
+    saved = web_save_expense(web_client, expense_id, identity=identity,
+        data={**fields, "value_score": "4", "regret_score": "3"})
+    assert saved.status_code in {303, 307}, saved.text
+    saved = web_save_expense(web_client, expense_id, identity=identity, data={**fields, "note": "未修改评分"})
+    assert saved.status_code in {303, 307}, saved.text
+    snapshot = web_client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers).json()
+    assert (snapshot["status"], snapshot["value_score"], snapshot["regret_score"]) == ("pending", 4, 3)
+    confirm_fields = {**fields, "save_before_confirm": "1", "expected_row_version": str(snapshot["row_version"]),
+        "idempotency_key": str(uuid4()), "value_score": "", "regret_score": "5"}
+    path = f"/web/expenses/{expense_id}/confirm"
+    first = web_client.post(path, data=confirm_fields, follow_redirects=False)
+    replay = web_client.post(path, data=confirm_fields, follow_redirects=False)
+    assert first.status_code == replay.status_code == 303
+    assert first.headers["location"] == replay.headers["location"]
+    snapshot = web_client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers).json()
+    assert (snapshot["status"], snapshot["value_score"], snapshot["regret_score"], snapshot["amount_cents"]) == ("confirmed", None, 5, 1234)
+
+
 def test_web_correction_preserves_foreign_currency_fields(web_client: TestClient, *, identity) -> None:
     rate = web_client.put(
         "/api/exchange-rates/USD/2026-05-04",

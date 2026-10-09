@@ -35,6 +35,30 @@
     }
     return response;
   };
+  async function submitFirstOriginal(form, primary) {
+    const field = name => form.elements.namedItem(name);
+    if (state.operation === "legacy-confirm") {
+      form.querySelectorAll('[name="value_score"], [name="regret_score"]').forEach(input => input.remove());
+    }
+    field("merchant").value = "浏览器原填写";
+    field("merchant").dispatchEvent(new Event("input", {bubbles: true}));
+    field("accounting_date").value = "2026-09-30";
+    field("accounting_date").dispatchEvent(new Event("input", {bubbles: true}));
+    assert(form.querySelector('.review-date-fields > summary').textContent.includes("2026-09-30"), "date summary hid the selected accounting date");
+    state.key = field("idempotency_key").value; state.ref = field("draft_ref").value;
+    state.stage = "lost"; save();
+    const submit = state.operation === "save" ? [...form.querySelectorAll("button")].find(button => button.textContent === "保存草稿") : primary;
+    form.requestSubmit(submit);
+    await wait(() => state.stage === "unknown" && form.querySelector("[data-expensereview-draft-status]").textContent.includes("暂未收到"));
+    if (state.operation === "legacy-confirm") {
+      const record = JSON.parse(localStorage.getItem(prefix + state.ref));
+      const laterFields = ["command_action", "keep_idempotency_key", "reject_idempotency_key", "value_score", "regret_score"];
+      laterFields.forEach(name=>delete record.values[name]);
+      record.values.present_fields = JSON.stringify(JSON.parse(record.values.present_fields).filter(name => !laterFields.includes(name)));
+      localStorage.setItem(prefix + state.ref, JSON.stringify(record));
+    }
+    location.reload();
+  }
   try {
     if (document.querySelector("[data-expense-confirmation]")) {
       assert(state.stage === "confirm" || state.stage === "replay", "unexpected financial receipt");
@@ -46,24 +70,7 @@
     const primary = form.querySelector("[data-expensereview-submit]");
     await wait(() => form.dataset.expensereviewDraftPhase && !primary.disabled);
     if (state.stage === "edit") {
-      field("merchant").value = "浏览器原填写";
-      field("merchant").dispatchEvent(new Event("input", {bubbles: true}));
-      field("accounting_date").value = "2026-09-30";
-      field("accounting_date").dispatchEvent(new Event("input", {bubbles: true}));
-      assert(form.querySelector('.review-date-fields > summary').textContent.includes("2026-09-30"), "date summary hid the selected accounting date");
-      state.key = field("idempotency_key").value; state.ref = field("draft_ref").value;
-      state.stage = "lost"; save();
-      const submit = state.operation === "save" ? [...form.querySelectorAll("button")].find(button => button.textContent === "保存草稿") : primary;
-      form.requestSubmit(submit);
-      await wait(() => state.stage === "unknown" && form.querySelector("[data-expensereview-draft-status]").textContent.includes("暂未收到"));
-      if (state.operation === "legacy-confirm") {
-        const record = JSON.parse(localStorage.getItem(prefix + state.ref));
-        const laterFields = ["command_action", "keep_idempotency_key", "reject_idempotency_key"];
-        laterFields.forEach(name=>delete record.values[name]);
-        record.values.present_fields = JSON.stringify(JSON.parse(record.values.present_fields).filter(name => !laterFields.includes(name)));
-        localStorage.setItem(prefix + state.ref, JSON.stringify(record));
-      }
-      location.reload();
+      await submitFirstOriginal(form, primary);
     } else if (state.stage === "unknown") {
       assert(form.dataset.expensereviewDraftPhase === "submitted", "original submission was replaced by an editable draft");
       assert(field("merchant").value === "浏览器原填写" && field("idempotency_key").value === state.key, "original input or key changed");

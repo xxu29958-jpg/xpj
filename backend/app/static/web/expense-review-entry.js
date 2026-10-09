@@ -3,7 +3,7 @@
   "use strict";
   const fields = ["ledger_id", "expense_id", "expected_row_version", "idempotency_key", "keep_idempotency_key", "reject_idempotency_key", "draft_ref", "save_before_confirm", "command_action",
     "amount_yuan", "original_currency", "manual_exchange_rate", "merchant", "category", "note", "tags", "expense_time",
-    "time_precision", "calendar_revision", "user_local_date", "source_timezone", "source_utc_offset_seconds", "accounting_date"];
+    "time_precision", "calendar_revision", "user_local_date", "source_timezone", "source_utc_offset_seconds", "accounting_date", "value_score", "regret_score"];
   const names = [...fields, "return_context", "present_fields", "reject_row_version", "undo_idempotency_key"];
   function read(form) {
     const values = Object.fromEntries(fields.map(name => [name, form.elements.namedItem(name)?.value || ""]));
@@ -17,9 +17,20 @@
   function put(form, name, value) {
     let input = form.elements.namedItem(name);
     if (!input) { input = document.createElement("input"); input.type = "hidden"; input.name = name; form.append(input); }
-    if (input.tagName === "SELECT" && ![...input.options].some(option => option.value === value)) input.add(new Option(value, value));
-    input.value = value;
-    input.dispatchEvent(new Event("input"));
+    window.TicketboxWeb.putReviewField(input, value);
+    (typeof input.dispatchEvent === "function" ? input : input[0]).dispatchEvent(new Event("input"));
+  }
+  function restoreScoreAvailability(form, present, originalPhase) {
+    // A submitted pre-score original cannot acquire today's controls or score values.
+    if (originalPhase === "editing") return;
+    for (const name of ["value_score", "regret_score"].filter(name => !present.includes(name))) {
+      form.querySelectorAll('[name="' + name + '"]').forEach(input => {
+        input.closest("fieldset").hidden = true;
+        input.remove();
+      });
+    }
+    const scores = form.querySelector(".score-fields");
+    if (scores) scores.closest("details").hidden = !scores.querySelector("input");
   }
   function href(record, scope, form) {
     const values = record?.values || read(form);
@@ -62,7 +73,7 @@
       idField: "expense_id", titleField: "merchant", commandKeyField: saved =>
         ["keep", "reject"].includes(saved.command_action) ? saved.command_action + "_idempotency_key" : "idempotency_key", draftRefField: "draft_ref",
       submitSelector: "[data-expensereview-submit]", pendingLabel: "核实这次结果",
-      legacyMissing: ["command_action", "keep_idempotency_key", "reject_idempotency_key", "reject_row_version", "undo_idempotency_key"],
+      legacyMissing: ["command_action", "keep_idempotency_key", "reject_idempotency_key", "reject_row_version", "undo_idempotency_key", "value_score", "regret_score"],
       embedded: options.embedded, onAccepted: options.onAccepted, multiple: !options.embedded,
       action: saved => saved.command_action === "keep" ? "/web/duplicates/" + saved.expense_id + "/keep" :
         "/web/expenses/" + saved.expense_id + "/" + (saved.command_action || "confirm"),
@@ -73,7 +84,9 @@
       inactiveMessage: "账单已离开待确认状态。原输入仍保留；已发出的提交可核实原结果。",
       read, href, present: () => {},
       restore(current, values, originalPhase) {
-        for (const name of JSON.parse(values.present_fields)) put(current, name, values[name]);
+        const present = JSON.parse(values.present_fields);
+        for (const name of present) put(current, name, values[name]);
+        restoreScoreAvailability(current, present, originalPhase);
         put(current, "command_action", values.command_action || "");
         for (const name of ["reject_row_version", "undo_idempotency_key"]) put(current, name, values[name] || "");
         // A submitted v1 original cannot acquire this page's newly generated related-command keys.
@@ -106,6 +119,10 @@
         current.querySelector("[data-expensereview-recovery] h1").textContent = copy[0];
         if (pending) current.querySelector("[data-expensereview-submit]").textContent = copy[1];
         const review = current.querySelector("[data-expensereview-review]");
+        if (!basisChanged && !state.rejected) {
+          review.hidden = true;
+          current.querySelector("[data-expensereview-review-note]").hidden = true;
+        }
         review.setAttribute("formaction", action === "keep" ? "/web/duplicates/" + current.elements.expense_id.value + "/keep" :
           "/web/expenses/" + current.elements.expense_id.value + "/" + action);
         review.classList.toggle("product-button--primary", basisChanged);

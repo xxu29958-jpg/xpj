@@ -213,6 +213,7 @@ def test_web_fact_context_keeps_disabled_member_identity_in_revision_projection(
                 "can_write": True,
                 "home_currency_code": "CNY",
                 "edit_return_fields": {},
+                "expense_review_inspection": False,
             },
         ),
         patch(
@@ -306,6 +307,7 @@ def test_anchored_timeline_pager_keeps_one_snapshot_across_pages() -> None:
                 "expense": {},
                 "can_write": True,
                 "home_currency_code": "CNY",
+                "expense_review_inspection": False,
             },
         ),
         patch(

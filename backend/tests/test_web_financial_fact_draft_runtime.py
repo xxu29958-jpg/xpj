@@ -22,7 +22,7 @@ def correction_page(prepared=None, native_result="prepared"):
     expense = {"id": 7, "public_id": "fact-seven", "merchant": "原商家" if count == 1 else "后来商家",
         "row_version": count, "original_currency_code": "CNY" if count == 1 else "JPY",
         "original_amount_value": "10.00" if count == 1 else "1500", "category_input": "餐饮", "note": "",
-        "tags": "", "expense_time_local": "2026-09-30T12:30", "value_score": 2, "regret_score": None,
+        "tags": "", "expense_time_local": "2026-09-30T12:30", "value_score": 2, "regret_score": 3,
         "is_split_received": False}
     item = {"public_id": "item-one", "kind": "product", "name": "原明细", "quantity_text": "1份",
         "unit_price_yuan": "10.00", "amount_yuan": "10.00", "category": "餐饮", "errors": {}}
@@ -171,6 +171,7 @@ def test_correction_refresh_preserves_raw_inputs_original_basis_and_rows(tmp_pat
     assert not _browser.POSTS and not _browser.MISSING
     assert result["before"] == result["after"], "Reopening must retain the original intent, currency, version and key"
     assert dict(result["after"])["reason"] == " 原更正依据 "
+    assert dict(result["after"])["regret_score"] == "", "Explicitly clearing a prior score must survive refresh"
 
 
 def test_unknown_correction_replays_exact_original_after_refresh_and_acknowledges_only_that_input(tmp_path):
