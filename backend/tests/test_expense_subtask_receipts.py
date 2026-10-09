@@ -17,11 +17,13 @@ from app.models import Account, ApiIdempotencyKey, Expense, ExpenseItem, Expense
 from app.routes import expenses
 from app.schemas import ExpenseAcknowledgeItemsMismatchRequest, ExpenseItemReplaceRequest, ExpenseSplitReplaceRequest
 from app.services import expense_split_service, receipt_item_service
-from tests.test_expense_confirmation_receipt import confirmation_store  # noqa: F401
+from tests import test_expense_confirmation_receipt as confirmation_fixtures
+
+confirmation_store = confirmation_fixtures.confirmation_store
 
 
 @pytest.fixture
-def subtask_store(confirmation_store, monkeypatch):  # noqa: F811 - shared pytest fixture
+def subtask_store(confirmation_store, monkeypatch):
     metadata = MetaData()
     for model in (Account, LedgerMember, ExpenseItem, ExpenseSplit, LedgerAuditLog):
         Table(model.__tablename__, metadata, *(Column(column.name,
