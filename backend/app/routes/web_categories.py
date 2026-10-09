@@ -300,6 +300,15 @@ def _uncategorized_task_items(db, *, selected_id: str, home: str, filter: str, s
     return items, updated
 
 
+def _uncategorized_category_choices(db, selected_id: str, selected_category: str):
+    categories = list_ledger_category_options(db, tenant_id=selected_id)
+    primary = [name for name in ("购物", "餐饮", "交通", "住房", "医疗", "其他") if name in categories]
+    more = [name for name in categories if name not in primary]
+    if selected_category and selected_category not in categories:
+        more.append(selected_category)
+    return primary, more
+
+
 def _render_uncategorized(request, db, *, options, selected_id: str, filter: str = "",
     message: str = "", category: str = "", snapshots: dict[int, int] | None = None,
     result: BulkResult | None = None, error: AppError | None = None, draft: dict | None = None,
@@ -312,11 +321,7 @@ def _render_uncategorized(request, db, *, options, selected_id: str, filter: str
         item["detail_href"] = flow_href(f"/web/expenses/{item['id']}/edit", ledger_id=selected_id,
             return_to="uncategorized", return_filter=filter, return_category_receipt_key=receipt_key)
     scope = browser_draft_scope(db, request)
-    categories = list_ledger_category_options(db, tenant_id=selected_id)
-    primary = [name for name in ("购物", "餐饮", "交通", "住房", "医疗", "其他") if name in categories]
-    more = [name for name in categories if name not in primary]
-    if category and category not in categories:
-        more.append(category)
+    primary, more = _uncategorized_category_choices(db, selected_id, category)
     draft = draft or {}
     ctx.update(uncategorized_items=items, updated_items=updated, primary_categories=primary, more_categories=more,
         category=category, filter="including_other" if include_other else "", flash_message=message,

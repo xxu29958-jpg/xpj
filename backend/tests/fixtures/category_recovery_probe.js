@@ -23,14 +23,13 @@
     }
     return response;
   };
-  try {
+  async function editOriginal() {
     if (state.stage === "detail") {
       assert(location.pathname === "/web/expenses/42/edit", "selected bill did not open its actual detail");
       const back = document.querySelector('a[href*="/web/categories/uncategorized"][href*="draft_ref="]');
       assert(back && back.href.includes(state.ref), "detail lost the original category task");
       state.stage = "returned"; save(); back.click(); return;
     }
-    await wait(() => form()?.dataset.categorybatchDraftPhase);
     if (state.stage === "select") {
       await wait(() => !form().querySelector('[name="expense_snapshot"]').disabled);
       for (const token of ["42:4", "44:4"]) {
@@ -54,6 +53,8 @@
       await originalFetch("/category-later/after", {method: "POST"});
       state.stage = "reloaded"; save(); location.reload(); return;
     }
+  }
+  async function resolveOriginal() {
     if (state.stage === "reloaded") {
       await wait(() => !primary().disabled);
       assert(selected().join() === "42:4,44:4" && form().elements.category.value === "自选分类" &&
@@ -72,6 +73,8 @@
         remaining.values.idempotency_key !== state.command, "partial acceptance lost the unsubmitted remainder or its first receipt");
       state.stage = "resume-remainder"; save(); location.assign("/web/categories/uncategorized?ledger_id=owner"); return;
     }
+  }
+  async function finishRemaining() {
     if (state.stage === "resume-remainder") {
       await wait(() => !primary().disabled);
       assert(selected().join() === "44:4" && form().elements.origin_receipt.value === state.command,
@@ -95,5 +98,11 @@
       assert(document.body.textContent.includes("已更新 1 条") && !selected().length, "remaining batch did not finish");
       state.partial_continued = true; window.__expenseReviewResult = state;
     }
+  }
+  try {
+    if (state.stage !== "detail") await wait(() => form()?.dataset.categorybatchDraftPhase);
+    if (["select", "detail", "returned"].includes(state.stage)) await editOriginal();
+    else if (["reloaded", "receipt"].includes(state.stage)) await resolveOriginal();
+    else await finishRemaining();
   } catch (error) { window.__expenseReviewResult = {...state, error: String(error), body: document.body.innerText.slice(-2200)}; }
 })();
