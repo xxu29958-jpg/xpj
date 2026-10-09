@@ -410,7 +410,7 @@ def _review_origin(origin: dict[str, str]) -> dict[str, str]:
     if ref and expense_id:
         family = origin.get("return_review_family", "")
         return {"return_review_ref": ref, "return_review_expense_id": expense_id,
-            **({"return_review_family": family} if family in {"expenseitems", "expensesplits", "expenseack"} else {})}
+            **({"return_review_family": family} if family in {"expenseitems", "expensesplits", "expenseack", "expensetext", "expenseocr"} else {})}
     return {}
 
 
@@ -434,11 +434,13 @@ def return_label(return_to: str, *, default: str = "返回流水") -> str:
 
 def return_href(return_to: str, *, ledger_id: str, default_path: str, **origin: str) -> str:
     if review := _review_origin(origin):
-        path = f"/web/expenses/{review['return_review_expense_id']}/edit"
+        family = review.get("return_review_family", "expensereview")
+        task_path = {"expensetext": "recognize-text", "expenseocr": "ocr/retry"}.get(family, "edit")
+        path = f"/web/expenses/{review['return_review_expense_id']}/{task_path}"
         href = flow_href(path, ledger_id=ledger_id, return_to=return_to,
             **{key: value for key, value in origin.items() if key not in review and key not in _receipt_origin(origin)})
-        family = review.get("return_review_family", "expensereview")
-        return f"{href}&confirmation_task=1#{family}-edit-{review['return_review_ref']}"
+        task_query = "&confirmation_task=1" if task_path == "edit" else ""
+        return f"{href}{task_query}#{family}-edit-{review['return_review_ref']}"
     if receipt := _receipt_origin(origin):
         path = f"/web/expenses/{receipt['return_receipt_expense_id']}/confirmation/{receipt['return_receipt_key']}"
         return flow_href(path, ledger_id=ledger_id, return_to=return_to,

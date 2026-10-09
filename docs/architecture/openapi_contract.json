@@ -5998,6 +5998,172 @@
         "title": "Body_web_pending_batch_undo_web_pending_batch_undo_post",
         "type": "object"
       },
+      "Body_web_recognition_post_web_expenses__expense_id__ocr_retry_post": {
+        "properties": {
+          "draft_ref": {
+            "default": "",
+            "title": "Draft Ref",
+            "type": "string"
+          },
+          "draft_scope": {
+            "default": "",
+            "title": "Draft Scope",
+            "type": "string"
+          },
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "raw_text": {
+            "default": "",
+            "title": "Raw Text",
+            "type": "string"
+          },
+          "return_after": {
+            "default": "",
+            "title": "Return After",
+            "type": "string"
+          },
+          "return_category": {
+            "default": "",
+            "title": "Return Category",
+            "type": "string"
+          },
+          "return_category_draft_ref": {
+            "default": "",
+            "title": "Return Category Draft Ref",
+            "type": "string"
+          },
+          "return_category_receipt_key": {
+            "default": "",
+            "title": "Return Category Receipt Key",
+            "type": "string"
+          },
+          "return_duplicate_expense_id": {
+            "default": "",
+            "title": "Return Duplicate Expense Id",
+            "type": "string"
+          },
+          "return_filter": {
+            "default": "",
+            "title": "Return Filter",
+            "type": "string"
+          },
+          "return_granularity": {
+            "default": "",
+            "title": "Return Granularity",
+            "type": "string"
+          },
+          "return_home_currency_code": {
+            "default": "",
+            "title": "Return Home Currency Code",
+            "type": "string"
+          },
+          "return_import_expense_id": {
+            "default": "",
+            "title": "Return Import Expense Id",
+            "type": "string"
+          },
+          "return_import_line_number": {
+            "default": "",
+            "title": "Return Import Line Number",
+            "type": "string"
+          },
+          "return_import_public_id": {
+            "default": "",
+            "title": "Return Import Public Id",
+            "type": "string"
+          },
+          "return_merchant_category": {
+            "default": "",
+            "title": "Return Merchant Category",
+            "type": "string"
+          },
+          "return_month": {
+            "default": "",
+            "title": "Return Month",
+            "type": "string"
+          },
+          "return_page": {
+            "default": "",
+            "title": "Return Page",
+            "type": "string"
+          },
+          "return_payment_expense_id": {
+            "default": "",
+            "title": "Return Payment Expense Id",
+            "type": "string"
+          },
+          "return_query": {
+            "default": "",
+            "title": "Return Query",
+            "type": "string"
+          },
+          "return_ranking_metric": {
+            "default": "",
+            "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_receipt_expense_id": {
+            "default": "",
+            "title": "Return Receipt Expense Id",
+            "type": "string"
+          },
+          "return_receipt_key": {
+            "default": "",
+            "title": "Return Receipt Key",
+            "type": "string"
+          },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
+            "type": "string"
+          },
+          "return_review_expense_id": {
+            "default": "",
+            "title": "Return Review Expense Id",
+            "type": "string"
+          },
+          "return_review_family": {
+            "default": "",
+            "title": "Return Review Family",
+            "type": "string"
+          },
+          "return_review_ref": {
+            "default": "",
+            "title": "Return Review Ref",
+            "type": "string"
+          },
+          "return_tag": {
+            "default": "",
+            "title": "Return Tag",
+            "type": "string"
+          },
+          "return_to": {
+            "default": "",
+            "title": "Return To",
+            "type": "string"
+          },
+          "review_latest": {
+            "default": false,
+            "title": "Review Latest",
+            "type": "boolean"
+          }
+        },
+        "title": "Body_web_recognition_post_web_expenses__expense_id__ocr_retry_post",
+        "type": "object"
+      },
       "Body_web_record_adjustment_web_debts__public_id__adjustments_post": {
         "properties": {
           "amount_major": {
@@ -7096,152 +7262,6 @@
           }
         },
         "title": "Body_web_request_expense_fx_web_expenses__expense_id__fx_post",
-        "type": "object"
-      },
-      "Body_web_retry_expense_ocr_web_expenses__expense_id__ocr_retry_post": {
-        "properties": {
-          "expected_row_version": {
-            "default": "",
-            "title": "Expected Row Version",
-            "type": "string"
-          },
-          "idempotency_key": {
-            "default": "",
-            "title": "Idempotency Key",
-            "type": "string"
-          },
-          "ledger_id": {
-            "default": "",
-            "title": "Ledger Id",
-            "type": "string"
-          },
-          "return_after": {
-            "default": "",
-            "title": "Return After",
-            "type": "string"
-          },
-          "return_category": {
-            "default": "",
-            "title": "Return Category",
-            "type": "string"
-          },
-          "return_category_draft_ref": {
-            "default": "",
-            "title": "Return Category Draft Ref",
-            "type": "string"
-          },
-          "return_category_receipt_key": {
-            "default": "",
-            "title": "Return Category Receipt Key",
-            "type": "string"
-          },
-          "return_duplicate_expense_id": {
-            "default": "",
-            "title": "Return Duplicate Expense Id",
-            "type": "string"
-          },
-          "return_filter": {
-            "default": "",
-            "title": "Return Filter",
-            "type": "string"
-          },
-          "return_granularity": {
-            "default": "",
-            "title": "Return Granularity",
-            "type": "string"
-          },
-          "return_home_currency_code": {
-            "default": "",
-            "title": "Return Home Currency Code",
-            "type": "string"
-          },
-          "return_import_expense_id": {
-            "default": "",
-            "title": "Return Import Expense Id",
-            "type": "string"
-          },
-          "return_import_line_number": {
-            "default": "",
-            "title": "Return Import Line Number",
-            "type": "string"
-          },
-          "return_import_public_id": {
-            "default": "",
-            "title": "Return Import Public Id",
-            "type": "string"
-          },
-          "return_merchant_category": {
-            "default": "",
-            "title": "Return Merchant Category",
-            "type": "string"
-          },
-          "return_month": {
-            "default": "",
-            "title": "Return Month",
-            "type": "string"
-          },
-          "return_page": {
-            "default": "",
-            "title": "Return Page",
-            "type": "string"
-          },
-          "return_payment_expense_id": {
-            "default": "",
-            "title": "Return Payment Expense Id",
-            "type": "string"
-          },
-          "return_query": {
-            "default": "",
-            "title": "Return Query",
-            "type": "string"
-          },
-          "return_ranking_metric": {
-            "default": "",
-            "title": "Return Ranking Metric",
-            "type": "string"
-          },
-          "return_receipt_expense_id": {
-            "default": "",
-            "title": "Return Receipt Expense Id",
-            "type": "string"
-          },
-          "return_receipt_key": {
-            "default": "",
-            "title": "Return Receipt Key",
-            "type": "string"
-          },
-          "return_recurring_public_id": {
-            "default": "",
-            "title": "Return Recurring Public Id",
-            "type": "string"
-          },
-          "return_review_expense_id": {
-            "default": "",
-            "title": "Return Review Expense Id",
-            "type": "string"
-          },
-          "return_review_family": {
-            "default": "",
-            "title": "Return Review Family",
-            "type": "string"
-          },
-          "return_review_ref": {
-            "default": "",
-            "title": "Return Review Ref",
-            "type": "string"
-          },
-          "return_tag": {
-            "default": "",
-            "title": "Return Tag",
-            "type": "string"
-          },
-          "return_to": {
-            "default": "",
-            "title": "Return To",
-            "type": "string"
-          }
-        },
-        "title": "Body_web_retry_expense_ocr_web_expenses__expense_id__ocr_retry_post",
         "type": "object"
       },
       "Body_web_review_bulk_web_review_bulk_post": {
@@ -55156,7 +55176,7 @@
     },
     "/web/expenses/{expense_id}/ocr/retry": {
       "post": {
-        "operationId": "web_retry_expense_ocr_web_expenses__expense_id__ocr_retry_post",
+        "operationId": "web_recognition_post_web_expenses__expense_id__ocr_retry_post",
         "parameters": [
           {
             "in": "path",
@@ -55172,7 +55192,7 @@
           "content": {
             "application/x-www-form-urlencoded": {
               "schema": {
-                "$ref": "#/components/schemas/Body_web_retry_expense_ocr_web_expenses__expense_id__ocr_retry_post"
+                "$ref": "#/components/schemas/Body_web_recognition_post_web_expenses__expense_id__ocr_retry_post"
               }
             }
           }
@@ -55199,7 +55219,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Web Retry Expense Ocr",
+        "summary": "Web Recognition Post",
         "tags": [
           "web"
         ]

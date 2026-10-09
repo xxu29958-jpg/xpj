@@ -280,8 +280,6 @@ def web_edit_context(
     ctx["manual_draft_ack"] = manual_draft_ack(db, getattr(request.state, "web_session_auth", None), expense)
     ctx["conflict_current"] = current_expense_view if conflict else None
     ctx.update(_review_submission_context(db, request, form_values))
-    ctx["ocr_idempotency_key"] = str(uuid4())
-    ctx["text_ocr_idempotency_key"] = str(uuid4())
     ctx["error"] = None
     ctx["message"] = request.query_params.get("msg")
     ctx["items_error"] = None

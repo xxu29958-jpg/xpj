@@ -198,6 +198,7 @@
         item.append(link); list.append(item);
       }
       window.TicketboxExpenseSubtasks?.appendShelf(scope, list);
+      window.TicketboxExpenseRecognition?.appendShelf(scope, list);
       element.hidden = !list.childElementCount;
     } catch (_) {
       element.hidden = false;

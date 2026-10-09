@@ -1,0 +1,57 @@
+{% set product_body_domain = 'inbox' %}
+{% set page_surface = 'tertiary' %}
+{% set page_title = '粘贴小票文字' if recognition_text else '重新识别原件' %}
+{% set family = recognition_family %}
+{% extends "base.html" %}
+{% block title %}{{ page_title }} · 小票夹{% endblock %}
+{% block page_scripts %}
+<script defer src="/static/web/manual-drafts.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/plan-entry.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/expense-recognition-entry.js?v={{ asset_version }}"></script>
+{% endblock %}
+{% block content %}
+<header class="product-page-header">
+  <div class="product-page-heading">
+    <p class="product-page-eyebrow">账单 {{ original_fields.expense_id }} · 识别建议</p>
+    <h1 class="page-title">{{ page_title }}</h1>
+    <p class="product-page-summary">提取金额、商家等建议，核对后再确认入账。账单核对页的未保存填写仍保留。</p>
+  </div>
+</header>
+<section class="product-panel product-panel--padded" aria-label="{{ page_title }}">
+  {% if error %}<p class="product-feedback product-feedback--error" role="alert">{{ error }}</p>{% endif %}
+  {% if not recognition_active %}<p class="product-page-summary">当前账单无法发起新的识别。已发出的原请求仍可核实；保留的文字不会删除。</p>{% endif %}
+  <form method="post" action="{{ request.url.path }}" data-recognition-form
+    {% if recognition_scope %}data-{{ family }}-draft-scope='{{ recognition_scope | tojson }}'{% endif %}
+    data-{{ family }}-plan-id="{{ original_fields.expense_id }}"
+    data-{{ family }}-can-write="{{ 'true' if can_write else 'false' }}"
+    data-{{ family }}-archived="{{ 'false' if recognition_active else 'true' }}"
+    data-{{ family }}-native-result="{{ recognition_result }}"
+    data-{{ family }}-row-version="{{ recognition_current.row_version if recognition_current else '' }}">
+    {{ csrf_field|safe }}
+    {% for name, value in original_fields.items() %}{% if name != 'raw_text' %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endif %}{% endfor %}
+    <p class="hint" data-{{ family }}-draft-status role="status" hidden></p>
+    {% if recognition_text %}
+    <div class="form-field">
+      <label for="receipt-text">小票文字</label>
+      <textarea id="receipt-text" name="raw_text" rows="10" maxlength="20000" required placeholder="粘贴小票或交易通知中的文字"{% if not can_write or not recognition_editable %} readonly{% endif %}>{{ original_fields.raw_text }}</textarea>
+    </div>
+    {% else %}
+    <p class="product-page-summary">重新读取这张账单的原件。识别只提供建议，不会自动确认入账。</p>
+    <a class="product-button product-button--quiet" href="{{ original_href }}">查看原件</a>
+    {% endif %}
+    <div class="product-form-actions">
+      <button class="product-button product-button--primary" type="submit" data-recognition-submit{% if not recognition_can_submit %} hidden{% endif %}{% if not can_write %} disabled{% endif %}>{{ '核实这次识别结果' if recognition_result in ['blocked', 'rejected'] else '提取字段建议' if recognition_text else '重新识别原件' }}</button>
+      <a class="product-button product-button--quiet" href="{{ current_href }}" data-recognition-return>返回核对账单</a>
+      <a class="product-button product-button--quiet" data-recognition-current hidden>查看账单当前记录</a>
+    </div>
+    <div class="product-form-actions">
+      <button class="product-button product-button--quiet" type="submit" name="review_latest" value="true" formnovalidate data-{{ family }}-review{% if recognition_result != 'rejected' and not recognition_binding_required %} hidden{% endif %}{% if not can_write or not recognition_active %} disabled{% endif %}>核对当前记录，保留填写</button>
+    </div>
+    <p class="hint" data-{{ family }}-review-note{% if recognition_result not in ['prepared', 'rejected'] and not recognition_binding_required %} hidden{% endif %}>核对只更新提交依据，不发起识别。请查看当前记录后再提交。</p>
+    <details class="expense-review-local" data-{{ family }}-draft-shelf hidden>
+      <summary>保留的识别任务</summary><ul data-{{ family }}-draft-list></ul>
+      <button class="product-button product-button--quiet" type="button" data-{{ family }}-discard hidden>放弃本地原稿</button>
+    </details>
+  </form>
+</section>
+{% endblock %}

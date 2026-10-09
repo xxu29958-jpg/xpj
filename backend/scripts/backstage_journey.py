@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 
 from scripts.backstage_journey_facts import denied_membership, facts, synthetic_receipt
+from scripts.backstage_journey_ocr_recovery import open_recognition_task
 from scripts.planning_journey_android import wait_for
 
 
@@ -162,33 +163,25 @@ class BackstageJourney:
     def retry_web(self):
         self.configure_ocr(provider="local_llm")
         self.goto(f"/web/expenses/{self.expense_id}/edit")
-        draft = self.page.locator(f'form[action="/web/expenses/{self.expense_id}/save"]')
-        draft.locator('[name="amount_yuan"]').fill("19.00")
-        draft.locator('[name="note"]').fill("原窗口尚未保存的核对")
-        retry = self.page.locator(f'form[action="/web/expenses/{self.expense_id}/ocr/retry"]')
+        retry = open_recognition_task(self, "19.00", "原窗口尚未保存的核对")
         original_key = retry.locator('[name="idempotency_key"]').input_value()
         original_version = retry.locator('[name="expected_row_version"]').input_value()
-        with self.page.expect_popup() as popup:
-            retry.get_by_role("button", name="重试识别", exact=True).click()
-        result = popup.value
-        try:
-            result.get_by_role("heading", name="暂未取得本次识别结果").wait_for()
-            original_retry = result.locator('form[action$="/ocr/retry"]')
-            assert original_retry.locator('[name="idempotency_key"]').input_value() == original_key
-            assert original_retry.locator('[name="expected_row_version"]').input_value() == original_version
-            self.capture("ocr-failure-original-request", page=result)
-            self.configure_ocr()
-            self.restart_backend()
-            original_retry.get_by_role("button", name="重试原识别请求", exact=True).click()
-            result.wait_for_url("**/edit?*")
-            assert result.locator('[name="amount_yuan"]').input_value() == "18.51"
-            self.capture("ocr-original-request-recovered", page=result)
-            assert draft.locator('[name="amount_yuan"]').input_value() == "19.00"
-            assert draft.locator('[name="note"]').input_value() == "原窗口尚未保存的核对"
-            assert self.facts()["tasks"][0] == self.original_task, "Manual OCR rewrote the original asynchronous task"
-            self.capture("ocr-original-window-preserved")
-        finally:
-            result.close()
+        retry.get_by_role("button", name="重新识别原件", exact=True).click()
+        self.page.locator('form[data-expenseocr-draft-phase="blocked"]').wait_for()
+        assert retry.locator('[name="idempotency_key"]').input_value() == original_key
+        assert retry.locator('[name="expected_row_version"]').input_value() == original_version
+        self.capture("ocr-failure-original-request")
+        self.configure_ocr()
+        self.restart_backend()
+        retry.get_by_role("button", name="核实这次识别结果", exact=True).click()
+        self.page.wait_for_url("**/edit?*")
+        draft = self.page.locator('form[data-expensereview-draft-scope]')
+        self.page.wait_for_function("document.querySelector('[name=amount_yuan]').value === '19.00'")
+        assert draft.locator('[name="note"]').input_value() == "原窗口尚未保存的核对"
+        current = self.facts()
+        assert current["expenses"][0]["amount"] == 1851
+        assert current["tasks"][0] == self.original_task, "Manual OCR rewrote the original asynchronous task"
+        self.capture("ocr-original-request-recovered")
 
     def native_review(self):
         self.native.click("打开原账单")

@@ -24,13 +24,7 @@
     });
   }
 
-  function bindReviewSubtasks() {
-    const related = document.querySelector("[data-review-subtasks]");
-    if (!related) return;
-    if (related.dataset.reviewError && !window.location.hash) {
-      window.history.replaceState(null, "", "#expense-" + related.dataset.reviewError);
-    }
-    const forms = [...document.querySelectorAll("[data-review-form]")];
+  app.preserveReviewForms = function (forms) {
     let submittingForm = null;
     forms.forEach(form => {
       form.addEventListener("input", () => { form.dataset.edited = "true"; });
@@ -45,6 +39,15 @@
       return forms.some(form => form !== submitted && (form.expenseReviewContinuity
         ? form.expenseReviewContinuity.hasUnretainedInput() : form.dataset.edited));
     });
+  };
+
+  function bindReviewSubtasks() {
+    const related = document.querySelector("[data-review-subtasks]");
+    if (!related) return;
+    if (related.dataset.reviewError && !window.location.hash) {
+      window.history.replaceState(null, "", "#expense-" + related.dataset.reviewError);
+    }
+    app.preserveReviewForms([...document.querySelectorAll("[data-review-form]")]);
     let showingRelated = null;
     function showReviewStage() {
       const hash = window.location.hash;

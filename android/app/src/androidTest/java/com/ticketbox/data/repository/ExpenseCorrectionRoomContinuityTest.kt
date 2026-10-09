@@ -350,7 +350,7 @@ class ExpenseCorrectionRoomContinuityTest {
         compose.onNodeWithText(context.getString(R.string.correction_submission_retry)).assertDoesNotExist()
         compose.onNodeWithText(context.getString(R.string.sync_status_overview_caption_settled)).assertDoesNotExist()
         compose.onNodeWithText(context.getString(R.string.sync_status_overview_caption_needs_action, 1)).assertDoesNotExist()
-        compose.onNodeWithText("1 笔旧提交需要核对当前事实，送达情况尚未确认。")
+        compose.onNodeWithText(context.getString(R.string.sync_status_overview_caption_review_required, 1))
             .performScrollTo().assertIsDisplayed()
         assertEquals(original, fixture.stored().single())
         assertEquals(0, fixture.confirmedCallbacks)
