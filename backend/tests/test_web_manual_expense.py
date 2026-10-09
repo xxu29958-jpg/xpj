@@ -99,6 +99,7 @@ def _assert_confirmed_manual_fact(
         assert location == (
             f"/web/expenses/{expense.id}/edit?"
             "ledger_id=shared_household&return_to=confirmed"
+            "&return_month=2026-08&return_page=1&return_home_currency_code=CNY"
         )
         token = db.scalar(
             select(AuthToken).where(AuthToken.token_hash == hash_secret(session_token))

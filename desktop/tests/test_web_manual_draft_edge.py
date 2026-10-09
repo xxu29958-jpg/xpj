@@ -52,7 +52,7 @@ def _form(query: dict[str, list[str]]) -> bytes:
   <button type="submit" data-manual-submit>记下这笔支出</button>
   <p hidden data-manual-draft-status></p>
 </form>
-<div hidden data-manual-draft-actions><a href="/form">另记一笔</a></div>
+<div hidden data-manual-draft-actions><a href="/web/expenses/new">另记一笔</a></div>
 <details hidden data-manual-draft-shelf><span data-manual-draft-count></span><ul data-manual-draft-list></ul></details>
 <script>{setup}</script>
 <script src="/manual-drafts.js"></script><script src="/manual-entry.js"></script>
@@ -82,7 +82,7 @@ def test_real_edge_manual_intent_survives_reload_and_unknown_response(tmp_path: 
             if url.path == "/":
                 self.reply(b'<!doctype html><html><head><meta charset="utf-8"></head><body>'
                            b'<script src="/manual-drafts.js"></script><script src="/probe.js"></script></body></html>')
-            elif url.path == "/form":
+            elif url.path == "/web/expenses/new":
                 self.reply(_form(parse_qs(url.query)))
             elif url.path in {"/manual-drafts.js", "/manual-entry.js", "/manual-draft-ack.js",
                               "/manual-draft-files.js", "/attachment-drafts.js", "/manual-original.js"}:
