@@ -135,7 +135,7 @@
 <header class="product-page-header review-full-heading" id="review-breakdown" tabindex="-1" data-review-stage="details" hidden>
   <div class="product-page-heading">
     <h1 class="page-title">明细与家庭拆账</h1>
-    <p class="product-page-summary">{{ e.merchant or '未填写商家' }} · {{ e.amount_label }}</p>
+    <p class="product-page-summary">{{ e.merchant or '未填写商家' }} · {{ e.original_currency_code or e.home_currency_code }} {{ e.amount_label }}</p>
   </div>
 </header>
 <div class="detail-sections" data-review-subtasks data-review-stage="details" data-review-error="{{ expense_subtask|default('items' if items_error else 'splits' if splits_error else '') }}">
