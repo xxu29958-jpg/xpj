@@ -205,8 +205,9 @@ class OriginalMaintenanceJourney:
             assert self.inspect()["result"]["candidate_files"] == 0
         self.capture("no-candidates")
         partial = self.partial_disposal()
+        self.page.locator("#original-history > summary").click()
         self.page.get_by_role("link", name="更早的任务", exact=True).click()
-        assert "第 2 页" in self.page.inner_text('section[aria-label="原件任务历史"]')
+        assert "第 2 页" in self.page.inner_text('[aria-label="原件任务历史"]')
         self.capture("history-page-two")
         interrupted = self.interrupted_disposal()
         self.native_observations()

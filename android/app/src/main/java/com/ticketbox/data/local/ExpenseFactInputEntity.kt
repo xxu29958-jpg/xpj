@@ -21,6 +21,9 @@ data class ExpenseFactInputEntity(
 
 @Dao
 interface ExpenseFactInputDao {
+    @Query("SELECT * FROM expense_fact_inputs WHERE substr(formKey, 1, 9) = 'original_'")
+    suspend fun originalSelections(): List<ExpenseFactInputEntity>
+
     @Query("SELECT * FROM expense_fact_inputs WHERE ownerKey = :owner AND ledgerId = :ledger AND expenseId = :expense")
     suspend fun factInputs(owner: String, ledger: String, expense: Long): List<ExpenseFactInputEntity>
 

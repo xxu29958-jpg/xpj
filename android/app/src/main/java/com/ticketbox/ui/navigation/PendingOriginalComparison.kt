@@ -14,16 +14,20 @@ import com.ticketbox.ui.components.AppSheetAction
 import com.ticketbox.ui.components.AppSheetActionRow
 import com.ticketbox.ui.components.AppSheetScaffold
 import com.ticketbox.ui.design.AppAdaptiveBreakpoints
+import com.ticketbox.viewmodel.canLeaveOriginalSelection
 
 /** Each side retains the existing original attachment owner, including unavailable-file recovery. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun PendingOriginalComparison(ids: List<Long>, factory: MainScreenFactory, onAccepted: () -> Unit, onDismiss: () -> Unit) {
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+    val originals = ids.mapNotNull { originalAttachmentViewModel(it, factory) }
+    val leave = { if (originals.all { it.canLeaveOriginalSelection() }) onDismiss() }
+    ModalBottomSheet(onDismissRequest = leave, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true,
+        confirmValueChange = { it != androidx.compose.material3.SheetValue.Hidden || originals.all { vm -> vm.canLeaveOriginalSelection() } }),
         sheetMaxWidth = AppAdaptiveBreakpoints.twoPaneContentMaxWidth) {
         AppSheetScaffold(
             title = stringResource(R.string.pending_duplicate_originals),
-            actions = { AppSheetActionRow(primary = AppSheetAction(stringResource(R.string.pending_duplicate_return), onDismiss)) },
+            actions = { AppSheetActionRow(primary = AppSheetAction(stringResource(R.string.pending_duplicate_return), leave)) },
         ) {
             AppAdaptiveMetricGrid(itemCount = ids.size) { index, modifier ->
                 Column(modifier = modifier) {

@@ -89,6 +89,7 @@ internal class ExpenseCorrectionConnectedFixture(
     val expenseDao get() = requireNotNull(database).expenseDao()
     val pendingDao get() = requireNotNull(database).pendingMutationDao()
     var failCachePublication = false
+    var originalStorageAvailable = true
     var confirmedCallbacks = 0
     var adviceCallbacks = 0
     var schedules = 0
@@ -160,8 +161,8 @@ internal class ExpenseCorrectionConnectedFixture(
             provider, RepositoryGraphOutbox(outbox, adapters)))
         notificationDependencies = NotificationRuntimeDependencies(context, settingsStore, provider,
             graph.recurringRepository, graph.budgetRepository, ledgerCalendarRepository)
-        uploadIntents = UploadIntentRepository(provider, outbox, UploadIntentFileStore(context),
-            adapters.uploadPayloadAdapter, adapters.uploadReceiptAdapter, settingsStore)
+        uploadIntents = UploadIntentRepository(provider, outbox, UploadIntentFileStore(context) { if (originalStorageAvailable) it.usableSpace else 0L },
+            adapters, settingsStore, db.expenseDao())
         graph.expenseRepository.onConfirmedCommitted = { confirmedCallbacks++ }
         return graph
     }

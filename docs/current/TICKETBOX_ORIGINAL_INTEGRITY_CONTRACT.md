@@ -63,6 +63,25 @@ Those are rejected as substitutes for this delivery.
 
 ## Owners, consumers and impact before implementation
 
+### Android unsubmitted original selection (2026-10-09)
+
+This independent capability retains a selected, unsubmitted original across leaving
+the bill and reopening the app. The existing UploadIntentRepository/FileStore owns
+its bytes; the existing expense_fact_inputs table retains the original attachment
+payload/key in a reserved original_ namespace. It is input, never an Outbox command
+until the person reviews the actual bytes and explicitly confirms. No new queue,
+financial writer, schema or provider-URI dependency is introduced.
+
+The file lock covers durable file publication and input CAS. Command admission
+atomically consumes that exact input in the existing Room Outbox transaction; GC
+must account for all input and command references across bindings and fail closed
+on unreadable protocols. A changed identity cannot adopt or submit the old selection.
+Explicit cancellation consumes only the observed input. Failed retention preserves
+the displayed bytes and original key, exposes retry/cancel and blocks ordinary exit.
+Confirmed detail, pending editing and both sides of original comparison share this
+owner. Their leave/reopen, admission failure and discard paths are in scope; a Room
+reopen test alone does not qualify full process restart or the complete 10B group.
+
 ### First association for a bill without an original (2026-10-09)
 
 The active Goal delegates this missing product capability. Rev3.2 §6.7 owns the

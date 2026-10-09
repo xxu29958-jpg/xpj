@@ -2,6 +2,7 @@ package com.ticketbox.data.local
 
 internal class ExpenseFactInputFake : ExpenseFactInputDao {
     private val rows = mutableListOf<ExpenseFactInputEntity>()
+    override suspend fun originalSelections() = rows.filter { it.formKey.startsWith("original_") }
     override suspend fun pendingReviewInputs(owner: String, ledger: String) =
         rows.filter { it.ownerKey == owner && it.ledgerId == ledger && it.formKey.startsWith("pending_") }
     override suspend fun factInputs(owner: String, ledger: String, expense: Long) =

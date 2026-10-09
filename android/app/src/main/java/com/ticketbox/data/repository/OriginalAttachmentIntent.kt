@@ -24,6 +24,7 @@ data class OriginalAttachmentPayload(
 )
 
 data class OriginalSubmission(val key: String, val payload: OriginalAttachmentPayload,
+    val selection: OriginalSelectionDraft? = null,
     val prepare: (suspend () -> PreparedUploadImage?)? = null)
 
 data class PendingOriginalCommand(val row: OutboxRow, val payload: OriginalAttachmentPayload?,
@@ -43,6 +44,14 @@ interface OriginalAttachmentActions {
     suspend fun fetchOriginalHealth(id: Long): Result<OriginalHealthDto>
     suspend fun submitOriginal(request: OriginalSubmission): Result<Long>
     suspend fun recoverOriginal(binding: LogicalSessionBinding, rowId: Long, drop: Boolean): Result<Unit>
+    val originalSelections: OriginalSelectionActions
+}
+
+interface OriginalSelectionActions {
+    suspend fun loadOriginalSelection(binding: LogicalSessionBinding, id: Long): Result<OriginalSelectionDraft?>
+    suspend fun retainOriginalSelection(request: OriginalSubmission): Result<OriginalSelectionDraft>
+    suspend fun readOriginalSelection(selection: OriginalSelectionDraft): Result<PreparedUploadImage>
+    suspend fun discardOriginalSelection(binding: LogicalSessionBinding, request: OriginalSubmission): Result<Unit>
 }
 
 internal val ORIGINAL_REVIEW_ERRORS = setOf("image_replenishment_mismatch", "original_identity_unverified",

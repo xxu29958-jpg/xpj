@@ -39,6 +39,7 @@ import com.ticketbox.ui.screens.ExpenseEditSplitEditingActions
 import com.ticketbox.ui.screens.expense.ItemsEditorSheetActions
 import com.ticketbox.ui.screens.expense.SplitsEditorSheetActions
 import com.ticketbox.viewmodel.originalCommandAccepted
+import com.ticketbox.viewmodel.canLeaveOriginalSelection
 import com.ticketbox.viewmodel.reviewOriginalBaseline
 import com.ticketbox.viewmodel.refreshFx
 import com.ticketbox.viewmodel.retryFx
@@ -112,6 +113,9 @@ internal fun ExpenseEditRoute(
         return
     }
 
+    val original = originalAttachmentViewModel(expenseId, screenFactory)
+    val canLeave = { original?.canLeaveOriginalSelection() != false }
+    androidx.activity.compose.BackHandler { if (!editState.saving && canLeave()) editViewModel.closeOrRetain(exit) }
     ExpenseEditScreen(
         originalContent = { ExpenseEditOriginalTask(expenseId, screenFactory, editViewModel, editState) },
         screenState = ExpenseEditScreenState(
@@ -125,7 +129,7 @@ internal fun ExpenseEditRoute(
             ),
         ),
         actions = ExpenseEditScreenActions(
-            primary = expenseEditPrimaryActions(editViewModel, exit),
+            primary = expenseEditPrimaryActions(editViewModel, exit, canLeave),
             media = expenseEditMediaActions(editViewModel),
             related = expenseEditRelatedActions(editViewModel),
             itemization = expenseEditItemizationActions(editViewModel),
@@ -147,21 +151,20 @@ private fun ExpenseEditOriginalTask(id: Long, factory: MainScreenFactory, vm: Ex
 private fun expenseEditPrimaryActions(
     viewModel: ExpenseEditViewModel,
     exit: ExpenseEditExitActions,
+    canLeave: () -> Boolean,
 ): ExpenseEditPrimaryActions = ExpenseEditPrimaryActions(
-    onSave = viewModel::save,
+    onSave = { if (canLeave()) viewModel.save(it) },
     onRefreshFx = viewModel::refreshFx,
     onRetryFx = viewModel::retryFx,
     onLoadFxReview = viewModel::loadFxReview,
-    onConfirm = viewModel::confirm,
-    onReject = viewModel::reject,
-    onDone = {
-        if (viewModel.consumeDone()) {
-            exit.onCompleted(viewModel.consumeDoneAdviceInputsChanged())
-        } else {
-            exit.onBack()
-        }
-    },
+    onConfirm = { if (canLeave()) viewModel.confirm(it) },
+    onReject = { if (canLeave()) viewModel.reject() },
+    onDone = { if (canLeave()) viewModel.closeOrRetain(exit) },
 )
+
+private fun ExpenseEditViewModel.closeOrRetain(exit: ExpenseEditExitActions) {
+    if (consumeDone()) exit.onCompleted(consumeDoneAdviceInputsChanged()) else exit.onBack()
+}
 
 private fun expenseEditMediaActions(viewModel: ExpenseEditViewModel): ExpenseEditMediaActions = ExpenseEditMediaActions(
     onRetryOcr = viewModel::retryOcr,

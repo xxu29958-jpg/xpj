@@ -22,12 +22,17 @@ import com.ticketbox.viewmodel.selectedSource
 
 /** Both pending editing and confirmed facts continue the same original task on their existing bill. */
 @Composable
-internal fun OriginalAttachmentRoute(expenseId: Long, screenFactory: MainScreenFactory, onAccepted: () -> Unit = {}, initiallyExpanded: Boolean = false) {
-    val originals = screenFactory.repositories.originalAttachments ?: return
-    val context = LocalContext.current.applicationContext
-    val vm: OriginalAttachmentViewModel = viewModel(key = "original-$expenseId", factory = viewModelFactory {
+internal fun originalAttachmentViewModel(expenseId: Long, screenFactory: MainScreenFactory): OriginalAttachmentViewModel? {
+    val originals = screenFactory.repositories.originalAttachments ?: return null
+    return viewModel(key = "original-$expenseId", factory = viewModelFactory {
         initializer { OriginalAttachmentViewModel(expenseId, originals, screenFactory.repository::fetchImage, createSavedStateHandle()) }
     })
+}
+
+@Composable
+internal fun OriginalAttachmentRoute(expenseId: Long, screenFactory: MainScreenFactory, onAccepted: () -> Unit = {}, initiallyExpanded: Boolean = false) {
+    val vm = originalAttachmentViewModel(expenseId, screenFactory) ?: return
+    val context = LocalContext.current.applicationContext
     val state by vm.state.collectAsStateWithLifecycle()
     val prepare: suspend (String) -> com.ticketbox.upload.PreparedUploadImage? = { context.readReplenishmentOriginal(Uri.parse(it)) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -36,7 +41,7 @@ internal fun OriginalAttachmentRoute(expenseId: Long, screenFactory: MainScreenF
         vm.resumeSelectedSource(prepare)
     }
     LaunchedEffect(state.deliveredRevision) { if (state.deliveredRevision > 0) onAccepted() }
-    LaunchedEffect(state.access?.binding) { vm.resumeSelectedSource(prepare) }
+    LaunchedEffect(state.access?.binding, state.selectionLoaded) { if (state.selectionLoaded) vm.resumeSelectedSource(prepare) }
     OriginalAttachmentPanel(state, vm, onSelectFile = {
         if (vm.beginSelection()) picker.launch(arrayOf("image/*"))
     }, onResumeSelection = { vm.resumeSelectedSource(prepare) }, initiallyExpanded = initiallyExpanded)

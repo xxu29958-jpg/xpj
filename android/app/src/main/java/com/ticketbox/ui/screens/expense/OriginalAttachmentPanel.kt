@@ -39,7 +39,7 @@ import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.settings.SettingsEntryRow
 import com.ticketbox.viewmodel.OriginalAttachmentUiState
 import com.ticketbox.viewmodel.OriginalAttachmentViewModel
-import com.ticketbox.viewmodel.clearOriginalSelection
+import com.ticketbox.viewmodel.discardOriginalSelection
 import com.ticketbox.viewmodel.continueCleanup
 import com.ticketbox.viewmodel.recoverOriginal
 import com.ticketbox.viewmodel.submitSelectedSource
@@ -197,10 +197,17 @@ private fun OriginalLocalSelection(state: OriginalAttachmentUiState, viewModel: 
         AppPrimaryButton(text = stringResource(R.string.original_selection_submit), modifier = Modifier.fillMaxWidth(),
             onClick = viewModel::submitSelectedSource, enabled = state.canConfirmSelection)
     } else {
-        Text(stringResource(if (state.localIntentBound) R.string.original_source_saved else R.string.original_source_other_binding))
-        TextButton(onClick = retry, enabled = !state.busy && state.localIntentBound && state.access?.canModify == true) { Text(stringResource(R.string.original_source_retry)) }
+        Text(stringResource(when {
+            !state.selectionLoaded -> R.string.original_selection_load_failed
+            state.localIntentBound -> R.string.original_source_saved
+            else -> R.string.original_source_other_binding
+        }))
+        TextButton(onClick = retry, enabled = state.canResumeSelection) { Text(stringResource(R.string.original_source_retry)) }
     }
-    TextButton(onClick = viewModel::clearOriginalSelection, enabled = !state.busy) { Text(stringResource(R.string.original_source_cancel)) }
+    if (selection != null && state.selectionDraft == null) {
+        TextButton(onClick = retry, enabled = !state.busy && state.localIntentBound) { Text(stringResource(R.string.original_selection_save_retry)) }
+    }
+    TextButton(onClick = viewModel::discardOriginalSelection, enabled = !state.busy && state.selectionLoaded) { Text(stringResource(R.string.original_source_cancel)) }
 }
 
 @Composable

@@ -50,7 +50,10 @@ internal suspend fun UploadIntentRepository.acceptOriginalAttachment(request: Or
                 require(payload.supported())
                 val intent = PendingMutationIntent(PendingMutationType.OriginalAttachment, "expense:${payload.expenseId}",
                     originalPayloadAdapter.toJson(payload), payload.expectedRowVersion, request.key)
-                outbox.enqueueUploadBatch(bound, listOf(intent)).single()
+                request.selection?.let { check(it.key == request.key && it.payload == payload) }
+                outbox.enqueueUploadBatch(bound, listOf(intent), request.selection?.let { selection ->
+                    suspend { originalInputs.consumeFactInput(selection.row) }
+                }).single()
             },
         )
     } catch (error: Exception) {

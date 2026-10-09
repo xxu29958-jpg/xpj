@@ -221,7 +221,19 @@ class FactEntryNavigationTest {
         assertTrue(harness.fixture.network.imageReads.isEmpty())
         assertEquals(before, harness.fixture.network.current)
         saveConsumerArtPreview("original-first-attachment", requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        harness.fixture.originalStorageAvailable = false
         compose.onNodeWithText(context.getString(R.string.original_attach)).performClick()
+        val retry = context.getString(R.string.original_selection_save_retry)
+        waitForText(retry)
+        InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand("input keyevent 4").close()
+        compose.waitForIdle()
+        compose.onNodeWithText(retry).performScrollTo().assertIsDisplayed()
+        assertTrue(harness.fixture.stored().isEmpty())
+        saveConsumerArtPreview("original-selection-retain-failed", requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        sharedImage.writeBytes(byteArrayOf(9, 8, 7))
+        harness.fixture.originalStorageAvailable = true
+        compose.onNodeWithText(retry).performClick()
+        compose.waitUntil(5_000) { compose.onAllNodesWithText(retry).fetchSemanticsNodes().isEmpty() }
         waitForText(context.getString(R.string.original_selection_submit))
         compose.onNodeWithContentDescription(context.getString(R.string.original_selected_image))
             .performScrollTo().assertIsDisplayed()
@@ -229,6 +241,19 @@ class FactEntryNavigationTest {
         compose.onNodeWithText(context.getString(R.string.original_selection_submit)).performScrollTo().assertIsNotEnabled()
         // Provider contents may change; confirmation must enqueue the bytes actually displayed.
         sharedImage.writeBytes(byteArrayOf(9, 8, 7))
+        compose.runOnIdle { assertTrue(outer.popBackStack()); mounted.value = false }
+        compose.waitForIdle()
+        harness.reopen()
+        val binding = requireNotNull(harness.fixture.uploadIntents.currentOriginalBinding())
+        assertTrue(runBlocking { harness.screenFactory.repository.loadFactInputs(binding, 42L).getOrThrow().isEmpty() })
+        compose.runOnIdle { mounted.value = true }
+        compose.waitForIdle()
+        openFact()
+        waitForText(context.getString(R.string.original_selection_submit))
+        compose.onNodeWithContentDescription(context.getString(R.string.original_selected_image))
+            .performScrollTo().assertIsDisplayed()
+        assertTrue("Restoring a selection must not enqueue it", harness.fixture.stored().isEmpty())
+        compose.onNodeWithText(context.getString(R.string.original_selection_submit)).performScrollTo().assertIsNotEnabled()
         val review = context.getString(R.string.original_selection_review)
         compose.waitUntil(5_000) { compose.onAllNodes(hasText(review) and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText(review).performScrollTo().performClick()

@@ -48,6 +48,10 @@
     <string name="original_selected_image">本次选择的原件图片</string>
     <string name="original_selection_review">这是这笔账单对应的原件</string>
     <string name="original_selection_submit">确认并保存原件</string>
+    <string name="original_selection_save_failed">暂未保留本次选择，请重试保留后再离开。尚未提交。</string>
+    <string name="original_selection_load_failed">暂时无法恢复原选择，请重试。不会覆盖已保留的输入。</string>
+    <string name="original_selection_save_retry">重试保留本次选择</string>
+    <string name="original_selection_leave_blocked">本次选择还未妥善保留，请稍候或重试；也可明确取消此次选择后离开。</string>
     <string name="original_selection_unavailable">所选图片无法打开，尚未提交。请重新选择可查看的原件图片。</string>
     <string name="original_review_conflict">原件或账单在核对后发生变化。请刷新并重新查看原图。</string>
     <string name="original_verify_no_digest">此响应没有可验证的原件摘要，可继续查看，但不能据此建立核验基准。</string>

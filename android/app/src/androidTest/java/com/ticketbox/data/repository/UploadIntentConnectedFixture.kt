@@ -145,7 +145,7 @@ internal class UploadIntentConnectedFixture(private val context: Context) : Clos
             onEnqueued = { scope.launch { engine.drainOnce() } },
             onRowsDeleted = { uploadIntents.collectOrphans() })
         uploadIntents = UploadIntentRepository(provider, outbox, files,
-            adapters.uploadPayloadAdapter, adapters.uploadReceiptAdapter, settings)
+            adapters, settings, db.expenseDao())
         val guard = LedgerRequestGuard(provider)
         engine = OutboxDrainEngine(outbox, listOf(UploadScreenshotDispatcher(
             { row -> guard.bind(expectedLedgerId = row.ledgerId).serviceFor(requireNotNull(row.bindingOrNull())) },

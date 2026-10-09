@@ -420,6 +420,7 @@ class OutboxRepository private constructor(
     internal suspend fun enqueueUploadBatch(
         boundRequest: BoundLedgerRequest,
         intents: List<PendingMutationIntent>,
+        afterPersisted: (suspend () -> Unit)? = null,
     ): List<Long> {
         require(intents.size in 1..100)
         require(intents.map { it.type }.distinct().size == 1)
@@ -442,7 +443,8 @@ class OutboxRepository private constructor(
                 }
             } else {
                 val createdAt = nowIso()
-                dao.insertBatch(intents.map { it.toEntity(binding, createdAt) })
+                val rows = intents.map { it.toEntity(binding, createdAt) }
+                if (afterPersisted == null) dao.insertBatch(rows) else dao.insertBatchAndPublish(rows, afterPersisted)
             }
         }
         schedulePending()

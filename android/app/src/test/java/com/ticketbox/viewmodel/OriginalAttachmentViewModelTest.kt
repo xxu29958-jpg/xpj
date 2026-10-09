@@ -54,8 +54,16 @@ class OriginalAttachmentViewModelTest {
         assertEquals(retainedKey, handle.get<String>("original_key"))
         assertEquals("content://controlled/original", handle.get<String>("original_uri"))
         assertTrue(owner.submissions.isEmpty())
+        owner.retentionFailure = IOException("Synthetic disk failure")
         vm.resumeSelectedSource { com.ticketbox.upload.PreparedUploadImage("original.jpg", "image/jpeg", byteArrayOf(1, 2, 3), 3) }
         advanceUntilIdle()
+        assertFalse(vm.canLeaveOriginalSelection())
+        assertFalse(vm.state.value.canConfirmSelection)
+        assertEquals(retainedKey, handle.get<String>("original_key"))
+        owner.retentionFailure = null
+        vm.resumeSelectedSource { error("Retry must retain the displayed bytes, not reread the provider") }
+        advanceUntilIdle()
+        assertTrue(vm.canLeaveOriginalSelection())
         assertTrue(owner.submissions.isEmpty(), "Selecting an original must wait for preview and explicit confirmation")
         vm.submitSelectedSource()
         advanceUntilIdle()
@@ -237,10 +245,30 @@ class OriginalAttachmentViewModelTest {
     }
 }
 
-private class OriginalActionsFake : OriginalAttachmentActions {
+private class OriginalActionsFake : OriginalAttachmentActions, com.ticketbox.data.repository.OriginalSelectionActions {
+    override val originalSelections get() = this
     var binding = LogicalSessionBinding("https://example.test", "ledger", "owner", "session", "binding")
     val observations = MutableStateFlow(OriginalCommandObservation(LedgerAccessContext(binding, true), emptyList()))
     val submissions = mutableListOf<OriginalSubmission>()
+    var retained: com.ticketbox.data.repository.OriginalSelectionDraft? = null
+    var source: com.ticketbox.upload.PreparedUploadImage? = null
+    var retentionFailure: Throwable? = null
+    override suspend fun loadOriginalSelection(binding: LogicalSessionBinding, id: Long) = Result.success(retained)
+    override suspend fun retainOriginalSelection(request: OriginalSubmission): Result<com.ticketbox.data.repository.OriginalSelectionDraft> {
+        retentionFailure?.let { return Result.failure(it) }
+        val image = requireNotNull(request.prepare?.invoke()).also { source = it }
+        val payload = request.payload.copy(file = com.ticketbox.data.repository.UploadIntentFileDescriptor(request.key,
+            image.bytes.size.toLong(), "a".repeat(64), com.ticketbox.data.repository.UploadIntentFileMetadata(
+                image.fileName, image.contentType, image.preparationDurationMs, image.sourceSizeBytes)))
+        val row = com.ticketbox.data.local.ExpenseFactInputEntity(payload.origin.ownerKey, payload.origin.ledgerId,
+            payload.expenseId, "original_attachment", "{}", request.key, originalPayloadAdapter.toJson(payload))
+        return Result.success(com.ticketbox.data.repository.OriginalSelectionDraft(row, payload).also { retained = it })
+    }
+    override suspend fun readOriginalSelection(selection: com.ticketbox.data.repository.OriginalSelectionDraft) = Result.success(requireNotNull(source))
+    override suspend fun discardOriginalSelection(binding: LogicalSessionBinding, request: OriginalSubmission): Result<Unit> {
+        retained = null
+        return Result.success(Unit)
+    }
     override fun currentOriginalBinding() = binding
     override fun observeOriginalCommands() = observations
     var healthFailure: Throwable? = null

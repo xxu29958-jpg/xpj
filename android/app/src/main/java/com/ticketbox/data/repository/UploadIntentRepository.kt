@@ -5,7 +5,6 @@ import com.squareup.moshi.JsonDataException
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.local.TicketboxSettingsStore
-import com.ticketbox.data.remote.dto.UploadResponseDto
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import com.ticketbox.upload.PreparedUploadImage
 import java.io.IOException
@@ -25,14 +24,16 @@ import kotlinx.coroutines.flow.onEach
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 
 /** Owns acceptance and recovery of original files in the existing Outbox; it never sends HTTP. */
-class UploadIntentRepository(
+class UploadIntentRepository internal constructor(
     internal val apiProvider: ApiServiceProvider,
     internal val outbox: OutboxRepository,
     internal val files: UploadIntentFileStore,
-    private val payloadAdapter: JsonAdapter<UploadScreenshotPayload>,
-    private val receiptAdapter: JsonAdapter<UploadResponseDto>,
+    adapters: com.ticketbox.OutboxAdapterGraph,
     internal val settingsStore: TicketboxSettingsStore,
+    internal val originalInputs: com.ticketbox.data.local.ExpenseFactInputDao,
 ) : UploadIntentActions, OriginalAttachmentActions {
+    private val payloadAdapter = adapters.uploadPayloadAdapter
+    private val receiptAdapter = adapters.uploadReceiptAdapter
     internal val guard = LedgerRequestGuard(apiProvider)
 
     override fun currentOriginalBinding() = guard.captureLogicalBinding()
@@ -41,6 +42,7 @@ class UploadIntentRepository(
     override suspend fun submitOriginal(request: OriginalSubmission) = acceptOriginalAttachment(request)
     override suspend fun recoverOriginal(binding: LogicalSessionBinding, rowId: Long, drop: Boolean) =
         recoverOriginalAttachment(binding, rowId, drop)
+    override val originalSelections = OriginalSelectionRepository(guard, outbox, files, originalInputs)
 
     override fun currentUploadBinding(): LogicalSessionBinding? = guard.captureLogicalBinding()
 
@@ -122,6 +124,10 @@ class UploadIntentRepository(
     /** The FileStore holds its lock while ALL bindings and raw types prove the referenced key set. */
     suspend fun collectOrphans(): Int = files.collectOrphans {
         val referenced = mutableSetOf<String>()
+        for (input in originalInputs.originalSelections()) {
+            val selection = runCatching { decodeOriginalSelection(input) }.getOrNull() ?: return@collectOrphans null
+            referenced += requireNotNull(selection.payload.file).key
+        }
         for (row in outbox.allRowsForUploadFileReferences()) {
             when (PendingMutationType.fromWire(row.type)) {
                 PendingMutationType.Unknown -> return@collectOrphans null

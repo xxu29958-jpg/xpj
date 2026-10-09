@@ -138,7 +138,7 @@ class AppContainer(context: Context) {
 
     val uploadIntentRepository: UploadIntentRepository = UploadIntentRepository(
         apiServiceProvider, outboxRepository, uploadFiles,
-        outboxAdapters.uploadPayloadAdapter, outboxAdapters.uploadReceiptAdapter, settingsStore,
+        outboxAdapters, settingsStore, database.expenseDao(),
     )
 
     private fun outboxApi(row: OutboxRow) = outboxRequestGuard

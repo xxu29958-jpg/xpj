@@ -7,9 +7,11 @@
     {stage: "start", action: query.get("choice"), fault: query.get("fault"), requests: []};
   const save = () => sessionStorage.setItem(key, JSON.stringify(state));
   const assert = (value, message) => { if (!value) throw Error(message); };
+  let waitStep = 0;
   const wait = async condition => {
+    const step = ++waitStep, started = performance.now();
     for (let n = 0; n < 200; n++) { if (condition()) return; await new Promise(resolve => setTimeout(resolve, 25)); }
-    throw Error("duplicate recovery stalled at " + state.stage);
+    throw Error("duplicate recovery stalled at " + state.stage + ":" + step + " after " + Math.round(performance.now() - started) + "ms; last condition=" + Boolean(condition()));
   };
   const form = () => document.querySelector('form[action="/web/duplicates/42/' + state.action + '"]');
   const submit = () => form()?.querySelector("[data-duplicatechoice-submit]");
