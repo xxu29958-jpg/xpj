@@ -19,6 +19,7 @@ RETURN_TO_PATHS: dict[str, str] = {
     "duplicates": "/web/duplicates",
     "uncategorized": "/web/categories/uncategorized",
     "search": "/web/search",
+    "originals": "/web/originals",
     "bill_splits_inbox": "/web/bill-splits/inbox",
     "bill_splits_sent": "/web/bill-splits/sent",
 }
@@ -31,6 +32,7 @@ RETURN_TO_LABELS: dict[str, str] = {
     "duplicates": "返回重复检查",
     "uncategorized": "返回补分类",
     "search": "返回搜索结果",
+    "originals": "返回原件检查",
     "bill_splits_inbox": "返回拆账收件箱",
     "bill_splits_sent": "返回已发拆账",
     "recurring_occurrence": "返回本期固定支出",
@@ -47,6 +49,7 @@ _PENDING_FILTERS = {
 }
 _MONTH_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 _EDIT_KEY_BY_LIST_KEY = {
+    "after": "return_after",
     "draft_ref": "return_category_draft_ref",
     "receipt": "return_category_receipt_key",
     "focus": "return_duplicate_expense_id",
@@ -68,6 +71,7 @@ class ExpenseReturnContext:
     """Browser origin carried through one expense fact/correction journey."""
 
     return_to: str = ""
+    return_after: str = ""
     return_month: str = ""
     return_filter: str = ""
     return_page: str = ""
@@ -97,6 +101,7 @@ class ExpenseReturnContext:
 
 def expense_return_query_context(
     return_to: str = "",
+    return_after: str = "",
     return_month: str = "",
     return_filter: str = "",
     return_page: str = "",
@@ -122,6 +127,7 @@ def expense_return_query_context(
 ) -> ExpenseReturnContext:
     return ExpenseReturnContext(
         return_to=return_to,
+        return_after=return_after,
         return_month=return_month,
         return_filter=return_filter,
         return_page=return_page,
@@ -149,6 +155,7 @@ def expense_return_query_context(
 
 def expense_return_form_context(
     return_to: str = Form(default=""),
+    return_after: str = Form(default=""),
     return_month: str = Form(default=""),
     return_filter: str = Form(default=""),
     return_page: str = Form(default=""),
@@ -174,6 +181,7 @@ def expense_return_form_context(
 ) -> ExpenseReturnContext:
     return ExpenseReturnContext(
         return_to=return_to,
+        return_after=return_after,
         return_month=return_month,
         return_filter=return_filter,
         return_page=return_page,
@@ -306,6 +314,8 @@ def return_context_params(return_to: str, **origin: str) -> dict[str, str]:
         return _report_return_params(origin)
     if token == "search":
         return _search_return_params(origin)
+    if token == "originals":
+        return {"after": _payment_expense_id(origin.get("return_after", "")) or "0"}
     if token == "recurring_occurrence":
         return _recurring_list_return_params(origin)
     if token == "csv_import_event":
@@ -427,6 +437,8 @@ def return_href(return_to: str, *, ledger_id: str, default_path: str, **origin: 
             **{key: value for key, value in origin.items() if key not in receipt})
     path = resolve_return_to(return_to, default_path, **origin)
     params = {"ledger_id": ledger_id, **return_context_params(return_to, **origin)}
+    if clean_return_to(return_to) == "originals":
+        params["inspect"] = "1"
     anchor = f"#categorybatch-create-{params['draft_ref']}" if clean_return_to(return_to) == "uncategorized" and params.get("draft_ref") else ""
     return f"{path}?{urlencode(params)}{anchor}"
 

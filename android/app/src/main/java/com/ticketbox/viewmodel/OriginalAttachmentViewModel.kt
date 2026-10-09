@@ -96,7 +96,7 @@ class OriginalAttachmentViewModel(
                 if (bindingChanged && observation.access != null) restoreOriginalSelection(observation.access.binding)
                 if (bindingChanged || newlyDelivered.isNotEmpty()) {
                     mutableState.update { it.copy(image = null, reviewedDigest = null, deliveredRevision = it.deliveredRevision + if (newlyDelivered.isEmpty()) 0 else 1) }
-                    refresh(preserveMessage = true)
+                    refresh(preserveMessage = newlyDelivered.isEmpty())
                 }
                 seenReceipts = delivered
             }

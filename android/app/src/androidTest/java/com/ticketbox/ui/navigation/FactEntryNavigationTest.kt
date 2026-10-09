@@ -36,14 +36,17 @@ import androidx.navigation.compose.rememberNavController
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.ui.saveConsumerArtPreview
+import com.ticketbox.ui.components.displayTime
 import com.ticketbox.R
 import com.ticketbox.BuildConfig
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.repository.originalPayloadAdapter
+import com.ticketbox.data.repository.originalReceiptAdapter
 import com.ticketbox.data.repository.UploadIntentFileStore
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.ticketbox.data.remote.dto.BackgroundTaskListResponseDto
+import com.ticketbox.data.remote.dto.OriginalCommandReceiptDto
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.AppThemeMode
 import com.ticketbox.domain.model.CurrencyCode
@@ -276,6 +279,23 @@ class FactEntryNavigationTest {
         assertEquals(before.rowVersion, payload.expectedRowVersion)
         runBlocking { assertArrayEquals(displayedBytes, UploadIntentFileStore(context).read(requireNotNull(payload.file))) }
         assertEquals(before, harness.fixture.network.current)
+        val acceptedAt = "2026-09-20T01:00:00Z"
+        harness.fixture.network.current = before.copy(imagePath = "owner/retained-original.png",
+            imageHash = requireNotNull(payload.file).sha256, rowVersion = before.rowVersion + 1)
+        harness.fixture.network.originalImageOverride = displayedBytes
+        val receipt = OriginalCommandReceiptDto(operation = payload.operation, expenseId = payload.expenseId,
+            publicId = payload.publicId, rowVersion = before.rowVersion + 1, acceptedAt = acceptedAt,
+            sha256 = requireNotNull(payload.file).sha256)
+        runBlocking { harness.fixture.outbox.markDone(requireNotNull(row["id"]).toLong(),
+            receiptJson = originalReceiptAdapter.toJson(receipt)) }
+        waitForText(context.getString(R.string.original_status_verified))
+        compose.onAllNodesWithText(context.getString(R.string.original_queued)).assertCountEquals(0)
+        val accepted = context.getString(R.string.original_receipt, context.getString(R.string.original_attach), displayTime(acceptedAt))
+        compose.onNodeWithText(accepted).performScrollTo().assertIsDisplayed()
+        saveConsumerArtPreview("original-first-accepted", requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        assertEquals(before, harness.fixture.network.current.copy(imagePath = before.imagePath,
+            imageHash = before.imageHash, rowVersion = before.rowVersion))
+        assertEquals(1, harness.fixture.stored().size)
     }
 
     @Test fun missingOriginalKeepsTheBillAndReplenishEntry() {

@@ -2,8 +2,8 @@
 {% from '_history_time.html' import saved_time %}
 {% set page_surface = 'tertiary' %}
 {% set product_body_domain = 'transactions' %}
-{% set task_return_href = '/web/expenses/' ~ original.expense_id ~ '/edit?ledger_id=' ~ selected_ledger_id %}
-{% set task_return_label = '账单详情' %}
+{% set task_return_href = original_return_href %}
+{% set task_return_label = original_return_label %}
 {% block title %}账单原件 · 小票夹{% endblock %}
 {% block page_scripts %}{% include "_attachment_scripts.html" %}<script defer src="/static/web/originals.js?v={{ asset_version }}"></script>{% endblock %}
 {% block content %}

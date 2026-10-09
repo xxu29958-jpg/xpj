@@ -27,6 +27,23 @@
     gap: var(--space-5);
 }
 
+.original-inspection {
+    display: flex;
+    flex-direction: column;
+    min-block-size: calc(100svh - var(--layout-topbar-h) - var(--space-12));
+}
+
+.original-scan-actions {
+    position: sticky;
+    inset-block-end: 0;
+    z-index: var(--z-sticky);
+    margin-block-start: auto;
+    padding-block: var(--space-4);
+    background: var(--surface-app);
+}
+
+.original-scan-actions > .product-button { flex: 1; }
+
 .detail-section {
     padding: var(--space-6);
     border-block-end: 1px solid var(--border-card);

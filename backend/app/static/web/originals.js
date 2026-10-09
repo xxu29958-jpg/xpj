@@ -79,8 +79,11 @@
     row.querySelector(".product-entry-icon").classList.toggle("product-entry-icon--apricot", state.priority < 3);
   }
   const scan = document.querySelector("[data-original-scan]");
+  let inspected = false;
   if (scan) scan.addEventListener("click", async () => {
+    inspected = true;
     scan.disabled = true;
+    document.querySelector("[data-original-next]").hidden = true;
     const status = document.querySelector("[data-original-scan-status]");
     const rows = [...document.querySelectorAll("[data-original-row]")].slice(0, 25);
     let finished = 0;
@@ -110,4 +113,6 @@
     scan.textContent = "重新检查本页";
     scan.disabled = false;
   });
+  if (document.querySelector("[data-original-resume]")) scan?.click();
+  window.addEventListener("pageshow", event => { if (event.persisted && inspected) scan?.click(); });
 })(window, document);

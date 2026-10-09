@@ -51,8 +51,9 @@ fun OriginalAttachmentPanel(state: OriginalAttachmentUiState, viewModel: Origina
     var expandedOverride by rememberSaveable(state.access?.binding) { mutableStateOf<Boolean?>(null) }
     val expanded = expandedOverride ?: (state.originalNeedsAttention() || initiallyExpanded)
     LaunchedEffect(expanded, state.access?.binding, state.health?.state) {
-        if (expanded && state.health != null && state.canReadOriginal && state.image == null) {
-            viewModel.loadImage()
+        if (expanded) {
+            expandedOverride = true
+            if (state.health != null && state.canReadOriginal && state.image == null) viewModel.loadImage()
         }
     }
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
@@ -219,7 +220,7 @@ private fun OriginalCommandCard(command: PendingOriginalCommand, busy: Boolean, 
         "retry_original_cleanup" to R.string.original_cleanup_retry, "cancel_original_cleanup" to R.string.original_cleanup_cancel)
     val label = stringResource(operationLabels[command.payload?.operation] ?: R.string.original_title)
     if (command.delivered) {
-        Text(stringResource(R.string.original_receipt, label, requireNotNull(command.receipt).acceptedAt))
+        Text(stringResource(R.string.original_receipt, label, displayTime(requireNotNull(command.receipt).acceptedAt)))
     } else {
         Text(label)
         Text(stringResource(if (command.canDiscard) originalFailureLabel(command.row.lastError) else R.string.original_pending))

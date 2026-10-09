@@ -1,5 +1,6 @@
 """Same-bill original inspection and native continuations; commands stay in services."""
 
+from urllib.parse import urlencode
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Form, Query, Request
@@ -12,6 +13,13 @@ from app.database import get_db
 from app.routes._upload_request import read_request_upload
 from app.routes._web_attachment_intent import attachment_form_context
 from app.routes._web_draft_binding import draft_ack_response, require_draft_binding
+from app.routes._web_expense_return_context import (
+    ExpenseReturnContext,
+    edit_context_params,
+    expense_return_query_context,
+    return_href,
+    return_label,
+)
 from app.routes._web_money_views import _expense_amount_labels
 from app.routes.web_common import (
     LocalOnly,
@@ -49,19 +57,24 @@ def _writer(db, request, ledger_id, draft_scope):
 
 
 def _accepted(request, receipt: OriginalCommandReceipt, *, ledger_id, draft_scope, idempotency_key):
-    redirect = _web_redirect(f"/web/expenses/{receipt.expense_id}/original", ledger_id, msg="原件操作已接受。下方为重新检查结果。")
+    origin = dict(request.query_params)
+    token = origin.pop("return_to", "")
+    redirect = _web_redirect(f"/web/expenses/{receipt.expense_id}/original", ledger_id,
+        **edit_context_params(token, **origin), msg="原件操作已接受。下方为重新检查结果。")
     return draft_ack_response(request, draft_scope=draft_scope, idempotency_key=idempotency_key,
         receipt=receipt.model_dump(mode="json"), next_href=redirect.headers["location"]) or redirect
 
 
 @router.get("/originals", response_class=HTMLResponse, include_in_schema=False)
 def web_originals(request: Request, ledger_id: str | None = None, after: int = Query(default=0, ge=0),
+                  inspect: bool = False,
                   _local: None = LocalOnly, db: Session = Depends(get_db)) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
     rows, next_after = list_original_inspection_expenses(db, tenant_id=selected, after=after)
     ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected, page_title="原件检查")
-    ctx.update(original_rows=rows, next_after=next_after)
+    ctx.update(original_rows=rows, next_after=next_after, resume_inspection=inspect,
+        original_return_query=urlencode(edit_context_params("originals", return_after=str(after))))
     return templates.TemplateResponse(request=request, name="originals.html", context=ctx)
 
 
@@ -75,6 +88,7 @@ def web_original_health(request: Request, expense_id: int, ledger_id: str | None
 
 @router.get("/expenses/{expense_id}/original", response_class=HTMLResponse, include_in_schema=False)
 def web_original(request: Request, expense_id: int, ledger_id: str | None = None,
+                  return_context: ExpenseReturnContext = Depends(expense_return_query_context),
                   _local: None = LocalOnly, db: Session = Depends(get_db)) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
@@ -82,10 +96,14 @@ def web_original(request: Request, expense_id: int, ledger_id: str | None = None
     health = inspect_expense_original(db, expense_id=expense_id, tenant_id=selected)
     ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected, page_title="账单原件")
     root = f"/web/expenses/{expense_id}/original"
-    intents = {action: attachment_form_context(db, request, action=f"{root}/{action}", ledger_id=selected)
+    origin = return_context.as_kwargs()
+    intents = {action: attachment_form_context(db, request, action=f"{root}/{action}", ledger_id=selected,
+                                              return_context=edit_context_params(**origin))
                for action in ("attach", "verify", "replenish", "cleanup/retry", "cleanup/cancel")}
     ctx.update(original=health, original_expense=expense, original_intents=intents,
-               message=request.query_params.get("msg", ""))
+        message=request.query_params.get("msg", ""),
+        original_return_href=return_href(**origin, ledger_id=selected, default_path=f"/web/expenses/{expense_id}/edit"),
+        original_return_label=return_label(return_context.return_to, default="账单详情"))
     ctx["original_amount_label"], _ = _expense_amount_labels(expense,
         presentation_currency_code=ctx.get("home_currency_code"))
     ctx["original_currency_label"] = (

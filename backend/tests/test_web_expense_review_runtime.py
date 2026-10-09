@@ -137,6 +137,53 @@ def test_manual_original_follows_its_creation_receipt_without_losing_file_or_rec
         assert original.idempotency_key == result["ref"] and original.response_body["sha256"] == row.image_hash
 
 
+def test_original_inspection_returns_to_its_page_and_refreshes_after_replenishment(first_original_web, tmp_path):
+    from app.services.original_read_service import read_original_snapshot
+
+    case = first_original_web
+    case.client.app.mount("/static", StaticFiles(directory=Path(__file__).parents[1] / "app/static"))
+    probe = (Path(__file__).parent / "fixtures/original_inspection_probe.js").read_text(encoding="utf-8")
+
+    @case.client.app.middleware("http")
+    async def inspection_probe(request, call_next):
+        response = await call_next(request)
+        if "text/html" not in response.headers.get("content-type", ""):
+            return response
+        body = b"".join([chunk async for chunk in response.body_iterator])
+        script = "<script>window.__originalSample=" + json.dumps(sample) + ";" + probe + "</script>"
+        headers = dict(response.headers)
+        headers.pop("content-length", None)
+        return Response(body.replace(b"</body>", script.encode() + b"</body>"), status_code=response.status_code, headers=headers)
+
+    assert original_tests._attach(case).status_code == 200
+    with Session(case.engine) as db:
+        current = db.get(Expense, 42)
+        values = {column.name: getattr(current, column.name) for column in Expense.__table__.columns}
+        with read_original_snapshot(relative_path=current.image_path, tenant_id="owner",
+                expected_sha256=current.image_hash) as image:
+            sample = base64.b64encode(image.path.read_bytes()).decode()
+        for number in [*range(1, 26), 43, 44]:
+            row = dict(values, id=number, public_id=str(uuid4()), merchant=f"手工账单 {number}",
+                image_path=None, thumbnail_path=None, image_hash=None)
+            if number == 43:
+                row.update(merchant="需要补回的小票", image_path="owner/missing.jpg", image_hash=current.image_hash)
+            db.add(Expense(**row))
+        db.commit()
+        before = tuple(getattr(db.get(Expense, 43), name) for name in original_tests.FACT_FIELDS)
+        version, digest = current.row_version, current.image_hash
+    result = _run_review_page(case.client, tmp_path, "/web/originals?ledger_id=owner")
+    assert "error" not in result, result
+    assert result["page_retained"] and result["fresh_result"] and result["partial_read_failure"]
+    with Session(case.engine) as db:
+        row = db.get(Expense, 43)
+        assert tuple(getattr(row, name) for name in original_tests.FACT_FIELDS) == before
+        assert (row.row_version, row.image_hash) == (version + 1, digest)
+        receipt = db.scalars(select(ApiIdempotencyKey).where(ApiIdempotencyKey.operation == "replenish_original")).one()
+        assert receipt.status == "succeeded" and receipt.target_id == "43"
+        with read_original_snapshot(relative_path=row.image_path, tenant_id="owner", expected_sha256=digest) as image:
+            assert base64.b64encode(image.path.read_bytes()).decode() == sample
+
+
 @pytest.fixture
 def uncategorized_browser(review_browser, confirmation_store, monkeypatch):
     client, scope = review_browser

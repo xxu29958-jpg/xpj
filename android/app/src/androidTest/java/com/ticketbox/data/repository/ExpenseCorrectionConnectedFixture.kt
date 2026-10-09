@@ -314,8 +314,9 @@ internal class CorrectionConnectedNetwork {
             originalHealthReads += id
             beforeOriginalHealthResponse?.invoke()
             return com.ticketbox.data.remote.dto.OriginalHealthDto(expenseId = current.id, publicId = requireNotNull(current.publicId),
-                rowVersion = current.rowVersion, state = if (originalMissing) "missing" else if (current.imagePath == null) "none" else "unverified",
-                expectedSha256 = if (originalMissing) "b".repeat(64) else null,
+                rowVersion = current.rowVersion, state = if (originalMissing) "missing" else if (current.imagePath == null) "none"
+                    else if (current.imageHash != null) "verified" else "unverified",
+                expectedSha256 = if (originalMissing) "b".repeat(64) else current.imageHash,
                 checkedAt = "2026-09-20T00:00:00Z")
         }
         override suspend fun expenseImage(id: Long): Response<ResponseBody> {
