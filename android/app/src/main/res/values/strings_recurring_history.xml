@@ -14,7 +14,6 @@
     <string name="recurring_history_manual">来源：手工计划</string>
     <string name="recurring_history_candidate">来源：用户采用的观察建议</string>
     <string name="recurring_history_source">来源：%1$s</string>
-    <string name="recurring_definition_current">当前计划</string>
     <string name="recurring_definition_recorded">本期首次记录时所据定义 · 版本 %1$d</string>
     <string name="recurring_definition_unrecorded">本期尚未建立记录，因此还没有保存首次记录所据定义。</string>
     <string name="recurring_definition_unknown">本期已有记录，但旧版本未保存当时所据定义，原依据未知；当前计划不能替代它。</string>

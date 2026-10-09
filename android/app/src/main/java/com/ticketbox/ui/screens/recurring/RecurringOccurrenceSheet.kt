@@ -75,21 +75,16 @@ fun RecurringOccurrenceSheet(
             modifier = Modifier.fillMaxHeight(),
             actions = occurrenceChoiceActions(state, actions.onSubmit),
         ) {
-            OccurrencePeriodControls(state, actions)
+            state.occurrence?.let { OccurrenceCurrentSummary(it) }
             RecurringReadSource(state.fetchedAt, state.fromCache, state.loading)
             if (state.fromCache && state.requestedPeriod == "current") {
                 Text(stringResource(R.string.occurrence_cached_period, state.occurrence?.period.orEmpty()))
             }
             state.message?.let { Text(it.asString(), modifier = Modifier.testTag("occurrence-message")) }
+            OccurrencePeriodControls(state, actions)
             OccurrencePaymentConflict(origin, actions)
             state.seriesPending.forEach { OccurrencePending(it, state.access?.canModify == true, actions.onRecover) }
             state.occurrence?.let { occurrence ->
-                OccurrenceDefinitionBasis(occurrence)
-                Text(stringResource(occurrenceStateLabel(occurrence.state)), modifier = Modifier.testTag("occurrence-state"))
-                Text(stringResource(R.string.occurrence_reserved, recurringRecordedAmountText(occurrence.reservedAmountCents, occurrence.homeCurrencyCode)))
-                occurrence.paidAmountCents?.let {
-                    Text(stringResource(R.string.occurrence_paid_amount, recurringRecordedAmountText(it, occurrence.paidHomeCurrencyCode)))
-                }
                 occurrence.expenseId?.let { id ->
                     TextButton(onClick = { actions.onOpenExpense(id) }) { Text(stringResource(R.string.occurrence_open_payment)) }
                 }
@@ -105,6 +100,7 @@ fun RecurringOccurrenceSheet(
                     onRecord = actions.onRecordPayment,
                 )
                 if (state.canWrite) OccurrencePaymentPicker(state, actions.onChoose, preferredExpenseId)
+                OccurrenceDefinitionBasis(occurrence)
             }
         }
     }
@@ -282,11 +278,4 @@ internal fun occurrencePaymentChoices(
                 it.root.id != preferredExpenseId
         }.sortedByDescending { it.streamDate }
     return preferred + ordinary
-}
-
-private fun occurrenceStateLabel(state: String): Int = when (state) {
-    "fulfilled" -> R.string.occurrence_fulfilled
-    "needs_review" -> R.string.occurrence_review
-    "unfulfilled" -> R.string.occurrence_unfulfilled
-    else -> R.string.occurrence_unknown
 }

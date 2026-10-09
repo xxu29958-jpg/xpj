@@ -8,13 +8,15 @@
     <string name="occurrence_refresh_failed">未能刷新期次。已加载的期次和付款仍可保存提交，联网后会校验版本。</string>
     <string name="occurrence_payment_refresh_failed">付款列表未刷新，当前显示本机已保存的流水。</string>
     <string name="occurrence_subtitle">关联已确认付款，核对每月固定支出</string>
+    <string name="occurrence_summary_period">本期月份 · %1$s</string>
+    <string name="occurrence_planned_amount">本期计划金额</string>
     <string name="occurrence_period">履约月份 · YYYY-MM</string>
     <string name="occurrence_show_period">查看该月</string>
     <string name="occurrence_refresh">刷新期次与付款</string>
     <string name="occurrence_loading">正在读取期次…</string>
     <string name="occurrence_fulfilled">本期已履约</string>
     <string name="occurrence_unfulfilled">本期尚未履约</string>
-    <string name="occurrence_review">关联付款已撤回，需要核对</string>
+    <string name="occurrence_review">原付款需要重新核对</string>
     <string name="occurrence_unknown">当前版本无法识别期次状态</string>
     <string name="occurrence_reserved">本期仍预留 %1$s</string>
     <string name="occurrence_paid_amount">关联付款当前金额 %1$s</string>

@@ -43,6 +43,7 @@ import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -89,6 +90,9 @@ class RecurringOfflineReadingConnectedTest {
         val originalPeriod = runBlocking { repository.occurrences.fetch(binding, "offline-active", "current").getOrThrow() }
         assertEquals(earlierPeriod.value.rowVersion, originalPeriod.value.rowVersion)
         assertEquals(earlierPeriod.value.seriesRowVersion, originalPeriod.value.seriesRowVersion)
+        assertNull(originalPeriod.value.paidAmountCents)
+        assertNull(originalPeriod.value.paidHomeCurrencyCode)
+        assertEquals(earlierPeriod.value.expenseId, originalPeriod.value.expenseId)
         openHistory()
         waitForText("原日元安排")
         Espresso.pressBack()
@@ -112,6 +116,8 @@ class RecurringOfflineReadingConnectedTest {
         waitForText(context.getString(R.string.occurrence_review))
         compose.onNodeWithText(context.getString(R.string.occurrence_show_period)).performScrollTo().performClick()
         compose.onNodeWithTag("occurrence-state").performScrollTo().assertTextEquals(context.getString(R.string.occurrence_review))
+        compose.onNodeWithText(context.getString(R.string.occurrence_open_payment)).assertExists()
+        compose.onNodeWithText(context.getString(R.string.occurrence_paid_amount, ""), substring = true).assertDoesNotExist()
         automation.waitForIdle(300, 3_000)
         saveConsumerArtPreview("recurring-occurrence-review", requireNotNull(automation.takeScreenshot()))
         Espresso.pressBack()
@@ -268,7 +274,9 @@ class RecurringOfflineReadingConnectedTest {
     private fun occurrenceJson(): String = """{"series_public_id":"offline-active","period":"2026-09",
         "series_row_version":9,"row_version":3,"state":"$occurrenceState","planned_amount_cents":2400,
         "reserved_amount_cents":${if (occurrenceState == "fulfilled") 0 else 2400},
-        "expense_public_id":"withdrawn-payment","paid_amount_cents":2400,"paid_home_currency_code":"JPY",
+        "expense_public_id":"withdrawn-payment","expense_id":91,"expense_row_version":4,
+        "paid_amount_cents":${if (occurrenceState == "fulfilled") 2400 else "null"},
+        "paid_home_currency_code":${if (occurrenceState == "fulfilled") "\"JPY\"" else "null"},
         "next_due_date":"2026-10-09","home_currency_code":"JPY",
         "recorded_definition":{"series_row_version":7,"recorded_at":"2026-09-12T12:30:00Z",
         "snapshot":${definitionJson("首次记录依据")}}}"""
