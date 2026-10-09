@@ -94,7 +94,8 @@
     }
     assert(form().elements.merchant.value === "抽屉原填写", "refresh lost the drawer's original input");
     assert(form().elements.idempotency_key.value === state.command, "refresh replaced the original command key");
-    assert(form().elements.accounting_date.value === "2026-09-30" && form().querySelector('.review-date-fields > summary').textContent.includes("2026-09-30"), "drawer date summary lost the restored choice");
+    assert(form().elements.accounting_date.value === "2026-09-30", "drawer lost the original accounting date");
+    assert(form().querySelector('.review-date-fields > summary').textContent.includes("2026-09-30"), "drawer date summary lost the restored choice");
     if (state.stage === "reload") {
       state.stage = "lost"; save();
       form().requestSubmit([...form().querySelectorAll("button")].find(button => button.textContent === "保存草稿"));
