@@ -31,9 +31,9 @@ internal class RecurringQueryReader(
     private val guard = LedgerRequestGuard(apiProvider)
     private val errors = NetworkErrorHandler({ apiProvider.currentSession()?.serverUrl }, "Recurring")
     private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
-    private val itemsAdapter = moshi.adapter(RecurringItemListResponseDto::class.java)
-    private val historyAdapter = moshi.adapter(RecurringHistoryPageDto::class.java)
-    private val occurrenceAdapter = moshi.adapter(RecurringOccurrenceDto::class.java)
+    private val itemsAdapter by lazy { moshi.adapter(RecurringItemListResponseDto::class.java) }
+    private val historyAdapter by lazy { moshi.adapter(RecurringHistoryPageDto::class.java) }
+    private val occurrenceAdapter by lazy { moshi.adapter(RecurringOccurrenceDto::class.java) }
     private val mutex = Mutex()
     private val publishedReads = mutableMapOf<String, Long>()
     private val localInvalidation = AtomicLong()
