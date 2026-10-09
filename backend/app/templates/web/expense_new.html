@@ -2,6 +2,8 @@
 {% set page_title = '手动记一笔' %}
 {% set product_body_domain = 'transactions' %}
 {% set page_surface = 'tertiary' %}
+{% set task_return_href = edit_return_href %}
+{% set task_return_label = edit_return_label %}
 {% block title %}手动记一笔 · 流水 · 小票夹{% endblock %}
 {% block page_scripts %}
 <script defer src="/static/web/manual-drafts.js?v={{ asset_version }}"></script>
@@ -10,15 +12,14 @@
 
 {% block content %}
 <div class="manual-entry">
-<a class="product-state-action" href="{{ edit_return_href }}">← {{ edit_return_label }}</a>
 <header class="product-page-header">
   <div class="product-page-heading">
-    <h1 class="page-title">手动记一笔</h1>
+    <h1 class="page-title" data-manual-heading>记一笔</h1>
     <p class="product-page-summary">记下金额，其余可以慢慢补。</p>
   </div>
 </header>
 
-<section class="product-panel product-panel--padded">
+<section>
   {% if form_error %}<div class="product-feedback product-feedback--danger" role="alert">{{ form_error }}</div>{% endif %}
   {% if manual_review_href %}<p><a class="product-state-action" href="{{ manual_review_href }}">核对这笔已有账单</a></p>{% endif %}
   <form class="manual-expense-form" method="post" action="/web/expenses/new" aria-label="手动记账表单"
@@ -33,8 +34,9 @@
     <input type="hidden" name="{{ field_name }}" value="{{ field_value }}">
     {% endfor %}
 
+    <p class="manual-draft-status" data-manual-draft-status role="status" hidden></p>
     <fieldset class="manual-expense-fields" data-manual-edit-fields>
-    <div class="manual-expense-money">
+    <div class="manual-expense-money product-panel product-panel--padded">
       <div class="product-field manual-expense-amount-field">
         <label for="manual-expense-amount">金额</label>
         <input id="manual-expense-amount" class="product-input" name="amount_major" type="text" inputmode="decimal" placeholder="{{ currency_input.amount_placeholder }}" value="{{ values.amount_major or '' }}" required autofocus>
@@ -51,8 +53,6 @@
         </select>
       </div>
     </div>
-    <details class="manual-expense-options" open data-manual-options data-start-expanded="{{ 'true' if form_error else 'false' }}">
-      <summary hidden>补充商家、分类与备注 <span>可选</span></summary>
       <div class="product-form-grid">
       <div class="product-field">
         <label for="manual-expense-merchant">商家（可选）</label>
@@ -65,6 +65,8 @@
           {% for category in category_options %}<option value="{{ category }}">{% endfor %}
         </datalist>
       </div>
+      <details class="manual-expense-options product-field--wide" open data-manual-time data-start-expanded="{{ 'true' if form_error else 'false' }}">
+      <summary>发生时间 <span data-manual-date-value>{{ spent_at }}</span></summary>
       {% if time_form %}
       {% with time_prefix='manual-expense', time_name='spent_at', time_disabled=false %}{% include '_accounting_time_fields.html' %}{% endwith %}
       {% else %}
@@ -73,18 +75,24 @@
         <input id="manual-expense-spent-at" class="product-input" name="spent_at" type="datetime-local" value="{{ spent_at }}" required>
       </div>
       {% endif %}
+      </details>
+      <details class="manual-expense-options product-field--wide" open data-manual-options data-start-expanded="{{ 'true' if form_error else 'false' }}">
+      <summary>备注 <span data-manual-value="note">{{ values.note or '可选' }}</span></summary>
       <div class="product-field product-field--wide">
         <label for="manual-expense-note">备注（可选）</label>
         <textarea id="manual-expense-note" class="product-input" name="note" rows="3" placeholder="补充这笔支出的用途">{{ values.note or '' }}</textarea>
       </div>
+      </details>
       </div>
-    </details>
+    <div class="product-entry">
+      <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#book-open"/></svg></span>
+      <span class="product-entry-copy"><strong>当前账本</strong><span>{{ selected_ledger_name }}</span></span>
+    </div>
     </fieldset>
 
     <div class="product-page-actions">
       <button class="product-button product-button--primary" type="submit" data-manual-submit{% if manual_draft_result == 'blocked' %} disabled{% endif %}>记下这笔支出</button>
     </div>
-    <p class="manual-draft-status" data-manual-draft-status role="status" hidden></p>
     <noscript><p class="manual-draft-status">此浏览器未开启草稿保留，离开前请先完成记账或复制输入。</p></noscript>
   </form>
   <div class="manual-draft-actions" data-manual-draft-actions hidden>

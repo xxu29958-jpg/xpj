@@ -127,7 +127,9 @@ def test_web_duplicates_does_not_offer_reject_for_confirmed_original(
 
     assert f"/web/duplicates/{current}/reject-original" not in body
     assert "已入账参考记录不能在重复核对中忽略" in body
-    assert f'name="original_expense_id" value="{original}"' not in body
+    forms = hidden_post_forms(body)
+    for action in ("keep", "reject-current"):
+        assert forms[f"/web/duplicates/{current}/{action}"]["original_expense_id"] == str(original)
 
 
 # ── Loopback gate + secret leak ────────────────────────────────────────────

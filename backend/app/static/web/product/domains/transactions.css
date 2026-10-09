@@ -1303,10 +1303,6 @@
 }
 .offset-action-panel { width: 100%; }
 
-.manual-entry > .product-page-header {
-    margin-block-start: var(--space-5);
-}
-
 .manual-expense-form,
 .manual-expense-fields {
     display: grid;
@@ -1327,9 +1323,13 @@
 
 .manual-expense-money {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 6.5rem;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 12ch), 1fr));
     gap: var(--space-4);
     align-items: end;
+}
+
+.manual-expense-form[data-manual-draft-restored="true"] .manual-expense-money {
+    background: var(--surface-apricot);
 }
 
 .manual-expense-form .product-field--wide {
@@ -1338,7 +1338,7 @@
 
 .manual-expense-form .manual-expense-amount-field .product-input {
     font-family: var(--font-numeric);
-    font-size: clamp(1.75rem, 4vw, 2.25rem);
+    font-size: var(--type-hero-size);
     font-variant-numeric: tabular-nums;
     line-height: 1.25;
     min-block-size: 3.5rem;

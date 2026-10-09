@@ -82,5 +82,12 @@
     else if (state.stage === "task") await resume();
     else if (state.stage === "prepared") await prepare();
     else if (state.stage === "done") await finish();
-  } catch (error) { window.__expenseReviewResult = {error: String(error), state, body: document.body.innerText}; }
+  } catch (error) {
+    window.__expenseReviewResult = {error: String(error), state: structuredClone(state), body: document.body.innerText,
+      controls: [...document.querySelectorAll("form[data-duplicatechoice-plan-id]")].map(current => ({
+        task: current.dataset.duplicatechoicePlanId, phase: current.dataset.duplicatechoiceDraftPhase,
+        disabled: current.querySelector("[data-duplicatechoice-submit]").disabled,
+        status: current.querySelector("[data-duplicatechoice-draft-status]").textContent,
+      }))};
+  }
 })();

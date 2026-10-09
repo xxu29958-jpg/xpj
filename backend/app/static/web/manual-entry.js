@@ -37,6 +37,15 @@
 
   const nativeValues = values();
 
+  function showSummaries() {
+    form.querySelectorAll("[data-manual-value]").forEach(output => {
+      output.textContent = form.elements.namedItem(output.dataset.manualValue).value || "可选";
+    });
+    const time = form.querySelector("[data-manual-date-value]");
+    const name = form.elements.namedItem("time_precision")?.value === "date_only" ? "user_local_date" : "spent_at";
+    if (time) time.textContent = form.elements.namedItem(name).value.replace("T", " ") || "待填写";
+  }
+
   function showValues(saved) {
     controls.forEach(control => {
       const value = saved[control.name] ?? "";
@@ -49,8 +58,8 @@
       if (absent) omitted.add(control.name); else omitted.delete(control.name);
       control.disabled = absent;
     });
-    if (saved.merchant || saved.note || saved.category !== nativeValues.category ||
-        saved.spent_at !== nativeValues.spent_at) options.open = true;
+    if (saved.note) options.open = true;
+    showSummaries();
   }
 
   function readOnly(value) {
@@ -70,10 +79,13 @@
   }
 
   function showPhase(restored) {
+    form.dataset.manualDraftRestored = String(restored);
+    const heading = document.querySelector("[data-manual-heading]");
+    if (heading) heading.textContent = restored ? "上次的记录还在" : "记一笔";
     fields.disabled = false;
     readOnly(phase !== "editing");
     submit.disabled = phase === "blocked";
-    submit.textContent = phase === "submitted" ? "重试这笔支出" : "记下这笔支出";
+    submit.textContent = phase === "submitted" ? "继续原提交" : "记下这笔支出";
     actions.hidden = phase === "editing";
     if (phase === "submitted") {
       notice("还未确认保存结果。输入已锁定；重试会提交原来这一笔，也可以先核对流水。", "submitted");
@@ -206,8 +218,10 @@
   form.addEventListener("invalid", function (event) {
     if (options.contains(event.target)) options.open = true;
   }, true);
-  options.open = options.dataset.startExpanded !== "false";
-  options.querySelector("summary").hidden = false;
+  form.querySelectorAll(".manual-expense-options").forEach(disclosure => {
+    disclosure.open = disclosure.dataset.startExpanded !== "false";
+  });
+  showSummaries();
 
   try {
     scope = JSON.parse(form.dataset.manualDraftScope);
@@ -223,6 +237,7 @@
   }
 
   form.addEventListener("input", function () {
+    showSummaries();
     if (!held || phase !== "editing") return;
     try {
       persist("editing");

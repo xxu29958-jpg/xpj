@@ -22,6 +22,7 @@ const shelf = {querySelector:selector => selector.includes('list') ? list : coun
 const form = {
   dataset:{manualDraftScope:JSON.stringify(scope), manualDraftResult:''},
   elements:{namedItem:name => elements[name]}, addEventListener(){},
+  querySelectorAll:selector => selector === '.manual-expense-options' ? [options] : [],
   querySelector:selector => selector.includes('edit-fields') ? fields :
     selector.includes('submit') ? submit : selector.includes('status') ? status : options,
 };
