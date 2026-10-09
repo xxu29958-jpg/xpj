@@ -24,10 +24,10 @@
   let epoch = 0;
   let retained = false;
   let posting = false;
-  const original = form.querySelector("[data-manual-original]");
+  const preview = window.TicketboxAttachmentEntry?.originalSelection(form);
+  const original = preview && window.TicketboxManualOriginal ? form.querySelector("[data-manual-original]") : null;
   const file = form.querySelector("[data-manual-original-file]");
   const removeFile = form.querySelector("[data-manual-original-remove]");
-  const preview = window.TicketboxAttachmentEntry?.originalSelection(form);
   let selecting = false;
   let selectionFailed = false;
 
@@ -177,9 +177,12 @@
   }
 
   function showOriginal() {
-    if (!original) return;
+    const metadata = form.elements.namedItem("original_file")?.value;
+    if (!original) {
+      if (metadata) blocked("原件工具暂未加载，原稿与图片仍保留。请重新打开此页再继续。");
+      return;
+    }
     const ref = currentRef, turn = epoch;
-    const metadata = form.elements.namedItem("original_file").value;
     original.querySelector("[data-manual-original-label]").textContent = metadata ? "已保留所选图片" : "没有小票也可以记账";
     original.open = !!metadata;
     void preview.show(async () => {
