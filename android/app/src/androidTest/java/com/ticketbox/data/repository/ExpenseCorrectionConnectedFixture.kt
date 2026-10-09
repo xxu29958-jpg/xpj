@@ -250,6 +250,7 @@ internal class CorrectionConnectedNetwork {
     val editCalls = CopyOnWriteArrayList<String>()
     val imageReads = CopyOnWriteArrayList<Long>()
     val originalHealthReads = CopyOnWriteArrayList<Long>()
+    var beforeOriginalHealthResponse: (suspend () -> Unit)? = null
     var originalImageOverride: ByteArray? = null
     var originalMissing = false
     val originalImage: ByteArray by lazy {
@@ -311,6 +312,7 @@ internal class CorrectionConnectedNetwork {
         override suspend fun originalHealth(id: Long): com.ticketbox.data.remote.dto.OriginalHealthDto {
             readable()
             originalHealthReads += id
+            beforeOriginalHealthResponse?.invoke()
             return com.ticketbox.data.remote.dto.OriginalHealthDto(expenseId = current.id, publicId = requireNotNull(current.publicId),
                 rowVersion = current.rowVersion, state = if (originalMissing) "missing" else if (current.imagePath == null) "none" else "unverified",
                 expectedSha256 = if (originalMissing) "b".repeat(64) else null,

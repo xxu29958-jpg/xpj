@@ -51,7 +51,9 @@ fun OriginalAttachmentPanel(state: OriginalAttachmentUiState, viewModel: Origina
     var expandedOverride by rememberSaveable(state.access?.binding) { mutableStateOf<Boolean?>(null) }
     val expanded = expandedOverride ?: (state.originalNeedsAttention() || initiallyExpanded)
     LaunchedEffect(expanded, state.access?.binding, state.health?.state) {
-        if (expanded && state.canReadOriginal && state.image == null && !state.imageLoading) viewModel.loadImage()
+        if (expanded && state.health != null && state.canReadOriginal && state.image == null && !state.imageLoading) {
+            viewModel.loadImage()
+        }
     }
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
         SettingsEntryRow(

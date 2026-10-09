@@ -86,7 +86,7 @@ def native_first_original(j):
     native.restart()
     assert native.adb("shell", "pidof", "com.ticketbox").strip() != old_pid
     j.native_open()
-    native.click("原件", stable=True)
+    # The retained selection opens its panel; toggling the header would hide it.
     native.reveal_any("financial-selected-original.png")
     native.capture("financial-original-selection-after-cold-restart")
     native.reveal_any(review)

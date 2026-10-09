@@ -49,6 +49,7 @@ import com.ticketbox.domain.model.AppThemeMode
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.ui.theme.TicketboxTheme
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CompletableDeferred
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertArrayEquals
@@ -246,12 +247,18 @@ class FactEntryNavigationTest {
         harness.reopen()
         val binding = requireNotNull(harness.fixture.uploadIntents.currentOriginalBinding())
         assertTrue(runBlocking { harness.screenFactory.repository.loadFactInputs(binding, 42L).getOrThrow().isEmpty() })
+        val healthResponse = CompletableDeferred<Unit>()
+        harness.fixture.network.beforeOriginalHealthResponse = { healthResponse.await() }
         compose.runOnIdle { mounted.value = true }
         compose.waitForIdle()
         openFact()
         waitForText(context.getString(R.string.original_selection_submit))
         compose.onNodeWithContentDescription(context.getString(R.string.original_selected_image))
             .performScrollTo().assertIsDisplayed()
+        assertTrue("Restoring a selection must not read a nonexistent server original while health is pending",
+            harness.fixture.network.imageReads.isEmpty())
+        healthResponse.complete(Unit)
+        waitForText(context.getString(R.string.original_status_none))
         assertTrue("Restoring a selection must not enqueue it", harness.fixture.stored().isEmpty())
         compose.onNodeWithText(context.getString(R.string.original_selection_submit)).performScrollTo().assertIsNotEnabled()
         val review = context.getString(R.string.original_selection_review)
