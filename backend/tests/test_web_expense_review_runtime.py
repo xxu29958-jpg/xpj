@@ -146,6 +146,8 @@ def test_original_inspection_returns_to_its_page_and_refreshes_after_replenishme
 
     @case.client.app.middleware("http")
     async def inspection_probe(request, call_next):
+        if request.url.path == "/web/expenses/44/original/health":
+            await asyncio.sleep(0.25)
         response = await call_next(request)
         if "text/html" not in response.headers.get("content-type", ""):
             return response

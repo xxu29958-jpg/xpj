@@ -17,6 +17,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
@@ -36,7 +37,9 @@ import androidx.navigation.compose.rememberNavController
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.ui.saveConsumerArtPreview
+import com.ticketbox.ui.RealKeyboard
 import com.ticketbox.ui.components.displayTime
+import com.ticketbox.ui.screens.expense.TAG_TAGS_FIELD
 import com.ticketbox.R
 import com.ticketbox.BuildConfig
 import com.ticketbox.data.local.PendingMutationType
@@ -66,6 +69,9 @@ class FactEntryNavigationTest {
     @JvmField
     @Rule
     val compose = createComposeRule()
+    @JvmField
+    @Rule
+    val keyboard = RealKeyboard()
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val harness = FactEntryNavigationHarness(context)
     private val mounted = mutableStateOf(true)
@@ -211,13 +217,7 @@ class FactEntryNavigationTest {
         val displayedBytes = InstrumentationRegistry.getArguments().getString("captureImage")?.let { File(it).readBytes() }
             ?: harness.fixture.network.originalImage
         sharedImage.writeBytes(displayedBytes)
-        val registry = object : ActivityResultRegistry() {
-            override fun <I, O> onLaunch(requestCode: Int, contract: ActivityResultContract<I, O>, input: I,
-                options: ActivityOptionsCompat?) {
-                dispatchResult(requestCode, Activity.RESULT_OK, Intent().setData(Uri.fromFile(sharedImage)))
-            }
-        }
-        installMainGraph(object : ActivityResultRegistryOwner { override val activityResultRegistry = registry })
+        installMainGraph(originalPicker())
         openFact()
         waitForText(context.getString(R.string.original_status_none))
         compose.onNodeWithText(context.getString(R.string.original_title)).performScrollTo().performClick()
@@ -331,6 +331,72 @@ class FactEntryNavigationTest {
         compose.onNodeWithText(start).assertIsNotEnabled()
         assertEquals("create_bill_split_invitation", harness.fixture.stored().single()["type"])
         assertEquals("pending", harness.fixture.stored().single()["status"])
+    }
+
+    @Test fun originalReceiptAndExplicitAttachmentBaselineReviewKeepTypedFormValues() {
+        val network = harness.fixture.network
+        network.current = network.current.copy(status = "pending", confirmedAt = null)
+        val before = network.current
+        val bytes = InstrumentationRegistry.getArguments().getString("captureImage")?.let { File(it).readBytes() }
+            ?: network.originalImage
+        sharedImage.writeBytes(bytes)
+        installMainGraph(originalPicker())
+        waitForText(requireNotNull(before.merchant))
+        compose.runOnIdle { outer.navigate(expenseRoute(42L)) }
+        val confirm = context.getString(R.string.expense_edit_confirm_button)
+        waitForText(confirm)
+        compose.onNodeWithTag("expense-edit-more-row").performScrollTo().performClick()
+        val tags = "原件任务期间的输入"
+        compose.onNodeWithTag(TAG_TAGS_FIELD).performScrollTo().performTextReplacement(tags)
+        keyboard.dismissAndWait(compose)
+        waitForText(context.getString(R.string.original_status_none))
+        compose.onNodeWithText(context.getString(R.string.original_title)).performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.original_attach)).performScrollTo().performClick()
+        val review = context.getString(R.string.original_selection_review)
+        compose.waitUntil(5_000) { compose.onAllNodes(hasText(review) and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText(review).performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.original_selection_submit)).performScrollTo().performClick()
+        compose.waitUntil(5_000) { harness.fixture.stored().size == 1 }
+        val original = harness.fixture.stored().single()
+        val payload = requireNotNull(originalPayloadAdapter.fromJson(requireNotNull(original["payload"])))
+        assertEquals(before, network.current)
+        runBlocking { assertArrayEquals(bytes, UploadIntentFileStore(context).read(requireNotNull(payload.file))) }
+        network.current = before.copy(imagePath = "owner/pending-original.png",
+            imageHash = requireNotNull(payload.file).sha256, rowVersion = before.rowVersion + 1,
+            updatedAt = "2026-09-20T01:00:00Z")
+        network.originalImageOverride = bytes
+        val receipt = OriginalCommandReceiptDto(payload.operation, payload.expenseId, payload.publicId,
+            network.current.rowVersion, "2026-09-20T01:00:00Z", sha256 = requireNotNull(payload.file).sha256)
+        runBlocking { harness.fixture.outbox.markDone(requireNotNull(original["id"]).toLong(),
+            receiptJson = originalReceiptAdapter.toJson(receipt)) }
+        val baseline = context.getString(R.string.original_edit_baseline)
+        waitForText(baseline)
+        compose.onNodeWithText(confirm).assertIsNotEnabled()
+        compose.onNodeWithText(context.getString(R.string.expense_edit_primary_save_button)).assertIsNotEnabled()
+        compose.onNodeWithText(context.getString(R.string.expense_edit_ignore_button)).assertIsNotEnabled()
+        compose.onNodeWithTag(TAG_TAGS_FIELD).performScrollTo().assertTextContains(tags)
+        assertTrue(network.editCalls.isEmpty())
+        compose.onNodeWithTag(TAG_TAGS_FIELD).performClick()
+        keyboard.assertActionAboveKeyboard(compose, confirm, "pending-original-keyboard")
+        compose.onNodeWithText(confirm).assertIsNotEnabled()
+        keyboard.dismissAndWait(compose)
+        compose.onNodeWithText(baseline).performScrollTo().assertIsDisplayed()
+        saveConsumerArtPreview("pending-original-baseline", requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        compose.onNodeWithText(context.getString(R.string.original_edit_review)).performScrollTo().performClick()
+        compose.waitUntil(5_000) { compose.onAllNodesWithText(baseline).fetchSemanticsNodes().isEmpty() }
+        compose.onNodeWithTag(TAG_TAGS_FIELD).performScrollTo().assertTextContains(tags)
+        compose.onNodeWithText(confirm).assertIsEnabled().performClick()
+        compose.waitUntil(5_000) { harness.fixture.stored().any { it["type"] == PendingMutationType.PatchExpense.wireValue } }
+        val patchRow = harness.fixture.stored().single { it["type"] == PendingMutationType.PatchExpense.wireValue }
+        val patch = org.json.JSONObject(requireNotNull(patchRow["payload"]))
+        assertEquals(tags, patch.getString("tags"))
+        assertEquals((before.rowVersion + 1).toString(), patchRow["expectedRowVersion"])
+        drainAdmittedConfirm()
+        waitForText(context.getString(R.string.expense_confirmation_title))
+        assertEquals(listOf("save", "confirm"), network.editCalls)
+        assertEquals("confirmed", network.current.status)
+        assertEquals(before.amountCents, network.current.amountCents)
+        saveConsumerArtPreview("pending-original-confirmed", requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
     }
 
     @Test fun confirmedReceiptDoesNotReturnToPendingWhenTheRefreshFails() {
@@ -523,6 +589,16 @@ class FactEntryNavigationTest {
             .performScrollTo().performClick()
         compose.waitForIdle()
         compose.runOnIdle { assertEquals(MAIN_ROUTE, outer.currentBackStackEntry?.destination?.route) }
+    }
+
+    private fun originalPicker(): ActivityResultRegistryOwner {
+        val registry = object : ActivityResultRegistry() {
+            override fun <I, O> onLaunch(requestCode: Int, contract: ActivityResultContract<I, O>, input: I,
+                options: ActivityOptionsCompat?) {
+                dispatchResult(requestCode, Activity.RESULT_OK, Intent().setData(Uri.fromFile(sharedImage)))
+            }
+        }
+        return object : ActivityResultRegistryOwner { override val activityResultRegistry = registry }
     }
 
     private fun drainAdmittedConfirm() {

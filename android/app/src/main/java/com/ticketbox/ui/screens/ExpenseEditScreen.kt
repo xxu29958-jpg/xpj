@@ -602,9 +602,12 @@ fun ExpenseEditScreen(
                         allowConfirm = actionAvailability.allowConfirm && canMutateFact && !manualExchangeRateNeedsReview,
                         allowReject = actionAvailability.allowReject && canMutateFact,
                         validationMessage = message,
-                        statusMessage = state.message?.asString(),
+                        statusMessage = state.message?.asString() ?: if (state.originalBaselineRequired) {
+                            stringResource(R.string.original_edit_review_needed)
+                        } else null,
                         statusTone = state.messageTone,
                         forceCompact = amountFocused,
+                        submissionBlocked = state.originalBaselineRequired,
                     ),
                     actions = ExpenseEditActionBarActions(
                         onBack = handleBack,

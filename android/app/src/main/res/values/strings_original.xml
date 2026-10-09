@@ -59,6 +59,7 @@
     <string name="original_stale">以下为上次检查结果，当前状态尚未取得。</string>
     <string name="original_edit_baseline">原件操作已接受。当前编辑值与原版本已保留；继续保存前，请明确核对最新账单。</string>
     <string name="original_edit_review">保留输入，核对原件操作后的账单</string>
+    <string name="original_edit_review_needed">原件已更新，请先核对账单再继续。</string>
     <string name="original_edit_changed">账单内容也发生了变化，原输入与版本仍保留。请使用账单最新内容复核入口处理并发变化。</string>
     <string name="original_file">原件</string>
     <string name="original_thumbnail">缩略图</string>

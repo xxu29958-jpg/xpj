@@ -65,7 +65,8 @@
     }
     if (stage === "returned") {
       assert(new URL(location.href).searchParams.get("after") === "25", "Return must keep the original page cursor");
-      await wait(() => document.querySelector('[data-expense-id="43"]').dataset.originalState === "verified");
+      await wait(() => !document.querySelector("[data-original-scan]").disabled &&
+        document.querySelector('[data-expense-id="43"]').dataset.originalState === "verified");
       assert(document.querySelector('[data-expense-id="44"]').dataset.originalState === "none", "Return must retry the interrupted observation without calling a manual bill missing");
       assert(document.querySelectorAll("[data-original-row]").length === 3, "Return must not expand the checked scope");
       assert(document.querySelector("[data-original-next]").hidden, "A repaired original must leave the needs-attention action");

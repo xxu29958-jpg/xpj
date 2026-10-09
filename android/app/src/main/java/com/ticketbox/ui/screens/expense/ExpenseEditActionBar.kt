@@ -55,7 +55,11 @@ internal data class ExpenseEditActionBarState(
     val statusMessage: String?,
     val statusTone: MessageTone,
     val forceCompact: Boolean = false,
+    val submissionBlocked: Boolean = false,
 ) {
+    val canSubmit: Boolean
+        get() = !saving && !submissionBlocked
+
     val showBackAction: Boolean
         get() = !allowConfirm || (!allowSave && !allowReject)
 }
@@ -140,7 +144,7 @@ private fun ExpenseEditStackedActionRows(
                 text = stringResource(R.string.expense_edit_confirm_button),
                 icons = AppButtonIcons(leading = Icons.Filled.Check),
                 modifier = Modifier.fillMaxWidth(),
-                enabled = !state.saving,
+                enabled = state.canSubmit,
                 onClick = actions.onConfirm,
             )
         }
@@ -172,7 +176,7 @@ private fun ExpenseEditSecondaryActionRow(
             CompactTextAction(
                 text = rejectText,
                 weight = 0.82f,
-                enabled = !state.saving,
+                enabled = state.canSubmit,
                 danger = true,
                 onClick = actions.onRequestReject,
             )
@@ -185,7 +189,7 @@ private fun ExpenseEditSecondaryActionRow(
                     stringResource(R.string.expense_edit_primary_save_button)
                 },
                 weight = 1f,
-                enabled = !state.saving,
+                enabled = state.canSubmit,
                 onClick = actions.onSave,
             )
         }
@@ -217,7 +221,7 @@ private fun ExpenseEditActionForwardRow(
             CompactTextAction(
                 text = rejectText,
                 weight = 0.64f,
-                enabled = !state.saving,
+                enabled = state.canSubmit,
                 danger = true,
                 onClick = actions.onRequestReject,
             )
@@ -231,7 +235,7 @@ private fun ExpenseEditActionForwardRow(
                     stringResource(R.string.expense_edit_primary_save_button)
                 },
                 leadingIcon = Icons.Filled.Save,
-                enabled = !state.saving,
+                enabled = state.canSubmit,
                 onClick = actions.onSave,
             )
         }
@@ -240,7 +244,7 @@ private fun ExpenseEditActionForwardRow(
                 text = stringResource(R.string.expense_edit_confirm_button),
                 icons = AppButtonIcons(leading = Icons.Filled.Check),
                 modifier = Modifier.weight(if (state.allowSave) 1.24f else 1f),
-                enabled = !state.saving,
+                enabled = state.canSubmit,
                 onClick = actions.onConfirm,
             )
         }
@@ -275,7 +279,7 @@ private fun ExpenseEditKeyboardActionRow(
                     stringResource(R.string.expense_edit_primary_save_button)
                 },
                 weight = if (state.allowConfirm) 0.82f else 1f,
-                enabled = !state.saving,
+                enabled = state.canSubmit,
                 onClick = actions.onSave,
             )
         }
@@ -283,7 +287,7 @@ private fun ExpenseEditKeyboardActionRow(
             CompactFilledAction(
                 text = stringResource(R.string.expense_edit_confirm_button),
                 weight = 1.32f,
-                enabled = !state.saving,
+                enabled = state.canSubmit,
                 onClick = actions.onConfirm,
             )
         }
@@ -291,7 +295,7 @@ private fun ExpenseEditKeyboardActionRow(
             CompactTextAction(
                 text = rejectText,
                 weight = 0.72f,
-                enabled = !state.saving,
+                enabled = state.canSubmit,
                 danger = true,
                 onClick = actions.onRequestReject,
             )
