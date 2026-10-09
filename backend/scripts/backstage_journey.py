@@ -61,9 +61,12 @@ class BackstageJourney:
         original = self.evidence / "synthetic-receipt-web.png"
         digest = synthetic_receipt(original)
         form = self.page.locator("#capture")
+        for disclosure in form.locator("xpath=ancestor::details").all():
+            if disclosure.get_attribute("open") is None:
+                disclosure.locator(":scope > summary").click()
         before_selection = self.facts()
         with self.page.expect_file_chooser() as picker:
-            form.get_by_label("选择小票图片", exact=True).click()
+            form.locator('label[for="inbox-upload-file"]').click()
         picker.value.set_files(original)
         self.capture("inbox-selected-original")
         assert self.facts() == before_selection, "Selecting a file must not upload or create financial facts"
