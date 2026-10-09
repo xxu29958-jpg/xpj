@@ -192,6 +192,7 @@ class OriginalMaintenanceJourney:
     def native_observations(self):
         self.native.bind(self.fixture.pairing_code, urlsplit(self.base_url).port)
         self.native.click("打开账户与设置", stable=True)
+        self.native.click("同步与后台任务", stable=True)
         self.native.click("后台任务", stable=True)
         wait_for(lambda: self.native.has("处置已核对文件"), "Native did not read the real disposal task")
         self.native.reveal_any("检查未引用文件")

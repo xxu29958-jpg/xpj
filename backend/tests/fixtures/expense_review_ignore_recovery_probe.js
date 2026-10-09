@@ -15,6 +15,11 @@
   const primary = () => form()?.querySelector("[data-expensereview-submit]");
   const undo = () => document.querySelector("form[data-expenseundo-plan-id]");
   const undoSubmit = () => undo()?.querySelector("[data-expenseundo-submit]");
+  const requestLock = navigator.locks.request.bind(navigator.locks);
+  navigator.locks.request = (name, options, callback) => requestLock(name, options, async lock => {
+    if (state.stage === "resumeFinancial" && name.startsWith(prefix)) await new Promise(resolve => setTimeout(resolve, 300));
+    return callback(lock);
+  });
   const originalFetch = window.fetch;
   window.fetch = async (url, options) => {
     const action = new URL(url, location.href).pathname.split("/").pop();
@@ -77,8 +82,11 @@
   }
   async function reviewFinancial() {
     await wait(() => form()?.dataset.expensereviewDraftPhase === "editing");
+    const review = form().querySelector("[data-expensereview-review]");
+    if (form().elements.merchant.readOnly) assert(review.disabled, "review enabled before the original draft lease was acquired");
+    await wait(() => !review.disabled && !form().elements.merchant.readOnly);
     assert(primary().disabled, "financial command acquired undo's current version silently");
-    state.stage = "reviewed"; save(); form().requestSubmit(form().querySelector("[data-expensereview-review]"));
+    state.stage = "reviewed"; save(); form().requestSubmit(review);
   }
   async function resumeDecision() {
     if (state.stage === "rejectReload") {

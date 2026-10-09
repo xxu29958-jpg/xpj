@@ -116,7 +116,7 @@
       submit.disabled = !commandAllowed() || actionUnavailable();
       submit.textContent = phase === "editing" ? nativeLabel : definition.pendingLabel || "核实原" + taskLabel;
       review.hidden = !reviewAvailable();
-      review.disabled = busy || accepted;
+      review.disabled = actionUnavailable();
       discard.hidden = blocked || !retained;
       discard.disabled = busy || accepted || !held;
       if (originalResult) {

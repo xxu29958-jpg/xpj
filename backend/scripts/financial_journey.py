@@ -5,8 +5,8 @@ from email.parser import BytesParser
 from urllib.parse import parse_qsl, urlsplit
 
 from scripts.financial_journey_facts import facts
+from scripts.financial_journey_original import native_first_original
 from scripts.planning_journey_android import wait_for
-from scripts.portable_journey_facts import attach_fixture_original
 
 
 def _submitted_fields(request):
@@ -99,9 +99,9 @@ class FinancialJourney:
         form.locator('[name="category"]').fill("餐饮")
         form.get_by_role("button", name="记下这笔支出", exact=True).click()
         self.expect(lambda state: len(state["expenses"]) == 1, "The real manual expense did not commit")
-        self.original_digest = attach_fixture_original(self.facts()["id"], ledger_id=self.fixture.ledger_id)
         self.native.bind(self.fixture.pairing_code, self.port)
         self.native_open()
+        self.original_digest = native_first_original(self)
 
     def native_retained_correction(self):
         native = self.native
@@ -289,5 +289,5 @@ class FinancialJourney:
         appearances(self)
         result = self.facts()
         assert result["image_hash"] == original and result["original_attached"]
-        result.update(original_sha256=self.original_digest, verified_leg="Actual Web/native financial corrections, original-input cold reopen, cross-client review, accepted reply loss, offline Room/Outbox refund, offset void/reversal, immutable history, restart and query consumers")
+        result.update(original_sha256=self.original_digest, verified_leg="Actual native first-original selection and process restart with changed provider, original-file/key receipt, Web/native financial corrections, original-input cold reopen, cross-client review, accepted reply loss, offline Room/Outbox refund, offset void/reversal, immutable history, restart and query consumers")
         return result
