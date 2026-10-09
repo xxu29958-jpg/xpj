@@ -8,6 +8,7 @@ import com.ticketbox.data.repository.originalPayloadAdapter
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.upload.PreparedUploadImage
 import java.util.UUID
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -36,12 +37,13 @@ fun OriginalAttachmentViewModel.beginSelection(): Boolean {
 }
 
 fun OriginalAttachmentViewModel.selectedSource(uri: String?) {
+    if (state.value.busy || saved.get<String>("original_payload") == null) return
     if (uri == null) {
         if (saved.get<String>("original_uri") == null) clearOriginalSelection()
         return
     }
     saved["original_uri"] = uri
-    mutableState.update { it.copy(selectedSource = true) }
+    mutableState.update { it.copy(selectedSource = true, selection = null, selectionDisplayed = false, selectionConfirmed = false) }
 }
 
 fun OriginalAttachmentViewModel.resumeSelectedSource(prepare: suspend (String) -> PreparedUploadImage?) {
@@ -50,8 +52,48 @@ fun OriginalAttachmentViewModel.resumeSelectedSource(prepare: suspend (String) -
     val payload = runCatching { originalPayloadAdapter.fromJson(json) }.getOrNull() ?: return
     val key = saved.get<String>("original_key") ?: return
     if (payload.origin != originals.currentOriginalBinding() || state.value.busy) return
-    if (payload.operation in setOf("attach_original", "replenish_original") && uri == null) return
-    deliver(OriginalSubmission(key, payload, uri?.let { source -> { prepare(source) } })) { clearOriginalSelection() }
+    if (reconcileSubmittedSelection()) return
+    if (payload.operation !in setOf("attach_original", "replenish_original")) {
+        deliver(OriginalSubmission(key, payload)) { clearOriginalSelection() }
+        return
+    }
+    if (uri == null || state.value.selection != null) return
+    mutableState.update { it.copy(busy = true, message = null) }
+    viewModelScope.launch {
+        try {
+            val source = requireNotNull(prepare(uri))
+            if (payload.origin != originals.currentOriginalBinding() || saved.get<String>("original_uri") != uri) return@launch
+            mutableState.update { it.copy(selection = OriginalImageSelection(source)) }
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (error: Exception) {
+            if (payload.origin == originals.currentOriginalBinding())
+                mutableState.update { it.copy(message = error.toUiText(R.string.original_source_unavailable)) }
+        } finally {
+            if (payload.origin == originals.currentOriginalBinding()) mutableState.update { it.copy(busy = false) }
+        }
+    }
+}
+
+/** Admit the exact bytes displayed and confirmed, never reopen a mutable provider URI here. */
+fun OriginalAttachmentViewModel.submitSelectedSource() {
+    if (!state.value.canConfirmSelection) return
+    val selection = state.value.selection ?: return
+    val json = saved.get<String>("original_payload") ?: return
+    val payload = originalPayloadAdapter.fromJson(json) ?: return
+    val key = saved.get<String>("original_key") ?: return
+    if (payload.origin != originals.currentOriginalBinding()) return
+    deliver(OriginalSubmission(key, payload) { selection.source }) { clearOriginalSelection() }
+}
+
+/** A visible Room command is authoritative even if its local admission reply was lost. */
+internal fun OriginalAttachmentViewModel.reconcileSubmittedSelection(): Boolean {
+    if (state.value.busy || !state.value.localIntentBound) return false
+    val key = saved.get<String>("original_key") ?: return false
+    val json = saved.get<String>("original_payload") ?: return false
+    val payload = runCatching { originalPayloadAdapter.fromJson(json) }.getOrNull() ?: return false
+    if (state.value.commands.none { it.row.idempotencyKey == key && it.payload?.copy(file = null) == payload }) return false
+    clearOriginalSelection()
+    return true
 }
 
 fun OriginalAttachmentViewModel.clearOriginalSelection() {
@@ -59,7 +101,8 @@ fun OriginalAttachmentViewModel.clearOriginalSelection() {
     saved.remove<String>("original_uri")
     saved.remove<String>("original_payload")
     saved.remove<String>("original_key")
-    mutableState.update { it.copy(selectedSource = false, localIntent = false, localIntentBound = false) }
+    mutableState.update { it.copy(selectedSource = false, selection = null, selectionDisplayed = false,
+        selectionConfirmed = false, localIntent = false, localIntentBound = false) }
 }
 
 fun OriginalAttachmentViewModel.recoverOriginal(rowId: Long, drop: Boolean) {
@@ -100,5 +143,6 @@ private fun OriginalAttachmentViewModel.deliver(request: OriginalSubmission, onA
         mutableState.update { it.copy(busy = false, message = result.fold(
             onSuccess = { UiText.res(R.string.original_queued) }, onFailure = { it.toUiText(R.string.original_command_failed) })) }
         if (result.isSuccess) onAccepted()
+        else if (reconcileSubmittedSelection()) mutableState.update { it.copy(message = UiText.res(R.string.original_queued)) }
     }
 }

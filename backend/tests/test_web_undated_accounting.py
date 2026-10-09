@@ -38,6 +38,7 @@ def test_typed_response_keeps_accounting_day_and_original_zone_in_the_web_view()
         accounting_date=date(2026, 5, 1), source_timezone="Asia/Shanghai",
         source_utc_offset_seconds=28800, basis="instant_calendar")
     view = _expense_view(_root(snapshot), presentation_currency_code="CNY")
+    assert view["image_state"] == "unknown"
     assert view["accounting_date"] == "2026-05-01"
     assert "08:00:00+08:00" in view["expense_time"]
 

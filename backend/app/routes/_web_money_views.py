@@ -233,8 +233,9 @@ def _expense_view(
         image_state = "available"
     elif expense.image_deleted_at is not None:
         image_state = "cleaned"
-    elif not expense.image_hash:
-        image_state = "none"
+    elif getattr(expense, "image_hash", None) is None:
+        # Typed projections omit digest history; absence there does not prove first association is available.
+        image_state = "none" if hasattr(expense, "image_hash") else "unknown"
     else:
         image_state = "missing"
     source_raw = getattr(expense, "source", "") or ""

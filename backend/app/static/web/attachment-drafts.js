@@ -29,12 +29,16 @@
       throw error;
     }
   }
-  async function submitted(scope, ref) {
+  async function readSource(scope, ref) {
     const record = store.read(ref);
     if (!record || !store.matches(record.scope, scope)) throw Error("draft_binding_changed");
     validateAction(scope, ref, record.values);
     const file = record.values.file_sha256 ? await window.TicketboxDraftFiles.get(
       store.key(ref), scope, record.values, store.matches) : null;
+    return {record, file};
+  }
+  async function submitted(scope, ref) {
+    const {record, file} = await readSource(scope, ref);
     return {record: store.save(scope, ref, "submitted", record.values), file};
   }
   async function acknowledge(ack) {
@@ -56,5 +60,5 @@
     await window.TicketboxDraftFiles.remove(store.key(clientRef));
     return store.discardLocal({scope, clientRef, values: record.values, decision: "discard-local"});
   }
-  window.TicketboxAttachmentDrafts = {store, retain, submitted, acknowledge, discardRejected, discardEditing};
+  window.TicketboxAttachmentDrafts = {store, retain, readSource, submitted, acknowledge, discardRejected, discardEditing};
 })(window);

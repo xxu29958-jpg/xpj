@@ -10,10 +10,15 @@ import com.ticketbox.data.repository.OriginalAttachmentActions
 import com.ticketbox.data.repository.PendingOriginalCommand
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.UiText
+import com.ticketbox.upload.PreparedUploadImage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+
+class OriginalImageSelection(val source: PreparedUploadImage) {
+    val preview = ProtectedImage(source.bytes, source.contentType)
+}
 
 data class OriginalAttachmentUiState(
     val access: LedgerAccessContext? = null,
@@ -26,6 +31,9 @@ data class OriginalAttachmentUiState(
     val commands: List<PendingOriginalCommand> = emptyList(),
     val busy: Boolean = false,
     val selectedSource: Boolean = false,
+    val selection: OriginalImageSelection? = null,
+    val selectionDisplayed: Boolean = false,
+    val selectionConfirmed: Boolean = false,
     val localIntent: Boolean = false,
     val localIntentBound: Boolean = false,
     val message: UiText? = null,
@@ -36,7 +44,10 @@ data class OriginalAttachmentUiState(
         !localIntent && commands.none { !it.delivered }
     val canVerify: Boolean get() = canSubmit && health?.state == "unverified" &&
         reviewedDigest != null && reviewedDigest == image?.originalSha256
+    val canConfirmSelection: Boolean get() = localIntentBound && access?.canModify == true && !busy &&
+        selection != null && selectionDisplayed && selectionConfirmed
     val selectionOperation: String? get() = when {
+        localIntent -> null
         health?.state == "none" && health.cleanup == null && health.cleanupError == null -> "attach_original"
         health?.expectedSha256 != null && health.state in setOf("missing", "corrupt", "cleaned", "unreadable") -> "replenish_original"
         else -> null
@@ -72,6 +83,7 @@ class OriginalAttachmentViewModel(
                     mutableState.value = restoredState()
                 }
                 mutableState.update { it.copy(access = observation.access, commands = commands, localIntentBound = savedOriginalBinding() == observation.access?.binding) }
+                reconcileSubmittedSelection()
                 if (bindingChanged || newlyDelivered.isNotEmpty()) {
                     mutableState.update { it.copy(image = null, reviewedDigest = null, deliveredRevision = it.deliveredRevision + if (newlyDelivered.isEmpty()) 0 else 1) }
                     refresh(preserveMessage = true)
@@ -121,5 +133,14 @@ class OriginalAttachmentViewModel(
     fun imageDisplayed(image: ProtectedImage) {
         if (mutableState.value.image !== image || mutableState.value.access?.binding != originals.currentOriginalBinding()) return
         mutableState.update { it.copy(reviewedDigest = image.originalSha256) }
+    }
+
+    fun selectedImageDisplayed(image: ProtectedImage) {
+        if (state.value.selection?.preview !== image || !state.value.localIntentBound) return
+        mutableState.update { it.copy(selectionDisplayed = true) }
+    }
+
+    fun confirmImageSelection(confirmed: Boolean) {
+        mutableState.update { it.copy(selectionConfirmed = confirmed && it.selectionDisplayed && it.localIntentBound) }
     }
 }

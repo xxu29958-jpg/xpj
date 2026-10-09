@@ -45,6 +45,10 @@
     <string name="original_source_saved">本次原件操作尚未完成本机接纳。已保留原输入，可继续保存。</string>
     <string name="original_source_retry">继续保存原操作</string>
     <string name="original_source_cancel">取消尚未接纳的操作</string>
+    <string name="original_selected_image">本次选择的原件图片</string>
+    <string name="original_selection_review">这是这笔账单对应的原件</string>
+    <string name="original_selection_submit">确认并保存原件</string>
+    <string name="original_selection_unavailable">所选图片无法打开，尚未提交。请重新选择可查看的原件图片。</string>
     <string name="original_review_conflict">原件或账单在核对后发生变化。请刷新并重新查看原图。</string>
     <string name="original_verify_no_digest">此响应没有可验证的原件摘要，可继续查看，但不能据此建立核验基准。</string>
     <string name="original_writer_required">当前角色仅能查看原件。</string>

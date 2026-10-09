@@ -2,6 +2,13 @@ package com.ticketbox.ui.navigation
 
 import android.content.Context
 import android.net.Uri
+import android.app.Activity
+import android.content.Intent
+import androidx.activity.compose.LocalActivityResultRegistryOwner
+import androidx.activity.result.ActivityResultRegistry
+import androidx.activity.result.ActivityResultRegistryOwner
+import androidx.activity.result.contract.ActivityResultContract
+import androidx.core.app.ActivityOptionsCompat
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
@@ -32,6 +39,8 @@ import com.ticketbox.ui.saveConsumerArtPreview
 import com.ticketbox.R
 import com.ticketbox.BuildConfig
 import com.ticketbox.data.local.PendingMutationType
+import com.ticketbox.data.repository.originalPayloadAdapter
+import com.ticketbox.data.repository.UploadIntentFileStore
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.ticketbox.data.remote.dto.BackgroundTaskListResponseDto
@@ -42,6 +51,7 @@ import com.ticketbox.ui.theme.TicketboxTheme
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -194,7 +204,16 @@ class FactEntryNavigationTest {
     @Test fun imagelessBillOffersFirstAttachmentWithoutReadingOrChangingAFinancialFact() {
         harness.fixture.network.current = harness.fixture.network.current.copy(imagePath = null, thumbnailPath = null)
         val before = harness.fixture.network.current
-        installMainGraph()
+        val displayedBytes = InstrumentationRegistry.getArguments().getString("captureImage")?.let { File(it).readBytes() }
+            ?: harness.fixture.network.originalImage
+        sharedImage.writeBytes(displayedBytes)
+        val registry = object : ActivityResultRegistry() {
+            override fun <I, O> onLaunch(requestCode: Int, contract: ActivityResultContract<I, O>, input: I,
+                options: ActivityOptionsCompat?) {
+                dispatchResult(requestCode, Activity.RESULT_OK, Intent().setData(Uri.fromFile(sharedImage)))
+            }
+        }
+        installMainGraph(object : ActivityResultRegistryOwner { override val activityResultRegistry = registry })
         openFact()
         waitForText(context.getString(R.string.original_status_none))
         compose.onNodeWithText(context.getString(R.string.original_title)).performScrollTo().performClick()
@@ -202,6 +221,29 @@ class FactEntryNavigationTest {
         assertTrue(harness.fixture.network.imageReads.isEmpty())
         assertEquals(before, harness.fixture.network.current)
         saveConsumerArtPreview("original-first-attachment", requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        compose.onNodeWithText(context.getString(R.string.original_attach)).performClick()
+        waitForText(context.getString(R.string.original_selection_submit))
+        compose.onNodeWithContentDescription(context.getString(R.string.original_selected_image))
+            .performScrollTo().assertIsDisplayed()
+        assertTrue(harness.fixture.stored().isEmpty())
+        compose.onNodeWithText(context.getString(R.string.original_selection_submit)).performScrollTo().assertIsNotEnabled()
+        // Provider contents may change; confirmation must enqueue the bytes actually displayed.
+        sharedImage.writeBytes(byteArrayOf(9, 8, 7))
+        val review = context.getString(R.string.original_selection_review)
+        compose.waitUntil(5_000) { compose.onAllNodes(hasText(review) and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText(review).performScrollTo().performClick()
+        compose.waitForIdle()
+        InstrumentationRegistry.getInstrumentation().uiAutomation.waitForIdle(300, 3_000)
+        saveConsumerArtPreview("original-selection-confirm", requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        compose.onNodeWithText(context.getString(R.string.original_selection_submit)).performScrollTo().assertIsEnabled().performClick()
+        compose.waitUntil(5_000) { harness.fixture.stored().size == 1 }
+        val row = harness.fixture.stored().single()
+        val payload = requireNotNull(originalPayloadAdapter.fromJson(requireNotNull(row["payload"])))
+        assertEquals("attach_original", payload.operation)
+        assertEquals(42L, payload.expenseId)
+        assertEquals(before.rowVersion, payload.expectedRowVersion)
+        runBlocking { assertArrayEquals(displayedBytes, UploadIntentFileStore(context).read(requireNotNull(payload.file))) }
+        assertEquals(before, harness.fixture.network.current)
     }
 
     @Test fun missingOriginalKeepsTheBillAndReplenishEntry() {
@@ -444,10 +486,11 @@ class FactEntryNavigationTest {
         }
     }
 
-    private fun installMainGraph() {
+    private fun installMainGraph(picker: ActivityResultRegistryOwner? = null) {
         compose.setContent {
             if (mounted.value) {
-                CompositionLocalProvider(LocalViewModelStoreOwner provides harness.models) {
+                CompositionLocalProvider(LocalViewModelStoreOwner provides harness.models,
+                    LocalActivityResultRegistryOwner provides (picker ?: requireNotNull(LocalActivityResultRegistryOwner.current))) {
                     TicketboxTheme(skin = if (InstrumentationRegistry.getArguments().getString("captureSkin") == "midnight")
                         AppSkin.Midnight else AppSkin.Paper) {
                         val controller = rememberNavController()

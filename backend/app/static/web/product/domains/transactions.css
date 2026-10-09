@@ -778,6 +778,7 @@
 .fact-header .product-page-heading { gap: var(--space-3); }
 .fact-hero {
     display: grid;
+    container-type: inline-size;
     gap: var(--space-3);
     text-align: start;
     overflow-wrap: anywhere;
@@ -806,6 +807,7 @@
     line-height: var(--type-display-line);
     font-variant-numeric: tabular-nums;
 }
+.fact-hero .fact-amount { font-size: clamp(var(--type-title-size), 13cqi, var(--type-display-size)); }
 
 .fact-keymeta {
     display: flex;

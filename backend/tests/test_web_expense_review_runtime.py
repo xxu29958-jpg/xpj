@@ -1,4 +1,6 @@
 """Actual expense review consumers, with real command keys and controlled identity/financial transitions."""
+import base64
+import io
 import json
 import re
 import socket
@@ -46,10 +48,12 @@ from app.services import (
 )
 from tests import test_web_edge_runtime_contract as browser_runtime
 from tests import test_web_expense_confirmation_page as page_tests
+from tests import test_web_first_original as original_tests
 from tests._web_native_form_support import hidden_post_forms
 
 confirmation_store = page_tests.confirmation_store
 confirmation_web = page_tests.confirmation_web
+first_original_web = original_tests.first_original_web
 
 
 @pytest.fixture
@@ -999,3 +1003,36 @@ def test_fx_action_checks_original_binding_and_keeps_inputs_and_confirmation_bas
     with Session(confirmation_store) as db:
         current = db.get(Expense, 42)
         assert (current.merchant, current.status, current.row_version) == ("首次便利店", "pending", 5)
+
+
+@pytest.mark.parametrize("external_preview", [False, True])
+def test_selected_original_requires_confirmation_and_retains_exact_file_after_reload(first_original_web, tmp_path, external_preview):
+    case = first_original_web
+    sample_bytes = original_tests._camera_jpeg()
+    if external_preview:
+        import pillow_heif
+        from PIL import Image
+        encoded = io.BytesIO()
+        pillow_heif.from_pillow(Image.open(io.BytesIO(sample_bytes))).save(encoded)
+        sample_bytes = encoded.getvalue()
+    sample = base64.b64encode(sample_bytes).decode()
+    case.client.app.mount("/static", StaticFiles(directory=Path(__file__).parents[1] / "app/static"))
+    probe = (Path(__file__).parent / "fixtures/original_selection_probe.js").read_text(encoding="utf-8")
+
+    @case.client.app.middleware("http")
+    async def original_selection_probe(request, call_next):
+        response = await call_next(request)
+        if request.method != "GET" or request.url.path != "/web/expenses/42/original":
+            return response
+        body = b"".join([chunk async for chunk in response.body_iterator])
+        script = "<script>window.__originalSample=" + json.dumps(sample) + ";window.__externalPreview=" + json.dumps(external_preview) + ";" + probe + "</script>"
+        return Response(body.replace(b"</body>", script.encode() + b"</body>"), media_type="text/html")
+
+    before = original_tests._facts(case)
+    result = _run_review_page(case.client, tmp_path, "/web/expenses/42/original?ledger_id=owner")
+    assert "error" not in result, result
+    assert all(result[name] for name in ("decoded", "restored", "explicit_confirmation", "fixed_after_reply_loss"))
+    assert original_tests._facts(case) == before
+    with Session(case.engine) as db:
+        assert len(db.scalars(select(ApiIdempotencyKey)).all()) == 1
+        assert db.get(Expense, 42).image_path is not None

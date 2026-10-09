@@ -72,6 +72,8 @@
 .original-reader > img[hidden] { display: none; }
 .original-reader > img.is-zoomed { width: 180%; max-width: none; max-height: none; }
 .original-reader > [data-original-preview-status] { padding: var(--space-5); text-align: center; }
+.original-selected-image { width: 100%; max-height: calc(70svh - var(--space-6)); object-fit: contain; background: var(--surface-sunken); border-radius: var(--radius-xl); }
+.edit-form > .product-check { min-height: var(--target-min); }
 .original-list > .product-entry { border-bottom: 1px solid var(--border-card); }
 .original-list [data-original-row-time] { font-size: var(--type-caption-size); color: var(--text-muted); }
 

@@ -3,8 +3,12 @@ package com.ticketbox.ui.screens.expense
 import com.ticketbox.ui.screens.settings.SettingsEntryRowOptions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -16,9 +20,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.Role
 import com.ticketbox.R
 import com.ticketbox.data.repository.PendingOriginalCommand
 import com.ticketbox.domain.model.MessageTone
@@ -36,6 +42,7 @@ import com.ticketbox.viewmodel.OriginalAttachmentViewModel
 import com.ticketbox.viewmodel.clearOriginalSelection
 import com.ticketbox.viewmodel.continueCleanup
 import com.ticketbox.viewmodel.recoverOriginal
+import com.ticketbox.viewmodel.submitSelectedSource
 import com.ticketbox.viewmodel.verifyReviewedImage
 
 @Composable
@@ -59,7 +66,7 @@ fun OriginalAttachmentPanel(state: OriginalAttachmentUiState, viewModel: Origina
         )
         AppStatusBanner(state.message, MessageTone.Neutral)
         if (expanded) {
-            if (state.localIntent) OriginalLocalSelection(state, onResumeSelection, viewModel::clearOriginalSelection)
+            if (state.localIntent) OriginalLocalSelection(state, viewModel, onResumeSelection)
             OriginalReadAndRepair(state, viewModel, onSelectFile)
             OriginalHealthSection(state) { viewModel.refresh() }
             OriginalCleanupSection(state, viewModel)
@@ -173,10 +180,27 @@ private fun OriginalCleanupOutcome(label: String, outcome: String?, error: Strin
 }
 
 @Composable
-private fun OriginalLocalSelection(state: OriginalAttachmentUiState, retry: () -> Unit, cancel: () -> Unit) {
-    Text(stringResource(if (state.localIntentBound) R.string.original_source_saved else R.string.original_source_other_binding))
-    TextButton(onClick = retry, enabled = !state.busy && state.localIntentBound && state.access?.canModify == true) { Text(stringResource(R.string.original_source_retry)) }
-    TextButton(onClick = cancel, enabled = !state.busy) { Text(stringResource(R.string.original_source_cancel)) }
+private fun OriginalLocalSelection(state: OriginalAttachmentUiState, viewModel: OriginalAttachmentViewModel, retry: () -> Unit) {
+    val selection = state.selection
+    if (selection != null && state.localIntentBound) {
+        AppAsyncImage(selection.preview, presentation = AppAsyncImagePresentation(
+            stringResource(R.string.original_selection_unavailable), stringResource(R.string.original_selected_image), contentScale = ContentScale.Fit),
+            layout = AppAsyncImageLayout(displayHeight = 420.dp), onDisplayed = viewModel::selectedImageDisplayed)
+        Text(selection.source.fileName, style = MaterialTheme.typography.bodySmall)
+        val editable = state.selectionDisplayed && !state.busy && state.access?.canModify == true
+        Row(Modifier.fillMaxWidth().minimumInteractiveComponentSize()
+            .toggleable(state.selectionConfirmed, enabled = editable, role = Role.Checkbox, onValueChange = viewModel::confirmImageSelection),
+            verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = state.selectionConfirmed, onCheckedChange = null, enabled = editable)
+            Text(stringResource(R.string.original_selection_review), style = MaterialTheme.typography.bodyMedium)
+        }
+        AppPrimaryButton(text = stringResource(R.string.original_selection_submit), modifier = Modifier.fillMaxWidth(),
+            onClick = viewModel::submitSelectedSource, enabled = state.canConfirmSelection)
+    } else {
+        Text(stringResource(if (state.localIntentBound) R.string.original_source_saved else R.string.original_source_other_binding))
+        TextButton(onClick = retry, enabled = !state.busy && state.localIntentBound && state.access?.canModify == true) { Text(stringResource(R.string.original_source_retry)) }
+    }
+    TextButton(onClick = viewModel::clearOriginalSelection, enabled = !state.busy) { Text(stringResource(R.string.original_source_cancel)) }
 }
 
 @Composable

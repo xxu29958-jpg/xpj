@@ -89,6 +89,13 @@ capability before sending it to older servers. Export/orphan projections must
 include this new original-bearing receipt. These consumers and failure paths are
 part of this capability's exit gate; backend availability alone is not completion.
 
+Selecting a source for first association or replenishment must show it and wait
+for explicit confirmation before command admission. Submit the bytes reviewed,
+not a later re-read of a mutable provider URI. Web formats that the browser cannot
+decode retain a download-and-review path; supported original formats must not be
+silently excluded. An unsubmitted restored selection needs fresh confirmation;
+an already submitted task retains its original file, key and version for replay.
+
 | Existing boundary | Required continuation |
 | --- | --- |
 | Expense image reference/hash and ledger-scoped lookup | Retain the current relationship authority; metadata operations must use the real actor, ledger, OCC and existing idempotency mechanism. Financial fact revisions keep their separate meaning. |

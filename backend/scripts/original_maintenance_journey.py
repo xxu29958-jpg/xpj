@@ -76,6 +76,7 @@ class OriginalMaintenanceJourney:
             self.page.unroute("**" + action, lose_reply)
         assert len(accepted) == 1
         self.goto()
+        self.page.locator("#original-history > summary").click()
         self.page.locator(".original-task-history a").first.click()
         recovered = parse_qs(urlsplit(self.page.url).query)["task_id"][0]
         assert recovered == accepted[0], "Reopening history did not recover the original accepted task"

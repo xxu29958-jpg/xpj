@@ -22,6 +22,9 @@ const values={action:'https://local/web/expenses/7/original/replenish?'+query,
 (async()=>{
   const file={name:'original.png',bytes:Buffer.from('original file')};
   await api.retain(scope,ref,values,file);
+  assert.equal((await api.readSource(scope,ref)).file,file);
+  assert.equal(api.store.read(ref).phase,'editing','preview must not submit the selected original');
+  await assert.rejects(api.readSource({...scope,deviceId:'changed'},ref));
   assert.equal(await api.discardEditing({...scope,deviceId:'changed'},ref),false);
   const originalSet=storage.setItem;
   storage.setItem=()=>{throw Error('quota');};

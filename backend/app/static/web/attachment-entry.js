@@ -3,6 +3,52 @@
   "use strict";
   const drafts = window.TicketboxAttachmentDrafts;
   const store = drafts.store;
+  function originalSelection(form) {
+    const image = form.querySelector("[data-attachment-selected-image]");
+    if (!image) return null;
+    const check = form.querySelector("[data-attachment-selected-check]");
+    const reviewLabel = form.querySelector("[data-attachment-selected-label]");
+    const open = form.querySelector("[data-attachment-selected-open]");
+    const status = form.querySelector("[data-attachment-selection-status]");
+    let imageUrl;
+    check.disabled = true;
+    open.addEventListener("click", () => { if (form.dataset.attachmentPhase === "editing") check.disabled = false; });
+    window.addEventListener("pagehide", () => { if (imageUrl) window.URL.revokeObjectURL(imageUrl); });
+    return {
+      needsReview: () => !check.checked,
+      freeze() { check.checked = true; check.disabled = true; },
+      async show(source, fixed) {
+        check.checked = fixed;
+        check.disabled = true;
+        image.hidden = true;
+        open.hidden = true;
+        reviewLabel.textContent = "这是这笔账单对应的原件";
+        if (imageUrl) window.URL.revokeObjectURL(imageUrl);
+        imageUrl = null;
+        status.textContent = "正在打开所选图片…";
+        let file;
+        try {
+          file = await source();
+          if (!file) { status.textContent = "选择图片后，先预览再确认。"; return; }
+          imageUrl = window.URL.createObjectURL(file);
+          open.href = imageUrl;
+          open.download = file.name;
+          image.src = imageUrl;
+          await image.decode();
+          image.hidden = false;
+          check.disabled = fixed;
+          status.textContent = file.name + (fixed ? " · 已提交的原文件；重试仍使用此文件。" : " · 请核对图片是否属于这笔账单。");
+        } catch (_) {
+          if (file && imageUrl) {
+            open.hidden = false;
+            reviewLabel.textContent = "我已在图片应用核对原文件，确认它属于这笔账单";
+            status.textContent = fixed ? "浏览器无法显示原文件；重试仍使用已确认的文件。" :
+              "浏览器无法打开这张图片。请下载原文件，在图片应用中查看后再确认；也可以重新选择。";
+          } else { status.textContent = "原文件暂时无法读取，尚未发送。请恢复浏览器存储后继续原任务。"; }
+        }
+      },
+    };
+  }
   function taskPage(action) {
     const url = new URL(action, window.location.href);
     const path = url.pathname === "/web/pending/upload" ? "/web/pending" :
@@ -32,6 +78,7 @@
     const file = form.elements.namedItem("file");
     const button = form.querySelector('[type="submit"]');
     const label = button.textContent;
+    const selection = originalSelection(form);
     let ref = form.dataset.attachmentRef;
     let held = false;
     let release;
@@ -66,9 +113,9 @@
     });
     function changed() { options.onChange?.(); }
     function needsOriginalReview() {
-      return form.hasAttribute("data-original-verification") &&
-        (form.dataset.attachmentPhase || "editing") === "editing" &&
-        !form.elements.namedItem("reviewed_sha256").value;
+      if ((form.dataset.attachmentPhase || "editing") !== "editing") return false;
+      return !!selection?.needsReview() || (form.hasAttribute("data-original-verification") &&
+        !form.elements.namedItem("reviewed_sha256").value);
     }
     function notice(text) { status.textContent = text; changed(); }
     function allowOnlineOnly() {
@@ -77,8 +124,8 @@
       catch (_) { /* Only this fresh server-issued form may use native submission. */ }
       onlineOnly = true;
       form.dataset.attachmentPhase = "editing";
-      button.disabled = form.hasAttribute("data-original-verification") &&
-        !form.elements.namedItem("reviewed_sha256").value;
+      button.disabled = needsOriginalReview();
+      selection?.show(async () => file?.files[0], false).then(() => { button.disabled = needsOriginalReview(); });
       button.textContent = label + "（仅当前页在线提交）";
       notice(options.batch ? "原图未能保留，离开后无法恢复此选择。" : "浏览器未能持久保存文件；仍可在本页在线提交。离开或重载后不能恢复所选文件，请先确认网络可用。");
       options.onReady?.();
@@ -87,7 +134,8 @@
     function controls(record) {
       const fixed = !!record && record.phase !== "editing";
       form.dataset.attachmentPhase = record?.phase || "editing";
-      if (file) { file.disabled = fixed; file.required = !record?.values.file_sha256; }
+      if (file) { file.disabled = fixed || busy; file.required = !record?.values.file_sha256; }
+      if (fixed) selection?.freeze();
       button.textContent = fixed ? "重试原任务" : label;
       for (const name of ["reviewed_sha256", "request_id"]) {
         const input = form.elements.namedItem(name);
@@ -112,11 +160,13 @@
       if (record && record.phase !== "editing") return;
       busy = true;
       button.disabled = true;
+      if (file) file.disabled = true;
       notice("正在保留原文件和任务，请暂勿关闭此页…");
       try {
         const saved = await drafts.retain(scope, ref, values(), file?.files[0]);
         retained = true;
         controls(saved);
+        await selection?.show(async () => (await drafts.readSource(scope, ref)).file, false);
         captureError = false;
         if (!options.batch) window.history.replaceState(null, "", "#attachment-" + ref);
         notice(options.batch ? "原图已保留 · 准备上传" : (saved.values.file_name || "原件任务") + " 已保留在此浏览器，尚未提交。");
@@ -129,7 +179,12 @@
           return;
         }
         if (!allowOnlineOnly()) notice("最新文件未能保留，本次不会发送。原任务仍在；请保留页面，或重新检查后另开表单选择。");
-      } finally { busy = false; if (!onlineOnly) button.disabled = !held || captureError || needsOriginalReview(); changed(); }
+      } finally {
+        busy = false;
+        if (file) file.disabled = form.dataset.attachmentPhase !== "editing";
+        if (!onlineOnly) button.disabled = !held || captureError || needsOriginalReview();
+        changed();
+      }
     }
     async function send() {
       rejection = null;
@@ -163,14 +218,18 @@
       notice("操作已接受，正在返回原账单…");
       if (!options.batch) window.location.assign(result.next);
     }
-    form.addEventListener("change", capture);
+    form.addEventListener("change", event => {
+      if (event.target.hasAttribute("data-attachment-selected-check")) {
+        button.disabled = busy || !held && !onlineOnly || accepted || captureError && !onlineOnly || needsOriginalReview();
+      } else { void capture(); }
+    });
     function canSubmitRetained() {
       return !onlineOnly && held && !busy && !accepted && !captureError && !needsOriginalReview();
     }
     async function submit() {
       if (!canSubmitRetained()) return false;
       const record = store.read(ref);
-      if (!record || record.phase === "editing") await capture();
+      if (!record || record.phase === "editing" && !selection) await capture();
       if (!canSubmitRetained()) return false;
       busy = true;
       button.disabled = true;
@@ -182,7 +241,7 @@
       return accepted;
     }
     form.addEventListener("submit", event => {
-      if (onlineOnly) return;
+      if (onlineOnly) { if (needsOriginalReview()) event.preventDefault(); return; }
       event.preventDefault();
       void submit();
     });
@@ -233,6 +292,12 @@
           notice("请选择小票图片。上传后仍需核对确认。");
         }
         controls(record);
+        if (selection) {
+          file.disabled = true;
+          await selection.show(async () => record ? (await drafts.readSource(scope, ref)).file : null,
+            !!record && record.phase !== "editing");
+          controls(record);
+        }
         button.disabled = (!record && form.dataset.attachmentAvailable === "false") ||
           needsOriginalReview();
         options.onReady?.();
