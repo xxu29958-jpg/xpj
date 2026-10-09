@@ -118,16 +118,8 @@
           <img src="/web/expenses/{{ e.id }}/image{{ _q }}" alt="账单 #{{ e.id }} 的小票原图" class="receipt-img" loading="lazy" decoding="async">
         </a>
       </div>
-      {% elif e.image_state == 'cleaned' %}
-      <div class="product-state product-drawer-image-state">
-        <div class="product-state-title">凭证图片已清理</div>
-        <div class="product-state-body">原图已按清理策略移除，账面字段不受影响。</div>
-      </div>
       {% else %}
-      <div class="product-state product-drawer-image-state">
-        <div class="product-state-title">没有可查看的原图</div>
-        <div class="product-state-body">这可能是手动记录，或凭证图片尚未上传。</div>
-      </div>
+      {% include "_expense_original_state.html" %}
       {% endif %}
       <details class="review-original-details"><summary>原件信息与识别</summary>
       <a class="product-button" href="/web/expenses/{{ e.id }}/original{{ _q }}">检查原件与继续处理</a>

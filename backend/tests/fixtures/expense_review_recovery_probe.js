@@ -48,6 +48,9 @@
     if (state.stage === "edit") {
       field("merchant").value = "浏览器原填写";
       field("merchant").dispatchEvent(new Event("input", {bubbles: true}));
+      field("accounting_date").value = "2026-09-30";
+      field("accounting_date").dispatchEvent(new Event("input", {bubbles: true}));
+      assert(form.querySelector('.review-date-fields > summary').textContent.includes("2026-09-30"), "date summary hid the selected accounting date");
       state.key = field("idempotency_key").value; state.ref = field("draft_ref").value;
       state.stage = "lost"; save();
       const submit = state.operation === "save" ? [...form.querySelectorAll("button")].find(button => button.textContent === "保存草稿") : primary;
@@ -65,6 +68,7 @@
       assert(form.dataset.expensereviewDraftPhase === "submitted", "original submission was replaced by an editable draft");
       assert(field("merchant").value === "浏览器原填写" && field("idempotency_key").value === state.key, "original input or key changed");
       assert(field("expected_row_version").value === "4", "original basis was replaced by the saved version");
+      assert(field("accounting_date").value === "2026-09-30" && form.querySelector('.review-date-fields > summary').textContent.includes("2026-09-30"), "restored date summary lost the original choice");
       state.stage = "replay"; save();
       form.requestSubmit(primary);
     } else if (state.stage === "replay") {

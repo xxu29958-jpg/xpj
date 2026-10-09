@@ -10,7 +10,7 @@
     <div class="review-mobile-state"><span data-review-position>待核对</span><span class="product-status">{% if e.is_duplicate %}疑似重复{% elif e.needs_amount %}缺金额{% elif e.fx_pending %}待汇率{% elif e.needs_category %}待分类{% else %}待确认{% endif %}</span></div>
     <h2 class="review-mobile-title">核对这张小票</h2>
   </div>
-  <section class="product-drawer-evidence" aria-label="账单凭证">
+  <section class="product-drawer-evidence{% if not e.has_image %} is-empty{% endif %}" aria-label="账单凭证">
     <header class="product-drawer-section-header">
       <span class="product-drawer-meta">原件预览</span>
     </header>
@@ -24,10 +24,7 @@
            loading="lazy"
            decoding="async">
       {% else %}
-      <div class="product-state product-drawer-image-state">
-        <div class="product-state-title">没有可查看的原图</div>
-        <div class="product-state-body">这可能是手动记录，或凭证图片已经按清理策略移除。</div>
-      </div>
+      {% include "_expense_original_state.html" %}
       {% endif %}
     </div>
 

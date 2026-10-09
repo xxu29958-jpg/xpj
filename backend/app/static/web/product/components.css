@@ -1208,8 +1208,8 @@ details[open] > .product-entry > svg { transform: rotate(90deg); }
 .review-subtask .product-panel-header { display: none; }
 .review-amount-field { padding: var(--space-6); margin-bottom: var(--space-4); border-radius: var(--radius-xl); background: var(--brand-primary-bg); }
 .review-amount-field > summary { display: grid; gap: var(--space-3); min-height: var(--target-min); cursor: pointer; list-style: none; color: var(--text-meta); font-size: var(--type-body-size); }
-.review-amount-value:not([hidden]) { display: flex; align-items: baseline; gap: var(--space-2); min-width: 0; color: var(--text-default); }
-.review-amount-value [data-review-amount] { min-width: 0; overflow-wrap: anywhere; font-family: var(--font-numeric); font-size: var(--type-display-size); font-weight: var(--type-title-weight); line-height: var(--type-display-line); }
+.review-amount-value:not([hidden]) { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2); min-width: 0; color: var(--text-default); }
+.review-amount-value [data-review-amount] { min-width: 0; max-width: 100%; overflow-wrap: anywhere; font-family: var(--font-numeric); font-size: var(--type-display-size); font-weight: var(--type-title-weight); line-height: var(--type-display-line); }
 .review-amount-value > svg { flex: none; align-self: center; width: var(--space-5); height: var(--space-5); margin-inline-start: var(--space-3); color: var(--text-meta); }
 .review-amount-field .product-drawer-field-row { grid-template-columns: minmax(0, 1fr); margin-top: var(--space-5); }
 .review-amount-field .product-drawer-field-row > label:last-child { display: none; }

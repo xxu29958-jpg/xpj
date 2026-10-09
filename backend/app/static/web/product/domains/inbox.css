@@ -599,6 +599,7 @@ body:has(:is(.inbox-capture-panel, .inbox-empty-capture)[open]) .content { max-w
     .product-drawer-editor { grid-template-columns: minmax(0, .88fr) minmax(0, 1.12fr); gap: var(--space-7); align-items: start; }
     .review-mobile-heading, .review-task-header { display: none; }
     .product-drawer-evidence { border: 0; min-width: 0; height: calc(100dvh - var(--space-12) * 3); min-height: calc(var(--space-12) * 8); grid-template-rows: auto minmax(0, 1fr) auto; padding: var(--space-6); border-radius: var(--radius-xl); background: var(--surface-sunken); }
+    .product-drawer-evidence.is-empty { height: auto; min-height: 0; }
     .product-drawer-evidence .product-drawer-receipt { min-height: 0; height: 100%; max-height: none; padding: 0; background: transparent; overflow: auto; }
     .product-drawer-evidence .product-drawer-receipt img { height: 100%; max-height: none; }
     .product-drawer-evidence .product-drawer-receipt img.is-zoomed { height: auto; }
@@ -616,6 +617,7 @@ body:has(:is(.inbox-capture-panel, .inbox-empty-capture)[open]) .content { max-w
     .product-drawer-evidence > .product-drawer-section-header,
     .product-drawer-form .product-drawer-header { display: none; }
     .product-drawer-evidence .product-drawer-receipt { min-height: 0; height: auto; aspect-ratio: 9 / 4; border-radius: var(--radius-xl); }
+    .product-drawer-evidence.is-empty .product-drawer-receipt { aspect-ratio: auto; max-height: none; }
     .product-drawer-evidence .product-drawer-receipt img { width: 100%; max-height: none; align-self: start; }
     .product-drawer-evidence { position: relative; }
     .product-drawer-evidence-actions { position: absolute; bottom: var(--space-3); right: var(--space-3); margin: 0; padding: var(--space-1); border-radius: var(--radius-md); background: var(--surface-raised); }

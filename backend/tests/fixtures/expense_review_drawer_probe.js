@@ -78,6 +78,9 @@
       const input = form().elements.merchant;
       input.value = "抽屉原填写"; input.dispatchEvent(new Event("input", {bubbles: true}));
       state.ref = form().elements.draft_ref.value; state.command = form().elements.idempotency_key.value;
+      const date = form().elements.accounting_date;
+      date.value = "2026-09-30"; date.dispatchEvent(new Event("input", {bubbles: true}));
+      assert(form().querySelector('.review-date-fields > summary').textContent.includes(date.value), "drawer date summary hid the selected date");
       document.querySelector('.exp-row[data-expense-id="43"] .exp-row-detail').click();
       await wait(() => form()?.elements.expense_id.value === "43" && !primary()?.disabled);
       document.querySelector('.exp-row[data-expense-id="42"] .exp-row-detail').click();
@@ -91,6 +94,7 @@
     }
     assert(form().elements.merchant.value === "抽屉原填写", "refresh lost the drawer's original input");
     assert(form().elements.idempotency_key.value === state.command, "refresh replaced the original command key");
+    assert(form().elements.accounting_date.value === "2026-09-30" && form().querySelector('.review-date-fields > summary').textContent.includes("2026-09-30"), "drawer date summary lost the restored choice");
     if (state.stage === "reload") {
       state.stage = "lost"; save();
       form().requestSubmit([...form().querySelectorAll("button")].find(button => button.textContent === "保存草稿"));

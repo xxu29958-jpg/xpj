@@ -189,8 +189,16 @@
 
   {% if time_form %}
   {% if core_fields_compact|default(false) %}
-  <details class="review-date-fields"{% if field_errors.get('expense_time') or time_form.offset_options %} open{% endif %}>
-    <summary class="product-entry"><span class="product-entry-icon product-entry-icon--lilac" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#calendar-plus"/></svg></span><span class="product-entry-copy"><strong>账务日期</strong><span>{{ e.accounting_date or '待核对' }}</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></summary>
+  <details class="review-date-fields" data-review-line{% if field_errors.get('expense_time') or time_form.offset_options %} open{% endif %}>
+    <summary class="product-entry">
+      <span class="product-entry-icon product-entry-icon--lilac" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#calendar-plus"/></svg></span>
+      <span class="product-entry-copy">
+        <strong>账务日期</strong>
+        <span>已存：{{ e.accounting_date or '尚未确定' }}</span>
+        <span>本次：<span data-review-value="accounting_date" data-empty="按账本日历确定">{{ time_form.accounting_date or '按账本日历确定' }}</span></span>
+      </span>
+      <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
+    </summary>
   {% endif %}
   {% with time_prefix=_p, time_name='expense_time', time_disabled=(not can_write or e.is_split_received) %}{% include '_accounting_time_fields.html' %}{% endwith %}
   {% if core_fields_compact|default(false) %}</details>{% endif %}
