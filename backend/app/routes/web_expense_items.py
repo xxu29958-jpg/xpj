@@ -20,6 +20,7 @@ from app.routes._web_expense_return_context import (
     expense_return_form_context,
 )
 from app.routes._web_expense_rows import (
+    EXPENSE_ROW_ERROR_MESSAGES,
     WebExpenseRowsOutcome,
     attach_form_row_error,
     item_replace_payload,
@@ -57,6 +58,7 @@ def _save_web_expense_items(
     item_unit_price_yuan: list[str],
     item_amount_yuan: list[str],
     item_category: list[str],
+    review_latest: bool = False,
 ) -> WebExpenseRowsOutcome:
     rows = submitted_item_form_rows(
         item_name=item_name,
@@ -66,6 +68,8 @@ def _save_web_expense_items(
         item_amount_yuan=item_amount_yuan,
         item_category=item_category,
     )
+    if review_latest:
+        return WebExpenseRowsOutcome(rows=rows, reviewed=True)
     parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
         return WebExpenseRowsOutcome(
@@ -91,7 +95,7 @@ def _save_web_expense_items(
         attach_form_row_error(rows, exc)
         return WebExpenseRowsOutcome(
             rows=rows,
-            error=exc.message,
+            error=EXPENSE_ROW_ERROR_MESSAGES.get(exc.error, exc.message),
             error_status=web_form_error_status(exc),
         )
     return WebExpenseRowsOutcome(rows=rows)
@@ -109,6 +113,7 @@ def web_items_save(
     item_category: list[str] = Form(default=[]),
     expected_row_version: str = Form(default=""),
     ledger_id: str = Form(default=""),
+    review_latest: bool = Form(default=False),
     return_context: ExpenseReturnContext = Depends(expense_return_form_context),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
@@ -138,8 +143,9 @@ def web_items_save(
         item_unit_price_yuan=item_unit_price_yuan,
         item_amount_yuan=item_amount_yuan,
         item_category=item_category,
+        review_latest=review_latest,
     )
-    if outcome.error is not None:
+    if outcome.error is not None or outcome.reviewed:
         # codex follow-up on audit P2 #6: the re-read shares the main form's
         # vanished-row guard (flash to /web/confirmed, mirroring the GET).
         return _edit_page_or_flash_redirect(
@@ -148,11 +154,13 @@ def web_items_save(
             options,
             selected_id,
             expense_id,
-            outcome.error,
+            outcome.error or "",
             "/web/confirmed",
             error_key="items_error",
-            status_code=outcome.error_status,
-            receipt_item_rows=outcome.rows if outcome.error_status == 422 else None,
+            status_code=200 if outcome.reviewed else outcome.error_status,
+            receipt_item_rows=outcome.rows,
+            subtask_expected_version=expected_row_version,
+            subtask_reviewed=outcome.reviewed,
             return_context=return_context,
         )
     return _web_redirect(

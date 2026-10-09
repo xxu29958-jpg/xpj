@@ -22,6 +22,7 @@ from app.schemas import (
 from app.services.expense_split_service import replace_expense_splits
 from app.services.receipt_item_service import replace_expense_items
 from app.services.time_service import now_utc
+from tests._web_native_form_support import hidden_post_forms
 
 
 @pytest.fixture()
@@ -270,6 +271,53 @@ def test_web_item_and_split_validation_retains_rows_and_anchors_errors(
     assert splits.status_code == 422, splits.text
     assert "未保存分摊" in splits.text
     assert 'aria-describedby="split-0-member-error"' in splits.text
+
+
+@pytest.mark.parametrize("section", ["items", "splits"])
+def test_pending_subtask_conflict_keeps_original_rows_until_explicit_review(web_client, identity, section):
+    expense_id = _seed_pending_expense()
+    _seed_detail_rows(expense_id)
+    root_url = f"/api/expenses/{expense_id}"
+    target = f"/web/expenses/{expense_id}/{section}/save"
+    before = web_client.get(root_url, headers=identity.app_headers).json()
+    current_rows = web_client.get(f"{root_url}/{section}", headers=identity.app_headers).json()
+    fields = {"items": {"item_name": ["本次原明细"], "item_amount_yuan": ["9.90"]},
+        "splits": {"split_member_id": [str(_owner_member_id())], "split_amount_yuan": ["9.90"],
+            "split_note": ["本次原分摊说明"]}}[section]
+    data = {"ledger_id": "owner", "expected_row_version": str(before["row_version"] - 1),
+        "return_to": "pending", "return_filter": "ready", **fields}
+    conflict = web_client.post(target, data=data, follow_redirects=False)
+    assert conflict.status_code == 409, conflict.text
+    assert hidden_post_forms(conflict.text)[target]["expected_row_version"] == data["expected_row_version"]
+    assert 'value="9.90"' in conflict.text
+    assert fields.get("item_name", fields.get("split_note"))[0] in conflict.text
+    assert f'data-subtask-review="{section}"' in conflict.text
+    assert web_client.get(f"{root_url}/{section}", headers=identity.app_headers).json() == current_rows
+
+    reviewed = web_client.post(target, data={**data, "review_latest": "true"}, follow_redirects=False)
+    assert reviewed.status_code == 200, reviewed.text
+    prepared = hidden_post_forms(reviewed.text)[target]
+    assert prepared["expected_row_version"] == str(before["row_version"])
+    assert 'value="9.90"' in reviewed.text
+    assert web_client.get(f"{root_url}/{section}", headers=identity.app_headers).json() == current_rows
+    assert web_client.get(root_url, headers=identity.app_headers).json() == before
+
+    saved = web_client.post(target, data={**prepared, **fields}, follow_redirects=False)
+    assert saved.status_code == 303, saved.text
+    after = web_client.get(root_url, headers=identity.app_headers).json()
+    assert after["row_version"] == before["row_version"] + 1
+    assert after["status"] == "pending"
+    assert after["amount_cents"] == before["amount_cents"]
+    assert after["original_amount_minor"] == before["original_amount_minor"]
+    rows = web_client.get(f"{root_url}/{section}", headers=identity.app_headers).json()[section]
+    assert len(rows) == 1
+    assert rows[0]["amount_cents"] == 990
+    assert rows[0]["name" if section == "items" else "note"] == fields.get("item_name", fields.get("split_note"))[0]
+    assert "return_filter=ready" in saved.headers["location"]
+    _demote_owner_ledger_to_viewer()
+    revoked = web_client.post(target, data={**prepared, **fields, "review_latest": "true"})
+    assert revoked.status_code == 403
+    assert web_client.get(root_url, headers=identity.app_headers).json() == after
 
 
 def test_received_split_web_edit_locks_agreed_facts_but_allows_metadata(

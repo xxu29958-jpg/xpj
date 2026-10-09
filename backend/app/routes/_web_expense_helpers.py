@@ -60,6 +60,8 @@ def _edit_page_or_flash_redirect(
     conflict: bool = False,
     receipt_item_rows: list[dict] | None = None,
     split_form_rows: list[dict] | None = None,
+    subtask_expected_version: str | None = None,
+    subtask_reviewed: bool = False,
     return_context: ExpenseReturnContext = ExpenseReturnContext(),
 ) -> Response:
     """Re-render edit.html with ``error_msg`` — or flash-redirect when the row
@@ -96,6 +98,17 @@ def _edit_page_or_flash_redirect(
             **return_context_params(**return_context.as_kwargs()),
         )
     ctx[error_key] = error_msg
+    if subtask_expected_version is not None:
+        kind = "items" if receipt_item_rows is not None else "splits"
+        current_version = ctx["expense"]["row_version"]
+        ctx["expense_subtask"] = kind
+        ctx[kind + "_review"] = {
+            "expected_row_version": current_version if subtask_reviewed else subtask_expected_version,
+            "current_row_version": current_version,
+            "current_rows": ctx["receipt_items" if kind == "items" else "split_rows"]["rows"],
+            "reviewed": subtask_reviewed,
+            "needs_review": not subtask_reviewed and str(current_version) != subtask_expected_version,
+        }
     if receipt_item_rows is not None:
         ctx["receipt_items"]["rows"] = receipt_item_rows
     if split_form_rows is not None:

@@ -5597,6 +5597,11 @@
             "default": "",
             "title": "Return To",
             "type": "string"
+          },
+          "review_latest": {
+            "default": false,
+            "title": "Review Latest",
+            "type": "boolean"
           }
         },
         "title": "Body_web_items_save_web_expenses__expense_id__items_save_post",
@@ -7942,6 +7947,11 @@
             "default": "",
             "title": "Return To",
             "type": "string"
+          },
+          "review_latest": {
+            "default": false,
+            "title": "Review Latest",
+            "type": "boolean"
           },
           "split_amount_yuan": {
             "default": [],

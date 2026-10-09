@@ -64,6 +64,12 @@
     }
     window.addEventListener("hashchange", showReviewStage);
     showReviewStage();
+    const notice = related.querySelector('[role="alert"], [data-subtask-review] > strong');
+    if (notice) {
+      notice.tabIndex = -1;
+      notice.focus({preventScroll: true});
+      notice.scrollIntoView({block: "center"});
+    }
   }
 
   app.initDrawer = function initDrawer() {

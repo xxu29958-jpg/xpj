@@ -1,5 +1,8 @@
 {% set product_body_domain = 'inbox' %}
 {% set page_surface = 'tertiary' %}
+{% set expense_review_task = true %}
+{% set items_review = items_review|default({}) %}
+{% set splits_review = splits_review|default({}) %}
 {% set page_title = '账单当前记录' if expense_review_inspection else '完整整理账单' %}
 {% extends "base.html" %}
 {% block title %}完整整理账单 #{{ expense.id }} — 小票夹{% endblock %}
@@ -135,7 +138,7 @@
     <p class="product-page-summary">{{ e.merchant or '未填写商家' }} · {{ e.amount_label }}</p>
   </div>
 </header>
-<div class="detail-sections" data-review-subtasks data-review-stage="details" data-review-error="{{ 'items' if items_error else 'splits' if splits_error else '' }}">
+<div class="detail-sections" data-review-subtasks data-review-stage="details" data-review-error="{{ expense_subtask|default('items' if items_error else 'splits' if splits_error else '') }}">
   <nav class="product-segments expense-subtask-nav" aria-label="明细与拆账" data-review-stage="details" hidden>
     <a href="#expense-items">商品明细</a><a href="#expense-splits">家庭拆账</a>
   </nav>
@@ -171,15 +174,16 @@
 
     <form method="post" action="/web/expenses/{{ e.id }}/items/save" data-review-form>
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <input type="hidden" name="expected_row_version" value="{{ e.row_version }}">
+      <input type="hidden" name="expected_row_version" value="{{ items_review.expected_row_version if items_review else e.row_version }}">
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
       {% for field_name, field_value in edit_return_fields.items() %}<input type="hidden" name="{{ field_name }}" value="{{ field_value }}">{% endfor %}
+      {% with subtask_review=items_review, subtask_kind='items', subtask_label='商品明细' %}{% include '_expense_subtask_review.html' %}{% endwith %}
       {% include "_expense_items_table.html" %}
       {% if receipt_items.total_yuan %}<div class="fact-reconcile"><span>已存明细合计 · {{ currency_input.currency_code }}</span><strong>{{ currency_input.currency_symbol }}{{ receipt_items.total_yuan }}</strong></div>{% endif %}
       <p class="hint">金额按 {{ currency_input.currency_code }} 记录。这里仅保存商品明细，回到核对后再确认入账。</p>
       {% if can_write %}
       <div class="product-form-actions">
-        <button type="submit" class="product-button">保存明细</button>
+        <button type="submit" class="product-button"{% if items_review.needs_review %} disabled{% endif %}>保存明细</button>
       </div>
       {% else %}
       <div class="readonly-inline">{{ '这里查看当前小票明细；请返回原核对任务继续处理。' if expense_review_inspection else '只读角色，无法修改小票明细。' }}</div>
@@ -207,14 +211,15 @@
     {% endif %}
     <form method="post" action="/web/expenses/{{ e.id }}/splits/save" data-review-form>
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <input type="hidden" name="expected_row_version" value="{{ e.row_version }}">
+      <input type="hidden" name="expected_row_version" value="{{ splits_review.expected_row_version if splits_review else e.row_version }}">
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
       {% for field_name, field_value in edit_return_fields.items() %}<input type="hidden" name="{{ field_name }}" value="{{ field_value }}">{% endfor %}
+      {% with subtask_review=splits_review, subtask_kind='splits', subtask_label='家庭拆账' %}{% include '_expense_subtask_review.html' %}{% endwith %}
       {% include "_expense_splits_table.html" %}
       <p class="hint">金额按 {{ currency_input.currency_code }} 记录。这里仅保存家庭分摊，回到核对后再确认入账。</p>
       {% if can_write %}
       <div class="product-form-actions">
-        <button type="submit" class="product-button product-button--primary">保存拆账并返回</button>
+        <button type="submit" class="product-button product-button--primary"{% if splits_review.needs_review %} disabled{% endif %}>保存拆账并返回</button>
       </div>
       {% else %}
       <div class="readonly-inline">{{ '这里查看当前家庭拆账；请返回原核对任务继续处理。' if expense_review_inspection else '只读角色，无法修改家庭拆账。' }}</div>

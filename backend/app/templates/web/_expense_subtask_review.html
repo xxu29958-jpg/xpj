@@ -1,0 +1,12 @@
+{% if subtask_review and (subtask_review.needs_review or subtask_review.reviewed) %}
+<div class="product-feedback" role="status" data-subtask-review="{{ subtask_kind }}">
+  <strong>{{ '已更新提交依据，请核对后再保存' if subtask_review.reviewed else '本次填写已保留，尚未保存' }}</strong>
+  <p>下方仍是你的{{ subtask_label }}。保存会替换这一组记录，账单仍待确认。</p>
+  <details open><summary>账本当前{{ subtask_label }} · {{ currency_input.currency_code }}</summary>
+    <ul>{% for row in subtask_review.current_rows if row.public_id %}
+      <li>{% if subtask_kind == 'items' %}{{ row.name }} · {{ {'product': '商品', 'discount': '优惠/折扣', 'tax': '税', 'service_fee': '服务费'}.get(row.kind, row.kind) }} · 数量 {{ row.quantity_text or '未填' }} · 单价 {{ row.unit_price_yuan or '未填' }} · 分类 {{ row.category or '未填' }}{% else %}{{ row.account_name or '原成员' }}{% if row.disabled %}（已停用）{% endif %}{% if row.note %} · {{ row.note }}{% endif %}{% endif %} · 金额 {{ row.amount_yuan or '未填' }}</li>
+    {% else %}<li>尚未记录{{ subtask_label }}。</li>{% endfor %}</ul>
+  </details>
+  {% if subtask_review.needs_review and can_write %}<button type="submit" name="review_latest" value="true" formnovalidate class="product-button">已核对当前记录，保留本次填写</button>{% endif %}
+</div>
+{% endif %}
