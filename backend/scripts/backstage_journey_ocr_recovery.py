@@ -11,7 +11,7 @@ def open_recognition_task(j, amount, note):
             if disclosure.get_attribute("open") is None:
                 disclosure.locator(":scope > summary").click()
         field.fill(value)
-    link = j.page.get_by_role("link", name="重试识别", exact=True)
+    link = j.page.locator(f'a[href^="/web/expenses/{j.expense_id}/ocr/retry?"]')
     for disclosure in link.locator("xpath=ancestor::details").all():
         if disclosure.get_attribute("open") is None:
             disclosure.locator(":scope > summary").click()
