@@ -230,9 +230,8 @@ class FinancialJourney:
             native.reveal_any("显示上次读取的历史")
             native.capture("financial-history-cold-offline")
             native.back()
-            native.click("退回与冲销")
-            native.reveal_any("继续登记退款", toward_start=True)
-            native.click("继续登记退款")
+            native.reveal_any("继续登记退回", toward_start=True)
+            native.click("继续登记退回")
             assert native.has("NativeRefund") and native.has("3.00"), "The cold refund draft lost its raw fields"
             native.click("登记退款", bottom=True)
             wait_for(lambda: native.has("原操作已保存") or native.has("待同步"), "The offline refund was not retained")

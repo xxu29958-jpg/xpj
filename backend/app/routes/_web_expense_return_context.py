@@ -47,6 +47,8 @@ _PENDING_FILTERS = {
 }
 _MONTH_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 _EDIT_KEY_BY_LIST_KEY = {
+    "draft_ref": "return_category_draft_ref",
+    "receipt": "return_category_receipt_key",
     "focus": "return_duplicate_expense_id",
     "filter": "return_filter",
     "month": "return_month",
@@ -86,6 +88,8 @@ class ExpenseReturnContext:
     return_review_ref: str = ""
     return_review_expense_id: str = ""
     return_duplicate_expense_id: str = ""
+    return_category_draft_ref: str = ""
+    return_category_receipt_key: str = ""
 
     def as_kwargs(self) -> dict[str, str]:
         return asdict(self)
@@ -113,6 +117,8 @@ def expense_return_query_context(
     return_review_ref: str = "",
     return_review_expense_id: str = "",
     return_duplicate_expense_id: str = "",
+    return_category_draft_ref: str = "",
+    return_category_receipt_key: str = "",
 ) -> ExpenseReturnContext:
     return ExpenseReturnContext(
         return_to=return_to,
@@ -136,6 +142,8 @@ def expense_return_query_context(
         return_review_ref=return_review_ref,
         return_review_expense_id=return_review_expense_id,
         return_duplicate_expense_id=return_duplicate_expense_id,
+        return_category_draft_ref=return_category_draft_ref,
+        return_category_receipt_key=return_category_receipt_key,
     )
 
 
@@ -161,6 +169,8 @@ def expense_return_form_context(
     return_review_ref: str = Form(default=""),
     return_review_expense_id: str = Form(default=""),
     return_duplicate_expense_id: str = Form(default=""),
+    return_category_draft_ref: str = Form(default=""),
+    return_category_receipt_key: str = Form(default=""),
 ) -> ExpenseReturnContext:
     return ExpenseReturnContext(
         return_to=return_to,
@@ -184,6 +194,8 @@ def expense_return_form_context(
         return_review_ref=return_review_ref,
         return_review_expense_id=return_review_expense_id,
         return_duplicate_expense_id=return_duplicate_expense_id,
+        return_category_draft_ref=return_category_draft_ref,
+        return_category_receipt_key=return_category_receipt_key,
     )
 
 
@@ -287,7 +299,7 @@ def return_context_params(return_to: str, **origin: str) -> dict[str, str]:
         focus = _payment_expense_id(origin.get("return_duplicate_expense_id", ""))
         return {"focus": focus} if focus else {}
     if token == "uncategorized":
-        return {"filter": "including_other"} if origin.get("return_filter") == "including_other" else {}
+        return _uncategorized_return_params(origin)
     if token == "confirmed":
         return _confirmed_return_params(origin)
     if token == "reports":
@@ -301,6 +313,15 @@ def return_context_params(return_to: str, **origin: str) -> dict[str, str]:
         selected = kept.get("return_import_expense_id")
         return {"expense_id": selected} if selected else {}
     return {}
+
+
+def _uncategorized_return_params(origin: dict[str, str]) -> dict[str, str]:
+    kept = {"filter": "including_other"} if origin.get("return_filter") == "including_other" else {}
+    for key in ("draft_ref", "receipt"):
+        value = _public_uuid(origin.get(_EDIT_KEY_BY_LIST_KEY[key], ""))
+        if value:
+            kept[key] = value
+    return kept
 
 
 def _search_return_params(origin: dict[str, str]) -> dict[str, str]:
@@ -406,7 +427,8 @@ def return_href(return_to: str, *, ledger_id: str, default_path: str, **origin: 
             **{key: value for key, value in origin.items() if key not in receipt})
     path = resolve_return_to(return_to, default_path, **origin)
     params = {"ledger_id": ledger_id, **return_context_params(return_to, **origin)}
-    return f"{path}?{urlencode(params)}"
+    anchor = f"#categorybatch-create-{params['draft_ref']}" if clean_return_to(return_to) == "uncategorized" and params.get("draft_ref") else ""
+    return f"{path}?{urlencode(params)}{anchor}"
 
 
 def confirm_return_redirect(

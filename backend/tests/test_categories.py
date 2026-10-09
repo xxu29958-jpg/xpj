@@ -19,11 +19,14 @@ import pytest
 from api_contract_helpers import web_save_expense
 from fastapi.testclient import TestClient
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.database import SessionLocal
 from app.main import app
-from app.models import Budget, BudgetCategory, CategoryRule, Expense, Goal, Ledger
+from app.models import ApiIdempotencyKey, Budget, BudgetCategory, CategoryRule, Expense, Goal, Ledger
 from app.routes.web_app import _require_local as _web_require_local
+from app.schemas import ExpenseUpdateRequest
+from app.services import pending_review_bulk_service
 from app.services.category_preference_service import ensure_category_preference_for_name
 from app.services.category_service import (
     list_category_summary,
@@ -519,6 +522,7 @@ def test_web_uncategorized_bulk_set_category(web_client: TestClient, *, identity
         data={
             "ledger_id": "owner",
             "expense_snapshot": [snapshot],
+            "idempotency_key": re.search(r'name="idempotency_key" value="([^"]+)"', original.text)[1],
             "category": "餐饮",
         },
         follow_redirects=False,
@@ -543,6 +547,46 @@ def test_web_uncategorized_bulk_requires_selection(web_client: TestClient) -> No
     )
     assert resp.status_code == 422
     assert "请勾选要修改的账单。" in resp.text
+
+
+def test_category_batch_rolls_back_real_writes_and_replays_its_first_result(web_client, identity, monkeypatch):
+    identities = [_create_pending(web_client, identity=identity) for _ in range(2)]
+    with SessionLocal() as db:
+        before = {identity: (db.get(Expense, identity).category, db.get(Expense, identity).row_version) for identity in identities}
+    command = str(uuid4())
+    fields = {"ledger_id": "owner", "category": "购物", "idempotency_key": command,
+        "expense_snapshot": [f"{identity}:{before[identity][1]}" for identity in identities]}
+    update = pending_review_bulk_service.update_expense
+
+    def interrupted(db, expense_id, *args, **kwargs):
+        if expense_id == identities[1]:
+            raise SQLAlchemyError("controlled second-row storage interruption")
+        return update(db, expense_id, *args, **kwargs)
+
+    with monkeypatch.context() as fault:
+        fault.setattr(pending_review_bulk_service, "update_expense", interrupted)
+        rejected = web_client.post("/web/categories/uncategorized/bulk-set", data=fields)
+        assert rejected.status_code == 503, rejected.text
+    with SessionLocal() as db:
+        assert {identity: (db.get(Expense, identity).category, db.get(Expense, identity).row_version)
+            for identity in identities} == before
+        assert db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.idempotency_key == command)) is None
+    accepted = web_client.post("/web/categories/uncategorized/bulk-set", data=fields)
+    assert accepted.status_code == 200 and "已更新 2 条" in accepted.text, accepted.text
+    with SessionLocal() as db:
+        first = db.get(Expense, identities[0])
+        update(db, first.id, "owner", ExpenseUpdateRequest(category="医疗", expected_row_version=first.row_version))
+        peer_version = first.row_version
+    replay = web_client.post("/web/categories/uncategorized/bulk-set", data=fields)
+    assert replay.status_code == 200 and "已更新 2 条" in replay.text, replay.text
+    changed_intent = web_client.post("/web/categories/uncategorized/bulk-set", data={**fields, "category": "交通"})
+    assert changed_intent.status_code == 422, changed_intent.text
+    with SessionLocal() as db:
+        assert (db.get(Expense, identities[0]).category, db.get(Expense, identities[0]).row_version) == ("医疗", peer_version)
+        assert db.get(Expense, identities[1]).category == "购物"
+        assert all(db.get(Expense, identity).status == "pending" for identity in identities)
+        receipt = db.scalars(select(ApiIdempotencyKey).where(ApiIdempotencyKey.idempotency_key == command)).one()
+        assert receipt.response_body["result"]["success_ids"] == identities
 
 
 # ── Loopback gate + secret-leak guard ─────────────────────────────────────

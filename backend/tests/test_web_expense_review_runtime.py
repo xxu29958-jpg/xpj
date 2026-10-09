@@ -60,7 +60,7 @@ def uncategorized_browser(review_browser, confirmation_store, monkeypatch):
     monkeypatch.setattr(web_categories, "_resolve_selected_ledger_id", lambda *args, **kwargs: "owner")
     monkeypatch.setattr(web_categories, "list_ledger_category_options", lambda *args, **kwargs: [*category_service.DEFAULT_CATEGORIES, "自选分类"])
 
-    def update(db, expense_id, tenant_id, payload):
+    def update(db, expense_id, tenant_id, payload, *, commit=True):
         row = db.get(Expense, expense_id)
         assert row.tenant_id == tenant_id
         assert payload.model_fields_set == {"category", "expected_row_version"}
@@ -68,7 +68,9 @@ def uncategorized_browser(review_browser, confirmation_store, monkeypatch):
             raise AppError("state_conflict", status_code=409)
         row.category = payload.category
         row.row_version += 1
-        db.commit()
+        db.flush()
+        if commit:
+            db.commit()
         return row
 
     monkeypatch.setattr(pending_review_bulk_service, "update_expense", update)
@@ -96,7 +98,7 @@ def test_uncategorized_stale_selection_cannot_replace_later_category(uncategoriz
         row.category, row.row_version = "医疗", 5
         db.commit()
     result = client.post("/web/categories/uncategorized/bulk-set", data={"ledger_id": "owner",
-        "draft_scope": json.dumps(scope), "expense_ids": ["42"], "expected_row_version": ["4"],
+        "draft_scope": json.dumps(scope), "idempotency_key": str(uuid4()), "expense_ids": ["42"], "expected_row_version": ["4"],
         "category": "购物"}, follow_redirects=False)
     with Session(confirmation_store) as db:
         row = db.get(Expense, 42)
@@ -119,8 +121,9 @@ def test_uncategorized_partial_result_keeps_scope_money_and_original_selection(u
         row.category, row.row_version = "交通", 5
         db.commit()
     result = client.post("/web/categories/uncategorized/bulk-set", data={"ledger_id": "owner",
-        "draft_scope": json.dumps(scope), "expense_snapshot": ["42:4", "44:4"], "category": "自选分类"}, follow_redirects=False)
+        "draft_scope": json.dumps(scope), "idempotency_key": str(uuid4()), "expense_snapshot": ["42:4", "44:4"], "category": "自选分类"}, follow_redirects=False)
     assert "已更新 1 条" in result.text and "跳过 1 条" in result.text
+    assert "刷新后重新选择" not in result.text
     assert re.search(r'name="expense_snapshot" value="44:4"[^>]*checked', result.text)
     assert "自选分类" in result.text and 'aria-label="继续逐笔核对"' in result.text
     with Session(confirmation_store) as db:
@@ -134,6 +137,59 @@ def test_uncategorized_partial_result_keeps_scope_money_and_original_selection(u
         assert counts == {"交通": 1, "自选分类": 1, "其他": 1}
 
 
+def test_uncategorized_replay_returns_original_batch_after_later_edits(uncategorized_browser, confirmation_store):
+    client, scope = uncategorized_browser
+    original = {"ledger_id": "owner", "draft_scope": json.dumps(scope), "idempotency_key": str(uuid4()),
+        "draft_ref": str(uuid4()), "expense_snapshot": ["42:4", "44:4"], "category": "购物"}
+    first = client.post("/web/categories/uncategorized/bulk-set", data=original)
+    assert "已更新 2 条" in first.text
+    with Session(confirmation_store) as db:
+        row = db.get(Expense, 42)
+        row.category, row.row_version = "医疗", 8
+        db.commit()
+    replay = client.post("/web/categories/uncategorized/bulk-set", data=original)
+    assert "已更新 2 条" in replay.text, "The first accepted batch must survive response loss and later edits"
+    with Session(confirmation_store) as db:
+        assert (db.get(Expense, 42).category, db.get(Expense, 42).row_version) == ("医疗", 8)
+        assert (db.get(Expense, 44).category, db.get(Expense, 44).row_version) == ("购物", 5)
+        assert db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.idempotency_key == original["idempotency_key"]))
+
+
+def test_uncategorized_original_survives_detail_return_lost_reply_and_partial_continuation(
+    uncategorized_browser, confirmation_store, tmp_path,
+):
+    client, _ = uncategorized_browser
+    client.app.state.expense_review_probe = "category-recovery-probe.js"
+
+    @client.app.get("/category-recovery-probe.js")
+    def category_probe():
+        return FileResponse(Path(__file__).parent / "fixtures/category_recovery_probe.js", media_type="text/javascript")
+
+    @client.app.post("/category-later/{stage}")
+    def later_category(stage: str):
+        with Session(confirmation_store) as db:
+            row = db.get(Expense, 44 if stage == "before" else 42)
+            row.category, row.row_version = ("交通", 8) if stage == "before" else ("医疗", 9)
+            db.commit()
+        return {"changed": True}
+
+    result = _run_review_page(client, tmp_path, "/web/categories/uncategorized?ledger_id=owner")
+    assert "error" not in result, result
+    assert result["detail_return"] and result["original_restored"] and result["partial_continued"]
+    first, replay, final = result["requests"]
+    assert first == replay and final != first
+    with Session(confirmation_store) as db:
+        assert (db.get(Expense, 42).category, db.get(Expense, 42).row_version) == ("医疗", 9)
+        assert (db.get(Expense, 44).category, db.get(Expense, 44).row_version) == ("自选分类", 9)
+        assert db.get(Expense, 42).original_amount_minor == 2850
+        assert db.get(Expense, 44).amount_cents is None
+        assert all(db.get(Expense, identity).status == "pending" for identity in (42, 44))
+        receipts = db.scalars(select(ApiIdempotencyKey)).all()
+        assert len(receipts) == 2
+        original = next(row for row in receipts if row.idempotency_key == result["command"])
+        assert original.response_body["result"]["success_ids"] == [42]
+
+
 @pytest.mark.parametrize("failure", ["role", "binding", "database"])
 def test_uncategorized_failure_retains_original_selection(uncategorized_browser, confirmation_store, monkeypatch, failure):
     client, scope = uncategorized_browser
@@ -144,14 +200,14 @@ def test_uncategorized_failure_retains_original_selection(uncategorized_browser,
     else:
         update = pending_review_bulk_service.update_expense
 
-        def fail_second(db, expense_id, *args):
+        def fail_second(db, expense_id, *args, **kwargs):
             if expense_id == 44:
                 raise SQLAlchemyError("controlled storage interruption")
-            return update(db, expense_id, *args)
+            return update(db, expense_id, *args, **kwargs)
 
         monkeypatch.setattr(pending_review_bulk_service, "update_expense", fail_second)
     original = {"ledger_id": "owner", "category": "自选分类", "draft_scope": json.dumps(scope),
-        "expense_snapshot": ["42:4", "44:4"], "filter": "including_other"}
+        "expense_snapshot": ["42:4", "44:4"], "filter": "including_other", "idempotency_key": str(uuid4())}
     response = client.post("/web/categories/uncategorized/bulk-set", data=original, follow_redirects=False)
     assert response.status_code == {"role": 403, "binding": 409, "database": 503}[failure], response.text
     form = hidden_post_forms(response.text)["/web/categories/uncategorized/bulk-set"]
@@ -162,8 +218,9 @@ def test_uncategorized_failure_retains_original_selection(uncategorized_browser,
             assert form[key] == value
     assert "controlled storage interruption" not in response.text
     with Session(confirmation_store) as db:
-        assert db.get(Expense, 42).category == ("自选分类" if failure == "database" else "")
+        assert db.get(Expense, 42).category == ""
         assert (db.get(Expense, 44).category, db.get(Expense, 44).row_version) == ("未分类", 4)
+        assert db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.idempotency_key == original["idempotency_key"])) is None
 
 
 @pytest.fixture

@@ -2730,6 +2730,16 @@
             "title": "Return Category",
             "type": "string"
           },
+          "return_category_draft_ref": {
+            "default": "",
+            "title": "Return Category Draft Ref",
+            "type": "string"
+          },
+          "return_category_receipt_key": {
+            "default": "",
+            "title": "Return Category Receipt Key",
+            "type": "string"
+          },
           "return_duplicate_expense_id": {
             "default": "",
             "title": "Return Duplicate Expense Id",
@@ -3194,6 +3204,16 @@
             "title": "Return Category",
             "type": "string"
           },
+          "return_category_draft_ref": {
+            "default": "",
+            "title": "Return Category Draft Ref",
+            "type": "string"
+          },
+          "return_category_receipt_key": {
+            "default": "",
+            "title": "Return Category Receipt Key",
+            "type": "string"
+          },
           "return_duplicate_expense_id": {
             "default": "",
             "title": "Return Duplicate Expense Id",
@@ -3569,6 +3589,16 @@
             "title": "Return Category",
             "type": "string"
           },
+          "return_category_draft_ref": {
+            "default": "",
+            "title": "Return Category Draft Ref",
+            "type": "string"
+          },
+          "return_category_receipt_key": {
+            "default": "",
+            "title": "Return Category Receipt Key",
+            "type": "string"
+          },
           "return_duplicate_expense_id": {
             "default": "",
             "title": "Return Duplicate Expense Id",
@@ -3852,6 +3882,16 @@
           "return_category": {
             "default": "",
             "title": "Return Category",
+            "type": "string"
+          },
+          "return_category_draft_ref": {
+            "default": "",
+            "title": "Return Category Draft Ref",
+            "type": "string"
+          },
+          "return_category_receipt_key": {
+            "default": "",
+            "title": "Return Category Receipt Key",
             "type": "string"
           },
           "return_duplicate_expense_id": {
@@ -4413,6 +4453,16 @@
             "title": "Return Category",
             "type": "string"
           },
+          "return_category_draft_ref": {
+            "default": "",
+            "title": "Return Category Draft Ref",
+            "type": "string"
+          },
+          "return_category_receipt_key": {
+            "default": "",
+            "title": "Return Category Receipt Key",
+            "type": "string"
+          },
           "return_duplicate_expense_id": {
             "default": "",
             "title": "Return Duplicate Expense Id",
@@ -4624,6 +4674,16 @@
           "return_category": {
             "default": "",
             "title": "Return Category",
+            "type": "string"
+          },
+          "return_category_draft_ref": {
+            "default": "",
+            "title": "Return Category Draft Ref",
+            "type": "string"
+          },
+          "return_category_receipt_key": {
+            "default": "",
+            "title": "Return Category Receipt Key",
             "type": "string"
           },
           "return_duplicate_expense_id": {
@@ -5168,6 +5228,16 @@
             "title": "Return Category",
             "type": "string"
           },
+          "return_category_draft_ref": {
+            "default": "",
+            "title": "Return Category Draft Ref",
+            "type": "string"
+          },
+          "return_category_receipt_key": {
+            "default": "",
+            "title": "Return Category Receipt Key",
+            "type": "string"
+          },
           "return_duplicate_expense_id": {
             "default": "",
             "title": "Return Duplicate Expense Id",
@@ -5335,6 +5405,16 @@
           "return_category": {
             "default": "",
             "title": "Return Category",
+            "type": "string"
+          },
+          "return_category_draft_ref": {
+            "default": "",
+            "title": "Return Category Draft Ref",
+            "type": "string"
+          },
+          "return_category_receipt_key": {
+            "default": "",
+            "title": "Return Category Receipt Key",
             "type": "string"
           },
           "return_duplicate_expense_id": {
@@ -5512,6 +5592,16 @@
           "return_category": {
             "default": "",
             "title": "Return Category",
+            "type": "string"
+          },
+          "return_category_draft_ref": {
+            "default": "",
+            "title": "Return Category Draft Ref",
+            "type": "string"
+          },
+          "return_category_receipt_key": {
+            "default": "",
+            "title": "Return Category Receipt Key",
             "type": "string"
           },
           "return_duplicate_expense_id": {
@@ -6084,6 +6174,16 @@
             "title": "Return Category",
             "type": "string"
           },
+          "return_category_draft_ref": {
+            "default": "",
+            "title": "Return Category Draft Ref",
+            "type": "string"
+          },
+          "return_category_receipt_key": {
+            "default": "",
+            "title": "Return Category Receipt Key",
+            "type": "string"
+          },
           "return_duplicate_expense_id": {
             "default": "",
             "title": "Return Duplicate Expense Id",
@@ -6329,6 +6429,16 @@
             "title": "Return Category",
             "type": "string"
           },
+          "return_category_draft_ref": {
+            "default": "",
+            "title": "Return Category Draft Ref",
+            "type": "string"
+          },
+          "return_category_receipt_key": {
+            "default": "",
+            "title": "Return Category Receipt Key",
+            "type": "string"
+          },
           "return_duplicate_expense_id": {
             "default": "",
             "title": "Return Duplicate Expense Id",
@@ -6553,6 +6663,16 @@
             "title": "Return Category",
             "type": "string"
           },
+          "return_category_draft_ref": {
+            "default": "",
+            "title": "Return Category Draft Ref",
+            "type": "string"
+          },
+          "return_category_receipt_key": {
+            "default": "",
+            "title": "Return Category Receipt Key",
+            "type": "string"
+          },
           "return_duplicate_expense_id": {
             "default": "",
             "title": "Return Duplicate Expense Id",
@@ -6692,6 +6812,16 @@
           "return_category": {
             "default": "",
             "title": "Return Category",
+            "type": "string"
+          },
+          "return_category_draft_ref": {
+            "default": "",
+            "title": "Return Category Draft Ref",
+            "type": "string"
+          },
+          "return_category_receipt_key": {
+            "default": "",
+            "title": "Return Category Receipt Key",
             "type": "string"
           },
           "return_duplicate_expense_id": {
@@ -7031,6 +7161,16 @@
             "title": "Return Category",
             "type": "string"
           },
+          "return_category_draft_ref": {
+            "default": "",
+            "title": "Return Category Draft Ref",
+            "type": "string"
+          },
+          "return_category_receipt_key": {
+            "default": "",
+            "title": "Return Category Receipt Key",
+            "type": "string"
+          },
           "return_duplicate_expense_id": {
             "default": "",
             "title": "Return Duplicate Expense Id",
@@ -7272,6 +7412,16 @@
             "title": "Return Category",
             "type": "string"
           },
+          "return_category_draft_ref": {
+            "default": "",
+            "title": "Return Category Draft Ref",
+            "type": "string"
+          },
+          "return_category_receipt_key": {
+            "default": "",
+            "title": "Return Category Receipt Key",
+            "type": "string"
+          },
           "return_duplicate_expense_id": {
             "default": "",
             "title": "Return Duplicate Expense Id",
@@ -7411,6 +7561,16 @@
             "title": "Return Category",
             "type": "string"
           },
+          "return_category_draft_ref": {
+            "default": "",
+            "title": "Return Category Draft Ref",
+            "type": "string"
+          },
+          "return_category_receipt_key": {
+            "default": "",
+            "title": "Return Category Receipt Key",
+            "type": "string"
+          },
           "return_duplicate_expense_id": {
             "default": "",
             "title": "Return Duplicate Expense Id",
@@ -7545,6 +7705,16 @@
           "return_category": {
             "default": "",
             "title": "Return Category",
+            "type": "string"
+          },
+          "return_category_draft_ref": {
+            "default": "",
+            "title": "Return Category Draft Ref",
+            "type": "string"
+          },
+          "return_category_receipt_key": {
+            "default": "",
+            "title": "Return Category Receipt Key",
             "type": "string"
           },
           "return_duplicate_expense_id": {
@@ -7754,6 +7924,11 @@
             "title": "Category",
             "type": "string"
           },
+          "draft_ref": {
+            "default": "",
+            "title": "Draft Ref",
+            "type": "string"
+          },
           "draft_scope": {
             "default": "",
             "title": "Draft Scope",
@@ -7788,10 +7963,25 @@
             "title": "Filter",
             "type": "string"
           },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",
             "type": "string"
+          },
+          "origin_receipt": {
+            "default": "",
+            "title": "Origin Receipt",
+            "type": "string"
+          },
+          "review_latest": {
+            "default": false,
+            "title": "Review Latest",
+            "type": "boolean"
           }
         },
         "title": "Body_web_uncategorized_bulk_set_web_categories_uncategorized_bulk_set_post",
@@ -7878,6 +8068,16 @@
           "return_category": {
             "default": "",
             "title": "Return Category",
+            "type": "string"
+          },
+          "return_category_draft_ref": {
+            "default": "",
+            "title": "Return Category Draft Ref",
+            "type": "string"
+          },
+          "return_category_receipt_key": {
+            "default": "",
+            "title": "Return Category Receipt Key",
             "type": "string"
           },
           "return_duplicate_expense_id": {
@@ -50599,6 +50799,26 @@
               "title": "Filter",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "receipt",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Receipt",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "draft_ref",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Draft Ref",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -53202,6 +53422,26 @@
               "title": "Return Duplicate Expense Id",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "return_category_draft_ref",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Category Draft Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_category_receipt_key",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Category Receipt Key",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -53468,6 +53708,26 @@
             "schema": {
               "default": "",
               "title": "Return Duplicate Expense Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_category_draft_ref",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Category Draft Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_category_receipt_key",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Category Receipt Key",
               "type": "string"
             }
           }
@@ -53901,6 +54161,26 @@
             "schema": {
               "default": "",
               "title": "Return Duplicate Expense Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_category_draft_ref",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Category Draft Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_category_receipt_key",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Category Receipt Key",
               "type": "string"
             }
           }

@@ -194,7 +194,7 @@
       [...creates, ...edits].forEach(record => {
         const item = document.createElement("li"), link = document.createElement("a");
         link.href = recordHref(record);
-        link.textContent = (record.values[definition.idField || "public_id"] ? "修改 · " : "新建 · ") + (record.values[definition.titleField || (isGoal ? "name" : "label")] || "未命名" + taskLabel) + " · " +
+        link.textContent = (record.values[definition.idField || "public_id"] ? "修改" : definition.creationLabel || "新建") + " · " + (record.values[definition.titleField || (isGoal ? "name" : "label")] || "未命名" + taskLabel) + " · " +
           (!store.matches(record.scope, scope) ? "原浏览器身份，待核对" : record.phase === "editing" ? "未提交" :
             record.serverResult === "rejected" ? "已拒绝，待核对" : "结果待核对");
         item.append(link); list.append(item);
@@ -245,7 +245,7 @@
       }
       const next = receiptDestination(result, record);
       accepted = true;
-      if (!store.acknowledge({...result.ack, clientRef: ref}, definition.continueAfterAcceptance?.(record.values))) throw Error("original_not_acknowledged");
+      if (!store.acknowledge({...result.ack, clientRef: ref}, definition.continueAfterAcceptance?.(record.values, result.receipt))) throw Error("original_not_acknowledged");
       notice("这次操作已接受，正在返回…");
       if (definition.onAccepted) await definition.onAccepted({result, next, values: record.values});
       else if (next.href === window.location.href) window.location.reload();
