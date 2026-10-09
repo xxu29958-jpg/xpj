@@ -2725,6 +2725,11 @@
             ],
             "title": "Regret Score"
           },
+          "return_after": {
+            "default": "",
+            "title": "Return After",
+            "type": "string"
+          },
           "return_category": {
             "default": "",
             "title": "Return Category",
@@ -3199,6 +3204,11 @@
             "title": "Reject Idempotency Key",
             "type": "string"
           },
+          "return_after": {
+            "default": "",
+            "title": "Return After",
+            "type": "string"
+          },
           "return_category": {
             "default": "",
             "title": "Return Category",
@@ -3584,6 +3594,11 @@
             ],
             "title": "Regret Score"
           },
+          "return_after": {
+            "default": "",
+            "title": "Return After",
+            "type": "string"
+          },
           "return_category": {
             "default": "",
             "title": "Return Category",
@@ -3877,6 +3892,11 @@
           "reason": {
             "default": "",
             "title": "Reason",
+            "type": "string"
+          },
+          "return_after": {
+            "default": "",
+            "title": "Return After",
             "type": "string"
           },
           "return_category": {
@@ -4484,6 +4504,11 @@
             "title": "Reject Idempotency Key",
             "type": "string"
           },
+          "return_after": {
+            "default": "",
+            "title": "Return After",
+            "type": "string"
+          },
           "return_category": {
             "default": "",
             "title": "Return Category",
@@ -4710,6 +4735,11 @@
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",
+            "type": "string"
+          },
+          "return_after": {
+            "default": "",
+            "title": "Return After",
             "type": "string"
           },
           "return_category": {
@@ -5264,6 +5294,11 @@
             "title": "Ledger Id",
             "type": "string"
           },
+          "return_after": {
+            "default": "",
+            "title": "Return After",
+            "type": "string"
+          },
           "return_category": {
             "default": "",
             "title": "Return Category",
@@ -5441,6 +5476,11 @@
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",
+            "type": "string"
+          },
+          "return_after": {
+            "default": "",
+            "title": "Return After",
             "type": "string"
           },
           "return_category": {
@@ -5628,6 +5668,11 @@
           "fx_expected_row_version": {
             "default": "",
             "title": "Fx Expected Row Version",
+            "type": "string"
+          },
+          "return_after": {
+            "default": "",
+            "title": "Return After",
             "type": "string"
           },
           "return_category": {
@@ -6210,6 +6255,11 @@
             "title": "Reject Idempotency Key",
             "type": "string"
           },
+          "return_after": {
+            "default": "",
+            "title": "Return After",
+            "type": "string"
+          },
           "return_category": {
             "default": "",
             "title": "Return Category",
@@ -6465,6 +6515,11 @@
             "title": "Reject Idempotency Key",
             "type": "string"
           },
+          "return_after": {
+            "default": "",
+            "title": "Return After",
+            "type": "string"
+          },
           "return_category": {
             "default": "",
             "title": "Return Category",
@@ -6699,6 +6754,11 @@
             "title": "Reject Idempotency Key",
             "type": "string"
           },
+          "return_after": {
+            "default": "",
+            "title": "Return After",
+            "type": "string"
+          },
           "return_category": {
             "default": "",
             "title": "Return Category",
@@ -6848,6 +6908,11 @@
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",
+            "type": "string"
+          },
+          "return_after": {
+            "default": "",
+            "title": "Return After",
             "type": "string"
           },
           "return_category": {
@@ -7197,6 +7262,11 @@
             "title": "Reject Idempotency Key",
             "type": "string"
           },
+          "return_after": {
+            "default": "",
+            "title": "Return After",
+            "type": "string"
+          },
           "return_category": {
             "default": "",
             "title": "Return Category",
@@ -7448,6 +7518,11 @@
             "title": "Ledger Id",
             "type": "string"
           },
+          "return_after": {
+            "default": "",
+            "title": "Return After",
+            "type": "string"
+          },
           "return_category": {
             "default": "",
             "title": "Return Category",
@@ -7597,6 +7672,11 @@
             "title": "Receiver Account Id",
             "type": "integer"
           },
+          "return_after": {
+            "default": "",
+            "title": "Return After",
+            "type": "string"
+          },
           "return_category": {
             "default": "",
             "title": "Return Category",
@@ -7741,6 +7821,11 @@
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",
+            "type": "string"
+          },
+          "return_after": {
+            "default": "",
+            "title": "Return After",
             "type": "string"
           },
           "return_category": {
@@ -8104,6 +8189,11 @@
           "original_currency_code": {
             "default": "",
             "title": "Original Currency Code",
+            "type": "string"
+          },
+          "return_after": {
+            "default": "",
+            "title": "Return After",
             "type": "string"
           },
           "return_category": {
@@ -53535,6 +53625,16 @@
           },
           {
             "in": "query",
+            "name": "return_after",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return After",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
             "name": "return_month",
             "required": false,
             "schema": {
@@ -53818,6 +53918,16 @@
             "schema": {
               "default": "",
               "title": "Return To",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_after",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return After",
               "type": "string"
             }
           },
@@ -54271,6 +54381,16 @@
             "schema": {
               "default": "",
               "title": "Return To",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_after",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return After",
               "type": "string"
             }
           },
@@ -55193,6 +55313,16 @@
             "schema": {
               "default": "",
               "title": "Return To",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_after",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return After",
               "type": "string"
             }
           },
