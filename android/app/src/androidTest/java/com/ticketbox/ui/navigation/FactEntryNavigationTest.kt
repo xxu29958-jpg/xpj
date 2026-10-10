@@ -21,6 +21,7 @@ import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.isEnabled
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -73,7 +74,7 @@ class FactEntryNavigationTest {
     @Rule
     val keyboard = RealKeyboard()
     private val context = ApplicationProvider.getApplicationContext<Context>()
-    private val harness = FactEntryNavigationHarness(context)
+    private var harness = FactEntryNavigationHarness(context)
     private val mounted = mutableStateOf(true)
     private lateinit var outer: NavHostController
     private val launchRequest = mutableStateOf<LaunchIntentRequest?>(null)
@@ -144,6 +145,91 @@ class FactEntryNavigationTest {
             assertEquals(MainProductDestination.Domain(PrimaryDomain.Inbox), harness.shell.activeDestination)
             assertEquals(listOf(request), handledLaunches)
         }
+    }
+
+    @Test fun accountingDateReviewReturnsToItsOriginInsteadOfInbox() {
+        harness.close()
+        val queries = java.util.concurrent.CopyOnWriteArrayList<Map<String, String>>()
+        val statsMonths = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val currentMonth = java.time.YearMonth.now()
+        val sourceMonth = currentMonth.minusMonths(1)
+        harness = FactEntryNavigationHarness(context) { actual ->
+            object : com.ticketbox.data.remote.ApiService by actual {
+                override suspend fun months(timezone: String?) = com.ticketbox.data.remote.dto.MonthsDto(
+                    listOf(currentMonth.toString(), sourceMonth.toString()))
+                override suspend fun monthlyStats(month: String?, tag: String?, timezone: String?, homeCurrencyCode: String?):
+                    com.ticketbox.data.remote.dto.MonthlyStatsDto {
+                    statsMonths += month.orEmpty()
+                    return actual.monthlyStats(month, tag, timezone, homeCurrencyCode).copy(
+                        month = month ?: "2026-09", totalAmountCents = null, undatedExpenseCount = 1)
+                }
+                override suspend fun confirmedExpenses(query: Map<String, String>): com.ticketbox.data.remote.dto.PaginatedExpensesDto {
+                    queries += query.toMap()
+                    return actual.confirmedExpenses(query)
+                }
+            }
+        }
+        harness.fixture.network.current = harness.fixture.network.current.copy(
+            accountingTime = com.ticketbox.data.remote.dto.ExpenseAccountingTimeDto(
+                precision = "unknown", calendarRevision = 1, basis = "legacy_unknown"))
+        harness.fixture.network.confirmedStreamItems = { row -> listOf(
+            com.ticketbox.data.remote.dto.ConfirmedExpenseStreamItemDto(
+                com.ticketbox.data.remote.dto.ConfirmedStreamEntryKindDto.Expense,
+                null, row.createdAt, row.id, 1000, row,
+                lineageStatus = com.ticketbox.data.remote.dto.ExpenseLineageStatusDto.Confirmed,
+                lineageHomeNetCents = 1000)) }
+        installMainGraph()
+        compose.runOnIdle { harness.shell.selectPrimaryDomain(PrimaryDomain.Insights.key) }
+        val currentLabel = context.getString(R.string.components_month_label,
+            currentMonth.year.toString(), currentMonth.monthValue.toString())
+        val sourceLabel = context.getString(R.string.components_month_label,
+            sourceMonth.year.toString(), sourceMonth.monthValue.toString())
+        waitForText(currentLabel)
+        compose.onNode(hasText(currentLabel) and hasClickAction()).performScrollTo().performClick()
+        waitForText(sourceLabel)
+        compose.onNode(hasText(sourceLabel) and hasClickAction()).performScrollTo().performClick()
+        compose.waitUntil(5_000) { statsMonths.lastOrNull() == sourceMonth.toString() }
+        waitForText(context.getString(R.string.calendar_review_dates))
+        compose.onNodeWithTag("review-accounting-dates").performScrollTo().performClick()
+        compose.waitUntil(5_000) { queries.any { it["missing_accounting_date"] == "true" } }
+        assertTrue(queries.last { it["missing_accounting_date"] == "true" }["month"].isNullOrBlank())
+        compose.onNodeWithContentDescription(context.getString(R.string.calendar_review_back)).assertIsDisplayed()
+        compose.waitForIdle()
+        saveConsumerArtPreview("accounting-date-review-header", requireNotNull(
+            InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("家庭午餐"))
+        compose.onNodeWithText("家庭午餐").performScrollTo().assertIsDisplayed()
+        compose.waitForIdle()
+        saveConsumerArtPreview("accounting-date-review", requireNotNull(
+            InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        compose.onNodeWithText("家庭午餐").performClick()
+        assertRealFactAndReturn()
+        compose.runOnIdle {
+            assertEquals(MainProductDestination.Secondary(ProductSecondaryPage.AccountingDates), harness.shell.activeDestination)
+        }
+        compose.onNodeWithText("家庭午餐").performScrollTo().assertIsDisplayed()
+        androidx.test.espresso.Espresso.pressBack()
+        compose.waitForIdle()
+        compose.runOnIdle {
+            assertEquals(MainProductDestination.Domain(PrimaryDomain.Insights), harness.shell.activeDestination)
+            assertEquals(sourceMonth.toString(), statsMonths.last())
+            assertTrue(harness.fixture.network.calls.isEmpty())
+            assertTrue(harness.fixture.network.editCalls.isEmpty())
+        }
+        compose.onNode(hasText(sourceLabel) and hasClickAction()).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("review-accounting-dates").performScrollTo().performClick()
+        waitForText(context.getString(R.string.calendar_review_back))
+        compose.onNodeWithContentDescription(context.getString(R.string.calendar_review_back)).performClick()
+        compose.waitForIdle()
+        compose.runOnIdle {
+            assertEquals(MainProductDestination.Domain(PrimaryDomain.Insights), harness.shell.activeDestination)
+            assertEquals(sourceMonth.toString(), statsMonths.last())
+            harness.shell.selectPrimaryDomain(PrimaryDomain.Transactions.key)
+        }
+        compose.waitUntil(5_000) { queries.lastOrNull()?.get("missing_accounting_date") != "true" }
+        val ledgerMonthLabel = currentMonth.toString().replace('-', '.')
+        waitForText(ledgerMonthLabel)
+        compose.onNode(hasText(ledgerMonthLabel) and hasClickAction()).performScrollTo().assertIsDisplayed()
     }
 
     @Test fun shareFromFactReachesDurableAcceptanceBeforeAcknowledgingTheOriginalSelection() {

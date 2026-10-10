@@ -10,6 +10,9 @@ import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import com.ticketbox.R
+import com.ticketbox.ui.components.AppSecondaryPageHeader
 import com.ticketbox.ui.components.AppAdaptivePaneScaffold
 import com.ticketbox.ui.components.AppAdaptivePanePurpose
 import com.ticketbox.ui.components.AppAdaptivePaneStructures
@@ -91,6 +94,7 @@ private fun LedgerPrimaryPane(
         chrome = AppScrollableContentChrome(
             role = AppPageRole.Ledger,
             layout = AppScrollableContentLayout(
+                hasBottomBar = actions.onBack == null,
                 horizontalPadding = AppSpacing.cardPaddingSmall,
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
             ),
@@ -100,6 +104,16 @@ private fun LedgerPrimaryPane(
             onRefresh = actions.onSync,
         ),
     ) {
+        actions.onBack?.let { onBack ->
+            item {
+                AppSecondaryPageHeader(
+                    title = stringResource(R.string.calendar_review_dates),
+                    subtitle = null,
+                    backText = stringResource(R.string.calendar_review_back),
+                    onBack = onBack,
+                )
+            }
+        }
         item {
             if (contentModel.showSupportingPane) {
                 LedgerHeader(state = state)

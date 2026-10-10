@@ -115,6 +115,9 @@ internal fun NavGraphBuilder.addTransactionRoutes(
     dependencies: MainProductRouteDependencies,
 ) {
     with(dependencies) {
+        composable(ProductSecondaryPage.AccountingDates.route) {
+            AccountingDateReviewRoute(runtime.navController, shellState, screenFactory, onBack)
+        }
         composable(ProductSecondaryPage.GlobalSearch.route) {
             SearchRoute(
                 navController = runtime.navController,

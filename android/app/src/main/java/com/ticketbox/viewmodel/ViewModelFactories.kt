@@ -61,6 +61,7 @@ data class RepositoryViewModelRepositories(
 fun repositoryViewModelFactory(
     repositories: RepositoryViewModelRepositories,
     onExpenseDataChanged: () -> Unit = {},
+    initialLedgerFilter: LedgerDataQualityFilter? = null,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         val repository = repositories.repository
@@ -77,6 +78,7 @@ fun repositoryViewModelFactory(
                 checkNotNull(repositories.debtRepository) { "LedgerViewModel requires DebtActions for R13-6 capability" },
                 onDataChanged = onExpenseDataChanged,
                 calendars = repositories.calendars,
+                initialDataQualityFilter = initialLedgerFilter,
             )
             GlobalSearchViewModel::class.java -> GlobalSearchViewModel(repository)
             MonthlyStatsViewModel::class.java -> MonthlyStatsViewModel(repository, calendars = repositories.calendars)

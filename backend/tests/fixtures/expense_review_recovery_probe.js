@@ -1,6 +1,11 @@
 /* Actual review routes and forms: lost acknowledgement, reload, original replay and explicit next confirm. */
 (async function () {
   "use strict";
+  // The draft entry mounts before the final defer bootstrap binds review summaries.
+  // Start user input after all page initialization, including those listeners.
+  if (document.readyState === "loading") {
+    await new Promise(resolve => document.addEventListener("DOMContentLoaded", resolve, {once: true}));
+  }
   if (sessionStorage.getItem("expense-drawer-probe")) {
     window.__expenseReviewResult = {...JSON.parse(sessionStorage.getItem("expense-drawer-probe")), error: "drawer unexpectedly left the pending queue"};
     return;

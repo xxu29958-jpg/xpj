@@ -61,6 +61,7 @@ internal class MainScreenFactory(
 
     fun repositoryViewModelFactory(
         onExpenseDataChanged: () -> Unit,
+        initialLedgerFilter: com.ticketbox.viewmodel.LedgerDataQualityFilter? = null,
     ): ViewModelProvider.Factory = createRepositoryViewModelFactory(
         RepositoryViewModelRepositories(
             repository = repositories.repository,
@@ -71,6 +72,7 @@ internal class MainScreenFactory(
             calendars = repositories.ledgerCalendarRepository,
         ),
         onExpenseDataChanged = onExpenseDataChanged,
+        initialLedgerFilter = initialLedgerFilter,
     )
 }
 
