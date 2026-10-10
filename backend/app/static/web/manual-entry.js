@@ -131,13 +131,12 @@
     const recurring = saved.return_to === "recurring_occurrence" &&
       /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(series) &&
       /^\d{4}-(0[1-9]|1[0-2])$/.test(month);
+    const originFields = [];
     if (recurring) {
       add("return_to", "recurring_occurrence");
       add("return_recurring_public_id", series);
       add("return_month", month);
-      for (const name of ["return_payment_month", "return_query"]) {
-        if (saved[name]) add(name, saved[name]);
-      }
+      originFields.push("return_payment_month", "return_query");
       const payment = saved.return_payment_expense_id || "";
       if (/^[1-9]\d{0,9}$/.test(payment) && Number(payment) <= 2147483647) {
         add("return_payment_expense_id", payment);
@@ -145,9 +144,10 @@
     }
     if (["confirmed", "pending"].includes(saved.return_to)) {
       add("return_to", saved.return_to);
-      for (const name of ["return_month", "return_filter", "return_page", "return_tag", "return_query", "return_category", "return_home_currency_code"]) {
-        if (saved[name]) add(name, saved[name]);
-      }
+      originFields.push("return_month", "return_filter", "return_page", "return_tag", "return_query", "return_category", "return_home_currency_code");
+    }
+    for (const name of originFields) {
+      if (saved[name]) add(name, saved[name]);
     }
     return "/web/expenses/new" + (parts.length ? "?" + parts.join("&") : "") + "#manual-" + record.clientRef;
   }
