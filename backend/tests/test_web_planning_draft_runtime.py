@@ -7,7 +7,7 @@ from email.parser import BytesParser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from itertools import zip_longest
 from pathlib import Path
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, urlencode, urlsplit
 from uuid import uuid4
 
 import pytest
@@ -82,6 +82,16 @@ def _occurrence_definition(common, scope, key, version):
         undo_draft_scope=scope, can_associate=True, payments=[], occurrence_href="/web/recurring/series-one/occurrence?ledger_id=owner")
 
 
+def _rate_definition(common, scope, key, version):
+    task = {"ledger_id": "owner", "month": "2026-09", "home_currency_code": "CNY", "return_to": "reports",
+        "granularity": "week", "ranking_metric": "count", "merchant_category": "旅行"}
+    values = {**task, "currency_code": "JPY", "rate_date": "2026-09-09", "rate_to_cny": "0.05",
+        "expected_row_version": str(version), "idempotency_key": key, "draft_scope": json.dumps(scope)}
+    target = "/web/reports?" + urlencode({name: value for name, value in task.items() if name != "return_to"})
+    return ENV.get_template("budget_rates.html").render(**common, values=values, rate_task=task, rates=[],
+        rate_draft_scope=scope, currency_codes=["CNY", "JPY"], return_href=target, return_label="期间报表")
+
+
 def render(kind, values=None, native_result=""):
     HITS[kind] = HITS.get(kind, 0) + 1
     key = str(uuid4())
@@ -92,6 +102,8 @@ def render(kind, values=None, native_result=""):
                   "currency_input": JPY_INPUT, "currency_options": ["JPY", "CNY", "USD"],
                   "csrf_token": "synthetic", "csrf_field": '<input name="csrf_token" type="hidden" value="synthetic">',
                   "asset_version": "preflight", "request": {"query_params": {}}, "status_filter": ""}
+    if kind == "rate":
+        return _rate_definition(common, scope, key, 2 if HITS[kind] == 1 else 9)
     if kind in {"rule-create", "rule-edit"}:
         return _rule_definition(kind, common, scope, key)
     if kind.startswith("catalog-"):
@@ -207,6 +219,8 @@ class RecoveryHandler(Handler):
         path = urlsplit(self.path).path
         if path == "/probe.js":
             return self.reply((ROOT / "backend/tests/fixtures/planning_form_draft_recovery_probe.js").read_bytes(), "text/javascript")
+        if path == "/web/budget-advise/rates":
+            return self.reply(render("rate"))
         if path.startswith("/web/"):
             return self.reply('<!doctype html><html><body data-confirmed>原提交已确认</body></html>')
         return super().do_GET()
@@ -234,6 +248,11 @@ class RecoveryHandler(Handler):
             "receipt": {"public_id": values.get("public_id") or "00000000-0000-0000-0000-000000000001",
                 "kind": values.get("kind"), "month": values.get("month"), "row_version": 8},
             "next": destination + "?ledger_id=owner"}
+        if self.path == "/web/budget-advise/rates":
+            result["receipt"].update(**{name: values[name] for name in ("currency_code", "home_currency_code", "rate_date", "rate_to_cny")},
+                row_version=int(values["expected_row_version"]) + 1)
+            result["next"] = "/web/reports?" + urlencode({name: values[name] for name in
+                ("ledger_id", "month", "home_currency_code", "granularity", "ranking_metric", "merchant_category")})
         if self.path.startswith("/web/rules/"):
             result["receipt"] = {"id": int(values["rule_id"] or "43"), "row_version": int(values["expected_row_version"]) + 1 if values["rule_id"] else 1,
                 "keyword": values["keyword"].strip(), "category": values["category"].strip()}
@@ -335,7 +354,7 @@ def test_planning_and_reference_entries_replay_original_body_after_unknown_reply
     assert not result.get("error"), result
     assert not MISSING, MISSING
     assert {row["entry"] for row in result["results"]} == {
-        "budget", "arrangement", "recurring-create", "recurring-edit", "candidate", "occurrence", "tag-create", "category-create",
+        "budget", "arrangement", "rate", "recurring-create", "recurring-edit", "candidate", "occurrence", "tag-create", "category-create",
         "merchant-create", "alias-create", "catalog-rename", "catalog-toggle", "catalog-delete", "catalog-merge", "rule-create", "rule-edit"}
     assert len(POSTS) == 2 * len(result["results"])
     for first, replay in zip(POSTS[::2], POSTS[1::2], strict=True):

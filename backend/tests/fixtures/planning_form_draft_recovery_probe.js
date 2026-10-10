@@ -10,6 +10,7 @@
   const specs = [
     {kind:"budget", family:"budget", action:"/web/budgets/save", fields:{total_amount_yuan:"009876", rollover_amount_yuan:"-0020", non_monthly_amount_yuan:"0050"}},
     {kind:"arrangement", family:"arrangement", action:"/web/budget-advise", fields:{savings_target_yuan:"001200", reserved_buffer_yuan:"00030"}},
+    {kind:"rate", family:"rate", action:"/web/budget-advise/rates", fields:{rate_to_cny:"0.04876543"}},
     {kind:"recurring-create", family:"recurring", action:"/web/recurring/create", fields:{merchant:"原创建方案",baseline_amount_yuan:"001500",next_expected_date:"2026-10-08"}},
     {kind:"recurring-edit", family:"recurring", action:"/web/recurring/series-one/edit", fields:{merchant:"原编辑方案",baseline_amount_yuan:"001800",next_expected_date:"2026-10-09"}},
     {kind:"candidate", family:"candidate", action:"/web/recurring/confirm-candidate", fields:{next_expected_date:""}},
@@ -57,7 +58,11 @@
     await until(()=>form.dataset[spec.family+"DraftPhase"]==="blocked" && !submit(form).disabled,"unknown receipt did not retain original");
     if (!form.querySelector("[data-"+spec.family+"-review]").hidden) throw Error("Unknown original must not offer a replacement key");
     const original=JSON.parse(localStorage.getItem(storageKey));
-    await load(frame,url); await until(ready,"reopened original unavailable: "+spec.kind);
+    if (spec.kind === "rate") {
+      const reloaded = new Promise(resolve => frame.onload = resolve);
+      frame.contentWindow.location.reload(); await reloaded;
+    } else await load(frame,url);
+    await until(ready,"reopened original unavailable: "+spec.kind);
     form=getForm();
     const frozen=Object.keys(spec.fields).every(name=>form.elements.namedItem(name).readOnly || form.elements.namedItem(name).disabled);
     if (form.elements.namedItem("idempotency_key").value!==ref || JSON.stringify(JSON.parse(localStorage.getItem(storageKey)).values)!==JSON.stringify(original.values)) {

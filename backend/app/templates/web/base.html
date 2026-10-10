@@ -42,7 +42,7 @@
 {% set _is_insights_context = (
   '/overview' in _path or '/reports' in _path or '/data-quality' in _path or '/dashboard/cards' in _path
 ) %}
-{% set _domain = (
+{% set _domain = product_navigation_domain | default('') or (
   'inbox' if _is_inbox_context else
   'transactions' if _is_transactions_context else
   'obligations' if _is_obligations_context else

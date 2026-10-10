@@ -25,7 +25,7 @@ def _consent(j, confirmed):
     owner = j.page.context.browser.new_page()
     try:
         owner.goto(j.base_url + "/owner/ai-advisor")
-        form = owner.locator('form[action="/owner/ai-advisor/confirmation"]')
+        form = owner.locator('form[action^="/owner/ai-advisor/confirmation"]')
         form.locator('[name="confirmed"]').set_checked(confirmed)
         form.get_by_role("button", name="保存确认状态", exact=True).click()
         assert form.locator('[name="confirmed"]').is_checked() == confirmed

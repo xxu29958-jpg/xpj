@@ -1,5 +1,29 @@
 /* 二、三级页：稳定的工作区骨架，不复制首屏卡片布局。 */
 
+.rate-editor {
+    max-inline-size: 42rem;
+}
+
+.rate-editor > * + *, .rate-editor details[open] > * + * {
+    margin-block-start: var(--space-6);
+}
+
+.rate-editor form, .rate-fields {
+    display: grid;
+    gap: var(--space-6);
+}
+
+.rate-fields {
+    min-inline-size: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+.rate-target { font-size: var(--type-subtitle-size); }
+.rate-primary-action { display: grid; gap: var(--space-3); }
+.rate-primary-action > button { inline-size: 100%; }
+
 .detail-breadcrumb {
     display: flex;
     flex-wrap: wrap;

@@ -1,28 +1,46 @@
 {% extends "base.html" %}
-{% set product_body_domain = 'plans' %}
+{% import '_planning_drafts.html' as drafts %}
+{% set product_body_domain = 'insights' if values.return_to in ['reports', 'overview'] else 'transactions' if values.return_to == 'confirmed' else 'plans' %}
+{% set product_navigation_domain = product_body_domain %}
+{% set page_surface = 'tertiary' %}
+{% set task_return_href = return_href %}
+{% set task_return_label = '返回' ~ return_label %}
 {% block title %}人工汇率 · 小票夹{% endblock %}
+{% block page_scripts %}
+<script defer src="/static/web/manual-drafts.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/plan-entry.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/rate-entry.js?v={{ asset_version }}"></script>
+{% endblock %}
 {% block content %}
 <header class="product-page-header">
   <div class="product-page-heading">
     <span class="product-eyebrow">{{ return_label }} / 金额换算</span>
-    <h1 class="page-title">人工汇率</h1>
+    <h1 class="page-title">{{ '纠正这一天的汇率' if values.expected_row_version not in ['', '0'] else '补一个换算依据' }}</h1>
     <p class="product-page-summary">补录或纠正后，回到{{ '全部月份的待补分类流水' if values.return_to == 'confirmed' and values.filter == 'missing_category' else values.month ~ ' 的' ~ return_label }}。原记录的金额与币种保持不变。</p>
   </div>
-  <a class="product-button product-button--quiet" href="{{ return_href }}">返回{{ return_label }}</a>
 </header>
 {% if error %}<div class="product-feedback product-feedback--danger" role="alert">{{ error }}</div>{% endif %}
-<div class="plan-flow">
-<section class="product-panel product-panel--padded" aria-label="填写汇率">
-  <form method="post" action="/web/budget-advise/rates" class="budget-form">
+<div class="plan-flow rate-editor">
+{{ drafts.shelf('rate', '人工汇率', rate_draft_scope) }}
+<section aria-label="填写汇率">
+  <form method="post" action="/web/budget-advise/rates" class="budget-form"
+    data-rate-can-write="{{ 'true' if can_write else 'false' }}"
+    data-rate-native-result="{{ values.draft_result or '' }}" data-rate-prepared-from="{{ values.prepared_from_key or '' }}"
+    {% if rate_draft_scope %}data-rate-draft-scope="{{ rate_draft_scope | tojson | forceescape }}"{% endif %}>
     {{ csrf_field|safe }}
-    {% for name, value in rate_task.items() %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
+    {% for name, value in rate_task.items() %}<input type="hidden" data-rate-task name="{{ name }}" value="{{ value }}">{% endfor %}
+    <input type="hidden" name="draft_scope" value="{{ values.draft_scope or (rate_draft_scope | tojson if rate_draft_scope else '') | forceescape }}">
     <input type="hidden" name="expected_row_version" value="{{ values.expected_row_version }}">
     <input type="hidden" name="idempotency_key" value="{{ values.idempotency_key }}">
+    <input type="hidden" name="return_href" value="{{ return_href }}">
+    {{ drafts.controls('rate', '汇率', rate_draft_scope) }}
+    <fieldset class="rate-fields"{% if not can_write %} disabled{% endif %}>
     {% if values.expected_row_version not in ['', '0'] %}
     <input type="hidden" name="currency_code" value="{{ values.currency_code }}">
     <input type="hidden" name="rate_date" value="{{ values.rate_date }}">
-    <p><strong>{{ values.currency_code }} → {{ values.home_currency_code }}</strong> · {{ values.rate_date }}</p>
-    <p class="hint">正在纠正这条已核对的汇率。其他币种或日期可在下方查找。</p>
+    <p><strong><span data-rate-original>{{ values.currency_code }}</span> → <span data-rate-target>{{ values.home_currency_code }}</span></strong> · {{ values.rate_date }}</p>
+    {% if rates %}<p class="product-feedback" role="status">当前已保存：1 {{ rates[0].currency_code }} = {{ rates[0].rate_to_cny }} {{ rates[0].home_currency_code }}。请核对后再保存下面的输入。</p>{% endif %}
+    <p class="hint">原币种和日期保持固定。其他币种或日期可在下方查找。</p>
     {% else %}
     <div class="product-field">
       <label for="rate-currency">原币种</label>
@@ -38,18 +56,25 @@
     </div>
     {% endif %}
     <div class="product-field">
-      <label for="rate-value">1 {{ values.currency_code or '单位原币种' }} = 多少 {{ values.home_currency_code }}</label>
-      <input class="product-input" id="rate-value" type="text" inputmode="decimal" name="rate_to_cny" value="{{ values.rate_to_cny }}" placeholder="填写正数，最多 8 位小数" required>
+      <span>换算为</span><strong class="rate-target" data-rate-target>{{ values.home_currency_code }}</strong>
+      <p class="hint">沿用原任务的展示币种，不改变预算或原账单的币种。</p>
+    </div>
+    <div class="product-field">
+      <label for="rate-value">1 <span data-rate-original>{{ values.currency_code or '单位原币种' }}</span> = 多少 <span data-rate-target>{{ values.home_currency_code }}</span></label>
+      <input class="product-input" id="rate-value" type="text" inputmode="decimal" autocomplete="off" name="rate_to_cny" value="{{ values.rate_to_cny }}" placeholder="填写正数，最多 8 位小数" required>
       <p class="hint">这是该日期的换算比例，可用于当前账本的同币种换算。请核对方向；保存后仍可在这里纠正。</p>
     </div>
-    {% if can_write %}<div class="budget-actions">
-      {% if conflict %}<button class="product-button product-button--primary" name="review_latest" value="true" formnovalidate>核对当前汇率</button>
-      {% else %}<button class="product-button product-button--primary" type="submit">保存汇率</button>{% endif %}
-    </div>{% else %}<p class="hint">当前身份可查看汇率，请由账本成员补录或纠正。</p>{% endif %}
+    </fieldset>
+    <p class="hint">来源：人工填写。保存汇率后回到原任务继续核对，不会自动提交原财务操作。</p>
+    <div class="budget-actions rate-primary-action">
+      <button class="product-button product-button--primary" type="submit" data-rate-submit{% if not can_write or rate_binding_required or (conflict and not rate_draft_scope) %} disabled{% endif %}>保存汇率并继续</button>
+      {% if can_write and (rate_binding_required or (conflict and not rate_draft_scope)) %}<button class="product-button" name="review_latest" value="true" formnovalidate>核对当前汇率</button>{% endif %}
+    </div>
+    {% if not can_write %}<p class="hint">当前身份可查看汇率，原输入会保留；请由账本成员补录或纠正。</p>{% endif %}
   </form>
 </section>
-<section class="product-panel product-panel--padded" aria-label="当前汇率">
-  <h2 class="product-panel-title">当前汇率</h2>
+<details class="product-panel product-panel--padded" aria-label="当前汇率">
+  <summary class="product-panel-title">查找和核对已有汇率</summary>
   <form method="get" action="/web/budget-advise/rates" class="budget-form">
     {% for name, value in rate_task.items() %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
     <div class="product-field"><label for="find-rate-currency">查找原币种</label>
@@ -71,6 +96,6 @@
       <td>{% if can_write %}<a href="/web/budget-advise/rates?{{ rate_task|urlencode }}&currency_code={{ rate.currency_code|urlencode }}&rate_date={{ rate.rate_date|string|urlencode }}">纠正汇率</a>{% else %}只读{% endif %}</td>
     </tr>{% endfor %}</tbody>
   </table></div>{% else %}<p class="meta">尚无符合条件的人工汇率。可填写原币种和日期后补录；已有汇率发生变更时会先请你核对。</p>{% endif %}
-</section>
+</details>
 </div>
 {% endblock %}

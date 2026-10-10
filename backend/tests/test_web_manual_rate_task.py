@@ -1,6 +1,7 @@
 """Native manual rates return to the captured budget task without paid generation."""
 
-from datetime import date
+import json
+from datetime import UTC, date, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -16,6 +17,7 @@ from starlette.templating import Jinja2Templates
 from app.database import get_db
 from app.errors import AppError
 from app.routes import web_budget_fx
+from app.schemas import ExchangeRateResponse
 
 
 @pytest.fixture
@@ -33,7 +35,9 @@ def task(monkeypatch):
     ]))
     monkeypatch.setattr(web_budget_fx, "templates", Jinja2Templates(env=env))
     monkeypatch.setattr(web_budget_fx, "list_exchange_rates", Mock(return_value=[]))
-    saved = Mock(return_value=SimpleNamespace(currency_code="CNY", home_currency_code="JPY", rate_date=date(2026, 8, 5)))
+    saved = Mock(return_value=ExchangeRateResponse(public_id="rate-original", currency_code="CNY", home_currency_code="JPY",
+        rate_date=date(2026, 8, 5), rate_to_cny="20.125", source="manual", row_version=3,
+        created_at=datetime(2026, 8, 5, tzinfo=UTC), updated_at=datetime(2026, 8, 5, tzinfo=UTC)))
     monkeypatch.setattr(web_budget_fx, "set_exchange_rate_idempotently", saved)
     # Render the real editor while retaining the isolated actor/database fixture.
     app = FastAPI()
@@ -51,16 +55,33 @@ def _form(**changes):
     return {**result, **changes}
 
 
-def test_save_uses_same_owner_and_returns_original_task_without_generation(task):
-    response = task.client.post("/web/budget-advise/rates", data=_form(), follow_redirects=False)
-    assert response.status_code == 303, response.text
+@pytest.mark.parametrize("browser_bound", [False, True])
+def test_save_uses_same_owner_and_returns_original_task_without_generation(task, monkeypatch, browser_bound):
+    scope = {"datasetId": "rate-dataset", "clientGeneration": "rate-generation", "accountId": "7", "ledgerId": "original", "deviceId": "rate-device"}
+    if browser_bound:
+        from app.routes import _web_draft_binding
+
+        @task.client.app.middleware("http")
+        async def bind_browser(request, call_next):
+            request.state.web_session_auth = SimpleNamespace(ledger_id="original")
+            return await call_next(request)
+
+        monkeypatch.setattr(_web_draft_binding.manual_expense_draft_presenter, "manual_draft_scope", lambda *a: scope)
+    response = task.client.post("/web/budget-advise/rates",
+        data=_form(draft_scope=json.dumps(scope) if browser_bound else ""),
+        headers={"Accept": "application/json"} if browser_bound else {}, follow_redirects=False)
+    assert response.status_code == (200 if browser_bound else 303), response.text
+    if browser_bound:
+        assert response.json()["ack"] == {"scope": scope, "clientRef": "original-rate-command"}
+        assert response.json()["receipt"]["rate_to_cny"] == "20.125"
+        assert response.json()["receipt"]["row_version"] == 3
     args = task.saved.call_args.kwargs
     assert (args["tenant_id"], args["actor_account_id"], args["idempotency_key"]) == ("original", 7, "original-rate-command")
     payload = args["payload"]
     assert (payload.currency_code, payload.home_currency_code, payload.rate_date, payload.expected_row_version) == (
         "CNY", "JPY", date(2026, 8, 5), 2)
     assert str(payload.rate_to_cny) == "20.125"
-    target = urlsplit(response.headers["location"])
+    target = urlsplit(response.json()["next"] if browser_bound else response.headers["location"])
     returned = parse_qs(target.query)
     assert target.path == "/web/budget-advise"
     assert returned["month"] == ["2026-08"] and returned["home_currency_code"] == ["JPY"]
