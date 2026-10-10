@@ -1195,6 +1195,14 @@ fieldset.budget-excluded .hint {
 
 /* 窄屏按主体、金额/日期、动作阅读；金额和日期在空间不足时各占一行。 */
 @media (max-width: 40rem) {
+    .plan-history-details {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .plan-history-details dd {
+        margin-block-end: var(--space-3);
+    }
+
     .recurring-metrics--duo {
         grid-template-columns: minmax(0, 1fr);
     }

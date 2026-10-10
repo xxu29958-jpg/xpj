@@ -42,6 +42,20 @@ def _rule_definition(kind, common, scope, key):
         rule_draft_scope=scope, rule_currency_input=JPY_INPUT, definition_available=True, definition_result="", q="?ledger_id=owner")
 
 
+def _recurring_definition(kind, common, key, values, native_result):
+    common.update(items=[{"public_id": "series-one", "merchant": "原日元计划", "merchant_editable": True,
+        "status": "active", "source": "manual", "home_currency_code": "JPY", "row_version": 7,
+        "edit_form": {"merchant": "原日元计划", "baseline_amount_yuan": "1200", "home_currency_code": "JPY",
+            "expected_row_version": "7", "idempotency_key": key, "next_expected_date": "2026-05-09", "currency_input": JPY_INPUT}}],
+        create_form={"merchant": "", "baseline_amount_yuan": "", "home_currency_code": "JPY",
+            "idempotency_key": uuid4().hex, "next_expected_date": "2026-06-08", "currency_input": JPY_INPUT})
+    common.update(recurring_creation=kind == "recurring-create", open_edit_id="series-one" if kind == "recurring-edit" else "")
+    if values:
+        common["items"][0]["edit_form"].update(values)
+        common.update(draft_public_id="series-one", recurring_draft_result=native_result)
+    return ENV.get_template("recurring.html").render(**common)
+
+
 def render(kind, values=None, native_result=""):
     HITS[kind] = HITS.get(kind, 0) + 1
     key = str(uuid4())
@@ -109,17 +123,7 @@ def render(kind, values=None, native_result=""):
             common["arrangement_draft_result"] = native_result
             common["arrangement_currency_input"] = JPY_INPUT
         return ENV.get_template("budget_advise.html").render(**common)
-    common.update(items=[{"public_id": "series-one", "merchant": "原日元计划", "merchant_editable": True,
-        "status": "active", "source": "manual", "home_currency_code": "JPY", "row_version": 7,
-        "edit_form": {"merchant": "原日元计划", "baseline_amount_yuan": "1200", "home_currency_code": "JPY",
-            "expected_row_version": "7", "idempotency_key": key, "next_expected_date": "2026-05-09", "currency_input": JPY_INPUT}}],
-        create_form={"merchant": "", "baseline_amount_yuan": "", "home_currency_code": "JPY",
-            "idempotency_key": uuid4().hex, "next_expected_date": "2026-06-08", "currency_input": JPY_INPUT})
-    common.update(recurring_creation=kind == "recurring-create", open_edit_id="series-one" if kind == "recurring-edit" else "")
-    if values:
-        common["items"][0]["edit_form"].update(values)
-        common.update(draft_public_id="series-one", recurring_draft_result=native_result)
-    return ENV.get_template("recurring.html").render(**common)
+    return _recurring_definition(kind, common, key, values, native_result)
 
 
 
