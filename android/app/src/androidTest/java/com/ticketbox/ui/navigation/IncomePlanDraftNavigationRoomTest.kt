@@ -4,12 +4,17 @@ import android.content.Context
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import com.ticketbox.ui.assertEditableTextEquals
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.isDialog
@@ -19,6 +24,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextReplacement
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelProvider
@@ -28,6 +34,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.test.core.app.ApplicationProvider
+import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.espresso.Espresso.closeSoftKeyboard
 import androidx.test.espresso.Espresso.pressBack
 import com.ticketbox.data.repository.IncomePlanActions
@@ -88,7 +95,9 @@ class IncomePlanDraftNavigationRoomTest {
     @Test fun actualPopAndReentryKeepTheOriginalRawDraftAndItsInFlightAcceptance() {
         showRoutes()
         enterIncome()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("九月工资计划"))
         compose.onNodeWithText("九月工资计划").performScrollTo().performClick()
+        com.ticketbox.ui.saveConsumerArtPreview("income-editor", compose.onNode(isDialog()).captureToImage().asAndroidBitmap())
         compose.onNodeWithText("100.00").performScrollTo().performTextReplacement("00120.00")
         val originalEditor = retainedEditor()
         val original = requireNotNull(originalEditor.state.value.session)
@@ -131,8 +140,7 @@ class IncomePlanDraftNavigationRoomTest {
     @Test fun actualPopAndReentryKeepUnsubmittedCreationDraftWithoutFinancialWrite() {
         showRoutes()
         enterIncome()
-        compose.onNodeWithText(context.getString(R.string.income_plan_add_action_short))
-            .performScrollTo().performClick()
+        compose.onNodeWithTag("income-creation-action").performClick()
         compose.onAllNodes(hasSetTextAction())[0].performScrollTo().performTextReplacement("十月临时稿")
         closeSoftKeyboard()
         compose.waitForIdle()
@@ -159,8 +167,7 @@ class IncomePlanDraftNavigationRoomTest {
         assertTrue(income.stored().isEmpty())
         enterIncome()
         assertNotSame(originalEntry, compose.runOnIdle { inner.currentBackStackEntry })
-        compose.onNodeWithText(context.getString(R.string.income_plan_add_action_short))
-            .performScrollTo().performClick()
+        compose.onNodeWithTag("income-creation-action").performClick()
 
         compose.onAllNodes(hasSetTextAction())[0].assertEditableTextEquals("十月临时稿")
         compose.onAllNodes(hasSetTextAction())[1].assertEditableTextEquals("00120.00")
@@ -171,13 +178,11 @@ class IncomePlanDraftNavigationRoomTest {
         assertTrue(income.network.creationCalls.isEmpty())
         pressBack()
         compose.waitForIdle()
-        compose.onNodeWithText(context.getString(R.string.income_plan_add_action_short))
-            .performScrollTo().performClick()
+        compose.onNodeWithTag("income-creation-action").performClick()
         compose.onAllNodes(hasSetTextAction())[0].assertEditableTextEquals("十月临时稿")
         compose.onAllNodes(hasSetTextAction())[1].assertEditableTextEquals("00120.00")
         compose.onNodeWithText(context.getString(R.string.common_cancel)).performClick()
-        compose.onNodeWithText(context.getString(R.string.income_plan_add_action_short))
-            .performScrollTo().performClick()
+        compose.onNodeWithTag("income-creation-action").performClick()
         assertEquals("", compose.onAllNodes(hasSetTextAction())[0].fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
         assertEquals("", compose.onAllNodes(hasSetTextAction())[1].fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
         assertTrue(income.stored().isEmpty())
@@ -187,12 +192,16 @@ class IncomePlanDraftNavigationRoomTest {
     @Test fun historyFromRealIncomeRowPreservesIndependentCreationDraftWithoutEnqueueingAnything() {
         showRoutes()
         enterIncome()
-        compose.onNodeWithText(context.getString(R.string.income_plan_add_action_short)).performScrollTo().performClick()
+        com.ticketbox.ui.saveConsumerArtPreview("income-list", compose.onRoot().captureToImage().asAndroidBitmap())
+        compose.onNodeWithTag("income-creation-action").performClick()
+        com.ticketbox.ui.saveConsumerArtPreview("income-create", compose.onNode(isDialog()).captureToImage().asAndroidBitmap())
         compose.onAllNodes(hasSetTextAction())[0].performScrollTo().performTextReplacement("尚未提交的原稿")
         closeSoftKeyboard()
         compose.waitForIdle()
         pressBack()
         compose.waitForIdle()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(context.getString(R.string.income_history_action)))
+        com.ticketbox.ui.saveConsumerArtPreview("income-row", compose.onRoot().captureToImage().asAndroidBitmap())
         compose.onNodeWithText(context.getString(R.string.income_history_action)).performScrollTo().performClick()
         compose.waitUntil(10_000) { compose.onAllNodesWithText("八月工资预测").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText(context.getString(R.string.income_history_title)).assertIsDisplayed()
@@ -206,29 +215,31 @@ class IncomePlanDraftNavigationRoomTest {
         enterIncome()
         compose.onNodeWithText("2026-09 预计收入").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("包含离线保留的读取", substring = true).performScrollTo().assertIsDisplayed()
-        com.ticketbox.ui.saveConsumerArtPreview("income-retained-month", requireNotNull(
-            androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        com.ticketbox.ui.saveConsumerArtPreview("income-retained-month", compose.onRoot().captureToImage().asAndroidBitmap())
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(context.getString(R.string.income_history_action)))
         compose.onNodeWithText(context.getString(R.string.income_history_action)).performScrollTo().performClick()
         compose.waitUntil(10_000) { compose.onAllNodesWithText("八月工资预测").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("八月工资预测").performScrollTo().assertIsDisplayed()
         compose.onNode(hasText("包含离线保留的读取", substring = true) and hasAnyAncestor(isDialog()))
             .performScrollTo().assertIsDisplayed()
-        com.ticketbox.ui.saveConsumerArtPreview("income-history-offline", requireNotNull(
-            androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        com.ticketbox.ui.saveConsumerArtPreview("income-history-offline", compose.onNode(isDialog()).captureToImage().asAndroidBitmap())
         assertEquals(listOf("income-1"), income.network.historyCalls)
         pressBack()
         compose.waitForIdle()
-        compose.onNodeWithText(context.getString(R.string.income_plan_add_action_short)).performScrollTo().performClick()
+        compose.onNodeWithTag("income-creation-action").performClick()
         compose.onAllNodes(hasSetTextAction())[0].assertEditableTextEquals("尚未提交的原稿")
+        com.ticketbox.ui.saveConsumerArtPreview("income-create-retained", compose.onNode(isDialog()).captureToImage().asAndroidBitmap())
         assertTrue(income.stored().isEmpty())
         assertTrue(income.network.creationCalls.isEmpty())
         assertTrue(income.network.calls.isEmpty())
     }
 
     private fun showRoutes() {
+        val skin = if (InstrumentationRegistry.getArguments().getString("captureSkin") == "midnight")
+            AppSkin.Midnight else AppSkin.Paper
         compose.setContent {
             if (mounted.value) CompositionLocalProvider(LocalViewModelStoreOwner provides base.models) {
-                TicketboxTheme(skin = AppSkin.Paper) {
+                TicketboxTheme(skin = skin) {
                     outer = rememberNavController()
                     NavHost(outer, startDestination = MAIN_ROUTE) {
                         composable(MAIN_ROUTE) {
@@ -237,7 +248,7 @@ class IncomePlanDraftNavigationRoomTest {
                                 composable(PrimaryDomain.Plans.route) { }
                                 addPlanRoutes(MainProductRouteDependencies(
                                     MainNavigationRuntime(outer, base.shell, factory), inner,
-                                    MainWorkspaceControls(SettingsPreferenceControls(AppSkin.Paper, AppThemeMode.System,
+                                    MainWorkspaceControls(SettingsPreferenceControls(skin, AppThemeMode.System,
                                         CurrencyCode.CNY, onThemeModeChange = {}, onCurrencyChange = {}),
                                         onBindingCleared = { error("Navigation preserves the identity") }),
                                 ))
@@ -252,7 +263,7 @@ class IncomePlanDraftNavigationRoomTest {
 
     private fun enterIncome() {
         compose.runOnIdle { inner.navigate(ProductSecondaryPage.IncomePlans.route) }
-        compose.waitUntil(10_000) { compose.onAllNodesWithText("九月工资计划").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("2026-09 预计收入").fetchSemanticsNodes().isNotEmpty() }
         compose.waitForIdle()
     }
 

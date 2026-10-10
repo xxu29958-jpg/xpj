@@ -418,6 +418,7 @@ fun AppScrollableContent(
                     Box(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
+                            .appPageContentWidthOnly(resolvedContentMaxWidth)
                             .onSizeChanged { bottomBarHeight = with(density) { it.height.toDp() } },
                     ) {
                         bottomBar()

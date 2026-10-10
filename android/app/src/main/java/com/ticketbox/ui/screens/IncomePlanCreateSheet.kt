@@ -1,7 +1,9 @@
 package com.ticketbox.ui.screens
 
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -11,6 +13,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
@@ -18,7 +22,9 @@ import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.components.AppAction
 import com.ticketbox.ui.components.AppBusyGuardedSheet
-import com.ticketbox.ui.components.AppSecondaryButton
+import com.ticketbox.ui.components.AppButtonIcons
+import com.ticketbox.ui.components.AppFloatingActionBar
+import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppSheetActionRow
 import com.ticketbox.ui.components.AppSheetScaffold
 import com.ticketbox.ui.components.AppStatusBanner
@@ -45,20 +51,25 @@ internal fun IncomePlanCreateAction(
 ) {
     val retained = state.session?.takeIf { it.binding == listing.binding }
     if (!listing.canModify && retained == null) return
-    AppSecondaryButton(
-        text = stringResource(R.string.income_plan_add_action_short),
-        enabled = retained != null || (listing.forecastMonth != null && !state.isRestoring),
-        leadingIcon = Icons.Default.Add,
-        onClick = {
-            val month = retained?.draft?.intentMonth ?: listing.forecastMonth
-            listing.binding?.let { binding ->
-                if (month != null) {
-                    viewModel.open(binding, month, CurrencyCode.fromStorageKeyOrNull(listing.forecastCurrencyCode))
-                    onOpen()
+    AppFloatingActionBar {
+        AppPrimaryButton(
+            modifier = Modifier.fillMaxWidth().testTag("income-creation-action"),
+            text = stringResource(
+                if (retained == null) R.string.income_plan_add_action_short else R.string.income_plan_continue_creation,
+            ),
+            enabled = retained != null || (listing.forecastMonth != null && !state.isRestoring),
+            icons = AppButtonIcons(leading = if (retained == null) Icons.Default.Add else Icons.Default.Edit),
+            onClick = {
+                val month = retained?.draft?.intentMonth ?: listing.forecastMonth
+                listing.binding?.let { binding ->
+                    if (month != null) {
+                        viewModel.open(binding, month, CurrencyCode.fromStorageKeyOrNull(listing.forecastCurrencyCode))
+                        onOpen()
+                    }
                 }
-            }
-        },
-    )
+            },
+        )
+    }
 }
 
 @Composable

@@ -26,9 +26,6 @@
 <div class="plan-flow income-page{% if income_creating %} income-editor{% endif %}">
 {% if message %}<div class="product-feedback" role="status">{{ message }}</div>{% endif %}
 {% if error %}<div class="product-feedback product-feedback--danger" role="alert">{{ error }}</div>{% endif %}
-{% if not can_write %}
-<div class="product-feedback" role="status">只读角色可以查看收入计划，但不能添加或修改。{% if income_draft_scope %}已保留的收入草稿可在恢复编辑权限后继续。{% endif %}</div>
-{% endif %}
 {% macro income_rows(plans, action) %}
 {% if plans %}
 <div class="plan-goal-list">
