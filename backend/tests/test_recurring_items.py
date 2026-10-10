@@ -207,7 +207,14 @@ def test_recurring_candidate_confirm_uses_server_observation_not_client_provenan
     assert body["confidence"] == "high"
 
 
-def test_recurring_candidate_next_expected_uses_local_expense_date(client: TestClient, *, identity) -> None:
+@pytest.mark.parametrize(("date_input", "expected_date"), [
+    ({}, "2026-06-01"),
+    ({"next_expected_date": None}, None),
+    ({"next_expected_date": "2026-10-12"}, "2026-10-12"),
+])
+def test_recurring_candidate_reminder_respects_explicit_choice_before_observed_default(
+    client: TestClient, *, identity, date_input: dict, expected_date: str | None,
+) -> None:
     merchant = "Boundary Billing"
     amount_cents = 9900
     last_seen = datetime(2026, 4, 30, 16, 30, tzinfo=UTC)
@@ -234,12 +241,20 @@ def test_recurring_candidate_next_expected_uses_local_expense_date(client: TestC
             "last_seen_at": last_seen.isoformat().replace("+00:00", "Z"),
             "confidence": "high",
             "frequency": "monthly",
+            **date_input,
         },
     )
 
     assert response.status_code == 200, response.json()
     assert response.json()["last_seen_at"] == "2026-04-30T16:30:00Z"
-    assert response.json()["next_expected_date"] == "2026-06-01"
+    assert response.json()["next_expected_date"] == expected_date
+    assert response.json()["next_due_date"] == expected_date
+    public_id = response.json()["public_id"]
+    persisted = client.get(f"/api/recurring/items/{public_id}", headers=identity.app_headers)
+    assert persisted.status_code == 200 and persisted.json()["next_expected_date"] == expected_date
+    history = client.get(f"/api/recurring/items/{public_id}/history", headers=identity.app_headers)
+    assert history.status_code == 200, history.text
+    assert history.json()["items"][0]["snapshot"]["next_expected_date"] == expected_date
 
 
 def test_recurring_item_state_transitions(client: TestClient, *, identity) -> None:

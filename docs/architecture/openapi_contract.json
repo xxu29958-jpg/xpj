@@ -20973,6 +20973,7 @@
                 "type": "null"
               }
             ],
+            "description": "Omit to use the date inferred from the server observation; explicit null adopts without a reminder date.",
             "title": "Next Expected Date"
           },
           "occurrence_count": {

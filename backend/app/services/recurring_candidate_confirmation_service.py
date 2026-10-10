@@ -359,4 +359,6 @@ def _candidate_next_expected_date(
     last_seen_at: datetime | None,
     timezone_name: str | None,
 ) -> date | None:
-    return payload.next_expected_date or _next_expected_date(last_seen_at, timezone_name)
+    if "next_expected_date" in payload.model_fields_set:
+        return payload.next_expected_date
+    return _next_expected_date(last_seen_at, timezone_name)

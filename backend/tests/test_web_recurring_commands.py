@@ -146,8 +146,10 @@ def test_web_recurring_edit_replays_same_idempotency_key(web_client: TestClient)
         assert item.row_version == token + 1
 
 
+@pytest.mark.parametrize("reminder", ["2026-10-05", ""])
 def test_web_recurring_candidate_confirm_uses_server_side_provenance(
     web_client: TestClient,
+    reminder: str,
 ) -> None:
     """候选提交只定位 merchant + amount: occurrence_count / last_seen_at /
     confidence 一律取当前服务端候选扫描, 客户端伪造值必须被忽略;
@@ -156,7 +158,7 @@ def test_web_recurring_candidate_confirm_uses_server_side_provenance(
 
     adopted = post_confirm(
         web_client,
-        next_expected_date="2026-10-05",
+        next_expected_date=reminder,
         month="2026-09",
         status="paused",
         # 伪造的客户端 provenance — 路由不接收, service 不信任。
@@ -180,7 +182,7 @@ def test_web_recurring_candidate_confirm_uses_server_side_provenance(
         assert item.last_seen_at is not None
         assert item.last_seen_at.year != 1999
         assert item.baseline_amount_cents == 20000
-        assert item.next_expected_date == date(2026, 10, 5)
+        assert item.next_expected_date == (date.fromisoformat(reminder) if reminder else None)
         assert returned["result_item"] == [item.public_id]
 
     after = web_client.get("/web/recurring?ledger_id=owner&view=suggestions")

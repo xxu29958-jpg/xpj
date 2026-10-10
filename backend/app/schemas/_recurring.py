@@ -77,7 +77,10 @@ class RecurringCandidateConfirmRequest(BaseModel):
         description="Compatibility input only; confirmation uses the current server-side candidate observation.",
     )
     frequency: str = Field(default="monthly", max_length=32)
-    next_expected_date: date | None = None
+    next_expected_date: date | None = Field(
+        default=None,
+        description="Omit to use the date inferred from the server observation; explicit null adopts without a reminder date.",
+    )
 
 
 class RecurringItemCreateRequest(BaseModel):
