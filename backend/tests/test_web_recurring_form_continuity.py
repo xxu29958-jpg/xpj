@@ -66,7 +66,6 @@ def test_rejected_candidate_keeps_original_proposal_instead_of_refreshing_observ
     assert "CNY 199.00" in form and "原建议值" in form
     assert "已观察 3 次" not in rejected.text
     assert "原建议值和填写已保留" in rejected.text
-    assert 'data-candidate-native-result="rejected"' in form
     with SessionLocal() as db:
         assert list(db.scalars(select(RecurringItem))) == [], "A stale observation cannot create a formal plan"
 

@@ -13,6 +13,7 @@
     {kind:"recurring-create", family:"recurring", action:"/web/recurring/create", fields:{merchant:"原创建方案",baseline_amount_yuan:"001500",next_expected_date:"2026-10-08"}},
     {kind:"recurring-edit", family:"recurring", action:"/web/recurring/series-one/edit", fields:{merchant:"原编辑方案",baseline_amount_yuan:"001800",next_expected_date:"2026-10-09"}},
     {kind:"candidate", family:"candidate", action:"/web/recurring/confirm-candidate", fields:{next_expected_date:""}},
+    {kind:"occurrence", family:"occurrence", action:"/web/recurring/series-one/occurrence", fields:{q:"原付款搜索"}},
     {kind:"tag-create", family:"tagcreation", action:"/web/reference/tag/create", fields:{name:"  原标签添加  "}},
     {kind:"category-create", family:"categorycreation", action:"/web/reference/category/create", fields:{name:"  原分类添加  "}},
     {kind:"merchant-create", family:"catalogcreation", action:"/web/merchants/catalog/create", fields:{display_name:"  原商家添加  "}},

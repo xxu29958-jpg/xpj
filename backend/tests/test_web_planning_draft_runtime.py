@@ -13,6 +13,8 @@ from uuid import uuid4
 import pytest
 from jinja2 import ChoiceLoader, DictLoader, Environment, FileSystemLoader, select_autoescape
 
+from app.services.time_service import to_iso
+
 ROOT = Path(__file__).resolve().parents[2]
 _runtime_spec = importlib.util.spec_from_file_location("planning_edge_support", Path(__file__).with_name("test_web_edge_runtime_contract.py"))
 _runtime = importlib.util.module_from_spec(_runtime_spec)
@@ -25,6 +27,7 @@ ENV = Environment(loader=ChoiceLoader([
                 '{% block content %}{% endblock %}</body></html>'}),
     FileSystemLoader(ROOT / "backend/app/templates/web"),
 ]), autoescape=select_autoescape(["html"]))
+ENV.filters["to_iso"] = to_iso
 HITS = {}
 MISSING = []
 POSTS = []
@@ -62,6 +65,21 @@ def _recurring_definition(kind, common, key, values, native_result):
     return ENV.get_template("recurring.html").render(**common)
 
 
+def _occurrence_definition(common, scope, key, version):
+    draft = {"ledger_id": "owner", "public_id": "series-one", "task_id": "series-one:2026-09",
+        "month": "2026-09", "payment_month": "2026-08", "q": "原付款", "payment_id": "41",
+        "action": "link", "expense_public_id": "payment-original", "expected_expense_row_version": "5",
+        "expected_row_version": str(version), "expected_series_row_version": "7",
+        "series_label": "原日元订阅", "payment_label": "跨月付款 · JPY 2400",
+        "idempotency_key": key, "draft_scope": json.dumps(scope)}
+    return ENV.get_template("recurring_occurrence.html").render(**common,
+        item={"public_id": "series-one", "merchant_name": "原日元订阅", "status": "active"},
+        occurrence={"period": "2026-09", "state": "unfulfilled", "row_version": version, "home_currency_code": "JPY"},
+        planned_amount="2400", reserved_amount="2400", payment_month="2026-08", query="原付款",
+        command_draft=draft, command_draft_scope=scope, command_result="", command_binding_required=False,
+        undo_draft_scope=scope, can_associate=True, payments=[], occurrence_href="/web/recurring/series-one/occurrence?ledger_id=owner")
+
+
 def render(kind, values=None, native_result=""):
     HITS[kind] = HITS.get(kind, 0) + 1
     key = str(uuid4())
@@ -72,6 +90,8 @@ def render(kind, values=None, native_result=""):
                   "currency_input": JPY_INPUT, "currency_options": ["JPY", "CNY", "USD"],
                   "csrf_token": "synthetic", "csrf_field": '<input name="csrf_token" type="hidden" value="synthetic">',
                   "asset_version": "preflight", "request": {"query_params": {}}, "status_filter": ""}
+    if kind == "occurrence":
+        return _occurrence_definition(common, scope, key, HITS[kind])
     if kind in {"rule-create", "rule-edit"}:
         return _rule_definition(kind, common, scope, key)
     if kind.startswith("catalog-"):
@@ -222,6 +242,10 @@ class RecoveryHandler(Handler):
             result["receipt"].update(source="candidate", status="active", row_version=1,
                 home_currency_code=values["home_currency_code"], baseline_amount_cents=int(values["amount_cents"]),
                 next_expected_date=values["next_expected_date"] or None)
+        if self.path.endswith("/occurrence"):
+            result["receipt"].update(series_public_id=values["public_id"], period=values["month"],
+                row_version=int(values["expected_row_version"]) + 1, expense_public_id=values["expense_public_id"])
+            result["next"] = self.path + "?ledger_id=owner&month=" + values["month"]
         if self.path.startswith("/web/merchants/"):
             _merchant_receipt(self.path, values, result)
         return self.reply(json.dumps(result), "application/json")
@@ -310,7 +334,7 @@ def test_planning_and_reference_entries_replay_original_body_after_unknown_reply
     assert not result.get("error"), result
     assert not MISSING, MISSING
     assert {row["entry"] for row in result["results"]} == {
-        "budget", "arrangement", "recurring-create", "recurring-edit", "candidate", "tag-create", "category-create",
+        "budget", "arrangement", "recurring-create", "recurring-edit", "candidate", "occurrence", "tag-create", "category-create",
         "merchant-create", "alias-create", "catalog-rename", "catalog-toggle", "catalog-delete", "catalog-merge", "rule-create", "rule-edit"}
     assert len(POSTS) == 2 * len(result["results"])
     for first, replay in zip(POSTS[::2], POSTS[1::2], strict=True):

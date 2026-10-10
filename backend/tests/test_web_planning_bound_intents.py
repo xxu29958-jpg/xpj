@@ -16,11 +16,15 @@ from app.models import (
     MonthlyArrangementRevision,
     RecurringItem,
     RecurringItemRevision,
+    RecurringOccurrence,
+    RecurringOccurrenceRevision,
 )
 from app.services.identity_service import authenticate_web_session_token
 from app.services.manual_expense_draft_presenter import manual_draft_scope
 from tests._local_web_identity_support import _connect_local_session, installed_web_setup
 from tests._web_native_form_support import hidden_post_forms
+from tests.test_web_manual_expense import _hidden_fields
+from tests.test_web_recurring_occurrences import _choose
 
 KINDS = ["budget", "arrangement", "recurring-create", "recurring-edit"]
 MONTH = "2026-09"
@@ -39,7 +43,8 @@ def _scope(token):
 def _facts():
     with SessionLocal() as db:
         return [list(db.execute(select(*model.__table__.columns).order_by(model.id))) for model in
-            [Budget, BudgetCategory, BudgetRevision, MonthlyArrangement, MonthlyArrangementRevision, RecurringItem, RecurringItemRevision, Expense]]
+            [Budget, BudgetCategory, BudgetRevision, MonthlyArrangement, MonthlyArrangementRevision, RecurringItem, RecurringItemRevision, Expense,
+             RecurringOccurrence, RecurringOccurrenceRevision]]
 
 
 def _form(browser, kind, *, public_id="", amount="15.00"):
@@ -77,6 +82,62 @@ def _original(installed, kind):
     action, fields = _form(browser, kind, public_id=public_id)
     assert json.loads(fields["draft_scope"]) == scope
     return browser, action, fields, scope, headers
+
+
+@pytest.mark.real_db
+@pytest.mark.currency_binding_unbound
+def test_occurrence_original_receipt_survives_unlink_and_rejects_readonly_or_replacement_identity(installed_planning_browser):
+    installed = installed_planning_browser
+    browser, action, fields, scope, headers = _original(installed, "recurring-create")
+    created = browser.post(action, data=fields, headers=headers)
+    assert created.status_code == 200, created.text
+    series_id = created.json()["receipt"]["public_id"]
+    manual_page = browser.get("/web/expenses/new")
+    manual = {**_hidden_fields(manual_page.text), "amount_major": "15.00", "currency_code": "CNY",
+        "merchant": "跨月付款", "category": "餐饮", "spent_at": "2026-08-31T12:00", "note": "原付款"}
+    payment = browser.post("/web/expenses/new", data=manual, headers={"Origin": headers["Origin"]}, follow_redirects=False)
+    assert payment.status_code == 303, payment.text
+    path = f"/web/recurring/{series_id}/occurrence"
+    page = browser.get(path, params={"month": MONTH, "payment_month": "2026-08", "q": "跨月"})
+    original = _choose(browser, page.text, "link")
+    assert original["month"] == MONTH and original["payment_month"] == "2026-08" and original["q"] == "跨月"
+    before = _facts()
+    with SessionLocal() as db:
+        member = db.scalar(select(LedgerMember).where(LedgerMember.ledger_id == scope["ledgerId"],
+            LedgerMember.account_id == installed.installation_account_id))
+        member.role = "viewer"
+        db.commit()
+    refused = browser.post(path, data=original, headers=headers)
+    assert refused.status_code == 403 and _facts() == before, refused.text
+    with SessionLocal() as db:
+        member = db.scalar(select(LedgerMember).where(LedgerMember.ledger_id == scope["ledgerId"],
+            LedgerMember.account_id == installed.installation_account_id))
+        member.role = "member"
+        db.commit()
+    accepted = browser.post(path, data=original, headers=headers)
+    assert accepted.status_code == 200, accepted.text
+    result = accepted.json()
+    assert result["ack"] == {"scope": scope, "clientRef": original["idempotency_key"]}
+    assert result["receipt"]["expense_public_id"] == original["expense_public_id"]
+    current = browser.get(result["next"])
+    assert 'name="payment_month" value="2026-08"' in current.text and 'name="q" value="跨月"' in current.text
+    clear = _choose(browser, current.text, "clear")
+    cleared = browser.post(path, data=clear, headers=headers)
+    assert cleared.status_code == 200 and cleared.json()["receipt"]["expense_public_id"] is None, cleared.text
+    after = _facts()
+    replay = browser.post(path, data=original, headers=headers)
+    assert replay.status_code == 200 and replay.json() == result, replay.text
+    assert _facts() == after, "Original replay must not relink or alter the payment after an explicit unlink"
+    browser.base_url = browser.base_url.copy_with(scheme="http")
+    replacement = _scope(_connect_local_session(installed))
+    browser.base_url = browser.base_url.copy_with(scheme="https")
+    assert replacement["deviceId"] != scope["deviceId"]
+    fresh = _choose(browser, browser.get(result["next"]).text, "link")
+    original["csrf_token"] = fresh["csrf_token"]
+    for review in (False, True):
+        refused = browser.post(path, data={**original, **({"review_latest": "true"} if review else {})}, headers=headers)
+        assert refused.status_code == 409 and refused.json()["error"] == "session_binding_changed", refused.text
+    assert _facts() == after
 
 
 @pytest.mark.real_db

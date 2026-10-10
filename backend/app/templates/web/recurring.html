@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% import '_planning_drafts.html' as drafts %}
-{% block page_scripts %}{{ drafts.scripts(asset_version) }}{% endblock %}
+{% block page_scripts %}{{ drafts.scripts(asset_version) }}
+<script defer src="/static/web/occurrence-entry.js?v={{ asset_version }}"></script>{% endblock %}
 {% set history_month = navigation_month|default(request.query_params.get('month', '')) %}
 {% set month_query = '&month=' ~ (history_month|urlencode) if history_month else '' %}
 {% set list_href = '/web/recurring?ledger_id=' ~ (selected_ledger_id|urlencode) ~ '&status=' ~ (status_filter|urlencode) ~ month_query %}
@@ -45,6 +46,7 @@
 <div class="plan-flow{% if is_task %} recurring-editor{% endif %}">
 {{ drafts.shelf('recurring', '固定支出', recurring_draft_scope) }}
 {{ drafts.shelf('candidate', '建议采用', recurring_draft_scope) }}
+{{ drafts.shelf('occurrence', '付款关联', recurring_draft_scope) }}
 {% if is_task or not result_visible %}{{ result_feedback() }}{% endif %}
 
 {% if not is_task %}

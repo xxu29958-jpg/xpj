@@ -2,22 +2,29 @@
 
 from __future__ import annotations
 
-from uuid import uuid4
-
 from fastapi import APIRouter, Depends, Form, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
-from app.routes._web_draft_binding import browser_draft_scope
+from app.routes._web_draft_binding import (
+    browser_draft_scope,
+    draft_ack_response,
+    draft_error_response,
+    draft_refusal_result,
+    rendered_draft_scope,
+    require_draft_binding,
+    reviewed_draft_scope,
+)
 from app.routes._web_expense_return_context import (
     _payment_expense_id,
     edit_context_params,
     flow_href,
 )
 from app.routes._web_expense_undo import undo_command_key
+from app.routes._web_recurring_occurrence_form import occurrence_form, occurrence_href
 from app.routes._web_session_common import resolve_web_actor
 from app.routes.web_common import (
     LocalOnly,
@@ -26,7 +33,6 @@ from app.routes.web_common import (
     _list_ledger_options,
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
-    _web_redirect,
     parse_form_row_version_token,
     preserve_original_ledger_form,
     templates,
@@ -72,7 +78,6 @@ def _payment_view(row, *, ledger_id, item, occurrence) -> dict[str, object]:
         "home_currency_code": row.home_currency_code,
         "amount": _amount_yuan(row.amount_cents, row.home_currency_code) if row.home_currency_code else "币种待确认",
         "date": str(row.accounting_date or ""),
-        "key": uuid4().hex,
         "href": _payment_edit_href(
             ledger_id=ledger_id, expense_id=row.id, item=item, occurrence=occurrence,
         ),
@@ -158,6 +163,7 @@ def _occurrence_page_projection(*, item, occurrence, payments, focused, selected
 def _page(
     request: Request, db: Session, *, public_id: str, ledger_id: str | None, month=None, payment_month=None,
     query="", message=None, error=None, retry=None, payment_id=None, undo=None, undo_version=None, flash_type=None,
+    prepare=False,
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
@@ -178,7 +184,7 @@ def _page(
     context.update(
         item=item, occurrence=occurrence, limited=limited,
         payment_month=selected_payment_month, query=query,
-        command_key=uuid4().hex, error=error, retry=retry,
+        error=error, retry=retry,
         flash_message=message or "",
         flash_type=flash_type if flash_type in {"success", "error"} else ("success" if message else ""),
         undo_expense_id=None, undo_expected_row_version=None, undo_idempotency_key="",
@@ -188,6 +194,17 @@ def _page(
             selected=selected, can_write=context["can_write"],
         ),
     )
+    navigation = {"ledger_id": selected, "month": occurrence.period, "payment_month": selected_payment_month,
+        "q": query, "payment_id": str(payment_id or "")}
+    command_draft = occurrence_form(request=request, item=item, occurrence=occurrence,
+        scope=context["undo_draft_scope"], navigation=navigation, payments=payments, focused=focused,
+        retry=retry, prepare=prepare, can_associate=context["can_associate"])
+    command_scope, binding_required = rendered_draft_scope(db, request,
+        command_draft["draft_scope"] if command_draft else None)
+    context.update(command_draft=command_draft, command_draft_scope=command_scope,
+        command_binding_required=binding_required,
+        command_result="prepared" if prepare else draft_refusal_result(error) if error else "",
+        occurrence_href=occurrence_href(public_id, **navigation))
     undo_expense_id, undo_expected_row_version = _occurrence_reject_undo(
         db, selected_id=selected, undo=undo, undo_version=undo_version,
     )
@@ -225,6 +242,9 @@ def web_set_recurring_occurrence(
     expected_expense_row_version: str = Form(default=""),
     expected_row_version: str = Form(default=""), expected_series_row_version: str = Form(default=""),
     idempotency_key: str = Form(default=""), payment_id: str = Form(default=""),
+    payment_month: str | None = Form(default=None), q: str = Form(default=""),
+    draft_scope: str = Form(default=""), review_latest: str = Form(default=""),
+    series_label: str = Form(default=""), payment_label: str = Form(default=""),
     _local: None = LocalOnly, db: Session = Depends(get_db),
 ):
     options = _list_ledger_options(db)
@@ -236,16 +256,24 @@ def web_set_recurring_occurrence(
         "expected_series_row_version": expected_series_row_version,
         "idempotency_key": idempotency_key,
         "payment_id": payment_id,
+        "draft_scope": draft_scope, "series_label": series_label, "payment_label": payment_label,
+        "payment_month": month if payment_month is None else payment_month, "q": q,
     }
     retained = preserve_original_ledger_form(request, db, options=options, selected=selected,
         fields={**attempt, "ledger_id": ledger_id, "month": month}, task="关联固定支出付款")
     if retained is not None:
-        return retained
-    _require_selected_ledger_write(options, selected)
-    actor_id, _ = resolve_web_actor(db, request, selected)
+        return draft_error_response(request, AppError("session_binding_changed", "账本已切换，原提交仍保留。", status_code=409)) or retained
     try:
+        _require_selected_ledger_write(options, selected)
+        attempt["draft_scope"] = reviewed_draft_scope(db, request, draft_scope, review=review_latest == "true")
+        require_draft_binding(db, request, ledger_id=selected, draft_scope=attempt["draft_scope"], require_session=False)
+        actor_id, _ = resolve_web_actor(db, request, selected)
         if action not in {"link", "clear"}:
             raise AppError("invalid_request", status_code=422)
+        if review_latest == "true":
+            return _page(request, db, public_id=public_id, ledger_id=selected, month=month,
+                payment_month=payment_month, query=q, retry=attempt, payment_id=payment_id, prepare=True,
+                message="已读取当前版本，尚未修改关联。请核对后再提交。")
         payload = RecurringOccurrenceWriteRequest(
             action=action,
             expense_public_id=expense_public_id if action == "link" else None,
@@ -253,7 +281,7 @@ def web_set_recurring_occurrence(
             expected_row_version=expected_row_version,
             expected_series_row_version=expected_series_row_version,
         )
-        set_occurrence_payment(
+        receipt = set_occurrence_payment(
             db, tenant_id=selected, public_id=public_id, month=month,
             actor_account_id=actor_id, idempotency_key=idempotency_key, payload=payload,
         )
@@ -262,11 +290,13 @@ def web_set_recurring_occurrence(
         error = exc if isinstance(exc, AppError) else AppError(
             "invalid_request", "付款或页面版本不完整，请刷新并重新核对。", status_code=422,
         )
-        return _page(
+        return draft_error_response(request, error) or _page(
             request, db, public_id=public_id, ledger_id=selected,
-            month=month, error=error, retry=attempt, payment_id=payment_id,
+            month=month, error=error, retry=attempt, payment_id=payment_id, payment_month=payment_month, query=q,
         )
-    return _web_redirect(
-        f"/web/recurring/{public_id}/occurrence", selected, month=month,
+    destination = RedirectResponse(occurrence_href(public_id, ledger_id=selected, month=month,
+        payment_month=month if payment_month is None else payment_month, q=q, payment_id=payment_id,
         message="这次提交已处理，下方显示本期当前状态。",
-    )
+    ), status_code=303)
+    return draft_ack_response(request, draft_scope=draft_scope, idempotency_key=idempotency_key,
+        receipt=receipt, next_href=destination.headers["location"]) or destination

@@ -7,6 +7,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isDisplayed
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
@@ -117,6 +118,8 @@ class ReferenceCreationNavigationTest {
     private fun click(text: String, scroll: Boolean = false) {
         val node = compose.onNode(hasText(text) and hasClickAction())
         if (scroll) node.performScrollTo()
+        // Sheet/IME animations run outside Compose's test clock; semantics can precede visibility.
+        compose.waitUntil(5_000) { node.isDisplayed() }
         node.assertIsDisplayed().performTouchInput { click() }
     }
 

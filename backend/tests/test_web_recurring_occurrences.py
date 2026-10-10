@@ -32,6 +32,17 @@ def _retry_form(body):
     raise AssertionError("the original proposal retry form is missing")
 
 
+def _choice_href(body, action):
+    return next(unescape(href) for href in re.findall(r'href="([^"]+)"', body)
+        if parse_qs(urlsplit(unescape(href)).query).get("command") == [action])
+
+
+def _choose(client, body, action):
+    page = client.get(_choice_href(body, action))
+    assert page.status_code == 200, page.text
+    return _form(page.text, action)
+
+
 def test_web_association_and_undo_share_the_api_result(client: TestClient, *, identity) -> None:
     app.dependency_overrides[_require_local] = lambda: None
     try:
@@ -40,7 +51,7 @@ def test_web_association_and_undo_share_the_api_result(client: TestClient, *, id
         path = f"/web/recurring/{series['public_id']}/occurrence"
         page = client.get(path, params={"ledger_id": "owner", "month": "2026-09"})
         assert page.status_code == 200, page.text
-        original = _form(page.text, "link")
+        original = _choose(client, page.text, "link")
         assert original["expense_public_id"] == payment["public_id"]
         linked = client.post(path, data=original, follow_redirects=False)
         assert linked.status_code == 303, linked.text
@@ -52,7 +63,7 @@ def test_web_association_and_undo_share_the_api_result(client: TestClient, *, id
             headers=identity.app_headers,
         )
         assert api.json()["reserved_amount_cents"] == 0
-        cleared = client.post(path, data=_form(rendered.text, "clear"), follow_redirects=False)
+        cleared = client.post(path, data=_choose(client, rendered.text, "clear"), follow_redirects=False)
         assert cleared.status_code == 303, cleared.text
         assert "本期尚未关联付款" in client.get(cleared.headers["location"]).text
         # Refreshing/retrying the original submitted form cannot relink after undo.
@@ -144,7 +155,10 @@ def test_period_payment_entries_and_review_keep_the_original_task(monkeypatch) -
         assert explanation in reviewed_html
         assert "原账单已撤回或冲销" not in reviewed_html
         assert "本期已关联付款" not in reviewed_html
-        original_task = _form(reviewed_html, "clear")
+        selected_request = Request({**request.scope,
+            "query_string": urlsplit(_choice_href(reviewed_html, "clear")).query.encode()})
+        command_page = web._page(selected_request, object(), public_id=series_id, ledger_id="owner", month="2026-08")
+        original_task = _form(command_page.body.decode(), "clear")
         assert original_task["month"] == "2026-08"
         assert original_task["expected_row_version"] == "4"
         assert original_task["expected_series_row_version"] == "3"
@@ -229,7 +243,7 @@ def test_web_association_invalid_action_keeps_the_original_key(client: TestClien
         payment = _payment(client, identity)
         path = f"/web/recurring/{series['public_id']}/occurrence"
         page = client.get(path, params={"ledger_id": "owner", "month": "2026-09", "payment_id": payment["id"]})
-        original = _form(page.text, "link")
+        original = _choose(client, page.text, "link")
         assert original["expense_public_id"] == payment["public_id"]
         assert original["payment_id"] == str(payment["id"])
         refused = client.post(path, data={**original, "action": "explode"}, follow_redirects=False)
@@ -255,7 +269,7 @@ def test_web_association_state_conflict_keeps_the_original_proposal(client: Test
         payment = _payment(client, identity)
         path = f"/web/recurring/{series['public_id']}/occurrence"
         page = client.get(path, params={"ledger_id": "owner", "month": "2026-09"})
-        original = _form(page.text, "link")
+        original = _choose(client, page.text, "link")
         linked = client.post(path, data=original, follow_redirects=False)
         assert linked.status_code == 303, linked.text
         conflict = client.post(

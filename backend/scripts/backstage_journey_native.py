@@ -89,6 +89,8 @@ def native_upload_and_ocr(j):
     j.configure_ocr(automatic=False)
     count = len(j.facts()["expenses"])
     digest = share_synthetic_receipt(j)
+    wait_for(lambda: j.native.has("上传 1 张小票"), "The shared original did not reach its explicit upload confirmation")
+    j.native.click("上传 1 张小票")
     wait_for(lambda: len(j.facts()["expenses"]) == count + 1, "Android did not upload its actual shared original", 90)
     wait_for(lambda: j.facts()["tasks"][-1]["status"] == "completed", "The automatic-disabled task did not settle")
     original = j.facts()["expenses"][-1]

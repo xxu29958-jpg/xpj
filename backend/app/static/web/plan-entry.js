@@ -451,6 +451,7 @@
           if (!definition.commandKeyField) field(commandRefField).value = ref;
           if (definition.draftRefField) field(definition.draftRefField).value = ref;
           if (!resumeDraft(record, nativeResult)) return;
+          if (!record && !nativeResult && definition.retainSelection) capture();
           return new Promise(resolve => { release = resolve; });
         }).catch(() => { if (!held) allowOnline(); else stop("原稿暂时无法恢复，请保留此页并检查浏览器存储。"); });
       } catch (_) { allowOnline(); }
