@@ -7,6 +7,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import com.ticketbox.ui.assertEditableTextEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.performClick
@@ -54,7 +55,7 @@ class IncomePlanCreationRoomTest {
         installModels()
         showModels()
         compose.waitUntil(10_000) { model.value?.state?.value?.forecastMonth == "2026-09" }
-        compose.onNodeWithText("添加").performScrollTo().performClick()
+        compose.onNodeWithTag("income-creation-action").performClick()
         compose.onAllNodes(hasSetTextAction())[0].performScrollTo().performTextInput("旅行补贴")
         compose.onAllNodes(hasSetTextAction())[1].performScrollTo().performTextInput("1200")
         closeSoftKeyboard()
@@ -90,7 +91,7 @@ class IncomePlanCreationRoomTest {
         installModels()
         showModels()
         compose.waitUntil(10_000) { model.value?.state?.value?.forecastMonth == "2026-09" }
-        compose.onNodeWithText("添加").performScrollTo().performClick()
+        compose.onNodeWithTag("income-creation-action").performClick()
         compose.onAllNodes(hasSetTextAction())[0].performScrollTo().performTextInput("旅行补贴")
         compose.onAllNodes(hasSetTextAction())[1].performScrollTo().performTextInput("1200")
         closeSoftKeyboard()
@@ -126,7 +127,7 @@ class IncomePlanCreationRoomTest {
         installModels()
         showModels()
         compose.waitUntil(10_000) { model.value?.state?.value?.forecastMonth == "2026-09" }
-        compose.onNodeWithText("添加").performScrollTo().performClick()
+        compose.onNodeWithTag("income-creation-action").performClick()
         compose.onAllNodes(hasSetTextAction())[0].performScrollTo().performTextInput("已保存的补贴")
         compose.onAllNodes(hasSetTextAction())[1].performScrollTo().performTextInput("120.00")
         closeSoftKeyboard()
@@ -151,14 +152,14 @@ class IncomePlanCreationRoomTest {
         assertEquals(1, acceptedIncome.size)
         installModels()
         compose.waitUntil(10_000) { creator.value?.state?.value?.session?.phase == IncomePlanCreationPhase.NeedsRecovery }
-        compose.onNodeWithText("添加").performScrollTo().performClick()
+        compose.onNodeWithTag("income-creation-action").performClick()
         compose.onNodeWithText("放弃草稿").performClick()
         compose.onNodeWithText("取消").performClick()
         compose.onNodeWithText("已保存的补贴").performScrollTo().assertEditableTextEquals("已保存的补贴").assertIsNotEnabled()
         assertEquals(original.creationKey, creator.value?.state?.value?.session?.creationKey)
         compose.onNodeWithText("放弃草稿").performClick()
         compose.onNodeWithText("确认放弃").performClick()
-        compose.onNodeWithText("添加").performScrollTo().performClick()
+        compose.onNodeWithTag("income-creation-action").performClick()
         assertEquals("", compose.onAllNodes(hasSetTextAction())[0].fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
         assertEquals("", compose.onAllNodes(hasSetTextAction())[1].fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
         assertNotEquals(original.creationKey, creator.value?.state?.value?.session?.creationKey)

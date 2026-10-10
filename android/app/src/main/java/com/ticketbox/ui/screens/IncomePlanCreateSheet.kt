@@ -119,6 +119,7 @@ private fun AddIncomePlanSheet(
     val editable = session.phase == IncomePlanCreationPhase.Draft && state.canModify
     AppSheetScaffold(
         title = stringResource(R.string.income_plan_sheet_title),
+        subtitle = stringResource(R.string.income_plan_draft_continuation_hint),
         actions = {
             state.flashMessage?.let { AppStatusBanner(message = it, tone = MessageTone.Info) }
             session.admissionFailure?.let { AppStatusBanner(message = it.asUiText(), tone = MessageTone.Danger) }
@@ -168,7 +169,7 @@ private fun IncomePlanCreationActions(
             enabled = !busy && (recovery || editable),
         ),
         secondary = AppAction(
-            text = stringResource(if (recovery) R.string.income_plan_creation_discard else R.string.common_cancel),
+            text = stringResource(R.string.income_plan_creation_discard),
             onClick = {
                 if (recovery) confirmDiscard = true else { viewModel.cancel(); onDismiss() }
             },
