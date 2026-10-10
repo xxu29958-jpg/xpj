@@ -15,6 +15,15 @@ def occurrence_href(public_id: str, *, ledger_id: str, month: str, payment_month
     })
 
 
+def _selected_payment_fields(payments, focused, target):
+    choices = payments + ([focused] if focused and focused["eligible"] else [])
+    payment = next((row for row in choices if row["public_id"] == target), None)
+    if payment is None:
+        raise AppError("invalid_request", "原付款不在当前可选账单中，请保留原提交并重新核对。", status_code=409)
+    return {"expense_public_id": payment["public_id"], "expected_expense_row_version": str(payment["row_version"]),
+        "payment_label": f"{payment['merchant']} · {payment['date']} · {payment['home_currency_code'] or '币种待确认'} {payment['amount']}"}
+
+
 def occurrence_form(*, request, item, occurrence, scope, navigation, payments, focused,
                     retry=None, prepare=False, can_associate=True):
     base = {**navigation, "public_id": item.public_id, "task_id": f"{item.public_id}:{occurrence.period}",
@@ -34,12 +43,7 @@ def occurrence_form(*, request, item, occurrence, scope, navigation, payments, f
         raise AppError("invalid_request", "当前不能修改付款关联，请先核对本期状态。", status_code=409)
     target = retry["expense_public_id"] if prepare else request.query_params.get("choose_payment", "")
     if action == "link":
-        choices = payments + ([focused] if focused and focused["eligible"] else [])
-        payment = next((row for row in choices if row["public_id"] == target), None)
-        if payment is None:
-            raise AppError("invalid_request", "原付款不在当前可选账单中，请保留原提交并重新核对。", status_code=409)
-        base.update(expense_public_id=payment["public_id"], expected_expense_row_version=str(payment["row_version"]),
-            payment_label=f"{payment['merchant']} · {payment['date']} · {payment['home_currency_code'] or '币种待确认'} {payment['amount']}")
+        base.update(_selected_payment_fields(payments, focused, target))
     else:
         base["payment_label"] = "解除本期关联，保留原付款账单"
     base["action"] = action

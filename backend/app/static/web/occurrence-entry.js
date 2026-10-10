@@ -19,12 +19,15 @@
   }
   function present(form, saved) {
     form.querySelector("[data-occurrence-summary]").textContent = saved.series_label + " · " + saved.month + " · " + saved.payment_label;
-    form.querySelector("[data-occurrence-submit]").textContent = saved.action === "clear" ? "解除本期付款关联" : "用这笔付款确认本期已付";
   }
   const definition = {family: "occurrence", label: "付款关联", list: "/web/recurring", idField: "task_id",
     titleField: "series_label", create: names, edit: names, href, read, present, retainSelection: true,
     submitSelector: "[data-occurrence-submit]", pendingLabel: "重试原提交", reviewRequiresRejection: true,
     validRef: /^[0-9a-f]{8}(?:-?[0-9a-f]{4}){3}-?[0-9a-f]{12}$/i,
+    updatePresentation(form, {phase}) {
+      if (phase === "editing") form.querySelector("[data-occurrence-submit]").textContent =
+        form.elements.namedItem("action").value === "clear" ? "解除本期付款关联" : "用这笔付款确认本期已付";
+    },
     action: saved => "/web/recurring/" + encodeURIComponent(saved.public_id) + "/occurrence",
     receiptMatches: (receipt, saved) => receipt?.series_public_id === saved.public_id && receipt.period === saved.month &&
       receipt.row_version === Number(saved.expected_row_version) + 1 &&

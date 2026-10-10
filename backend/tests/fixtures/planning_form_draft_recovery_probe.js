@@ -47,6 +47,12 @@
     const storageRef=form.elements.namedItem("draft_ref")?.value || ref;
     const storageKey=Object.keys(localStorage).find(key=>key.endsWith(storageRef));
     if (!storageKey) throw Error("Original draft not retained: "+spec.kind+" phase="+form.dataset[spec.family+"DraftPhase"]);
+    if (spec.kind === "occurrence") {
+      await load(frame,url); await until(ready,"unsubmitted payment selection unavailable");
+      form=getForm();
+      if (form.elements.namedItem("action").value !== "clear" || submit(form).textContent !== "解除本期付款关联" ||
+          form.elements.namedItem("idempotency_key").value !== ref) throw Error("Restored command must display its original clear action");
+    }
     form.requestSubmit(submit(form));
     await until(()=>form.dataset[spec.family+"DraftPhase"]==="blocked" && !submit(form).disabled,"unknown receipt did not retain original");
     if (!form.querySelector("[data-"+spec.family+"-review]").hidden) throw Error("Unknown original must not offer a replacement key");

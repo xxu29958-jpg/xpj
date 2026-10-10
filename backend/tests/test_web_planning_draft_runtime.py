@@ -47,6 +47,8 @@ def _rule_definition(kind, common, scope, key):
 
 
 def _recurring_definition(kind, common, key, values, native_result):
+    if kind == "occurrence":
+        return _occurrence_definition(common, common["recurring_draft_scope"], key, HITS[kind])
     if kind == "candidate":
         common.update(review={"merchant": "原日元订阅", "amount_cents": "1200", "home_currency_code": "JPY",
             "amount_yuan": "1200", "occurrence_count": 3, "next_expected_date": "2026-10-09",
@@ -68,10 +70,10 @@ def _recurring_definition(kind, common, key, values, native_result):
 def _occurrence_definition(common, scope, key, version):
     draft = {"ledger_id": "owner", "public_id": "series-one", "task_id": "series-one:2026-09",
         "month": "2026-09", "payment_month": "2026-08", "q": "原付款", "payment_id": "41",
-        "action": "link", "expense_public_id": "payment-original", "expected_expense_row_version": "5",
+        "action": "clear" if version == 1 else "", "expense_public_id": "", "expected_expense_row_version": "",
         "expected_row_version": str(version), "expected_series_row_version": "7",
         "series_label": "原日元订阅", "payment_label": "跨月付款 · JPY 2400",
-        "idempotency_key": key, "draft_scope": json.dumps(scope)}
+        "idempotency_key": key, "draft_scope": json.dumps(scope), "original_only": version > 1}
     return ENV.get_template("recurring_occurrence.html").render(**common,
         item={"public_id": "series-one", "merchant_name": "原日元订阅", "status": "active"},
         occurrence={"period": "2026-09", "state": "unfulfilled", "row_version": version, "home_currency_code": "JPY"},
@@ -90,8 +92,6 @@ def render(kind, values=None, native_result=""):
                   "currency_input": JPY_INPUT, "currency_options": ["JPY", "CNY", "USD"],
                   "csrf_token": "synthetic", "csrf_field": '<input name="csrf_token" type="hidden" value="synthetic">',
                   "asset_version": "preflight", "request": {"query_params": {}}, "status_filter": ""}
-    if kind == "occurrence":
-        return _occurrence_definition(common, scope, key, HITS[kind])
     if kind in {"rule-create", "rule-edit"}:
         return _rule_definition(kind, common, scope, key)
     if kind.startswith("catalog-"):
@@ -244,7 +244,8 @@ class RecoveryHandler(Handler):
                 next_expected_date=values["next_expected_date"] or None)
         if self.path.endswith("/occurrence"):
             result["receipt"].update(series_public_id=values["public_id"], period=values["month"],
-                row_version=int(values["expected_row_version"]) + 1, expense_public_id=values["expense_public_id"])
+                row_version=int(values["expected_row_version"]) + 1,
+                expense_public_id=None if values["action"] == "clear" else values["expense_public_id"])
             result["next"] = self.path + "?ledger_id=owner&month=" + values["month"]
         if self.path.startswith("/web/merchants/"):
             _merchant_receipt(self.path, values, result)
