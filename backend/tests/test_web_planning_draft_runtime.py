@@ -82,7 +82,8 @@ def _occurrence_definition(common, scope, key, version):
         undo_draft_scope=scope, can_associate=True, payments=[], occurrence_href="/web/recurring/series-one/occurrence?ledger_id=owner")
 
 
-def _rate_definition(common, scope, key, version):
+def _rate_definition(kind, common, scope, key):
+    version = 2 if HITS[kind] == 1 else 9
     task = {"ledger_id": "owner", "month": "2026-09", "home_currency_code": "CNY", "return_to": "reports",
         "granularity": "week", "ranking_metric": "count", "merchant_category": "旅行"}
     values = {**task, "currency_code": "JPY", "rate_date": "2026-09-09", "rate_to_cny": "0.05",
@@ -102,10 +103,9 @@ def render(kind, values=None, native_result=""):
                   "currency_input": JPY_INPUT, "currency_options": ["JPY", "CNY", "USD"],
                   "csrf_token": "synthetic", "csrf_field": '<input name="csrf_token" type="hidden" value="synthetic">',
                   "asset_version": "preflight", "request": {"query_params": {}}, "status_filter": ""}
-    if kind == "rate":
-        return _rate_definition(common, scope, key, 2 if HITS[kind] == 1 else 9)
-    if kind in {"rule-create", "rule-edit"}:
-        return _rule_definition(kind, common, scope, key)
+    renderer = {"rate": _rate_definition, "rule-create": _rule_definition, "rule-edit": _rule_definition}.get(kind)
+    if renderer:
+        return renderer(kind, common, scope, key)
     if kind.startswith("catalog-"):
         command = kind.removeprefix("catalog-")
         item = {"public_id": "merchant-original", "display_name": "原商家", "status": "active", "row_version": 7}
@@ -214,6 +214,23 @@ def _merchant_receipt(path, values, result):
             "created_alias_public_id": "original-alias" if values["alias_policy"] == "create_source_alias" else None}
 
 
+def _planning_receipt(path, values, result):
+    if path == "/web/budget-advise/rates":
+        result["receipt"].update(**{name: values[name] for name in ("currency_code", "home_currency_code", "rate_date", "rate_to_cny")},
+            row_version=int(values["expected_row_version"]) + 1)
+        result["next"] = "/web/reports?" + urlencode({name: values[name] for name in
+            ("ledger_id", "month", "home_currency_code", "granularity", "ranking_metric", "merchant_category")})
+    if path == "/web/recurring/confirm-candidate":
+        result["receipt"].update(source="candidate", status="active", row_version=1,
+            home_currency_code=values["home_currency_code"], baseline_amount_cents=int(values["amount_cents"]),
+            next_expected_date=values["next_expected_date"] or None)
+    if path.endswith("/occurrence"):
+        result["receipt"].update(series_public_id=values["public_id"], period=values["month"],
+            row_version=int(values["expected_row_version"]) + 1,
+            expense_public_id=None if values["action"] == "clear" else values["expense_public_id"])
+        result["next"] = path + "?ledger_id=owner&month=" + values["month"]
+
+
 class RecoveryHandler(Handler):
     def do_GET(self):
         path = urlsplit(self.path).path
@@ -248,24 +265,11 @@ class RecoveryHandler(Handler):
             "receipt": {"public_id": values.get("public_id") or "00000000-0000-0000-0000-000000000001",
                 "kind": values.get("kind"), "month": values.get("month"), "row_version": 8},
             "next": destination + "?ledger_id=owner"}
-        if self.path == "/web/budget-advise/rates":
-            result["receipt"].update(**{name: values[name] for name in ("currency_code", "home_currency_code", "rate_date", "rate_to_cny")},
-                row_version=int(values["expected_row_version"]) + 1)
-            result["next"] = "/web/reports?" + urlencode({name: values[name] for name in
-                ("ledger_id", "month", "home_currency_code", "granularity", "ranking_metric", "merchant_category")})
         if self.path.startswith("/web/rules/"):
             result["receipt"] = {"id": int(values["rule_id"] or "43"), "row_version": int(values["expected_row_version"]) + 1 if values["rule_id"] else 1,
                 "keyword": values["keyword"].strip(), "category": values["category"].strip()}
             result["next"] = "/web/rules?ledger_id=owner"
-        if self.path == "/web/recurring/confirm-candidate":
-            result["receipt"].update(source="candidate", status="active", row_version=1,
-                home_currency_code=values["home_currency_code"], baseline_amount_cents=int(values["amount_cents"]),
-                next_expected_date=values["next_expected_date"] or None)
-        if self.path.endswith("/occurrence"):
-            result["receipt"].update(series_public_id=values["public_id"], period=values["month"],
-                row_version=int(values["expected_row_version"]) + 1,
-                expense_public_id=None if values["action"] == "clear" else values["expense_public_id"])
-            result["next"] = self.path + "?ledger_id=owner&month=" + values["month"]
+        _planning_receipt(self.path, values, result)
         if self.path.startswith("/web/merchants/"):
             _merchant_receipt(self.path, values, result)
         return self.reply(json.dumps(result), "application/json")

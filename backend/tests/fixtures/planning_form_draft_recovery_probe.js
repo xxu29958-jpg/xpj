@@ -4,8 +4,10 @@
     for (let n=0; n<160; n++) { if (check()) return; await pause(25); }
     throw Error(label);
   }
-  async function load(frame, url) {
-    const ready = new Promise(resolve => frame.onload=resolve); frame.src=url; await ready;
+  async function load(frame, url, reload = false) {
+    const ready = new Promise(resolve => frame.onload=resolve);
+    if (reload) frame.contentWindow.location.reload(); else frame.src=url;
+    await ready;
   }
   const specs = [
     {kind:"budget", family:"budget", action:"/web/budgets/save", fields:{total_amount_yuan:"009876", rollover_amount_yuan:"-0020", non_monthly_amount_yuan:"0050"}},
@@ -58,10 +60,7 @@
     await until(()=>form.dataset[spec.family+"DraftPhase"]==="blocked" && !submit(form).disabled,"unknown receipt did not retain original");
     if (!form.querySelector("[data-"+spec.family+"-review]").hidden) throw Error("Unknown original must not offer a replacement key");
     const original=JSON.parse(localStorage.getItem(storageKey));
-    if (spec.kind === "rate") {
-      const reloaded = new Promise(resolve => frame.onload = resolve);
-      frame.contentWindow.location.reload(); await reloaded;
-    } else await load(frame,url);
+    await load(frame,url,spec.kind === "rate");
     await until(ready,"reopened original unavailable: "+spec.kind);
     form=getForm();
     const frozen=Object.keys(spec.fields).every(name=>form.elements.namedItem(name).readOnly || form.elements.namedItem(name).disabled);
