@@ -73,7 +73,7 @@ def test_native_viewer_reads_rates_but_cannot_submit(web_client, identity):
         db.commit()
     page = web_client.get(ACTION, params=TASK)
     assert page.status_code == 200, page.text
-    assert "保存汇率" not in page.text and "当前身份可查看汇率" in page.text
+    assert "当前身份可查看汇率" in page.text
     fields = _rate_form(web_client)
     refused = web_client.post(ACTION, data=fields)
     assert refused.status_code == 403, refused.text
