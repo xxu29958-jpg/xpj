@@ -326,6 +326,8 @@
           if (generation !== opening) return;
           clearTaskAnchor();
           drawer.innerHTML = html;
+          const form = drawer.querySelector("[data-drawer-form]");
+          if (form) form.dataset.expensereviewNewDraft = "true";
           bindFragment();
           resyncRowConsumers();
           focusDrawer();

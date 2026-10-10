@@ -188,7 +188,7 @@ def test_household_can_plan_income_and_spending_then_revise_without_creating_fin
     browser, goal_action, goal_fields, scope, origin = _original(installed_goal_browser, "create")
     headers = {**origin, "Accept": "application/json"}
     income_action = "/web/income-plans/create"
-    income_page = browser.get("/web/income-plans")
+    income_page = browser.get("/web/income-plans?new_income=1")
     assert income_page.status_code == 200, income_page.text
     income_fields = {**hidden_post_forms(income_page.text)[income_action], "label": "家庭工资预测",
         "amount_yuan": "5000.00", "source_type": "salary", "frequency": "monthly", "pay_day": "31"}
@@ -234,6 +234,7 @@ def _assert_household_forecast(browser, ledger_id, month, amount, display):
     page = browser.get("/web/income-plans")
     assert page.status_code == 200, page.text
     summary = re.search(r'<section[^>]+aria-label="本月预计收入"[^>]*>(.*?)</section>', page.text, re.S)
-    assert summary and display in summary.group(1) and "不代表实际到账或账户余额" in summary.group(1)
+    assert summary and display in summary.group(1)
+    assert "不代表实际到账或账户余额" in page.text
     with SessionLocal() as db:
         assert income_forecast(db, tenant_id=ledger_id, month=month).expected_amount_cents == amount

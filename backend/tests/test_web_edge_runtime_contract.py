@@ -188,6 +188,7 @@ def test_income_create_original_form_draft_survives_refresh_in_real_edge(tmp_pat
                          "income_month_number": "10" if refreshed else "9"}
                 body = template.render(
                     can_write=True, plans_active=[], plans_archived=[], selected_ledger_id=scope["ledgerId"],
+                    income_creating=parse_qs(urlsplit(self.path).query).get("new_income") == ["1"],
                     income_draft_scope=scope, income_form_draft=draft, income_form_error=None,
                     income_form_review=False, income_year_options=[2025, 2026, 2027, 2028],
                     income_default_year="2026", income_default_month=draft["income_month_number"],
@@ -269,6 +270,7 @@ def test_income_create_original_form_draft_survives_refresh_in_real_edge(tmp_pat
                 "intent_month": "2026-09", "home_currency_code": "JPY", "idempotency_key": "19793a9e-7861-4c02-ae44-1cb35c5a1cdd"}
     assert probe["before"]["fields"] == expected, probe
     assert probe["after"]["fields"] == expected, f"refresh replaced unsent original income draft: {probe}"
+    assert probe["resumed"]["fields"] == expected, f"list resumption replaced the original income draft: {probe}"
     assert probe["after"]["hash"] == probe["before"]["hash"], probe
     assert probe["after"]["navigationType"] == "reload", probe
     assert probe["after"]["amountLabel"] == "预计金额（JPY）", probe
@@ -283,14 +285,8 @@ def test_income_create_original_form_draft_survives_refresh_in_real_edge(tmp_pat
     assert probe["unknown"]["record"]["phase"] == "blocked", probe
     assert probe["duplicate"]["submitDisabled"] is True, probe
     assert probe["duplicate"]["record"] == probe["unknown"]["record"], probe
-    assert probe["completed"] == {"originalRemoved": True, "newFormAvailable": True,
-                                  "newKey": "aa740c64-6e8d-45e8-80fd-5dd26a2f7126",
+    assert probe["completed"] == {"originalRemoved": True, "listHasCreateForm": False,
                                   "location": "/web/income-plans?ledger_id=income-ledger", "hash": ""}, probe
-    assert requests[2:] == [
-        {"currency": "CNY", "month": "2026-10", "key": "aa740c64-6e8d-45e8-80fd-5dd26a2f7126"},
-        {"currency": "CNY", "month": "2026-10", "key": "aa740c64-6e8d-45e8-80fd-5dd26a2f7126"},
-        {"currency": "CNY", "month": "2026-10", "key": "aa740c64-6e8d-45e8-80fd-5dd26a2f7126"},
-    ], requests
     assert len(posts) == 3, posts
     assert posts[0] == posts[1], posts
     for name, value in submitted.items():

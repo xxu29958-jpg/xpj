@@ -1133,6 +1133,49 @@ def test_actual_review_browser_resolves_original_action_before_starting_next_com
         assert current.status == "confirmed" and current.merchant == "浏览器原填写"
 
 
+@pytest.mark.parametrize("drawer", [False, True])
+def test_explicit_latest_bill_load_uses_current_fields_while_retaining_original_task(
+    review_browser, confirmation_store, monkeypatch, tmp_path, drawer,
+):
+    client, _ = review_browser
+    monkeypatch.setattr(_web_expense_helpers, "expense_fx_view", lambda *a, **k: {
+        "state": "completed", "can_request": False, "current": {"original_currency_code": "CNY"}})
+    client.app.state.expense_review_probe = "latest-review-probe.js"
+    with Session(confirmation_store) as db:
+        row = db.get(Expense, 42)
+        money_before = (row.amount_cents, row.original_amount_minor, row.original_currency_code, row.status)
+
+    @client.app.get("/latest-review-probe.js")
+    def probe():
+        return FileResponse(Path(__file__).parent / "fixtures/expense_review_latest_probe.js", media_type="text/javascript")
+
+    @client.app.get("/web/latest-review-probe")
+    def driver():
+        return Response('<html><head><meta charset="utf-8"></head><body></body></html>', media_type="text/html")
+
+    @client.app.post("/probe-latest-bill")
+    def current_bill():
+        with Session(confirmation_store) as db:
+            row = db.get(Expense, 42)
+            row.row_version, row.merchant = 5, "服务器当前商家"
+            db.commit()
+        return {"changed": True}
+
+    result = _run_review_page(client, tmp_path, f"/web/latest-review-probe?drawer={str(drawer).lower()}", width=1440 if drawer else 393)
+    assert not result["error"], result
+    assert result["before"]["amount_yuan"] == "29.00" and result["before"]["expected_row_version"] == "4"
+    assert result["after"]["amount_yuan"] == result["saved"]["amount_yuan"]
+    assert result["after"]["merchant"] == "服务器当前商家" and result["after"]["expected_row_version"] == "5"
+    assert result["after"]["draft_ref"] != result["saved"]["draft_ref"]
+    assert result["retained"]["values"]["amount_yuan"] == "29.00"
+    assert result["retained"]["values"]["expected_row_version"] == "4"
+    with Session(confirmation_store) as db:
+        row = db.get(Expense, 42)
+        assert row.row_version == 5 and row.merchant == "服务器当前商家"
+        assert (row.amount_cents, row.original_amount_minor, row.original_currency_code, row.status) == money_before
+        assert not db.scalars(select(ApiIdempotencyKey)).all()
+
+
 def test_fx_action_checks_original_binding_and_keeps_inputs_and_confirmation_basis(review_browser, confirmation_store, monkeypatch):
     client, scope = review_browser
 

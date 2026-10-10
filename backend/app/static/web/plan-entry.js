@@ -42,7 +42,8 @@
     const label = shelf.querySelector("p"), originalLabel = label.textContent;
     const render = () => {
       try {
-        showShelf(shelf, definition, scope, stores, record => definition.href(record, scope));
+        showShelf(shelf, definition, scope, stores, record => definition.href ?
+          definition.href(record, scope) : retainedPlanHref(record, definition, scope));
         label.textContent = originalLabel;
       } catch (_) {
         shelf.hidden = false;
@@ -52,6 +53,17 @@
     render();
     window.addEventListener("pageshow", render);
     window.addEventListener("storage", render);
+  }
+  function retainedPlanHref(record, definition, scope) {
+    const saved = record.values, family = definition.family;
+    const next = new URL(definition.list + (saved.public_id ? "/" + encodeURIComponent(saved.public_id) + "/edit" : ""), window.location.href);
+    next.searchParams.set("ledger_id", scope.ledgerId);
+    for (const name of family === "goal" ? ["month", "return_category", "return_month"] : ["intent_month"]) {
+      if (saved[name]) next.searchParams.set(name, saved[name]);
+    }
+    if (family === "income" && !saved.public_id) next.searchParams.set("new_income", "1");
+    next.hash = family + (saved.public_id ? "-edit-" : "-create-") + record.clientRef;
+    return next.href;
   }
   function mount(form, definition) {
     const family = definition.family;
@@ -112,14 +124,7 @@
     }
     function recordHref(record) {
       if (definition.href) return definition.href(record, scope, form);
-      const saved = record.values;
-      const next = new URL(listPath + (saved.public_id ? "/" + encodeURIComponent(saved.public_id) + "/edit" : ""), window.location.href);
-      next.searchParams.set("ledger_id", scope.ledgerId);
-      for (const name of isGoal ? ["month", "return_category", "return_month"] : ["intent_month"]) {
-        if (saved[name]) next.searchParams.set(name, saved[name]);
-      }
-      next.hash = family + (saved.public_id ? "-edit-" : "-create-") + record.clientRef;
-      return next.href;
+      return retainedPlanHref(record, definition, scope);
     }
     function values() {
       return {...(definition.read ? definition.read(form) : Object.fromEntries(names.map(name => [name, field(name)?.value || ""]))),
@@ -324,7 +329,11 @@
           throw Error("original_changed");
         }
         accepted = true; controls();
-        window.location.assign(freshHref());
+        const next = new URL(freshHref());
+        if (next.pathname === window.location.pathname && next.search === window.location.search) {
+          window.history.replaceState(window.history.state, "", next.href);
+          window.location.reload();
+        } else window.location.assign(next.href);
       } catch (_) { notice("原稿未能移除，请保留页面并检查浏览器存储。"); }
     });
     function allowNativeSubmission(submitter) {
@@ -467,6 +476,15 @@
   }
   window.TicketboxPlanEntry = {mount, mountShelf};
   for (const [family, definition] of Object.entries(definitions)) {
-    document.querySelectorAll("[data-" + family + "-draft-scope]").forEach(form => mount(form, {...definition, family}));
+    const forms = document.querySelectorAll("[data-" + family + "-draft-scope]");
+    forms.forEach(form => mount(form, {...definition, family}));
+    const shelf = document.querySelector("[data-" + family + "-draft-shelf][data-draft-scope]");
+    if (!forms.length && shelf) {
+      if (family === "income" && window.location.hash.startsWith("#income-create-")) {
+        const next = new URL(window.location.href);
+        next.searchParams.set("new_income", "1");
+        window.location.replace(next.href);
+      } else mountShelf(shelf, {...definition, family}, JSON.parse(shelf.dataset.draftScope));
+    }
   }
 })(window, document);

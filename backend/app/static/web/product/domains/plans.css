@@ -49,12 +49,26 @@
         minmax(0, 1.2fr);
 }
 
-.plan-workspace--single,
-.income-workspace.income-workspace--single {
+.plan-workspace--single {
     grid-template-columns: minmax(0, 1fr);
 }
 
-.plan-income-hero,
+.plan-income-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-4);
+    padding: var(--space-7);
+    container-type: inline-size;
+    background: var(--brand-primary-bg);
+    border-color: transparent;
+    box-shadow: none;
+}
+
+.plan-income-hero .plan-income-value {
+    font-size: clamp(var(--type-title-size), 13cqi, var(--type-display-size));
+    overflow-wrap: anywhere;
+}
+
 .plan-discretionary {
     display: flex;
     align-items: flex-end;
@@ -63,7 +77,6 @@
     margin-block-end: var(--space-6);
 }
 
-.plan-income-hero > div,
 .plan-discretionary > div:first-child {
     display: grid;
     flex: 0 0 auto;
@@ -91,7 +104,23 @@
     font-size: var(--type-caption-size);
 }
 
-.income-workspace,
+.income-row-heading {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+}
+
+.income-row-heading > div {
+    display: grid;
+    gap: var(--space-2);
+}
+
+.income-editor form:has([name="frequency"] option[value="monthly"]:checked) [data-income-one-time] {
+    display: none;
+}
+
 .advice-workspace {
     display: grid;
     grid-template-columns:
@@ -283,7 +312,6 @@
         grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 
-    .income-workspace,
     .advice-workspace {
         grid-template-columns: minmax(0, 1fr);
     }
@@ -299,7 +327,6 @@
         border-block-end: 1px solid var(--border-card);
     }
 
-    .plan-income-hero,
     .plan-discretionary,
     .advice-summary {
         align-items: stretch;
@@ -857,21 +884,6 @@ fieldset.budget-excluded .hint {
     --progress-fill: var(--state-success-fg);
 }
 
-/* 收入页工作区翻转: 在用列表宽左, 添加表单窄右 (≤64rem 收单列 — 与通用
-   .income-workspace 收列同档, 本规则须在翻转之后保持源码序, 否则等权重下
-   翻转会盖掉收列, 把列表列压成 0)。 */
-.income-workspace--list-first {
-    grid-template-columns:
-        minmax(0, 1.2fr)
-        minmax(calc(var(--space-12) * 5), .8fr);
-}
-
-@media (max-width: 64rem) {
-    .income-workspace--list-first {
-        grid-template-columns: minmax(0, 1fr);
-    }
-}
-
 /* ── 固定支出 ────────────────────────────────────────────────────────────── */
 /* hero 只有两格真实事实, 不留空第三列。 */
 .recurring-metrics--duo {
@@ -992,7 +1004,9 @@ fieldset.budget-excluded .hint {
     gap: var(--space-2);
 }
 
-.recurring-editor .budget-actions {
+.recurring-editor .budget-actions,
+.income-page > .budget-actions,
+.income-editor .budget-actions {
     flex-direction: column;
     align-items: stretch;
 }

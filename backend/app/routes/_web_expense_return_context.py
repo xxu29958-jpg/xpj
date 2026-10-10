@@ -491,9 +491,11 @@ def confirm_return_redirect(
 def edit_navigation_view(context: ExpenseReturnContext, *, expense_id: int, ledger_id: str) -> dict:
     """Project one validated origin into the form fields and both navigation links."""
     params = context.as_kwargs()
+    current_href = flow_href(f"/web/expenses/{expense_id}/edit", ledger_id=ledger_id, **params)
     return {
         "edit_return_fields": edit_context_params(**params),
-        "edit_current_href": flow_href(f"/web/expenses/{expense_id}/edit", ledger_id=ledger_id, **params),
+        "edit_current_href": current_href,
+        "edit_reload_href": current_href + "&new_expensereview=1",
         "edit_return_href": return_href(ledger_id=ledger_id, default_path="/web/pending", **params),
         "edit_return_label": "返回原核对任务" if _review_origin(params) else "返回确认回执" if _receipt_origin(params) else return_label(context.return_to),
         "expense_review_inspection": bool(_review_origin(params)),

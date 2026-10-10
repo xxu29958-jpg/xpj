@@ -26,7 +26,7 @@ from tests._web_native_form_support import hidden_post_forms
 
 def _create_income(client, *, data, follow_redirects=False):
     action = "/web/income-plans/create"
-    page = client.get("/web/income-plans", params={"ledger_id": data.get("ledger_id", "owner")})
+    page = client.get("/web/income-plans", params={"ledger_id": data.get("ledger_id", "owner"), "new_income": "1"})
     assert page.status_code == 200, page.text
     fields = hidden_post_forms(page.text)[action]
     return client.post(action, data={**fields, **data}, follow_redirects=follow_redirects)

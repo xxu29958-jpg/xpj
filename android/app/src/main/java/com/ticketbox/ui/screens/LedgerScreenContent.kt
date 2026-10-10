@@ -104,28 +104,7 @@ private fun LedgerPrimaryPane(
             onRefresh = actions.onSync,
         ),
     ) {
-        actions.onBack?.let { onBack ->
-            item {
-                AppSecondaryPageHeader(
-                    title = stringResource(R.string.calendar_review_dates),
-                    subtitle = null,
-                    backText = stringResource(R.string.calendar_review_back),
-                    onBack = onBack,
-                )
-            }
-        }
-        item {
-            if (contentModel.showSupportingPane) {
-                LedgerHeader(state = state)
-            } else {
-                LedgerTopChrome(
-                    state = state,
-                    actions = actions,
-                    chromeState = chromeState,
-                    showSummaryHeader = true,
-                )
-            }
-        }
+        ledgerPrimaryChrome(state, actions, chromeState, contentModel.showSupportingPane)
         val authorityTone = ledgerAuthorityTone(state)
         if (!contentModel.showSupportingPane && (ledgerStatusVisible(state, authorityTone) || chromeState.lastManualCreation != null)) {
             item {
@@ -155,6 +134,36 @@ private fun LedgerPrimaryPane(
             foldState = contentModel.foldState,
             compactDayGroups = contentModel.compactDayGroups,
         )
+    }
+}
+
+private fun LazyListScope.ledgerPrimaryChrome(
+    state: LedgerUiState,
+    actions: LedgerScreenActions,
+    chromeState: LedgerScreenChromeState,
+    showSupportingPane: Boolean,
+) {
+    actions.onBack?.let { onBack ->
+        item {
+            AppSecondaryPageHeader(
+                title = stringResource(R.string.calendar_review_dates),
+                subtitle = null,
+                backText = stringResource(R.string.calendar_review_back),
+                onBack = onBack,
+            )
+        }
+    }
+    item {
+        if (showSupportingPane) {
+            LedgerHeader(state = state)
+        } else {
+            LedgerTopChrome(
+                state = state,
+                actions = actions,
+                chromeState = chromeState,
+                showSummaryHeader = true,
+            )
+        }
     }
 }
 

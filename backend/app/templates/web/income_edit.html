@@ -2,6 +2,9 @@
 {% from "_income_source_types.html" import source_type_labels %}
 {% set page_title = '编辑收入计划' %}
 {% set product_body_domain = 'plans' %}
+{% set page_surface = 'tertiary' %}
+{% set task_return_href = '/web/income-plans?ledger_id=' ~ (selected_ledger_id|urlencode) ~ '#income-' ~ plan.public_id %}
+{% set task_return_label = '收入计划' %}
 {% block title %}编辑收入计划 · 小票夹{% endblock %}
 {% block page_scripts %}
 {% if income_draft_scope %}
@@ -16,14 +19,12 @@
     <h1 class="page-title">编辑收入计划</h1>
     <p class="product-page-summary">核对计划和生效月份后发布修改，已有版本保留。计划不代表实际到账。</p>
   </div>
-  <a class="product-button product-button--quiet" href="/web/income-plans?ledger_id={{ selected_ledger_id }}">返回收入计划</a>
 </header>
-<div class="plan-flow">
+<div class="plan-flow income-editor">
   {% if error %}<div class="product-feedback product-feedback--danger" role="alert">{{ error }}</div>{% endif %}
   {% if can_write is defined and not can_write %}<div class="product-feedback" role="status">当前角色为只读，可以核对计划；已保留的原修改可在权限恢复后继续。</div>{% endif %}
   {% if plan.status == 'archived' %}<div class="product-feedback" role="status">计划已归档。请返回收入计划恢复后再修改。</div>{% endif %}
-  <section class="product-panel product-panel--padded" aria-label="编辑收入计划">
-    <h2 class="product-panel-title">计划设置</h2>
+  <section aria-label="编辑收入计划">
     {% if income_draft_scope %}<div data-income-draft-shelf hidden><p class="meta">此浏览器保留的收入任务</p><ul data-income-draft-list></ul></div>{% endif %}
     <form method="post" action="/web/income-plans/{{ plan.public_id }}/edit" class="budget-form"
       {% if income_draft_scope %}data-income-draft-scope="{{ income_draft_scope | tojson | forceescape }}"
@@ -56,7 +57,7 @@
             <option value="monthly" {% if values.frequency == 'monthly' %}selected{% endif %}>每月固定</option>
           </select>
         </div>
-        <div class="product-field">
+        <div class="product-field" data-income-one-time>
           <label for="income-edit-month">预计月份（单次计划填写）</label>
           <input id="income-edit-month" class="product-input" type="month" name="income_month" value="{{ values.income_month }}" aria-describedby="income-edit-month-impact">
           <p id="income-edit-month-impact" class="hint">单次计划影响所选预计月份；修改月份会同时更正原月份和新月份的预测。</p>

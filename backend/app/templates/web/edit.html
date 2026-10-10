@@ -78,7 +78,7 @@
         {% if not expense_review_inspection %}{% include "_expense_review_draft.html" %}{% endif %}
 
         {% set core_fields_prefix = 'expense-' ~ e.id %}
-        {% set core_fields_reload_href = edit_current_href %}
+        {% set core_fields_reload_href = edit_reload_href %}
         {% set core_fields_compact = true %}
         {% set core_fields_subtasks = true %}
         {% set core_fields_subtask_href = '' %}
