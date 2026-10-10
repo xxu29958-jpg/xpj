@@ -91,9 +91,9 @@
         next.searchParams.set("ledger_id", scope.ledgerId);
         for (const name of ["month", "return_category", "return_month", "status"]) if (values[name]) next.searchParams.set(name, values[name]);
         if (family === "recurring") {
-          const current = new URL(window.location.href);
+          const navigation = currentForm ? new window.FormData(currentForm) : new URL(window.location.href).searchParams;
           for (const name of ["month", "status"]) {
-            const value = currentForm ? field(currentForm, name)?.value : current.searchParams.get(name);
+            const value = navigation.get(name);
             if (value) next.searchParams.set(name, value);
           }
           if (!values.public_id) next.searchParams.set("new_recurring", "1");
