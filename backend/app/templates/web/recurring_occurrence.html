@@ -24,7 +24,7 @@
 {% block content %}
 <header class="product-page-header">
   <div class="product-page-heading">
-    <a href="/web/recurring?ledger_id={{ selected_ledger_id }}">固定支出</a>
+    <a href="/web/recurring?ledger_id={{ selected_ledger_id|urlencode }}&amp;month={{ occurrence.period|urlencode }}">固定支出</a>
     <h1 class="page-title">{{ item.merchant_name }}</h1>
     <p class="product-page-summary">{{ occurrence.period }} · 当前预计 {{ occurrence.home_currency_code or '' }} {{ planned_amount }} · 当前预留 {{ occurrence.home_currency_code or '' }} {{ reserved_amount }}</p>
   </div>

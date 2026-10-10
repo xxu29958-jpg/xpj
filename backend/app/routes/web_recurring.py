@@ -7,6 +7,7 @@ Routes and page assembly only. Pure presenter/form helpers live in
 from __future__ import annotations
 
 import logging
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -80,6 +81,13 @@ router.include_router(occurrences_router)
 
 _STALE_PAGE_FLASH = "页面已过期，请刷新后重新操作。"
 _VALID_STATUS_FILTERS = {"active", "paused", "archived"}
+
+
+def _lifecycle_redirect(selected_id: str, public_id: str, month: str, *,
+                        status: str = "", flash: str = "", error: str = "") -> RedirectResponse:
+    href = _with_ledger("/web/recurring", selected_id, month=month, status=status, flash=flash,
+        error=error, edit=public_id if error else "", result_item=public_id)
+    return RedirectResponse(href + "#item-" + quote(public_id, safe=""), status_code=303)
 
 
 def _conflict_kwargs(exc: AppError, *, selected_id: str, merchant: str | None = None) -> dict:
@@ -215,6 +223,7 @@ def web_recurring(
     ledger_id: str | None = None,
     status: str | None = None,
     flash: str | None = None,
+    error: str | None = None,
     review: str | None = None,
     edit: str | None = None,
     _local: None = LocalOnly,
@@ -229,6 +238,7 @@ def web_recurring(
         options=options,
         status=status,
         flash_message=flash,
+        error_message=error,
         review_merchant=(review or "").strip() or None,
         open_edit_id=edit,
     )
@@ -430,6 +440,7 @@ def web_recurring_pause(
     public_id: str,
     ledger_id: str = Form(default=""),
     expected_row_version: str = Form(default=""),
+    month: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
@@ -438,15 +449,16 @@ def web_recurring_pause(
     _require_selected_ledger_write(options, selected_id)
     parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
-        return _web_redirect("/web/recurring", selected_id, flash=_STALE_PAGE_FLASH)
+        return _lifecycle_redirect(selected_id, public_id, month, error=_STALE_PAGE_FLASH)
     try:
         pause_recurring_item(db, tenant_id=selected_id, public_id=public_id, expected_row_version=parsed,
             actor_account_id=resolve_web_actor_account_id(db, request, selected_id))
     except AppError as exc:
         if exc.error == "state_conflict":
-            return _web_redirect("/web/recurring", selected_id, flash=_STALE_PAGE_FLASH)
+            return _lifecycle_redirect(selected_id, public_id, month, error=_STALE_PAGE_FLASH)
         raise
-    return _web_redirect("/web/recurring", selected_id)
+    return _lifecycle_redirect(selected_id, public_id, month, status="paused",
+        flash="固定支出已暂停，定义和已有付款关联仍保留。")
 
 
 @router.post("/{public_id}/resume", response_class=HTMLResponse)
@@ -455,6 +467,7 @@ def web_recurring_resume(
     public_id: str,
     ledger_id: str = Form(default=""),
     expected_row_version: str = Form(default=""),
+    month: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
@@ -463,15 +476,15 @@ def web_recurring_resume(
     _require_selected_ledger_write(options, selected_id)
     parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
-        return _web_redirect("/web/recurring", selected_id, flash=_STALE_PAGE_FLASH)
+        return _lifecycle_redirect(selected_id, public_id, month, error=_STALE_PAGE_FLASH)
     try:
         resume_recurring_item(db, tenant_id=selected_id, public_id=public_id, expected_row_version=parsed,
             actor_account_id=resolve_web_actor_account_id(db, request, selected_id))
     except AppError as exc:
         if exc.error == "state_conflict":
-            return _web_redirect("/web/recurring", selected_id, flash=_STALE_PAGE_FLASH)
+            return _lifecycle_redirect(selected_id, public_id, month, error=_STALE_PAGE_FLASH)
         raise
-    return _web_redirect("/web/recurring", selected_id)
+    return _lifecycle_redirect(selected_id, public_id, month, status="active", flash="固定支出已恢复为活跃。")
 
 
 @router.post("/{public_id}/archive", response_class=HTMLResponse)
@@ -479,6 +492,7 @@ def web_recurring_archive(
     request: Request,
     public_id: str,
     ledger_id: str = Form(default=""),
+    month: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
@@ -487,7 +501,8 @@ def web_recurring_archive(
     _require_selected_ledger_write(options, selected_id)
     archive_recurring_item(db, tenant_id=selected_id, public_id=public_id,
         actor_account_id=resolve_web_actor_account_id(db, request, selected_id))
-    return _web_redirect("/web/recurring", selected_id)
+    return _lifecycle_redirect(selected_id, public_id, month, status="archived",
+        flash="固定支出已归档，历史和已有付款关联仍保留。")
 
 
 @router.post("/{public_id}/restore", response_class=HTMLResponse)
@@ -496,6 +511,7 @@ def web_recurring_restore(
     public_id: str,
     ledger_id: str = Form(default=""),
     expected_row_version: str = Form(default=""),
+    month: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
@@ -505,15 +521,15 @@ def web_recurring_restore(
     _require_selected_ledger_write(options, selected_id)
     parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
-        return _web_redirect("/web/recurring", selected_id, flash=_STALE_PAGE_FLASH)
+        return _lifecycle_redirect(selected_id, public_id, month, error=_STALE_PAGE_FLASH)
     try:
         restore_recurring_item(db, tenant_id=selected_id, public_id=public_id, expected_row_version=parsed,
             actor_account_id=resolve_web_actor_account_id(db, request, selected_id))
     except AppError as exc:
         if exc.error == "state_conflict":
-            return _web_redirect("/web/recurring", selected_id, flash=_STALE_PAGE_FLASH)
+            return _lifecycle_redirect(selected_id, public_id, month, error=_STALE_PAGE_FLASH)
         raise
-    return _web_redirect("/web/recurring", selected_id, flash="已恢复为活跃。")
+    return _lifecycle_redirect(selected_id, public_id, month, status="active", flash="已恢复为活跃。")
 
 
 @router.get("/{public_id}/history", response_class=HTMLResponse)

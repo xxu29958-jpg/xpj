@@ -21,7 +21,7 @@ def native_inbox_filters(j):
     j.native.click_counted_tab("全部")
     wait_for(lambda: not j.native.has(empty) and j.native.has("18.51"),
              "The user could not return from the empty filter to the original pending bill")
-    for action, destination in (("还款复核", "还款采集"), ("数据质量", "检查当前账本的待确认、分类完整性与凭证状态。")):
+    for action, destination in (("还款复核", "还款采集"), ("数据体检", "从原记录补齐信息，再刷新统计。")):
         j.native.click("收件工具")
         j.native.capture("inbox-tools")
         j.native.click(action)

@@ -41,6 +41,11 @@ def test_native_recurring_history_entry_keeps_reader_access_and_original_editor(
         assert fields["csrf_token"] == "original-csrf" and fields["home_currency_code"] == "JPY"
         assert 'name="baseline_amount_yuan"' in body and 'value="001200"' in body
         assert 'value="原未保存名称"' in body
+        actions = hidden_post_forms(body)
+        for action in ('pause', 'resume', 'archive', 'restore'):
+            fields = actions.get(f'/web/recurring/series-one/{action}')
+            if fields is not None:
+                assert fields['month'] == '2026-05'
     else:
         assert 'action="/web/recurring/series-one/edit"' not in body
 
@@ -62,6 +67,7 @@ def occurrence_context(recorded=True):
 def test_occurrence_does_not_present_current_plan_as_the_unknown_original_definition(recorded):
     body = templates.get_template("recurring_occurrence.html").render(**occurrence_context(recorded))
     assert "当前预计" in body and "当前预留" in body
+    assert '/web/recurring?ledger_id=owner&amp;month=2026-05' in body
     if recorded:
         assert "本期首次关联所据定义" in body and "原日元定义" in body and "JPY 1200" in body
         assert "不代表该账务月生效" in body and "记录保存时间" in body
@@ -178,7 +184,9 @@ def test_recurring_history_other_ledger_and_missing_currency_are_not_reconstruct
     ("resume","resume_recurring_item"), ("archive","archive_recurring_item"), ("restore","restore_recurring_item")])
 def test_recurring_web_commands_pass_only_the_original_authenticated_actor(history_reader, monkeypatch, action, owner):
     import json
+    from urllib.parse import parse_qs, urlsplit
 
+    from app.errors import AppError
     from app.routes import web_recurring as route
     from app.services import manual_expense_draft_presenter as drafts
 
@@ -191,7 +199,7 @@ def test_recurring_web_commands_pass_only_the_original_authenticated_actor(histo
     url = "/web/recurring/" + (action if action in {"create","confirm-candidate"} else "series-one/"+action)
     body = {"ledger_id":"owner", "merchant":"原计划", "baseline_amount_yuan":"1200", "home_currency_code":"JPY",
         "next_expected_date":"2026-05-08", "expected_row_version":"7", "idempotency_key":"original-key",
-        "amount_cents":"1200", "actor_account_id":"999", "draft_scope":json.dumps(scope)}
+        "amount_cents":"1200", "actor_account_id":"999", "draft_scope":json.dumps(scope), "month":"2026-05"}
     result = client.post(url,data=body,follow_redirects=False)
     assert result.status_code == 303 and len(captured)==1
     assert captured[0]["tenant_id"] == "owner" and captured[0]["actor_account_id"] == 42
@@ -199,6 +207,23 @@ def test_recurring_web_commands_pass_only_the_original_authenticated_actor(histo
         assert captured[0]["idempotency_key"] == "original-key"
     if action in {"edit","pause","resume","restore"}:
         assert captured[0]["expected_row_version"] == 7
+    if action in {"pause", "resume", "archive", "restore"}:
+        location = urlsplit(result.headers['location'])
+        returned = parse_qs(location.query)
+        assert returned['month'] == ['2026-05']
+        assert returned['status'] == [{'pause':'paused', 'resume':'active', 'archive':'archived', 'restore':'active'}[action]]
+        assert returned['flash'] and location.fragment == 'item-series-one'
+        assert 'month' not in captured[0], 'Navigation context must not change the definition command'
+    if action in {"pause", "resume", "restore"}:
+        def conflict(db, **kw):
+            raise AppError('state_conflict', status_code=409)
+        monkeypatch.setattr(route, owner, conflict)
+        refused = client.post(url, data=body, follow_redirects=False)
+        location = urlsplit(refused.headers['location'])
+        returned = parse_qs(location.query)
+        assert returned['month'] == ['2026-05'] and returned['edit'] == ['series-one']
+        assert returned['error'] == ['页面已过期，请刷新后重新操作。'] and 'flash' not in returned
+        assert location.fragment == 'item-series-one'
     state["role"] = "viewer"
     assert client.post(url,data=body,follow_redirects=False).status_code == 403 and len(captured)==1
 

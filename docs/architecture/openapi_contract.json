@@ -6262,6 +6262,11 @@
             "default": "",
             "title": "Ledger Id",
             "type": "string"
+          },
+          "month": {
+            "default": "",
+            "title": "Month",
+            "type": "string"
           }
         },
         "title": "Body_web_recurring_archive_web_recurring__public_id__archive_post",
@@ -6408,6 +6413,11 @@
             "default": "",
             "title": "Ledger Id",
             "type": "string"
+          },
+          "month": {
+            "default": "",
+            "title": "Month",
+            "type": "string"
           }
         },
         "title": "Body_web_recurring_pause_web_recurring__public_id__pause_post",
@@ -6424,6 +6434,11 @@
             "default": "",
             "title": "Ledger Id",
             "type": "string"
+          },
+          "month": {
+            "default": "",
+            "title": "Month",
+            "type": "string"
           }
         },
         "title": "Body_web_recurring_restore_web_recurring__public_id__restore_post",
@@ -6439,6 +6454,11 @@
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",
+            "type": "string"
+          },
+          "month": {
+            "default": "",
+            "title": "Month",
             "type": "string"
           }
         },
@@ -59004,6 +59024,22 @@
                 }
               ],
               "title": "Flash"
+            }
+          },
+          {
+            "in": "query",
+            "name": "error",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
             }
           },
           {

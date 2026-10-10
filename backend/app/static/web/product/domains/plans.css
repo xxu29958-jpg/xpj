@@ -898,7 +898,7 @@ fieldset.budget-excluded .hint {
 
 .recurring-row {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto auto;
+    grid-template-columns: minmax(0, 1fr) auto auto;
     align-items: center;
     gap: var(--space-3) var(--space-6);
     padding-block: var(--space-4);
@@ -941,6 +941,14 @@ fieldset.budget-excluded .hint {
 .recurring-row-meta {
     color: var(--text-meta);
     font-size: var(--type-caption-size);
+}
+
+.recurring-row-values {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: start;
+    justify-content: space-between;
+    gap: var(--space-3) var(--space-6);
 }
 
 .recurring-row-amount,
@@ -1199,14 +1207,14 @@ fieldset.budget-excluded .hint {
     color: var(--text-muted);
 }
 
-/* 窄屏: 固定支出行的四列网格折成「主体通栏 → 金额/日期 → 动作通栏」。 */
+/* 窄屏按主体、金额/日期、动作阅读；金额和日期在空间不足时各占一行。 */
 @media (max-width: 40rem) {
     .recurring-metrics--duo {
         grid-template-columns: minmax(0, 1fr);
     }
 
     .recurring-row {
-        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-columns: minmax(0, 1fr);
         align-items: start;
     }
 

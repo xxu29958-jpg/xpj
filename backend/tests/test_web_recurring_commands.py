@@ -294,13 +294,18 @@ def test_web_recurring_stale_restore_never_reports_a_later_pause_as_active(
 
     stale_restore = web_client.post(
         f"/web/recurring/{public_id}/restore",
-        data={"ledger_id": "owner", "expected_row_version": str(restore_token)},
+        data={"ledger_id": "owner", "expected_row_version": str(restore_token), "month": "2026-05"},
         follow_redirects=False,
     )
     assert stale_restore.status_code == 303
     location = unquote(stale_restore.headers["location"])
     assert "页面已过期，请刷新后重新操作。" in location
     assert "已恢复为活跃。" not in location
+    assert "month=2026-05" in location and f"#item-{public_id}" in location
+    failure_page = web_client.get(stale_restore.headers["location"])
+    assert 'product-feedback--danger" role="alert"' in failure_page.text
+    assert 'product-feedback--success' not in failure_page.text
+    assert "页面已过期，请刷新后重新操作。" in failure_page.text
     with SessionLocal() as db:
         status = db.scalar(
             select(RecurringItem.status).where(RecurringItem.public_id == public_id)

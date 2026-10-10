@@ -17,6 +17,19 @@
 {% block content %}
 {{ drafts.shelf('recurring', '固定支出', recurring_draft_scope) }}
 {% set history_month = request.query_params.get('month', '') %}
+{% set month_query = '&month=' ~ (history_month|urlencode) if history_month else '' %}
+{% set result_item = request.query_params.get('result_item', '') %}
+{% set result_visible = items|selectattr('public_id', 'equalto', result_item)|list|length > 0 %}
+{% macro result_feedback() %}
+{% if flash_message %}
+<div class="product-feedback product-feedback--success" role="status">{{ flash_message }}</div>
+{% endif %}
+{% if error_message %}
+<div class="product-feedback product-feedback--danger" role="alert">
+  <span>{{ error_message }}{% if error_guidance %} <a class="plan-feedback-link" href="{{ error_guidance.href }}">{{ error_guidance.label }}</a>{% endif %}</span>
+</div>
+{% endif %}
+{% endmacro %}
 <header class="product-page-header">
   <div class="product-page-heading">
     <span class="product-eyebrow">计划 / 固定支出</span>
@@ -27,14 +40,7 @@
 </header>
 
 <div class="plan-flow">
-{% if flash_message %}
-<div class="product-feedback product-feedback--success" role="status">{{ flash_message }}</div>
-{% endif %}
-{% if error_message %}
-<div class="product-feedback product-feedback--danger" role="alert">
-  <span>{{ error_message }}{% if error_guidance %} <a class="plan-feedback-link" href="{{ error_guidance.href }}">{{ error_guidance.label }}</a>{% endif %}</span>
-</div>
-{% endif %}
+{% if not result_visible %}{{ result_feedback() }}{% endif %}
 
 {% if hero %}
 <section class="recurring-metrics recurring-metrics--duo" aria-label="固定支出概览">
@@ -64,10 +70,10 @@
   {# 状态筛选: GET 链接 segmented 控件 (整页刷新, 无 JS 依赖), 保留账本参数。 #}
   <nav class="plan-filter" aria-label="状态筛选">
     <div class="product-segments">
-      <a {% if not status_filter %}aria-current="page"{% endif %} href="/web/recurring?ledger_id={{ selected_ledger_id }}">全部</a>
-      <a {% if status_filter == 'active' %}aria-current="page"{% endif %} href="/web/recurring?ledger_id={{ selected_ledger_id }}&status=active">活跃</a>
-      <a {% if status_filter == 'paused' %}aria-current="page"{% endif %} href="/web/recurring?ledger_id={{ selected_ledger_id }}&status=paused">暂停</a>
-      <a {% if status_filter == 'archived' %}aria-current="page"{% endif %} href="/web/recurring?ledger_id={{ selected_ledger_id }}&status=archived">归档</a>
+      <a {% if not status_filter %}aria-current="page"{% endif %} href="/web/recurring?ledger_id={{ selected_ledger_id }}{{ month_query }}">全部</a>
+      <a {% if status_filter == 'active' %}aria-current="page"{% endif %} href="/web/recurring?ledger_id={{ selected_ledger_id }}&amp;status=active{{ month_query }}">活跃</a>
+      <a {% if status_filter == 'paused' %}aria-current="page"{% endif %} href="/web/recurring?ledger_id={{ selected_ledger_id }}&amp;status=paused{{ month_query }}">暂停</a>
+      <a {% if status_filter == 'archived' %}aria-current="page"{% endif %} href="/web/recurring?ledger_id={{ selected_ledger_id }}&amp;status=archived{{ month_query }}">归档</a>
     </div>
   </nav>
   {% if items %}
@@ -75,6 +81,7 @@
     {% for item in items %}
     <li class="recurring-row{% if item.status == 'archived' %} is-archived{% endif %}" id="item-{{ item.public_id }}">
       <div class="recurring-row-main">
+        {% if item.public_id == result_item %}{{ result_feedback() }}{% endif %}
         <div class="recurring-row-title">
           <span class="recurring-row-merchant">{{ item.merchant }}</span>
           {% if item.status == 'active' %}<span class="product-status product-status--success">{{ item.status_label }}</span>
@@ -97,11 +104,12 @@
         <div class="recurring-row-meta">本月 {{ item.home_currency_code or '' }} {{ item.current_month_amount_yuan }} · 月均 {{ item.home_currency_code or '' }} {{ item.historical_average_amount_yuan }}</div>
         {% endif %}
       </div>
-      <div class="recurring-row-amount">
+      <div class="recurring-row-values">
+        <div class="recurring-row-amount">
         <strong>{{ item.home_currency_code or '' }} {{ item.baseline_amount_yuan }}<small>/月</small></strong>
         <span>{% if item.observed %}每月基准{% else %}每月预计{% endif %}</span>
-      </div>
-      <div class="recurring-row-next">
+        </div>
+        <div class="recurring-row-next">
         {% if item.next_due_date %}
         <strong>{{ item.next_due_date }}</strong>
         <span>下次预计</span>
@@ -109,9 +117,10 @@
         <strong>不提醒</strong>
         <span>未留日期</span>
         {% endif %}
+        </div>
       </div>
       <div class="recurring-row-actions">
-        <a class="product-button product-button--small" href="/web/recurring/{{ item.public_id }}/occurrence?ledger_id={{ selected_ledger_id }}">查看本期</a>
+        <a class="product-button product-button--small" href="/web/recurring/{{ item.public_id }}/occurrence?ledger_id={{ selected_ledger_id }}{{ month_query }}">{{ '查看 ' ~ history_month if history_month else '查看本期' }}</a>
         <a class="product-button product-button--small" href="/web/recurring/{{ item.public_id }}/history?ledger_id={{ selected_ledger_id|urlencode }}&amp;status={{ status_filter|urlencode }}{% if history_month %}&amp;month={{ history_month|urlencode }}{% endif %}">修改记录</a>
         {% if can_write %}
           {# ADR-0038 PR-A: hidden expected_row_version OCC token. Without it
@@ -119,6 +128,7 @@
              tab toggled the state) would silently flip the row again. #}
           {% if item.status == 'active' %}
           <form method="post" action="/web/recurring/{{ item.public_id }}/pause" class="product-inline-form">
+            <input type="hidden" name="month" value="{{ history_month }}">
             <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
             <input type="hidden" name="expected_row_version" value="{{ item.row_version }}">
             {{ csrf_field|safe }}
@@ -126,6 +136,7 @@
           </form>
           {% elif item.status == 'paused' %}
           <form method="post" action="/web/recurring/{{ item.public_id }}/resume" class="product-inline-form">
+            <input type="hidden" name="month" value="{{ history_month }}">
             <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
             <input type="hidden" name="expected_row_version" value="{{ item.row_version }}">
             {{ csrf_field|safe }}
@@ -133,6 +144,7 @@
           </form>
           {% elif item.status == 'archived' %}
           <form method="post" action="/web/recurring/{{ item.public_id }}/restore" class="product-inline-form">
+            <input type="hidden" name="month" value="{{ history_month }}">
             <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
             <input type="hidden" name="expected_row_version" value="{{ item.row_version }}">
             {{ csrf_field|safe }}
@@ -142,6 +154,7 @@
           {% if item.status != 'archived' %}
           <form method="post" action="/web/recurring/{{ item.public_id }}/archive" class="product-inline-form"
                 data-confirm="归档这条固定支出？">
+            <input type="hidden" name="month" value="{{ history_month }}">
             <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
             {{ csrf_field|safe }}
             <button type="submit" class="product-button product-button--small product-button--danger">归档</button>
