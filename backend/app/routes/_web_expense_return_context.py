@@ -498,3 +498,18 @@ def edit_navigation_view(context: ExpenseReturnContext, *, expense_id: int, ledg
         "edit_return_label": "返回原核对任务" if _review_origin(params) else "返回确认回执" if _receipt_origin(params) else return_label(context.return_to),
         "expense_review_inspection": bool(_review_origin(params)),
     }
+
+
+def confirmed_date_review_context(query, *, ledger_id: str, filter: str, pager_query: str) -> dict:
+    """Carry the report's validated origin across its all-month date review."""
+    if filter != "missing_accounting_date" or query.get("return_to") != "reports":
+        return {}
+    source = {key: value for key, value in query.items() if key != "return_to"}
+    origin = {"return_to": "reports", **{f"return_{key}": value
+        for key, value in return_context_params("reports", **source).items()}}
+    return {
+        "confirmed_edit_query": urlencode({"ledger_id": ledger_id, **origin}),
+        "date_review_return_href": return_href(ledger_id=ledger_id, default_path="/web/reports", **origin),
+        "date_review_origin": origin,
+        "pager_query": pager_query + "&" + urlencode(origin),
+    }

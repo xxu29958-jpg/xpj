@@ -25,9 +25,8 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.routes._web_expense_return_context import (
     CONFIRMED_CROSS_PERIOD_FILTERS,
+    confirmed_date_review_context,
     edit_context_params,
-    return_context_params,
-    return_href,
 )
 from app.routes._web_money_views import projected_amount, projected_money_context
 from app.routes.web_common import (
@@ -342,14 +341,8 @@ def _render_confirmed_page(
             query_text=query_text, category=category,
         ),
     )
-    if filter == "missing_accounting_date" and request.query_params.get("return_to") == "reports":
-        source = {key: value for key, value in request.query_params.items() if key != "return_to"}
-        origin = {"return_to": "reports", **{f"return_{key}": value
-            for key, value in return_context_params("reports", **source).items()}}
-        ctx.update(confirmed_edit_query=urlencode({"ledger_id": selected_id, **origin}),
-            date_review_return_href=return_href(ledger_id=selected_id, default_path="/web/reports", **origin),
-            date_review_origin=origin,
-            pager_query=pager_query + "&" + urlencode(origin))
+    ctx.update(confirmed_date_review_context(request.query_params,
+        ledger_id=selected_id, filter=filter, pager_query=pager_query))
     ctx.update(_confirmed_money_context(db, selected_id=selected_id, month=effective_month,
         home=home, tag=tag, items=items, search_active=bool(query_text or category)))
     ctx["money_task"] = {"ledger_id": selected_id, "month": effective_month, "home_currency_code": home,
