@@ -1,6 +1,7 @@
 package com.ticketbox.viewmodel
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.GoalEditActions
@@ -52,12 +53,16 @@ data class SpendingGoalDetailUiState(
     val fetchedAt: String? = null,
     val fromCache: Boolean = false,
     val history: GoalHistoryState = GoalHistoryState(),
+    val editOriginal: Goal? = null,
 ) {
-    val goalCurrency: CurrencyCode? get() = CurrencyCode.fromStorageKeyOrNull(goal?.homeCurrencyCode)
+    val goalCurrency: CurrencyCode? get() = CurrencyCode.fromStorageKeyOrNull(
+        (if (isEditing) editOriginal else goal)?.homeCurrencyCode)
+    val hasRetainedEdit: Boolean get() = editOriginal != null
     val canModifyGoal: Boolean get() = canModify && goal?.isArchived == false
+    val canOpenEditor: Boolean get() = hasRetainedEdit || canModifyGoal
     val hasPendingEdit: Boolean get() = pendingEdits.any { !it.isDone }
     val canSave: Boolean
-        get() = canModify &&
+        get() = canModifyGoal && editOriginal != null &&
             !isSaving && !hasPendingEdit &&
             goalCurrency != null &&
             name.trim().isNotEmpty() &&
@@ -67,6 +72,7 @@ data class SpendingGoalDetailUiState(
 class SpendingGoalDetailViewModel(
     private val reports: ReportsActions,
     private val edits: GoalEditActions,
+    private val draftStore: SpendingGoalEditDraftStore = SpendingGoalEditDraftStore(SavedStateHandle()),
 ) : ViewModel() {
     private val _state = MutableStateFlow(
         SpendingGoalDetailUiState(
@@ -135,7 +141,8 @@ class SpendingGoalDetailViewModel(
             historyTask.reset()
             _state.value = SpendingGoalDetailUiState(edits.currentAccess()?.canModify == true, publicId = id)
         }
-        _state.update { it.copy(isLoading = true, loadError = null) }
+        _state.update { it.withEditDraft(draftStore.read(binding, id)) }
+        _state.update { it.copy(isLoading = true, loadError = null, archiveCompleted = false) }
         observeSubmission(binding, id)
         loadJob = viewModelScope.launch {
             val result = reports.goal(id, expectedBinding = binding, timezone = timezone)
@@ -158,6 +165,10 @@ class SpendingGoalDetailViewModel(
         observation = viewModelScope.launch {
             edits.observeEdits(binding, id).collect { rows ->
                 if (!matches(binding, id)) return@collect
+                currentDraft?.takeIf { draft -> rows.any(draft::matchesSubmission) }?.let { published ->
+                    draftStore.remove(published)
+                    _state.update { it.copy(editOriginal = null, isEditing = false, formDirty = false) }
+                }
                 val previous = _state.value.pendingEdits.filter { it.isDone }.map { it.row.id }.toSet()
                 val accepted = rows.filter { it.isDone && it.row.id !in previous }
                     .mapNotNull { it.confirmed }.maxByOrNull { it.rowVersion }
@@ -179,9 +190,15 @@ class SpendingGoalDetailViewModel(
         generation == loadGeneration && taskBinding == binding && edits.currentAccess()?.binding == binding && _state.value.publicId == id
 
     fun beginEdit() {
+        val binding = taskBinding?.takeIf { it == edits.currentAccess()?.binding } ?: return
+        if (!_state.value.canOpenEditor || _state.value.hasPendingEdit) return
+        val retained = draftStore.read(binding, _state.value.publicId)
+        if (retained != null) {
+            _state.update { it.withEditDraft(retained).copy(isEditing = true, message = null) }
+            return
+        }
         val goal = _state.value.goal ?: return
-        if (!_state.value.canModifyGoal || _state.value.hasPendingEdit) return
-        val currency = _state.value.goalCurrency
+        val currency = CurrencyCode.fromStorageKeyOrNull(goal.homeCurrencyCode)
         if (currency == null) {
             _state.update { it.copy(formError = UiText.res(R.string.currency_unconfirmed_write_blocked)) }
             return
@@ -189,6 +206,7 @@ class SpendingGoalDetailViewModel(
         _state.update {
             it.copy(
                 isEditing = true,
+                editOriginal = goal,
                 formDirty = false,
                 name = goal.name,
                 month = goal.month,
@@ -198,15 +216,21 @@ class SpendingGoalDetailViewModel(
                 message = null,
             )
         }
+        currentDraft?.let(draftStore::write)
     }
 
-    fun cancelEdit() {
+    fun cancelEdit(discard: Boolean = true) {
         if (!_state.value.isSaving) {
-            _state.update { it.copy(isEditing = false, formDirty = false, formError = null, message = null) }
+            if (discard) {
+                currentDraft?.let(draftStore::remove)
+                _state.update { it.copy(editOriginal = null, formDirty = false, formError = null, message = null) }
+            }
+            _state.update { it.copy(isEditing = false) }
         }
     }
 
     fun updateField(field: SpendingGoalEditField, value: String) {
+        if (!_state.value.isEditing || _state.value.isSaving) return
         _state.update {
             val previous = when (field) {
                 SpendingGoalEditField.Name -> it.name
@@ -216,27 +240,28 @@ class SpendingGoalDetailViewModel(
             val current = it.copy(formDirty = it.formDirty || value != previous)
             when (field) {
                 SpendingGoalEditField.Name -> current.copy(name = value, formError = null)
-                SpendingGoalEditField.Amount -> {
-                    // R14-2：币种已解析时即时报解析失败（同 CreateSpendingGoalViewModel）。
-                    val parseFailed = value.isNotBlank() && it.goalCurrency?.let { currency ->
-                        parseAmountCents(value, currency) == null
-                    } == true
-                    current.copy(
-                        targetAmountInput = value,
-                        formError = if (parseFailed) UiText.res(R.string.expense_edit_amount_invalid) else null,
-                    )
-                }
+                SpendingGoalEditField.Amount -> current.copy(targetAmountInput = value,
+                    formError = spendingGoalAmountError(value, it.goalCurrency))
                 SpendingGoalEditField.Category -> current.copy(category = value, formError = null)
             }
         }
+        currentDraft?.let(draftStore::write)
+    }
+
+    private val currentDraft: SpendingGoalEditDraft? get() {
+        val current = _state.value
+        val original = current.editOriginal ?: return null
+        val binding = taskBinding ?: return null
+        return SpendingGoalEditDraft(binding, original, current.name, current.month, current.targetAmountInput, current.category)
     }
 
     fun save() {
         val current = _state.value
-        val goal = current.goal ?: return
-        val binding = taskBinding ?: return
+        val draft = currentDraft ?: return
+        val goal = draft.original
+        val binding = draft.binding
         if (!matches(binding, goal.publicId) || edits.currentAccess()?.canModify != true ||
-            current.isSaving || current.hasPendingEdit || goal.isArchived) return
+            current.isSaving || current.hasPendingEdit || !current.canModifyGoal) return
         val currency = current.goalCurrency
         val amount = currency?.let { parseAmountCents(current.targetAmountInput, it) }
         if (currency == null || current.name.trim().isEmpty() || amount == null || amount <= 0) {
@@ -247,9 +272,10 @@ class SpendingGoalDetailViewModel(
         commandJob = viewModelScope.launch {
             val result = edits.save(binding, goal, GoalUpdate(goal.rowVersion, current.name, current.month,
                 amount, current.category.trim(), currency.storageKey))
+            if (result.isSuccess) draftStore.remove(draft)
             if (!matches(binding, goal.publicId)) return@launch
             result.fold(onSuccess = {
-                _state.update { it.copy(isSaving = false, isEditing = false,
+                _state.update { it.copy(isSaving = false, isEditing = false, editOriginal = null,
                     formDirty = listOf(it.name, it.month, it.targetAmountInput, it.category) !=
                         listOf(current.name, current.month, current.targetAmountInput, current.category),
                     message = null, messageTone = MessageTone.Info) }
@@ -322,10 +348,12 @@ class SpendingGoalDetailViewModel(
     }
 
     fun shiftMonth(delta: Long) {
+        if (!_state.value.isEditing || _state.value.isSaving) return
         _state.update {
             val nextMonth = (runCatching { YearMonth.parse(it.month).plusMonths(delta) }.getOrNull()
                 ?: return@update it).toString()
-            it.copy(month = nextMonth, formError = null)
+            it.copy(month = nextMonth, formDirty = true, formError = null)
         }
+        currentDraft?.let(draftStore::write)
     }
 }

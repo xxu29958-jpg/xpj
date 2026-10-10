@@ -97,8 +97,9 @@
     <string name="spending_goal_scope_label">跟踪范围</string>
     <string name="spending_goal_edit_action">编辑目标</string>
     <string name="spending_goal_edit_title">调整消费目标</string>
-    <string name="spending_goal_edit_intro">不会改变已经记录的消费。</string>
-    <string name="spending_goal_edit_cancel">取消</string>
+    <string name="spending_goal_edit_intro">不会改变已经记录的消费。返回会保留输入，放弃草稿才会清除。</string>
+    <string name="spending_goal_edit_retained">有未保存的调整，点“编辑目标”可继续填写。</string>
+    <string name="spending_goal_edit_cancel">放弃草稿</string>
     <string name="spending_goal_edit_save">保存调整</string>
     <string name="spending_goal_edit_saving">保存中</string>
     <string name="spending_goal_edit_validation">请填写目标名称和大于 0 的支出上限。</string>

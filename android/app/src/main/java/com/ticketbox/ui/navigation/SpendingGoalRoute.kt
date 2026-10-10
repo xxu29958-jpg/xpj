@@ -21,6 +21,8 @@ import com.ticketbox.viewmodel.SpendingGoalsViewModel
 import com.ticketbox.viewmodel.createSpendingGoalViewModelFactory
 import com.ticketbox.viewmodel.spendingGoalDetailViewModelFactory
 import com.ticketbox.viewmodel.spendingGoalsViewModelFactory
+import com.ticketbox.viewmodel.SpendingGoalEditDraftStore
+import com.ticketbox.viewmodel.spendingGoalEditDraftStoreFactory
 
 private const val SpendingGoalsViewModelKey = "spending-goals"
 private const val SpendingGoalDetailViewModelKey = "spending-goal-detail"
@@ -53,6 +55,10 @@ internal fun SpendingGoalsRoute(
     onBack: () -> Unit,
     context: SpendingGoalRouteContext,
 ) {
+    val editDrafts: SpendingGoalEditDraftStore = viewModel(
+        viewModelStoreOwner = context.creationOwner, key = "spending-goal-edit-drafts",
+        factory = spendingGoalEditDraftStoreFactory(),
+    )
     SpendingGoalRouteContent(
         models = SpendingGoalRouteModels(
             list = viewModel(
@@ -62,7 +68,7 @@ internal fun SpendingGoalsRoute(
             ),
             detail = viewModel(
                 key = SpendingGoalDetailViewModelKey,
-                factory = spendingGoalDetailViewModelFactory(screenFactory.reportsRepository, screenFactory.goalEditRepository),
+                factory = spendingGoalDetailViewModelFactory(screenFactory.reportsRepository, screenFactory.goalEditRepository, editDrafts),
             ),
             create = viewModel(
                 viewModelStoreOwner = context.creationOwner,

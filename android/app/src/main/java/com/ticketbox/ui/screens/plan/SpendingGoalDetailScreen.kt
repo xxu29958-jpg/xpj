@@ -1,5 +1,6 @@
 package com.ticketbox.ui.screens.plan
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
@@ -45,7 +46,8 @@ internal fun SpendingGoalDetailScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val goal = state.goal
-    val navigateBack = if (state.isEditing) viewModel::cancelEdit else onBack
+    val navigateBack = { if (state.isEditing) viewModel.cancelEdit(discard = false) else onBack() }
+    BackHandler(onBack = navigateBack)
     AppSecondaryScrollableContent(
         chrome = AppSecondaryPageChrome(
             role = AppPageRole.Stats,
@@ -72,7 +74,7 @@ internal fun SpendingGoalDetailScreen(
         ),
         slots = AppSecondaryPageSlots(
             status = { SpendingGoalDetailStatus(state, viewModel) },
-            bottomBar = if (state.canModifyGoal) {
+            bottomBar = if (state.canOpenEditor) {
                 { SpendingGoalDetailFooter(state = state, viewModel = viewModel) }
             } else {
                 null
@@ -112,13 +114,16 @@ private fun SpendingGoalDetailStatus(state: SpendingGoalDetailUiState, viewModel
                 announceUpdates = false,
             )
         }
+        if (state.hasRetainedEdit && !state.isEditing) {
+            AppStatusBanner(message = UiText.res(R.string.spending_goal_edit_retained), tone = MessageTone.Info)
+        }
         state.message?.let {
             AppStatusBanner(message = it, tone = state.messageTone)
         }
         state.formError?.let {
             AppStatusBanner(message = it, tone = MessageTone.Danger)
         }
-        if (state.goal != null) state.loadError?.let {
+        if (state.goal != null || state.isEditing) state.loadError?.let {
             AppStatusBanner(message = it, tone = MessageTone.Danger)
             TextButton(onClick = { viewModel.load() }) { Text(stringResource(R.string.common_retry)) }
         }
@@ -132,6 +137,7 @@ private fun SpendingGoalDetailBody(
     viewModel: SpendingGoalDetailViewModel,
 ) {
     when {
+        state.isEditing && state.hasRetainedEdit -> SpendingGoalEditContent(state = state, viewModel = viewModel)
         state.isLoading && state.goal == null -> AppLoadingState(
             title = stringResource(R.string.spending_goal_detail_loading_title),
             body = stringResource(R.string.spending_goal_detail_loading_body),
@@ -148,7 +154,6 @@ private fun SpendingGoalDetailBody(
             body = stringResource(R.string.spending_goal_detail_load_failed),
             onRetry = { viewModel.load() },
         )
-        state.isEditing -> SpendingGoalEditContent(state = state, viewModel = viewModel)
         else -> SpendingGoalViewContent(
             goal = state.goal,
             canModify = state.canModifyGoal && !state.hasPendingEdit,
@@ -172,7 +177,7 @@ private fun SpendingGoalDetailFooter(
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !state.isSaving,
                     leadingIcon = Icons.Filled.Close,
-                    onClick = viewModel::cancelEdit,
+                    onClick = { viewModel.cancelEdit() },
                 ) },
                 action = { actionModifier ->
                 AppPrimaryButton(

@@ -5,6 +5,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.performClick
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.SavedStateHandle
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.R
 import com.ticketbox.data.remote.ApiService
@@ -16,6 +17,7 @@ import com.ticketbox.ui.screens.plan.SpendingGoalDetailScreen
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.SpendingGoalDetailViewModel
 import com.ticketbox.viewmodel.SpendingGoalEditField
+import com.ticketbox.viewmodel.SpendingGoalEditDraftStore
 import java.io.IOException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
@@ -27,6 +29,7 @@ import com.ticketbox.data.remote.dto.RuntimeCurrencyCapabilityDto
 import com.ticketbox.data.remote.CURRENT_TICKETBOX_API_VERSION
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Rule
 import org.junit.Test
 
@@ -72,6 +75,7 @@ class SpendingGoalSubmissionConnectedTest {
     }
     private val fixture = DebtAdjustmentConnectedFixture(context, service)
     private lateinit var model: SpendingGoalDetailViewModel
+    private lateinit var originalInputState: SavedStateHandle
 
     @After fun close() {
         if (::model.isInitialized) compose.runOnIdle { model.viewModelScope.cancel() }
@@ -88,7 +92,13 @@ class SpendingGoalSubmissionConnectedTest {
         assertEquals("The server-confirmed goal must not become an optimistic total", 20_000L,
             model.state.value.goal?.targetAmountCents)
         compose.runOnIdle { model.viewModelScope.cancel() }
-        fixture.reopen()
+        val graph = fixture.reopen()
+        compose.runOnIdle {
+            model = SpendingGoalDetailViewModel(graph.reportsRepository, graph.goalEditRepository, SpendingGoalEditDraftStore(originalInputState))
+            model.load(original.publicId)
+        }
+        compose.waitUntil(10_000) { model.state.value.pendingEdits.isNotEmpty() }
+        assertFalse("An admitted original must continue from Room, not a second input draft", model.state.value.hasRetainedEdit)
         assertEquals(rows, fixture.stored().filter { it["targetId"] == "goal:${original.publicId}" })
     }
 
@@ -140,7 +150,8 @@ class SpendingGoalSubmissionConnectedTest {
 
     private fun openAndSave() {
         val graph = fixture.reopen()
-        model = SpendingGoalDetailViewModel(graph.reportsRepository, graph.goalEditRepository)
+        val savedInput = SavedStateHandle()
+        model = SpendingGoalDetailViewModel(graph.reportsRepository, graph.goalEditRepository, SpendingGoalEditDraftStore(savedInput))
         model.load(original.publicId)
         compose.setContent { TicketboxTheme(skin = AppSkin.Paper) { SpendingGoalDetailScreen(model, {}) } }
         compose.waitUntil(10_000) { model.state.value.goal != null }
@@ -148,6 +159,7 @@ class SpendingGoalSubmissionConnectedTest {
         compose.runOnIdle {
             assertEquals("20000", model.state.value.targetAmountInput)
             model.updateField(SpendingGoalEditField.Amount, "35000")
+            originalInputState = SavedStateHandle(savedInput.keys().associateWith { savedInput.get<Any?>(it) })
         }
         compose.onNodeWithText(context.getString(R.string.spending_goal_edit_save)).performClick()
         compose.waitUntil(10_000) { !model.state.value.isSaving }

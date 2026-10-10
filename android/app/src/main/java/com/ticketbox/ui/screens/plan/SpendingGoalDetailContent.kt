@@ -121,6 +121,7 @@ internal fun SpendingGoalEditContent(
             month = displayMonthLabel(state.month),
             onPreviousMonth = { viewModel.shiftMonth(-1) },
             onNextMonth = { viewModel.shiftMonth(1) },
+            enabled = !state.isSaving,
         )
         if (currency != null) {
         AppAmountInput(
