@@ -68,9 +68,10 @@ class BackstageJourney:
         with self.page.expect_file_chooser() as picker:
             form.locator('label[for="inbox-upload-file"]').click()
         picker.value.set_files(original)
+        self.page.locator("[data-capture-items] .exp-thumb img").evaluate("async image => { await image.decode(); }")
         self.capture("inbox-selected-original")
         assert self.facts() == before_selection, "Selecting a file must not upload or create financial facts"
-        form.get_by_role("button", name="上传小票", exact=True).click()
+        self.page.get_by_role("button", name="上传 1 张小票", exact=True).click()
         wait_for(lambda: len(self.facts()["tasks"]) == 1, "The Web upload did not create its durable task")
         wait_for(lambda: self.facts()["tasks"][0]["status"] in ("completed", "failed"),
                  "Real OCR did not finish", 180)

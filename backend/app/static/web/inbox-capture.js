@@ -78,17 +78,19 @@
     item.retry.classList.toggle("product-button--quiet", !state?.onlineOnly);
     if (item.result) item.form.querySelector("[data-attachment-status]").hidden = true;
   }
-  function preview(item, file) {
-    item.url = window.URL.createObjectURL(file);
-    const image = document.createElement("img");
-    image.src = item.url;
-    image.alt = "";
-    item.form.querySelector(".exp-thumb").replaceChildren(image);
+  async function preview(item, file) {
+    const host = item.form.querySelector(".exp-thumb");
+    try {
+      const image = document.createElement("img");
+      image.src = await window.TicketboxDraftFiles.imageSource(file);
+      image.alt = "";
+      await image.decode();
+      host.replaceChildren(image);
+    } catch (_) { host.textContent = "暂无法预览"; }
   }
   function removeRow(item) {
     items.splice(items.indexOf(item), 1);
     item.form.remove();
-    if (item.url) window.URL.revokeObjectURL(item.url);
     update();
   }
   function accepted(item, result) {
@@ -204,9 +206,6 @@
     status.textContent = "已有任务无法读取，请保留此页并检查浏览器存储。";
   }
   if (/^#(?:capture|attachment-[a-f0-9]{32})$/.test(window.location.hash)) form.closest("details").open = true;
-  window.addEventListener("pagehide", event => {
-    if (!event.persisted) for (const item of items) if (item.url) window.URL.revokeObjectURL(item.url);
-  });
   update();
   function nativePreview(nativeForm) {
     const task = nativeForm.closest("[data-inbox-upload]");
@@ -216,18 +215,15 @@
     const button = nativeForm.querySelector('[type="submit"]');
     button.setAttribute("form", nativeForm.id);
     task.querySelector("[data-capture-actions]").prepend(button);
-    let url;
     picker.addEventListener("change", () => {
-      if (url) window.URL.revokeObjectURL(url);
       host.replaceChildren();
       const file = picker.files[0];
       selection.hidden = !file;
       if (!file) return;
-      url = window.URL.createObjectURL(file);
       const row = document.createElement("div");
       row.className = "product-entry product-entry--actions inbox-upload-task";
-      row.innerHTML = '<span class="exp-thumb"><img alt=""></span><span class="product-entry-copy"><strong></strong><span>准备上传</span></span>';
-      row.querySelector("img").src = url;
+      row.innerHTML = '<span class="exp-thumb"></span><span class="product-entry-copy"><strong></strong><span>准备上传</span></span>';
+      void preview({form: row}, file);
       row.querySelector("strong").textContent = file.name;
       host.append(row);
       task.querySelector("[data-capture-count]").textContent = "1 张";

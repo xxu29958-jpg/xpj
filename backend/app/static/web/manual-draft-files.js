@@ -24,9 +24,22 @@
       catch (error) { transaction.abort(); reject(error); }
     });
   }
-  async function put(key, scope, file) {
+  function checkSize(file) {
     if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) throw Error("upload_limit_unavailable");
     if (file.size > maxBytes) throw Error("upload_too_large");
+  }
+  function imageSource(file) {
+    checkSize(file);
+    // The shipped image policy allows data: previews; stored and submitted bytes stay unchanged.
+    return new Promise((resolve, reject) => {
+      const reader = new window.FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+  }
+  async function put(key, scope, file) {
+    checkSize(file);
     const bytes = await file.arrayBuffer();
     const digest = await window.crypto.subtle.digest("SHA-256", bytes);
     const sha256 = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
@@ -54,5 +67,5 @@
       };
     });
   }
-  window.TicketboxDraftFiles = {put, get, remove};
+  window.TicketboxDraftFiles = {put, get, remove, imageSource};
 })(window, document);

@@ -40,7 +40,9 @@
           imageUrl = window.URL.createObjectURL(file);
           open.href = imageUrl;
           open.download = file.name;
-          image.src = imageUrl;
+          const imageSource = await window.TicketboxDraftFiles.imageSource(file);
+          if (turn !== revision) return;
+          image.src = imageSource;
           await image.decode();
           if (turn !== revision) return;
           image.hidden = false;

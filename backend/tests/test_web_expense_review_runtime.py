@@ -1186,7 +1186,11 @@ def test_selected_original_requires_confirmation_and_retains_exact_file_after_re
             return response
         body = b"".join([chunk async for chunk in response.body_iterator])
         script = "<script>window.__originalSample=" + json.dumps(sample) + ";window.__externalPreview=" + json.dumps(external_preview) + ";" + probe + "</script>"
-        return Response(body.replace(b"</body>", script.encode() + b"</body>"), media_type="text/html")
+        from app.middleware.security_headers import _CSP
+        # Keep the shipped image policy while allowing this fixture's inline journey probe.
+        image_policy = next(part.strip() for part in _CSP.split(";") if part.strip().startswith("img-src "))
+        return Response(body.replace(b"</body>", script.encode() + b"</body>"), media_type="text/html",
+                        headers={"Content-Security-Policy": image_policy})
 
     before = original_tests._facts(case)
     result = _run_review_page(case.client, tmp_path, "/web/expenses/42/original?ledger_id=owner")
