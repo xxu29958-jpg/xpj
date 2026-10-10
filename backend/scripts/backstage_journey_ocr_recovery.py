@@ -1,8 +1,5 @@
 """Lose a committed OCR reply from the real drawer and replay its original key."""
 
-from scripts.planning_journey_android import wait_for
-
-
 def open_recognition_task(j, amount, note):
     draft = j.page.locator('form[data-expensereview-draft-scope]')
     for name, value in (("amount_yuan", amount), ("note", note)):
@@ -34,13 +31,14 @@ def drawer_lost_ocr_reply(j):
     def lose_reply(route):
         response = route.fetch(max_redirects=0)
         assert response.status == 200 and response.json()["receipt"]["accepted"], "OCR was not accepted before losing its reply"
-        delivered.append(True)
         route.abort("connectionclosed")
+        delivered.append(True)
 
     j.page.context.route("**" + path, lose_reply)
     try:
         retry.get_by_role("button", name="重新识别原件", exact=True).click()
-        wait_for(lambda: delivered, "The real OCR command was not delivered")
+        j.page.get_by_text("暂未收到保存回执。", exact=False).wait_for()
+        assert delivered == [True], "The real OCR command was not delivered before reply loss"
     finally:
         j.page.context.unroute("**" + path, lose_reply)
     accepted = j.facts()
