@@ -13,6 +13,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -32,6 +33,10 @@ import com.ticketbox.R
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.GoalListResponseDto
 import com.ticketbox.data.remote.dto.GoalDto
+import com.ticketbox.data.remote.dto.RecycleBinItemDto
+import com.ticketbox.data.remote.dto.RecycleBinListResponseDto
+import com.ticketbox.data.remote.dto.RecycleBinRestoreRequestDto
+import com.ticketbox.data.remote.dto.RecycleBinRestoreResponseDto
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.AppThemeMode
 import com.ticketbox.domain.model.CurrencyCode
@@ -52,6 +57,8 @@ import org.junit.Test
 class SpendingGoalDraftNavigationRoomTest {
     @get:Rule val compose = createComposeRule()
     private val context = ApplicationProvider.getApplicationContext<Context>()
+    private var restored = false
+    private val restores = java.util.concurrent.CopyOnWriteArrayList<RecycleBinRestoreRequestDto>()
     private var goal = GoalDto(
         publicId = "navigation-spending-goal", ledgerId = "correction-ledger", name = "餐饮控制",
         goalType = "spending_limit", period = "monthly", month = "2026-10", category = "餐饮",
@@ -71,11 +78,20 @@ class SpendingGoalDraftNavigationRoomTest {
                     goal.copy(publicId = "navigation-over-goal", name = "本月总额控制", category = null,
                         targetAmountCents = 500_000, spentAmountCents = 620_000, remainingAmountCents = -120_000,
                         progressPercent = 124, progressState = "over_limit"))
-                return GoalListResponseDto(if (includeArchived) active + archivedGoal() else active)
+                return GoalListResponseDto(if (includeArchived || restored) active + archivedGoal() else active)
             }
             override suspend fun goal(publicId: String, timezone: String?): GoalDto {
                 check(publicId == goal.publicId || publicId == archivedGoal().publicId)
                 return if (publicId == goal.publicId) goal else archivedGoal()
+            }
+            override suspend fun recycleBin() = RecycleBinListResponseDto(if (restored) emptyList() else listOf(
+                RecycleBinItemDto("goal", "消费目标", archivedGoal().publicId, archivedGoal().name,
+                    "${goal.month} · 餐饮", archivedGoal().archivedAt, "长期保留", archivedGoal().rowVersion.toInt()),
+            ), 0)
+            override suspend fun restoreRecycleBinItem(request: RecycleBinRestoreRequestDto): RecycleBinRestoreResponseDto {
+                restores += request
+                restored = true
+                return RecycleBinRestoreResponseDto("消费目标已恢复。")
             }
             override suspend fun runtimeCompatibility() = delegate.runtimeCompatibility().let { runtime ->
                 runtime.copy(capabilities = runtime.capabilities.copy(currency = runtime.capabilities.currency.copy(
@@ -103,25 +119,7 @@ class SpendingGoalDraftNavigationRoomTest {
         capture("goal-unavailable")
         compose.onNodeWithText("本月总额控制").performScrollTo()
         capture("goal-over-limit")
-        scrollToText(context.getString(R.string.spending_goals_archived_show))
-        compose.onNodeWithText(context.getString(R.string.spending_goals_archived_show)).performClick()
-        val list = listOwner()
-        compose.waitUntil(10_000) { list.state.value.goals.any { it.publicId == archivedGoal().publicId } }
-        scrollToText(archivedGoal().name)
-        capture("goal-archived-list")
-        compose.onNodeWithText(archivedGoal().name).performClick()
-        compose.waitUntil(10_000) { compose.onAllNodesWithText(archivedGoal().name).fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithText(context.getString(R.string.spending_goal_edit_action)).assertDoesNotExist()
-        compose.onNodeWithText(context.getString(R.string.spending_goal_archive_action)).assertDoesNotExist()
-        capture("goal-archived-detail")
-        scrollToText(context.getString(R.string.goal_history_title))
-        compose.onNodeWithText(context.getString(R.string.goal_history_title)).assertExists()
-        scrollToText(context.getString(R.string.spending_goal_detail_back))
-        compose.onNodeWithText(context.getString(R.string.spending_goal_detail_back)).performClick()
-        scrollToText(context.getString(R.string.spending_goals_archived_hide))
-        compose.onNodeWithText(context.getString(R.string.spending_goals_archived_hide)).performClick()
-        compose.waitUntil(10_000) { !list.state.value.isLoading && !list.state.value.includeArchived }
-        compose.onNodeWithText(archivedGoal().name).assertDoesNotExist()
+        restoreArchivedGoalAndReturn()
         scrollToText(goal.name)
         compose.onNodeWithText(goal.name).performClick()
         compose.waitUntil(10_000) { compose.onAllNodesWithText(context.getString(R.string.spending_goal_edit_action)).fetchSemanticsNodes().isNotEmpty() }
@@ -204,8 +202,69 @@ class SpendingGoalDraftNavigationRoomTest {
             "create-spending-goal", CreateSpendingGoalViewModel::class.java]
     }
 
-    private fun archivedGoal() = goal.copy(publicId = "navigation-archived-goal", name = "已归档的旅行目标",
-        status = "archived", progressState = "archived", archivedAt = "2026-10-01T00:00:00Z")
+    private fun archivedGoal() = goal.copy(publicId = "navigation-archived-goal", name = "秋日旅行目标",
+        status = if (restored) "active" else "archived", progressState = if (restored) "on_track" else "archived",
+        rowVersion = if (restored) 3 else 2, archivedAt = if (restored) null else "2026-10-01T00:00:00Z")
+
+    private fun restoreArchivedGoalAndReturn() {
+        scrollToText(context.getString(R.string.budget_month_previous))
+        compose.onNodeWithText(context.getString(R.string.budget_month_previous)).performClick()
+        scrollToText(context.getString(R.string.spending_goals_archived_show))
+        compose.onNodeWithText(context.getString(R.string.spending_goals_archived_show)).performClick()
+        val list = listOwner()
+        compose.waitUntil(10_000) { list.state.value.goals.any { it.publicId == archivedGoal().publicId } }
+        val month = list.state.value.month
+        scrollToText(archivedGoal().name)
+        capture("goal-archived-list")
+        compose.onNodeWithText(archivedGoal().name).performClick()
+        compose.waitUntil(10_000) { compose.onAllNodesWithText(archivedGoal().name).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText(context.getString(R.string.spending_goal_edit_action)).assertDoesNotExist()
+        compose.onNodeWithText(context.getString(R.string.spending_goal_archive_action)).assertDoesNotExist()
+        capture("goal-archived-detail")
+        scrollToText(context.getString(R.string.goal_history_title))
+        compose.onNodeWithText(context.getString(R.string.goal_history_title)).assertExists()
+        openGoalRecycleBin()
+        compose.onNodeWithText(context.getString(R.string.common_cancel)).performClick()
+        assertTrue(restores.isEmpty())
+        scrollToText("返回原目标")
+        compose.onNodeWithText("返回原目标").performClick()
+        compose.onNodeWithText(context.getString(R.string.spending_goal_edit_action)).assertDoesNotExist()
+        openGoalRecycleBin()
+        val confirmations = compose.onAllNodesWithText(context.getString(R.string.recycle_bin_restore_dialog_confirm))
+        confirmations[confirmations.fetchSemanticsNodes().lastIndex].performClick()
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("消费目标已恢复。").fetchSemanticsNodes().isNotEmpty() }
+        assertEquals(listOf("navigation-archived-goal"), restores.map { it.resourceId })
+        assertEquals(listOf("goal"), restores.map { it.kind })
+        assertEquals(listOf(2), restores.map { it.expectedRowVersion })
+        androidx.test.espresso.Espresso.pressBack()
+        compose.waitUntil(10_000) { compose.onAllNodesWithText(context.getString(R.string.spending_goal_edit_action)).fetchSemanticsNodes().isNotEmpty() }
+        capture("goal-restored-detail")
+        compose.onNodeWithText("查看回收站").assertDoesNotExist()
+        scrollToText(context.getString(R.string.spending_goal_detail_back))
+        compose.onNodeWithText(context.getString(R.string.spending_goal_detail_back)).performClick()
+        assertSame(list, listOwner())
+        compose.waitUntil(10_000) { list.state.value.goals.any { it.publicId == archivedGoal().publicId && !it.isArchived } }
+        assertEquals(month, list.state.value.month)
+        assertTrue(list.state.value.includeArchived)
+        scrollToText(context.getString(R.string.spending_goals_archived_hide))
+        compose.onNodeWithText(context.getString(R.string.spending_goals_archived_hide)).performClick()
+        compose.waitUntil(10_000) { !list.state.value.isLoading && !list.state.value.includeArchived }
+        scrollToText(archivedGoal().name)
+        capture("goal-restored-list")
+        assertTrue(harness.fixture.stored().isEmpty())
+    }
+
+    private fun openGoalRecycleBin() {
+        scrollToText("查看回收站")
+        capture("goal-recovery-entry")
+        compose.onNodeWithText("查看回收站").performClick()
+        compose.waitUntil(10_000) { compose.onAllNodesWithText(archivedGoal().name).fetchSemanticsNodes().isNotEmpty() }
+        scrollToText("返回原目标")
+        compose.onNodeWithText("返回原目标").assertExists()
+        compose.onNodeWithContentDescription("恢复 ${archivedGoal().name}").performScrollTo()
+        capture("goal-recycle-bin")
+        compose.onNodeWithContentDescription("恢复 ${archivedGoal().name}").performClick()
+    }
 
     private fun enterGoals() {
         compose.runOnIdle { inner.navigate(ProductSecondaryPage.SpendingGoal.route) }
@@ -242,12 +301,14 @@ class SpendingGoalDraftNavigationRoomTest {
                             inner = rememberNavController()
                             NavHost(inner, startDestination = PrimaryDomain.Plans.route) {
                                 composable(PrimaryDomain.Plans.route) { }
-                                addPlanRoutes(MainProductRouteDependencies(
+                                val dependencies = MainProductRouteDependencies(
                                     MainNavigationRuntime(outer, harness.shell, harness.screenFactory), inner,
                                     MainWorkspaceControls(SettingsPreferenceControls(skin, AppThemeMode.System,
                                         CurrencyCode.CNY, onThemeModeChange = {}, onCurrencyChange = {}),
                                         onBindingCleared = { error("Navigation preserves the identity") }),
-                                ))
+                                )
+                                addPlanRoutes(dependencies)
+                                addTransactionRoutes(dependencies)
                             }
                         }
                     }

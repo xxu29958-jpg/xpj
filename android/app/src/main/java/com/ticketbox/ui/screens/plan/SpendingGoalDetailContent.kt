@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Archive
+import androidx.compose.material.icons.filled.RestoreFromTrash
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -24,6 +25,7 @@ import com.ticketbox.ui.components.AppAmountInput
 import com.ticketbox.ui.components.AppAmountInputActions
 import com.ticketbox.ui.components.AppAmountInputState
 import com.ticketbox.ui.components.AppContentCard
+import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
 import com.ticketbox.ui.components.AppTextInputState
@@ -42,6 +44,7 @@ internal fun SpendingGoalViewContent(
     goal: Goal,
     canModify: Boolean,
     onArchive: () -> Unit,
+    onOpenRecycleBin: () -> Unit,
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -50,6 +53,7 @@ internal fun SpendingGoalViewContent(
         com.ticketbox.ui.components.AccountingDateNotice(goal.undatedExpenseCount)
         SpendingGoalSummaryCard(goal)
         SpendingGoalFactsCard(goal)
+        if (goal.isArchived) SpendingGoalRecoveryEntry(onOpenRecycleBin)
         if (canModify && !goal.isArchived) {
             SpendingGoalArchiveEntry(onArchive)
         }
@@ -189,5 +193,19 @@ private fun SpendingGoalArchiveEntry(onArchive: () -> Unit) {
                 color = danger,
             )
         }
+    }
+}
+
+@Composable
+private fun SpendingGoalRecoveryEntry(onOpenRecycleBin: () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+        Text(stringResource(R.string.spending_goal_recovery_body),
+            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        AppSecondaryButton(
+            text = stringResource(R.string.spending_goal_recovery_action),
+            modifier = Modifier.fillMaxWidth(),
+            leadingIcon = Icons.Filled.RestoreFromTrash,
+            onClick = onOpenRecycleBin,
+        )
     }
 }

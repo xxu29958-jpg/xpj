@@ -153,7 +153,7 @@ class SpendingGoalSubmissionConnectedTest {
         val savedInput = SavedStateHandle()
         model = SpendingGoalDetailViewModel(graph.reportsRepository, graph.goalEditRepository, SpendingGoalEditDraftStore(savedInput))
         model.load(original.publicId)
-        compose.setContent { TicketboxTheme(skin = AppSkin.Paper) { SpendingGoalDetailScreen(model, {}) } }
+        compose.setContent { TicketboxTheme(skin = AppSkin.Paper) { SpendingGoalDetailScreen(model, {}, onOpenRecycleBin = {}) } }
         compose.waitUntil(10_000) { model.state.value.goal != null }
         compose.onNodeWithText(context.getString(R.string.spending_goal_edit_action)).performClick()
         compose.runOnIdle {

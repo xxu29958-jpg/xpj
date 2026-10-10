@@ -48,6 +48,7 @@ internal fun NavGraphBuilder.addPlanRoutes(
                         R.string.category_directory_back else R.string.spending_goal_detail_back,
                     financialDataRevision = shellState.financialDataRevision),
                 screenFactory = screenFactory, onBack = onBack,
+                onOpenRecycleBin = { navController.navigate(TRANSACTIONS_LIBRARY_RECYCLE_BIN_ROUTE) },
             )
         }
         composable(

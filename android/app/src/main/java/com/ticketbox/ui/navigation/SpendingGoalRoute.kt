@@ -53,6 +53,7 @@ internal data class SpendingGoalRouteContext(
 internal fun SpendingGoalsRoute(
     screenFactory: MainScreenFactory,
     onBack: () -> Unit,
+    onOpenRecycleBin: () -> Unit,
     context: SpendingGoalRouteContext,
 ) {
     val editDrafts: SpendingGoalEditDraftStore = viewModel(
@@ -77,6 +78,7 @@ internal fun SpendingGoalsRoute(
             ),
         ),
         onBack = onBack,
+        onOpenRecycleBin = onOpenRecycleBin,
         context = context,
     )
 }
@@ -85,6 +87,7 @@ internal fun SpendingGoalsRoute(
 private fun SpendingGoalRouteContent(
     models: SpendingGoalRouteModels,
     onBack: () -> Unit,
+    onOpenRecycleBin: () -> Unit,
     context: SpendingGoalRouteContext,
 ) {
     var page by rememberSaveable(context.originalCreationId, context.originalGoalPublicId) { mutableStateOf(when {
@@ -143,6 +146,7 @@ private fun SpendingGoalRouteContent(
             viewModel = models.detail,
             backText = context.backText,
             onBack = closeDetail,
+            onOpenRecycleBin = onOpenRecycleBin,
         )
     }
 }

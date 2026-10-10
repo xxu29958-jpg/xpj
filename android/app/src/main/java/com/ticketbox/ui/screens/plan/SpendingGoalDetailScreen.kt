@@ -42,6 +42,7 @@ import com.ticketbox.viewmodel.SpendingGoalDetailViewModel
 internal fun SpendingGoalDetailScreen(
     viewModel: SpendingGoalDetailViewModel,
     onBack: () -> Unit,
+    onOpenRecycleBin: () -> Unit,
     backText: Int = R.string.spending_goal_detail_back,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -85,6 +86,7 @@ internal fun SpendingGoalDetailScreen(
             SpendingGoalDetailBody(
                 state = state,
                 viewModel = viewModel,
+                onOpenRecycleBin = onOpenRecycleBin,
             )
         }
         if (goal != null) item {
@@ -135,6 +137,7 @@ private fun SpendingGoalDetailStatus(state: SpendingGoalDetailUiState, viewModel
 private fun SpendingGoalDetailBody(
     state: SpendingGoalDetailUiState,
     viewModel: SpendingGoalDetailViewModel,
+    onOpenRecycleBin: () -> Unit,
 ) {
     when {
         state.isEditing && state.hasRetainedEdit -> SpendingGoalEditContent(state = state, viewModel = viewModel)
@@ -158,6 +161,7 @@ private fun SpendingGoalDetailBody(
             goal = state.goal,
             canModify = state.canModifyGoal && !state.hasPendingEdit,
             onArchive = { viewModel.showArchiveConfirmation(true) },
+            onOpenRecycleBin = onOpenRecycleBin,
         )
     }
 }

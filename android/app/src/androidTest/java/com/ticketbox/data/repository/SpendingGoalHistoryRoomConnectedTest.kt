@@ -188,7 +188,7 @@ class SpendingGoalHistoryRoomConnectedTest {
     private fun mount() {
         installModel()
         compose.setContent { current.value?.let { model ->
-            TicketboxTheme(skin = AppSkin.Paper) { SpendingGoalDetailScreen(model, {}) }
+            TicketboxTheme(skin = AppSkin.Paper) { SpendingGoalDetailScreen(model, {}, onOpenRecycleBin = {}) }
         } }
         compose.waitUntil(10_000) { current.value?.state?.value?.goal != null }
     }

@@ -102,6 +102,7 @@ internal fun recycleBinSummaryModel(itemCount: Int, shortWindowCount: Int): Recy
 fun RecycleBinScreen(
     viewModel: RecycleBinViewModel,
     onBack: () -> Unit,
+    backText: String = stringResource(R.string.transactions_library_back_to_library),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var group by rememberSaveable { mutableStateOf(RecycleGroup.All) }
@@ -125,7 +126,7 @@ fun RecycleBinScreen(
             role = AppPageRole.Ledger,
             title = stringResource(R.string.recycle_bin_page_title),
             subtitle = stringResource(R.string.recycle_bin_page_subtitle),
-            backText = stringResource(R.string.transactions_library_back_to_library),
+            backText = backText,
             onBack = onBack,
             verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
         ),

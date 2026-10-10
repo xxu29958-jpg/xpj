@@ -5,4 +5,7 @@
     <string name="goal_read_cached_title">离线快照</string>
     <string name="goal_read_cached_body">数据时间：%1$s。进度可能已变化，联网后刷新。</string>
     <string name="goal_accepted_result_source">显示原提交已接受的结果；刷新后可查看最新进度。</string>
+    <string name="spending_goal_recovery_body">目标已归档，可在回收站恢复。历史账单保留。</string>
+    <string name="spending_goal_recovery_action">查看回收站</string>
+    <string name="spending_goal_recovery_back">返回原目标</string>
 </resources>
