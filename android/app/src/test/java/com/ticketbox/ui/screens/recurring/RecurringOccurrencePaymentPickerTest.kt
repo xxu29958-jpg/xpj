@@ -21,6 +21,12 @@ class RecurringOccurrencePaymentPickerTest {
                 preferredExpenseId = 41,
             ).map { it.root.id },
         )
+        val negative = grocery.copy(root = grocery.root.copy(amountCents = -1200))
+        for (preferred in listOf(41L, null)) {
+            assertEquals(listOf(9L), occurrencePaymentChoices(listOf(negative, subscription),
+                month = "", query = "", preferredExpenseId = preferred).map { it.root.id },
+                "A negative bill cannot be payment evidence, including the original task's preferred bill")
+        }
     }
 
     @Test

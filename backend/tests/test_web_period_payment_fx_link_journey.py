@@ -25,7 +25,7 @@ from tests._local_web_identity_support import (
     installed_web_setup,
 )
 from tests._runtime_protocol import current_protocol_headers
-from tests.test_web_recurring_occurrences import _form, _record_payment_href
+from tests.test_web_recurring_occurrences import _choice_href, _form, _record_payment_href
 
 pytestmark = [pytest.mark.real_db, pytest.mark.currency_binding_unbound]
 
@@ -343,10 +343,15 @@ def test_period_payment_fx_confirm_return_then_explicit_link_zeros_reserve_once(
         headers={"Cookie": f"{SESSION_COOKIE_NAME}={session_token}"},
     )
     assert picker.status_code == 200, picker.text
+    choice = browser.get(
+        _choice_href(picker.text, "link"),
+        headers={"Cookie": f"{SESSION_COOKIE_NAME}={session_token}"},
+    )
+    assert choice.status_code == 200, choice.text
     linked = browser.post(
         occurrence_path,
-        data=_form(picker.text, "link"),
-        headers=_headers(session_token, picker),
+        data=_form(choice.text, "link"),
+        headers=_headers(session_token, choice),
         follow_redirects=False,
     )
     assert linked.status_code == 303, linked.text

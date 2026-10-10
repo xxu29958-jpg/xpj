@@ -6,6 +6,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -116,6 +117,7 @@ class RecurringOfflineReadingConnectedTest {
         saveConsumerArtPreview("recurring-list-offline", requireNotNull(automation.takeScreenshot()))
         compose.onNodeWithText(context.getString(R.string.occurrence_open)).performScrollTo().performClick()
         waitForText(context.getString(R.string.occurrence_review))
+        compose.waitUntil(5_000) { compose.onNodeWithText(context.getString(R.string.occurrence_open_payment)).isDisplayed() }
         compose.onNodeWithText(context.getString(R.string.occurrence_show_period)).performScrollTo().performClick()
         compose.onNodeWithTag("occurrence-state").performScrollTo().assertTextEquals(context.getString(R.string.occurrence_review))
         compose.onNodeWithText(context.getString(R.string.occurrence_review_reversed)).assertExists()
@@ -123,6 +125,12 @@ class RecurringOfflineReadingConnectedTest {
         compose.onNodeWithText(context.getString(R.string.occurrence_paid_amount, ""), substring = true).assertDoesNotExist()
         automation.waitForIdle(300, 3_000)
         saveConsumerArtPreview("recurring-occurrence-review", requireNotNull(automation.takeScreenshot()))
+        compose.onNodeWithText("首次记录依据").assertDoesNotExist()
+        compose.onNodeWithText(context.getString(R.string.recurring_definition_expand)).performScrollTo().performClick()
+        compose.onNodeWithText("首次记录依据").performScrollTo().assertExists()
+        compose.onNodeWithText(context.getString(R.string.recurring_definition_recorded, 7L)).assertExists()
+        compose.onNodeWithText(context.getString(R.string.recurring_definition_collapse)).performScrollTo().performClick()
+        compose.onNodeWithText("首次记录依据").assertDoesNotExist()
         Espresso.pressBack()
         openHistory()
         waitForText("原日元安排")

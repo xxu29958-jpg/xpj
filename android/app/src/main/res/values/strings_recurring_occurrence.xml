@@ -41,10 +41,13 @@
     <string name="occurrence_drop">放弃本机提交</string>
     <string name="occurrence_drop_explanation">只移除这条待处理提交，不会撤销服务器已完成的关联。请先刷新核对本期结果；放弃后可重新选择。</string>
     <string name="occurrence_keep">继续保留</string>
-    <string name="occurrence_record_payment">记录本期付款</string>
+    <string name="occurrence_record_payment">没有对应账单，记一笔付款</string>
     <string name="occurrence_pick_explanation">选择一张已确认账单，明确确认本期已完整付款。一张账单只能关联一个期次；暂不支持分次或拆分履约。</string>
     <string name="occurrence_payment_month">付款账期 · 留空查看全部缓存</string>
     <string name="occurrence_search">查找商家或备注</string>
+    <string name="occurrence_filters_show">%1$s · 筛选付款</string>
+    <string name="occurrence_filters_hide">%1$s · 收起筛选</string>
+    <string name="occurrence_all_payment_months">全部月份</string>
     <string name="occurrence_no_payments">没有匹配的已确认付款。可调整付款月份、搜索词，或刷新流水。</string>
     <string name="occurrence_narrow_search">显示前 20 笔，请缩小月份或搜索范围。</string>
     <string name="occurrence_has_refund">（有退款，显示原付款金额）</string>

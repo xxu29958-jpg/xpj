@@ -42,7 +42,7 @@ def _scope(token):
 
 def _facts():
     with SessionLocal() as db:
-        return [list(db.execute(select(*model.__table__.columns).order_by(model.id))) for model in
+        return [list(db.execute(select(*model.__table__.columns).order_by(*model.__table__.primary_key.columns))) for model in
             [Budget, BudgetCategory, BudgetRevision, MonthlyArrangement, MonthlyArrangementRevision, RecurringItem, RecurringItemRevision, Expense,
              RecurringOccurrence, RecurringOccurrenceRevision]]
 

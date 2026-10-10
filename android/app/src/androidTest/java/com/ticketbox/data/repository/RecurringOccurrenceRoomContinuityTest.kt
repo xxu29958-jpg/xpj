@@ -8,11 +8,14 @@ import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextReplacement
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import androidx.test.espresso.Espresso.pressBack
@@ -23,6 +26,7 @@ import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.RecurringItem
+import com.ticketbox.ui.saveConsumerArtPreview
 import com.ticketbox.ui.navigation.RecurringExpenseNavigation
 import com.ticketbox.ui.navigation.RecurringOccurrenceHost
 import com.ticketbox.ui.navigation.RecurringPaymentDraft
@@ -73,10 +77,23 @@ class RecurringOccurrenceRoomContinuityTest {
         }
         compose.waitUntil(10_000) { host.model.value?.uiState?.value?.canWrite == true }
         compose.onNodeWithTag("occurrence-state").assertTextEquals("本期尚未履约")
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        automation.waitForIdle(300, 3_000)
+        saveConsumerArtPreview("recurring-occurrence-unpaid", requireNotNull(automation.takeScreenshot()))
+        compose.onNodeWithTag("occurrence-payment-filter-toggle").performScrollTo().performClick()
+        compose.onNode(hasSetTextAction() and hasText("付款账期 · 留空查看全部缓存"))
+            .performScrollTo().performTextReplacement("")
+        compose.onNode(hasSetTextAction() and hasText("查找商家或备注"))
+            .performScrollTo().performTextReplacement("房租付款")
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        compose.onNodeWithTag("occurrence-payment-filter-toggle").performScrollTo().performClick()
+        compose.onNodeWithText("全部月份 · 房租付款 · 筛选付款").assertExists()
         compose.onNodeWithTag("occurrence-payment-1").performScrollTo().performClick()
         val review = InstrumentationRegistry.getInstrumentation().targetContext.getString(
             com.ticketbox.R.string.occurrence_link_review, "房租付款", "JPY ¥12,345")
         compose.onNodeWithText(review).assertIsDisplayed()
+        automation.waitForIdle(300, 3_000)
+        saveConsumerArtPreview("recurring-occurrence-choice", requireNotNull(automation.takeScreenshot()))
         compose.onNodeWithTag("occurrence-submit").performClick()
         compose.waitUntil(10_000) { fixture.stored().size == 1 }
         val original = fixture.stored().single()
@@ -99,7 +116,7 @@ class RecurringOccurrenceRoomContinuityTest {
         assertEquals(original["idempotencyKey"], fixture.network.calls.last().second)
         assertEquals(0L, host.model.value?.uiState?.value?.occurrence?.reservedAmountCents)
         compose.onNodeWithText("关联付款当前金额 JPY ¥12,345").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("查看关联账单").performScrollTo().performClick()
+        compose.onNodeWithText("查看关联账单").assertIsDisplayed().performClick()
         assertEquals(listOf(1L), host.openedExpenses)
         completeUndo()
     }

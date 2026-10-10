@@ -7,7 +7,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -39,7 +44,8 @@ internal fun OccurrenceCurrentSummary(occurrence: RecurringOccurrenceDto) {
             }
             Text(stringResource(R.string.occurrence_summary_period, occurrence.period), style = MaterialTheme.typography.bodySmall)
             Text(stringResource(R.string.occurrence_planned_amount), style = MaterialTheme.typography.bodyMedium)
-            AppAmountText(recurringRecordedAmountText(occurrence.plannedAmountCents, occurrence.homeCurrencyCode), role = AppAmountRole.Hero)
+            AppAmountText(recurringRecordedAmountText(occurrence.plannedAmountCents, occurrence.homeCurrencyCode),
+                role = if (occurrence.state == "needs_review") AppAmountRole.Compact else AppAmountRole.Hero)
             Text(stringResource(R.string.occurrence_reserved,
                 recurringRecordedAmountText(occurrence.reservedAmountCents, occurrence.homeCurrencyCode)))
             occurrence.paidAmountCents?.let {
@@ -52,6 +58,11 @@ internal fun OccurrenceCurrentSummary(occurrence: RecurringOccurrenceDto) {
 @Composable
 internal fun OccurrenceDefinitionBasis(occurrence: RecurringOccurrenceDto) {
     HorizontalDivider()
+    var expanded by rememberSaveable(occurrence.seriesPublicId, occurrence.period) { mutableStateOf(false) }
+    TextButton(onClick = { expanded = !expanded }) {
+        Text(stringResource(if (expanded) R.string.recurring_definition_collapse else R.string.recurring_definition_expand))
+    }
+    if (!expanded) return
     val original = occurrence.recordedDefinition
     if (original == null) {
         Text(stringResource(if (occurrence.rowVersion == 0L) R.string.recurring_definition_unrecorded

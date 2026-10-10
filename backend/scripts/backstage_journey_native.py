@@ -82,7 +82,7 @@ def open_latest_source(j):
     assert nodes, "The real task list has no original source action"
     # Existing task query orders newest first; choose its visible source action.
     j.native.tap(min(nodes, key=lambda node: j.native.bounds(node)[1]))
-    wait_for(lambda: j.native.has("确认账单"), "The uploaded task did not open its original pending bill")
+    wait_for(lambda: j.native.has("核对这张小票"), "The uploaded task did not open its original pending bill")
 
 
 def native_upload_and_ocr(j):
