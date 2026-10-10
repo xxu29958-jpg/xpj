@@ -7,6 +7,7 @@ import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.RecurringItemCreateRequestDto
 import com.ticketbox.data.remote.dto.RecurringItemUpdateRequestDto
 import com.ticketbox.data.remote.dto.RecurringOptionalDate
+import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.RecurringItem
 import java.util.UUID
@@ -15,7 +16,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import okio.Buffer
 
-/** Captures manual commands in the existing outbox before its dispatcher can send them. */
+/** Captures user-reviewed commands in the existing outbox before its dispatcher can send them. */
 internal class RecurringMutationClient(
     private val requestGuard: LedgerRequestGuard,
     private val errorHandler: NetworkErrorHandler,
@@ -23,6 +24,7 @@ internal class RecurringMutationClient(
     private val outbox: OutboxRepository?,
     private val createAdapter: JsonAdapter<RecurringItemCreateRequestDto>?,
     private val updateAdapter: JsonAdapter<RecurringItemUpdateRequestDto>?,
+    private val candidateAdapter: JsonAdapter<RecurringCandidatePayload>?,
 ) : RecurringManualMutationActions {
     override fun observePendingIntents(): Flow<List<RecurringPendingIntent>> {
         val outboxRef = outbox ?: return flowOf(emptyList())
@@ -36,7 +38,7 @@ internal class RecurringMutationClient(
         val origin = canonicalServerOriginOrNull(binding.serverUrl) ?: return null
         if (row.type !in RECURRING_OUTBOX_TYPES || row.ownerKey != binding.ownerKey || row.ledgerId != binding.ledgerId ||
             canonicalServerOriginOrNull(row.serverUrl) != origin) return null
-        return parsePendingIntent(row, createAdapter, updateAdapter)
+        return parsePendingIntent(row, createAdapter, updateAdapter, candidateAdapter)
     }
 
     override suspend fun recoverManualIntent(binding: LogicalSessionBinding, row: OutboxRow, drop: Boolean): Result<Unit> =
@@ -54,6 +56,29 @@ internal class RecurringMutationClient(
             }
             Unit
         }
+
+    override suspend fun confirmCandidate(
+        expectedBinding: LogicalSessionBinding,
+        candidate: RecurringCandidate,
+        nextExpectedDate: String?,
+    ): Result<RecurringPendingIntent> {
+        if (!canModify()) return recurringValidationFailure("permission_denied")
+        val queue = outbox ?: return recurringValidationFailure("recurring_command_owner_unavailable")
+        val adapter = candidateAdapter ?: return recurringValidationFailure("recurring_command_owner_unavailable")
+        return errorHandler.safeCall {
+            val bound = requestGuard.bindExact(expectedBinding)
+            val payload = RecurringCandidatePayload(candidate.toConfirmRequest(nextExpectedDate), recurringTimezoneId())
+            val key = UUID.randomUUID().toString()
+            val targetId = "recurring_candidate:$key"
+            queue.enqueue(boundRequest = bound, intent = PendingMutationIntent(
+                type = PendingMutationType.ConfirmRecurringCandidate, targetId = targetId,
+                payloadJson = adapter.toJson(payload), expectedRowVersion = 0, idempotencyKey = key))
+            RecurringPendingIntent(kind = RecurringPendingKind.CANDIDATE, targetId = targetId, idempotencyKey = key,
+                merchant = payload.request.merchant, baselineAmountCents = payload.request.amountCents,
+                nextExpectedDateChanged = nextExpectedDate != null, nextExpectedDate = nextExpectedDate,
+                homeCurrencyCode = payload.request.homeCurrencyCode, hasSupportedIntent = true)
+        }
+    }
 
     override suspend fun createAllowingOffline(
         expectedBinding: LogicalSessionBinding,
@@ -142,9 +167,14 @@ private fun parsePendingIntent(
     row: OutboxRow,
     createAdapter: JsonAdapter<RecurringItemCreateRequestDto>?,
     updateAdapter: JsonAdapter<RecurringItemUpdateRequestDto>?,
+    candidateAdapter: JsonAdapter<RecurringCandidatePayload>?,
 ): RecurringPendingIntent {
     val original = RecurringPendingIntent(
-        kind = if (row.type == PendingMutationType.CreateRecurringItem) RecurringPendingKind.CREATE else RecurringPendingKind.UPDATE,
+        kind = when (row.type) {
+            PendingMutationType.CreateRecurringItem -> RecurringPendingKind.CREATE
+            PendingMutationType.ConfirmRecurringCandidate -> RecurringPendingKind.CANDIDATE
+            else -> RecurringPendingKind.UPDATE
+        },
         targetId = row.targetId,
         idempotencyKey = row.idempotencyKey.orEmpty(),
         state = row.toRecurringPendingState(),
@@ -154,6 +184,13 @@ private fun parsePendingIntent(
     // Unsupported originals remain visible and stored verbatim for explicit review.
     val parsed = runCatching {
         when (row.type) {
+            PendingMutationType.ConfirmRecurringCandidate -> {
+                val payload = requireNotNull(candidateAdapter?.fromJson(row.payloadJson))
+                original.copy(merchant = payload.request.merchant, baselineAmountCents = payload.request.amountCents,
+                    nextExpectedDateChanged = payload.request.nextExpectedDate != null,
+                    nextExpectedDate = payload.request.nextExpectedDate, homeCurrencyCode = payload.request.homeCurrencyCode,
+                    hasSupportedIntent = payload.matchesOriginal(row))
+            }
             PendingMutationType.CreateRecurringItem -> {
                 val request = requireNotNull(createAdapter?.fromJson(row.payloadJson))
                 original.copy(
@@ -257,6 +294,7 @@ private fun OutboxRow.toRecurringPendingState(): RecurringPendingState = when (s
 }
 
 private val RECURRING_OUTBOX_TYPES = setOf(
+    PendingMutationType.ConfirmRecurringCandidate,
     PendingMutationType.CreateRecurringItem,
     PendingMutationType.UpdateRecurringItem,
 )

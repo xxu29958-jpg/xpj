@@ -173,6 +173,7 @@ def post_confirm(
             "merchant": merchant,
             "amount_cents": amount_cents,
             "next_expected_date": next_expected_date,
+            "idempotency_key": str(uuid4()),
             **extra,
         },
         follow_redirects=False,

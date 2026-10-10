@@ -34,7 +34,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 private val recurringSubmissionTypes = setOf(
-    PendingMutationType.CreateRecurringItem, PendingMutationType.UpdateRecurringItem, PendingMutationType.SetRecurringOccurrencePayment,
+    PendingMutationType.ConfirmRecurringCandidate, PendingMutationType.CreateRecurringItem, PendingMutationType.UpdateRecurringItem, PendingMutationType.SetRecurringOccurrencePayment,
 )
 internal val categoryRuleSubmissionTypes = setOf(
     PendingMutationType.CreateCategoryRule, PendingMutationType.UpdateCategoryRule, PendingMutationType.DeleteCategoryRule,
@@ -57,6 +57,7 @@ private val submissionFailureResources = mapOf(
     PendingMutationType.SaveMonthlyBudget to R.string.budget_save_attention,
     PendingMutationType.SaveMonthlyArrangement to R.string.arrangement_attention,
     PendingMutationType.SaveManualExchangeRate to R.string.advice_rate_submission_review,
+    PendingMutationType.ConfirmRecurringCandidate to R.string.recurring_original_attention,
     PendingMutationType.CreateRecurringItem to R.string.recurring_original_attention,
     PendingMutationType.UpdateRecurringItem to R.string.recurring_original_attention,
     PendingMutationType.SetRecurringOccurrencePayment to R.string.occurrence_attention,
@@ -405,7 +406,7 @@ data class OutboxStatusUiState(
         if (row.refusesRetry(correctionObservation)) return false
         return when (row.type) {
             in categoryRuleSubmissionTypes -> offersRuleRetry(row)
-            PendingMutationType.CreateRecurringItem, PendingMutationType.UpdateRecurringItem ->
+            PendingMutationType.ConfirmRecurringCandidate, PendingMutationType.CreateRecurringItem, PendingMutationType.UpdateRecurringItem ->
                 recurringItems[row.id]?.canRetry == true
             PendingMutationType.SetRecurringOccurrencePayment ->
                 recurringOccurrences[row.id]?.canRetry == true
@@ -469,7 +470,7 @@ private suspend fun OutboxRecoveryRepositories.recoverPlanningSubmission(
     PendingMutationType.CreateGoal, PendingMutationType.UpdateGoal -> recoverGoalSubmission(binding, row, drop)
     PendingMutationType.SaveMonthlyArrangement, PendingMutationType.SaveMonthlyBudget,
     PendingMutationType.SaveManualExchangeRate -> recoverBudgetSubmission(binding, row, drop)
-    PendingMutationType.CreateRecurringItem, PendingMutationType.UpdateRecurringItem ->
+    PendingMutationType.ConfirmRecurringCandidate, PendingMutationType.CreateRecurringItem, PendingMutationType.UpdateRecurringItem ->
         recurringItems.recoverManualIntent(binding, row, drop)
     PendingMutationType.SetRecurringOccurrencePayment ->
         recurringOccurrences?.recover(binding, row, drop) ?: Result.failure(IllegalStateException())

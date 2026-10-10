@@ -44,6 +44,7 @@
 
 <div class="plan-flow{% if is_task %} recurring-editor{% endif %}">
 {{ drafts.shelf('recurring', '固定支出', recurring_draft_scope) }}
+{{ drafts.shelf('candidate', '建议采用', recurring_draft_scope) }}
 {% if is_task or not result_visible %}{{ result_feedback() }}{% endif %}
 
 {% if not is_task %}
@@ -260,12 +261,17 @@
 {% if creating or review %}
 <section id="add" aria-label="{% if review %}采用这条建议{% else %}添加固定支出{% endif %}">
   {% if review %}
-  {% if review.retained %}
-  <div class="product-feedback" role="status">原建议值和填写已保留，尚未确认采用。再次采用时会核对当前账单。</div>
+  {% if review.retained and recurring_draft_result != 'prepared' %}
+  <div class="product-feedback" role="status">原建议值和填写已保留，采用结果以原提交回执为准。</div>
+  {% elif review.retained %}
   {% else %}
   <div class="product-feedback" role="status">已观察 {{ review.occurrence_count }} 次{% if review.last_seen_date %} · 最近 {{ review.last_seen_date }}{% endif %}——商家和金额是账单里观察到的，采用后保留观察记录；提醒日期可以留也可以清空。</div>
   {% endif %}
-  <form method="post" action="/web/recurring/confirm-candidate" class="budget-form">
+  {% set candidate_scope = recurring_draft_scope if review.get('draft_scope') != '' else none %}
+  <form method="post" action="/web/recurring/confirm-candidate" class="budget-form"
+    {% if candidate_scope %}data-candidate-draft-scope="{{ candidate_scope | tojson | forceescape }}" data-candidate-native-result="{{ recurring_draft_result }}" data-candidate-prepared-from="{{ review.get('prepared_from_key', '') }}" data-candidate-can-write="{{ 'true' if can_write else 'false' }}" data-candidate-original-only="{{ 'true' if review.original_only else 'false' }}"{% endif %}>
+    <input type="hidden" name="idempotency_key" value="{{ review.idempotency_key }}">
+    {% if recurring_draft_scope %}<input type="hidden" name="draft_scope" value="{{ review.get('draft_scope', recurring_draft_scope | tojson) | forceescape }}">{% endif %}
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
     <input type="hidden" name="month" value="{{ history_month }}">
     <input type="hidden" name="status" value="{{ status_filter }}">
@@ -279,7 +285,7 @@
       </div>
       <div class="product-field">
         <label for="rc-review-amount">每月金额（{{ '原建议值' if review.retained else '观察值' }}）</label>
-        <input class="product-input" id="rc-review-amount" type="text" value="{{ review.home_currency_code }} {{ review.amount_yuan }}" readonly>
+        <input class="product-input" id="rc-review-amount" name="amount_display" type="text" value="{{ review.home_currency_code }} {{ review.amount_yuan }}" readonly>
       </div>
       <div class="product-field">
         <label for="rc-review-date">下次预计日期</label>
@@ -288,9 +294,12 @@
       </div>
     </div>
     <div class="budget-actions">
-      <button class="product-button product-button--primary" type="submit">采用建议</button>
+      {% if can_write and review.review_required %}
+      <button class="product-button product-button--primary" type="submit" name="review_latest" value="true" formnovalidate>核对原建议后继续</button>
+      {% else %}<button class="product-button product-button--primary" type="submit" data-candidate-submit{% if review.original_only or not can_write %} disabled{% endif %}>采用建议</button>{% endif %}
       <a class="product-button product-button--quiet" href="{{ suggestions_href }}">返回建议列表</a>
     </div>
+    {{ drafts.controls('candidate', '建议采用', candidate_scope) }}
   </form>
   {% else %}
   {% set create_scope = recurring_draft_scope if create_form.get('draft_scope') != '' else none %}
@@ -375,7 +384,7 @@
       </div>
       <div class="recurring-row-actions">
         {% if can_write %}
-        <a class="product-button product-button--small" href="{{ suggestions_href }}&amp;review={{ candidate.merchant|urlencode }}">复核采用</a>
+        <a class="product-button product-button--small" href="{{ suggestions_href }}&amp;new_candidate=1&amp;review={{ candidate.merchant|urlencode }}">复核采用</a>
         {% else %}
         <span class="readonly-inline">只读</span>
         {% endif %}

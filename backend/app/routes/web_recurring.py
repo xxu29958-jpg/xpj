@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 from urllib.parse import quote
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -65,6 +66,7 @@ from app.services.recurring_occurrence_query import next_due_dates
 from app.services.recurring_service import (
     RecurringAmountAnomaly,
     archive_recurring_item,
+    get_recurring_item,
     list_recurring_items,
     pause_recurring_item,
     recurring_amount_anomalies,
@@ -116,7 +118,7 @@ def _candidate_review(
     candidates_error: bool,
     submitted: dict | None = None,
 ) -> dict | None:
-    if submitted is not None and can_write:
+    if submitted is not None:
         return retained_candidate_form(submitted)
     if not review_merchant or not can_write or candidates_error:
         return None
@@ -197,6 +199,9 @@ def _render_recurring(
     ctx["candidates"] = [candidate_view(candidate) for candidate in candidate_rows]
     ctx["candidates_error"] = candidates_error
     # 候选「复核采用」: 按 URL 的商家定位候选, provenance 全部来自服务端扫描。
+    if candidate_draft is None and request.query_params.get("resume_candidate") == "1":
+        candidate_draft = {"merchant": "", "amount_cents": "", "home_currency_code": "",
+            "next_expected_date": "", "idempotency_key": "", "original_only": True}
     ctx["review"] = _candidate_review(
         candidate_rows,
         review_merchant=review_merchant,
@@ -326,53 +331,53 @@ def web_recurring_confirm_candidate(
     next_expected_date: str = Form(default=""),
     month: str = Form(default=""),
     status: str = Form(default=""),
+    idempotency_key: str = Form(default=""),
+    draft_scope: str = Form(default=""),
+    review_latest: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ):
-    """候选「复核采用」的统一表单提交口: 只用 merchant + amount 定位服务端
-    候选, provenance (occurrence_count / last_seen_at / confidence) 由 confirm
-    service 从当前服务端扫描给出 — 本路由不接收也不转发客户端的这三个字段。
-    409 conflict/archived 消费 details 给出可行动下一步。"""
+    """Keep the original adoption distinct from a later observation or definition."""
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
-    proposal = {"merchant": merchant, "amount_cents": amount_cents,
-        "home_currency_code": home_currency_code, "next_expected_date": next_expected_date}
+    proposal = {"merchant": merchant, "amount_cents": amount_cents, "home_currency_code": home_currency_code,
+        "next_expected_date": next_expected_date, "idempotency_key": idempotency_key, "draft_scope": draft_scope}
     retained = preserve_original_ledger_form(request, db, options=options, selected=selected_id,
-        fields={**proposal, "ledger_id": ledger_id, "month": month, "status": status}, task="采用固定支出建议")
+        fields={**proposal, "ledger_id": ledger_id, "month": month, "status": status, "review_latest": review_latest},
+        task="采用固定支出建议")
     if retained is not None:
-        return retained
+        return draft_error_response(request, AppError("session_binding_changed", "账本已切换，原稿仍保留。", status_code=409)) or retained
     _require_selected_ledger_write(options, selected_id)
     try:
-        parsed_amount_cents = parse_canonical_money_minor(
-            amount_cents,
-            sign=MoneySign.POSITIVE,
-            label="web_recurring.amount_cents",
-        )
-        payload = RecurringCandidateConfirmRequest(
-            merchant=merchant,
-            home_currency_code=normalize_currency_code(home_currency_code),
-            amount_cents=parsed_amount_cents,
-            frequency="monthly",
-            next_expected_date=parse_optional_date(next_expected_date),
-        )
-        item = confirm_recurring_candidate(db, tenant_id=selected_id, payload=payload,
-            actor_account_id=resolve_web_actor_account_id(db, request, selected_id))
+        proposal["draft_scope"] = reviewed_draft_scope(db, request, draft_scope, review=review_latest == "true")
+        require_draft_binding(db, request, ledger_id=selected_id, draft_scope=proposal["draft_scope"], require_session=False)
+        if review_latest == "true":
+            return _render_recurring(request=request, db=db, selected_id=selected_id, options=options,
+                status=status or None, navigation_month=month, draft_result="prepared",
+                candidate_draft={**proposal, "idempotency_key": uuid4().hex, "prepared_from_key": idempotency_key},
+                flash_message="原建议值和日期已保留，尚未采用。核对后再提交。")
+        parsed_amount_cents = parse_canonical_money_minor(amount_cents, sign=MoneySign.POSITIVE,
+            label="web_recurring.amount_cents")
+        payload = RecurringCandidateConfirmRequest(merchant=merchant,
+            home_currency_code=normalize_currency_code(home_currency_code), amount_cents=parsed_amount_cents,
+            frequency="monthly", next_expected_date=parse_optional_date(next_expected_date))
+        receipt = confirm_recurring_candidate(db, tenant_id=selected_id, payload=payload,
+            idempotency_key=idempotency_key, actor_account_id=resolve_web_actor_account_id(db, request, selected_id))
     except AppError as exc:
         db.rollback()
+        refusal = "rejected" if exc.error in {"recurring_candidate_not_found", "recurring_item_conflict",
+            "recurring_item_archived", "recurring_frequency_invalid", "recurring_merchant_too_long"} else draft_refusal_result(exc)
         feedback = _conflict_kwargs(exc, selected_id=selected_id, merchant=merchant)
         feedback["open_edit_id"] = None
-        return _render_recurring(
-            request=request,
-            db=db,
-            selected_id=selected_id,
-            options=options,
-            candidate_draft=proposal,
-            navigation_month=month,
-            status=status or None,
-            **feedback,
-        )
-    return _lifecycle_redirect(selected_id, item.public_id, month, status=item.status,
-        flash="已采用建议，加入你的固定支出。")
+        return draft_error_response(request, exc, refusal_result=refusal) or _render_recurring(
+            request=request, db=db, selected_id=selected_id, options=options, navigation_month=month,
+            candidate_draft={**proposal, "review_required": exc.error in {"idempotency_key_required", "idempotency_key_reused"}},
+            draft_result=refusal, status=status or None, **feedback)
+    current = get_recurring_item(db, tenant_id=selected_id, public_id=receipt.public_id)
+    destination = _lifecycle_redirect(selected_id, receipt.public_id, month, status=current.status,
+        flash="已采用建议。")
+    return draft_ack_response(request, draft_scope=draft_scope, idempotency_key=idempotency_key,
+        receipt=receipt, next_href=destination.headers["location"]) or destination
 
 
 @router.post("/{public_id}/edit", response_class=HTMLResponse)

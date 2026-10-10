@@ -10,6 +10,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
 
+import pytest
 from jinja2 import ChoiceLoader, DictLoader, Environment, FileSystemLoader, select_autoescape
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -43,6 +44,11 @@ def _rule_definition(kind, common, scope, key):
 
 
 def _recurring_definition(kind, common, key, values, native_result):
+    if kind == "candidate":
+        common.update(review={"merchant": "原日元订阅", "amount_cents": "1200", "home_currency_code": "JPY",
+            "amount_yuan": "1200", "occurrence_count": 3, "next_expected_date": "2026-10-09",
+            "idempotency_key": key, **(values or {})}, history_month="2026-09", recurring_draft_result=native_result)
+        return ENV.get_template("recurring.html").render(**common)
     common.update(items=[{"public_id": "series-one", "merchant": "原日元计划", "merchant_editable": True,
         "status": "active", "source": "manual", "home_currency_code": "JPY", "row_version": 7,
         "edit_form": {"merchant": "原日元计划", "baseline_amount_yuan": "1200", "home_currency_code": "JPY",
@@ -199,6 +205,10 @@ class RecoveryHandler(Handler):
             result["receipt"] = {"id": int(values["rule_id"] or "43"), "row_version": int(values["expected_row_version"]) + 1 if values["rule_id"] else 1,
                 "keyword": values["keyword"].strip(), "category": values["category"].strip()}
             result["next"] = "/web/rules?ledger_id=owner"
+        if self.path == "/web/recurring/confirm-candidate":
+            result["receipt"].update(source="candidate", status="active", row_version=1,
+                home_currency_code=values["home_currency_code"], baseline_amount_cents=int(values["amount_cents"]),
+                next_expected_date=values["next_expected_date"] or None)
         if self.path.startswith("/web/merchants/"):
             result["receipt"].update(row_version=1, display_name=values.get("display_name"), canonical_merchant=values.get("canonical_merchant"))
             result["next"] = "/web/merchants?ledger_id=owner"
@@ -245,18 +255,23 @@ class RecurringReviewHandler(RecoveryHandler):
         fields = self.read_fields()
         values = dict(fields)
         POSTS.append({"path": self.path, "fields": fields})
+        candidate = self.path == "/web/recurring/confirm-candidate"
         if values.get("review_latest") == "true":
-            return self.reply(render("recurring-edit", {**values, "expected_row_version": "8",
+            return self.reply(render("candidate" if candidate else "recurring-edit", {**values, "expected_row_version": "8",
                 "prepared_from_key": values["idempotency_key"], "idempotency_key": str(uuid4())}, "prepared"))
         if len(POSTS) == 1:
             return self.reply('{"message":"Another client changed this plan","draft_result":"rejected"}',
                 "application/json", status=409)
         result = {"ack": {"scope": json.loads(values["draft_scope"]), "clientRef": values["idempotency_key"]},
             "receipt": {"public_id": "series-one", "row_version": 9}, "next": "/web/recurring?ledger_id=owner"}
+        if candidate:
+            result["receipt"].update(source="candidate", status="active", row_version=1,
+                home_currency_code=values["home_currency_code"], baseline_amount_cents=int(values["amount_cents"]),
+                next_expected_date=values["next_expected_date"] or None)
         return self.reply(json.dumps(result), "application/json")
 
 
-def _run_browser(tmp_path, handler, expression):
+def _run_browser(tmp_path, handler, expression, query=""):
     HITS.clear()
     MISSING.clear()
     POSTS.clear()
@@ -265,7 +280,7 @@ def _run_browser(tmp_path, handler, expression):
     thread.start()
     try:
         return _runtime._edge_cdp().evaluate_page(_runtime._discover_edge(), profile=tmp_path / "planning-edge",
-            prepare_url=lambda _: f"http://127.0.0.1:{server.server_port}/", width=1024, height=768,
+            prepare_url=lambda _: f"http://127.0.0.1:{server.server_port}/{query}", width=1024, height=768,
             expression=expression)
     finally:
         server.shutdown()
@@ -291,7 +306,7 @@ def test_planning_and_reference_entries_replay_original_body_after_unknown_reply
     assert not result.get("error"), result
     assert not MISSING, MISSING
     assert {row["entry"] for row in result["results"]} == {
-        "budget", "arrangement", "recurring-create", "recurring-edit", "tag-create", "category-create",
+        "budget", "arrangement", "recurring-create", "recurring-edit", "candidate", "tag-create", "category-create",
         "merchant-create", "alias-create", "catalog-rename", "catalog-toggle", "catalog-delete", "catalog-merge", "rule-create", "rule-edit"}
     assert len(POSTS) == 2 * len(result["results"])
     for first, replay in zip(POSTS[::2], POSTS[1::2], strict=True):
@@ -315,14 +330,19 @@ def test_arrangement_preview_and_explicit_rejected_review_leave_financial_save_e
     assert result["confirmed"] and result["originalRemoved"]
 
 
-def test_recurring_review_replaces_only_the_rejected_draft_before_explicit_save(tmp_path: Path):
-    result = _run_browser(tmp_path, RecurringReviewHandler, "window.__recurringReview || undefined")
+@pytest.mark.parametrize("kind", ["recurring-edit", "candidate"])
+def test_recurring_review_replaces_only_the_rejected_draft_before_explicit_save(tmp_path: Path, kind: str):
+    result = _run_browser(tmp_path, RecurringReviewHandler, "window.__recurringReview || undefined", "?kind=" + kind)
     assert not result.get("error"), result
     assert not MISSING and len(POSTS) == 3
     rejected, review, accepted = [dict(post["fields"]) for post in POSTS]
     assert rejected["idempotency_key"] == review["idempotency_key"] == result["original"]
     assert accepted["idempotency_key"] == result["replacement"] != result["original"]
-    assert rejected["expected_row_version"] == "7" and accepted["expected_row_version"] == "8"
-    assert all(fields["baseline_amount_yuan"] == "2500" and fields["home_currency_code"] == "JPY"
-        for fields in (rejected, review, accepted))
+    if kind == "recurring-edit":
+        assert rejected["expected_row_version"] == "7" and accepted["expected_row_version"] == "8"
+        assert all(fields["baseline_amount_yuan"] == "2500" for fields in (rejected, review, accepted))
+    else:
+        assert all(fields["amount_cents"] == "1200" and fields["next_expected_date"] == ""
+            for fields in (rejected, review, accepted))
+    assert all(fields["home_currency_code"] == "JPY" for fields in (rejected, review, accepted))
     assert result["replacementRetainedBeforeSave"] and result["confirmed"] and result["unrelatedRetained"]

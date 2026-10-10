@@ -79,6 +79,12 @@ REVIEWED_BOUNDARIES = {
         "test": "android/app/src/test/java/com/ticketbox/data/repository/NetworkErrorReportingTest.kt::confirmReplayFailureReportsSafelyAndKeepsItsOriginalCommand",
         "reason": "Unexpected replay errors are reported before a blocking Failure retains the original command, key and OCC. No raw exception text reaches the user; cancellation propagates and the existing transport retry owner is preserved.",
     },
+    (ANDROID + "data/repository/ConfirmRecurringCandidateDispatcher.kt", "dispatch"): {
+        "sha256": "16eda617eeb4e0d0e924aace3aeec3c90c6da3dab54bca6f7e60f8157e2be7bb",
+        "owner": "existing HTTP mapping and sanitized TicketboxNetwork output",
+        "test": "android/app/src/test/java/com/ticketbox/data/repository/NetworkErrorReportingTest.kt::candidateReplayFailureReportsSafelyAndKeepsItsOriginalCommand",
+        "reason": "Unexpected adoption replay failures report through logNetworkWarning while Outbox retains the original payload and key as unresolved. Receipt mismatches use a static diagnostic. No raw exception text reaches the UI; cancellation propagates and existing transport retry behavior is unchanged.",
+    },
     (ANDROID + "data/repository/ApplyConfirmedRulesDispatcher.kt", "dispatch"): {
         "sha256": "05c182564cf7ba8c855da84ad741a40e11473d5bcb5fb47d8e53a77404ce2a65",
         "owner": "NetworkErrorHandler for read/HTTP errors; sanitized TicketboxNetwork output for unexpected replay failures",

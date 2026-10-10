@@ -118,6 +118,7 @@ internal class RepositoryGraph(
         apiProvider = apiServiceProvider,
         outbox = outbox,
         createAdapter = outboxAdapters.recurringCreateAdapter,
+        candidateAdapter = outboxAdapters.recurringCandidateAdapter,
         updateAdapter = outboxAdapters.recurringUpdateAdapter,
         occurrenceAdapter = outboxAdapters.recurringOccurrenceAdapter,
         queryReader = recurringQueries,

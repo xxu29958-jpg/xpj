@@ -550,7 +550,7 @@ class OutboxRepository private constructor(
     internal var onIncomeAccepted: suspend (OutboxRow) -> Unit = {}
 
     internal fun affectsRecurringReads(row: OutboxRow) = row.type in setOf(
-        PendingMutationType.CreateRecurringItem, PendingMutationType.UpdateRecurringItem,
+        PendingMutationType.ConfirmRecurringCandidate, PendingMutationType.CreateRecurringItem, PendingMutationType.UpdateRecurringItem,
         PendingMutationType.SetRecurringOccurrencePayment, PendingMutationType.PatchExpense, PendingMutationType.CorrectExpense,
         PendingMutationType.CreateExpense, PendingMutationType.ConfirmExpense, PendingMutationType.UndoExpense,
         PendingMutationType.CreateExpenseOffset, PendingMutationType.VoidExpenseOffset)

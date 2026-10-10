@@ -204,6 +204,7 @@ def test_recurring_web_commands_pass_only_the_original_authenticated_actor(histo
         captured.append(kw)
         return SimpleNamespace(public_id="series-one", status="active")
     monkeypatch.setattr(route, owner, command)
+    monkeypatch.setattr(route, "get_recurring_item", lambda *a, **kw: SimpleNamespace(public_id="series-one", status="active"))
     url = "/web/recurring/" + (action if action in {"create","confirm-candidate"} else "series-one/"+action)
     body = {"ledger_id":"owner", "merchant":"原计划", "baseline_amount_yuan":"1200", "home_currency_code":"JPY",
         "next_expected_date":"2026-05-08", "expected_row_version":"7", "idempotency_key":"original-key",
@@ -211,7 +212,7 @@ def test_recurring_web_commands_pass_only_the_original_authenticated_actor(histo
     result = client.post(url,data=body,follow_redirects=False)
     assert result.status_code == 303 and len(captured)==1
     assert captured[0]["tenant_id"] == "owner" and captured[0]["actor_account_id"] == 42
-    if action in {"create","edit"}:
+    if action in {"create","edit","confirm-candidate"}:
         assert captured[0]["idempotency_key"] == "original-key"
     if action in {"create","edit","confirm-candidate"}:
         assert parse_qs(urlsplit(result.headers["location"]).query)["month"] == ["2026-05"]

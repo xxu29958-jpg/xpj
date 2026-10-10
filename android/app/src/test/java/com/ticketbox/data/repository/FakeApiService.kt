@@ -849,6 +849,7 @@ internal class FakeApiService(
     override suspend fun confirmRecurringCandidate(
         request: RecurringCandidateConfirmRequestDto,
         timezone: String?,
+        idempotencyKey: String,
     ): RecurringItemDto = unsupported()
     override suspend fun pauseRecurringItem(publicId: String, request: com.ticketbox.data.remote.dto.RecurringItemTokenRequest): RecurringItemDto = unsupported()
     override suspend fun resumeRecurringItem(publicId: String, request: com.ticketbox.data.remote.dto.RecurringItemTokenRequest): RecurringItemDto = unsupported()

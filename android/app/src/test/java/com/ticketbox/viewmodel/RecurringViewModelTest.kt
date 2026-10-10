@@ -105,7 +105,7 @@ class RecurringViewModelTest {
     }
 
     @Test
-    fun confirmCandidateKeepsReturnedItemWhenFollowUpRefreshFails() = recurringTest {
+    fun candidateAdoptionStaysPendingAcrossFailedReadsAndCannotBeQueuedTwice() = recurringTest {
         val targetCandidate = candidate("Gym")
         val fake = FakeRecurringActions(
             candidatesResult = Result.success(listOf(targetCandidate)),
@@ -119,10 +119,18 @@ class RecurringViewModelTest {
         advanceUntilIdle()
 
         assertEquals(1, fake.confirmCalls)
-        assertEquals(listOf(item(merchant = "Gym")), vm.uiState.value.items)
-        assertEquals(emptyList(), vm.uiState.value.candidates)
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals(emptyList(), vm.uiState.value.items)
+        assertEquals(listOf(targetCandidate), vm.uiState.value.candidates)
+        assertEquals(RecurringPendingKind.CANDIDATE, vm.uiState.value.pendingIntents.single().kind)
+        assertEquals(RecurringPendingState.WAITING, vm.uiState.value.pendingIntents.single().state)
         assertEquals(RecurringListLoadState.Failed, vm.uiState.value.itemsLoadState)
         assertEquals(RecurringListLoadState.Failed, vm.uiState.value.candidatesLoadState)
+        vm.confirmCandidate(targetCandidate)
+        advanceUntilIdle()
+        assertEquals(1, fake.confirmCalls)
+        assertEquals(UiText.res(R.string.recurring_candidate_pending), vm.uiState.value.message)
     }
 
     @Test
@@ -695,39 +703,20 @@ class RecurringViewModelFailureRecoveryTest {
     }
 
     @Test
-    fun staleCandidateConflictExposesExistingArchivedItemForRestore() = recurringTest {
-        val archived = item(publicId = "rec-archived", merchant = "旧订阅").copy(
-            status = "archived",
-            rowVersion = 11,
-            archivedAt = "2026-08-20T00:00:00Z",
-        )
-        val staleCandidate = candidate("旧订阅")
-        val conflict = RepositoryException(
-            message = "固定支出已归档。",
-            errorCode = "recurring_item_archived",
-            conflict = RepositoryConflictDetails(
-                recurring = RecurringConflictDetails(
-                    publicId = archived.publicId,
-                    status = archived.status,
-                ),
-            ),
-        )
-        val fake = FakeRecurringActions(
-            itemsResult = Result.success(listOf(archived)),
-            candidatesResult = Result.success(listOf(staleCandidate)),
-            lifecycle = FakeRecurringLifecycleActions(confirmResult = Result.failure(conflict)),
-        )
+    fun rejectedCandidateRemainsPendingBesideTheCurrentArchivedFact() = recurringTest {
+        val archived = item(publicId = "rec-archived", merchant = "旧订阅").copy(status = "archived", rowVersion = 11)
+        val original = RecurringPendingIntent(RecurringPendingKind.CANDIDATE, "recurring_candidate:key", "key",
+            state = RecurringPendingState.FAILED, merchant = "旧订阅", baselineAmountCents = 20000,
+            homeCurrencyCode = "CNY", hasSupportedIntent = true)
+        val fake = FakeRecurringActions(itemsResult = Result.success(listOf(archived)),
+            manual = FakeRecurringManualActions(pendingIntentsFlow = flowOf(listOf(original))))
         val vm = RecurringViewModel(fake)
         advanceUntilIdle()
-
-        vm.confirmCandidate(staleCandidate)
-        advanceUntilIdle()
-
-        assertEquals(
-            RecurringDuplicateConflict(publicId = archived.publicId, status = "archived"),
-            vm.uiState.value.duplicateConflict,
-        )
+        assertEquals(listOf(archived), vm.uiState.value.items)
+        assertEquals(listOf(original), vm.uiState.value.pendingIntents)
+        assertEquals(0, fake.confirmCalls)
     }
+
 }
 
 private class FakeRecurringActions private constructor(
@@ -763,7 +752,7 @@ private class FakeRecurringActions private constructor(
         get() = manual.updateResponder
         set(value) { manual.updateResponder = value }
     val updateCalls: Int get() = manual.updateCalls
-    val confirmCalls: Int get() = lifecycle.confirmCalls
+    val confirmCalls: Int get() = manual.confirmCalls
     val createCalls: Int get() = manual.createCalls
     val restoreCall: Pair<String, Long>? get() = lifecycle.restoreCall
 }
@@ -815,6 +804,19 @@ private class FakeRecurringManualActions(
     override suspend fun recoverManualIntent(binding: LogicalSessionBinding, row: com.ticketbox.data.repository.OutboxRow,
         drop: Boolean): Result<Unit> = Result.failure(IllegalStateException("recovery not configured"))
     override fun observePendingIntents(): Flow<List<RecurringPendingIntent>> = merge(pendingIntentsFlow, queued)
+    var confirmCalls: Int = 0
+        private set
+
+    override suspend fun confirmCandidate(expectedBinding: LogicalSessionBinding, candidate: RecurringCandidate,
+        nextExpectedDate: String?): Result<RecurringPendingIntent> {
+        confirmCalls += 1
+        val original = RecurringPendingIntent(RecurringPendingKind.CANDIDATE, "recurring_candidate:original", "original",
+            merchant = candidate.merchant, baselineAmountCents = candidate.amountCents,
+            homeCurrencyCode = candidate.homeCurrencyCode, hasSupportedIntent = true)
+        queued.emit(listOf(original))
+        return Result.success(original)
+    }
+
     override suspend fun createAllowingOffline(
         expectedBinding: LogicalSessionBinding,
         draft: RecurringItemDraft,
@@ -832,22 +834,10 @@ private class FakeRecurringManualActions(
     }
 }
 
-private class FakeRecurringLifecycleActions(
-    var confirmResult: Result<RecurringItem>? = null,
-) : RecurringLifecycleActions {
-    var confirmCalls: Int = 0
-        private set
+private class FakeRecurringLifecycleActions : RecurringLifecycleActions {
     var restoreCall: Pair<String, Long>? = null
         private set
 
-    override suspend fun confirmCandidate(
-        expectedBinding: LogicalSessionBinding,
-        candidate: RecurringCandidate,
-        nextExpectedDate: String?,
-    ): Result<RecurringItem> {
-        confirmCalls += 1
-        return confirmResult ?: Result.success(item(merchant = candidate.merchant))
-    }
     override suspend fun pause(
         expectedBinding: LogicalSessionBinding,
         publicId: String,

@@ -840,6 +840,8 @@
     <string name="recurring_hero_unavailable">待刷新</string>
     <string name="recurring_pending_title">待同步</string>
     <string name="recurring_pending_note">已保存在本机，同步完成后才计入计划。</string>
+    <string name="recurring_pending_kind_candidate">采用建议</string>
+    <string name="recurring_candidate_pending">这条建议已有采用提交，请从待同步记录继续核实。</string>
     <string name="recurring_pending_kind_create">新建</string>
     <string name="recurring_pending_kind_update">修改</string>
     <string name="recurring_action_restore_description">恢复固定支出</string>

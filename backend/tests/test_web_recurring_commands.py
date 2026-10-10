@@ -193,8 +193,9 @@ def test_web_recurring_candidate_confirm_uses_server_side_provenance(
 def test_web_recurring_confirm_retry_returns_existing_not_error(web_client: TestClient) -> None:
     """PR #253 R4-2 幂等: 候选消失后重试同一确认, 返回既有正式项而非 404/409。"""
     seed_candidate()
-    assert post_confirm(web_client).status_code == 303
-    assert post_confirm(web_client).status_code == 303
+    key = str(uuid4())
+    assert post_confirm(web_client, idempotency_key=key).status_code == 303
+    assert post_confirm(web_client, idempotency_key=key).status_code == 303
     with SessionLocal() as db:
         count = db.scalar(
             select(func.count())
@@ -332,10 +333,12 @@ def test_confirm_retry_with_different_amount_points_to_existing_item(
     from app.services.recurring_candidate_confirmation_service import confirm_recurring_candidate
 
     seed_candidate()
+    key = str(uuid4())
     with SessionLocal() as db:
         created = confirm_recurring_candidate(
             db,
             tenant_id="owner",
+            idempotency_key=key,
             payload=RecurringCandidateConfirmRequest(home_currency_code="CNY",
                 merchant="ChatGPT Plus",
                 amount_cents=20000,
@@ -347,19 +350,21 @@ def test_confirm_retry_with_different_amount_points_to_existing_item(
         same = confirm_recurring_candidate(
             db,
             tenant_id="owner",
+            idempotency_key=key,
             payload=RecurringCandidateConfirmRequest(home_currency_code="CNY",
                 merchant="ChatGPT Plus",
                 amount_cents=20000,
                 frequency="monthly",
             ),
         )
-        assert same.id == created.id
+        assert same == created
         # A changed amount is a new intent against the same formal item. Point
         # the consumer to that item instead of pretending the candidate vanished.
         try:
             confirm_recurring_candidate(
                 db,
                 tenant_id="owner",
+                idempotency_key=str(uuid4()),
                 payload=RecurringCandidateConfirmRequest(home_currency_code="CNY",
                     merchant="ChatGPT Plus",
                     amount_cents=21000,
@@ -373,95 +378,44 @@ def test_confirm_retry_with_different_amount_points_to_existing_item(
             assert exc.details == {"public_id": created.public_id, "status": "active"}
 
 
-def test_confirm_candidate_race_returns_existing_after_candidate_disappears(
-    web_client: TestClient, monkeypatch
-) -> None:
-    """PR #253 R5: 并发双请求——前置检查读到提交前快照, candidate 已被对方 claimed
-    过滤时, 按 (merchant_key, frequency, amount_cents) 复查 formal 幂等返回。"""
-    from app.schemas import RecurringCandidateConfirmRequest
-    from app.services import recurring_candidate_confirmation_service as confirmation
-    from app.services.recurring_candidate_confirmation_service import confirm_recurring_candidate
-
-    seed_candidate()
-    payload = RecurringCandidateConfirmRequest(home_currency_code="CNY",
-        merchant="ChatGPT Plus",
-        amount_cents=20000,
-        frequency="monthly",
-    )
-    with SessionLocal() as db:
-        first = confirm_recurring_candidate(db, tenant_id="owner", payload=payload)
-        db.commit()
-
-        # 模拟请求 B: 第一次 _existing_item 调用 (前置检查) 返回 None —— 即读到
-        # 请求 A 提交前的快照; 随后 candidate 查找已被 claimed 过滤 (not_found)。
-        calls = {"n": 0}
-        real_existing = confirmation._existing_item
-
-        def _stale_existing(db, *, tenant_id, merchant_key, frequency):
-            calls["n"] += 1
-            if calls["n"] == 1:
-                return None
-            return real_existing(
-                db, tenant_id=tenant_id, merchant_key=merchant_key, frequency=frequency
-            )
-
-        monkeypatch.setattr(confirmation, "_existing_item", _stale_existing)
-        second = confirm_recurring_candidate(db, tenant_id="owner", payload=payload)
-        assert second.id == first.id
-        # 路径证明: 确实走了兜底 (前置检查返回过 None)。
-        assert calls["n"] >= 2
-
-
 @pytest.mark.real_db
-def test_confirm_candidate_insert_race_returns_one_shared_fact(
-    web_client: TestClient,
-    monkeypatch,
-) -> None:
-    """Two real PG sessions may both pass projection/precheck before the unique insert."""
+@pytest.mark.parametrize("shared_key", [True, False])
+def test_confirm_candidate_concurrent_originals_publish_one_fact_and_receipt(web_client, shared_key):
     from concurrent.futures import ThreadPoolExecutor
     from threading import Barrier
 
+    from app.errors import AppError
+    from app.models import ApiIdempotencyKey, RecurringItemRevision
     from app.schemas import RecurringCandidateConfirmRequest
-    from app.services import recurring_candidate_confirmation_service as confirmation
+    from app.services.recurring_candidate_confirmation_service import confirm_recurring_candidate
 
     seed_candidate()
-    payload = RecurringCandidateConfirmRequest(home_currency_code="CNY",
-        merchant="ChatGPT Plus",
-        amount_cents=20000,
-        frequency="monthly",
-    )
-    barrier = Barrier(2)
-    real_create = confirmation._create_recurring_item_from_candidate
+    payload = RecurringCandidateConfirmRequest(home_currency_code="CNY", merchant="ChatGPT Plus",
+        amount_cents=20000, frequency="monthly")
+    barrier, original_key = Barrier(2), str(uuid4())
 
-    def synchronized_create(*args, **kwargs):
-        barrier.wait(timeout=10)
-        return real_create(*args, **kwargs)
-
-    monkeypatch.setattr(
-        confirmation,
-        "_create_recurring_item_from_candidate",
-        synchronized_create,
-    )
-
-    def confirm(_: int) -> int:
+    def confirm(index):
+        key = original_key if shared_key or index == 0 else str(uuid4())
         with SessionLocal() as db:
-            item = confirmation.confirm_recurring_candidate(
-                db,
-                tenant_id="owner",
-                payload=payload,
-            )
-            return item.id
+            barrier.wait(timeout=10)
+            try:
+                return "accepted", confirm_recurring_candidate(db, tenant_id="owner", payload=payload,
+                    idempotency_key=key).model_dump(mode="json")
+            except AppError as exc:
+                db.rollback()
+                return "rejected", {"error": exc.error, **(exc.details or {})}
 
     with ThreadPoolExecutor(max_workers=2) as executor:
-        ids = list(executor.map(confirm, range(2), timeout=15))
-
-    assert len(ids) == 2
-    assert len(set(ids)) == 1
+        results = list(executor.map(confirm, range(2), timeout=20))
+    accepted = [body for status, body in results if status == "accepted"]
+    rejected = [body for status, body in results if status == "rejected"]
+    if shared_key:
+        assert len(accepted) == 2 and accepted[0] == accepted[1] and not rejected
+    else:
+        assert len(accepted) == 1 and rejected == [{"error": "recurring_item_conflict",
+            "public_id": accepted[0]["public_id"], "status": "active"}]
     with SessionLocal() as db:
-        count = db.scalar(
-            select(func.count())
-            .select_from(RecurringItem)
-            .where(RecurringItem.tenant_id == "owner")
-            .where(RecurringItem.merchant_key == "chatgpt plus")
-        )
-        assert count == 1
+        assert db.scalar(select(func.count()).select_from(RecurringItem).where(RecurringItem.tenant_id == "owner")) == 1
+        assert db.scalar(select(func.count()).select_from(RecurringItemRevision).where(RecurringItemRevision.tenant_id == "owner")) == 1
+        assert db.scalar(select(func.count()).select_from(ApiIdempotencyKey)
+            .where(ApiIdempotencyKey.operation == "confirm_recurring_candidate")) == 1

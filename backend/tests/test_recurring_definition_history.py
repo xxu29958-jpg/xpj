@@ -178,13 +178,14 @@ def test_real_candidate_observations_definition_edits_and_payment_revisions_have
     body = {"merchant": observed["merchant"], "home_currency_code": observed["home_currency_code"],
         "amount_cents": observed["amount_cents"], "occurrence_count": 999,
         "last_seen_at": "2099-01-01T00:00:00Z", "confidence": "low", "next_expected_date": "2026-09-05"}
-    adopted = client.post("/api/recurring/from-candidate?timezone=UTC", headers=identity.app_headers, json=body)
+    adoption_key = str(uuid4())
+    adopted = client.post("/api/recurring/from-candidate?timezone=UTC", headers={**identity.app_headers, "Idempotency-Key": adoption_key}, json=body)
     assert adopted.status_code == 200, adopted.text
     series = adopted.json()
     provenance = {field: series[field] for field in ("last_amount_cents", "occurrence_count", "last_seen_at", "confidence", "source")}
     assert provenance == {"last_amount_cents": observed["amount_cents"], "occurrence_count": observed["occurrence_count"],
         "last_seen_at": observed["last_seen_at"], "confidence": observed["confidence"], "source": "candidate"}
-    repeat = client.post("/api/recurring/from-candidate?timezone=UTC", headers=identity.app_headers, json=body)
+    repeat = client.post("/api/recurring/from-candidate?timezone=UTC", headers={**identity.app_headers, "Idempotency-Key": adoption_key}, json=body)
     assert repeat.status_code == 200 and repeat.json()["row_version"] == series["row_version"]
     with SessionLocal() as db:
         expense = db.scalar(select(Expense).where(Expense.tenant_id == "owner", Expense.merchant == "ChatGPT Plus")

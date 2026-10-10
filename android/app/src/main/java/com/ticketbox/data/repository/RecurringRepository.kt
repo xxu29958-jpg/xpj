@@ -31,6 +31,11 @@ interface RecurringQueryActions {
 }
 
 interface RecurringManualMutationActions {
+    suspend fun confirmCandidate(
+        expectedBinding: LogicalSessionBinding,
+        candidate: RecurringCandidate,
+        nextExpectedDate: String? = null,
+    ): Result<RecurringPendingIntent>
     fun observePendingIntents(): Flow<List<RecurringPendingIntent>> = flowOf(emptyList())
     fun describeManualIntent(row: OutboxRow): RecurringPendingIntent?
     suspend fun recoverManualIntent(binding: LogicalSessionBinding, row: OutboxRow, drop: Boolean): Result<Unit>
@@ -46,11 +51,6 @@ interface RecurringManualMutationActions {
 }
 
 interface RecurringLifecycleActions {
-    suspend fun confirmCandidate(
-        expectedBinding: LogicalSessionBinding,
-        candidate: RecurringCandidate,
-        nextExpectedDate: String? = null,
-    ): Result<RecurringItem>
     suspend fun pause(
         expectedBinding: LogicalSessionBinding,
         publicId: String,
@@ -80,6 +80,7 @@ class RecurringRepository internal constructor(
     createAdapter: JsonAdapter<RecurringItemCreateRequestDto>? = null,
     updateAdapter: JsonAdapter<RecurringItemUpdateRequestDto>? = null,
     occurrenceAdapter: JsonAdapter<RecurringOccurrencePayload>? = null,
+    candidateAdapter: JsonAdapter<RecurringCandidatePayload>? = null,
     private val queryReader: RecurringQueryReader,
 ) : RecurringActions,
     RecurringManualMutationActions by RecurringMutationClient(
@@ -89,6 +90,7 @@ class RecurringRepository internal constructor(
         outbox = outbox,
         createAdapter = createAdapter,
         updateAdapter = updateAdapter,
+        candidateAdapter = candidateAdapter,
     ) {
     private val ledgerRequestGuard = LedgerRequestGuard(apiProvider)
     private val errorHandler = recurringErrorHandler(apiProvider)
@@ -143,22 +145,6 @@ class RecurringRepository internal constructor(
         errorHandler.safeCall {
             queryReader.freshQuery(expectedBinding, { recurringCandidates(timezone = recurringTimezoneId()) }, {}).getOrThrow()
                 .items.map { it.toDomain() }
-        }
-
-    override suspend fun confirmCandidate(
-        expectedBinding: LogicalSessionBinding,
-        candidate: RecurringCandidate,
-        nextExpectedDate: String?,
-    ): Result<RecurringItem> =
-        errorHandler.safeCall {
-            queryReader.directMutation(expectedBinding) {
-                ledgerRequestGuard.bindExact(expectedBinding).call { api ->
-                    api.confirmRecurringCandidate(
-                        request = candidate.toConfirmRequest(nextExpectedDate = nextExpectedDate?.trim()?.ifBlank { null }),
-                        timezone = recurringTimezoneId(),
-                    ).toDomain()
-                }
-            }
         }
 
     override suspend fun pause(
@@ -226,7 +212,7 @@ class RecurringRepository internal constructor(
         }
 }
 
-private fun recurringTimezoneId(): String = TimeZone.getDefault().id
+internal fun recurringTimezoneId(): String = TimeZone.getDefault().id
 
 private fun recurringErrorHandler(apiProvider: ApiServiceProvider): NetworkErrorHandler =
     NetworkErrorHandler(

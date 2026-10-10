@@ -269,7 +269,7 @@ def _assert_recurring_candidates_are_ledger_scoped(
 
     owner_recurring = client.post(
         "/api/recurring/from-candidate?timezone=UTC",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json=_candidate_payload(owner_candidates.json()["items"][0]),
     )
     assert owner_recurring.status_code == 200, owner_recurring.text

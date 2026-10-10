@@ -144,6 +144,7 @@ class OutboxDrainEngine(
             PendingMutationType.SaveManualExchangeRate,
             PendingMutationType.SaveMonthlyArrangement,
             PendingMutationType.UpdateIncomePlan,
+            PendingMutationType.ConfirmRecurringCandidate,
             PendingMutationType.CreateRecurringItem,
             PendingMutationType.UpdateRecurringItem,
             PendingMutationType.SetRecurringOccurrencePayment,

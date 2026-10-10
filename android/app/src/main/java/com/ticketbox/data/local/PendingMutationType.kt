@@ -85,6 +85,7 @@ enum class PendingMutationType(val wireValue: String) {
     SaveMonthlyBudget("save_monthly_budget"),
     SaveMonthlyArrangement("save_monthly_arrangement"),
     SaveManualExchangeRate("save_manual_exchange_rate"),
+    ConfirmRecurringCandidate("confirm_recurring_candidate"),
     CreateRecurringItem("create_recurring_item"),
     UpdateRecurringItem("update_recurring_item"),
     SetRecurringOccurrencePayment("set_recurring_occurrence_payment"),

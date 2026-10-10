@@ -10,6 +10,8 @@ import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import com.ticketbox.data.remote.dto.MerchantAliasDto
 import com.ticketbox.data.remote.dto.MerchantAliasUpdateRequest
+import com.ticketbox.data.remote.dto.RecurringCandidateConfirmRequestDto
+import com.ticketbox.data.remote.dto.RecurringItemDto
 import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
@@ -153,6 +155,40 @@ class NetworkErrorReportingTest {
         assertTrue(output.contains("IllegalStateException") && output.contains("IOException"))
         assertFalse(output.contains("synthetic-alias-secret") || output.contains("private financial text"))
         assertFalse(original.lastError.orEmpty().contains("synthetic-alias-secret"))
+        assertTrue(ShadowLog.getLogsForTag("TicketboxNetwork").all { it.throwable == null })
+    }
+
+    @Test
+    fun candidateReplayFailureReportsSafelyAndKeepsItsOriginalCommand() = runTest {
+        val dao = FakePendingMutationDao()
+        val outbox = testOutboxRepository(dao = dao)
+        val adapter = Moshi.Builder().add(KotlinJsonAdapterFactory()).build().adapter(RecurringCandidatePayload::class.java)
+        val payload = adapter.toJson(RecurringCandidatePayload(RecurringCandidateConfirmRequestDto(
+            merchant = "原建议", amountCents = 2400, homeCurrencyCode = "JPY"), "UTC"))
+        val originalId = outbox.enqueue(PendingMutationType.ConfirmRecurringCandidate, "recurring_candidate:original-key",
+            payload, 0L, idempotencyKey = "original-key")
+        var attempts = 0
+        val api = object : ApiService by FakeApiService(mutableListOf(), 0) {
+            override suspend fun confirmRecurringCandidate(request: RecurringCandidateConfirmRequestDto,
+                timezone: String?, idempotencyKey: String): RecurringItemDto {
+                attempts++
+                throw IllegalStateException("password=synthetic-adoption-secret", IOException("private financial text"))
+            }
+        }
+        val summary = OutboxDrainEngine(outbox, listOf(ConfirmRecurringCandidateDispatcher({ api }, adapter))).drainOnce()
+        val original = dao.rows.getValue(originalId)
+        assertEquals(1, attempts)
+        assertEquals(0, summary.done)
+        assertEquals(1, summary.failures)
+        assertEquals(PendingMutationStatus.Failed.wireValue, original.status)
+        assertEquals(payload, original.payload)
+        assertEquals("original-key", original.idempotencyKey)
+        assertEquals(RECURRING_RECEIPT_UNVERIFIED, original.lastError)
+        val output = finalLog()
+        assertTrue(output.contains("operation=ConfirmRecurringCandidate") && output.contains("ConfirmRecurringCandidateDispatcher.kt:"))
+        assertTrue(output.contains("source_tree_sha256=${BuildConfig.SOURCE_FINGERPRINT}"))
+        assertTrue(output.contains("IllegalStateException") && output.contains("IOException"))
+        assertFalse(output.contains("synthetic-adoption-secret") || output.contains("private financial text"))
         assertTrue(ShadowLog.getLogsForTag("TicketboxNetwork").all { it.throwable == null })
     }
 

@@ -183,6 +183,7 @@ def candidate_review_prefill(candidate: dict) -> dict:
     raw_seen = candidate.get("last_seen_at")
     last_seen_date = local_date_iso(raw_seen) if isinstance(raw_seen, datetime) else str(raw_seen or "")[:10]
     return {
+        "idempotency_key": uuid4().hex,
         "merchant": str(candidate.get("merchant") or ""),
         "home_currency_code": currency_code,
         "amount_cents": amount_cents,

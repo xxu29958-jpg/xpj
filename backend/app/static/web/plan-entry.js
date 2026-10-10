@@ -445,7 +445,7 @@
           if (currentLease !== leaseVersion) return;
           if (!lock) { stop("这份原稿正在另一标签页使用。关闭那一页后，重新打开即可继续。"); return; }
           const record = store.read(ref);
-          if (!record && (retained || (wanted && !nativeResult))) { stop("原稿已收起，请先核对" + taskLabel + "列表。"); return; }
+          if (!record && (retained || data("OriginalOnly") === "true" || (wanted && !nativeResult))) { stop("原稿已收起，请先核对" + taskLabel + "列表。"); return; }
           retained = !!record;
           held = true;
           if (!definition.commandKeyField) field(commandRefField).value = ref;

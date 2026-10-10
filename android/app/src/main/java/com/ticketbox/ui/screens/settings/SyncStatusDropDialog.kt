@@ -97,7 +97,7 @@ private fun dropConfirmationText(selection: SyncStatusDropSelection): DropConfir
             stringResource(R.string.goal_creation_drop), stringResource(R.string.goal_submission_stop_body),
             stringResource(R.string.goal_creation_drop),
         )
-        row.type in setOf(PendingMutationType.CreateRecurringItem, PendingMutationType.UpdateRecurringItem) -> DropConfirmationText(
+        row.type in setOf(PendingMutationType.ConfirmRecurringCandidate, PendingMutationType.CreateRecurringItem, PendingMutationType.UpdateRecurringItem) -> DropConfirmationText(
             stringResource(R.string.recurring_original_drop), stringResource(R.string.recurring_original_drop_explanation),
             stringResource(R.string.recurring_original_drop),
         )

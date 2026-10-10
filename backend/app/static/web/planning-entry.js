@@ -10,6 +10,8 @@
     arrangement: {label: "本月安排", list: "/web/budget-advise", amount: "savings_target_yuan", idField: "month", titleField: "month",
       names: [...monthly, "arrangement_currency_code", "savings_target_yuan", "reserved_buffer_yuan"],
       action: "/web/budget-advise/save"},
+    candidate: {label: "建议采用", creationLabel: "采用", list: "/web/recurring", titleField: "merchant", multiple: true,
+      names: ["ledger_id", "merchant", "amount_cents", "amount_display", "home_currency_code", "next_expected_date", "month", "status"]},
     recurring: {label: "固定支出", list: "/web/recurring", amount: "baseline_amount_yuan", titleField: "merchant", multiple: true,
       names: ["ledger_id", "public_id", "home_currency_code", "expected_row_version", "merchant", "baseline_amount_yuan", "next_expected_date"]},
   };
@@ -96,6 +98,13 @@
           }
           if (!values.public_id) next.searchParams.set("new_recurring", "1");
         }
+        if (family === "candidate") {
+          next.searchParams.set("view", "suggestions");
+          if (values.status) next.searchParams.set("status", values.status);
+          next.searchParams.set("new_candidate", "1");
+          if (record) next.searchParams.set("resume_candidate", "1");
+          else if (values.merchant) next.searchParams.set("review", values.merchant);
+        }
         if (values.public_id) next.searchParams.set("edit", values.public_id);
         if (record) next.hash = family + (values[definition.idField || "public_id"] ? "-edit-" : "-create-") + record.clientRef;
         else next.searchParams.set("new_" + family, "1");
@@ -105,7 +114,7 @@
       validRef: /^[0-9a-f]{8}(?:-?[0-9a-f]{4}){3}-?[0-9a-f]{12}$/i};
     const forms = document.querySelectorAll("[data-" + family + "-draft-scope]");
     const shelf = document.querySelector("[data-" + family + "-draft-shelf]");
-    if (family === "recurring" && !forms.length && shelf) {
+    if (["recurring", "candidate"].includes(family) && !forms.length && shelf) {
       window.TicketboxPlanEntry.mountShelf(shelf, config, JSON.parse(shelf.dataset.draftScope));
     }
     forms.forEach(form => {
@@ -144,7 +153,11 @@
             if (row.removed) body.append("category_budget_remove", row.removeValue);
           });
         },
-        receiptMatches: (receipt, saved) => family === "recurring" ?
+        receiptMatches: (receipt, saved) => family === "candidate" ?
+          receipt?.public_id && receipt.source === "candidate" && receipt.status === "active" && receipt.row_version === 1 &&
+          receipt.home_currency_code === saved.home_currency_code &&
+          String(receipt.baseline_amount_cents) === saved.amount_cents &&
+          receipt.next_expected_date === (saved.next_expected_date || null) : family === "recurring" ?
           receipt?.public_id && (!saved.public_id || receipt.public_id === saved.public_id) :
           receipt?.month === saved.month && Number.isInteger(receipt.row_version),
       });

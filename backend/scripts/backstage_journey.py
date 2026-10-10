@@ -21,6 +21,10 @@ class BackstageJourney:
     def facts(self):
         return facts(self.ledger_id)
 
+    def has_original_action(self):
+        return any("打开原账单" in (node.attrib.get("text"), node.attrib.get("content-desc"))
+                   for node in self.native.tree().iter("node"))
+
     def goto(self, path, *, page=None):
         return (page or self.page).goto(f"{self.base_url}{path}?ledger_id={self.ledger_id}")
 
@@ -148,19 +152,19 @@ class BackstageJourney:
             # reports its existing phone-address diagnostic after the reverse is removed.
             wait_for(lambda: self.native.has("请填写可在手机上访问的地址"),
                      "The isolated route failure was not presented", 90)
-            assert self.native.has("小票识别") and self.native.has("打开原账单")
+            assert self.native.has("小票识别") and self.has_original_action()
             self.native.capture("backstage-offline-retained")
         finally:
             self.native.connection(self.port, online=True)
         before = self.facts()
         with denied_membership(self.ledger_id):
             self.native.click("刷新")
-            wait_for(lambda: not self.native.has("打开原账单"), "Revoked task read still exposes its original source")
+            wait_for(lambda: not self.has_original_action(), "Revoked task read still exposes its original source")
             assert all(node.attrib.get("text") != "小票识别" for node in self.native.tree().iter("node"))
             assert not self.native.has("绑定账本")
             self.native.capture("backstage-read-refused")
         self.native.click("刷新")
-        wait_for(lambda: self.native.has("打开原账单"), "Restored membership did not reread the original task")
+        wait_for(lambda: self.has_original_action(), "Restored membership did not reread the original task")
         assert self.facts() == before, "A read/refusal/recovery changed the underlying task or expense"
         self.native.restart()
         self.open_tasks()

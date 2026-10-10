@@ -11,6 +11,7 @@ import com.ticketbox.data.remote.dto.RecurringItemDto
 import com.ticketbox.data.remote.dto.RecurringItemUpdateRequestDto
 import com.ticketbox.data.remote.dto.addRecurringWireAdapters
 import com.ticketbox.domain.model.RecurringItem
+import com.ticketbox.domain.model.RecurringCandidate
 import java.io.IOException
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -123,6 +124,7 @@ class RecurringRepositoryOutboxFallbackTest {
                 outbox = outbox,
                 createAdapter = adapters.adapter(RecurringItemCreateRequestDto::class.java),
                 updateAdapter = adapters.adapter(RecurringItemUpdateRequestDto::class.java),
+                candidateAdapter = adapters.adapter(RecurringCandidatePayload::class.java),
             ),
             binding = requireNotNull(LedgerRequestGuard(provider).captureLogicalBinding()),
         )
@@ -156,6 +158,10 @@ class RecurringRepositoryOutboxFallbackTest {
         assertTrue(outcome.isFailure)
         assertEquals("固定支出提交暂不可用，请重新打开应用；填写内容已保留。", outcome.exceptionOrNull()?.message)
         assertEquals(null, api.createKey)
+        val adoption = harness.repository.confirmCandidate(harness.binding,
+            RecurringCandidate("房租", 350000, 3, null, "high", "每月观察", "CNY"))
+        assertTrue(adoption.isFailure, "A suggestion cannot fall back to direct HTTP either")
+        assertEquals("固定支出提交暂不可用，请重新打开应用；填写内容已保留。", adoption.exceptionOrNull()?.message)
     }
 
     @Test
@@ -239,6 +245,9 @@ class RecurringRepositoryOutboxFallbackTest {
 
         assertTrue(result.isFailure)
         assertEquals("permission_denied", (result.exceptionOrNull() as RepositoryException).errorCode)
+        val adoption = harness.repository.confirmCandidate(harness.binding,
+            RecurringCandidate("房租", 350000, 3, null, "high", "每月观察", "CNY"))
+        assertEquals("permission_denied", (adoption.exceptionOrNull() as RepositoryException).errorCode)
         assertEquals(0, dao.rows.size)
         assertEquals(null, api.createKey)
     }

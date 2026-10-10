@@ -46,6 +46,7 @@ interface RecurringApi : RecurringOccurrenceApi {
     suspend fun confirmRecurringCandidate(
         @Body request: RecurringCandidateConfirmRequestDto,
         @Query("timezone") timezone: String? = null,
+        @Header("Idempotency-Key") idempotencyKey: String,
     ): RecurringItemDto
 
     @PATCH("api/recurring/items/{publicId}")

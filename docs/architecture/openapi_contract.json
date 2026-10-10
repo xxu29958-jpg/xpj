@@ -6278,9 +6278,19 @@
             "title": "Amount Cents",
             "type": "string"
           },
+          "draft_scope": {
+            "default": "",
+            "title": "Draft Scope",
+            "type": "string"
+          },
           "home_currency_code": {
             "default": "",
             "title": "Home Currency Code",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
             "type": "string"
           },
           "ledger_id": {
@@ -6300,6 +6310,11 @@
           "next_expected_date": {
             "default": "",
             "title": "Next Expected Date",
+            "type": "string"
+          },
+          "review_latest": {
+            "default": "",
+            "title": "Review Latest",
             "type": "string"
           },
           "status": {
@@ -42774,6 +42789,22 @@
             }
           },
           {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
             "description": "Required API contract version from the runtime compatibility handshake.",
             "in": "header",
             "name": "Ticketbox-Api-Version",
@@ -59136,7 +59167,7 @@
     },
     "/web/recurring/confirm-candidate": {
       "post": {
-        "description": "候选「复核采用」的统一表单提交口: 只用 merchant + amount 定位服务端\n候选, provenance (occurrence_count / last_seen_at / confidence) 由 confirm\nservice 从当前服务端扫描给出 — 本路由不接收也不转发客户端的这三个字段。\n409 conflict/archived 消费 details 给出可行动下一步。",
+        "description": "Keep the original adoption distinct from a later observation or definition.",
         "operationId": "web_recurring_confirm_candidate_web_recurring_confirm_candidate_post",
         "requestBody": {
           "content": {
