@@ -79,6 +79,7 @@ class SpendingGoalDetailViewModelTest {
         val recreated = model(reports, edits, SavedStateHandle(saved.keys().associateWith { saved.get<Any?>(it) }))
         advanceUntilIdle()
         assertEquals("后来调整", recreated.state.value.goal?.name)
+        assertTrue(recreated.state.value.formDirty)
         recreated.beginEdit()
         assertEquals("  原旅行  ", recreated.state.value.name)
         assertEquals("2026-08", recreated.state.value.month)

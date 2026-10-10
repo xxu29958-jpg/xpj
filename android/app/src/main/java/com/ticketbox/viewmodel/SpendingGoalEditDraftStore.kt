@@ -15,6 +15,7 @@ import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.GoalUpdate
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.parseAmountCents
+import com.ticketbox.ui.components.formatAmountInput
 
 /** Original editable input is separate from current reads and admitted Room commands. */
 internal data class SpendingGoalEditDraft(
@@ -25,6 +26,12 @@ internal data class SpendingGoalEditDraft(
     val amount: String,
     val category: String,
 ) {
+    fun hasChangedInput(): Boolean {
+        val currency = CurrencyCode.fromStorageKeyOrNull(original.homeCurrencyCode) ?: return true
+        return listOf(name, month, amount, category) != listOf(original.name, original.month,
+            formatAmountInput(original.targetAmountCents, currency), original.category.orEmpty())
+    }
+
     fun matchesSubmission(pending: PendingGoalEdit): Boolean {
         val currency = CurrencyCode.fromStorageKeyOrNull(original.homeCurrencyCode) ?: return false
         val cents = parseAmountCents(amount, currency) ?: return false
@@ -54,11 +61,18 @@ class SpendingGoalEditDraftStore(private val state: SavedStateHandle) : ViewMode
     internal fun remove(draft: SpendingGoalEditDraft) {
         state["spending.goal.edit.drafts"] = adapter.toJson(drafts.filterNot { it == draft })
     }
+
+    /** Withdraw an untouched server copy from saved input as well as the visible read. */
+    internal fun applyReadFailure(current: SpendingGoalDetailUiState, draft: SpendingGoalEditDraft?, error: Throwable): SpendingGoalDetailUiState =
+        current.withReadFailure(error).also { failed ->
+            if (!failed.hasRetainedEdit) draft?.let(::remove)
+        }
 }
 
 internal fun SpendingGoalDetailUiState.withEditDraft(draft: SpendingGoalEditDraft?): SpendingGoalDetailUiState =
     if (draft == null) this else copy(editOriginal = draft.original, name = draft.name, month = draft.month,
         targetAmountInput = draft.amount, category = draft.category,
+        formDirty = formDirty || draft.hasChangedInput(),
         formError = spendingGoalAmountError(draft.amount, CurrencyCode.fromStorageKeyOrNull(draft.original.homeCurrencyCode)) ?: formError)
 
 internal fun spendingGoalAmountError(value: String, currency: CurrencyCode?): UiText? =

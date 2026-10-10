@@ -106,7 +106,7 @@ class SpendingGoalDetailViewModel(
                 loadGeneration += 1
                 loadJob?.cancel()
                 historyTask.reset()
-                _state.update { it.withReadFailure(denial.failure) }
+                _state.update { draftStore.applyReadFailure(it, currentDraft, denial.failure) }
             }
         }
         viewModelScope.launch {
@@ -156,7 +156,7 @@ class SpendingGoalDetailViewModel(
                     else state.copy(isLoading = false, goal = goal, fetchedAt = read.fetchedAt, fromCache = read.fromCache)
                 }
             }, onFailure = { error ->
-                _state.update { it.withReadFailure(error) }
+                _state.update { draftStore.applyReadFailure(it, currentDraft, error) }
             })
         }
     }

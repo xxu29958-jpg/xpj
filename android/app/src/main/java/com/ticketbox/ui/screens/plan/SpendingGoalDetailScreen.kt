@@ -202,7 +202,7 @@ private fun SpendingGoalDetailFooter(
                 icons = AppButtonIcons(leading = Icons.Filled.Edit),
                 modifier = Modifier.fillMaxWidth(),
                 // 编辑和保存都使用这个目标自身已确认的币种。
-                enabled = state.goalCurrency != null && !state.hasPendingEdit && !state.isSaving,
+                enabled = (state.hasRetainedEdit || state.goalCurrency != null) && !state.hasPendingEdit && !state.isSaving,
                 onClick = viewModel::beginEdit,
             )
         }
