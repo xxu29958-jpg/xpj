@@ -2800,6 +2800,11 @@
             "title": "Return Payment Expense Id",
             "type": "string"
           },
+          "return_payment_month": {
+            "default": "",
+            "title": "Return Payment Month",
+            "type": "string"
+          },
           "return_query": {
             "default": "",
             "title": "Return Query",
@@ -3295,6 +3300,11 @@
             "title": "Return Payment Expense Id",
             "type": "string"
           },
+          "return_payment_month": {
+            "default": "",
+            "title": "Return Payment Month",
+            "type": "string"
+          },
           "return_query": {
             "default": "",
             "title": "Return Query",
@@ -3701,6 +3711,11 @@
             "title": "Return Payment Expense Id",
             "type": "string"
           },
+          "return_payment_month": {
+            "default": "",
+            "title": "Return Payment Month",
+            "type": "string"
+          },
           "return_query": {
             "default": "",
             "title": "Return Query",
@@ -4004,6 +4019,11 @@
           "return_payment_expense_id": {
             "default": "",
             "title": "Return Payment Expense Id",
+            "type": "string"
+          },
+          "return_payment_month": {
+            "default": "",
+            "title": "Return Payment Month",
             "type": "string"
           },
           "return_query": {
@@ -4632,6 +4652,11 @@
             "title": "Return Payment Expense Id",
             "type": "string"
           },
+          "return_payment_month": {
+            "default": "",
+            "title": "Return Payment Month",
+            "type": "string"
+          },
           "return_query": {
             "default": "",
             "title": "Return Query",
@@ -4879,6 +4904,11 @@
           "return_payment_expense_id": {
             "default": "",
             "title": "Return Payment Expense Id",
+            "type": "string"
+          },
+          "return_payment_month": {
+            "default": "",
+            "title": "Return Payment Month",
             "type": "string"
           },
           "return_query": {
@@ -5453,6 +5483,11 @@
             "title": "Return Payment Expense Id",
             "type": "string"
           },
+          "return_payment_month": {
+            "default": "",
+            "title": "Return Payment Month",
+            "type": "string"
+          },
           "return_query": {
             "default": "",
             "title": "Return Query",
@@ -5662,6 +5697,11 @@
             "title": "Return Payment Expense Id",
             "type": "string"
           },
+          "return_payment_month": {
+            "default": "",
+            "title": "Return Payment Month",
+            "type": "string"
+          },
           "return_query": {
             "default": "",
             "title": "Return Query",
@@ -5862,6 +5902,11 @@
           "return_payment_expense_id": {
             "default": "",
             "title": "Return Payment Expense Id",
+            "type": "string"
+          },
+          "return_payment_month": {
+            "default": "",
+            "title": "Return Payment Month",
             "type": "string"
           },
           "return_query": {
@@ -6103,6 +6148,11 @@
           "return_payment_expense_id": {
             "default": "",
             "title": "Return Payment Expense Id",
+            "type": "string"
+          },
+          "return_payment_month": {
+            "default": "",
+            "title": "Return Payment Month",
             "type": "string"
           },
           "return_query": {
@@ -6696,6 +6746,11 @@
             "title": "Return Payment Expense Id",
             "type": "string"
           },
+          "return_payment_month": {
+            "default": "",
+            "title": "Return Payment Month",
+            "type": "string"
+          },
           "return_query": {
             "default": "",
             "title": "Return Query",
@@ -6983,6 +7038,11 @@
             "title": "Return Payment Expense Id",
             "type": "string"
           },
+          "return_payment_month": {
+            "default": "",
+            "title": "Return Payment Month",
+            "type": "string"
+          },
           "return_query": {
             "default": "",
             "title": "Return Query",
@@ -7247,6 +7307,11 @@
           "return_payment_expense_id": {
             "default": "",
             "title": "Return Payment Expense Id",
+            "type": "string"
+          },
+          "return_payment_month": {
+            "default": "",
+            "title": "Return Payment Month",
             "type": "string"
           },
           "return_query": {
@@ -7643,6 +7708,11 @@
             "title": "Return Payment Expense Id",
             "type": "string"
           },
+          "return_payment_month": {
+            "default": "",
+            "title": "Return Payment Month",
+            "type": "string"
+          },
           "return_query": {
             "default": "",
             "title": "Return Query",
@@ -7771,6 +7841,11 @@
             "title": "Action",
             "type": "string"
           },
+          "draft_scope": {
+            "default": "",
+            "title": "Draft Scope",
+            "type": "string"
+          },
           "expected_expense_row_version": {
             "default": "",
             "title": "Expected Expense Row Version",
@@ -7809,6 +7884,37 @@
           "payment_id": {
             "default": "",
             "title": "Payment Id",
+            "type": "string"
+          },
+          "payment_label": {
+            "default": "",
+            "title": "Payment Label",
+            "type": "string"
+          },
+          "payment_month": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Month"
+          },
+          "q": {
+            "default": "",
+            "title": "Q",
+            "type": "string"
+          },
+          "review_latest": {
+            "default": "",
+            "title": "Review Latest",
+            "type": "string"
+          },
+          "series_label": {
+            "default": "",
+            "title": "Series Label",
             "type": "string"
           }
         },
@@ -7918,6 +8024,11 @@
           "return_payment_expense_id": {
             "default": "",
             "title": "Return Payment Expense Id",
+            "type": "string"
+          },
+          "return_payment_month": {
+            "default": "",
+            "title": "Return Payment Month",
             "type": "string"
           },
           "return_query": {
@@ -8072,6 +8183,11 @@
           "return_payment_expense_id": {
             "default": "",
             "title": "Return Payment Expense Id",
+            "type": "string"
+          },
+          "return_payment_month": {
+            "default": "",
+            "title": "Return Payment Month",
             "type": "string"
           },
           "return_query": {
@@ -8243,6 +8359,11 @@
           "return_payment_expense_id": {
             "default": "",
             "title": "Return Payment Expense Id",
+            "type": "string"
+          },
+          "return_payment_month": {
+            "default": "",
+            "title": "Return Payment Month",
             "type": "string"
           },
           "return_query": {
@@ -8621,6 +8742,11 @@
           "return_payment_expense_id": {
             "default": "",
             "title": "Return Payment Expense Id",
+            "type": "string"
+          },
+          "return_payment_month": {
+            "default": "",
+            "title": "Return Payment Month",
             "type": "string"
           },
           "return_query": {
@@ -54151,6 +54277,16 @@
           },
           {
             "in": "query",
+            "name": "return_payment_month",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Payment Month",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
             "name": "return_import_public_id",
             "required": false,
             "schema": {
@@ -54454,6 +54590,16 @@
             "schema": {
               "default": "",
               "title": "Return Payment Expense Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_payment_month",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Payment Month",
               "type": "string"
             }
           },
@@ -54927,6 +55073,16 @@
             "schema": {
               "default": "",
               "title": "Return Payment Expense Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_payment_month",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Payment Month",
               "type": "string"
             }
           },
@@ -55869,6 +56025,16 @@
             "schema": {
               "default": "",
               "title": "Return Payment Expense Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_payment_month",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Payment Month",
               "type": "string"
             }
           },
@@ -59415,6 +59581,43 @@
               "default": false,
               "title": "Return Occurrence",
               "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "payment_month",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Payment Month"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 150,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "payment_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Payment Id",
+              "type": "string"
             }
           },
           {

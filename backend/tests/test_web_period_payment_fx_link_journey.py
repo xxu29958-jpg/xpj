@@ -200,7 +200,7 @@ def test_period_payment_fx_confirm_return_then_explicit_link_zeros_reserve_once(
 
     unpaid = browser.get(
         occurrence_path,
-        params={"ledger_id": ledger_id, "month": _SERIES_PERIOD},
+        params={"ledger_id": ledger_id, "month": _SERIES_PERIOD, "payment_month": "", "q": "海外"},
         headers={"Cookie": f"{SESSION_COOKIE_NAME}={session_token}"},
     )
     assert unpaid.status_code == 200, unpaid.text
@@ -209,6 +209,8 @@ def test_period_payment_fx_confirm_return_then_explicit_link_zeros_reserve_once(
     )
     parsed = urlsplit(unescape(href))
     assert parse_qs(parsed.query).get("ledger_id") == [ledger_id]
+    assert parse_qs(parsed.query).get("return_payment_month") == ["all"]
+    assert parse_qs(parsed.query).get("return_query") == ["海外"]
 
     new_page = browser.get(href, headers={"Cookie": f"{SESSION_COOKIE_NAME}={session_token}"})
     assert new_page.status_code == 200, new_page.text
@@ -308,6 +310,7 @@ def test_period_payment_fx_confirm_return_then_explicit_link_zeros_reserve_once(
     assert confirm_target.path == occurrence_path
     assert parse_qs(confirm_target.query) == {
         "ledger_id": [ledger_id], "month": [_SERIES_PERIOD], "payment_id": [str(created_id)],
+        "payment_month": ["all"], "q": ["海外"],
     }
     focused_page = browser.get(
         return_href,

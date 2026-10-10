@@ -14,6 +14,8 @@ _spec.loader.exec_module(_browser)
 
 SCOPE = {"datasetId": "fact-dataset", "clientGeneration": "fact-generation", "accountId": "fact-account",
          "ledgerId": "owner", "deviceId": "fact-device"}
+ORIGIN = {"return_to": "recurring_occurrence", "return_recurring_public_id": "6dce3575-fb65-4df5-bb93-7bb270e8df9b",
+          "return_month": "2026-09", "return_payment_month": "all", "return_query": "原查询"}
 
 
 def correction_page(prepared=None, native_result="prepared"):
@@ -34,7 +36,7 @@ def correction_page(prepared=None, native_result="prepared"):
     return _browser.ENV.get_template("expense_correct.html").render(expense=expense, current_expense=expense, can_write=True, correction_mode=True,
         frozen_scalars=[], field_errors={}, csrf_token="synthetic", selected_ledger_id="owner",
         confirm_idempotency_key=prepared["idempotency_key"] if prepared else str(uuid4()),
-        reason_input=prepared["reason"] if prepared else "", flow_return_fields={"return_to": "search", "return_query": "原查询"},
+        reason_input=prepared["reason"] if prepared else "", flow_return_fields=ORIGIN,
         fact_href="/web/expenses/7/edit?ledger_id=owner", currency_options=["CNY", "JPY", "USD"],
         selected_original_currency=expense["original_currency_code"], category_options=["餐饮"],
         currency_input={**_browser.JPY_INPUT, "currency_code": "CNY", "amount_step": "0.01", "inputmode": "decimal"},
@@ -128,7 +130,7 @@ def offset_page(expense_id, query):
         {% with reversal=false %}{% include '_offset_form.html' %}{% endwith %}
         {% with reversal=true %}{% include '_offset_form.html' %}{% endwith %}</div>""").render(
         expense={"id": expense_id, "row_version": count, "original_currency_code": code},
-        selected_ledger_id="owner", csrf_token="synthetic", edit_return_fields={"return_to": "search", "return_query": "原查询"},
+        selected_ledger_id="owner", csrf_token="synthetic", edit_return_fields=ORIGIN,
         offset_draft_scope=SCOPE, offset_can_write=True, offset_can_create_refund=not current, offset_can_reverse=not current,
         offset_currency_input=_browser.JPY_INPUT,
         offset_summary={"status": "fully_refunded" if current else "confirmed", "remaining_original_value": "12.00",
@@ -172,6 +174,8 @@ def test_correction_refresh_preserves_raw_inputs_original_basis_and_rows(tmp_pat
     assert result["before"] == result["after"], "Reopening must retain the original intent, currency, version and key"
     assert dict(result["after"])["reason"] == " 原更正依据 "
     assert dict(result["after"])["regret_score"] == "", "Explicitly clearing a prior score must survive refresh"
+    assert dict(result["after"])["return_payment_month"] == "all"
+    assert result["olderOriginReadable"], result["olderFields"]
 
 
 def test_unknown_correction_replays_exact_original_after_refresh_and_acknowledges_only_that_input(tmp_path):

@@ -148,16 +148,22 @@ def test_recurring_history_real_reader_page_keeps_cursor_filter_and_original_per
     from urllib.parse import parse_qs, urlsplit
 
     client, calls, _, _ = history_reader
-    first = client.get("/web/recurring/series-one/history", params={"ledger_id":"owner", "limit":1, "status":"archived", "month":"2026-05", "return_occurrence":"true"})
+    first = client.get("/web/recurring/series-one/history", params={"ledger_id":"owner", "limit":1, "status":"archived",
+        "month":"2026-05", "return_occurrence":"true", "payment_month":"", "q":"宽带 & 返还", "payment_id":"41"})
     assert first.status_code == 200 and "CNY 90.00" in first.text and "已归档" in first.text
     assert 'method="post"' not in first.text
     older = next(unescape(href) for href,label in re.findall(r'href="([^"]+)"[^>]*>([^<]+)</a>',first.text) if label=="更早的记录")
-    assert parse_qs(urlsplit(older).query) == {"ledger_id":["owner"], "limit":["1"], "status":["archived"], "month":["2026-05"], "return_occurrence":["true"], "before_version":["8"]}
+    assert parse_qs(urlsplit(older).query, keep_blank_values=True) == {
+        "ledger_id":["owner"], "limit":["1"], "status":["archived"], "month":["2026-05"],
+        "return_occurrence":["true"], "before_version":["8"], "payment_month":[""], "q":["宽带 & 返还"], "payment_id":["41"]}
     second = client.get(older)
     assert second.status_code == 200 and "JPY 1200" in second.text and "原日元定义" in second.text
     assert "2026-05-08" in second.text and "更早的修改及发生时间未知" in second.text
     assert 'datetime="2026-09-26T00:00:00Z"' in second.text
     assert '/web/recurring/series-one/occurrence?ledger_id=owner&amp;month=2026-05' in second.text
+    back = next(unescape(href) for href,label in re.findall(r'href="([^"]+)"[^>]*>([^<]+)</a>',second.text) if label=="回到原期间")
+    assert parse_qs(urlsplit(back).query, keep_blank_values=True) == {
+        "ledger_id":["owner"], "month":["2026-05"], "payment_month":[""], "q":["宽带 & 返还"], "payment_id":["41"]}
     assert "最近的记录</a>" in second.text and "更早的记录</a>" not in second.text
     assert calls == [("owner","series-one",1,None),("owner","series-one",1,8)]
     listing = client.get("/web/recurring/series-one/history",params={"ledger_id":"owner", "status":"archived", "month":"2026-05"})

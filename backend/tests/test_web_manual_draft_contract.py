@@ -34,6 +34,14 @@ const scope = {datasetId:'dataset', clientGeneration:'generation', accountId:'ac
 const ref = 'a'.repeat(32);
 const fields = {amount_major:'28.50', currency_code:'CNY', home_currency_code:'CNY', merchant:'合成咖啡店', category:'其他', spent_at:'2026-09-06T12:30', note:'合成草稿', return_to:'', return_recurring_public_id:'', return_month:'', return_payment_expense_id:'', csrf_token:'never-store', token:'never-store'};
 const record = drafts.save(scope, ref, 'editing', fields);
+fields.return_to = 'recurring_occurrence';
+fields.return_recurring_public_id = '6dce3575-fb65-4df5-bb93-7bb270e8df9b';
+fields.return_month = '2026-09';
+fields.return_payment_month = 'all';
+fields.return_query = '宽带 & 返还';
+drafts.save(scope, ref, 'editing', fields);
+assert.equal(drafts.read(ref).values.return_payment_month, 'all');
+assert.equal(drafts.read(ref).values.return_query, '宽带 & 返还');
 assert.equal(record.clientRef, ref);
 assert.equal(record.values.calendar_revision, undefined);
 assert.equal(drafts.save(scope, ref, 'submitted', fields).values.calendar_revision, undefined);

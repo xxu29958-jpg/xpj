@@ -556,7 +556,7 @@ class FactEntryNavigationTest {
         compose.onNodeWithText(openOccurrence).performClick()
         val openPayment = context.getString(R.string.occurrence_open_payment)
         waitForText(openPayment)
-        compose.onNodeWithText(openPayment).performScrollTo().performClick()
+        compose.onNodeWithText(openPayment).assertIsDisplayed().performClick()
         assertRealFactAndReturn()
         compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(openOccurrence))
         compose.onNodeWithTag("recurring-item-navigation-recurring").assertIsDisplayed()

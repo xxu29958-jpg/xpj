@@ -45,6 +45,8 @@ def native_link(j, payment_date):
     j.open_native("series")
     native.click("查看本期")
     native.reveal_any("本期尚未履约")
+    native.reveal_any("筛选付款")
+    native.click(j.month + " · 筛选付款")
     native.reveal_any("付款账期 · 留空查看全部缓存")
     native.fill(payment_date[:7], previous=j.month, label="付款账期 · 留空查看全部缓存")
     native.reveal_any(payment_date)

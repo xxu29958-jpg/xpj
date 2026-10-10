@@ -84,6 +84,7 @@ class ExpenseReturnContext:
     return_merchant_category: str = ""
     return_recurring_public_id: str = ""
     return_payment_expense_id: str = ""
+    return_payment_month: str = ""
     return_import_public_id: str = ""
     return_import_line_number: str = ""
     return_import_expense_id: str = ""
@@ -115,6 +116,7 @@ def expense_return_query_context(
     return_merchant_category: str = "",
     return_recurring_public_id: str = "",
     return_payment_expense_id: str = "",
+    return_payment_month: str = "",
     return_import_public_id: str = "",
     return_import_line_number: str = "",
     return_import_expense_id: str = "",
@@ -142,6 +144,7 @@ def expense_return_query_context(
         return_merchant_category=return_merchant_category,
         return_recurring_public_id=return_recurring_public_id,
         return_payment_expense_id=return_payment_expense_id,
+        return_payment_month=return_payment_month,
         return_import_public_id=return_import_public_id,
         return_import_line_number=return_import_line_number,
         return_import_expense_id=return_import_expense_id,
@@ -171,6 +174,7 @@ def expense_return_form_context(
     return_merchant_category: str = Form(default=""),
     return_recurring_public_id: str = Form(default=""),
     return_payment_expense_id: str = Form(default=""),
+    return_payment_month: str = Form(default=""),
     return_import_public_id: str = Form(default=""),
     return_import_line_number: str = Form(default=""),
     return_import_expense_id: str = Form(default=""),
@@ -198,6 +202,7 @@ def expense_return_form_context(
         return_merchant_category=return_merchant_category,
         return_recurring_public_id=return_recurring_public_id,
         return_payment_expense_id=return_payment_expense_id,
+        return_payment_month=return_payment_month,
         return_import_public_id=return_import_public_id,
         return_import_line_number=return_import_line_number,
         return_import_expense_id=return_import_expense_id,
@@ -241,6 +246,8 @@ def recurring_occurrence_origin(
     return_recurring_public_id: str,
     return_month: str,
     return_payment_expense_id: str = "",
+    return_payment_month: str = "",
+    return_query: str = "",
 ) -> dict[str, str] | None:
     series_id = _public_uuid(return_recurring_public_id)
     period = _recurring_period(return_month)
@@ -254,6 +261,12 @@ def recurring_occurrence_origin(
     payment_id = _payment_expense_id(return_payment_expense_id)
     if payment_id:
         origin["return_payment_expense_id"] = payment_id
+    payment_month = (return_payment_month or "").strip()
+    if payment_month == "all" or _MONTH_RE.fullmatch(payment_month):
+        origin["return_payment_month"] = payment_month
+    query = (return_query or "").strip()
+    if query and len(query) <= 150:
+        origin["return_query"] = query
     return origin
 
 
@@ -293,12 +306,18 @@ def _recurring_list_return_params(origin: dict[str, str]) -> dict[str, str]:
         return_recurring_public_id=origin.get("return_recurring_public_id", ""),
         return_month=origin.get("return_month", ""),
         return_payment_expense_id=origin.get("return_payment_expense_id", ""),
+        return_payment_month=origin.get("return_payment_month", ""),
+        return_query=origin.get("return_query", ""),
     )
     if not kept:
         return {}
     params = {"month": kept["return_month"]}
     if kept.get("return_payment_expense_id"):
         params["payment_id"] = kept["return_payment_expense_id"]
+    if kept.get("return_payment_month"):
+        params["payment_month"] = kept["return_payment_month"]
+    if kept.get("return_query"):
+        params["q"] = kept["return_query"]
     return params
 
 
@@ -395,6 +414,8 @@ def edit_context_params(return_to: str, **origin: str) -> dict[str, str]:
             return_recurring_public_id=origin.get("return_recurring_public_id", ""),
             return_month=origin.get("return_month", ""),
             return_payment_expense_id=origin.get("return_payment_expense_id", ""),
+            return_payment_month=origin.get("return_payment_month", ""),
+            return_query=origin.get("return_query", ""),
         ) or {}
     elif token:
         list_params = return_context_params(token, **origin)

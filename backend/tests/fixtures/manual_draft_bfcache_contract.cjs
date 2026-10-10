@@ -5,8 +5,8 @@ const assert = require('node:assert/strict');
 const scope = {datasetId:'dataset', clientGeneration:'generation', accountId:'account', ledgerId:'ledger', deviceId:'device'};
 const original = 'a'.repeat(32), fresh = 'b'.repeat(32);
 const entries = new Map(), handlers = {}, requests = [];
-const names = ['amount_major','currency_code','merchant','category','spent_at','note','home_currency_code','return_to','return_recurring_public_id','return_month','return_payment_expense_id'];
-const defaults = ['', 'JPY', '', '其他', '2026-09-06T12:30', '', 'JPY', '', '', '', ''];
+const names = ['amount_major','currency_code','merchant','category','spent_at','note','home_currency_code','return_to','return_recurring_public_id','return_month','return_payment_expense_id','return_payment_month','return_query'];
+const defaults = ['', 'JPY', '', '其他', '2026-09-06T12:30', '', 'JPY', 'recurring_occurrence', '6dce3575-fb65-4df5-bb93-7bb270e8df9b', '2026-09', '41', 'all', '宽带 & 返还'];
 const elements = Object.fromEntries(names.map((name, i) => [name, {
   name, value:defaults[i], tagName:name === 'currency_code' ? 'SELECT' : 'INPUT',
 }]));
@@ -26,9 +26,10 @@ const form = {
   querySelector:selector => selector.includes('manual-original') ? null : selector.includes('edit-fields') ? fields :
     selector.includes('submit') ? submit : selector.includes('status') ? status : selector.includes('result') ? result : options,
 };
+const createdNodes = [];
 const document = {
   querySelector:selector => selector.includes('scope') ? form : selector.includes('actions') ? actions : shelf,
-  createElement:() => ({append(){}}),
+  createElement:() => { const node = {append(){}}; createdNodes.push(node); return node; },
 };
 const window = {
   localStorage:{
@@ -59,6 +60,13 @@ vm.runInNewContext(fs.readFileSync(process.argv[3], 'utf8'), {window, document, 
   assert.equal(elements.amount_major.value, '28.50');
   assert.equal(elements.currency_code.value, 'CNY');
   assert.equal(elements.home_currency_code.value, 'CNY');
+  assert.equal(elements.return_payment_month.value, 'all');
+  assert.equal(elements.return_query.value, '宽带 & 返还');
+  const continuation = createdNodes.find(node => node.href?.endsWith('#manual-' + original));
+  const returnQuery = new URL(continuation.href, window.location.href).searchParams;
+  assert.equal(returnQuery.get('return_month'), '2026-09');
+  assert.equal(returnQuery.get('return_payment_month'), 'all');
+  assert.equal(returnQuery.get('return_query'), '宽带 & 返还');
   assert.equal(elements.amount_major.readOnly, true);
   assert.equal(elements.calendar_revision.disabled, true, 'old original body must not acquire current calendar');
   assert.equal(elements.time_precision.disabled, true);

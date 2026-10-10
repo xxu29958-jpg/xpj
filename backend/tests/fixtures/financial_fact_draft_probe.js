@@ -36,5 +36,18 @@
   delete oldRecord.values.return_duplicate_expense_id;
   localStorage.setItem(oldKey, JSON.stringify(oldRecord));
   form = await load();
-  window.__financialDraftProbe = {before, after: read(form)};
+  const after = read(form);
+  const olderOrigin = JSON.parse(localStorage.getItem(oldKey));
+  const unloaded = new Promise(resolve => { frame.onload = resolve; });
+  frame.src = "about:blank"; await unloaded;
+  delete olderOrigin.values.return_payment_month;
+  olderOrigin.values.present_fields = JSON.stringify(JSON.parse(olderOrigin.values.present_fields)
+    .filter(name => name !== "return_payment_month"));
+  localStorage.setItem(oldKey, JSON.stringify(olderOrigin));
+  form = await load();
+  const olderFields = {reason: form.elements.namedItem("reason").value,
+    month: form.elements.namedItem("return_payment_month").value,
+    status: form.querySelector("[data-correction-draft-status]")?.textContent};
+  window.__financialDraftProbe = {before, after, olderFields,
+    olderOriginReadable: olderFields.reason === " 原更正依据 " && olderFields.month === ""};
 })().catch(error => { window.__financialDraftProbe = {error: String(error), stack: error.stack}; });

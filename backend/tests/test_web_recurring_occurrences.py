@@ -192,6 +192,15 @@ def test_expense_return_adapter_keeps_the_original_series_and_period() -> None:
     assert edit_context_params(**{**origin, "return_payment_expense_id": "41"}) == {
         **origin, "return_payment_expense_id": "41",
     }
+    for payment_month in ("2026-07", "all"):
+        filtered = {**origin, "return_payment_expense_id": "41", "return_payment_month": payment_month,
+                    "return_query": "宽带 & 返还"}
+        assert edit_context_params(**filtered) == filtered
+        returned = return_href(ledger_id="owner", default_path="/web/pending", **filtered)
+        assert parse_qs(urlsplit(returned).query) == {
+            "ledger_id": ["owner"], "month": ["2026-08"], "payment_id": ["41"],
+            "payment_month": [payment_month], "q": ["宽带 & 返还"],
+        }
     assert "return_payment_expense_id" not in edit_context_params(
         **{**origin, "return_payment_expense_id": "not-an-id"}
     )
@@ -222,10 +231,12 @@ def test_human_confirm_return_reopens_the_original_unpaid_period() -> None:
             return_recurring_public_id=series_id,
             return_month="2026-08",
             return_payment_expense_id="41",
+            return_payment_month="all",
+            return_query="宽带 & 返还",
         ),
     )
     assert focused_path == path
-    assert focused_params == {"month": "2026-08", "payment_id": "41"}
+    assert focused_params == {"month": "2026-08", "payment_id": "41", "payment_month": "all", "q": "宽带 & 返还"}
     unsafe_path, _ = confirm_return_redirect(
         ExpenseReturnContext(
             return_to="recurring_occurrence",

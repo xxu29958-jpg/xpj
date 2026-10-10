@@ -53,25 +53,28 @@ from app.services.recurring_service import get_recurring_item
 router = APIRouter()
 
 
-def _occurrence_origin(item, occurrence, payment_id=None) -> dict[str, str]:
+def _occurrence_origin(item, occurrence, payment_id=None, *, payment_month=None, query="") -> dict[str, str]:
     origin = edit_context_params(
         return_to="recurring_occurrence",
         return_recurring_public_id=item.public_id,
         return_month=occurrence.period,
         return_payment_expense_id="" if payment_id is None else str(payment_id),
+        # A nonempty token distinguishes all months from older origins with no filter.
+        return_payment_month="" if payment_month is None else payment_month or "all",
+        return_query=query,
     )
     return origin or {}
 
 
-def _payment_edit_href(*, ledger_id: str, expense_id: int, item, occurrence) -> str:
+def _payment_edit_href(*, ledger_id: str, expense_id: int, item, occurrence, payment_month=None, query="") -> str:
     return flow_href(
         f"/web/expenses/{expense_id}/edit",
         ledger_id=ledger_id,
-        **_occurrence_origin(item, occurrence, expense_id),
+        **_occurrence_origin(item, occurrence, expense_id, payment_month=payment_month, query=query),
     )
 
 
-def _payment_view(row, *, ledger_id, item, occurrence) -> dict[str, object]:
+def _payment_view(row, *, ledger_id, item, occurrence, payment_month=None, query="") -> dict[str, object]:
     return {
         "public_id": row.public_id, "id": row.id, "row_version": row.row_version,
         "merchant": row.merchant or "未填写商家",
@@ -80,6 +83,7 @@ def _payment_view(row, *, ledger_id, item, occurrence) -> dict[str, object]:
         "date": str(row.accounting_date or ""),
         "href": _payment_edit_href(
             ledger_id=ledger_id, expense_id=row.id, item=item, occurrence=occurrence,
+            payment_month=payment_month, query=query,
         ),
     }
 
@@ -87,7 +91,7 @@ def _payment_view(row, *, ledger_id, item, occurrence) -> dict[str, object]:
 def _payments(db, *, ledger_id, month, query, item, occurrence):
     rows = find_recurring_payments(db, tenant_id=ledger_id, month=month, query=query)
     return [
-        _payment_view(row, ledger_id=ledger_id, item=item, occurrence=occurrence)
+        _payment_view(row, ledger_id=ledger_id, item=item, occurrence=occurrence, payment_month=month, query=query)
         for row in rows[:100]
     ], len(rows) > 100
 
@@ -106,7 +110,7 @@ def _occurrence_reject_undo(db, *, selected_id: str, undo: str | None, undo_vers
     return candidate, row_version
 
 
-def _focused_payment(db, *, ledger_id, payment_id, item, occurrence) -> dict[str, object] | None:
+def _focused_payment(db, *, ledger_id, payment_id, item, occurrence, payment_month=None, query="") -> dict[str, object] | None:
     if not _payment_expense_id(payment_id):
         return None
     expense = resolve_expense(db, ledger_id, int(payment_id))
@@ -114,7 +118,7 @@ def _focused_payment(db, *, ledger_id, payment_id, item, occurrence) -> dict[str
         return None
     eligible = eligible_payment(db, tenant_id=ledger_id, expense_id=expense.id)
     return {
-        **_payment_view(expense, ledger_id=ledger_id, item=item, occurrence=occurrence),
+        **_payment_view(expense, ledger_id=ledger_id, item=item, occurrence=occurrence, payment_month=payment_month, query=query),
         "eligible": eligible is not None,
     }
 
@@ -128,7 +132,7 @@ def _recorded_definition_amount(occurrence) -> str | None:
     return f"{snapshot.baseline_amount_cents} 最小单位（原币种未记录）"
 
 
-def _occurrence_page_projection(*, item, occurrence, payments, focused, selected, can_write) -> dict:
+def _occurrence_page_projection(*, item, occurrence, payments, focused, selected, can_write, payment_month=None, query="") -> dict:
     can_associate = can_write and item.status != "archived"
     return {
         "payments": [payment for payment in payments if not focused or payment["id"] != focused["id"]],
@@ -147,13 +151,17 @@ def _occurrence_page_projection(*, item, occurrence, payments, focused, selected
             if occurrence.paid_home_currency_code else "币种待确认"
         ),
         "can_associate": can_associate,
+        "occurrence_edit_return_fields": _occurrence_origin(item, occurrence, focused["id"] if focused else None,
+            payment_month=payment_month, query=query),
         "record_payment_href": (
-            flow_href("/web/expenses/new", ledger_id=selected, **_occurrence_origin(item, occurrence))
+            flow_href("/web/expenses/new", ledger_id=selected,
+                **_occurrence_origin(item, occurrence, payment_month=payment_month, query=query))
             if can_associate and occurrence.state == "unfulfilled" else None
         ),
         "linked_payment_href": (
             _payment_edit_href(
                 ledger_id=selected, expense_id=occurrence.expense_id, item=item, occurrence=occurrence,
+                payment_month=payment_month, query=query,
             )
             if occurrence.expense_id else None
         ),
@@ -173,13 +181,14 @@ def _page(
     context = _base_ctx(
         request, db=db, options=options, selected_ledger_id=selected, page_title="本期固定支出",
     )
-    selected_payment_month = occurrence.period if payment_month is None else payment_month
+    selected_payment_month = occurrence.period if payment_month is None else "" if payment_month == "all" else payment_month
     payments, limited = _payments(
         db, ledger_id=selected, month=selected_payment_month, query=query,
         item=item, occurrence=occurrence,
     )
     focused = _focused_payment(
         db, ledger_id=selected, payment_id=payment_id, item=item, occurrence=occurrence,
+        payment_month=selected_payment_month, query=query,
     )
     context.update(
         item=item, occurrence=occurrence, limited=limited,
@@ -192,6 +201,7 @@ def _page(
         **_occurrence_page_projection(
             item=item, occurrence=occurrence, payments=payments, focused=focused,
             selected=selected, can_write=context["can_write"],
+            payment_month=selected_payment_month, query=query,
         ),
     )
     navigation = {"ledger_id": selected, "month": occurrence.period, "payment_month": selected_payment_month,

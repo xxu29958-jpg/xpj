@@ -7,7 +7,7 @@ Routes and page assembly only. Pure presenter/form helpers live in
 from __future__ import annotations
 
 import logging
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Form, Query, Request
@@ -25,6 +25,7 @@ from app.routes._web_draft_binding import (
     require_draft_binding,
     reviewed_draft_scope,
 )
+from app.routes._web_recurring_occurrence_form import occurrence_href
 from app.routes._web_recurring_presenter import (
     apply_form_draft,
     candidate_review_prefill,
@@ -561,6 +562,7 @@ def web_recurring_restore(
 def web_recurring_history(
     request: Request, public_id: str, ledger_id: str | None = None, month: str | None = None,
     status: str = Query(default="", pattern="^(active|paused|archived)?$"), return_occurrence: bool = False,
+    payment_month: str | None = None, q: str = Query(default="", max_length=150), payment_id: str = "",
     limit: int = Query(default=20, ge=1, le=100), before_version: int | None = Query(default=None, ge=1),
     _local: None = LocalOnly, db: Session = Depends(get_db),
 ) -> HTMLResponse:
@@ -572,6 +574,13 @@ def web_recurring_history(
         show_month_picker=False, selected_month=month)
     ctx.update(history=history, return_month=month, status_filter=status, return_occurrence=return_occurrence,
         limit=limit, before_version=before_version, history_money=_recurring_history_money)
+    ctx["history_params"] = "?" + urlencode({key: value for key, value in {
+        "ledger_id": selected, "limit": limit, "status": status, "month": month,
+        "return_occurrence": str(return_occurrence).lower(), "payment_month": payment_month,
+        "q": q, "payment_id": payment_id,
+    }.items() if value is not None})
+    ctx["occurrence_return_href"] = occurrence_href(public_id, ledger_id=selected, month=month or "",
+        payment_month=(month or "") if payment_month is None else payment_month, q=q, payment_id=payment_id)
     return templates.TemplateResponse(request=request, name="recurring_history.html", context=ctx)
 
 

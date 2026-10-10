@@ -135,6 +135,9 @@
       add("return_to", "recurring_occurrence");
       add("return_recurring_public_id", series);
       add("return_month", month);
+      for (const name of ["return_payment_month", "return_query"]) {
+        if (saved[name]) add(name, saved[name]);
+      }
       const payment = saved.return_payment_expense_id || "";
       if (/^[1-9]\d{0,9}$/.test(payment) && Number(payment) <= 2147483647) {
         add("return_payment_expense_id", payment);

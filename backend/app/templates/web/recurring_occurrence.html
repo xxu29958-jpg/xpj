@@ -19,7 +19,7 @@
     <h1 class="page-title">{{ item.merchant_name }}</h1>
     <p class="product-page-summary">{{ occurrence.period }} · 当前预计 {{ occurrence.home_currency_code or '' }} {{ planned_amount }} · 当前预留 {{ occurrence.home_currency_code or '' }} {{ reserved_amount }}</p>
   </div>
-  <a class="product-button product-button--quiet" href="/web/recurring/{{ item.public_id }}/history?ledger_id={{ selected_ledger_id|urlencode }}&amp;month={{ occurrence.period|urlencode }}&amp;return_occurrence=true">修改记录</a>
+  <a class="product-button product-button--quiet" href="/web/recurring/{{ item.public_id }}/history?ledger_id={{ selected_ledger_id|urlencode }}&amp;month={{ occurrence.period|urlencode }}&amp;return_occurrence=true&amp;payment_month={{ payment_month|urlencode }}&amp;q={{ query|urlencode }}&amp;payment_id={{ focused_payment.id if focused_payment else '' }}">修改记录</a>
 </header>
 <div class="plan-flow">
 {{ drafts.shelf('occurrence', '付款关联', undo_draft_scope) }}
@@ -31,8 +31,7 @@
      role="{% if flash_type == 'error' %}alert{% else %}status{% endif %}">
   <span>{{ flash_message }}</span>
   {% if undo_expense_id %}
-  {% with undo_scope=undo_draft_scope, undo_origin={'return_to':'recurring_occurrence', 'return_recurring_public_id':item.public_id,
-      'return_month':occurrence.period, 'return_payment_expense_id':focused_payment.id|string if focused_payment else ''} %}
+  {% with undo_scope=undo_draft_scope, undo_origin=occurrence_edit_return_fields %}
     {% include "_expense_undo_task.html" %}
   {% endwith %}
   {% endif %}

@@ -6,7 +6,7 @@
     "time_precision", "calendar_revision", "user_local_date", "source_timezone", "source_utc_offset_seconds", "accounting_date",
     "return_to", "return_month", "return_filter", "return_page", "return_tag", "return_query", "return_category", "return_home_currency_code",
     "return_granularity", "return_ranking_metric", "return_merchant_category", "return_recurring_public_id",
-    "return_payment_expense_id", "return_import_public_id", "return_import_line_number", "return_import_expense_id",
+    "return_payment_expense_id", "return_payment_month", "return_import_public_id", "return_import_line_number", "return_import_expense_id",
     "return_receipt_key", "return_receipt_expense_id", "return_review_ref", "return_review_expense_id", "return_review_family", "return_duplicate_expense_id"];
   const itemNames = ["item_public_id", "item_name", "item_kind", "item_quantity", "item_unit_price_yuan", "item_amount_yuan", "item_category"];
   const splitNames = ["split_public_id", "split_member_id", "split_amount_yuan", "split_note"];
@@ -47,7 +47,7 @@
     const field = name => form.elements.namedItem(name);
     window.TicketboxPlanEntry.mount(form, {family: "correction", label: "账单更正", list: "/web/confirmed",
       idField: "expense_id", titleField: "merchant", amount: "amount_yuan", create: names, edit: names,
-      legacyMissing: ["return_receipt_key", "return_receipt_expense_id", "return_review_ref", "return_review_expense_id", "return_review_family", "return_duplicate_expense_id"],
+      legacyMissing: ["return_receipt_key", "return_receipt_expense_id", "return_review_ref", "return_review_expense_id", "return_review_family", "return_duplicate_expense_id", "return_payment_month"],
       draftRefField: "draft_client_ref", commandKeyField: "idempotency_key",
       repeated: [...itemNames, ...splitNames], reviewName: "review_latest", reviewRequiresRejection: true,
       reviewWhileEditing: true, submitSelector: "[data-correction-submit]",
@@ -71,7 +71,7 @@
       },
       restore: (current, saved) => {
         present = JSON.parse(saved.present_fields);
-        scalars.forEach(name => { const input = field(name); if (input) put(input, saved[name]); });
+        scalars.forEach(name => { const input = field(name); if (input) put(input, saved[name] ?? ""); });
         restoreRows(current, itemNames, saved.item_rows); restoreRows(current, splitNames, saved.split_rows);
         renderCorrectionComparison(current);
       },
@@ -120,7 +120,7 @@
     const field = name => form.elements.namedItem(name);
     window.TicketboxPlanEntry.mount(form, {family: "offset", label: "退回与冲销", list: "/web/confirmed", multiple: true,
       idField: "task_id", titleField: "reason", amount: "original_amount", create: fields, edit: fields,
-      legacyMissing: ["return_duplicate_expense_id"],
+      legacyMissing: ["return_duplicate_expense_id", "return_payment_month"],
       draftRefField: "draft_client_ref", commandKeyField: "idempotency_key", reviewName: "review_latest",
       reviewRequiresRejection: true, reviewWhileEditing: true, submitSelector: "[data-offset-submit]",
       updatePresentation: updateOffsetPreview,

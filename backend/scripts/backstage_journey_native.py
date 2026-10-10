@@ -100,6 +100,8 @@ def native_upload_and_ocr(j):
     assert original_task["expense_id"] == original["id"] and original_task["result"]["outcome"] == "no_result"
     open_latest_source(j)
     j.native.fill("27.00", label="金额")
+    j.native.reveal_any("标签与备注")
+    j.native.click("标签与备注")
     j.native.reveal_any("重新识别")
     j.native.click("重新识别")
     wait_for(lambda: j.facts()["expenses"][-1]["amount"] == 2345, "Explicit Android OCR did not run with automatic OCR disabled", 180)
