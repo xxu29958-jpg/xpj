@@ -546,18 +546,72 @@ class FactEntryNavigationTest {
         assertEquals(MainProductDestination.Secondary(ProductSecondaryPage.ObligationSync), harness.shell.activeDestination)
     }
 
-    @Test fun recurringPaymentOpensItsExactFactAndReturnsToTheRecurringList() {
+    @Test fun recurringPendingWorkOpensExistingRecoveryAndKeepsTheOriginalRequest() {
+        val binding = requireNotNull(harness.fixture.graph.expenseRepository.captureDeferredLedgerBinding())
+        runBlocking {
+            harness.fixture.graph.recurringRepository.createAllowingOffline(binding,
+                com.ticketbox.data.repository.RecurringItemDraft("原订阅任务", 2400, "2026-11-09", "JPY")).getOrThrow()
+            harness.fixture.outbox.markFailed(requireNotNull(harness.fixture.stored().single()["id"]).toLong(),
+                "max_attempts_exceeded(10/10): offline")
+        }
+        val original = harness.fixture.stored().single()
         installMainGraph()
         compose.runOnIdle { harness.shell.openSecondaryPage(ProductSecondaryPage.Recurring) }
-        waitForText(context.getString(R.string.recurring_hero_meta, 1))
+        val manage = context.getString(R.string.recurring_pending_manage)
+        compose.waitUntil(5_000) {
+            runCatching { compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("原订阅任务")) }.isSuccess
+        }
+        saveConsumerArtPreview("recurring-pending-entry", requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        compose.onNodeWithText(manage).performScrollTo().performClick()
+        val retry = context.getString(R.string.sync_status_failed_button_retry)
+        try {
+            compose.waitUntil(5_000) {
+                runCatching { compose.onNodeWithText(retry).performScrollTo().assertIsDisplayed() }.isSuccess
+            }
+        } finally {
+            saveConsumerArtPreview("recurring-pending-recovery", requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        }
+        compose.onNodeWithText("原订阅任务").performScrollTo().assertIsDisplayed()
+        assertEquals(MainProductDestination.Secondary(ProductSecondaryPage.ObligationSync), harness.shell.activeDestination)
+        assertEquals(original, harness.fixture.stored().single())
+        compose.onNodeWithText(retry).performScrollTo().performClick()
+        compose.waitUntil(5_000) { harness.fixture.stored().single()["status"] == "pending" }
+        val retried = harness.fixture.stored().single()
+        for (field in listOf("id", "payload", "idempotency_key")) assertEquals(original[field], retried[field])
+        compose.onNodeWithText(context.getString(R.string.sync_status_back)).performScrollTo().performClick()
+        compose.waitForIdle()
+        assertEquals(MainProductDestination.Secondary(ProductSecondaryPage.Recurring), harness.shell.activeDestination)
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("原订阅任务"))
+        compose.onNodeWithText("原订阅任务").assertIsDisplayed()
+        assertTrue(harness.fixture.network.calls.isEmpty())
+    }
+
+    @Test fun recurringPaymentReturnsToItsOriginalPeriodFiltersAndList() {
+        installMainGraph()
+        compose.runOnIdle { harness.shell.openSecondaryPage(ProductSecondaryPage.Recurring) }
         val openOccurrence = context.getString(R.string.occurrence_open)
-        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(openOccurrence))
+        compose.waitUntil(5_000) {
+            runCatching { compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(openOccurrence)) }.isSuccess
+        }
         compose.onNodeWithTag("recurring-item-navigation-recurring").assertIsDisplayed()
         compose.onNodeWithText(openOccurrence).performClick()
         val openPayment = context.getString(R.string.occurrence_open_payment)
         waitForText(openPayment)
+        compose.onNodeWithTag("occurrence-payment-filter-toggle").performScrollTo().performClick()
+        val monthField = hasSetTextAction() and hasText(context.getString(R.string.occurrence_payment_month))
+        val queryField = hasSetTextAction() and hasText(context.getString(R.string.occurrence_search))
+        compose.onNode(monthField).performTextReplacement("2026-08")
+        compose.onNode(queryField).performTextReplacement("家庭午餐")
+        compose.onNodeWithTag("occurrence-payment-filter-toggle").performScrollTo().performClick()
         compose.onNodeWithText(openPayment).assertIsDisplayed().performClick()
         assertRealFactAndReturn()
+        saveConsumerArtPreview("recurring-return-context", requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        compose.onNodeWithText(context.getString(R.string.occurrence_subtitle)).assertIsDisplayed()
+        compose.onNodeWithTag("occurrence-payment-filter-toggle").performScrollTo()
+            .assertTextContains("2026-08", substring = true).assertTextContains("家庭午餐", substring = true).performClick()
+        compose.onNode(monthField).assertTextContains("2026-08")
+        compose.onNode(queryField).assertTextContains("家庭午餐")
+        androidx.test.espresso.Espresso.pressBack()
         compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(openOccurrence))
         compose.onNodeWithTag("recurring-item-navigation-recurring").assertIsDisplayed()
         compose.onNodeWithText(openOccurrence).assertIsDisplayed()

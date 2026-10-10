@@ -139,7 +139,7 @@ fun RecurringScreen(
             } else null,
         ),
     ) {
-        recurringOverviewSection(state, derived, callbacks, showCandidates)
+        recurringOverviewSection(state, derived, callbacks, showCandidates, actions.onOpenSyncStatus)
         if (showCandidates) {
             item {
                 RecurringCandidatesCard(
@@ -182,6 +182,7 @@ data class RecurringScreenActions(
     val items: RecurringItemActions,
     val candidates: RecurringCandidateActions,
     val onBack: (() -> Unit)? = null,
+    val onOpenSyncStatus: (() -> Unit)? = null,
 )
 
 data class RecurringItemActions(
@@ -211,6 +212,7 @@ private fun LazyListScope.recurringOverviewSection(
     derived: RecurringDerivedModel,
     callbacks: RecurringScreenCallbacks,
     showCandidates: Boolean,
+    onOpenSyncStatus: (() -> Unit)?,
 ) {
     if (!showCandidates) {
         item { RecurringReadSource(state.itemsFetchedAt, state.itemsFromCache, state.loading) }
@@ -235,6 +237,7 @@ private fun LazyListScope.recurringOverviewSection(
             RecurringPendingSection(
                 intents = state.pendingIntents,
                 items = state.items,
+                onOpenSyncStatus = onOpenSyncStatus,
             )
         }
     }

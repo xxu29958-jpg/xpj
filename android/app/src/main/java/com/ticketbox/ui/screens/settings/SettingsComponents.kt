@@ -212,6 +212,14 @@ internal fun SettingsPageFrame(
     // callers that pass no status untouched.
     status: (@Composable () -> Unit)? = null,
     content: @Composable () -> Unit,
+) = SettingsPageFrame(onBack, heading = { SettingsPageHeading(title, subtitle, onBack) }, status, content)
+
+@Composable
+internal fun SettingsPageFrame(
+    onBack: (() -> Unit)?,
+    heading: @Composable () -> Unit,
+    status: (@Composable () -> Unit)? = null,
+    content: @Composable () -> Unit,
 ) {
     BackHandler(enabled = onBack != null) { onBack?.invoke() }
     AppPageScrollableColumn(
@@ -221,7 +229,7 @@ internal fun SettingsPageFrame(
             verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap),
         ),
     ) {
-        SettingsPageHeading(title, subtitle, onBack)
+        heading()
         status?.invoke()
         content()
     }

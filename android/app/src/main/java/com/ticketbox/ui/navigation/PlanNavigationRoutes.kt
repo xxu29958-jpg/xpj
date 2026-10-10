@@ -92,6 +92,7 @@ private fun NavGraphBuilder.addRecurringRoute(dependencies: MainProductRouteDepe
                     onOpenExpense = runtime.navController::openExpense,
                     onRecordPayment = { runtime.navController.navigate(recurringPaymentRoute(it)) },
                     onOpenSubmission = { runtime.navController.navigate(manualExpenseSubmissionRoute(it)) },
+                    onOpenSyncStatus = { shellState.openSecondaryPage(ProductSecondaryPage.ObligationSync) },
                 ),
                 financialDataRevision = shellState.financialDataRevision,
             )

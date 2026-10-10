@@ -153,9 +153,13 @@ internal fun SyncStatusScreenContent(
     }
 
     SettingsPageFrame(
-        title = stringResource(R.string.sync_status_page_title),
-        subtitle = stringResource(R.string.sync_status_page_subtitle),
         onBack = onBack,
+        heading = { SettingsPageHeading(
+            title = stringResource(R.string.sync_status_page_title),
+            subtitle = stringResource(R.string.sync_status_page_subtitle),
+            onBack = onBack,
+            backLabel = stringResource(R.string.sync_status_back),
+        ) },
         status = { AppStatusBanner(message = state.message, tone = state.messageTone) },
     ) {
         SyncStatusPageBody(

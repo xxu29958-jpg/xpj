@@ -36,6 +36,7 @@ import com.ticketbox.ui.design.LocalStateTokens
 internal fun RecurringPendingSection(
     intents: List<RecurringPendingIntent>,
     items: List<RecurringItem>,
+    onOpenSyncStatus: (() -> Unit)? = null,
 ) {
     AppSectionGroup(
         contentPadding = PaddingValues(vertical = AppSpacing.contentGap),
@@ -52,6 +53,10 @@ internal fun RecurringPendingSection(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )
+        }
+        onOpenSyncStatus?.let { open ->
+            AppSecondaryButton(text = stringResource(R.string.recurring_pending_manage),
+                onClick = open, modifier = Modifier.fillMaxWidth())
         }
         intents.forEachIndexed { index, intent ->
             if (index > 0) {

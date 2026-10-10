@@ -109,11 +109,11 @@ def native_upload_and_ocr(j):
     j.native.reveal_any("27.00", toward_start=True)
     j.native.capture("backstage-native-ocr-preserved-input")
     assert j.facts()["expenses"][-1]["status"] == "pending", "OCR confirmed a bill without human review"
-    j.native.reveal_any("加载最新账单")
+    j.native.reveal_any("加载最新账单", exact=True)
     j.native.click("加载最新账单")
     j.native.click("保留填写")
     j.native.reveal_any("27.00", toward_start=True)
-    j.native.reveal_any("加载最新账单")
+    j.native.reveal_any("加载最新账单", exact=True)
     j.native.click("加载最新账单")
     j.native.click("替换并载入")
     j.native.reveal_any("23.45", toward_start=True)

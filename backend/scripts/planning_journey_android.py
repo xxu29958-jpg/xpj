@@ -208,7 +208,7 @@ class PlanningAndroid:
                     matches.append(field)
         return matches
 
-    def reveal_any(self, *texts: str, toward_start: bool = False, max_scrolls: int = 8):
+    def reveal_any(self, *texts: str, toward_start: bool = False, max_scrolls: int = 8, exact: bool = False):
         # A refreshed LazyColumn or a shorter history page may move the target
         # above the current viewport. Search both directions, within a fixed budget.
         for reverse in (False, True):
@@ -216,7 +216,8 @@ class PlanningAndroid:
             for step in range(max_scrolls + 1):
                 root = self.tree()
                 nodes = list(root.iter("node"))
-                if any(text in node.attrib.get("text", "") for node in nodes for text in texts):
+                if any((text == node.attrib.get("text", "") if exact else text in node.attrib.get("text", ""))
+                       for node in nodes for text in texts):
                     if reverse:
                         self.capture(f"scroll-recovered-{self.tree_attempt}")
                     return

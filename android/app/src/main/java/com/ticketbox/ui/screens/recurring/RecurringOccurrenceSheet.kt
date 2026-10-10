@@ -16,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -67,6 +68,7 @@ fun RecurringOccurrenceSheet(
     origin: OccurrencePaymentGuard = OccurrencePaymentGuard(),
 ) {
     val item = state.item ?: return
+    val paymentFilters = rememberSaveableStateHolder()
     AppBusyGuardedSheet(isSubmitting = state.saving, onDismiss = actions.onDismiss, skipPartiallyExpanded = true) {
         AppSheetScaffold(
             title = item.merchant,
@@ -86,7 +88,9 @@ fun RecurringOccurrenceSheet(
                 Text(stringResource(R.string.occurrence_next_due, occurrence.nextDueDate ?: stringResource(R.string.occurrence_no_reminder)))
             }
             state.occurrence?.let { occurrence ->
-                if (state.canWrite) OccurrencePaymentPicker(state, actions.onChoose, preferredExpenseId)
+                if (state.canWrite) paymentFilters.SaveableStateProvider("${item.publicId}:${occurrence.period}") {
+                    OccurrencePaymentPicker(state, actions.onChoose, preferredExpenseId)
+                }
                 OccurrenceRecordPayment(
                     canWrite = state.canWrite,
                     unfulfilled = occurrence.state == "unfulfilled",

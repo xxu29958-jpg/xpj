@@ -25,7 +25,7 @@ def _selected_payment_fields(payments, focused, target):
 
 
 def occurrence_form(*, request, item, occurrence, scope, navigation, payments, focused,
-                    retry=None, prepare=False, can_associate=True):
+                    retry=None, prepare=False, can_associate=True) -> dict[str, object] | None:
     base = {**navigation, "public_id": item.public_id, "task_id": f"{item.public_id}:{occurrence.period}",
         "series_label": item.merchant_name, "payment_label": "", "action": "",
         "expense_public_id": "", "expected_expense_row_version": "",

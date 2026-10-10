@@ -65,6 +65,7 @@
 
     <!-- 设置 二级页框架（SettingsComponents：SettingsPageFrame）：返回按钮 -->
     <string name="settings_page_back_to_settings">返回设置</string>
+    <string name="sync_status_back">返回上一页</string>
 
     <!-- 账户概况（SettingsServerComponents：AccountStatusCard / AdvancedStatusCard / StatusPill），设置根屏与连接页共用 -->
     <string name="settings_account_default_account">我</string>

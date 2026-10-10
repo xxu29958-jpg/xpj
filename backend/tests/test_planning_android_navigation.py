@@ -8,10 +8,12 @@ from scripts.planning_journey_android import PlanningAndroid
 
 
 class ScrollableNative(PlanningAndroid):
-    def __init__(self, position, target, length=7):
+    def __init__(self, position, target, length=7, action="remaining action", footer=""):
         self.position = position
         self.target = target
         self.length = length
+        self.action = action
+        self.footer = footer
         self.swipes = []
         self.captures = []
         self.tree_attempt = 0
@@ -20,8 +22,10 @@ class ScrollableNative(PlanningAndroid):
         self.tree_attempt += 1
         root = ET.Element("hierarchy")
         viewport = ET.SubElement(root, "node", scrollable="true", bounds="[0,0][400,800]")
-        text = "remaining action" if self.position == self.target else f"history {self.position}"
+        text = self.action if self.position == self.target else f"history {self.position}"
         ET.SubElement(viewport, "node", text=text, bounds="[0,100][400,200]")
+        if self.footer:
+            ET.SubElement(root, "node", text=self.footer, bounds="[0,800][400,900]")
         return root
 
     def adb(self, *args, **_kwargs):
@@ -35,9 +39,10 @@ class ScrollableNative(PlanningAndroid):
 
 
 def test_reflow_above_current_viewport_does_not_hide_a_reachable_action():
-    native = ScrollableNative(position=4, target=2)
+    native = ScrollableNative(position=4, target=2, action="加载最新账单",
+        footer="原操作已完成。加载最新账单后可继续编辑。")
 
-    native.reveal_any("remaining action")
+    native.reveal_any("加载最新账单", exact=True)
 
     assert native.position == 2
     assert -1 in native.swipes
