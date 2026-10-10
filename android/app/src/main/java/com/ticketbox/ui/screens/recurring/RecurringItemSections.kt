@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -54,7 +55,7 @@ import com.ticketbox.ui.screens.ReadableListBodyState
 import com.ticketbox.ui.screens.RecurringItemActions
 import com.ticketbox.ui.screens.RecurringListSectionModel
 
-/** 页面唯一焦点：每月固定支出计划总额。只计 active 已发布 baseline，待同步不进这里。 */
+/** 正式计划摘要：保留原币合计，只计 active 已发布 baseline，待同步不计入。 */
 @Composable
 internal fun RecurringHeroSection(
     model: RecurringHeroModel,
@@ -74,8 +75,8 @@ internal fun RecurringHeroSection(
                     modifier = Modifier.fillMaxWidth(),
                     text = amount,
                     color = MaterialTheme.colorScheme.onSurface,
-                    role = if (model.amountsByCurrency.size > 1) AppAmountRole.Compact else AppAmountRole.Hero,
-                    minFontSize = if (model.amountsByCurrency.size > 1) 14.sp else 22.sp,
+                    role = AppAmountRole.Compact,
+                    minFontSize = 14.sp,
                 )
             }
             Text(
@@ -224,11 +225,12 @@ private fun RecurringItemRow(
         ) {
             RecurringItemMetaColumn(item = item, meta = meta)
         }
-        Row(
+        FlowRow(
             modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
         ) {
-            Box(modifier = Modifier.weight(1f)) { RecurringStatusChips(item, meta) }
+            RecurringStatusChips(item, meta)
             androidx.compose.material3.TextButton(onClick = { actions.onOpenOccurrence(item) }) {
                 Text(stringResource(R.string.occurrence_open))
             }
@@ -344,9 +346,9 @@ private fun RecurringQuietIconAction(
 
 @Composable
 private fun RecurringStatusChips(item: RecurringItem, meta: RecurringItemMeta) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
+    FlowRow(
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
     ) {
         RecurringStatusChip(item.status)
         meta.anomalyDeltaPercent?.let { delta ->

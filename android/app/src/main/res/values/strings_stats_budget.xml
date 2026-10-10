@@ -670,6 +670,8 @@
     <!-- RecurringScreen：固定支出独立屏 -->
     <string name="recurring_back_to_stats">返回计划</string>
     <string name="recurring_header_title">固定支出</string>
+    <string name="recurring_section_formal">正式计划</string>
+    <string name="recurring_section_suggestions">发现的建议</string>
     <string name="recurring_header_subtitle">记录每月固定支出，只做提醒和对比，不会自动入账。</string>
     <string name="recurring_items_card_title">%1$s 固定支出</string>
     <string name="recurring_items_card_count">%1$d 项</string>
@@ -683,7 +685,7 @@
     <string name="recurring_action_pause_description">暂停固定支出</string>
     <string name="recurring_action_resume_description">继续固定支出</string>
     <string name="recurring_action_archive_description">归档固定支出</string>
-    <string name="recurring_candidates_card_title">固定支出候选（未确认）</string>
+    <string name="recurring_candidates_card_title">确认后才成为计划</string>
     <string name="recurring_candidates_card_subtitle">识别自最近账单，仅供参考；采用后才进入正式固定支出。</string>
     <string name="recurring_candidates_empty">还没有新的固定支出候选。</string>
     <string name="recurring_candidates_load_failed_title">候选暂时打不开</string>
@@ -691,6 +693,8 @@
     <string name="recurring_candidate_merchant_fallback">未填写商家</string>
     <string name="recurring_candidate_meta">%1$s · %2$d 次 · %3$s</string>
     <string name="recurring_candidate_meta_summary">%1$d &#27425; &#183; %2$s</string>
+    <string name="recurring_candidate_stable">规律较稳定</string>
+    <string name="recurring_candidate_review">仍需核对</string>
     <string name="recurring_candidate_confirm">采用建议</string>
     <string name="recurring_candidate_confirm_description">确认固定支出候选</string>
     <string name="recurring_badge_loading">读取中</string>
@@ -900,7 +904,6 @@
     <string name="recurring_conflict_action_restore">恢复这条记录</string>
 
     <!-- A3：候选失败降层（辅助区不再与主列表并列红色错误卡） -->
-    <string name="recurring_candidates_unavailable_quiet">候选也暂时不可用，刷新成功后恢复。</string>
 
     <!-- BudgetViewModel：预算屏 Snackbar/提示文案 -->
     <string name="budget_message_load_failed">预算暂时打不开，请稍后再试。</string>
