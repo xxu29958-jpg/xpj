@@ -82,23 +82,37 @@
     });
   }
   Object.entries(definitions).forEach(([family, definition]) => {
-    document.querySelectorAll("[data-" + family + "-draft-scope]").forEach(form => {
-      const names = definition.names;
-      const prototype = family === "budget" ? form.querySelector("[data-budget-add-row]").cloneNode(true) : null;
-      const href = (record, scope, currentForm) => {
+    const names = definition.names;
+    const href = (record, scope, currentForm) => {
         const values = record?.values || Object.fromEntries(names.map(name => [name, field(currentForm, name)?.value || ""]));
         const next = new URL(definition.list, window.location.href);
         next.searchParams.set("ledger_id", scope.ledgerId);
         for (const name of ["month", "return_category", "return_month"]) if (values[name]) next.searchParams.set(name, values[name]);
+        if (family === "recurring") {
+          const current = new URL(window.location.href);
+          for (const name of ["month", "status"]) {
+            const value = currentForm ? field(currentForm, name)?.value : current.searchParams.get(name);
+            if (value) next.searchParams.set(name, value);
+          }
+          if (!values.public_id) next.searchParams.set("new_recurring", "1");
+        }
         if (values.public_id) next.searchParams.set("edit", values.public_id);
         if (record) next.hash = family + (values[definition.idField || "public_id"] ? "-edit-" : "-create-") + record.clientRef;
         else next.searchParams.set("new_" + family, "1");
         return next.href;
-      };
-      window.TicketboxPlanEntry.mount(form, {...definition, family, href, create: names, edit: names,
+    };
+    const config = {...definition, family, href, create: names, edit: names,
+      validRef: /^[0-9a-f]{8}(?:-?[0-9a-f]{4}){3}-?[0-9a-f]{12}$/i};
+    const forms = document.querySelectorAll("[data-" + family + "-draft-scope]");
+    const shelf = document.querySelector("[data-" + family + "-draft-shelf]");
+    if (family === "recurring" && !forms.length && shelf) {
+      window.TicketboxPlanEntry.mountShelf(shelf, config, JSON.parse(shelf.dataset.draftScope));
+    }
+    forms.forEach(form => {
+      const prototype = family === "budget" ? form.querySelector("[data-budget-add-row]").cloneNode(true) : null;
+      window.TicketboxPlanEntry.mount(form, {...config,
         reviewRequiresRejection: true,
         reviewName: "review_latest", submitSelector: "[data-" + family + "-submit]",
-        validRef: /^[0-9a-f]{8}(?:-?[0-9a-f]{4}){3}-?[0-9a-f]{12}$/i,
         read: current => {
           const values = Object.fromEntries(names.map(name => [name, field(current, name)?.value || ""]));
           if (family === "budget") {
@@ -120,6 +134,9 @@
         },
         body: (body, saved) => {
           names.filter(name => !["excluded_values", "category_rows", "input_step", "input_hint"].includes(name)).forEach(name => body.set(name, saved[name]));
+          if (family === "recurring") {
+            for (const name of ["month", "status"]) body.set(name, field(form, name)?.value || "");
+          }
           if (family !== "budget") return;
           JSON.parse(saved.excluded_values).forEach(value => body.append("excluded_category", value));
           JSON.parse(saved.category_rows).forEach(row => {

@@ -6337,6 +6337,11 @@
             "title": "Merchant",
             "type": "string"
           },
+          "month": {
+            "default": "",
+            "title": "Month",
+            "type": "string"
+          },
           "next_expected_date": {
             "default": "",
             "title": "Next Expected Date",
@@ -6345,6 +6350,11 @@
           "review_latest": {
             "default": "",
             "title": "Review Latest",
+            "type": "string"
+          },
+          "status": {
+            "default": "",
+            "title": "Status",
             "type": "string"
           }
         },
@@ -6388,6 +6398,11 @@
             "title": "Merchant",
             "type": "string"
           },
+          "month": {
+            "default": "",
+            "title": "Month",
+            "type": "string"
+          },
           "next_expected_date": {
             "default": "",
             "title": "Next Expected Date",
@@ -6396,6 +6411,11 @@
           "review_latest": {
             "default": "",
             "title": "Review Latest",
+            "type": "string"
+          },
+          "status": {
+            "default": "",
+            "title": "Status",
             "type": "string"
           }
         },

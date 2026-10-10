@@ -133,7 +133,8 @@ def _review_form_draft(draft: dict, *, target: dict | None, prepare_review: bool
     if not compatible:
         return {**draft, "review_required": True, "currency_conflict": True}, None
     if prepare_review and (target is None or target["status"] != "archived"):
-        draft = {**draft, "idempotency_key": uuid4().hex, "review_required": False}
+        draft = {**draft, "prepared_from_key": draft["idempotency_key"],
+            "idempotency_key": uuid4().hex, "review_required": False}
         if target:
             draft["expected_row_version"] = str(target["row_version"])
         return draft, "填写已保留，尚未保存。核对已保存记录后，点击保存提交。"
@@ -253,8 +254,7 @@ def parse_optional_date(raw: str) -> date | None:
 
 def _edit_guidance(selected_id: str, public_id: str, item_status: str) -> dict:
     return {
-        "href": _with_ledger("/web/recurring", selected_id, status=item_status)
-        + (f"#item-{public_id}" if public_id else ""),
+        "href": _with_ledger("/web/recurring", selected_id, status=item_status, edit=public_id),
         "label": "去编辑现有记录",
     }
 

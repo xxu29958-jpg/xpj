@@ -996,23 +996,9 @@ fieldset.budget-excluded .hint {
     gap: var(--space-2);
 }
 
-/* 行内编辑: details 占整行, summary 沿用 product-button 外观 (隐默认三角)。 */
-.plan-edit {
-    grid-column: 1 / -1;
-}
-
-.plan-edit > summary {
-    justify-self: start;
-    cursor: pointer;
-    list-style: none;
-}
-
-.plan-edit > summary::-webkit-details-marker {
-    display: none;
-}
-
-.plan-edit[open] > summary {
-    margin-block-end: var(--space-4);
+.recurring-editor .budget-actions {
+    flex-direction: column;
+    align-items: stretch;
 }
 
 /* 发现的建议: 面板级 details, summary 即面板头。 */

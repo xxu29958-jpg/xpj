@@ -12,6 +12,47 @@
       edit: ["ledger_id", "home_currency_code", "intent_month", "public_id", "expected_row_version",
         "label", "source_type", "frequency", "income_month", "amount_yuan", "pay_day"]},
   };
+  function draftStores(definition) {
+    const {family} = definition;
+    const store = kind => window.TicketboxDraftStore.createStore({prefix: "ticketbox:" + family + "-" + kind + "-draft:v1:",
+      fields: [...definition[kind], "amount_placeholder", "amount_inputmode"],
+      validRef: definition.validRef || /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i,
+      legacyMissing: definition.legacyMissing || []});
+    return {create: store("create"), edit: store("edit")};
+  }
+  function showShelf(shelf, definition, scope, stores, href) {
+    const creates = stores.create.list(scope), edits = stores.edit.list(scope);
+    const list = shelf.querySelector("[data-" + definition.family + "-draft-list]");
+    list.replaceChildren();
+    [...creates, ...edits].forEach(record => {
+      const item = document.createElement("li"), link = document.createElement("a");
+      link.className = "product-button product-button--quiet product-button--small";
+      link.href = href(record);
+      link.textContent = (record.values[definition.idField || "public_id"] ? "修改" : definition.creationLabel || "新建") + " · " +
+        (record.values[definition.titleField || (definition.family === "goal" ? "name" : "label")] || "未命名" + definition.label) + " · " +
+        (!stores.create.matches(record.scope, scope) ? "原浏览器身份，待核对" : record.phase === "editing" ? "未提交" :
+          record.serverResult === "rejected" ? "已拒绝，待核对" : "结果待核对");
+      item.append(link); list.append(item);
+    });
+    shelf.hidden = creates.length + edits.length === 0;
+    return {creates, edits};
+  }
+  function mountShelf(shelf, definition, scope) {
+    const stores = draftStores(definition);
+    const label = shelf.querySelector("p"), originalLabel = label.textContent;
+    const render = () => {
+      try {
+        showShelf(shelf, definition, scope, stores, record => definition.href(record, scope));
+        label.textContent = originalLabel;
+      } catch (_) {
+        shelf.hidden = false;
+        label.textContent = "暂时无法读取此浏览器保留的" + definition.label + "。恢复浏览器存储权限后可继续，原稿不会被清除。";
+      }
+    };
+    render();
+    window.addEventListener("pageshow", render);
+    window.addEventListener("storage", render);
+  }
   function mount(form, definition) {
     const family = definition.family;
     const isGoal = family === "goal";
@@ -23,10 +64,8 @@
     const createNames = definition.create, editNames = definition.edit;
     const planId = data("PlanId") || "";
     const names = planId ? editNames : createNames;
-    const createStore = window.TicketboxDraftStore.createStore({prefix: "ticketbox:" + family + "-create-draft:v1:",
-      fields: [...createNames, "amount_placeholder", "amount_inputmode"], validRef: uuid, legacyMissing: definition.legacyMissing || []});
-    const editStore = window.TicketboxDraftStore.createStore({prefix: "ticketbox:" + family + "-edit-draft:v1:",
-      fields: [...editNames, "amount_placeholder", "amount_inputmode"], validRef: uuid, legacyMissing: definition.legacyMissing || []});
+    const stores = draftStores(definition);
+    const createStore = stores.create, editStore = stores.edit;
     const store = planId ? editStore : createStore;
     const anchor = "#" + family + (planId ? "-edit-" : "-create-");
     const reviewName = definition.reviewName || (planId ? "review_latest" : "review_new");
@@ -192,20 +231,8 @@
     }
     function renderShelf() {
       if (disposed) return [];
-      const creates = createStore.list(scope), edits = editStore.list(scope);
-      const records = (planId ? edits : creates).filter(belongsToForm);
-      const list = shelf.querySelector(selector("draft-list"));
-      list.replaceChildren();
-      [...creates, ...edits].forEach(record => {
-        const item = document.createElement("li"), link = document.createElement("a");
-        link.href = recordHref(record);
-        link.textContent = (record.values[definition.idField || "public_id"] ? "修改" : definition.creationLabel || "新建") + " · " + (record.values[definition.titleField || (isGoal ? "name" : "label")] || "未命名" + taskLabel) + " · " +
-          (!store.matches(record.scope, scope) ? "原浏览器身份，待核对" : record.phase === "editing" ? "未提交" :
-            record.serverResult === "rejected" ? "已拒绝，待核对" : "结果待核对");
-        item.append(link); list.append(item);
-      });
-      shelf.hidden = creates.length + edits.length === 0;
-      return records;
+      const {creates, edits} = showShelf(shelf, definition, scope, stores, recordHref);
+      return (planId ? edits : creates).filter(belongsToForm);
     }
     function persist(nextPhase, serverResult = "") {
       const original = store.read(ref);
@@ -387,6 +414,16 @@
         stop("身份或账本已切换，原输入仍保留；请恢复原身份后继续。"); return false;
       }
       if (!record && nativeResult) persist(phase, nativeResult === "rejected" ? "rejected" : "");
+      // A reviewed recurring form issues a new command key. Keep its rejected
+      // predecessor until this replacement is durably saved, then retire only
+      // that identity-bound, still-rejected draft through the existing store.
+      if (nativeResult === "prepared" && data("PreparedFrom") && data("PreparedFrom") !== ref) {
+        const previous = store.read(data("PreparedFrom"));
+        if (previous?.serverResult === "rejected" && belongsToForm(previous)) {
+          store.discardRejected({scope, clientRef: previous.clientRef, values: previous.values, serverResult: "rejected"});
+          renderShelf();
+        }
+      }
       if (record && definition.multiple && form.closest("details")) {
         form.closest("details").hidden = false; form.closest("details").open = true;
       }
@@ -427,7 +464,7 @@
     activate();
     return {hasUnretainedInput: () => unretained, dispose() { disposed = true; lifecycle.abort(); return releaseLease(); }};
   }
-  window.TicketboxPlanEntry = {mount};
+  window.TicketboxPlanEntry = {mount, mountShelf};
   for (const [family, definition] of Object.entries(definitions)) {
     document.querySelectorAll("[data-" + family + "-draft-scope]").forEach(form => mount(form, {...definition, family}));
   }

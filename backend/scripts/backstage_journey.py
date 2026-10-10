@@ -117,6 +117,7 @@ class BackstageJourney:
         # Management navigation must enter the signed-in person's existing task query.
         before = self.facts()
         self.page.goto(self.base_url + "/owner/diagnostics")
+        self.page.locator("summary").filter(has_text="图片识别").click()
         with self.page.expect_popup() as popup:
             self.page.get_by_role("link", name="查看我的近期上传识别", exact=True).click()
         result = popup.value

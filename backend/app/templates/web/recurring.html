@@ -1,23 +1,24 @@
 {% extends "base.html" %}
 {% import '_planning_drafts.html' as drafts %}
 {% block page_scripts %}{{ drafts.scripts(asset_version) }}{% endblock %}
-{% set page_title = '固定支出' %}
-{% set product_body_domain = 'plans' %}
-{% block title %}固定支出 · 小票夹{% endblock %}
-
-{# C2 固定支出迁入 product 正文栈 (pages/recurring.css 随之整文件退役):
-   - 新上旧下: hero (每月合计 + 下一笔到期, 始终全体 active) → 我的固定支出
-     (product-segments 状态筛选, GET 链接无 JS 依赖) → 添加表单 (#add 锚点
-     保留, 候选复核模式同位) → 发现的建议收 details 沉底;
-   - 全部 POST 表单 (create/confirm-candidate/pause/resume/restore/archive/
-     edit) 补 csrf_field hidden — 此前缺失, 原生 no-JS 提交被 403;
-   - OCC expected_row_version / durable idempotency_key / merchant_editable
-     只读语义 / 409 引导链接全部保留; 行内编辑用 <details class="plan-edit">,
-     open 仍由 open_edit_id 驱动。 #}
-{% block content %}
-{{ drafts.shelf('recurring', '固定支出', recurring_draft_scope) }}
-{% set history_month = request.query_params.get('month', '') %}
+{% set history_month = navigation_month|default(request.query_params.get('month', '')) %}
 {% set month_query = '&month=' ~ (history_month|urlencode) if history_month else '' %}
+{% set list_href = '/web/recurring?ledger_id=' ~ (selected_ledger_id|urlencode) ~ '&status=' ~ (status_filter|urlencode) ~ month_query %}
+{% set edit_id = draft_public_id or open_edit_id %}
+{% set task_item = (items|selectattr('public_id', 'equalto', edit_id)|first) if can_write and edit_id and not recurring_creation else none %}
+{% set creating = can_write and (recurring_creation or request.query_params.get('new_recurring') == '1') %}
+{% set is_task = task_item or review or creating %}
+{% set page_title = '编辑固定支出' if task_item else '采用这条建议' if review else '添加固定支出' if creating else '固定支出' %}
+{% if is_task %}
+{% set page_surface = 'tertiary' %}
+{% set task_return_href = list_href ~ ('#item-' ~ edit_id if task_item else '') %}
+{% set task_return_label = '固定支出' %}
+{% endif %}
+{% set product_body_domain = 'plans' %}
+{% block title %}{{ page_title }} · 小票夹{% endblock %}
+
+{% block content %}
+
 {% set result_item = request.query_params.get('result_item', '') %}
 {% set result_visible = items|selectattr('public_id', 'equalto', result_item)|list|length > 0 %}
 {% macro result_feedback() %}
@@ -33,15 +34,17 @@
 <header class="product-page-header">
   <div class="product-page-heading">
     <span class="product-eyebrow">计划 / 固定支出</span>
-    <h1 class="page-title">固定支出</h1>
-    <p class="product-page-summary">房租、订阅、保险——每月固定要花的钱放在一处，到期前提醒你核对；只做提醒，不会自动入账。</p>
+    <h1 class="page-title">{{ page_title }}</h1>
+    <p class="product-page-summary">{{ '调整原币金额与提醒日期。保存后不会自动入账。' if task_item else '核对后加入正式计划，账单观察不会自动替你决定。' if review else '记下每月固定开销，到期提醒你核对。不会自动入账。' }}</p>
   </div>
-  {% if can_write %}<a class="product-button product-button--primary" href="#add">添加固定支出</a>{% endif %}
+  {% if can_write and not is_task %}<a class="product-button product-button--primary" href="{{ list_href }}&amp;new_recurring=1">添加固定支出</a>{% endif %}
 </header>
 
-<div class="plan-flow">
-{% if not result_visible %}{{ result_feedback() }}{% endif %}
+<div class="plan-flow{% if is_task %} recurring-editor{% endif %}">
+{{ drafts.shelf('recurring', '固定支出', recurring_draft_scope) }}
+{% if is_task or not result_visible %}{{ result_feedback() }}{% endif %}
 
+{% if not is_task %}
 {% if hero %}
 <section class="recurring-metrics recurring-metrics--duo" aria-label="固定支出概览">
   <div class="recurring-metric">
@@ -123,6 +126,7 @@
         <a class="product-button product-button--small" href="/web/recurring/{{ item.public_id }}/occurrence?ledger_id={{ selected_ledger_id }}{{ month_query }}">{{ '查看 ' ~ history_month if history_month else '查看本期' }}</a>
         <a class="product-button product-button--small" href="/web/recurring/{{ item.public_id }}/history?ledger_id={{ selected_ledger_id|urlencode }}&amp;status={{ status_filter|urlencode }}{% if history_month %}&amp;month={{ history_month|urlencode }}{% endif %}">修改记录</a>
         {% if can_write %}
+          <a class="product-button product-button--small" href="{{ list_href }}&amp;edit={{ item.public_id|urlencode }}">编辑</a>
           {# ADR-0038 PR-A: hidden expected_row_version OCC token. Without it
              a stale pause/resume POST (e.g. from a tab opened before another
              tab toggled the state) would silently flip the row again. #}
@@ -164,15 +168,36 @@
         <span class="readonly-inline">只读</span>
         {% endif %}
       </div>
-      {% if can_write and (item.status != 'archived' or draft_public_id == item.public_id or open_edit_id == item.public_id) %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <div class="product-state">
+    <div class="product-state-title">还没有固定支出</div>
+    {% if can_write %}
+    <div class="product-state-body">添加一项固定支出，或看看发现的建议。</div>
+    {% else %}
+    <div class="product-state-body">这个账本还没有记录固定支出。</div>
+    {% endif %}
+  </div>
+  {% endif %}
+</section>
+
+{% endif %}
+
+{% if task_item %}
+{% set item = task_item %}
       {% for edit_form in [item.edit_form] + ([item.current_edit_form] if item.current_edit_form else []) %}
       {% set edit_input = edit_form.currency_input %}
       {% set edit_scope = recurring_draft_scope if edit_form.get('draft_scope') != '' else none %}
       {% set edit_dom_id = item.public_id ~ '-' ~ loop.index0 %}
-      <details class="plan-edit"{% if open_edit_id == item.public_id or draft_public_id == item.public_id %} open{% endif %}>
-        <summary class="product-button product-button--quiet product-button--small">{{ '编辑当前记录' if not loop.first else '编辑' }}</summary>
+      <section class="product-panel product-panel--padded" aria-label="编辑固定支出">
+        {% if not loop.first %}<h2 class="product-panel-title">编辑当前记录</h2>{% endif %}
         <form method="post" action="/web/recurring/{{ item.public_id }}/edit" class="budget-form"
+          data-recurring-prepared-from="{{ edit_form.prepared_from_key or '' }}"
           {% if edit_scope %}data-recurring-draft-scope="{{ edit_scope | tojson | forceescape }}" data-recurring-plan-id="{{ item.public_id }}" data-recurring-archived="{{ 'true' if item.status == 'archived' else 'false' }}" data-recurring-new-draft="{{ 'false' if loop.first else 'true' }}" data-recurring-native-result="{{ recurring_draft_result if loop.first and draft_public_id == item.public_id else '' }}"{% endif %}>
+          <input type="hidden" name="month" value="{{ history_month }}">
+          <input type="hidden" name="status" value="{{ status_filter }}">
           <input type="hidden" name="public_id" value="{{ item.public_id }}">
           {% if recurring_draft_scope %}<input type="hidden" name="draft_scope" value="{{ edit_form.get('draft_scope', recurring_draft_scope | tojson) | forceescape }}">{% endif %}
           <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
@@ -219,25 +244,12 @@
           {% if item.status == 'archived' and edit_scope %}<button class="product-button" type="submit" data-recurring-submit hidden>核实原修改</button>{% endif %}
           {{ drafts.controls('recurring', '固定支出', edit_scope) }}
         </form>
-      </details>
+      </section>
       {% endfor %}
-      {% endif %}
-    </li>
-    {% endfor %}
-  </ul>
-  {% else %}
-  <div class="product-state">
-    <div class="product-state-title">还没有固定支出</div>
-    {% if can_write %}
-    <div class="product-state-body">从下方「添加固定支出」记一笔，或看看最后发现的建议。</div>
-    {% else %}
-    <div class="product-state-body">这个账本还没有记录固定支出。</div>
-    {% endif %}
-  </div>
-  {% endif %}
-</section>
 
-{% if can_write %}
+{% endif %}
+
+{% if creating or review %}
 <section class="product-panel product-panel--padded" id="add" aria-label="{% if review %}采用这条建议{% else %}添加固定支出{% endif %}">
   {% if review %}
   <div class="product-panel-header">
@@ -267,17 +279,16 @@
     </div>
     <div class="budget-actions">
       <button class="product-button product-button--primary" type="submit">采用建议</button>
-      <a class="product-button product-button--quiet" href="/web/recurring?ledger_id={{ selected_ledger_id }}">取消</a>
+      <a class="product-button product-button--quiet" href="{{ list_href }}">取消</a>
     </div>
   </form>
   {% else %}
-  <div class="product-panel-header">
-    <h2 class="product-panel-title">添加固定支出</h2>
-    <p class="product-panel-subtitle">手动记下每月固定开销，只做提醒。</p>
-  </div>
   {% set create_scope = recurring_draft_scope if create_form.get('draft_scope') != '' else none %}
   <form method="post" action="/web/recurring/create" class="budget-form"
+    data-recurring-prepared-from="{{ create_form.prepared_from_key or '' }}"
     {% if create_scope %}data-recurring-draft-scope="{{ create_scope | tojson | forceescape }}" data-recurring-native-result="{{ recurring_draft_result if not draft_public_id else '' }}"{% endif %}>
+    <input type="hidden" name="month" value="{{ history_month }}">
+    <input type="hidden" name="status" value="{{ status_filter }}">
     <input type="hidden" name="public_id" value="">
     <input type="hidden" name="expected_row_version" value="">
     {% if recurring_draft_scope %}<input type="hidden" name="draft_scope" value="{{ create_form.get('draft_scope', recurring_draft_scope | tojson) | forceescape }}">{% endif %}
@@ -328,6 +339,7 @@
 </section>
 {% endif %}
 
+{% if not is_task %}
 <details class="product-panel product-panel--padded recurring-candidates"{% if review %} open{% endif %}>
   <summary class="recurring-candidates-summary">
     <span class="recurring-candidates-title">发现的建议{% if candidates %}（{{ candidates|length }}）{% endif %}</span>
@@ -371,5 +383,6 @@
   </div>
   {% endif %}
 </details>
+{% endif %}
 </div>
 {% endblock %}

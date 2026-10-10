@@ -131,10 +131,12 @@ def _recurring_hero(db, *, selected_id, items, currency_code, due_dates):
 
 
 def _visible_recurring_items(items, status, open_edit_id, draft):
+    selected = (draft or {}).get("public_id") or open_edit_id
+    if selected:
+        return [item for item in items if item.public_id == selected]
     if status:
         return [item for item in items if item.status == status]
-    return [item for item in items if item.status != "archived" or item.public_id == open_edit_id or
-        (draft and item.public_id == draft.get("public_id"))]
+    return [item for item in items if item.status != "archived"]
 
 
 def _render_recurring(
@@ -153,6 +155,7 @@ def _render_recurring(
     prepare_review: bool = False,
     draft_result: str = "",
     status_code: int = 200,
+    navigation_month: str | None = None,
 ) -> HTMLResponse:
     if status and status not in _VALID_STATUS_FILTERS:
         raise AppError("recurring_status_invalid", status_code=422)
@@ -213,6 +216,8 @@ def _render_recurring(
         draft = {**draft, "review_required": True}
     apply_form_draft(ctx, draft, prepare_review=prepare_review)
     ctx["open_edit_id"] = open_edit_id
+    ctx["recurring_creation"] = draft is not None and not draft.get("public_id")
+    ctx["navigation_month"] = navigation_month if navigation_month is not None else request.query_params.get("month", "")
     ctx.update(recurring_draft_scope=scope, recurring_draft_result=draft_result)
     return templates.TemplateResponse(request=request, name="recurring.html", context=ctx, status_code=status_code)
 
@@ -248,6 +253,8 @@ def web_recurring(
 def web_recurring_create(
     request: Request,
     ledger_id: str = Form(default=""),
+    month: str = Form(default=""),
+    status: str = Form(default=""),
     merchant: str = Form(default=""),
     baseline_amount_yuan: str = Form(default=""),
     home_currency_code: str = Form(default=""),
@@ -268,7 +275,7 @@ def web_recurring_create(
     draft = {"merchant": merchant, "baseline_amount_yuan": baseline_amount_yuan, "home_currency_code": home_currency_code,
              "next_expected_date": next_expected_date, "idempotency_key": idempotency_key, "draft_scope": draft_scope}
     retained = preserve_original_ledger_form(request, db, options=options, selected=selected_id,
-        fields={**draft, "ledger_id": ledger_id, "review_latest": review_latest}, task="添加固定支出")
+        fields={**draft, "ledger_id": ledger_id, "review_latest": review_latest, "month": month, "status": status}, task="添加固定支出")
     if retained is not None:
         return draft_error_response(request, AppError("session_binding_changed", "账本已切换，原稿仍保留。", status_code=409)) or retained
     _require_selected_ledger_write(options, selected_id)
@@ -277,7 +284,7 @@ def web_recurring_create(
         require_draft_binding(db, request, ledger_id=selected_id, draft_scope=draft["draft_scope"], require_session=False)
         if review_latest == "true":
             return _render_recurring(request=request, db=db, selected_id=selected_id, options=options,
-                draft=draft, prepare_review=True, draft_result="prepared")
+                draft=draft, status=status or None, navigation_month=month, prepare_review=True, draft_result="prepared")
         currency_code = normalize_currency_code(home_currency_code)
         amount_cents = parse_baseline_yuan(baseline_amount_yuan, currency_code=currency_code)
         expected_date = parse_optional_date(next_expected_date)
@@ -298,6 +305,7 @@ def web_recurring_create(
             db=db,
             selected_id=selected_id,
             options=options,
+            status=status or None, navigation_month=month,
             draft={**draft, "review_required": exc.error in {"idempotency_key_required", "idempotency_key_reused"}},
             draft_result=draft_refusal_result(exc),
             status_code=exc.status_code if exc.error == "session_binding_changed" else 200,
@@ -305,7 +313,7 @@ def web_recurring_create(
         )
     return draft_ack_response(request, draft_scope=draft_scope, idempotency_key=idempotency_key,
         receipt=receipt, next_href=_with_ledger("/web/recurring", selected_id,
-        flash="已加入你的固定支出。")) or _web_redirect("/web/recurring", selected_id, flash="已加入你的固定支出。")
+        month=month, status="active", flash="已加入你的固定支出。")) or _web_redirect("/web/recurring", selected_id, month=month, status="active", flash="已加入你的固定支出。")
 
 
 @router.post("/confirm-candidate", response_class=HTMLResponse)
@@ -363,6 +371,8 @@ def web_recurring_edit(
     request: Request,
     public_id: str,
     ledger_id: str = Form(default=""),
+    month: str = Form(default=""),
+    status: str = Form(default=""),
     merchant: str = Form(default=""),
     baseline_amount_yuan: str = Form(default=""),
     home_currency_code: str = Form(default=""),
@@ -384,7 +394,7 @@ def web_recurring_edit(
              "next_expected_date": next_expected_date, "idempotency_key": idempotency_key,
              "expected_row_version": expected_row_version, "draft_scope": draft_scope}
     retained = preserve_original_ledger_form(request, db, options=options, selected=selected_id,
-        fields={**draft, "ledger_id": ledger_id, "review_latest": review_latest}, task="修改固定支出")
+        fields={**draft, "ledger_id": ledger_id, "review_latest": review_latest, "month": month, "status": status}, task="修改固定支出")
     if retained is not None:
         return draft_error_response(request, AppError("session_binding_changed", "账本已切换，原稿仍保留。", status_code=409)) or retained
     parsed = parse_form_row_version_token(expected_row_version)
@@ -394,7 +404,7 @@ def web_recurring_edit(
         require_draft_binding(db, request, ledger_id=selected_id, draft_scope=draft["draft_scope"], require_session=False)
         if review_latest == "true":
             return _render_recurring(request=request, db=db, selected_id=selected_id, options=options,
-                draft=draft, prepare_review=True, draft_result="prepared")
+                draft=draft, status=status or None, navigation_month=month, prepare_review=True, draft_result="prepared")
         if parsed is None:
             raise AppError("invalid_request", _STALE_PAGE_FLASH, status_code=422)
         currency_code = normalize_currency_code(home_currency_code)
@@ -422,6 +432,7 @@ def web_recurring_edit(
             db=db,
             selected_id=selected_id,
             options=options,
+            status=status or None, navigation_month=month,
             draft={**draft, "review_required": parsed is None or exc.error in {
                 "state_conflict", "idempotency_key_required", "idempotency_key_reused",
             }},
@@ -431,7 +442,7 @@ def web_recurring_edit(
         )
     return draft_ack_response(request, draft_scope=draft_scope, idempotency_key=idempotency_key,
         receipt=receipt, next_href=_with_ledger("/web/recurring", selected_id,
-        flash="固定支出已保存。")) or _web_redirect("/web/recurring", selected_id, flash="固定支出已保存。")
+        month=month, status=status, flash="固定支出已保存。")) or _web_redirect("/web/recurring", selected_id, month=month, status=status, flash="固定支出已保存。")
 
 
 @router.post("/{public_id}/pause", response_class=HTMLResponse)

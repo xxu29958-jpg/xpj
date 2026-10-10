@@ -261,7 +261,7 @@ a.dt-btn {
 }
 
 .product-button--small {
-    min-height: var(--space-8);
+    min-height: var(--target-min);
     padding: var(--space-1) var(--space-3);
     font-size: var(--type-caption-size);
 }

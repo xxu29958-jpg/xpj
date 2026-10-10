@@ -115,6 +115,10 @@ def render(kind, values=None, native_result=""):
             "expected_row_version": "7", "idempotency_key": key, "next_expected_date": "2026-05-09", "currency_input": JPY_INPUT}}],
         create_form={"merchant": "", "baseline_amount_yuan": "", "home_currency_code": "JPY",
             "idempotency_key": uuid4().hex, "next_expected_date": "2026-06-08", "currency_input": JPY_INPUT})
+    common.update(recurring_creation=kind == "recurring-create", open_edit_id="series-one" if kind == "recurring-edit" else "")
+    if values:
+        common["items"][0]["edit_form"].update(values)
+        common.update(draft_public_id="series-one", recurring_draft_result=native_result)
     return ENV.get_template("recurring.html").render(**common)
 
 
@@ -227,6 +231,27 @@ class ArrangementReviewHandler(RecoveryHandler):
         return self.reply(json.dumps(result), "application/json")
 
 
+class RecurringReviewHandler(RecoveryHandler):
+    def do_GET(self):
+        if urlsplit(self.path).path == "/probe.js":
+            return self.reply((ROOT / "backend/tests/fixtures/planning_recurring_review_probe.js").read_bytes(), "text/javascript")
+        return super().do_GET()
+
+    def do_POST(self):
+        fields = self.read_fields()
+        values = dict(fields)
+        POSTS.append({"path": self.path, "fields": fields})
+        if values.get("review_latest") == "true":
+            return self.reply(render("recurring-edit", {**values, "expected_row_version": "8",
+                "prepared_from_key": values["idempotency_key"], "idempotency_key": str(uuid4())}, "prepared"))
+        if len(POSTS) == 1:
+            return self.reply('{"message":"Another client changed this plan","draft_result":"rejected"}',
+                "application/json", status=409)
+        result = {"ack": {"scope": json.loads(values["draft_scope"]), "clientRef": values["idempotency_key"]},
+            "receipt": {"public_id": "series-one", "row_version": 9}, "next": "/web/recurring?ledger_id=owner"}
+        return self.reply(json.dumps(result), "application/json")
+
+
 def _run_browser(tmp_path, handler, expression):
     HITS.clear()
     MISSING.clear()
@@ -284,3 +309,16 @@ def test_arrangement_preview_and_explicit_rejected_review_leave_financial_save_e
         assert fields["idempotency_key"] == result["ref"] and fields["savings_target_yuan"] == "001200"
         assert fields["reserved_buffer_yuan"] == "00030" and fields["arrangement_currency_code"] == "JPY"
     assert result["confirmed"] and result["originalRemoved"]
+
+
+def test_recurring_review_replaces_only_the_rejected_draft_before_explicit_save(tmp_path: Path):
+    result = _run_browser(tmp_path, RecurringReviewHandler, "window.__recurringReview || undefined")
+    assert not result.get("error"), result
+    assert not MISSING and len(POSTS) == 3
+    rejected, review, accepted = [dict(post["fields"]) for post in POSTS]
+    assert rejected["idempotency_key"] == review["idempotency_key"] == result["original"]
+    assert accepted["idempotency_key"] == result["replacement"] != result["original"]
+    assert rejected["expected_row_version"] == "7" and accepted["expected_row_version"] == "8"
+    assert all(fields["baseline_amount_yuan"] == "2500" and fields["home_currency_code"] == "JPY"
+        for fields in (rejected, review, accepted))
+    assert result["replacementRetainedBeforeSave"] and result["confirmed"] and result["unrelatedRetained"]

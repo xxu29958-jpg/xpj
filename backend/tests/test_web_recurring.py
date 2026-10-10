@@ -6,6 +6,7 @@ Mutation journeys with DB postconditions live in test_web_recurring_commands.py.
 from __future__ import annotations
 
 import re
+from html import unescape
 from uuid import uuid4
 
 import pytest
@@ -45,11 +46,13 @@ def test_web_recurring_create_page_journey(web_client: TestClient) -> None:
     honesty (never 上次/最近发生); hero aggregates the active commitment."""
     page = web_client.get("/web/recurring?ledger_id=owner")
     assert page.status_code == 200
-    # 主 CTA 首屏可达: 统一创建表单 + durable intent key; 顶栏面包屑消重为页名。
     assert "添加固定支出" in page.text
-    assert 'action="/web/recurring/create"' in page.text
-    assert re.search(r'name="idempotency_key" value="[^"]+"', page.text)
-    assert 'topbar-title">固定支出' in page.text
+    assert 'action="/web/recurring/create"' not in page.text
+    href = next(unescape(href) for href in re.findall(r'<a[^>]*href="([^"]+)"', page.text) if "new_recurring=1" in href)
+    creating = web_client.get(href)
+    assert 'action="/web/recurring/create"' in creating.text
+    assert re.search(r'name="idempotency_key" value="[^"]+"', creating.text)
+    assert 'class="recurring-list"' not in creating.text
 
     assert create_via_web(web_client, merchant="房租", amount="6800", date_str="2026-09-06").status_code == 303
 
@@ -75,7 +78,9 @@ def test_web_recurring_create_duplicate_active_guides_to_edit(web_client: TestCl
     assert again.status_code == 200
     assert "已经在你的固定支出里" in again.text
     assert "去编辑现有记录" in again.text
-    assert 'class="plan-edit" open' in again.text
+    assert 'action="/web/recurring/create"' in again.text
+    assert 'value="6900"' in again.text
+    assert "edit=" + first_recurring_public_id() in again.text
 
 
 def test_web_recurring_create_duplicate_archived_guides_to_restore(
@@ -123,7 +128,7 @@ def test_web_recurring_observed_item_keeps_identity_read_only_but_other_fields_e
 ) -> None:
     public_id = seed_observed_item()
 
-    page = web_client.get("/web/recurring?ledger_id=owner")
+    page = web_client.get(f"/web/recurring?ledger_id=owner&edit={public_id}")
 
     assert page.status_code == 200
     form = re.search(
@@ -172,12 +177,12 @@ def test_web_recurring_edit_rename_conflict_guides_to_existing(web_client: TestC
     assert edited.status_code == 200
     assert "已经在你的固定支出里" in edited.text
     assert "去编辑现有记录" in edited.text
-    # 保留原填写并展开碰撞项；两项都必须可见，不能依赖列表顺序。
-    for item_id in (keep_id, other_id):
-        row = re.search(rf'<li\b[^>]*id="item-{re.escape(item_id)}".*?</li>', edited.text, re.DOTALL)
-        assert row is not None
-        assert '<details class="plan-edit" open>' in row.group(0)
-        assert f'action="/web/recurring/{item_id}/edit"' in row.group(0)
+    assert f'action="/web/recurring/{other_id}/edit"' in edited.text
+    assert 'value="房租"' in edited.text and 'value="100"' in edited.text
+    href = next(unescape(href) for href in re.findall(r'<a[^>]*href="([^"]+)"', edited.text) if "edit=" + keep_id in href)
+    existing = web_client.get(href)
+    assert f'action="/web/recurring/{keep_id}/edit"' in existing.text
+    assert 'value="6800.00"' in existing.text
 
 
 def test_web_recurring_candidate_confirm_conflict_consumes_details(
@@ -193,7 +198,7 @@ def test_web_recurring_candidate_confirm_conflict_consumes_details(
     assert "已经在你的固定支出里" in conflict.text
     assert "去编辑现有记录" in conflict.text
     form = re.search(
-        r'<details class="plan-edit" open>.*?action="/web/recurring/([^"]+)/edit"',
+        r'action="/web/recurring/([^"]+)/edit"',
         conflict.text,
         re.DOTALL,
     )
@@ -282,9 +287,9 @@ def test_web_recurring_candidate_insight_failure_degrades(
 
     assert resp.status_code == 200
     assert "固定支出候选分析暂时不可用" in resp.text
-    # 候选失败不压过主任务: 主列表与创建表单仍在。
+    # 候选失败不压过主任务: 主列表与创建入口仍可用。
     assert "我的固定支出" in resp.text
-    assert 'action="/web/recurring/create"' in resp.text
+    assert "new_recurring=1" in resp.text
 
 
 def test_web_recurring_viewer_read_only(web_client: TestClient) -> None:

@@ -81,7 +81,12 @@ class BudgetJourney:
         target.goto(f"{self.base_url}{path}{join}ledger_id={self.ledger_id}&month={self.month}")
 
     def form(self, action, *, page=None):
-        form = (page or self.page).locator(f'form[method="post"][action="{action}"]')
+        target = page or self.page
+        form = target.locator(f'form[method="post"][action="{action}"]')
+        if action == "/web/recurring/create" and not form.count():
+            target.get_by_role("link", name="添加固定支出", exact=True).click()
+        elif action.startswith("/web/recurring/") and action.endswith("/edit") and not form.count():
+            target.locator("#item-" + action.split("/")[-2]).get_by_role("link", name="编辑", exact=True).click()
         if not form.is_visible():
             form.locator("xpath=ancestor::details[1]/summary").click()
         return form

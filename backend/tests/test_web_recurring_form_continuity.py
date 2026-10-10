@@ -39,10 +39,19 @@ def _form(page, action):
     return form, fields
 
 
+def _open_form(client, action):
+    listing = client.get("/web/recurring?ledger_id=owner&month=2026-05")
+    entry = "new_recurring=1" if action.endswith("/create") else "edit=" + action.split("/")[-2]
+    href = next(unescape(href) for href in re.findall(r'<a[^>]*href="([^"]+)"', listing.text) if entry in href)
+    page = client.get(href)
+    assert 'class="recurring-list"' not in page.text
+    return _form(page, action)
+
+
 def test_create_validation_preserves_fields_and_original_key_until_single_success(web_recurring):
     client = web_recurring
     action = "/web/recurring/create"
-    _, fields = _form(client.get("/web/recurring?ledger_id=owner"), action)
+    _, fields = _open_form(client, action)
     fields.update(merchant="房租与物业", baseline_amount_yuan="0", next_expected_date="")
     refused = client.post(action, data=fields)
     form, retained = _form(refused, action)
@@ -62,7 +71,7 @@ def test_edit_conflict_preserves_proposal_and_review_does_not_write(web_recurrin
     client = web_recurring
     public_id = seed_observed_item(merchant="房租", source="manual", occurrence_count=0)
     action = f"/web/recurring/{public_id}/edit"
-    _, fields = _form(client.get("/web/recurring?ledger_id=owner"), action)
+    _, fields = _open_form(client, action)
     fields.update(merchant="房租与物业", baseline_amount_yuan="3500.25", next_expected_date="")
     parallel = {**fields, "merchant": "另一端的房租", "baseline_amount_yuan": "3200", "idempotency_key": str(uuid4())}
     assert client.post(action, data=parallel, follow_redirects=False).status_code == 303
@@ -76,6 +85,7 @@ def test_edit_conflict_preserves_proposal_and_review_does_not_write(web_recurrin
     form, proposal = _form(reviewed, action)
     assert 'value="房租与物业"' in form and 'value="3500.25"' in form
     assert proposal["idempotency_key"] != fields["idempotency_key"]
+    assert f'data-recurring-prepared-from="{fields["idempotency_key"]}"' in form
     assert int(proposal["expected_row_version"]) == version == row_version(public_id)
     proposal.update(merchant="房租与物业", baseline_amount_yuan="3500.25", next_expected_date="")
     assert client.post(action, data=proposal, follow_redirects=False).status_code == 303
@@ -91,7 +101,7 @@ def test_edit_conflict_preserves_proposal_and_review_does_not_write(web_recurrin
 def test_pending_create_retains_original_intent_without_a_new_key_exit(web_recurring, monkeypatch):
     client = web_recurring
     action = "/web/recurring/create"
-    _, fields = _form(client.get("/web/recurring?ledger_id=owner"), action)
+    _, fields = _open_form(client, action)
     fields.update(merchant="处理中房租", baseline_amount_yuan="3500", next_expected_date="")
 
     def pending(*args, **kwargs):
@@ -108,7 +118,7 @@ def test_archived_edit_keeps_input_readable_without_a_write_exit(web_recurring):
     client = web_recurring
     public_id = seed_observed_item(merchant="房租", source="manual", occurrence_count=0)
     action = f"/web/recurring/{public_id}/edit"
-    _, fields = _form(client.get("/web/recurring?ledger_id=owner"), action)
+    _, fields = _open_form(client, action)
     fields.update(merchant="保留的房租调整", baseline_amount_yuan="3500", next_expected_date="")
     assert client.post(f"/web/recurring/{public_id}/archive", data={"ledger_id": "owner"}, follow_redirects=False).status_code == 303
     version = row_version(public_id)
@@ -130,7 +140,7 @@ def test_recurring_form_keeps_jpy_record_and_raw_input_under_cny_default(web_rec
         db.commit()
         public_id = item.public_id
     action = f"/web/recurring/{public_id}/edit"
-    form, fields = _form(web_recurring.get("/web/recurring?ledger_id=owner"), action)
+    form, fields = _open_form(web_recurring, action)
     assert fields["home_currency_code"] == "JPY"
     assert 'value="1200"' in form and 'step="1"' in form
     fields.update(merchant="日元订阅", baseline_amount_yuan="1300", next_expected_date="")
@@ -150,7 +160,7 @@ def test_recurring_form_keeps_jpy_record_and_raw_input_under_cny_default(web_rec
 
 def test_create_without_captured_currency_preserves_raw_text_and_does_not_infer_cny(web_recurring):
     action = "/web/recurring/create"
-    _, fields = _form(web_recurring.get("/web/recurring?ledger_id=owner"), action)
+    _, fields = _open_form(web_recurring, action)
     fields.pop("home_currency_code")
     fields.update(merchant="缺币种原填写", baseline_amount_yuan="1200.50", next_expected_date="")
     form, retained = _form(web_recurring.post(action, data=fields), action)
@@ -164,19 +174,17 @@ def test_create_without_captured_currency_preserves_raw_text_and_does_not_infer_
 def test_create_entry_saves_jpy_and_usd_under_cny_ledger_without_paying(web_recurring):
     client = web_recurring
     assert create_via_web(client, merchant="房租", amount="3800.00").status_code == 303
-    page = client.get("/web/recurring?ledger_id=owner")
-    form, fields = _form(page, "/web/recurring/create")
+    form, fields = _open_form(client, "/web/recurring/create")
     assert re.search(r'<select[^>]*id="rc-add-currency"[^>]*name="home_currency_code"', form)
     assert 'value="JPY"' in form and 'value="USD"' in form
     assert fields["home_currency_code"] == "CNY"
     jpy = {**fields, "merchant": "交通月票", "home_currency_code": "JPY", "baseline_amount_yuan": "1200",
            "next_expected_date": ""}
     assert client.post("/web/recurring/create", data=jpy, follow_redirects=False).status_code == 303
-    form, fields = _form(client.get("/web/recurring?ledger_id=owner"), "/web/recurring/create")
+    form, fields = _open_form(client, "/web/recurring/create")
     usd = {**fields, "merchant": "USD订阅", "home_currency_code": "USD", "baseline_amount_yuan": "12.34",
            "next_expected_date": ""}
     assert client.post("/web/recurring/create", data=usd, follow_redirects=False).status_code == 303
-    opened = client.get("/web/recurring?ledger_id=owner")
     with SessionLocal() as db:
         rent = db.scalar(select(RecurringItem).where(RecurringItem.merchant_name == "房租"))
         jpy_item = db.scalar(select(RecurringItem).where(RecurringItem.merchant_name == "交通月票"))
@@ -188,15 +196,15 @@ def test_create_entry_saves_jpy_and_usd_under_cny_ledger_without_paying(web_recu
                 usd_item.source) == ("USD", 1234, 0, "manual")
         assert db.scalar(select(RecurringOccurrence).limit(1)) is None
         jpy_id, usd_id = jpy_item.public_id, usd_item.public_id
-    jpy_form, jpy_fields = _form(opened, f"/web/recurring/{jpy_id}/edit")
-    usd_form, usd_fields = _form(opened, f"/web/recurring/{usd_id}/edit")
+    jpy_form, jpy_fields = _open_form(client, f"/web/recurring/{jpy_id}/edit")
+    usd_form, usd_fields = _open_form(client, f"/web/recurring/{usd_id}/edit")
     assert jpy_fields["home_currency_code"] == "JPY" and 'value="1200"' in jpy_form
     assert usd_fields["home_currency_code"] == "USD" and 'value="12.34"' in usd_form
 
 
 def test_create_jpy_fraction_keeps_original_currency_and_amount(web_recurring):
     action = "/web/recurring/create"
-    form, fields = _form(web_recurring.get("/web/recurring?ledger_id=owner"), action)
+    form, fields = _open_form(web_recurring, action)
     assert re.search(r'<select[^>]*id="rc-add-currency"', form)
     fields.update(merchant="交通月票", home_currency_code="JPY", baseline_amount_yuan="12.34", next_expected_date="")
     refused = web_recurring.post(action, data=fields)

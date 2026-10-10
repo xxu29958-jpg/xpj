@@ -41,7 +41,12 @@ def test_native_recurring_history_entry_keeps_reader_access_and_original_editor(
         assert fields["csrf_token"] == "original-csrf" and fields["home_currency_code"] == "JPY"
         assert 'name="baseline_amount_yuan"' in body and 'value="001200"' in body
         assert 'value="原未保存名称"' in body
-        actions = hidden_post_forms(body)
+        ctx = listing_context(status, can_write)
+        ctx["draft_public_id"] = None
+        listing = templates.get_template("recurring.html").render(**ctx)
+        assert 'action="/web/recurring/series-one/edit"' not in listing
+        assert "edit=series-one" in listing
+        actions = hidden_post_forms(listing)
         for action in ('pause', 'resume', 'archive', 'restore'):
             fields = actions.get(f'/web/recurring/series-one/{action}')
             if fields is not None:
@@ -205,6 +210,8 @@ def test_recurring_web_commands_pass_only_the_original_authenticated_actor(histo
     assert captured[0]["tenant_id"] == "owner" and captured[0]["actor_account_id"] == 42
     if action in {"create","edit"}:
         assert captured[0]["idempotency_key"] == "original-key"
+        assert parse_qs(urlsplit(result.headers["location"]).query)["month"] == ["2026-05"]
+        assert "month" not in captured[0] and "status" not in captured[0]
     if action in {"edit","pause","resume","restore"}:
         assert captured[0]["expected_row_version"] == 7
     if action in {"pause", "resume", "archive", "restore"}:

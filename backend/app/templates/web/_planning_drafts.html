@@ -5,7 +5,7 @@
 {%- endmacro %}
 
 {% macro shelf(family, label, scope) -%}
-{% if scope %}<div data-{{ family }}-draft-shelf hidden><p class="meta">此浏览器保留的{{ label }}</p><ul data-{{ family }}-draft-list></ul></div>{% endif %}
+{% if scope %}<div data-{{ family }}-draft-shelf data-draft-scope="{{ scope | tojson | forceescape }}" hidden><p class="meta">此浏览器保留的{{ label }}</p><ul data-{{ family }}-draft-list></ul></div>{% endif %}
 {%- endmacro %}
 
 {% macro controls(family, label, scope, action='') -%}
