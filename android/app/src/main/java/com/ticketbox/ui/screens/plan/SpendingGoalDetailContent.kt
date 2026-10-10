@@ -3,7 +3,6 @@ package com.ticketbox.ui.screens.plan
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.width
@@ -28,11 +27,11 @@ import com.ticketbox.ui.components.AppContentCard
 import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
 import com.ticketbox.ui.components.AppTextInputState
-import com.ticketbox.ui.components.StatusPill
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalStateTokens
-import com.ticketbox.ui.design.tabularNum
+import com.ticketbox.ui.components.AppAdaptiveContentActionRow
+import com.ticketbox.ui.components.AppAdaptiveContentActionStyle
 import com.ticketbox.ui.screens.budget.MonthSwitcher
 import com.ticketbox.viewmodel.SpendingGoalDetailUiState
 import com.ticketbox.viewmodel.SpendingGoalDetailViewModel
@@ -58,67 +57,6 @@ internal fun SpendingGoalViewContent(
 }
 
 @Composable
-private fun SpendingGoalSummaryCard(goal: Goal) {
-    AppContentCard {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(
-                text = stringResource(R.string.spending_goal_progress_title),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            StatusPill(text = goal.statusText(), tone = goal.stateTone())
-        }
-        SpendingGoalProgress(goal, showPercent = true)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
-        ) {
-            SpendingGoalMetric(
-                label = stringResource(R.string.spending_goal_spent_label),
-                value = spendingGoalAmountText(goal.spentAmountCents, goal.homeCurrencyCode),
-                modifier = Modifier.weight(1f),
-            )
-            SpendingGoalMetric(
-                label = if (goal.isOverLimit) {
-                    stringResource(R.string.spending_goal_over_label)
-                } else {
-                    stringResource(R.string.spending_goal_remaining_label)
-                },
-                value = spendingGoalAmountText(goal.remainingAmountCents?.let { kotlin.math.abs(it) }, goal.homeCurrencyCode),
-                modifier = Modifier.weight(1f),
-            )
-        }
-    }
-}
-
-@Composable
-private fun SpendingGoalMetric(
-    label: String,
-    value: String,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
-    ) {
-        Text(
-            text = label,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.labelMedium,
-        )
-        Text(
-            text = value,
-            color = MaterialTheme.colorScheme.onSurface,
-            style = MaterialTheme.typography.titleMedium.tabularNum(),
-            fontWeight = FontWeight.SemiBold,
-        )
-    }
-}
-
-@Composable
 private fun SpendingGoalFactsCard(goal: Goal) {
     AppContentCard {
         Text(
@@ -135,11 +73,6 @@ private fun SpendingGoalFactsCard(goal: Goal) {
             label = stringResource(R.string.spending_goal_scope_label),
             value = goal.category ?: stringResource(R.string.spending_goal_scope_all),
         )
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        SpendingGoalFactRow(
-            label = stringResource(R.string.spending_goal_limit_label),
-            value = spendingGoalAmountText(goal.targetAmountCents, goal.homeCurrencyCode),
-        )
     }
 }
 
@@ -148,22 +81,21 @@ private fun SpendingGoalFactRow(
     label: String,
     value: String,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Text(
+    AppAdaptiveContentActionRow(
+        style = AppAdaptiveContentActionStyle(compactAction = true, wideActionWeight = 1f),
+        content = { Text(
             text = label,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodyMedium,
-        )
-        Text(
+        ) },
+        action = { Text(
             text = value,
+            modifier = it,
             color = MaterialTheme.colorScheme.onSurface,
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Medium,
-        )
-    }
+        ) },
+    )
 }
 
 @Composable
@@ -172,17 +104,7 @@ internal fun SpendingGoalEditContent(
     viewModel: SpendingGoalDetailViewModel,
 ) {
     val currency = state.goalCurrency
-    AppContentCard {
-        Text(
-            text = stringResource(R.string.spending_goal_edit_section),
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-        )
-        MonthSwitcher(
-            month = displayMonthLabel(state.month),
-            onPreviousMonth = { viewModel.shiftMonth(-1) },
-            onNextMonth = { viewModel.shiftMonth(1) },
-        )
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
         AppTextInput(
             state = AppTextInputState(
                 label = stringResource(R.string.spending_goal_create_name_label),
@@ -194,6 +116,11 @@ internal fun SpendingGoalEditContent(
                 onValueChange = { viewModel.updateField(SpendingGoalEditField.Name, it) },
             ),
             modifier = Modifier.fillMaxWidth(),
+        )
+        MonthSwitcher(
+            month = displayMonthLabel(state.month),
+            onPreviousMonth = { viewModel.shiftMonth(-1) },
+            onNextMonth = { viewModel.shiftMonth(1) },
         )
         if (currency != null) {
         AppAmountInput(

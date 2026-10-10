@@ -54,6 +54,7 @@ data class SpendingGoalDetailUiState(
     val history: GoalHistoryState = GoalHistoryState(),
 ) {
     val goalCurrency: CurrencyCode? get() = CurrencyCode.fromStorageKeyOrNull(goal?.homeCurrencyCode)
+    val canModifyGoal: Boolean get() = canModify && goal?.isArchived == false
     val hasPendingEdit: Boolean get() = pendingEdits.any { !it.isDone }
     val canSave: Boolean
         get() = canModify &&
@@ -179,7 +180,7 @@ class SpendingGoalDetailViewModel(
 
     fun beginEdit() {
         val goal = _state.value.goal ?: return
-        if (!_state.value.canModify || goal.isArchived || _state.value.hasPendingEdit) return
+        if (!_state.value.canModifyGoal || _state.value.hasPendingEdit) return
         val currency = _state.value.goalCurrency
         if (currency == null) {
             _state.update { it.copy(formError = UiText.res(R.string.currency_unconfirmed_write_blocked)) }

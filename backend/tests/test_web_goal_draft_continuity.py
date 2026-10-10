@@ -45,6 +45,7 @@ def _original(installed, kind):
     fields = {**hidden_post_forms(page.text)[action], "draft_scope": json.dumps(scope),
         "name": "原消费目标", "month": "2026-09", "category": "餐饮", "target_amount_yuan": "200.00"}
     origin = {"Origin": str(browser.base_url).rstrip("/")}
+    task_url = str(page.url)
     if kind == "edit":
         created = browser.post(action, data=fields, headers=origin, follow_redirects=False)
         assert created.status_code == 303, created.text
@@ -54,15 +55,16 @@ def _original(installed, kind):
         editor = browser.get(action, params={"return_category": "餐饮", "return_month": "2026-09"})
         assert editor.status_code == 200, editor.text
         fields.update(hidden_post_forms(editor.text)[action])
+        task_url = str(editor.url)
     fields.update(name="原稿目标", target_amount_yuan="350.25")
-    return browser, action, fields, scope, origin
+    return browser, action, fields, scope, origin, task_url
 
 
 @pytest.mark.real_db
 @pytest.mark.currency_binding_unbound
 @pytest.mark.parametrize("kind", ["create", "edit"])
 def test_installed_goal_keeps_original_ack_after_a_later_revision(installed_goal_browser, kind):
-    browser, action, fields, scope, origin = _original(installed_goal_browser, kind)
+    browser, action, fields, scope, origin, _ = _original(installed_goal_browser, kind)
     expected_version = 1 if kind == "create" else 2
     accepted = browser.post(action, data=fields, headers={**origin, "Accept": "application/json"}, follow_redirects=False)
     assert accepted.status_code in {200, 303}, accepted.text
@@ -97,14 +99,14 @@ def test_installed_goal_keeps_original_ack_after_a_later_revision(installed_goal
 @pytest.mark.currency_binding_unbound
 @pytest.mark.parametrize("kind", ["create", "edit"])
 def test_replacement_browser_cannot_publish_an_original_goal_task(installed_goal_browser, kind):
-    browser, action, fields, scope, origin = _original(installed_goal_browser, kind)
+    browser, action, fields, scope, origin, task_url = _original(installed_goal_browser, kind)
     before = _facts()
     browser.base_url = browser.base_url.copy_with(scheme="http")
     replacement = _scope(_connect_local_session(installed_goal_browser))
     browser.base_url = browser.base_url.copy_with(scheme="https")
     assert replacement["accountId"] == scope["accountId"] and replacement["ledgerId"] == scope["ledgerId"]
     assert replacement["deviceId"] != scope["deviceId"]
-    page = browser.get("/web/goals" if kind == "create" else action, params={"month": fields["month"]})
+    page = browser.get(task_url)
     assert page.status_code == 200, page.text
     fields["csrf_token"] = hidden_post_forms(page.text)[action]["csrf_token"]
     refused = browser.post(action, data=fields, headers={**origin, "Accept": "application/json"}, follow_redirects=False)
@@ -121,14 +123,14 @@ def test_replacement_browser_cannot_publish_an_original_goal_task(installed_goal
 @pytest.mark.parametrize("kind", ["create", "edit"])
 def test_goal_read_only_reopening_keeps_original_then_saves_once(installed_goal_browser, kind):
     installed = installed_goal_browser
-    browser, action, fields, scope, origin = _original(installed, kind)
+    browser, action, fields, scope, origin, task_url = _original(installed, kind)
     before = _facts()
     with SessionLocal() as db:
         member = db.scalar(select(LedgerMember).where(LedgerMember.ledger_id == installed.shared_ledger_id,
             LedgerMember.account_id == installed.installation_account_id))
         member.role = "viewer"
         db.commit()
-    page = browser.get("/web/goals" if kind == "create" else action)
+    page = browser.get(task_url)
     assert page.status_code == 200 and 'data-goal-can-write="false"' in page.text, page.text
     current = hidden_post_forms(page.text)[action]
     assert json.loads(current["draft_scope"]) == scope
@@ -157,7 +159,7 @@ def test_goal_read_only_reopening_keeps_original_then_saves_once(installed_goal_
 @pytest.mark.currency_binding_unbound
 @pytest.mark.parametrize("kind", ["create", "edit"])
 def test_goal_pre_binding_form_can_prepare_explicit_correction_without_writing(installed_goal_browser, kind):
-    browser, action, fields, scope, origin = _original(installed_goal_browser, kind)
+    browser, action, fields, scope, origin, _ = _original(installed_goal_browser, kind)
     before = _facts()
     fields.pop("draft_scope")
     refused = browser.post(action, data=fields, headers=origin)
@@ -186,7 +188,7 @@ def test_goal_pre_binding_form_can_prepare_explicit_correction_without_writing(i
 @pytest.mark.real_db
 @pytest.mark.currency_binding_unbound
 def test_household_can_plan_income_and_spending_then_revise_without_creating_financial_facts(installed_goal_browser):
-    browser, goal_action, goal_fields, scope, origin = _original(installed_goal_browser, "create")
+    browser, goal_action, goal_fields, scope, origin, _ = _original(installed_goal_browser, "create")
     headers = {**origin, "Accept": "application/json"}
     income_action = "/web/income-plans/create"
     income_page = browser.get("/web/income-plans?new_income=1")

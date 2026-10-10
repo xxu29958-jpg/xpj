@@ -415,7 +415,10 @@ def test_category_plan_reference_opens_the_saved_editor_and_returns_to_removal(
     original_form = hidden_post_forms(editor.text)[edit_action]
     assert original_form["return_category"] == preference_id
     assert original_form["return_month"] == "2026-02"
-    assert f'#category-{preference_id}">返回分类继续移除</a>' in editor.text
+    return_url = next(unescape(href) for href, content in re.findall(r'<a\b[^>]*href="([^"]+)"[^>]*>(.*?)</a>', editor.text, re.S)
+        if f"#category-{preference_id}" in href and "返回分类继续移除" in content)
+    returned = web_client.get(return_url)
+    assert returned.status_code == 200 and f"category-{preference_id}" in returned.text, returned.text
     assert 'name="month" value="2026-10"' in editor.text
     if source == "budget":
         changes = {"total_amount_yuan": "500.00", "rollover_amount_yuan": "0.00",

@@ -66,6 +66,10 @@
     <string name="spending_goals_empty_title">这个月还没有消费目标</string>
     <string name="spending_goals_empty_body">可以给整月总支出或某个分类设一个上限。</string>
     <string name="spending_goals_create_action">添加消费目标</string>
+    <string name="spending_goals_archived_show">查看已归档目标</string>
+    <string name="spending_goals_archived_hide">收起已归档目标</string>
+    <string name="spending_goals_archived_title">已归档目标</string>
+    <string name="spending_goals_archived_empty">这个月没有已归档的消费目标。</string>
     <string name="spending_goal_row_context">%1$s · %2$s</string>
     <string name="spending_goal_scope_all">全部支出</string>
     <string name="spending_goal_spent_label">已花</string>
@@ -92,7 +96,8 @@
     <string name="spending_goal_month_label">目标月份</string>
     <string name="spending_goal_scope_label">跟踪范围</string>
     <string name="spending_goal_edit_action">编辑目标</string>
-    <string name="spending_goal_edit_section">调整目标</string>
+    <string name="spending_goal_edit_title">调整消费目标</string>
+    <string name="spending_goal_edit_intro">不会改变已经记录的消费。</string>
     <string name="spending_goal_edit_cancel">取消</string>
     <string name="spending_goal_edit_save">保存调整</string>
     <string name="spending_goal_edit_saving">保存中</string>

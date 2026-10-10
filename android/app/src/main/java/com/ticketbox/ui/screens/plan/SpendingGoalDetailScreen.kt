@@ -1,7 +1,6 @@
 package com.ticketbox.ui.screens.plan
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -20,6 +19,8 @@ import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppErrorState
+import com.ticketbox.ui.components.AppAdaptiveContentActionRow
+import com.ticketbox.ui.components.AppAdaptiveContentActionStyle
 import com.ticketbox.ui.components.AppFloatingActionBar
 import com.ticketbox.ui.components.AppLoadingState
 import com.ticketbox.ui.components.AppPageRole
@@ -48,8 +49,8 @@ internal fun SpendingGoalDetailScreen(
     AppSecondaryScrollableContent(
         chrome = AppSecondaryPageChrome(
             role = AppPageRole.Stats,
-            title = goal?.name ?: stringResource(R.string.spending_goal_detail_title),
-            subtitle = goal?.let {
+            title = if (state.isEditing) stringResource(R.string.spending_goal_edit_title) else goal?.name ?: stringResource(R.string.spending_goal_detail_title),
+            subtitle = if (state.isEditing) stringResource(R.string.spending_goal_edit_intro) else goal?.let {
                 stringResource(
                     R.string.spending_goal_detail_subtitle,
                     displayMonthLabel(it.month),
@@ -71,7 +72,7 @@ internal fun SpendingGoalDetailScreen(
         ),
         slots = AppSecondaryPageSlots(
             status = { SpendingGoalDetailStatus(state, viewModel) },
-            bottomBar = if (goal != null && state.canModify && !goal.isArchived) {
+            bottomBar = if (state.canModifyGoal) {
                 { SpendingGoalDetailFooter(state = state, viewModel = viewModel) }
             } else {
                 null
@@ -150,7 +151,7 @@ private fun SpendingGoalDetailBody(
         state.isEditing -> SpendingGoalEditContent(state = state, viewModel = viewModel)
         else -> SpendingGoalViewContent(
             goal = state.goal,
-            canModify = state.canModify && !state.hasPendingEdit,
+            canModify = state.canModifyGoal && !state.hasPendingEdit,
             onArchive = { viewModel.showArchiveConfirmation(true) },
         )
     }
@@ -163,17 +164,17 @@ private fun SpendingGoalDetailFooter(
 ) {
     AppFloatingActionBar {
         if (state.isEditing) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-            ) {
+            AppAdaptiveContentActionRow(
+                style = AppAdaptiveContentActionStyle(wideActionWeight = 1f),
+                content = {
                 AppSecondaryButton(
                     text = stringResource(R.string.spending_goal_edit_cancel),
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.fillMaxWidth(),
                     enabled = !state.isSaving,
                     leadingIcon = Icons.Filled.Close,
                     onClick = viewModel::cancelEdit,
-                )
+                ) },
+                action = { actionModifier ->
                 AppPrimaryButton(
                     text = if (state.isSaving) {
                         stringResource(R.string.spending_goal_edit_saving)
@@ -181,11 +182,11 @@ private fun SpendingGoalDetailFooter(
                         stringResource(R.string.spending_goal_edit_save)
                     },
                     icons = AppButtonIcons(leading = Icons.Filled.Check),
-                    modifier = Modifier.weight(1f),
+                    modifier = actionModifier,
                     enabled = state.canSave,
                     onClick = viewModel::save,
-                )
-            }
+                ) },
+            )
         } else {
             AppPrimaryButton(
                 text = stringResource(R.string.spending_goal_edit_action),

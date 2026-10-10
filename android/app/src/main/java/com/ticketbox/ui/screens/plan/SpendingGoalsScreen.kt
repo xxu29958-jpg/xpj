@@ -5,6 +5,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -81,6 +84,11 @@ internal fun SpendingGoalsScreen(
             )
         }
         item {
+            TextButton(onClick = { viewModel.setIncludeArchived(!state.includeArchived) }) {
+                Text(stringResource(if (state.includeArchived) R.string.spending_goals_archived_hide else R.string.spending_goals_archived_show))
+            }
+        }
+        item {
             SpendingGoalsBody(
                 state = state,
                 onRetry = viewModel::refresh,
@@ -139,10 +147,17 @@ private fun SpendingGoalsBody(
                 ),
             ),
         )
-        else -> SpendingGoalListCard(
-            goals = state.goals,
-            onOpenGoal = onOpenGoal,
-        )
+        else -> Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap)) {
+            val active = state.goals.filterNot { it.isArchived }
+            if (active.isEmpty()) Text(stringResource(R.string.spending_goals_empty_title))
+            else SpendingGoalListCard(active, onOpenGoal)
+            if (state.includeArchived) {
+                Text(stringResource(R.string.spending_goals_archived_title), style = MaterialTheme.typography.titleMedium)
+                val archived = state.goals.filter { it.isArchived }
+                if (archived.isEmpty()) Text(stringResource(R.string.spending_goals_archived_empty))
+                else SpendingGoalListCard(archived, onOpenGoal)
+            }
+        }
     }
 }
 

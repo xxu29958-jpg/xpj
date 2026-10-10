@@ -23,6 +23,7 @@ from app.routes.web_rule_forms import parse_rule_amount
 from app.services.budget_advisor_service import _providers as providers_module
 from app.services.time_service import now_utc
 from tests._infra.currency import activate_test_currency_authority
+from tests._web_native_form_support import open_creation_form
 from tests._web_rule_form_support import submit_rule_form
 
 
@@ -295,6 +296,7 @@ def test_zero_fraction_no_js_forms_and_dashboard_share_input_contract(
 
     goals = web_client.get("/web/goals?ledger_id=owner&month=2026-05")
     assert goals.status_code == 200, goals.text
+    goals = open_creation_form(web_client, goals, "new_goal")
     assert 'name="home_currency_code" value="JPY"' in goals.text
     assert 'name="target_amount_yuan" value="" inputmode="numeric"' in goals.text
     assert "目标金额（JPY，仅支持整数）" in goals.text

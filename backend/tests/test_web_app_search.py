@@ -12,7 +12,7 @@ from sqlalchemy import select, text
 from app.database import SessionLocal
 from app.models import Expense
 from app.services.learning_service import OcrFactDraft, record_ocr_fact
-from tests._web_native_form_support import hidden_post_forms
+from tests._web_native_form_support import hidden_post_forms, open_creation_form
 from tests._web_rule_form_support import submit_rule_form
 
 
@@ -71,6 +71,7 @@ def test_web_search_finds_current_ledger_entities(web_client: TestClient, *, ide
     assert rule.status_code in {303, 307}
     goal_page = web_client.get("/web/goals?ledger_id=owner&month=2026-05")
     assert goal_page.status_code == 200
+    goal_page = open_creation_form(web_client, goal_page, "new_goal")
     goal = web_client.post(
         "/web/goals/create",
         data={
