@@ -3,9 +3,10 @@
   "use strict";
   const definitions = {
     goal: {label: "消费目标", list: "/web/goals", amount: "target_amount_yuan",
-      create: ["ledger_id", "home_currency_code", "month", "name", "target_amount_yuan", "category"],
+      legacyMissing: ["return_include_archived"],
+      create: ["ledger_id", "home_currency_code", "month", "name", "target_amount_yuan", "category", "return_include_archived"],
       edit: ["ledger_id", "home_currency_code", "month", "name", "target_amount_yuan", "category",
-        "public_id", "expected_row_version", "return_category", "return_month"]},
+        "public_id", "expected_row_version", "return_category", "return_month", "return_include_archived"]},
     income: {label: "收入计划", list: "/web/income-plans", amount: "amount_yuan",
       create: ["ledger_id", "home_currency_code", "intent_month", "label", "source_type", "frequency",
         "income_month", "income_month_year", "income_month_number", "amount_yuan", "pay_day"],
@@ -61,7 +62,10 @@
     for (const name of family === "goal" ? ["month", "return_category", "return_month"] : ["intent_month"]) {
       if (saved[name]) next.searchParams.set(name, saved[name]);
     }
-    if (family === "income" && !saved.public_id) next.searchParams.set("new_income", "1");
+    if (family === "goal" && saved.return_include_archived) {
+      next.searchParams.set(saved.public_id ? "return_include_archived" : "include_archived", saved.return_include_archived);
+    }
+    if (!saved.public_id) next.searchParams.set("new_" + family, "1");
     next.hash = family + (saved.public_id ? "-edit-" : "-create-") + record.clientRef;
     return next.href;
   }
@@ -117,6 +121,9 @@
       if (isGoal) {
         for (const name of ["month", "return_category", "return_month"]) {
           if (field(name)?.value) next.searchParams.set(name, field(name).value);
+        }
+        if (field("return_include_archived")?.value) {
+          next.searchParams.set(planId ? "return_include_archived" : "include_archived", field("return_include_archived").value);
         }
       } else if (planId) next.searchParams.set("intent_month", data("ReviewMonth"));
       if (!planId) next.hash = isGoal ? "new-goal" : "add-income";
@@ -183,7 +190,7 @@
         if (input.tagName === "SELECT" && ![...input.options].some(option => option.value === saved[name])) {
           input.add(new Option(saved[name], saved[name]));
         }
-        input.value = saved[name];
+        input.value = saved[name] ?? "";
       });
       if (family === "income" && saved.income_month && field("income_month").type === "hidden") {
         const label = document.createElement("label");
@@ -480,9 +487,9 @@
     forms.forEach(form => mount(form, {...definition, family}));
     const shelf = document.querySelector("[data-" + family + "-draft-shelf][data-draft-scope]");
     if (!forms.length && shelf) {
-      if (family === "income" && window.location.hash.startsWith("#income-create-")) {
+      if (window.location.hash.startsWith("#" + family + "-create-")) {
         const next = new URL(window.location.href);
-        next.searchParams.set("new_income", "1");
+        next.searchParams.set("new_" + family, "1");
         window.location.replace(next.href);
       } else mountShelf(shelf, {...definition, family}, JSON.parse(shelf.dataset.draftScope));
     }

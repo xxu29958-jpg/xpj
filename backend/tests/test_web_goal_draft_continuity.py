@@ -12,7 +12,7 @@ from app.services.identity_service import authenticate_web_session_token
 from app.services.income_plan_service import income_forecast
 from app.services.manual_expense_draft_presenter import manual_draft_scope
 from tests._local_web_identity_support import _connect_local_session, installed_web_setup
-from tests._web_native_form_support import hidden_post_forms
+from tests._web_native_form_support import hidden_post_forms, open_creation_form
 
 
 @pytest.fixture
@@ -40,6 +40,7 @@ def _original(installed, kind):
     browser.base_url = browser.base_url.copy_with(scheme="https")
     page = browser.get("/web/goals", params={"month": "2026-09"})
     assert page.status_code == 200, page.text
+    page = open_creation_form(browser, page, "new_goal")
     action = "/web/goals/create"
     fields = {**hidden_post_forms(page.text)[action], "draft_scope": json.dumps(scope),
         "name": "原消费目标", "month": "2026-09", "category": "餐饮", "target_amount_yuan": "200.00"}
@@ -203,7 +204,7 @@ def test_household_can_plan_income_and_spending_then_revise_without_creating_fin
     goal_receipt = goal.json()
     assert goal_receipt["receipt"]["spent_amount_cents"] == 0
     goal_page = browser.get(goal_receipt["next"])
-    assert goal_page.status_code == 200 and "本月餐饮提醒" in goal_page.text and "0.00 / 2000.00" in goal_page.text
+    assert goal_page.status_code == 200 and "本月餐饮提醒" in goal_page.text and "目标 2000.00 · 已用 0.00" in goal_page.text
     income_edit = f'/web/income-plans/{income_receipt["receipt"]["public_id"]}/edit'
     editor = browser.get(income_edit, params={"intent_month": month})
     changed_income = browser.post(income_edit, data={**income_fields, **hidden_post_forms(editor.text)[income_edit],

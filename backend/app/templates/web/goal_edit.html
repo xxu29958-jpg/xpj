@@ -1,6 +1,9 @@
 {% extends "base.html" %}
 {% set page_title = '编辑消费目标' %}
 {% set product_body_domain = 'plans' %}
+{% set page_surface = 'tertiary' %}
+{% set task_return_href = category_return_url or goal_return_url %}
+{% set task_return_label = '返回分类继续移除' if category_return_url else '消费目标' %}
 {% block title %}编辑消费目标 · 小票夹{% endblock %}
 {% block page_scripts %}
 {% if goal_draft_scope %}
@@ -11,22 +14,17 @@
 {% block content %}
 <header class="product-page-header">
   <div class="product-page-heading">
-    <span class="product-eyebrow">计划 / 月度目标</span>
-    <h1 class="page-title">编辑消费目标</h1>
+    <span class="product-eyebrow">计划 / 消费目标</span>
+    <h1 class="page-title">调整消费目标</h1>
     <p class="product-page-summary">调整提醒范围与金额，已记录的支出保持原样。</p>
   </div>
-  {% if category_return_url %}<a class="product-button product-button--quiet" href="{{ category_return_url }}">返回分类继续移除</a>
-  {% else %}<a class="product-button product-button--quiet" href="/web/goals?ledger_id={{ selected_ledger_id }}&month={{ current.month }}">返回目标</a>{% endif %}
 </header>
-<div class="plan-flow">
+<div class="plan-flow goal-editor">
   {% if error %}<div class="product-feedback product-feedback--danger" role="alert">{{ error }}</div>{% endif %}
   {% if can_write is defined and not can_write %}<div class="product-feedback" role="status">当前角色为只读，原修改仍保留；恢复编辑权限后可继续。</div>{% endif %}
-  {% if goal.status == 'archived' %}<div class="product-feedback" role="status">目标已归档。请先到回收站恢复，再继续修改。</div>{% endif %}
-  <section class="product-panel product-panel--padded" aria-label="编辑消费目标">
-    <div class="product-panel-header">
-      <h2 class="product-panel-title">目标设置</h2>
-      <p class="product-panel-subtitle">修改月份后，进度会按所选月份的已确认支出重新计算。</p>
-    </div>
+  {% if goal.status == 'archived' %}<div class="product-feedback" role="status">目标已归档。请先<a class="product-feedback-link" href="/web/recycle-bin?ledger_id={{ selected_ledger_id|urlencode }}&group=plans" target="_blank" rel="noopener">在新窗口查看回收站</a>，恢复后再继续修改。</div>{% endif %}
+  <section aria-label="编辑消费目标">
+    <p class="meta">修改月份后，进度会按所选月份的已确认支出重新计算。</p>
     {% if goal_draft_scope %}<div data-goal-draft-shelf hidden><p class="meta">此浏览器保留的目标任务</p><ul data-goal-draft-list></ul></div>{% endif %}
     <form method="post" action="/web/goals/{{ goal.public_id }}/edit" class="budget-form"
       {% if goal_draft_scope %}data-goal-draft-scope="{{ goal_draft_scope | tojson | forceescape }}"
@@ -36,6 +34,7 @@
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
       <input type="hidden" name="return_category" value="{{ values.get('return_category', '') }}">
       <input type="hidden" name="return_month" value="{{ values.get('return_month', '') }}">
+      <input type="hidden" name="return_include_archived" value="{{ values.get('return_include_archived', '') }}">
       <input type="hidden" name="expected_row_version" value="{{ values.expected_row_version }}">
       <input type="hidden" name="idempotency_key" value="{{ values.idempotency_key }}">
       <input type="hidden" name="home_currency_code" value="{{ values.home_currency_code }}">
@@ -79,11 +78,12 @@
       {% endif %}
     </form>
   </section>
-  <section class="product-panel product-panel--padded" aria-label="当前已保存的目标">
-    <div class="product-panel-header"><h2 class="product-panel-title">当前已保存</h2><p class="product-panel-subtitle">上方输入保存成功后，才会更新目标。</p></div>
+  <details class="plan-disclosure" aria-label="当前已保存的目标" {% if conflict or not currency_matches or goal.status == 'archived' %}open{% endif %}>
+    <summary>查看当前已保存的目标</summary>
+    <p class="meta">上方输入保存成功后，才会更新目标。</p>
     <p><strong>{{ current.name }}</strong> · {{ current.month }} · {{ current.category or '总支出' }}</p>
     <p>目标金额 {{ current.home_currency_code or '币种待确认' }} {{ current.target_amount_yuan }}</p>
     <a class="product-button product-button--quiet" target="_blank" rel="noopener" href="/web/goals/{{ goal.public_id }}/history?ledger_id={{ selected_ledger_id|urlencode }}&amp;month={{ current.month|urlencode }}&amp;include_archived={{ 'true' if goal.status == 'archived' else 'false' }}">在新窗口查看修改记录</a>
-  </section>
+  </details>
 </div>
 {% endblock %}

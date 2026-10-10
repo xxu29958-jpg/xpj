@@ -722,18 +722,19 @@ def test_goal_original_input_survives_reload_and_reopening_in_real_edge(tmp_path
     original_key, newer_key = "091b6930-3f0c-4070-b8ef-5b0f1a1d0022", "ff626aac-4e4b-407a-91e2-ec188f112866"
     path = "/web/goals" if kind == "create" else "/web/goals/goal-original/edit"
     action = "/web/goals/create" if kind == "create" else path
-    fields = ["name", "target_amount_yuan", "category", "month", "home_currency_code", "idempotency_key"]
+    fields = ["name", "target_amount_yuan", "category", "month", "home_currency_code", "idempotency_key", "return_include_archived"]
     if kind == "edit":
         fields += ["expected_row_version", "return_category", "return_month"]
     spec = {"kind": kind, "action": action, "fields": fields,
-        "open": path + "?ledger_id=goal-ledger&return_category=food&return_month=2026-09",
+        "open": path + "?ledger_id=goal-ledger&month=2026-09&include_archived=true&return_category=food&return_month=2026-09&return_include_archived=true",
         "reopen": path + "?ledger_id=goal-ledger&month=2026-10",
         "input": {"name": "九月原目标", "target_amount_yuan": " 001200 ", "category": "原分类"}}
     visits, posts, missing = [], [], []
 
     def goal_page(query):
-        newer = bool(visits)
-        visits.append(path)
+        newer = any(visits)
+        creating = query.get("new_goal") == ["1"]
+        visits.append(kind == "edit" or creating)
         currency = "CNY" if newer and kind == "create" else "JPY"
         current = {"name": "另一端已修改" if newer else "已有目标", "month": "2026-10" if newer else "2026-09",
             "category": "交通", "target_amount_yuan": "9999" if newer else "1000",
@@ -741,8 +742,10 @@ def test_goal_original_input_survives_reload_and_reopening_in_real_edge(tmp_path
         if kind == "create":
             current.update(name="", category="", target_amount_yuan="")
         values = {**current, "idempotency_key": newer_key if newer else original_key,
-            "return_category": query.get("return_category", [""])[0], "return_month": query.get("return_month", [""])[0]}
-        return template.render(values=values, current=current, month=current["month"], goals=[], include_archived=False,
+            "return_category": query.get("return_category", [""])[0], "return_month": query.get("return_month", [""])[0],
+            "return_include_archived": query.get("return_include_archived", query.get("include_archived", ["false"]))[0]}
+        return template.render(values=values, current=current, month=current["month"], goals=[],
+            goal_creating=creating, include_archived=query.get("include_archived") == ["true"],
             goal={"public_id": "goal-original", "status": "archived" if posts else "active"}, can_write=True, currency_matches=True,
             form_currency={"currency_code": currency, "amount_input_hint": "整数日元" if currency == "JPY" else "两位小数",
                 "inputmode": "numeric" if currency == "JPY" else "decimal", "amount_example": "0"},
@@ -828,7 +831,8 @@ def _assert_original_goal_recovered(probe, spec, original_key, kind, posts, scop
     if kind == "edit":
         sent["public_id"] = "goal-original"
     assert posts[0] == {"path": spec["action"], "fields": sent}, posts
-    expected = {**spec["input"], "month": "2026-09", "home_currency_code": "JPY", "idempotency_key": original_key}
+    expected = {**spec["input"], "month": "2026-09", "home_currency_code": "JPY", "idempotency_key": original_key,
+        "return_include_archived": "true" if kind == "edit" else ""}
     if kind == "edit":
         expected.update(expected_row_version="7", return_category="food", return_month="2026-09")
     assert probe["before"]["fields"] == expected, probe
@@ -839,6 +843,7 @@ def _assert_original_goal_recovered(probe, spec, original_key, kind, posts, scop
         assert "另一端已修改" in probe["reopened"]["current"], probe
         assert probe["archived"] and probe["destination"] == "/web/categories?ledger_id=goal-ledger&month=2026-09#category-food", probe
     else:
+        assert probe["legacyNavigationMissing"] and "new_goal=1" in probe["shelfHref"], probe
         assert probe["destination"] == "/web/goals?ledger_id=goal-ledger&month=2026-09", probe
     assert probe["unknown"]["fields"] == probe["unresolved"]["fields"] == expected, probe
     assert probe["frozen"] and probe["remaining"] is None, probe

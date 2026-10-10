@@ -5122,6 +5122,11 @@
             "title": "Return Category",
             "type": "string"
           },
+          "return_include_archived": {
+            "default": "",
+            "title": "Return Include Archived",
+            "type": "string"
+          },
           "return_month": {
             "default": "",
             "title": "Return Month",
@@ -5192,6 +5197,11 @@
           "name": {
             "default": "",
             "title": "Name",
+            "type": "string"
+          },
+          "return_include_archived": {
+            "default": "",
+            "title": "Return Include Archived",
             "type": "string"
           },
           "review_new": {
@@ -56984,6 +56994,16 @@
             "schema": {
               "default": "",
               "title": "Return Month",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_include_archived",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Include Archived",
               "type": "string"
             }
           }

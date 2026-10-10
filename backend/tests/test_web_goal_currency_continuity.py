@@ -2,7 +2,7 @@
 
 import pytest
 
-from tests._web_native_form_support import hidden_post_forms
+from tests._web_native_form_support import hidden_post_forms, open_creation_form
 from tests.test_web_goal_edit_continuity import _editor, _goal
 
 
@@ -16,7 +16,7 @@ def test_jpy_goal_editor_uses_recorded_units_under_cny_runtime(web_client, ident
     assert 'name="target_amount_yuan" value="1200"' in editor.text
     assert "目标金额（JPY，仅支持整数）" in editor.text
     listing = web_client.get("/web/goals?ledger_id=owner&month=2026-05")
-    assert "JPY 0 / 1200" in listing.text
+    assert "剩余额度 · JPY" in listing.text and "目标 1200 · 已用 0" in listing.text
     fields.update(name="日元目标调整", month="2026-05", category="餐饮", target_amount_yuan="1500")
     saved = web_client.post(action, data=fields, follow_redirects=False)
     assert saved.status_code == 303, saved.text
@@ -58,6 +58,7 @@ def test_goal_create_without_currency_keeps_original_form_and_creates_nothing(we
     action = "/web/goals/create"
     page = web_client.get("/web/goals?ledger_id=owner&month=2026-05")
     assert page.status_code == 200
+    page = open_creation_form(web_client, page, "new_goal")
     fields = hidden_post_forms(page.text)[action]
     assert fields["home_currency_code"] == "CNY" and fields["idempotency_key"]
     fields.pop("home_currency_code")
@@ -77,7 +78,7 @@ def test_goal_create_without_currency_keeps_original_form_and_creates_nothing(we
 
 @pytest.mark.parametrize("archived", [False, True])
 @pytest.mark.parametrize("can_write", [False, True])
-def test_saved_goal_history_entry_is_readable_without_changing_native_form(archived, can_write):
+def test_saved_goal_history_is_readable_beside_a_separate_creation_task(archived, can_write):
     from starlette.requests import Request
 
     from app.routes.web_common import templates
@@ -92,12 +93,17 @@ def test_saved_goal_history_entry_is_readable_without_changing_native_form(archi
         form_currency={"currency_code":"JPY", "amount_input_hint":"仅支持整数"})
     assert '/web/goals/goal-one/history?ledger_id=owner' in body
     assert 'month=2026-05' in body and 'include_archived=true' in body
+    assert 'action="/web/goals/create"' not in body
     if can_write:
-        fields = hidden_post_forms(body)["/web/goals/create"]
+        assert 'new_goal=1' in body
+        editor = templates.get_template("goals.html").render(request=request, goals=[], month="2026-05",
+            include_archived=True, goal_creating=True, can_write=True, selected_ledger_id="owner", values=values,
+            form_currency={"currency_code":"JPY", "amount_input_hint":"仅支持整数"})
+        fields = hidden_post_forms(editor)["/web/goals/create"]
         assert fields["idempotency_key"] == "original-key" and fields["home_currency_code"] == "JPY"
-        assert 'name="target_amount_yuan" value="001200"' in body
+        assert 'name="target_amount_yuan" value="001200"' in editor
     else:
-        assert 'action="/web/goals/create"' not in body
+        assert 'new_goal=1' not in body
 
 
 @pytest.fixture()

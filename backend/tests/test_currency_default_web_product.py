@@ -5,7 +5,7 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import Goal, InstallationCurrencyAuditLog, InstallationCurrencyBinding
-from tests._web_native_form_support import hidden_post_forms
+from tests._web_native_form_support import hidden_post_forms, open_creation_form
 from tests.test_currency_adoption_product import _AdoptionBrowser
 from tests.test_currency_adoption_product import adoption_browser as adoption_browser
 
@@ -22,6 +22,7 @@ def test_native_default_change_replays_its_original_result_and_preserves_recorde
         data={**fields, "home_currency_code": "JPY"}, follow_redirects=False)
     assert adopted.status_code == 303, adopted.text
     goal_page = browser.client.get("/web/goals", headers=browser.headers)
+    goal_page = open_creation_form(browser.client, goal_page, "new_goal", headers=browser.headers)
     goal_created = browser.client.post("/web/goals/create", headers=browser.headers,
         data={**hidden_post_forms(goal_page.text)["/web/goals/create"], "name": "保留原日元目标",
             "target_amount_yuan": "1000", "month": "2026-09"}, follow_redirects=False)

@@ -53,7 +53,7 @@
     grid-template-columns: minmax(0, 1fr);
 }
 
-.plan-income-hero {
+.plan-amount-hero {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     gap: var(--space-4);
@@ -64,7 +64,9 @@
     box-shadow: none;
 }
 
-.plan-income-hero .plan-income-value {
+.goal-balance { background: var(--surface-apricot); }
+
+.plan-amount-hero .plan-amount-value {
     font-size: clamp(var(--type-title-size), 13cqi, var(--type-display-size));
     overflow-wrap: anywhere;
 }
@@ -83,13 +85,13 @@
     gap: var(--space-2);
 }
 
-.plan-income-hero > p {
+.plan-amount-hero > p {
     max-width: calc(var(--space-12) * 8);
     margin: 0;
     color: var(--text-muted);
 }
 
-.plan-income-value {
+.plan-amount-value {
     color: var(--text-default);
     font-family: var(--font-numeric);
     font-size: var(--type-display-size);
@@ -98,7 +100,7 @@
     line-height: var(--type-display-line);
 }
 
-.plan-income-value small {
+.plan-amount-value small {
     margin-inline-end: var(--space-2);
     color: var(--text-muted);
     font-size: var(--type-caption-size);
@@ -1006,6 +1008,8 @@ fieldset.budget-excluded .hint {
 
 .recurring-editor .budget-actions,
 .income-page > .budget-actions,
+.goal-page > .budget-actions,
+.goal-editor .budget-actions,
 .income-editor .budget-actions {
     flex-direction: column;
     align-items: stretch;

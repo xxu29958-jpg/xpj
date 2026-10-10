@@ -16,7 +16,7 @@ from app.database import SessionLocal
 from app.main import app
 from app.models import LedgerMember
 from app.routes.web_app import _require_local as _web_require_local
-from tests._web_native_form_support import hidden_post_forms
+from tests._web_native_form_support import hidden_post_forms, open_creation_form
 
 
 @pytest.fixture()
@@ -308,6 +308,7 @@ def test_web_goals_create_archive_and_viewer_guard(web_client: TestClient, *, id
 
     form_page = web_client.get("/web/goals?ledger_id=owner&month=2026-05")
     assert form_page.status_code == 200
+    form_page = open_creation_form(web_client, form_page, "new_goal")
     fields = hidden_post_forms(form_page.text)["/web/goals/create"]
     created = web_client.post(
         "/web/goals/create",
@@ -326,9 +327,10 @@ def test_web_goals_create_archive_and_viewer_guard(web_client: TestClient, *, id
     page = web_client.get("/web/goals?ledger_id=owner&month=2026-05")
     assert page.status_code == 200
     assert "本月餐饮" in page.text
-    assert "CNY 640.00 / 800.00" in page.text
+    assert "剩余额度 · CNY" in page.text and "160.00" in page.text
+    assert "目标 800.00 · 已用 640.00" in page.text
     assert "80%" in page.text
-    assert "保存目标" in page.text
+    assert "新建消费目标" in page.text and 'action="/web/goals/create"' not in page.text
     # C2 计划片: goals 正文迁 product 计划域 — 挂 plans 域模块; 旧 pages/goals.css
     # 物理退役 (不再挂载, 静态路由 404)。
     assert "/static/web/product/domains/plans.css?v=" in page.text

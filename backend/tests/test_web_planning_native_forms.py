@@ -1,11 +1,9 @@
 """Native Planning forms must reach existing Owners with their rendered scope/tokens."""
 
-import re
-from html import unescape
 from uuid import uuid4
 
 import pytest
-from _web_native_form_support import hidden_post_forms
+from _web_native_form_support import hidden_post_forms, open_creation_form
 from _web_recurring_test_support import open_recurring_form
 from fastapi.testclient import TestClient
 
@@ -55,11 +53,8 @@ def test_native_create_preserves_selected_ledger_and_money(
         assert page.status_code == 200, page.text
         if route == "/web/recurring":
             page = open_recurring_form(browser, page)
-        elif route == "/web/income-plans":
-            href = next(unescape(href) for href in re.findall(r'<a[^>]*href="([^"]+)"', page.text)
-                if "new_income=1" in href)
-            page = browser.get(href)
-            assert page.status_code == 200, page.text
+        elif route in {"/web/income-plans", "/web/goals"}:
+            page = open_creation_form(browser, page, "new_income" if route == "/web/income-plans" else "new_goal")
         action = f"{route}/create"
         submitted = browser.post(
             action,
