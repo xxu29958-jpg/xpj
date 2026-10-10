@@ -1,8 +1,6 @@
 package com.ticketbox.data.repository
 
-import com.squareup.moshi.JsonAdapter
-import com.ticketbox.data.remote.dto.RecurringItemCreateRequestDto
-import com.ticketbox.data.remote.dto.RecurringItemUpdateRequestDto
+import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.domain.model.RecurringItem
 import com.ticketbox.domain.model.ledgerRoleCanModify
@@ -77,10 +75,7 @@ interface RecurringActions :
 class RecurringRepository internal constructor(
     private val apiProvider: ApiServiceProvider,
     outbox: OutboxRepository? = null,
-    createAdapter: JsonAdapter<RecurringItemCreateRequestDto>? = null,
-    updateAdapter: JsonAdapter<RecurringItemUpdateRequestDto>? = null,
-    occurrenceAdapter: JsonAdapter<RecurringOccurrencePayload>? = null,
-    candidateAdapter: JsonAdapter<RecurringCandidatePayload>? = null,
+    adapters: OutboxAdapterGraph? = null,
     private val queryReader: RecurringQueryReader,
 ) : RecurringActions,
     RecurringManualMutationActions by RecurringMutationClient(
@@ -88,9 +83,7 @@ class RecurringRepository internal constructor(
         errorHandler = recurringErrorHandler(apiProvider),
         canModify = { ledgerRoleCanModify(apiProvider.currentLedgerRole()) },
         outbox = outbox,
-        createAdapter = createAdapter,
-        updateAdapter = updateAdapter,
-        candidateAdapter = candidateAdapter,
+        adapters = adapters,
     ) {
     private val ledgerRequestGuard = LedgerRequestGuard(apiProvider)
     private val errorHandler = recurringErrorHandler(apiProvider)
@@ -98,7 +91,7 @@ class RecurringRepository internal constructor(
     override suspend fun history(binding: LogicalSessionBinding, publicId: String, beforeVersion: Long?) =
         queryReader.history(binding, publicId, beforeVersion)
     val occurrences: RecurringOccurrenceActions by lazy {
-        RecurringOccurrenceRepository(apiProvider, requireNotNull(outbox), requireNotNull(occurrenceAdapter), queryReader)
+        RecurringOccurrenceRepository(apiProvider, requireNotNull(outbox), requireNotNull(adapters).recurringOccurrenceAdapter, queryReader)
     }
 
     override fun canModifyLedger(): Boolean = ledgerRoleCanModify(apiProvider.currentLedgerRole())

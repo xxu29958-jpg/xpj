@@ -115,16 +115,13 @@ class RecurringRepositoryOutboxFallbackTest {
             if (role != "owner") switchLedgerForFixture("owner", "我的小票夹", role)
         }
         val provider = testApiServiceProvider(ServiceFactory(api), session)
-        val adapters = moshi()
         val readCache = FakeExpenseDao()
         return Harness(
             repository = RecurringRepository(
                 apiProvider = provider,
                 queryReader = RecurringQueryReader(provider, readCache, LocalLedgerSessionCoordinator(boundSettingsStore(), session.sessionStore, readCache, outbox)),
                 outbox = outbox,
-                createAdapter = adapters.adapter(RecurringItemCreateRequestDto::class.java),
-                updateAdapter = adapters.adapter(RecurringItemUpdateRequestDto::class.java),
-                candidateAdapter = adapters.adapter(RecurringCandidatePayload::class.java),
+                adapters = com.ticketbox.OutboxAdapterGraph(),
             ),
             binding = requireNotNull(LedgerRequestGuard(provider).captureLogicalBinding()),
         )

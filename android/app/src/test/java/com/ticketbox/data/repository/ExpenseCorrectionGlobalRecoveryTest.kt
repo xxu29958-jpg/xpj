@@ -331,7 +331,7 @@ private class CorrectionRecoveryHarness : ExpensePendingRepositoryOutboxTestBase
         val consumers = OutboxRecoveryRepositories(
             debtCreation = DebtCreationRepository(binding.apiProvider, outbox, adapters.debtCreateAdapter),
             recurringOccurrences = null,
-            recurringItems = RecurringRepository(binding.apiProvider, outbox, adapters.recurringCreateAdapter, adapters.recurringUpdateAdapter,
+            recurringItems = RecurringRepository(binding.apiProvider, outbox, adapters,
                 queryReader = RecurringQueryReader(binding.apiProvider, cache, LocalLedgerSessionCoordinator(binding.settingsStore, binding.sessionStore, cache, outbox))),
             rules = RuleRepository(binding, offlineMutations = CategoryRuleOfflineMutationWiring(
                 outbox, adapters.categoryRuleUpdateAdapter, adapters.categoryRuleDeleteAdapter,

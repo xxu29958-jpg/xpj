@@ -117,10 +117,7 @@ internal class RepositoryGraph(
     val recurringRepository = RecurringRepository(
         apiProvider = apiServiceProvider,
         outbox = outbox,
-        createAdapter = outboxAdapters.recurringCreateAdapter,
-        candidateAdapter = outboxAdapters.recurringCandidateAdapter,
-        updateAdapter = outboxAdapters.recurringUpdateAdapter,
-        occurrenceAdapter = outboxAdapters.recurringOccurrenceAdapter,
+        adapters = outboxAdapters,
         queryReader = recurringQueries,
     )
 

@@ -169,6 +169,19 @@ class Handler(BaseHTTPRequestHandler):
         self.reply("unexpected write", status=405)
 
 
+def _merchant_receipt(path, values, result):
+    result["receipt"].update(row_version=1, display_name=values.get("display_name"), canonical_merchant=values.get("canonical_merchant"))
+    result["next"] = "/web/merchants?ledger_id=owner"
+    if values.get("merchant"):
+        result["receipt"].update(public_id=values["merchant"], row_version=int(values["expected_row_version"]) + 1,
+            status=values.get("next_status", "active"), deleted_at="2026-10-08T00:00:00Z" if path.endswith("/delete") else None)
+    if path.endswith("/merge"):
+        target, version = values["target"].rsplit(":", 1)
+        result["receipt"].update(status="merged", merged_into_public_id=target)
+        result["receipt"] = {"source": result["receipt"], "target": {"public_id": target, "row_version": int(version) + 1},
+            "created_alias_public_id": "original-alias" if values["alias_policy"] == "create_source_alias" else None}
+
+
 class RecoveryHandler(Handler):
     def do_GET(self):
         path = urlsplit(self.path).path
@@ -210,16 +223,7 @@ class RecoveryHandler(Handler):
                 home_currency_code=values["home_currency_code"], baseline_amount_cents=int(values["amount_cents"]),
                 next_expected_date=values["next_expected_date"] or None)
         if self.path.startswith("/web/merchants/"):
-            result["receipt"].update(row_version=1, display_name=values.get("display_name"), canonical_merchant=values.get("canonical_merchant"))
-            result["next"] = "/web/merchants?ledger_id=owner"
-            if values.get("merchant"):
-                result["receipt"].update(public_id=values["merchant"], row_version=int(values["expected_row_version"]) + 1,
-                    status=values.get("next_status", "active"), deleted_at="2026-10-08T00:00:00Z" if self.path.endswith("/delete") else None)
-            if self.path.endswith("/merge"):
-                target, version = values["target"].rsplit(":", 1)
-                result["receipt"].update(status="merged", merged_into_public_id=target)
-                result["receipt"] = {"source": result["receipt"], "target": {"public_id": target, "row_version": int(version) + 1},
-                    "created_alias_public_id": "original-alias" if values["alias_policy"] == "create_source_alias" else None}
+            _merchant_receipt(self.path, values, result)
         return self.reply(json.dumps(result), "application/json")
 
 

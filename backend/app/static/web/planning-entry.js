@@ -89,7 +89,7 @@
         const values = record?.values || Object.fromEntries(names.map(name => [name, field(currentForm, name)?.value || ""]));
         const next = new URL(definition.list, window.location.href);
         next.searchParams.set("ledger_id", scope.ledgerId);
-        for (const name of ["month", "return_category", "return_month"]) if (values[name]) next.searchParams.set(name, values[name]);
+        for (const name of ["month", "return_category", "return_month", "status"]) if (values[name]) next.searchParams.set(name, values[name]);
         if (family === "recurring") {
           const current = new URL(window.location.href);
           for (const name of ["month", "status"]) {
@@ -100,10 +100,8 @@
         }
         if (family === "candidate") {
           next.searchParams.set("view", "suggestions");
-          if (values.status) next.searchParams.set("status", values.status);
-          next.searchParams.set("new_candidate", "1");
+          next.searchParams.set("review", values.merchant);
           if (record) next.searchParams.set("resume_candidate", "1");
-          else if (values.merchant) next.searchParams.set("review", values.merchant);
         }
         if (values.public_id) next.searchParams.set("edit", values.public_id);
         if (record) next.hash = family + (values[definition.idField || "public_id"] ? "-edit-" : "-create-") + record.clientRef;

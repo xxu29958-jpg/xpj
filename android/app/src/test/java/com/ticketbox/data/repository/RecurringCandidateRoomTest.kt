@@ -68,7 +68,7 @@ class RecurringCandidateRoomTest {
                 outbox.onRecurringDispatchFinished = reader::finishDispatch
                 outbox.onRecurringAccepted = reader::invalidateAccepted
                 val repository = RecurringRepository(fixture.provider, outbox, queryReader = reader,
-                    candidateAdapter = adapters.recurringCandidateAdapter)
+                    adapters = adapters)
                 val guard = LedgerRequestGuard(fixture.provider)
                 return repository to OutboxDrainEngine(outbox, listOf(ConfirmRecurringCandidateDispatcher({ row ->
                     guard.bind(expectedLedgerId = row.ledgerId).serviceFor(requireNotNull(row.bindingOrNull()))

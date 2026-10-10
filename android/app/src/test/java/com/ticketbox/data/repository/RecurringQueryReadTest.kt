@@ -122,8 +122,7 @@ internal class RecurringQueryReadTest : ExpensePendingRepositoryOutboxTestBase()
             outbox.onRecurringDispatchFinished = reader::finishDispatch
             outbox.onRecurringAccepted = reader::invalidateAccepted
             val adapters = OutboxAdapterGraph()
-            val repository = RecurringRepository(fixture.provider, outbox, adapters.recurringCreateAdapter,
-                adapters.recurringUpdateAdapter, queryReader = reader)
+            val repository = RecurringRepository(fixture.provider, outbox, adapters, queryReader = reader)
             repository.updateAllowingOffline(fixture.binding, original.value.single(),
                 RecurringItemPatch(merchant = "原编辑", homeCurrencyCode = requireNotNull(original.value.single().homeCurrencyCode))).getOrThrow()
             val row = pending.allRows().single()

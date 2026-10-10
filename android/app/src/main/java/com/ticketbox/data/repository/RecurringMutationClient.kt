@@ -2,6 +2,7 @@ package com.ticketbox.data.repository
 
 import com.squareup.moshi.JsonAdapter
 import com.squareup.moshi.JsonReader
+import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.RecurringItemCreateRequestDto
@@ -22,10 +23,11 @@ internal class RecurringMutationClient(
     private val errorHandler: NetworkErrorHandler,
     private val canModify: () -> Boolean,
     private val outbox: OutboxRepository?,
-    private val createAdapter: JsonAdapter<RecurringItemCreateRequestDto>?,
-    private val updateAdapter: JsonAdapter<RecurringItemUpdateRequestDto>?,
-    private val candidateAdapter: JsonAdapter<RecurringCandidatePayload>?,
+    adapters: OutboxAdapterGraph?,
 ) : RecurringManualMutationActions {
+    private val createAdapter = adapters?.recurringCreateAdapter
+    private val updateAdapter = adapters?.recurringUpdateAdapter
+    private val candidateAdapter = adapters?.recurringCandidateAdapter
     override fun observePendingIntents(): Flow<List<RecurringPendingIntent>> {
         val outboxRef = outbox ?: return flowOf(emptyList())
         return outboxRef.observeActiveByTypes(RECURRING_OUTBOX_TYPES, includeCompleted = true).map { rows ->
