@@ -301,6 +301,8 @@ def web_reports(
             **_report_projection_context(payload, six_month_trend, top, monthly_report_vm, budget_explanations),
             "report_export_query": urlencode(report_query),
             "report_query": urlencode(report_query),
+            "accounting_date_review_href": flow_href("/web/confirmed", ledger_id=selected_id,
+                **origin.as_kwargs()) + "&" + urlencode({"filter": "missing_accounting_date", "home_currency_code": home}),
             "month": target_month,
             "month_picker_query": {**report_query, "view": view} if view == "data" else report_query,
             "granularity_options": [("day", "日"), ("week", "周"), ("month", "月")],

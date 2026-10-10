@@ -14,7 +14,7 @@
       {% if can_write %}<a class="product-button product-button--small" href="/web/budget-advise/rates?{{ rate_context|urlencode }}&amp;currency_code={{ gap.source_currency_code|urlencode }}&amp;rate_date={{ gap.rate_date|string|urlencode }}">补录汇率</a>{% endif %}
     </div>
     {% else %}
-    <p role="status">部分历史记录的原币种或日期无法确认，请由安装管理者核对原记录；不会猜测币种或汇率。</p>
+    <p role="status">部分历史记录的原币种或日期尚未确认。请打开原记录核对；不会用今天代替未知日期，也不会猜测币种或汇率。</p>
     {% endif %}
   {% endfor %}
   {% elif money_incomplete is defined and money_incomplete %}

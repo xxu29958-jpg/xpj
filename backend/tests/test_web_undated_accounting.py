@@ -2,7 +2,9 @@
 
 from datetime import UTC, date, datetime
 from types import SimpleNamespace
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlencode
+
+from starlette.requests import Request
 
 from app.models import Expense
 from app.routes import web_app
@@ -58,6 +60,9 @@ def test_undated_correction_returns_to_the_same_cross_period_task():
 
 
 def test_undated_task_ignores_stale_month_and_retains_filter_when_paging(monkeypatch):
+    from app.middleware import csrf
+    from app.routes import web_common
+
     calls = []
 
     def list_rows(db, **query):
@@ -68,11 +73,32 @@ def test_undated_task_ignores_stale_month_and_retains_filter_when_paging(monkeyp
     monkeypatch.setattr(web_app, "_confirmed_items", lambda *args, **kwargs: [])
     monkeypatch.setattr(web_app, "current_ledger_month",
         lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("cross-period task has no default month")))
-    month, home, _, total, _, pager, page = web_app._confirmed_page_rows(object(),
-        selected_id="owner", page=2, month="2026-05", tag="旅行",
+    monkeypatch.setattr(web_app, "_sidebar_counts", lambda *args: (0, 0))
+    monkeypatch.setattr(web_app, "list_ledger_category_options", lambda *args, **kwargs: [])
+    monkeypatch.setattr(web_common, "require_runtime_home_currency_code", lambda *args: "CNY")
+    monkeypatch.setattr(web_common, "count_undated_expenses", lambda *args, **kwargs: 75)
+    monkeypatch.setattr(csrf, "_csrf_secret", lambda: b"controlled-date-review-signing")
+    origin = {"return_to": "reports", "return_month": "2026-05", "return_home_currency_code": "JPY",
+        "return_granularity": "week", "return_ranking_metric": "count", "return_merchant_category": "旅行"}
+    query = dict(ledger_id="owner", filter="missing_accounting_date", **origin)
+    request = Request({"type": "http", "method": "GET", "path": "/web/confirmed", "headers": [],
+        "query_string": urlencode(query).encode(), "server": ("testserver", 80), "scheme": "http"})
+    response = web_app._render_confirmed_page(request, object(),
+        [SimpleNamespace(ledger_id="owner", name="家庭账本", role="viewer", is_default=True)], "owner",
+        page=2, month="2026-05", tag="旅行", msg=None,
         filter="missing_accounting_date", home_currency_code="JPY")
-    assert (month, home, total, page) == ("", "JPY", 75, 2)
+    context = response.context
+    assert (context["month"], context["home_currency_code"], context["total"], context["page"]) == ("", "JPY", 75, 2)
     assert calls[0]["month"] is None and calls[0]["missing_accounting_date"] is True
     assert calls[0]["tenant_id"] == "owner" and calls[0]["tag"] == "旅行"
-    assert parse_qs(pager) == {"ledger_id": ["owner"], "filter": ["missing_accounting_date"],
-        "tag": ["旅行"], "home_currency_code": ["JPY"]}
+    expected = "/web/reports?" + urlencode({"ledger_id": "owner", "month": "2026-05", "home_currency_code": "JPY",
+        "granularity": "week", "ranking_metric": "count", "merchant_category": "旅行"})
+    assert context.get("date_review_return_href") == expected
+    body = response.body.decode()
+    assert "返回原月份月报" in body and "返回数据体检" not in body
+    assert parse_qs(context["pager_query"]) == {"ledger_id": ["owner"], "filter": ["missing_accounting_date"],
+        "tag": ["旅行"], "home_currency_code": ["JPY"], **{key: [value] for key, value in origin.items()}}
+    from app.routes._web_expense_return_context import return_href
+
+    fields = {key: values[0] for key, values in parse_qs(context["confirmed_edit_query"]).items()}
+    assert return_href(default_path="/web/confirmed", **fields) == expected

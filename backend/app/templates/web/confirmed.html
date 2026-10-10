@@ -2,6 +2,7 @@
 {% from 'partials/category_icon.html' import category_icon %}
 {% set product_body_domain = 'transactions' %}
 {% set manual_create_href = '/web/expenses/new?' ~ confirmed_edit_query %}
+{% set _date_review_query = '&' ~ (date_review_origin|urlencode) if date_review_origin|default({}) else '' %}
 {% block title %}已确认 · 小票夹{% endblock %}
 
 {# C6 流水主入口迁入 product 正文栈:
@@ -28,7 +29,8 @@
     {% if filter == 'missing_accounting_date' %}
     <h1 class="page-title">账务日期待核对</h1>
     <p class="product-page-summary">共 {{ total }} 笔已确认账单尚未归入月份。金额和原始证据仍保留；{% if can_write %}打开详情，核对依据后更正日期{% else %}打开详情查看，并请有写入权限的成员核对{% endif %}。</p>
-    <a href="/web/data-quality?ledger_id={{ selected_ledger_id }}">返回数据体检</a>
+    {% if date_review_return_href|default('') %}<a href="{{ date_review_return_href }}">返回原月份月报</a>
+    {% else %}<a href="/web/data-quality?ledger_id={{ selected_ledger_id }}">返回数据体检</a>{% endif %}
     {% elif filter == 'missing_category' %}
     <h1 class="page-title">待补分类账单</h1>
     <p class="product-page-summary">全部月份 · 共 {{ total }} 笔已确认账单 · {% if can_write %}打开详情或勾选账单更正分类{% else %}打开详情查看，当前角色只读{% endif %}。</p>
@@ -55,6 +57,7 @@
   <input type="hidden" name="month" value="{{ month }}">
   <input type="hidden" name="filter" value="{{ filter }}">
   <input type="hidden" name="home_currency_code" value="{{ home_currency_code }}">
+  {% for key, value in (date_review_origin|default({})).items() %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
   <div class="ledger-search-form">
     <div class="product-field"><label class="sr-only" for="confirmed-query">流水关键词</label><input id="confirmed-query" class="product-input" type="search" name="q" maxlength="80" value="{{ query_text|default('') }}" placeholder="商家、备注或原件文字"></div>
     <button class="product-button" type="submit" aria-label="查找流水"><svg width="22" height="22" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#search"/></svg></button>
@@ -70,7 +73,7 @@
   </details>
 </form>
 {% if _has_search %}
-<div class="ledger-active-filter" role="status"><span>找到 {{ total }} 条流水{% if query_text %} · {{ query_text }}{% endif %}{% if category %} · {{ category }}{% endif %}</span><a href="/web/confirmed?{{ {'ledger_id':selected_ledger_id, 'month':month, 'filter':filter, 'tag':tag, 'home_currency_code':home_currency_code}|urlencode }}">清除关键词与分类</a></div>
+<div class="ledger-active-filter" role="status"><span>找到 {{ total }} 条流水{% if query_text %} · {{ query_text }}{% endif %}{% if category %} · {{ category }}{% endif %}</span><a href="/web/confirmed?{{ {'ledger_id':selected_ledger_id, 'month':month, 'filter':filter, 'tag':tag, 'home_currency_code':home_currency_code}|urlencode }}{{ _date_review_query }}">清除关键词与分类</a></div>
 {% endif %}
 {% if filter not in ['missing_category', 'missing_accounting_date'] and not _has_search %}
 <div class="ledger-summary">
@@ -96,7 +99,7 @@
    ledger 与 month 或跨月 filter 上下文，回到第 1 页;
    不重建通用 query — Jinja 是 HTML escape 不是 URL encode, 且 msg/flash_type
    等过时反馈本就不该跨导航存活。 #}
-{% set _clear_href = '/web/confirmed?' ~ ({'ledger_id':selected_ledger_id, 'month':month, 'filter':filter, 'home_currency_code':home_currency_code, 'q':query_text, 'category':category}|dictsort|rejectattr('1', 'equalto', '')|list|urlencode) %}
+{% set _clear_href = '/web/confirmed?' ~ ({'ledger_id':selected_ledger_id, 'month':month, 'filter':filter, 'home_currency_code':home_currency_code, 'q':query_text, 'category':category}|dictsort|rejectattr('1', 'equalto', '')|list|urlencode) ~ _date_review_query %}
 <div class="ledger-active-filter" role="status">
   <span class="product-status product-status--info">标签：{{ tag }}</span>
   <span class="ledger-active-filter-copy">当前只显示带这个标签的账单。</span>

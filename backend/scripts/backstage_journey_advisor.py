@@ -3,6 +3,8 @@
 import json
 from contextlib import closing
 
+from playwright.sync_api import Error as BrowserError
+
 from scripts.planning_journey_android import wait_for
 from scripts.planning_journey_roles import _member_code
 
@@ -27,9 +29,12 @@ def _consent(j, confirmed):
         owner.goto(j.base_url + "/owner/ai-advisor")
         form = owner.locator('form[action^="/owner/ai-advisor/confirmation"]')
         form.locator('[name="confirmed"]').set_checked(confirmed)
-        form.get_by_role("button", name="保存确认状态", exact=True).click()
+        form.locator('button[type="submit"]').click()
         assert form.locator('[name="confirmed"]').is_checked() == confirmed
         j.capture("ai-owner-consent" if confirmed else "ai-owner-not-consented", page=owner)
+    except (AssertionError, BrowserError):
+        j.capture("ai-owner-consent-failure", page=owner)
+        raise
     finally:
         owner.close()
 

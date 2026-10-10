@@ -284,10 +284,10 @@
         {% if _path.startswith('/web/settings') %}当前账本为<strong>只读角色</strong>。你仍可管理自己的设备。{% else %}当前为<strong>只读角色</strong>。查看与分析保持可用，写入动作已隐藏或禁用。{% endif %}
       </div>
       {% endif %}
-      {% if ledger_undated_expense_count|default(0) and not is_data_quality %}
+      {% if ledger_undated_expense_count|default(0) and not is_data_quality and filter|default('') != 'missing_accounting_date' %}
       <div class="product-feedback product-feedback--warning" role="status">
         当前账本有 {{ ledger_undated_expense_count }} 笔已确认账单的账务日期待核对。它们尚未归入月份，受影响的合计与剩余额度暂不完整；已显示的按期明细仅含日期已知的记录。
-        <a href="/web/confirmed?ledger_id={{ selected_ledger_id }}&amp;filter=missing_accounting_date">查看并核对日期</a>
+        <a href="{{ accounting_date_review_href|default('/web/confirmed?ledger_id=' ~ selected_ledger_id ~ '&filter=missing_accounting_date') }}">查看并核对日期</a>
       </div>
       {% endif %}
       {% if manual_draft_ack %}

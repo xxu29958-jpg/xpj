@@ -20,6 +20,7 @@ import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso.closeSoftKeyboard
+import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.repository.LedgerRequestGuard
@@ -27,6 +28,7 @@ import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.design.LocalCurrencyDisplay
+import com.ticketbox.ui.saveConsumerArtPreview
 import com.ticketbox.ui.theme.TicketboxTheme
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -54,6 +56,9 @@ class BudgetAdviceManualRateRecoveryTest {
         waitForText(context.getString(R.string.advice_rate_add))
         compose.onNodeWithText("‹").performScrollTo().performClick()
         compose.waitUntil(5_000) { fixture.inputReads.lastOrNull()?.first == fixture.originalMonth }
+        compose.onNodeWithText(context.getString(R.string.advice_rate_add)).performScrollTo().assertIsDisplayed()
+        compose.waitForIdle()
+        saveConsumerArtPreview("rate-gap-origin", requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
         compose.onNodeWithText(context.getString(R.string.advice_rate_add)).performScrollTo().performClick()
         compose.waitUntil(5_000) { compose.onAllNodes(hasTestTag("advice_rate_value"), useUnmergedTree = true)
             .fetchSemanticsNodes().isNotEmpty() }
@@ -62,7 +67,9 @@ class BudgetAdviceManualRateRecoveryTest {
         rateInput.assertTextEquals("20")
         closeSoftKeyboard()
         compose.waitForIdle()
-        compose.onNodeWithTag("advice_rate_save").performScrollTo().assertIsDisplayed().assertIsEnabled().performClick()
+        compose.onNodeWithTag("advice_rate_save").performScrollTo().assertIsDisplayed().assertIsEnabled()
+        saveConsumerArtPreview("rate-original-editor", requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        compose.onNodeWithTag("advice_rate_save").performClick()
         val row = fixture.awaitSavedRow(compose)
         val intent = requireNotNull(fixture.adapters.manualRateAdapter.fromJson(row.payload))
         assertEquals(fixture.originalMonth, intent.month)
@@ -154,7 +161,8 @@ class BudgetAdviceManualRateRecoveryTest {
 
     private fun show(originalSubmissionId: Long? = null) {
         val factory = fixture.screenFactory
-        compose.setContent { if (mounted.value) TicketboxTheme(skin = AppSkin.Default) {
+        compose.setContent { if (mounted.value) TicketboxTheme(skin =
+            if (InstrumentationRegistry.getArguments().getString("captureSkin") == "midnight") AppSkin.Midnight else AppSkin.Default) {
             CompositionLocalProvider(LocalViewModelStoreOwner provides models,
                 LocalCurrencyDisplay provides CurrencyDisplay(CurrencyCode.CNY)) {
                 BudgetAdviceRoute(factory, onBack = {}, originalSubmissionId = originalSubmissionId)
