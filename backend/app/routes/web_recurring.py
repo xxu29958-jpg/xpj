@@ -33,6 +33,7 @@ from app.routes._web_recurring_presenter import (
     item_view,
     parse_baseline_yuan,
     parse_optional_date,
+    retained_candidate_form,
     suggest_next_expected_date,
 )
 from app.routes._web_session_common import resolve_web_actor_account_id
@@ -113,7 +114,10 @@ def _candidate_review(
     review_merchant: str | None,
     can_write: bool,
     candidates_error: bool,
+    submitted: dict | None = None,
 ) -> dict | None:
+    if submitted is not None and can_write:
+        return retained_candidate_form(submitted)
     if not review_merchant or not can_write or candidates_error:
         return None
     matched = next(
@@ -156,6 +160,7 @@ def _render_recurring(
     draft_result: str = "",
     status_code: int = 200,
     navigation_month: str | None = None,
+    candidate_draft: dict | None = None,
 ) -> HTMLResponse:
     if status and status not in _VALID_STATUS_FILTERS:
         raise AppError("recurring_status_invalid", status_code=422)
@@ -189,13 +194,7 @@ def _render_recurring(
     # Coverage migrated from the deleted /web/stats page: candidate insight
     # failure must degrade to an inline notice, never 500 the recurring page.
     candidate_rows, candidates_error = _load_candidate_rows(db, selected_id=selected_id)
-    ctx["candidates"] = [
-        candidate_view(
-            candidate,
-            ledger_id=selected_id,
-        )
-        for candidate in candidate_rows
-    ]
+    ctx["candidates"] = [candidate_view(candidate) for candidate in candidate_rows]
     ctx["candidates_error"] = candidates_error
     # 候选「复核采用」: 按 URL 的商家定位候选, provenance 全部来自服务端扫描。
     ctx["review"] = _candidate_review(
@@ -203,6 +202,7 @@ def _render_recurring(
         review_merchant=review_merchant,
         can_write=ctx["can_write"],
         candidates_error=candidates_error,
+        submitted=candidate_draft,
     )
     ctx["hero"] = _recurring_hero(db, selected_id=selected_id, items=all_items, currency_code=currency_code, due_dates=due_dates)
     ctx["status_filter"] = status or ""
@@ -324,6 +324,8 @@ def web_recurring_confirm_candidate(
     amount_cents: str = Form(...),
     home_currency_code: str = Form(default=""),
     next_expected_date: str = Form(default=""),
+    month: str = Form(default=""),
+    status: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ):
@@ -333,9 +335,10 @@ def web_recurring_confirm_candidate(
     409 conflict/archived 消费 details 给出可行动下一步。"""
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
+    proposal = {"merchant": merchant, "amount_cents": amount_cents,
+        "home_currency_code": home_currency_code, "next_expected_date": next_expected_date}
     retained = preserve_original_ledger_form(request, db, options=options, selected=selected_id,
-        fields={"ledger_id": ledger_id, "merchant": merchant, "amount_cents": amount_cents,
-            "home_currency_code": home_currency_code, "next_expected_date": next_expected_date}, task="采用固定支出建议")
+        fields={**proposal, "ledger_id": ledger_id, "month": month, "status": status}, task="采用固定支出建议")
     if retained is not None:
         return retained
     _require_selected_ledger_write(options, selected_id)
@@ -352,18 +355,24 @@ def web_recurring_confirm_candidate(
             frequency="monthly",
             next_expected_date=parse_optional_date(next_expected_date),
         )
-        confirm_recurring_candidate(db, tenant_id=selected_id, payload=payload,
+        item = confirm_recurring_candidate(db, tenant_id=selected_id, payload=payload,
             actor_account_id=resolve_web_actor_account_id(db, request, selected_id))
     except AppError as exc:
         db.rollback()
+        feedback = _conflict_kwargs(exc, selected_id=selected_id, merchant=merchant)
+        feedback["open_edit_id"] = None
         return _render_recurring(
             request=request,
             db=db,
             selected_id=selected_id,
             options=options,
-            **_conflict_kwargs(exc, selected_id=selected_id, merchant=merchant),
+            candidate_draft=proposal,
+            navigation_month=month,
+            status=status or None,
+            **feedback,
         )
-    return _web_redirect("/web/recurring", selected_id, flash="已采用建议，加入你的固定支出。")
+    return _lifecycle_redirect(selected_id, item.public_id, month, status=item.status,
+        flash="已采用建议，加入你的固定支出。")
 
 
 @router.post("/{public_id}/edit", response_class=HTMLResponse)

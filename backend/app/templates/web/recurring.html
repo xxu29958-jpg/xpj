@@ -8,10 +8,12 @@
 {% set task_item = (items|selectattr('public_id', 'equalto', edit_id)|first) if can_write and edit_id and not recurring_creation else none %}
 {% set creating = can_write and (recurring_creation or request.query_params.get('new_recurring') == '1') %}
 {% set is_task = task_item or review or creating %}
+{% set showing_suggestions = review or request.query_params.get('view') == 'suggestions' or request.query_params.get('review') %}
+{% set suggestions_href = list_href ~ '&view=suggestions' %}
 {% set page_title = '编辑固定支出' if task_item else '采用这条建议' if review else '添加固定支出' if creating else '固定支出' %}
 {% if is_task %}
 {% set page_surface = 'tertiary' %}
-{% set task_return_href = list_href ~ ('#item-' ~ edit_id if task_item else '') %}
+{% set task_return_href = suggestions_href if review else list_href ~ ('#item-' ~ edit_id if task_item else '') %}
 {% set task_return_label = '固定支出' %}
 {% endif %}
 {% set product_body_domain = 'plans' %}
@@ -27,7 +29,7 @@
 {% endif %}
 {% if error_message %}
 <div class="product-feedback product-feedback--danger" role="alert">
-  <span>{{ error_message }}{% if error_guidance %} <a class="plan-feedback-link" href="{{ error_guidance.href }}">{{ error_guidance.label }}</a>{% endif %}</span>
+  <span>{{ error_message }}{% if error_guidance %} <a class="plan-feedback-link" href="{{ error_guidance.href }}"{% if review %} target="_blank" rel="noopener"{% endif %}>{{ error_guidance.label }}{% if review %}（新窗口）{% endif %}</a>{% endif %}</span>
 </div>
 {% endif %}
 {% endmacro %}
@@ -45,6 +47,11 @@
 {% if is_task or not result_visible %}{{ result_feedback() }}{% endif %}
 
 {% if not is_task %}
+<nav class="product-segments" aria-label="固定支出内容">
+  <a href="{{ list_href }}"{% if not showing_suggestions %} aria-current="page"{% endif %}>正式计划</a>
+  <a href="{{ suggestions_href }}"{% if showing_suggestions %} aria-current="page"{% endif %}>发现的建议{% if candidates %}（{{ candidates|length }}）{% endif %}</a>
+</nav>
+{% if not showing_suggestions %}
 {% if hero %}
 <section class="recurring-metrics recurring-metrics--duo" aria-label="固定支出概览">
   <div class="recurring-metric">
@@ -184,6 +191,7 @@
 </section>
 
 {% endif %}
+{% endif %}
 
 {% if task_item %}
 {% set item = task_item %}
@@ -191,7 +199,7 @@
       {% set edit_input = edit_form.currency_input %}
       {% set edit_scope = recurring_draft_scope if edit_form.get('draft_scope') != '' else none %}
       {% set edit_dom_id = item.public_id ~ '-' ~ loop.index0 %}
-      <section class="product-panel product-panel--padded" aria-label="编辑固定支出">
+      <section aria-label="编辑固定支出">
         {% if not loop.first %}<h2 class="product-panel-title">编辑当前记录</h2>{% endif %}
         <form method="post" action="/web/recurring/{{ item.public_id }}/edit" class="budget-form"
           data-recurring-prepared-from="{{ edit_form.prepared_from_key or '' }}"
@@ -250,36 +258,38 @@
 {% endif %}
 
 {% if creating or review %}
-<section class="product-panel product-panel--padded" id="add" aria-label="{% if review %}采用这条建议{% else %}添加固定支出{% endif %}">
+<section id="add" aria-label="{% if review %}采用这条建议{% else %}添加固定支出{% endif %}">
   {% if review %}
-  <div class="product-panel-header">
-    <h2 class="product-panel-title">采用这条建议</h2>
-    <p class="product-panel-subtitle">来自已确认账单的观察</p>
-  </div>
+  {% if review.retained %}
+  <div class="product-feedback" role="status">原建议值和填写已保留，尚未确认采用。再次采用时会核对当前账单。</div>
+  {% else %}
   <div class="product-feedback" role="status">已观察 {{ review.occurrence_count }} 次{% if review.last_seen_date %} · 最近 {{ review.last_seen_date }}{% endif %}——商家和金额是账单里观察到的，采用后保留观察记录；提醒日期可以留也可以清空。</div>
+  {% endif %}
   <form method="post" action="/web/recurring/confirm-candidate" class="budget-form">
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+    <input type="hidden" name="month" value="{{ history_month }}">
+    <input type="hidden" name="status" value="{{ status_filter }}">
     <input type="hidden" name="amount_cents" value="{{ review.amount_cents }}">
     <input type="hidden" name="home_currency_code" value="{{ review.home_currency_code }}">
     {{ csrf_field|safe }}
     <div class="product-form-grid">
       <div class="product-field">
-        <label for="rc-review-merchant">商家或名称（观察值）</label>
+        <label for="rc-review-merchant">商家或名称（{{ '原建议值' if review.retained else '观察值' }}）</label>
         <input class="product-input" id="rc-review-merchant" type="text" name="merchant" value="{{ review.merchant }}" readonly>
       </div>
       <div class="product-field">
-        <label for="rc-review-amount">每月金额（观察值）</label>
+        <label for="rc-review-amount">每月金额（{{ '原建议值' if review.retained else '观察值' }}）</label>
         <input class="product-input" id="rc-review-amount" type="text" value="{{ review.home_currency_code }} {{ review.amount_yuan }}" readonly>
       </div>
       <div class="product-field">
         <label for="rc-review-date">下次预计日期</label>
-        <input class="product-input" id="rc-review-date" type="date" name="next_expected_date" value="{{ suggested_next_date }}">
-        <p class="hint">已建议下月同日，可以改也可以清空——不留日期就不会提醒。</p>
+        <input class="product-input" id="rc-review-date" type="date" name="next_expected_date" value="{{ review.next_expected_date|default(suggested_next_date) }}">
+        <p class="hint">可以修改或清空；不留日期就不会提醒。</p>
       </div>
     </div>
     <div class="budget-actions">
       <button class="product-button product-button--primary" type="submit">采用建议</button>
-      <a class="product-button product-button--quiet" href="{{ list_href }}">取消</a>
+      <a class="product-button product-button--quiet" href="{{ suggestions_href }}">返回建议列表</a>
     </div>
   </form>
   {% else %}
@@ -339,12 +349,14 @@
 </section>
 {% endif %}
 
-{% if not is_task %}
-<details class="product-panel product-panel--padded recurring-candidates"{% if review %} open{% endif %}>
-  <summary class="recurring-candidates-summary">
-    <span class="recurring-candidates-title">发现的建议{% if candidates %}（{{ candidates|length }}）{% endif %}</span>
-    <span class="recurring-candidates-sub">根据已确认账单的规律猜出，核对后才会变成正式固定支出</span>
-  </summary>
+{% if not is_task and showing_suggestions %}
+<section class="product-panel product-panel--padded" aria-label="发现的建议">
+  <div class="product-panel-header">
+    <p class="product-panel-subtitle">根据已确认账单的规律给出，核对采用后才成为正式计划。</p>
+  </div>
+  {% if request.query_params.get('review') and can_write and not candidates_error %}
+  <p class="product-feedback" role="status">原来的建议已变化或不再出现。请核对当前建议，也可以切换到正式计划查看。</p>
+  {% endif %}
   {% if candidates %}
   <ul class="recurring-list">
     {% for candidate in candidates %}
@@ -352,7 +364,7 @@
       <div class="recurring-row-main">
         <div class="recurring-row-title">
           <span class="recurring-row-merchant">{{ candidate.merchant }}</span>
-          <span class="product-status">{{ candidate.confidence }}</span>
+          <span class="product-status">{{ '规律较稳定' if candidate.confidence == 'high' else '仍需核对' }}</span>
         </div>
         <div class="recurring-row-meta">已观察 {{ candidate.occurrence_count }} 次{% if candidate.last_seen_date %} · 最近 {{ candidate.last_seen_date }}{% endif %}</div>
         {% if candidate.reason %}<div class="recurring-row-meta">{{ candidate.reason }}</div>{% endif %}
@@ -363,7 +375,7 @@
       </div>
       <div class="recurring-row-actions">
         {% if can_write %}
-        <a class="product-button product-button--small" href="{{ candidate.review_href }}">复核采用</a>
+        <a class="product-button product-button--small" href="{{ suggestions_href }}&amp;review={{ candidate.merchant|urlencode }}">复核采用</a>
         {% else %}
         <span class="readonly-inline">只读</span>
         {% endif %}
@@ -382,7 +394,7 @@
     <div class="product-state-body">同一商家按月稳定出现后，会在这里给出建议。</div>
   </div>
   {% endif %}
-</details>
+</section>
 {% endif %}
 </div>
 {% endblock %}

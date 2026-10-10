@@ -2,6 +2,7 @@
 import json
 
 import pytest
+from _web_recurring_test_support import open_recurring_form
 from sqlalchemy import func, select
 
 from app.database import SessionLocal
@@ -43,8 +44,10 @@ def _facts():
 
 def _form(browser, kind, *, public_id="", amount="15.00"):
     path = {"budget": "/web/budgets", "arrangement": "/web/budget-advise"}.get(kind, "/web/recurring")
-    page = browser.get(path, params={"month": MONTH, "edit": public_id})
+    page = browser.get(path, params={"month": MONTH})
     assert page.status_code == 200, page.text
+    if kind.startswith("recurring"):
+        page = open_recurring_form(browser, page, public_id=public_id)
     action = {"budget": "/web/budgets/save", "arrangement": "/web/budget-advise/save",
         "recurring-create": "/web/recurring/create", "recurring-edit": f"/web/recurring/{public_id}/edit"}[kind]
     form_action = path if kind == "arrangement" else action

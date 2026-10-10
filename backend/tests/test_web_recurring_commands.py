@@ -6,7 +6,7 @@ Page render / error-surface assertions live in test_web_recurring.py.
 from __future__ import annotations
 
 from datetime import date
-from urllib.parse import unquote
+from urllib.parse import parse_qs, unquote, urlsplit
 from uuid import uuid4
 
 import pytest
@@ -157,12 +157,16 @@ def test_web_recurring_candidate_confirm_uses_server_side_provenance(
     adopted = post_confirm(
         web_client,
         next_expected_date="2026-10-05",
+        month="2026-09",
+        status="paused",
         # 伪造的客户端 provenance — 路由不接收, service 不信任。
         occurrence_count="99",
         confidence="bogus",
         last_seen_at="1999-01-01T00:00:00Z",
     )
     assert adopted.status_code == 303
+    returned = parse_qs(urlsplit(adopted.headers["location"]).query)
+    assert returned["month"] == ["2026-09"] and returned["status"] == ["active"]
 
     with SessionLocal() as db:
         item = db.scalar(
@@ -177,8 +181,9 @@ def test_web_recurring_candidate_confirm_uses_server_side_provenance(
         assert item.last_seen_at.year != 1999
         assert item.baseline_amount_cents == 20000
         assert item.next_expected_date == date(2026, 10, 5)
+        assert returned["result_item"] == [item.public_id]
 
-    after = web_client.get("/web/recurring?ledger_id=owner")
+    after = web_client.get("/web/recurring?ledger_id=owner&view=suggestions")
     assert after.status_code == 200
     assert "复核采用" not in after.text
 

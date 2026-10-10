@@ -205,10 +205,6 @@
     font-weight: var(--type-headline-weight);
 }
 
-.recurring-candidates {
-    margin-block-start: var(--space-6);
-}
-
 .plan-progress {
     width: 100%;
     height: var(--space-3);
@@ -999,29 +995,6 @@ fieldset.budget-excluded .hint {
 .recurring-editor .budget-actions {
     flex-direction: column;
     align-items: stretch;
-}
-
-/* 发现的建议: 面板级 details, summary 即面板头。 */
-.recurring-candidates-summary {
-    cursor: pointer;
-}
-
-.recurring-candidates-title {
-    color: var(--text-default);
-    font-size: var(--type-title-size);
-    font-weight: var(--type-title-weight);
-}
-
-.recurring-candidates-sub {
-    display: block;
-    margin-block-start: var(--space-1);
-    color: var(--text-meta);
-    font-size: var(--type-caption-size);
-}
-
-.recurring-candidates .recurring-list,
-.recurring-candidates .product-state {
-    margin-block-start: var(--space-5);
 }
 
 /* ── 还债目标 ────────────────────────────────────────────────────────────── */

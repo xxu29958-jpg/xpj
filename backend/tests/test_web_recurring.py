@@ -188,22 +188,21 @@ def test_web_recurring_edit_rename_conflict_guides_to_existing(web_client: TestC
 def test_web_recurring_candidate_confirm_conflict_consumes_details(
     web_client: TestClient,
 ) -> None:
-    """confirm 的 409 消费 details: active/paused 引导编辑现有项 (展开编辑),
-    archived 引导归档列表恢复。"""
+    """Conflicts retain this proposal while opening the existing fact separately."""
     assert create_via_web(web_client, merchant="ChatGPT Plus", amount="200", date_str="").status_code == 303
     public_id = first_recurring_public_id()
 
-    conflict = post_confirm(web_client)
+    conflict = post_confirm(web_client, next_expected_date="2026-12-19", month="2026-09", status="paused")
     assert conflict.status_code == 200
     assert "已经在你的固定支出里" in conflict.text
     assert "去编辑现有记录" in conflict.text
-    form = re.search(
-        r'action="/web/recurring/([^"]+)/edit"',
-        conflict.text,
-        re.DOTALL,
-    )
-    assert form is not None
-    assert form.group(1) == public_id
+    assert f'edit={public_id}' in conflict.text
+    assert 'target="_blank" rel="noopener"' in conflict.text
+    assert 'action="/web/recurring/confirm-candidate"' in conflict.text
+    assert f'action="/web/recurring/{public_id}/edit"' not in conflict.text
+    assert 'name="next_expected_date" value="2026-12-19"' in conflict.text
+    assert 'name="month" value="2026-09"' in conflict.text
+    assert 'name="status" value="paused"' in conflict.text
 
     archived = web_client.post(
         f"/web/recurring/{public_id}/archive",
@@ -283,20 +282,21 @@ def test_web_recurring_candidate_insight_failure_degrades(
 
     monkeypatch.setattr(web_recurring_module, "recurring_candidates", fail_recurring_candidates)
 
-    resp = web_client.get("/web/recurring?ledger_id=owner")
+    resp = web_client.get("/web/recurring?ledger_id=owner&view=suggestions")
 
     assert resp.status_code == 200
     assert "固定支出候选分析暂时不可用" in resp.text
-    # 候选失败不压过主任务: 主列表与创建入口仍可用。
-    assert "我的固定支出" in resp.text
+    # Candidate failure keeps a visible return to formal plans and the create entry.
+    assert "正式计划" in resp.text
     assert "new_recurring=1" in resp.text
+    assert "我的固定支出" in web_client.get("/web/recurring?ledger_id=owner").text
 
 
 def test_web_recurring_viewer_read_only(web_client: TestClient) -> None:
     seed_candidate()
     demote_owner_ledger_to_viewer()
 
-    page = web_client.get("/web/recurring?ledger_id=owner")
+    page = web_client.get("/web/recurring?ledger_id=owner&view=suggestions")
     assert page.status_code == 200
     assert "只读角色" in page.text
     # viewer: 创建/复核/编辑/状态动作全部隐藏。
@@ -338,6 +338,10 @@ def test_web_recurring_retires_legacy_candidate_only_surface(web_client: TestCli
     assert "固定支出候选（未确认）" not in page.text
     assert "待确认候选" not in page.text
     # 候选动作 = 进入统一表单的复核链接; 默认页不再渲染任何确认表单。
-    assert "复核采用" in page.text
+    assert "复核采用" not in page.text
+    href = next(unescape(href) for href in re.findall(r'<a[^>]*href="([^"]+)"', page.text) if "view=suggestions" in href)
+    suggestions = web_client.get(href)
+    assert "复核采用" in suggestions.text
+    assert "我的固定支出" not in suggestions.text
     assert 'action="/web/recurring/confirm-candidate"' not in page.text
     assert "填入创建表单" not in page.text

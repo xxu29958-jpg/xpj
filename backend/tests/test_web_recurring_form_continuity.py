@@ -16,7 +16,14 @@ from app.routes.web_app import _require_local as _web_require_local
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.time_service import now_utc
 from tests._web_native_form_support import hidden_post_forms
-from tests._web_recurring_test_support import create_via_web, row_version, seed_observed_item
+from tests._web_recurring_test_support import (
+    create_via_web,
+    open_recurring_form,
+    post_confirm,
+    row_version,
+    seed_candidate,
+    seed_observed_item,
+)
 
 
 @pytest.fixture()
@@ -41,11 +48,26 @@ def _form(page, action):
 
 def _open_form(client, action):
     listing = client.get("/web/recurring?ledger_id=owner&month=2026-05")
-    entry = "new_recurring=1" if action.endswith("/create") else "edit=" + action.split("/")[-2]
-    href = next(unescape(href) for href in re.findall(r'<a[^>]*href="([^"]+)"', listing.text) if entry in href)
-    page = client.get(href)
-    assert 'class="recurring-list"' not in page.text
+    public_id = "" if action.endswith("/create") else action.split("/")[-2]
+    page = open_recurring_form(client, listing, public_id=public_id)
     return _form(page, action)
+
+
+@pytest.mark.parametrize("reminder", ["", "2026-12-19"])
+def test_rejected_candidate_keeps_original_proposal_instead_of_refreshing_observation(web_recurring, reminder):
+    seed_candidate()
+    rejected = post_confirm(web_recurring, amount_cents="19900", next_expected_date=reminder,
+        month="2026-09", status="paused")
+    form, fields = _form(rejected, "/web/recurring/confirm-candidate")
+    assert fields["amount_cents"] == "19900" and fields["home_currency_code"] == "CNY"
+    assert fields["month"] == "2026-09" and fields["status"] == "paused"
+    assert 'name="merchant" value="ChatGPT Plus"' in form
+    assert f'name="next_expected_date" value="{reminder}"' in form
+    assert "CNY 199.00" in form and "原建议值" in form
+    assert "已观察 3 次" not in rejected.text
+    assert "尚未确认采用" in rejected.text
+    with SessionLocal() as db:
+        assert list(db.scalars(select(RecurringItem))) == [], "A stale observation cannot create a formal plan"
 
 
 def test_create_validation_preserves_fields_and_original_key_until_single_success(web_recurring):
