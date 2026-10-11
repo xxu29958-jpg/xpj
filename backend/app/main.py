@@ -84,6 +84,7 @@ from app.routes import (
     web_data_quality,
     web_debt_actions,
     web_debt_create,
+    web_debt_goal_entry,
     web_debt_goals,
     web_debt_proposal_actions,
     web_debts,
@@ -429,6 +430,7 @@ app.include_router(web_debt_actions.router)
 app.include_router(web_debt_proposal_actions.router)
 app.include_router(web_split_agreement.router)
 app.include_router(web_debt_goals.router)
+app.include_router(web_debt_goal_entry.router)
 app.include_router(web_repayment_drafts.router)
 app.include_router(web_recycle_bin.router)
 app.include_router(web_receivables.router)

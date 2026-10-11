@@ -23,7 +23,7 @@ def native_current_share(native, expected):
 def goal_entry(j, *, create=False):
     if create:
         j.goto("/web/debt-goals", receiver=True)
-        j.receiver.get_by_text("新建还债目标", exact=True).click()
+        j.receiver.get_by_role("link", name="新建还债目标", exact=True).click()
         form = j.receiver.locator('form[action="/web/debt-goals/create"]')
         form.locator('[name="name"]').fill("跟踪这笔原始往来")
         form.locator(f'[name="debt_public_ids"][value="{j.facts()["original_id"]}"]').check()

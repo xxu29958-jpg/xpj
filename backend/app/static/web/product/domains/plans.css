@@ -1071,26 +1071,6 @@ fieldset.budget-excluded .hint {
     margin-block-end: var(--space-4);
 }
 
-/* 新建目标 = 面板级 details, summary 即面板标题。 */
-.plan-debt-create > summary {
-    color: var(--text-default);
-    font-size: var(--type-title-size);
-    font-weight: var(--type-title-weight);
-    text-decoration: none;
-}
-
-.plan-debt-create[open] > summary {
-    margin-block-end: var(--space-3);
-}
-
-.plan-debt-create > .hint {
-    margin-block: 0;
-}
-
-.plan-debt-create > .budget-form {
-    margin-block-start: var(--space-4);
-}
-
 /* 关联欠款选择 chips (创建 / 调整关联共用)。 */
 .plan-choice-set {
     display: grid;
@@ -1112,15 +1092,18 @@ fieldset.budget-excluded .hint {
 }
 
 .plan-choice {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
     gap: var(--space-2) var(--space-3);
+    min-block-size: var(--target-min);
+    padding-block: var(--space-2);
     cursor: pointer;
 }
 
 .plan-choice input {
     margin: 0;
+    grid-row: span 2;
     accent-color: var(--brand-primary);
 }
 
@@ -1130,6 +1113,8 @@ fieldset.budget-excluded .hint {
 }
 
 .plan-choice-meta {
+    grid-column: 2;
+    overflow-wrap: anywhere;
     color: var(--text-meta);
     font-size: var(--type-caption-size);
 }
@@ -1148,6 +1133,8 @@ fieldset.budget-excluded .hint {
 
 .plan-link {
     display: grid;
+    color: inherit;
+    text-decoration: none;
     gap: var(--space-2);
     padding-block-start: var(--space-3);
     border-block-start: 1px solid var(--border-card);

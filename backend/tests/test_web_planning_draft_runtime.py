@@ -93,6 +93,21 @@ def _rate_definition(kind, common, scope, key):
         rate_draft_scope=scope, currency_codes=["CNY", "JPY"], return_href=target, return_label="期间报表")
 
 
+def _debt_definition(kind, common, scope, key):
+    task = kind.removeprefix("debt-")
+    public_id = "original-debt-goal" if task != "create" else ""
+    choices = [{"public_id": identity, "name": "原欠款" + identity, "meta": "未结清", "status_label": "未结清", "status": "open"}
+        for identity in (["debt-a", "debt-b"] if HITS[kind] == 1 else ["debt-b"])]
+    goal = {"name": "原还债目标", "is_archived": False, "eval_label": "进行中", "links": []} if public_id else None
+    values = {"ledger_id": "owner", "name": "原还债目标" if public_id else "", "debt_public_ids": [],
+        "expected_row_version": "4" if HITS[kind] == 1 else "9", "idempotency_key": key, "target_date": "2030-12-31"}
+    return ENV.get_template("debt_goal_entry.html").render(**common, task=task, goal=goal, values=values, choices=choices,
+        public_id=public_id, task_id=f"{public_id}:{task}" if public_id else "", debtgoal_draft_scope=scope,
+        draft_result="", binding_required=False, entry_title="还债目标", entry_button="保存目标",
+        entry_action="/web/debt-goals/" + (f"{public_id}/{task}" if public_id else "create"),
+        entry_href="/web/debt-goals/" + (f"{public_id}/{task}" if public_id else "new"), return_href="/web/debt-goals?ledger_id=owner")
+
+
 def render(kind, values=None, native_result=""):
     HITS[kind] = HITS.get(kind, 0) + 1
     key = str(uuid4())
@@ -103,6 +118,8 @@ def render(kind, values=None, native_result=""):
                   "currency_input": JPY_INPUT, "currency_options": ["JPY", "CNY", "USD"],
                   "csrf_token": "synthetic", "csrf_field": '<input name="csrf_token" type="hidden" value="synthetic">',
                   "asset_version": "preflight", "request": {"query_params": {}}, "status_filter": ""}
+    if kind.startswith("debt-"):
+        return _debt_definition(kind, common, scope, key)
     renderer = {"rate": _rate_definition, "rule-create": _rule_definition, "rule-edit": _rule_definition}.get(kind)
     if renderer:
         return renderer(kind, common, scope, key)
@@ -215,6 +232,9 @@ def _merchant_receipt(path, values, result):
 
 
 def _planning_receipt(path, values, result):
+    if path.startswith("/web/debt-goals/"):
+        result["receipt"]["goal_type"] = "debt_repayment"
+        result["next"] = "/web/debt-goals?ledger_id=owner"
     if path == "/web/budget-advise/rates":
         result["receipt"].update(**{name: values[name] for name in ("currency_code", "home_currency_code", "rate_date", "rate_to_cny")},
             row_version=int(values["expected_row_version"]) + 1)
@@ -351,15 +371,17 @@ def test_four_planning_entries_retain_original_inputs_and_command_identity_after
         assert row["retained"], (row["entry"], differences)
 
 
-def test_planning_and_reference_entries_replay_original_body_after_unknown_reply_and_reload(tmp_path: Path):
-    result = _run_browser(tmp_path, RecoveryHandler, "window.__planningRecovery || undefined")
+@pytest.mark.parametrize("group", ["planning", "debt"])
+def test_planning_and_reference_entries_replay_original_body_after_unknown_reply_and_reload(tmp_path: Path, group: str):
+    result = _run_browser(tmp_path, RecoveryHandler, "window.__planningRecovery || undefined", "?group=" + group)
     (tmp_path / "planning-recovery-result.json").write_text(json.dumps({"browser": result, "posts": POSTS},
         ensure_ascii=False, indent=2), encoding="utf-8")
     assert not result.get("error"), result
     assert not MISSING, MISSING
-    assert {row["entry"] for row in result["results"]} == {
+    expected = {"debt-create", "debt-links", "debt-target-date"} if group == "debt" else {
         "budget", "arrangement", "rate", "recurring-create", "recurring-edit", "candidate", "occurrence", "tag-create", "category-create",
         "merchant-create", "alias-create", "catalog-rename", "catalog-toggle", "catalog-delete", "catalog-merge", "rule-create", "rule-edit"}
+    assert {row["entry"] for row in result["results"]} == expected
     assert len(POSTS) == 2 * len(result["results"])
     for first, replay in zip(POSTS[::2], POSTS[1::2], strict=True):
         assert first == replay, "Retry must retain repeated fields, original scope, currency, month, version and key"

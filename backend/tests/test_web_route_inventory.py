@@ -166,6 +166,9 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("POST", "/web/debts/{public_id}/void"): "writer-only",
     # Debt goals: full create/edit/review/archive lifecycle.
     ("GET", "/web/debt-goals"): "local-only-rendering",
+    ("GET", "/web/debt-goals/new"): "local-only-rendering",
+    ("GET", "/web/debt-goals/{public_id}/links"): "local-only-rendering",
+    ("GET", "/web/debt-goals/{public_id}/target-date"): "local-only-rendering",
     ("POST", "/web/debt-goals/create"): "writer-only",
     ("POST", "/web/debt-goals/{public_id}/archive"): "writer-only",
     ("POST", "/web/debt-goals/{public_id}/links"): "writer-only",

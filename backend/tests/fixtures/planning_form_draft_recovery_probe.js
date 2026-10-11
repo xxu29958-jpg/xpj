@@ -10,6 +10,9 @@
     await ready;
   }
   const specs = [
+    {kind:"debt-create", family:"debtgoal", action:"/web/debt-goals/create", fields:{name:"  原还债任务  "}},
+    {kind:"debt-links", family:"debtgoal", action:"/web/debt-goals/original-debt-goal/links", fields:{}},
+    {kind:"debt-target-date", family:"debtgoal", action:"/web/debt-goals/original-debt-goal/target-date", fields:{target_date:"2031-01-02"}},
     {kind:"budget", family:"budget", action:"/web/budgets/save", fields:{total_amount_yuan:"009876", rollover_amount_yuan:"-0020", non_monthly_amount_yuan:"0050"}},
     {kind:"arrangement", family:"arrangement", action:"/web/budget-advise", fields:{savings_target_yuan:"001200", reserved_buffer_yuan:"00030"}},
     {kind:"rate", family:"rate", action:"/web/budget-advise/rates", fields:{rate_to_cny:"0.04876543"}},
@@ -28,7 +31,8 @@
     {kind:"rule-create", family:"ruledefinition", action:"/web/rules/create", fields:{keyword:"  原规则创建  ",category:"家庭餐饮",priority:"10",amount_min_yuan:"001200",source_contains:"  原来源  ",tag_contains:"  原标签  "}},
     {kind:"rule-edit", family:"ruledefinition", action:"/web/rules/41/edit", fields:{keyword:"  原规则编辑  ",category:"家庭交通",priority:"20",amount_min_yuan:"001500",source_contains:"",tag_contains:""}},
   ];
-  for (const spec of specs) {
+  const debtOnly = new URLSearchParams(location.search).get("group") === "debt";
+  for (const spec of specs.filter(spec => spec.kind.startsWith("debt-") === debtOnly)) {
     const frame=document.createElement("iframe"); document.body.append(frame);
     const url="/fixture?kind="+spec.kind;
     const getForm=()=>frame.contentDocument.querySelector('form[method="post"][action="'+spec.action+'"]');
@@ -39,6 +43,10 @@
     for (const [name,value] of Object.entries(spec.fields)) {
       const input=form.elements.namedItem(name); input.value=value;
       input.dispatchEvent(new frame.contentWindow.Event("input",{bubbles:true}));
+    }
+    if (["debt-create", "debt-links"].includes(spec.kind)) {
+      form.querySelectorAll('[name="debt_public_ids"]').forEach(input=>{input.checked=true;});
+      form.dispatchEvent(new frame.contentWindow.Event("change",{bubbles:true}));
     }
     if (spec.kind==="budget") {
       form.querySelectorAll('[name="excluded_category"]').forEach(input=>{input.checked=true;});

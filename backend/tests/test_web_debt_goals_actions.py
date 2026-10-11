@@ -169,21 +169,32 @@ def test_links_replace_idempotent_replay(web_client: TestClient, *, identity) ->
     assert _links_count_for_version(goal["public_id"], 3) == 0
 
 
-def test_links_stale_occ_redirects_with_stale_message(web_client: TestClient, *, identity) -> None:
+def test_links_stale_occ_preserves_selection_key_and_version_for_explicit_review(web_client: TestClient, *, identity) -> None:
     a = _create_external_debt(web_client, identity.app_headers, principal_amount_cents=10000)
     b = _create_external_debt(web_client, identity.app_headers, principal_amount_cents=20000)
     goal = _create_debt_goal(
         web_client, identity.app_headers, name="过期快照", debt_public_ids=[a["public_id"]]
     ).json()
 
+    key = str(uuid4())
     resp = _web_links(
         web_client,
         goal["public_id"],
         row_version=goal["row_version"] + 9,  # 过期 OCC 快照
-        debt_ids=[a["public_id"], b["public_id"]],
+        debt_ids=[a["public_id"], b["public_id"]], key=key,
     )
 
-    assert _redirect_error(resp) == _STALE
+    assert resp.status_code == 409
+    assert "输入已保留" in resp.text
+    assert f'name="idempotency_key" value="{key}"' in resp.text
+    assert f'name="expected_row_version" value="{goal["row_version"] + 9}"' in resp.text
+    assert f'value="{b["public_id"]}" checked' in resp.text
+    reviewed = _web_goal_post(web_client, goal["public_id"], "links", row_version=goal["row_version"] + 9,
+        key=key, extra={"debt_public_ids": [a["public_id"], b["public_id"]], "review_latest": "true"})
+    assert reviewed.status_code == 200
+    assert f'name="expected_row_version" value="{goal["row_version"]}"' in reviewed.text
+    assert f'name="idempotency_key" value="{key}"' not in reviewed.text
+    assert f'value="{b["public_id"]}" checked' in reviewed.text
     current = _goal_view(web_client, identity.app_headers, goal["public_id"])
     assert current["debt_repayment"]["goal_version"] == 1  # 未写
     assert current["row_version"] == goal["row_version"]
@@ -226,7 +237,7 @@ def test_target_date_set_and_clear_round_trip(web_client: TestClient, *, identit
     assert _goal_view(web_client, identity.app_headers, goal["public_id"])["debt_repayment"]["target_date"] is None
 
 
-def test_target_date_stale_occ_redirects(web_client: TestClient, *, identity) -> None:
+def test_target_date_stale_occ_preserves_original_date_and_version(web_client: TestClient, *, identity) -> None:
     a = _create_external_debt(web_client, identity.app_headers, principal_amount_cents=10000)
     goal = _create_debt_goal(
         web_client, identity.app_headers, name="日期冲突", debt_public_ids=[a["public_id"]]
@@ -237,7 +248,9 @@ def test_target_date_stale_occ_redirects(web_client: TestClient, *, identity) ->
         row_version=goal["row_version"] + 9, extra={"target_date": "2027-05-01"},
     )
 
-    assert _redirect_error(resp) == _STALE
+    assert resp.status_code == 409
+    assert 'value="2027-05-01"' in resp.text
+    assert f'name="expected_row_version" value="{goal["row_version"] + 9}"' in resp.text
     assert _goal_view(web_client, identity.app_headers, goal["public_id"])["debt_repayment"]["target_date"] is None
 
 
@@ -423,4 +436,4 @@ def test_viewer_gets_no_forms_and_post_is_denied(web_client: TestClient, *, iden
 
     denied = _web_create(web_client, name="不允许", debt_ids=[a["public_id"]])
     assert denied.status_code == 403
-    assert denied.json()["error"] == "permission_denied"
+    assert 'value="不允许"' in denied.text  # Native permission refusal retains the original form.

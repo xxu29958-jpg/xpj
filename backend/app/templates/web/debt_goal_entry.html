@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% set page_title = entry_title %}
+{% set product_body_domain = 'plans' %}
+{% set page_surface = 'tertiary' %}
+{% set task_return_href = return_href %}
+{% set task_return_label = '还债目标' %}
+{% block title %}{{ entry_title }} · 小票夹{% endblock %}
+{% block page_scripts %}
+{% if debtgoal_draft_scope %}
+<script defer src="/static/web/manual-drafts.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/plan-entry.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/debt-goal-entry.js?v={{ asset_version }}"></script>
+{% endif %}
+{% endblock %}
+{% block content %}
+<header class="product-page-header">
+  <div class="product-page-heading">
+    <span class="product-eyebrow">计划 / 还债目标</span>
+    <h1 class="page-title">{{ entry_title }}</h1>
+    <p class="product-page-summary">{{ goal.name if goal else '选择想跟踪的欠款，为自己留下一步清晰的计划。' }}</p>
+  </div>
+</header>
+<div class="plan-flow goal-editor">
+  {% if error %}<p class="product-feedback product-feedback--danger" role="alert">{{ error }}</p>{% endif %}
+  {% if not can_write %}<p class="product-feedback" role="status">当前角色为只读，原输入仍保留；恢复编辑权限后可继续。</p>{% endif %}
+  {% if goal and goal.is_archived %}<p class="product-feedback" role="status">目标已归档，原输入仍保留。请先<a href="{{ return_href }}" target="_blank" rel="noopener">在新窗口查看并恢复目标</a>。</p>{% endif %}
+  {% include "partials/debt_goal_drafts.html" %}
+  <form method="post" action="{{ entry_action }}" class="budget-form"
+    {% if debtgoal_draft_scope %}data-debtgoal-draft-scope="{{ debtgoal_draft_scope|tojson|forceescape }}"
+    data-debtgoal-plan-id="{{ task_id }}" data-debtgoal-native-result="{{ draft_result }}"
+    data-debtgoal-can-write="{{ 'true' if can_write else 'false' }}"
+    data-debtgoal-archived="{{ 'true' if goal and goal.is_archived else 'false' }}"
+    data-debtgoal-prepared-from="{{ values.get('prepared_from', '') }}"{% endif %}>
+    {{ csrf_field|safe }}
+    <input type="hidden" name="ledger_id" value="{{ values.ledger_id }}">
+    <input type="hidden" name="public_id" value="{{ public_id }}">
+    <input type="hidden" name="task_id" value="{{ task_id }}">
+    <input type="hidden" name="task" value="{{ task }}">
+    <input type="hidden" name="idempotency_key" value="{{ values.idempotency_key }}">
+    <input type="hidden" name="expected_row_version" value="{{ values.expected_row_version }}">
+    <input type="hidden" name="draft_scope" value="{{ values.get('draft_scope', debtgoal_draft_scope|tojson if debtgoal_draft_scope else '')|forceescape }}">
+    {% if task == 'create' %}
+    <div class="product-field">
+      <label for="debtgoal-name">目标名称</label>
+      <input id="debtgoal-name" class="product-input" name="name" value="{{ values.name }}" maxlength="80" required placeholder="例如：年底还清" {% if not can_write %}readonly{% endif %}>
+    </div>
+    {% else %}<input type="hidden" name="name" value="{{ values.name or goal.name }}">{% endif %}
+    {% if task == 'target-date' %}
+    <div class="product-field">
+      <label for="debtgoal-date">还清日期</label>
+      <input id="debtgoal-date" class="product-input" type="{{ date_input_type|default('date') }}" name="target_date" value="{{ values.target_date }}" {% if not can_write or goal.is_archived %}readonly{% endif %}>
+      <p class="hint">留空保存即可清除日期；估算不足时不会编造计划状态。</p>
+    </div>
+    {% else %}
+    <fieldset class="plan-choice-set" {% if not can_write or (goal and goal.is_archived) %}disabled{% endif %}>
+      <legend>关联欠款</legend>
+      {% for choice in choices %}
+      <label class="plan-choice" data-debt-choice>
+        <input type="checkbox" name="debt_public_ids" value="{{ choice.public_id }}" {% if choice.public_id in values.debt_public_ids %}checked{% endif %}>
+        <span class="plan-choice-name">{{ choice.name }}</span>
+        <span class="plan-choice-meta">{{ choice.meta }} · {{ choice.status_label }}{% if choice.status == 'voided' %} · 取消勾选可移除这条失效关联{% endif %}</span>
+      </label>
+      {% endfor %}
+      {% if not choices %}<p class="hint">还没有可关联的欠款。<a href="/web/debts?ledger_id={{ selected_ledger_id|urlencode }}">去往来记一笔</a>，再回来继续原目标。</p>{% endif %}
+    </fieldset>
+    {% endif %}
+    <p class="product-feedback"><span><strong>{{ '保存后仍是同一个目标' if goal else '按真实欠款跟踪进度' }}</strong><br>关联调整不会改动欠款及实际偿还记录；作废也不等于还清。</span></p>
+    <p class="meta" data-debtgoal-draft-status role="status" aria-live="polite" hidden></p>
+    <div class="budget-actions">
+      <button class="product-button product-button--primary" type="submit" data-debtgoal-submit {% if not can_write or (goal and goal.is_archived) or binding_required %}disabled{% endif %}>{{ entry_button }} <span aria-hidden="true">→</span></button>
+    </div>
+    <p class="meta" data-debtgoal-review-note {% if not error and not binding_required %}hidden{% endif %}>核对只准备新修改，保留原输入；不会立即保存。</p>
+    <button class="product-button product-button--quiet" type="submit" name="review_latest" value="true" data-debtgoal-review formnovalidate {% if not error and not binding_required %}hidden{% endif %}>已核对，保留输入继续</button>
+    <button class="product-button product-button--quiet" type="button" data-debtgoal-discard hidden>放弃此浏览器的原稿</button>
+  </form>
+  {% if goal %}
+  <details class="plan-disclosure" {% if error %}open{% endif %}>
+    <summary>查看当前已保存的目标</summary>
+    <p>{{ goal.name }} · {{ goal.eval_label }}{% if goal.target_date_value %} · {{ goal.target_date_value }}{% endif %}</p>
+    <ul>{% for link in goal.links %}<li>{{ link.name }} · {{ link.status_label }}</li>{% endfor %}</ul>
+    <a href="{{ entry_href }}" target="_blank" rel="noopener">在新窗口查看最新目标</a>
+  </details>
+  {% endif %}
+</div>
+{% endblock %}
