@@ -246,7 +246,6 @@ class DebtGoalLinksViewModel(
 
 fun debtGoalLinksViewModelFactory(reports: ReportsActions, edits: GoalEditActions,
     debts: DebtActions): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
-    @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>, extras: CreationExtras): T =
-        DebtGoalLinksViewModel(reports, edits, debts, extras.createSavedStateHandle()) as T
+        modelClass.cast(DebtGoalLinksViewModel(reports, edits, debts, extras.createSavedStateHandle()))
 }
