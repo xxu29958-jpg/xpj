@@ -20,7 +20,6 @@ import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.hasAnyAncestor
-import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -184,7 +183,7 @@ class DebtGoalDraftNavigationRoomTest {
         if (compose.onAllNodes(dateInput).fetchSemanticsNodes().isNotEmpty()) {
             compose.onNode(dateInput).performTextReplacement("12302026")
             closeSoftKeyboard()
-        } else compose.onNode(hasContentDescription("December 30", substring = true) and hasAnyAncestor(isDialog())).performClick()
+        } else compose.onNode(hasText("December 30", substring = true) and hasAnyAncestor(isDialog())).performClick()
         compose.onNodeWithText(context.getString(R.string.common_confirm)).performClick()
         assertEquals("2026-12-30", owner.state.value.targetDate)
         assertTrue(dateRequests.isEmpty())
