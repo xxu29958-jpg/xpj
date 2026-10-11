@@ -442,7 +442,7 @@ def test_secondary_product_routes_follow_canonical_ownership(
     assert 'data-domain="obligations"' in repayment.text
     assert 'data-page="obligations" data-page-level="secondary"' in repayment.text
     assert '<span class="topbar-domain">往来</span>' in repayment.text
-    assert '<span class="topbar-title">还款捕获</span>' in repayment.text
+    assert '<span class="topbar-title">还款采集</span>' in repayment.text
 
     # Recovery is a focused task under the shipped reference library.
     recycle_bin = web_client.get("/web/recycle-bin?ledger_id=owner")
