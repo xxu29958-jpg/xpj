@@ -67,6 +67,15 @@ def open_creation_form(client, page, parameter: str, *, headers=None):
     return response
 
 
+def open_repayment_task(client, page, *, headers=None):
+    """Follow the actual debt detail entry with its original ledger and task kind."""
+    href = next(unescape(href) for href in re.findall(
+        r'<a\b[^>]*href="([^"]+)"[^>]*data-repayment-task-kind=', page.text))
+    response = client.get(href, headers=headers)
+    assert response.status_code == 200, response.text
+    return response
+
+
 def accounting_time_fields(html: str) -> dict[str, str]:
     return {name: value for form in hidden_post_forms(html).values()
         for name, value in form.items() if name in _TIME_FIELDS}

@@ -495,9 +495,16 @@ def _render_debt_detail(
         request, db, debt=debt, selected_id=selected_id, account_id=account_id,
     )
     reconcile_member_detail(ctx["debt"], ctx["split_agreement"])
+    task = request.query_params.get("task", "")
+    repayment_task = action_kind in {"repayment", "proposal_create"} or task in {"repayment", "member-repayment"}
+    if repayment_task:
+        member_task = action_kind == "proposal_create" or not action_kind and task == "member-repayment"
+        form = ctx["proposal_form"] if member_task else ctx["repayment_form"]
+        # The receipt ends this task. A further repayment needs an explicit new entry.
+        ctx["repayment_task_form"] = {**form, "can_create": False, "visible": False} if form["ack"] else form
     return templates.TemplateResponse(
         request=request,
-        name="debt_detail.html",
+        name="debt_repayment_entry.html" if repayment_task else "debt_detail.html",
         context=ctx,
         status_code=status_code,
     )
@@ -528,4 +535,5 @@ def web_debt_detail(
         db.rollback()
         return render_repayment_recovery(
             request, db, options=options, selected_id=selected_id, public_id=public_id,
+            kind="proposal_create" if request.query_params.get("task") == "member-repayment" else "repayment",
         )

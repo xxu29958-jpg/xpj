@@ -13,6 +13,7 @@ from tests._web_debt_proposal_support import (
     proposal_form,
     seed_member_debt,
 )
+from tests._web_native_form_support import open_repayment_task
 
 
 def test_web_invalid_proposal_is_anchored_and_preserves_draft(
@@ -66,7 +67,8 @@ def test_member_date_only_proposal_recovers_original_after_lost_reply_and_unread
     public_id, debt_id, _, _ = seed_member_debt(direction="i_owe", currency="JPY")
     action = f"/web/debts/{public_id}/repayment-proposals"
     identity = ("csrf_token", "idempotency_key", "origin_binding")
-    form = _NativeForm(web_client.get(f"/web/debts/{public_id}?ledger_id=owner").text, action, identity_fields=identity)
+    page = open_repayment_task(web_client, web_client.get(f"/web/debts/{public_id}?ledger_id=owner"))
+    form = _NativeForm(page.text, action, identity_fields=identity)
     form.set("amount_major", "12")
     form.set("paid_at", "2026-09-01")
     form.set("note", "  原留言  ")

@@ -79,7 +79,7 @@ def _assert_zero_fraction_form(
     currency_symbol: str,
 ) -> None:
     assert 'name="amount_major"' in page_text
-    assert f"本次还款（{currency_code} · {currency_symbol}，仅支持整数）" in page_text
+    assert f"{currency_code} · {currency_symbol}，仅支持整数" in page_text
     assert 'min="1"' in page_text
     assert 'step="1"' in page_text
     assert 'inputmode="numeric"' in page_text
@@ -162,8 +162,10 @@ def test_web_zero_fraction_debt_forms_use_current_server_currency_contract(
             f"/web/debts/{debt['public_id']}?ledger_id=owner",
         )
         assert page.status_code == 200
+        from tests._web_native_form_support import open_repayment_task
+        task = open_repayment_task(web_client, page)
         _assert_zero_fraction_form(
-            page.text,
+            task.text,
             currency_code=currency_code,
             currency_symbol=currency_symbol,
         )

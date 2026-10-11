@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+{% set product_body_domain = 'obligations' %}
+{% set page_surface = 'tertiary' %}
+{% set page_title = '还款核对' %}
+{% set repayment_form = repayment_task_form %}
+{% set repayment_task = true %}
+{% set task_return_href = '/web/debts/' ~ repayment_form.public_id ~ '?ledger_id=' ~ selected_ledger_id|urlencode %}
+{% set task_return_label = '往来详情' %}
+{% from '_debt_repayment_form.html' import repayment_actions with context %}
+{% block title %}还款核对 · 小票夹{% endblock %}
+{% block page_scripts %}
+<script defer src="/static/web/manual-drafts.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/repayment-entry.js?v={{ asset_version }}"></script>
+{% endblock %}
+{% block page_footer %}
+<footer class="content product-task-footer" data-page-level="tertiary">
+  {{ repayment_actions(repayment_form) }}
+  <a class="product-button product-button--{{ 'primary' if repayment_form.ack else 'quiet' }}" href="{{ task_return_href }}">{{ '返回往来详情' if repayment_form.ack else '返回，保留输入' }}</a>
+</footer>
+{% endblock %}
+{% block content %}
+{% if action_form.fallback %}<p class="product-feedback product-feedback--danger" role="alert">{{ action_form.error }}{% if action_form.attempted_label %} 你刚才填写：{{ action_form.attempted_label }}——仅作记录，未保存。{% endif %}</p>{% endif %}
+{% include '_debt_repayment_form.html' %}
+{% if not repayment_form.ack and not repayment_form.can_create %}
+<p class="product-page-summary">
+{% if not can_write %}当前为只读，可以查看原输入和记录，不能提交还款。
+{% elif pending_proposal %}{{ proposals.pending_line }} · {{ pending_proposal.amount_label }}。可返回往来详情查看确认进度。
+{% elif debt.is_member and viewer_is_debtor != true %}这笔成员往来由欠款方发起还款；可返回详情查看双方确认。
+{% elif not debt_open %}这笔往来当前不能新增还款，原提交仍可在这里核对。
+{% endif %}
+</p>
+{% endif %}
+{% endblock %}

@@ -3,9 +3,12 @@
 {% set product_body_domain = 'obligations' %}
 {% set task_return_href = '/web/debts?ledger_id=' ~ selected_ledger_id %}
 {% set task_return_label = '往来' %}
+{% set repayment_entry = proposal_form if debt.is_member else repayment_form %}
 {% block page_footer %}
-<footer class="content product-task-footer" data-page-level="tertiary" data-debt-primary-footer hidden>
-  <button class="product-button product-button--primary" type="button" data-debt-open-repayment></button>
+<footer class="content product-task-footer" data-page-level="tertiary"{% if not repayment_entry.can_create %} hidden{% endif %}>
+  <a class="product-button product-button--primary" href="/web/debts/{{ debt.public_id }}?ledger_id={{ selected_ledger_id|urlencode }}&amp;task={{ repayment_entry.kind }}"
+     data-repayment-task-kind="{{ repayment_entry.kind }}" data-repayment-task-target="{{ debt.public_id }}"
+     data-repayment-task-scope="{{ repayment_entry.scope|tojson|forceescape }}">{{ '记一次还款' if repayment_entry.can_create else '查看原还款' }} <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-right"/></svg></a>
 </footer>
 {% endblock %}
 {% block title %}{{ debt.name }} · 欠款详情 · 小票夹{% endblock %}
@@ -160,10 +163,6 @@
    creditor 专属 (guard_member_debt + creditor-only, external 必 409), 且
    service 原子 supersede pending proposal, 不以 pending 为闸门; member
    debtor 无任何 direct 动作, 只走下方 proposal flow。 #}
-{% if not debt.is_member and (can_write or action_form.kind == 'repayment') %}
-{% include '_debt_repayment_form.html' %}
-{% endif %}
-
 {% if not debt.is_member %}
 {% include '_debt_void_form.html' %}
 {% if repayment_void_recovery %}
@@ -233,7 +232,6 @@
 </section>
 {% endif %}
 
-{% if debt.is_member %}{% with repayment_form=proposal_form %}{% include '_debt_repayment_form.html' %}{% endwith %}{% endif %}
 {% if can_write and debt.is_member and debt_open and action_keys and (pending_proposal or action_form.kind in ['proposal_reject', 'proposal_withdraw'] or confirm_amount_error) %}
 <details class="debt-repay-editor" aria-labelledby="debt-proposal-actions-title"{% if pending_proposal or confirm_amount_error or action_form.kind in ['proposal_create', 'proposal_reject', 'proposal_withdraw'] %} open{% endif %}>
   <summary class="product-button product-button--primary">{{ '核对还款' if pending_proposal else '记一次还款' }} <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-right"/></svg></summary>

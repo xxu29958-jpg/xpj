@@ -13,7 +13,7 @@
       "proposal_public_id", "expected_row_version", "expected_return_row_version", "new_share_amount_major",
       "settlement_net_amount_major", "reason", "supersedes_proposal_public_id"]};
   const voidLabels = ["确认作废", "继续核实原作废"];
-  const submitLabels = {repayment:["记一笔还款", "核实原还款"],
+  const submitLabels = {repayment:["记录这次还款", "核实原还款"],
     "member-repayment":["提交还款确认", "核实原还款"],
     "debt-void":voidLabels, "repayment-void":voidLabels,
     "debt-kind":["保存偿还方式", "继续核实原更正"], "repayment-review":["确认处理", "核实原处理"]};
@@ -40,6 +40,21 @@
     update();
     return update;
   }
+  function originalAmountPresentation(form) {
+    const output = form.querySelector("[data-repayment-original-amount]");
+    if (!output) return null;
+    const input = form.elements.namedItem("amount_major");
+    const currency = form.querySelector("[data-repayment-currency]");
+    const initialCurrency = form.elements.namedItem("home_currency_code").value;
+    const initialLabel = currency.textContent;
+    return function () {
+      output.textContent = input.value || "未填金额";
+      output.hidden = !input.readOnly;
+      input.hidden = input.readOnly;
+      const originalCurrency = form.elements.namedItem("home_currency_code").value;
+      currency.textContent = originalCurrency === initialCurrency ? initialLabel : originalCurrency;
+    };
+  }
   function initialize(form, settlementField) {
   const surface = form.closest("[data-repayment-container]");
   if (!surface) return;
@@ -62,10 +77,11 @@
   const status = form.querySelector("[data-repayment-status]");
   const entryLabel = surface.querySelector("[data-repayment-entry-label]");
   const heading = surface.querySelector("[data-repayment-heading]");
-  const submit = form.querySelector("[data-repayment-submit]");
-  const replace = form.querySelector("[data-repayment-replace]");
+  const submit = form.querySelector("[data-repayment-submit]") || form.elements.namedItem("repayment_submit");
+  const replace = form.querySelector("[data-repayment-replace]") || form.elements.namedItem("repayment_replace");
   const preview = form.querySelector("[data-repayment-preview]");
   const updateBalancePreview = bindBalancePreview(form);
+  const updateOriginalAmount = originalAmountPresentation(form);
   const settlementExplicit = form.elements.namedItem("settlement_explicit");
   const optionalNames = splitChange ? ["settlement_explicit", "settlement_suggestion"] :
     repaymentTime ? repaymentTimeNames : [];
@@ -112,7 +128,8 @@
     status.textContent = captureReview ? message.replaceAll("还款", "采集处理").replaceAll("欠款", "原采集") : kindCorrection ? message.replaceAll("还款", "偿还方式更正").replaceAll("金额、日期", "选择、版本") : voidCommand ? message.replaceAll("还款", "作废提交").replaceAll("金额、日期", "对象、原因") : splitChange ? message.replaceAll("还款", "约定操作") : message;
     form.dataset.repaymentState = state;
     if (entryLabel) entryLabel.textContent = state === "editing" ? (memberRepayment ? "记一次还款" : "记一笔还款") : "核对原还款";
-    if (heading) heading.textContent = state === "editing" ? "确认这次还款" : "还款记上了吗";
+    if (heading) heading.textContent = state === "editing" ? "确认这次还款" : "这笔还款记上了吗";
+    updateOriginalAmount?.();
     updateBalancePreview?.();
   }
   function lockInputs(locked) {
@@ -126,6 +143,7 @@
       }
     });
     settlementField?.sync();
+    updateOriginalAmount?.();
     updateBalancePreview?.();
   }
   function showValues(saved) {
@@ -156,7 +174,8 @@
       if (preview) preview.hidden = saved.command !== "create";
     }
     const label = form.querySelector(memberRepayment ? 'label[for="debt-proposal-amount"]' : 'label[for="debt-repay-amount"]');
-    if (label) label.textContent = "本次还款（" + (saved.home_currency_code || "原币种") + "）";
+    if (label) label.textContent = "本次还款";
+    updateOriginalAmount?.();
     updateBalancePreview?.();
   }
   function blocked(message, state = "blocked") {
@@ -515,29 +534,23 @@
     const settlementField = window.TicketboxSplitSettlement ? window.TicketboxSplitSettlement(form) : null;
     initialize(form, settlementField);
   });
-  const footer = document.querySelector("[data-debt-primary-footer]");
-  const editors = Array.from(document.querySelectorAll(".debt-repay-editor"));
-  if (footer && editors.length) {
-    const entry = footer.querySelector("[data-debt-open-repayment]");
-    let editor, summary;
-    function syncPrimaryEntry() {
-      editor = editors.find(panel => !panel.hidden);
-      footer.hidden = !editor || editors.some(panel => !panel.hidden && panel.open);
-      editors.forEach(panel => { panel.querySelector(":scope > summary").hidden = !footer.hidden && panel === editor; });
-      if (!editor) return;
-      summary = editor.querySelector(":scope > summary");
-      entry.replaceChildren(...Array.from(summary.childNodes, node => node.cloneNode(true)));
+  const entry = document.querySelector("[data-repayment-task-kind]");
+  if (entry) {
+    const kind = entry.dataset.repaymentTaskKind;
+    try {
+      const scope = JSON.parse(entry.dataset.repaymentTaskScope);
+      const drafts = window.TicketboxDraftStore.createStore({prefix:"ticketbox:" + kind + "-draft:v1:",
+        fields:fieldNames[kind], optionalFields:repaymentTimeNames, validRef:/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i});
+      const retained = drafts.list(scope).filter(record => record.values.debt_public_id === entry.dataset.repaymentTaskTarget);
+      const original = retained.find(record => record.phase !== "editing") || retained[0];
+      if (original) {
+        entry.closest(".product-task-footer").hidden = false;
+        entry.firstChild.textContent = original.phase === "editing" ? "继续填写原还款 " : "核对原还款 ";
+        entry.hash = kind + "-" + original.clientRef;
+      }
+    } catch (_) {
+      entry.closest(".product-task-footer").hidden = false;
+      entry.firstChild.textContent = "查看还款任务 ";
     }
-    entry.addEventListener("click", function () {
-      editor.open = true;
-      syncPrimaryEntry();
-      editor.scrollIntoView({block:"start"});
-      summary.focus();
-    });
-    editors.forEach(panel => {
-      panel.addEventListener("toggle", syncPrimaryEntry);
-      new MutationObserver(syncPrimaryEntry).observe(panel, {attributes:true, attributeFilter:["hidden"]});
-    });
-    syncPrimaryEntry();
   }
 })(window, document);

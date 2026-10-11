@@ -15,7 +15,7 @@ import app.services.debt_command_service as commands
 from app.database import SessionLocal
 from app.errors import AppError
 from app.models import Debt, Repayment
-from tests._web_native_form_support import hidden_post_forms
+from tests._web_native_form_support import hidden_post_forms, open_repayment_task
 from tests.test_web_correction_fx_continuation import _NativeForm
 from tests.test_web_debt_actions import _create_debt, _detail
 
@@ -38,6 +38,7 @@ def test_native_unknown_result_recovers_same_payment_even_after_settlement(
     action = f"/web/debts/{public_id}/repayments"
     monkeypatch.setattr(debt_form_context, "accounting_zone", lambda: ZoneInfo("Asia/Shanghai"))
     page = web_client.get(f"/web/debts/{public_id}?ledger_id=owner")
+    page = open_repayment_task(web_client, page)
     form = _NativeForm(page.text, action)
     form.set("amount_major", amount_major)
     form.set("paid_at", "2026-09-01")
@@ -88,6 +89,7 @@ def test_missing_occ_retains_native_input_and_original_key(web_client, identity)
     debt = _create_debt(web_client, identity=identity)
     action = f"/web/debts/{debt['public_id']}/repayments"
     page = web_client.get(f"/web/debts/{debt['public_id']}?ledger_id=owner")
+    page = open_repayment_task(web_client, page)
     original = hidden_post_forms(page.text)[action]
     refused = web_client.post(action, data={
         **original, "expected_row_version": "", "amount_major": "12.30", "paid_at": "2026-09-02",
@@ -112,7 +114,8 @@ def test_missing_occ_retains_native_input_and_original_key(web_client, identity)
 def test_rejected_overpayment_can_be_corrected_without_losing_its_form(web_client, identity):
     debt = _create_debt(web_client, identity=identity)
     action = f"/web/debts/{debt['public_id']}/repayments"
-    form = _NativeForm(web_client.get(f"/web/debts/{debt['public_id']}?ledger_id=owner").text, action)
+    page = open_repayment_task(web_client, web_client.get(f"/web/debts/{debt['public_id']}?ledger_id=owner"))
+    form = _NativeForm(page.text, action)
     form.set("amount_major", "500.01")
     form.set("paid_at", "2026-09-01")
     original = {name: form.one(name) for name in form.fields}
@@ -133,7 +136,8 @@ def test_exact_acceptance_survives_failure_of_the_following_detail_query(web_cli
     debt = _create_debt(web_client, identity=identity)
     public_id = debt["public_id"]
     action = f"/web/debts/{public_id}/repayments"
-    form = _NativeForm(web_client.get(f"/web/debts/{public_id}?ledger_id=owner").text, action)
+    page = open_repayment_task(web_client, web_client.get(f"/web/debts/{public_id}?ledger_id=owner"))
+    form = _NativeForm(page.text, action)
     form.set("amount_major", "500.00")
     form.set("paid_at", "2026-09-01")
     original = {name: form.one(name) for name in form.fields}

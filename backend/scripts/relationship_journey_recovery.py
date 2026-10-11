@@ -16,7 +16,7 @@ class RelationshipRecovery:
         """The real member form keeps its date and key when a committed reply is lost."""
         j, page = self.j, self.j.page
         j.goto(f"/web/debts/{returned}")
-        page.get_by_role("button", name="记一次还款", exact=True).click()
+        page.get_by_role("link", name="记一次还款", exact=True).click()
         path = f"/web/debts/{returned}/repayment-proposals"
         form = page.locator(f'form[action="{path}"]')
         form.locator('[name="amount_major"]').fill("2.00")
@@ -37,16 +37,18 @@ class RelationshipRecovery:
         page.route("**" + path, lose_reply)
         try:
             with page.expect_event("requestfailed", predicate=lambda request: request.url.endswith(path)):
-                form.locator("[data-repayment-submit]").click()
+                page.locator("[data-repayment-submit]").click()
         finally:
             page.unroute("**" + path, lose_reply)
         assert delivered == [True]
         wait_for(lambda: returned in j.facts()["pending_repayments"], "The return declaration was not retained")
         j.goto(f"/web/debts/{returned}")
+        page.get_by_role("link", name="核对原还款", exact=True).click()
+        page.locator('[data-repayment-kind="member-repayment"][data-repayment-state="submitted"]').wait_for(state="visible")
         assert {key: value for key, value in form_values(form).items() if key != "csrf_token"} == original
         assert j.facts()["return_paid"] == 0, "An unconfirmed member declaration became a repayment fact"
         j.capture("member-repayment-original-date")
-        form.locator("[data-repayment-submit]").click()
+        page.locator("[data-repayment-submit]").click()
         page.locator("[data-repayment-ack]").wait_for()
         page.wait_for_function("ref => localStorage.getItem('ticketbox:member-repayment-draft:v1:' + ref) === null",
             arg=original["idempotency_key"])

@@ -165,7 +165,7 @@ def _repayment_outcome(
 
 @router.get("/{public_id}/repayments", include_in_schema=False)
 def web_repayment_return(public_id: str, ledger_id: str = "", _local: None = LocalOnly):
-    return _web_redirect(f"/web/debts/{public_id}", ledger_id)
+    return _web_redirect(f"/web/debts/{public_id}", ledger_id, task="repayment")
 
 
 @router.post("/{public_id}/repayments")

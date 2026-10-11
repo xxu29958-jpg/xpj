@@ -65,6 +65,8 @@ function environment() {
     fields.csrf_token = element({name:'csrf_token', value:'never-persist-credential'});
     const status = element({hidden:true}), submit = element(), panel = element({hidden:options.canCreate === false});
     const replace = options.replacement ? element({hidden:true}) : null, label = element();
+    const amountOutput = fields.amount_major ? element({tagName:'OUTPUT', hidden:true}) : null;
+    const currency = amountOutput ? element({textContent:shown.home_currency_code}) : null;
     const preview = options.splitChange ? element() : null;
     const balanceAfter = element();
     const balance = options.balance ? element({hidden:true, dataset:options.balance,
@@ -81,8 +83,9 @@ function environment() {
       voidRejected:options.rejected ? "true" : "false", repaymentResult:result, repaymentCanCreate:options.canCreate === false ? 'false' : 'true',
       repaymentCanRecover:options.canRecover === false ? 'false' : 'true',
       repaymentTarget:target, repaymentReplacement:options.replacement ? JSON.stringify(options.replacement) : ''},
-      elements:{namedItem:name => fields[name]},
-      querySelector:selector => ({'[data-repayment-submit]':submit, '[data-repayment-status]':status,
+      elements:{namedItem:name => name === 'repayment_submit' ? submit : name === 'repayment_replace' ? replace : fields[name]},
+      querySelector:selector => ({'[data-repayment-submit]':amountOutput ? null : submit, '[data-repayment-status]':status,
+        '[data-repayment-original-amount]':amountOutput, '[data-repayment-currency]':currency,
         '[data-void-finish-rejected]':finishRejected, '[data-void-finish-review]':finishReview, '[data-repayment-replace]':replace, '[data-repayment-preview]':preview,
         '[data-split-settlement-raw]':settlement.raw, '[data-split-settlement-controls]':settlement.controls,
         '[data-split-settlement-direction]':settlement.direction, '[data-split-settlement-amount]':settlement.amount,
@@ -111,7 +114,8 @@ function environment() {
     };
     windows.push(window);
     return {window, form, fields, status, submit, panel, shelf, list, ackStatus, store, start, replace, label, preview, finishReview, finishRejected,
-      document, settlement, balance, balanceAfter, snapshot:() => Object.fromEntries(fieldNames.map(name => [name, fields[name].value]))};
+      document, settlement, balance, balanceAfter, currency, amountOutput,
+      snapshot:() => Object.fromEntries(fieldNames.map(name => [name, fields[name].value]))};
   }
   return {entries, faults, requests, occupied, page,
     storageEvent() { windows.forEach(window => window.fire('storage')); }};
@@ -196,7 +200,10 @@ const cases = {
     assert.equal(page.fields.idempotency_key.value, original);
     assert.deepEqual(page.snapshot(), values);
     assert.equal(page.fields.amount_major.readOnly, true);
-    assert.match(page.label.textContent, /USD/, 'restored amount must identify its original currency');
+    assert.equal(page.currency.textContent, 'USD', 'restored amount must identify its original currency');
+    assert.equal(page.amountOutput.textContent, values.amount_major, 'readable original never rounds or normalizes the retained amount');
+    assert.equal(page.amountOutput.hidden, false);
+    assert.equal(page.fields.amount_major.hidden, true);
     page.window.fire('hashchange'); await tick();
     assert.equal(page.submit.disabled, false, 'reopening a fragment releases its own lease before reacquiring');
     page.fields.amount_major.value = '900';

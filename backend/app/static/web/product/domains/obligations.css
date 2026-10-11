@@ -74,6 +74,40 @@ body[data-domain="obligations"] .content { max-inline-size: var(--layout-page-na
 .debt-repay-editor { margin-block: var(--space-6); }
 .debt-repay-editor > summary { display: flex; width: 100%; list-style: none; }
 .debt-repay-editor[open] > summary { margin-block-end: var(--space-6); }
+.debt-repayment-task .debt-repay-editor { margin-block: 0; }
+.debt-repayment-task .debt-repay-editor > summary { display: none; }
+.debt-repayment-task .product-form-grid { grid-template-columns: minmax(0, 1fr); gap: var(--space-6); }
+.debt-repayment-amount {
+    container-type: inline-size;
+    padding: var(--space-5);
+    border-radius: var(--radius-lg);
+    background: var(--brand-primary-bg);
+}
+.debt-repayment-amount .product-input,
+.debt-repayment-amount output {
+    width: 100%;
+    font-family: var(--font-numeric);
+    font-size: clamp(var(--type-body-size), 13cqi, var(--type-display-size));
+    font-weight: var(--type-display-weight);
+    line-height: var(--type-display-line);
+    overflow-wrap: anywhere;
+}
+.debt-repayment-amount .product-input {
+    padding-inline: 0;
+    border: 0;
+    border-block-end: 1px solid var(--border-card);
+    border-radius: 0;
+    background: transparent;
+    color: var(--text-default);
+}
+.debt-repayment-task [data-repayment-state="submitted"] [data-repayment-status],
+.debt-repayment-task [data-repayment-state="blocked"] [data-repayment-status] {
+    margin: 0;
+    padding: var(--space-5);
+    border-radius: var(--radius-lg);
+    background: var(--state-warn-bg);
+    color: var(--state-warn-fg);
+}
 .debt-balance-preview { box-shadow: none; }
 .debt-balance-comparison { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4); margin-block: var(--space-5); }
 .debt-balance-comparison > div { display: grid; flex: 1 1 auto; gap: var(--space-2); min-width: 0; }

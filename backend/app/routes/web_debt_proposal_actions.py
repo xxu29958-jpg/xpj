@@ -26,6 +26,7 @@ from app.routes.web_common import (
     _list_ledger_options,
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
+    _web_redirect,
     parse_form_row_version_token,
 )
 from app.routes.web_debt_actions import (
@@ -76,7 +77,7 @@ def _proposal_error_message(exc: AppError) -> str:
 
 @router.get("/{public_id}/repayment-proposals", include_in_schema=False)
 def web_proposal_return(public_id: str, ledger_id: str = "", _local: None = LocalOnly):
-    return _action_redirect(public_id, ledger_id, message="", success=True)
+    return _web_redirect(f"/web/debts/{public_id}", ledger_id, task="member-repayment")
 
 
 @router.post("/{public_id}/repayment-proposals")

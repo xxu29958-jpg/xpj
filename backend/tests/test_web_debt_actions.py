@@ -17,7 +17,7 @@ from app.errors import AppError
 from app.models import Account, Debt, LedgerMember, Repayment
 from app.services.spending_contract_service import accounting_zone
 from tests._runtime_protocol import negotiated_headers
-from tests._web_native_form_support import hidden_post_forms
+from tests._web_native_form_support import hidden_post_forms, open_repayment_task
 
 
 def test_web_debt_fact_adapters_delegate_to_shared_commands_and_views() -> None:
@@ -116,9 +116,10 @@ def test_web_repayment_replay_is_idempotent(
     assert "/static/web/product/domains/obligations.css" in page.text
     assert "/static/web/pages/debts.css" not in page.text
     assert 'style="' not in page.text
-    assert 'name="amount_major"' in page.text
     assert f'action="/web/debts/{debt["public_id"]}/forgive"' not in page.text
-    assert "本次还款（CNY · ¥，最多两位小数）" in page.text
+    page = open_repayment_task(web_client, page)
+    assert 'name="amount_major"' in page.text
+    assert "CNY · ¥，最多两位小数" in page.text
     assert 'min="0.01"' in page.text
     assert 'step="0.01"' in page.text
     key = str(uuid4())

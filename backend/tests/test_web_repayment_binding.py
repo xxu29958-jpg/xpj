@@ -23,6 +23,7 @@ from tests._local_web_identity_support import (
     _InstalledWeb,
     installed_web_setup,
 )
+from tests._web_native_form_support import open_repayment_task
 from tests.test_web_correction_fx_continuation import _NativeForm
 
 pytestmark = [pytest.mark.real_db, pytest.mark.currency_binding_unbound]
@@ -84,6 +85,7 @@ def test_installed_native_repayment_rejects_every_stale_binding_axis_then_replay
         "Cookie": f"{session_cookie}; {CSRF_COOKIE_NAME}={csrf_seed}",
         "Origin": "http://127.0.0.1:8000",
     }
+    page = open_repayment_task(installed_web.browser, page, headers=headers)
     form = _NativeForm(page.text, action)
     form.set("amount_major", "23.45")
     form.set("paid_at", "2026-09-01")
