@@ -410,13 +410,15 @@ class DebtGoalDraftNavigationRoomTest {
         val owner = linksOwner()
         compose.waitUntil(10_000) { owner.state.value.canSave }
         capture("debt-goal-links")
-        compose.onNodeWithText("另一笔欠款").performScrollTo().performClick()
+        scrollTo("另一笔欠款")
+        compose.onNodeWithText("另一笔欠款").performClick()
         val selection = owner.state.value.selectedLabels
         assertEquals(setOf(originalDebt.publicId, anotherDebt.publicId), selection.keys)
         androidx.test.espresso.Espresso.pressBack()
         compose.runOnIdle { assertTrue(inner.popBackStack()) }
         enterGoals()
-        compose.onNodeWithText(context.getString(R.string.debt_goal_links_continue)).performScrollTo().performClick()
+        scrollTo(context.getString(R.string.debt_goal_links_continue))
+        compose.onNodeWithText(context.getString(R.string.debt_goal_links_continue)).performClick()
         assertSame(owner, linksOwner())
         compose.waitUntil(10_000) { owner.state.value.canSave }
         assertEquals(selection, owner.state.value.selectedLabels)
