@@ -47,6 +47,10 @@ _PENDING_FILTERS = {
     "duplicate",
     "ready",
 }
+_RETURN_FILTERS = {
+    "pending": ("filter", _PENDING_FILTERS),
+    "bill_splits_inbox": ("status", {"all"}),
+}
 _MONTH_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 _EDIT_KEY_BY_LIST_KEY = {
     "after": "return_after",
@@ -325,11 +329,10 @@ def _recurring_list_return_params(origin: dict[str, str]) -> dict[str, str]:
 def return_context_params(return_to: str, **origin: str) -> dict[str, str]:
     """Return only query fields valid for the allowlisted origin page."""
     token = clean_return_to(return_to)
-    if token == "bill_splits_inbox":
-        return {"status": "all"} if origin.get("return_filter") == "all" else {}
-    if token == "pending":
+    if filter_rule := _RETURN_FILTERS.get(token):
+        key, allowed = filter_rule
         clean_filter = (origin.get("return_filter") or "").strip()
-        return {"filter": clean_filter} if clean_filter in _PENDING_FILTERS else {}
+        return {key: clean_filter} if clean_filter in allowed else {}
     if token == "duplicates":
         focus = _payment_expense_id(origin.get("return_duplicate_expense_id", ""))
         return {"focus": focus} if focus else {}
