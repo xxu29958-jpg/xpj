@@ -25,6 +25,7 @@ class RelationshipRecovery:
         original = {key: value for key, value in form_values(form).items() if key != "csrf_token"}
         assert original["time_precision"] == "date_only" and original["calendar_revision"]
         page.reload()
+        page.locator('[data-repayment-kind="member-repayment"][data-repayment-state="editing"]').wait_for(state="visible")
         assert {key: value for key, value in form_values(form).items() if key != "csrf_token"} == original
         delivered = []
 

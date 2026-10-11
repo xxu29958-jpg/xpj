@@ -2,7 +2,8 @@
 {% set product_body_domain = 'obligations' %}
 {% set page_surface = 'tertiary' %}
 {% set page_title = '还款核对' %}
-{% set repayment_form = repayment_task_form %}
+{# A receipt ends this task; a new repayment starts through an explicit detail entry. #}
+{% set repayment_form = dict(repayment_task_form, can_create=false, visible=false) if repayment_task_form.ack else repayment_task_form %}
 {% set repayment_task = true %}
 {% set task_return_href = '/web/debts/' ~ repayment_form.public_id ~ '?ledger_id=' ~ selected_ledger_id|urlencode %}
 {% set task_return_label = '往来详情' %}

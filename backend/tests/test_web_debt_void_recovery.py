@@ -184,11 +184,13 @@ def test_get_read_failure_mounts_all_original_debt_write_recovery_forms(monkeypa
     monkeypatch.setattr(writes, '_require_selected_ledger_write', lambda *_: None)
     monkeypatch.setattr(queries, '_list_ledger_options', lambda *_: [])
     monkeypatch.setattr(queries, '_resolve_selected_ledger_id', lambda *a, **kw: 'my-ledger')
+    fault = AppError('dependency_unavailable', status_code=503)
     def unreadable(*a, **kw):
-        raise AppError('dependency_unavailable', status_code=503)
+        raise fault
     monkeypatch.setattr(queries, '_load_debt_detail_state' if fault_owner == 'detail' else 'debt_activity_context', unreadable)
     response = queries.web_debt_detail(request, public_id='debt-one', ledger_id='my-ledger', db=db, _local=None)
     assert response.status_code == 503
+    assert request.state.reporting_error is fault
     body = response.body.decode()
     assert 'data-repayment-kind="debt-void"' in body, 'GET failure must reopen the actual stored debt void'
     assert 'data-repayment-kind="repayment-void"' in body, 'GET failure must reopen the actual stored repayment void'
