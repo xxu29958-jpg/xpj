@@ -182,7 +182,7 @@ class DebtGoalCreationRepositoryTest {
         reports.debtGoals().getOrThrow()
         val adapters = OutboxAdapterGraph()
         val queue = testOutboxRepository(FakePendingMutationDao(), bindingProvider = { f.provider.currentSession().toOutboxBinding() })
-        val owner = GoalEditRepository(f.provider, queue, adapters.goalUpdateAdapter, adapters.goalReceiptAdapter, adapters.goalCreateAdapter)
+        val owner = GoalEditRepository(f.provider, queue, adapters.goalUpdateAdapter, adapters.goalReceiptAdapter, adapters.goalCreateAdapter, adapters.goalDebtLinksAdapter)
         owner.create(f.binding, request, UUID.randomUUID().toString()).getOrThrow()
         val dispatcher = CreateGoalDispatcher({ sendingApi }, adapters.goalCreateAdapter, adapters.goalReceiptAdapter,
             reports::invalidateGoalReadsAfterDelivery)
@@ -217,7 +217,7 @@ private class DebtGoalCreationFixture {
     private val provider = testApiServiceProvider(object : ApiServiceFactory {
         override fun create(baseUrl: String, tokenProvider: () -> String?) = api
     }, session)
-    val repository = GoalEditRepository(provider, outbox, adapters.goalUpdateAdapter, adapters.goalReceiptAdapter, adapters.goalCreateAdapter)
+    val repository = GoalEditRepository(provider, outbox, adapters.goalUpdateAdapter, adapters.goalReceiptAdapter, adapters.goalCreateAdapter, adapters.goalDebtLinksAdapter)
     val binding = requireNotNull(repository.currentAccess()).binding
     suspend fun create() = repository.createDebtGoal(binding, "  还清欠款  ", listOf(" debt-b ", "debt-a", "debt-b", ""), key)
     suspend fun pending() = repository.observeCreations(binding, goalType = "debt_repayment").first().single()

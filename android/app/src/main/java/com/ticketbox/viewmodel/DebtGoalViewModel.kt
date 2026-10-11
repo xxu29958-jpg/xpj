@@ -22,11 +22,9 @@ import java.time.ZoneOffset
  * Reuses the goal repository ([ReportsActions]) — a debt_repayment goal is a goal
  * (same table / DTO). The screen is a list → detail flow inside one overlay; the
  * detail surfaces the §6/F13 integrity review with its two exits:
- *  - remove the debt-voided link(s) via [removeVoidedDebts] (link-replace → new version)
+ *  - association edits use DebtGoalLinksViewModel and the original Room command
  *  - keep it for audit via [acknowledge] (clears needs_review for the current version)
  *
- * This slice is view + integrity-review only; creating a debt goal (which needs a
- * Debt picker) lands with the broader debt-management UI in a later slice.
  */
 data class DebtGoalUiState(
     val isLoading: Boolean = false,
@@ -201,23 +199,6 @@ class DebtGoalViewModel(
         _state.update { it.copy(selectedGoal = null, selectedFetchedAt = null, selectedFromCache = false, error = null) }
     }
 
-    /** §6/F13 exit (a): drop the debt-voided link(s) → a new goal version. */
-    fun removeVoidedDebts() {
-        val goal = _state.value.selectedGoal ?: return
-        val evaluation = goal.debtRepayment ?: return
-        val keep = evaluation.nonVoidedDebtPublicIds
-        if (keep.isEmpty()) {
-            // A debt goal must keep ≥1 link; every link voided has no clean replacement.
-            _state.update { it.copy(error = UiText.res(R.string.debt_goal_remove_voided_needs_one)) }
-            return
-        }
-        _state.update { it.copy(isSubmitting = true, error = null) }
-        viewModelScope.launch {
-            val result = repository.replaceDebtLinks(goal.publicId, goal.rowVersion, keep)
-            applyMutation(result, R.string.debt_goal_links_updated)
-        }
-    }
-
     /** §6/F13 exit (b): acknowledge ("keep for audit") → clears needs_review. */
     fun acknowledge() {
         val goal = _state.value.selectedGoal ?: return
@@ -246,10 +227,8 @@ class DebtGoalViewModel(
     }
 
     /**
-     * Archive the open goal. The only clean exit when a not-yet-achieved goal's whole
-     * link set is voided (§6/F13): "remove voided" has no non-voided replacement and
-     * acknowledge is achieved-only, so without a Debt picker (a later slice) archiving
-     * is how the user clears the dead-end review.
+     * Explicitly archive the open goal, including an all-voided link set. The separate
+     * association task also lets the user choose valid replacement debts.
      */
     fun archiveSelected() {
         val goal = _state.value.selectedGoal ?: return
@@ -305,7 +284,7 @@ class DebtGoalViewModel(
                         error = null,
                     )
                 }
-                // removeVoidedDebts that completes the (new-version) plan is a user-caused,
+                // A committed mutation that completes a plan is a user-caused,
                 // witnessed completion → celebrate (the external/mixed flash may overwrite the
                 // generic mutation flash; the member case emits the overlay signal instead).
                 celebrationController.onGoalApplied(old = previous, new = updated)?.let { flash ->

@@ -193,6 +193,41 @@ class NetworkErrorReportingTest {
     }
 
     @Test
+    fun debtLinkReplayFailureReportsSafelyAndKeepsItsOriginalCommand() = runTest {
+        val dao = FakePendingMutationDao()
+        val outbox = testOutboxRepository(dao = dao)
+        val adapters = com.ticketbox.OutboxAdapterGraph()
+        val payload = adapters.goalDebtLinksAdapter.toJson(DebtGoalLinksPayload("原关联任务",
+            com.ticketbox.data.remote.dto.DebtGoalLinksReplaceRequestDto(7, listOf("debt-original")),
+            mapOf("debt-original" to "原选择")))
+        val id = outbox.enqueue(PendingMutationType.ReplaceGoalDebtLinks, "goal:original", payload, 7L, "original-links-key")
+        var attempts = 0
+        val api = object : ApiService by FakeApiService(mutableListOf(), 0) {
+            override suspend fun replaceGoalDebtLinks(publicId: String,
+                request: com.ticketbox.data.remote.dto.DebtGoalLinksReplaceRequestDto, idempotencyKey: String?, timezone: String?):
+                com.ticketbox.data.remote.dto.GoalDto {
+                attempts++
+                throw IllegalStateException("password=synthetic-links-secret", IOException("private financial text"))
+            }
+        }
+        val summary = OutboxDrainEngine(outbox, listOf(ReplaceGoalDebtLinksDispatcher({ api },
+            adapters.goalDebtLinksAdapter, adapters.goalReceiptAdapter) { error("Unconfirmed results cannot invalidate reads") })).drainOnce()
+        val original = dao.rows.getValue(id)
+        assertEquals(1, attempts)
+        assertEquals(0, summary.done)
+        assertEquals(1, summary.failures)
+        assertEquals(payload, original.payload)
+        assertEquals(7L, original.expectedRowVersion)
+        assertEquals("original-links-key", original.idempotencyKey)
+        assertEquals("关联修改的结果无法确认，已保留原提交，请核对。", original.lastError)
+        val output = finalLog()
+        assertTrue(output.contains("operation=ReplaceGoalDebtLinks") && output.contains("DebtGoalLinksSubmission.kt:"))
+        assertTrue(output.contains("IllegalStateException") && output.contains("IOException"))
+        assertFalse(output.contains("synthetic-links-secret") || output.contains("private financial text"))
+        assertTrue(ShadowLog.getLogsForTag("TicketboxNetwork").all { it.throwable == null })
+    }
+
+    @Test
     fun confirmReplayFailureReportsSafelyAndKeepsItsOriginalCommand() = runTest {
         val dao = FakePendingMutationDao()
         val outbox = testOutboxRepository(dao = dao)

@@ -118,52 +118,6 @@ class DebtGoalViewModelTest {
     }
 
     @Test
-    fun removeVoidedDebtsReplacesWithNonVoidedIdsAndGoalRowVersion() = runTest(dispatcher) {
-        val goal = debtGoal(needsReview = true, rowVersion = 7L)
-        val replaced = debtGoal(needsReview = false, links = listOf(openLink()), voidedIds = emptyList())
-        val repo = FakeReportsActions(
-            debtGoalsResult = Result.success(listOf(goal)),
-            goalResult = Result.success(goal),
-            replaceResult = Result.success(replaced),
-        )
-        val viewModel = DebtGoalViewModel(repo, writes = FakeDebtWriteActions())
-        advanceUntilIdle()
-        viewModel.openDetail(goal)
-        advanceUntilIdle()
-
-        viewModel.removeVoidedDebts()
-        advanceUntilIdle()
-
-        val call = repo.replaceCalls.single()
-        assertEquals("debt-goal-1", call.publicId)
-        assertEquals(7L, call.expectedRowVersion)
-        // only the non-voided link survives the replacement set.
-        assertEquals(listOf("debt-a"), call.debtPublicIds)
-        assertTrue(viewModel.state.value.flashMessage != null)
-        assertEquals(false, viewModel.state.value.selectedGoal?.debtRepayment?.needsReview)
-    }
-
-    @Test
-    fun removeVoidedDebtsWithEverythingVoidedSetsErrorWithoutApiCall() = runTest(dispatcher) {
-        // every link voided → no clean replacement set; the repo is never called.
-        val goal = debtGoal(needsReview = true, links = listOf(voidedLink()), voidedIds = listOf("debt-b"))
-        val repo = FakeReportsActions(
-            debtGoalsResult = Result.success(listOf(goal)),
-            goalResult = Result.success(goal),
-        )
-        val viewModel = DebtGoalViewModel(repo, writes = FakeDebtWriteActions())
-        advanceUntilIdle()
-        viewModel.openDetail(goal)
-        advanceUntilIdle()
-
-        viewModel.removeVoidedDebts()
-        advanceUntilIdle()
-
-        assertTrue(repo.replaceCalls.isEmpty())
-        assertTrue(viewModel.state.value.error != null)
-    }
-
-    @Test
     fun acknowledgePassesGoalRowVersionAndFlashesOnSuccess() = runTest(dispatcher) {
         val goal = debtGoal(needsReview = true, rowVersion = 9L)
         val acked = debtGoal(needsReview = false)
@@ -524,7 +478,7 @@ class DebtGoalViewModelTest {
     }
 
     @Test
-    fun removeVoidedThatCompletesAMemberPlanCelebrates() = runTest(dispatcher) {
+    fun returningFromAssociationEditCelebratesTheConfirmedMemberCompletion() = runTest(dispatcher) {
         // 移除作废欠款后新版本恰好全清（纯成员）→ 用户在该屏目击达成 → 撒花。
         val needsReview = debtGoal(
             evaluationState = "not_evaluable",
@@ -533,18 +487,18 @@ class DebtGoalViewModelTest {
             links = listOf(memberLink("cleared"), memberLink("voided", id = "m-voided")),
             voidedIds = listOf("m-voided"),
         )
-        val completed = debtGoal(evaluationState = "achieved", links = listOf(memberLink("cleared")), voidedIds = emptyList())
+        val completed = debtGoal(evaluationState = "achieved", rowVersion = 6L, links = listOf(memberLink("cleared")), voidedIds = emptyList())
         val repo = FakeReportsActions(
             debtGoalsResult = Result.success(listOf(needsReview)),
             goalResult = Result.success(needsReview),
-            replaceResult = Result.success(completed),
         )
         val viewModel = DebtGoalViewModel(repo, writes = FakeDebtWriteActions())
         advanceUntilIdle()
         viewModel.openDetail(needsReview)
         advanceUntilIdle()
 
-        viewModel.removeVoidedDebts()
+        repo.debtGoalsResult = Result.success(listOf(completed))
+        viewModel.refresh()
         advanceUntilIdle()
 
         assertNotNull(viewModel.celebration.value)
@@ -678,23 +632,15 @@ class DebtGoalViewModelTest {
     )
 }
 
-private data class ReplaceCall(
-    val publicId: String,
-    val expectedRowVersion: Long,
-    val debtPublicIds: List<String>,
-)
-
 private class FakeReportsActions(
     private val canModify: Boolean = true,
     var debtGoalsResult: Result<List<Goal>> = Result.success(emptyList()),
     private val goalResult: Result<Goal> = Result.failure(UnsupportedOperationException()),
-    private val replaceResult: Result<Goal> = Result.failure(UnsupportedOperationException()),
     private val acknowledgeResult: Result<Goal> = Result.failure(UnsupportedOperationException()),
     private val archiveResult: Result<Goal> = Result.failure(UnsupportedOperationException()),
 ) : ReportsActions {
     var fromCache = false
     val goalCalls = mutableListOf<String>()
-    val replaceCalls = mutableListOf<ReplaceCall>()
     val acknowledgeCalls = mutableListOf<Pair<String, Long>>()
     val archiveCalls = mutableListOf<String>()
     val targetDateCalls = mutableListOf<Triple<String, Long, String?>>()
@@ -725,15 +671,6 @@ private class FakeReportsActions(
     override suspend fun goal(publicId: String, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?, timezone: String): Result<ReadSnapshot<Goal>> {
         goalCalls += publicId
         return (goalResultOverride ?: goalResult).map { ReadSnapshot(it, "2026-09-09T00:00:00Z", fromCache) }
-    }
-
-    override suspend fun replaceDebtLinks(
-        publicId: String,
-        expectedRowVersion: Long,
-        debtPublicIds: List<String>,
-    ): Result<Goal> {
-        replaceCalls += ReplaceCall(publicId, expectedRowVersion, debtPublicIds)
-        return replaceResult
     }
 
     override suspend fun acknowledgeDebtIntegrityReview(

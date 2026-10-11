@@ -23,31 +23,32 @@ import com.ticketbox.viewmodel.SpendingGoalDetailViewModel
 
 @Composable
 internal fun SpendingGoalSubmissionStatus(state: SpendingGoalDetailUiState, viewModel: SpendingGoalDetailViewModel) {
-    var stopping by remember(state.publicId) { mutableStateOf<PendingGoalEdit?>(null) }
     val active = state.pendingEdits.filter { !it.isDone }
     val shown = active.ifEmpty { listOfNotNull(state.pendingEdits.maxByOrNull { it.row.id }) }
     shown.forEach { pending ->
+        GoalEditSubmissionStatus(pending, state.isSaving, state.canModify, viewModel::recover)
+    }
+}
+
+@Composable
+internal fun GoalEditSubmissionStatus(pending: PendingGoalEdit, busy: Boolean, canModify: Boolean,
+    onRecover: (PendingGoalEdit, Boolean) -> Unit) {
+    var stopping by remember(pending.row) { mutableStateOf(false) }
         AppContentCard {
             val text = pending.submissionText()
             AppStatusBanner(text, if (pending.isDone && pending.confirmed != null) MessageTone.Success else MessageTone.Info)
-            val accepted = pending.confirmed
-            if (accepted != null) SpendingGoalOriginalSummary(accepted.name, accepted.month,
-                accepted.targetAmountCents, accepted.homeCurrencyCode)
-            else pending.request?.let { request ->
-                SpendingGoalOriginalSummary(request.name, request.month, request.targetAmountCents, request.homeCurrencyCode)
-            }
+            GoalEditIntentSummary(pending)
             Row {
-                if (pending.canRetry && state.canModify) TextButton(enabled = !state.isSaving,
-                    onClick = { viewModel.recover(pending, drop = false) }) { Text(stringResource(R.string.spending_goal_submission_retry)) }
-                if (pending.canDrop) TextButton(enabled = !state.isSaving,
-                    onClick = { stopping = pending }) { Text(stringResource(R.string.spending_goal_submission_drop)) }
+                if (pending.canRetry && canModify) TextButton(enabled = !busy,
+                    onClick = { onRecover(pending, false) }) { Text(stringResource(R.string.spending_goal_submission_retry)) }
+                if (pending.canDrop) TextButton(enabled = !busy,
+                    onClick = { stopping = true }) { Text(stringResource(pending.stopLabel)) }
             }
         }
-    }
-    stopping?.takeIf { selected -> state.pendingEdits.any { it.row == selected.row } }?.let { original ->
-        StopGoalEditDialog(original, onDismiss = { stopping = null }, onConfirm = {
-            stopping = null
-            viewModel.recover(original, drop = true)
+    if (stopping) {
+        StopGoalEditDialog(pending, onDismiss = { stopping = false }, onConfirm = {
+            stopping = false
+            onRecover(pending, true)
         })
     }
 }
@@ -55,14 +56,33 @@ internal fun SpendingGoalSubmissionStatus(state: SpendingGoalDetailUiState, view
 @Composable
 private fun StopGoalEditDialog(original: PendingGoalEdit, onDismiss: () -> Unit, onConfirm: () -> Unit) {
     AlertDialog(onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.spending_goal_submission_drop)) },
+        title = { Text(stringResource(original.stopLabel)) },
         text = { Column {
-            Text(stringResource(R.string.goal_submission_stop_body))
-            original.request?.let { SpendingGoalOriginalSummary(it.name, it.month, it.targetAmountCents, it.homeCurrencyCode) }
+            Text(stringResource(if (original.stopLabel == R.string.debt_goal_links_review) R.string.debt_goal_links_review_body
+                else R.string.goal_submission_stop_body))
+            GoalEditIntentSummary(original)
         } },
-        confirmButton = { TextButton(onClick = onConfirm) { Text(stringResource(R.string.spending_goal_submission_drop)) } },
+        confirmButton = { TextButton(onClick = onConfirm) { Text(stringResource(original.stopLabel)) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
     )
+}
+
+private val PendingGoalEdit.stopLabel: Int get() = if (canReviewDebtLinks)
+    R.string.debt_goal_links_review else R.string.spending_goal_submission_drop
+
+@Composable
+internal fun GoalEditIntentSummary(original: PendingGoalEdit) {
+    val links = original.debtLinks
+    val accepted = original.confirmed
+    if (links != null) {
+        Text(links.goalName)
+        Text(links.request.debtPublicIds.joinToString("、") { links.selectedLabels[it].orEmpty()
+            .ifBlank { "关联欠款" } })
+    } else if (accepted != null) SpendingGoalOriginalSummary(accepted.name, accepted.month,
+        accepted.targetAmountCents, accepted.homeCurrencyCode)
+    else original.request?.let { request ->
+        SpendingGoalOriginalSummary(request.name, request.month, request.targetAmountCents, request.homeCurrencyCode)
+    }
 }
 
 private fun com.ticketbox.data.repository.PendingGoalEdit.submissionText(): UiText = UiText.res(when (row.status) {

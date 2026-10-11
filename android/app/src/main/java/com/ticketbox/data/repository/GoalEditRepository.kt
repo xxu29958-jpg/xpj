@@ -9,6 +9,8 @@ import com.ticketbox.data.remote.dto.GoalUpdateRequestDto
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.GoalUpdate
+import com.ticketbox.domain.model.GoalEditInput
+import com.ticketbox.domain.model.DebtGoalLinksUpdate
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
@@ -22,7 +24,7 @@ interface GoalEditActions {
     fun describeEdit(row: OutboxRow): PendingGoalEdit?
     suspend fun currency(binding: LogicalSessionBinding): Result<CurrencyCode>
     fun observeEdits(binding: LogicalSessionBinding, publicId: String): Flow<List<PendingGoalEdit>>
-    suspend fun save(binding: LogicalSessionBinding, goal: Goal, update: GoalUpdate): Result<Long>
+    suspend fun save(binding: LogicalSessionBinding, goal: Goal, update: GoalEditInput): Result<Long>
     suspend fun recover(binding: LogicalSessionBinding, pending: PendingGoalEdit, drop: Boolean): Result<Unit>
     suspend fun create(binding: LogicalSessionBinding, request: GoalCreateRequestDto, creationKey: String): Result<Long>
     fun describeCreation(row: OutboxRow): PendingGoalCreation?
@@ -31,12 +33,14 @@ interface GoalEditActions {
     suspend fun recoverCreation(binding: LogicalSessionBinding, pending: PendingGoalCreation, drop: Boolean): Result<Unit>
 }
 
-data class PendingGoalEdit(val row: OutboxRow, val request: GoalUpdateRequestDto?, val confirmed: Goal?) {
+data class PendingGoalEdit(val row: OutboxRow, val request: GoalUpdateRequestDto?, val confirmed: Goal?,
+    val debtLinks: DebtGoalLinksPayload? = null) {
     val isDone: Boolean get() = row.status == PendingMutationStatus.Done
-    val canRetry: Boolean get() = request?.hasCapturedGoalCurrency() == true &&
+    val canRetry: Boolean get() = (request?.hasCapturedGoalCurrency() == true || debtLinks != null) &&
         row.status == PendingMutationStatus.Failed && (row.lastError?.startsWith("max_attempts_exceeded(") == true ||
         row.lastError in setOf("client_upgrade_required", "runtime_version_mismatch"))
     val canDrop: Boolean get() = row.status == PendingMutationStatus.Failed || row.status == PendingMutationStatus.Conflict
+    val canReviewDebtLinks: Boolean get() = debtLinks != null && row.status == PendingMutationStatus.Conflict
 }
 
 /** Owns original goal commands; dispatchers are the only Android writers. */
@@ -46,6 +50,7 @@ class GoalEditRepository(
     private val requestAdapter: JsonAdapter<GoalUpdateRequestDto>,
     private val receiptAdapter: JsonAdapter<GoalDto>,
     private val createAdapter: JsonAdapter<GoalCreateRequestDto>,
+    private val debtLinksAdapter: JsonAdapter<DebtGoalLinksPayload>,
 ) : GoalEditActions {
     private val guard = LedgerRequestGuard(apiProvider)
     private val errors = NetworkErrorHandler(serverUrlProvider = { null }, context = "Goal edit")
@@ -68,34 +73,50 @@ class GoalEditRepository(
 
     override fun describeEdit(row: OutboxRow): PendingGoalEdit? {
         val binding = guard.captureLogicalBinding() ?: return null
-        if (row.type != PendingMutationType.UpdateGoal || row.ownerKey != binding.ownerKey || row.ledgerId != binding.ledgerId ||
+        if (row.type !in setOf(PendingMutationType.UpdateGoal, PendingMutationType.ReplaceGoalDebtLinks) ||
+            row.ownerKey != binding.ownerKey || row.ledgerId != binding.ledgerId ||
             canonicalServerOriginOrNull(row.serverUrl) != canonicalServerOriginOrNull(binding.serverUrl)) return null
-        val request = requestAdapter.readGoalUpdate(row)
+        val request = if (row.type == PendingMutationType.UpdateGoal) requestAdapter.readGoalUpdate(row) else null
+        val links = debtLinksAdapter.readDebtLinks(row)
         val receipt = row.receiptJson?.let { runCatching { receiptAdapter.fromJson(it) }.getOrNull() }
         return PendingGoalEdit(row, request, receipt?.takeIf {
-            request?.acceptsGoalReceipt(row, it) == true
-        }?.toDomain())
+            request?.acceptsGoalReceipt(row, it) == true || links?.acceptsReceipt(row, it) == true
+        }?.toDomain(), links)
     }
 
     override fun observeEdits(binding: LogicalSessionBinding, publicId: String): Flow<List<PendingGoalEdit>> =
-        outbox.observeActiveByTypes(setOf(PendingMutationType.UpdateGoal), includeCompleted = true).map { rows ->
+        outbox.observeActiveByTypes(setOf(PendingMutationType.UpdateGoal, PendingMutationType.ReplaceGoalDebtLinks),
+            includeCompleted = true).map { rows ->
             if (guard.captureLogicalBinding() != binding) emptyList()
             else rows.filter { it.targetId == "goal:$publicId" }.mapNotNull(::describeEdit)
         }
 
-    override suspend fun save(binding: LogicalSessionBinding, goal: Goal, update: GoalUpdate): Result<Long> = errors.safeCall {
+    override suspend fun save(binding: LogicalSessionBinding, goal: Goal, update: GoalEditInput): Result<Long> = errors.safeCall {
         val bound = guard.bindExact(binding)
         require(currentAccess()?.canModify == true) { "当前角色为只读，无法修改账本。" }
-        require(goal.ledgerId == binding.ledgerId && goal.isSpendingLimit && !goal.isArchived) { "请重新打开这个目标。" }
+        require(goal.ledgerId == binding.ledgerId && !goal.isArchived) { "请重新打开这个目标。" }
         require(goal.rowVersion > 0 && update.expectedRowVersion == goal.rowVersion) { "请刷新目标后核对修改。" }
-        val clean = update.validatedGoalUpdate().getOrThrow()
-        require(CurrencyCode.fromStorageKeyOrNull(clean.homeCurrencyCode) != null &&
-            clean.homeCurrencyCode == goal.homeCurrencyCode) { "输入币种与原目标不一致，请保留金额并核对。" }
-        outbox.enqueue(boundRequest = bound, intent = PendingMutationIntent(
-            type = PendingMutationType.UpdateGoal, targetId = "goal:${goal.publicId}",
-            payloadJson = requestAdapter.toJson(clean.toRequest()),
-            expectedRowVersion = goal.rowVersion, idempotencyKey = UUID.randomUUID().toString(),
-        ), validateTargetRows = { rows ->
+        val (type, payload) = when (update) {
+            is GoalUpdate -> {
+                require(goal.isSpendingLimit) { "请重新打开这个消费目标。" }
+                val clean = update.validatedGoalUpdate().getOrThrow()
+                require(CurrencyCode.fromStorageKeyOrNull(clean.homeCurrencyCode) != null &&
+                    clean.homeCurrencyCode == goal.homeCurrencyCode) { "输入币种与原目标不一致，请保留金额并核对。" }
+                PendingMutationType.UpdateGoal to requestAdapter.toJson(clean.toRequest())
+            }
+            is DebtGoalLinksUpdate -> {
+                require(goal.isDebtRepayment) { "请重新打开这个还债目标。" }
+                require(update.selectedLabels.isNotEmpty() && update.selectedLabels.keys.all { it.isNotBlank() && it == it.trim() }) {
+                    "请至少选择一笔关联欠款。"
+                }
+                val original = DebtGoalLinksPayload(goal.name,
+                    com.ticketbox.data.remote.dto.DebtGoalLinksReplaceRequestDto(goal.rowVersion, update.selectedLabels.keys.toList()),
+                    update.selectedLabels)
+                PendingMutationType.ReplaceGoalDebtLinks to debtLinksAdapter.toJson(original)
+            }
+        }
+        outbox.enqueue(bound, PendingMutationIntent(type, "goal:${goal.publicId}", payload, goal.rowVersion,
+            UUID.randomUUID().toString()), validateTargetRows = { rows ->
             require(rows.none { it.status != PendingMutationStatus.Done }) { "这个目标还有待处理的修改，请先核对原提交。" }
         })
     }

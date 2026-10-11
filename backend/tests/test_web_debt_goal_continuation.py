@@ -8,6 +8,7 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import ApiIdempotencyKey, Debt, Goal, LedgerMember
+from app.services.currency_binding_service import resolve_write_capability
 from tests._local_web_identity_support import _connect_local_session, installed_web_setup
 from tests._web_native_form_support import hidden_post_forms
 from tests.debt_repayment_goal_helpers import _create_debt_goal, _create_external_debt, _replace_links, _set_target_date
@@ -31,6 +32,7 @@ def test_bound_debt_goal_task_replays_its_original_receipt_after_later_edit_and_
     fields = hidden_post_forms(browser.get("/web/debt-goals/new").text)[create_action]
     scope = json.loads(fields["draft_scope"])
     with SessionLocal() as db:
+        resolve_write_capability(db)
         debt = Debt(tenant_id=scope["ledgerId"], owner_account_id=installed.installation_account_id,
             created_by_account_id=installed.installation_account_id, direction="i_owe", counterparty_type="external",
             counterparty_label="原欠款", principal_amount_cents=10000, home_currency_code="CNY", status="open", source_type="manual")

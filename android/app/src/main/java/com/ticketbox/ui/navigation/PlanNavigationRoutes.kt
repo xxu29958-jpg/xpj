@@ -8,7 +8,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 
-internal fun spendingGoalEditRoute(id: String): String = "${ProductSecondaryPage.SpendingGoal.route}?goal=${android.net.Uri.encode(id)}"
+internal fun goalEditRoute(id: String,
+    type: com.ticketbox.data.local.PendingMutationType = com.ticketbox.data.local.PendingMutationType.UpdateGoal): String =
+    if (type == com.ticketbox.data.local.PendingMutationType.ReplaceGoalDebtLinks)
+        "${ProductSecondaryPage.DebtGoals.route}?links=${android.net.Uri.encode(id)}"
+    else "${ProductSecondaryPage.SpendingGoal.route}?goal=${android.net.Uri.encode(id)}"
 
 internal fun spendingGoalCreationRoute(id: Long): String = "${ProductSecondaryPage.SpendingGoal.route}?create=$id"
 

@@ -58,10 +58,7 @@ internal fun SyncStatusDropDialog(
                 selection.recurringOccurrence?.let { com.ticketbox.ui.screens.recurring.RecurringOccurrenceIntentSummary(it) }
                 selection.incomeSubmission?.let { com.ticketbox.ui.screens.IncomePlanIntentSummary(it) }
                 selection.debtWrite?.let { com.ticketbox.ui.screens.DebtWriteIntentSummary(it) }
-                selection.goalEdit?.request?.let { request ->
-                    com.ticketbox.ui.screens.plan.SpendingGoalOriginalSummary(request.name, request.month,
-                        request.targetAmountCents, request.homeCurrencyCode)
-                }
+                selection.goalEdit?.let { com.ticketbox.ui.screens.plan.GoalEditIntentSummary(it) }
                 selection.goalCreation?.let { com.ticketbox.ui.screens.GoalCreationIntentSummary(it) }
                 selection.categoryRule?.let { com.ticketbox.ui.screens.settings.categoryrules.CategoryRuleSubmissionSummary(it) }
                 selection.ruleApplication?.let { com.ticketbox.ui.screens.settings.categoryrules.RuleApplicationSubmissionSummary(it) }
@@ -93,7 +90,7 @@ private fun dropConfirmationText(selection: SyncStatusDropSelection): DropConfir
             stringResource(R.string.category_rule_submission_stop), stringResource(R.string.category_rule_submission_stop_body),
             stringResource(R.string.category_rule_submission_stop),
         )
-        row.type == PendingMutationType.CreateGoal || row.type == PendingMutationType.UpdateGoal -> DropConfirmationText(
+        row.type in setOf(PendingMutationType.CreateGoal, PendingMutationType.UpdateGoal, PendingMutationType.ReplaceGoalDebtLinks) -> DropConfirmationText(
             stringResource(R.string.goal_creation_drop), stringResource(R.string.goal_submission_stop_body),
             stringResource(R.string.goal_creation_drop),
         )

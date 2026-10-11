@@ -36,12 +36,9 @@ internal fun SyncStatusOriginalIntentSummary(row: OutboxRow, state: OutboxStatus
         TextButton(onClick = { actions.onOpenRateSubmission(row.id) }) { Text(stringResource(R.string.advice_rate_submission_open)) }
     }
     state.goalEdits[row.id]?.let { original ->
-        original.request?.let { request ->
-            com.ticketbox.ui.screens.plan.SpendingGoalOriginalSummary(request.name, request.month,
-                request.targetAmountCents, request.homeCurrencyCode)
-        }
-        row.targetId.takeIf { it.startsWith("goal:") && it.length > 5 }?.removePrefix("goal:")?.let { publicId ->
-            TextButton(onClick = { actions.onOpenGoalEdit(publicId) }) { Text(stringResource(R.string.goal_submission_open)) }
+        com.ticketbox.ui.screens.plan.GoalEditIntentSummary(original)
+        row.targetId.takeIf { it.startsWith("goal:") && it.length > 5 }?.removePrefix("goal:")?.let {
+            TextButton(onClick = { actions.onOpenGoalEdit(original) }) { Text(stringResource(R.string.goal_submission_open)) }
         }
     }
     state.goalCreations[row.id]?.let { original ->

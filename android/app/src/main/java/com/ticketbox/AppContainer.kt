@@ -329,6 +329,9 @@ class AppContainer(context: Context) {
                 receiptAdapter = outboxAdapters.goalReceiptAdapter,
                 onAccepted = reportsRepository::invalidateGoalReadsAfterDelivery,
             ),
+            com.ticketbox.data.repository.ReplaceGoalDebtLinksDispatcher(::outboxApi,
+                outboxAdapters.goalDebtLinksAdapter, outboxAdapters.goalReceiptAdapter,
+                reportsRepository::invalidateGoalReadsAfterDelivery),
             // ADR-0042 Slice F: PATCH /api/income-plans/{publicId} via outbox.
             IncomePlanDispatcher(PendingMutationType.CreateIncomePlan, ::outboxApi,
                 outboxAdapters.incomePlanSubmissionAdapter, outboxAdapters.incomePlanReceiptAdapter),

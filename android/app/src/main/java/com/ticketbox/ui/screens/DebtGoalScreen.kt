@@ -68,14 +68,11 @@ private const val DebtGoalFlashDismissMillis = 4000L
 @Composable
 fun DebtGoalScreen(
     viewModel: DebtGoalViewModel,
-    onBack: () -> Unit,
-    onCreate: () -> Unit,
-    onOpenLinkedDebt: (String) -> Unit = {},
-    hasCreationDraft: Boolean = false,
+    navigation: DebtGoalScreenNavigation,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val handleBack = {
-        if (state.selectedGoal != null) viewModel.closeDetail() else onBack()
+        if (state.selectedGoal != null) viewModel.closeDetail() else navigation.onBack()
     }
 
     LaunchedEffect(state.flashMessage) {
@@ -91,13 +88,15 @@ fun DebtGoalScreen(
     var showDatePicker by rememberSaveable { mutableStateOf(false) }
     val callbacks = DebtGoalScreenBodyCallbacks(
         handleBack = handleBack,
-        onCreate = onCreate,
-        hasCreationDraft = hasCreationDraft,
-        onOpenLinkedDebt = onOpenLinkedDebt,
+        onCreate = navigation.onCreate,
+        hasCreationDraft = navigation.hasCreationDraft,
+        association = navigation.association,
+        onOpenLinkedDebt = navigation.onOpenLinkedDebt,
         detailCallbacks = DebtGoalDetailCallbacks(
             sortMode = sortMode,
             onSortModeChange = { sortMode = it },
             onSetTargetDate = { showDatePicker = true },
+            onEditLinks = { selected?.let { navigation.association.onOpen(it.publicId) } },
         ),
     )
     DebtGoalScreenBody(state = state, viewModel = viewModel, callbacks = callbacks)
@@ -113,6 +112,7 @@ private data class DebtGoalScreenBodyCallbacks(
     val handleBack: () -> Unit,
     val onCreate: () -> Unit,
     val hasCreationDraft: Boolean,
+    val association: DebtGoalAssociationNavigation,
     val onOpenLinkedDebt: (String) -> Unit,
     val detailCallbacks: DebtGoalDetailCallbacks,
 )
@@ -167,6 +167,11 @@ private fun DebtGoalScreenBody(
                 callbacks = callbacks.detailCallbacks,
             )
         } else {
+            callbacks.association.retainedId?.let { id ->
+                item { androidx.compose.material3.TextButton(onClick = { callbacks.association.onOpen(id) }) {
+                    Text(stringResource(R.string.debt_goal_links_continue))
+                } }
+            }
             debtGoalListSection(state = state, viewModel = viewModel)
         }
     }
@@ -316,7 +321,7 @@ private fun LazyListScope.debtGoalDetailSection(
                 onAction = { action ->
                     when (action) {
                         DebtIntegrityAction.Acknowledge -> viewModel.acknowledge()
-                        DebtIntegrityAction.RemoveVoided -> viewModel.removeVoidedDebts()
+                        DebtIntegrityAction.RemoveVoided -> callbacks.onEditLinks()
                         DebtIntegrityAction.Archive -> viewModel.archiveSelected()
                     }
                 },
@@ -331,6 +336,11 @@ private fun LazyListScope.debtGoalDetailSection(
         DebtGoalOpenSection(
             title = stringResource(R.string.debt_goal_detail_links_title),
         ) {
+            if (state.canModify && !goal.isArchived) {
+                androidx.compose.material3.TextButton(onClick = callbacks.onEditLinks) {
+                    Text(stringResource(R.string.debt_goal_links_action))
+                }
+            }
             if (isPureExternal) {
                 DebtPlanSortToggle(mode = callbacks.sortMode, onModeChange = callbacks.onSortModeChange)
             }
@@ -451,7 +461,7 @@ private fun DebtGoalIntegrityActions(
         }
         // not_evaluable with a non-voided link to keep: link-replace removes the voided one.
         canRemoveVoided -> AppAdaptiveTrailingActionRow { actionModifier -> removeAction(actionModifier) }
-        // every link voided: no valid replacement set + no Debt picker this slice → archive.
+        // Every link is voided; retain explicit archive alongside the association editor.
         else -> AppAdaptiveTrailingActionRow { actionModifier -> archiveAction(actionModifier) }
     }
 }
@@ -464,4 +474,5 @@ internal data class DebtGoalDetailCallbacks(
     val sortMode: DebtPlanSortMode,
     val onSortModeChange: (DebtPlanSortMode) -> Unit,
     val onSetTargetDate: () -> Unit,
+    val onEditLinks: () -> Unit,
 )

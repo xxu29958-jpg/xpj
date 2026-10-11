@@ -191,7 +191,7 @@ internal class RepositoryGraph(
 
     val goalEditRepository = com.ticketbox.data.repository.GoalEditRepository(
         apiServiceProvider, outbox, outboxAdapters.goalUpdateAdapter, outboxAdapters.goalReceiptAdapter,
-        outboxAdapters.goalCreateAdapter,
+        outboxAdapters.goalCreateAdapter, outboxAdapters.goalDebtLinksAdapter,
     )
 
     val reportsRepository = ReportsRepository(

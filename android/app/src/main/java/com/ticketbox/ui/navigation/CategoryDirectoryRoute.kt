@@ -64,5 +64,5 @@ internal fun CategoryDirectoryRoute(
 private fun categoryReferenceRoute(reference: CategoryReference): String = when (reference.kind) {
     CategoryReferenceKind.Rule -> categoryRuleEditRoute(reference.id.toLong())
     CategoryReferenceKind.Budget -> budgetRoute(reference.id)
-    CategoryReferenceKind.SpendingGoal -> spendingGoalEditRoute(reference.id)
+    CategoryReferenceKind.SpendingGoal -> goalEditRoute(reference.id)
 }

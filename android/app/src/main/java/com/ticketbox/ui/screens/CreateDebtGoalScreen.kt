@@ -182,7 +182,7 @@ private fun DebtGoalPickerContent(
 }
 
 @Composable
-private fun DebtPickerRow(
+internal fun DebtPickerRow(
     debt: Debt,
     selected: Boolean,
     enabled: Boolean,
@@ -207,6 +207,8 @@ private fun DebtPickerRow(
                 text = stringResource(debtDirectionLabelRes(debt.direction)),
                 tone = LocalStateTokens.current.neutral,
             )
+            if (!debt.isOpen) Text(stringResource(debtLinkStatusLabelRes(debt.status)),
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(
                 stringResource(
                     R.string.debt_goal_create_remaining_amount,

@@ -117,7 +117,7 @@
     <string name="spending_goal_submission_month">目标月份：%1$s</string>
     <string name="spending_goal_submission_retry">重试原提交</string>
     <string name="spending_goal_submission_drop">撤下本地修改</string>
-    <string name="spending_goal_submission_pending">修改已保存在本机，等待同步；下方仍是已确认的进度。</string>
+    <string name="spending_goal_submission_pending">修改已保存在本机，等待同步；目标尚未确认更新。</string>
     <string name="spending_goal_submission_in_flight">正在确认原提交，可以离开后再回来查看。</string>
     <string name="spending_goal_submission_conflict">目标已在别处修改。请刷新核对，撤下本地修改后重新编辑。</string>
     <string name="spending_goal_submission_uncertain">暂未确认修改结果，可以重试同一份原提交。</string>

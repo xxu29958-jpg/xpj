@@ -198,9 +198,16 @@ internal fun DebtGoalRoute(
     onBack: () -> Unit,
     creationOwner: ViewModelStoreOwner,
     originalCreationId: Long? = null,
+    originalLinksId: String? = null,
 ) {
     val routeModels = rememberDebtGoalRouteViewModels(screenFactory, creationOwner)
     val creation by routeModels.createGoal.state.collectAsStateWithLifecycle()
+    val links: com.ticketbox.viewmodel.DebtGoalLinksViewModel = viewModel(
+        viewModelStoreOwner = creationOwner, key = "debt-goal-links",
+        factory = com.ticketbox.viewmodel.debtGoalLinksViewModelFactory(screenFactory.reportsRepository,
+            screenFactory.goalEditRepository, screenFactory.debtRepository))
+    val linksState by links.state.collectAsStateWithLifecycle()
+    var editLinksId by rememberSaveable { mutableStateOf(originalLinksId) }
     // overlay 在 open/close 间复用缓存 VM 且跨账本切换存活;每次(重新)进入都 refresh(clearStale=true)
     // (先清旧账本的债务再拉),避免在新账本下短暂看到上一账本的欠款(账本隔离)。
     LaunchedEffect(Unit) { routeModels.debtGoal.refresh(clearStale = true) }
@@ -211,7 +218,12 @@ internal fun DebtGoalRoute(
     var openedCreationId by rememberSaveable { mutableStateOf(originalCreationId) }
     var linkedDebtId by rememberSaveable { mutableStateOf<String?>(null) }
     val openLinkedDebtId = linkedDebtId
-    if (showCreate) {
+    if (editLinksId != null) {
+        com.ticketbox.ui.screens.DebtGoalLinksScreen(links, requireNotNull(editLinksId), onBack = {
+            editLinksId = null
+            routeModels.debtGoal.refresh()
+        })
+    } else if (showCreate) {
         CreateDebtGoalScreen(
             viewModel = routeModels.createGoal,
             originalSubmissionId = openedCreationId,
@@ -243,10 +255,11 @@ internal fun DebtGoalRoute(
             // 返回 / overlay 自带回退处理在 DebtGoalScreen 内（详情先收、再关 overlay）。
             DebtGoalScreen(
                 viewModel = routeModels.debtGoal,
-                onBack = onBack,
-                onCreate = { openedCreationId = null; showCreate = true },
-                hasCreationDraft = creation.hasDraft,
-                onOpenLinkedDebt = { linkedDebtId = it },
+                navigation = com.ticketbox.ui.screens.DebtGoalScreenNavigation(onBack = onBack,
+                    onCreate = { openedCreationId = null; showCreate = true },
+                    association = com.ticketbox.ui.screens.DebtGoalAssociationNavigation(
+                        onOpen = { editLinksId = it }, retainedId = linksState.publicId.takeIf { linksState.hasDraft }),
+                    hasCreationDraft = creation.hasDraft, onOpenLinkedDebt = { linkedDebtId = it }),
             )
             DebtGoalCelebrationOverlay(
                 celebration = celebration,

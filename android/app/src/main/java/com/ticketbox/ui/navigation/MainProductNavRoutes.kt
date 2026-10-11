@@ -80,7 +80,7 @@ internal fun NavGraphBuilder.addWorkspaceRoute(
                     onOpenBudget = { month -> navController.navigate(budgetRoute(month)) },
                     onOpenArrangement = { month -> navController.navigate(monthlyArrangementRoute(month)) },
                     onOpenGoalCreation = { original -> navController.navigate(goalCreationRoute(original)) },
-                    onOpenGoalEdit = { id -> navController.navigate(spendingGoalEditRoute(id)) },
+                    onOpenGoalEdit = { original -> navController.navigate(goalEditRoute(original.row.targetId.removePrefix("goal:"), original.row.type)) },
                     onOpenRuleSubmission = { id -> navController.navigate(categoryRuleSubmissionRoute(id)) },
                     onOpenIncomeSubmission = { id -> navController.navigate(incomePlanSubmissionRoute(id)) },
                     onOpenRateSubmission = { id -> navController.navigate(budgetAdviceSubmissionRoute(id)) },
@@ -156,14 +156,16 @@ internal fun NavGraphBuilder.addObligationRoutes(
             BillSplitRoute(screenFactory = screenFactory, onBack = onBack,
                 onOpenExpense = runtime.navController::openExpense)
         }
-        composable("${ProductSecondaryPage.DebtGoals.route}?create={create}",
-            arguments = listOf(navArgument("create") { type = NavType.StringType; nullable = true; defaultValue = null })) { entry ->
+        composable("${ProductSecondaryPage.DebtGoals.route}?create={create}&links={links}",
+            arguments = listOf(navArgument("create") { type = NavType.StringType; nullable = true; defaultValue = null },
+                navArgument("links") { type = NavType.StringType; nullable = true; defaultValue = null })) { entry ->
             val creationOwner = remember(runtime.navController, entry) { runtime.navController.getBackStackEntry(MAIN_ROUTE) }
             DebtGoalRoute(
                 screenFactory = screenFactory,
                 onBack = onBack,
                 creationOwner = creationOwner,
                 originalCreationId = entry.arguments?.getString("create")?.toLongOrNull(),
+                originalLinksId = entry.arguments?.getString("links"),
             )
         }
         // 全账本往来二级页（W2-C）：ledger lens 的完整账本视图，标题带当前账本名。
@@ -223,7 +225,7 @@ private fun NavGraphBuilder.addObligationSyncRoute(dependencies: MainProductRout
                     onOpenBudget = { month -> navController.navigate(budgetRoute(month)) },
                     onOpenArrangement = { month -> navController.navigate(monthlyArrangementRoute(month)) },
                     onOpenGoalCreation = { original -> navController.navigate(goalCreationRoute(original)) },
-                    onOpenGoalEdit = { id -> navController.navigate(spendingGoalEditRoute(id)) },
+                    onOpenGoalEdit = { original -> navController.navigate(goalEditRoute(original.row.targetId.removePrefix("goal:"), original.row.type)) },
                     onOpenRuleSubmission = { id -> navController.navigate(categoryRuleSubmissionRoute(id)) },
                     onOpenIncomeSubmission = { id -> navController.navigate(incomePlanSubmissionRoute(id)) },
                     onOpenRateSubmission = { id -> navController.navigate(budgetAdviceSubmissionRoute(id)) },

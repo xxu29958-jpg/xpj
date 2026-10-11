@@ -142,14 +142,18 @@ data class GoalDraft(
     val homeCurrencyCode: String,
 )
 
+sealed interface GoalEditInput { val expectedRowVersion: Long }
+
+data class DebtGoalLinksUpdate(override val expectedRowVersion: Long, val selectedLabels: Map<String, String>) : GoalEditInput
+
 data class GoalUpdate(
-    val expectedRowVersion: Long,
+    override val expectedRowVersion: Long,
     val name: String? = null,
     val month: String? = null,
     val targetAmountCents: Long? = null,
     val category: String? = null,
     val homeCurrencyCode: String,
-)
+) : GoalEditInput
 
 enum class DashboardSurface(val apiValue: String) {
     Android("android"),

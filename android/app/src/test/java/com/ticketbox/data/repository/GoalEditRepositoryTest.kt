@@ -8,6 +8,7 @@ import com.ticketbox.data.remote.dto.GoalUpdateRequestDto
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.GoalUpdate
 import java.io.IOException
+import okhttp3.ResponseBody.Companion.toResponseBody
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -16,6 +17,64 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class GoalEditRepositoryTest {
+    @Test fun debtLinksReplayRetainsTheOriginalSelectionAndReceiptAfterALaterGoalChange() = runTest {
+        val f = GoalEditFixture()
+        f.useDebtGoal()
+        val id = f.saveLinks().getOrThrow()
+        val original = f.dao.rows.getValue(id)
+        assertEquals(listOf(1), f.scheduledDepth)
+        assertTrue(f.keys.isEmpty())
+        assertTrue(f.saveLinks().isFailure)
+        f.loseAck = true
+        assertEquals(1, f.engine().drainOnce().failures)
+        val failed = f.pending()
+        assertEquals(listOf("debt-a", "debt-b"), failed.debtLinks?.request?.debtPublicIds)
+        assertTrue(failed.canRetry)
+        f.current = f.current.copy(rowVersion = 3, name = "另一端后来修改")
+        f.repository.recover(f.binding, failed, drop = false).getOrThrow()
+        f.loseAck = false
+        assertEquals(1, f.engine().drainOnce().done)
+        assertEquals(listOf(original.idempotencyKey, original.idempotencyKey), f.keys)
+        assertEquals(original.payload, f.dao.rows.getValue(id).payload)
+        assertEquals(original.expectedRowVersion, f.dao.rows.getValue(id).expectedRowVersion)
+        assertEquals(2, f.pending().confirmed?.rowVersion)
+        assertEquals("原还债目标", f.pending().confirmed?.name)
+        assertEquals(listOf(id), f.acceptedRows)
+    }
+
+    @Test fun debtLinksRefuseForeignAndNewerReceiptsAndCannotSubmitAsViewer() = runTest {
+        val f = GoalEditFixture()
+        f.useDebtGoal()
+        val id = f.saveLinks().getOrThrow()
+        val original = f.pending()
+        f.receiptOverride = f.current.copy(rowVersion = 8)
+        assertEquals(1, f.engine().drainOnce().failures)
+        assertEquals(null, f.pending().confirmed)
+        assertFalse(f.pending().canRetry)
+        assertTrue(f.acceptedRows.isEmpty())
+        val stored = f.dao.rows.getValue(id)
+        f.session.switchLedgerForFixture("other", "另一账本")
+        assertEquals(null, f.repository.describeEdit(original.row))
+        assertTrue(f.saveLinks().isFailure)
+        assertEquals(stored, f.dao.rows.getValue(id))
+        f.session.switchLedgerForFixture("owner", "原账本", "viewer")
+        assertTrue(f.repository.save(requireNotNull(f.repository.currentAccess()).binding,
+            f.current.toDomain(), com.ticketbox.domain.model.DebtGoalLinksUpdate(f.current.rowVersion, mapOf("debt-a" to "甲"))).isFailure)
+        val missing = GoalEditFixture().apply {
+            useDebtGoal()
+            replyFailure = retrofit2.HttpException(retrofit2.Response.error<Any>(404,
+                """{"error":"goal_not_found","message":"目标不存在"}""".toResponseBody()))
+        }
+        val missingId = missing.saveLinks().getOrThrow()
+        val missingOriginal = missing.dao.rows.getValue(missingId)
+        assertEquals(1, missing.engine().drainOnce().failures)
+        assertFalse(missing.pending().isDone)
+        assertTrue(missing.pending().canDrop)
+        assertEquals(null, missing.pending().confirmed)
+        assertEquals(missingOriginal.payload, missing.dao.rows.getValue(missingId).payload)
+        assertEquals(missingOriginal.idempotencyKey, missing.dao.rows.getValue(missingId).idempotencyKey)
+    }
+
     @Test fun publishIsDurableBeforeSchedulingAndRejectsDuplicateUnresolvedIntent() = runTest {
         val f = GoalEditFixture()
         val id = f.save().getOrThrow()
@@ -114,11 +173,28 @@ private class GoalEditFixture {
     val keys = mutableListOf<String?>()
     val acceptedRows = mutableListOf<Long>()
     var loseAck = false
+    var receiptOverride: GoalDto? = null
+    var replyFailure: Exception? = null
     var current = GoalDto("goal-1", "owner", "餐饮", "spending_limit", "monthly", "2026-09", "餐饮",
         20000, 8000, 12000, 40, "on_track", "active", "2026-09-01T00:00:00Z", "2026-09-01T00:00:00Z", 1, null,
         homeCurrencyCode = "JPY")
     private val results = mutableMapOf<String, GoalDto>()
     private val api = object : com.ticketbox.data.remote.ApiService by FakeApiService(mutableListOf(), 0) {
+        override suspend fun replaceGoalDebtLinks(publicId: String,
+            request: com.ticketbox.data.remote.dto.DebtGoalLinksReplaceRequestDto,
+            idempotencyKey: String?, timezone: String?): GoalDto {
+            keys += idempotencyKey
+            replyFailure?.let { throw it }
+            val result = results.getOrPut(requireNotNull(idempotencyKey)) {
+                check(request.expectedRowVersion == current.rowVersion)
+                current.copy(rowVersion = current.rowVersion + 1, debtRepayment = current.debtRepayment?.copy(
+                    linkedDebts = request.debtPublicIds.map { debtId ->
+                        com.ticketbox.data.remote.dto.DebtGoalLinkViewDto(debtId, "open", "i_owe", "external", debtId, 100, 100, "CNY")
+                    })).also { current = it }
+            }
+            if (loseAck) throw IOException("lost synthetic acknowledgement")
+            return receiptOverride ?: result
+        }
         override suspend fun runtimeCompatibility() = com.ticketbox.data.remote.dto.RuntimeCompatibilityDto(
             com.ticketbox.data.remote.CURRENT_TICKETBOX_API_VERSION, "compatible",
             com.ticketbox.data.remote.dto.RuntimeProductCapabilitiesDto(
@@ -139,11 +215,20 @@ private class GoalEditFixture {
         override fun create(baseUrl: String, tokenProvider: () -> String?) = api
     }, session)
     val repository = GoalEditRepository(provider, outbox, adapters.goalUpdateAdapter, adapters.goalReceiptAdapter,
-        adapters.goalCreateAdapter)
+        adapters.goalCreateAdapter, adapters.goalDebtLinksAdapter)
     val binding = repository.currentAccess()!!.binding
+    fun useDebtGoal() {
+        current = current.copy(name = "原还债目标", goalType = "debt_repayment", period = "unbounded", month = null,
+            targetAmountCents = null, homeCurrencyCode = null,
+            debtRepayment = com.ticketbox.data.remote.dto.DebtRepaymentEvaluationDto(1, "in_progress", false,
+                linkedDebts = emptyList(), voidedDebtPublicIds = emptyList()))
+    }
+    suspend fun saveLinks() = repository.save(binding, current.toDomain(),
+        com.ticketbox.domain.model.DebtGoalLinksUpdate(current.rowVersion, linkedMapOf("debt-a" to "甲", "debt-b" to "乙")))
     suspend fun save(goal: com.ticketbox.domain.model.Goal = current.toDomain()) =
         repository.save(binding, goal, GoalUpdate(goal.rowVersion, targetAmountCents = 35000, category = "", homeCurrencyCode = "JPY"))
     suspend fun pending() = repository.observeEdits(binding, "goal-1").first().last()
     fun engine() = OutboxDrainEngine(outbox, listOf(UpdateGoalDispatcher({ api },
-        adapters.goalUpdateAdapter, adapters.goalReceiptAdapter) { acceptedRows += it.id }), maxAttempts = 1)
+        adapters.goalUpdateAdapter, adapters.goalReceiptAdapter) { acceptedRows += it.id },
+        ReplaceGoalDebtLinksDispatcher({ api }, adapters.goalDebtLinksAdapter, adapters.goalReceiptAdapter) { acceptedRows += it.id }), maxAttempts = 1)
 }
