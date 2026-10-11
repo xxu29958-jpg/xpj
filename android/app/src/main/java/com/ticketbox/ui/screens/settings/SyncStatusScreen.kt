@@ -518,6 +518,7 @@ internal val syncStatusMutationLabelResources = mapOf(
     PendingMutationType.DeleteMerchantAlias to R.string.sync_status_mutation_delete_merchant_alias,
     PendingMutationType.UpdateGoal to R.string.sync_status_mutation_update_goal,
     PendingMutationType.ReplaceGoalDebtLinks to R.string.debt_goal_links_action,
+    PendingMutationType.SetGoalTargetDate to R.string.debt_goal_date_title,
     PendingMutationType.CreateGoal to R.string.goal_creation_label,
     PendingMutationType.CreateIncomePlan to R.string.income_plan_submission_create,
     PendingMutationType.UpdateIncomePlan to R.string.sync_status_mutation_update_income_plan,

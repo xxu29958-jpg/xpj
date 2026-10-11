@@ -257,52 +257,15 @@ class ReportsRepositoryTest {
     }
 
     @Test
-    fun setDebtGoalTargetDatePassesOccTokenIdempotencyKeyAndCleanId() = withReportsTimezone("UTC") {
-        runTest {
-            val api = ReportsApiHandler()
-            val repository = repository(api)
-
-            // set a deadline …
-            repository.setDebtGoalTargetDate(
-                publicId = " debt-goal-1 ",
-                expectedRowVersion = 6L,
-                targetDate = "2028-03-01",
-            ).getOrThrow()
-            // … then clear it (null target_date)
-            repository.setDebtGoalTargetDate(
-                publicId = "debt-goal-1",
-                expectedRowVersion = 7L,
-                targetDate = null,
-            ).getOrThrow()
-
-            val set = api.setGoalTargetDateCalls[0]
-            assertEquals("debt-goal-1", set.publicId) // trimmed before the request leaves the repository
-            assertEquals(6L, set.request.expectedRowVersion)
-            assertEquals("2028-03-01", set.request.targetDate)
-            assertTrue(!set.idempotencyKey.isNullOrBlank())
-            assertEquals("UTC", set.timezone)
-
-            val clear = api.setGoalTargetDateCalls[1]
-            assertEquals(7L, clear.request.expectedRowVersion)
-            assertNull(clear.request.targetDate) // the clear case carries a null target_date (Moshi omits it on the wire)
-            assertTrue(!clear.idempotencyKey.isNullOrBlank())
-        }
-    }
-
-    @Test
     fun viewerDebtMutationsShortCircuitWithoutApiCall() = runTest {
         val api = ReportsApiHandler()
         val repository = repository(api, role = "viewer")
 
         val ackResult = repository.acknowledgeDebtIntegrityReview("debt-goal-1", 1L)
-        val targetDateResult = repository.setDebtGoalTargetDate("debt-goal-1", 1L, "2028-03-01")
 
         assertTrue(ackResult.isFailure)
-        assertTrue(targetDateResult.isFailure)
         assertEquals("当前角色为只读，无法修改账本。", ackResult.exceptionOrNull()?.message)
-        assertEquals("当前角色为只读，无法修改账本。", targetDateResult.exceptionOrNull()?.message)
         assertTrue(api.acknowledgeIntegrityCalls.isEmpty())
-        assertTrue(api.setGoalTargetDateCalls.isEmpty())
     }
 
     private fun repository(
@@ -353,13 +316,6 @@ private data class AcknowledgeIntegrityCall(
     val timezone: String?,
 )
 
-private data class SetGoalTargetDateCall(
-    val publicId: String,
-    val request: com.ticketbox.data.remote.dto.DebtGoalTargetDateRequestDto,
-    val idempotencyKey: String?,
-    val timezone: String?,
-)
-
 private data class UpdateDashboardCardsCall(
     val request: DashboardCardsUpdateRequestDto,
     val surface: String,
@@ -383,7 +339,6 @@ private class ReportsApiHandler : InvocationHandler {
     val goalsCalls = mutableListOf<GoalsCall>()
     val archiveGoalCalls = mutableListOf<Pair<String, String?>>()
     val acknowledgeIntegrityCalls = mutableListOf<AcknowledgeIntegrityCall>()
-    val setGoalTargetDateCalls = mutableListOf<SetGoalTargetDateCall>()
     val dashboardCardCalls = mutableListOf<String>()
     val updateDashboardCardCalls = mutableListOf<UpdateDashboardCardsCall>()
     var archiveGoalError: Throwable? = null
@@ -469,16 +424,6 @@ private class ReportsApiHandler : InvocationHandler {
                     timezone = values[3] as String?,
                 )
                 debtGoalDto(needsReview = false)
-            }
-            "setGoalTargetDate" -> {
-                // 8e-6c: arg order is [publicId, request, idempotencyKey, timezone].
-                setGoalTargetDateCalls += SetGoalTargetDateCall(
-                    publicId = values[0] as String,
-                    request = values[1] as com.ticketbox.data.remote.dto.DebtGoalTargetDateRequestDto,
-                    idempotencyKey = values[2] as String?,
-                    timezone = values[3] as String?,
-                )
-                debtGoalDto()
             }
             "goal" -> goalDto()
             "archiveGoal" -> {

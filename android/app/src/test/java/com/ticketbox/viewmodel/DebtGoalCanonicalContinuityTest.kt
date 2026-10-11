@@ -139,7 +139,7 @@ class DebtGoalCanonicalContinuityTest {
     }
 
     @Test
-    fun olderCachedListAndDetailCannotEraseAnAcceptedTargetDateOrRelabelItsSource() = runTest(dispatcher) {
+    fun olderCachedListAndDetailCannotEraseANewerGoalReadOrRelabelItsSource() = runTest(dispatcher) {
         val original = canonicalDebtGoal()
         val accepted = original.copy(rowVersion = original.rowVersion + 1,
             debtRepayment = requireNotNull(original.debtRepayment).copy(targetDate = "2026-10-01"))
@@ -152,41 +152,38 @@ class DebtGoalCanonicalContinuityTest {
         val repo = object : ReportsActions by unexpected {
             override fun canModifyLedger() = true
             override suspend fun debtGoals(includeArchived: Boolean, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?, timezone: String) =
-                Result.success(ReadSnapshot(listOf(queried), "2026-09-09T00:00:00Z", fromCache))
+                Result.success(ReadSnapshot(listOf(queried), if (queried == accepted) "2026-09-09T10:00:00Z" else "2026-09-09T09:00:00Z", fromCache))
             override suspend fun goal(publicId: String, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?, timezone: String) =
-                Result.success(ReadSnapshot(queried, "2026-09-09T00:00:00Z", fromCache))
-            override suspend fun setDebtGoalTargetDate(publicId: String, expectedRowVersion: Long, targetDate: String?): Result<Goal> {
-                assertEquals(original.rowVersion, expectedRowVersion)
-                assertEquals("2026-10-01", targetDate)
-                return Result.success(accepted)
-            }
+                Result.success(ReadSnapshot(queried, if (queried == accepted) "2026-09-09T10:00:00Z" else "2026-09-09T09:00:00Z", fromCache))
         }
         val vm = DebtGoalViewModel(repo, FakeDebtWriteActions())
         try {
             advanceUntilIdle()
             vm.openDetail(original)
             advanceUntilIdle()
-            vm.setTargetDate(java.time.LocalDate.parse("2026-10-01").atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli())
+            queried = accepted
+            vm.refresh()
             advanceUntilIdle()
             assertEquals(accepted, vm.state.value.selectedGoal)
+            queried = original
             fromCache = true
             vm.refresh()
             advanceUntilIdle()
             assertEquals(listOf(accepted), vm.state.value.goals)
             assertEquals(accepted, vm.state.value.selectedGoal)
-            assertNull(vm.state.value.fetchedAt)
-            assertNull(vm.state.value.selectedFetchedAt)
+            assertEquals("2026-09-09T10:00:00Z", vm.state.value.fetchedAt)
+            assertEquals("2026-09-09T10:00:00Z", vm.state.value.selectedFetchedAt)
             vm.closeDetail()
             vm.openDetail(vm.state.value.goals.single())
             advanceUntilIdle()
             assertEquals(accepted, vm.state.value.selectedGoal)
-            assertNull(vm.state.value.selectedFetchedAt)
+            assertEquals("2026-09-09T10:00:00Z", vm.state.value.selectedFetchedAt)
             queried = accepted
             fromCache = false
             vm.refresh()
             advanceUntilIdle()
             assertEquals(accepted, vm.state.value.selectedGoal)
-            assertEquals("2026-09-09T00:00:00Z", vm.state.value.selectedFetchedAt)
+            assertEquals("2026-09-09T10:00:00Z", vm.state.value.selectedFetchedAt)
         } finally {
             vm.viewModelScope.cancel()
         }

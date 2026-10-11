@@ -1,6 +1,5 @@
 package com.ticketbox.ui.screens.plan
 
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
@@ -17,6 +16,8 @@ import com.ticketbox.data.repository.PendingGoalEdit
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.AppContentCard
+import com.ticketbox.ui.components.AppAction
+import com.ticketbox.ui.components.AppActionRow
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.viewmodel.SpendingGoalDetailUiState
 import com.ticketbox.viewmodel.SpendingGoalDetailViewModel
@@ -38,11 +39,13 @@ internal fun GoalEditSubmissionStatus(pending: PendingGoalEdit, busy: Boolean, c
             val text = pending.submissionText()
             AppStatusBanner(text, if (pending.isDone && pending.confirmed != null) MessageTone.Success else MessageTone.Info)
             GoalEditIntentSummary(pending)
-            Row {
-                if (pending.canRetry && canModify) TextButton(enabled = !busy,
-                    onClick = { onRecover(pending, false) }) { Text(stringResource(R.string.spending_goal_submission_retry)) }
-                if (pending.canDrop) TextButton(enabled = !busy,
-                    onClick = { stopping = true }) { Text(stringResource(pending.stopLabel)) }
+            val retry = if (pending.canRetry && canModify) AppAction(
+                stringResource(R.string.spending_goal_submission_retry), enabled = !busy,
+                onClick = { onRecover(pending, false) }) else null
+            val stop = if (pending.canDrop) AppAction(stringResource(pending.stopLabel), enabled = !busy,
+                onClick = { stopping = true }) else null
+            (retry ?: stop)?.let { primary ->
+                AppActionRow(primary = primary, secondary = stop.takeIf { retry != null })
             }
         }
     if (stopping) {
@@ -67,17 +70,22 @@ private fun StopGoalEditDialog(original: PendingGoalEdit, onDismiss: () -> Unit,
     )
 }
 
-private val PendingGoalEdit.stopLabel: Int get() = if (canReviewDebtLinks)
+private val PendingGoalEdit.stopLabel: Int get() = if (canReviewDebtEdit)
     R.string.debt_goal_links_review else R.string.spending_goal_submission_drop
 
 @Composable
 internal fun GoalEditIntentSummary(original: PendingGoalEdit) {
-    val links = original.debtLinks
+    val links = original.debtEdit
     val accepted = original.confirmed
     if (links != null) {
         Text(links.goalName)
-        Text(links.request.debtPublicIds.joinToString("、") { links.selectedLabels[it].orEmpty()
-            .ifBlank { "关联欠款" } })
+        val fallbackLabel = stringResource(R.string.debt_goal_links_unavailable)
+        links.request?.let { request ->
+            Text(request.debtPublicIds.joinToString("、") { links.selectedLabels[it].orEmpty().ifBlank { fallbackLabel } })
+        }
+        links.dateRequest?.let { request ->
+            Text(request.targetDate ?: stringResource(R.string.debt_goal_date_cleared))
+        }
     } else if (accepted != null) SpendingGoalOriginalSummary(accepted.name, accepted.month,
         accepted.targetAmountCents, accepted.homeCurrencyCode)
     else original.request?.let { request ->

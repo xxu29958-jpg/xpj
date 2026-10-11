@@ -80,6 +80,7 @@ enum class PendingMutationType(val wireValue: String) {
     DeleteMerchantAlias("delete_merchant_alias"),
     UpdateGoal("update_goal"),
     ReplaceGoalDebtLinks("replace_goal_debt_links"),
+    SetGoalTargetDate("set_goal_target_date"),
     CreateGoal("create_goal"),
     CreateIncomePlan("create_income_plan"),
     UpdateIncomePlan("update_income_plan"),

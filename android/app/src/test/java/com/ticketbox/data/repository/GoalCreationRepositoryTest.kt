@@ -174,7 +174,7 @@ private class GoalCreationFixture {
     private val provider = testApiServiceProvider(object : ApiServiceFactory {
         override fun create(baseUrl: String, tokenProvider: () -> String?) = api
     }, session)
-    val repository = GoalEditRepository(provider, outbox, adapters.goalUpdateAdapter, adapters.goalReceiptAdapter, adapters.goalCreateAdapter, adapters.goalDebtLinksAdapter)
+    val repository = GoalEditRepository(provider, outbox, adapters.goalUpdateAdapter, adapters.goalReceiptAdapter, adapters.goalCreateAdapter, adapters.goalDebtEditAdapter)
     val binding = repository.currentAccess()!!.binding
     suspend fun create() = repository.create(binding, draft, creationKey)
     suspend fun pending() = repository.observeCreations(binding).first().single()

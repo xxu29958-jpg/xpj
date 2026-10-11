@@ -55,7 +55,7 @@ class GoalQueryCommandInvalidationTest {
 }
 
 private enum class GoalReadCommand {
-    Archive, AcknowledgeReview, SetTargetDate;
+    Archive, AcknowledgeReview;
 
     fun original(): GoalDto = if (this == Archive) readGoalDto() else readGoalDto().copy(
         goalType = "debt_repayment", month = null, targetAmountCents = null, homeCurrencyCode = null,
@@ -67,14 +67,11 @@ private enum class GoalReadCommand {
     suspend fun execute(repository: ReportsRepository, binding: LogicalSessionBinding) = when (this) {
         Archive -> repository.archiveGoal("goal-jpy", binding)
         AcknowledgeReview -> repository.acknowledgeDebtIntegrityReview("goal-jpy", 2)
-        SetTargetDate -> repository.setDebtGoalTargetDate("goal-jpy", 2, "2026-12-31")
     }
 }
 
 private fun goalCommandApi(delegate: ApiService, accepted: () -> GoalDto): ApiService = object : ApiService by delegate {
     override suspend fun archiveGoal(publicId: String, timezone: String?) = accepted()
     override suspend fun acknowledgeGoalIntegrityReview(publicId: String, request: DebtGoalIntegrityReviewRequestDto,
-        idempotencyKey: String?, timezone: String?) = accepted()
-    override suspend fun setGoalTargetDate(publicId: String, request: DebtGoalTargetDateRequestDto,
         idempotencyKey: String?, timezone: String?) = accepted()
 }

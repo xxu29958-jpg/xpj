@@ -17,7 +17,57 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class GoalEditRepositoryTest {
-    @Test fun debtLinksReplayRetainsTheOriginalSelectionAndReceiptAfterALaterGoalChange() = runTest {
+    @Test fun dateSetAndClearRetainTheirOwnOriginalKeyOccAndFirstReceipt() = runTest {
+        val f = GoalEditFixture().apply { useDebtGoal() }
+        val id = f.saveDate("2028-03-01").getOrThrow()
+        val original = f.dao.rows.getValue(id)
+        assertTrue(f.keys.isEmpty())
+        assertTrue(f.saveLinks().isFailure)
+        f.loseAck = true
+        assertEquals(1, f.engine().drainOnce().failures)
+        val failed = f.pending()
+        assertEquals("2028-03-01", failed.debtEdit?.dateRequest?.targetDate)
+        assertTrue(failed.canRetry)
+        f.current = f.current.copy(rowVersion = 3, name = "另一端后来修改",
+            debtRepayment = f.current.debtRepayment?.copy(targetDate = "2029-12-31"))
+        f.repository.recover(f.binding, failed, drop = false).getOrThrow()
+        f.loseAck = false
+        assertEquals(1, f.engine().drainOnce().done)
+        assertEquals(listOf(original.idempotencyKey, original.idempotencyKey), f.keys)
+        assertEquals(original.payload, f.dao.rows.getValue(id).payload)
+        assertEquals(original.expectedRowVersion, f.dao.rows.getValue(id).expectedRowVersion)
+        assertEquals(2, f.pending().confirmed?.rowVersion)
+        assertEquals(1, f.pending().confirmed?.debtRepayment?.goalVersion)
+        assertEquals("2028-03-01", f.pending().confirmed?.debtRepayment?.targetDate)
+        val clearId = f.saveDate(null).getOrThrow()
+        assertEquals(1, f.engine().drainOnce().done)
+        assertEquals(null, f.pending().confirmed?.debtRepayment?.targetDate)
+        assertEquals(4, f.pending().confirmed?.rowVersion)
+        assertEquals(1, f.pending().confirmed?.debtRepayment?.goalVersion)
+        assertTrue(f.dao.rows.getValue(clearId).idempotencyKey != original.idempotencyKey)
+    }
+
+    @Test fun dateTaskRejectsNonApplicableGoalsAndUnmatchedReceiptsWithoutDroppingTheOriginal() = runTest {
+        val f = GoalEditFixture().apply { useDebtGoal() }
+        assertTrue(f.saveDate("2028-02-31").isFailure)
+        val current = f.current
+        f.current = current.copy(debtRepayment = current.debtRepayment?.copy(linkedDebts =
+            current.debtRepayment.linkedDebts.map { it.copy(counterpartyType = "member") }))
+        assertTrue(f.saveDate("2028-03-01").isFailure)
+        f.current = current
+        val id = f.saveDate("2028-03-01").getOrThrow()
+        val original = f.dao.rows.getValue(id)
+        f.receiptOverride = current.copy(rowVersion = 2, debtRepayment = current.debtRepayment?.copy(
+            targetDate = "2028-03-01", goalVersion = 2))
+        assertEquals(1, f.engine().drainOnce().failures)
+        assertEquals(null, f.pending().confirmed)
+        assertFalse(f.pending().isDone)
+        assertEquals(original.payload, f.dao.rows.getValue(id).payload)
+        assertEquals(original.idempotencyKey, f.dao.rows.getValue(id).idempotencyKey)
+        assertTrue(f.acceptedRows.isEmpty())
+    }
+
+    @Test fun debtEditReplayRetainsTheOriginalSelectionAndReceiptAfterALaterGoalChange() = runTest {
         val f = GoalEditFixture()
         f.useDebtGoal()
         val id = f.saveLinks().getOrThrow()
@@ -28,7 +78,7 @@ class GoalEditRepositoryTest {
         f.loseAck = true
         assertEquals(1, f.engine().drainOnce().failures)
         val failed = f.pending()
-        assertEquals(listOf("debt-a", "debt-b"), failed.debtLinks?.request?.debtPublicIds)
+        assertEquals(listOf("debt-a", "debt-b"), failed.debtEdit?.request?.debtPublicIds)
         assertTrue(failed.canRetry)
         f.current = f.current.copy(rowVersion = 3, name = "另一端后来修改")
         f.repository.recover(f.binding, failed, drop = false).getOrThrow()
@@ -42,7 +92,7 @@ class GoalEditRepositoryTest {
         assertEquals(listOf(id), f.acceptedRows)
     }
 
-    @Test fun debtLinksRefuseForeignAndNewerReceiptsAndCannotSubmitAsViewer() = runTest {
+    @Test fun debtEditRefuseForeignAndNewerReceiptsAndCannotSubmitAsViewer() = runTest {
         val f = GoalEditFixture()
         f.useDebtGoal()
         val id = f.saveLinks().getOrThrow()
@@ -180,6 +230,18 @@ private class GoalEditFixture {
         homeCurrencyCode = "JPY")
     private val results = mutableMapOf<String, GoalDto>()
     private val api = object : com.ticketbox.data.remote.ApiService by FakeApiService(mutableListOf(), 0) {
+        override suspend fun setGoalTargetDate(publicId: String,
+            request: com.ticketbox.data.remote.dto.DebtGoalTargetDateRequestDto, idempotencyKey: String?, timezone: String?): GoalDto {
+            keys += idempotencyKey
+            replyFailure?.let { throw it }
+            val result = results.getOrPut(requireNotNull(idempotencyKey)) {
+                check(request.expectedRowVersion == current.rowVersion)
+                current.copy(rowVersion = current.rowVersion + 1, debtRepayment = current.debtRepayment?.copy(
+                    targetDate = request.targetDate)).also { current = it }
+            }
+            if (loseAck) throw IOException("lost synthetic date reply")
+            return receiptOverride ?: result
+        }
         override suspend fun replaceGoalDebtLinks(publicId: String,
             request: com.ticketbox.data.remote.dto.DebtGoalLinksReplaceRequestDto,
             idempotencyKey: String?, timezone: String?): GoalDto {
@@ -215,14 +277,17 @@ private class GoalEditFixture {
         override fun create(baseUrl: String, tokenProvider: () -> String?) = api
     }, session)
     val repository = GoalEditRepository(provider, outbox, adapters.goalUpdateAdapter, adapters.goalReceiptAdapter,
-        adapters.goalCreateAdapter, adapters.goalDebtLinksAdapter)
+        adapters.goalCreateAdapter, adapters.goalDebtEditAdapter)
     val binding = repository.currentAccess()!!.binding
     fun useDebtGoal() {
         current = current.copy(name = "原还债目标", goalType = "debt_repayment", period = "unbounded", month = null,
             targetAmountCents = null, homeCurrencyCode = null,
             debtRepayment = com.ticketbox.data.remote.dto.DebtRepaymentEvaluationDto(1, "in_progress", false,
-                linkedDebts = emptyList(), voidedDebtPublicIds = emptyList()))
+                linkedDebts = listOf(com.ticketbox.data.remote.dto.DebtGoalLinkViewDto(
+                    "debt-a", "open", "i_owe", "external", "原欠款", 100, 100, "CNY")), voidedDebtPublicIds = emptyList()))
     }
+    suspend fun saveDate(value: String?) = repository.save(binding, current.toDomain(),
+        com.ticketbox.domain.model.DebtGoalTargetDateUpdate(current.rowVersion, value))
     suspend fun saveLinks() = repository.save(binding, current.toDomain(),
         com.ticketbox.domain.model.DebtGoalLinksUpdate(current.rowVersion, linkedMapOf("debt-a" to "甲", "debt-b" to "乙")))
     suspend fun save(goal: com.ticketbox.domain.model.Goal = current.toDomain()) =
@@ -230,5 +295,7 @@ private class GoalEditFixture {
     suspend fun pending() = repository.observeEdits(binding, "goal-1").first().last()
     fun engine() = OutboxDrainEngine(outbox, listOf(UpdateGoalDispatcher({ api },
         adapters.goalUpdateAdapter, adapters.goalReceiptAdapter) { acceptedRows += it.id },
-        ReplaceGoalDebtLinksDispatcher({ api }, adapters.goalDebtLinksAdapter, adapters.goalReceiptAdapter) { acceptedRows += it.id }), maxAttempts = 1)
+        DebtGoalEditDispatcher({ api }, adapters.goalDebtEditAdapter, adapters.goalReceiptAdapter) { acceptedRows += it.id },
+        DebtGoalEditDispatcher({ api }, adapters.goalDebtEditAdapter, adapters.goalReceiptAdapter,
+            com.ticketbox.data.local.PendingMutationType.SetGoalTargetDate) { acceptedRows += it.id }), maxAttempts = 1)
 }

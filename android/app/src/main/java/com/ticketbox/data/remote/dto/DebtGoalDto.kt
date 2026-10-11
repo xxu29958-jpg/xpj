@@ -111,6 +111,7 @@ data class DebtGoalIntegrityReviewRequestDto(
  * clear — the backend field is optional (a setter: omitted/null = clear), so Moshi's null-omission
  * naturally encodes the clear case (it never reaches the wire as an explicit null).
  */
+@JsonClass(generateAdapter = true)
 data class DebtGoalTargetDateRequestDto(
     @param:Json(name = "expected_row_version")
     val expectedRowVersion: Long,

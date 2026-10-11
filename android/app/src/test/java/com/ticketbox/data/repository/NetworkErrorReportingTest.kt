@@ -197,7 +197,7 @@ class NetworkErrorReportingTest {
         val dao = FakePendingMutationDao()
         val outbox = testOutboxRepository(dao = dao)
         val adapters = com.ticketbox.OutboxAdapterGraph()
-        val payload = adapters.goalDebtLinksAdapter.toJson(DebtGoalLinksPayload("原关联任务",
+        val payload = adapters.goalDebtEditAdapter.toJson(DebtGoalEditPayload("原关联任务",
             com.ticketbox.data.remote.dto.DebtGoalLinksReplaceRequestDto(7, listOf("debt-original")),
             mapOf("debt-original" to "原选择")))
         val id = outbox.enqueue(PendingMutationType.ReplaceGoalDebtLinks, "goal:original", payload, 7L, "original-links-key")
@@ -210,8 +210,8 @@ class NetworkErrorReportingTest {
                 throw IllegalStateException("password=synthetic-links-secret", IOException("private financial text"))
             }
         }
-        val summary = OutboxDrainEngine(outbox, listOf(ReplaceGoalDebtLinksDispatcher({ api },
-            adapters.goalDebtLinksAdapter, adapters.goalReceiptAdapter) { error("Unconfirmed results cannot invalidate reads") })).drainOnce()
+        val summary = OutboxDrainEngine(outbox, listOf(DebtGoalEditDispatcher({ api },
+            adapters.goalDebtEditAdapter, adapters.goalReceiptAdapter) { error("Unconfirmed results cannot invalidate reads") })).drainOnce()
         val original = dao.rows.getValue(id)
         assertEquals(1, attempts)
         assertEquals(0, summary.done)
@@ -219,9 +219,9 @@ class NetworkErrorReportingTest {
         assertEquals(payload, original.payload)
         assertEquals(7L, original.expectedRowVersion)
         assertEquals("original-links-key", original.idempotencyKey)
-        assertEquals("关联修改的结果无法确认，已保留原提交，请核对。", original.lastError)
+        assertEquals("目标修改的结果无法确认，已保留原提交，请核对。", original.lastError)
         val output = finalLog()
-        assertTrue(output.contains("operation=ReplaceGoalDebtLinks") && output.contains("DebtGoalLinksSubmission.kt:"))
+        assertTrue(output.contains("operation=ReplaceGoalDebtLinks") && output.contains("DebtGoalEditSubmission.kt:"))
         assertTrue(output.contains("IllegalStateException") && output.contains("IOException"))
         assertFalse(output.contains("synthetic-links-secret") || output.contains("private financial text"))
         assertTrue(ShadowLog.getLogsForTag("TicketboxNetwork").all { it.throwable == null })

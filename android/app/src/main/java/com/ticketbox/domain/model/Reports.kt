@@ -146,6 +146,8 @@ sealed interface GoalEditInput { val expectedRowVersion: Long }
 
 data class DebtGoalLinksUpdate(override val expectedRowVersion: Long, val selectedLabels: Map<String, String>) : GoalEditInput
 
+data class DebtGoalTargetDateUpdate(override val expectedRowVersion: Long, val targetDate: String?) : GoalEditInput
+
 data class GoalUpdate(
     override val expectedRowVersion: Long,
     val name: String? = null,

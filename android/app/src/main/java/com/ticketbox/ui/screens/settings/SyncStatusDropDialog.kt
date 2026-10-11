@@ -90,7 +90,7 @@ private fun dropConfirmationText(selection: SyncStatusDropSelection): DropConfir
             stringResource(R.string.category_rule_submission_stop), stringResource(R.string.category_rule_submission_stop_body),
             stringResource(R.string.category_rule_submission_stop),
         )
-        row.type in setOf(PendingMutationType.CreateGoal, PendingMutationType.UpdateGoal, PendingMutationType.ReplaceGoalDebtLinks) -> DropConfirmationText(
+        row.type in setOf(PendingMutationType.CreateGoal, PendingMutationType.UpdateGoal, PendingMutationType.ReplaceGoalDebtLinks, PendingMutationType.SetGoalTargetDate) -> DropConfirmationText(
             stringResource(R.string.goal_creation_drop), stringResource(R.string.goal_submission_stop_body),
             stringResource(R.string.goal_creation_drop),
         )

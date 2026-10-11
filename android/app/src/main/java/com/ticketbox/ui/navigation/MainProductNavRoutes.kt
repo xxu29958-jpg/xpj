@@ -156,16 +156,17 @@ internal fun NavGraphBuilder.addObligationRoutes(
             BillSplitRoute(screenFactory = screenFactory, onBack = onBack,
                 onOpenExpense = runtime.navController::openExpense)
         }
-        composable("${ProductSecondaryPage.DebtGoals.route}?create={create}&links={links}",
+        composable("${ProductSecondaryPage.DebtGoals.route}?create={create}&links={links}&date={date}",
             arguments = listOf(navArgument("create") { type = NavType.StringType; nullable = true; defaultValue = null },
-                navArgument("links") { type = NavType.StringType; nullable = true; defaultValue = null })) { entry ->
+                navArgument("links") { type = NavType.StringType; nullable = true; defaultValue = null },
+                navArgument("date") { type = NavType.StringType; nullable = true; defaultValue = null })) { entry ->
             val creationOwner = remember(runtime.navController, entry) { runtime.navController.getBackStackEntry(MAIN_ROUTE) }
             DebtGoalRoute(
                 screenFactory = screenFactory,
                 onBack = onBack,
-                creationOwner = creationOwner,
-                originalCreationId = entry.arguments?.getString("create")?.toLongOrNull(),
-                originalLinksId = entry.arguments?.getString("links"),
+                context = DebtGoalRouteContext(creationOwner,
+                    originalCreationId = entry.arguments?.getString("create")?.toLongOrNull(),
+                    originalLinksId = entry.arguments?.getString("links"), originalDateId = entry.arguments?.getString("date")),
             )
         }
         // 全账本往来二级页（W2-C）：ledger lens 的完整账本视图，标题带当前账本名。

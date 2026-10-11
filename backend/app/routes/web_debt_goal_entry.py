@@ -1,6 +1,7 @@
 """Debt-goal tasks bind browser drafts to the existing domain commands."""
 
 from datetime import date
+from typing import NotRequired, TypedDict
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Form, Request
@@ -19,6 +20,7 @@ from app.routes._web_draft_binding import (
     reviewed_draft_scope,
 )
 from app.routes.web_common import (
+    LedgerOption,
     LocalOnly,
     _base_ctx,
     _list_ledger_options,
@@ -31,7 +33,7 @@ from app.routes.web_common import (
     templates,
 )
 from app.routes.web_debt_goal_views import _debt_choice_view, _debt_goal_view, _web_viewer_account_id
-from app.schemas import DebtGoalLinksReplaceRequest, DebtGoalTargetDateRequest, GoalCreateRequest
+from app.schemas import DebtGoalLinksReplaceRequest, DebtGoalTargetDateRequest, GoalCreateRequest, GoalResponse
 from app.services.debt_service import list_debts
 from app.services.goal_debt_repayment_service import (
     create_debt_repayment_goal_idempotently,
@@ -45,25 +47,38 @@ _LABELS = {"create": "新建还债目标", "links": "这个目标关联哪些欠
 _BUTTONS = {"create": "创建目标", "links": "保存关联", "target-date": "保存日期"}
 
 
-def _entry_goal(db, selected_id, public_id):
+class DebtGoalEntryValues(TypedDict):
+    ledger_id: str
+    name: str
+    debt_public_ids: list[str]
+    target_date: str
+    expected_row_version: str
+    idempotency_key: str
+    draft_scope: NotRequired[str]
+    prepared_from: NotRequired[str]
+
+
+def _entry_goal(db: Session, selected_id: str, public_id: str) -> GoalResponse | None:
     if not public_id:
         return None
     goal = get_goal_response(db, tenant_id=selected_id, public_id=public_id)
     if goal.goal_type != "debt_repayment":
         raise AppError("goal_not_found", status_code=404)
-    return _debt_goal_view(goal)
+    return goal
 
 
-def _date_input_type(raw):
+def _date_input_type(raw: str) -> str:
     try:
         return "date" if not raw or date.fromisoformat(raw).isoformat() == raw else "text"
     except ValueError:
         return "text"
 
 
-def _render_entry(request, db, options, selected_id, public_id, task, *, values=None,
-                  error=None, status_code=200, draft_result=""):
-    goal = _entry_goal(db, selected_id, public_id)
+def _render_entry(request: Request, db: Session, options: list[LedgerOption], selected_id: str, public_id: str,
+                  task: str, *, values: DebtGoalEntryValues | None = None, error: str | None = None,
+                  status_code: int = 200, draft_result: str = "") -> Response:
+    original = _entry_goal(db, selected_id, public_id)
+    goal = _debt_goal_view(original) if original is not None else None
     values = values if values is not None else {
         "ledger_id": selected_id, "name": goal["name"] if goal else "",
         "debt_public_ids": goal["linked_debt_ids"] if goal else [],
@@ -105,7 +120,8 @@ def web_debt_goal_entry(request: Request, public_id: str = "", ledger_id: str = 
     return _render_entry(request, db, options, selected_id, public_id, task)
 
 
-def _submit_entry(db, selected_id, public_id, task, values, *, json_receipt):
+def _submit_entry(db: Session, selected_id: str, public_id: str, task: str, values: DebtGoalEntryValues,
+                  *, json_receipt: bool) -> GoalResponse:
     key = values["idempotency_key"].strip() or None
     if task == "create":
         if not values["name"].strip() or not values["debt_public_ids"]:
@@ -129,7 +145,8 @@ def _submit_entry(db, selected_id, public_id, task, values, *, json_receipt):
         payload=DebtGoalTargetDateRequest(expected_row_version=version, target_date=target), idempotency_key=key)
 
 
-def _save_entry(request, db, ledger_id, public_id, task, values, review_latest):
+def _save_entry(request: Request, db: Session, ledger_id: str, public_id: str, task: str,
+                values: DebtGoalEntryValues, review_latest: bool) -> Response:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     draft_scope, idempotency_key = values["draft_scope"], values["idempotency_key"]
@@ -149,7 +166,7 @@ def _save_entry(request, db, ledger_id, public_id, task, values, review_latest):
                 return _render_entry(request, db, options, selected_id, public_id, task, values=values,
                     draft_result="blocked", error="原身份已核对，请沿原编号核实提交结果。原输入与版本保持不变。")
             goal = _entry_goal(db, selected_id, public_id)
-            values.update(expected_row_version=str(goal["row_version"]) if goal else "",
+            values.update(expected_row_version=str(goal.row_version) if goal else "",
                 prepared_from=idempotency_key, idempotency_key=str(uuid4()))
             return _render_entry(request, db, options, selected_id, public_id, task,
                 values=values, draft_result="prepared")

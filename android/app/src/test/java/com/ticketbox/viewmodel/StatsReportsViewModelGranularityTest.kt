@@ -345,12 +345,6 @@ private class RecordingReportsActions : ReportsActions {
         expectedRowVersion: Long,
     ): Result<Goal> = Result.failure(UnsupportedOperationException())
 
-    override suspend fun setDebtGoalTargetDate(
-        publicId: String,
-        expectedRowVersion: Long,
-        targetDate: String?,
-    ): Result<Goal> = Result.failure(UnsupportedOperationException())
-
     override fun dashboardAccess() = access.value
 
     override suspend fun dashboardCards(

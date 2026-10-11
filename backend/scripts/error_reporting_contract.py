@@ -73,11 +73,11 @@ REVIEWED_BOUNDARIES = {
         "test": "android/app/src/test/java/com/ticketbox/data/repository/NetworkErrorReportingTest.kt::aliasReplayFailureReportsWithoutSettlingOrRetryingOriginal",
         "reason": "Unexpected replay errors report through logNetworkWarning before a blocking Failure preserves the original key and payload. The user sees no raw exception text; cancellation still propagates and transport retries retain their existing owner.",
     },
-    (ANDROID + "data/repository/DebtGoalLinksSubmission.kt", "dispatch"): {
-        "sha256": "9b235c8a4c1816b25676ea37d5b11d3d857aa6f7bd6324fcc1f591d6103ea452",
+    (ANDROID + "data/repository/DebtGoalEditSubmission.kt", "dispatch"): {
+        "sha256": "b54c7bcf93c5cf4da626e40f523ddbd1502e37968f14b28c02c47ef706038244",
         "owner": "existing HTTP mapping and sanitized TicketboxNetwork Logcat",
         "test": "android/app/src/test/java/com/ticketbox/data/repository/NetworkErrorReportingTest.kt::debtLinkReplayFailureReportsSafelyAndKeepsItsOriginalCommand",
-        "reason": "Transport and unexpected replay failures report through logNetworkWarning without raw exception text in the UI or Logcat. The existing Outbox retains the original selection, key and OCC; unexpected failures do not acknowledge or retry the command, and cancellation propagates.",
+        "reason": "Transport and unexpected replay failures report through logNetworkWarning without raw exception text in the UI or Logcat. The existing Outbox retains the original selection or date command, key and OCC; unexpected failures do not acknowledge or retry the command, and cancellation propagates.",
     },
     (ANDROID + "data/repository/ConfirmExpenseDispatcher.kt", "dispatch"): {
         "sha256": "d73acd32bcf702f04442fcd1103e419bd9bebcfb7d024eba4e4be0119a0d5a64",

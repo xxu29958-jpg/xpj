@@ -13,8 +13,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.time.Instant
-import java.time.ZoneOffset
 
 /**
  * ADR-0049 §6 (slice 7) debt_repayment goal screen state + actions.
@@ -22,7 +20,7 @@ import java.time.ZoneOffset
  * Reuses the goal repository ([ReportsActions]) — a debt_repayment goal is a goal
  * (same table / DTO). The screen is a list → detail flow inside one overlay; the
  * detail surfaces the §6/F13 integrity review with its two exits:
- *  - association edits use DebtGoalLinksViewModel and the original Room command
+ *  - association edits use DebtGoalEditViewModel and the original Room command
  *  - keep it for audit via [acknowledge] (clears needs_review for the current version)
  *
  */
@@ -210,23 +208,6 @@ class DebtGoalViewModel(
     }
 
     /**
-     * ADR-0049 §7.0 / 8e-6c: set ([epochMillis] non-null, the Material3 picker's UTC millis) or
-     * clear ([epochMillis] = null) the open debt goal's payoff deadline. Reuses [applyMutation]
-     * (same OCC fold-after shape as the integrity exits) so it never un-achieves the goal — the
-     * server bumps row_version only. Only reachable from the pure-external KPI block (the UI gates
-     * the affordance on composition == External), so a member/mixed plan can never set a deadline.
-     */
-    fun setTargetDate(epochMillis: Long?) {
-        val goal = _state.value.selectedGoal ?: return
-        _state.update { it.copy(isSubmitting = true, error = null) }
-        viewModelScope.launch {
-            val targetDate = epochMillis?.let(::epochMillisToIsoDate)
-            val result = repository.setDebtGoalTargetDate(goal.publicId, goal.rowVersion, targetDate)
-            applyMutation(result, R.string.debt_goal_target_date_updated)
-        }
-    }
-
-    /**
      * Explicitly archive the open goal, including an all-voided link set. The separate
      * association task also lets the user choose valid replacement debts.
      */
@@ -351,11 +332,3 @@ internal class DebtGoalCelebrationController {
 
 private fun List<Goal>.replaceGoal(updated: Goal): List<Goal> =
     map { if (it.publicId == updated.publicId) updated else it }
-
-/**
- * Material3 date-picker UTC epoch-millis → ISO `yyyy-MM-dd` (the wire shape the backend deadline
- * expects). UTC throughout (the picker reports the selected day as UTC-midnight millis) so the
- * calendar day never drifts across a timezone boundary.
- */
-private fun epochMillisToIsoDate(epochMillis: Long): String =
-    Instant.ofEpochMilli(epochMillis).atZone(ZoneOffset.UTC).toLocalDate().toString()

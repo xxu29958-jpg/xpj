@@ -42,7 +42,7 @@ internal val categoryRuleSubmissionTypes = setOf(
 )
 internal val incomePlanSubmissionTypes = setOf(PendingMutationType.CreateIncomePlan, PendingMutationType.UpdateIncomePlan)
 private val writerSubmissionTypes = setOf(
-    PendingMutationType.UpdateGoal, PendingMutationType.ReplaceGoalDebtLinks, PendingMutationType.CreateGoal, PendingMutationType.SaveMonthlyBudget,
+    PendingMutationType.UpdateGoal, PendingMutationType.ReplaceGoalDebtLinks, PendingMutationType.SetGoalTargetDate, PendingMutationType.CreateGoal, PendingMutationType.SaveMonthlyBudget,
     PendingMutationType.SaveManualExchangeRate, PendingMutationType.SaveMonthlyArrangement,
     PendingMutationType.DismissRepaymentDraft,
 ) + recurringSubmissionTypes + categoryRuleSubmissionTypes + incomePlanSubmissionTypes
@@ -54,6 +54,7 @@ private val submissionFailureResources = mapOf(
     PendingMutationType.UpdateIncomePlan to R.string.income_plan_submission_unavailable,
     PendingMutationType.UpdateGoal to R.string.spending_goal_recovery_unavailable,
     PendingMutationType.ReplaceGoalDebtLinks to R.string.spending_goal_recovery_unavailable,
+    PendingMutationType.SetGoalTargetDate to R.string.spending_goal_recovery_unavailable,
     PendingMutationType.CreateGoal to R.string.spending_goal_recovery_unavailable,
     PendingMutationType.SaveMonthlyBudget to R.string.budget_save_attention,
     PendingMutationType.SaveMonthlyArrangement to R.string.arrangement_attention,
@@ -415,7 +416,7 @@ data class OutboxStatusUiState(
             PendingMutationType.SaveMonthlyBudget -> budgetSaves[row.id]?.canRetry == true
             PendingMutationType.SaveManualExchangeRate -> manualRates[row.id]?.canRetry == true
             in incomePlanSubmissionTypes -> incomeSubmissions[row.id]?.canRetry == true
-            PendingMutationType.UpdateGoal, PendingMutationType.ReplaceGoalDebtLinks -> goalEdits[row.id]?.canRetry == true
+            PendingMutationType.UpdateGoal, PendingMutationType.ReplaceGoalDebtLinks, PendingMutationType.SetGoalTargetDate -> goalEdits[row.id]?.canRetry == true
             PendingMutationType.CreateGoal -> goalCreations[row.id]?.canRetry == true
             in DEBT_WRITE_TYPES -> debtWrites[row.id]?.canRetry == true
             PendingMutationType.CreateExpenseOffset -> row.id in retryableOffsetIds
@@ -468,7 +469,7 @@ private suspend fun OutboxRecoveryRepositories.recoverPlanningSubmission(
         incomePlans.recoverSubmission(binding, it, drop)
     } ?: Result.failure(IllegalStateException())
     in categoryRuleSubmissionTypes -> recoverRuleSubmission(binding, row, drop)
-    PendingMutationType.CreateGoal, PendingMutationType.UpdateGoal, PendingMutationType.ReplaceGoalDebtLinks -> recoverGoalSubmission(binding, row, drop)
+    PendingMutationType.CreateGoal, PendingMutationType.UpdateGoal, PendingMutationType.ReplaceGoalDebtLinks, PendingMutationType.SetGoalTargetDate -> recoverGoalSubmission(binding, row, drop)
     PendingMutationType.SaveMonthlyArrangement, PendingMutationType.SaveMonthlyBudget,
     PendingMutationType.SaveManualExchangeRate -> recoverBudgetSubmission(binding, row, drop)
     PendingMutationType.ConfirmRecurringCandidate, PendingMutationType.CreateRecurringItem, PendingMutationType.UpdateRecurringItem ->

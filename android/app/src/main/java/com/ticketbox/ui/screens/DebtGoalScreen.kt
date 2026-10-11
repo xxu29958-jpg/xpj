@@ -1,5 +1,9 @@
 package com.ticketbox.ui.screens
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.DisposableEffect
+import com.ticketbox.ui.mascot.rememberMascotController
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -82,10 +86,8 @@ fun DebtGoalScreen(
     }
 
     val selected = state.selectedGoal
-    // 8e-6a「先清小的」排序 + 8e-6c 还清日期 picker 显隐：详情层 composable-local 视图态（无持久化/无 DataStore；
-    // 排序刻意不 keyed-by-goal=会话级视图偏好，跨 closeDetail 保留）。picker 对话框在 AppScrollableContent **外**渲染。
+    // 「先清小的」排序是会话级视图偏好，跨 closeDetail 保留；日期由独立编辑任务保管。
     var sortMode by rememberSaveable { mutableStateOf(DebtPlanSortMode.Default) }
-    var showDatePicker by rememberSaveable { mutableStateOf(false) }
     val callbacks = DebtGoalScreenBodyCallbacks(
         handleBack = handleBack,
         onCreate = navigation.onCreate,
@@ -95,24 +97,25 @@ fun DebtGoalScreen(
         detailCallbacks = DebtGoalDetailCallbacks(
             sortMode = sortMode,
             onSortModeChange = { sortMode = it },
-            onSetTargetDate = { showDatePicker = true },
+            onSetTargetDate = { selected?.let { navigation.association.onDate(it.publicId) } },
             onEditLinks = { selected?.let { navigation.association.onOpen(it.publicId) } },
         ),
     )
-    DebtGoalScreenBody(state = state, viewModel = viewModel, callbacks = callbacks)
-    DebtTargetDatePickerDialog(
-        visible = showDatePicker,
-        selected = selected,
-        onSetTargetDate = viewModel::setTargetDate,
-        onDismiss = { showDatePicker = false },
-    )
+    val mascot = rememberMascotController()
+    val celebration by viewModel.celebration.collectAsStateWithLifecycle()
+    // Leaving the displayed goal consumes any unfinished animation; reentry must not replay it.
+    DisposableEffect(viewModel) { onDispose { viewModel.consumeCelebration() } }
+    Box(modifier = Modifier.fillMaxSize()) {
+        DebtGoalScreenBody(state = state, viewModel = viewModel, callbacks = callbacks)
+        DebtGoalCelebrationOverlay(celebration, mascot, viewModel::consumeCelebration)
+    }
 }
 
 private data class DebtGoalScreenBodyCallbacks(
     val handleBack: () -> Unit,
     val onCreate: () -> Unit,
     val hasCreationDraft: Boolean,
-    val association: DebtGoalAssociationNavigation,
+    val association: DebtGoalEditNavigation,
     val onOpenLinkedDebt: (String) -> Unit,
     val detailCallbacks: DebtGoalDetailCallbacks,
 )
@@ -170,6 +173,11 @@ private fun DebtGoalScreenBody(
             callbacks.association.retainedId?.let { id ->
                 item { androidx.compose.material3.TextButton(onClick = { callbacks.association.onOpen(id) }) {
                     Text(stringResource(R.string.debt_goal_links_continue))
+                } }
+            }
+            callbacks.association.retainedDateId?.let { id ->
+                item { androidx.compose.material3.TextButton(onClick = { callbacks.association.onDate(id) }) {
+                    Text(stringResource(R.string.debt_goal_date_continue))
                 } }
             }
             debtGoalListSection(state = state, viewModel = viewModel)
@@ -307,7 +315,7 @@ private fun LazyListScope.debtGoalDetailSection(
     item {
         DebtPlanProgressCard(
             evaluation = evaluation,
-            canModify = state.canModify,
+            canModify = state.canModify && !goal.isArchived,
             onSetTargetDate = callbacks.onSetTargetDate,
         )
     }

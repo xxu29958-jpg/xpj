@@ -142,6 +142,6 @@ private class CorrectionBindingFixture(private val delayedType: PendingMutationT
             adapters.categoryRuleSubmissionAdapter, adapters.categoryRuleReceiptAdapter)),
         incomePlans = testIncomePlanRepository(binding.apiProvider, outbox, adapters.incomePlanSubmissionAdapter, adapters.incomePlanReceiptAdapter),
         debtWrites = DebtWriteRepository(binding.apiProvider, outbox, adapters),
-        goalEdits = GoalEditRepository(binding.apiProvider, outbox, adapters.goalUpdateAdapter, adapters.goalReceiptAdapter, adapters.goalCreateAdapter, adapters.goalDebtLinksAdapter),
+        goalEdits = GoalEditRepository(binding.apiProvider, outbox, adapters.goalUpdateAdapter, adapters.goalReceiptAdapter, adapters.goalCreateAdapter, adapters.goalDebtEditAdapter),
             budgetSaves = testBudgetRepository(binding.apiProvider, outbox), repaymentReviews = com.ticketbox.data.repository.unusedRepaymentReviews()))
 }

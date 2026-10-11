@@ -12,6 +12,8 @@ internal fun goalEditRoute(id: String,
     type: com.ticketbox.data.local.PendingMutationType = com.ticketbox.data.local.PendingMutationType.UpdateGoal): String =
     if (type == com.ticketbox.data.local.PendingMutationType.ReplaceGoalDebtLinks)
         "${ProductSecondaryPage.DebtGoals.route}?links=${android.net.Uri.encode(id)}"
+    else if (type == com.ticketbox.data.local.PendingMutationType.SetGoalTargetDate)
+        "${ProductSecondaryPage.DebtGoals.route}?date=${android.net.Uri.encode(id)}"
     else "${ProductSecondaryPage.SpendingGoal.route}?goal=${android.net.Uri.encode(id)}"
 
 internal fun spendingGoalCreationRoute(id: Long): String = "${ProductSecondaryPage.SpendingGoal.route}?create=$id"
