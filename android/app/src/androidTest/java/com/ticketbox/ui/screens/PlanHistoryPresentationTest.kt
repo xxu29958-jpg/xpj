@@ -85,6 +85,7 @@ class PlanHistoryPresentationTest {
         capture("history-$kind-definition")
         assertEquals(1, reads)
         Espresso.pressBack()
+        compose.waitUntil(5_000) { !open.value && compose.onNodeWithText("历史已关闭").isDisplayed() }
         compose.onNodeWithText("历史已关闭").assertIsDisplayed()
     }
 

@@ -67,6 +67,12 @@ REVIEWED_BOUNDARIES = {
         "test": "android/app/src/test/java/com/ticketbox/data/repository/RecurringQueryReadTest.kt::storagePublicationFailureKeepsFreshGetButRefusalOrMalformedResponseNeverUsesOldCache",
         "reason": "The broad catch only selects authorized cached reads for transport unavailability. Other errors, cancellation and cache validation failures propagate to the enclosing safeCall; HTTP refusal uses httpFailure before revoking cached access. NetworkErrorReportingTest proves the existing sanitized sink. Alias publication adds no independent terminal owner, retry or user-facing raw exception.",
     },
+    (ANDROID + "data/repository/MonthlyArrangementRepository.kt", "arrangementHistory"): {
+        "sha256": "5752f9b8685337808af462f7dd253b35fe3dc0cde570f5da1f019a5aeef49f7e",
+        "owner": "existing NetworkErrorHandler.safeCall and sanitized TicketboxNetwork output",
+        "test": "android/app/src/androidTest/java/com/ticketbox/data/repository/MonthlyArrangementRoomContinuityTest.kt::malformedJsonAndTlsFailureCannotBecomeCachedSuccess",
+        "reason": "Only transport unavailability selects the authorized cached query and separately retained receipt snapshots. HTTP refusal reports through httpFailure and withdraws query access; cancellation, malformed JSON, invalid metadata and storage failures propagate to the enclosing safeCall. Existing NetworkErrorReportingTest verifies the sanitized sink. No new output owner, command retry or exception suppression is introduced.",
+    },
     (ANDROID + "data/repository/UpdateMerchantAliasDispatcher.kt", "dispatch"): {
         "sha256": "d044a4f8f66ecae3886b6d5b0cde72617fbee7e6f9798e8efc7492fa578b31e3",
         "owner": "existing NetworkErrorHandler HTTP mapping and sanitized TicketboxNetwork Logcat",
