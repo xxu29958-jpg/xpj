@@ -59,6 +59,13 @@ def test_bound_debt_goal_task_replays_its_original_receipt_after_later_edit_and_
     assert replay.status_code == 200 and replay.json() == original, replay.text
     assert original["ack"] == {"scope": scope, "clientRef": fields["idempotency_key"]}
     assert changed.json()["receipt"]["row_version"] > original["receipt"]["row_version"]
+    unbound = browser.post(action, data={**fields, "draft_scope": "", "review_latest": "true"},
+        headers={"Origin": headers["Origin"]})
+    assert unbound.status_code == 200, unbound.text
+    acquired = hidden_post_forms(unbound.text)[action]
+    assert acquired["idempotency_key"] == fields["idempotency_key"]
+    assert acquired["expected_row_version"] == fields["expected_row_version"]
+    assert 'data-debtgoal-native-result="blocked"' in unbound.text
     changed_scope = {**scope, "deviceId": "replacement-browser"}
     refused = browser.post(action, data={**fields, "draft_scope": json.dumps(changed_scope)}, headers=headers)
     assert refused.status_code == 409 and refused.json()["error"] == "session_binding_changed", refused.text

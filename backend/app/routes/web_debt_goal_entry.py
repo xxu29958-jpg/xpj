@@ -143,6 +143,11 @@ def _save_entry(request, db, ledger_id, public_id, task, values, review_latest):
             draft_scope=values["draft_scope"], require_session=False)
         _require_selected_ledger_write(options, selected_id)
         if review_latest:
+            if not draft_scope and values["draft_scope"]:
+                # Acquiring an older form's binding cannot establish whether its
+                # original command was accepted. Verify that key before replacing it.
+                return _render_entry(request, db, options, selected_id, public_id, task, values=values,
+                    draft_result="blocked", error="原身份已核对，请沿原编号核实提交结果。原输入与版本保持不变。")
             goal = _entry_goal(db, selected_id, public_id)
             values.update(expected_row_version=str(goal["row_version"]) if goal else "",
                 prepared_from=idempotency_key, idempotency_key=str(uuid4()))
