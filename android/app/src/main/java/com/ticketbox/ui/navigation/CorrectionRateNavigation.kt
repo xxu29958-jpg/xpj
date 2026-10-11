@@ -22,6 +22,6 @@ internal fun correctionRateRoute(binding: LogicalSessionBinding, gap: MissingExc
 internal fun NavGraphBuilder.addCorrectionRateRoute(screenFactory: MainScreenFactory, onBack: () -> Unit) {
     composable(CORRECTION_RATE_ROUTE, arguments = listOf(navArgument("report") { type = NavType.StringType })) { entry ->
         val context = readReportRateContext(entry.arguments?.getString("report")) ?: return@composable
-        BudgetAdviceRoute(screenFactory, onBack, reportContext = context, correctionContinuation = true)
+        BudgetAdviceRoute(screenFactory, onBack, context = BudgetAdviceRouteContext(report = context, correctionContinuation = true))
     }
 }

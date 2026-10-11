@@ -10,18 +10,29 @@ import com.ticketbox.viewmodel.budgetAdviceViewModelFactory
 import com.ticketbox.viewmodel.*
 import androidx.compose.runtime.LaunchedEffect
 
+internal data class BudgetAdviceRouteContext(
+    val originalSubmissionId: Long? = null,
+    val report: ReportRateContext? = null,
+    val correctionContinuation: Boolean = false,
+)
+
 @Composable
 internal fun BudgetAdviceRoute(
     screenFactory: MainScreenFactory,
     onBack: () -> Unit,
-    originalSubmissionId: Long? = null,
-    reportContext: ReportRateContext? = null,
-    correctionContinuation: Boolean = false,
+    context: BudgetAdviceRouteContext = BudgetAdviceRouteContext(),
+    onOpenBudget: ((String) -> Unit)? = null,
+    financialDataRevision: Int = 0,
 ) {
+    val originalSubmissionId = context.originalSubmissionId
+    val reportContext = context.report
     val viewModel: BudgetAdviceViewModel = viewModel(
         factory = budgetAdviceViewModelFactory(screenFactory.budgetRepository, screenFactory.repositories.ledgerCalendarRepository),
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    LaunchedEffect(financialDataRevision) {
+        if (state.inputs != null) viewModel.refreshInputs()
+    }
     LaunchedEffect(originalSubmissionId) { originalSubmissionId?.let(viewModel::openRateSubmission) }
 
     LaunchedEffect(reportContext, state.binding) {
@@ -39,6 +50,7 @@ internal fun BudgetAdviceRoute(
             viewModel::editArrangement, viewModel::trialArrangement, viewModel::saveArrangement,
             viewModel::refreshArrangement, viewModel::loadArrangementHistory, viewModel::reviewArrangement, viewModel::recoverArrangement),
         onBack = onBack,
-        correctionContinuation = correctionContinuation,
+        correctionContinuation = context.correctionContinuation,
+        onOpenBudget = onOpenBudget?.let { open -> { open(state.month) } },
     )
 }

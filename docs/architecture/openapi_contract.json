@@ -9037,6 +9037,36 @@
         "title": "BootstrapOwnerResponse",
         "type": "object"
       },
+      "BudgetAdviceDataScope": {
+        "properties": {
+          "history_category_count": {
+            "minimum": 0.0,
+            "title": "History Category Count",
+            "type": "integer"
+          },
+          "history_from_month": {
+            "title": "History From Month",
+            "type": "string"
+          },
+          "history_to_month": {
+            "title": "History To Month",
+            "type": "string"
+          },
+          "read_at": {
+            "format": "date-time",
+            "title": "Read At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "read_at",
+          "history_from_month",
+          "history_to_month",
+          "history_category_count"
+        ],
+        "title": "BudgetAdviceDataScope",
+        "type": "object"
+      },
       "BudgetAdviceDto": {
         "properties": {
           "confidence": {
@@ -9494,6 +9524,26 @@
           "breakdown": {
             "$ref": "#/components/schemas/DiscretionaryResponse"
           },
+          "budget_definition": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BudgetPlanDefinition"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data_scope": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BudgetAdviceDataScope"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "home_currency_code": {
             "title": "Home Currency Code",
             "type": "string"
@@ -9524,6 +9574,20 @@
           "month": {
             "title": "Month",
             "type": "string"
+          },
+          "planned_total_cents": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Total Cents"
           },
           "reference_rates": {
             "items": {
@@ -9866,6 +9930,70 @@
           "total_amount_cents"
         ],
         "title": "BudgetMonthlyUpdateRequest",
+        "type": "object"
+      },
+      "BudgetPlanDefinition": {
+        "description": "The saved spending limit in its original currency, not an advisor input.",
+        "properties": {
+          "excluded_categories": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Excluded Categories",
+            "type": "array"
+          },
+          "home_currency_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Currency Code"
+          },
+          "non_monthly_amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 0.0,
+            "title": "Non Monthly Amount Cents",
+            "type": "integer"
+          },
+          "rollover_amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": -9000000000000.0,
+            "title": "Rollover Amount Cents",
+            "type": "integer"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "total_amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 0.0,
+            "title": "Total Amount Cents",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "home_currency_code",
+          "total_amount_cents",
+          "non_monthly_amount_cents",
+          "rollover_amount_cents",
+          "excluded_categories",
+          "row_version",
+          "updated_at"
+        ],
+        "title": "BudgetPlanDefinition",
         "type": "object"
       },
       "BudgetRateForm": {

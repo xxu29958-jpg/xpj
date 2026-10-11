@@ -14,6 +14,7 @@ from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import RecurringItem
 from app.money_contract import projection_sum_to_int
+from app.schemas._budget_advisor import BudgetAdviceDataScope, BudgetPlanDefinition
 from app.schemas._monthly_arrangement import MonthlyArrangementDto
 from app.services.budget_advisor_service._models import (
     ALLOWED_INCOME_SOURCE_TYPES,
@@ -23,10 +24,13 @@ from app.services.budget_advisor_service._models import (
     IncomePlanSnapshot,
 )
 from app.services.budget_baseline_service._discretionary import DiscretionaryBreakdown, compute_monthly_discretionary
+from app.services.budget_categories import parse_budget_exclusions
+from app.services.budget_service import _get_budget as read_monthly_budget_definition
 from app.services.category_common import DEFAULT_CATEGORIES, category_filter_values, normalize_category
 from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.currency_common import normalize_currency_code
 from app.services.income_plan_service import income_forecast
+from app.services.learning_service._budget_quantile import DEFAULT_LOOK_BACK_MONTHS
 from app.services.ledger_calendar_service import current_calendar
 from app.services.money_projection_service import (
     ProjectionGap,
@@ -39,7 +43,7 @@ from app.services.monthly_arrangement_service import read_monthly_arrangement
 from app.services.monthly_report_service import MonthlyReport, compose_budget_explanation, compose_monthly_report
 from app.services.recurring_occurrence_query import total_outstanding_recurring_cents
 from app.services.recurring_service import recurring_monthly_total
-from app.services.spending_contract_service import accounting_zone
+from app.services.spending_contract_service import accounting_zone, shift_month
 from app.services.time_service import now_utc
 
 
@@ -55,6 +59,16 @@ class BudgetInputProjection:
     saved_arrangement: MonthlyArrangementDto | None = None
     is_trial: bool = False
     arrangement_currency_code: str | None = None
+    budget_definition: BudgetPlanDefinition | None = None
+    data_scope: BudgetAdviceDataScope | None = None
+
+    @property
+    def planned_total_cents(self) -> int | None:
+        budget = self.budget_definition
+        amounts = (self.breakdown.savings_target_cents, self.breakdown.reserved_buffer_cents)
+        if budget is None or budget.home_currency_code != self.home_currency_code or None in amounts:
+            return None
+        return projection_sum_to_int(budget.total_amount_cents + sum(amounts), label="budget_plan.new_allocation")
 
     @property
     def inputs_fingerprint(self) -> str | None:
@@ -74,6 +88,7 @@ def read_budget_inputs(
     if is_trial and (savings_target_cents is None or reserved_buffer_cents is None or not home_currency_code):
         raise AppError("invalid_request", "试算须同时提供储蓄、备用金和原输入币种。", status_code=422)
     saved = read_monthly_arrangement(db, tenant_id=tenant_id, month=month)
+    read_at = now_utc()
     home = normalize_currency_code(home_currency_code or require_runtime_home_currency_code(db))
     report = compose_monthly_report(db, tenant_id=tenant_id, year_month=month, top_n=None,
         timezone_name=timezone_name, home_currency_code=home, compare_previous=False)
@@ -109,7 +124,20 @@ def read_budget_inputs(
             outstanding_fixed_cents=fixed, discretionary_cents=breakdown.discretionary_cents,
             shortfall_cents=breakdown.shortfall_cents)
     return BudgetInputProjection(month, home, breakdown, ordered_projection_gaps(gaps), inputs, tuple(sorted(references)),
-        undated_expense_count=undated, saved_arrangement=saved, is_trial=is_trial, arrangement_currency_code=source)
+        undated_expense_count=undated, saved_arrangement=saved, is_trial=is_trial, arrangement_currency_code=source,
+        budget_definition=_budget_definition(db, tenant_id=tenant_id, month=month),
+        data_scope=BudgetAdviceDataScope(read_at=read_at, history_from_month=shift_month(month, -DEFAULT_LOOK_BACK_MONTHS),
+            history_to_month=shift_month(month, -1), history_category_count=len(baseline)))
+
+
+def _budget_definition(db: Session, *, tenant_id: str, month: str) -> BudgetPlanDefinition | None:
+    budget = read_monthly_budget_definition(db, tenant_id=tenant_id, month=month)
+    if budget is None:
+        return None
+    return BudgetPlanDefinition(home_currency_code=budget.home_currency_code,
+        total_amount_cents=budget.total_amount_cents, non_monthly_amount_cents=budget.non_monthly_amount_cents,
+        rollover_amount_cents=budget.rollover_amount_cents, excluded_categories=parse_budget_exclusions(budget.excluded_categories),
+        row_version=budget.row_version, updated_at=budget.updated_at)
 
 
 def _project_arrangement_amounts(db, *, tenant_id, month, amounts, source, home, gaps, references) -> tuple[int | None, int | None]:

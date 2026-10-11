@@ -206,11 +206,19 @@ class BudgetAdviceInputsRepositoryTest {
         com.ticketbox.viewmodel.budgetTest {
             val f = AdviceInputsFixture()
             f.inputs = f.inputs.copy(breakdown = DiscretionaryResponseDto(10000, 1000, 2000, 0, 0, 7000),
-                missingRates = emptyList(), inputsFingerprint = "original-history")
+                missingRates = emptyList(), inputsFingerprint = "original-history",
+                dataScope = BudgetAdviceDataScopeDto("2026-10-11T04:00:00Z", "2026-03", "2026-08", 2))
             f.withViewModel { vm ->
                 vm.uiState.first { it.inputs?.inputsFingerprint == "original-history" }
                 vm.requestAdvice()
                 vm.uiState.first { it.result != null }
+                assertNotNull(f.repository.cachedBudgetAdvice("2026-09", "JPY"))
+                f.inputs = f.inputs.copy(dataScope = f.inputs.dataScope?.copy(readAt = "2026-10-11T04:30:00Z"),
+                    budgetDefinition = BudgetPlanDefinitionDto("JPY", 4000, 100, -50, emptyList(), 2, "2026-10-11T04:10:00Z"))
+                vm.refreshInputs()
+                vm.uiState.first { it.inputs?.dataScope?.readAt == "2026-10-11T04:30:00Z" }
+                assertEquals(4000L, vm.uiState.value.inputs?.budgetDefinition?.totalAmountCents)
+                assertEquals("2026-10-11T04:00:00Z", vm.uiState.value.result?.inputs?.dataScope?.readAt)
                 assertNotNull(f.repository.cachedBudgetAdvice("2026-09", "JPY"))
                 f.inputs = f.inputs.copy(inputsFingerprint = "changed-history-same-visible-totals")
                 vm.refreshInputs()

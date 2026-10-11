@@ -66,7 +66,8 @@
 
 .goal-balance { background: var(--surface-apricot); }
 
-.plan-amount-hero .plan-amount-value {
+.plan-amount-hero .plan-amount-value,
+.plan-discretionary .plan-amount-value {
     font-size: clamp(var(--type-title-size), 13cqi, var(--type-display-size));
     overflow-wrap: anywhere;
 }
@@ -81,10 +82,16 @@
 
 .plan-discretionary > div:first-child {
     display: grid;
-    flex: 1 1 auto;
+    flex: 1 1 0;
     min-inline-size: 0;
+    container-type: inline-size;
     overflow-wrap: anywhere;
     gap: var(--space-2);
+}
+
+.plan-discretionary > p {
+    flex: 2 1 0;
+    min-inline-size: 0;
 }
 
 .plan-amount-hero > p {
@@ -143,14 +150,17 @@
 }
 
 .plan-breakdown {
-    display: grid;
+    display: flex;
+    flex-wrap: wrap;
     width: min(100%, calc(var(--space-12) * 12));
-    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: var(--space-4);
 }
 
 .plan-breakdown > span {
     display: grid;
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    max-inline-size: 100%;
     gap: var(--space-1);
     padding-inline-start: var(--space-4);
     border-inline-start: 1px solid var(--border-card);
@@ -283,7 +293,6 @@
 
     .plan-breakdown {
         width: 100%;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 
 }
@@ -302,10 +311,6 @@
     .advice-summary {
         align-items: stretch;
         flex-direction: column;
-    }
-
-    .plan-breakdown {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .recurring-metrics {

@@ -44,13 +44,14 @@ internal data class BudgetAdviceActions(val onGenerate: () -> Unit, val onRefres
     val onRecoverArrangement: (com.ticketbox.data.repository.PendingMonthlyArrangement, Boolean) -> Unit)
 
 @Composable
-internal fun BudgetAdviceInputsContent(state: BudgetAdviceUiState, actions: BudgetAdviceActions) {
+internal fun BudgetAdviceInputsContent(state: BudgetAdviceUiState, actions: BudgetAdviceActions, onOpenBudget: (() -> Unit)? = null) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         TextButton(onClick = { actions.onShiftMonth(-1) }, enabled = !state.rateBusy) { Text("‹") }
         Text(displayMonthLabel(state.month), style = MaterialTheme.typography.titleMedium)
         TextButton(onClick = { actions.onShiftMonth(1) }, enabled = !state.rateBusy) { Text("›") }
     }
     BudgetAdviceIncome(state)
+    state.inputs?.let { MonthlyPlanBudget(it, onOpenBudget) }
     MonthlyArrangementContent(state, actions)
     state.inputs?.let { inputs ->
         Text(stringResource(if (inputs.isTrial) R.string.arrangement_trial_basis else R.string.arrangement_saved_basis))
@@ -89,6 +90,7 @@ internal fun BudgetAdviceReferenceContent(state: BudgetAdviceUiState, actions: B
     AppContentCard {
         Text(stringResource(R.string.advice_inputs_title), style = MaterialTheme.typography.titleMedium)
         state.inputs?.let { inputs ->
+            MonthlyPlanExplanation(inputs)
             com.ticketbox.ui.components.AccountingDateNotice(inputs.undatedExpenseCount)
             val currency = CurrencyDisplay.forRecord(inputs.homeCurrencyCode)
             val amounts = listOf(R.string.advice_inputs_income to inputs.breakdown.monthlyIncomeCents,

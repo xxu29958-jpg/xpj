@@ -79,8 +79,10 @@ internal fun NavGraphBuilder.addPlanRoutes(
                 navArgument("arrangement") { type = NavType.StringType; nullable = true; defaultValue = null })) { entry ->
             BudgetAdviceRoute(
                 screenFactory = screenFactory, onBack = onBack,
-                originalSubmissionId = entry.arguments?.getString("submission")?.toLongOrNull(),
-                reportContext = readReportRateContext(entry.arguments?.getString("report")),
+                context = BudgetAdviceRouteContext(entry.arguments?.getString("submission")?.toLongOrNull(),
+                    readReportRateContext(entry.arguments?.getString("report"))),
+                onOpenBudget = { month -> navController.navigate(budgetRoute(month)) },
+                financialDataRevision = shellState.financialDataRevision,
             )
         }
         addRecurringRoute(dependencies, onAdviceInputChanged)

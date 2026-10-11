@@ -88,8 +88,8 @@ private fun BudgetAdviceViewModel.acceptAdviceInputs(
     if (denied != null) { rejectArrangementRead(denied); return }
     val freshInputs = inputs.getOrNull()
     val current = _state.value
-    val adviceBasisChanged = current.result?.inputs?.let { it != freshInputs }
-        ?: (current.loadState == BudgetAdviceLoadState.Loading && requestedInputs != freshInputs)
+    val adviceBasisChanged = current.result?.inputs?.let { it.adviceBasis() != freshInputs?.adviceBasis() }
+        ?: (current.loadState == BudgetAdviceLoadState.Loading && requestedInputs?.adviceBasis() != freshInputs?.adviceBasis())
     if (adviceBasisChanged) requestGeneration += 1
     _state.update { it.inputsRefreshed(inputs, rates, adviceBasisChanged) }
     freshInputs?.homeCurrencyCode?.let(::seedArrangementDraft)

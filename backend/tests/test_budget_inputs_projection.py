@@ -29,6 +29,37 @@ def seed_reads(monkeypatch, *, gap=None, references=()):
     monkeypatch.setattr(builder, "recurring_monthly_total", lambda *args, **kwargs: 500)
     monkeypatch.setattr(builder, "total_outstanding_recurring_cents", lambda *args, **kwargs: 100, raising=False)
     monkeypatch.setattr(builder, "read_monthly_arrangement", lambda *args, **kwargs: None, raising=False)
+    monkeypatch.setattr(builder, "read_monthly_budget_definition", lambda *args, **kwargs: None, raising=False)
+    monkeypatch.setattr(builder, "now_utc", lambda: datetime(2026, 10, 11, 4, 0, tzinfo=UTC))
+
+
+def test_plan_context_preserves_budget_definition_without_deducting_or_sending_it(monkeypatch):
+    from app.schemas._budget_advisor import BudgetInputsResponse
+
+    seed_reads(monkeypatch)
+    budget = SimpleNamespace(home_currency_code="JPY", total_amount_cents=1200,
+        non_monthly_amount_cents=100, rollover_amount_cents=-50, excluded_categories='["其他"]',
+        row_version=7, updated_at=datetime(2026, 8, 1, tzinfo=UTC))
+    read = Mock(return_value=budget)
+    monkeypatch.setattr(builder, "read_monthly_budget_definition", read)
+    result = builder.read_budget_inputs(object(), tenant_id="owner", month="2026-08",
+        home_currency_code="JPY", savings_target_cents=200, reserved_buffer_cents=100)
+    data = BudgetInputsResponse.model_validate(result).model_dump(mode="json")
+    assert read.call_args.kwargs == {"tenant_id": "owner", "month": "2026-08"}
+    assert data["budget_definition"]["total_amount_cents"] == 1200
+    assert data["budget_definition"]["rollover_amount_cents"] == -50
+    assert data["budget_definition"]["row_version"] == 7
+    assert data["planned_total_cents"] == 1500
+    assert result.breakdown.discretionary_cents == 1300  # Budget is a spending limit, not another expense.
+    assert data["data_scope"] == {"read_at": "2026-10-11T04:00:00Z",
+        "history_from_month": "2026-02", "history_to_month": "2026-07", "history_category_count": 1}
+    assert not ({"budget_definition", "planned_total_cents", "data_scope"} & to_outbound_dict(result.provider_inputs).keys())
+    budget.home_currency_code = "CNY"
+    foreign = builder.read_budget_inputs(object(), tenant_id="owner", month="2026-08", home_currency_code="JPY")
+    assert foreign.budget_definition.home_currency_code == "CNY"
+    assert foreign.budget_definition.total_amount_cents == 1200
+    assert foreign.planned_total_cents is None
+    assert foreign.provider_inputs is not None
 
 
 def test_read_model_keeps_discretionary_known_when_only_history_has_gap(monkeypatch):

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -11,6 +11,7 @@ from app.schemas._money import (
     NonNegativeMoneyAggregate,
     NonNegativeMoneyMinor,
     SignedMoneyAggregate,
+    SignedMoneyMinor,
 )
 from app.schemas._monthly_arrangement import MonthlyArrangementDto
 
@@ -52,6 +53,25 @@ class ProjectionGapDto(BaseModel):
     rate_date: date | None
 
 
+class BudgetPlanDefinition(BaseModel):
+    """The saved spending limit in its original currency, not an advisor input."""
+
+    home_currency_code: str | None
+    total_amount_cents: NonNegativeMoneyMinor
+    non_monthly_amount_cents: NonNegativeMoneyMinor
+    rollover_amount_cents: SignedMoneyMinor
+    excluded_categories: list[str]
+    row_version: int
+    updated_at: datetime
+
+
+class BudgetAdviceDataScope(BaseModel):
+    read_at: datetime
+    history_from_month: str
+    history_to_month: str
+    history_category_count: int = Field(ge=0)
+
+
 class BudgetInputsResponse(BaseModel):
     undated_expense_count: int = Field(default=0, ge=0)
     model_config = ConfigDict(from_attributes=True)
@@ -65,6 +85,9 @@ class BudgetInputsResponse(BaseModel):
     saved_arrangement: MonthlyArrangementDto | None = None
     is_trial: bool = False
     arrangement_currency_code: str | None = None
+    budget_definition: BudgetPlanDefinition | None = None
+    planned_total_cents: NonNegativeMoneyAggregate | None = None
+    data_scope: BudgetAdviceDataScope | None = None
 
 
 class BudgetAdviseRequest(BaseModel):

@@ -9,6 +9,8 @@ from scripts.planning_journey_budget import PAGES, SERIES
 def reservation(j, amount):
     j.goto(PAGES["arrangement"])
     value = j.page.locator(".plan-breakdown > span").filter(has=j.page.get_by_text("待履约预留", exact=True)).locator("strong")
+    if not value.is_visible():
+        j.page.get_by_text("查看剩余安排与计算依据", exact=True).click()
     assert f"{amount:.2f}" in value.inner_text(), "The actual arrangement reports the wrong reservation"
     j.capture(f"reservation-{amount}")
 

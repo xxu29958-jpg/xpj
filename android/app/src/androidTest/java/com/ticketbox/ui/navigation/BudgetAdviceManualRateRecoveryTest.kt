@@ -15,6 +15,9 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
@@ -83,6 +86,17 @@ class BudgetAdviceManualRateRecoveryTest {
         assertEquals(1, runBlocking { fixture.drain().done })
         compose.waitUntil(5_000) { fixture.inputReads.size > readsBefore }
         waitForText(context.getString(R.string.budget_advice_generate))
+        compose.onNodeWithText(context.getString(R.string.arrangement_budget_title)).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.arrangement_budget_currency, "JPY")).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.arrangement_budget_version, 3)).performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.arrangement_budget_excluded, "其他")).performScrollTo().assertIsDisplayed()
+        compose.waitForIdle()
+        saveConsumerArtPreview("arrangement-budget-definition", compose.onRoot().captureToImage().asAndroidBitmap())
+        val originalMonth = java.time.YearMonth.parse(fixture.originalMonth)
+        compose.onNodeWithText(context.getString(R.string.advice_scope_history,
+            originalMonth.minusMonths(6).toString(), originalMonth.minusMonths(1).toString(), 2)).performScrollTo().assertIsDisplayed()
+        compose.waitForIdle()
+        saveConsumerArtPreview("arrangement-advice-scope", compose.onRoot().captureToImage().asAndroidBitmap())
         assertTrue(fixture.adviceCalls.isEmpty())
         assertEquals(fixture.originalMonth to "JPY", fixture.inputReads.last())
         compose.onNodeWithText(context.getString(R.string.budget_advice_generate)).performScrollTo().performClick()
@@ -183,7 +197,7 @@ class BudgetAdviceManualRateRecoveryTest {
             if (InstrumentationRegistry.getArguments().getString("captureSkin") == "midnight") AppSkin.Midnight else AppSkin.Default) {
             CompositionLocalProvider(LocalViewModelStoreOwner provides models,
                 LocalCurrencyDisplay provides CurrencyDisplay(CurrencyCode.CNY)) {
-                BudgetAdviceRoute(factory, onBack = {}, originalSubmissionId = originalSubmissionId)
+                BudgetAdviceRoute(factory, onBack = {}, context = BudgetAdviceRouteContext(originalSubmissionId = originalSubmissionId))
             }
         } }
     }

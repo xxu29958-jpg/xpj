@@ -146,7 +146,11 @@ internal class BudgetAdviceManualRateFixture(private val context: Context) : Aut
             DiscretionaryResponseDto(10000, 1000, if (missing) null else 2000, savings, buffer,
                 if (missing) null else remaining.coerceAtLeast(0), if (missing) null else (-remaining).coerceAtLeast(0)),
             if (missing) listOf(MissingExchangeRateDto("CNY", "JPY", rateDate)) else emptyList(),
-            savedArrangement = arrangement?.takeIf { it.month == month }, isTrial = trial)
+            savedArrangement = arrangement?.takeIf { it.month == month }, isTrial = trial,
+            budgetDefinition = com.ticketbox.data.remote.dto.BudgetPlanDefinitionDto("JPY", 4000, 100, -50, listOf("其他"), 3, "2026-09-01T04:00:00Z"),
+            plannedTotalCents = if (home == "JPY" && !missing) 4000 + savings + buffer else null,
+            dataScope = com.ticketbox.data.remote.dto.BudgetAdviceDataScopeDto("2026-10-11T04:00:00Z",
+                java.time.YearMonth.parse(month).minusMonths(6).toString(), java.time.YearMonth.parse(month).minusMonths(1).toString(), 2))
     }
 
     fun reopen() {

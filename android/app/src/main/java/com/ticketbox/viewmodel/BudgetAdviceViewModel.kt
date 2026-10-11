@@ -162,7 +162,7 @@ class BudgetAdviceViewModel(
             _state.update { current ->
                 if (generation != requestGeneration || current.loadState != BudgetAdviceLoadState.Idle || current.month != snapshot.month ||
                     current.binding != snapshot.binding || current.reportingHomeCurrencyCode != snapshot.reportingHomeCurrencyCode) return@update current
-                current.adviceLoaded(cached)
+                current.adviceLoaded(cached).copy(inputs = current.inputs ?: cached.inputs)
             }
         }
     }

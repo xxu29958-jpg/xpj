@@ -31,7 +31,7 @@ internal class BudgetAdviceInputsRepository(
                 result.missingRates.any { it.homeCurrencyCode != result.homeCurrencyCode }) {
                 throw RepositoryException("budget_advice_inputs_unverified", localFailure = LocalRepositoryFailure.BudgetInputsUnverified)
             }
-            adviceCallStore.noteAdviceInputSnapshot("budget_inputs:$expectedBinding:$clean:${result.homeCurrencyCode}:saved", result.toString())
+            adviceCallStore.noteAdviceInputSnapshot("budget_inputs:$expectedBinding:$clean:${result.homeCurrencyCode}:saved", result.adviceBasis().toString())
         }
     }
     override suspend fun trialAdviceInputs(binding: LogicalSessionBinding, month: String,
@@ -47,7 +47,7 @@ internal class BudgetAdviceInputsRepository(
             if (home == request.homeCurrencyCode) require(it.breakdown.savingsTargetCents == request.savingsTargetCents &&
                 it.breakdown.reservedBufferCents == request.reservedBufferCents)
             else require(it.arrangementCurrencyCode == request.homeCurrencyCode)
-            adviceCallStore.noteAdviceInputSnapshot("budget_inputs:$binding:$clean:$home:trial:${request.homeCurrencyCode}:${request.savingsTargetCents}:${request.reservedBufferCents}", it.toString())
+            adviceCallStore.noteAdviceInputSnapshot("budget_inputs:$binding:$clean:$home:trial:${request.homeCurrencyCode}:${request.savingsTargetCents}:${request.reservedBufferCents}", it.adviceBasis().toString())
         }
     }
     override suspend fun requestTrialAdvice(binding: LogicalSessionBinding, month: String,

@@ -53,6 +53,7 @@ internal fun BudgetAdviceScreen(
     actions: BudgetAdviceActions,
     onBack: () -> Unit,
     correctionContinuation: Boolean = false,
+    onOpenBudget: (() -> Unit)? = null,
 ) {
     AppSecondaryScrollableColumn(
         chrome = AppSecondaryPageChrome(
@@ -77,7 +78,7 @@ internal fun BudgetAdviceScreen(
             ManualRateContent(state, actions)
             return@AppSecondaryScrollableColumn
         }
-        BudgetAdviceInputsContent(state, actions)
+        BudgetAdviceInputsContent(state, actions, onOpenBudget)
         if (!state.inputsLoading && state.inputs?.readyForAdvice == true &&
             (state.arrangementDraft?.edited != true || state.trialRequest != null)) {
             BudgetAdviceRequest(state, actions.onGenerate)
@@ -89,6 +90,7 @@ internal fun BudgetAdviceScreen(
 @Composable
 private fun BudgetAdviceRequest(state: BudgetAdviceUiState, onGenerate: () -> Unit) {
     var confirming by remember(state.binding, state.month, state.inputs) { mutableStateOf(false) }
+    (state.result?.inputs ?: state.inputs)?.let { BudgetAdviceDataScope(it) }
     BudgetAdviceBody(state, onRequestAdvice = { confirming = true })
     if (confirming && state.canRequest) AlertDialog(
         onDismissRequest = { confirming = false },
