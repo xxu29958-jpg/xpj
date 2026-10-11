@@ -1,6 +1,7 @@
 package com.ticketbox.ui.screens.plan
 
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.text.KeyboardOptions
@@ -116,9 +117,10 @@ internal fun MonthlyArrangementIntentSummary(submission: PendingMonthlyArrangeme
 private fun MonthlyArrangementHistory(state: BudgetAdviceUiState, actions: BudgetAdviceActions, onDismiss: () -> Unit) {
     AppBusyGuardedSheet(isSubmitting = false, onDismiss = onDismiss, skipPartiallyExpanded = true) {
         AppSheetScaffold(title = stringResource(R.string.arrangement_history), subtitle = displayMonthLabel(state.month),
-            modifier = Modifier.testTag("arrangement-history")) {
-        Text(stringResource(R.string.arrangement_history_explanation))
-        if (state.arrangementHistoryCached) Text(stringResource(R.string.arrangement_cached))
+            modifier = Modifier.fillMaxHeight().testTag("arrangement-history")) {
+        AppHistoryScope(state.arrangementHistory.map { it.rowVersion }, state.arrangementHistoryNext != null, state.arrangementHistoryCached)
+        Text(stringResource(if (state.arrangementHistoryCached) R.string.plan_history_cached_receipts else R.string.plan_history_query_receipt),
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (state.arrangementBusy) Text(stringResource(R.string.budget_history_loading))
         if (!state.arrangementBusy && state.arrangementMessage != null) {
             Text(state.arrangementMessage.asString())
@@ -126,19 +128,24 @@ private fun MonthlyArrangementHistory(state: BudgetAdviceUiState, actions: Budge
         } else if (!state.arrangementBusy && state.arrangementHistory.isEmpty()) {
             Text(stringResource(R.string.arrangement_history_empty))
         }
-        state.arrangementHistory.forEach { item ->
+        state.arrangementHistory.forEachIndexed { index, item ->
+            val before = state.arrangementHistory.getOrNull(index + 1)?.takeIf { it.rowVersion == item.rowVersion - 1 }
             AppHistoryRecord(title = stringResource(R.string.arrangement_history_revision, item.rowVersion),
-                recordedAt = displayDateTime(item.recordedAt)) {
-                Text(stringResource(R.string.arrangement_history_savings,
-                    formatDisplayAmount(item.savingsTargetCents, CurrencyDisplay.forRecord(item.homeCurrencyCode))),
-                    style = MaterialTheme.typography.titleMedium)
-                Text(stringResource(R.string.arrangement_history_buffer,
-                    formatDisplayAmount(item.reservedBufferCents, CurrencyDisplay.forRecord(item.homeCurrencyCode))))
-                Text(item.homeCurrencyCode, style = MaterialTheme.typography.bodySmall)
+                recordedAt = displayDateTime(item.recordedAt), summary = {
+                    AppHistoryComparison(stringResource(R.string.arrangement_savings),
+                        before?.let { historyRecordedAmount(it.savingsTargetCents, it.homeCurrencyCode) },
+                        historyRecordedAmount(item.savingsTargetCents, item.homeCurrencyCode))
+                    AppHistoryBoundary(if (item.rowVersion == 1L) "create" else "edit", before == null)
+                }) {
+                AppHistoryField(stringResource(R.string.arrangement_buffer),
+                    before?.let { historyRecordedAmount(it.reservedBufferCents, it.homeCurrencyCode) },
+                    historyRecordedAmount(item.reservedBufferCents, item.homeCurrencyCode))
             }
         }
         if (state.arrangementHistoryNext != null) TextButton(onClick = { actions.onHistory(true) },
             enabled = !state.arrangementBusy && !state.arrangementLoading) { Text(stringResource(R.string.arrangement_more)) }
+        Text(stringResource(R.string.arrangement_history_explanation), style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

@@ -179,14 +179,14 @@ class BudgetJourney:
         self.open_native("arrangement")
         self.native.click("查看修改历史")
         if offline:
-            self.native.reveal_any("离线缓存")
+            self.native.reveal_any("本机保留的历史与已确认保存回执")
         self.native.reveal_any("保存本月安排 · 版本 1")
         self.native.capture("arrangement-history-" + suffix)
         self.native.back()
         self.open_native("series")
         self.native.click("定义历史")
         if offline:
-            self.native.reveal_any("离线保存")
+            self.native.reveal_any("本机保留")
         self.native.reveal_any("1,200", "1200")
         self.native.capture("series-history-" + suffix)
         self.native.back()

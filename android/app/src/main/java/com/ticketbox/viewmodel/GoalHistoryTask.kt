@@ -74,7 +74,9 @@ internal class GoalHistoryTask(
             result.fold(onSuccess = { read ->
                 val rows = if (before == null) read.value.items else state.items + read.value.items
                 state = state.copy(items = rows.distinctBy { it.rowVersion }, nextBeforeVersion = read.value.nextBeforeVersion,
-                    loading = false, fromCache = state.fromCache || read.fromCache, fetchedAt = read.fetchedAt)
+                    loading = false, fromCache = read.fromCache || (before != null && state.fromCache),
+                    fetchedAt = if (before == null) read.fetchedAt else listOfNotNull(state.fetchedAt, read.fetchedAt)
+                        .minByOrNull { java.time.Instant.parse(it) })
             }, onFailure = { error ->
                 state = if (error.isReadAccessDenied()) GoalHistoryState() else state.copy(loading = false,
                     error = error.toUiText(R.string.goal_history_failed))

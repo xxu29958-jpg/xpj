@@ -186,8 +186,7 @@ class BudgetOfflineReadingConnectedTest {
         val originalTime = readTime("budget-history-read-source")
         assertNotNull(originalTime)
         compose.onNodeWithText(context.getString(R.string.budget_history_more)).performScrollTo().performClick()
-        compose.waitUntil(5_000) { compose.onAllNodes(hasText("餐饮 · ¥50")).fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithText("餐饮 · ¥50").performScrollTo().assertIsDisplayed()
+        showOlderBudgetDefinition()
         val pending = harness.fixture.stored()
         compose.runOnIdle { mounted.value = false; harness.models.viewModelStore.clear() }
         compose.waitForIdle()
@@ -201,11 +200,12 @@ class BudgetOfflineReadingConnectedTest {
         assertEquals(originalTime, readTime("budget-history-read-source"))
         assertTrue(sourceText("budget-history-read-source").contains("本机保留"))
         compose.onNodeWithText(context.getString(R.string.budget_history_more)).performScrollTo().performClick()
-        compose.waitUntil(5_000) { compose.onAllNodes(hasText("餐饮 · ¥50")).fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithText("餐饮 · ¥50").performScrollTo().assertIsDisplayed()
+        showOlderBudgetDefinition()
         compose.onNodeWithTag("budget-history-read-source").performScrollTo().assertIsDisplayed()
-        assertEquals("Every retained revision must identify its original currency", 3,
-            compose.onAllNodes(hasText("JPY") and hasAnyAncestor(hasTestTag("budget-history"))).fetchSemanticsNodes().size)
+        listOf("JPY ¥700", "JPY ¥600", "JPY ¥500").forEach { value ->
+            assertTrue("Every retained revision must identify its original currency and amount: $value",
+                compose.onAllNodes(hasText(value) and hasAnyAncestor(hasTestTag("budget-history"))).fetchSemanticsNodes().isNotEmpty())
+        }
         preview("budget-history-offline-reopened")
         assertEquals(pending, harness.fixture.stored())
     }
@@ -216,6 +216,12 @@ class BudgetOfflineReadingConnectedTest {
         compose.waitUntil(5_000) { compose.onAllNodes(hasTestTag("budget-history-read-source"))
             .fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("budget-history-read-source").performScrollTo().assertIsDisplayed()
+    }
+
+    private fun showOlderBudgetDefinition() {
+        compose.waitUntil(5_000) { compose.onAllNodes(hasText("已载入 3 条 · 第 7 至 5 版")).fetchSemanticsNodes().isNotEmpty() }
+        compose.onAllNodes(hasText("查看当时定义"))[2].performScrollTo().performClick()
+        compose.onNodeWithText("餐饮 · JPY ¥50").performScrollTo().assertIsDisplayed()
     }
 
     private fun showPlans() {

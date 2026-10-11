@@ -230,7 +230,7 @@ class IncomePlanDraftNavigationRoomTest {
         compose.onNodeWithText(context.getString(R.string.income_history_action)).performScrollTo().performClick()
         compose.waitUntil(10_000) { compose.onAllNodesWithText("八月工资预测").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("八月工资预测").performScrollTo().assertIsDisplayed()
-        compose.onNode(hasText("包含离线保留的读取", substring = true) and hasAnyAncestor(isDialog()))
+        compose.onNode(hasText("本机保留的已读记录", substring = true) and hasAnyAncestor(isDialog()))
             .performScrollTo().assertIsDisplayed()
         com.ticketbox.ui.saveConsumerArtPreview("income-history-offline", compose.onNode(isDialog()).captureToImage().asAndroidBitmap())
         assertEquals(listOf("income-1"), income.network.historyCalls)

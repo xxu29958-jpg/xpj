@@ -91,7 +91,7 @@ class SpendingGoalHistoryRoomConnectedTest {
         openHistory()
         waitForText("修改后的计划")
         compose.onNodeWithText("修改后的计划").assertExists()
-        compose.onNodeWithText("已读取的历史", substring = true).assertExists()
+        compose.onNodeWithText("本机保留的已读记录", substring = true).assertExists()
         compose.onNodeWithText("更早的记录").performScrollTo().performClick()
         compose.waitUntil(10_000) { historyRequests().any { it.queryParameter("before_version") == "9" } }
         compose.onNodeWithText("修改后的计划").assertExists()
@@ -112,8 +112,8 @@ class SpendingGoalHistoryRoomConnectedTest {
         compose.onNodeWithText("创建时的计划").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("计划定义", substring = true).assertExists()
         compose.onNodeWithText("旧版已有计划").assertDoesNotExist()
-        compose.onAllNodes(hasText("JPY") and hasAnyAncestor(isDialog())).assertCountEquals(4)
-        compose.onAllNodes(hasText("¥1,200") and hasAnyAncestor(isDialog())).assertCountEquals(4)
+        // Four saved amounts and the three adjacent before-values retain the same original yen units.
+        compose.onAllNodes(hasText("JPY ¥1,200") and hasAnyAncestor(isDialog())).assertCountEquals(7)
         com.ticketbox.ui.saveConsumerArtPreview("goal-history-original-yen", requireNotNull(
             androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
         assertEquals(listOf(null, "3"), historyRequests().map { it.queryParameter("before_version") })

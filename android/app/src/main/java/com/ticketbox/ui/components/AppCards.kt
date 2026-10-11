@@ -97,13 +97,14 @@ fun AppContentCard(
 
 /** A read-only before/after pair; it owns no draft or choice state. */
 @Composable
-fun AppValueComparison(currentLabel: String, current: String, proposedLabel: String, proposed: String) {
+fun AppValueComparison(currentLabel: String, current: String, proposedLabel: String, proposed: String,
+    valueContent: @Composable (String) -> Unit = { Text(it, style = MaterialTheme.typography.titleMedium) }) {
     val visuals = LocalThemeVisuals.current
     @Composable
     fun Value(label: String, value: String, modifier: Modifier = Modifier) {
         Column(modifier.padding(AppSpacing.contentGap), verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
             Text(label, style = MaterialTheme.typography.bodySmall, color = visuals.textMeta)
-            Text(value, style = MaterialTheme.typography.titleMedium)
+            valueContent(value)
         }
     }
     val proposedModifier = Modifier.clip(RoundedCornerShape(AppRadius.medium)).background(visuals.brandPrimaryBg)

@@ -8,25 +8,22 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
-import com.ticketbox.domain.model.CurrencyDisplay
+import com.ticketbox.domain.model.GoalDefinition
 import com.ticketbox.domain.model.GoalRevision
 import com.ticketbox.ui.asString
-import com.ticketbox.ui.components.AppBusyGuardedSheet
-import com.ticketbox.ui.components.AppHistoryRecord
-import com.ticketbox.ui.components.AppSheetScaffold
-import com.ticketbox.ui.components.displayDateTime
-import com.ticketbox.ui.components.displayMonthLabel
-import com.ticketbox.ui.components.formatDisplayAmount
-import com.ticketbox.ui.design.tabularNum
+import com.ticketbox.ui.components.*
 import com.ticketbox.viewmodel.GoalHistoryState
 
 @Composable
 internal fun GoalHistorySheet(state: GoalHistoryState, onRetry: () -> Unit, onMore: () -> Unit, onDismiss: () -> Unit) {
     AppBusyGuardedSheet(isSubmitting = false, onDismiss = onDismiss, skipPartiallyExpanded = true) {
         AppSheetScaffold(title = stringResource(R.string.goal_history_title), modifier = Modifier.fillMaxHeight()) {
-            Text(stringResource(R.string.goal_history_explanation))
-            if (state.fromCache) Text(stringResource(R.string.goal_history_offline, displayDateTime(state.fetchedAt)))
-            state.items.forEach { GoalHistoryEntry(it) }
+            AppHistoryScope(state.items.map { it.rowVersion }, state.nextBeforeVersion != null, state.fromCache, state.fetchedAt)
+            state.items.forEachIndexed { index, entry ->
+                GoalHistoryEntry(entry, state.items.getOrNull(index + 1)?.takeIf {
+                    it.rowVersion == entry.rowVersion - 1 && entry.changeKind !in listOf("baseline", "create")
+                })
+            }
             if (state.loading) Text(stringResource(R.string.budget_history_loading))
             state.error?.let {
                 Text(it.asString())
@@ -38,29 +35,40 @@ internal fun GoalHistorySheet(state: GoalHistoryState, onRetry: () -> Unit, onMo
             if (state.error == null && state.nextBeforeVersion != null) {
                 TextButton(onClick = onMore, enabled = !state.loading) { Text(stringResource(R.string.budget_history_more)) }
             }
+            Text(stringResource(R.string.goal_history_explanation), style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
 
 @Composable
-private fun GoalHistoryEntry(entry: GoalRevision) {
+private fun GoalHistoryEntry(entry: GoalRevision, previous: GoalRevision?) {
     val plan = entry.snapshot
+    val before = previous?.snapshot
     AppHistoryRecord(
         title = stringResource(R.string.goal_history_version, entry.rowVersion, stringResource(historyKind(entry.changeKind))),
         recordedAt = stringResource(R.string.goal_history_recorded_at, displayDateTime(entry.recordedAt)),
+        summary = {
+            Text(plan.name, style = MaterialTheme.typography.titleMedium)
+            AppHistoryComparison(stringResource(R.string.spending_goal_create_amount_label),
+                before?.let { historyRecordedAmount(it.targetAmountCents, it.homeCurrencyCode) },
+                historyRecordedAmount(plan.targetAmountCents, plan.homeCurrencyCode))
+            AppHistoryBoundary(entry.changeKind, previous == null)
+        },
     ) {
-        Text(plan.name, style = MaterialTheme.typography.titleMedium)
-        Text(if (plan.homeCurrencyCode == null) stringResource(R.string.budget_history_unknown_money,
-            plan.targetAmountCents.toString()) else formatDisplayAmount(plan.targetAmountCents,
-            CurrencyDisplay.forRecord(plan.homeCurrencyCode)), style = MaterialTheme.typography.titleMedium.tabularNum())
-        plan.homeCurrencyCode?.let { Text(it, style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        if (entry.changeKind == "baseline") Text(stringResource(R.string.budget_history_baseline_note))
-        Text(stringResource(R.string.spending_goal_detail_subtitle, displayMonthLabel(plan.month.orEmpty()),
-            plan.category ?: stringResource(R.string.spending_goal_scope_all)))
-        Text(stringResource(if (plan.status == "archived") R.string.goal_history_archived else R.string.goal_history_active))
+        AppHistoryField(stringResource(R.string.plan_history_name), before?.name, plan.name)
+        AppHistoryField(stringResource(R.string.plan_history_scope), before?.let { goalHistoryScope(it) }, goalHistoryScope(plan))
+        AppHistoryField(stringResource(R.string.plan_history_status), before?.let { goalHistoryStatus(it.status) }, goalHistoryStatus(plan.status))
     }
 }
+
+@Composable
+private fun goalHistoryScope(plan: GoalDefinition): String = stringResource(R.string.spending_goal_detail_subtitle,
+    displayMonthLabel(plan.month.orEmpty()), plan.category ?: stringResource(R.string.spending_goal_scope_all))
+
+@Composable
+private fun goalHistoryStatus(value: String): String =
+    stringResource(if (value == "archived") R.string.goal_history_archived else R.string.goal_history_active)
 
 private fun historyKind(kind: String): Int = when (kind) {
     "baseline" -> R.string.budget_history_baseline

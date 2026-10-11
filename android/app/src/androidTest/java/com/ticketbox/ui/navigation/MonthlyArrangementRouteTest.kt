@@ -98,11 +98,12 @@ class MonthlyArrangementRouteTest {
         captureHistory("arrangement-history-after-load")
         assertHistoryReachable(context.getString(R.string.arrangement_history_revision, 1L))
         assertTextDisplayed(context.getString(R.string.arrangement_history_revision, 2L))
-        assertTextDisplayed(context.getString(R.string.arrangement_history_savings,
-            formatDisplayAmount(8000L, CurrencyDisplay.forRecord("JPY"))))
+        assertTextDisplayed("JPY ¥8,000")
         captureHistory("arrangement-history-latest")
-        assertTextDisplayed(context.getString(R.string.arrangement_history_savings,
-            formatDisplayAmount(3000L, CurrencyDisplay.forRecord("JPY"))))
+        compose.onAllNodesWithText("JPY ¥3,000")[0].performScrollTo().assertIsDisplayed()
+        compose.onAllNodesWithText("查看当时定义")[0].performScrollTo().performClick()
+        assertTextDisplayed("备用金 · JPY ¥500")
+        assertTextDisplayed(context.getString(R.string.arrangement_history_revision, 1L))
         captureHistory("arrangement-history-earlier")
         androidx.test.espresso.Espresso.pressBack()
         compose.onNodeWithTag("arrangement-history").assertDoesNotExist()
