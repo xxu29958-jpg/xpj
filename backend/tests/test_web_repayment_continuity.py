@@ -23,7 +23,7 @@ from tests.test_web_debt_actions import _create_debt, _detail
 def _repayment_facts(public_id):
     with SessionLocal() as db:
         return list(db.execute(
-            select(Repayment.public_id, Repayment.amount_cents, Repayment.paid_at)
+            select(Repayment.public_id, Repayment.amount_cents, Repayment.paid_at, Repayment.accounting_time_snapshot)
             .join(Debt, Debt.id == Repayment.debt_id)
             .where(Debt.public_id == public_id)
         ).all())
@@ -60,6 +60,10 @@ def test_native_unknown_result_recovers_same_payment_even_after_settlement(
     assert unknown.text.count('id="debt-action-error-repayment"') == 1
     accepted = _repayment_facts(public_id)
     assert len(accepted) == 1 and accepted[0].amount_cents == amount_minor
+    assert accepted[0].paid_at is None
+    assert accepted[0].accounting_time_snapshot["precision"] == "date_only"
+    assert accepted[0].accounting_time_snapshot["user_local_date"] == original["paid_at"]
+    assert accepted[0].accounting_time_snapshot["calendar_revision"] == int(original["calendar_revision"])
 
     # Read failure followed commit. Even a now-cleared debt must retain a way to
     # recover that command, rather than offering a replacement at the new OCC.

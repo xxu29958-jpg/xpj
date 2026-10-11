@@ -6,9 +6,7 @@ import html
 import json
 import re
 from collections.abc import Iterator
-from datetime import datetime, time
 from uuid import uuid4
-from zoneinfo import ZoneInfo
 
 import pytest
 from sqlalchemy import select
@@ -138,10 +136,11 @@ def test_installed_native_repayment_rejects_every_stale_binding_axis_then_replay
             assert fact.amount_cents == 2345
             assert fact.actor_account_id == installed_web.installation_account_id
             assert fact.idempotency_key == original["idempotency_key"]
-            assert fact.paid_at == datetime.combine(
-                datetime.fromisoformat(original["paid_at"]).date(), time.min,
-                tzinfo=ZoneInfo(original["paid_at_timezone"]),
-            )
+            assert fact.paid_at is None
+            assert fact.accounting_time_snapshot["precision"] == "date_only"
+            assert fact.accounting_time_snapshot["instant_utc"] is None
+            assert fact.accounting_time_snapshot["user_local_date"] == original["paid_at"]
+            assert fact.accounting_time_snapshot["calendar_revision"] == int(original["calendar_revision"])
             assert ack["repaymentPublicId"] == fact.public_id
             assert repayment_id is None or repayment_id == fact.public_id
             repayment_id = fact.public_id

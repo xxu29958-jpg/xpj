@@ -457,6 +457,7 @@ def _render_debt_detail(
     ctx["repayment_form"] = repayment_context(
         request, db, selected_id=selected_id, public_id=public_id,
         currency_code=debt.home_currency_code, expected_row_version=str(debt.row_version),
+        calendar=debt.repayment_calendar,
         can_create=ctx["can_write"] and debt.status == "open" and not ctx["debt"]["is_member"],
         can_recover=ctx["can_write"] and not ctx["debt"]["is_member"],
         values=action_draft if action_kind == "repayment" else None,

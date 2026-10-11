@@ -12,6 +12,9 @@
     {% for name in ['debt_public_id', 'ledger_id', 'origin_binding', 'home_currency_code', 'expected_row_version', 'paid_at_timezone', 'idempotency_key'] %}
     <input type="hidden" name="{{ name }}" value="{{ repayment['values'][name] }}">
     {% endfor %}
+    {% for name in ['time_precision', 'calendar_revision'] if name in repayment['values'] %}
+    <input type="hidden" name="{{ name }}" value="{{ repayment['values'][name] }}">
+    {% endfor %}
     {% if repayment.error %}<div id="debt-action-error-repayment" class="product-feedback product-feedback--danger" role="alert">{{ repayment.error }}</div>{% endif %}
     <div class="product-form-grid">
       <div class="product-field">
@@ -29,7 +32,7 @@
     {% include '_debt_balance_preview.html' %}
     <p class="product-page-summary" data-repayment-status role="status" hidden></p>
     <div class="product-form-actions">
-      <button class="product-button product-button--primary" type="submit" data-repayment-submit{% if repayment.result == 'blocked' or not repayment.visible %} disabled{% endif %}>{{ '继续核实这笔还款' if repayment.result == 'submitted' else '记一笔还款' }}</button>
+      <button class="product-button product-button--primary" type="submit" data-repayment-submit{% if repayment.result == 'blocked' or not repayment.visible %} disabled{% endif %}>{{ '核实原还款' if repayment.result == 'submitted' else '记一笔还款' }}</button>
       {% if repayment.replacement %}
       <button class="product-button product-button--quiet" type="button" data-repayment-replace hidden>核对后重新填写</button>
       <noscript><a href="/web/debts/{{ repayment.public_id }}?ledger_id={{ selected_ledger_id }}">核对后打开新表单</a></noscript>

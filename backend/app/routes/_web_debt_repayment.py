@@ -12,13 +12,15 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.routes import _web_debt_write
 from app.routes.web_common import _base_ctx, _currency_input_view, templates
+from app.schemas._debts import RepaymentCalendarResponse
 from app.services.currency_common import supported_currency_codes
-from app.services.time_service import now_utc
+from app.services.time_service import now_utc, strict_zone
 
 REPAYMENT_FIELDS = (
     "debt_public_id", "ledger_id", "origin_binding", "home_currency_code",
     "expected_row_version", "amount_major", "paid_at", "paid_at_timezone",
 )
+REPAYMENT_TIME_FIELDS = ("time_precision", "calendar_revision")
 
 
 def require_repayment_binding(request: Request, db: Session, *, values: dict, public_id: str,
@@ -38,11 +40,12 @@ def repayment_context(
     request: Request, db: Session, *, selected_id: str, public_id: str,
     currency_code: str = "", expected_row_version: str = "", can_create: bool = False,
     can_recover: bool = False,
+    calendar: RepaymentCalendarResponse | None = None,
     values: dict[str, str] | None = None, error: str = "", result: str = "",
     ack: dict | None = None, rejected: bool = False,
 ) -> dict:
     scope = _web_debt_write.repayment_scope(request, db)
-    zone = _web_debt_write.accounting_zone()
+    zone = strict_zone(calendar.timezone_name) if calendar else _web_debt_write.accounting_zone()
     initial = {
         "debt_public_id": public_id, "ledger_id": selected_id,
         "origin_binding": json.dumps(scope, ensure_ascii=False, sort_keys=True),
@@ -52,6 +55,8 @@ def repayment_context(
     }
     if values is not None:
         initial.update(values)
+    elif can_create:
+        initial.update(time_precision="date_only", calendar_revision=str(calendar.revision) if calendar else "")
     code = initial["home_currency_code"]
     replacement = None
     if rejected and can_create and values is not None:
@@ -61,7 +66,7 @@ def repayment_context(
             pass
         else:
             replacement = {"clientRef": str(uuid4()), "values": {
-                **{key: initial[key] for key in REPAYMENT_FIELDS},
+                **{key: initial[key] for key in (*REPAYMENT_FIELDS, *REPAYMENT_TIME_FIELDS) if key in initial},
                 "expected_row_version": expected_row_version,
             }}
     return {

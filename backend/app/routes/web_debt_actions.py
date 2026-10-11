@@ -15,9 +15,11 @@ from starlette.responses import Response
 from app.database import get_db
 from app.errors import AppError
 from app.routes import _web_debt_write
+from app.routes._web_accounting_time import accounting_time_form_fields, parse_web_accounting_time
 from app.routes._web_debt_kind import submit_kind
 from app.routes._web_debt_money import parse_web_debt_major_minor
 from app.routes._web_debt_repayment import (
+    REPAYMENT_TIME_FIELDS,
     render_repayment_recovery,
     require_repayment_binding,
 )
@@ -168,6 +170,7 @@ def web_record_repayment(
     amount_major: str = Form(default=""),
     paid_at: str = Form(default=""),
     paid_at_timezone: str = Form(default=""),
+    time_fields: dict[str, str] | None = Depends(accounting_time_form_fields),
     expected_row_version: str = Form(default=""),
     idempotency_key: str = Form(default=""),
     csrf_token: str = Form(default=""),
@@ -183,6 +186,8 @@ def web_record_repayment(
         "paid_at_timezone": paid_at_timezone or _web_debt_write.accounting_zone().key,
         "expected_row_version": expected_row_version, "idempotency_key": idempotency_key,
     }
+    time_fields = {name: value for name, value in (time_fields or {}).items() if name in REPAYMENT_TIME_FIELDS}
+    values.update(time_fields)
     attempted = False
     try:
         require_repayment_binding(request, db, values=values, public_id=public_id)
@@ -197,9 +202,15 @@ def web_record_repayment(
         # existing record denomination and date interpretation in the return form.
         values["home_currency_code"] = debt.home_currency_code
         values["debt_public_id"] = public_id
+        time_input = parse_web_accounting_time(None, {
+            **time_fields, "user_local_date": paid_at, "source_timezone": values["paid_at_timezone"],
+        } if time_fields else None)
         payload = RepaymentCreateRequest(
             amount_cents=parse_web_debt_major_minor(amount_major, currency_code=debt.home_currency_code, allow_negative=False),
-            paid_at=_parse_paid_at(paid_at, values["paid_at_timezone"]), expected_row_version=expected,
+            expected_row_version=expected,
+            **({"time_input": time_input} if time_input is not None else {
+                "paid_at": _parse_paid_at(paid_at, values["paid_at_timezone"]),
+            }),
         )
         attempted = True
         receipt = record_repayment_idempotently(

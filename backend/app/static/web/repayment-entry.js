@@ -3,6 +3,7 @@
   "use strict";
   const repaymentNames = ["debt_public_id", "ledger_id", "origin_binding", "home_currency_code",
     "expected_row_version", "amount_major", "paid_at", "paid_at_timezone"];
+  const repaymentTimeNames = ["time_precision", "calendar_revision"];
   const voidNames = ["debt_public_id", "ledger_id", "origin_binding", "expected_row_version", "reason", "repayment_public_id"];
   const kindNames = ["debt_public_id", "ledger_id", "origin_binding", "expected_row_version", "debt_kind"];
   const fieldNames = {repayment:repaymentNames, "debt-void":voidNames, "repayment-void":voidNames,
@@ -11,7 +12,7 @@
       "proposal_public_id", "expected_row_version", "expected_return_row_version", "new_share_amount_major",
       "settlement_net_amount_major", "reason", "supersedes_proposal_public_id"]};
   const voidLabels = ["确认作废", "继续核实原作废"];
-  const submitLabels = {repayment:["记一笔还款", "继续核实这笔还款"],
+  const submitLabels = {repayment:["记一笔还款", "核实原还款"],
     "debt-void":voidLabels, "repayment-void":voidLabels,
     "debt-kind":["保存偿还方式", "继续核实原更正"], "repayment-review":["确认处理", "核实原处理"]};
   function bindBalancePreview(form) {
@@ -60,7 +61,8 @@
   const preview = form.querySelector("[data-repayment-preview]");
   const updateBalancePreview = bindBalancePreview(form);
   const settlementExplicit = form.elements.namedItem("settlement_explicit");
-  const optionalNames = splitChange ? ["settlement_explicit", "settlement_suggestion"] : [];
+  const optionalNames = splitChange ? ["settlement_explicit", "settlement_suggestion"] :
+    namespace === "repayment" ? repaymentTimeNames : [];
   const hints = optionalNames.map(name => form.elements.namedItem(name)).filter(Boolean);
   const finishReview = form.querySelector("[data-void-finish-review]");
   const finishRejected = form.querySelector("[data-void-finish-rejected]");
@@ -86,11 +88,14 @@
 
   function values() {
     const result = Object.fromEntries(controls.map(control => [control.name, control.value]));
-    hints.forEach(control => { if (control.value !== "") result[control.name] = control.value; });
+    hints.forEach(control => {
+      if (namespace === "repayment" ? !control.disabled : control.value !== "") result[control.name] = control.value;
+    });
     return result;
   }
   function sameValues(left, right) {
-    return names.every(name => typeof left[name] === "string" && left[name] === right[name]);
+    return names.every(name => typeof left[name] === "string" && left[name] === right[name]) &&
+      (namespace !== "repayment" || repaymentTimeNames.every(name => left[name] === right[name]));
   }
   function bound(saved) {
     return saved[targetField] === target && saved.ledger_id === scope.ledgerId &&
@@ -125,7 +130,11 @@
       }
       control.value = value;
     });
-    hints.forEach(control => { control.value = saved[control.name] ?? ""; });
+    hints.forEach(control => {
+      control.value = saved[control.name] ?? "";
+      // Old unresolved submissions must not acquire the new page's date evidence.
+      if (namespace === "repayment") control.disabled = !Object.hasOwn(saved, control.name);
+    });
     settlementField?.sync();
     if (splitChange) {
       if (!commandLabels[saved.command]) throw Error("invalid_original_command");
@@ -231,7 +240,7 @@
     if (!debt) return false;
     return ["repayment", "debt-void", "repayment-void", "debt-kind", "repayment-review"].some(kind => {
       const store = window.TicketboxDraftStore.createStore({prefix:"ticketbox:" + kind + "-draft:v1:",
-        fields:fieldNames[kind], validRef:uuid});
+        fields:fieldNames[kind], optionalFields:kind === "repayment" ? repaymentTimeNames : [], validRef:uuid});
       return store.list(scope).some(record => parent(record.values, kind) === debt &&
         (kind !== namespace || record.clientRef !== currentRef) && record.phase !== "editing");
     });

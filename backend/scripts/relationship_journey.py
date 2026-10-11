@@ -198,7 +198,7 @@ class RelationshipJourney:
         self.open_native(returned=True)
         self.native.reveal_any("收到啦，谢谢～")
         self.native.click("收到啦，谢谢～")
-        self.native.click("保存")
+        self.native.click("确认这笔到账")
         self.expect("return_paid", 200)
         self.native.reveal_any("拆账约定与结算", toward_start=True)
         self.native.reveal_any("算了，不用还了")

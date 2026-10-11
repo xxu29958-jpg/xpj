@@ -9,6 +9,7 @@ const target = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
 const repaymentId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
 const names = ['debt_public_id','ledger_id','origin_binding','home_currency_code',
   'expected_row_version','amount_major','paid_at','paid_at_timezone'];
+const timeNames = ['time_precision', 'calendar_revision'];
 const values = {debt_public_id:target, ledger_id:'ledger', origin_binding:JSON.stringify(scope),
   home_currency_code:'USD', expected_row_version:'4', amount_major:'0012.3400',
   paid_at:'2026-07-19', paid_at_timezone:'America/Los_Angeles'};
@@ -98,7 +99,8 @@ function environment() {
       const hash = String(url).indexOf('#'); window.location.hash = hash < 0 ? '' : String(url).slice(hash);
     }};
     vm.runInNewContext(fs.readFileSync(process.argv[2], 'utf8'), {window});
-    const store = window.TicketboxDraftStore.createStore({prefix:draftPrefix, fields:fieldNames,
+    const store = window.TicketboxDraftStore.createStore({prefix:draftPrefix,
+      fields:fieldNames.filter(name => !timeNames.includes(name)), optionalFields:fieldNames.filter(name => timeNames.includes(name)),
       validRef:/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i});
     const start = () => {
       if (options.splitChange) vm.runInNewContext(fs.readFileSync(require('node:path').join(
@@ -116,6 +118,35 @@ function environment() {
 }
 
 const cases = {
+  async date_precision() {
+    const dateValues = {...values, time_precision:'date_only', calendar_revision:'3'};
+    for (const saved of [values, dateValues]) {
+      const env = environment();
+      const first = env.page({fieldNames:[...names, ...timeNames]});
+      first.store.save(scope, original, 'submitted', saved);
+      const restored = env.page({fieldNames:[...names, ...timeNames],
+        values:{time_precision:'date_only', calendar_revision:'8'}, hash:'#repayment-' + original});
+      restored.start(); await tick();
+      assert.equal(restored.fields.paid_at.value, saved.paid_at);
+      assert.equal(restored.fields.paid_at_timezone.value, saved.paid_at_timezone);
+      assert.equal(restored.fields.time_precision.disabled, !Object.hasOwn(saved, 'time_precision'));
+      assert.equal(restored.fields.calendar_revision.disabled, !Object.hasOwn(saved, 'calendar_revision'));
+      assert.equal(restored.form.fire('submit').defaultPrevented, false);
+      assert.deepEqual(JSON.parse(JSON.stringify(restored.store.read(original).values)), saved);
+      restored.window.fire('pagehide'); await tick();
+      const wrong = env.page({fieldNames:[...names, ...timeNames],
+        values:dateValues, ack:{scope, clientRef:original, repaymentPublicId:repaymentId,
+          values:{...saved, calendar_revision:'8'}}});
+      wrong.start(); await tick();
+      assert.ok(wrong.store.read(original), 'A different calendar cannot acknowledge the original intent');
+      assert.match(wrong.ackStatus.textContent, /原提交尚未收起/);
+      wrong.window.fire('pagehide'); await tick();
+      const accepted = env.page({fieldNames:[...names, ...timeNames],
+        values:dateValues, ack:{scope, clientRef:original, repaymentPublicId:repaymentId, values:saved}});
+      accepted.start(); await tick();
+      assert.equal(accepted.store.read(original), null);
+    }
+  },
   async balance_preview() {
     const snapshot = {balanceMinor:'90000', balanceDigits:'2', balanceCurrency:'CNY', balanceSymbol:'¥', balanceVersion:'99'};
     const env = environment(), page = env.page({values:{home_currency_code:'CNY'}, balance:snapshot});
