@@ -75,67 +75,64 @@ class MerchantRepositoryCatalogTest {
     }
 
     @Test
-    fun `createMerchantCatalog trims display name and uses default active status`() = runTest {
+    fun `creation sends original name and key with default active status`() = runTest {
         val api = CatalogApiServiceStub()
 
-        val created = repository(api).createMerchantCatalog("  蓝瓶咖啡  ").getOrThrow()
+        val merchant = repository(api)
+        val created = requireNotNull(merchant.submitDraft(MerchantDraft(
+            requireNotNull(merchant.captureBinding()), MerchantDraftKind.Catalog, "catalog-original-key", displayName = "  蓝瓶咖啡  ")).getOrThrow().catalogReceipt)
 
-        assertEquals("蓝瓶咖啡", api.createRequests.single().displayName)
+        assertEquals("  蓝瓶咖啡  ", api.createRequests.single().displayName)
         assertEquals("active", api.createRequests.single().status)
         assertEquals("蓝瓶咖啡", created.displayName)
         assertEquals("active", created.status)
     }
 
     @Test
-    fun `updateMerchantCatalog trims payload and sends OCC token with idempotency key`() = runTest {
+    fun `rename and visibility retain distinct original bodies OCC and keys`() = runTest {
         val api = CatalogApiServiceStub()
-
-        val updated = repository(api).updateMerchantCatalog(
-            publicId = " catalog-1 ",
-            expectedRowVersion = 7L,
-            displayName = "  星巴克臻选  ",
-            status = " hidden ",
-        ).getOrThrow()
-
-        assertEquals(listOf("catalog-1"), api.updateTargets)
+        val repo = repository(api)
+        val source = merchantCatalogDto().copy(rowVersion = 7).toDomain()
+        val rename = MerchantDraft(requireNotNull(repo.captureBinding()), MerchantDraftKind.Rename, "original-rename",
+            source = source, displayName = "  星巴克臻选  ")
+        val updated = repo.submitDraft(rename).getOrThrow()
+        assertEquals("catalog-1", api.updateTargets.single())
         assertEquals(7L, api.updateRequests.single().expectedRowVersion)
-        assertEquals("星巴克臻选", api.updateRequests.single().displayName)
-        assertEquals("hidden", api.updateRequests.single().status)
-        assertTrue(api.updateIdempotencyKeys.single().isNotNullOrBlank())
-        assertEquals("hidden", updated.status)
+        assertEquals("  星巴克臻选  ", api.updateRequests.single().displayName)
+        assertEquals(null, api.updateRequests.single().status)
+        assertEquals("original-rename", api.updateIdempotencyKeys.single())
+        assertEquals(8L, updated.catalogReceipt?.rowVersion)
+        repo.submitDraft(rename.copy(kind = MerchantDraftKind.Visibility, key = "original-visibility", nextStatus = "hidden")).getOrThrow()
+        assertEquals("hidden", api.updateRequests.last().status)
+        assertEquals(null, api.updateRequests.last().displayName)
+        assertEquals("original-visibility", api.updateIdempotencyKeys.last())
     }
 
     @Test
-    fun `deleteMerchantCatalog network failure does not enqueue catalog mutation`() = runTest {
-        val api = CatalogApiServiceStub().apply {
-            deleteFailure = IOException("network down")
-        }
+    fun `delete network failure keeps its original key without enqueuing another catalog writer`() = runTest {
+        val api = CatalogApiServiceStub().apply { deleteFailure = IOException("network down") }
         val dao = FakePendingMutationDao()
         val repo = repository(api, outbox = testOutboxRepository(dao))
-
-        val result = repo.deleteMerchantCatalog(publicId = "catalog-1", expectedRowVersion = 3L)
-
+        val result = repo.submitDraft(MerchantDraft(requireNotNull(repo.captureBinding()), MerchantDraftKind.Delete, "original-delete",
+            source = merchantCatalogDto().copy(rowVersion = 3).toDomain()))
         assertTrue(result.isFailure)
         assertEquals(listOf("catalog-1"), api.deleteTargets)
         assertEquals(3L, api.deleteRequests.single().expectedRowVersion)
-        assertTrue(api.deleteIdempotencyKeys.single().isNotNullOrBlank())
-        assertEquals(0, dao.rows.size, "catalog mutations remain online-only in this slice")
+        assertEquals("original-delete", api.deleteIdempotencyKeys.single())
+        assertEquals(0, dao.rows.size)
     }
 
     @Test
-    fun `mergeMerchantCatalog sends dual OCC tokens and explicit alias policy`() = runTest {
+    fun `merge sends original key dual OCC tokens and explicit alias policy`() = runTest {
         val api = CatalogApiServiceStub()
-
-        val result = repository(api).mergeMerchantCatalog(
-            sourcePublicId = " source ",
-            sourceRowVersion = 3L,
-            targetPublicId = " target ",
-            targetRowVersion = 9L,
-            aliasPolicy = MerchantCatalogAliasPolicy.CreateSourceAlias,
-        ).getOrThrow()
-
+        val repo = repository(api)
+        val result = requireNotNull(repo.submitDraft(MerchantDraft(requireNotNull(repo.captureBinding()), MerchantDraftKind.Merge, "original-merge",
+            source = merchantCatalogDto("source").copy(rowVersion = 3).toDomain(),
+            target = merchantCatalogDto("target").copy(rowVersion = 9).toDomain(),
+            aliasPolicy = MerchantCatalogAliasPolicy.CreateSourceAlias)).getOrThrow().mergeReceipt)
         assertEquals(listOf("source"), api.mergeTargets)
         val request = api.mergeRequests.single()
+        assertEquals("original-merge", api.mergeKeys.single())
         assertEquals(3L, request.expectedRowVersion)
         assertEquals("target", request.targetPublicId)
         assertEquals(9L, request.targetRowVersion)
@@ -144,6 +141,29 @@ class MerchantRepositoryCatalogTest {
         assertEquals("merged", result.source.status)
         assertEquals("target", result.source.mergedIntoPublicId)
         assertEquals("alias-created-by-merge", result.createdAliasPublicId)
+    }
+
+    @Test fun originalCatalogBindingCannotReadOrWriteThroughAnotherIdentity() = runTest {
+        val api = CatalogApiServiceStub()
+        val repository = repository(api)
+        val current = requireNotNull(repository.captureBinding())
+        val otherBindings = listOf(current.copy(serverUrl = "https://other.example.com"), current.copy(ledgerId = "other-ledger"),
+            current.copy(ownerKey = "other-owner"), current.copy(sessionGeneration = "new-session"), current.copy(bindingRevision = "new-binding"))
+        val source = merchantCatalogDto().copy(rowVersion = 7).toDomain()
+        for (original in otherBindings) {
+            assertTrue(repository.merchantCatalog(expectedBinding = original).isFailure)
+            for (kind in listOf(MerchantDraftKind.Rename, MerchantDraftKind.Visibility, MerchantDraftKind.Delete, MerchantDraftKind.Merge)) {
+                assertTrue(repository.submitDraft(MerchantDraft(original, kind, "original-key", source = source, displayName = "原稿",
+                    nextStatus = "hidden", target = source.copy(publicId = "target"), aliasPolicy = MerchantCatalogAliasPolicy.None)).isFailure)
+            }
+        }
+        assertTrue(api.includeHiddenRequests.isEmpty())
+        assertTrue(api.updateRequests.isEmpty())
+        assertTrue(api.deleteRequests.isEmpty())
+        assertTrue(api.mergeRequests.isEmpty())
+        assertTrue(repository.merchantCatalog(expectedBinding = current).isSuccess)
+        assertEquals(8L, repository.submitDraft(MerchantDraft(current, MerchantDraftKind.Rename, "valid", source = source,
+            displayName = "原稿")).getOrThrow().catalogReceipt?.rowVersion)
     }
 
     private class TestApiServiceFactory(private val service: ApiService) : ApiServiceFactory {
@@ -168,17 +188,18 @@ class MerchantRepositoryCatalogTest {
         val deleteIdempotencyKeys = mutableListOf<String?>()
         val mergeTargets = mutableListOf<String>()
         val mergeRequests = mutableListOf<MerchantCatalogMergeRequest>()
+        val mergeKeys = mutableListOf<String>()
 
         override suspend fun merchantCatalog(includeHidden: Boolean): MerchantCatalogListDto {
             includeHiddenRequests += includeHidden
             return MerchantCatalogListDto(items = catalogItems)
         }
 
-        override suspend fun createMerchantCatalog(request: MerchantCatalogCreateRequest): MerchantCatalogDto {
+        override suspend fun createMerchantCatalog(request: MerchantCatalogCreateRequest, idempotencyKey: String): MerchantCatalogDto {
             createRequests += request
             return merchantCatalogDto(
                 publicId = "catalog-created",
-                displayName = request.displayName,
+                displayName = request.displayName.trim(),
                 status = request.status,
             )
         }
@@ -217,9 +238,11 @@ class MerchantRepositoryCatalogTest {
         override suspend fun mergeMerchantCatalog(
             sourcePublicId: String,
             request: MerchantCatalogMergeRequest,
+            idempotencyKey: String,
         ): MerchantCatalogMergeDto {
             mergeTargets += sourcePublicId
             mergeRequests += request
+            mergeKeys += idempotencyKey
             return MerchantCatalogMergeDto(
                 source = merchantCatalogDto(
                     publicId = sourcePublicId,
@@ -258,5 +281,3 @@ class MerchantRepositoryCatalogTest {
         )
     }
 }
-
-private fun String?.isNotNullOrBlank(): Boolean = !isNullOrBlank()

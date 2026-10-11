@@ -7,6 +7,7 @@
   const fields = form.querySelector("[data-manual-edit-fields]");
   const submit = form.querySelector("[data-manual-submit]");
   const status = form.querySelector("[data-manual-draft-status]");
+  const result = form.querySelector("[data-manual-result]");
   const options = form.querySelector("[data-manual-options]");
   const actions = document.querySelector("[data-manual-draft-actions]");
   const shelf = document.querySelector("[data-manual-draft-shelf]");
@@ -23,6 +24,12 @@
   let epoch = 0;
   let retained = false;
   let posting = false;
+  const preview = window.TicketboxAttachmentEntry?.originalSelection(form);
+  const original = preview && window.TicketboxManualOriginal ? form.querySelector("[data-manual-original]") : null;
+  const file = form.querySelector("[data-manual-original-file]");
+  const removeFile = form.querySelector("[data-manual-original-remove]");
+  let selecting = false;
+  let selectionFailed = false;
 
   function notice(message, state) {
     status.textContent = message;
@@ -37,6 +44,15 @@
 
   const nativeValues = values();
 
+  function showSummaries() {
+    form.querySelectorAll("[data-manual-value]").forEach(output => {
+      output.textContent = form.elements.namedItem(output.dataset.manualValue).value || "可选";
+    });
+    const time = form.querySelector("[data-manual-date-value]");
+    const name = form.elements.namedItem("time_precision")?.value === "date_only" ? "user_local_date" : "spent_at";
+    if (time) time.textContent = form.elements.namedItem(name).value.replace("T", " ") || "待填写";
+  }
+
   function showValues(saved) {
     controls.forEach(control => {
       const value = saved[control.name] ?? "";
@@ -49,8 +65,8 @@
       if (absent) omitted.add(control.name); else omitted.delete(control.name);
       control.disabled = absent;
     });
-    if (saved.merchant || saved.note || saved.category !== nativeValues.category ||
-        saved.spent_at !== nativeValues.spent_at) options.open = true;
+    if (saved.note) options.open = true;
+    showSummaries();
   }
 
   function readOnly(value) {
@@ -58,6 +74,10 @@
       if (control.tagName === "SELECT") control.disabled = value || omitted.has(control.name);
       else control.readOnly = value;
     });
+    if (file) {
+      file.disabled = removeFile.disabled = value || selecting;
+      removeFile.hidden = !form.elements.namedItem("original_file").value;
+    }
   }
 
   function blocked(message) {
@@ -69,14 +89,28 @@
     notice(message, "blocked");
   }
 
-  function showPhase(restored) {
+  function showPhase(record) {
+    const restored = !!record;
+    form.dataset.manualDraftRestored = String(restored);
+    result.hidden = !restored;
+    if (record) {
+      const href = new URL(draftHref(record), window.location.href);
+      window.history.replaceState(null, "", href);
+      href.pathname += "/result";
+      href.hash = "";
+      href.searchParams.set("client_ref", record.clientRef);
+      href.searchParams.set("draft_scope", JSON.stringify(record.scope));
+      result.href = href.href;
+    }
+    const heading = document.querySelector("[data-manual-heading]");
+    if (heading) heading.textContent = restored ? "上次的记录还在" : "记一笔";
     fields.disabled = false;
     readOnly(phase !== "editing");
-    submit.disabled = phase === "blocked";
-    submit.textContent = phase === "submitted" ? "重试这笔支出" : "记下这笔支出";
+    submit.disabled = phase === "blocked" || selecting || selectionFailed;
+    submit.textContent = phase === "submitted" ? "继续原提交" : "记下这笔支出";
     actions.hidden = phase === "editing";
     if (phase === "submitted") {
-      notice("还未确认保存结果。输入已锁定；重试会提交原来这一笔，也可以先核对流水。", "submitted");
+      notice("还未确认保存结果。可以先查看结果；继续提交仍是原来这一笔。", "submitted");
     } else if (phase === "blocked") {
       notice("这份草稿暂不能提交，输入仍在。请先核对流水与当前账号、账本。", "blocked");
     } else {
@@ -97,14 +131,23 @@
     const recurring = saved.return_to === "recurring_occurrence" &&
       /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(series) &&
       /^\d{4}-(0[1-9]|1[0-2])$/.test(month);
+    const originFields = [];
     if (recurring) {
       add("return_to", "recurring_occurrence");
       add("return_recurring_public_id", series);
       add("return_month", month);
+      originFields.push("return_payment_month", "return_query");
       const payment = saved.return_payment_expense_id || "";
       if (/^[1-9]\d{0,9}$/.test(payment) && Number(payment) <= 2147483647) {
         add("return_payment_expense_id", payment);
       }
+    }
+    if (["confirmed", "pending"].includes(saved.return_to)) {
+      add("return_to", saved.return_to);
+      originFields.push("return_month", "return_filter", "return_page", "return_tag", "return_query", "return_category", "return_home_currency_code");
+    }
+    for (const name of originFields) {
+      if (saved[name]) add(name, saved[name]);
     }
     return "/web/expenses/new" + (parts.length ? "?" + parts.join("&") : "") + "#manual-" + record.clientRef;
   }
@@ -133,7 +176,7 @@
     if (retained && !drafts.read(currentRef)) throw Error("draft_removed");
     const record = drafts.save(scope, currentRef, nextPhase, values());
     retained = true;
-    window.history.replaceState(null, "", "#manual-" + currentRef);
+    window.history.replaceState(null, "", draftHref(record));
     return record;
   }
 
@@ -142,12 +185,68 @@
     return match ? match[1] : null;
   }
 
+  function showOriginal() {
+    const metadata = form.elements.namedItem("original_file")?.value;
+    if (!original) {
+      if (metadata) blocked("原件工具暂未加载，原稿与图片仍保留。请重新打开此页再继续。");
+      return;
+    }
+    const ref = currentRef, turn = epoch;
+    original.querySelector("[data-manual-original-label]").textContent = metadata ? "已保留所选图片" : "没有小票也可以记账";
+    original.open = !!metadata;
+    void preview.show(async () => {
+      try { return await window.TicketboxManualOriginal.read(scope, ref, metadata); }
+      catch (error) {
+        if (turn === epoch) {
+          selectionFailed = true;
+          submit.disabled = true;
+          notice("所选原文件暂时无法读取。原稿仍保留，请恢复浏览器存储，或重新选择图片。", "storage-error");
+        }
+        throw error;
+      }
+    }, phase !== "editing");
+  }
+
+  async function selectOriginal(source) {
+    if (!held || phase !== "editing" || selecting) return;
+    const turn = epoch, ref = currentRef;
+    selecting = true;
+    readOnly(true);
+    submit.disabled = true;
+    notice("正在保留所选图片，请暂时留在此页…", "selecting");
+    try {
+      persist("editing");
+      const metadata = source ? await window.TicketboxManualOriginal.retain(scope, ref, source) : "";
+      if (turn !== epoch) return;
+      form.elements.namedItem("original_file").value = metadata;
+      omitted.delete("original_file");
+      persist("editing");
+      selectionFailed = false;
+      file.value = "";
+      showOriginal();
+      notice("原稿与所选图片已保留，尚未提交。", "editing");
+    } catch (_) {
+      if (turn !== epoch) return;
+      selectionFailed = true;
+      notice("图片尚未保留，这次没有发送。请保留此页，检查浏览器存储或重新选择图片。", "storage-error");
+    } finally {
+      if (turn === epoch) {
+        selecting = false;
+        readOnly(phase !== "editing");
+        submit.disabled = selectionFailed || phase === "blocked";
+      }
+    }
+  }
+
   function activate(ref, mustExist) {
     const turn = ++epoch;
     if (release) release();
     held = false;
     release = null;
     posting = false;
+    selecting = selectionFailed = false;
+    preview?.show(async () => null, false);
+    result.hidden = true;
     fields.disabled = true;
     submit.disabled = true;
     notice("正在打开草稿…", "opening");
@@ -179,8 +278,9 @@
         // refused command may be retried unchanged, never edited into a new one.
         if (phase === "blocked" && !nativeResult) phase = "submitted";
         if (ref === nativeRef && nativeResult === "rejected") {
-          showValues(nativeValues);
-          drafts.save(scope, ref, "editing", nativeValues, "rejected");
+          const rejectedValues = {...nativeValues, original_file: record?.values.original_file};
+          showValues(rejectedValues);
+          drafts.save(scope, ref, "editing", rejectedValues, "rejected");
           retained = true;
           phase = "editing";
         } else if (record) {
@@ -192,7 +292,8 @@
           // record. Do not manufacture a current-binding draft from that body.
           if (record) drafts.save(scope, ref, phase, record.values);
         }
-        showPhase(!!record);
+        showPhase(record);
+        showOriginal();
       }
       nativeResult = "";
       return new Promise(resolve => { release = resolve; });
@@ -206,8 +307,10 @@
   form.addEventListener("invalid", function (event) {
     if (options.contains(event.target)) options.open = true;
   }, true);
-  options.open = options.dataset.startExpanded !== "false";
-  options.querySelector("summary").hidden = false;
+  form.querySelectorAll(".manual-expense-options").forEach(disclosure => {
+    disclosure.open = disclosure.dataset.startExpanded !== "false";
+  });
+  showSummaries();
 
   try {
     scope = JSON.parse(form.dataset.manualDraftScope);
@@ -223,7 +326,8 @@
   }
 
   form.addEventListener("input", function () {
-    if (!held || phase !== "editing") return;
+    showSummaries();
+    if (!held || phase !== "editing" || selecting || selectionFailed) return;
     try {
       persist("editing");
       notice("草稿已保留在此浏览器，尚未提交。", "editing");
@@ -233,7 +337,7 @@
   });
 
   form.addEventListener("submit", function (event) {
-    if (!held || phase === "blocked" || posting) {
+    if (!held || phase === "blocked" || posting || selecting || selectionFailed) {
       event.preventDefault();
       return;
     }
@@ -268,6 +372,14 @@
     if (release) release();
     release = null;
   });
+  if (original) {
+    original.hidden = false;
+    file.addEventListener("change", () => { if (file.files[0]) void selectOriginal(file.files[0]); });
+    removeFile.addEventListener("click", () => { void selectOriginal(null); });
+    window.addEventListener("beforeunload", event => {
+      if (selecting || selectionFailed) { event.preventDefault(); event.returnValue = ""; }
+    });
+  }
   window.addEventListener("pageshow", function (event) {
     if (event.persisted) {
       const requested = fragmentRef();

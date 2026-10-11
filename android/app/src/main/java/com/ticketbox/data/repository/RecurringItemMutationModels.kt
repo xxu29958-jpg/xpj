@@ -27,6 +27,7 @@ data class RecurringItemPatch(
 )
 
 enum class RecurringPendingKind {
+    CANDIDATE,
     CREATE,
     UPDATE,
 }

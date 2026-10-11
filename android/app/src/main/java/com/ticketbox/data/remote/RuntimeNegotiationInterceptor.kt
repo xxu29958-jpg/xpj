@@ -52,6 +52,7 @@ internal class RuntimeNegotiationInterceptor : Interceptor {
                 accountingTimeInput,
                 originalAttachment,
                 debtActivityRead,
+                request.url.encodedPath.endsWith("/original/attach"),
             )) {
             return incompatibleProtocolResponse(request)
         }
@@ -101,10 +102,11 @@ internal class RuntimeNegotiationInterceptor : Interceptor {
 }
 
 private fun RuntimeWriteCompatibility?.supportsRequiredCapabilities(uploadReceipt: Boolean, accountingTime: Boolean,
-    originalAttachment: Boolean, debtActivityRead: Boolean): Boolean =
+    originalAttachment: Boolean, debtActivityRead: Boolean, firstAttachment: Boolean): Boolean =
     (!uploadReceipt || this?.uploadOriginalReceiptVersion == UPLOAD_ORIGINAL_RECEIPT_VERSION) &&
         (!accountingTime || this?.supportsAccountingTimeInput == true) &&
         (!originalAttachment || this?.supportsOriginalAttachment == true) &&
+        (!firstAttachment || this?.originalAttachmentCreateVersion == 1) &&
         (!debtActivityRead || this?.debtActivityReadVersion == DEBT_ACTIVITY_READ_VERSION)
 
 /** Inspect Retrofit's typed command, never consume or regenerate the original HTTP body. */

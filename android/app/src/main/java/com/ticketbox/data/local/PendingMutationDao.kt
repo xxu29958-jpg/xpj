@@ -46,6 +46,13 @@ interface PendingMutationDao {
         return id
     }
 
+    @Transaction
+    suspend fun insertBatchAndPublish(rows: List<PendingMutationEntity>, publish: suspend () -> Unit): List<Long> {
+        val ids = insertBatch(rows)
+        publish()
+        return ids
+    }
+
     @Query(
         "SELECT * FROM pending_mutations WHERE serverUrl = :serverUrl AND ownerKey = :ownerKey " +
             "AND ledgerId = :ledgerId AND type = :type AND idempotencyKey = :idempotencyKey ORDER BY id",
@@ -183,10 +190,9 @@ interface PendingMutationDao {
 
     @Query("""
         UPDATE pending_mutations SET lastError = NULL
-        WHERE id = :id AND status = 'done' AND type = 'save_monthly_budget'
-          AND lastError = 'budget_read_refresh_required' AND receiptJson = :receiptJson
+        WHERE id = :id AND status = 'done' AND lastError = :expectedError AND receiptJson = :receiptJson
     """)
-    suspend fun clearBudgetReadRefresh(id: Long, receiptJson: String): Int
+    suspend fun clearAcceptedReadRefresh(id: Long, receiptJson: String, expectedError: String): Int
 
     @Query(
         """

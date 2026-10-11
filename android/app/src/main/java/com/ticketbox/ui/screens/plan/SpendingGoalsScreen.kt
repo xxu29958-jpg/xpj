@@ -5,6 +5,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -21,6 +24,7 @@ import com.ticketbox.ui.components.AppErrorState
 import com.ticketbox.ui.components.AppFloatingActionBar
 import com.ticketbox.ui.components.AppLoadingState
 import com.ticketbox.ui.components.AppPageRole
+import com.ticketbox.ui.components.AppButtonIcons
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppSecondaryPageChrome
 import com.ticketbox.ui.components.AppSecondaryPageSlots
@@ -78,6 +82,11 @@ internal fun SpendingGoalsScreen(
                 onPreviousMonth = viewModel::previousMonth,
                 onNextMonth = viewModel::nextMonth,
             )
+        }
+        item {
+            TextButton(onClick = { viewModel.setIncludeArchived(!state.includeArchived) }) {
+                Text(stringResource(if (state.includeArchived) R.string.spending_goals_archived_hide else R.string.spending_goals_archived_show))
+            }
         }
         item {
             SpendingGoalsBody(
@@ -138,10 +147,17 @@ private fun SpendingGoalsBody(
                 ),
             ),
         )
-        else -> SpendingGoalListCard(
-            goals = state.goals,
-            onOpenGoal = onOpenGoal,
-        )
+        else -> Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap)) {
+            val active = state.goals.filterNot { it.isArchived }
+            if (active.isEmpty()) Text(stringResource(R.string.spending_goals_empty_title))
+            else SpendingGoalListCard(active, onOpenGoal)
+            if (state.includeArchived) {
+                Text(stringResource(R.string.spending_goals_archived_title), style = MaterialTheme.typography.titleMedium)
+                val archived = state.goals.filter { it.isArchived }
+                if (archived.isEmpty()) Text(stringResource(R.string.spending_goals_archived_empty))
+                else SpendingGoalListCard(archived, onOpenGoal)
+            }
+        }
     }
 }
 
@@ -150,7 +166,7 @@ private fun SpendingGoalsFooter(onCreate: () -> Unit, hasRetainedDraft: Boolean)
     AppFloatingActionBar {
         AppPrimaryButton(
             text = stringResource(if (hasRetainedDraft) R.string.goal_draft_continue else R.string.spending_goals_create_action),
-            icon = Icons.Filled.Add,
+            icons = AppButtonIcons(leading = Icons.Filled.Add),
             modifier = Modifier.fillMaxWidth(),
             onClick = onCreate,
         )

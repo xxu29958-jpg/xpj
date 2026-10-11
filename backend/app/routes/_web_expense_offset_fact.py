@@ -105,6 +105,7 @@ def _summary_view(bundle: ExpenseFactBundleResponse) -> dict[str, object]:
             summary.remaining_refundable_original_minor,
             original_code,
         ),
+        "remaining_original_minor": str(summary.remaining_refundable_original_minor),
         "lineage_net_label": _minor_amount_label(summary.lineage_home_net_cents, home_code),
         "fx_difference_label": (
             _minor_amount_label(summary.fx_difference_cents, home_code)

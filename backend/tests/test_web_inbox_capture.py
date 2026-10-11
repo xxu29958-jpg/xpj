@@ -251,7 +251,7 @@ def test_inbox_pending_header_has_native_upload_form_and_flat_queue_summary(
     form = re.search(
         r'<form class="inbox-upload-form" id="capture" method="post"'
         r' action="/web/pending/upload\?ledger_id=owner&amp;idempotency_key=[a-f0-9]{32}" data-inbox-capture'
-        r' enctype="multipart/form-data"\s*>.*?</form>',
+        r' data-inbox-batch enctype="multipart/form-data"\s*>.*?</form>',
         body,
         re.S,
     )
@@ -273,7 +273,7 @@ def test_inbox_pending_header_has_native_upload_form_and_flat_queue_summary(
 
     assert "inbox-summary-item" not in body
     assert "product-page-summary" in body
-    assert "笔待整理" in body
+    assert "张待整理" in body
 
     static_root = Path(__file__).resolve().parents[1] / "app" / "static" / "web"
     capture_js = (static_root / "attachment-entry.js").read_text(encoding="utf-8")
@@ -303,9 +303,9 @@ def test_inbox_pending_row_single_priority_status_and_one_writer_action(web_clie
     )
     assert ready_row is not None
     ready_flags = ready_row.group(1)
-    assert ready_flags.count("product-status") == 2
-    assert "可确认" in ready_flags
-    assert "缺金额" not in ready_flags
+    assert ready_row.group(0).count('class="exp-row-status ') == 1
+    assert "可确认" in ready_row.group(0)
+    assert "缺金额" not in ready_row.group(0)
     confirm = re.search(
         r'<form class="exp-row-action" method="post" action="/web/review/bulk">.*?</form>',
         ready_flags,
@@ -327,7 +327,7 @@ def test_inbox_pending_row_single_priority_status_and_one_writer_action(web_clie
     )
     assert broken_row is not None
     broken_flags = broken_row.group(1)
-    assert "缺金额" in broken_flags
+    assert "缺金额" in broken_row.group(0)
     assert "缺商家" not in broken_flags
     assert "疑似重复" not in broken_flags
     assert "exp-row-action" not in broken_flags
@@ -358,7 +358,7 @@ def test_inbox_pending_viewer_sees_status_without_write_action(web_client: TestC
     )
     assert row is not None
     flags = row.group(1)
-    assert "缺金额" in flags
+    assert "缺金额" in row.group(0)
     assert "<form" not in flags
     assert "<button" not in flags
     assert "<a " not in flags

@@ -12,7 +12,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -49,7 +52,12 @@ data class AppAsyncImageLayout(
     val compact: Boolean = false,
     val compactSize: DpSize = DpSize(width = 96.dp, height = 128.dp),
     val displayHeight: Dp? = null,
-)
+    val displayAspectRatio: Float = 4f / 5f,
+) {
+    companion object {
+        val ReceiptThumbnail = AppAsyncImageLayout(compact = true, compactSize = DpSize(40.dp, 52.dp))
+    }
+}
 
 /**
  * Coil 3 包装的异步图片加载器，统一处理：
@@ -79,6 +87,8 @@ fun AppAsyncImage(
     onDisplayed: ((ProtectedImage) -> Unit)? = null,
 ) {
     val context = LocalContext.current
+    var displayed by remember(image) { mutableStateOf(false) }
+    var failed by remember(image) { mutableStateOf(false) }
     val request = remember(image) {
         if (image == null) null else {
             ImageRequest.Builder(context)
@@ -91,7 +101,7 @@ fun AppAsyncImage(
     val sizeModifier = when {
         layout.compact -> Modifier.size(layout.compactSize)
         layout.displayHeight != null -> Modifier.fillMaxWidth().height(layout.displayHeight)
-        else -> Modifier.fillMaxWidth().aspectRatio(4f / 5f)
+        else -> Modifier.fillMaxWidth().aspectRatio(layout.displayAspectRatio)
     }
 
     Box(
@@ -101,20 +111,21 @@ fun AppAsyncImage(
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
         contentAlignment = Alignment.Center,
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .shimmer(),
-        ) {
-            SkeletonBlock(modifier = Modifier.fillMaxSize(), shape = presentation.shape)
+        if (!displayed) {
+            if (!failed && request != null) Box(
+                modifier = Modifier.fillMaxSize().shimmer(),
+            ) {
+                SkeletonBlock(modifier = Modifier.fillMaxSize(), shape = presentation.shape)
+            }
+            Text(
+                text = if (!failed && request != null) stringResource(R.string.components_async_image_loading)
+                    else presentation.placeholder,
+                modifier = Modifier.padding(AppSpacing.contentGap),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+                textAlign = TextAlign.Center,
+            )
         }
-        Text(
-            text = presentation.placeholder,
-            modifier = Modifier.padding(AppSpacing.contentGap),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodySmall,
-            textAlign = TextAlign.Center,
-        )
         request?.let {
             AsyncImage(
                 model = it,
@@ -123,7 +134,13 @@ fun AppAsyncImage(
                 contentScale = presentation.contentScale,
                 onSuccess = { success ->
                     image?.takeIf { displayed -> success.result.request.data === displayed.bytes }
-                        ?.let { displayed -> onDisplayed?.invoke(displayed) }
+                        ?.let { decoded ->
+                            displayed = true
+                            onDisplayed?.invoke(decoded)
+                        }
+                },
+                onError = { error ->
+                    if (error.result.request.data === image?.bytes) failed = true
                 },
             )
         }

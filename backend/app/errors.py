@@ -98,6 +98,7 @@ ERROR_MESSAGES = {
     "image_read_failed": "原件暂时无法读取，请稍后重试；账单记录会保留。",
     "original_review_conflict": "原件在核对后发生了变化，请重新查看当前原件后再确认。",
     "original_already_verified": "这份原件已有内容标识，请使用原件检查；不能通过确认改写它的身份。",
+    "original_already_associated": "这笔账单已有关联原件或保留记录，不能用新图片替换。请先查看原件状态，缺失时补回同一原件。",
     "original_replenishment_not_needed": "原件完整且没有待执行的清理，无需补回。",
     "original_identity_unverified": "这笔账单没有可核对的原件标识；现存旧件可先查看并确认，缺失旧件不能直接替换。",
     "image_replenishment_mismatch": "所选文件与这笔账单的原件不一致，请保留所选文件并核对同一原件；原账单不变。",

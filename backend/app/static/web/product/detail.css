@@ -1,5 +1,29 @@
 /* 二、三级页：稳定的工作区骨架，不复制首屏卡片布局。 */
 
+.rate-editor {
+    max-inline-size: 42rem;
+}
+
+.rate-editor > * + *, .rate-editor details[open] > * + * {
+    margin-block-start: var(--space-6);
+}
+
+.rate-editor form, .rate-fields {
+    display: grid;
+    gap: var(--space-6);
+}
+
+.rate-fields {
+    min-inline-size: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+.rate-target { font-size: var(--type-subtitle-size); }
+.rate-primary-action { display: grid; gap: var(--space-3); }
+.rate-primary-action > button { inline-size: 100%; }
+
 .detail-breadcrumb {
     display: flex;
     flex-wrap: wrap;
@@ -26,6 +50,23 @@
     display: grid;
     gap: var(--space-5);
 }
+
+.original-inspection {
+    display: flex;
+    flex-direction: column;
+    min-block-size: calc(100svh - var(--layout-topbar-h) - var(--space-12));
+}
+
+.original-scan-actions {
+    position: sticky;
+    inset-block-end: 0;
+    z-index: var(--z-sticky);
+    margin-block-start: auto;
+    padding-block: var(--space-4);
+    background: var(--surface-app);
+}
+
+.original-scan-actions > .product-button { flex: 1; }
 
 .detail-section {
     padding: var(--space-6);
@@ -67,6 +108,16 @@
     overflow: hidden;
 }
 
+.original-reader { min-height: calc(var(--space-12) * 6); max-height: 70svh; overflow: auto; background: var(--surface-sunken); border-radius: var(--radius-xl); padding: var(--space-3); }
+.original-reader > img { display: block; max-width: 100%; max-height: calc(70svh - var(--space-6)); object-fit: contain; }
+.original-reader > img[hidden] { display: none; }
+.original-reader > img.is-zoomed { width: 180%; max-width: none; max-height: none; }
+.original-reader > [data-original-preview-status] { padding: var(--space-5); text-align: center; }
+.original-selected-image { width: 100%; max-height: calc(70svh - var(--space-6)); object-fit: contain; background: var(--surface-sunken); border-radius: var(--radius-xl); }
+.edit-form > .product-check { min-height: var(--target-min); }
+.original-list > .product-entry { border-bottom: 1px solid var(--border-card); }
+.original-list [data-original-row-time] { font-size: var(--type-caption-size); color: var(--text-muted); }
+
 .receipt-loading {
     position: absolute;
     z-index: 1;
@@ -105,17 +156,11 @@
     margin-block-start: var(--space-6);
 }
 
-.expense-lines-scroll {
-    max-width: 100%;
-    overflow-x: auto;
-}
-
-.expense-lines-table {
-    min-width: calc(var(--space-12) * 9);
-}
-
-.expense-sub-actions {
-    margin-block-start: var(--space-4);
+.expense-subtask-nav {
+    grid-column: 1 / -1;
+    flex-wrap: wrap;
+    overflow: visible;
+    border-radius: 0;
 }
 
 .split-invite-form {
@@ -132,27 +177,6 @@
 
 .split-invite-sent {
     margin-block-start: var(--space-5);
-}
-
-.expense-lines-table input,
-.expense-lines-table select {
-    min-width: calc(var(--space-12) * 2);
-}
-
-.expense-lines-table input:disabled,
-.expense-lines-table select:disabled {
-    color: var(--text-muted);
-    background: var(--surface-sunken);
-}
-
-.expense-reconcile {
-    margin-block-end: var(--space-4);
-    padding: var(--space-3) var(--space-4);
-    border-inline-start: var(--space-1) solid var(--brand-primary);
-    border-radius: var(--radius-xs);
-    background: var(--brand-primary-bg);
-    color: var(--text-muted);
-    font-size: var(--type-caption-size);
 }
 
 .library-workspace {

@@ -19,5 +19,7 @@ class RecurringGlobalRecoveryPolicyTest {
             targetId = "recurring_item:plan-1", expectedRowVersion = 7)))
         assertFalse(OutboxStatusUiState().offersRetry(row.copy(type = PendingMutationType.SetRecurringOccurrencePayment,
             targetId = "recurring_occurrence:plan-1:2026-09")))
+        assertFalse(OutboxStatusUiState().offersRetry(row.copy(type = PendingMutationType.ConfirmRecurringCandidate,
+            targetId = "recurring_candidate:original-key")))
     }
 }

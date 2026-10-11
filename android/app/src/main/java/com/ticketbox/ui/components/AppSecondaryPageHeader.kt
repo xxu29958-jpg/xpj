@@ -5,16 +5,17 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import com.ticketbox.ui.design.AppAdaptiveContentWidth
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.AppTextHierarchy
+import com.ticketbox.ui.design.asTextStyle
 
 data class AppSecondaryPageChrome(
     val role: AppPageRole,
@@ -36,6 +37,7 @@ class AppSecondaryPageSlots(
     val status: (@Composable () -> Unit)? = null,
     val actions: (@Composable () -> Unit)? = null,
     val bottomBar: (@Composable () -> Unit)? = null,
+    val headingPrefix: (@Composable () -> Unit)? = null,
 )
 
 internal fun AppSecondaryPageSlots.resolveBottomBar(
@@ -58,27 +60,16 @@ fun AppSecondaryPageHeader(
     subtitle: String?,
     backText: String,
     onBack: (() -> Unit)?,
-    actions: @Composable (() -> Unit)? = null,
+    slots: AppSecondaryPageSlots = AppSecondaryPageSlots(),
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            onBack?.let {
-                AppBackButton(text = backText, onClick = it)
-            }
-            AppSecondaryTitleText(
-                title = title,
-                subtitle = subtitle,
-                modifier = Modifier.weight(1f),
-            )
-        }
-        actions?.invoke()
+        onBack?.let { AppBackButton(text = backText, onClick = it) }
+        slots.headingPrefix?.invoke()
+        AppSecondaryTitleText(title = title, subtitle = subtitle, modifier = Modifier.fillMaxWidth())
+        slots.actions?.invoke()
     }
 }
 
@@ -94,17 +85,14 @@ private fun AppSecondaryTitleText(
     ) {
         Text(
             text = title,
-            style = MaterialTheme.typography.headlineLarge,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            style = AppTextHierarchy.hero.asTextStyle(),
+            modifier = Modifier.semantics { heading() },
         )
         subtitle?.takeIf { it.isNotBlank() }?.let {
             Text(
                 text = it,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodyMedium,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
             )
         }
     }
@@ -173,7 +161,7 @@ private fun SecondaryHeader(
         subtitle = chrome.subtitle,
         backText = chrome.backText,
         onBack = chrome.onBack,
-        actions = slots.actions,
+        slots = slots,
     )
 }
 

@@ -40,7 +40,7 @@ internal class PendingViewModelReviewQueueTest : PendingViewModelReviewTestBase(
         assertEquals(3, vm.uiState.value.reviewRemaining)
 
         // 存 A 的商家 → 自动载入下一条仍缺商家的票 B，sheet 不关，计数降到 2。
-        vm.saveQuickMerchant(1L, "星巴克")
+        vm.saveQuickMerchant((vm.uiState.value.activeSheet as PendingSheet.QuickMerchant).expense, "星巴克")
         advanceUntilIdle()
 
         val sheet = vm.uiState.value.activeSheet
@@ -108,7 +108,7 @@ internal class PendingViewModelReviewQueueTest : PendingViewModelReviewTestBase(
         advanceUntilIdle()
 
         // 存唯一一张缺商家的票 → 没有下一条 → sheet 关闭，保留成功文案。
-        vm.saveQuickMerchant(1L, "美团外卖")
+        vm.saveQuickMerchant((vm.uiState.value.activeSheet as PendingSheet.QuickMerchant).expense, "美团外卖")
         advanceUntilIdle()
 
         assertEquals(PendingSheet.None, vm.uiState.value.activeSheet)
@@ -126,7 +126,7 @@ internal class PendingViewModelReviewQueueTest : PendingViewModelReviewTestBase(
         vm.openQuickMerchant(vm.uiState.value.items.first { it.id == 1L })
         advanceUntilIdle()
 
-        vm.saveQuickMerchant(1L, "星巴克")
+        vm.saveQuickMerchant((vm.uiState.value.activeSheet as PendingSheet.QuickMerchant).expense, "星巴克")
         advanceUntilIdle()
 
         // 失败不跳转：仍停在 A 的 sheet，错误反馈进 message（sheet 内可见），计数不变。

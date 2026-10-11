@@ -4,13 +4,18 @@ import android.content.Context
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextReplacement
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.test.core.app.ApplicationProvider
 import com.ticketbox.R
@@ -36,9 +41,11 @@ import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.theme.TicketboxTheme
+import com.ticketbox.ui.assertEditableTextEquals
 import com.ticketbox.viewmodel.SpendingGoalDetailViewModel
 import com.ticketbox.viewmodel.SpendingGoalsViewModel
 import com.ticketbox.viewmodel.SpendingGoalEditField
+import com.ticketbox.viewmodel.SpendingGoalEditDraftStore
 import com.ticketbox.viewmodel.MonthlyStatsViewModel
 import com.ticketbox.viewmodel.StatsReportsViewModel
 import com.ticketbox.viewmodel.DebtGoalViewModel
@@ -134,9 +141,10 @@ class GoalOfflineReadingConnectedTest {
     private lateinit var list: SpendingGoalsViewModel
 
     @After fun close() {
-        compose.runOnIdle { mounted.value = false; harness.models.viewModelStore.clear() }
-        compose.waitForIdle()
-        harness.close()
+        try {
+            compose.runOnIdle { mounted.value = false; harness.models.viewModelStore.clear() }
+            compose.waitForIdle()
+        } finally { harness.close() }
     }
 
     @Test fun listReadSurvivesRoomReopenAndUnvisitedDetailThenRefusalClearsOnlyReadData() {
@@ -150,6 +158,10 @@ class GoalOfflineReadingConnectedTest {
         assertTrue(detail.state.value.fromCache)
         compose.onNodeWithText(context.getString(R.string.spending_goal_progress_unavailable)).performScrollTo().assertIsDisplayed()
         compose.onNodeWithTag("goal-read-source").assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.spending_goal_edit_action)).performClick()
+        compose.onAllNodes(hasSetTextAction())[1].performScrollTo().performTextReplacement("1350")
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        androidx.test.espresso.Espresso.pressBack()
         denied = true
         compose.runOnIdle { detail.load() }
         compose.waitUntil(5_000) { !detail.state.value.isLoading && detail.state.value.loadError != null }
@@ -157,6 +169,10 @@ class GoalOfflineReadingConnectedTest {
         assertNull(detail.state.value.fetchedAt)
         compose.onNodeWithTag("goal-read-source").assertDoesNotExist()
         assertEquals(pending, harness.fixture.stored())
+        compose.onNodeWithText(context.getString(R.string.spending_goal_edit_action)).assertIsEnabled().performClick()
+        compose.onAllNodes(hasSetTextAction())[1].performScrollTo().assertEditableTextEquals("1350")
+        compose.onNodeWithText(context.getString(R.string.spending_goal_edit_save)).assertIsNotEnabled()
+        captureReferenceLibraryStep(compose, context, "goal-retained-after-denial")
         denied = false
         compose.runOnIdle { detail.load() }
         compose.waitUntil(5_000) { !detail.state.value.isLoading }
@@ -350,13 +366,17 @@ class GoalOfflineReadingConnectedTest {
             ViewModelProvider(harness.models, viewModelFactory {
                 initializer { com.ticketbox.viewmodel.CreateSpendingGoalViewModel(graph.goalEditRepository) }
             })["create-spending-goal", com.ticketbox.viewmodel.CreateSpendingGoalViewModel::class.java]
+            // This read-focused host supplies dependencies directly; real MAIN_ROUTE reentry has its own navigation test.
+            ViewModelProvider(harness.models, viewModelFactory {
+                initializer { SpendingGoalEditDraftStore(SavedStateHandle()) }
+            })["spending-goal-edit-drafts", SpendingGoalEditDraftStore::class.java]
             mounted.value = true
         }
         compose.setContent {
             TicketboxTheme(skin = AppSkin.Default) {
                 CompositionLocalProvider(LocalViewModelStoreOwner provides harness.models,
                     LocalCurrencyDisplay provides CurrencyDisplay(CurrencyCode.CNY)) {
-                    if (mounted.value) SpendingGoalsRoute(factory, onBack = {}, context = SpendingGoalRouteContext(harness.models))
+                    if (mounted.value) SpendingGoalsRoute(factory, onBack = {}, onOpenRecycleBin = {}, context = SpendingGoalRouteContext(harness.models))
                 }
             }
         }

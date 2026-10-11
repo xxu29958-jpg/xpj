@@ -12,9 +12,11 @@ const attempts = [];
 let serial = 0;
 let mode = 'success';
 let device = 'device';
+let batch = false;
 function page() {
   const ref = (++serial).toString(16).padStart(32,'0');
   const query = new URLSearchParams({ledger_id:'owner',idempotency_key:ref,draft_scope:JSON.stringify({...scope,deviceId:device})});
+  if(batch) return batchPage(ref,query);
   return `<!doctype html><html><head><meta charset='utf-8'></head><body><form data-inbox-capture data-attachment-scope='${JSON.stringify({...scope,deviceId:device})}'
     data-attachment-ref='${ref}' action='/web/pending/upload?${query}' method='post' enctype='multipart/form-data'>
     <input name='csrf_token' value='synthetic-csrf' type='hidden'><input name='file' type='file' required>
@@ -22,26 +24,39 @@ function page() {
     ${['manual-drafts','manual-draft-files','attachment-drafts','attachment-entry'].map(s=>`<script data-upload-max-bytes='1024' src='/static/${s}.js'></script>`).join('')}
     </body></html>`;
 }
+function batchPage(ref,query) {
+  return `<!doctype html><meta charset="utf-8"><details open><summary>收件箱</summary><section data-inbox-upload>
+    <h1 data-capture-title>收一张小票</h1><p data-capture-description></p>
+    <form id="capture" data-inbox-capture data-inbox-batch data-attachment-scope='${JSON.stringify(scope)}'
+      data-attachment-ref='${ref}' action='/web/pending/upload?${query}' method='post' enctype='multipart/form-data'>
+      <input name='csrf_token' value='synthetic-csrf' type='hidden'><label class='file-picker'><span data-capture-picker-hint></span>
+      <input id='inbox-upload-file' name='file' type='file' required></label><button type='submit'>上传小票</button><p data-attachment-status></p>
+    </form><section data-capture-selection hidden><span data-capture-count></span><div data-capture-items></div>
+      <div data-capture-progress hidden><span data-capture-progress-label></span><progress data-capture-progress-bar></progress><p class='product-page-summary'></p></div>
+    </section><div data-capture-actions></div><section data-attachment-shelf></section></section></details>
+    ${['manual-drafts','manual-draft-files','attachment-drafts','desktop/core','attachment-entry','inbox-capture'].map(s=>`<script data-upload-max-bytes='1024' src='/static/${s}.js'></script>`).join('')}`;
+}
 const imageBytes=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jS1sAAAAASUVORK5CYII=','base64');
 function reviewPage() {
   const ref='b'.repeat(32);
   const query=new URLSearchParams({ledger_id:'owner',idempotency_key:ref,draft_scope:JSON.stringify(scope),expected_row_version:'7'});
   return `<!doctype html><meta charset='utf-8'><button data-original-preview data-image-href='/image'>打开实际原图</button>
-    <p data-original-preview-status></p><img data-original-reviewed-image hidden>
+    <p data-original-preview-status></p><img data-original-reviewed-image hidden><div data-original-controls hidden></div>
     <form action='/web/expenses/17/original/verify?${query}' data-original-verification data-attachment-scope='${JSON.stringify(scope)}' data-attachment-ref='${ref}'>
     <input name='csrf_token' value='synthetic'><input type='hidden' name='reviewed_sha256' value=''>
     <input type='checkbox' data-original-reviewed disabled required><button type='submit' disabled>确认所见原件</button>
     <p data-attachment-status></p></form><section data-attachment-shelf></section>
-    ${['manual-drafts','manual-draft-files','attachment-drafts','attachment-entry','originals'].map(s=>`<script data-upload-max-bytes='1024' src='/static/${s}.js'></script>`).join('')}`;
+    ${['manual-drafts','manual-draft-files','attachment-drafts','attachment-entry','desktop/receipt-skeletons','originals'].map(s=>`<script data-upload-max-bytes='1024' src='/static/${s}.js'></script>`).join('')}`;
 }
 const server = http.createServer(async (req,res)=>{
   const url = new URL(req.url,'http://127.0.0.1');
   if(url.pathname.startsWith('/static/')) {
     res.setHeader('Content-Type','text/javascript; charset=utf-8');
-    return res.end(fs.readFileSync(path.join(root,path.basename(url.pathname))));
+    return res.end(fs.readFileSync(path.join(root,url.pathname.slice('/static/'.length))));
   }
   if(url.pathname==='/image'){res.writeHead(200,{'Content-Type':'image/png','ETag':'"'+'e'.repeat(64)+'"'});return res.end(imageBytes);}
   if(url.pathname==='/review'){res.setHeader('Content-Type','text/html; charset=utf-8');return res.end(reviewPage());}
+  if(batch&&url.searchParams.has('watch')){res.setHeader('Content-Type','text/html; charset=utf-8');return res.end('<div data-inbox-enrichment-terminal data-enrichment-state="updated">识别完成 · 待你核对</div>');}
   if(req.method==='GET') {res.setHeader('Content-Type','text/html; charset=utf-8');return res.end(page());}
   const chunks=[];for await(const chunk of req)chunks.push(chunk);
   const body=Buffer.concat(chunks);
@@ -51,11 +66,75 @@ const server = http.createServer(async (req,res)=>{
     name:file.name,type:file.type,bytes:Buffer.from(await file.arrayBuffer()).toString('hex')};
   attempts.push(intent);
   if(['conflict','mismatch','not-needed'].includes(mode)){res.writeHead(409,{'Content-Type':'application/json'});return res.end(JSON.stringify({error:mode==='conflict'?'state_conflict':mode==='mismatch'?'image_replenishment_mismatch':'original_replenishment_not_needed',message:'版本已更新'}));}
-  if(!receipt.has(intent.key))receipt.set(intent.key,{id:17,enrichment_task_public_id:'durable-task'});
+  if(!receipt.has(intent.key))receipt.set(intent.key,{id:17+receipt.size,enrichment_task_public_id:'durable-task-'+intent.key});
   res.setHeader('Content-Type','application/json');
   res.end(JSON.stringify({ack:{scope:JSON.parse(url.searchParams.get('draft_scope')),clientRef:intent.key},
-    receipt:receipt.get(intent.key),next:'/web/pending?accepted=1'}));
+    receipt:receipt.get(intent.key),next:batch?'/web/pending?watch='+intent.key:'/web/pending?accepted=1'}));
 });
+async function checkBatch(browser,origin) {
+  batch=true;receipt.clear();attempts.length=0;
+  const context=await browser.newContext(),tab=await context.newPage();
+  const files=[{name:'first.png',mimeType:'image/png',buffer:imageBytes},{name:'second.png',mimeType:'image/png',buffer:imageBytes}];
+  const primary='[data-capture-actions] button[type=submit]';
+  await tab.goto(origin+'/web/pending');
+  await tab.setInputFiles('#inbox-upload-file',files);
+  await tab.waitForFunction(()=>document.querySelector('[data-capture-actions] button[type=submit]').textContent==='上传 2 张小票');
+  await tab.locator('[data-capture-remove]').last().click();
+  await tab.waitForFunction(()=>document.querySelectorAll('.inbox-upload-task').length===1);
+  assert.equal(await tab.evaluate(s=>TicketboxAttachmentDrafts.store.list(s).length,scope),1);
+  await tab.setInputFiles('#inbox-upload-file',files[1]);
+  await tab.waitForFunction(()=>document.querySelector('[data-capture-actions] button[type=submit]').textContent==='上传 2 张小票');
+  let drop=true;
+  await tab.route('**/web/pending/upload?**',async route=>{if(drop){drop=false;await route.fetch();await route.abort('failed');}else await route.continue();});
+  await tab.click(primary);
+  await tab.waitForFunction(()=>[...document.querySelectorAll('.inbox-upload-task [data-attachment-status]')].some(e=>e.textContent.includes('暂未收到')));
+  assert.equal(receipt.size,1);assert.equal(attempts.length,1);
+  await tab.reload();
+  await tab.waitForFunction(()=>!document.querySelector('[data-capture-actions] button[type=submit]').disabled);
+  assert.equal(await tab.locator('.inbox-upload-task').count(),2);
+  await tab.click(primary);
+  await tab.waitForFunction(()=>document.querySelector('[data-capture-progress-label]').textContent==='2 / 2');
+  await tab.waitForFunction(()=>[...document.querySelectorAll('[data-capture-open]')].every(e=>e.textContent==='去核对'));
+  assert.deepEqual(attempts[0],attempts[1]);assert.equal(receipt.size,2);assert.equal(attempts.length,3);
+  assert.equal(await tab.evaluate(s=>TicketboxAttachmentDrafts.store.list(s).length,scope),0);
+  await tab.evaluate(async s=>{
+    const key='c'.repeat(32),query=new URLSearchParams({ledger_id:s.ledgerId,idempotency_key:key,draft_scope:JSON.stringify(s),expected_row_version:'7'});
+    await TicketboxAttachmentDrafts.retain(s,key,{action:location.origin+'/web/expenses/17/original/verify?'+query,
+      reviewed_sha256:'e'.repeat(64),request_id:'',file_sha256:'',file_name:'',file_type:'',file_last_modified:''});
+  },scope);
+  await tab.goto(origin+'/web/pending#attachment-'+attempts[0].key);
+  await tab.waitForFunction(()=>document.querySelector('[data-attachment-status]').textContent.includes('已收起'));
+  assert.equal(await tab.locator(primary).isDisabled(),true);
+  assert.equal(await tab.locator('[data-attachment-shelf] a[href*="/original?"]').isVisible(),true,'original verification continuation stays discoverable beside capture');
+  await tab.goto(origin+'/web/pending');
+  await tab.setInputFiles('#inbox-upload-file',files);
+  await tab.waitForFunction(()=>document.querySelector('[data-capture-actions] button[type=submit]').textContent==='上传 2 张小票');
+  await tab.unroute('**/web/pending/upload?**');
+  await tab.route('**/web/pending/upload?**',async route=>{await tab.getByRole('button',{name:'停止后续上传',exact:true}).click();await route.continue();});
+  await tab.click(primary);
+  await tab.waitForFunction(()=>document.querySelector('[data-capture-progress-label]').textContent==='1 / 2');
+  assert.equal(receipt.size,3);assert.equal(attempts.length,4);
+  assert.equal(await tab.evaluate(s=>TicketboxAttachmentDrafts.store.list(s).length,scope),2,'unsent upload and independent original verification are retained');
+  assert.equal(await tab.locator('[data-capture-remove]:visible').count(),1);
+  await context.close();
+  mode='conflict';
+  const rejectedContext=await browser.newContext(),rejected=await rejectedContext.newPage();
+  await rejected.goto(origin+'/web/pending');
+  await rejected.setInputFiles('#inbox-upload-file',files[0]);
+  await rejected.waitForFunction(()=>document.querySelector('[data-capture-actions] button[type=submit]').textContent==='上传 1 张小票');
+  await rejected.click(primary);
+  await rejected.waitForFunction(()=>!document.querySelector('[data-attachment-discard]').hidden);
+  rejected.once('dialog',dialog=>dialog.dismiss());
+  await rejected.click('[data-attachment-discard]');
+  assert.equal(await rejected.evaluate(s=>TicketboxAttachmentDrafts.store.list(s).length,scope),1);
+  rejected.once('dialog',dialog=>dialog.accept());
+  await rejected.click('[data-attachment-discard]');
+  await rejected.waitForFunction(()=>document.querySelectorAll('.inbox-upload-task').length===0);
+  assert.equal(await rejected.evaluate(s=>TicketboxAttachmentDrafts.store.list(s).length,scope),0);
+  assert.equal(receipt.size,3);
+  await rejectedContext.close();mode='success';
+  console.log('PASS real Chromium batch: two retained files; remove unsent; reload; lost ACK same request; accepted count distinct from OCR; stop leaves accepted result and unsent original');
+}
 let browser;
 (async()=>{
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
@@ -187,16 +266,51 @@ let browser;
   assert.equal(await denied.locator('button[type=submit]').isDisabled(),true);
   assert.equal(attempts.length,beforeDeniedRecovery);
   const review=await context.newPage();await review.goto(origin+'/review');
-  assert.equal(await review.locator('[data-original-reviewed]').isDisabled(),true);
-  assert.equal(await review.locator('[name=reviewed_sha256]').inputValue(),'');
-  await review.click('[data-original-preview]');
   await review.waitForFunction(()=>!document.querySelector('[data-original-reviewed]').disabled);
   assert.equal(await review.locator('[name=reviewed_sha256]').inputValue(),'');
+  assert.equal(await review.evaluate(()=>TicketboxAttachmentDrafts.store.read('b'.repeat(32))),null,'opening an original does not create an empty task');
   await review.check('[data-original-reviewed]');
   await review.waitForFunction(()=>document.querySelector('[data-attachment-status]').textContent.includes('已保留'));
   assert.equal(await review.locator('[name=reviewed_sha256]').inputValue(),'e'.repeat(64));
   assert.equal(await review.locator('[data-original-reviewed-image]').evaluate(img=>img.naturalWidth),1);
+  await review.uncheck('[data-original-reviewed]');
+  await review.waitForFunction(()=>TicketboxAttachmentDrafts.store.read('b'.repeat(32)).values.reviewed_sha256==='');
+  assert.equal(await review.locator('button[type=submit]').isDisabled(),true);
+  await review.check('[data-original-reviewed]');
+  await review.waitForFunction(()=>TicketboxAttachmentDrafts.store.read('b'.repeat(32)).values.reviewed_sha256.length===64);
+  await review.reload();
+  await review.waitForFunction(()=>!document.querySelector('[data-original-reviewed]').disabled);
+  assert.equal(await review.locator('button[type=submit]').isDisabled(),true,'an editing draft must review the newly read image');
+  await review.check('[data-original-reviewed]');
+  await review.waitForFunction(()=>!document.querySelector('button[type=submit]').disabled);
+  await review.route('**/image',route=>route.fulfill({status:503,body:''}));
+  await review.click('[data-original-preview]');
+  await review.waitForFunction(()=>document.querySelector('[data-original-preview-status]').textContent.includes('未能打开'));
+  await review.waitForFunction(()=>TicketboxAttachmentDrafts.store.read('b'.repeat(32)).values.reviewed_sha256==='');
+  assert.equal(await review.locator('button[type=submit]').isDisabled(),true,'failed reread cannot submit the previous digest');
+  await review.unroute('**/image');
+  await review.click('[data-original-preview]');
+  await review.waitForFunction(()=>!document.querySelector('[data-original-reviewed]').disabled);
+  await review.check('[data-original-reviewed]');
+  await review.waitForFunction(()=>!document.querySelector('button[type=submit]').disabled);
+  const verificationAttempts=[];
+  await review.route('**/web/expenses/17/original/verify?**',async route=>{
+    verificationAttempts.push({url:route.request().url(),digest:route.request().postData().includes('e'.repeat(64))});
+    await route.fulfill({status:409,contentType:'application/json',body:JSON.stringify({error:'original_review_conflict',message:'原件需要核对'})});
+  });
+  await review.click('button[type=submit]');
+  await review.waitForFunction(()=>document.querySelector('[data-attachment-status]').textContent.includes('原件需要核对'));
+  await review.route('**/image',route=>route.fulfill({status:503,body:''}));
+  await review.reload();
+  await review.waitForFunction(()=>!document.querySelector('button[type=submit]').disabled);
+  await review.click('button[type=submit]');
+  await review.waitForFunction(()=>document.querySelector('[data-attachment-status]').textContent.includes('原件需要核对'));
+  assert.equal(verificationAttempts.length,2);
+  assert.equal(verificationAttempts[0].digest,true);
+  assert.deepEqual(verificationAttempts[0],verificationAttempts[1],'submitted review retries its original snapshot even if the new read fails');
   console.log('PASS real Chromium: IndexedDB Blob reload; offline/ACK-loss original replay; one accepted receipt; OCC file retention; changed device fence; storage-unavailable native upload');
   console.log('PASS real Chromium: failed metadata blob compensation; state conflict/mismatch/not-needed confirmed discard; unknown outcome retained; configured size rejects before arrayBuffer');
   console.log('PASS real Chromium: legacy verification empty until actual snapshot decoded and user checked; digest bound to response ETag');
+  await context.close();
+  await checkBatch(browser,origin);
 })().catch(error=>{console.error(error);process.exitCode=1;}).finally(async()=>{if(browser)await browser.close();server.close();});

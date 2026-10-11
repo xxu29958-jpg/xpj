@@ -1,0 +1,32 @@
+<section class="expense-confirmation" data-expense-confirmation tabindex="-1">
+  {% if confirmation_fragment %}<header class="review-task-header"><button class="product-button product-button--quiet" type="button" data-drawer-close>收件箱</button><span class="review-position" data-review-position></span></header>{% endif %}
+  {% if receipt %}
+  <div class="expense-confirmation-heading" role="status">
+    <span class="expense-confirmation-mark"><svg width="36" height="36" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#check"/></svg></span>
+    <h1>这张，记好了</h1>
+    <p>{{ receipt.merchant or '未填写商家' }} · {{ selected_ledger_name }}</p>
+  </div>
+  <div class="expense-confirmation-amount">
+    <p>本次已入账 · {{ receipt.home_currency }}</p>
+    <strong class="money-value">{{ receipt_amount }}</strong>
+    {% if receipt.original_currency_code != receipt.home_currency %}<p>原币 {{ receipt_original }} · {{ receipt.original_currency_code }}</p>{% endif %}
+    <p>{{ receipt_date or '账务日期待核对' }}{% if receipt.category %} · {{ receipt.category }}{% endif %}</p>
+  </div>
+  <a class="inbox-state-row" href="{{ confirmation_detail_href }}">
+    <span class="inbox-state-icon"><svg width="24" height="24" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#receipt-text"/></svg></span>
+    <span><strong>查看这笔账单</strong><small>查看当前账单与原件状态</small></span>
+    <svg width="20" height="20" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
+  </a>
+  <p class="product-feedback product-feedback--success" data-confirmation-next-note hidden role="status"></p>
+  <div class="expense-confirmation-actions">
+    <button class="product-button product-button--primary" type="button" data-confirmation-next hidden>继续核对下一张</button>
+    <a class="product-button product-button--primary" href="{{ task_return_href }}" data-confirmation-finish>完成并返回</a>
+  </div>
+  {% else %}
+  <h1>先核实这次结果</h1>
+  <div class="product-feedback product-feedback--warning" role="alert">{{ error }}</div>
+  <p>没有读到原回执，不能据此判断没有入账。</p>
+  <a class="product-button product-button--primary" href="{{ confirmation_original_href }}">查看当前账单</a>
+  <a class="product-button" href="{{ task_return_href }}">返回原列表与任务</a>
+  {% endif %}
+</section>

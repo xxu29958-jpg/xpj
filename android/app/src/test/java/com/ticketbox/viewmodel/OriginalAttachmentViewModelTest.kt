@@ -1,15 +1,23 @@
 package com.ticketbox.viewmodel
 
 import androidx.lifecycle.SavedStateHandle
+import com.ticketbox.R
 import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.OriginalAttachmentActions
 import com.ticketbox.data.repository.OriginalCommandObservation
 import com.ticketbox.data.repository.OriginalSubmission
+import com.ticketbox.data.repository.OutboxRow
+import com.ticketbox.data.repository.PendingOriginalCommand
+import com.ticketbox.data.repository.originalPayloadAdapter
+import com.ticketbox.data.local.PendingMutationStatus
+import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.OriginalHealthDto
 import com.ticketbox.domain.model.ProtectedImage
+import com.ticketbox.domain.model.UiText
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.TestScope
@@ -17,6 +25,7 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.setMain
 import org.junit.Test
 import kotlin.test.assertEquals
@@ -29,6 +38,63 @@ class OriginalAttachmentViewModelTest {
     private fun checkTask(block: suspend TestScope.() -> Unit) = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         try { block() } finally { Dispatchers.resetMain() }
+    }
+
+    @Test fun firstAttachmentSelectionRestoresOriginalBillAndKeyWithoutFinancialCreation() = checkTask {
+        val owner = OriginalActionsFake().apply { healthState = "none" }
+        val handle = SavedStateHandle()
+        val vm = OriginalAttachmentViewModel(7, owner, { error("No original exists yet") }, handle)
+        advanceUntilIdle()
+        assertTrue(vm.beginSelection())
+        vm.selectedSource("content://controlled/original")
+        val retainedKey = handle.get<String>("original_key")
+        vm.resumeSelectedSource { throw IOException("content://private-provider/original cannot be read") }
+        advanceUntilIdle()
+        assertEquals(UiText.res(R.string.original_source_unavailable), vm.state.value.message)
+        assertEquals(retainedKey, handle.get<String>("original_key"))
+        assertEquals("content://controlled/original", handle.get<String>("original_uri"))
+        assertTrue(owner.submissions.isEmpty())
+        owner.retentionFailure = IOException("Synthetic disk failure")
+        vm.resumeSelectedSource { com.ticketbox.upload.PreparedUploadImage("original.jpg", "image/jpeg", byteArrayOf(1, 2, 3), 3) }
+        advanceUntilIdle()
+        assertFalse(vm.canLeaveOriginalSelection())
+        assertFalse(vm.state.value.canConfirmSelection)
+        assertEquals(retainedKey, handle.get<String>("original_key"))
+        owner.retentionFailure = null
+        vm.resumeSelectedSource { error("Retry must retain the displayed bytes, not reread the provider") }
+        advanceUntilIdle()
+        assertTrue(vm.canLeaveOriginalSelection())
+        assertTrue(owner.submissions.isEmpty(), "Selecting an original must wait for preview and explicit confirmation")
+        vm.submitSelectedSource()
+        advanceUntilIdle()
+        assertTrue(owner.submissions.isEmpty(), "Undisplayed image cannot be submitted")
+        vm.confirmImageSelection(true)
+        assertFalse(vm.state.value.canConfirmSelection)
+        val selection = requireNotNull(vm.state.value.selection)
+        vm.selectedImageDisplayed(selection.preview)
+        vm.confirmImageSelection(true)
+        vm.submitSelectedSource()
+        advanceUntilIdle()
+        val first = owner.submissions.single()
+        assertTrue(first.prepare!!.invoke() === selection.source, "Submit exactly the bytes shown")
+        assertEquals("attach_original", first.payload.operation)
+        assertEquals(7L, first.payload.expenseId)
+        assertEquals(4L, first.payload.expectedRowVersion)
+        assertNull(first.payload.sha256)
+        val restored = OriginalAttachmentViewModel(7, owner, { error("No original exists yet") },
+            SavedStateHandle(handle.keys().associateWith { handle.get<Any?>(it) }))
+        advanceUntilIdle()
+        assertTrue(restored.state.value.selectedSource)
+        restored.resumeSelectedSource { selection.source }
+        advanceUntilIdle()
+        assertEquals(1, owner.submissions.size, "Restoring a selection does not enqueue it")
+        assertFalse(restored.state.value.selectionConfirmed)
+        restored.selectedImageDisplayed(requireNotNull(restored.state.value.selection).preview)
+        restored.confirmImageSelection(true)
+        restored.submitSelectedSource()
+        advanceUntilIdle()
+        assertEquals(first.key, owner.submissions.last().key)
+        assertEquals(first.payload, owner.submissions.last().payload)
     }
 
     @Test fun onlyRenderedActualOriginalCanBeReviewedAndFailedAdmissionKeepsExactIntent() = checkTask {
@@ -53,6 +119,56 @@ class OriginalAttachmentViewModelTest {
         advanceUntilIdle()
         assertEquals(first, owner.submissions.last())
         assertEquals(first.key, handle.get<String>("original_key"))
+    }
+
+    @Test fun lateSelectedImageCannotEnterAnotherBindingAndKeepsItsOriginalTask() = checkTask {
+        val owner = OriginalActionsFake().apply { healthState = "none" }
+        val handle = SavedStateHandle()
+        val vm = OriginalAttachmentViewModel(7, owner, { error("No prior image") }, handle)
+        advanceUntilIdle()
+        assertTrue(vm.beginSelection())
+        vm.selectedSource("content://controlled/original")
+        val deferred = CompletableDeferred<com.ticketbox.upload.PreparedUploadImage>()
+        vm.resumeSelectedSource { deferred.await() }
+        runCurrent()
+        owner.binding = owner.binding.copy(ledgerId = "other", bindingRevision = "new")
+        owner.observations.value = OriginalCommandObservation(LedgerAccessContext(owner.binding, true), emptyList())
+        runCurrent()
+        deferred.complete(com.ticketbox.upload.PreparedUploadImage("private.jpg", "image/jpeg", byteArrayOf(1), 1))
+        advanceUntilIdle()
+        assertNull(vm.state.value.selection)
+        assertFalse(vm.state.value.localIntentBound)
+        assertTrue(vm.state.value.localIntent)
+        assertEquals("content://controlled/original", handle.get<String>("original_uri"))
+        assertTrue(owner.submissions.isEmpty())
+    }
+
+    @Test fun matchingAdmittedCommandResolvesLostLocalReplyWithoutReopeningProvider() = checkTask {
+        val owner = OriginalActionsFake().apply { healthState = "none" }
+        val handle = SavedStateHandle()
+        val vm = OriginalAttachmentViewModel(7, owner, { error("No prior image") }, handle)
+        advanceUntilIdle()
+        assertTrue(vm.beginSelection())
+        vm.selectedSource("content://controlled/original")
+        val json = requireNotNull(handle.get<String>("original_payload"))
+        val payload = requireNotNull(originalPayloadAdapter.fromJson(json))
+        val row = OutboxRow(id = 1, serverUrl = owner.binding.serverUrl, ledgerId = owner.binding.ledgerId,
+            type = PendingMutationType.OriginalAttachment, targetId = "expense:7", payloadJson = json,
+            expectedRowVersion = 4, status = PendingMutationStatus.Pending, retryCount = 0, lastError = null,
+            createdAt = "2026-10-09T00:00:00Z", attemptedAt = null, completedAt = null, idempotencyKey = "other-key")
+        owner.observations.value = OriginalCommandObservation(LedgerAccessContext(owner.binding, true),
+            listOf(PendingOriginalCommand(row, payload, null)))
+        advanceUntilIdle()
+        assertTrue(vm.state.value.localIntent)
+        val accepted = row.copy(idempotencyKey = handle.get<String>("original_key"))
+        owner.observations.value = OriginalCommandObservation(LedgerAccessContext(owner.binding, true),
+            listOf(PendingOriginalCommand(accepted, payload, null)))
+        advanceUntilIdle()
+        vm.resumeSelectedSource { error("The admitted Room command already owns its original") }
+        assertFalse(vm.state.value.localIntent)
+        assertNull(handle.get<String>("original_uri"))
+        assertEquals(accepted, vm.state.value.commands.single().row)
+        assertTrue(owner.submissions.isEmpty())
     }
 
     @Test fun bindingChangeCannotReuseRenderedEvidenceOrSubmitSavedInputToAnotherLedger() = checkTask {
@@ -129,15 +245,36 @@ class OriginalAttachmentViewModelTest {
     }
 }
 
-private class OriginalActionsFake : OriginalAttachmentActions {
+private class OriginalActionsFake : OriginalAttachmentActions, com.ticketbox.data.repository.OriginalSelectionActions {
+    override val originalSelections get() = this
     var binding = LogicalSessionBinding("https://example.test", "ledger", "owner", "session", "binding")
     val observations = MutableStateFlow(OriginalCommandObservation(LedgerAccessContext(binding, true), emptyList()))
     val submissions = mutableListOf<OriginalSubmission>()
+    var retained: com.ticketbox.data.repository.OriginalSelectionDraft? = null
+    var source: com.ticketbox.upload.PreparedUploadImage? = null
+    var retentionFailure: Throwable? = null
+    override suspend fun loadOriginalSelection(binding: LogicalSessionBinding, id: Long) = Result.success(retained)
+    override suspend fun retainOriginalSelection(request: OriginalSubmission): Result<com.ticketbox.data.repository.OriginalSelectionDraft> {
+        retentionFailure?.let { return Result.failure(it) }
+        val image = requireNotNull(request.prepare?.invoke()).also { source = it }
+        val payload = request.payload.copy(file = com.ticketbox.data.repository.UploadIntentFileDescriptor(request.key,
+            image.bytes.size.toLong(), "a".repeat(64), com.ticketbox.data.repository.UploadIntentFileMetadata(
+                image.fileName, image.contentType, image.preparationDurationMs, image.sourceSizeBytes)))
+        val row = com.ticketbox.data.local.ExpenseFactInputEntity(payload.origin.ownerKey, payload.origin.ledgerId,
+            payload.expenseId, "original_attachment", "{}", request.key, originalPayloadAdapter.toJson(payload))
+        return Result.success(com.ticketbox.data.repository.OriginalSelectionDraft(row, payload).also { retained = it })
+    }
+    override suspend fun readOriginalSelection(selection: com.ticketbox.data.repository.OriginalSelectionDraft) = Result.success(requireNotNull(source))
+    override suspend fun discardOriginalSelection(binding: LogicalSessionBinding, request: OriginalSubmission): Result<Unit> {
+        retained = null
+        return Result.success(Unit)
+    }
     override fun currentOriginalBinding() = binding
     override fun observeOriginalCommands() = observations
     var healthFailure: Throwable? = null
+    var healthState = "unverified"
     override suspend fun fetchOriginalHealth(id: Long): Result<OriginalHealthDto> = healthFailure?.let { Result.failure(it) } ?: Result.success(OriginalHealthDto(id, "expense-$id", 4,
-        "unverified", "2026-09-20T00:00:00Z", observedSha256 = "a".repeat(64)))
+        healthState, "2026-09-20T00:00:00Z", observedSha256 = "a".repeat(64)))
     override suspend fun submitOriginal(request: OriginalSubmission): Result<Long> {
         submissions += request
         return Result.failure(IOException("Synthetic local admission failure"))

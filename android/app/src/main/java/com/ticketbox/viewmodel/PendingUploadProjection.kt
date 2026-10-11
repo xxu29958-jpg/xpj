@@ -9,7 +9,7 @@ import com.ticketbox.data.repository.UploadIntentObservation
 import com.ticketbox.data.repository.isUploadIntentFileKey
 import com.ticketbox.domain.model.UiText
 
-/** Read-only projection of the oldest unfinished Room group. It owns no bytes, cursor or sender. */
+/** Read-only projection of the oldest unfinished, or most recent completed, Room group. */
 data class PendingUploadUiState(
     val groupId: String? = null,
     val inFlight: Boolean = false,
@@ -19,24 +19,29 @@ data class PendingUploadUiState(
     val originals: List<PendingUploadOriginalUi> = emptyList(),
 )
 
-data class PendingUploadOriginalUi(val position: Int, val fileName: String?)
+data class PendingUploadOriginalUi(
+    val position: Int,
+    val fileName: String?,
+    val status: PendingMutationStatus = PendingMutationStatus.Pending,
+    val expenseId: Long? = null,
+)
 
 internal fun UploadIntentObservation.toPendingUploadUiState(): PendingUploadUiState {
     val unfinished = uploads.filter { it.row.status != PendingMutationStatus.Done }
-    val first = unfinished.firstOrNull() ?: return PendingUploadUiState()
-    val group = unfinished.filter { it.row.targetId == first.row.targetId }
+    val first = unfinished.firstOrNull() ?: uploads.lastOrNull() ?: return PendingUploadUiState()
+    val group = uploads.filter { it.row.targetId == first.row.targetId }
     val groupId = first.row.targetId.removePrefix("upload_batch:")
         .takeIf { first.row.targetId == "upload_batch:$it" && isUploadIntentFileKey(it) }
-    val failures = group.filter { it.row.status in UPLOAD_FAILURE_STATUSES || it.payload?.file == null }
+    val pending = group.filter { it.row.status != PendingMutationStatus.Done }
+    val failures = pending.filter { it.row.status in UPLOAD_FAILURE_STATUSES || it.payload?.file == null }
     return PendingUploadUiState(
-        groupId = groupId,
+        groupId = groupId.takeIf { group.any { it.row.status != PendingMutationStatus.Done } },
         inFlight = group.any { it.row.status == PendingMutationStatus.InFlight },
         failedCount = failures.size,
         retryable = group.any { it.canRetry },
-        message = uploadGroupMessage(group, failures),
-        originals = uploads.filter { it.row.targetId == first.row.targetId }.mapIndexedNotNull { index, intent ->
-            if (intent.row.status == PendingMutationStatus.Done) null
-            else PendingUploadOriginalUi(index + 1, intent.payload?.file?.metadata?.fileName)
+        message = if (pending.isEmpty()) null else uploadGroupMessage(pending, failures),
+        originals = group.mapIndexed { index, intent ->
+            PendingUploadOriginalUi(index + 1, intent.payload?.file?.metadata?.fileName, intent.row.status, intent.receipt?.id)
         },
     )
 }

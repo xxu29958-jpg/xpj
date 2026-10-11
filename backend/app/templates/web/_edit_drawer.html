@@ -1,29 +1,19 @@
-{# 编辑抽屉片段（GET /web/expenses/{id}/edit?fragment=1）。
-   不带 base.html 外框，仅返回抽屉内部的 markup，由 desktop.js fetch 后注入 #drawer。
-   上下文：与 edit.html 共享 `web_edit_context()`：
-     expense, receipt_items, split_rows, split_members, ledger_options, ...
-   218-D S4 (移植自产品矿 _edit_drawer.html, 适配 main): 抽屉本体换 product-drawer
-   新标记, 样式来自 domains/inbox.css 的 product-drawer 族 + product/components.css
-   (收件域新栈页断旧栈, 旧 drawer 标记在这里会裸奔)。与矿的偏离点:
-   - hidden return_to 固定 "pending" (main 批10 白名单合同); 矿的 edit_return_to/
-     return_filter 流 main 路由未实现, 不移植;
-   - 保留隐式提交守卫与 data-confirm 忽略草稿 (main 既有交互合同)。
-   收件域收口片: 字段与冲突横幅并入共享 partial _expense_core_fields.html
-   (与完整整理页同一展示 owner); header 增加「完整整理」逃逸口。 #}
+{# The actual pending drawer shares fields, original task and receipt with the full editor. #}
 {% set e = expense %}
 <div class="product-drawer-editor">
-  <section class="product-drawer-evidence" aria-label="账单凭证">
+  <header class="review-task-header">
+    <button class="product-button product-button--quiet" type="button" data-drawer-close><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-left"/></svg> 收件箱</button>
+    <span class="review-position" data-review-position>待核对</span>
+    <a class="product-button product-button--quiet" data-review-full href="{{ edit_current_href }}">完整整理</a>
+  </header>
+  <div class="review-mobile-heading">
+    <div class="review-mobile-state"><span data-review-position>待核对</span><span class="product-status">{% if e.is_duplicate %}疑似重复{% elif e.needs_amount %}缺金额{% elif e.fx_pending %}待汇率{% elif e.needs_category %}待分类{% else %}待确认{% endif %}</span></div>
+    <h2 class="review-mobile-title">核对这张小票</h2>
+  </div>
+  <section class="product-drawer-evidence{% if not e.has_image %} is-empty{% endif %}" aria-label="账单凭证">
     <header class="product-drawer-section-header">
-      <div>
-        <span class="product-eyebrow">凭证</span>
-        <h2 class="product-drawer-section-title">小票原件</h2>
-      </div>
-      <span class="product-status">#{{ e.id }}</span>
+      <span class="product-drawer-meta">原件预览</span>
     </header>
-
-    <p class="product-drawer-meta">{{ e.source_label }} · 上传于 {{ e.created_at or '时间待核对' }}</p>
-    <a class="product-button product-button--small" href="/web/expenses/{{ e.id }}/original{{ '?ledger_id=' ~ selected_ledger_id }}">检查原件与继续处理</a>
-    {% include "_expense_ocr_actions.html" %}
 
     <div class="product-drawer-receipt"
          {% if e.has_image %}data-image-skeleton{% endif %}>
@@ -34,25 +24,131 @@
            loading="lazy"
            decoding="async">
       {% else %}
-      <div class="product-state product-drawer-image-state">
-        <div class="product-state-title">没有可查看的原图</div>
-        <div class="product-state-body">这可能是手动记录，或凭证图片已经按清理策略移除。</div>
-      </div>
+      {% include "_expense_original_state.html" %}
       {% endif %}
     </div>
 
     {% if e.has_image %}
     <div class="product-drawer-evidence-actions">
-      <a class="product-button product-button--small"
+      <button type="button" class="product-button product-button--quiet" data-receipt-zoom aria-label="放大小票原图" title="缩放原件"><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#plus"/></svg></button>
+      <span class="review-image-scale" data-receipt-scale>100%</span>
+      <button type="button" class="product-button product-button--quiet" data-receipt-rotate aria-label="旋转小票原图" title="旋转原件"><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#rotate-ccw"/></svg></button>
+      <a class="product-button product-button--quiet"
          href="/web/expenses/{{ e.id }}/image{{ '?ledger_id=' ~ selected_ledger_id }}"
          target="_blank"
-         rel="noopener">查看原图</a>
-      <a class="product-button product-button--small"
+         rel="noopener" aria-label="查看原图" title="查看完整原件"><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#maximize-2"/></svg><span class="review-image-link-label">查看完整原件</span></a>
+      <a class="product-button product-button--quiet review-image-download"
          href="/web/expenses/{{ e.id }}/image{{ '?ledger_id=' ~ selected_ledger_id }}"
-         download>下载原图</a>
+         download aria-label="下载原图" title="下载原图"><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#download"/></svg></a>
     </div>
     {% endif %}
 
+
+  </section>
+
+  <section class="product-drawer-form">
+    <header class="product-drawer-header">
+      <div class="product-drawer-heading">
+        <div class="review-heading-status">
+          {% if e.status == 'pending' %}<span class="review-position" data-review-position>待核对</span>{% endif %}
+          <span class="product-status">{% if e.status == 'confirmed' %}已入账{% elif e.status == 'rejected' %}已忽略{% elif e.status != 'pending' %}状态待核对{% elif e.needs_amount %}缺金额{% elif e.is_duplicate %}疑似重复{% elif e.needs_merchant %}缺商家{% elif e.fx_pending %}待汇率{% elif e.needs_category %}待分类{% else %}待确认{% endif %}</span>
+        </div>
+        <h2>{{ '核对这张小票' if e.status == 'pending' else '账单详情' }}</h2>
+      </div>
+    </header>
+
+    {% if not can_write %}
+    <div class="product-feedback" role="status">
+      只读角色可以核对凭证与账面字段，但不能编辑、确认或忽略。
+    </div>
+    {% endif %}
+
+    {# S4-R1: 缺类信号进抽屉 — 与队列 pill 同族文案的警示条; 单行确认在
+       服务端同步拒绝 (web_confirm), 与队列 ready 门同义, 前后端一致。 #}
+    {% if e.needs_category %}
+    <div class="product-feedback product-feedback--warning" role="status">
+      分类待补：这条账单还没有有效分类，补齐后才能确认入账。
+    </div>
+    {% endif %}
+
+    {# 批10: a failed fetch-mutation swaps this fragment back in with `error` set,
+       so the reviewer sees the reason inline without leaving the queue.
+       冲突 (conflict_current) 时错误槽让位给 partial 的对比横幅, 不双重报告。 #}
+    {% if error and not conflict_current %}
+    <div class="product-feedback product-feedback--error" role="alert" data-drawer-error>{{ error }}</div>
+    {% endif %}
+
+    <form method="post"
+          action="/web/expenses/{{ e.id }}/save"
+          class="product-drawer-fields"
+          data-drawer-form
+          {% if expense_review_scope %}data-expensereview-draft-scope='{{ expense_review_scope | tojson }}'{% endif %}
+          data-expensereview-plan-id="{{ e.id }}" data-expensereview-can-write="{{ 'true' if can_write else 'false' }}"
+          data-expensereview-row-version="{{ expense_review_row_version|default(e.row_version) }}"
+          data-expensereview-archived="{{ 'false' if e.status == 'pending' else 'true' }}"
+          data-expensereview-native-result="{{ expense_review_result }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+      <input type="hidden" name="original_currency" value="{{ e.original_currency_code }}">
+      <input type="hidden" name="expected_row_version" value="{{ e.row_version }}">
+      <input type="hidden" name="idempotency_key" value="{{ confirm_idempotency_key }}">
+      <input type="hidden" name="reject_idempotency_key" value="{{ reject_idempotency_key }}">
+      <input type="hidden" name="keep_idempotency_key" value="{{ keep_idempotency_key }}">
+      <input type="hidden" name="save_before_confirm" value="1">
+      {% for name, value in edit_return_fields.items() %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
+      {# 浏览器 Enter 使用 tree-order 首个 submit。此按钮位于原稿核对和其它动作之前，
+         没有 formaction，确保输入框的隐式提交沿表单自身 action(/save) 保存原稿。#}
+      {% if can_write %}<button type="submit" hidden tabindex="-1" aria-hidden="true"{% if expense_review_basis_changed %} disabled{% endif %}></button>{% endif %}
+      {% include "_expense_review_draft.html" %}
+
+      {% set core_fields_prefix = 'drawer-expense-' ~ e.id %}
+      {% set core_fields_reload_href = edit_reload_href %}
+      {% set core_fields_subtask_href = edit_current_href %}
+      {% set core_fields_compact = true %}
+      {% set core_fields_subtasks = true %}
+      <details class="expense-review-original" data-expensereview-original open>
+        <summary class="product-button product-button--quiet" data-expensereview-original-toggle hidden>查看本次填写的内容</summary>
+        {% include "_expense_core_fields.html" %}
+      </details>
+
+      {% if can_write %}
+      <div class="product-drawer-actions">
+        <details class="review-more-actions"><summary aria-label="更多操作"><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#ellipsis"/></svg></summary><div>
+        <a class="product-button product-button--quiet" data-review-full href="{{ edit_current_href }}">完整整理</a>
+        <button class="product-button product-button--quiet" type="button" data-drawer-close>返回收件箱</button>
+        <button class="product-button product-button--danger"
+                type="submit"
+                formaction="/web/expenses/{{ e.id }}/reject"
+                data-confirm="忽略这条草稿？">忽略草稿</button>
+        {% if e.is_duplicate %}
+        <button class="product-button"
+                type="submit"
+                formaction="/web/duplicates/{{ e.id }}/keep">标为非重复</button>
+        {% endif %}
+        </div></details>
+        <div class="spacer"></div>
+        <button class="product-button product-button--quiet" type="submit"{% if expense_review_basis_changed %} disabled{% endif %}>保存草稿</button>
+        {% if expense_review_scope or (e.status == 'pending' and not e.fx_pending and not fx_revision_changed) %}
+        <button class="product-button product-button--primary"
+                type="submit"
+                formaction="/web/expenses/{{ e.id }}/confirm" data-expensereview-submit{% if expense_review_basis_changed and not expense_review_result %} disabled{% endif %}>确认入账并下一张</button>
+        {% endif %}
+        <button class="product-button product-button--quiet" type="button" data-drawer-close data-expensereview-later hidden>稍后继续</button>
+      </div>
+      {% else %}
+      <div class="product-drawer-actions">
+        <div class="spacer"></div>
+        <button class="product-button product-button--primary" type="submit" formaction="/web/expenses/{{ e.id }}/confirm" data-expensereview-submit disabled>核实这次结果</button>
+        <button class="product-button" type="button" data-drawer-close data-expensereview-later>关闭</button>
+      </div>
+      {% endif %}
+    </form>
+    <details class="review-original-details">
+    <summary>原件信息与识别</summary>
+    <a class="product-button product-button--small" data-review-full href="{{ edit_current_href }}">完整整理</a>
+    <p class="product-drawer-meta">{{ e.source_label }} · 上传于 {{ e.created_at or '时间待核对' }}</p>
+    <a class="product-button product-button--small" href="/web/expenses/{{ e.id }}/original{{ '?ledger_id=' ~ selected_ledger_id }}">检查原件与继续处理</a>
+    {% include "_expense_ocr_actions.html" %}
     <dl class="product-drawer-facts">
       <div>
         <dt>商家</dt>
@@ -82,111 +178,6 @@
         <dd>{% if e.needs_category %}待分类{% else %}{{ e.category or '待分类' }}{% endif %}</dd>
       </div>
     </dl>
-  </section>
-
-  <section class="product-drawer-form">
-    <header class="product-drawer-header">
-      <div class="product-drawer-heading">
-        <span class="product-eyebrow">
-          收件 / 待我处理 /
-          {% if e.status == 'pending' %}待确认
-          {% elif e.status == 'confirmed' %}已入账
-          {% elif e.status == 'rejected' %}已忽略
-          {% else %}状态待核对
-          {% endif %}
-        </span>
-        <h2>{{ e.merchant or '未命名账单' }}</h2>
-        <div class="product-drawer-flags">
-          {% if e.needs_amount %}<span class="product-status product-status--danger">缺金额</span>{% endif %}
-          {% if e.needs_merchant %}<span class="product-status product-status--warning">缺商家</span>{% endif %}
-          {% if e.is_duplicate %}<span class="product-status product-status--danger">疑似重复</span>{% endif %}
-          {% if e.fx_pending %}<span class="product-status product-status--warning">待汇率</span>{% endif %}
-          {% if not e.needs_amount and not e.needs_merchant and not e.needs_category and not e.is_duplicate and not e.fx_pending %}
-          <span class="product-status product-status--success">可确认</span>
-          {% endif %}
-        </div>
-      </div>
-      <div class="product-drawer-header-actions">
-        <a class="product-button product-button--quiet product-button--small"
-           href="/web/expenses/{{ e.id }}/edit{{ '?ledger_id=' ~ selected_ledger_id }}">完整整理</a>
-        <button class="product-button product-button--quiet product-button--small"
-                type="button"
-                data-drawer-close>关闭</button>
-      </div>
-    </header>
-
-    {% if not can_write %}
-    <div class="product-feedback" role="status">
-      只读角色可以核对凭证与账面字段，但不能编辑、确认或忽略。
-    </div>
-    {% endif %}
-
-    {# S4-R1: 缺类信号进抽屉 — 与队列 pill 同族文案的警示条; 单行确认在
-       服务端同步拒绝 (web_confirm), 与队列 ready 门同义, 前后端一致。 #}
-    {% if e.needs_category %}
-    <div class="product-feedback product-feedback--warning" role="status">
-      分类待补：这条账单还没有有效分类，补齐后才能确认入账。
-    </div>
-    {% endif %}
-
-    {# 批10: a failed fetch-mutation swaps this fragment back in with `error` set,
-       so the reviewer sees the reason inline without leaving the queue.
-       冲突 (conflict_current) 时错误槽让位给 partial 的对比横幅, 不双重报告。 #}
-    {% if error and not conflict_current %}
-    <div class="product-feedback product-feedback--error" role="alert" data-drawer-error>{{ error }}</div>
-    {% endif %}
-
-    <form method="post"
-          action="/web/expenses/{{ e.id }}/save"
-          class="product-drawer-fields"
-          data-drawer-form>
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-      <input type="hidden" name="original_currency" value="{{ e.original_currency_code }}">
-      <input type="hidden" name="expected_row_version" value="{{ e.row_version }}">
-      <input type="hidden" name="idempotency_key" value="{{ confirm_idempotency_key }}">
-      <input type="hidden" name="reject_idempotency_key" value="{{ reject_idempotency_key }}">
-      <input type="hidden" name="save_before_confirm" value="1">
-      {# 批10: hidden return_to sends a no-JS save back to the pending queue instead
-         of the full edit page (fixes the "saved → popped out of queue" 303). The JS
-         drawer flow reads/sets fragment=1 itself; this static value keeps the
-         no-JS submit landing on /web/pending. #}
-      <input type="hidden" name="return_to" value="pending">
-      {# 隐式提交守卫：tree-order 首个 submit 是浏览器 Enter 的默认按钮。没有这个
-         shim 时首个 submit 是「忽略草稿」(formaction=/reject)——在输入框按 Enter
-         会直接软删。shim 无 formaction,Enter 走表单自身 action(/save),载荷与
-         点「保存草稿」一致。#}
-      {% if can_write %}<button type="submit" hidden tabindex="-1" aria-hidden="true"></button>{% endif %}
-
-      {% set core_fields_prefix = 'drawer-expense-' ~ e.id %}
-      {% set core_fields_reload_href = edit_current_href %}
-      {% include "_expense_core_fields.html" %}
-
-      {% if can_write %}
-      <div class="product-drawer-actions">
-        <button class="product-button product-button--danger"
-                type="submit"
-                formaction="/web/expenses/{{ e.id }}/reject"
-                data-confirm="忽略这条草稿？">忽略草稿</button>
-        {% if e.is_duplicate %}
-        <button class="product-button"
-                type="submit"
-                formaction="/web/duplicates/{{ e.id }}/keep">标为非重复</button>
-        {% endif %}
-        <div class="spacer"></div>
-        <button class="product-button" type="submit">保存草稿</button>
-        {% if e.status == 'pending' and not e.fx_pending and not fx_revision_changed %}
-        <button class="product-button product-button--primary"
-                type="submit"
-                formaction="/web/expenses/{{ e.id }}/confirm">确认入账</button>
-        {% endif %}
-      </div>
-      {% else %}
-      <div class="product-drawer-actions">
-        <div class="spacer"></div>
-        <button class="product-button" type="button" data-drawer-close>关闭</button>
-      </div>
-      {% endif %}
-    </form>
+    </details>
   </section>
 </div>

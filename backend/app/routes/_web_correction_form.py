@@ -32,7 +32,7 @@ from app.routes._web_correction_sources import (
     submitted_item_source_ids,
 )
 from app.routes._web_expense_edit_command import prepare_web_expense_form
-from app.routes._web_expense_form import web_form_error_status
+from app.routes._web_expense_form import score_change, web_form_error_status
 from app.routes._web_expense_return_context import (
     ExpenseReturnContext,
     expense_return_form_context,
@@ -291,28 +291,6 @@ def _form_values_from(form: CorrectionFormData) -> dict[str, str]:
     return {key: value for key, value in values.items() if value is not None}
 
 
-def _score_change(
-    raw: str | None,
-    current: int | None,
-    *,
-    present: bool,
-) -> tuple[bool, int | None, str | None]:
-    """Parse one optional score while preserving absent/value/clear semantics."""
-
-    if not present:
-        return False, None, None
-    cleaned = (raw or "").strip()
-    if not cleaned:
-        return current is not None, None, None
-    try:
-        candidate = int(cleaned)
-    except ValueError:
-        return False, None, "评分只能选择 1 到 5，或清空评分。"
-    if candidate not in range(1, 6):
-        return False, None, "评分只能选择 1 到 5，或清空评分。"
-    return candidate != current, candidate, None
-
-
 def correction_form_projection(form: CorrectionFormData) -> CorrectionParseOutcome:
     """Retain raw scalar and child-row intent without reading or adopting a newer fact."""
     outcome = CorrectionParseOutcome(
@@ -388,7 +366,7 @@ def _scalar_changes(
         ("value_score", form.value_score, expense.value_score, form.value_score_present),
         ("regret_score", form.regret_score, expense.regret_score, form.regret_score_present),
     ):
-        changed, candidate, score_error = _score_change(raw, current, present=present)
+        changed, candidate, score_error = score_change(raw, current, present=present)
         if score_error is not None:
             outcome.error = score_error
             outcome.field_errors = {field_name: score_error}

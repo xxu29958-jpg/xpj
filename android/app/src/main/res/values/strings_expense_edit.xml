@@ -3,7 +3,7 @@
 <resources>
 
     <!-- ExpenseEditScreen：确认/编辑账单主屏 -->
-    <string name="expense_edit_header_title">确认账单</string>
+    <string name="expense_edit_header_title">核对这张小票</string>
     <string name="expense_edit_header_subtitle">核对金额、商家和分类后入账</string>
     <string name="expense_edit_header_title_confirmed">编辑账单</string>
     <string name="expense_edit_header_subtitle_confirmed">修改已入账记录，保存后更新账本</string>
@@ -53,6 +53,7 @@
     <string name="expense_edit_manual_rate_saved">汇率已保存，请核对本笔折算金额后再确认入账。</string>
     <string name="expense_edit_manual_rate_offline_queued">汇率已保存到本机，联网同步后可核对折算；账单仍待确认。</string>
     <string name="expense_edit_merchant_field_label">商家</string>
+    <string name="expense_edit_merchant_empty">未填写</string>
     <string name="expense_edit_category_field_label">分类</string>
     <string name="expense_edit_note_field_label">备注</string>
     <string name="expense_edit_source_label">来源：%1$s</string>
@@ -91,7 +92,12 @@
     <string name="expense_edit_items_sheet_subtitle">逐项录入商品 / 折扣 / 税 / 服务费；折扣按正数填写，合计会自动相减。</string>
     <string name="expense_edit_items_add_row_button">添加项目</string>
     <string name="expense_edit_items_saving_button">保存中…</string>
-    <string name="expense_edit_items_save_button">保存</string>
+    <string name="expense_edit_items_save_button">保存明细并返回</string>
+    <string name="expense_edit_items_row_new">新明细</string>
+    <string name="expense_edit_items_amount_empty">金额待填写</string>
+    <string name="expense_edit_subtask_back">返回，保留输入</string>
+    <string name="expense_edit_subtask_adopt">采用并返回更正</string>
+    <string name="expense_edit_subtask_correction_hint">这里调整本次更正的内容，回到更正页确认后才会更新账单。</string>
     <string name="expense_edit_items_row_name_label">名称</string>
     <string name="expense_edit_items_row_name_placeholder">商品或费用名称</string>
     <string name="expense_edit_items_row_amount_label">金额</string>
@@ -116,8 +122,8 @@
     <string name="expense_edit_recognize_confirm_button">识别</string>
 
     <!-- ExpenseEditMoreSection：更多记录折叠区 -->
-    <string name="expense_edit_more_title">更多记录</string>
-    <string name="expense_edit_more_subtitle">标签、值不值、后悔指数和识别原文</string>
+    <string name="expense_edit_more_title">标签与备注</string>
+    <string name="expense_edit_more_subtitle">标签、备注、评分与识别原文</string>
     <string name="expense_edit_more_collapse_button">收起</string>
     <string name="expense_edit_more_expand_button">展开</string>
     <string name="expense_edit_more_tags_label">标签</string>
@@ -140,7 +146,9 @@
     <string name="expense_edit_splits_members_failed">家庭成员暂时加载失败，请关闭后重试。</string>
     <string name="expense_edit_splits_even_button">均分</string>
     <string name="expense_edit_splits_saving_button">保存中…</string>
-    <string name="expense_edit_splits_save_button">保存</string>
+    <string name="expense_edit_splits_save_button">保存拆账并返回</string>
+    <string name="expense_edit_splits_member_included">参与本次分摊</string>
+    <string name="expense_edit_splits_member_excluded">未参与分摊</string>
     <string name="expense_edit_splits_member_disabled">成员已停用</string>
     <string name="expense_edit_splits_row_amount_label">金额</string>
     <string name="expense_edit_splits_footer_total_label">合计</string>

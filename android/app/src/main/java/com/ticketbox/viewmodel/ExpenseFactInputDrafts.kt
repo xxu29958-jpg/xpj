@@ -45,12 +45,17 @@ internal data class ExpenseFactInputDraft(
     val accountingDate: String = "",
     val reason: String = "",
     val voidTarget: ExpenseOffsetFact? = null,
+    val pendingReview: PendingReviewValues? = null,
     val version: Int = 1,
 ) {
     fun offsetForm() = OffsetFormState(sourceExpense = baseline, kind = requireNotNull(offsetKind),
         amountText = amountText, accountingDate = accountingDate, reason = reason)
     fun voidForm() = VoidOffsetFormState(target = requireNotNull(voidTarget), reason = reason)
 }
+
+/** Raw quick-review input; parsing and command construction still belong to the existing review actions. */
+@JsonClass(generateAdapter = true)
+data class PendingReviewValues(val value: String? = null, val custom: String = "", val confirmed: Boolean = false)
 
 internal object ExpenseFactInputCodec {
     private val adapter = Moshi.Builder().add(KotlinJsonAdapterFactory()).build().adapter(ExpenseFactInputDraft::class.java)

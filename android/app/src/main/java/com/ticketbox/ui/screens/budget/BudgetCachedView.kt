@@ -28,7 +28,7 @@ import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.domain.model.BudgetMonthly
 import com.ticketbox.domain.model.CurrencyDisplay
-import com.ticketbox.ui.components.AppBackButton
+import com.ticketbox.ui.components.AppSecondaryPageHeader
 import com.ticketbox.ui.components.displayDateTime
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
@@ -38,18 +38,15 @@ import com.ticketbox.ui.design.LocalThemeVisuals
 
 @Composable
 internal fun BudgetCachedHeader(backText: String, onBack: (() -> Unit)?, onHistory: () -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically) {
-            onBack?.let { AppBackButton(text = backText, onClick = it) }
+    AppSecondaryPageHeader(
+        title = stringResource(R.string.budget_read_cached_title),
+        subtitle = stringResource(R.string.budget_cached_subtitle),
+        backText = backText,
+        onBack = onBack,
+        slots = com.ticketbox.ui.components.AppSecondaryPageSlots(actions = {
             TextButton(onClick = onHistory) { Text(stringResource(R.string.budget_history_title)) }
-        }
-        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap)) {
-            Text(stringResource(R.string.budget_read_cached_title), style = MaterialTheme.typography.displayMedium)
-            Text(stringResource(R.string.budget_cached_subtitle), style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
+        }),
+    )
 }
 
 @Composable

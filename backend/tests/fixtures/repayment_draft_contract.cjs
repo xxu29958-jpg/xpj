@@ -19,10 +19,10 @@ function element(initial = {}) {
   const handlers = {};
   return Object.assign({hidden:false, disabled:false, readOnly:false, value:'', textContent:'',
     dataset:{}, children:[], tagName:'INPUT',
-    addEventListener(name, fn) { handlers[name] = fn; },
+    addEventListener(name, fn) { (handlers[name] ||= []).push(fn); },
     fire(name, extra = {}) {
       const event = {defaultPrevented:false, preventDefault() { this.defaultPrevented = true; }, ...extra};
-      if (handlers[name]) handlers[name](event);
+      for (const handler of handlers[name] || []) handler(event);
       return event;
     },
     append(...items) { this.children.push(...items); },
@@ -65,6 +65,9 @@ function environment() {
     const status = element({hidden:true}), submit = element(), panel = element({hidden:options.canCreate === false});
     const replace = options.replacement ? element({hidden:true}) : null, label = element();
     const preview = options.splitChange ? element() : null;
+    const balanceAfter = element();
+    const balance = options.balance ? element({hidden:true, dataset:options.balance,
+      querySelector:() => balanceAfter}) : null;
     const settlement = {raw:element(), controls:element({hidden:true}), direction:element(), amount:element()};
     const finishRejected = options.rejected || ["debt-void", "repayment-void"].includes(options.kind) ? element() : null;
     const finishReview = options.result === "accepted-review" ? element() : null;
@@ -82,11 +85,13 @@ function environment() {
         '[data-void-finish-rejected]':finishRejected, '[data-void-finish-review]':finishReview, '[data-repayment-replace]':replace, '[data-repayment-preview]':preview,
         '[data-split-settlement-raw]':settlement.raw, '[data-split-settlement-controls]':settlement.controls,
         '[data-split-settlement-direction]':settlement.direction, '[data-split-settlement-amount]':settlement.amount,
+        '[data-debt-balance-preview]':balance,
         'label[for="debt-repay-amount"]':label})[selector] || null});
     const selectors = {'[data-repayment-scope]':form, '[data-repayment-panel]':panel,
       '[data-repayment-shelf]':shelf, '[data-repayment-list]':list,
       '[data-repayment-ack]':ack, '[data-repayment-ack-status]':ackStatus};
-    const document = {querySelectorAll:() => [form], querySelector:selector => selectors[selector] || null, createElement:() => element()};
+    const document = {querySelectorAll:selector => selector === '[data-proposal-balance-preview]' ? [] : [form],
+      querySelector:selector => selectors[selector] || null, createElement:() => element()};
     const window = element({localStorage:storage, navigator:{locks},
       location:{hash, pathname:'/web/debts/' + target, search:'?ledger_id=ledger'}});
     window.history = {replaceState(_state, _title, url) {
@@ -98,17 +103,53 @@ function environment() {
     const start = () => {
       if (options.splitChange) vm.runInNewContext(fs.readFileSync(require('node:path').join(
         require('node:path').dirname(process.argv[3]), 'split-settlement-input.js'), 'utf8'), {window});
+      vm.runInNewContext(fs.readFileSync(require('node:path').join(require('node:path').dirname(process.argv[3]),
+        'desktop/core.js'), 'utf8'), {window, document});
       vm.runInNewContext(fs.readFileSync(process.argv[3], 'utf8'), {window, document});
     };
     windows.push(window);
     return {window, form, fields, status, submit, panel, shelf, list, ackStatus, store, start, replace, label, preview, finishReview, finishRejected,
-      document, settlement, snapshot:() => Object.fromEntries(fieldNames.map(name => [name, fields[name].value]))};
+      document, settlement, balance, balanceAfter, snapshot:() => Object.fromEntries(fieldNames.map(name => [name, fields[name].value]))};
   }
   return {entries, faults, requests, occupied, page,
     storageEvent() { windows.forEach(window => window.fire('storage')); }};
 }
 
 const cases = {
+  async balance_preview() {
+    const snapshot = {balanceMinor:'90000', balanceDigits:'2', balanceCurrency:'CNY', balanceSymbol:'¥', balanceVersion:'99'};
+    const env = environment(), page = env.page({values:{home_currency_code:'CNY'}, balance:snapshot});
+    page.start(); await tick();
+    for (const raw of ['300', '300.00', '300.000']) {
+      page.fields.amount_major.value = raw; page.form.fire('input');
+      assert.equal(page.balance.hidden, false);
+      assert.equal(page.balanceAfter.textContent, '¥600.00');
+      assert.equal(page.store.read(fresh).values.amount_major, raw, 'preview must not normalize the retained command');
+    }
+    for (const raw of ['300.001', '900.01', '0', '-1', 'not-money']) {
+      page.fields.amount_major.value = raw; page.form.fire('input');
+      assert.equal(page.balance.hidden, true, 'invalid or overpay input has no misleading after balance');
+    }
+    page.fields.amount_major.value = '300.00'; page.form.fire('input');
+    assert.equal(page.form.fire('submit').defaultPrevented, false);
+    assert.equal(page.balance.hidden, true, 'unknown submission is not a projected success');
+    assert.equal(page.store.read(fresh).phase, 'submitted');
+    page.window.fire('pagehide'); await tick();
+    const restored = env.page({balance:{...snapshot, balanceVersion:'100'}});
+    restored.start(); await tick();
+    assert.equal(restored.snapshot().home_currency_code, 'CNY');
+    assert.equal(restored.snapshot().expected_row_version, '99');
+    assert.equal(restored.balance.hidden, true, 'fresh balance cannot be attached to another original revision');
+    assert.equal(restored.panel.open, true, 'the original command opens its actual editor');
+
+    const yen = environment().page({balance:{...snapshot, balanceMinor:'900', balanceDigits:'0', balanceCurrency:'JPY'}});
+    yen.start(); await tick(); yen.fields.amount_major.value='300.0'; yen.form.fire('input');
+    assert.equal(yen.balanceAfter.textContent, '¥600');
+    yen.fields.amount_major.value='300.1'; yen.form.fire('input'); assert.equal(yen.balance.hidden,true);
+    const large = environment().page({values:{home_currency_code:'CNY'}, balance:{...snapshot, balanceMinor:'9007199254740991'}});
+    large.start(); await tick(); large.fields.amount_major.value='90071992547409.90'; large.form.fire('input');
+    assert.equal(large.balanceAfter.textContent, '¥0.01', 'minor units never round through a floating-point amount');
+  },
   async continuity() {
     const env = environment(), page = env.page({canCreate:false, ref:''});
     page.store.save(scope, original, 'submitted', values);

@@ -103,12 +103,19 @@ class PlanningAndroid:
     def fill(self, value: str, *, previous: str | None = None, label: str | None = None):
         if not re.fullmatch(r"[A-Za-z0-9.:/_-]+", value):
             raise ValueError("This journey types only its numeric or ASCII inputs")
+        scrolls = 0
         def locate():
+            nonlocal scrolls
             root = self.tree()
             fields = self.labeled_fields(root, label) if label else [
                 node for node in root.iter("node") if node.attrib.get("class") == "android.widget.EditText"]
             fields = [node for node in fields if node.attrib.get("enabled") != "false"]
-            return [node for node in fields if re.fullmatch(previous, node.attrib.get("text", ""))] if previous is not None else fields
+            if previous is not None:
+                fields = [node for node in fields if re.fullmatch(previous, node.attrib.get("text", ""))]
+            if len(fields) == 1 and self.scroll_clipped_control(root, fields[0], remaining=4 - scrolls):
+                scrolls += 1
+                return []
+            return fields
         fields = wait_for(locate, "The native input did not finish loading")
         if len(fields) != 1:
             raise AssertionError("The native input cannot be identified from its actual value")
@@ -140,24 +147,9 @@ class PlanningAndroid:
                 any(label in (part.attrib.get("text", "") + "\n" + part.attrib.get("content-desc", ""))
                     for part in node.iter("node"))]
             assert len(matches) <= 1, f"The native switch label is ambiguous: {label}"
-            if matches:
-                parents = {child: parent for parent in root.iter() for child in parent}
-                viewport = parents.get(matches[0])
-                while viewport is not None and viewport.attrib.get("scrollable") != "true":
-                    viewport = parents.get(viewport)
-                if viewport is not None:
-                    left, top, right, bottom = self.bounds(viewport)
-                    _, switch_top, _, switch_bottom = self.bounds(matches[0])
-                    # A label can be visible while its switch is under the system gesture area.
-                    if switch_top < top or switch_bottom > bottom:
-                        assert scrolls < 4, f"The native switch remains clipped: {label}"
-                        start, end = top + (bottom - top) * 3 // 4, top + (bottom - top) // 4
-                        if switch_top < top:
-                            start, end = end, start
-                        self.adb("shell", "input", "swipe", str((left + right) // 2), str(start),
-                            str((left + right) // 2), str(end), "350")
-                        scrolls += 1
-                        return []
+            if matches and self.scroll_clipped_control(root, matches[0], remaining=4 - scrolls):
+                scrolls += 1
+                return []
             return matches
 
         matches = wait_for(locate, f"The actual native switch is not named: {label}")
@@ -166,6 +158,21 @@ class PlanningAndroid:
             self.tap(matches[0])
         wait_for(lambda: bool(found := locate()) and found[0].attrib.get("checked") == expected,
             f"The actual native switch did not change: {label}")
+
+    def scroll_clipped_control(self, root, control, *, remaining: int):
+        parents = {child: parent for parent in root.iter() for child in parent}
+        viewport = parents.get(control)
+        while viewport is not None and viewport.attrib.get("scrollable") != "true":
+            viewport = parents.get(viewport)
+        if viewport is None:
+            return False
+        _, top, _, bottom = self.bounds(viewport)
+        _, control_top, _, control_bottom = self.bounds(control)
+        # A label can be visible while the control is behind a sticky footer.
+        if control_top >= top and control_bottom <= bottom:
+            return False
+        assert remaining > 0, "The actual native control remains outside its scroll viewport"
+        return self.scroll_viewport([viewport], toward_start=control_top < top)
 
     def click_counted_tab(self, label: str):
         def locate():
@@ -201,7 +208,7 @@ class PlanningAndroid:
                     matches.append(field)
         return matches
 
-    def reveal_any(self, *texts: str, toward_start: bool = False, max_scrolls: int = 8):
+    def reveal_any(self, *texts: str, toward_start: bool = False, max_scrolls: int = 8, exact: bool = False):
         # A refreshed LazyColumn or a shorter history page may move the target
         # above the current viewport. Search both directions, within a fixed budget.
         for reverse in (False, True):
@@ -209,7 +216,8 @@ class PlanningAndroid:
             for step in range(max_scrolls + 1):
                 root = self.tree()
                 nodes = list(root.iter("node"))
-                if any(text in node.attrib.get("text", "") for node in nodes for text in texts):
+                if any((text == node.attrib.get("text", "") if exact else text in node.attrib.get("text", ""))
+                       for node in nodes for text in texts):
                     if reverse:
                         self.capture(f"scroll-recovered-{self.tree_attempt}")
                     return
@@ -244,10 +252,10 @@ class PlanningAndroid:
         self.bound = False
         self.adb("reverse", f"tcp:{port}", f"tcp:{port}")
         self.adb("shell", "am", "start", "-n", "com.ticketbox/.MainActivity")
-        wait_for(lambda: self.has("绑定账本"), "The native binding screen did not open")
+        wait_for(lambda: self.has("连接账本"), "The native binding screen did not open")
         self.pairing_code = code
         self.fill(code)
-        self.click("绑定账本")
+        self.click("连接账本")
         wait_for(lambda: self.has("计划"), "The native application did not reach the bound product")
         self.bound = True
 
@@ -304,7 +312,9 @@ class PlanningAndroid:
 
     def domain_home(self, label: str):
         for _ in range(5):
-            if any(node.attrib.get("text") == label for node in self.tree().iter("node")):
+            nodes = list(self.tree().iter("node"))
+            at_root = any(node.attrib.get("content-desc") == "打开账户与设置" for node in nodes)
+            if at_root and any(node.attrib.get("text") == label for node in nodes):
                 self.click(label, bottom=True)
             else:
                 self.back()

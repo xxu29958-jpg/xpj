@@ -7,8 +7,6 @@
  */
 
 :root {
-    --font-product: "Ticketbox Sans", "Microsoft YaHei UI", "PingFang SC", sans-serif;
-    --font-numeric: "Ticketbox Figures", "Ticketbox Sans", sans-serif;
     --mobile-chrome-block-size: calc(var(--space-10) + var(--space-2));
     --mobile-nav-block-size: var(--space-12);
 }
@@ -21,9 +19,10 @@
 
 html {
     min-height: 100%;
+    scroll-padding-block-start: calc(var(--layout-topbar-h) + var(--space-3));
     background: var(--surface-app);
     color: var(--text-default);
-    font-family: var(--font-numeric);
+    font-family: var(--font-product);
     font-size: var(--type-body-size);
     line-height: var(--type-body-line);
     text-rendering: optimizeLegibility;
@@ -35,7 +34,7 @@ body {
     background: var(--surface-app);
     background-image: var(--surface-app-image, none);
     color: var(--text-default);
-    font-size: var(--type-subtitle-size);
+    font-size: var(--type-body-size);
 }
 
 button,
@@ -92,6 +91,13 @@ a {
     display: contents;
 }
 
+/* A bill's focused task supplies its own return to the bill; restore the
+   normal product bar when that task returns to the overview. */
+.product-workspace:has(.fact-workspace > .fact-task:target) > .mobile-chrome,
+.product-workspace:has(.fact-workspace > .fact-task[data-active]):not(:has(.fact-workspace > :target)) > .mobile-chrome {
+    display: none;
+}
+
 .sidebar {
     position: sticky;
     inset-block-start: 0;
@@ -105,7 +111,7 @@ a {
        sticky 顶栏的紧邻偏移; 矿版侧栏间距全走子元素 (.desktop-nav gap 与
        padding), 容器本身无 gap 语义。 */
     gap: 0;
-    padding: var(--space-6) var(--space-4) var(--space-5);
+    padding: calc(var(--space-10) + var(--space-4)) var(--space-4) var(--space-5);
     overflow-y: auto;
     /* W1 Warm Ledger: 域轨不靠描边相框分层, 用 tonal 底与留白。 */
     background: var(--surface-nav);
@@ -115,7 +121,7 @@ a {
     display: flex;
     align-items: center;
     gap: var(--space-3);
-    padding: 0 var(--space-3) var(--space-7);
+    padding: 0 var(--space-3) var(--space-4);
 }
 
 /* W1 品牌 mark: 单 img SSR 直出当前 colorway, 运行时 theme.js 从受信任
@@ -134,15 +140,9 @@ a {
 
 .brand-name {
     color: var(--text-default);
-    font-size: var(--type-title-size);
+    font-size: var(--type-headline-size);
     font-weight: var(--type-title-weight);
     letter-spacing: -.02em;
-}
-
-.brand-product {
-    margin-block-start: var(--space-1);
-    color: var(--text-meta);
-    font-size: var(--type-caption-size);
 }
 
 .desktop-nav {
@@ -197,7 +197,9 @@ a {
 
 .nav-primary > .nav-item {
     justify-content: flex-start;
-    border-radius: var(--radius-md);
+    min-height: calc(var(--target-min) + var(--space-3));
+    border-radius: var(--radius-lg);
+    font-size: var(--type-title-size);
     gap: var(--space-4);
 }
 
@@ -300,13 +302,12 @@ a {
     min-height: var(--layout-topbar-h);
     align-items: center;
     gap: var(--space-4);
-    padding: var(--space-3) var(--space-7);
-    border-block-end: 1px solid var(--border-card);
-    background: var(--surface-nav);
+    padding: 0 var(--space-7);
+    background: var(--surface-app);
 }
 
 .topbar-context {
-    display: flex;
+    display: none;
     min-width: 0;
     align-items: baseline;
     gap: var(--space-3);
@@ -384,6 +385,13 @@ a {
     background: var(--surface-sunken);
     color: var(--text-default);
 }
+
+.topbar-create { position: relative; }
+.topbar-create > summary { display: grid; width: var(--target-min); min-height: var(--target-min); place-items: center; list-style: none; cursor: pointer; }
+.topbar-create > summary::-webkit-details-marker { display: none; }
+.topbar-create-menu { position: absolute; z-index: var(--z-sticky); top: 100%; right: 0; display: grid; width: calc(var(--space-12) * 3); padding: var(--space-3); border-radius: var(--radius-lg); border: 1px solid var(--border-card); background: var(--surface-raised); box-shadow: var(--shadow-raised); }
+.topbar-create-menu > a { display: flex; min-height: var(--target-min); align-items: center; padding: var(--space-3) var(--space-4); color: var(--text-default); font-size: var(--type-body-size); }
+.topbar-create > summary > svg { width: var(--space-7); height: var(--space-7); flex: none; }
 
 /* 外观 popover (主题/质感/强调色三轴, <details> 原生开合, 无 JS 可用)。
    三轴语义: theme.js 写入 localStorage + <html data-*>, tokens.css 外观轴段
@@ -755,7 +763,7 @@ details[open] > .chrome-trigger {
 .content {
     width: min(100%, var(--layout-page-max));
     margin-inline: auto;
-    padding: var(--space-8) var(--space-7) var(--space-12);
+    padding: var(--space-4) var(--space-7) var(--space-12);
 }
 
 .content[data-page-level="secondary"],
@@ -776,6 +784,12 @@ details[open] > .chrome-trigger {
 }
 
 @media (max-width: 64rem) {
+    html {
+        scroll-padding-block:
+            calc(max(var(--mobile-chrome-block-size), 1lh + var(--space-2) + var(--space-2)) + var(--space-3))
+            calc(var(--mobile-nav-block-size) + env(safe-area-inset-bottom) + var(--space-7));
+    }
+
     .product-app {
         display: block;
     }
@@ -882,11 +896,10 @@ details[open] > .chrome-trigger {
        active tonal 色面; 横滚不折行。 */
     .mobile-plan-nav {
         display: flex;
-        gap: var(--space-1);
-        margin-block-end: var(--space-5);
+        gap: var(--space-3);
+        margin-block-end: var(--space-7);
         padding-block-end: var(--space-2);
         overflow-x: auto;
-        border-block-end: 1px solid var(--border-card);
         scrollbar-width: none;
     }
 
@@ -896,16 +909,19 @@ details[open] > .chrome-trigger {
 
     .mobile-plan-nav a {
         flex: 0 0 auto;
-        min-height: var(--space-9);
-        padding: var(--space-2) var(--space-3);
-        border-radius: var(--radius-sm);
+        display: inline-flex;
+        align-items: center;
+        min-height: var(--target-min);
+        padding: var(--space-3) var(--space-5);
+        border-radius: var(--radius-pill);
+        background: var(--surface-card);
         color: var(--text-meta);
-        font-size: var(--type-caption-size);
+        font-size: var(--type-body-size);
         text-decoration: none;
     }
 
     .mobile-plan-nav a.active {
-        background: var(--surface-sunken);
+        background: var(--brand-primary-bg);
         color: var(--text-default);
         font-weight: var(--type-subtitle-weight);
     }
@@ -921,7 +937,7 @@ details[open] > .chrome-trigger {
     .content[data-page-level="secondary"],
     .content[data-page-level="tertiary"] {
         width: 100%;
-        padding: var(--space-6) var(--space-5)
+        padding: var(--space-6) var(--space-7)
             calc(var(--mobile-nav-block-size) + env(safe-area-inset-bottom) + var(--space-7));
     }
 }
@@ -968,11 +984,6 @@ details[open] > .chrome-trigger {
         display: grid;
     }
 
-    .content,
-    .content[data-page-level="secondary"],
-    .content[data-page-level="tertiary"] {
-        padding-inline: var(--space-4);
-    }
 }
 
 /* K3: pointer 轴正交于 width 断点 — 宽度管布局密度, coarse 管触达尺寸。
@@ -1193,7 +1204,6 @@ html[data-user-bg] body::before {
 }
 
 /* Selected compact ledger header shared by inbox completion and read-only ledger. */
-.compact-add-icon,
 .compact-ledger-icon,
 .compact-account-link { display: none; }
 .compact-ledger-header .compact-account-link {
@@ -1205,7 +1215,6 @@ html[data-user-bg] body::before {
     background: var(--state-success-bg);
 }
 @media (max-width: 64rem) {
-    .compact-ledger-header .content,
     .compact-ledger-header .product-topbar { padding-inline: var(--space-7); }
     .compact-ledger-header .topbar-brand,
     .compact-ledger-header .topbar-context { display: none; }
@@ -1215,11 +1224,7 @@ html[data-user-bg] body::before {
     .compact-ledger-header .ledger-switcher-trigger > .ledger-avatar,
     .compact-ledger-header .ledger-switcher-trigger .ledger-kind,
     .compact-ledger-header .ledger-switcher-trigger .role-badge { display: none; }
-    .compact-ledger-header .compact-ledger-icon,
-    .compact-ledger-header .compact-add-icon { display: block; flex: none; }
-    .compact-ledger-header .topbar-manual-expense > span,
-    .compact-ledger-header .topbar-capture > span,
-    .compact-ledger-header:has(.topbar-manual-expense) .topbar-capture { display: none; }
+    .compact-ledger-header .compact-ledger-icon { display: block; flex: none; }
     .compact-ledger-header .compact-account-link { display: grid; }
 }
 

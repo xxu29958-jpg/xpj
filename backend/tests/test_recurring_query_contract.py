@@ -1,5 +1,7 @@
 """Recurring list filters and candidate-query error contracts."""
 
+from uuid import uuid4
+
 from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
@@ -45,7 +47,7 @@ def test_recurring_status_filter_and_invalid_candidate_errors(
 
     not_found = client.post(
         "/api/recurring/from-candidate?timezone=UTC",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"home_currency_code": "CNY",
             "merchant": "Not Monthly",
             "amount_cents": 1234,

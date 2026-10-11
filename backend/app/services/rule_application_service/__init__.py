@@ -18,6 +18,7 @@ from app.services.rule_application_service._apply import (
     apply_rules_to_confirmed,
     apply_rules_to_pending,
 )
+from app.services.rule_application_service._commands import apply_rules_idempotently
 from app.services.rule_application_service._common import (
     DEFAULT_RULE_APPLICATION_SCAN_LIMIT,
     _try_apply_rule_category,
@@ -40,6 +41,7 @@ __all__ = [
     "_try_apply_rule_category",
     "_try_rollback_rule_change",
     "apply_rules_to_confirmed",
+    "apply_rules_idempotently",
     "apply_rules_to_pending",
     "list_rule_applications",
     "preview_apply_rules_to_confirmed",

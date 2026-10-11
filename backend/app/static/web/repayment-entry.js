@@ -14,6 +14,29 @@
   const submitLabels = {repayment:["记一笔还款", "继续核实这笔还款"],
     "debt-void":voidLabels, "repayment-void":voidLabels,
     "debt-kind":["保存偿还方式", "继续核实原更正"], "repayment-review":["确认处理", "核实原处理"]};
+  function bindBalancePreview(form) {
+    const panel = form.querySelector("[data-debt-balance-preview]");
+    if (!panel) return null;
+    const input = form.elements.namedItem("amount_major");
+    const output = panel.querySelector("[data-balance-after]");
+    const digits = Number(panel.dataset.balanceDigits);
+    function update() {
+      panel.hidden = true;
+      const currency = form.elements.namedItem("home_currency_code");
+      const version = form.elements.namedItem("expected_row_version");
+      if (input.readOnly || currency && currency.value !== panel.dataset.balanceCurrency ||
+          version && version.value !== panel.dataset.balanceVersion) return;
+      // This estimates only exact positive input. It never normalizes a command,
+      // clamps an overpayment, or represents an unknown submission as accepted.
+      const after = window.TicketboxWeb.remainingMoneyPreview(input.value, panel.dataset.balanceMinor, digits);
+      if (after === null) return;
+      output.textContent = panel.dataset.balanceSymbol + after;
+      panel.hidden = false;
+    }
+    form.addEventListener("input", update);
+    update();
+    return update;
+  }
   function initialize(form, settlementField) {
   const surface = form.closest("[data-repayment-container]");
   if (!surface) return;
@@ -35,6 +58,7 @@
   const submit = form.querySelector("[data-repayment-submit]");
   const replace = form.querySelector("[data-repayment-replace]");
   const preview = form.querySelector("[data-repayment-preview]");
+  const updateBalancePreview = bindBalancePreview(form);
   const settlementExplicit = form.elements.namedItem("settlement_explicit");
   const optionalNames = splitChange ? ["settlement_explicit", "settlement_suggestion"] : [];
   const hints = optionalNames.map(name => form.elements.namedItem(name)).filter(Boolean);
@@ -76,6 +100,7 @@
     status.hidden = false;
     status.textContent = captureReview ? message.replaceAll("还款", "采集处理").replaceAll("欠款", "原采集") : kindCorrection ? message.replaceAll("还款", "偿还方式更正").replaceAll("金额、日期", "选择、版本") : voidCommand ? message.replaceAll("还款", "作废提交").replaceAll("金额、日期", "对象、原因") : splitChange ? message.replaceAll("还款", "约定操作") : message;
     form.dataset.repaymentState = state;
+    updateBalancePreview?.();
   }
   function lockInputs(locked) {
     controls.forEach(control => {
@@ -88,6 +113,7 @@
       }
     });
     settlementField?.sync();
+    updateBalancePreview?.();
   }
   function showValues(saved) {
     controls.forEach(control => {
@@ -114,6 +140,7 @@
     }
     const label = form.querySelector('label[for="debt-repay-amount"]');
     if (label) label.textContent = "本次还款（" + (saved.home_currency_code || "原币种") + "）";
+    updateBalancePreview?.();
   }
   function blocked(message, state = "blocked") {
     phase = "blocked";
@@ -121,6 +148,7 @@
     submit.disabled = true;
     if (replace) replace.hidden = true;
     notice(message, state);
+    panel.open = true;
   }
   function commandControls(editing) {
     if (!splitChange) {
@@ -137,7 +165,7 @@
   }
   function showPhase() {
     panel.hidden = false;
-    if (typedCorrection && retained) panel.open = true;
+    if (retained) panel.open = true;
     const canEdit = commandControls(phase === "editing");
     const canReplace = replacement && phase === "blocked" && currentRef === nativeRef;
     submit.disabled = phase === "editing" ? !canEdit : !canRecover || !!canReplace || !!finishReview || knownRejected;
@@ -469,4 +497,5 @@
     const settlementField = window.TicketboxSplitSettlement ? window.TicketboxSplitSettlement(form) : null;
     initialize(form, settlementField);
   });
+  document.querySelectorAll("[data-proposal-balance-preview]").forEach(bindBalancePreview);
 })(window, document);

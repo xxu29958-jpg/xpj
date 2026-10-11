@@ -10,6 +10,8 @@ import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Goal
 import com.ticketbox.ui.components.AppProgressBar
+import com.ticketbox.ui.components.AppAdaptiveContentActionRow
+import com.ticketbox.ui.components.AppAdaptiveContentActionStyle
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.tabularNum
@@ -44,11 +46,15 @@ internal fun SpendingGoalProgress(goal: Goal, showPercent: Boolean = false) {
         return
     }
     if (showPercent) {
-        Text(
+        AppAdaptiveContentActionRow(
+            style = AppAdaptiveContentActionStyle(compactAction = true),
+            content = { Text(stringResource(R.string.spending_goal_progress_title), style = MaterialTheme.typography.labelLarge) },
+            action = { Text(
             text = stringResource(R.string.spending_goal_progress_percent, requireNotNull(goal.progressPercent)),
             color = goal.stateTone().fg,
-            style = MaterialTheme.typography.headlineMedium.tabularNum(),
+            style = MaterialTheme.typography.labelLarge.tabularNum(),
             fontWeight = FontWeight.SemiBold,
+        ) },
         )
     }
     AppProgressBar(

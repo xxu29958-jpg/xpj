@@ -1,5 +1,7 @@
 """Read the hidden fields a native browser would submit from server-rendered forms."""
 
+import re
+from html import unescape
 from html.parser import HTMLParser
 
 _TIME_FIELDS = {"time_precision", "calendar_revision", "user_local_date", "source_timezone",
@@ -29,7 +31,7 @@ class _PostForms(HTMLParser):
 
     def _read_input(self, values: dict[str, str | None]) -> None:
         if self.current is not None and (
-            values.get("type") == "hidden" or values.get("name") in _TIME_FIELDS
+            values.get("type") in {"hidden", "month"} or values.get("name") in _TIME_FIELDS
         ):
             name = values.get("name")
             if name and "disabled" not in values:
@@ -52,8 +54,17 @@ class _PostForms(HTMLParser):
 
 
 def hidden_post_forms(html: str) -> dict[str, dict[str, str]]:
-    """Hidden identity plus the indivisible native accounting-time controls."""
+    """Hidden identity plus native month and indivisible accounting-time controls."""
     return _PostForms(html).forms
+
+
+def open_creation_form(client, page, parameter: str, *, headers=None):
+    """Follow the rendered task entry, including its selected ledger and period."""
+    href = next(unescape(href) for href in re.findall(r'<a[^>]*href="([^"]+)"', page.text)
+        if parameter + "=1" in href)
+    response = client.get(href, headers=headers)
+    assert response.status_code == 200, response.text
+    return response
 
 
 def accounting_time_fields(html: str) -> dict[str, str]:

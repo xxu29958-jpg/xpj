@@ -12,7 +12,7 @@ from pathlib import Path
 from urllib.parse import quote, urlencode
 
 from fastapi import Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
@@ -20,10 +20,13 @@ from app.errors import AppError
 from app.middleware.csrf import csrf_context
 from app.money_contract import projection_sum_to_int, projection_values_sum_to_int
 from app.routes._web_dashboard_calculations import (
+    dashboard_category_groups,
     dashboard_month_delta,
+    dashboard_percentage_tenths,
     previous_month_string,
     recurring_status_counts,
 )
+from app.routes._web_draft_binding import draft_error_response
 from app.routes._web_money_views import (
     _amount_segments,
     _amount_yuan,
@@ -119,20 +122,23 @@ def category_return_url(ledger_id: str, category_id: str, month: str, *, message
     """Return only to the originating category row, never to a supplied path."""
     if not category_id:
         return ""
-    return _with_ledger("/web/categories", ledger_id, month=normalize_month_label(month) or "", msg=message) + (
+    return _with_ledger("/web/categories", ledger_id, month=normalize_month_label(month) or "", msg=message,
+        inspect=category_id) + (
         "#category-" + quote(category_id, safe="")
     )
 
 
-def preserve_original_ledger_form(request, db, *, options, selected, fields, task) -> HTMLResponse | None:
+def preserve_original_ledger_form(request, db, *, options, selected, fields, task, error: AppError | None = None) -> Response | None:
     """Keep an original form in its ledger instead of retargeting it to the live session."""
     original = str(fields.get("ledger_id") or "")
-    if original == selected:
+    if original == selected and error is None:
         return None
+    if error is not None and (response := draft_error_response(request, error)) is not None:
+        return response
     ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected, page_title="原提交已保留")
-    ctx.update(original_fields=fields, original_ledger_id=original, original_task=task)
+    ctx.update(original_fields=fields, original_ledger_id=original, original_task=task, original_error=error)
     return templates.TemplateResponse(request=request, name="original_ledger_form.html", context=ctx,
-        status_code=409, headers={"Cache-Control": "no-store"})
+        status_code=error.status_code if error else 409, headers={"Cache-Control": "no-store"})
 
 _VALID_UI_THEMES = {"paper", "midnight"}
 
@@ -217,11 +223,13 @@ def _budget_top_rows(budget, *, currency_code: str) -> list[dict]:
     out = []
     for row in rows:
         spent, limit = row.spent_amount_cents, row.amount_cents
-        percent = None if spent is None else (spent * 100 + limit // 2) // limit if limit > 0 else 0
+        percent = None if spent is None or spent < 0 or limit <= 0 else (spent * 100 + limit // 2) // limit
         out.append({
             "name": row.category,
             "limit_yuan": _amount_yuan(limit, currency_code),
             "spent_yuan": _amount_yuan(spent, currency_code),
+            "spent_label": _minor_amount_label(spent, currency_code) if spent is not None else "待补齐汇率",
+            "limit_label": _minor_amount_label(limit, currency_code),
             "overspent_yuan": _amount_yuan(row.overspent_amount_cents, currency_code),
             "overspent_cents": row.overspent_amount_cents,
             "percent": None if percent is None else min(percent, 100),
@@ -248,11 +256,20 @@ def _goals_top_rows(goals) -> list[dict]:
 
 def _dashboard_budget_goals_block(budget, goals) -> dict:
     home = budget.home_currency_code
+    available = projection_sum_to_int(
+        budget.total_amount_cents + budget.rollover_amount_cents, label="web.dashboard_budget_available")
+    percent = dashboard_percentage_tenths(budget.spent_amount_cents, available)
     return {
         "budget_configured": budget.configured,
         "budget_home_currency_code": home,
         "budget_missing_currency_codes": budget.missing_currency_codes,
         "budget_total_yuan": _amount_yuan(budget.total_amount_cents, home),
+        "budget_available_label": _minor_amount_label(available, home),
+        "budget_spent_label": _minor_amount_label(budget.spent_amount_cents, home)
+            if budget.spent_amount_cents is not None else "待补齐汇率",
+        "budget_percent_label": None if percent is None else f"{percent // 10}.{percent % 10}%",
+        "budget_progress": None if percent is None else min(percent, 1000),
+        "budget_has_rollover": budget.rollover_amount_cents != 0,
         "budget_remaining_yuan": _amount_yuan(budget.remaining_amount_cents, home),
         "budget_remaining_cents": budget.remaining_amount_cents,
         "budget_overspent_yuan": _amount_yuan(budget.overspent_amount_cents, home),
@@ -382,45 +399,17 @@ def _dashboard_category_share(
     )
     home = stats["home_currency_code"]
     by_category = list(stats.get("by_category", []))
-    if len(by_category) > 6 and all(item["amount_cents"] is not None for item in by_category):
-        head, tail = by_category[:5], by_category[5:]
-        tail_cents = projection_values_sum_to_int(
-            (item["amount_cents"] for item in tail),
-            label="web.category_tail",
-        )
-        tail_count = sum(int(item["count"]) for item in tail)
-        merged_into_existing = False
-        for item in head:
-            if item["category"] == "其他":
-                item["amount_cents"] = projection_sum_to_int(
-                    projection_sum_to_int(
-                        item["amount_cents"],
-                        label="web.category_other",
-                    )
-                    + tail_cents,
-                    label="web.category_other_merged",
-                )
-                item["count"] = int(item["count"]) + tail_count
-                merged_into_existing = True
-                break
-        by_category = (
-            head
-            if merged_into_existing
-            else [
-                *head,
-                {
-                    "category": "其他",
-                    "amount_cents": tail_cents,
-                    "count": tail_count,
-                },
-            ]
-        )
+    # A negative or unknown category cannot be hidden inside the grouped tail.
+    total = projection_values_sum_to_int(
+        (item["amount_cents"] for item in by_category), label="web.category_total"
+    ) if all(item["amount_cents"] is not None and item["amount_cents"] >= 0 for item in by_category) else 0
     rows = []
-    for item in by_category:
+    for item in dashboard_category_groups(by_category):
         amount_minor = None if item["amount_cents"] is None else projection_sum_to_int(
             item["amount_cents"],
             label="web.category_share",
         )
+        percent = dashboard_percentage_tenths(amount_minor, total)
         rows.append(
             {
                 "name": item["category"],
@@ -429,6 +418,7 @@ def _dashboard_category_share(
                 "amount_label": _minor_amount_label(amount_minor, home) if amount_minor is not None else "待补齐换算信息",
                 "amount_major": None if amount_minor is None else minor_amount_major_number(amount_minor, home),
                 "amount_major_text": projected_amount(amount_minor, home),
+                "percent_label": None if percent is None else f"{percent // 10}.{percent % 10}%",
                 "count": int(item["count"]),
             }
         )

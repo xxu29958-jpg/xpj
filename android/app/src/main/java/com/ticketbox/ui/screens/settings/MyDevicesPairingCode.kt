@@ -6,7 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import com.ticketbox.ui.components.AppOutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -68,7 +68,7 @@ internal fun CreatedPairingCodeResult(
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        OutlinedButton(
+        AppOutlinedButton(
             onClick = { coroutineScope.launch { clipboard.setClipEntry(clipboardEntry) } },
             modifier = Modifier.weight(1f),
         ) {

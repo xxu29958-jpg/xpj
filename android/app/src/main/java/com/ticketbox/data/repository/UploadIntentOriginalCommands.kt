@@ -33,7 +33,7 @@ internal suspend fun UploadIntentRepository.acceptOriginalAttachment(request: Or
     requireOriginalWriter()
     try {
         files.acceptBatch(
-            sources = if (request.payload.operation == "replenish_original") listOf(
+            sources = if (request.payload.operation in setOf("attach_original", "replenish_original")) listOf(
                 UploadIntentFileSource(request.key, request.payload.file) { request.prepareOriginalSource() },
             ) else emptyList(),
             beforePrepare = {
@@ -50,7 +50,10 @@ internal suspend fun UploadIntentRepository.acceptOriginalAttachment(request: Or
                 require(payload.supported())
                 val intent = PendingMutationIntent(PendingMutationType.OriginalAttachment, "expense:${payload.expenseId}",
                     originalPayloadAdapter.toJson(payload), payload.expectedRowVersion, request.key)
-                outbox.enqueueUploadBatch(bound, listOf(intent)).single()
+                request.selection?.let { check(it.key == request.key && it.payload == payload) }
+                outbox.enqueueUploadBatch(bound, listOf(intent), request.selection?.let { selection ->
+                    suspend { originalInputs.consumeFactInput(selection.row) }
+                }).single()
             },
         )
     } catch (error: Exception) {

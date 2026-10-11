@@ -8,7 +8,6 @@ manual-stop-stays-stopped) deterministically.
 from __future__ import annotations
 
 import threading
-import time
 
 import pytest
 
@@ -214,22 +213,31 @@ def test_dead_owned_parent_is_never_terminated_again_by_reusable_pid() -> None:
 
 
 def test_monitor_survives_failed_automatic_restart_and_retries() -> None:
-    h = Harness()
+    stop_event = threading.Event()
+
+    class RecoveryHarness(Harness):
+        def spawn(self) -> FakeProc:
+            process = super().spawn()
+            if len(self.spawned) == 2:
+                stop_event.set()
+            return process
+
+    h = RecoveryHarness()
     h.kill_results = [False, True]
     sup = h.build(tick_seconds=0.005, health_grace_seconds=0, unhealthy_restarts_after=1)
     sup.start()
     h.healthy = False
-    stop_event = threading.Event()
     monitor = threading.Thread(target=sup.run_monitor, args=(stop_event,))
     monitor.start()
+    try:
+        assert stop_event.wait(timeout=1), "The monitor must recover after the failed first restart"
+    finally:
+        stop_event.set()
+        monitor.join(timeout=1)
 
-    deadline = time.monotonic() + 1
-    while len(h.spawned) < 2 and time.monotonic() < deadline:
-        time.sleep(0.005)
-    stop_event.set()
-    monitor.join(timeout=1)
-
+    assert not monitor.is_alive()
     assert len(h.spawned) == 2
+    assert h.tree_killed == [h.spawned[0].pid, h.spawned[0].pid]
     assert sup.restarts == 1
     assert sup.status().control_error is None
 

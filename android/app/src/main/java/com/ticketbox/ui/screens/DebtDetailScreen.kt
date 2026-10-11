@@ -35,6 +35,7 @@ import com.ticketbox.ui.components.AppBusyGuardedSheet
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppOutlinedButtonOptions
+import com.ticketbox.ui.components.AppButtonIcons
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppSectionGroup
 import com.ticketbox.ui.components.AppSheetAction
@@ -286,7 +287,7 @@ private fun DebtActionButtons(onAction: (DebtAction) -> Unit, amountActionsEnabl
                 if (amountActionsEnabled) {
                     AppPrimaryButton(
                         text = stringResource(R.string.debt_action_repayment_title),
-                        icon = Icons.Filled.Check,
+                        icons = AppButtonIcons(leading = Icons.Filled.Check),
                         onClick = { onAction(DebtAction.Repayment) },
                     )
                     AppSecondaryButton(
@@ -315,7 +316,7 @@ private fun DebtActionButtonsStacked(onAction: (DebtAction) -> Unit, amountActio
         if (amountActionsEnabled) {
             AppPrimaryButton(
                 text = stringResource(R.string.debt_action_repayment_title),
-                icon = Icons.Filled.Check,
+                icons = AppButtonIcons(leading = Icons.Filled.Check),
                 modifier = Modifier.fillMaxWidth(),
                 onClick = { onAction(DebtAction.Repayment) },
             )

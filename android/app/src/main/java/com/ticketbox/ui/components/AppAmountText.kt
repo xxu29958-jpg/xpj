@@ -12,6 +12,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.asAmount
@@ -99,7 +100,8 @@ private fun AppAutosizedAmountText(
         text = text,
         modifier = modifier,
         color = spec.color,
-        style = spec.style,
+        // Autosizing changes the glyph size; keep the role's line-height ratio with it.
+        style = spec.style.copy(lineHeight = (spec.style.lineHeight.value / spec.maxFontSize.value).em),
         autoSize = AmountAutoSize(
             minFontSize = spec.minFontSize,
             maxFontSize = spec.maxFontSize,

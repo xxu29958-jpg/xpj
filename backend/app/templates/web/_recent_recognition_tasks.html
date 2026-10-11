@@ -1,7 +1,7 @@
 {% from '_history_time.html' import saved_time %}
-<details class="{% if inbox_is_empty|default(false) %}inbox-recent{% else %}product-panel product-panel--padded{% endif %}" id="recognition">
+<details class="inbox-recent" id="recognition">
   <summary>{% if inbox_is_empty|default(false) %}查看最近上传{% else %}近期上传识别{% endif %}{% if recent_recognition_tasks %} · {{ recent_recognition_tasks|length }} 条{% endif %}
-    {% if inbox_is_empty|default(false) %}<svg width="20" height="20" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-right"/></svg>{% endif %}
+    <svg width="20" height="20" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-right"/></svg>
   </summary>
   <p class="text-muted">当前账号在这个账本最近 10 次上传识别的记录。之后手动补全或重试不会改写这些记录；账单现在的内容请打开原单查看。</p>
   {% set statuses = {'queued': '等待识别', 'running': '识别中', 'completed': '已完成', 'failed': '失败', 'cancelled': '已取消'} %}

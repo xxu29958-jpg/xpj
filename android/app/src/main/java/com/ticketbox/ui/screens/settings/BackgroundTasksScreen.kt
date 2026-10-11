@@ -1,8 +1,5 @@
 package com.ticketbox.ui.screens.settings
 
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -57,7 +54,7 @@ fun BackgroundTasksScreen(
         SettingsEntryRow(
             title = stringResource(R.string.background_tasks_connection_title),
             subtitle = stringResource(R.string.background_tasks_connection_body),
-            icon = Icons.Filled.Wifi,
+            icon = R.drawable.ic_lucide_wifi,
             onClick = onOpenConnection,
         )
         Text(stringResource(R.string.background_tasks_original_result_title), style = MaterialTheme.typography.titleSmall)

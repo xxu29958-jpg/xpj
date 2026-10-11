@@ -1,13 +1,11 @@
 package com.ticketbox.ui.screens.expense
 
+import com.ticketbox.ui.screens.settings.SettingsEntryRowOptions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.CallSplit
@@ -15,11 +13,19 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.ticketbox.ui.screens.settings.SettingsEntryRow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import com.ticketbox.R
@@ -28,6 +34,7 @@ import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.components.parseAmountCentsForDisplay
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.EditableSplit
+import com.ticketbox.ui.components.AppSheetActionFeedbackState
 
 data class SplitsEditorSheetState(
     val drafts: List<EditableSplit>,
@@ -36,6 +43,9 @@ data class SplitsEditorSheetState(
     val loading: Boolean,
     // 票据的服务端 home 币种：footer 合计解析与保存侧同口径（零小数 home 不 ×100）。
     val display: CurrencyDisplay = CurrencyDisplay.Base,
+    val feedback: AppSheetActionFeedbackState = AppSheetActionFeedbackState(),
+    val primaryText: String? = null,
+    val subtitle: String? = null,
 )
 
 data class SplitsEditorSheetActions(
@@ -62,11 +72,12 @@ fun SplitsEditorSheet(
     state: SplitsEditorSheetState,
     actions: SplitsEditorSheetActions,
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ModalBottomSheet(onDismissRequest = actions.onDismiss, sheetState = sheetState) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true,
+        confirmValueChange = { target -> !state.saving || target != SheetValue.Hidden })
+    ModalBottomSheet(onDismissRequest = { if (!state.saving) actions.onDismiss() }, sheetState = sheetState) {
         ExpenseEditSheetScaffold(
             title = stringResource(R.string.expense_edit_splits_sheet_title),
-            subtitle = stringResource(R.string.expense_edit_splits_sheet_subtitle),
+            subtitle = state.subtitle ?: stringResource(R.string.expense_edit_splits_sheet_subtitle),
             actions = {
                 // ADR-0042 P1: never enable Save with an empty draft list — the roster
                 // hasn't loaded, and saving would send splits=[] which the backend
@@ -76,7 +87,9 @@ fun SplitsEditorSheet(
                         saving = state.saving,
                         primaryEnabled = state.drafts.isNotEmpty(),
                         savingText = stringResource(R.string.expense_edit_splits_saving_button),
-                        primaryText = stringResource(R.string.expense_edit_splits_save_button),
+                        primaryText = state.primaryText ?: stringResource(R.string.expense_edit_splits_save_button),
+                        secondaryText = stringResource(R.string.expense_edit_subtask_back),
+                        feedback = state.feedback,
                     ),
                     handlers = ExpenseEditSheetActionHandlers(
                         onDismiss = actions.onDismiss,
@@ -101,19 +114,19 @@ fun SplitsEditorSheet(
                 )
             }
 
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = AppSpacing.controlMinHeight * 7),
+            Column(
+                modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
             ) {
-                items(state.drafts, key = { it.memberId }) { draft ->
+                state.drafts.forEach { draft -> key(draft.memberId) {
                     SplitEditorRow(
                         draft = draft,
+                        display = state.display,
+                        enabled = !state.saving,
                         onToggle = { included -> actions.onToggleMember(draft.memberId, included) },
                         onUpdateAmount = { text -> actions.onUpdateAmount(draft.memberId, text) },
                     )
-                }
+                } }
             }
 
             ExpenseDetailActionButtonRow(
@@ -135,56 +148,46 @@ fun SplitsEditorSheet(
 @Composable
 private fun SplitEditorRow(
     draft: EditableSplit,
+    display: CurrencyDisplay,
+    enabled: Boolean,
     onToggle: (included: Boolean) -> Unit,
     onUpdateAmount: (amountText: String) -> Unit,
 ) {
-    // A member already on a split but now disabled stays visible but read-only
-    // so historical attribution isn't dropped (the user can't re-include or
-    // edit a disabled member; the server keeps the existing row on replay).
-    val editable = !draft.disabled
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-        ) {
-            Checkbox(
-                checked = draft.included,
-                onCheckedChange = if (editable) ({ onToggle(it) }) else null,
-                enabled = editable,
-            )
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = draft.displayName,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = if (editable) {
-                        MaterialTheme.colorScheme.onSurface
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    },
-                )
-                if (draft.disabled) {
-                    Text(
-                        text = stringResource(R.string.expense_edit_splits_member_disabled),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        }
-        ExpenseEditTextField(
-            state = ExpenseEditTextFieldState(
-                label = stringResource(R.string.expense_edit_splits_row_amount_label),
-                value = draft.amountText,
-                placeholder = stringResource(R.string.components_amount_input_placeholder),
-                enabled = editable && draft.included,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+    val editable = !draft.disabled && enabled
+    var expanded by rememberSaveable(draft.memberId) { mutableStateOf(false) }
+    val status = stringResource(when {
+        draft.disabled -> R.string.expense_edit_splits_member_disabled
+        draft.included -> R.string.expense_edit_splits_member_included
+        else -> R.string.expense_edit_splits_member_excluded
+    })
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+        SettingsEntryRow(
+            title = draft.displayName,
+            subtitle = listOfNotNull(status, draft.note?.takeIf { it.isNotBlank() }).joinToString(" · "),
+            icon = R.drawable.ic_lucide_user_round,
+            onClick = if (editable) ({ expanded = !expanded }) else null,
+            options = SettingsEntryRowOptions(
+                amount = if (draft.included) formatDisplayAmount(parseAmountCentsForDisplay(draft.amountText, display), display) else null,
+                expanded = expanded, modifier = Modifier.testTag("expense-split-editor-${draft.memberId}"),
             ),
-            onValueChange = onUpdateAmount,
         )
+        if (expanded && !draft.disabled) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(checked = draft.included, onCheckedChange = onToggle, enabled = editable)
+                Text(stringResource(R.string.expense_edit_splits_member_included), style = MaterialTheme.typography.bodyLarge)
+            }
+            ExpenseEditTextField(
+                state = ExpenseEditTextFieldState(
+                    label = stringResource(R.string.expense_edit_splits_row_amount_label),
+                    value = draft.amountText,
+                    placeholder = stringResource(R.string.components_amount_input_placeholder),
+                    enabled = editable && draft.included,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                ),
+                onValueChange = onUpdateAmount,
+                fieldModifier = Modifier.testTag("expense-split-amount-${draft.memberId}"),
+            )
+        }
     }
 }
 
@@ -197,8 +200,9 @@ private fun SplitsReconciliationFooter(
     // 显示与保存/解析同源于票据 record 币种（JPY 零小数整数显示整数；未知码亮原码+原
     // minor，R14-1），不读恒 Base 的 LocalCurrencyDisplay（PR#255 P1）。R15b-2：未知码
     // 草稿金额按原 minor 整数解析（与回填/显示同空间，不按兜底枚举放大 100×）。
-    val total = drafts.filter { it.included }.sumOf { parseAmountCentsForDisplay(it.amountText, display) ?: 0L }
-    val diff = parentAmountCents?.let { total - it }
+    val amounts = drafts.filter { it.included }.map { parseAmountCentsForDisplay(it.amountText, display) }
+    val total = if (amounts.any { it == null }) null else amounts.filterNotNull().sum()
+    val diff = parentAmountCents?.let { parent -> total?.minus(parent) }
     ExpenseEditReconciliationRows(
         rows = listOfNotNull(
             ExpenseEditReconciliationLine(

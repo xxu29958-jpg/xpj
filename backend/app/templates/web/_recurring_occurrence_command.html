@@ -1,0 +1,27 @@
+{% if command_draft %}
+{% set command_scope = command_draft_scope %}
+<section class="product-panel product-panel--padded" aria-label="核对本次付款关联">
+  <h2>{{ '保留的原提交' if (retry and command_result != 'prepared') or command_draft.original_only else '核对这次关联' }}</h2>
+  <form method="post" action="/web/recurring/{{ item.public_id }}/occurrence"
+    data-occurrence-plan-id="{{ command_draft.task_id }}"
+    data-occurrence-can-write="{{ 'true' if can_write else 'false' }}"
+    data-occurrence-archived="{{ 'true' if item.status == 'archived' else 'false' }}"
+    data-occurrence-original-only="{{ 'true' if command_draft.original_only else 'false' }}"
+    data-occurrence-native-result="{{ command_result }}"
+    data-occurrence-prepared-from="{{ command_draft.get('prepared_from_key', '') }}"
+    {% if command_scope %}data-occurrence-draft-scope="{{ command_scope | tojson | forceescape }}"{% endif %}>
+    {{ csrf_field|safe }}
+    {% for name, value in command_draft.items() if name not in ['original_only', 'prepared_from_key'] %}
+    <input type="hidden" name="{{ name }}" value="{{ value }}">
+    {% endfor %}
+    <p data-occurrence-summary>{{ command_draft.series_label }} · {{ command_draft.month }} · {{ command_draft.payment_label }}</p>
+    <p class="hint">关联只确认本期付款依据，不会重复记账或修改原付款。解除只改变关联，不会撤销账单。</p>
+    {% if command_binding_required %}
+    <button class="product-button" type="submit" name="review_latest" value="true">核对原身份和当前状态</button>
+    {% else %}
+    <button class="product-button product-button--primary" type="submit" data-occurrence-submit{% if not can_write or command_draft.original_only %} disabled{% endif %}>{{ '重试原提交' if retry and command_result != 'prepared' else '解除本期付款关联' if command_draft.action == 'clear' else '用这笔付款确认本期已付' }}</button>
+    {% endif %}
+    {{ drafts.controls('occurrence', '付款关联', command_scope) }}
+  </form>
+</section>
+{% endif %}

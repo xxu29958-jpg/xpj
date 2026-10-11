@@ -5,6 +5,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -33,13 +35,14 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.ui.design.AppAlpha
+import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalThemeVisuals
+import com.ticketbox.ui.design.asAmount
 import com.ticketbox.ui.design.tabularNum
 
 @Immutable
@@ -55,6 +58,7 @@ data class AppTextInputState(
     val isError: Boolean = false,
     val emphasis: AppTextInputEmphasis = AppTextInputEmphasis.Standard,
     val keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    val readOnly: Boolean = false,
 )
 
 enum class AppTextInputEmphasis {
@@ -74,6 +78,8 @@ data class AppTextInputDecorations(
     val trailingContent: (@Composable () -> Unit)? = null,
     val supportingText: (@Composable () -> Unit)? = null,
     val roundedSurface: Boolean = false,
+    val amountRole: AppAmountRole? = null,
+    val headerTrailingContent: (@Composable () -> Unit)? = null,
 )
 
 @Composable
@@ -112,15 +118,17 @@ private data class AppTextInputFocusState(
     val onFocusChanged: (FocusState) -> Unit,
 )
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun AppTextInputHeader(state: AppTextInputState) {
-    Row(
+private fun AppTextInputHeader(state: AppTextInputState, trailingContent: (@Composable () -> Unit)?) {
+    FlowRow(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
     ) {
         Text(
             text = state.label,
+            modifier = Modifier.padding(end = AppSpacing.smallGap).align(Alignment.CenterVertically),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelLarge,
             fontWeight = AppTextHierarchy.body.weight,
@@ -128,12 +136,12 @@ private fun AppTextInputHeader(state: AppTextInputState) {
         state.trailingLabel?.let {
             Text(
                 text = it,
+                modifier = Modifier.align(Alignment.CenterVertically),
                 color = LocalThemeVisuals.current.textMeta,
                 style = MaterialTheme.typography.labelMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
             )
         }
+        trailingContent?.invoke()
     }
 }
 
@@ -153,15 +161,16 @@ private fun AppTextInputField(
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .onFocusChanged(focusState.onFocusChanged),
         enabled = state.enabled,
+        readOnly = state.readOnly,
         singleLine = state.singleLine,
         minLines = if (state.singleLine) 1 else state.minLines,
         maxLines = if (state.singleLine) 1 else state.maxLines,
         keyboardOptions = state.keyboardOptions,
         keyboardActions = actions.keyboardActions,
-        textStyle = appTextInputTextStyle(state),
+        textStyle = appTextInputTextStyle(state, decorations.amountRole),
         decorationBox = { innerTextField ->
             Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
-                AppTextInputHeader(state)
+                AppTextInputHeader(state, decorations.headerTrailingContent)
                 AppTextInputFrame(state = state, focused = focusState.focused, decorations = decorations) {
                     val showPlaceholder = state.value.isEmpty() &&
                         state.placeholder.isNotBlank() &&
@@ -191,7 +200,7 @@ private fun AppTextInputFrame(
     decorations: AppTextInputDecorations,
     content: @Composable () -> Unit,
 ) {
-    val shape = RoundedCornerShape(if (decorations.roundedSurface) AppRadius.large else AppRadius.extraSmall)
+    val shape = RoundedCornerShape(if (decorations.roundedSurface) AppRadius.large else AppRadius.medium)
     val verticalPadding = if (state.singleLine) AppSpacing.contentGap else AppSpacing.compactGap
     val borderColor = appTextInputBorderColor(state, focused, decorations.roundedSurface)
     val borderWidth = if (focused && state.enabled) 2.dp else 1.dp
@@ -261,14 +270,14 @@ private fun appTextInputBackgroundColor(state: AppTextInputState, roundedSurface
     if (roundedSurface && state.enabled) return visuals.surfaceRaised
     if (state.emphasis == AppTextInputEmphasis.Amount && state.enabled) return Color.Transparent
     return if (state.enabled) {
-        visuals.surfaceSunken
+        visuals.surfaceRaised
     } else {
         visuals.surfaceSunken.copy(alpha = AppAlpha.soft)
     }
 }
 
 @Composable
-private fun appTextInputTextStyle(state: AppTextInputState): TextStyle {
+private fun appTextInputTextStyle(state: AppTextInputState, amountRole: AppAmountRole? = null): TextStyle {
     val color = if (state.enabled) {
         MaterialTheme.colorScheme.onSurface
     } else {
@@ -278,6 +287,7 @@ private fun appTextInputTextStyle(state: AppTextInputState): TextStyle {
         AppTextInputEmphasis.Amount -> MaterialTheme.typography.headlineSmall
             .copy(color = color, fontWeight = FontWeight.SemiBold)
             .tabularNum()
+            .let { style -> amountRole?.let { style.asAmount(it) } ?: style }
         AppTextInputEmphasis.Standard -> MaterialTheme.typography.bodyLarge.copy(color = color)
     }
 }

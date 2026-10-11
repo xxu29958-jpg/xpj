@@ -31,6 +31,7 @@ import androidx.navigation.compose.rememberNavController
 import com.ticketbox.BuildConfig
 import com.ticketbox.R
 import com.ticketbox.data.repository.LedgerRepository
+import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.AppThemeMode
 import com.ticketbox.domain.model.BackgroundSettings
@@ -42,6 +43,7 @@ import com.ticketbox.ui.appearance.background.ImmersiveBackgroundScaffold
 import com.ticketbox.ui.appearance.background.SurfaceRole
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.LocalAppSkin
 import com.ticketbox.ui.resolve
 import com.ticketbox.ui.screens.BindServerActions
 import com.ticketbox.ui.screens.BindServerScreen
@@ -54,7 +56,9 @@ import com.ticketbox.viewmodel.AppUiState
 import com.ticketbox.viewmodel.AppViewModel
 import com.ticketbox.viewmodel.JoinFamilyLedgerViewModel
 import com.ticketbox.viewmodel.joinFamilyLedgerViewModelFactory
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 
 @Composable
 internal fun TicketboxApp(
@@ -68,6 +72,9 @@ internal fun TicketboxApp(
         factory = dependencies.viewModelFactories.appViewModelFactory,
     )
     val appState by appViewModel.uiState.collectAsStateWithLifecycle()
+    val binding by remember(dependencies.repositories.repository) {
+        dependencies.repositories.repository.observeLedgerAccess().map { it?.binding }.distinctUntilChanged()
+    }.collectAsStateWithLifecycle(initialValue = dependencies.repositories.ledgerRepository.currentBinding())
     val lifecycleOwner = LocalLifecycleOwner.current
 
     DisposableEffect(lifecycleOwner, appState.isBound) {
@@ -91,8 +98,8 @@ internal fun TicketboxApp(
     ) {
         TicketboxContent(
             appState = appState,
+            binding = binding,
             appViewModel = appViewModel,
-            resolvedSkin = resolvedSkin,
             dependencies = dependencies,
             launchConsumer = LaunchRequestConsumer(
                 request = launchRequest,
@@ -116,26 +123,27 @@ internal data class TicketboxAppViewModelFactories(
 @Composable
 private fun TicketboxContent(
     appState: AppUiState,
+    binding: LogicalSessionBinding?,
     appViewModel: AppViewModel,
-    resolvedSkin: AppSkin,
     dependencies: TicketboxAppDependencies,
     launchConsumer: LaunchRequestConsumer,
 ) {
+    val businessState = rememberSaveableStateHolder()
     if (!appState.isBound) {
         UnboundAuthFlow(
             appState = appState,
             appViewModel = appViewModel,
             ledgerRepository = dependencies.repositories.ledgerRepository,
             launchConsumer = launchConsumer,
-            currentSkin = resolvedSkin,
+            currentSkin = LocalAppSkin.current,
         )
         return
     }
 
-    if (!appState.isBusinessReady) {
+    if (!appState.isBusinessReady || binding == null) {
         SessionVerificationGate(
             backgroundSettings = appState.backgroundSettings,
-            currentSkin = resolvedSkin,
+            currentSkin = LocalAppSkin.current,
             verification = appState.sessionVerification,
             message = appState.authMessage,
             onRetry = appViewModel::refreshBindingState,
@@ -149,7 +157,7 @@ private fun TicketboxContent(
             biometricAuthManager = dependencies.biometricAuthManager,
             appViewModel = appViewModel,
             backgroundSettings = appState.backgroundSettings,
-            currentSkin = resolvedSkin,
+            currentSkin = LocalAppSkin.current,
         )
         return
     }
@@ -164,24 +172,26 @@ private fun TicketboxContent(
                 onHandled = { launchConsumer.onHandled(invitationRequest) },
             ),
             backgroundSettings = appState.backgroundSettings,
-            currentSkin = resolvedSkin,
+            currentSkin = LocalAppSkin.current,
         )
         return
     }
 
-    MainShell(
-        dependencies = dependencies,
-        chrome = MainShellChrome(resolvedSkin, appState.themeMode, appState.currency, appState.backgroundSettings),
-        startup = MainShellStartup(appState.authMessage, appState.localUnlockDisabled) {
-            appViewModel.setAuthMessage(null)
-        },
-        actions = MainShellActions(
-            onThemeModeChange = appViewModel::selectThemeMode,
-            onCurrencyChange = appViewModel::selectCurrency,
-            onBindingCleared = appViewModel::clearBinding,
-        ),
-        launchConsumer = launchConsumer,
-    )
+    // Authentication gates suspend this owner's navigation; each task retains
+    // its original full binding/OCC and revalidates before any write.
+    businessState.SaveableStateProvider(arrayListOf(binding.serverUrl, binding.ownerKey, binding.ledgerId)) {
+        MainShell(
+            dependencies = dependencies,
+            chrome = MainShellChrome(LocalAppSkin.current, appState.themeMode, appState.currency, appState.backgroundSettings),
+            startup = MainShellStartup(appState.authMessage, appState.localUnlockDisabled) { appViewModel.setAuthMessage(null) },
+            actions = MainShellActions(
+                onThemeModeChange = appViewModel::selectThemeMode,
+                onCurrencyChange = appViewModel::selectCurrency,
+                onBindingCleared = appViewModel::clearBinding,
+            ),
+            launchConsumer = launchConsumer,
+        )
+    }
 }
 
 private data class LaunchRequestConsumer(

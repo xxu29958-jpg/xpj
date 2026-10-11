@@ -49,12 +49,28 @@
         minmax(0, 1.2fr);
 }
 
-.plan-workspace--single,
-.income-workspace.income-workspace--single {
+.plan-workspace--single {
     grid-template-columns: minmax(0, 1fr);
 }
 
-.plan-income-hero,
+.plan-amount-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-4);
+    padding: var(--space-7);
+    container-type: inline-size;
+    background: var(--brand-primary-bg);
+    border-color: transparent;
+    box-shadow: none;
+}
+
+.goal-balance { background: var(--surface-apricot); }
+
+.plan-amount-hero .plan-amount-value {
+    font-size: clamp(var(--type-title-size), 13cqi, var(--type-display-size));
+    overflow-wrap: anywhere;
+}
+
 .plan-discretionary {
     display: flex;
     align-items: flex-end;
@@ -63,20 +79,19 @@
     margin-block-end: var(--space-6);
 }
 
-.plan-income-hero > div,
 .plan-discretionary > div:first-child {
     display: grid;
     flex: 0 0 auto;
     gap: var(--space-2);
 }
 
-.plan-income-hero > p {
+.plan-amount-hero > p {
     max-width: calc(var(--space-12) * 8);
     margin: 0;
     color: var(--text-muted);
 }
 
-.plan-income-value {
+.plan-amount-value {
     color: var(--text-default);
     font-family: var(--font-numeric);
     font-size: var(--type-display-size);
@@ -85,13 +100,29 @@
     line-height: var(--type-display-line);
 }
 
-.plan-income-value small {
+.plan-amount-value small {
     margin-inline-end: var(--space-2);
     color: var(--text-muted);
     font-size: var(--type-caption-size);
 }
 
-.income-workspace,
+.income-row-heading {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+}
+
+.income-row-heading > div {
+    display: grid;
+    gap: var(--space-2);
+}
+
+.income-editor form:has([name="frequency"] option[value="monthly"]:checked) [data-income-one-time] {
+    display: none;
+}
+
 .advice-workspace {
     display: grid;
     grid-template-columns:
@@ -205,18 +236,13 @@
     font-weight: var(--type-headline-weight);
 }
 
-.recurring-candidates {
-    margin-block-start: var(--space-6);
-}
-
 .plan-progress {
     width: 100%;
     height: var(--space-3);
-    accent-color: var(--brand-primary);
 }
 
 .plan-progress.is-over {
-    accent-color: var(--state-danger-fg);
+    --progress-fill: var(--state-danger-fg);
 }
 
 .plan-progress-meta {
@@ -288,7 +314,6 @@
         grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 
-    .income-workspace,
     .advice-workspace {
         grid-template-columns: minmax(0, 1fr);
     }
@@ -304,7 +329,6 @@
         border-block-end: 1px solid var(--border-card);
     }
 
-    .plan-income-hero,
     .plan-discretionary,
     .advice-summary {
         align-items: stretch;
@@ -386,17 +410,94 @@
     }
 }
 
-/* ── C1 月度预算页 (product 正文栈) ────────────────────────────────────────
- * 本段只服务 budgets.html 新正文。层级原则:
- *   hero 回答「本月预算剩余/已超支」一个焦点数字; 进度分母 = 总预算+结转
- *   (与 Android spentProgress 同口径); 计划背景安静列示, 不再并排六卡。
- *   分类预算 = 一张表 (编辑列 + 行内执行列); 移除是纯 CSS 可感的 native
- *   checkbox (:has 勾选态), no-JS 同样成立; 添加行在虚线 add zone 内。
- */
+/* v0.5 25: read execution first, then open the existing budget form. */
+.budget-page {
+    min-inline-size: 0;
+}
+
+.budget-page .plan-workspace { align-items: start; }
+.budget-page .plan-workspace .budget-execution { margin-block: 0; }
+
+body:has(.budget-editor[open]) .budget-reading,
+body:has(.budget-editor[open]) .mobile-plan-nav,
+body:has(.budget-editor[open]) .mobile-primary-nav,
+body:has(.budget-editor[open]) .mobile-chrome {
+    display: none;
+}
+
+.budget-editor {
+    margin-block: var(--space-6);
+}
+
+.budget-editor[open] {
+    max-inline-size: var(--layout-page-narrow-max);
+    margin-inline: auto;
+}
+
+.budget-editor-toggle {
+    color: var(--brand-primary-strong);
+    cursor: pointer;
+    font-weight: var(--type-title-weight);
+    list-style: none;
+}
+
+.budget-editor-toggle::-webkit-details-marker { display: none; }
+
+.budget-editor-toggle > span {
+    display: flex;
+    min-block-size: var(--target-min);
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+}
+
+.budget-editor-toggle svg {
+    width: var(--space-6);
+    height: var(--space-6);
+    flex: none;
+}
+
+.budget-editor:not([open]) .budget-editor-back,
+.budget-editor[open] .budget-editor-enter { display: none; }
+
+.budget-editor-toggle .budget-editor-back { justify-content: flex-start; }
+.budget-editor-content { padding-block-start: var(--space-5); }
+.budget-editor .budget-actions > [data-budget-submit] { inline-size: 100%; }
+
+.budget-execution,
+.budget-execution-list {
+    display: grid;
+    gap: var(--space-6);
+    margin-block: var(--space-6);
+}
+
+.budget-execution-list { margin: 0; }
+.budget-execution-row { display: grid; gap: var(--space-3); }
+
+.budget-execution-heading {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: var(--space-2) var(--space-4);
+    overflow-wrap: anywhere;
+}
+
+.budget-execution-heading > span { color: var(--text-meta); }
+
+.budget-execution-row[data-category="居住"] .plan-progress:not(.is-over) { --progress-fill: var(--chart-series-3); }
+.budget-execution-row[data-category="餐饮"] .plan-progress:not(.is-over) { --progress-fill: var(--chart-series-2); }
+.budget-management { margin-block-start: var(--space-6); }
 
 .budget-hero {
     display: grid;
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr);
     gap: var(--space-4);
+    padding: var(--space-7);
+    background: var(--brand-primary-bg);
+    border-color: transparent;
+    box-shadow: none;
 }
 
 .budget-hero .plan-progress-meta {
@@ -410,22 +511,17 @@
 
 .budget-hero-label {
     color: var(--text-meta);
-    font-size: var(--type-caption-size);
+    font-size: var(--type-body-size);
 }
 
 .budget-hero-value {
+    overflow-wrap: anywhere;
     color: var(--text-default);
     font-family: var(--font-numeric);
     font-size: var(--type-display-size);
     font-variant-numeric: tabular-nums;
     font-weight: var(--type-display-weight);
     line-height: var(--type-display-line);
-}
-
-.budget-hero-value .yuan {
-    margin-inline-end: var(--space-1);
-    color: var(--text-muted);
-    font-size: var(--type-headline-size);
 }
 
 .budget-hero--over .budget-hero-value {
@@ -452,21 +548,22 @@
 }
 
 .budget-total-field {
-    max-inline-size: 32rem;
+    container-type: inline-size;
+    padding: var(--space-6);
+    border-radius: var(--radius-xl);
+    background: var(--surface-card);
 }
 
-.budget-first-step {
-    max-inline-size: 48rem;
-}
-
-.budget-first-heading {
-    display: grid;
-    gap: var(--space-2);
-    margin-block-end: var(--space-6);
-}
-
-.budget-first-heading .hint {
-    margin: 0;
+.budget-total-field .product-input {
+    font-family: var(--font-numeric);
+    font-size: clamp(var(--type-title-size), 14cqi, var(--type-display-size));
+    font-weight: var(--type-display-weight);
+    line-height: var(--type-display-line);
+    padding-inline: 0;
+    border: 0;
+    border-radius: 0;
+    border-block-end: 1px solid var(--border-input);
+    background: transparent;
 }
 
 .budget-fields {
@@ -573,11 +670,13 @@ fieldset.budget-excluded .hint {
     font-weight: var(--type-title-weight);
 }
 
-/* 分类预算表内输入框纵向收紧, 让单行同时容下编辑列与执行列。 */
-.budget-table .product-input {
-    min-height: var(--space-9);
-    padding-block: var(--space-2);
-}
+.budget-row { display: grid; gap: var(--space-2); min-width: 0; }
+.budget-row .product-field { margin: 0; }
+.budget-row-options > summary { color: var(--text-meta); cursor: pointer; min-height: var(--target-min); align-content: center; font-size: var(--type-caption-size); }
+.budget-row-options[open] > :not(summary) { margin-block: var(--space-3); }
+.budget-option-list > details { border-bottom: 1px solid var(--border-card); }
+.budget-option-list > details:last-child { border: 0; }
+.budget-option-list > details[open] > :not(summary) { margin-block: var(--space-4); }
 
 /* 移除 = 行尾安静 checkbox; 勾选后整行降透明 + 输入划线, no-JS 也可感。 */
 .budget-remove {
@@ -586,8 +685,8 @@ fieldset.budget-excluded .hint {
     gap: var(--space-2);
     color: var(--text-meta);
     cursor: pointer;
-    font-size: var(--type-caption-size);
-    white-space: nowrap;
+    min-height: var(--target-min);
+    font-size: var(--type-body-size);
 }
 
 .budget-remove input {
@@ -600,17 +699,12 @@ fieldset.budget-excluded .hint {
     color: var(--state-danger-fg);
 }
 
-.budget-row:has(.budget-remove input:checked) td:not(.budget-remove-cell) {
+.budget-row:has(.budget-remove input:checked) > .product-field {
     opacity: .55;
 }
 
-.budget-row:has(.budget-remove input:checked) .product-input {
+.budget-row:has(.budget-remove input:checked) > .product-field .product-input {
     text-decoration: line-through;
-}
-
-/* 窄屏行块化后补出的 cell 前缀标签, 桌面表格有表头故隐藏。 */
-.budget-cell-sign {
-    display: none;
 }
 
 /* 添加区: 虚线与已配置表分野, 明示「这里的行尚未保存」。 */
@@ -658,66 +752,10 @@ fieldset.budget-excluded .hint {
     margin: 0;
 }
 
-/* 窄屏: 字段单列; 分类预算表行块化 (沿用商家目录先例), 表头视觉隐藏但
-   留在无障碍树; 两个输入列占首行, 执行事实列靠 cell-sign 自报身份。 */
+/* Existing form breakpoint also applies to optional budget fields. */
 @media (max-width: 48rem) {
     .budget-fields {
         grid-template-columns: minmax(0, 1fr);
-    }
-
-    .product-table-wrap .budget-table {
-        display: block;
-        min-width: 0;
-    }
-
-    .budget-table thead {
-        position: absolute;
-        width: 1px;
-        height: 1px;
-        padding: 0;
-        margin: -1px;
-        overflow: hidden;
-        clip: rect(0 0 0 0);
-        clip-path: inset(50%);
-        white-space: nowrap;
-        border: 0;
-    }
-
-    .budget-table tbody {
-        display: block;
-    }
-
-    .budget-table tbody tr {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: var(--space-2) var(--space-3);
-        padding: var(--space-3) var(--space-4);
-        border-block-end: 1px solid var(--border-card);
-    }
-
-    .budget-table tbody tr:last-child {
-        border-block-end: 0;
-    }
-
-    .budget-table tbody td {
-        display: block;
-        padding: 0;
-        border-block-end: 0;
-    }
-
-    .budget-table tbody td.amount {
-        text-align: start;
-    }
-
-    .budget-cell-sign {
-        display: inline;
-        margin-inline-end: var(--space-2);
-        color: var(--text-meta);
-        font-size: var(--type-caption-size);
-    }
-
-    .budget-table .budget-remove-cell {
-        grid-column: 1 / -1;
     }
 
     .budget-add-row {
@@ -725,10 +763,7 @@ fieldset.budget-excluded .hint {
     }
 }
 
-/* 已保存分类身份: 与可编辑 input 分层的安静行 meta。执行列 (已花/剩余/超支)
-   始终归属这个不可变身份; input 只是要保存的 draft。unchanged / 编辑中 /
-   422 恢复三态同一表达, 零 JS (CSS 无法比较 input 与已保存名, 故常显而非
-   mismatch 才显); 窄屏行块内随 input 自然堆叠, 无需断点规则。 */
+/* Execution remains attached to the saved category, including rejected renames. */
 .budget-row-saved {
     margin-block-start: var(--space-1);
     color: var(--text-meta);
@@ -848,22 +883,7 @@ fieldset.budget-excluded .hint {
 
 /* 进度全清 (还债两清 / 关联欠款已两清): 成功色, 与 budgets 超支红同档位。 */
 .plan-progress.is-cleared {
-    accent-color: var(--state-success-fg);
-}
-
-/* 收入页工作区翻转: 在用列表宽左, 添加表单窄右 (≤64rem 收单列 — 与通用
-   .income-workspace 收列同档, 本规则须在翻转之后保持源码序, 否则等权重下
-   翻转会盖掉收列, 把列表列压成 0)。 */
-.income-workspace--list-first {
-    grid-template-columns:
-        minmax(0, 1.2fr)
-        minmax(calc(var(--space-12) * 5), .8fr);
-}
-
-@media (max-width: 64rem) {
-    .income-workspace--list-first {
-        grid-template-columns: minmax(0, 1fr);
-    }
+    --progress-fill: var(--state-success-fg);
 }
 
 /* ── 固定支出 ────────────────────────────────────────────────────────────── */
@@ -888,7 +908,7 @@ fieldset.budget-excluded .hint {
 
 .recurring-row {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto auto;
+    grid-template-columns: minmax(0, 1fr) auto auto;
     align-items: center;
     gap: var(--space-3) var(--space-6);
     padding-block: var(--space-4);
@@ -931,6 +951,14 @@ fieldset.budget-excluded .hint {
 .recurring-row-meta {
     color: var(--text-meta);
     font-size: var(--type-caption-size);
+}
+
+.recurring-row-values {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: start;
+    justify-content: space-between;
+    gap: var(--space-3) var(--space-6);
 }
 
 .recurring-row-amount,
@@ -978,46 +1006,13 @@ fieldset.budget-excluded .hint {
     gap: var(--space-2);
 }
 
-/* 行内编辑: details 占整行, summary 沿用 product-button 外观 (隐默认三角)。 */
-.plan-edit {
-    grid-column: 1 / -1;
-}
-
-.plan-edit > summary {
-    justify-self: start;
-    cursor: pointer;
-    list-style: none;
-}
-
-.plan-edit > summary::-webkit-details-marker {
-    display: none;
-}
-
-.plan-edit[open] > summary {
-    margin-block-end: var(--space-4);
-}
-
-/* 发现的建议: 面板级 details, summary 即面板头。 */
-.recurring-candidates-summary {
-    cursor: pointer;
-}
-
-.recurring-candidates-title {
-    color: var(--text-default);
-    font-size: var(--type-title-size);
-    font-weight: var(--type-title-weight);
-}
-
-.recurring-candidates-sub {
-    display: block;
-    margin-block-start: var(--space-1);
-    color: var(--text-meta);
-    font-size: var(--type-caption-size);
-}
-
-.recurring-candidates .recurring-list,
-.recurring-candidates .product-state {
-    margin-block-start: var(--space-5);
+.recurring-editor .budget-actions,
+.income-page > .budget-actions,
+.goal-page > .budget-actions,
+.goal-editor .budget-actions,
+.income-editor .budget-actions {
+    flex-direction: column;
+    align-items: stretch;
 }
 
 /* ── 还债目标 ────────────────────────────────────────────────────────────── */
@@ -1076,26 +1071,6 @@ fieldset.budget-excluded .hint {
     margin-block-end: var(--space-4);
 }
 
-/* 新建目标 = 面板级 details, summary 即面板标题。 */
-.plan-debt-create > summary {
-    color: var(--text-default);
-    font-size: var(--type-title-size);
-    font-weight: var(--type-title-weight);
-    text-decoration: none;
-}
-
-.plan-debt-create[open] > summary {
-    margin-block-end: var(--space-3);
-}
-
-.plan-debt-create > .hint {
-    margin-block: 0;
-}
-
-.plan-debt-create > .budget-form {
-    margin-block-start: var(--space-4);
-}
-
 /* 关联欠款选择 chips (创建 / 调整关联共用)。 */
 .plan-choice-set {
     display: grid;
@@ -1117,15 +1092,18 @@ fieldset.budget-excluded .hint {
 }
 
 .plan-choice {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
     gap: var(--space-2) var(--space-3);
+    min-block-size: var(--target-min);
+    padding-block: var(--space-2);
     cursor: pointer;
 }
 
 .plan-choice input {
     margin: 0;
+    grid-row: span 2;
     accent-color: var(--brand-primary);
 }
 
@@ -1135,6 +1113,8 @@ fieldset.budget-excluded .hint {
 }
 
 .plan-choice-meta {
+    grid-column: 2;
+    overflow-wrap: anywhere;
     color: var(--text-meta);
     font-size: var(--type-caption-size);
 }
@@ -1153,6 +1133,8 @@ fieldset.budget-excluded .hint {
 
 .plan-link {
     display: grid;
+    color: inherit;
+    text-decoration: none;
     gap: var(--space-2);
     padding-block-start: var(--space-3);
     border-block-start: 1px solid var(--border-card);
@@ -1189,14 +1171,22 @@ fieldset.budget-excluded .hint {
     color: var(--text-muted);
 }
 
-/* 窄屏: 固定支出行的四列网格折成「主体通栏 → 金额/日期 → 动作通栏」。 */
+/* 窄屏按主体、金额/日期、动作阅读；金额和日期在空间不足时各占一行。 */
 @media (max-width: 40rem) {
+    .plan-history-details {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .plan-history-details dd {
+        margin-block-end: var(--space-3);
+    }
+
     .recurring-metrics--duo {
         grid-template-columns: minmax(0, 1fr);
     }
 
     .recurring-row {
-        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-columns: minmax(0, 1fr);
         align-items: start;
     }
 

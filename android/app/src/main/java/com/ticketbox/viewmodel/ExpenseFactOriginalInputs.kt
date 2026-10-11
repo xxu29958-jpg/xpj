@@ -15,7 +15,8 @@ internal fun ExpenseFactViewModel.loadFactOriginalInputs() {
     viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
         val result = repository.loadFactInputs(binding, expenseId)
         if (_uiState.value.correctionAccess?.binding != binding || generation != factInputLoadGeneration) return@launch
-        result.onSuccess { originals ->
+        result.onSuccess { stored ->
+            val originals = stored.filterNot { it.formKey.startsWith("pending_") }
             try {
                 originals.forEach { ExpenseFactInputCodec.decode(it.json, expenseId) }
                 lateinit var session: ExpenseFactInputSession

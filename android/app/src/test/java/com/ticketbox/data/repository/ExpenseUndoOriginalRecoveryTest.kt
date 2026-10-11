@@ -26,7 +26,11 @@ class ExpenseUndoOriginalRecoveryTest {
         val dao = FakePendingMutationDao()
         val outbox = testOutboxRepository(dao)
         for ((type, code) in listOf(PendingMutationType.UndoExpense to "expense_not_found",
-            PendingMutationType.RejectExpense to EXPENSE_REJECTION_ORIGINAL_REQUIRES_REVIEW)) {
+            PendingMutationType.RejectExpense to EXPENSE_REJECTION_ORIGINAL_REQUIRES_REVIEW,
+            PendingMutationType.ConfirmExpense to EXPENSE_CONFIRMATION_ORIGINAL_REQUIRES_REVIEW,
+            PendingMutationType.ReplaceItems to EXPENSE_SUBTASK_ORIGINAL_REQUIRES_REVIEW,
+            PendingMutationType.ReplaceSplits to EXPENSE_SUBTASK_ORIGINAL_REQUIRES_REVIEW,
+            PendingMutationType.AcknowledgeItemsMismatch to EXPENSE_SUBTASK_ORIGINAL_REQUIRES_REVIEW)) {
             val id = outbox.enqueue(type, "expense:42", "{}", 3, "original-${type.wireValue}")
             outbox.markFailed(id, code)
             val failed = requireNotNull(dao.rows[id])

@@ -1,8 +1,6 @@
 package com.ticketbox.ui.screens.settings
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -13,6 +11,7 @@ import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.PendingExpenseCorrection
+import com.ticketbox.data.repository.EXPENSE_ORIGINAL_REVIEW_ERRORS
 import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppOutlinedButtonOptions
 import com.ticketbox.ui.design.AppSpacing
@@ -24,6 +23,25 @@ import com.ticketbox.viewmodel.OutboxStatusUiState
 /** Original-command recovery stays ahead of read-only refresh and identity quarantine. */
 @Composable
 internal fun SyncStatusExpenseReviewSection(state: OutboxStatusUiState, actions: SyncStatusActions) {
+    val originals = state.status.failed.filter { it.lastError in EXPENSE_ORIGINAL_REVIEW_ERRORS }
+    if (originals.isNotEmpty()) SettingsSection(title = stringResource(R.string.sync_status_section_needs_action)) {
+        originals.forEach { row -> key(state.binding, row.id) {
+            SettingsDetailRow(title = stringResource(syncStatusMutationLabelResources.getValue(row.type)),
+                subtitle = stringResource(R.string.sync_status_review_entry_hint),
+                icon = R.drawable.ic_lucide_git_branch) {
+                Text(stringResource(R.string.sync_status_expense_original_requires_review))
+                com.ticketbox.data.repository.expenseRefreshTargetId(row.targetId, row.receiptJson)?.let { id ->
+                    AppOutlinedButton(onClick = { actions.onOpenExpense(id) },
+                        options = AppOutlinedButtonOptions(enabled = state.busyRowId == null)) {
+                        Text(stringResource(R.string.expense_offset_review_current))
+                    }
+                }
+                TextButton(onClick = { actions.onDropFailed(row) }, enabled = state.busyRowId == null) {
+                    Text(stringResource(R.string.sync_status_accepted_stop))
+                }
+            }
+        } }
+    }
     (state.status.conflicts + state.status.failed).filter { it.type == PendingMutationType.OriginalAttachment }.forEach { row ->
         val id = row.targetId.removePrefix("expense:").toLongOrNull()
         Text(stringResource(R.string.original_attention))
@@ -62,15 +80,25 @@ private fun SyncStatusCorrectionRow(pending: PendingExpenseCorrection, state: Ou
 @Composable
 private fun SyncStatusAcceptedRow(row: OutboxRow, state: OutboxStatusUiState, actions: SyncStatusActions) {
     val budget = state.budgetSaves[row.id]
+    val application = state.ruleApplications[row.id]
     SettingsDetailRow(
         title = stringResource(syncStatusMutationLabelResources.getValue(row.type)),
-        subtitle = stringResource(if (budget != null) R.string.budget_saved_read_pending else R.string.sync_status_refresh_required),
-        icon = Icons.Filled.RestartAlt,
+        subtitle = stringResource(when {
+            application != null -> R.string.rule_application_refresh
+            budget != null -> R.string.budget_saved_read_pending
+            else -> R.string.sync_status_refresh_required
+        }),
+        icon = R.drawable.ic_lucide_rotate_ccw,
     ) {
         budget?.let { com.ticketbox.ui.screens.budget.BudgetSaveIntentSummary(it) }
+        application?.let { com.ticketbox.ui.screens.settings.categoryrules.RuleApplicationSubmissionSummary(it) }
         AppOutlinedButton(onClick = { actions.onRefreshAcceptedResult(row) },
             options = AppOutlinedButtonOptions(enabled = state.busyRowId == null)) {
-            Text(stringResource(if (budget != null) R.string.budget_read_recover else R.string.sync_status_refresh_expense))
+            Text(stringResource(when {
+                application != null -> R.string.rule_application_refresh_action
+                budget != null -> R.string.budget_read_recover
+                else -> R.string.sync_status_refresh_expense
+            }))
         }
         budget?.intent?.takeIf { budget.hasSupportedIntent }?.let { intent ->
             TextButton(onClick = { actions.onOpenBudget(intent.month) }) {

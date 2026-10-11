@@ -5,12 +5,8 @@
    行级校验错误时自动展开并在摘要标记，恢复路径不被折叠藏住。 #}
 {% set _filled = receipt_items.rows | selectattr('name') | list %}
 {% set _error_rows = receipt_items.rows | selectattr('errors') | list %}
-<details class="dt-card correction-fold"{% if _error_rows %} open{% endif %}>
-  <summary class="correction-fold-summary">
-    <span class="correction-fold-title">小票明细</span>
-    <span class="meta">已记 {{ _filled | length }} 行；展开可调整，与账单字段同一次更正保存；不动则不会产生明细变更。</span>
-    {% if _error_rows %}<span class="field-error">{{ _error_rows | length }} 行需要修正，请检查后重新提交。</span>{% endif %}
-  </summary>
+<details class="correction-fold"{% if _error_rows %} open{% endif %}>
+  <summary class="product-entry"><span class="product-entry-icon"><svg><use href="/static/shared/vendor/lucide/icons.svg#list"/></svg></span><span class="product-entry-copy"><strong>小票明细</strong><span{% if _error_rows %} class="field-error"{% endif %}>{% if _error_rows %}{{ _error_rows | length }} 行需要修正，请检查后重新提交{% else %}已记 {{ _filled | length }} 项 · 查看与调整{% endif %}</span></span><svg><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></summary>
   <div class="correction-fold-body">
     {% if receipt_items.status == 'mismatch_known' %}
     <div class="product-feedback product-feedback--warning">明细合计与账单金额差 {{ currency_input.currency_symbol }}{{ receipt_items.mismatch_yuan }}，请检查明细。</div>

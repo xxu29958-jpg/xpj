@@ -22,12 +22,14 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
 import androidx.core.app.ActivityOptionsCompat
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.filters.SdkSuppress
+import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.RepositoryGraph
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.UploadIntentConnectedFixture
@@ -41,6 +43,7 @@ import com.ticketbox.ui.screens.pending.PendingReviewFlowActions
 import com.ticketbox.ui.screens.pending.PendingReviewSheetHostActions
 import com.ticketbox.ui.screens.pending.PendingUploadSelectionUiState
 import com.ticketbox.ui.theme.TicketboxTheme
+import com.ticketbox.ui.saveConsumerArtPreview
 import com.ticketbox.upload.PreparedUploadImage
 import com.ticketbox.viewmodel.PendingViewModel
 import com.ticketbox.viewmodel.RepositoryViewModelRepositories
@@ -62,6 +65,7 @@ import org.junit.Test
 class PendingLaunchActionEffectTest {
     @get:Rule
     val composeRule = createComposeRule()
+    private val skin = if (InstrumentationRegistry.getArguments().getString("captureSkin") == "midnight") AppSkin.Midnight else AppSkin.Default
 
     @Test
     fun externalImageSharesCannotSupplyAnAcceptanceFlagOrOriginalBatchIdentity() {
@@ -107,7 +111,7 @@ class PendingLaunchActionEffectTest {
                                 preparedImage(name)
                             }))
                         }
-                        TicketboxTheme(skin = AppSkin.Default) {
+                        TicketboxTheme(skin = skin) {
                             PendingScreen(state, pendingScreenChromeActions(
                                 owner, {}, PendingInboxNavigationActions({}, {}), shell.pendingFilterRequest, selectionUi(shell),
                             ), PendingExpenseQueueActions({}, {}, {}, {}), unusedReviewActions(), unusedSheetActions())
@@ -115,23 +119,34 @@ class PendingLaunchActionEffectTest {
                     }
                 }
                 composeRule.runOnIdle { shell.launchAction.post(sharedAction(listOf("a.png", "b.png"))) }
+                composeRule.waitForIdle()
+                assertTrue(prepared.isEmpty())
+                capture("capture-selection")
+                composeRule.onNodeWithText("上传 2 张小票").performClick()
                 composeRule.waitUntil(timeoutMillis = 5_000) { prepared == listOf("a.png") }
+                capture("capture-preparing")
                 composeRule.runOnIdle {
                     assertTrue("Preparation is not a durable acknowledgement", shell.launchAction.pending != null)
                     shell.launchAction.post(sharedAction(listOf("c.png")))
                 }
                 releaseA.complete(Unit)
+                composeRule.waitUntil(timeoutMillis = 5_000) { shell.launchAction.pendingUpload?.selection?.uris == listOf("c.png") && owner.uiState.value.canStartUpload }
+                composeRule.onNodeWithText("上传 1 张小票").performClick()
                 composeRule.waitUntil(timeoutMillis = 5_000) {
                     owner.uiState.value.canRetryUpload && shell.launchAction.pending == null
                 }
+                capture("capture-recoverable")
                 composeRule.runOnIdle { visible.value = false }
                 assertEquals(listOf("a.png", "b.png"), fixture.network.attempts.map { it.name })
                 assertEquals(listOf("a.png", "b.png", "c.png"), prepared.toList())
                 composeRule.runOnIdle { visible.value = true }
-                composeRule.onNodeWithText("重试上传").performScrollTo().performClick()
+                composeRule.onNodeWithText("查看上传任务").performScrollTo().performClick()
+                composeRule.onNodeWithText("重试上传").assertIsDisplayed().performClick()
                 composeRule.waitUntil(timeoutMillis = 5_000) {
                     owner.uiState.value.items.size == 3 && !owner.uiState.value.uploading
                 }
+                composeRule.onNodeWithText("图片已安全收到").assertIsDisplayed()
+                capture("capture-completed")
                 assertOriginalAttempts(fixture)
                 assertEquals(listOf("a.png", "b.png", "c.png"), prepared.toList())
                 assertEquals(setOf("a.png", "b.png", "c.png"), owner.uiState.value.items.map { it.merchant }.toSet())
@@ -170,7 +185,7 @@ class PendingLaunchActionEffectTest {
                         val state by owner.uiState.collectAsState()
                         PendingLaunchActionEffect(currentShell, state.canStartUpload, owner.currentUploadBinding(), { false },
                             onUploadSharedImages = owner::acceptUploads)
-                        TicketboxTheme(skin = AppSkin.Default) {
+                        TicketboxTheme(skin = skin) {
                             PendingScreen(state, pendingScreenChromeActions(
                                 owner, {}, PendingInboxNavigationActions({}, {}), currentShell.pendingFilterRequest, selectionUi(currentShell),
                             ), PendingExpenseQueueActions({}, {}, {}, {}), unusedReviewActions(), unusedSheetActions())
@@ -178,6 +193,9 @@ class PendingLaunchActionEffectTest {
                     }
                 }
                 composeRule.runOnIdle { shell.launchAction.post(sharedAction(refs)) }
+                composeRule.onNodeWithText("上传 3 张小票").assertIsDisplayed()
+                capture("capture-real-selection")
+                composeRule.onNodeWithText("上传 3 张小票").performClick()
                 composeRule.waitUntil(timeoutMillis = 5_000) {
                     vm?.uiState?.value?.let { it.canRetryUpload && !it.loading && it.items.size == 1 } == true
                 }
@@ -207,10 +225,13 @@ class PendingLaunchActionEffectTest {
                     assertEquals(listOf("a.png"), requireNotNull(vm).uiState.value.items.map { it.merchant })
                 }
                 composeRule.waitUntil(timeoutMillis = 5_000) { requireNotNull(vm).uiState.value.canRetryUpload }
-                composeRule.onNodeWithText("重试上传").performScrollTo().performClick()
+                composeRule.onNodeWithText("查看上传任务").performScrollTo().performClick()
+                composeRule.onNodeWithText("重试上传").assertIsDisplayed().performClick()
                 composeRule.waitUntil(timeoutMillis = 5_000) {
                     vm?.uiState?.value?.let { it.items.size == 3 && !it.uploading } == true
                 }
+                composeRule.onNodeWithText("图片已安全收到").assertIsDisplayed()
+                capture("capture-real-completed")
                 assertOriginalAttempts(fixture)
                 fixture.network.attempts.forEach { assertArrayEquals(fixture.sourceBytes.getValue(it.name), it.bytes) }
                 assertFalse(requireNotNull(vm).uiState.value.canRetryUpload)
@@ -266,7 +287,7 @@ class PendingLaunchActionEffectTest {
             lateinit var openPicker: () -> Unit
             composeRule.setContent {
                 CompositionLocalProvider(LocalActivityResultRegistryOwner provides registryOwner) {
-                    val launcher = rememberSingleImageUploadLauncher(shell)
+                    val launcher = rememberImageUploadLauncher(shell)
                     openPicker = { launcher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
                     PendingLaunchActionEffect(shell, ready.value,
                         LogicalSessionBinding("https://example.test", "family", "owner", "session", "revision"),
@@ -290,7 +311,10 @@ class PendingLaunchActionEffectTest {
                 assertEquals(listOf(original.toString()), restored.pendingUpload!!.selection.uris)
                 shell.launchAction.post(sharedAction(listOf(original.toString())))
                 ready.value = true
+                shell.launchAction.retryUpload()
             }
+            composeRule.waitUntil(5_000) { attempts == 1 && !shell.launchAction.acceptingUpload }
+            composeRule.runOnIdle { shell.launchAction.retryUpload() }
             composeRule.waitUntil(5_000) { shell.launchAction.awaitingUploadRetry && attempts == 2 }
             composeRule.runOnIdle { cancelPendingUploadSelection(context, shell.launchAction) }
             assertNull(shell.launchAction.pending)
@@ -298,12 +322,13 @@ class PendingLaunchActionEffectTest {
         }
     }
 
-    private fun selectionUi(shell: MainShellState) = PendingUploadSelectionUiState(
-        pendingCount = shell.launchAction.pendingUpload?.selection?.uris?.size ?: 0,
-        accepting = shell.launchAction.acceptingUpload,
-        onRetry = shell.launchAction::retryUpload,
-        onStop = { cancelPendingUploadSelection(ApplicationProvider.getApplicationContext(), shell.launchAction) },
-    )
+    private fun selectionUi(shell: MainShellState) = pendingUploadSelectionUi(ApplicationProvider.getApplicationContext(), shell.launchAction)
+
+    private fun capture(name: String) {
+        composeRule.waitForIdle()
+        InstrumentationRegistry.getInstrumentation().uiAutomation.waitForIdle(100, 2_000)
+        saveConsumerArtPreview(name, requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+    }
 
     private fun sharedAction(refs: List<String>) = LaunchAction.UploadSharedImages(
         LaunchIntentRequest.ShareImages(java.util.UUID.randomUUID().toString(), refs),
@@ -336,6 +361,7 @@ class PendingLaunchActionEffectTest {
 
     private fun unusedSheetActions() = PendingReviewSheetHostActions(
         { _, _ -> }, { _, _ -> }, { _, _ -> }, { _, _ -> }, {}, {}, {}, {}, {},
+        onReviewInputChange = {},
     )
 }
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from uuid import uuid4
 
 from api_contract_helpers import web_confirm_expense, web_save_expense
 from fastapi.testclient import TestClient
@@ -11,7 +12,7 @@ from sqlalchemy import select, text
 from app.database import SessionLocal
 from app.models import Expense
 from app.services.learning_service import OcrFactDraft, record_ocr_fact
-from tests._web_native_form_support import hidden_post_forms
+from tests._web_native_form_support import hidden_post_forms, open_creation_form
 from tests._web_rule_form_support import submit_rule_form
 
 
@@ -70,6 +71,7 @@ def test_web_search_finds_current_ledger_entities(web_client: TestClient, *, ide
     assert rule.status_code in {303, 307}
     goal_page = web_client.get("/web/goals?ledger_id=owner&month=2026-05")
     assert goal_page.status_code == 200
+    goal_page = open_creation_form(web_client, goal_page, "new_goal")
     goal = web_client.post(
         "/web/goals/create",
         data={
@@ -106,7 +108,7 @@ def test_web_search_uses_enabled_merchant_aliases(web_client: TestClient, *, ide
     expense_id = _seed_pending_with_amount(web_client, "19.00", "STARBUCKS 国贸店", identity=identity)
     alias = web_client.post(
         "/web/merchants/aliases/create",
-        data={
+        data={"idempotency_key": str(uuid4()),
             "ledger_id": "owner",
             "canonical_merchant": "星巴克",
             "alias": "STARBUCKS 国贸店",

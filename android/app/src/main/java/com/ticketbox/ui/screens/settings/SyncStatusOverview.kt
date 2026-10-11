@@ -13,6 +13,7 @@ import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.repository.readCorrectionRateFailure
 import com.ticketbox.data.repository.OutboxStatus
+import com.ticketbox.data.repository.EXPENSE_ORIGINAL_REVIEW_ERRORS
 import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.OutboxWriteBlock
 import com.ticketbox.data.repository.PendingExpenseCorrection
@@ -27,23 +28,17 @@ internal fun SyncStatusOriginalIntentSummary(row: OutboxRow, state: OutboxStatus
     NotificationCaptureIntentSummary(row)
     OffsetRateRecovery(row, state, actions)
     ArrangementOriginalRecovery(row, state, actions)
+    com.ticketbox.ui.screens.settings.categoryrules.RuleSubmissionRecovery(state.categoryRules[row.id], state.ruleApplications[row.id]) {
+        actions.onOpenRuleSubmission(row.id)
+    }
     state.manualRates[row.id]?.let { original ->
         com.ticketbox.ui.screens.plan.ManualRateSubmissionSummary(original)
         TextButton(onClick = { actions.onOpenRateSubmission(row.id) }) { Text(stringResource(R.string.advice_rate_submission_open)) }
     }
-    state.categoryRules[row.id]?.let { original ->
-        com.ticketbox.ui.screens.settings.categoryrules.CategoryRuleSubmissionSummary(original)
-        TextButton(onClick = { actions.onOpenRuleSubmission(row.id) }) {
-            Text(stringResource(R.string.category_rule_submission_open))
-        }
-    }
     state.goalEdits[row.id]?.let { original ->
-        original.request?.let { request ->
-            com.ticketbox.ui.screens.plan.SpendingGoalOriginalSummary(request.name, request.month,
-                request.targetAmountCents, request.homeCurrencyCode)
-        }
-        row.targetId.takeIf { it.startsWith("goal:") && it.length > 5 }?.removePrefix("goal:")?.let { publicId ->
-            TextButton(onClick = { actions.onOpenGoalEdit(publicId) }) { Text(stringResource(R.string.goal_submission_open)) }
+        com.ticketbox.ui.screens.plan.GoalEditIntentSummary(original)
+        row.targetId.takeIf { it.startsWith("goal:") && it.length > 5 }?.removePrefix("goal:")?.let {
+            TextButton(onClick = { actions.onOpenGoalEdit(original) }) { Text(stringResource(R.string.goal_submission_open)) }
         }
     }
     state.goalCreations[row.id]?.let { original ->
@@ -114,10 +109,12 @@ internal fun syncStatusOverview(
     return SyncStatusOverview(
         queuedCount = (status.queueDepth - blockedPending.size).coerceAtLeast(0),
         conflictCount = status.conflicts.size,
-        failedCount = status.failed.count { failed -> writes.none { it.row.id == failed.id && it.requiresReview } },
+        failedCount = status.failed.count { failed -> failed.lastError !in EXPENSE_ORIGINAL_REVIEW_ERRORS &&
+            writes.none { it.row.id == failed.id && it.requiresReview } },
         quarantinedCount = status.quarantinedCount.coerceAtLeast(0),
         reviewRequiredCount = writes.count { it.requiresReview && it !in blockedPending } + corrections.count { !it.delivered && it.row.status == PendingMutationStatus.Done } +
-            incomeSubmissions.count { it.requiresReview } + manualRates.count { it.row.status == PendingMutationStatus.Done && !it.isConfirmed },
+            incomeSubmissions.count { it.requiresReview } + manualRates.count { it.row.status == PendingMutationStatus.Done && !it.isConfirmed } +
+            status.failed.count { it.lastError in EXPENSE_ORIGINAL_REVIEW_ERRORS },
         refreshRequiredCount = status.refreshRequired.size,
         stoppedCount = writes.count { it.row.status == PendingMutationStatus.Abandoned },
         blockedPendingCount = blockedPending.size,
@@ -143,7 +140,7 @@ internal fun SyncStatusOverviewSection(status: OutboxStatus, corrections: List<P
             Text(
                 text = listOf(
                     "${stringResource(R.string.sync_status_overview_queued_label)} ${overview.queuedCount}",
-                    "${stringResource(R.string.sync_status_overview_conflicts_label)} ${overview.conflictCount}",
+                    "${stringResource(R.string.sync_status_overview_conflicts_label)} ${overview.conflictCount + overview.reviewRequiredCount}",
                     "${stringResource(R.string.sync_status_overview_failed_label)} ${overview.failedCount}",
                     "${stringResource(R.string.sync_status_overview_quarantined_label)} ${overview.quarantinedCount}",
                 ).joinToString(" · "),

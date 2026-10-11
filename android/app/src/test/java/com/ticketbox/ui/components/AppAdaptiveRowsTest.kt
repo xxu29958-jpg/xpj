@@ -124,7 +124,8 @@ class AppAdaptiveRowsTest {
 
     @Test
     fun amountRowsExposeSharedDefaultsWithoutChangingCurrentValues() {
-        assertEquals(AppAdaptiveBreakpoints.editActionInlineMinWidth, AppAdaptiveBreakpoints.amountRowInlineMinWidth)
+        assertEquals(AppAdaptiveAmountRowMode.Inline, resolveAppAdaptiveAmountRowMode(320.dp))
+        assertEquals(AppAdaptiveAmountRowMode.Stacked, resolveAppAdaptiveAmountRowMode(320.dp, fontScale = 2f))
         assertEquals(0.44f, AppAdaptiveAmountRowDefaults.trailingWeight)
         assertEquals(0.62f, AppAdaptiveAmountRowDefaults.reviewTrailingWeight)
         assertEquals(0.68f, AppAdaptiveAmountRowDefaults.listTrailingWeight)

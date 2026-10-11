@@ -28,14 +28,16 @@ def origin(monkeypatch):
 
 def test_fact_acknowledgement_returns_original_context_and_keeps_command_identity(monkeypatch, origin):
     from app.database import get_db
+    from app.routes import _web_expense_subtask as adapter
     from app.routes import web_expense_items as route
     from app.routes._web_expense_return_context import edit_context_params
 
     calls = []
     monkeypatch.setattr(route, "_list_ledger_options", lambda _db: [])
     monkeypatch.setattr(route, "_resolve_selected_ledger_id", lambda *_a, **_k: "family")
-    monkeypatch.setattr(route, "_require_selected_ledger_write", lambda *_a: None)
-    monkeypatch.setattr(route, "_acknowledge_web_items_mismatch", lambda _db, _request, **kw: calls.append(kw))
+    monkeypatch.setattr(adapter, "_require_selected_ledger_write", lambda *_a: None)
+    monkeypatch.setattr(adapter, "resolve_web_actor", lambda *_a: (None, None))
+    monkeypatch.setattr(adapter, "submit_expense_subtask", lambda _db, **kw: calls.append(kw) or {})
     app = FastAPI()
     app.dependency_overrides[get_db] = lambda: object()
     app.dependency_overrides[route.LocalOnly.dependency] = lambda: None
@@ -45,8 +47,11 @@ def test_fact_acknowledgement_returns_original_context_and_keeps_command_identit
             "ledger_id": "family", "expected_row_version": "7", "idempotency_key": "original-key",
             **origin.as_kwargs()}, follow_redirects=False)
     assert response.status_code == 303
-    assert calls == [{"expense_id": 41, "selected_id": "family", "expected_row_version": 7,
-        "idempotency_key": "original-key"}]
+    assert len(calls) == 1
+    command = calls[0]
+    assert (command["expense_id"], command["tenant_id"], command["expected_row_version"], command["idempotency_key"]) == (
+        41, "family", 7, "original-key")
+    assert command["payload"].expected_row_version == 7
     target = urlsplit(response.headers["location"])
     assert target.path == "/web/expenses/41/edit"
     query = parse_qs(target.query)
@@ -75,7 +80,7 @@ def test_report_fields_have_one_allowlisted_consumer(origin, return_to):
     params = return_context_params(**context.as_kwargs())
     expected = {"reports": {"month": "2026-05", "home_currency_code": "JPY", "granularity": "week",
         "ranking_metric": "count", "merchant_category": "咖啡 & 茶"},
-        "confirmed": {"filter": "missing_category", "home_currency_code": "JPY"}, "search": {"q": "咖啡"}}
+        "confirmed": {"filter": "missing_category", "home_currency_code": "JPY", "q": "咖啡"}, "search": {"q": "咖啡"}}
     assert params == expected.get(return_to, {})
 
 
@@ -104,7 +109,7 @@ def test_post_error_fact_projection_keeps_form_origin_on_both_timeline_links(mon
     from app.routes._web_expense_return_context import edit_context_params
 
     monkeypatch.setattr(route, "web_edit_context", lambda *_a, **_k: {
-        "expense": {}, "can_write": True, "home_currency_code": "JPY"})
+        "expense": {}, "can_write": True, "home_currency_code": "JPY", "expense_review_inspection": False})
     monkeypatch.setattr(route, "get_expense", lambda *_a: SimpleNamespace(fact_revision=120, confirmed_at=None))
     monkeypatch.setattr(route, "build_split_invite_context", lambda *_a, **_k: {})
     monkeypatch.setattr(route, "expense_offset_fact_view", lambda *_a: {})

@@ -1,5 +1,7 @@
 package com.ticketbox.data.repository
 
+import com.ticketbox.domain.model.ExpenseHistorySnapshot
+
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.remote.ApiService
@@ -30,7 +32,7 @@ internal class ExpenseOffsetRepositoryTest : ExpensePendingRepositoryOutboxTestB
         var latest = 51L
         val dao = FakeExpenseDao()
         val api = object : ApiService by FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0) {
-            override suspend fun expenseRevisions(id: Long, page: Int, pageSize: Int, snapshotRevision: Long?):
+            override suspend fun expenseRevisions(id: Long, page: Int, pageSize: Int, snapshotRevision: Long?, offsetSnapshotId: Long?):
                 com.ticketbox.data.remote.dto.ExpenseRevisionPageDto {
                 if (offline) throw java.net.ConnectException("offline")
                 val anchor = snapshotRevision ?: latest
@@ -38,25 +40,25 @@ internal class ExpenseOffsetRepositoryTest : ExpensePendingRepositoryOutboxTestB
                 return com.ticketbox.data.remote.dto.ExpenseRevisionPageDto(numbers.map { revision ->
                     com.ticketbox.data.remote.dto.ExpenseRevisionDto("revision-$revision", revision, "corrected", "核对 $revision",
                         listOf("note"), after = mapOf("note" to "历史 $revision"), createdAt = "2026-09-30T00:00:00Z")
-                }, page, pageSize, anchor.toInt(), anchor)
+                }, page, pageSize, anchor.toInt(), anchor, offsetSnapshotId = 0)
             }
         }
         val original = buildRepository(api, dao)
         val first = original.fetchExpenseRevisions(9).getOrThrow()
-        val older = original.fetchExpenseRevisions(9, 2, 50, first.value.snapshotRevision).getOrThrow()
+        val older = original.fetchExpenseRevisions(9, 2, 50, ExpenseHistorySnapshot(first.value.snapshotRevision, first.value.offsetSnapshotId)).getOrThrow()
         offline = true
         val reopened = buildRepository(api, dao)
         val restored = reopened.fetchExpenseRevisions(9).getOrThrow()
         assertTrue(restored.fromCache)
         assertEquals(first.value, restored.value)
-        assertEquals(older.value, reopened.fetchExpenseRevisions(9, 2, 50, restored.value.snapshotRevision).getOrThrow().value)
+        assertEquals(older.value, reopened.fetchExpenseRevisions(9, 2, 50, ExpenseHistorySnapshot(restored.value.snapshotRevision, restored.value.offsetSnapshotId)).getOrThrow().value)
         assertEquals(51, (restored.value.items + older.value.items).map { it.publicId }.toSet().size)
         assertTrue(reopened.fetchExpenseRevisions(10).isFailure)
         offline = false
         latest = 52
         assertEquals(52L, reopened.fetchExpenseRevisions(9).getOrThrow().value.snapshotRevision)
         offline = true
-        assertTrue(buildRepository(api, dao).fetchExpenseRevisions(9, 2, 50, 52).isFailure,
+        assertTrue(buildRepository(api, dao).fetchExpenseRevisions(9, 2, 50, ExpenseHistorySnapshot(52, 0)).isFailure,
             "An unread page from the new snapshot must not be filled from the old prefix")
     }
 

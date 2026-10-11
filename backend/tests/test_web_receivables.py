@@ -114,9 +114,9 @@ def test_web_receivables_open_row_is_communal_with_debtor_name(web_client: TestC
 
     html = _page(web_client)
     assert "阿明" in html  # the DEBTOR's name — who owes the creditor
-    assert "我帮你垫的" in html  # communal creditor-side headline (viewer_is_debtor False)
+    assert "阿明欠我" in html  # communal creditor-side headline (viewer_is_debtor False)
     assert "进行中" in html  # member status pill (open)
-    assert "debt-progress" in html  # progress bar on open rows
+    assert 'class="debt-num">¥25.00</strong>' in html  # progress bar on open rows
     # Communal, NOT market: no 应付/应收 accounting framing, no amount hero.
     assert "应收" not in html
     assert "应付" not in html
@@ -183,9 +183,9 @@ def test_web_receivable_preserves_remaining_and_opens_redacted_detail(
     assert f'action="/web/debts/{public_id}/kind"' not in detail.text
 
     html = _page(web_client)
-    assert "还剩 ¥15.00" in html
+    assert 'class="debt-num">¥15.00</strong>' in html
     assert f'href="/web/debts/{public_id}?ledger_id=owner"' in html
-    assert '<div class="debt-member-remaining">剩余 ¥15.00</div>' in detail.text.split('<details class="debt-look">')[0]
+    assert 'class="dh-amt dh-amt--hero">¥15.00</strong>' in detail.text
     assert "¥15.00" in detail.text
 
 
@@ -341,7 +341,7 @@ def test_web_receivables_external_row_uses_accounting_framing(web_client: TestCl
         public_id = debt.public_id
     html = _page(web_client)
     assert "小周 · 演出票" in html
-    assert "应收" in html  # 会计方向徽章 (正向 RED：合并前 member-only 实现无此产出)
+    assert "欠我" in html  # 会计方向徽章 (正向 RED：合并前 member-only 实现无此产出)
     assert "应付" not in html  # viewer 恒是债权人，owner-relative direction 不得外翻
     assert "未结清" in html  # 会计状态词
     assert "¥320.00" in html  # exact 剩余金额正向呈现

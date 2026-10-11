@@ -6,11 +6,11 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.hasClickAction
-import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
@@ -106,15 +106,16 @@ class BillSplitResultNavigationTest {
     }
 
     private fun assertFactAndReturn(expenseId: Long) {
-        waitForText(context.getString(R.string.expense_fact_title))
-        compose.onNodeWithText(context.getString(R.string.expense_fact_title)).assertIsDisplayed()
+        waitForText(context.getString(R.string.expense_fact_original_spend))
+        compose.onNodeWithTag("expense-fact").assertIsDisplayed()
         compose.runOnIdle {
             assertEquals(EXPENSE_ROUTE, outer.currentBackStackEntry?.destination?.route)
             assertEquals(expenseId, outer.currentBackStackEntry?.arguments?.getLong(EXPENSE_ID_ARG))
             assertTrue(harness.fixture.network.expenseReads.contains(expenseId))
             assertTrue(harness.fixture.network.calls.isEmpty())
         }
-        compose.onNode(hasContentDescription("") and hasClickAction()).performScrollTo().performClick()
+        compose.onNodeWithContentDescription(context.getString(R.string.expense_edit_primary_back_button))
+            .performScrollTo().performClick()
         waitForText(context.getString(R.string.bill_split_topbar_title))
         assertEquals(MainProductDestination.Secondary(ProductSecondaryPage.BillSplits), harness.shell.activeDestination)
     }

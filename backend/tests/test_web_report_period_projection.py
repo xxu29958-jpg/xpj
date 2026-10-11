@@ -1,5 +1,6 @@
 """The complete browser report keeps one currency and recoverable unknown projections."""
 
+import csv
 import json
 import re
 from datetime import date
@@ -46,7 +47,7 @@ def period_page(monkeypatch):
     monkeypatch.setattr(Engine, "connect", no_database)
     gap = ProjectionGap("USD", "JPY", date(2026, 5, 2))
     rows = [{"month": month, "home_currency_code": "JPY", "amount_cents": amount, "amount_yuan": amount,
-        "amount_major_text": None if amount is None else str(amount), "count": 2,
+        "amount_major_text": None if amount is None else str(amount), "count": 2, "undated_expense_count": 0,
         "budget_cents": budget, "budget_yuan": budget, "budget_major_text": None if budget is None else str(budget),
         "missing_rates": (gap,) if amount is None else (),
         "reference_rates": () if budget is None else (ProjectionReference("USD", "JPY", date(2026, 4, 15)),)}
@@ -134,7 +135,9 @@ def test_full_page_preserves_currency_unknown_metrics_and_unavailable_rankings(p
     assert "上月无数据" not in response.text and "前 5 笔" not in response.text and "前 8 名" not in response.text
     payload = json.loads(re.search(r'id="reports-overview-data">(.*?)</script>', response.text, re.DOTALL).group(1))
     assert payload["total_amount_cents"] is None and payload["count"] == 2
-    assert "参考汇率日期：USD → JPY · 2026-04-15" in response.text
+    data = _report_response(period_page, view="data")
+    assert "参考汇率日期：USD → JPY · 2026-04-15" in data.text
+    assert "待补信息" in data.text and "None" not in data.text
     history = json.loads(unescape(re.search(r"id=\"chart-trend\"[^>]*data-series='([^']+)'", response.text, re.S).group(1)))
     assert history[0]["reference_rates"] == [{"source_currency_code": "USD", "home_currency_code": "JPY", "rate_date": "2026-04-15"}]
     for name, kwargs in period_page.calls:
@@ -149,6 +152,47 @@ def test_count_ranking_remains_usable_when_amount_is_unknown(period_page):
     payload = json.loads(re.search(r'id="reports-overview-data">(.*?)</script>', response.text, re.DOTALL).group(1))
     assert payload["merchant_ranking"][0]["amount_cents"] is None
     assert payload["merchant_ranking"][0]["count"] == 2
+
+
+def test_history_reader_and_csv_share_month_currency_unknowns_and_return_context(period_page, monkeypatch):
+    from app.services.reports_service import _history
+
+    def history(_db, **kwargs):
+        period_page.calls.append(("history_export", kwargs))
+        return period_page.rows
+
+    monkeypatch.setattr(_history, "six_month_summary", history)
+    overview = _report_response(period_page)
+    href = next(unescape(href) for href in re.findall(r'href="([^"]+)"', overview.text) if "view=data" in href)
+    reader = period_page.client.get(href)
+    assert reader.status_code == 200
+    assert "2026-04" in reader.text and "2026-05" in reader.text and "待补信息" in reader.text
+    download = next(unescape(href) for href in re.findall(r'href="([^"]+)"', reader.text) if "scope=six_month" in href)
+    query = parse_qs(urlsplit(download).query)
+    assert {key: query[key] for key in ("ledger_id", "month", "home_currency_code", "merchant_category", "granularity", "ranking_metric")} == {
+        "ledger_id": ["family"], "month": ["2026-05"], "home_currency_code": ["JPY"],
+        "merchant_category": ["餐饮"], "granularity": ["week"], "ranking_metric": ["amount"]}
+    result = period_page.client.get(download)
+    assert result.status_code == 200
+    assert '2026-05-six-month.csv' in result.headers['content-disposition']
+    rows = list(csv.reader(result.text.lstrip('\ufeff').splitlines()))
+    assert rows[1][0:7] == ['monthly_history', '2026-04', 'JPY', '1200', '1200', '1500', '1500']
+    assert rows[2][0:7] == ['monthly_history', '2026-05', 'JPY', '', '', '', '']
+    assert ['missing_rates', '2026-05', 'USD', 'JPY', '2026-05-02'] in rows
+    assert ['reference_rates', '2026-04', 'USD', 'JPY', '2026-04-15'] in rows
+    assert period_page.calls[-1] == ('history_export', {
+        'anchor_month': '2026-05', 'tenant_id': 'family', 'timezone_name': 'Asia/Shanghai', 'currency_code': 'JPY'})
+
+
+def test_history_total_does_not_block_representable_months_and_average():
+    from app.money_contract_types import MONEY_AGGREGATE_MAX
+    from app.routes.web_reports import _six_month_history_view
+
+    rows = [{'amount_cents': MONEY_AGGREGATE_MAX, 'budget_cents': 0, 'missing_rates': [], 'reference_rates': []}] * 2
+    view = _six_month_history_view(rows, currency_code='JPY')
+    assert view['six_month_total_label'] == '合计超出显示范围'
+    assert view['six_month_average_amount_yuan'] == str(MONEY_AGGREGATE_MAX)
+    assert [row['amount_cents'] for row in view['six_month_trend']] == [MONEY_AGGREGATE_MAX] * 2
 
 
 def test_navigation_export_and_rate_recovery_keep_original_report_task(period_page):

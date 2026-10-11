@@ -10,7 +10,7 @@ import pytest
 
 
 @pytest.mark.parametrize("scenario", [
-    "continuity", "binding_and_lease", "validation", "ack", "storage", "removed", "replacement", "blocked_recovery",
+    "continuity", "binding_and_lease", "validation", "ack", "storage", "removed", "replacement", "blocked_recovery", "balance_preview",
 ])
 def test_repayment_original_submission_survives_browser_lifecycle(scenario: str) -> None:
     node = shutil.which("node")

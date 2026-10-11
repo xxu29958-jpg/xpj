@@ -65,9 +65,8 @@ def _assert_review_keyboard_runtime_contract(js_path: Path) -> None:
     assert 'row.setAttribute("aria-controls", "drawer");' in drawer_js
     assert 'row.setAttribute("aria-expanded", "false");' in drawer_js
     assert "aria-selected" not in drawer_js
-    assert "window.location.reload();" in drawer_js
     assert "if (e.isComposing) return;" in keyboard_js
-    assert "active.matches(ROW_SELECTOR)" in keyboard_js
+    # Real Edge verifies that navigation skips disabled rows; selector spelling is not the behavior.
     assert 'getAttribute("aria-disabled") !== "true"' in keyboard_js
     for key in ('"ArrowDown"', '"ArrowUp"', '"Home"', '"End"'):
         assert key in keyboard_js
@@ -156,7 +155,7 @@ def test_web_pending_bulk_selection_markup_and_js_field_name(web_client: TestCli
     ("path", "page_level", "copy"),
     [
         ("/web/pending?ledger_id=owner", "primary", "待我处理"),
-        ("/web/duplicates?ledger_id=owner", "secondary", "逐组核对相似账单"),
+        ("/web/duplicates?ledger_id=owner", "tertiary", "像是同一张小票"),
     ],
 )
 def test_inbox_pages_render_new_modular_product_shell(
@@ -317,7 +316,7 @@ def test_inbox_pending_rows_keep_checkbox_outside_row_link(web_client: TestClien
     link = re.search(r'<a class="exp-row-detail".*?</a>', row_html, re.S)
     assert link is not None
     link_html = link.group(0)
-    assert f'href="/web/expenses/{expense_id}/edit?ledger_id=owner"' in link_html
+    assert f'href="/web/expenses/{expense_id}/edit?ledger_id=owner&return_to=pending' in link_html
     assert "data-fragment-url=" in link_html
     assert "aria-selected" not in link_html
     # 行链接子树内零交互控件 (R1-5 结构钉): 剥掉起始标签后无 role=checkbox /
@@ -362,7 +361,7 @@ def test_inbox_pending_drawer_uses_product_markup(web_client: TestClient, *, ide
     族供给), 旧 dt-*/drawer-head 标记不得残留; 批10 合同字段 (return_to=pending,
     OCC token, data-drawer-form) 保持。"""
     expense_id = _create_pending(web_client, identity=identity)
-    drawer = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner&fragment=1")
+    drawer = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner&return_to=pending&fragment=1")
 
     assert drawer.status_code == 200
     body = drawer.text
@@ -407,10 +406,10 @@ def test_inbox_duplicates_pair_renders_side_by_side_product_markup(web_client: T
     assert response.status_code == 200
     body = response.text
     assert "duplicate-compare" in body
-    assert "参考记录" in body
-    assert "当前待核对记录" in body
-    assert f"#{second}" in body
-    assert f"#{first}" in body
+    assert "参考账单" in body
+    assert "本次收到" in body
+    assert f"/web/expenses/{second}/edit?" in body
+    assert f"/web/expenses/{first}/edit?" in body
     assert "待确认" in body  # cur.status_label (pending)
     for action in ("keep", "reject-original", "reject-current"):
         form_html = re.search(

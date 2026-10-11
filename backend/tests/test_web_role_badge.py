@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -126,4 +128,5 @@ def test_web_edit_viewer_disables_inputs(web_client: TestClient, *, identity) ->
     assert 'disabled' in resp.text
     # Save / 入账 / 忽略 buttons must be hidden.
     assert "保存</button>" not in resp.text
-    assert "入账</button>" not in resp.text
+    confirmations = re.findall(r'<button\b([^>]*)>确认入账</button>', resp.text)
+    assert all("hidden" in attributes and "disabled" in attributes for attributes in confirmations)

@@ -72,6 +72,8 @@ data class GlobalSearchActionsUi(
     val onClearRecentSearches: () -> Unit,
     val onRefreshPending: () -> Unit,
     val onOpenExpense: (Long) -> Unit,
+    val onOpenSavedQueries: (() -> Unit)? = null,
+    val onSaveQuery: (() -> Unit)? = null,
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -124,6 +126,16 @@ fun GlobalSearchScreen(
         }
         state.message?.let { message ->
             item { SearchMessageCard(message = message) }
+        }
+        if (actions.onOpenSavedQueries != null || actions.onSaveQuery != null) item {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+                actions.onOpenSavedQueries?.let { open ->
+                    com.ticketbox.ui.components.AppSecondaryButton(stringResource(R.string.saved_query_title), onClick = open)
+                }
+                actions.onSaveQuery?.let { save ->
+                    com.ticketbox.ui.components.AppSecondaryButton(stringResource(R.string.saved_query_create), onClick = save)
+                }
+            }
         }
         searchBody(state = state, actions = actions)
     }

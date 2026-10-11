@@ -6,6 +6,7 @@ import android.util.Log
 import com.ticketbox.BuildConfig
 import com.ticketbox.R
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.repository.ExpenseEditActions
 import com.ticketbox.data.repository.ExpenseCommandObservation
@@ -87,6 +88,7 @@ data class ExpenseEditUiState(
     val originalBaselineRequired: Boolean = false,
     val commandRowIds: List<Long> = emptyList(),
     val commandsCompleted: Boolean = false,
+    val confirmationReceipt: com.ticketbox.data.remote.dto.ExpenseConfirmationReceiptDto? = null,
     val thumbnail: ProtectedImage? = null,
     val fullImage: ProtectedImage? = null,
     val categories: List<String> = DEFAULT_EXPENSE_CATEGORIES,
@@ -102,11 +104,13 @@ data class ExpenseEditUiState(
     val saving: Boolean = false,
     val itemEditorOpen: Boolean = false,
     val itemDrafts: List<EditableItem> = emptyList(),
+    val itemDraftsInitialized: Boolean = false,
     val itemsSaving: Boolean = false,
     val itemsMessage: UiText? = null,
     val itemsMessageTone: MessageTone = MessageTone.Neutral,
     val splitEditorOpen: Boolean = false,
     val splitDrafts: List<EditableSplit> = emptyList(),
+    val splitDraftsInitialized: Boolean = false,
     val splitMembersLoading: Boolean = false,
     val splitsSaving: Boolean = false,
     val splitsMessage: UiText? = null,
@@ -140,16 +144,21 @@ class ExpenseEditViewModel(
     // editor extension files (same package) reach it.
     internal val repository: ExpenseEditActions,
     private val originalBinding: com.ticketbox.data.repository.LogicalSessionBinding? = null,
+    internal val savedState: SavedStateHandle = SavedStateHandle(),
 ) : ViewModel() {
     private companion object {
         const val IMAGE_LOG_TAG = "TicketboxImage"
     }
 
-    internal val fxBinding = repository.captureDeferredLedgerBinding().takeIf { originalBinding.admitsTaskBinding(it) }
+    private val commandBinding = originalBinding ?: savedState.get<String>("expense_command_binding")?.let {
+        com.ticketbox.data.repository.logicalBindingAdapter.fromJson(it)
+    }
+    internal val fxBinding = repository.captureDeferredLedgerBinding().takeIf { commandBinding.admitsTaskBinding(it) }
     internal var commandObservation: ExpenseCommandObservation? = null
 
     internal val _uiState = MutableStateFlow(
-        ExpenseEditUiState(readOnly = !repository.canModifyLedger()),
+        ExpenseEditUiState(readOnly = !repository.canModifyLedger(),
+            commandRowIds = savedState.get<LongArray>("expense_command_ids")?.toList().orEmpty()),
     )
     val uiState: StateFlow<ExpenseEditUiState> = _uiState.asStateFlow()
 
@@ -170,7 +179,7 @@ class ExpenseEditViewModel(
     }
 
     private fun loadExpense() {
-        if (originalBinding != null && fxBinding == null) {
+        if (commandBinding != null && fxBinding == null) {
             _uiState.update { it.copy(expenseLoading = false, message = UiText.res(R.string.notification_original_binding_required)) }
             return
         }
@@ -441,7 +450,9 @@ class ExpenseEditViewModel(
     fun consumeDone(): Boolean {
         val wasDone = _uiState.value.done
         if (wasDone) {
-            _uiState.update { it.copy(done = false) }
+            savedState.remove<LongArray>("expense_command_ids")
+            savedState.remove<String>("expense_command_binding")
+            _uiState.update { it.copy(done = false, confirmationReceipt = null) }
         }
         return wasDone
     }

@@ -38,6 +38,14 @@ class OpenApiContractGateTest {
 
     private val pairs = listOf(
         Pairing(ErrorDto::class, "ErrorResponse"),
+        Pairing(SavedViewDto::class, "SavedViewDetail"),
+        Pairing(SavedViewListDto::class, "SavedViewListResponse"),
+        Pairing(SavedViewDefinitionRequestDto::class, "SavedViewDefinitionRequest"),
+        Pairing(SavedViewUpdateRequestDto::class, "SavedViewUpdateRequest"),
+        Pairing(SavedViewDeleteRequestDto::class, "SavedViewDeleteRequest"),
+        Pairing(SavedViewDeletionReceiptDto::class, "SavedViewDeletionReceipt"),
+        Pairing(SavedViewResultsDto::class, "SavedViewResultsResponse"),
+        Pairing(SavedViewResultRowDto::class, "SavedViewResultRow"),
         Pairing(CategoryReferenceDto::class, "CategoryReferenceResponse"),
         Pairing(AuthCheckDto::class, "AuthCheckResponse"),
         Pairing(AccountProfileDto::class, "AccountProfileResponse"),
@@ -49,6 +57,7 @@ class OpenApiContractGateTest {
         Pairing(LedgerSwitchResponseDto::class, "LedgerSwitchResponse"),
         Pairing(LedgerRenameRequestDto::class, "LedgerRenameRequest"),
         Pairing(ExpenseDto::class, "ExpenseResponse"),
+        Pairing(ExpenseConfirmationReceiptDto::class, "ExpenseConfirmationReceipt"),
         Pairing(UploadResponseDto::class, "UploadResponse"),
         // Dedicated manual-create DTO (no OCC-token field) + the PATCH body it
         // was split from — the forward check is the forbid-protection: a DTO
@@ -102,6 +111,8 @@ class OpenApiContractGateTest {
         Pairing(RecurringCandidatesResponseDto::class, "RecurringCandidatesResponse"),
         Pairing(DataQualitySummaryDto::class, "DataQualitySummaryResponse"),
         Pairing(TagListItemDto::class, "TagListItem"),
+        Pairing(ReferenceCreateRequestDto::class, "ReferenceCreateRequest"),
+        Pairing(ReferenceCreatedDto::class, "ReferenceCreatedResponse"),
         Pairing(TagManagementListDto::class, "TagManagementListResponse"),
         Pairing(TagDetailDto::class, "TagDetailResponse"),
         Pairing(TagMutationDto::class, "TagMutationResponse"),

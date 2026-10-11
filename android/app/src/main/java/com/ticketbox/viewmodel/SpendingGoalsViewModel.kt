@@ -24,6 +24,7 @@ data class SpendingGoalsUiState(
     val loadError: UiText? = null,
     val fetchedAt: String? = null,
     val fromCache: Boolean = false,
+    val includeArchived: Boolean = false,
 )
 
 class SpendingGoalsViewModel(
@@ -83,6 +84,7 @@ class SpendingGoalsViewModel(
         if (resolvingMonth) return
         val origin = edits.currentAccess()?.binding ?: return
         val requestedMonth = _state.value.month
+        val includeArchived = _state.value.includeArchived
         val generation = ++loadGeneration
         loadJob?.cancel()
         _state.update {
@@ -93,13 +95,14 @@ class SpendingGoalsViewModel(
             )
         }
         loadJob = viewModelScope.launch {
-            val result = reports.goals(month = requestedMonth, includeArchived = false, expectedBinding = origin, timezone = timezone)
-            if (generation != loadGeneration || edits.currentAccess()?.binding != origin || _state.value.month != requestedMonth) return@launch
+            val result = reports.goals(month = requestedMonth, includeArchived = includeArchived, expectedBinding = origin, timezone = timezone)
+            if (generation != loadGeneration || edits.currentAccess()?.binding != origin || _state.value.month != requestedMonth ||
+                _state.value.includeArchived != includeArchived) return@launch
             result.fold(
                 onSuccess = { read ->
                     _state.update {
                         it.copy(
-                            goals = read.value.filter { goal -> goal.isSpendingLimit && !goal.isArchived },
+                            goals = read.value.filter { goal -> goal.isSpendingLimit && (includeArchived || !goal.isArchived) },
                             fetchedAt = read.fetchedAt, fromCache = read.fromCache,
                             isLoading = false,
                             loadError = null,
@@ -124,7 +127,11 @@ class SpendingGoalsViewModel(
     fun acceptArchived(expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding, archived: Goal) {
         if (expectedBinding != binding || expectedBinding != edits.currentAccess()?.binding ||
             archived.ledgerId != expectedBinding.ledgerId || !archived.isArchived) return
-        val remaining = _state.value.goals.filterNot { it.publicId == archived.publicId && it.rowVersion <= archived.rowVersion }
+        val remaining = _state.value.goals.mapNotNull {
+            if (it.publicId == archived.publicId && it.rowVersion <= archived.rowVersion) {
+                archived.takeIf { _state.value.includeArchived }
+            } else it
+        }
         if (remaining == _state.value.goals) return
         loadGeneration += 1
         loadJob?.cancel()
@@ -137,6 +144,12 @@ class SpendingGoalsViewModel(
 
     fun nextMonth() {
         shiftMonth(1)
+    }
+
+    fun setIncludeArchived(include: Boolean) {
+        if (include == _state.value.includeArchived) return
+        _state.update { it.copy(includeArchived = include, goals = emptyList(), fetchedAt = null, fromCache = false, loadError = null) }
+        refresh()
     }
 
     private fun shiftMonth(delta: Long) {

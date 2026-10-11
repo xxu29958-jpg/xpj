@@ -5,6 +5,7 @@ import com.squareup.moshi.JsonDataException
 import com.squareup.moshi.JsonEncodingException
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
+import com.ticketbox.data.remote.dto.MerchantAliasDto
 import com.ticketbox.data.remote.dto.MerchantAliasUpdateRequest
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
@@ -56,10 +57,10 @@ class UpdateMerchantAliasDispatcher(
 
         return try {
             // ADR-0042: replay carries the row's original intent-time key, so a
-            // committed-but-unseen first attempt is deduped server-side (HIT →
-            // canonical row) instead of false-409ing on the stale row_version.
+            // committed-but-unseen attempt returns its original accepted version.
+            // A peer's newer version must not rebase the next queued intention.
             val updated = apiProvider(row).updateMerchantAlias(publicId, request, idempotencyKey)
-            DispatchResult.Success(newRowVersion = updated.rowVersion)
+            acceptOriginalReceipt(publicId, request.expectedRowVersion, updated)
         } catch (e: HttpException) {
             mapOutboxHttpException(e)
         } catch (e: IOException) {
@@ -67,9 +68,18 @@ class UpdateMerchantAliasDispatcher(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            DispatchResult.Failure(e.message ?: "PATCH merchant alias threw")
+            logNetworkWarning("operation=UpdateMerchantAlias outbox replay failed", e)
+            DispatchResult.Failure("商家别名同步暂时失败，请稍后重试。原操作仍保留。")
         }
     }
+
+    private fun acceptOriginalReceipt(publicId: String, expectedRowVersion: Long, receipt: MerchantAliasDto): DispatchResult =
+        if (receipt.publicId != publicId || receipt.rowVersion != expectedRowVersion + 1L) {
+            logNetworkWarning("operation=UpdateMerchantAlias original receipt mismatch")
+            DispatchResult.Failure("原修改回执与原对象或版本不符，请核对商家别名。原操作仍保留。")
+        } else {
+            DispatchResult.Success(newRowVersion = receipt.rowVersion)
+        }
 
     private fun parseAliasPublicId(targetId: String): String? {
         val prefix = "merchant_alias:"

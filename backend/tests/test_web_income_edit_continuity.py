@@ -185,7 +185,7 @@ def _installed_edit_form(installed):
     with SessionLocal() as db:
         auth = authenticate_web_session_token(db, token, ttl_seconds=8 * 60 * 60).auth
         scope = manual_draft_scope(db, auth)
-    page = browser.get("/web/income-plans")
+    page = browser.get("/web/income-plans?new_income=1")
     assert page.status_code == 200, page.text
     create_action = "/web/income-plans/create"
     original = {**hidden_post_forms(page.text)[create_action], "draft_scope": json.dumps(scope),

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 
 from scripts.backstage_journey_facts import denied_membership, facts, synthetic_receipt
+from scripts.backstage_journey_ocr_recovery import open_recognition_task
 from scripts.planning_journey_android import wait_for
 
 
@@ -19,6 +20,10 @@ class BackstageJourney:
 
     def facts(self):
         return facts(self.ledger_id)
+
+    def has_original_action(self):
+        return any("打开原账单" in (node.attrib.get("text"), node.attrib.get("content-desc"))
+                   for node in self.native.tree().iter("node"))
 
     def goto(self, path, *, page=None):
         return (page or self.page).goto(f"{self.base_url}{path}?ledger_id={self.ledger_id}")
@@ -60,13 +65,17 @@ class BackstageJourney:
         original = self.evidence / "synthetic-receipt-web.png"
         digest = synthetic_receipt(original)
         form = self.page.locator("#capture")
+        for disclosure in form.locator("xpath=ancestor::details").all():
+            if disclosure.get_attribute("open") is None:
+                disclosure.locator(":scope > summary").click()
         before_selection = self.facts()
         with self.page.expect_file_chooser() as picker:
-            form.get_by_label("选择小票图片", exact=True).click()
+            form.locator('label[for="inbox-upload-file"]').click()
         picker.value.set_files(original)
+        self.page.locator("[data-capture-items] .exp-thumb img").evaluate("async image => { await image.decode(); }")
         self.capture("inbox-selected-original")
         assert self.facts() == before_selection, "Selecting a file must not upload or create financial facts"
-        form.get_by_role("button", name="上传小票", exact=True).click()
+        self.page.get_by_role("button", name="上传 1 张小票", exact=True).click()
         wait_for(lambda: len(self.facts()["tasks"]) == 1, "The Web upload did not create its durable task")
         wait_for(lambda: self.facts()["tasks"][0]["status"] in ("completed", "failed"),
                  "Real OCR did not finish", 180)
@@ -94,14 +103,15 @@ class BackstageJourney:
             nodes = list(self.native.tree().iter("node"))
             texts = {node.attrib.get("text") for node in nodes}
             descriptions = {node.attrib.get("content-desc") for node in nodes}
-            if "后台任务" in texts and "返回设置" in descriptions:
+            if "后台任务" in texts and "刷新" in (texts | descriptions):
                 self.native.click("刷新")
                 break
             if "打开账户与设置" in descriptions:
                 self.native.click("打开账户与设置", stable=True)
-                self.native.click("后台任务", stable=True)
             elif "后台任务" in texts:
                 self.native.click("后台任务", stable=True)
+            elif "同步与后台任务" in texts:
+                self.native.click("同步与后台任务", stable=True)
             else:
                 self.native.back()
         else:
@@ -112,6 +122,7 @@ class BackstageJourney:
         # Management navigation must enter the signed-in person's existing task query.
         before = self.facts()
         self.page.goto(self.base_url + "/owner/diagnostics")
+        self.page.locator("summary").filter(has_text="图片识别").click()
         with self.page.expect_popup() as popup:
             self.page.get_by_role("link", name="查看我的近期上传识别", exact=True).click()
         result = popup.value
@@ -141,19 +152,19 @@ class BackstageJourney:
             # reports its existing phone-address diagnostic after the reverse is removed.
             wait_for(lambda: self.native.has("请填写可在手机上访问的地址"),
                      "The isolated route failure was not presented", 90)
-            assert self.native.has("小票识别") and self.native.has("打开原账单")
+            assert self.native.has("小票识别") and self.has_original_action()
             self.native.capture("backstage-offline-retained")
         finally:
             self.native.connection(self.port, online=True)
         before = self.facts()
         with denied_membership(self.ledger_id):
             self.native.click("刷新")
-            wait_for(lambda: not self.native.has("打开原账单"), "Revoked task read still exposes its original source")
+            wait_for(lambda: not self.has_original_action(), "Revoked task read still exposes its original source")
             assert all(node.attrib.get("text") != "小票识别" for node in self.native.tree().iter("node"))
             assert not self.native.has("绑定账本")
             self.native.capture("backstage-read-refused")
         self.native.click("刷新")
-        wait_for(lambda: self.native.has("打开原账单"), "Restored membership did not reread the original task")
+        wait_for(lambda: self.has_original_action(), "Restored membership did not reread the original task")
         assert self.facts() == before, "A read/refusal/recovery changed the underlying task or expense"
         self.native.restart()
         self.open_tasks()
@@ -162,33 +173,25 @@ class BackstageJourney:
     def retry_web(self):
         self.configure_ocr(provider="local_llm")
         self.goto(f"/web/expenses/{self.expense_id}/edit")
-        draft = self.page.locator(f'form[action="/web/expenses/{self.expense_id}/save"]')
-        draft.locator('[name="amount_yuan"]').fill("19.00")
-        draft.locator('[name="note"]').fill("原窗口尚未保存的核对")
-        retry = self.page.locator(f'form[action="/web/expenses/{self.expense_id}/ocr/retry"]')
+        retry = open_recognition_task(self, "19.00", "原窗口尚未保存的核对")
         original_key = retry.locator('[name="idempotency_key"]').input_value()
         original_version = retry.locator('[name="expected_row_version"]').input_value()
-        with self.page.expect_popup() as popup:
-            retry.get_by_role("button", name="重试识别", exact=True).click()
-        result = popup.value
-        try:
-            result.get_by_role("heading", name="暂未取得本次识别结果").wait_for()
-            original_retry = result.locator('form[action$="/ocr/retry"]')
-            assert original_retry.locator('[name="idempotency_key"]').input_value() == original_key
-            assert original_retry.locator('[name="expected_row_version"]').input_value() == original_version
-            self.capture("ocr-failure-original-request", page=result)
-            self.configure_ocr()
-            self.restart_backend()
-            original_retry.get_by_role("button", name="重试原识别请求", exact=True).click()
-            result.wait_for_url("**/edit?*")
-            assert result.locator('[name="amount_yuan"]').input_value() == "18.51"
-            self.capture("ocr-original-request-recovered", page=result)
-            assert draft.locator('[name="amount_yuan"]').input_value() == "19.00"
-            assert draft.locator('[name="note"]').input_value() == "原窗口尚未保存的核对"
-            assert self.facts()["tasks"][0] == self.original_task, "Manual OCR rewrote the original asynchronous task"
-            self.capture("ocr-original-window-preserved")
-        finally:
-            result.close()
+        retry.get_by_role("button", name="重新识别原件", exact=True).click()
+        self.page.locator('form[data-expenseocr-draft-phase="blocked"]').wait_for()
+        assert retry.locator('[name="idempotency_key"]').input_value() == original_key
+        assert retry.locator('[name="expected_row_version"]').input_value() == original_version
+        self.capture("ocr-failure-original-request")
+        self.configure_ocr()
+        self.restart_backend()
+        retry.get_by_role("button", name="核实这次识别结果", exact=True).click()
+        self.page.wait_for_url("**/edit?*")
+        draft = self.page.locator('form[data-expensereview-draft-scope]')
+        self.page.wait_for_function("document.querySelector('[name=amount_yuan]').value === '19.00'")
+        assert draft.locator('[name="note"]').input_value() == "原窗口尚未保存的核对"
+        current = self.facts()
+        assert current["expenses"][0]["amount"] == 1851
+        assert current["tasks"][0] == self.original_task, "Manual OCR rewrote the original asynchronous task"
+        self.capture("ocr-original-request-recovered")
 
     def native_review(self):
         self.native.click("打开原账单")

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app.money_contract import projection_sum_to_int
 from app.routes.web_common import _home_amount_label
 
 _MEMBER_NEAR_RATIO = 0.7
@@ -25,6 +26,41 @@ _MEMBER_PROGRESS_NOTE = {
     "some": "已经对上一部分",
     "most": "这件事已对上大半",
 }
+
+
+def debt_view_direction(debt) -> str | None:
+    """Member direction belongs to the participant projection, including foreign currency."""
+    if debt.counterparty_type == "member":
+        return {True: "i_owe", False: "owed_to_me", None: None}[debt.viewer_is_debtor]
+    return debt.direction
+
+
+def debt_direction_sentence(debt, name: str) -> str:
+    direction = debt_view_direction(debt)
+    if direction == "i_owe":
+        return f"我欠{name}"
+    if direction == "owed_to_me":
+        return f"{name}欠我"
+    return f"与{name}有关的成员往来"
+
+
+def debt_remaining_totals(items) -> list[dict]:
+    """Open balances by direction and frozen currency; third-party relationships stay in the list."""
+    groups: dict[tuple[str, str], dict] = {}
+    for debt in items:
+        direction = debt_view_direction(debt)
+        if debt.status != "open" or direction is None:
+            continue
+        key = (direction, debt.home_currency_code)
+        group = groups.setdefault(key, {"direction": direction, "currency_code": debt.home_currency_code,
+                                       "amount_cents": 0, "count": 0})
+        group["amount_cents"] = projection_sum_to_int(
+            group["amount_cents"] + debt.remaining_amount_cents, label="web.debt_remaining"
+        )
+        group["count"] += 1
+    return [{**group, "label": "待偿还" if group["direction"] == "i_owe" else "待收回",
+             "amount_label": _home_amount_label(group["amount_cents"], group["currency_code"])}
+            for group in groups.values()]
 
 
 def _communal_ratio(paid_cents: int, principal_cents: int) -> float:

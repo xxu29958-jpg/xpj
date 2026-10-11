@@ -1,6 +1,8 @@
 package com.ticketbox.ui.screens.expense.fact
 
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
+import com.ticketbox.R
 import com.ticketbox.domain.model.canInitiateBillSplit
 import com.ticketbox.domain.model.recordCurrencyDisplay
 import com.ticketbox.ui.screens.expense.BillSplitInviteSheet
@@ -136,6 +138,8 @@ private fun FactCorrectionLinesHosts(
         ItemsEditorSheet(
             state = ItemsEditorSheetState(
                 drafts = state.correction.itemDrafts,
+                primaryText = stringResource(R.string.expense_edit_subtask_adopt),
+                subtitle = stringResource(R.string.expense_edit_subtask_correction_hint),
                 parentAmountCents = expense.amountCents,
                 saving = false,
                 display = expense.recordCurrencyDisplay(),
@@ -153,6 +157,8 @@ private fun FactCorrectionLinesHosts(
         SplitsEditorSheet(
             state = SplitsEditorSheetState(
                 drafts = state.correction.splitDrafts,
+                primaryText = stringResource(R.string.expense_edit_subtask_adopt),
+                subtitle = stringResource(R.string.expense_edit_subtask_correction_hint),
                 parentAmountCents = expense.amountCents,
                 saving = false,
                 loading = state.correction.splitMembersLoading,

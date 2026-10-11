@@ -5,6 +5,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -12,6 +13,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.click
 import androidx.lifecycle.viewModelScope
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.R
@@ -21,8 +24,13 @@ import com.ticketbox.domain.model.ExpenseCorrectionDraft
 import com.ticketbox.ui.screens.expense.fact.ExpenseFactScreen
 import com.ticketbox.ui.screens.settings.SyncStatusScreen
 import com.ticketbox.ui.theme.TicketboxTheme
+import com.ticketbox.ui.RealKeyboard
 import com.ticketbox.viewmodel.ExpenseDetailDataLoadState
 import com.ticketbox.viewmodel.ExpenseFactViewModel
+import com.ticketbox.viewmodel.CorrectionScalarField
+import com.ticketbox.viewmodel.correctionAvailability
+import com.ticketbox.viewmodel.refreshCorrectionFact
+import com.ticketbox.viewmodel.updateCorrectionField
 import com.ticketbox.viewmodel.OutboxRecoveryRepositories
 import com.ticketbox.viewmodel.OutboxStatusViewModel
 import com.ticketbox.viewmodel.outboxStatusViewModelFactory
@@ -39,11 +47,54 @@ import org.junit.Test
 /** Actual Save and Retry UI, disk Room reopen and shared sender. Transport models response loss; no real process death or PG. */
 class ExpenseCorrectionRoomContinuityTest {
     @get:Rule val compose = createComposeRule()
+    @get:Rule val keyboard = RealKeyboard()
     private val fixture = ExpenseCorrectionConnectedFixture(InstrumentationRegistry.getInstrumentation().targetContext)
     private val model = mutableStateOf<ExpenseFactViewModel?>(null)
     private var global: OutboxStatusViewModel? = null
 
     @After fun close() { stopModel(); compose.runOnIdle { global?.viewModelScope?.cancel() }; fixture.close() }
+
+    @Test
+    fun peerCategoryNeedsAnExplicitChoiceAndKeepsTheOriginalReason() {
+        fixture.network.current = fixture.network.current.copy(category = "其他")
+        installModel()
+        compose.setContent {
+            val vm = model.value ?: return@setContent
+            val state by vm.uiState.collectAsState()
+            TicketboxTheme(skin = if (InstrumentationRegistry.getArguments().getString("captureSkin") == "midnight")
+                AppSkin.Midnight else AppSkin.Paper) { ExpenseFactScreen(state, vm, {}, { _, _ -> }) }
+        }
+        compose.waitUntil(10_000) { model.value?.uiState?.value?.factInputsReady == true &&
+            model.value?.uiState?.value?.authoritativeRootReady == true }
+        compose.onNodeWithText("更正这笔账单").performScrollTo().performClick()
+        compose.runOnIdle {
+            model.value!!.updateCorrectionField(CorrectionScalarField.Category, "餐饮")
+            model.value!!.updateCorrectionField(CorrectionScalarField.Reason, "核对小票后调整")
+        }
+        compose.onNodeWithText("查看本次修改").performScrollTo().performClick()
+        compose.onNodeWithText("这次修改").performScrollTo().assertIsDisplayed()
+        compose.waitForIdle()
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        automation.waitForIdle(300, 3_000)
+        com.ticketbox.ui.saveConsumerArtPreview("correction-comparison", requireNotNull(automation.takeScreenshot()))
+        val currentVersion = fixture.network.current.rowVersion + 1
+        fixture.network.current = fixture.network.current.copy(rowVersion = currentVersion, category = "购物")
+        compose.runOnIdle { model.value!!.refreshCorrectionFact() }
+        compose.waitUntil(10_000) { model.value?.correctionAvailability()?.review?.ready == true }
+        compose.onNodeWithText("按以上选择继续核对").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithText("改为我的选择，沿用更正原因").performScrollTo().performClick()
+        compose.onNodeWithText("按以上选择继续核对").assertIsEnabled()
+        compose.waitForIdle()
+        automation.waitForIdle(300, 3_000)
+        com.ticketbox.ui.saveConsumerArtPreview("correction-conflict", requireNotNull(automation.takeScreenshot()))
+        compose.onNodeWithText("按以上选择继续核对").performScrollTo().assertIsEnabled().performClick()
+        compose.runOnIdle {
+            assertEquals(currentVersion, model.value!!.correctionBaseline?.rowVersion)
+            assertEquals("餐饮", model.value!!.uiState.value.correction.category)
+            assertEquals("核对小票后调整", model.value!!.uiState.value.correction.reason)
+        }
+        assertTrue(fixture.network.calls.isEmpty())
+    }
 
     @Test
     fun unfinishedCorrectionCanCloseAndReopenFromDiskDuringReadFailure() {
@@ -57,6 +108,12 @@ class ExpenseCorrectionRoomContinuityTest {
             model.value?.uiState?.value?.authoritativeRootReady == true }
         compose.onNodeWithText("更正这笔账单").performScrollTo().performClick()
         compose.onAllNodes(hasSetTextAction())[0].performScrollTo().performTextReplacement("  核对原小票  ")
+        keyboard.dismissAndWait(compose)
+        compose.onNode(hasSetTextAction() and hasText(requireNotNull(fixture.network.current.merchant)))
+            .performScrollTo().performTouchInput { click() }.performTextReplacement("NativeShop")
+        keyboard.assertActionAboveKeyboard(compose, "保存更正", "correction-merchant-keyboard")
+        compose.onNode(hasSetTextAction() and hasText("NativeShop")).assertIsDisplayed()
+        keyboard.dismissAndWait(compose)
         compose.onNode(hasSetTextAction() and hasText("10.00")).performScrollTo().performTextReplacement(" 00012.00 ")
         compose.onNodeWithText("保留原稿并关闭").performClick()
         compose.waitUntil(10_000) { model.value?.uiState?.value?.factInputWriting == false &&
@@ -73,6 +130,7 @@ class ExpenseCorrectionRoomContinuityTest {
         compose.onNodeWithText("继续更正账单").performScrollTo().performClick()
         compose.onNode(hasSetTextAction() and hasText("  核对原小票  ")).performScrollTo().assertIsDisplayed()
         compose.onNode(hasSetTextAction() and hasText(" 00012.00 ")).performScrollTo().assertIsDisplayed()
+        compose.onNode(hasSetTextAction() and hasText("NativeShop")).performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("保存更正").assertIsNotEnabled()
         assertEquals(original, runBlocking {
             fixture.graph.expenseRepository.loadFactInputs(original.binding, original.expenseId).getOrThrow().single()
@@ -292,7 +350,7 @@ class ExpenseCorrectionRoomContinuityTest {
         compose.onNodeWithText(context.getString(R.string.correction_submission_retry)).assertDoesNotExist()
         compose.onNodeWithText(context.getString(R.string.sync_status_overview_caption_settled)).assertDoesNotExist()
         compose.onNodeWithText(context.getString(R.string.sync_status_overview_caption_needs_action, 1)).assertDoesNotExist()
-        compose.onNodeWithText("1 笔旧提交需要核对当前事实，送达情况尚未确认。")
+        compose.onNodeWithText(context.getString(R.string.sync_status_overview_caption_review_required, 1))
             .performScrollTo().assertIsDisplayed()
         assertEquals(original, fixture.stored().single())
         assertEquals(0, fixture.confirmedCallbacks)

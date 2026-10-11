@@ -105,7 +105,6 @@ internal fun LedgerOffsetRow(
     ) {
         AppAdaptiveContentActionStateRow(
             modifier = Modifier.padding(horizontal = AppSpacing.miniGap, vertical = rowMetrics.rowPadding),
-            verticalAlignment = Alignment.CenterVertically,
             content = {
                 Row(
                     modifier = Modifier.fillMaxWidth(),

@@ -53,7 +53,7 @@
   try {
     // The iframe owns the genuine loopback origin, storage and navigator.locks.
     const opened = documentLoaded();
-    frame.src = '/web/income-plans?ledger_id=income-ledger';
+    frame.src = '/web/income-plans?ledger_id=income-ledger&new_income=1';
     document.body.append(frame);
     await opened;
     await until(() => !field('label').readOnly && !field('source_type').disabled && !submit(frame).disabled);
@@ -90,6 +90,18 @@
       return;
     }
     const originalRef = result.before.fields.idempotency_key;
+    stage = 'return to income list and resume the retained original';
+    const listed = documentLoaded();
+    frame.contentWindow.location.href = '/web/income-plans?ledger_id=income-ledger';
+    await listed;
+    if (form()) throw Error('income list still embeds an unrelated creation form');
+    const retainedLink = frame.contentDocument.querySelector('[data-income-draft-list] a');
+    if (!retainedLink?.textContent.includes(result.before.fields.label)) throw Error('original draft is unreachable from income list');
+    const resumed = documentLoaded();
+    retainedLink.click();
+    await resumed;
+    await until(() => form() && !field('label').readOnly && !submit(frame).disabled);
+    result.resumed = snapshot();
     stage = 'correct raw amount without replacing the restored task';
     field('amount_yuan').value = '1200';
     field('amount_yuan').dispatchEvent(new frame.contentWindow.Event('input', {bubbles: true}));
@@ -110,6 +122,7 @@
     duplicate.src = '/web/income-plans?ledger_id=income-ledger#income-create-' + originalRef;
     document.body.append(duplicate);
     await duplicateLoaded;
+    await until(() => submit(duplicate));
     await pause(100);
     submit(duplicate).click();
     await pause(100);
@@ -120,16 +133,17 @@
     const acknowledged = documentLoaded();
     submit(frame).click();
     await acknowledged;
-    stage = 'verify matched ACK retires original and enables fresh form';
-    await until(() => submit(frame) && !submit(frame).disabled);
+    stage = 'verify matched ACK retires original and returns to income list';
     result.completed = {
       originalRemoved: window.localStorage.getItem(storageKey(originalRef)) === null,
-      newFormAvailable: field('label').value === '' && field('amount_yuan').value === '' &&
-        !field('label').readOnly && !field('source_type').disabled && !submit(frame).disabled,
-      newKey: field('idempotency_key').value,
+      listHasCreateForm: !!form(),
       location: frame.contentWindow.location.pathname + frame.contentWindow.location.search,
       hash: frame.contentWindow.location.hash
     };
+    const fresh = documentLoaded();
+    frame.contentDocument.querySelector('a[href*="new_income=1"]').click();
+    await fresh;
+    await until(() => submit(frame) && !submit(frame).disabled);
     stage = 'deliberately retire a separate unknown local draft';
     const unwantedRef = field('idempotency_key').value;
     field('label').value = '已核对后不再续办的计划';

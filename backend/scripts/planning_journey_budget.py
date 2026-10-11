@@ -81,9 +81,14 @@ class BudgetJourney:
         target.goto(f"{self.base_url}{path}{join}ledger_id={self.ledger_id}&month={self.month}")
 
     def form(self, action, *, page=None):
-        form = (page or self.page).locator(f'form[method="post"][action="{action}"]')
+        target = page or self.page
+        form = target.locator(f'form[method="post"][action="{action}"]')
+        if action == "/web/recurring/create" and not form.count():
+            target.get_by_role("link", name="添加固定支出", exact=True).click()
+        elif action.startswith("/web/recurring/") and action.endswith("/edit") and not form.count():
+            target.locator("#item-" + action.split("/")[-2]).get_by_role("link", name="编辑", exact=True).click()
         if not form.is_visible():
-            form.locator("xpath=ancestor::details").locator("summary").click()
+            form.locator("xpath=ancestor::details[1]/summary").click()
         return form
 
     def capture(self, name, *, page=None):
@@ -147,6 +152,8 @@ class BudgetJourney:
 
     def native_edits(self):
         self.open_native("budget")
+        self.native.reveal_any("调整本月预算")
+        self.native.click("调整本月预算")
         self.native.reveal_any("月度总预算")
         self.native.fill("11000.00", previous=r"10,?000(?:\.00)?")
         self.native.click("保存预算")
@@ -162,6 +169,7 @@ class BudgetJourney:
     def history(self, *, offline=False):
         suffix = "offline-restart" if offline else "online"
         self.open_native("budget")
+        self.native.reveal_any("预算修改记录", toward_start=True)
         self.native.click("预算修改记录")
         if offline:
             self.native.reveal_any("本机保留")
@@ -199,6 +207,7 @@ class BudgetJourney:
                     self.capture(f"{kind}-{width}-{theme}")
         self.native.plan_home()
         self.native.click("打开账户与设置")
+        self.native.click("通知与外观")
         self.native.click("外观与主题")
         self.native.click("玄夜")
         for kind, values in (("budget", ("11,500", "11500")), ("arrangement", ("1,150", "1150")),

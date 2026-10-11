@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.errors import AppError
 from app.models import (
@@ -125,7 +125,7 @@ def _active_offsets(
     return list(db.scalars(statement))
 
 
-def _revision_to_response(
+def offset_revision_to_response(
     db: Session,
     revision: ExpenseOffsetRevision,
     *,
@@ -156,25 +156,24 @@ def expense_fact_bundle(
     cancellation_reason_code: str | None = None,
 ) -> ExpenseFactBundleResponse:
     expense = get_expense(db, expense_id, tenant_id)
+    history = aliased(ExpenseOffsetRevision, select(ExpenseOffsetRevision)
+        .where(ExpenseOffsetRevision.tenant_id == tenant_id, ExpenseOffsetRevision.expense_id == expense.id)
+        .order_by(ExpenseOffsetRevision.created_at.desc(), ExpenseOffsetRevision.id.desc())
+        .limit(20).subquery())
+    # One statement snapshot keeps amounts, OCC and history together across concurrent commits.
+    rows = db.execute(select(Expense, ExpenseOffsetFact, history).select_from(Expense)
+        .outerjoin(ExpenseOffsetFact, (ExpenseOffsetFact.expense_id == Expense.id)
+            & (ExpenseOffsetFact.tenant_id == Expense.tenant_id))
+        .outerjoin(history, history.offset_id == ExpenseOffsetFact.id)
+        .where(Expense.id == expense.id, Expense.tenant_id == tenant_id)
+        .order_by(history.created_at.desc(), history.id.desc())
+        .execution_options(populate_existing=True)).all()
+    if not rows:
+        raise AppError("expense_not_found", status_code=404)
+    expense = rows[0][0]
     _require_confirmed(expense)
-    offsets = _active_offsets(db, tenant_id=tenant_id, expense_id=expense_id)
-    offset_by_id = {
-        offset.id: offset.public_id
-        for offset in db.scalars(
-            select(ExpenseOffsetFact)
-            .where(ExpenseOffsetFact.tenant_id == tenant_id)
-            .where(ExpenseOffsetFact.expense_id == expense_id)
-        )
-    }
-    revisions = list(
-        db.scalars(
-            select(ExpenseOffsetRevision)
-            .where(ExpenseOffsetRevision.tenant_id == tenant_id)
-            .where(ExpenseOffsetRevision.expense_id == expense_id)
-            .order_by(ExpenseOffsetRevision.created_at.desc(), ExpenseOffsetRevision.id.desc())
-            .limit(20)
-        )
-    )
+    active = {offset.id: offset for _, offset, _ in rows if offset is not None and offset.status == "active"}
+    offsets = sorted(active.values(), key=lambda offset: (offset.accounting_date, offset.id))
     summary = expense_financial_summary(expense, offsets)
     return ExpenseFactBundleResponse(
         root=expense_to_response(db, tenant_id=tenant_id, expense=expense),
@@ -182,12 +181,12 @@ def expense_fact_bundle(
         active_offsets=[ExpenseOffsetResponse.model_validate(offset).model_copy(update={
             "accounting_time": accounting_time_snapshot(offset)}) for offset in offsets],
         recent_history=[
-            _revision_to_response(
+            offset_revision_to_response(
                 db,
                 revision,
-                offset_public_id=offset_by_id[revision.offset_id],
+                offset_public_id=offset.public_id,
             )
-            for revision in revisions
+            for _, offset, revision in rows if revision is not None
         ],
         relationship_impacts=relationship_impacts(
             db,

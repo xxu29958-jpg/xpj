@@ -43,12 +43,13 @@ interface ExpenseCorrectionApi {
         @Header("Idempotency-Key") idempotencyKey: String?,
     ): ExpenseCorrectionResponseDto
 
-    @GET("api/expenses/{id}/revisions")
+    @GET("api/expenses/{id}/revisions?include_offsets=true")
     suspend fun expenseRevisions(
         @Path("id") id: Long,
         @Query("page") page: Int = 1,
         @Query("page_size") pageSize: Int = 50,
         @Query("snapshot_revision") snapshotRevision: Long? = null,
+        @Query("offset_snapshot_id") offsetSnapshotId: Long? = null,
     ): ExpenseRevisionPageDto
 
     @POST("api/expenses/confirmed/batch-update")

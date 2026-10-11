@@ -4,6 +4,7 @@
 
     <!-- AppAsyncImage：异步图片加载器的占位与无障碍描述 -->
     <string name="components_async_image_placeholder">截图已保存</string>
+    <string name="components_async_image_loading">正在打开图片…</string>
     <string name="components_async_image_content_description">账单截图</string>
 
     <!-- SafeBadge：安全状态徽标 -->

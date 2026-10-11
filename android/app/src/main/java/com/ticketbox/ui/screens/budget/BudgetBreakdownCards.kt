@@ -16,6 +16,7 @@ import com.ticketbox.domain.model.BudgetCategoryBudget
 import com.ticketbox.domain.model.BudgetExcludedCategory
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.components.AppAdaptiveContentActionRow
+import com.ticketbox.ui.components.AppAdaptiveContentActionStyle
 import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppAmountRole
@@ -50,6 +51,7 @@ internal fun CategoryBudgetSection(
                 amountLabel = amountLabel,
                 amountValue = amountValue,
             )
+            item.spentProgress?.let { BudgetProgressBar(it) }
         }
     }
 }
@@ -108,8 +110,10 @@ private fun AmountRow(
 ) {
     AppAdaptiveContentActionRow(
         modifier = Modifier.fillMaxWidth(),
-        wideActionWeight = BUDGET_AMOUNT_ROW_TRAILING_WEIGHT,
-        verticalAlignment = Alignment.Top,
+        style = AppAdaptiveContentActionStyle(
+            wideActionWeight = BUDGET_AMOUNT_ROW_TRAILING_WEIGHT,
+            verticalAlignment = Alignment.Top,
+        ),
         content = { AmountRowCopy(title = title, detail = detail) },
         action = { actionModifier ->
             BudgetTrailingAmount(

@@ -144,7 +144,8 @@ def test_product_shell_mobile_task_order_and_capture_search_entries(
     assert topbar is not None
     topbar_html = topbar.group(0)
     assert 'href="/web/pending?ledger_id=owner#capture"' in topbar_html
-    assert "收票" in topbar_html
+    assert "拍照或选小票" in topbar_html
+    assert 'aria-label="新增记录"' in topbar_html
     assert 'href="/web/search?ledger_id=owner"' in topbar_html
 
 
@@ -159,7 +160,7 @@ def test_product_shell_capture_entry_hidden_for_viewer(
     assert topbar is not None
     topbar_html = topbar.group(0)
     assert "#capture" not in topbar_html
-    assert "收票" not in topbar_html
+    assert "拍照或选小票" not in topbar_html
     assert 'href="/web/search?ledger_id=owner"' in topbar_html
 
 
@@ -233,7 +234,7 @@ def test_budgets_product_body_retires_legacy_stack(web_client: TestClient) -> No
         assert retired not in body
     assert "/static/web/pages/budgets.css" not in body
     assert "desktop-shell-active" not in body
-    assert '<h1 class="page-title">月度预算</h1>' in body
+    assert '<h1 class="page-title">这个月，心里有数</h1>' in body
     assert "<style" not in body
     assert 'style="' not in body
     _assert_shell_chrome_has_no_inline_style(body)
@@ -255,7 +256,7 @@ def test_confirmed_product_body_retires_legacy_stack_and_fake_filter(
     assert "/static/web/desktop/ledger-filter.js" not in body
     assert "data-ledger-filter" not in body
 
-    assert '<h1 class="page-title">已确认流水</h1>' in body
+    assert '<h1 class="page-title">流水</h1>' in body
     assert "ledger-stream" in body
     assert 'aria-label="本月概况"' in body
     assert "每日分布" in body
@@ -443,11 +444,12 @@ def test_secondary_product_routes_follow_canonical_ownership(
     assert '<span class="topbar-domain">往来</span>' in repayment.text
     assert '<span class="topbar-title">还款捕获</span>' in repayment.text
 
-    # main 现状: /web/library 尚未存在 (C5c-1), 回收站是流水域普通二级页。
+    # Recovery is a focused task under the shipped reference library.
     recycle_bin = web_client.get("/web/recycle-bin?ledger_id=owner")
     assert recycle_bin.status_code == 200
     assert 'data-domain="transactions"' in recycle_bin.text
-    assert 'data-page="transactions" data-page-level="secondary"' in recycle_bin.text
+    assert 'data-page="transactions" data-page-level="tertiary"' in recycle_bin.text
+    assert 'href="/web/library?ledger_id=owner"' in recycle_bin.text
 
 
 def test_viewer_primary_page_keeps_read_only_shell(

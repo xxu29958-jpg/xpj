@@ -26,14 +26,15 @@
           majorText: s.budget_cents == null ? null : (s.budget_major_text || app.homeMinorToMajorText(s.budget_cents)),
         };
       });
-      const ink = app.readVar("--text-default");
       const axisLabel = app.readVar("--chart-axis-label");
       const ink4 = app.readVar("--text-faint");
-      const accent = app.readVar("--brand-primary");
+      const accent = app.readVar("--chart-series-1");
       const hairline = app.readVar("--border-card");
+      const fontSize = parseFloat(app.readVar("--type-caption-size"));
+      const ordinary = amounts.every(s => s.value !== null && s.value >= 0) && amounts.some(s => s.value > 0);
       return {
         animation: false,
-        grid: { left: 12, right: 12, top: 16, bottom: 28, containLabel: true },
+        grid: { left: 12, right: 12, top: fontSize * 3, bottom: 28, containLabel: true },
         tooltip: {
           trigger: "axis",
           backgroundColor: app.readVar("--chart-tooltip-bg"),
@@ -41,10 +42,10 @@
           textStyle: { color: app.readVar("--chart-tooltip-fg"), fontFamily: app.readVar("--font-numeric") },
           axisPointer: { lineStyle: { color: ink4, type: "dashed" } },
           formatter: function (params) {
-            const head = '<div style="font-size:11px;letter-spacing:.1em;margin-bottom:4px">' +
+            const head = '<div style="font-size:var(--type-caption-size);margin-bottom:var(--space-2)">' +
                          params[0].axisValue + "</div>";
             return head + params.map(function (p) {
-              return '<div style="display:flex;justify-content:space-between;gap:14px;font-size:12px">' +
+              return '<div style="display:flex;justify-content:space-between;gap:var(--space-4);font-size:var(--type-caption-size)">' +
                 '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' +
                 p.color + ';margin-right:6px;vertical-align:1px"></span>' + p.seriesName + "</span>" +
                 '<b style="font-variant-numeric:tabular-nums">' +
@@ -56,17 +57,17 @@
         xAxis: {
           type: "category",
           data: labels,
-          axisLine: { lineStyle: { color: hairline } },
+          axisLine: { show: !ordinary, lineStyle: { color: hairline } },
           axisTick: { show: false },
-          axisLabel: { color: axisLabel, fontFamily: app.readVar("--font-numeric"), fontSize: 11 },
+          axisLabel: { color: axisLabel, fontFamily: app.readVar("--font-numeric"), fontSize: fontSize, hideOverlap: true },
         },
         yAxis: {
           type: "value",
           axisLine: { show: false },
           axisTick: { show: false },
-          splitLine: { lineStyle: { color: hairline } },
+          splitLine: { show: !ordinary, lineStyle: { color: hairline } },
           axisLabel: {
-            color: axisLabel, fontFamily: app.readVar("--font-numeric"), fontSize: 11,
+            show: !ordinary, color: axisLabel, fontFamily: app.readVar("--font-numeric"), fontSize: fontSize,
             formatter: function (v) { return v >= 1000 ? (v / 1000) + "k" : v; },
           },
         },
@@ -77,24 +78,12 @@
             lineStyle: { color: ink4, width: 1, type: "dashed" }, z: 1,
           },
           {
-            name: "支出", type: "bar", data: amounts, barWidth: 22,
-            itemStyle: {
-              color: function (params) {
-                const i = params.dataIndex;
-                return budgets[i].value && amounts[i].value > budgets[i].value
-                  ? app.readVar("--state-danger-fg")
-                  : ink;
-              },
-              borderRadius: [2, 2, 0, 0],
-            },
+            name: "净支出", type: "bar", barMaxWidth: 72, barCategoryGap: "18%",
+            data: amounts.map((amount, index) => ({...amount, itemStyle: {opacity: index === amounts.length - 1 ? 1 : .3}})),
+            itemStyle: { color: accent, borderRadius: [6, 6, 0, 0] },
+            label: { show: ordinary && el.clientWidth / series.length > fontSize * 4, position: "top", color: axisLabel, opacity: 1,
+              fontFamily: app.readVar("--font-numeric"), fontSize: fontSize, formatter: p => p.data.majorText?.replace(/\.00$/, "") || "" },
             z: 2,
-          },
-          {
-            name: "趋势", type: "line", data: amounts,
-            smooth: 0.3, connectNulls: false, symbol: "circle", symbolSize: 5, showSymbol: true,
-            lineStyle: { color: accent, width: 1.4 },
-            itemStyle: { color: accent, borderColor: app.readVar("--surface-card"), borderWidth: 1.5 },
-            z: 3,
           },
         ],
       };
@@ -106,6 +95,6 @@
         attributes: true, attributeFilter: ["data-theme", "data-accent"],
       });
     });
-    new ResizeObserver(function () { chart.resize(); }).observe(el);
+    new ResizeObserver(function () { chart.resize(); chart.setOption(build()); }).observe(el);
   };
 })(window, document);

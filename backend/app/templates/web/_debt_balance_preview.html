@@ -1,0 +1,16 @@
+{# Presentation only: the debt query's currency and revision bind this estimate.
+   Retained commands with another currency/version never reuse the fresh balance. #}
+{% if debt is defined and not debt.relationship_balance %}
+<div class="product-panel product-panel--padded debt-balance-preview" data-debt-balance-preview hidden
+     data-balance-minor="{{ debt.remaining_minor }}" data-balance-digits="{{ currency_input.minor_unit_digits }}"
+     data-balance-symbol="{{ currency_input.currency_symbol }}" data-balance-currency="{{ debt.currency_code }}"
+     data-balance-version="{{ expected_row_version }}">
+  <strong>未结金额预览 · {{ debt.currency_code }}</strong>
+  <div class="debt-balance-comparison">
+    <div><span>当前记录</span><strong>{{ debt.remaining_label }}</strong></div>
+    <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-right"/></svg>
+    <div><span>本次之后</span><output data-balance-after aria-live="polite"></output></div>
+  </div>
+  <p class="hint">{% if debt.is_member %}仅作预览，提交后等待家人确认。{% else %}按当前记录预览，保存后更新。{% endif %}</p>
+</div>
+{% endif %}

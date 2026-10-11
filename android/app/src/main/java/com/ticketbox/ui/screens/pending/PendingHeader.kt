@@ -2,7 +2,7 @@ package com.ticketbox.ui.screens.pending
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
-import androidx.compose.material3.Button
+import com.ticketbox.ui.components.AppPrimaryButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -65,12 +65,11 @@ internal fun PendingToolsSheet(
                 enabled = !loading,
                 onClick = actions.onRefresh,
             )
-            Button(
+            AppPrimaryButton(
+                text = stringResource(R.string.pending_tools_done),
                 modifier = Modifier.weight(1f),
                 onClick = onDismiss,
-            ) {
-                Text(stringResource(R.string.pending_tools_done))
-            }
+            )
         }
     }
 }

@@ -63,6 +63,58 @@ Those are rejected as substitutes for this delivery.
 
 ## Owners, consumers and impact before implementation
 
+### Android unsubmitted original selection (2026-10-09)
+
+This independent capability retains a selected, unsubmitted original across leaving
+the bill and reopening the app. The existing UploadIntentRepository/FileStore owns
+its bytes; the existing expense_fact_inputs table retains the original attachment
+payload/key in a reserved original_ namespace. It is input, never an Outbox command
+until the person reviews the actual bytes and explicitly confirms. No new queue,
+financial writer, schema or provider-URI dependency is introduced.
+
+The file lock covers durable file publication and input CAS. Command admission
+atomically consumes that exact input in the existing Room Outbox transaction; GC
+must account for all input and command references across bindings and fail closed
+on unreadable protocols. A changed identity cannot adopt or submit the old selection.
+Explicit cancellation consumes only the observed input. Failed retention preserves
+the displayed bytes and original key, exposes retry/cancel and blocks ordinary exit.
+Confirmed detail, pending editing and both sides of original comparison share this
+owner. Their leave/reopen, admission failure and discard paths are in scope; a Room
+reopen test alone does not qualify full process restart or the complete 10B group.
+
+### First association for a bill without an original (2026-10-09)
+
+The active Goal delegates this missing product capability. Rev3.2 §6.7 owns the
+attachment relationship; the 04 design's optional original must not route manual
+financial creation through image capture or turn a first association into repair.
+A writer may explicitly attach one image to an existing bill that has never had
+an original. The existing Expense row, original command owner, actor/OCC fences,
+idempotency receipts and upload privacy admission remain authoritative. Attachment
+acceptance does not create a bill, confirm a pending bill, re-run recognition, or
+change money, accounting time or financial revisions. Its audit records a current
+association, not a historical capture. An absent image remains a valid bill.
+
+Any existing reference, digest, deletion marker or cleanup request precludes first
+association; missing or deliberately cleaned originals retain verification and
+same-digest replenishment. An uncertain response retains the same bytes, binding,
+key and version. Replaying an accepted key returns its first receipt even after
+later bill changes; it does not replace an original or recreate cleaned bytes.
+File publication and receipt share the existing transaction/compensation boundary.
+
+Web uses the existing original page and durable attachment task; manual creation
+and its first receipt remain a separate command. Android must use its existing
+OriginalAttachment Outbox/file ownership and explicitly negotiate the new
+capability before sending it to older servers. Export/orphan projections must
+include this new original-bearing receipt. These consumers and failure paths are
+part of this capability's exit gate; backend availability alone is not completion.
+
+Selecting a source for first association or replenishment must show it and wait
+for explicit confirmation before command admission. Submit the bytes reviewed,
+not a later re-read of a mutable provider URI. Web formats that the browser cannot
+decode retain a download-and-review path; supported original formats must not be
+silently excluded. An unsubmitted restored selection needs fresh confirmation;
+an already submitted task retains its original file, key and version for replay.
+
 | Existing boundary | Required continuation |
 | --- | --- |
 | Expense image reference/hash and ledger-scoped lookup | Retain the current relationship authority; metadata operations must use the real actor, ledger, OCC and existing idempotency mechanism. Financial fact revisions keep their separate meaning. |
@@ -124,6 +176,13 @@ confirmation/rejection time and replenishment time, so an old bill's restored
 file is not immediately deleted again. Financial dates stay intact; merely
 verifying legacy evidence does not renew retention. An existing frozen cleanup
 request still refers only to its old files.
+
+First association also starts a fresh configured retention period, using the
+existing `image_replenished_at` publication timestamp. An old bill must not lose
+newly admitted evidence immediately because its confirmation predates the file.
+The operation receipt and audit distinguish first association from replenishment;
+the timestamp does not invent an earlier original, change financial dates or
+trigger confirmation cleanup. No existing row is backfilled.
 
 Replenishment and explicit legacy verification use the existing ledger writer,
 actor revalidation, OCC and command-receipt owners. Accepted-key replay precedes

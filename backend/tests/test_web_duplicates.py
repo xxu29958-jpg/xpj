@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 import pytest
 from api_contract_helpers import confirm_expense_api, patch_expense, web_duplicates_action
 from fastapi.testclient import TestClient
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.database import SessionLocal
 from app.errors import AppError
 from app.main import app
-from app.models import Expense
+from app.models import ApiIdempotencyKey, Expense
 from app.routes.web_app import _require_local as _web_require_local
+from tests._web_native_form_support import hidden_post_forms
 
 
 @pytest.fixture()
@@ -95,9 +99,9 @@ def test_web_duplicates_renders_pair(web_client: TestClient, *, identity) -> Non
     resp = web_client.get("/web/duplicates?ledger_id=owner")
     assert resp.status_code == 200
     body = resp.text
-    assert f"#{second}" in body
-    assert f"#{first}" in body
-    assert "保留两条" in body
+    assert f'/web/expenses/{second}/edit?' in body
+    assert f'/web/expenses/{first}/edit?' in body
+    assert "保留两笔" in body
     assert "图片一致" in body
     assert "% 相似" not in body
     assert "置信度" not in body
@@ -123,7 +127,9 @@ def test_web_duplicates_does_not_offer_reject_for_confirmed_original(
 
     assert f"/web/duplicates/{current}/reject-original" not in body
     assert "已入账参考记录不能在重复核对中忽略" in body
-    assert f'name="original_expense_id" value="{original}"' not in body
+    forms = hidden_post_forms(body)
+    for action in ("keep", "reject-current"):
+        assert forms[f"/web/duplicates/{current}/{action}"]["original_expense_id"] == str(original)
 
 
 # ── Loopback gate + secret leak ────────────────────────────────────────────
@@ -188,9 +194,9 @@ def test_web_duplicates_reject_original_keeps_current(web_client: TestClient, *,
         before = db.scalar(select(Expense).where(Expense.id == second))
         assert before is not None
         before_row_version = before.row_version
-    resp = web_duplicates_action(
-        web_client, second, identity=identity, action="reject-original"
-    )
+    path = f"/web/duplicates/{second}/reject-original"
+    fields = hidden_post_forms(web_client.get("/web/duplicates?ledger_id=owner").text)[path]
+    resp = web_client.post(path, data=fields, follow_redirects=False)
     assert resp.status_code == 303
     with SessionLocal() as db:
         kept = db.scalar(select(Expense).where(Expense.id == second))
@@ -201,6 +207,25 @@ def test_web_duplicates_reject_original_keeps_current(web_client: TestClient, *,
         assert kept.duplicate_of_id is None
         assert kept.row_version == before_row_version + 1
         assert rejected.status == "rejected"
+        receipt = db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.idempotency_key == fields["idempotency_key"]))
+        assert receipt.status == "succeeded"
+        original_receipt = dict(receipt.response_body)
+        assert original_receipt == {"operation": "reject_duplicate_original", "expense_id": second,
+            "original_expense_id": first, "accepted": True, "decision_key": fields["idempotency_key"]}
+
+    changed = patch_expense(web_client, second, headers=identity.app_headers, fields={"note": "Later manual fact"})
+    assert changed.status_code == 200, changed.text
+    replay = web_client.post(path, data=fields, follow_redirects=False)
+    assert replay.status_code == 303 and replay.headers["location"] == resp.headers["location"]
+    reused = web_client.post(path, data={**fields, "expected_original_row_version": str(int(fields["expected_original_row_version"]) + 1)},
+        headers={"Accept": "application/json"}, follow_redirects=False)
+    assert reused.status_code == 422 and reused.json()["error"] == "idempotency_key_reused"
+    with SessionLocal() as db:
+        kept = db.get(Expense, second)
+        assert (kept.note, kept.row_version) == ("Later manual fact", changed.json()["row_version"])
+        assert db.get(Expense, first).status == "rejected"
+        receipt = db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.idempotency_key == fields["idempotency_key"]))
+        assert receipt.response_body == original_receipt
 
 
 def test_web_duplicates_confirmed_original_never_dispatches_generic_reject(
@@ -227,6 +252,7 @@ def test_web_duplicates_confirmed_original_never_dispatches_generic_reject(
             "expected_row_version": current_token,
             "original_expense_id": original,
             "expected_original_row_version": original_token,
+            "idempotency_key": str(uuid4()),
         },
         follow_redirects=False,
     )
@@ -243,18 +269,25 @@ def test_web_duplicates_confirmed_original_never_dispatches_generic_reject(
         assert reference.status == "confirmed"
 
 
+@pytest.mark.parametrize("failure_at,error,status", [
+    ("reject_expense", AppError("state_conflict", status_code=409), 303),
+    ("mark_idempotency_succeeded", SQLAlchemyError("controlled receipt write failure"), 503),
+])
 def test_web_duplicates_reject_original_is_atomic(
-    web_client: TestClient, *, identity, monkeypatch: pytest.MonkeyPatch
+    web_client: TestClient, *, identity, monkeypatch: pytest.MonkeyPatch, failure_at, error, status,
 ) -> None:
     first, second = _seed_duplicate_pair(web_client, identity=identity)
     token = _token(web_client, second, identity=identity)
     original_token = _token(web_client, first, identity=identity)
+    key = str(uuid4())
+    reached_failure = []
 
     def fail_reject(*args, **kwargs):
-        raise AppError("state_conflict", status_code=409)
+        reached_failure.append(True)
+        raise error
 
     monkeypatch.setattr(
-        "app.services.expense_review_command_service.reject_expense",
+        f"app.services.expense_review_command_service.{failure_at}",
         fail_reject,
     )
     resp = web_client.post(
@@ -264,11 +297,14 @@ def test_web_duplicates_reject_original_is_atomic(
             "expected_row_version": token,
             "original_expense_id": first,
             "expected_original_row_version": original_token,
+            "idempotency_key": key,
         },
         follow_redirects=False,
     )
-    assert resp.status_code == 303
-    assert "flash_type=error" in resp.headers.get("location", "")
+    assert reached_failure, "The command must reach the intended transactional failure"
+    assert resp.status_code == status
+    if status == 303:
+        assert "flash_type=error" in resp.headers.get("location", "")
 
     with SessionLocal() as db:
         kept = db.scalar(select(Expense).where(Expense.id == second))
@@ -278,6 +314,8 @@ def test_web_duplicates_reject_original_is_atomic(
         assert kept.duplicate_of_id == first
         assert kept.row_version == int(token)
         assert original.status == "pending"
+        assert original.row_version == int(original_token)
+        assert db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.idempotency_key == key)) is None
 
     monkeypatch.undo()
     changed = patch_expense(
@@ -295,6 +333,7 @@ def test_web_duplicates_reject_original_is_atomic(
             "expected_row_version": token,
             "original_expense_id": first,
             "expected_original_row_version": original_token,
+            "idempotency_key": key,
         },
         follow_redirects=False,
     )
@@ -317,9 +356,10 @@ def test_web_duplicates_stale_token_renders_error_style(web_client: TestClient, 
     成功动作仍按成功样式渲染。"""
     _, second = _seed_duplicate_pair(web_client, identity=identity)
 
+    fields = hidden_post_forms(web_client.get("/web/duplicates?ledger_id=owner").text)[f"/web/duplicates/{second}/keep"]
     stale = web_client.post(
         f"/web/duplicates/{second}/keep",
-        data={"ledger_id": "owner", "expected_row_version": "not-a-token"},
+        data={**fields, "expected_row_version": "not-a-token"},
         follow_redirects=False,
     )
     assert stale.status_code == 303
@@ -330,10 +370,9 @@ def test_web_duplicates_stale_token_renders_error_style(web_client: TestClient, 
     assert "product-feedback--error" in page.text
     assert "账单已在其它端被修改" in page.text
 
-    token = _token(web_client, second, identity=identity)
     ok = web_client.post(
         f"/web/duplicates/{second}/keep",
-        data={"ledger_id": "owner", "expected_row_version": token},
+        data=fields,
         follow_redirects=False,
     )
     assert ok.status_code == 303
@@ -393,11 +432,10 @@ def test_web_duplicate_keep_fragment_success_returns_marker(
     success returns a 200 marker (the client re-fetches the now-unflagged drawer),
     not a redirect, and the flag is actually cleared."""
     _, second = _seed_duplicate_pair(web_client, identity=identity)
+    fields = hidden_post_forms(web_client.get(f"/web/expenses/{second}/edit?ledger_id=owner&fragment=1").text)[f"/web/expenses/{second}/save"]
     resp = web_client.post(
         f"/web/duplicates/{second}/keep",
-        data={"ledger_id": "owner", "expected_row_version": _token(
-            web_client, second, identity=identity
-        ), "fragment": "1"},
+        data={**fields, "fragment": "1"},
         follow_redirects=False,
     )
     assert resp.status_code == 200, resp.text
@@ -416,7 +454,7 @@ def test_web_duplicate_keep_fragment_missing_expense_returns_readable_html(
     snippet at the row's status, not bare JSON injected into the drawer."""
     resp = web_client.post(
         "/web/duplicates/99999/keep",
-        data={"ledger_id": "owner", "expected_row_version": "1", "fragment": "1"},
+        data={"ledger_id": "owner", "expected_row_version": "1", "fragment": "1", "keep_idempotency_key": str(uuid4())},
         follow_redirects=False,
     )
     assert resp.status_code == 404, resp.text

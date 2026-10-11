@@ -110,10 +110,11 @@ internal class DataQualityConnectedHarness : AutoCloseable {
         val coordinator = com.ticketbox.data.repository.LocalLedgerSessionCoordinator(settingsStore, sessionStore, database.expenseDao(), outbox)
         val debtQueries = com.ticketbox.data.repository.DebtQueryReader(apiProvider, database.expenseDao(), coordinator)
         val repositories = MainFeatureRepositories(
+            savedQueryRepository = com.ticketbox.data.repository.SavedQueryRepository(apiProvider,
+                com.ticketbox.data.repository.SavedQueryDraftStore(database.savedQueryInputDao())),
             accountProfile = com.ticketbox.data.repository.AccountProfileRepository(apiProvider, coordinator),
             uploadIntents = com.ticketbox.data.repository.UploadIntentRepository(apiProvider, outbox,
-                com.ticketbox.data.repository.UploadIntentFileStore(context), adapters.uploadPayloadAdapter,
-                adapters.uploadReceiptAdapter, settingsStore),
+                com.ticketbox.data.repository.UploadIntentFileStore(context), adapters, settingsStore, database.expenseDao()),
             repository = ExpenseRepository(database.expenseDao(), binding, sessionCoordinator = coordinator, debtQueryReader = debtQueries, offlineMutations =
                 com.ticketbox.data.repository.ExpenseOfflineMutationWiring(outbox, adapters.correctionAdapter, adapters.legacyCorrectionAdapter,
                     adapters.billSplitCreateAdapter, adapters.billSplitReceiptAdapter,
@@ -136,7 +137,7 @@ internal class DataQualityConnectedHarness : AutoCloseable {
                 database.monthlyArrangementCacheDao(), com.ticketbox.data.repository.BudgetQueryReader(apiProvider, database.expenseDao(), coordinator, outbox)), coordinator),
             reportsRepository = interfaceProxy<ReportsActions>(),
             goalEditRepository = com.ticketbox.data.repository.GoalEditRepository(apiProvider, outbox,
-                adapters.goalUpdateAdapter, adapters.goalReceiptAdapter, adapters.goalCreateAdapter),
+                adapters.goalUpdateAdapter, adapters.goalReceiptAdapter, adapters.goalCreateAdapter, adapters.goalDebtEditAdapter),
             ruleRepository = com.ticketbox.data.repository.RuleRepository(binding, offlineMutations = com.ticketbox.data.repository.CategoryRuleOfflineMutationWiring(
                 outbox, adapters.categoryRuleUpdateAdapter, adapters.categoryRuleDeleteAdapter,
                 adapters.categoryRuleSubmissionAdapter, adapters.categoryRuleReceiptAdapter)),

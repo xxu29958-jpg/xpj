@@ -1,5 +1,14 @@
 <resources>
     <string name="original_title">原件</string>
+    <string name="original_status_none">没有原件，也可以记账</string>
+    <string name="original_status_cleaned">已按保留策略清理</string>
+    <string name="original_status_replenish">原件需要补回，账单仍保留</string>
+    <string name="original_status_unverified">查看并核对原件</string>
+    <string name="original_status_verified">原件可用</string>
+    <string name="original_status_unreadable">暂未取得原件状态</string>
+    <string name="original_inspection_details">本次原件检查</string>
+    <string name="original_read_again">重新读取原图</string>
+    <string name="original_replenish_context">选择这笔账单对应的同一张小票。账单与历史仍然保留，失败后可继续原任务。</string>
     <string name="original_open_bill">回到账单继续</string>
     <string name="original_continue">确认继续</string>
     <string name="original_cancel">取消</string>
@@ -16,6 +25,8 @@
     <string name="original_check">检查原件</string>
     <string name="original_view">查看原图</string>
     <string name="original_replenish">补回同一原件</string>
+    <string name="original_attach">添加小票或截图</string>
+    <string name="original_attach_context">可为这笔账单添加原件。选择属于这笔消费的图片，不会重新记账或改变已填内容。</string>
     <string name="original_verify">我已核对这张原图</string>
     <string name="original_verify_explanation">仅为当前看过的文件建立摘要基准，不证明历史拍摄时间或未经处理的来源。</string>
     <string name="original_checked_at">检查于 %1$s</string>
@@ -34,12 +45,21 @@
     <string name="original_source_saved">本次原件操作尚未完成本机接纳。已保留原输入，可继续保存。</string>
     <string name="original_source_retry">继续保存原操作</string>
     <string name="original_source_cancel">取消尚未接纳的操作</string>
+    <string name="original_selected_image">本次选择的原件图片</string>
+    <string name="original_selection_review">这是这笔账单对应的原件</string>
+    <string name="original_selection_submit">确认并保存原件</string>
+    <string name="original_selection_save_failed">暂未保留本次选择，请重试保留后再离开。尚未提交。</string>
+    <string name="original_selection_load_failed">暂时无法恢复原选择，请重试。不会覆盖已保留的输入。</string>
+    <string name="original_selection_save_retry">重试保留本次选择</string>
+    <string name="original_selection_leave_blocked">本次选择还未妥善保留，请稍候或重试；也可明确取消此次选择后离开。</string>
+    <string name="original_selection_unavailable">所选图片无法打开，尚未提交。请重新选择可查看的原件图片。</string>
     <string name="original_review_conflict">原件或账单在核对后发生变化。请刷新并重新查看原图。</string>
     <string name="original_verify_no_digest">此响应没有可验证的原件摘要，可继续查看，但不能据此建立核验基准。</string>
     <string name="original_writer_required">当前角色仅能查看原件。</string>
     <string name="original_stale">以下为上次检查结果，当前状态尚未取得。</string>
     <string name="original_edit_baseline">原件操作已接受。当前编辑值与原版本已保留；继续保存前，请明确核对最新账单。</string>
     <string name="original_edit_review">保留输入，核对原件操作后的账单</string>
+    <string name="original_edit_review_needed">原件已更新，请先核对账单再继续。</string>
     <string name="original_edit_changed">账单内容也发生了变化，原输入与版本仍保留。请使用账单最新内容复核入口处理并发变化。</string>
     <string name="original_file">原件</string>
     <string name="original_thumbnail">缩略图</string>

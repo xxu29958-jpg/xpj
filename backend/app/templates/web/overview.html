@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from 'partials/category_icon.html' import category_icon %}
 {% block title %}总览 · 洞察 · 小票夹{% endblock %}
 
 {# 查询金额与模块顺序由 _dashboard_data_payload 提供；视图不再二次分组重排。
@@ -11,11 +12,11 @@
 {% endif %}
 {% endblock %}
 
-{% block content %}
-<header class="product-page-header insight-page-header">
+{% block page_header %}
+<header class="product-page-header">
   <div class="product-page-heading">
-    <h1 class="page-title" id="overview-title">本月概览</h1>
-    <p class="ov-status" role="status">
+    <h1 class="page-title" id="overview-title">{{ cards.month[5:]|int }}月，慢慢有数</h1>
+    <p class="product-page-summary" role="status">
       {% if has_any_expense %}
         {{ cards.month }} · {{ cards.confirmed_count }} 笔已入账
         {% if cards.pending_count %}
@@ -26,12 +27,18 @@
       {% endif %}
     </p>
   </div>
-  <div class="product-page-actions">
-    <a class="product-button" href="/web/reports?{{ money_task|urlencode }}">分析</a>
+  <div class="product-page-actions insight-page-actions">
+    {% if can_write and request.state.web_session_auth %}<a class="product-button product-button--primary" href="/web/expenses/new?ledger_id={{ selected_ledger_id|urlencode }}"><svg width="20" height="20" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#plus"/></svg>记一笔</a>{% endif %}
+    <a class="product-button product-button--quiet" href="/web/reports?{{ money_task|urlencode }}">分析</a>
   </div>
 </header>
+{% endblock %}
+
+{% block content %}
+
 {% if flash_message %}<div class="product-feedback" role="status">{{ flash_message }}</div>{% endif %}
-{% include 'partials/budget_fx_gaps.html' %}
+{% set needs_money_review = missing_rates or (money_incomplete is defined and money_incomplete) %}
+{% if needs_money_review %}{% include 'partials/budget_fx_gaps.html' %}{% endif %}
 
 {% if not has_any_expense %}
 <section class="product-state insight-onboarding" aria-label="开始记录">
@@ -71,19 +78,19 @@
            data-overview-card="monthly_spend">
     <div class="product-panel-header">
       <div>
-        <h2 class="product-eyebrow">本月支出</h2>
-        <div class="product-panel-subtitle">{{ cards.month }} · 已入账</div>
+        <h2 class="product-panel-subtitle">本月净支出 · {{ home_currency_code }}</h2>
       </div>
       <a class="product-panel-subtitle"
          href="/web/confirmed?{{ money_task|urlencode }}">查看流水</a>
     </div>
+    <img class="insight-hero-art" src="/static/web/product/art/receipt-clip.png" alt="">
     <div class="insight-hero-value{% if hero_amount and hero_amount.int|length > 12 %} insight-hero-value--long{% endif %}">
       {% if hero_amount is not none %}<small>{{ hero_amount.cur }}</small>{{ hero_amount.int }}{% if hero_amount.dec %}<small>{{ hero_amount.dec }}</small>{% endif %}{% elif ledger_undated_expense_count|default(0) %}待核对账务日期{% else %}待补齐换算信息{% endif %}
     </div>
     <div class="insight-module-foot">
       {% if cards.delta_direction == 'unavailable' %}<span class="text-meta">补齐换算信息后比较上月</span>
       {% elif cards.delta_direction and cards.delta_direction != 'none' %}
-      <span class="product-status {% if cards.delta_direction == 'up' %}product-status--warning{% else %}product-status--success{% endif %}">
+      <span class="text-muted">
         {% if cards.delta_direction == 'up' %}
           比上月多 {{ delta_amount_label }}
         {% elif cards.delta_direction == 'down' %}
@@ -98,13 +105,12 @@
   </article>
 
   {% elif item.key == 'pending' %}
-  <article class="insight-brief"
+  <article class="product-panel product-panel--padded insight-brief"
            data-overview-card="pending">
-    <div>
-      <div class="insight-brief-title"><h2 class="product-panel-title">待整理</h2><strong class="insight-brief-value num">{{ cards.pending_count }}</strong></div>
-      <div class="product-panel-subtitle">{{ '核对后计入账面' if cards.pending_count else '没有待整理的记录' }}</div>
-    </div>
-    <a class="product-panel-subtitle" href="/web/pending?ledger_id={{ selected_ledger_id }}">{{ '去处理' if can_write and cards.pending_count else '查看收件' }}</a>
+    <span class="product-entry-icon product-entry-icon--apricot insight-pending-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#inbox"/></svg></span>
+    <div class="insight-pending-copy">
+      <div class="insight-brief-title"><h2 class="product-panel-title">{{ cards.pending_count }} 张小票待整理</h2></div>
+      <div class="product-panel-subtitle">{{ '当前账本全部日期，核对后计入流水' if cards.pending_count else '没有待整理的记录' }}</div>
     {% if cards.needs_amount_count or cards.needs_merchant_count or cards.suspected_duplicate_count %}
     <div class="pill-row insight-brief-detail">
       {% if cards.needs_amount_count %}<span class="product-status product-status--warning">缺金额 {{ cards.needs_amount_count }}</span>{% endif %}
@@ -112,14 +118,16 @@
       {% if cards.suspected_duplicate_count %}<span class="product-status product-status--danger">重复风险 {{ cards.suspected_duplicate_count }}</span>{% endif %}
     </div>
     {% endif %}
+    </div>
+    <a class="product-button product-button--quiet" href="/web/pending?ledger_id={{ selected_ledger_id }}">{{ '继续整理' if can_write and cards.pending_count else '查看收件' }}<svg width="20" height="20" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-right"/></svg></a>
   </article>
 
   {% elif item.key == 'budget' %}
-  <article class="product-panel product-panel--padded insight-module{% if not cards.budget_configured %} insight-module--empty{% endif %}"
+  <article class="product-panel product-panel--padded insight-module"
            data-overview-card="budget">
     <div class="product-panel-header">
       <div>
-        <h2 class="product-panel-title">预算余量</h2>
+        <h2 class="product-panel-title">{{ '预算已超出' if cards.budget_is_over else '预算还剩' }}</h2>
         <div class="product-panel-subtitle">{{ cards.month }}{% if not cards.budget_configured %} · 尚未设置额度{% endif %}</div>
       </div>
       <a class="product-panel-subtitle" href="/web/budgets?ledger_id={{ selected_ledger_id|urlencode }}&amp;month={{ cards.month|urlencode }}">{{ '管理' if cards.budget_configured else ('设置预算' if can_write else '查看预算') }}</a>
@@ -128,19 +136,24 @@
     <div class="insight-stat-value num{% if cards.budget_is_over %} text-danger{% endif %}">
       {{ budget_remaining_label }}
     </div>
-    {% if cards.budget_remaining_cents is not none %}
-    <span class="product-status {{ 'product-status--danger' if cards.budget_is_over else 'product-status--success' }}">
-      {{ '已超支' if cards.budget_is_over else '仍可使用' }}
-    </span>
-    {% endif %}
+    <div class="insight-progress-row">
+      <div class="insight-progress-meta">
+        <strong class="num">本月已用 {{ cards.budget_spent_label }} / {{ cards.budget_available_label }}</strong>
+        {% if cards.budget_percent_label is not none %}<span class="text-muted num">{{ cards.budget_percent_label }}</span>{% endif %}
+      </div>
+      {% if cards.budget_progress is not none %}<progress class="product-progress"
+                max="1000" value="{{ cards.budget_progress }}"
+                aria-label="本月预算已使用 {{ cards.budget_percent_label }}"></progress>{% endif %}
+      {% if cards.budget_has_rollover %}<span class="text-meta">额度含结转</span>{% endif %}
+    </div>
     {% if cards.budget_top %}
-    <div class="insight-progress-list">
+    <div class="insight-progress-list insight-budget-categories">
       {% for budget in cards.budget_top %}
       <div class="insight-progress-row">
         <div class="insight-progress-meta">
           <span>{{ budget.name }}</span>
           <strong class="num{% if budget.is_over %} text-danger{% endif %}">
-            {% if budget.is_over %}超 {{ budget.overspent_label }}{% elif budget.percent is not none %}{{ budget.percent }}%{% else %}待补齐汇率{% endif %}
+            {{ budget.spent_label }} / {{ budget.limit_label }}{% if budget.is_over %} · 超 {{ budget.overspent_label }}{% endif %}
           </strong>
         </div>
         {% if budget.percent is not none %}<progress class="product-progress"
@@ -155,11 +168,11 @@
   </article>
 
   {% elif item.key == 'reports' %}
-  <article class="product-panel product-panel--padded insight-module{% if not category_share %} insight-module--empty{% endif %}"
+  <article class="product-panel product-panel--padded insight-module"
            data-overview-card="reports">
     <div class="product-panel-header">
       <div>
-        <h2 class="product-panel-title">分类结构</h2>
+        <h2 class="product-panel-title">钱花在哪儿</h2>
         <div class="product-panel-subtitle">本月已入账支出的主要去向</div>
       </div>
       <a class="product-panel-subtitle"
@@ -167,15 +180,21 @@
     </div>
     {% if category_share %}
     <div class="insight-category-layout">
-      {% if category_chart_available %}<div id="chart-category"
+      {% if category_chart_available %}
+      {% set top_category = category_share|max(attribute='amount_cents') %}
+      <div class="insight-category-visual">
+        <div id="chart-category"
            class="insight-category-chart"
            data-categories='{{ category_share | tojson }}'
            role="img"
-           aria-label="本月分类支出占比"></div>{% else %}<p role="status">当前净额无法形成完整占比，请核对各分类金额。</p>{% endif %}
+           aria-label="本月分类支出占比，最大分类{{ top_category.name }} {{ top_category.percent_label }}"></div>
+        <div class="insight-category-summary" aria-hidden="true"><span>{{ top_category.name }}</span><strong>{{ top_category.percent_label }}</strong></div>
+      </div>{% else %}<p role="status">当前净额无法形成完整占比，请核对各分类金额。</p>{% endif %}
       <div class="insight-list">
         {% for category in category_share %}
         <div class="insight-list-row">
-          <span>{{ category.name }}</span>
+          {{ category_icon(category.name) }}
+          <span class="product-entry-copy"><strong>{{ category.name }}</strong>{% if category.percent_label is not none %}<span>{{ category.percent_label }}</span>{% endif %}</span>
           <strong class="cat-amt">{{ category.amount_label }}</strong>
         </div>
         {% endfor %}
@@ -189,8 +208,9 @@
   </article>
 
   {% elif item.key == 'goals' %}
-  <article class="product-panel product-panel--padded insight-module{% if not cards.goals_count %} insight-module--empty{% endif %}"
+  <article class="product-panel product-panel--padded insight-module"
            data-overview-card="goals">
+    <span class="insight-module-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#target"/></svg></span>
     <div class="product-panel-header">
       <div>
         <h2 class="product-panel-title">目标</h2>
@@ -218,8 +238,9 @@
   </article>
 
   {% elif item.key == 'recurring' %}
-  <article class="insight-brief"
+  <article class="product-panel product-panel--padded insight-brief"
            data-overview-card="recurring">
+    <span class="insight-module-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#calendar-clock"/></svg></span>
     <div>
       <div class="insight-brief-title"><h2 class="product-panel-title">固定支出</h2><strong class="insight-brief-value num">{{ cards.recurring_active_count }}</strong></div>
       <div class="product-panel-subtitle">{{ '生效中的计划' if cards.recurring_active_count else '当前没有生效计划' }}</div>
@@ -234,8 +255,9 @@
   </article>
 
   {% elif item.key == 'recent_uploads' %}
-  <article class="insight-brief"
+  <article class="product-panel product-panel--padded insight-brief"
            data-overview-card="recent_uploads">
+    <span class="insight-module-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#receipt-text"/></svg></span>
     <div>
       <div class="insight-brief-title"><h2 class="product-panel-title">最近新增</h2><strong class="insight-brief-value num">{{ cards.recent_confirmed_count }}</strong></div>
       {# 所有入账来源均计入，链接也只读取已确认流水。 #}
@@ -245,8 +267,9 @@
   </article>
 
   {% elif item.key == 'backup_status' %}
-  <article class="insight-brief"
+  <article class="product-panel product-panel--padded insight-brief"
            data-overview-card="backup_status">
+    <span class="insight-module-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#archive"/></svg></span>
     <div>
       <h2 class="product-panel-title">备份状态</h2>
       {% if cards.backup_age_status == 'future' %}
@@ -260,8 +283,9 @@
   </article>
 
   {% elif item.key == 'device_status' %}
-  <article class="insight-brief"
+  <article class="product-panel product-panel--padded insight-brief"
            data-overview-card="device_status">
+    <span class="insight-module-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#smartphone"/></svg></span>
     <div>
       <div class="insight-brief-title"><h2 class="product-panel-title">连接设备</h2><strong class="insight-brief-value num">{{ cards.active_device_count }}</strong></div>
       <div class="product-panel-subtitle">当前账本有效设备</div>
@@ -271,4 +295,5 @@
   {% endfor %}
 </section>
 {% endif %}
+{% if not needs_money_review %}{% include 'partials/budget_fx_gaps.html' %}{% endif %}
 {% endblock %}

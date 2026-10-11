@@ -12,6 +12,7 @@ from sqlalchemy import select
 from app.database import SessionLocal
 from app.errors import AppError
 from app.models import CategoryPreference
+from tests._web_native_form_support import hidden_post_forms
 from tests._web_rule_form_support import submit_rule_form
 
 
@@ -130,7 +131,7 @@ def test_web_rule_create_error_keeps_the_complete_draft(web_client: TestClient) 
 
     assert response.status_code == 422
     assert 'data-body-stack="product"' in response.text
-    assert 'id="rule-create-error"' in response.text
+    assert 'data-rule-definition' in response.text
     assert 'role="alert"' in response.text
     assert "金额下限不能大于上限" in response.text
     for field in (
@@ -403,17 +404,18 @@ def test_web_rules_apply_pending_audit_and_rollback_integration(
 
     stale = web_client.post(
         "/web/rules/apply-pending",
-        data={"ledger_id": "owner", "preview_confirmed": "yes"},
+        data={**hidden_post_forms(preview.text)["/web/rules/apply-pending"], "preview_token": ""},
         follow_redirects=False,
     )
-    assert stale.status_code in {303, 307}
-    assert "apply_preview=1" in stale.headers["location"]
+    assert stale.status_code == 409
+    assert 'role="alert"' in stale.text and "请先预览" in stale.text
     detail = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
     assert "其他" in detail.text
 
     applied = web_client.post(
         "/web/rules/apply-pending",
         data={
+            **hidden_post_forms(preview.text)["/web/rules/apply-pending"],
             "ledger_id": "owner",
             "preview_confirmed": "yes",
             "preview_token": token_match.group(1),
@@ -424,11 +426,12 @@ def test_web_rules_apply_pending_audit_and_rollback_integration(
     detail = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
     assert "餐饮" in detail.text
 
-    page = web_client.get("/web/rules?ledger_id=owner")
+    directory = web_client.get("/web/rules?ledger_id=owner")
+    assert 'view=history' in directory.text
+    page = web_client.get("/web/rules?ledger_id=owner&view=history")
     assert page.status_code == 200
-    assert "规则应用记录" in page.text
     assert "已应用" in page.text
-    assert "回滚" in page.text
+    assert "回退这次应用" in page.text
     batch_match = re.search(r"/web/rules/applications/([^/]+)/rollback", page.text)
     assert batch_match, page.text[:1000]
 
@@ -438,8 +441,17 @@ def test_web_rules_apply_pending_audit_and_rollback_integration(
         follow_redirects=False,
     )
     assert rolled_back.status_code in {303, 307}
+    assert "view=history" in rolled_back.headers["location"]
+    history = web_client.get(rolled_back.headers["location"])
+    assert "已恢复 1 笔 · 跳过 0 笔" in history.text
+    assert "首次回退于" in history.text
     restored = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
     assert "其他" in restored.text
+    replay = web_client.post("/web/rules/apply-pending",
+        data=hidden_post_forms(preview.text)["/web/rules/apply-pending"], follow_redirects=False)
+    assert replay.status_code == applied.status_code
+    assert replay.headers["location"] == applied.headers["location"]
+    assert "其他" in web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner").text
 
 
 def test_web_rules_apply_confirmed_requires_preview_then_applies(
@@ -475,7 +487,8 @@ def test_web_rules_apply_confirmed_requires_preview_then_applies(
 
     preview = web_client.get("/web/rules?ledger_id=owner&confirmed_preview=1")
     assert preview.status_code == 200
-    assert "已确认历史账单：规则预览" in preview.text
+    assert "这次会改哪些账单" in preview.text
+    assert "笔已确认账单。现在是预览，尚未应用。" in preview.text
     assert "Historical Starbucks" in preview.text
     assert "确认应用到已确认" in preview.text
     token_match = re.search(r'name="preview_token" value="([0-9a-f]+)"', preview.text)
@@ -484,6 +497,7 @@ def test_web_rules_apply_confirmed_requires_preview_then_applies(
     applied = web_client.post(
         "/web/rules/apply-confirmed",
         data={
+            **hidden_post_forms(preview.text)["/web/rules/apply-confirmed"],
             "ledger_id": "owner",
             "preview_confirmed": "yes",
             "preview_token": token_match.group(1),
@@ -494,6 +508,7 @@ def test_web_rules_apply_confirmed_requires_preview_then_applies(
     detail = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
     assert "餐饮" in detail.text
 
-    page = web_client.get("/web/rules?ledger_id=owner")
+    page = web_client.get("/web/rules?ledger_id=owner&view=history")
     assert page.status_code == 200
-    assert "已应用历史" in page.text
+    assert "已应用到已确认账单" in page.text
+    assert "当时更新 1 笔" in page.text

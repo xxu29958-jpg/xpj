@@ -11,11 +11,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Link
-import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -28,7 +23,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -42,6 +38,7 @@ import com.ticketbox.ui.components.AppPageChrome
 import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageScrollableColumn
 import com.ticketbox.ui.components.AppScrollablePageChrome
+import com.ticketbox.ui.components.AppButtonIcons
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.AppTextInput
@@ -54,6 +51,7 @@ import com.ticketbox.ui.components.ScanQrButton
 import com.ticketbox.ui.design.AppAdaptiveContentWidth
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.SettingsColors
+import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.navigation.parsePairingQrLink
 
@@ -147,7 +145,7 @@ fun BindServerScreen(
                     scannedOrigin = null
                 }),
                 decorations = AppTextInputDecorations(
-                    trailingContent = { Icon(Icons.Filled.Link, contentDescription = null) },
+                    trailingContent = { Icon(ImageVector.vectorResource(R.drawable.ic_lucide_link), contentDescription = null) },
                 ),
             )
         } else {
@@ -170,11 +168,11 @@ fun BindServerScreen(
                 keyboardActions = KeyboardActions(onDone = { submitBind() }),
             ),
             decorations = AppTextInputDecorations(
-                trailingContent = { Icon(Icons.Filled.VpnKey, contentDescription = null) },
+                trailingContent = { Icon(ImageVector.vectorResource(R.drawable.ic_lucide_key_round), contentDescription = null) },
             ),
         )
         Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
-            Icon(Icons.Filled.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Icon(ImageVector.vectorResource(R.drawable.ic_lucide_info), contentDescription = null, tint = MaterialTheme.colorScheme.primary)
             Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
                 Text(stringResource(R.string.bind_server_continuity_title),
                     style = MaterialTheme.typography.titleSmall)
@@ -189,7 +187,7 @@ fun BindServerScreen(
                 } else {
                     stringResource(R.string.bind_server_button_bind)
                 },
-                icon = Icons.AutoMirrored.Filled.ArrowForward,
+                icons = AppButtonIcons(trailing = ImageVector.vectorResource(R.drawable.ic_lucide_arrow_right)),
                 enabled = canBind,
                 modifier = Modifier.fillMaxWidth(),
                 onClick = submitBind,
@@ -242,14 +240,9 @@ private const val BindingCodeLength = 8
 
 @Composable
 private fun BindingIntroduction() {
-    val panelColor = if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) {
-        MaterialTheme.colorScheme.secondaryContainer
-    } else {
-        SettingsColors.bindingIntroduction
-    }
     Row(
         modifier = Modifier.fillMaxWidth()
-            .background(panelColor, RoundedCornerShape(24.dp))
+            .background(SettingsColors.bindingIntroduction, RoundedCornerShape(AppRadius.hero))
             .padding(AppSpacing.cardPadding),
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
         verticalAlignment = Alignment.CenterVertically,

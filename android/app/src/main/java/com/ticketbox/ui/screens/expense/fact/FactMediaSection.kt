@@ -30,6 +30,12 @@ internal fun FactMediaSection(
     onRetryThumbnail: () -> Unit,
     originalContent: (@Composable () -> Unit)? = null,
 ) {
+    // The original panel owns protected viewing, file health and continuation.
+    // Keep it mounted and avoid a second full-size preview ahead of the facts.
+    if (originalContent != null) {
+        originalContent()
+        return
+    }
     val expense = state.expense ?: return
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -76,7 +82,7 @@ internal fun FactMediaSection(
                 )
             }
         }
-        if (originalContent != null) originalContent() else FactOriginalImageAction(state, onLoadFullImage)
+        FactOriginalImageAction(state, onLoadFullImage)
     }
 }
 

@@ -16,7 +16,7 @@ def test_income_create_form_retains_raw_money_month_and_original_submission():
     loader = ChoiceLoader([DictLoader({"base.html": "{% block content %}{% endblock %}"}),
         FileSystemLoader(Path(__file__).parents[1] / "app" / "templates" / "web")])
     html = Environment(loader=loader, autoescape=True).get_template("income_plans.html").render(
-        can_write=True, plans_active=[], plans_archived=[], selected_ledger_id="owner",
+        can_write=True, income_creating=True, plans_active=[], plans_archived=[], selected_ledger_id="owner",
         home_currency_code="CNY", currency_input=currency_input_metadata("CNY"),
         income_year_options=[2026, 2027], income_default_year="2027", income_default_month="1",
         intent_month="2027-01", income_form_currency=currency_input_metadata("JPY"),

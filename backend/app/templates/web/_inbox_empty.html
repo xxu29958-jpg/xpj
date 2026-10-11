@@ -15,7 +15,9 @@
   </div>
   {% if can_write %}
   <details class="inbox-empty-capture">
-    <summary class="inbox-state-primary">{{ '再收一张小票' if inbox_has_history else '收第一张小票' }}
+    <summary class="inbox-state-primary">
+      <span class="inbox-capture-back"><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-left"/></svg> 收件箱</span>
+      <span>{{ '再收一张小票' if inbox_has_history else '收第一张小票' }}</span>
       <svg width="20" height="20" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-right"/></svg>
     </summary>
     {% include "_inbox_capture.html" %}

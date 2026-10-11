@@ -1,6 +1,7 @@
 package com.ticketbox.viewmodel
 
 import com.ticketbox.R
+import com.ticketbox.data.repository.toDomain
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ExpenseRevision
 import com.ticketbox.domain.model.UiText
@@ -8,6 +9,26 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class ExpenseFactRevisionTimelineModelsTest {
+    @Test
+    fun `wire history distinguishes offset corrections and keeps their historical currency`() {
+        val wire = """{"page":1,"page_size":50,"total":1,"snapshot_revision":1,"offset_snapshot_id":25,
+          "items":[{"public_id":"change-1","offset_public_id":"refund-1","revision_number":2,
+          "change_kind":"correction","reason":"按退款原件核对","created_at":"2026-10-03T00:00:00Z",
+          "before":{"kind":"refund","original_currency_code":"JPY","original_amount_minor":1200},
+          "after":{"kind":"refund","original_currency_code":"JPY","original_amount_minor":1000}}]}"""
+        val moshi = com.squareup.moshi.Moshi.Builder().addLast(com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory()).build()
+        val dto = requireNotNull(moshi.adapter(com.ticketbox.data.remote.dto.ExpenseRevisionPageDto::class.java).fromJson(wire))
+        val page = dto.toDomain()
+        assertEquals(25L, page.offsetSnapshotId)
+        val entry = page.items.toTimelineEntries(CurrencyCode.USD).single()
+        assertEquals(R.string.expense_offset_history_correction, entry.kindLabelRes)
+        val amount = entry.changes.single { it.label == UiText.res(R.string.expense_fact_timeline_field_original_amount) }
+        assertEquals(UiText.raw("1200"), amount.before)
+        assertEquals(UiText.raw("1000"), amount.after)
+        assertEquals(UiText.compound(listOf(UiText.res(R.string.expense_offset_kind_refund),
+            UiText.raw("JPY ¥1,000")), " · "), entry.summary)
+    }
+
     @Test
     fun `original amount uses each revision snapshot currency exponent`() {
         val revision = ExpenseRevision(

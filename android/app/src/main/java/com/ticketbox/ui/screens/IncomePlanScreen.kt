@@ -3,12 +3,14 @@ package com.ticketbox.ui.screens
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -18,6 +20,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -33,7 +36,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
@@ -47,6 +49,9 @@ import com.ticketbox.ui.components.AppContentStatePresentation
 import com.ticketbox.ui.components.AppContentStateSpec
 import com.ticketbox.ui.components.AppContentStateSlot
 import com.ticketbox.ui.components.AppErrorState
+import com.ticketbox.ui.components.AppAdaptiveAmountRowStyle
+import com.ticketbox.ui.components.AppAdaptiveEditAmountRow
+import com.ticketbox.ui.components.AppAmountText
 import com.ticketbox.ui.components.AppListStateContent
 import com.ticketbox.ui.components.AppListStateSpec
 import com.ticketbox.ui.components.AppPageRole
@@ -58,8 +63,10 @@ import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppAlpha
+import com.ticketbox.ui.design.AppAmountRole
+import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.tabularNum
+import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.viewmodel.IncomePlanEditUiState
 import com.ticketbox.viewmodel.IncomePlanEditViewModel
 import com.ticketbox.viewmodel.IncomePlanCreateViewModel
@@ -109,7 +116,7 @@ fun IncomePlanScreen(
             onRefresh = viewModel::refresh,
         ),
         slots = AppSecondaryPageSlots(
-            actions = {
+            bottomBar = {
                 IncomePlanCreateAction(state, createState, createViewModel) { showAddSheet = true }
             },
         ),
@@ -314,30 +321,34 @@ private fun SectionEyebrow(text: String) {
 @Composable
 private fun IncomeTotalSummary(state: IncomePlanUiState) {
     val currency = CurrencyDisplay.forRecord(state.forecastCurrencyCode)
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
         IncomeReadSource(state.fetchedAt, state.fromCache)
-        Text(
-            stringResource(R.string.income_plan_month_expected, state.forecastMonth.orEmpty()),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.size(AppSpacing.miniGap))
-        Text(
-            state.currentMonthSummary.expectedAmountCents?.let { formatDisplayAmount(it, currency) }
-                ?: stringResource(R.string.income_plan_conversion_pending),
-            style = MaterialTheme.typography.headlineLarge.tabularNum(),
-            fontWeight = FontWeight.SemiBold,
-        )
-        Spacer(Modifier.size(AppSpacing.miniGap))
-        Text(
-            stringResource(R.string.income_plan_total_meta, state.currentMonthSummary.effectivePlanCount),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.size(AppSpacing.miniGap))
+        Surface(
+            shape = RoundedCornerShape(AppRadius.hero),
+            color = LocalThemeVisuals.current.brandPrimaryBg,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(Modifier.padding(AppSpacing.screenHorizontal), verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
+                Text(
+                    stringResource(R.string.income_plan_month_expected, state.forecastMonth.orEmpty()),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                AppAmountText(
+                    text = state.currentMonthSummary.expectedAmountCents?.let { formatDisplayAmount(it, currency) }
+                        ?: stringResource(R.string.income_plan_conversion_pending),
+                    role = AppAmountRole.Hero,
+                )
+                Text(
+                    stringResource(R.string.income_plan_total_meta, state.currentMonthSummary.effectivePlanCount),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
         Text(
             stringResource(
-                R.string.income_plan_arrived_caption,
+                if (state.fromCache) R.string.income_plan_cached_scheduled_caption else R.string.income_plan_arrived_caption,
                 state.scheduledAmountCents?.let { formatDisplayAmount(it, currency) }
                     ?: stringResource(R.string.income_plan_conversion_pending),
             ),
@@ -349,8 +360,6 @@ private fun IncomeTotalSummary(state: IncomePlanUiState) {
             Text(stringResource(R.string.income_plan_missing_rates, state.missingCurrencyCodes.joinToString("、")),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Spacer(Modifier.size(AppSpacing.compactGap))
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft))
     }
 }
 
@@ -374,15 +383,13 @@ private fun IncomePlanRow(
                 .padding(vertical = AppSpacing.compactGap),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IncomePlanRowSummary(plan = plan, dimmed = dimmed, modifier = Modifier.weight(1f))
-            Text(
-                formatDisplayAmount(plan.amountCents, CurrencyDisplay.forRecord(plan.homeCurrencyCode)),
-                style = MaterialTheme.typography.titleMedium.tabularNum(),
-                fontWeight = FontWeight.SemiBold,
-                color = if (dimmed) MaterialTheme.colorScheme.onSurfaceVariant
-                else MaterialTheme.colorScheme.onSurface,
-                textAlign = TextAlign.End,
-            )
+            AppAdaptiveEditAmountRow(
+                amount = formatDisplayAmount(plan.amountCents, CurrencyDisplay.forRecord(plan.homeCurrencyCode)),
+                modifier = Modifier.weight(1f),
+                style = AppAdaptiveAmountRowStyle(
+                    amountColor = if (dimmed) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                ),
+            ) { IncomePlanRowSummary(plan = plan, dimmed = dimmed) }
             if (trailingAction != null) {
                 Spacer(Modifier.width(AppSpacing.smallGap))
                 IconButton(onClick = trailingAction.onClick) {
@@ -417,8 +424,7 @@ private fun IncomePlanRowSummary(
             else MaterialTheme.colorScheme.onSurface,
         )
         Spacer(Modifier.size(AppSpacing.miniGap))
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
+        FlowRow(
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
         ) {
             Text(

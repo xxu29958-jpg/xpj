@@ -29,7 +29,6 @@ import com.ticketbox.ui.screens.BudgetScreen
 import com.ticketbox.ui.screens.BudgetScreenActions
 import com.ticketbox.ui.screens.CreateDebtGoalScreen
 import com.ticketbox.ui.screens.DebtDetailScreen
-import com.ticketbox.ui.screens.DebtGoalCelebrationOverlay
 import com.ticketbox.ui.screens.DebtGoalScreen
 import com.ticketbox.ui.screens.DebtListScreen
 import com.ticketbox.ui.screens.DebtListScreenActions
@@ -192,18 +191,30 @@ internal fun IncomePlanRoute(
     )
 }
 
+internal data class DebtGoalRouteContext(val creationOwner: ViewModelStoreOwner,
+    val originalCreationId: Long? = null, val originalLinksId: String? = null, val originalDateId: String? = null,
+    val financialDataRevision: Int = 0)
+
 @Composable
 internal fun DebtGoalRoute(
     screenFactory: MainScreenFactory,
     onBack: () -> Unit,
-    creationOwner: ViewModelStoreOwner,
-    originalCreationId: Long? = null,
+    context: DebtGoalRouteContext,
+    onOpenRecycleBin: () -> Unit,
 ) {
+    val creationOwner = context.creationOwner
+    val originalCreationId = context.originalCreationId
     val routeModels = rememberDebtGoalRouteViewModels(screenFactory, creationOwner)
     val creation by routeModels.createGoal.state.collectAsStateWithLifecycle()
-    // overlay 在 open/close 间复用缓存 VM 且跨账本切换存活;每次(重新)进入都 refresh(clearStale=true)
-    // (先清旧账本的债务再拉),避免在新账本下短暂看到上一账本的欠款(账本隔离)。
-    LaunchedEffect(Unit) { routeModels.debtGoal.refresh(clearStale = true) }
+    val links = routeModels.links
+    val linksState by links.state.collectAsStateWithLifecycle()
+    var editLinksId by rememberSaveable { mutableStateOf(context.originalLinksId) }
+    var editDateId by rememberSaveable { mutableStateOf(context.originalDateId) }
+    val date = routeModels.date
+    val dateState by date.state.collectAsStateWithLifecycle()
+    // The VM withdraws facts on binding changes. A return from recovery retains this
+    // goal and filter, then reads the restored row through the same query owner.
+    LaunchedEffect(context.financialDataRevision) { routeModels.debtGoal.refresh() }
     // 新建还债目标是 overlay 内的子页（与列表/详情互斥渲染）：showCreate 切换,各屏自带
     // BackHandler（互斥 if/else 故同一时刻只有一个生效）。返回回到目标列表,创建成功后
     // 关闭子页并让目标列表重拉。
@@ -211,7 +222,17 @@ internal fun DebtGoalRoute(
     var openedCreationId by rememberSaveable { mutableStateOf(originalCreationId) }
     var linkedDebtId by rememberSaveable { mutableStateOf<String?>(null) }
     val openLinkedDebtId = linkedDebtId
-    if (showCreate) {
+    if (editDateId != null) {
+        com.ticketbox.ui.screens.DebtGoalEditScreen(date, requireNotNull(editDateId), onBack = {
+            editDateId = null
+            if (editLinksId != null) links.refresh() else routeModels.debtGoal.refresh()
+        })
+    } else if (editLinksId != null) {
+        com.ticketbox.ui.screens.DebtGoalEditScreen(links, requireNotNull(editLinksId), onBack = {
+            editLinksId = null
+            routeModels.debtGoal.refresh()
+        }, onOpenDate = { editDateId = it })
+    } else if (showCreate) {
         CreateDebtGoalScreen(
             viewModel = routeModels.createGoal,
             originalSubmissionId = openedCreationId,
@@ -225,35 +246,23 @@ internal fun DebtGoalRoute(
         DebtDetailHost(
             splitAgreement = screenFactory.debtRepository.splitAgreement,
             openDebtId = openLinkedDebtId,
-            models = DebtDetailHostModels(routeModels.linkedDetail, routeModels.linkedProposal, routeModels.linkedRepaymentHistory),
+            models = routeModels.linked,
             onBack = {
                 linkedDebtId = null
                 routeModels.debtGoal.refresh()
             },
         )
     } else {
-        // §6.6 计划达成撒花：在 DebtGoalScreen 之上叠一层浮层（与 DebtRoute 的单笔两清浮层同构）。mascot
-        // controller 是路由层关注点；celebration 由纯成员计划跨「未达成→达成」边沿产出（只读服务端 evaluation_state）。
-        val mascot = rememberMascotController()
-        val celebration by routeModels.debtGoal.celebration.collectAsStateWithLifecycle()
-        // 离屏（切到创建子页 / 关 overlay）时丢弃未消费的撒花信号——浮层动画(~3.8s)中途离开会取消其 consume，
-        // 单例 VM 持有的旧信号否则泄漏到下次进入误撒花（镜像 DebtRoute 的 DisposableEffect）。
-        DisposableEffect(Unit) { onDispose { routeModels.debtGoal.consumeCelebration() } }
-        Box(modifier = Modifier.fillMaxSize()) {
-            // 返回 / overlay 自带回退处理在 DebtGoalScreen 内（详情先收、再关 overlay）。
-            DebtGoalScreen(
-                viewModel = routeModels.debtGoal,
-                onBack = onBack,
+        DebtGoalScreen(
+            viewModel = routeModels.debtGoal,
+            navigation = com.ticketbox.ui.screens.DebtGoalScreenNavigation(onBack = onBack,
+                onOpenRecycleBin = onOpenRecycleBin,
                 onCreate = { openedCreationId = null; showCreate = true },
-                hasCreationDraft = creation.hasDraft,
-                onOpenLinkedDebt = { linkedDebtId = it },
-            )
-            DebtGoalCelebrationOverlay(
-                celebration = celebration,
-                mascot = mascot,
-                onConsume = routeModels.debtGoal::consumeCelebration,
-            )
-        }
+                association = com.ticketbox.ui.screens.DebtGoalEditNavigation(
+                    onOpen = { editLinksId = it }, retainedId = linksState.publicId.takeIf { linksState.hasDraft },
+                    onDate = { editDateId = it }, retainedDateId = dateState.publicId.takeIf { dateState.hasDraft }),
+                hasCreationDraft = creation.hasDraft, onOpenLinkedDebt = { linkedDebtId = it }),
+        )
     }
 }
 

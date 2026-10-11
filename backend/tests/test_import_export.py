@@ -244,7 +244,7 @@ def test_web_import_preview_then_confirm_inserts_pending(web_client: TestClient)
 
     detail = web_client.get(f"/web/import/{batch.public_id}?ledger_id=owner")
     assert detail.status_code == 200
-    assert "CSV 导入批次" in detail.text
+    assert "导入账单文件" in detail.text
     assert "Cafe" in detail.text
     assert "Bus" in detail.text
 

@@ -1,0 +1,19 @@
+<form method="post" action="/web/expenses/{{ undo_expense_id }}/undo" class="undo-banner-action"
+  data-expenseundo-plan-id="{{ undo_idempotency_key }}" data-expenseundo-can-write="{{ 'true' if can_write else 'false' }}"
+  {% if undo_scope %}data-expenseundo-draft-scope='{{ undo_scope | tojson }}'{% endif %}>
+  <input type="hidden" name="draft_scope" value="{{ (undo_scope | tojson if undo_scope else '') | forceescape }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+  <input type="hidden" name="expense_id" value="{{ undo_expense_id }}">
+  <input type="hidden" name="expected_row_version" value="{{ undo_expected_row_version }}">
+  <input type="hidden" name="idempotency_key" value="{{ undo_idempotency_key }}">
+  {% for name, value in undo_origin.items() %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
+  <button type="submit" class="product-button product-button--primary" data-expenseundo-submit{% if not can_write %} disabled{% endif %}>撤销这次忽略</button>
+  <p class="hint" data-expenseundo-draft-status role="status" hidden></p>
+  <button type="button" data-expenseundo-review hidden>核对原操作</button>
+  <p data-expenseundo-review-note hidden></p>
+  <details data-expenseundo-draft-shelf hidden><summary>保留的撤销任务</summary>
+    <ul data-expenseundo-draft-list></ul>
+    <button type="button" class="product-button product-button--quiet" data-expenseundo-discard hidden>放弃本地原提交</button>
+  </details>
+</form>

@@ -7,6 +7,8 @@ import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.ui.components.formatAmountInput
 import com.ticketbox.ui.components.parseAmountCents
+import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.data.repository.RuleDefinitionDraft
 
 data class CategoryRuleDraftForm(
     val keyword: String = "",
@@ -17,6 +19,8 @@ data class CategoryRuleDraftForm(
     val minimumAmount: String = "",
     val maximumAmount: String = "",
     val homeCurrencyCode: String? = null,
+    val sourceContains: String = "",
+    val tagContains: String = "",
 ) {
     val currency: CurrencyCode? get() = CurrencyCode.fromStorageKeyOrNull(homeCurrencyCode)
     val hasUnconfirmedOriginalAmount: Boolean get() = editingRule?.let {
@@ -31,7 +35,7 @@ data class CategoryRuleDraftForm(
         val max = parseBound(maximumAmount)
         requireInput(min == null || max == null || min <= max, R.string.category_rule_validation_range)
         CategoryRuleRequest(keyword.trim(), category.trim(), editingRule?.enabled ?: true, priority,
-            min, max, editingRule?.sourceContains, editingRule?.tagContains,
+            min, max, sourceContains.trim().takeIf { it.isNotEmpty() }, tagContains.trim().takeIf { it.isNotEmpty() },
             homeCurrencyCode = homeCurrencyCode.takeIf { min != null || max != null || editingRule?.homeCurrencyCode != null })
     }
 
@@ -41,13 +45,20 @@ data class CategoryRuleDraftForm(
         return parseAmountCents(raw, selected)?.takeIf { it >= 0 } ?: throw CategoryRuleInputError(R.string.category_rule_validation_amount)
     }
 
+    fun toDraft(binding: LogicalSessionBinding, key: String) = RuleDefinitionDraft(binding, key,
+        keyword, category, priorityText, editingRule, minimumAmount, maximumAmount, homeCurrencyCode, sourceContains, tagContains)
+
     companion object {
+        fun fromDraft(draft: RuleDefinitionDraft) = CategoryRuleDraftForm(draft.keyword, draft.category,
+            draft.priorityText, draft.baseline, minimumAmount = draft.minimumAmount, maximumAmount = draft.maximumAmount,
+            homeCurrencyCode = draft.homeCurrencyCode, sourceContains = draft.sourceContains, tagContains = draft.tagContains)
+
         fun fromRule(rule: CategoryRule): CategoryRuleDraftForm {
             val currency = CurrencyCode.fromStorageKeyOrNull(rule.homeCurrencyCode)
             fun amount(raw: Long?): String = if (currency == null) raw?.toString().orEmpty() else formatAmountInput(raw, currency)
             return CategoryRuleDraftForm(rule.keyword, rule.category, rule.priority.toString(), rule,
                 minimumAmount = amount(rule.amountMinCents), maximumAmount = amount(rule.amountMaxCents),
-                homeCurrencyCode = rule.homeCurrencyCode)
+                homeCurrencyCode = rule.homeCurrencyCode, sourceContains = rule.sourceContains.orEmpty(), tagContains = rule.tagContains.orEmpty())
         }
     }
 }

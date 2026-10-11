@@ -155,37 +155,38 @@
     <string name="stats_frequent_merchants_count">%1$d 笔</string>
 
     <!-- 数据质量：洞察入口、二级页与账本体检概况 -->
-    <string name="stats_data_quality_entry_title">数据质量</string>
+    <string name="stats_data_quality_entry_title">数据体检</string>
     <string name="stats_data_quality_entry_attention">待确认 %1$d 项 · 未分类 %2$d 项 · 疑似重复 %3$d 项 · 已确认无图 %4$d 项</string>
     <string name="stats_data_quality_entry_clear">当前账本的数据状态良好</string>
     <string name="stats_data_quality_entry_loading">正在读取当前账本的数据状态</string>
     <string name="stats_data_quality_entry_unavailable">数据状态暂时不可用，点按重试</string>
-    <string name="stats_data_quality_page_title">数据质量</string>
-    <string name="stats_data_quality_page_subtitle">检查当前账本的待确认、分类完整性与凭证状态。</string>
+    <string name="stats_data_quality_page_title">让记录再完整一点</string>
+    <string name="stats_data_quality_page_subtitle">从原记录补齐信息，再刷新统计。</string>
     <string name="stats_data_quality_back_to_insights">洞察</string>
     <string name="stats_data_quality_error_title">暂时无法读取数据质量</string>
     <string name="stats_data_quality_load_failed">数据质量暂时无法加载，请稍后重试。</string>
-    <string name="stats_data_quality_empty_title">数据状态良好</string>
+    <string name="stats_data_quality_empty_title">暂时没有待补的信息</string>
     <string name="stats_data_quality_empty_body">当前没有待确认、未分类、疑似重复或缺少凭证的记录。</string>
     <string name="stats_data_quality_open_inbox">查看待确认</string>
     <string name="stats_data_quality_open_uncategorized_transactions">查看已确认未分类交易</string>
-    <string name="stats_data_quality_remediation_inbox_hint">进入收件对应筛选处理</string>
-    <string name="stats_data_quality_remediation_transactions_hint">进入流水问题筛选查看</string>
+    <string name="stats_data_quality_remediation_inbox_hint">从收件中的原记录继续</string>
+    <string name="stats_data_quality_remediation_transactions_hint">从流水中的原记录继续</string>
+    <string name="stats_data_quality_remediation_summary">%1$d 项 · %2$s</string>
     <string name="stats_data_quality_remediation_content_description">打开处理入口</string>
     <string name="stats_pending_overview_title">待确认与完整性</string>
     <string name="stats_pending_overview_oldest">最久 %1$d 天</string>
     <string name="stats_pending_overview_oldest_empty">—</string>
-    <string name="stats_pending_overview_hint">去待确认页处理，整理后这里会清零。</string>
+    <string name="stats_pending_overview_hint">补齐信息后返回刷新；每次入账仍由你确认。</string>
 
     <!-- ReportsInsightCards：动态图表 + 月度目标 -->
-    <string name="stats_reports_answer_title">本月结论</string>
+    <string name="stats_reports_answer_title">本月净支出</string>
     <string name="stats_reports_answer_subtitle">%1$s · %2$d 笔已确认</string>
     <string name="stats_reports_answer_current_label">本月记录</string>
     <string name="stats_reports_answer_count_value">%1$d 笔</string>
     <string name="stats_reports_answer_previous_label">较上月</string>
     <string name="stats_reports_answer_yoy_label">同比</string>
-    <string name="stats_reports_answer_active_label">月内活跃</string>
-    <string name="stats_reports_answer_active_value">%1$d 天</string>
+    <string name="stats_reports_answer_active_label">有净支出的时段</string>
+    <string name="stats_reports_answer_active_value">%1$d 个时段</string>
     <string name="stats_reports_answer_delta_more">多 %1$s</string>
     <string name="stats_reports_answer_delta_less">少 %1$s</string>
     <string name="stats_reports_answer_delta_flat">持平</string>
@@ -203,13 +204,13 @@
     <string name="stats_reports_chart_peak">峰值 %1$s</string>
     <string name="stats_reports_chart_takeaway_concentrated">支出集中在 %1$s，占本月 %2$d%%</string>
     <string name="stats_reports_chart_takeaway_spread">本月 %1$d 个时间段有支出，峰值占 %2$d%%</string>
-    <string name="stats_reports_chart_distribution_hint">峰值占 %1$d%%，非峰值日均 %2$s</string>
+    <string name="stats_reports_chart_distribution_hint">峰值占 %1$d%%，其余时段平均 %2$s</string>
     <string name="stats_reports_chart_active_days">有支出</string>
-    <string name="stats_reports_chart_active_days_value">%1$d 天</string>
+    <string name="stats_reports_chart_active_days_value">%1$d 个时段</string>
     <string name="stats_reports_chart_peak_share_label">峰值占比</string>
     <string name="stats_reports_chart_peak_share_value">%1$d%%</string>
-    <string name="stats_reports_chart_other_average_label">非峰值日均</string>
-    <string name="stats_reports_chart_other_total">其余 %1$d 天</string>
+    <string name="stats_reports_chart_other_average_label">其余时段平均</string>
+    <string name="stats_reports_chart_other_total">其余 %1$d 个时段</string>
     <!-- 轴3 粒度切换（日/周两档；单月报表内「月」只有一桶无图可画，刻意不给）。 -->
     <string name="stats_reports_granularity_day">按日</string>
     <string name="stats_reports_granularity_week">按周</string>
@@ -235,7 +236,7 @@
          补 contentDescription。%1$s 由代码用「标签 金额」/「分类 本月X 上月Y」按可用系列逐档拼接；
          _with_zeros 变体把零额档汇总成「其余 N 档无支出」，避免日粒度下逐日朗读 ¥0.00。 -->
     <string name="stats_reports_chart_a11y">支出趋势，各档金额：%1$s</string>
-    <string name="stats_reports_chart_a11y_with_zeros">支出趋势，各档金额：%1$s；其余 %2$d 档无支出</string>
+    <string name="stats_reports_chart_a11y_with_zeros">净支出趋势，各档金额：%1$s；其余 %2$d 档净额为零</string>
     <string name="stats_reports_comparison_a11y">分类对比：%1$s</string>
     <string name="stats_reports_merchant_frequency_title">高频商家</string>
     <string name="stats_reports_merchant_spend_title">商家金额排行</string>
@@ -295,7 +296,16 @@
     <!-- ADR-0049 §6 (slice 7) 还债目标：还债目标列表/详情 + §6/F13 完整性复核 -->
     <string name="debt_goal_topbar_back">返回</string>
     <string name="debt_goal_topbar_title">还债目标</string>
-    <string name="debt_goal_intro_body">跟踪关联欠款的清偿，全部还清即达成目标。</string>
+    <string name="debt_goal_intro_body">每一步都以真实欠款为依据。</string>
+    <string name="debt_goal_page_title">离还清更近一点</string>
+    <string name="debt_goal_archived_show">查看已归档目标</string>
+    <string name="debt_goal_archived_hide">收起已归档目标</string>
+    <string name="debt_goal_archived_title">已归档目标</string>
+    <string name="debt_goal_archived_empty">还没有已归档的目标。</string>
+    <string name="debt_goal_recovery_body">目标已归档，关联欠款与清偿记录仍保留。可从回收站恢复。</string>
+    <string name="debt_goal_archive_title">归档这个还债目标？</string>
+    <string name="debt_goal_archive_body">归档后可在已归档目标中查看，也可从回收站恢复。关联欠款与清偿记录不会改变。</string>
+    <string name="debt_goal_link_count">%1$d 笔关联</string>
     <string name="debt_goal_overview_title">目标概况</string>
     <string name="debt_goal_metric_active">当前目标</string>
     <string name="debt_goal_metric_achieved">已达成</string>
@@ -316,7 +326,7 @@
     <string name="debt_goal_review_body_achieved">目标已达成，但有关联欠款被判作废。请确认如何处理。</string>
     <string name="debt_goal_review_body_not_evaluable">有关联欠款被判作废，目标暂时无法评估。请移除该作废欠款后继续。</string>
     <string name="debt_goal_review_body_all_voided">全部关联欠款已被作废，该目标无法继续评估。可归档此目标。</string>
-    <string name="debt_goal_review_action_remove">移除作废欠款</string>
+    <string name="debt_goal_review_action_remove">核对关联欠款</string>
     <string name="debt_goal_review_action_keep">保留存档</string>
     <string name="debt_goal_review_action_archive">归档目标</string>
     <string name="debt_goal_archived">已归档目标。</string>
@@ -340,7 +350,25 @@
     <string name="debt_goal_counterparty_external">外部欠款</string>
     <string name="debt_goal_load_failed">还债目标加载失败，请稍后再试。</string>
     <string name="debt_goal_update_failed">更新失败，请稍后再试。</string>
-    <string name="debt_goal_links_updated">已更新关联的欠款。</string>
+    <string name="debt_goal_date_title">希望什么时候还清</string>
+    <string name="debt_goal_date_label">还清日期</string>
+    <string name="debt_goal_date_empty">尚未设置日期</string>
+    <string name="debt_goal_date_save">保存日期</string>
+    <string name="debt_goal_date_continue">继续日期草稿</string>
+    <string name="debt_goal_date_discard_body">只放弃这份尚未提交的日期修改，目标和偿还记录保持不变。</string>
+    <string name="debt_goal_date_cleared">清除还清日期</string>
+    <string name="debt_goal_links_title">这个目标关联哪些欠款</string>
+    <string name="debt_goal_links_action">调整关联</string>
+    <string name="debt_goal_links_continue">继续关联草稿</string>
+    <string name="debt_goal_links_save">保存关联</string>
+    <string name="debt_goal_links_review">核对最新目标并继续</string>
+    <string name="debt_goal_links_review_body">读取最新目标并撤下这份已拒绝的提交。原输入会保留为草稿，点击保存后才提交新的修改。</string>
+    <string name="debt_goal_links_review_unavailable">还无法在线确认最新目标，请稍后重试；原提交和输入已保留。</string>
+    <string name="debt_goal_links_read_only">当前不能修改，原输入仍为你保留。</string>
+    <string name="debt_goal_links_unavailable">原关联欠款</string>
+    <string name="debt_goal_links_remove">移除这项选择</string>
+    <string name="debt_goal_links_same_goal">保存后仍是同一个目标，其它欠款的实际偿还记录不变。</string>
+    <string name="debt_goal_links_discard_body">只放弃这份尚未提交的关联选择，目标和偿还记录保持不变。</string>
     <string name="debt_goal_review_acknowledged">已确认保留存档。</string>
     <string name="debt_goal_remove_voided_needs_one">至少需要保留一笔有效欠款。</string>
 
@@ -669,6 +697,8 @@
     <!-- RecurringScreen：固定支出独立屏 -->
     <string name="recurring_back_to_stats">返回计划</string>
     <string name="recurring_header_title">固定支出</string>
+    <string name="recurring_section_formal">正式计划</string>
+    <string name="recurring_section_suggestions">发现的建议</string>
     <string name="recurring_header_subtitle">记录每月固定支出，只做提醒和对比，不会自动入账。</string>
     <string name="recurring_items_card_title">%1$s 固定支出</string>
     <string name="recurring_items_card_count">%1$d 项</string>
@@ -682,7 +712,7 @@
     <string name="recurring_action_pause_description">暂停固定支出</string>
     <string name="recurring_action_resume_description">继续固定支出</string>
     <string name="recurring_action_archive_description">归档固定支出</string>
-    <string name="recurring_candidates_card_title">固定支出候选（未确认）</string>
+    <string name="recurring_candidates_card_title">确认后才成为计划</string>
     <string name="recurring_candidates_card_subtitle">识别自最近账单，仅供参考；采用后才进入正式固定支出。</string>
     <string name="recurring_candidates_empty">还没有新的固定支出候选。</string>
     <string name="recurring_candidates_load_failed_title">候选暂时打不开</string>
@@ -690,6 +720,8 @@
     <string name="recurring_candidate_merchant_fallback">未填写商家</string>
     <string name="recurring_candidate_meta">%1$s · %2$d 次 · %3$s</string>
     <string name="recurring_candidate_meta_summary">%1$d &#27425; &#183; %2$s</string>
+    <string name="recurring_candidate_stable">规律较稳定</string>
+    <string name="recurring_candidate_review">仍需核对</string>
     <string name="recurring_candidate_confirm">采用建议</string>
     <string name="recurring_candidate_confirm_description">确认固定支出候选</string>
     <string name="recurring_badge_loading">读取中</string>
@@ -702,8 +734,8 @@
 
     <!-- BudgetHeader / MonthSwitcher：预算屏头部 + 月份切换 -->
     <string name="budget_back_to_stats">返回计划</string>
-    <string name="budget_header_title">预算</string>
-    <string name="budget_header_subtitle">%1$s 月度可花额度</string>
+    <string name="budget_header_title">这个月，心里有数</string>
+    <string name="budget_header_subtitle">%1$s · 月度预算</string>
     <string name="budget_month_previous">上月</string>
     <string name="budget_month_next">下月</string>
 
@@ -731,7 +763,9 @@
 
     <!-- BudgetEditorSection / BudgetFields：预算编辑 + 输入字段。
          只读提示复用 common_readonly_ledger、保存中复用 common_saving（strings.xml 已有同值）。 -->
-    <string name="budget_editor_title">预算设置</string>
+    <string name="budget_editor_title">给这个月定个额度</string>
+    <string name="budget_editor_open">调整本月预算</string>
+    <string name="budget_editor_back">返回预算</string>
     <string name="budget_editor_save">保存预算</string>
     <string name="budget_editor_total_label">月度总预算</string>
     <string name="budget_editor_total_placeholder">3000</string>
@@ -837,6 +871,9 @@
     <string name="recurring_hero_unavailable">待刷新</string>
     <string name="recurring_pending_title">待同步</string>
     <string name="recurring_pending_note">已保存在本机，同步完成后才计入计划。</string>
+    <string name="recurring_pending_manage">查看待同步操作</string>
+    <string name="recurring_pending_kind_candidate">采用建议</string>
+    <string name="recurring_candidate_pending">这条建议已有采用提交，请从待同步记录继续核实。</string>
     <string name="recurring_pending_kind_create">新建</string>
     <string name="recurring_pending_kind_update">修改</string>
     <string name="recurring_action_restore_description">恢复固定支出</string>
@@ -879,7 +916,7 @@
     <string name="recurring_pending_state_waiting">等待同步</string>
     <string name="recurring_pending_state_conflict">同步冲突</string>
     <string name="recurring_pending_state_failed">同步失败</string>
-    <string name="recurring_pending_state_guidance">请在「设置 · 离线同步」里查看并处理。</string>
+    <string name="recurring_pending_state_guidance">打开待同步操作，核对原提交并继续处理。</string>
     <string name="recurring_pending_kind_state">%1$s · %2$s</string>
     <string name="recurring_pending_update_unknown">待同步的固定支出修改</string>
     <string name="recurring_pending_change_merchant">名称改为 %1$s</string>
@@ -895,7 +932,6 @@
     <string name="recurring_conflict_action_restore">恢复这条记录</string>
 
     <!-- A3：候选失败降层（辅助区不再与主列表并列红色错误卡） -->
-    <string name="recurring_candidates_unavailable_quiet">候选也暂时不可用，刷新成功后恢复。</string>
 
     <!-- BudgetViewModel：预算屏 Snackbar/提示文案 -->
     <string name="budget_message_load_failed">预算暂时打不开，请稍后再试。</string>

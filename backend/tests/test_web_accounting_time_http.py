@@ -1,5 +1,6 @@
 """Native calendar evidence through the installed browser's real HTTP commands."""
 
+import re
 from datetime import UTC, date, datetime
 
 import pytest
@@ -50,7 +51,8 @@ def test_native_date_only_create_replay_has_one_fact_and_original_ack(installed_
         assert db.scalar(select(func.count()).select_from(query.subquery())) == 1
     detail = installed_web.browser.get(first.headers["location"], headers=headers)
     assert detail.status_code == 200, detail.text
-    assert "账务日期 2026-08-31" in detail.text and "发生时刻 未记录" in detail.text
+    assert "账务日期 2026-08-31" in detail.text
+    assert re.search(r"<dt>发生时刻</dt>\s*<dd>未记录</dd>", detail.text)
     assert "data-manual-draft-ack=" in detail.text
 
 

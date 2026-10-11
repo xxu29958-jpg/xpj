@@ -63,15 +63,9 @@ internal class UploadIntentRepositoryFixture : Closeable {
     private fun newRepository(): UploadIntentRepository {
         val actualDao = dao
         val interceptedDao = object : PendingMutationDao by actualDao {
-            override suspend fun insertBatch(rows: List<PendingMutationEntity>): List<Long> {
-                nextInsertFailure?.let { nextInsertFailure = null; throw it }
-                val ids = actualDao.insertBatch(rows)
-                if (loseNextInsertAcknowledgement) {
-                    loseNextInsertAcknowledgement = false
-                    throw IOException("Synthetic acknowledgement lost after Room commit")
-                }
-                return ids
-            }
+            override suspend fun insertBatch(rows: List<PendingMutationEntity>) = recordInsert { actualDao.insertBatch(rows) }
+            override suspend fun insertBatchAndPublish(rows: List<PendingMutationEntity>, publish: suspend () -> Unit) =
+                recordInsert { actualDao.insertBatchAndPublish(rows, publish) }
         }
         val sessions = repositoryUploadProxy<LocalSessionStore> { method, _ -> when (method) {
             "currentSession" -> session.value
@@ -106,7 +100,17 @@ internal class UploadIntentRepositoryFixture : Closeable {
             bindingChanges = session.map { it.toOutboxBinding() }, onEnqueued = { scheduled++ },
             onRowsDeleted = { repository.collectOrphans() })
         return UploadIntentRepository(provider, outbox, fileStore,
-            adapters.uploadPayloadAdapter, adapters.uploadReceiptAdapter, settings)
+            adapters, settings, database.expenseDao())
+    }
+
+    private suspend fun recordInsert(insert: suspend () -> List<Long>): List<Long> {
+        nextInsertFailure?.let { nextInsertFailure = null; throw it }
+        val ids = insert()
+        if (loseNextInsertAcknowledgement) {
+            loseNextInsertAcknowledgement = false
+            throw IOException("Synthetic acknowledgement lost after Room commit")
+        }
+        return ids
     }
 
     fun reopen(): UploadIntentRepository {

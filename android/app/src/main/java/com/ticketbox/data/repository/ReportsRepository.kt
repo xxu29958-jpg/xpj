@@ -2,8 +2,6 @@ package com.ticketbox.data.repository
 
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.DebtGoalIntegrityReviewRequestDto
-import com.ticketbox.data.remote.dto.DebtGoalLinksReplaceRequestDto
-import com.ticketbox.data.remote.dto.DebtGoalTargetDateRequestDto
 import com.ticketbox.data.remote.dto.GoalDto
 import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.domain.model.DashboardCardUpdate
@@ -62,17 +60,6 @@ interface ReportsActions : DashboardCardsActions {
         timezone: String = TimeZone.getDefault().id): Result<ReadSnapshot<List<Goal>>>
 
     /**
-     * Replace a debt_repayment goal's linked Debt set (→ a new goal version). One of
-     * the §6/F13 integrity-review exits: submit the non-voided link ids to take a
-     * debt-voided Debt out of the goal. [expectedRowVersion] is the OCC token.
-     */
-    suspend fun replaceDebtLinks(
-        publicId: String,
-        expectedRowVersion: Long,
-        debtPublicIds: List<String>,
-    ): Result<Goal>
-
-    /**
      * Acknowledge ("keep for audit") an achieved debt goal version whose linked set
      * carries a debt-voided Debt (§6/F13) — clears needs_review for the current
      * version. [expectedRowVersion] is the OCC token.
@@ -82,16 +69,6 @@ interface ReportsActions : DashboardCardsActions {
         expectedRowVersion: Long,
     ): Result<Goal>
 
-    /**
-     * ADR-0049 §7.0 / 8e-6c: set ([targetDate] = ISO `yyyy-MM-dd`) or clear ([targetDate] = null)
-     * a debt_repayment goal's payoff deadline. OCC-gated by [expectedRowVersion] (= the goal's
-     * current `row_version`); the setter bumps `row_version` only, never `goal_version`.
-     */
-    suspend fun setDebtGoalTargetDate(
-        publicId: String,
-        expectedRowVersion: Long,
-        targetDate: String?,
-    ): Result<Goal>
 }
 
 class ReportsRepository(
@@ -173,32 +150,6 @@ class ReportsRepository(
     override suspend fun debtGoals(includeArchived: Boolean, expectedBinding: LogicalSessionBinding?,
         timezone: String): Result<ReadSnapshot<List<Goal>>> = goalQueries.debtGoals(includeArchived, expectedBinding, timezone)
 
-    override suspend fun replaceDebtLinks(
-        publicId: String,
-        expectedRowVersion: Long,
-        debtPublicIds: List<String>,
-    ): Result<Goal> {
-        if (!canModifyLedger()) {
-            return Result.failure(RepositoryException("当前角色为只读，无法修改账本。"))
-        }
-        val cleanPublicId = publicId.cleanPublicId()
-            .getOrElse { return Result.failure(it) }
-        val cleanIds = debtPublicIds.cleanDebtPublicIds()
-            .getOrElse { return Result.failure(it) }
-        return goalCommand { api ->
-            api.replaceGoalDebtLinks(
-                publicId = cleanPublicId,
-                request = DebtGoalLinksReplaceRequestDto(
-                    expectedRowVersion = expectedRowVersion,
-                    debtPublicIds = cleanIds,
-                ),
-                // ADR-0042: single-use key — direct-only path, no offline replay.
-                idempotencyKey = UUID.randomUUID().toString(),
-                timezone = currentTimezoneId(),
-            )
-        }
-    }
-
     override suspend fun acknowledgeDebtIntegrityReview(
         publicId: String,
         expectedRowVersion: Long,
@@ -212,33 +163,6 @@ class ReportsRepository(
             api.acknowledgeGoalIntegrityReview(
                 publicId = cleanPublicId,
                 request = DebtGoalIntegrityReviewRequestDto(expectedRowVersion),
-                idempotencyKey = UUID.randomUUID().toString(),
-                timezone = currentTimezoneId(),
-            )
-        }
-    }
-
-    override suspend fun setDebtGoalTargetDate(
-        publicId: String,
-        expectedRowVersion: Long,
-        targetDate: String?,
-    ): Result<Goal> {
-        if (!canModifyLedger()) {
-            return Result.failure(RepositoryException("当前角色为只读，无法修改账本。"))
-        }
-        val cleanPublicId = publicId.cleanPublicId()
-            .getOrElse { return Result.failure(it) }
-        return goalCommand { api ->
-            // targetDate null → Moshi omits the field → the optional backend setter reads it as
-            // "clear" (a setter: omitted == clear, no partial-update ambiguity). A non-null ISO
-            // date sets the deadline.
-            api.setGoalTargetDate(
-                publicId = cleanPublicId,
-                request = DebtGoalTargetDateRequestDto(
-                    expectedRowVersion = expectedRowVersion,
-                    targetDate = targetDate,
-                ),
-                // ADR-0042: single-use key — direct-only path, no offline replay.
                 idempotencyKey = UUID.randomUUID().toString(),
                 timezone = currentTimezoneId(),
             )
@@ -312,16 +236,6 @@ class ReportsRepository(
 
 private val REPORTS_MONTH_PATTERN = Regex("^\\d{4}-\\d{2}$")
 
-
-private fun List<String>.cleanDebtPublicIds(): Result<List<String>> {
-    return runCatching {
-        // Order-preserving dedupe (mirrors the backend resolver) so a doubly-tapped
-        // Debt isn't sent twice; the server also dedupes, but a clean request is tidier.
-        val clean = map { it.trim() }.filter { it.isNotBlank() }.distinct()
-        require(clean.isNotEmpty()) { "请至少关联一笔欠款。" }
-        clean
-    }.mapError()
-}
 
 private fun ReportsOverviewQuery.validated(): Result<ReportsOverviewQuery> {
     return runCatching {

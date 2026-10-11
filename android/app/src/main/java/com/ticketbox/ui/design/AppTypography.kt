@@ -17,21 +17,21 @@ data class AppTextRole(
  * 页面和组件不得重新拼装局部数值。
  */
 object AppTypeScale {
-    val amountHero = AppTextRole(34.sp, 38.sp, FontWeight.SemiBold, (-0.5).sp)
+    val amountHero = AppTextRole(42.sp, 47.sp, FontWeight.SemiBold, (-0.5).sp)
     val amountDisplay = AppTextRole(42.sp, 46.sp, FontWeight.SemiBold, (-0.5).sp)
-    val pageHero = AppTextRole(28.sp, 32.sp, FontWeight.Bold, (-0.25).sp)
+    val pageHero = AppTextRole(30.sp, 35.sp, FontWeight.Bold, (-0.25).sp)
     val pageTitle = AppTextRole(24.sp, 32.sp, FontWeight.Bold)
     val headline = AppTextRole(22.sp, 28.sp, FontWeight.Bold)
     val headlineQuiet = AppTextRole(22.sp, 28.sp, FontWeight.SemiBold)
     val sectionTitle = AppTextRole(18.sp, 24.sp, FontWeight.SemiBold)
     val cardTitle = AppTextRole(17.sp, 22.sp, FontWeight.SemiBold)
-    val bodyStrong = AppTextRole(15.sp, 20.sp, FontWeight.Medium, 0.1.sp)
-    val body = AppTextRole(14.sp, 22.sp, FontWeight.Normal, 0.15.sp)
-    val caption = AppTextRole(12.sp, 17.sp, FontWeight.Normal, 0.25.sp)
+    val bodyStrong = AppTextRole(16.sp, 22.sp, FontWeight.Medium, 0.1.sp)
+    val body = AppTextRole(16.sp, 25.sp, FontWeight.Normal, 0.15.sp)
+    val caption = AppTextRole(13.sp, 18.sp, FontWeight.Normal, 0.25.sp)
     val captionCompact = AppTextRole(12.sp, 16.sp, FontWeight.Normal, 0.4.sp)
-    val control = AppTextRole(15.sp, 20.sp, FontWeight.Medium, 0.1.sp)
+    val control = AppTextRole(16.sp, 22.sp, FontWeight.Medium, 0.1.sp)
     val controlCompact = AppTextRole(12.sp, 16.sp, FontWeight.Medium, 0.5.sp)
-    val appLabel = AppTextRole(15.sp, 20.sp, FontWeight.SemiBold, 0.1.sp)
+    val appLabel = AppTextRole(16.sp, 22.sp, FontWeight.SemiBold, 0.1.sp)
     val chip = AppTextRole(13.sp, 18.sp, FontWeight.Medium)
     val amountMedium = AppTextRole(22.sp, 26.sp, FontWeight.Bold)
 }
@@ -92,9 +92,9 @@ fun TextStyle.tabularNum(): TextStyle = copy(fontFeatureSettings = "tnum")
  *
  * 金额排版单源：
  *   - [Display] —— 大幅可读性预览的焦点数字，42sp SemiBold。
- *   - [Hero]   —— 每屏唯一的焦点数字（月度总支出等），34sp SemiBold。
+ *   - [Hero]   —— 每屏唯一的焦点数字（月度总支出等），42sp SemiBold。
  *   - [Medium] —— 卡片 / 列表里的次级金额，22sp Bold。
- *   - [Compact] —— 密集列表 / 明细行里的金额，15sp Medium。
+ *   - [Compact] —— 密集列表 / 明细行里的金额，16sp Medium。
  *
  * 字号、行高与字重来自同一 [AppTextRole]。配合 [asAmount] 使用。
  */

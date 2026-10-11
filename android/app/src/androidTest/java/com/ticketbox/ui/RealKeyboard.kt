@@ -9,6 +9,7 @@ import androidx.compose.ui.test.junit4.ComposeTestRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.test.espresso.Espresso.closeSoftKeyboard
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertTrue
 import org.junit.rules.ExternalResource
@@ -28,6 +29,15 @@ class RealKeyboard : ExternalResource() {
             shell(if (previous == "null") "settings delete secure show_ime_with_hard_keyboard"
                 else "settings put secure show_ime_with_hard_keyboard $previous")
         }
+    }
+
+    fun dismissAndWait(compose: ComposeTestRule) {
+        closeSoftKeyboard()
+        // Finish the OS hide before a following task creates another dialog.
+        // Compose idleness does not settle the separate input-method window.
+        compose.waitUntil(5_000) { compose.runOnIdle { keyboardWindow() == null } }
+        instrumentation.uiAutomation.waitForIdle(500, 5_000)
+        compose.waitForIdle()
     }
 
     fun assertActionAboveKeyboard(compose: ComposeTestRule, label: String, captureName: String) {

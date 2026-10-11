@@ -7,23 +7,37 @@
   <script>window.CONTROL_TOKEN="__CONTROL_TOKEN__";</script>
   <style>
     :root {
-      --page: #f3f5f2;
+      --page: #fafbf7;
       --surface: #ffffff;
-      --surface-subtle: #f8faf7;
-      --ink: #202521;
-      --muted: #68716a;
-      --line: #d8ddd8;
-      --line-strong: #bec7bf;
-      --green: #176b4d;
-      --green-soft: #e7f2eb;
+      --surface-subtle: #e9efeb;
+      --ink: #23362d;
+      --muted: #5f6c60;
+      --line: #dee4e0;
+      --line-strong: #b5beb7;
+      --green: #246653;
+      --green-strong: #0d3d38;
+      --on-primary: #fdfefd;
+      --apricot: #f8e6d6;
+      --lilac: #eee8f8;
+      --sand: #f1eddb;
+      --green-soft: #e9f0dc;
       --blue: #315f95;
       --blue-soft: #e9f0f8;
       --amber: #8a5a1c;
       --amber-soft: #f8efdf;
       --red: #aa3c32;
       --red-soft: #fae9e6;
-      --shadow: 0 8px 24px rgba(31, 42, 34, 0.07);
-      --font: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+      --shadow: none;
+      /* Same text roles as shared/tokens.css; the Manager stays self-contained. */
+      --type-hero-size: 30px;
+      --type-title-size: 18px;
+      --type-body-size: 16px;
+      --type-caption-size: 13px;
+      --type-meta-size: 12px;
+      --type-body-line: 1.55;
+      --radius-card: 20px;
+      --radius-input: 14px;
+      --font: "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
       --mono: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
     }
 
@@ -34,31 +48,20 @@
       background: var(--page);
       color: var(--ink);
       font-family: var(--font);
-      font-size: 14px;
+      font-size: var(--type-body-size);
+      line-height: var(--type-body-line);
       letter-spacing: 0;
       -webkit-font-smoothing: antialiased;
     }
     button { font: inherit; letter-spacing: 0; }
-    button:focus-visible, summary:focus-visible {
-      outline: 3px solid rgba(49, 95, 149, 0.28);
+    button:focus-visible, summary:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible {
+      outline: 2px solid var(--green);
       outline-offset: 2px;
     }
-    .shell { width: min(940px, 100%); margin: 0 auto; padding: 22px 24px 28px; }
+    .shell { width: min(1440px, 100%); margin: 0 auto; padding: 32px 40px 40px; }
     .topbar { display: flex; align-items: center; gap: 12px; min-height: 42px; }
-    .brand-mark {
-      width: 36px;
-      height: 36px;
-      display: grid;
-      place-items: center;
-      border: 1px solid #0f563d;
-      border-radius: 8px;
-      background: var(--green);
-      color: #fff;
-      font-size: 17px;
-      font-weight: 700;
-    }
-    .brand-name { font-size: 17px; font-weight: 700; line-height: 1.25; }
-    .brand-meta { margin-top: 2px; color: var(--muted); font-size: 12px; }
+    .brand-name { margin: 0; font-size: var(--type-hero-size); font-weight: 700; line-height: 1.3; }
+    .brand-meta { margin-top: 8px; color: var(--muted); }
     .overall-state {
       margin-left: auto;
       display: flex;
@@ -67,10 +70,10 @@
       min-height: 30px;
       padding: 5px 10px;
       border: 1px solid var(--line);
-      border-radius: 6px;
+      border-radius: 999px;
       background: var(--surface);
       color: var(--muted);
-      font-size: 12px;
+      font-size: var(--type-caption-size);
       font-weight: 650;
     }
     .state-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--line-strong); }
@@ -81,199 +84,207 @@
     .overall-state.is-error { border-color: #e0b0aa; color: var(--red); background: var(--red-soft); }
     .overall-state.is-error .state-dot { background: var(--red); }
     .product-link {
-      min-height: 30px;
+      min-height: 44px;
       display: inline-flex;
       align-items: center;
       margin-left: auto;
       padding: 5px 8px;
       color: var(--muted);
-      font-size: 12px;
+      font-size: inherit;
       font-weight: 650;
       text-decoration: none;
     }
     .product-link:hover { color: var(--ink); text-decoration: underline; }
     .product-link + .overall-state { margin-left: 0; }
-    .product-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+    .product-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: flex-start; min-width: 0; }
     .product-actions input[type="text"], .product-actions select {
-      min-height: 34px;
-      padding: 6px 9px;
+      min-height: 48px;
+      padding: 10px 14px;
       border: 1px solid var(--line);
-      border-radius: 8px;
+      border-radius: var(--radius-input);
       font: inherit;
-      font-size: 13px;
+      min-width: 0;
       color: var(--ink);
-      background: var(--card);
+      background: var(--surface);
     }
-    .product-actions input[type="text"] { width: 9em; letter-spacing: 0.12em; }
+    .product-actions input[type="text"] { width: 100%; letter-spacing: 0.12em; }
+    #productPairGroup { display: grid; width: 100%; justify-content: stretch; }
+    #productPairGroup label { display: grid; gap: 8px; color: var(--muted); }
+    #pairingCodeInput { min-height: 52px; }
+    #desktopPairingCodeAction { justify-content: space-between; border-color: transparent; color: var(--green); }
+    #productManageGroup { border-top: 1px solid var(--line); padding-top: 16px; }
+    #productManageGroup select { max-width: 100%; }
+    .service-overview { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 24px; margin-top: 28px; }
+    body:has(#overallState.is-ok) .service-overview > .service-band--runtime { background: var(--green-soft); }
+    body:has(#overallState.is-error) .service-overview > .service-band--runtime { background: var(--red-soft); }
+    .service-band--product .service-actions { align-items: stretch; flex-direction: column; }
+    .service-band--product .product-link { margin: 0; align-self: start; gap: 8px; min-height: 52px; padding: 12px 28px; border-radius: var(--radius-input); background: var(--green); color: var(--on-primary); font-weight: 600; }
+    .service-overview:has(#productPairGroup:not([hidden])) .service-band--product { align-self: start; }
+    .service-overview:has(#productPairGroup:not([hidden])) .service-band--product .service-title { margin: 0; font-size: var(--type-title-size); }
+    .service-band--product .message { margin-top: 0; }
     /* The hidden attribute is authoritative over every display rule above —
        pair form / manage group / product link must never coexist. */
     [hidden] { display: none !important; }
 
     .service-band {
-      margin-top: 18px;
+      margin-top: 0;
       display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      align-items: center;
-      gap: 22px;
-      min-height: 128px;
-      padding: 20px 22px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
+      grid-template-columns: minmax(0, 1fr);
+      align-items: start;
+      gap: 24px;
+      min-height: 260px;
+      padding: 28px;
+      border: 0;
+      border-radius: var(--radius-card);
       background: var(--surface);
       box-shadow: var(--shadow);
     }
-    .eyebrow { color: var(--muted); font-size: 12px; font-weight: 650; }
-    .service-title { margin: 7px 0 0; font-size: 25px; line-height: 1.2; font-weight: 720; }
-    .service-detail { margin-top: 8px; color: var(--muted); line-height: 1.45; }
-    .service-actions { display: flex; align-items: center; gap: 8px; }
+    .eyebrow { color: var(--ink); font-size: var(--type-title-size); font-weight: 600; }
+    .service-title { margin: 8px 0 0; font-size: var(--type-hero-size); line-height: 1.3; font-weight: 700; }
+    .service-detail { margin-top: 8px; color: var(--muted); }
+    .service-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
     .button {
-      min-height: 38px;
+      min-height: 44px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
       gap: 7px;
       padding: 8px 13px;
       border: 1px solid var(--line-strong);
-      border-radius: 6px;
+      border-radius: var(--radius-input);
       background: var(--surface);
       color: var(--ink);
       cursor: pointer;
-      font-weight: 650;
-      white-space: nowrap;
+      font-weight: 600;
+      white-space: normal;
       transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
     }
     .button:hover:not(:disabled) { border-color: #8e9990; background: var(--surface-subtle); }
     .button:active:not(:disabled) { background: #edf0ed; }
     .button:disabled { cursor: default; opacity: 0.48; }
-    .button-primary { border-color: var(--green); background: var(--green); color: #fff; }
-    .button-primary:hover:not(:disabled) { border-color: #10573f; background: #10573f; }
+    .button-primary { min-height: 52px; border-color: var(--green); background: var(--green); color: var(--on-primary); }
+    .button-primary:hover:not(:disabled) { border-color: var(--green-strong); background: var(--green-strong); }
     .button-danger { color: var(--red); }
     .button-primary.button-danger { border-color: #d3a39e; background: var(--surface); color: var(--red); }
     .button-primary.button-danger:hover:not(:disabled) { border-color: var(--red); background: var(--red-soft); }
-    .button-icon { width: 38px; padding: 8px; font-size: 18px; }
-    .icon { display: inline-grid; width: 18px; height: 18px; place-items: center; font-size: 15px; line-height: 18px; }
+    .button-icon { width: 44px; padding: 8px; font-size: 18px; }
+    .icon-definitions { position: absolute; overflow: hidden; }
+    .icon { display: block; flex: 0 0 20px; width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
     .spinner { animation: spin 900ms linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
 
     .message {
       margin-top: 12px;
       display: none;
       align-items: flex-start;
       gap: 9px;
-      padding: 11px 13px;
+      padding: 16px;
       border: 1px solid var(--line);
-      border-radius: 6px;
-      line-height: 1.45;
+      border-radius: var(--radius-input);
     }
     .message.is-visible { display: flex; }
     .message-info { border-color: #b7c9dc; background: var(--blue-soft); color: #264f7a; }
     .message-error { border-color: #e0b0aa; background: var(--red-soft); color: #8e3029; }
 
-    .section-head { margin: 24px 0 10px; display: flex; align-items: baseline; justify-content: space-between; }
-    .section-head h2 { margin: 0; font-size: 15px; font-weight: 720; }
-    .section-meta { color: var(--muted); font-size: 12px; }
-    .task-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+    .section-head { margin: 28px 0 16px; display: flex; align-items: baseline; justify-content: space-between; }
+    .section-head h2 { margin: 0; font-size: var(--type-title-size); font-weight: 600; }
+    .section-meta { color: var(--muted); font-size: var(--type-caption-size); }
+    .task-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
     .task-card {
       min-width: 0;
       display: flex;
       flex-direction: column;
       min-height: 190px;
-      padding: 16px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
+      padding: 22px;
+      border: 0;
+      border-radius: var(--radius-card);
       background: var(--surface);
     }
     .task-icon {
-      width: 32px;
-      height: 32px;
+      width: 40px;
+      height: 40px;
       display: grid;
       place-items: center;
-      border-radius: 6px;
-      background: var(--surface-subtle);
+      border-radius: var(--radius-input);
+      background: var(--green-soft);
       color: var(--ink);
-      font-size: 17px;
     }
-    .task-card:nth-child(1) .task-icon { background: var(--green-soft); color: var(--green); }
-    .task-card:nth-child(2) .task-icon { background: var(--blue-soft); color: var(--blue); }
-    .task-card:nth-child(3) .task-icon { background: var(--amber-soft); color: var(--amber); }
-    .task-title { margin-top: 13px; font-size: 15px; font-weight: 720; }
-    .task-state { min-height: 40px; margin-top: 6px; color: var(--muted); font-size: 12.5px; line-height: 1.45; }
+    .task-icon[data-tone="apricot"] { background: var(--apricot); }
+    .task-icon[data-tone="lilac"] { background: var(--lilac); }
+    .task-icon[data-tone="sand"] { background: var(--sand); }
+    .task-icon svg { width: 24px; height: 24px; }
+    .task-title { margin-top: 20px; font-size: var(--type-title-size); font-weight: 600; }
+    .task-state { min-height: 0; margin-block: 8px 16px; color: var(--muted); }
     .task-actions { margin-top: auto; display: flex; flex-wrap: wrap; gap: 7px; }
-    .task-actions .button { min-height: 34px; padding: 6px 10px; font-size: 12.5px; }
+    .task-actions .button { min-height: 44px; padding: 8px 12px; }
 
     .connectivity-card {
-      margin-top: 18px;
-      overflow: hidden;
-      border: 1px solid var(--line);
-      border-left: 4px solid var(--line-strong);
-      border-radius: 8px;
-      background:
-        linear-gradient(135deg, rgba(49, 95, 149, 0.04), transparent 42%),
-        var(--surface);
-      box-shadow: var(--shadow);
+      margin-top: 32px;
     }
-    .connectivity-card[data-state="healthy"] { border-left-color: var(--green); }
-    .connectivity-card[data-state="degraded"] { border-left-color: var(--amber); }
-    .connectivity-card[data-state="unsafe"] { border-left-color: var(--red); }
+    .connectivity-card[data-state="healthy"] .connectivity-badge { background: var(--green-soft); color: var(--green); }
+    .connectivity-card[data-state="degraded"] .connectivity-badge { background: var(--amber-soft); color: var(--amber); }
+    .connectivity-card[data-state="unsafe"] .connectivity-badge { background: var(--red-soft); color: var(--red); }
     .connectivity-head {
       display: flex;
       align-items: flex-start;
       justify-content: space-between;
       gap: 16px;
-      padding: 18px 20px 14px;
+      padding-bottom: 16px;
     }
-    .connectivity-head h2 { margin: 0; font-size: 18px; font-weight: 720; }
-    .card-subtitle { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+    .connectivity-head > div:not(.task-icon) { flex: 1; min-width: 0; }
+    .connectivity-head .task-icon { flex: 0 0 40px; }
+    .connectivity-head h2 { margin: 0; font-size: var(--type-title-size); font-weight: 600; }
+    .card-subtitle { margin: 4px 0 0; color: var(--muted); font-size: var(--type-caption-size); }
     .connectivity-badge {
       flex: 0 0 auto;
       padding: 4px 8px;
       border: 1px solid var(--line);
       border-radius: 999px;
       color: var(--muted);
-      font-size: 11.5px;
-      font-weight: 700;
+      font-size: var(--type-meta-size);
+      font-weight: 500;
     }
-    .connectivity-copy { padding: 0 20px 16px; }
-    .connectivity-summary { margin: 0; font-size: 15px; font-weight: 700; }
-    .connectivity-next { margin: 6px 0 0; color: var(--muted); line-height: 1.5; }
-    .connectivity-next strong { color: var(--ink); font-size: 12px; }
+    .connectivity-copy { padding-bottom: 8px; }
+    .connectivity-summary { margin: 0; font-weight: 600; }
+    .connectivity-next { margin: 8px 0 0; color: var(--muted); }
+    .connectivity-next strong { color: var(--ink); }
     .connectivity-grid {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
       border-top: 1px solid var(--line);
       border-bottom: 1px solid var(--line);
-      background: var(--surface-subtle);
+      background: var(--surface);
     }
     .connectivity-row {
       min-width: 0;
-      padding: 11px 14px;
+      padding: 16px;
       border-right: 1px solid var(--line);
       border-bottom: 1px solid var(--line);
     }
     .connectivity-row:nth-child(3n) { border-right: 0; }
-    .connectivity-row-label { color: var(--muted); font-size: 11px; }
-    .connectivity-row-value { margin-top: 4px; overflow-wrap: anywhere; font-size: 12.5px; font-weight: 650; }
-    .connectivity-actions { display: flex; flex-wrap: wrap; gap: 8px; padding: 14px 20px 18px; }
-    .connectivity-actions .button { min-height: 34px; padding: 6px 11px; font-size: 12.5px; }
+    .connectivity-row-label { color: var(--muted); font-size: var(--type-caption-size); }
+    .connectivity-row-value { margin-top: 4px; overflow-wrap: anywhere; font-weight: 500; }
+    .connectivity-actions { display: flex; flex-wrap: wrap; gap: 8px; padding-block: 16px; }
 
     .technical {
       margin-top: 18px;
       border-top: 1px solid var(--line);
       color: var(--muted);
     }
-    .technical summary { padding: 14px 2px 8px; cursor: pointer; font-weight: 650; color: #4d5750; }
-    .cold-copy-guide { margin-top: 14px; font-size: 13px; line-height: 1.6; }
+    .technical summary { min-height: 44px; padding: 12px 2px; cursor: pointer; font-weight: 500; color: var(--muted); }
+    .cold-copy-guide { margin-top: 16px; font-size: var(--type-caption-size); }
     .cold-copy-guide summary { min-height: 44px; padding: 10px 0; cursor: pointer; color: var(--ink); }
-    .cold-copy-guide pre { white-space: pre-wrap; overflow-wrap: anywhere; padding: 12px; background: var(--surface-subtle); font: 11.5px/1.6 var(--mono); }
+    .cold-copy-guide pre { white-space: pre-wrap; overflow-wrap: anywhere; padding: 12px; background: var(--surface-subtle); font: var(--type-caption-size)/var(--type-body-line) var(--mono); }
     .technical-grid {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 8px;
       padding: 2px 0 10px;
     }
-    .technical-item { min-width: 0; padding: 10px 11px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
-    .technical-label { font-size: 11px; color: var(--muted); }
-    .technical-value { margin-top: 4px; overflow-wrap: anywhere; color: var(--ink); font-family: var(--mono); font-size: 11.5px; }
+    .technical-item { min-width: 0; padding: 16px; border-radius: var(--radius-input); background: var(--surface); }
+    .technical-label { font-size: var(--type-meta-size); color: var(--muted); }
+    .technical-value { margin-top: 4px; overflow-wrap: anywhere; color: var(--ink); font-family: var(--mono); font-size: var(--type-caption-size); }
     .diagnostic-lines {
       max-height: 112px;
       margin: 0 0 8px;
@@ -284,20 +295,49 @@
       background: #202521;
       color: #dce4dd;
       font-family: var(--mono);
-      font-size: 11px;
+      font-size: var(--type-caption-size);
       line-height: 1.55;
       user-select: text;
     }
-    .footer { margin-top: 14px; color: #7a837c; font-size: 11.5px; text-align: right; }
+    .footer { margin-top: 16px; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px 16px; color: var(--muted); font-size: var(--type-meta-size); }
 
+    .connectivity-details > summary { min-height: 44px; padding-block: 10px; cursor: pointer; color: var(--green); font-weight: 600; }
+    .connection-help { align-self: start; gap: 0; }
+    .connection-help > h2 { margin: 0 0 24px; font-size: var(--type-title-size); }
+    .connection-help > details + details { border-top: 1px solid var(--line); }
+    .connection-help > details > summary { display: flex; align-items: center; gap: 16px; min-height: 80px; padding-block: 16px; cursor: pointer; list-style: none; }
+    .connection-help > details > summary::-webkit-details-marker { display: none; }
+    .connection-help .task-icon { flex: 0 0 40px; }
+    .connection-help .help-label { min-width: 0; flex: 1; }
+    .help-label strong { display: block; font-size: var(--type-title-size); font-weight: 600; }
+    .help-label small { display: block; margin-top: 4px; color: var(--muted); font: inherit; }
+    .connection-help > details[open] > summary > .icon { transform: rotate(90deg); }
+    .connection-help .service-band { min-height: 0; padding: 8px 0 24px; border-radius: 0; }
+    .connection-help .service-title { font-size: var(--type-title-size); }
+    .connection-help .service-band .eyebrow { display: none; }
+    .connection-help .connectivity-card { margin-top: 8px; }
+    .connection-help .connectivity-grid { grid-template-columns: 1fr; }
+    .connection-help .connectivity-row { border-right: 0; }
+    .connection-note { display: flex; align-items: start; gap: 12px; color: var(--muted); }
+    .connection-note > .icon { margin-top: 3px; color: var(--green); }
+    .connection-note strong { color: var(--ink); font-weight: 600; }
+    .connection-note p { margin: 8px 0 0; }
+    @media (max-width: 1000px) {
+      .task-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
     @media (max-width: 700px) {
-      .shell { padding: 16px; }
+      .shell { padding: 24px; }
+      .topbar { flex-wrap: wrap; }
+      :root { --type-hero-size: 28px; }
+      .service-overview { grid-template-columns: 1fr; }
+      .service-band { padding: 24px; min-height: 0; }
+      #productManageGroup { width: 100%; }
       .service-band { grid-template-columns: 1fr; gap: 16px; }
       .service-actions { width: 100%; }
       .service-actions .button-primary { flex: 1; }
       .task-grid { grid-template-columns: 1fr; }
       .task-card { min-height: 164px; }
-      .connectivity-head { align-items: stretch; }
+      .connectivity-head { flex-wrap: wrap; }
       .connectivity-grid { grid-template-columns: 1fr; }
       .connectivity-row, .connectivity-row:nth-child(3n) { border-right: 0; }
       .technical-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -306,80 +346,198 @@
   </style>
 </head>
 <body>
+  <!-- Lucide 1.51.0, same pinned geometry as Web and Android.
+ISC License
+
+Copyright (c) 2026 Lucide Icons and Contributors
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted, provided that the above
+copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+---
+
+The following Lucide icons are derived from the Feather project:
+
+airplay, alert-circle, alert-octagon, alert-triangle, aperture, arrow-down-circle, arrow-down-left, arrow-down-right, arrow-down, arrow-left-circle, arrow-left, arrow-right-circle, arrow-right, arrow-up-circle, arrow-up-left, arrow-up-right, arrow-up, at-sign, calendar, cast, check, chevron-down, chevron-left, chevron-right, chevron-up, chevrons-down, chevrons-left, chevrons-right, chevrons-up, circle, clipboard, clock, code, columns, command, compass, corner-down-left, corner-down-right, corner-left-down, corner-left-up, corner-right-down, corner-right-up, corner-up-left, corner-up-right, crosshair, database, divide-circle, divide-square, dollar-sign, download, external-link, feather, frown, hash, headphones, help-circle, info, italic, key, layout, life-buoy, link-2, link, loader, lock, log-in, log-out, maximize, meh, minimize, minimize-2, minus-circle, minus-square, minus, monitor, moon, more-horizontal, more-vertical, move, music, navigation-2, navigation, octagon, pause-circle, percent, plus-circle, plus-square, plus, power, radio, rss, search, server, share, shopping-bag, sidebar, smartphone, smile, square, table-2, tablet, target, terminal, trash-2, trash, triangle, tv, type, upload, x-circle, x-octagon, x-square, x, zoom-in, zoom-out
+
+The MIT License (MIT) (for the icons listed above)
+
+Copyright (c) 2013-present Cole Bemis
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+  -->
+  <svg class="icon-definitions" width="0" height="0" aria-hidden="true" focusable="false">
+    <defs>
+      <symbol id="manager-icon-play" viewBox="0 0 24 24">
+        <path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z" />
+      </symbol>
+      <symbol id="manager-icon-square" viewBox="0 0 24 24">
+        <rect width="18" height="18" x="3" y="3" rx="2" />
+      </symbol>
+      <symbol id="manager-icon-rotate-cw" viewBox="0 0 24 24">
+        <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+        <path d="M21 3v5h-5" />
+      </symbol>
+      <symbol id="manager-icon-loader-circle" viewBox="0 0 24 24">
+        <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+      </symbol>
+      <symbol id="manager-icon-arrow-up-right" viewBox="0 0 24 24">
+        <path d="M7 7h10v10" />
+        <path d="M7 17 17 7" />
+      </symbol>
+      <symbol id="manager-icon-arrow-right" viewBox="0 0 24 24">
+        <path d="M5 12h14" />
+        <path d="m12 5 7 7-7 7" />
+      </symbol>
+      <symbol id="manager-icon-check" viewBox="0 0 24 24">
+        <path d="M20 6 9 17l-5-5" />
+      </symbol>
+      <symbol id="manager-icon-circle-alert" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="10" />
+        <line x1="12" x2="12" y1="8" y2="12" />
+        <line x1="12" x2="12.01" y1="16" y2="16" />
+      </symbol>
+      <symbol id="manager-icon-key-round" viewBox="0 0 24 24">
+        <path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z" />
+        <circle cx="16.5" cy="7.5" r=".5" fill="currentColor" />
+      </symbol>
+      <symbol id="manager-icon-server" viewBox="0 0 24 24">
+        <rect width="20" height="8" x="2" y="2" rx="2" ry="2" />
+        <rect width="20" height="8" x="2" y="14" rx="2" ry="2" />
+        <line x1="6" x2="6.01" y1="6" y2="6" />
+        <line x1="6" x2="6.01" y1="18" y2="18" />
+      </symbol>
+      <symbol id="manager-icon-globe" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="10" />
+        <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
+        <path d="M2 12h20" />
+      </symbol>
+      <symbol id="manager-icon-chevron-right" viewBox="0 0 24 24">
+        <path d="m9 18 6-6-6-6" />
+      </symbol>
+      <symbol id="manager-icon-info" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="10" />
+        <path d="M12 16v-4" />
+        <path d="M12 8h.01" />
+      </symbol>
+    </defs>
+  </svg>
   <main class="shell">
     <header class="topbar">
-      <div class="brand-mark" aria-hidden="true">票</div>
       <div>
-        <div class="brand-name">小票夹管理器</div>
-        <div class="brand-meta" id="runtimeLabel">正在读取本机状态</div>
+        <h1 class="brand-name" id="managerTitle">小票夹管理器</h1>
+        <div class="brand-meta" id="managerDescription">本机服务与桌面账本</div>
       </div>
-      <a class="product-link" id="productHomeLink" href="/web" hidden>返回日常账务</a>
       <div class="overall-state" id="overallState" role="status" aria-live="polite">
         <span class="state-dot" aria-hidden="true"></span>
+        <span>本机服务</span>
         <span id="overallText">检查中</span>
       </div>
     </header>
 
-    <section class="service-band" aria-labelledby="serviceTitle">
+    <div class="service-overview" id="serviceOverview">
+    <section class="service-band service-band--runtime" id="runtimeCard" aria-labelledby="serviceTitle">
       <div>
-        <div class="eyebrow">此电脑</div>
-        <h1 class="service-title" id="serviceTitle">正在检查小票夹</h1>
+        <div class="eyebrow">本机服务</div>
+        <h2 class="service-title" id="serviceTitle">正在检查小票夹</h2>
         <div class="service-detail" id="serviceDetail">请稍候</div>
       </div>
       <div class="service-actions">
         <button class="button button-primary manager-action" id="primaryAction" type="button" data-action="start" onclick="act(this.dataset.action, this)">
-          <span class="icon" aria-hidden="true">▶</span><span>启动</span>
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#manager-icon-play"></use></svg><span>启动</span>
         </button>
-        <button class="button button-icon manager-action" id="restartAction" type="button" title="重启小票夹" aria-label="重启小票夹" onclick="act('restart', this)">↻</button>
+        <button class="button button-icon manager-action" id="restartAction" type="button" title="重启小票夹" aria-label="重启小票夹" onclick="act('restart', this)"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#manager-icon-rotate-cw"></use></svg></button>
       </div>
     </section>
 
-    <section class="service-band" aria-labelledby="productTitle">
+    <section class="service-band service-band--product" aria-labelledby="productTitle">
       <div>
-        <div class="eyebrow">日常账务</div>
-        <h1 class="service-title" id="productTitle">桌面账本</h1>
+        <div class="eyebrow" id="productEyebrow">桌面账本</div>
+        <h2 class="service-title" id="productTitle">连接这台电脑</h2>
         <div class="service-detail" id="productState">正在读取绑定状态</div>
-        <p class="service-detail" id="productFirstUseHelp" hidden>账本数据和原始附件保存在这台 Windows 电脑。拥有者可在本机获取自己的设备绑定码；家庭成员请从自己已绑定的设备授权新设备。首次加入家庭需使用邀请。</p>
       </div>
       <div class="service-actions product-actions">
+        <a class="product-link" id="productHomeLink" href="/web" hidden>打开桌面账本 <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#manager-icon-arrow-up-right"></use></svg></a>
         <span class="product-actions" id="productPairGroup" hidden>
-          <button class="button" id="desktopPairingCodeAction" type="button" disabled onclick="act('open_pairing', this)">获取拥有者绑定码</button>
-          <input type="text" id="pairingCodeInput" inputmode="numeric" pattern="[0-9]{8}" maxlength="8" placeholder="8 位设备码" aria-label="绑定此电脑的 8 位码">
-          <button class="button button-primary" id="pairAction" type="button" onclick="pairProduct()">绑定此电脑</button>
+          <label>设备连接码<input type="text" id="pairingCodeInput" inputmode="numeric" pattern="[0-9]{8}" maxlength="8" placeholder="8 位数字" aria-label="绑定此电脑的 8 位码"></label>
+          <button class="button button-primary" id="pairAction" type="button" onclick="pairProduct()">连接此电脑 <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#manager-icon-arrow-right"></use></svg></button>
+          <button class="button" id="desktopPairingCodeAction" type="button" disabled onclick="act('open_pairing', this)">获取拥有者绑定码 <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#manager-icon-arrow-right"></use></svg></button>
         </span>
         <span class="product-actions" id="productManageGroup" hidden>
           <select id="ledgerSelect" aria-label="切换账本"></select>
           <button class="button" id="switchAction" type="button" onclick="switchProductLedger()">切换账本</button>
           <button class="button" id="unpairAction" type="button" onclick="unpairProduct()">解除绑定</button>
         </span>
+        <div class="message message-error" id="productError" role="alert">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#manager-icon-circle-alert"></use></svg><span id="productErrorText"></span>
+        </div>
+      </div>
+      <div class="connection-note" id="productIdentityHint" hidden>
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#manager-icon-info"></use></svg>
+        <div><strong>更换设备前先检查未发送记录</strong><p>连接前的内容不会自动归到新身份。</p></div>
       </div>
     </section>
-    <div class="message message-error" id="productError" role="alert">
-      <span aria-hidden="true">!</span><span id="productErrorText"></span>
+
+    <section class="service-band connection-help" id="connectionHelp" aria-labelledby="connectionHelpTitle" hidden>
+      <h2 id="connectionHelpTitle">没有连接成功时</h2>
+      <details>
+        <summary>
+          <span class="task-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24" focusable="false"><use href="#manager-icon-key-round"></use></svg></span>
+          <span class="help-label"><strong>连接码</strong><small>检查有效期和用途</small></span>
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#manager-icon-chevron-right"></use></svg>
+        </summary>
+        <p class="service-detail" id="productFirstUseHelp" hidden>账本数据和原始附件保存在这台 Windows 电脑。拥有者可在本机获取自己的设备绑定码；家庭成员请从自己已绑定的设备授权新设备。首次加入家庭需使用邀请。</p>
+        <p class="service-detail">请核对连接码页面显示的有效期。上次连接结果尚未确认时，按页面提示使用原码继续。</p>
+      </details>
+      <details id="connectionRuntimeHelp">
+        <summary>
+          <span class="task-icon" data-tone="lilac" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24" focusable="false"><use href="#manager-icon-server"></use></svg></span>
+          <span class="help-label"><strong>服务</strong><small>检查本机服务是否可达</small></span>
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#manager-icon-chevron-right"></use></svg>
+        </summary>
+      </details>
+      <details id="connectionPublicHelp">
+        <summary>
+          <span class="task-icon" data-tone="apricot" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24" focusable="false"><use href="#manager-icon-globe"></use></svg></span>
+          <span class="help-label"><strong>公开地址</strong><small>不代表会话已经建立</small></span>
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#manager-icon-chevron-right"></use></svg>
+        </summary>
+      </details>
+    </section>
     </div>
 
-    <section class="connectivity-card" id="publicConnectivityCard"
-      aria-labelledby="publicConnectivityTitle" aria-busy="false">
-      <div class="connectivity-head">
-        <div>
-          <h2 id="publicConnectivityTitle">公网连接</h2>
-          <p class="card-subtitle">由 Cloudflare Tunnel 提供</p>
-        </div>
-        <span class="connectivity-badge" id="publicConnectivityBadge">状态未知</span>
-      </div>
-      <div class="connectivity-copy" aria-live="polite">
-        <p class="connectivity-summary" id="publicConnectivitySummary">正在读取公网连接状态</p>
-        <p class="connectivity-next"><strong>下一步：</strong><span id="publicConnectivityNextStep">请稍候</span></p>
-      </div>
-      <div class="connectivity-grid" id="publicConnectivityDetails" aria-label="公网连接分层状态"></div>
-      <div class="connectivity-actions" id="publicConnectivityActions" aria-label="公网连接只读操作"></div>
-    </section>
+
 
     <div class="message message-error" id="controlError" role="alert">
-      <span aria-hidden="true">!</span><span id="controlErrorText"></span>
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#manager-icon-circle-alert"></use></svg><span id="controlErrorText"></span>
     </div>
     <div class="message message-info" id="actionNotice" role="status">
-      <span aria-hidden="true">✓</span><span id="actionNoticeText"></span>
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#manager-icon-check"></use></svg><span id="actionNoticeText"></span>
     </div>
 
     <div class="section-head">
@@ -388,18 +546,31 @@
     </div>
     <section class="task-grid" aria-label="常用操作">
       <article class="task-card">
-        <div class="task-icon" aria-hidden="true">⌁</div>
+        <div class="task-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="20" x="5" y="2" rx="2" ry="2" />
+    <path d="M12 18h.01" /></svg></div>
         <div class="task-title">连接设备</div>
         <div class="task-state" id="connectState">服务正常后可以生成一次性绑定码。</div>
         <div class="task-actions">
           <button class="button manager-action owner-action" id="androidAction" type="button" disabled onclick="act('open_pairing', this)">设备绑定</button>
-          <button class="button manager-action owner-action" id="iphoneAction" type="button" onclick="act('open_upload_links', this)">iPhone 上传</button>
           <button class="button manager-action owner-action" type="button" title="查看已连接设备" onclick="act('open_devices', this)">设备</button>
         </div>
       </article>
 
+      <article class="task-card">
+        <div class="task-icon" data-tone="apricot" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12" />
+    <path d="m17 8-5-5-5 5" />
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /></svg></div>
+        <div class="task-title">iPhone 上传</div>
+        <div class="task-state">管理手机上传入口与快捷指令。</div>
+        <div class="task-actions">
+          <button class="button manager-action owner-action" id="iphoneAction" type="button" onclick="act('open_upload_links', this)">iPhone 上传</button>
+        </div>
+      </article>
+
       <article class="task-card" id="dataProtectionCard">
-        <div class="task-icon" aria-hidden="true">▣</div>
+        <div class="task-icon" data-tone="lilac" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3" />
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+    <path d="m7 10 5 5 5-5" /></svg></div>
         <div class="task-title">数据保护</div>
         <div class="task-state" id="protectState">导出流水或含历史、关系与原件的账本包，留存业务副本。</div>
         <div class="task-actions">
@@ -422,8 +593,12 @@ Start-Service TicketboxBackend</pre>
       </article>
 
       <article class="task-card">
-        <div class="task-icon" aria-hidden="true">+</div>
-        <div class="task-title">检查与自救</div>
+        <div class="task-icon" data-tone="sand" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 2v2" />
+    <path d="M5 2v2" />
+    <path d="M5 3H4a2 2 0 0 0-2 2v4a6 6 0 0 0 12 0V5a2 2 0 0 0-2-2h-1" />
+    <path d="M8 15a6 6 0 0 0 12 0v-3" />
+    <circle cx="20" cy="10" r="2" /></svg></div>
+        <div class="task-title">诊断与体检</div>
         <div class="task-state" id="diagnosticState">导出包不包含令牌、账本内容或原始日志。</div>
         <div class="task-actions">
           <button class="button manager-action" id="diagnosticExportAction" type="button" onclick="act('export_diagnostics', this)">导出诊断包</button>
@@ -433,7 +608,28 @@ Start-Service TicketboxBackend</pre>
       </article>
     </section>
 
-    <details class="technical">
+    <section class="connectivity-card" id="publicConnectivityCard"
+      aria-labelledby="publicConnectivityTitle" aria-busy="false">
+      <div class="connectivity-head">
+        <div class="task-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24" focusable="false"><use href="#manager-icon-globe"></use></svg></div>
+        <div>
+          <h2 id="publicConnectivityTitle">公网连接</h2>
+          <p class="card-subtitle">由 Cloudflare Tunnel 提供</p>
+        </div>
+        <span class="connectivity-badge" id="publicConnectivityBadge">状态未知</span>
+      </div>
+      <div class="connectivity-copy" aria-live="polite">
+        <p class="connectivity-summary" id="publicConnectivitySummary">正在读取公网连接状态</p>
+        <p class="connectivity-next"><strong>下一步：</strong><span id="publicConnectivityNextStep">请稍候</span></p>
+      </div>
+      <details class="connectivity-details">
+        <summary>查看连接详情</summary>
+      <div class="connectivity-grid" id="publicConnectivityDetails" aria-label="公网连接分层状态"></div>
+      <div class="connectivity-actions" id="publicConnectivityActions" aria-label="公网连接只读操作"></div>
+      </details>
+    </section>
+
+    <details class="technical" id="technicalDetails">
       <summary>技术详情</summary>
       <div class="technical-grid">
         <div class="technical-item"><div class="technical-label">后端服务</div><div class="technical-value" id="backendService">—</div></div>
@@ -442,7 +638,7 @@ Start-Service TicketboxBackend</pre>
       </div>
       <div class="diagnostic-lines" id="log" aria-label="运行诊断"></div>
     </details>
-    <div class="footer" id="versionLabel"></div>
+    <div class="footer"><span id="runtimeLabel">正在读取本机状态</span><span id="versionLabel"></span></div>
   </main>
 
   <script>
@@ -644,7 +840,8 @@ Start-Service TicketboxBackend</pre>
 
       const primary = $("primaryAction");
       primary.dataset.action = running ? "stop" : "start";
-      primary.querySelector(".icon").textContent = running ? "■" : "▶";
+      primary.querySelector(".icon use").setAttribute("href", running ? "#manager-icon-square" : "#manager-icon-play");
+      primary.querySelector(".icon").classList.remove("spinner");
       primary.querySelector("span:last-child").textContent = running ? "停止" : "启动";
       primary.classList.toggle("button-danger", running);
       $("runtimeLabel").textContent = s.runtime_mode === "installed" ? "本机安装" : "开发环境 · 源码运行";
@@ -756,6 +953,29 @@ Start-Service TicketboxBackend</pre>
       for (const id of ["desktopPairingCodeAction", "androidAction"]) $(id).disabled = disabled;
     }
 
+    function renderProductLayout(connecting) {
+      $("managerTitle").textContent = connecting ? "连接这台电脑" : "小票夹管理器";
+      $("managerDescription").textContent = connecting
+        ? "连接之后，沿用你的账本与访问身份。" : "本机服务与桌面账本";
+      $("connectionHelp").hidden = !connecting;
+      $("productIdentityHint").hidden = !connecting;
+      $("productEyebrow").hidden = connecting;
+      // Move the existing projections only when the task changes. Their state,
+      // action handlers and open disclosures survive regular status refreshes.
+      const runtimeParent = connecting ? $("connectionRuntimeHelp") : $("serviceOverview");
+      if ($("runtimeCard").parentElement !== runtimeParent) {
+        if (connecting) runtimeParent.append($("runtimeCard"));
+        else runtimeParent.prepend($("runtimeCard"));
+      }
+      if (connecting) {
+        if ($("publicConnectivityCard").parentElement !== $("connectionPublicHelp")) {
+          $("connectionPublicHelp").append($("publicConnectivityCard"));
+        }
+      } else if ($("publicConnectivityCard").parentElement !== $("technicalDetails").parentElement) {
+        $("technicalDetails").before($("publicConnectivityCard"));
+      }
+    }
+
     function renderProduct() {
       const configured = Boolean(productSession && productSession.configured);
       const available = Boolean(latestStatus && latestStatus.product_available);
@@ -766,9 +986,12 @@ Start-Service TicketboxBackend</pre>
       const pending = productSession && productSession.pairing_recovery === "original_code_required";
       const showManage = configured && !membershipLost && !pending;
       const productReadFailed = productSessionReadFailed || (showManage && productLedgersReadFailed);
+      renderProductLayout(Boolean(productSession) && !showManage && !productReadFailed);
       applyDesktopPairingAvailability();
       $("productFirstUseHelp").hidden = showManage || productReadFailed;
+      $("productState").hidden = !showManage && !productReadFailed && available && !pending && !membershipLost;
       if (productReadFailed) {
+        $("productTitle").textContent = "桌面账本";
         $("productHomeLink").hidden = true;
         $("productPairGroup").hidden = true;
         $("productManageGroup").hidden = true;
@@ -781,6 +1004,7 @@ Start-Service TicketboxBackend</pre>
         $("productState").textContent = "账本状态暂不可验证，请稍后重试。";
         return;
       }
+      $("productTitle").textContent = showManage ? productSession.ledger_name : "填写连接信息";
       $("productHomeLink").hidden = !(showManage && available);
       $("productPairGroup").hidden = showManage;
       $("productManageGroup").hidden = !showManage;
@@ -802,7 +1026,7 @@ Start-Service TicketboxBackend</pre>
       // the role persisted in WinCred at pair/switch time.
       const role = liveRow ? liveRow.role : productSession.role;
       $("productState").textContent =
-        `${productSession.ledger_name} · ${roleLabels[role] || role} · ${productSession.account_name}`;
+        `${roleLabels[role] || role} · ${productSession.account_name}`;
       const select = $("ledgerSelect");
       if (select.options.length === 0) {
         const option = document.createElement("option");
@@ -992,10 +1216,10 @@ Start-Service TicketboxBackend</pre>
       applyActionAvailability(latestStatus);
       if (button) {
         if (button.classList.contains("button-icon")) {
-          button.innerHTML = '<span class="icon spinner" aria-hidden="true">↻</span>';
+          button.innerHTML = '<svg class="icon spinner" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#manager-icon-loader-circle"></use></svg>';
           button.setAttribute("aria-label", "处理中");
         } else {
-          button.innerHTML = '<span class="icon spinner" aria-hidden="true">↻</span><span>处理中</span>';
+          button.innerHTML = '<svg class="icon spinner" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#manager-icon-loader-circle"></use></svg><span>处理中</span>';
         }
       }
       try {

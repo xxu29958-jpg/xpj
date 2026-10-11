@@ -76,6 +76,7 @@ class OriginalMaintenanceJourney:
             self.page.unroute("**" + action, lose_reply)
         assert len(accepted) == 1
         self.goto()
+        self.page.locator("#original-history > summary").click()
         self.page.locator(".original-task-history a").first.click()
         recovered = parse_qs(urlsplit(self.page.url).query)["task_id"][0]
         assert recovered == accepted[0], "Reopening history did not recover the original accepted task"
@@ -191,6 +192,7 @@ class OriginalMaintenanceJourney:
     def native_observations(self):
         self.native.bind(self.fixture.pairing_code, urlsplit(self.base_url).port)
         self.native.click("打开账户与设置", stable=True)
+        self.native.click("同步与后台任务", stable=True)
         self.native.click("后台任务", stable=True)
         wait_for(lambda: self.native.has("处置已核对文件"), "Native did not read the real disposal task")
         self.native.reveal_any("检查未引用文件")
@@ -204,8 +206,9 @@ class OriginalMaintenanceJourney:
             assert self.inspect()["result"]["candidate_files"] == 0
         self.capture("no-candidates")
         partial = self.partial_disposal()
+        self.page.locator("#original-history > summary").click()
         self.page.get_by_role("link", name="更早的任务", exact=True).click()
-        assert "第 2 页" in self.page.inner_text('section[aria-label="原件任务历史"]')
+        assert "第 2 页" in self.page.inner_text('[aria-label="原件任务历史"]')
         self.capture("history-page-two")
         interrupted = self.interrupted_disposal()
         self.native_observations()

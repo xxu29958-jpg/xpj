@@ -37,8 +37,8 @@ internal class BudgetQueryReader(
     private val errors = NetworkErrorHandler({ apiProvider.currentSession()?.serverUrl }, "Budget",
         statusMessages = mapOf(404 to "预算不存在。"))
     private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
-    private val adapter = moshi.adapter(BudgetMonthlyDto::class.java)
-    private val bindingAdapter = moshi.adapter(LogicalSessionBinding::class.java)
+    private val adapter by lazy { moshi.adapter(BudgetMonthlyDto::class.java) }
+    private val bindingAdapter by lazy { moshi.adapter(LogicalSessionBinding::class.java) }
     private val mutex = Mutex()
     private val latestAcceptedReads = mutableMapOf<String, AcceptedBudgetRead>()
     private val minimumRevisions = mutableMapOf<String, Long>()

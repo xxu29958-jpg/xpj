@@ -9,11 +9,14 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.ticketbox.domain.model.FxContract
 
 @Database(
-    entities = [ExpenseEntity::class, PendingMutationEntity::class, ExpenseOffsetStreamEntity::class, StatsProjectionCacheEntity::class, GoalQueryCacheEntity::class, MonthlyArrangementCacheEntity::class, RepaymentReviewInputEntity::class, ExpenseFactQueryCacheEntity::class, ExpenseFactInputEntity::class],
-    version = 24,
+    entities = [SavedQueryInputEntity::class, RuleDefinitionInputEntity::class, MerchantCreationInputEntity::class, ExpenseEntity::class, PendingMutationEntity::class, ExpenseOffsetStreamEntity::class, StatsProjectionCacheEntity::class, GoalQueryCacheEntity::class, MonthlyArrangementCacheEntity::class, RepaymentReviewInputEntity::class, ExpenseFactQueryCacheEntity::class, ExpenseFactInputEntity::class],
+    version = 27,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
+    abstract fun savedQueryInputDao(): SavedQueryInputDao
+    abstract fun ruleDefinitionInputDao(): RuleDefinitionInputDao
+    abstract fun merchantCreationInputDao(): MerchantCreationInputDao
     abstract fun expenseDao(): ExpenseDao
     abstract fun pendingMutationDao(): PendingMutationDao
     abstract fun monthlyArrangementCacheDao(): MonthlyArrangementCacheDao
@@ -587,6 +590,24 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) { MIGRATION_23_24_STATEMENTS.forEach(db::execSQL) }
         }
 
+        internal val Migration24To25 = object : Migration(24, 25) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS merchant_creation_inputs (serverUrl TEXT NOT NULL, ownerKey TEXT NOT NULL, ledgerId TEXT NOT NULL, kind TEXT NOT NULL, originalKey TEXT NOT NULL, draftJson TEXT NOT NULL, PRIMARY KEY(serverUrl, ownerKey, ledgerId, kind))")
+            }
+        }
+
+        internal val Migration25To26 = object : Migration(25, 26) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS rule_definition_inputs (serverUrl TEXT NOT NULL, ownerKey TEXT NOT NULL, ledgerId TEXT NOT NULL, slot TEXT NOT NULL, originalKey TEXT NOT NULL, inputJson TEXT NOT NULL, PRIMARY KEY(serverUrl, ownerKey, ledgerId, slot))")
+            }
+        }
+
+        internal val Migration26To27 = object : Migration(26, 27) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS saved_query_inputs (serverUrl TEXT NOT NULL, ownerKey TEXT NOT NULL, ledgerId TEXT NOT NULL, slot TEXT NOT NULL, inputJson TEXT NOT NULL, PRIMARY KEY(serverUrl, ownerKey, ledgerId, slot))")
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -618,6 +639,9 @@ abstract class AppDatabase : RoomDatabase() {
                         Migration21To22,
                         Migration22To23,
                         Migration23To24,
+                        Migration24To25,
+                        Migration25To26,
+                        Migration26To27,
                     )
                     .build()
                     .also { instance = it }

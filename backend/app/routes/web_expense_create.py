@@ -2,18 +2,20 @@
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import replace
 from decimal import Decimal, InvalidOperation
 from types import SimpleNamespace
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 from starlette.responses import Response
 
+from app.config import get_settings
 from app.database import get_db
 from app.errors import AppError
 from app.routes._web_accounting_time import (
@@ -23,6 +25,7 @@ from app.routes._web_accounting_time import (
     time_form_projection,
     time_form_values,
 )
+from app.routes._web_draft_binding import require_draft_binding
 from app.routes._web_expense_form import (
     parse_amount_yuan,
     parse_expense_time_local,
@@ -50,18 +53,52 @@ from app.routes.web_common import (
 from app.schemas import ExpenseManualCreateRequest
 from app.services.category_service import list_ledger_category_options
 from app.services.currency_common import (
+    minor_amount_label,
     minor_amount_value,
     normalize_currency_code,
     supported_currency_codes,
 )
-from app.services.expense_service import create_manual_expense
+from app.services.expense_service import create_manual_expense, read_manual_creation_receipt, resolve_expense
 from app.services.ledger_calendar_service import current_calendar
-from app.services.manual_expense_draft_presenter import manual_draft_scope
+from app.services.manual_expense_draft_presenter import manual_creation_ack, manual_draft_scope
 from app.services.recurring_service import get_recurring_item
 from app.services.time_service import now_utc
 from app.tenants import AuthContext
 
 router = APIRouter(prefix="/web/expenses", tags=["web"])
+
+
+@router.get("/new/result", response_class=HTMLResponse, include_in_schema=False)
+def web_manual_expense_result(
+    request: Request,
+    client_ref: str = Query(pattern="^[0-9a-f]{32}$"),
+    draft_scope: str = Query(),
+    ledger_id: str | None = None,
+    return_context: ExpenseReturnContext = Depends(expense_return_query_context),
+    _local: None = LocalOnly,
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    options = _list_ledger_options(db)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
+    auth = require_draft_binding(db, request, ledger_id=selected_id, draft_scope=draft_scope)
+    receipt = read_manual_creation_receipt(db, tenant_id=selected_id, device_id=auth.device_id, client_ref=client_ref)
+    # A legacy current fact is a navigation target, never a substitute receipt.
+    current = resolve_expense(db, selected_id, f"local:{client_ref}", device_id=auth.device_id)
+    origin = return_context.as_kwargs()
+    original_href = flow_href("/web/expenses/new", ledger_id=selected_id, **origin) + "#manual-" + client_ref
+    context = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id, page_title="保存结果")
+    context.update({
+        "receipt": receipt,
+        "receipt_amount": minor_amount_label(receipt.amount_cents, receipt.home_currency) if receipt and receipt.amount_cents is not None else None,
+        "receipt_original": minor_amount_label(receipt.original_amount_minor, receipt.original_currency_code) if receipt and receipt.original_amount_minor is not None else None,
+        "receipt_date": receipt.accounting_time.accounting_date if receipt and receipt.accounting_time else None,
+        "manual_draft_ack": manual_creation_ack(json.loads(draft_scope), client_ref, receipt) if receipt else None,
+        "manual_detail_href": flow_href(f"/web/expenses/{current.id}/edit", ledger_id=selected_id, **origin) if current else None,
+        "task_return_href": return_href(ledger_id=selected_id, default_path="/web/confirmed", **origin) if receipt else original_href,
+        "task_return_label": return_label(return_context.return_to, default="返回流水") if receipt else "返回原稿",
+    })
+    return templates.TemplateResponse(request=request, name="expense_manual_result.html", context=context,
+        headers={"Cache-Control": "no-store"})
 
 
 def _manual_expense_context(
@@ -104,6 +141,7 @@ def _manual_expense_context(
         "return_month",
         "return_recurring_public_id",
         "return_payment_expense_id",
+        "return_filter", "return_page", "return_tag", "return_query", "return_category", "return_home_currency_code",
     ):
         return_fields.setdefault(name, origin.get(name, ""))
     context.update(
@@ -123,6 +161,7 @@ def _manual_expense_context(
             "form_device_public_id": form_device_public_id,
             "manual_draft_scope": manual_draft_scope(db, _session_writer_auth(request, selected_id)),
             "manual_draft_result": draft_result,
+            "max_upload_size_bytes": get_settings().max_upload_size_bytes,
             "manual_review_href": (
                 flow_href(
                     f"/web/expenses/{review_expense_id}/edit",
@@ -134,6 +173,7 @@ def _manual_expense_context(
             "spent_at": current_values.get("spent_at", time_values["wall_time"] if time_values else ""),
             "values": current_values,
             "edit_return_fields": return_fields,
+            "manual_create_href": flow_href("/web/expenses/new", ledger_id=selected_id, **origin),
             "edit_return_href": (
                 return_href(ledger_id=selected_id, default_path="/web/confirmed", **origin)
                 if return_fields else f"/web/confirmed?ledger_id={selected_id}"
@@ -405,14 +445,10 @@ def web_manual_expense_create(
         return_fields = edit_context_params(
             **replace(return_context, return_payment_expense_id=str(created.id)).as_kwargs()
         )
-        return _web_redirect(
-            f"/web/expenses/{created.id}/edit",
-            selected_id,
-            **return_fields,
-        )
-    return_to = "pending" if created.status == "pending" else "confirmed"
+    if not return_fields:
+        return_fields = {"return_to": "pending" if created.status == "pending" else "confirmed"}
     return _web_redirect(
         f"/web/expenses/{created.id}/edit",
         selected_id,
-        return_to=return_to,
+        **return_fields,
     )

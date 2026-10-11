@@ -83,15 +83,15 @@ def test_overview_renders_amount_and_visible_modules(web_client: TestClient, *, 
     assert "/static/web/pages/overview.css" not in body
 
     # 页头本月脉搏状态行 + hero 关键数字层级 (exponent 投影: cur/int/dec 三段)。
-    assert "本月概览" in body
+    assert "月，慢慢有数" in body
     assert "笔已入账" in body
-    assert "本月支出" in body
+    assert "本月净支出" in body
     assert "<small>¥</small>88<small>.00</small>" in body
     # 分类清单行走 minor_amount_label (符号+分组完整串)。
     assert "¥88.00" in body
 
     assert re.findall(r'data-overview-card="([^"]+)"', body) == WEB_CARD_KEYS
-    assert "预算余量" in body
+    assert "预算还剩" in body
     assert "餐饮" in body
     assert "餐饮月度上限" in body
     assert "data-categories=" in body
@@ -168,12 +168,10 @@ def test_overview_is_insights_nav_landing(web_client: TestClient) -> None:
         r'href="/web/overview\?ledger_id=owner"[^>]+aria-current="page"',
         cards_subnav.group(0),
     )
-    cards_mobile_nav = re.search(r'<nav class="mobile-plan-nav".*?</nav>', cards_page.text, re.S)
-    assert cards_mobile_nav is not None
-    assert re.search(
-        r'href="/web/dashboard/cards\?ledger_id=owner"[^>]+aria-current="page"',
-        cards_mobile_nav.group(0),
-    )
+    # The layout editor is a focused task; mobile keeps its explicit return,
+    # while the desktop domain rail still identifies the current page.
+    assert 'class="mobile-plan-nav"' not in cards_page.text
+    assert re.search(r'href="/web/overview\?ledger_id=owner"[^>]*>.*?返回总览</a>', cards_page.text, re.S)
 
     # 报表页子导航不再抢占主落点: 报表仍是自己的 aria-current=page。
     reports_page = web_client.get("/web/reports?ledger_id=owner")
@@ -407,10 +405,10 @@ def test_dashboard_month_uses_ledger_rule_with_a_separate_display_timezone(monke
 def test_overview_pending_card_link_is_readonly_for_viewer(
     web_client: TestClient, *, identity
 ) -> None:
-    """PR #253 R3-3: pending 卡链接按 can_write 分文案 (owner 去处理 / viewer 查看)。"""
+    """pending 卡按权限区分继续整理和只读查看入口。"""
     _create_pending_upload(web_client, identity=identity)
     owner_page = web_client.get("/web/overview?ledger_id=owner")
-    assert "去处理" in owner_page.text
+    assert "继续整理" in owner_page.text
 
     _demote_owner_ledger_to_viewer()
     resp = web_client.get("/web/overview?ledger_id=owner")
@@ -418,7 +416,7 @@ def test_overview_pending_card_link_is_readonly_for_viewer(
     card = re.search(r'data-overview-card="pending">.*?</article>', resp.text, re.S)
     assert card is not None
     assert "查看" in card.group(0)
-    assert "去处理" not in card.group(0)
+    assert "继续整理" not in card.group(0)
 
 
 def test_overview_skips_recurring_candidate_scan_when_card_hidden(

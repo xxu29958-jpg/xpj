@@ -2,7 +2,6 @@
 {% set _path = request.url.path %}
 {% set _role = selected_ledger_role or 'owner' %}
 {% set _readonly_transactions = _path == '/web/confirmed' and _role == 'viewer' %}
-{% set _compact_ledger_header = inbox_is_empty|default(false) or _readonly_transactions %}
 
 {# 五域 IA (218-D S1, 移植自产品矿): 产品归属显式声明, 遗留路由名只是传输契约。
    域判定集中在 base, _sidebar_nav.html 复用同一组标志做高亮。 #}
@@ -10,9 +9,12 @@
    退化为按账单状态归属(pending→收件, 其余→流水, 与矿的默认推导一致)。 #}
 {% set _edit_origin = (
   edit_return_to if edit_return_to is defined else
+  (original_fields.get('return_to') or 'pending') if (original_fields is defined and
+    _path.startswith('/web/expenses/') and (_path.endswith('/undo') or _path.endswith('/reject'))) else
   ('pending' if (expense is defined and expense.status == 'pending') else 'confirmed')
 ) %}
 {% set _is_inbox_context = (
+  (product_body_domain|default('') == 'inbox' and page_surface|default('') == 'tertiary') or
   _path in ['/web', '/web/'] or '/pending' in _path or '/duplicates' in _path or
   ('/expenses/' in _path and _edit_origin in ['pending', 'duplicates'])
 ) %}
@@ -34,12 +36,13 @@
   '/budgets' in _path or
   ('/goals' in _path and '/debt-goals' not in _path) or
   '/debt-goals' in _path or
-  '/income-plans' in _path or '/budget-advise' in _path or '/recurring' in _path
+  '/income-plans' in _path or '/budget-advise' in _path or '/recurring' in _path or
+  ('/expenses/' in _path and _edit_origin == 'recurring_occurrence')
 ) %}
 {% set _is_insights_context = (
   '/overview' in _path or '/reports' in _path or '/data-quality' in _path or '/dashboard/cards' in _path
 ) %}
-{% set _domain = (
+{% set _domain = product_navigation_domain | default('') or (
   'inbox' if _is_inbox_context else
   'transactions' if _is_transactions_context else
   'obligations' if _is_obligations_context else
@@ -82,7 +85,7 @@
 {% set is_debt_goals = '/debt-goals' in _path %}
 {% set is_income_plans = '/income-plans' in _path %}
 {% set is_budget_advise = '/budget-advise' in _path %}
-{% set is_recurring = '/recurring' in _path %}
+{% set is_recurring = '/recurring' in _path or ('/expenses/' in _path and _edit_origin == 'recurring_occurrence') %}
 {% set is_overview = '/overview' in _path %}
 {% set is_dashboard_cards = '/dashboard/cards' in _path %}
 {% set is_reports = '/reports' in _path %}
@@ -90,7 +93,8 @@
 
 {# 页级三态：primary=五域首屏；tertiary=详情工作区(追加 detail.css)；
    其余=secondary。页级不决定样式新旧，所有正文均使用产品栈。 #}
-{% set _is_expense_detail = '/expenses/' in _path and '/edit' in _path %}
+{% set _is_expense_detail = expense_review_task|default(false) or ('/expenses/' in _path and _path.endswith('/edit')) %}
+{% set _inbox_task = _is_expense_detail and _domain == 'inbox' %}
 {% set _is_debt_detail = _path.startswith('/web/debts/') and _path != '/web/debts/new' %}
 {% set _is_import_detail = _path.startswith('/web/import/') %}
 {% set _page_key = (
@@ -109,6 +113,7 @@
   'primary' if _path in _primary_paths else
   'secondary'
 ) %}
+{% set _compact_ledger_header = _page_level == 'primary' or inbox_is_empty|default(false) %}
 
 {# 产品域样式装配。overview/pending/duplicates 仍使用路径表声明域；其他模板
    显式声明 product_body_domain，POST 422 原页重渲染也保留对应域。
@@ -165,6 +170,7 @@
 
   {# 保留真实产品交互消费者：收件抽屉、批量、附件、排序和外观。 #}
   <script defer src="/static/shared/csrf.js?v={{ asset_version }}"></script>
+  <script defer src="/static/shared/confirm-modal.js?v={{ asset_version }}"></script>
   <script defer src="/static/web/pwa-register.js?v={{ asset_version }}"></script>
   <script defer src="/static/web/desktop/core.js?v={{ asset_version }}"></script>
   <script defer src="/static/web/desktop/theme.js?v={{ asset_version }}"></script>
@@ -187,12 +193,14 @@
   {% block page_scripts %}{% endblock %}
   {% if manual_draft_ack %}
   <script defer src="/static/web/manual-drafts.js?v={{ asset_version }}"></script>
+  <script defer data-upload-max-bytes="{{ manual_draft_ack.uploadMaxBytes }}" src="/static/web/manual-draft-files.js?v={{ asset_version }}"></script>
+  <script defer src="/static/web/attachment-drafts.js?v={{ asset_version }}"></script>
+  <script defer src="/static/web/manual-original.js?v={{ asset_version }}"></script>
   <script defer src="/static/web/manual-draft-ack.js?v={{ asset_version }}"></script>
   {% endif %}
   <script defer src="/static/web/desktop.js?v={{ asset_version }}"></script>
-  <script defer src="/static/shared/confirm-modal.js?v={{ asset_version }}"></script>
 </head>
-<body class="product-shell{% if _has_domain_subnav %} has-domain-subnav{% endif %}{% if inbox_is_empty|default(false) %} inbox-empty-page{% endif %}{% if _compact_ledger_header %} compact-ledger-header{% endif %}{% if _readonly_transactions %} ledger-readonly-page{% endif %}" data-body-stack="product" data-domain="{{ _domain }}" data-page="{{ _page_key }}" data-page-level="{{ _page_level }}">
+<body class="product-shell{% if _has_domain_subnav %} has-domain-subnav{% endif %}{% if inbox_is_empty|default(false) %} inbox-empty-page{% endif %}{% if _compact_ledger_header %} compact-ledger-header{% endif %}" data-body-stack="product" data-domain="{{ _domain }}" data-page="{{ _page_key }}" data-page-level="{{ _page_level }}">
 <a class="skip-link" href="#main-content">跳到主内容</a>
 <div class="product-app">
   {% include "_sidebar_nav.html" %}
@@ -202,6 +210,17 @@
        (_bottom_nav.html); >64rem 本壳 display:contents, 桌面结构不变。 #}
     <div class="mobile-chrome">
       <header class="product-topbar">
+      {% if task_return_href|default('') %}
+      <a class="product-button product-button--quiet" href="{{ task_return_href }}"><svg width="20" height="20" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-left"/></svg> {{ task_return_label }}</a>
+      <span class="topbar-spacer"></span><span class="product-eyebrow">{{ page_title }}</span>
+      {% elif _is_expense_detail %}
+      <a class="product-button product-button--quiet" href="{{ edit_return_href }}" data-review-stage="primary"><svg width="20" height="20" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-left"/></svg> {{ edit_return_label or ('收件箱' if _inbox_task else '流水') }}</a>
+      <a class="product-button product-button--quiet" href="#review" data-review-stage="details" hidden><svg width="20" height="20" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-left"/></svg> {{ '当前记录' if expense_review_inspection else '核对小票' }}</a>
+      <span class="topbar-spacer"></span><span class="product-eyebrow" data-review-stage="primary">{{ '当前记录' if expense_review_inspection and expense.status != 'confirmed' else '核对小票' if expense.status == 'pending' else '账单详情' }}</span>
+      {% elif _page_level == 'tertiary' and _domain == 'inbox' %}
+      <a class="product-button product-button--quiet" href="{{ current_href }}"><svg width="20" height="20" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-left"/></svg> 返回账单</a>
+      <span class="topbar-spacer"></span><span class="product-eyebrow">识别小票</span>
+      {% else %}
       {# K3 响应式收件片: ≤64rem 品牌身份并入 topbar (sidebar 整栏隐藏,
          chrome 收进 mobile-chrome 单带); 桌面由 CSS 隐藏, sidebar .brand
          仍是身份 owner。 #}
@@ -218,7 +237,7 @@
       {# Desktop 桥接会话的返回入口 (main 独有, 矿无此面); class 名是测试契约, 勿改。 #}
       <a class="manager-home-link" href="/" title="返回桌面管理器">管理器</a>
       {% endif %}
-      {% if show_month_picker and not _readonly_transactions %}
+      {% if show_month_picker and _path != '/web/confirmed' %}
         {% include "_month_picker.html" %}
       {% endif %}
       {# W1 IA-B: 全局安静入口 — 搜索全角色可达；手动记账只在真实设备会话
@@ -229,19 +248,15 @@
          data-shell-shortcut="search" aria-keyshortcuts="/" title="搜索（/）">
         <span>搜索</span><kbd class="topbar-shortcut-hint" aria-hidden="true">/</kbd>
       </a>
-      {% if can_write and request.state.web_session_auth %}
-      <a class="topbar-action topbar-manual-expense" href="/web/expenses/new"
-         data-shell-shortcut="manual-expense" aria-keyshortcuts="N" title="手动记账（N）">
-        {% if inbox_is_empty|default(false) %}<svg class="compact-add-icon" width="24" height="24" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#plus"/></svg>{% endif %}
-        <span>记账</span><kbd class="topbar-shortcut-hint" aria-hidden="true">N</kbd>
-      </a>
-      {% endif %}
       {% if can_write %}
-      <a class="topbar-action topbar-capture" href="/web/pending{{ q }}#capture"
-         data-shell-shortcut="capture" aria-keyshortcuts="U" title="收票（U）">
-        {% if inbox_is_empty|default(false) %}<svg class="compact-add-icon" width="24" height="24" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#plus"/></svg>{% endif %}
-        <span>收票</span><kbd class="topbar-shortcut-hint" aria-hidden="true">U</kbd>
-      </a>
+      <details class="topbar-create">
+        <summary aria-label="新增记录"><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#plus"/></svg></summary>
+        <div class="topbar-create-menu">
+          <a href="/web/pending{{ q }}#capture" data-shell-shortcut="capture" aria-keyshortcuts="U">拍照或选小票</a>
+          {% if request.state.web_session_auth %}<a href="{{ manual_create_href|default('/web/expenses/new' ~ q) }}" data-shell-shortcut="manual-expense" aria-keyshortcuts="N">手动记一笔</a>{% endif %}
+          <a href="/web/import{{ q }}">导入账单</a>
+        </div>
+      </details>
       {% endif %}
       {# 外观入口 (冻结片合同): 单一「外观」popover 聚合 主题/质感/强调色
          三条本地偏好轴。<details> 原生可开合, 无 JS 也可用; 三轴语义与
@@ -257,31 +272,34 @@
       {% if _compact_ledger_header and request.state.web_session_auth %}
       <a class="compact-account-link" href="/web/settings" aria-label="设置与设备"><svg width="24" height="24" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#user-round"/></svg></a>
       {% endif %}
+      {% endif %}
       </header>
     </div>
     <main class="content" id="main-content" tabindex="-1" data-page-level="{{ _page_level }}">
-      {# W1 IA-B: 域内页签是页级导航, 作为 main 首元素随页滚动, 不占 chrome。 #}
-      {% include "_mobile_nav.html" %}
+      {% block page_header %}{% endblock %}
+      {# Primary headings precede the existing domain navigation in reading order. #}
+      {% if _page_level != 'tertiary' %}{% include "_mobile_nav.html" %}{% endif %}
       {% if _role == 'viewer' and not _readonly_transactions %}
       <div class="readonly-callout" role="status">
         {% if _path.startswith('/web/settings') %}当前账本为<strong>只读角色</strong>。你仍可管理自己的设备。{% else %}当前为<strong>只读角色</strong>。查看与分析保持可用，写入动作已隐藏或禁用。{% endif %}
       </div>
       {% endif %}
-      {% if ledger_undated_expense_count|default(0) %}
+      {% if ledger_undated_expense_count|default(0) and not is_data_quality and filter|default('') != 'missing_accounting_date' %}
       <div class="product-feedback product-feedback--warning" role="status">
         当前账本有 {{ ledger_undated_expense_count }} 笔已确认账单的账务日期待核对。它们尚未归入月份，受影响的合计与剩余额度暂不完整；已显示的按期明细仅含日期已知的记录。
-        <a href="/web/confirmed?ledger_id={{ selected_ledger_id }}&amp;filter=missing_accounting_date">查看并核对日期</a>
+        <a href="{{ accounting_date_review_href|default('/web/confirmed?ledger_id=' ~ selected_ledger_id ~ '&filter=missing_accounting_date') }}">查看并核对日期</a>
       </div>
       {% endif %}
-      {% block content %}{% endblock %}
       {% if manual_draft_ack %}
       <span hidden data-manual-draft-ack="{{ manual_draft_ack | tojson | forceescape }}"></span>
       <p hidden data-manual-draft-ack-status role="status" class="product-feedback"></p>
+      <a hidden data-manual-original-continue class="product-button product-button--primary">继续添加所选原件 <span aria-hidden="true">→</span></a>
       {% endif %}
+      {% block content %}{% endblock %}
     </main>
     {# W1 IA-B: 五域主导航在 ≤64rem 是 fixed 底部 nav (拇指区), >64rem 由
        CSS 隐藏 (桌面 sidebar 域轨是唯一主导航)。 #}
-    {% include "_bottom_nav.html" %}
+    {% if _page_level != 'tertiary' %}{% include "_bottom_nav.html" %}{% endif %}
   </div>
   <div class="drawer-host">
     {% block drawer %}{% endblock %}

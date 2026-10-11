@@ -6,14 +6,25 @@ import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.remote.dto.OriginalHealthDto
 import com.ticketbox.data.repository.LedgerAccessContext
+import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.OriginalAttachmentActions
 import com.ticketbox.data.repository.PendingOriginalCommand
+import com.ticketbox.data.repository.OriginalSelectionDraft
+import com.ticketbox.data.repository.OriginalSubmission
+import com.ticketbox.data.repository.originalPayloadAdapter
+import com.ticketbox.data.repository.logNetworkWarning
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.UiText
+import com.ticketbox.upload.PreparedUploadImage
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+
+class OriginalImageSelection(val source: PreparedUploadImage) {
+    val preview = ProtectedImage(source.bytes, source.contentType)
+}
 
 data class OriginalAttachmentUiState(
     val access: LedgerAccessContext? = null,
@@ -26,16 +37,30 @@ data class OriginalAttachmentUiState(
     val commands: List<PendingOriginalCommand> = emptyList(),
     val busy: Boolean = false,
     val selectedSource: Boolean = false,
+    val selectionLoaded: Boolean = false,
+    val selectionDraft: OriginalSelectionDraft? = null,
+    val selection: OriginalImageSelection? = null,
+    val selectionDisplayed: Boolean = false,
+    val selectionConfirmed: Boolean = false,
     val localIntent: Boolean = false,
     val localIntentBound: Boolean = false,
     val message: UiText? = null,
     val deliveredRevision: Int = 0,
 ) {
     val canReadOriginal: Boolean get() = health?.state !in setOf("none", "cleaned", "missing", "corrupt")
-    val canSubmit: Boolean get() = access?.canModify == true && health != null && !stale && !checking && !busy &&
+    val canSubmit: Boolean get() = selectionLoaded && access?.canModify == true && health != null && !stale && !checking && !busy &&
         !localIntent && commands.none { !it.delivered }
     val canVerify: Boolean get() = canSubmit && health?.state == "unverified" &&
         reviewedDigest != null && reviewedDigest == image?.originalSha256
+    val canConfirmSelection: Boolean get() = localIntentBound && access?.canModify == true && !busy &&
+        selectionDraft != null && selection != null && selectionDisplayed && selectionConfirmed
+    val canResumeSelection: Boolean get() = !busy && (!selectionLoaded || localIntentBound && (selectedSource || access?.canModify == true))
+    val selectionOperation: String? get() = when {
+        localIntent -> null
+        health?.state == "none" && health.cleanup == null && health.cleanupError == null -> "attach_original"
+        health?.expectedSha256 != null && health.state in setOf("missing", "corrupt", "cleaned", "unreadable") -> "replenish_original"
+        else -> null
+    }
 }
 
 /** Ephemeral detail presentation; the existing UploadIntentRepository/Room owns every submitted command. */
@@ -67,9 +92,11 @@ class OriginalAttachmentViewModel(
                     mutableState.value = restoredState()
                 }
                 mutableState.update { it.copy(access = observation.access, commands = commands, localIntentBound = savedOriginalBinding() == observation.access?.binding) }
+                reconcileSubmittedSelection()
+                if (bindingChanged && observation.access != null) restoreOriginalSelection(observation.access.binding)
                 if (bindingChanged || newlyDelivered.isNotEmpty()) {
                     mutableState.update { it.copy(image = null, reviewedDigest = null, deliveredRevision = it.deliveredRevision + if (newlyDelivered.isEmpty()) 0 else 1) }
-                    refresh(preserveMessage = true)
+                    refresh(preserveMessage = newlyDelivered.isEmpty())
                 }
                 seenReceipts = delivered
             }
@@ -116,5 +143,39 @@ class OriginalAttachmentViewModel(
     fun imageDisplayed(image: ProtectedImage) {
         if (mutableState.value.image !== image || mutableState.value.access?.binding != originals.currentOriginalBinding()) return
         mutableState.update { it.copy(reviewedDigest = image.originalSha256) }
+    }
+
+    fun selectedImageDisplayed(image: ProtectedImage) {
+        if (state.value.selection?.preview !== image || !state.value.localIntentBound) return
+        mutableState.update { it.copy(selectionDisplayed = true) }
+    }
+
+    internal fun loadSelectedImage(uri: String, binding: LogicalSessionBinding, prepare: suspend (String) -> PreparedUploadImage?) {
+        val payload = saved.get<String>("original_payload")?.let(originalPayloadAdapter::fromJson) ?: return
+        val key = saved.get<String>("original_key") ?: return
+        mutableState.update { it.copy(busy = true, message = null) }
+        viewModelScope.launch {
+            try {
+                val source = requireNotNull(prepare(uri))
+                val result = originals.originalSelections.retainOriginalSelection(OriginalSubmission(key, payload) { source })
+                if (binding != originals.currentOriginalBinding() || saved.get<String>("original_uri") != uri) return@launch
+                mutableState.update { it.copy(selection = OriginalImageSelection(source), selectionDraft = result.getOrNull(),
+                    message = result.exceptionOrNull()?.toUiText(R.string.original_selection_save_failed)) }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) {
+                logNetworkWarning("operation=OriginalSelection source read failed", error)
+                if (binding == originals.currentOriginalBinding())
+                    mutableState.update { it.copy(message = UiText.res(R.string.original_source_unavailable)) }
+            } finally {
+                if (binding == originals.currentOriginalBinding()) {
+                    mutableState.update { it.copy(busy = false) }
+                    if (state.value.selectionDraft != null) readRetainedSelection()
+                }
+            }
+        }
+    }
+
+    fun confirmImageSelection(confirmed: Boolean) {
+        mutableState.update { it.copy(selectionConfirmed = confirmed && it.selectionDisplayed && it.localIntentBound) }
     }
 }

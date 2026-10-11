@@ -88,16 +88,27 @@ fun ExpenseEditViewModel.acknowledgeItemsMismatch() {
 /** Open the editor seeded from the currently-loaded items (amount magnitude
  *  as text; the kind chip carries the sign). No-op until items have loaded. */
 fun ExpenseEditViewModel.openItemsEditor() {
+    if (_uiState.value.itemDraftsInitialized) {
+        _uiState.update { it.copy(itemEditorOpen = true) }
+        return
+    }
     val items = _uiState.value.expenseItems ?: return
     val drafts = items.items.map { item ->
         EditableItem(
             name = item.name,
             amountText = centsToYuanText(item.amountCents),
             kind = item.kind,
+            quantityText = item.quantityText,
+            unitPriceCents = item.unitPriceCents,
+            category = item.category,
+            rawText = item.rawText,
+            confidence = item.confidence,
+            baselineAmountCents = item.amountCents,
         )
     }
     _uiState.update {
-        it.copy(itemEditorOpen = true, itemDrafts = drafts, itemsMessage = null, itemsMessageTone = MessageTone.Neutral)
+        it.copy(itemEditorOpen = true, itemDrafts = drafts, itemDraftsInitialized = true,
+            itemsMessage = null, itemsMessageTone = MessageTone.Neutral)
     }
 }
 
@@ -127,7 +138,7 @@ fun ExpenseEditViewModel.removeItemRow(index: Int) {
 }
 
 fun ExpenseEditViewModel.closeItemsEditor() {
-    _uiState.update { it.copy(itemEditorOpen = false, itemDrafts = emptyList()) }
+    _uiState.update { it.copy(itemEditorOpen = false) }
 }
 
 /** Persist the edited items. Mirrors [acknowledgeItemsMismatch]'s outcome
@@ -195,6 +206,7 @@ private fun ExpenseEditViewModel.applyItemsSaveOutcome(outcome: ReplaceItemsOutc
             itemsLoadState = ExpenseDetailDataLoadState.Loaded,
             itemEditorOpen = false,
             itemDrafts = emptyList(),
+            itemDraftsInitialized = false,
             itemsSaving = false,
             message = if (synced != null) {
                 UiText.res(R.string.expense_edit_items_saved)
@@ -207,18 +219,18 @@ private fun ExpenseEditViewModel.applyItemsSaveOutcome(outcome: ReplaceItemsOutc
 }
 
 private fun EditableItem.toDomainDraft(currency: CurrencyCode): ExpenseItemDraft {
-    val magnitude = parseAmountCents(amountText, currency) ?: 0L
+    val magnitude = parseAmountCents(amountText, currency)
     // ADR-0035: discount lines carry negative amount_cents; the editor takes
     // the magnitude and the kind chip decides the sign.
-    val signed = if (kind == ExpenseItemKind.DISCOUNT) -abs(magnitude) else magnitude
+    val signed = magnitude?.let { if (kind == ExpenseItemKind.DISCOUNT) -abs(it) else it }
     return ExpenseItemDraft(
         name = name.trim().ifBlank { "未命名" },
-        quantityText = null,
-        unitPriceCents = null,
+        quantityText = quantityText,
+        unitPriceCents = unitPriceCents,
         amountCents = signed,
-        category = null,
-        rawText = null,
-        confidence = null,
+        category = category,
+        rawText = rawText,
+        confidence = confidence,
         kind = kind,
     )
 }

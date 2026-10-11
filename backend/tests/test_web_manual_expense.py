@@ -7,10 +7,12 @@ import json
 import re
 from collections.abc import Iterator
 from decimal import Decimal
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from sqlalchemy import delete, func, select
 
+from app.config import get_settings
 from app.database import SessionLocal
 from app.middleware.csrf import CSRF_COOKIE_NAME
 from app.models import Account, ApiIdempotencyKey, AuthToken, Device, Expense, ExpenseRevision, LedgerMember
@@ -97,6 +99,7 @@ def _assert_confirmed_manual_fact(
         assert location == (
             f"/web/expenses/{expense.id}/edit?"
             "ledger_id=shared_household&return_to=confirmed"
+            "&return_month=2026-08&return_page=1&return_home_currency_code=CNY"
         )
         token = db.scalar(
             select(AuthToken).where(AuthToken.token_hash == hash_secret(session_token))
@@ -168,12 +171,19 @@ def test_member_can_open_native_manual_expense_form(
     assert 'name="csrf_token"' in response.text
     assert 'name="currency_code"' in response.text
     assert ">CNY</option>" in response.text
-    assert 'href="/web/expenses/new"' in response.text
-    assert 'data-shell-shortcut="manual-expense"' in response.text
-    assert 'aria-keyshortcuts="N"' in response.text
+    assert 'href="/web/expenses/new?ledger_id=shared_household"' in response.text
+    assert 'href="/web/confirmed?ledger_id=shared_household"' in response.text
+    assert 'data-manual-result hidden' in response.text
     assert _draft_attribute(response.text, "data-manual-draft-scope") == _expected_draft_scope(
         installed_web, session_token,
     )
+    pending = installed_web.browser.get("/web/pending?filter=ready",
+        headers={"Cookie": f"{SESSION_COOKIE_NAME}={session_token}"})
+    entry = html.unescape(re.search(r'href="(/web/expenses/new[^\"]*)"', pending.text)[1])
+    assert parse_qs(urlsplit(entry).query) == {"ledger_id": [installed_web.shared_ledger_id],
+        "return_to": ["pending"], "return_filter": ["ready"]}
+    original = installed_web.browser.get(entry, headers={"Cookie": f"{SESSION_COOKIE_NAME}={session_token}"})
+    assert f'/web/pending?ledger_id={installed_web.shared_ledger_id}&filter=ready' in html.unescape(original.text)
 
 
 def test_manual_expense_replay_uses_web_device_and_creates_one_confirmed_fact(
@@ -184,8 +194,14 @@ def test_manual_expense_replay_uses_web_device_and_creates_one_confirmed_fact(
         next_url="/web/expenses/new",
     )
     session_cookie = f"{SESSION_COOKIE_NAME}={session_token}"
+    origin = installed_web.browser.get("/web/confirmed?month=2026-08", headers={"Cookie": session_cookie})
+    entries = {html.unescape(href) for href in re.findall(r'href="(/web/expenses/new[^\"]*)"', origin.text)}
+    assert len(entries) == 1, origin.text
+    entry = entries.pop()
+    entry_query = parse_qs(urlsplit(entry).query)
+    assert entry_query["return_to"] == ["confirmed"] and entry_query["return_month"] == ["2026-08"]
     page = installed_web.browser.get(
-        "/web/expenses/new",
+        entry,
         headers={"Cookie": session_cookie},
     )
     csrf = re.search(r'name="csrf_token" value="([^"]+)"', page.text)
@@ -227,6 +243,7 @@ def test_manual_expense_replay_uses_web_device_and_creates_one_confirmed_fact(
     assert first.status_code == 303, first.text
     assert replay.status_code == 303, replay.text
     assert replay.headers["location"] == first.headers["location"]
+    assert parse_qs(urlsplit(first.headers["location"]).query)["return_month"] == ["2026-08"]
     _assert_confirmed_manual_fact(
         installed_web,
         session_token=session_token,
@@ -243,7 +260,21 @@ def test_manual_expense_replay_uses_web_device_and_creates_one_confirmed_fact(
     assert _draft_attribute(landed.text, "data-manual-draft-ack") == {
         "scope": _expected_draft_scope(installed_web, session_token),
         "clientRef": client_ref.group(1),
+        "originalTarget": {"expenseId": int(first.headers["location"].split("/")[3]), "rowVersion": 1},
+        "uploadMaxBytes": get_settings().max_upload_size_bytes,
     }
+    returns = [html.unescape(href) for href in re.findall(r'href="(/web/confirmed\?[^\"]*)"', landed.text)]
+    back = next(href for href in returns if parse_qs(urlsplit(href).query).get("month") == ["2026-08"])
+    returned = installed_web.browser.get(back, headers={"Cookie": session_cookie})
+    assert returned.status_code == 200 and 'name="month" value="2026-08"' in returned.text
+    query = {"ledger_id": installed_web.shared_ledger_id, "client_ref": client_ref.group(1),
+        "draft_scope": json.dumps(_expected_draft_scope(installed_web, session_token)), "return_to": "confirmed"}
+    result = installed_web.browser.get("/web/expenses/new/result", params=query, headers={"Cookie": session_cookie})
+    assert result.status_code == 200, result.text
+    assert "创建时已入账" in result.text and "社区超市" in result.text and "23.45" in result.text
+    assert _draft_attribute(result.text, "data-manual-draft-ack") == _draft_attribute(landed.text, "data-manual-draft-ack")
+    _assert_confirmed_manual_fact(installed_web, session_token=session_token,
+        client_ref=client_ref.group(1), location=first.headers["location"])
 
     installed_web.browser.cookies.clear()
     replacement = _connect_local_session(installed_web)
@@ -253,6 +284,10 @@ def test_manual_expense_replay_uses_web_device_and_creates_one_confirmed_fact(
     )
     assert other_device.status_code == 200, other_device.text
     assert "data-manual-draft-ack=" not in other_device.text
+    wrong_browser_result = installed_web.browser.get("/web/expenses/new/result", params=query,
+        headers={"Cookie": f"{SESSION_COOKIE_NAME}={replacement}"})
+    assert wrong_browser_result.status_code == 409, wrong_browser_result.text
+    assert "社区超市" not in wrong_browser_result.text and "data-manual-draft-ack=" not in wrong_browser_result.text
 
 
 def test_form_money_maps_to_the_existing_manual_expense_payload() -> None:
@@ -360,6 +395,8 @@ def test_missing_fx_keeps_same_created_expense_in_pending_recovery(
     assert _draft_attribute(recovery.text, "data-manual-draft-ack") == {
         "scope": _expected_draft_scope(installed_web, session_token),
         "clientRef": client_ref.group(1),
+        "originalTarget": {"expenseId": expense.id, "rowVersion": 1},
+        "uploadMaxBytes": get_settings().max_upload_size_bytes,
     }
 
 
@@ -390,7 +427,7 @@ def test_viewer_neither_sees_nor_opens_manual_expense_entry(
     )
 
     assert confirmed.status_code == 200, confirmed.text
-    assert 'href="/web/expenses/new"' not in confirmed.text
+    assert 'href="/web/expenses/new' not in confirmed.text
     assert 'data-shell-shortcut="manual-expense"' not in confirmed.text
     assert direct.status_code == 403, direct.text
     with SessionLocal() as db:
@@ -531,5 +568,7 @@ def test_open_manual_form_cannot_write_after_its_binding_changes(
     assert "旧表单的商家" in response.text
     assert f'name="client_ref" value="{client_ref.group(1)}"' in response.text
     assert 'name="ledger_id" value="shared_household"' in response.text
+    if change == "permission":
+        assert "另记一笔" not in response.text
     with SessionLocal() as db:
         assert db.scalar(select(func.count()).select_from(Expense)) == 0

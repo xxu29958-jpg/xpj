@@ -1,25 +1,16 @@
 package com.ticketbox.ui.design
 
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.graphics.luminance
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
 
-/** Light surfaces for settings destinations and the first binding introduction. */
+/** Settings roles consume the same resolved light/dark surfaces as the rest of the product. */
 object SettingsColors {
-    val householdEntry = Color(0xFFF8E7D6)
-    val appearanceEntry = Color(0xFFEEE8F7)
-    val connectionEntry = Color(0xFFF1EDDA)
-    val generalEntry = Color(0xFFE5EED7)
-    val bindingIntroduction = Color(0xFFEAF0D6)
-    val sessionCredential = appearanceEntry
-    val offlineCopy = householdEntry
-    val sessionExit = connectionEntry
-}
-
-@Composable
-fun settingsEntrySurface(tint: Color): Color {
-    val surface = MaterialTheme.colorScheme.surface
-    return if (surface.luminance() < 0.5f) lerp(surface, tint, 0.12f) else tint
+    val householdEntry: Color @Composable get() = LocalThemeVisuals.current.surfaceApricot
+    val appearanceEntry: Color @Composable get() = LocalThemeVisuals.current.surfaceLilac
+    val connectionEntry: Color @Composable get() = LocalThemeVisuals.current.surfaceSand
+    val generalEntry: Color @Composable get() = LocalThemeVisuals.current.brandPrimaryBg
+    val bindingIntroduction: Color @Composable get() = LocalThemeVisuals.current.brandPrimaryBg
+    val sessionCredential: Color @Composable get() = appearanceEntry
+    val offlineCopy: Color @Composable get() = householdEntry
+    val sessionExit: Color @Composable get() = connectionEntry
 }

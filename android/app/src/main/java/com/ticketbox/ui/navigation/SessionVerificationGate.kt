@@ -17,6 +17,7 @@ import com.ticketbox.ui.components.AppLoadingState
 import com.ticketbox.ui.components.AppPageChrome
 import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageScrollableColumn
+import com.ticketbox.ui.components.AppButtonIcons
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppScrollablePageChrome
 import com.ticketbox.ui.components.AppStatusBanner
@@ -60,7 +61,7 @@ internal fun SessionVerificationGate(
                 )
                 AppPrimaryButton(
                     text = stringResource(R.string.app_session_verification_retry),
-                    icon = Icons.Default.Refresh,
+                    icons = AppButtonIcons(leading = Icons.Default.Refresh),
                     modifier = Modifier.fillMaxWidth(),
                     onClick = onRetry,
                 )

@@ -11,7 +11,6 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
-from uuid import uuid4
 
 from fastapi import Request
 from fastapi.responses import Response
@@ -20,6 +19,7 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.routes._web_accounting_time import accounting_snapshot_label
 from app.routes._web_bill_split_context import build_split_invite_context
+from app.routes._web_draft_binding import rendered_draft_scope
 from app.routes._web_expense_fact_pager import fact_timeline_page_context
 from app.routes._web_expense_helpers import web_edit_context
 from app.routes._web_expense_offset_fact import expense_offset_fact_view
@@ -34,8 +34,9 @@ from app.routes._web_expense_return_context import (
 )
 from app.routes._web_money_views import _minor_amount_label
 from app.routes.web_common import _web_redirect, templates
+from app.schemas import ExpenseOffsetRevisionResponse
 from app.services import invitation_members
-from app.services.expense_revision_service import list_expense_revisions
+from app.services.expense_fact_history import list_expense_fact_history
 from app.services.expense_service import get_expense
 from app.services.spending_contract_service import accounting_datetime_label
 
@@ -294,20 +295,20 @@ def build_fact_timeline(
     *,
     tenant_id: str,
     expense_id: int,
-    current_revision: int,
     snapshot_revision: int | None = None,
+    offset_snapshot_id: int | None = None,
     page: int = 1,
     page_size: int = 50,
     member_names: dict[int, str] | None = None,
 ) -> dict[str, Any]:
     """Newest-first human timeline rows for the fact page."""
 
-    response = list_expense_revisions(
+    response = list_expense_fact_history(
         db,
         tenant_id=tenant_id,
         expense_id=expense_id,
-        current_revision=current_revision,
         snapshot_revision=snapshot_revision,
+        offset_snapshot_id=offset_snapshot_id,
         page=page,
         page_size=page_size,
     )
@@ -315,6 +316,9 @@ def build_fact_timeline(
     for item in response.items:
         revision = item.model_dump()
         actor_parts = [part for part in (item.actor_account_name, item.actor_device_name) if part]
+        if isinstance(item, ExpenseOffsetRevisionResponse):
+            rows.append(_offset_timeline_entry(item))
+            continue
         rows.append(
             {
                 "revision_number": item.revision_number,
@@ -324,6 +328,7 @@ def build_fact_timeline(
                 "when": _snapshot_time_label(item.created_at.isoformat()),
                 "actor": " · ".join(actor_parts),
                 "is_correction": item.change_kind == "correction",
+                "summary": _historical_amount(item.after) if item.change_kind == "confirmed" else "",
                 "changes": _timeline_changes(
                     revision,
                     member_names=member_names,
@@ -336,8 +341,39 @@ def build_fact_timeline(
         "page_size": response.page_size,
         "total": response.total,
         "snapshot_revision": response.snapshot_revision,
+        "offset_snapshot_id": response.offset_snapshot_id,
         "has_newer": response.page > 1,
         "has_older": response.page * response.page_size < response.total,
+    }
+
+
+def _historical_amount(snapshot: dict[str, object]) -> str:
+    if isinstance(snapshot.get("original_amount_minor"), int):
+        return _snapshot_money(snapshot["original_amount_minor"], snapshot.get("original_currency_code"))
+    return _snapshot_money(snapshot.get("amount_cents"), snapshot.get("home_currency_code"))
+
+
+def _offset_timeline_entry(revision: ExpenseOffsetRevisionResponse) -> dict[str, object]:
+    after, before = revision.after, revision.before or {}
+    kind = {"refund": "商家退回", "chargeback": "银行拒付", "reversal": "冲销账单"}.get(after.get("kind"), "退回记录")
+    action = {"created": "", "correction": "更正：", "void": "撤销："}[revision.change_kind]
+    fields = ("original_amount_minor", "accounting_time", "accounting_date", "category")
+    changes = []
+    if revision.change_kind == "correction":
+        for field in fields:
+            if field == "accounting_date" and "accounting_time" in after or before.get(field) == after.get(field):
+                continue
+            label = _FACT_FIELD_LABELS.get(field, "账务日期")
+            changes.append({"label": label, "before": _format_fact_value(field, before.get(field), before),
+                "after": _format_fact_value(field, after.get(field), after)})
+    return {
+        "kind": revision.change_kind, "kind_label": action + kind, "reason": revision.reason,
+        "when": _snapshot_time_label(revision.created_at.isoformat()),
+        "actor": " · ".join(part for part in (revision.actor_account_name, revision.actor_device_name) if part),
+        "is_correction": revision.change_kind == "correction", "changes": changes,
+        "summary": " · ".join(filter(None, [
+            "" if after.get("kind") == "reversal" else _historical_amount(after), after.get("accounting_date"),
+        ])),
     }
 
 
@@ -350,6 +386,7 @@ def web_fact_context(
     *,
     revision_page: int = 1,
     revision_snapshot: int | None = None,
+    offset_snapshot_id: int | None = None,
     message: str | None = None,
     flash_type: str = "",
     error: str | None = None,
@@ -359,7 +396,9 @@ def web_fact_context(
 
     return_values = return_context.as_kwargs()
     ctx = web_edit_context(db, request, options, selected_id, expense_id, return_context=return_context)
-    if not clean_return_to(return_context.return_to):
+    if not clean_return_to(return_context.return_to) and not any(
+        ctx["edit_return_fields"].get(name) for name in ("return_review_ref", "return_receipt_key")
+    ):
         ctx["edit_return_href"] = return_href(
             "",
             ledger_id=selected_id,
@@ -383,7 +422,8 @@ def web_fact_context(
         accounting_datetime_label(expense.confirmed_at) if expense.confirmed_at else ""
     )
     ctx["page_title"] = "账单详情"
-    ctx["items_ack_idempotency_key"] = str(uuid4())
+    if ctx["expense_review_inspection"]:
+        ctx["expense_subtasks"] = {}
     ctx["message"] = message if message is not None else request.query_params.get("msg")
     ctx["flash_type"] = flash_type if flash_type in _FACT_FLASH_TYPES else ""
     ctx["error"] = error
@@ -407,8 +447,8 @@ def web_fact_context(
         db,
         tenant_id=selected_id,
         expense_id=expense_id,
-        current_revision=expense.fact_revision,
         snapshot_revision=revision_snapshot,
+        offset_snapshot_id=offset_snapshot_id,
         page=revision_page,
         member_names=member_names,
     )
@@ -431,6 +471,7 @@ def web_fact_error_response(
     message: str,
     *,
     status_code: int = 409,
+    subtask_values: dict | None = None,
     return_context: ExpenseReturnContext = ExpenseReturnContext(),
 ) -> Response:
     """confirmed 命中已失权的旧 Web 命令（save/items/splits/reject）时的诚实
@@ -455,6 +496,9 @@ def web_fact_error_response(
             flash_type="error",
             **return_context_params(**return_context.as_kwargs()),
         )
+    if subtask_values is not None:
+        ctx["expense_subtasks"]["ack"].update(subtask_values)
+        ctx["expense_subtasks"]["ack"]["scope"] = rendered_draft_scope(db, request, subtask_values["draft_scope"])[0]
     return templates.TemplateResponse(
         request=request,
         name="expense_fact.html",

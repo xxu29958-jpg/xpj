@@ -36,6 +36,7 @@ internal fun SpendingGoalDetailUiState.withReadFailure(error: Throwable): Spendi
     val denied = error.isReadAccessDenied()
     val preserveForm = !denied || formDirty || hasPendingEdit
     return copy(isLoading = false, loadError = error.toUiText(com.ticketbox.R.string.spending_goal_detail_load_failed),
+        editOriginal = editOriginal.takeIf { preserveForm },
         isEditing = isEditing && preserveForm, name = if (preserveForm) name else "",
         month = if (preserveForm) month else java.time.YearMonth.now().toString(),
         targetAmountInput = if (preserveForm) targetAmountInput else "", category = if (preserveForm) category else "",

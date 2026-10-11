@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
@@ -23,8 +24,10 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.ticketbox.ui.design.AppAlpha
+import com.ticketbox.ui.design.AppAdaptiveBreakpoints
 import com.ticketbox.ui.design.AppElevation
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
@@ -34,7 +37,8 @@ import com.ticketbox.ui.design.LocalThemeVisuals
 @Composable
 fun AppPaperCard(
     modifier: Modifier = Modifier,
-    radius: RoundedCornerShape = RoundedCornerShape(AppRadius.medium),
+    radius: RoundedCornerShape = RoundedCornerShape(AppRadius.hero),
+    containerColor: Color? = null,
     content: @Composable () -> Unit,
 ) {
     val visuals = LocalThemeVisuals.current
@@ -43,7 +47,7 @@ fun AppPaperCard(
             .fillMaxWidth()
             .paperSurface(
                 radius = radius,
-                containerColor = visuals.paperCard.copy(alpha = APP_PAPER_CARD_DEFAULT_ALPHA),
+                containerColor = containerColor ?: visuals.paperCard.copy(alpha = APP_PAPER_CARD_DEFAULT_ALPHA),
                 borderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft),
                 shadowColor = visuals.shadowTint,
             ),
@@ -60,7 +64,7 @@ fun AppSolidCard(
     // Solid cards are for edit, settings, and other input-heavy surfaces that
     // need stronger separation from the immersive background.
     val visuals = LocalThemeVisuals.current
-    val radius = RoundedCornerShape(AppRadius.medium)
+    val radius = RoundedCornerShape(AppRadius.hero)
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -88,6 +92,33 @@ fun AppContentCard(
             verticalArrangement = verticalArrangement,
             content = content,
         )
+    }
+}
+
+/** A read-only before/after pair; it owns no draft or choice state. */
+@Composable
+fun AppValueComparison(currentLabel: String, current: String, proposedLabel: String, proposed: String) {
+    val visuals = LocalThemeVisuals.current
+    @Composable
+    fun Value(label: String, value: String, modifier: Modifier = Modifier) {
+        Column(modifier.padding(AppSpacing.contentGap), verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+            Text(label, style = MaterialTheme.typography.bodySmall, color = visuals.textMeta)
+            Text(value, style = MaterialTheme.typography.titleMedium)
+        }
+    }
+    val proposedModifier = Modifier.clip(RoundedCornerShape(AppRadius.medium)).background(visuals.brandPrimaryBg)
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        if (maxWidth / LocalDensity.current.fontScale < AppAdaptiveBreakpoints.amountRowInlineMinWidth) {
+            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+                Value(currentLabel, current, Modifier.fillMaxWidth())
+                Value(proposedLabel, proposed, proposedModifier.fillMaxWidth())
+            }
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+                Value(currentLabel, current, Modifier.weight(1f))
+                Value(proposedLabel, proposed, proposedModifier.weight(1f))
+            }
+        }
     }
 }
 

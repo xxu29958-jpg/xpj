@@ -1,5 +1,7 @@
 package com.ticketbox.ui.screens.pending
 
+import androidx.compose.ui.res.vectorResource
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -8,10 +10,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AddPhotoAlternate
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -51,7 +49,7 @@ internal fun PendingMessageCard(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
-            imageVector = Icons.Filled.Info,
+            imageVector = ImageVector.vectorResource(R.drawable.ic_lucide_info),
             contentDescription = null,
             tint = MaterialTheme.colorScheme.primary,
             modifier = Modifier.size(AppSpacing.cardPadding),
@@ -142,7 +140,7 @@ private fun PendingUploadAction(
         shape = RoundedCornerShape(AppRadius.small),
     ) {
         Icon(
-            imageVector = Icons.Filled.AddPhotoAlternate,
+            imageVector = ImageVector.vectorResource(R.drawable.ic_lucide_image_plus),
             contentDescription = null,
             modifier = Modifier.size(AppIconSize.compact),
         )
@@ -165,7 +163,7 @@ internal fun PendingDisplayModeButton(
         onClick = onClick,
     ) {
         Icon(
-            imageVector = Icons.Filled.MoreHoriz,
+            imageVector = ImageVector.vectorResource(R.drawable.ic_lucide_ellipsis),
             contentDescription = stringResource(R.string.pending_display_options_button),
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -193,7 +191,7 @@ internal fun PendingUndoRejectBanner(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
-            imageVector = Icons.Filled.Info,
+            imageVector = ImageVector.vectorResource(R.drawable.ic_lucide_info),
             contentDescription = null,
             tint = MaterialTheme.colorScheme.primary,
             modifier = Modifier.size(AppSpacing.cardPadding),

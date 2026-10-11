@@ -1,6 +1,17 @@
 package com.ticketbox.data.repository
 
 import com.ticketbox.BuildConfig
+import com.squareup.moshi.Moshi
+import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import com.ticketbox.data.local.PendingMutationStatus
+import com.ticketbox.data.local.PendingMutationType
+import com.ticketbox.data.remote.ApiService
+import com.ticketbox.data.remote.dto.ExpenseDto
+import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
+import com.ticketbox.data.remote.dto.MerchantAliasDto
+import com.ticketbox.data.remote.dto.MerchantAliasUpdateRequest
+import com.ticketbox.data.remote.dto.RecurringCandidateConfirmRequestDto
+import com.ticketbox.data.remote.dto.RecurringItemDto
 import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
@@ -109,6 +120,149 @@ class NetworkErrorReportingTest {
         val result = handler.safeCall<Unit> { attempts += 1; throw original }
         assertEquals(1, attempts)
         assertOriginalCause(original, result.exceptionOrNull()?.cause)
+    }
+
+    @Test
+    fun aliasReplayFailureReportsWithoutSettlingOrRetryingOriginal() = runTest {
+        val dao = FakePendingMutationDao()
+        val outbox = testOutboxRepository(dao = dao)
+        val payload = """{"expected_row_version":0,"enabled":false}"""
+        val originalId = outbox.enqueue(PendingMutationType.UpdateMerchantAlias, "merchant_alias:original", payload,
+            1L, idempotencyKey = "original-key")
+        var attempts = 0
+        val api = object : ApiService by FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0) {
+            override suspend fun updateMerchantAlias(
+                publicId: String, request: MerchantAliasUpdateRequest, idempotencyKey: String?,
+            ): MerchantAliasDto {
+                attempts += 1
+                throw IllegalStateException("password=synthetic-alias-secret", IOException("private financial text"))
+            }
+        }
+        val adapter = Moshi.Builder().add(KotlinJsonAdapterFactory()).build().adapter(MerchantAliasUpdateRequest::class.java)
+        val summary = OutboxDrainEngine(outbox, listOf(UpdateMerchantAliasDispatcher({ api }, adapter))).drainOnce()
+
+        assertEquals(1, attempts)
+        assertEquals(0, summary.done)
+        assertEquals(1, summary.failures)
+        val original = dao.rows.getValue(originalId)
+        assertEquals(PendingMutationStatus.Failed.wireValue, original.status)
+        assertEquals(payload, original.payload)
+        assertEquals("original-key", original.idempotencyKey)
+        val output = finalLog()
+        assertTrue(output.contains("operation=UpdateMerchantAlias"))
+        assertTrue(output.contains("UpdateMerchantAliasDispatcher.kt:"))
+        assertTrue(output.contains("source_tree_sha256=${BuildConfig.SOURCE_FINGERPRINT}"))
+        assertTrue(output.contains("IllegalStateException") && output.contains("IOException"))
+        assertFalse(output.contains("synthetic-alias-secret") || output.contains("private financial text"))
+        assertFalse(original.lastError.orEmpty().contains("synthetic-alias-secret"))
+        assertTrue(ShadowLog.getLogsForTag("TicketboxNetwork").all { it.throwable == null })
+    }
+
+    @Test
+    fun candidateReplayFailureReportsSafelyAndKeepsItsOriginalCommand() = runTest {
+        val dao = FakePendingMutationDao()
+        val outbox = testOutboxRepository(dao = dao)
+        val adapter = Moshi.Builder().add(KotlinJsonAdapterFactory()).build().adapter(RecurringCandidatePayload::class.java)
+        val payload = adapter.toJson(RecurringCandidatePayload(RecurringCandidateConfirmRequestDto(
+            merchant = "原建议", amountCents = 2400, homeCurrencyCode = "JPY"), "UTC"))
+        val originalId = outbox.enqueue(PendingMutationType.ConfirmRecurringCandidate, "recurring_candidate:original-key",
+            payload, 0L, idempotencyKey = "original-key")
+        var attempts = 0
+        val api = object : ApiService by FakeApiService(mutableListOf(), 0) {
+            override suspend fun confirmRecurringCandidate(request: RecurringCandidateConfirmRequestDto,
+                timezone: String?, idempotencyKey: String): RecurringItemDto {
+                attempts++
+                throw IllegalStateException("password=synthetic-adoption-secret", IOException("private financial text"))
+            }
+        }
+        val summary = OutboxDrainEngine(outbox, listOf(ConfirmRecurringCandidateDispatcher({ api }, adapter))).drainOnce()
+        val original = dao.rows.getValue(originalId)
+        assertEquals(1, attempts)
+        assertEquals(0, summary.done)
+        assertEquals(1, summary.failures)
+        assertEquals(PendingMutationStatus.Failed.wireValue, original.status)
+        assertEquals(payload, original.payload)
+        assertEquals("original-key", original.idempotencyKey)
+        assertEquals(RECURRING_RECEIPT_UNVERIFIED, original.lastError)
+        val output = finalLog()
+        assertTrue(output.contains("operation=ConfirmRecurringCandidate") && output.contains("ConfirmRecurringCandidateDispatcher.kt:"))
+        assertTrue(output.contains("source_tree_sha256=${BuildConfig.SOURCE_FINGERPRINT}"))
+        assertTrue(output.contains("IllegalStateException") && output.contains("IOException"))
+        assertFalse(output.contains("synthetic-adoption-secret") || output.contains("private financial text"))
+        assertTrue(ShadowLog.getLogsForTag("TicketboxNetwork").all { it.throwable == null })
+    }
+
+    @Test
+    fun debtLinkReplayFailureReportsSafelyAndKeepsItsOriginalCommand() = runTest {
+        val dao = FakePendingMutationDao()
+        val outbox = testOutboxRepository(dao = dao)
+        val adapters = com.ticketbox.OutboxAdapterGraph()
+        val payload = adapters.goalDebtEditAdapter.toJson(DebtGoalEditPayload("原关联任务",
+            com.ticketbox.data.remote.dto.DebtGoalLinksReplaceRequestDto(7, listOf("debt-original")),
+            mapOf("debt-original" to "原选择")))
+        val id = outbox.enqueue(PendingMutationType.ReplaceGoalDebtLinks, "goal:original", payload, 7L, "original-links-key")
+        var attempts = 0
+        val api = object : ApiService by FakeApiService(mutableListOf(), 0) {
+            override suspend fun replaceGoalDebtLinks(publicId: String,
+                request: com.ticketbox.data.remote.dto.DebtGoalLinksReplaceRequestDto, idempotencyKey: String?, timezone: String?):
+                com.ticketbox.data.remote.dto.GoalDto {
+                attempts++
+                throw IllegalStateException("password=synthetic-links-secret", IOException("private financial text"))
+            }
+        }
+        val summary = OutboxDrainEngine(outbox, listOf(DebtGoalEditDispatcher({ api },
+            adapters.goalDebtEditAdapter, adapters.goalReceiptAdapter) { error("Unconfirmed results cannot invalidate reads") })).drainOnce()
+        val original = dao.rows.getValue(id)
+        assertEquals(1, attempts)
+        assertEquals(0, summary.done)
+        assertEquals(1, summary.failures)
+        assertEquals(payload, original.payload)
+        assertEquals(7L, original.expectedRowVersion)
+        assertEquals("original-links-key", original.idempotencyKey)
+        assertEquals("目标修改的结果无法确认，已保留原提交，请核对。", original.lastError)
+        val output = finalLog()
+        assertTrue(output.contains("operation=ReplaceGoalDebtLinks") && output.contains("DebtGoalEditSubmission.kt:"))
+        assertTrue(output.contains("IllegalStateException") && output.contains("IOException"))
+        assertFalse(output.contains("synthetic-links-secret") || output.contains("private financial text"))
+        assertTrue(ShadowLog.getLogsForTag("TicketboxNetwork").all { it.throwable == null })
+    }
+
+    @Test
+    fun confirmReplayFailureReportsSafelyAndKeepsItsOriginalCommand() = runTest {
+        val dao = FakePendingMutationDao()
+        val outbox = testOutboxRepository(dao = dao)
+        val payload = """{"expected_row_version":0}"""
+        val originalId = outbox.enqueue(PendingMutationType.ConfirmExpense, "expense:42", payload,
+            7L, idempotencyKey = "original-confirm-key")
+        var attempts = 0
+        val api = object : ApiService by FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0) {
+            override suspend fun confirmExpense(id: String, request: ExpenseStateTokenRequest, idempotencyKey: String?): ExpenseDto {
+                attempts += 1
+                assertEquals("42", id)
+                assertEquals(7L, request.expectedRowVersion)
+                assertEquals("original-confirm-key", idempotencyKey)
+                throw IllegalStateException("password=synthetic-confirm-secret", IOException("private financial text"))
+            }
+        }
+        val adapter = Moshi.Builder().add(KotlinJsonAdapterFactory()).build().adapter(ExpenseStateTokenRequest::class.java)
+        val summary = OutboxDrainEngine(outbox, listOf(ConfirmExpenseDispatcher({ api }, adapter) { _, _ ->
+            error("A failed response must not publish a fact")
+        })).drainOnce()
+        assertEquals(1, attempts)
+        assertEquals(0, summary.done)
+        assertEquals(1, summary.failures)
+        val original = dao.rows.getValue(originalId)
+        assertEquals(PendingMutationStatus.Failed.wireValue, original.status)
+        assertEquals(payload, original.payload)
+        assertEquals(7L, original.expectedRowVersion)
+        assertEquals("original-confirm-key", original.idempotencyKey)
+        assertEquals("确认结果暂时无法核实，请稍后重试。原提交仍保留。", original.lastError)
+        val output = finalLog()
+        assertTrue(output.contains("operation=ConfirmExpense"))
+        assertTrue(output.contains("ConfirmExpenseDispatcher.kt:"))
+        assertTrue(output.contains("IllegalStateException") && output.contains("IOException"))
+        assertFalse(output.contains("synthetic-confirm-secret") || output.contains("private financial text"))
+        assertTrue(ShadowLog.getLogsForTag("TicketboxNetwork").all { it.throwable == null })
     }
 
     private fun assertLocated(output: String) {

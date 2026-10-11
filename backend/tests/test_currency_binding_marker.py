@@ -13,18 +13,20 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.canonical_money_facts_contract import INSTALLATION_HOME_CURRENCY_KEY
 from app.config import get_settings
 from app.database import SessionLocal
 from app.errors import AppError
-from app.models import Debt, Expense, IncomePlanRevision
+from app.models import Debt, Expense, IncomePlanRevision, RecurringItem
 from app.runtime_compatibility_contract import (
     RUNTIME_COMPATIBILITY_SESSION_KEY,
     RuntimeCompatibilityRequest,
 )
 from app.schemas import BudgetMonthlyUpdateRequest, GoalCreateRequest, RecurringCandidateConfirmRequest
+from app.services import recurring_candidate_confirmation_service as candidate_service
 from app.services.app_meta_service import get_value
 from app.services.budget_command_service import save_monthly_budget
 from app.services.currency_binding_service import (
@@ -35,10 +37,6 @@ from app.services.currency_binding_service import (
 from app.services.debt_service._repayment_draft_confirm import confirm_repayment_draft
 from app.services.goal_service import create_goal
 from app.services.income_plan_service import create_income_plan
-from app.services.recurring_candidate_confirmation_service import (
-    _create_recurring_item_from_candidate,
-    _RecurringCandidateMatch,
-)
 from tests._infra.currency import activate_test_currency_authority
 from tests._runtime_protocol import negotiated_headers
 from tests.test_debt_binding_drift import (
@@ -304,27 +302,22 @@ def test_confirm_rejected_when_draft_currency_mismatches_debt(client: TestClient
         assert excinfo.value.error == "currency_binding_drift"
 
 
-def _candidate_confirm_call(db, home_env: str):
-    """R15b-4 的最小确认创建调用（fabricated candidate match，不依赖 insights 聚合）。"""
-    match = _RecurringCandidateMatch(
-        home_currency_code="CNY",
-        merchant="咖啡店",
-        merchant_key="coffee",
-        frequency="monthly",
-        amount_cents=1200,
-        candidate={},
-    )
+def _candidate_confirm_call(db, monkeypatch):
+    """Exercise the public adoption command with a controlled server observation."""
+    monkeypatch.setattr(candidate_service, "recurring_candidates", lambda *args, **kwargs: [
+        {"merchant": "咖啡店", "amount_cents": 1200, "occurrence_count": 3, "confidence": "high"},
+    ])
     payload = RecurringCandidateConfirmRequest(
         home_currency_code="CNY",
         merchant="咖啡店",
         amount_cents=1200,
         frequency="monthly",
     )
-    return _create_recurring_item_from_candidate(
+    return candidate_service.confirm_recurring_candidate(
         db,
         tenant_id="owner",
-        match=match,
         payload=payload,
+        idempotency_key=str(uuid4()),
         timezone_name=None,
     )
 
@@ -333,18 +326,21 @@ def test_recurring_candidate_uses_confirmed_currency_despite_environment(monkeyp
     _seed_cny_expense_fact_row()
     monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
     with SessionLocal() as db:
-        item = _candidate_confirm_call(db, "JPY")
+        item = _candidate_confirm_call(db, monkeypatch)
         assert item.baseline_amount_cents == 1200
+        stored = db.scalar(select(RecurringItem).where(RecurringItem.public_id == item.public_id))
+        assert stored is not None and stored.home_currency_code == item.home_currency_code == "CNY"
         assert get_capability(db).home_currency_code == "CNY"
 
 
-def test_recurring_candidate_confirm_requires_versioned_writer_on_jpy() -> None:
+def test_recurring_candidate_confirm_requires_versioned_writer_on_jpy(monkeypatch) -> None:
     with SessionLocal() as db:
         activate_test_currency_authority(db, "JPY")
         _mark_legacy_http_writer(db)
         with pytest.raises(AppError) as refused:
-            _candidate_confirm_call(db, "JPY")
+            _candidate_confirm_call(db, monkeypatch)
         assert refused.value.error == "client_upgrade_required"
+        assert db.scalar(select(RecurringItem.public_id)) is None
 
 
 def test_repeated_same_binding_resolution_is_idempotent_despite_environment(monkeypatch) -> None:

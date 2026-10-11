@@ -19,6 +19,92 @@ import org.junit.Test
  * suite (which never opens Room) cannot.
  */
 class AppDatabaseMigrationTest {
+    @Test fun migrate26To27PreservesOriginalRuleInputBesideSeparateQueryInputs() {
+        val name = "migration-26-27-query-input.db"
+        helper.createDatabase(name, 26).use { db ->
+            db.execSQL("INSERT INTO rule_definition_inputs VALUES ('https://isolated.invalid','original-owner','ledger','edit:7','original-rule-key','raw-rule-input')")
+        }
+        helper.runMigrationsAndValidate(name, 27, true, AppDatabase.Migration26To27).use { db ->
+            db.query("SELECT originalKey, inputJson FROM rule_definition_inputs").use {
+                assertTrue(it.moveToFirst()); assertEquals("original-rule-key", it.getString(0)); assertEquals("raw-rule-input", it.getString(1))
+            }
+            db.query("SELECT COUNT(*) FROM saved_query_inputs").use { assertTrue(it.moveToFirst()); assertEquals(0, it.getInt(0)) }
+        }
+    }
+    @Test fun migrate25To26PreservesExistingMerchantAndFactInputsBesideEmptyRuleInputs() {
+        val name = "migration-25-26-rule-input.db"
+        helper.createDatabase(name, 25).use { db ->
+            db.execSQL("INSERT INTO merchant_creation_inputs VALUES ('https://isolated.invalid','original-owner','owner','Alias','merchant-key','raw-merchant-input')")
+            db.execSQL("INSERT INTO expense_fact_inputs VALUES ('original-owner','owner',9,'correction','binding','fact-key','raw-fact-input')")
+        }
+        helper.runMigrationsAndValidate(name, 26, true, AppDatabase.Migration25To26).use { db ->
+            db.query("SELECT originalKey, draftJson FROM merchant_creation_inputs").use {
+                assertTrue(it.moveToFirst()); assertEquals("merchant-key", it.getString(0)); assertEquals("raw-merchant-input", it.getString(1))
+            }
+            db.query("SELECT originalKey, inputJson FROM expense_fact_inputs").use {
+                assertTrue(it.moveToFirst()); assertEquals("fact-key", it.getString(0)); assertEquals("raw-fact-input", it.getString(1))
+            }
+            db.query("SELECT COUNT(*) FROM rule_definition_inputs").use { assertTrue(it.moveToFirst()); assertEquals(0, it.getInt(0)) }
+        }
+    }
+
+    @Test fun migrate24To25KeepsExistingInputAndPersistsOriginalMerchantCreationAcrossReopen() {
+        val name = "migration-24-25-merchant-input.db"
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        helper.createDatabase(name, 24).use { db ->
+            db.execSQL("INSERT INTO expense_fact_inputs VALUES ('original-owner','owner',9,'correction','binding','fact-key','raw-fact-input')")
+        }
+        helper.runMigrationsAndValidate(name, 25, true, AppDatabase.Migration24To25).use { db ->
+            db.query("SELECT originalKey, inputJson FROM expense_fact_inputs").use {
+                assertTrue(it.moveToFirst()); assertEquals("fact-key", it.getString(0)); assertEquals("raw-fact-input", it.getString(1))
+            }
+        }
+        val binding = com.ticketbox.data.repository.LogicalSessionBinding("https://isolated.invalid", "owner", "original-owner", "session", "revision")
+        val input = com.ticketbox.data.repository.MerchantDraft(binding,
+            com.ticketbox.data.repository.MerchantDraftKind.Alias, "original-create-key",
+            canonicalMerchant = "  原标准商家  ", alias = "  原别名  ", phase = "unconfirmed")
+        val source = com.ticketbox.domain.model.MerchantCatalog("source", "原商家", "原商家", "active", null, 2,
+            "2026-10-08T00:00:00Z", "2026-10-08T00:00:00Z", 7, null)
+        val rename = com.ticketbox.data.repository.MerchantDraft(binding, com.ticketbox.data.repository.MerchantDraftKind.Rename,
+            "original-rename-key", displayName = "  原改名  ", source = source)
+        val otherRename = rename.copy(key = "other-rename-key", source = source.copy(publicId = "other"), displayName = "  另一原稿  ")
+        val firstSource = com.ticketbox.data.remote.dto.MerchantCatalogDto("source", "原商家", "原商家", "merged", "target", 2,
+            "2026-10-08T00:00:00Z", "2026-10-08T00:00:00Z", 8)
+        val firstReceipt = com.ticketbox.data.remote.dto.MerchantCatalogMergeDto(firstSource,
+            firstSource.copy(publicId = "target", status = "active", mergedIntoPublicId = null, rowVersion = 12), null)
+        val merge = rename.copy(kind = com.ticketbox.data.repository.MerchantDraftKind.Merge, key = "original-merge-key",
+            target = source.copy(publicId = "target", rowVersion = 11), aliasPolicy = com.ticketbox.domain.model.MerchantCatalogAliasPolicy.None,
+            parentRenameKey = rename.key, phase = "accepted", mergeReceipt = firstReceipt)
+        val originals = setOf(input, rename, otherRename, merge)
+        var room = androidx.room.Room.databaseBuilder(context, AppDatabase::class.java, name)
+            .addMigrations(AppDatabase.Migration25To26, AppDatabase.Migration26To27).build()
+        try {
+            kotlinx.coroutines.runBlocking {
+                room.merchantCreationInputDao().put(MerchantCreationInputEntity(binding.serverUrl, binding.ownerKey, binding.ledgerId,
+                    "Alias", input.key, """{"binding":{"serverUrl":"https://isolated.invalid","ledgerId":"owner","ownerKey":"original-owner",
+                    "sessionGeneration":"session","bindingRevision":"revision"},"kind":"Alias","key":"original-create-key",
+                    "displayName":"","canonicalMerchant":"  原标准商家  ","alias":"  原别名  ","phase":"unconfirmed"}"""))
+                com.ticketbox.data.repository.MerchantDraftStore(room.merchantCreationInputDao()).writeAll(listOf(rename, otherRename, merge))
+            }
+            room.close()
+            room = androidx.room.Room.databaseBuilder(context, AppDatabase::class.java, name).build()
+            kotlinx.coroutines.runBlocking {
+                val store = com.ticketbox.data.repository.MerchantDraftStore(room.merchantCreationInputDao())
+                assertEquals(originals, store.read(binding).toSet())
+                assertTrue(store.read(binding.copy(ownerKey = "another-owner")).isEmpty())
+                assertTrue(store.read(binding.copy(ledgerId = "another-ledger")).isEmpty())
+                assertTrue(store.read(binding.copy(serverUrl = "https://another.invalid")).isEmpty())
+                store.remove(input.copy(key = "not-original"))
+                assertEquals(originals, store.read(binding).toSet())
+                store.acknowledge(merge)
+                assertEquals(setOf(input, otherRename), store.read(binding).toSet())
+            }
+        } finally {
+            room.close()
+            context.deleteDatabase(name)
+        }
+    }
+
     @Test fun migrate23To24PreservesTheFactAndOriginalCommandBesideSeparateInputAndQueryStores() {
         val name = "migration-23-24-fact-continuity.db"
         helper.createDatabase(name, 23).use { db ->
@@ -74,7 +160,8 @@ class AppDatabaseMigrationTest {
             """.trimIndent())
         }
         val room = androidx.room.Room.databaseBuilder(context, AppDatabase::class.java, name)
-            .addMigrations(AppDatabase.Migration21To22, AppDatabase.Migration22To23, AppDatabase.Migration23To24).build()
+            .addMigrations(AppDatabase.Migration21To22, AppDatabase.Migration22To23, AppDatabase.Migration23To24, AppDatabase.Migration24To25,
+                AppDatabase.Migration25To26, AppDatabase.Migration26To27).build()
         try {
                 room.openHelper.readableDatabase.query("SELECT amountCents, homeCurrencyCode, rowVersion FROM expenses WHERE id = 1").use {
                     assertTrue(it.moveToFirst()); assertEquals(100, it.getInt(0)); assertEquals("JPY", it.getString(1)); assertEquals(7, it.getInt(2))

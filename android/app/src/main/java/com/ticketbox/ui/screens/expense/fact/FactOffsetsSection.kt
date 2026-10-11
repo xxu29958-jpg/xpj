@@ -31,7 +31,6 @@ import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.viewmodel.ExpenseDetailDataLoadState
 import com.ticketbox.viewmodel.ExpenseFactUiState
 import com.ticketbox.viewmodel.ExpenseFactViewModel
-import com.ticketbox.viewmodel.loadExpenseFactBundle
 import com.ticketbox.viewmodel.openOffsetSheet
 import com.ticketbox.viewmodel.openVoidOffsetSheet
 
@@ -67,20 +66,24 @@ internal fun FactOffsetsSection(
             style = MaterialTheme.typography.bodySmall,
         )
     }
+    if (!state.readOnly && state.expense != null) {
+        FactOffsetActions(state = state, viewModel = viewModel)
+    }
+}
+
+/** Freshness belongs beside the financial summary, even while detail entries are folded. */
+@Composable
+internal fun FactOffsetReadStatus(state: ExpenseFactUiState, onRetry: () -> Unit) {
     if (state.factBundleLoadState == ExpenseDetailDataLoadState.Failed) {
         FactOffsetsFailed(
             message = state.factBundleMessage,
-            showsKnownRecords = bundle != null,
-            onRetry = viewModel::loadExpenseFactBundle,
+            showsKnownRecords = state.factBundle != null,
+            onRetry = onRetry,
         )
     }
-    // command 不依赖 read model（Product Owner 裁决）：已知 confirmed root + 写权限即可。
     state.factBundleCachedAt?.let { at ->
         Text(stringResource(R.string.expense_fact_history_cached, displayDateTime(at)),
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-    if (!state.readOnly && state.expense != null) {
-        FactOffsetActions(state = state, viewModel = viewModel)
     }
 }
 
@@ -114,19 +117,11 @@ private fun FactOffsetsLoaded(
     viewModel: ExpenseFactViewModel,
 ) {
     val homeDisplay = bundle.root.recordCurrencyDisplay()
-    // W2-B: hero 已用同一 server bundle 表达净额/原始/已退回时，段内不再重复
-    // 汇总表；bundle 未知（hero 为原始金额）时本表仍是唯一分解事实。
-    val heroShowsNet = factHeroShowsNet(bundle.takeIf { it.matchesRoot(state.expense) })
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
     ) {
-        // 汇总表可被 hero 抑制，但非零汇差是真实既有能力，单独存续。
-        if (!heroShowsNet) {
-            FactOffsetSummary(bundle = bundle)
-        } else {
-            FactOffsetFxDifference(bundle = bundle, homeDisplay = homeDisplay)
-        }
+        FactOffsetFxDifference(bundle = bundle, homeDisplay = homeDisplay)
         if (bundle.activeOffsets.isEmpty() &&
             bundle.financialSummary.status == ExpenseLineageStatus.Confirmed
         ) {

@@ -129,7 +129,14 @@ class ManualCreationRouteRoomTest {
         compose.setContent {
             CompositionLocalProvider(LocalViewModelStoreOwner provides harness.models) {
                 TicketboxTheme(skin = AppSkin.Default) {
-                    if (mounted.value) ExpenseEditRoute(expense.id, harness.screenFactory, ExpenseEditExitActions({}, {}), ExpenseFactNavigation({}, { _, _ -> }))
+                    if (mounted.value) {
+                        NavHost(rememberNavController(), startDestination = "manual-original") {
+                            composable("manual-original") {
+                                ExpenseEditRoute(expense.id, harness.screenFactory,
+                                    ExpenseEditExitActions({}, {}), ExpenseFactNavigation({}, { _, _ -> }))
+                            }
+                        }
+                    }
                 }
             }
         }

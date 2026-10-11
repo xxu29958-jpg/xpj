@@ -6,11 +6,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.FileDownload
-import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.Sync
-import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -22,17 +17,18 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.vectorResource
 import com.ticketbox.R
 import com.ticketbox.domain.model.BackgroundTask
 import com.ticketbox.domain.model.shouldGeneralizeTaskError
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.SettingsEntryIcon
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.SettingsColors
-import com.ticketbox.ui.design.settingsEntrySurface
 
 @Composable
 internal fun BackgroundTaskRow(
@@ -100,17 +96,17 @@ private fun BackgroundTaskTitleLine(
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        SettingsEntryIcon(icon = when (task.taskType) {
-            "expense_enrichment" -> Icons.Filled.Image
-            "csv_import" -> Icons.Filled.FileDownload
-            "expense_fx" -> Icons.Filled.Sync
-            else -> Icons.Filled.Tune
-        }, shape = RoundedCornerShape(14.dp), background = settingsEntrySurface(when (task.taskType) {
+        SettingsEntryIcon(icon = ImageVector.vectorResource(when (task.taskType) {
+            "expense_enrichment" -> R.drawable.ic_lucide_scan_line
+            "csv_import" -> R.drawable.ic_lucide_download
+            "expense_fx" -> R.drawable.ic_lucide_refresh_cw
+            else -> R.drawable.ic_lucide_sliders_horizontal
+        }), shape = RoundedCornerShape(AppRadius.medium), background = when (task.taskType) {
             "expense_enrichment" -> SettingsColors.generalEntry
             "csv_import" -> SettingsColors.householdEntry
             "expense_fx" -> SettingsColors.connectionEntry
             else -> SettingsColors.appearanceEntry
-        }))
+        })
         Column(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),

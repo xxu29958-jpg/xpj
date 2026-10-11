@@ -61,6 +61,28 @@ def test_update_replay_keeps_original_snapshot_after_target_is_deleted(client, i
     assert replay.json() == accepted.json()
 
 
+def test_full_native_definition_clears_text_conditions_without_currency_and_preserves_later_edits(client, identity):
+    created = _create(client, identity, body={"keyword": "早餐", "category": "餐饮", "enabled": True,
+        "priority": 10, "source_contains": "原来源", "tag_contains": "原标签"})
+    path = f"/api/rules/categories/{created['id']}"
+    key = str(uuid4())
+    body = {"expected_row_version": created["row_version"], "keyword": "早餐", "category": "餐饮",
+        "enabled": True, "priority": 10, "source_contains": "", "tag_contains": ""}
+    accepted = client.patch(path, headers=_headers(identity, key), json=body)
+    assert accepted.status_code == 200, accepted.text
+    assert accepted.json()["source_contains"] is None and accepted.json()["tag_contains"] is None
+    assert accepted.json()["home_currency_code"] is None
+    later = client.patch(path, headers=_headers(identity), json={"expected_row_version": accepted.json()["row_version"],
+        "source_contains": "后来人工填写的来源", "tag_contains": "后来标签"})
+    assert later.status_code == 200, later.text
+    replay = client.patch(path, headers=_headers(identity, key), json=body)
+    assert replay.status_code == 200 and replay.json() == accepted.json()
+    with SessionLocal() as db:
+        row = db.get(CategoryRule, created["id"])
+        assert (row.source_contains, row.tag_contains, row.row_version) == (
+            "后来人工填写的来源", "后来标签", later.json()["row_version"])
+
+
 @pytest.mark.parametrize("changes", [
     {"keyword": "Other"}, {"category": "餐饮"}, {"enabled": False}, {"priority": 7},
     {"amount_min_cents": 1400}, {"home_currency_code": "CNY"}, {"source_contains": "wallet"}, {"tag_contains": "trip"},

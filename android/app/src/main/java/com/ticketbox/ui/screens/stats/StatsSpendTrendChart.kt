@@ -22,6 +22,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.LocalChartTokens
 import com.ticketbox.ui.design.LocalStatsTokens
 
@@ -109,7 +110,8 @@ private fun DrawScope.drawSpendTrendBars(
     val plotHeight = (bottom - top).coerceAtLeast(1f)
     val horizontalInset = 4.dp.toPx()
     val bucketWidth = (size.width - horizontalInset * 2f) / points.size.coerceAtLeast(1)
-    val barWidth = (bucketWidth * 0.56f).coerceIn(6.dp.toPx(), 22.dp.toPx())
+    val barWidth = (bucketWidth * 0.74f).coerceAtLeast(6.dp.toPx())
+    val barRadius = minOf(barWidth / 2f, AppRadius.small.toPx())
     val maxPointAmount = points.maxOfOrNull { it.amountCents } ?: 0L
     val zeroDotSize = 4.dp.toPx()
     val positivePoints = points.filter { it.amountCents > 0L }
@@ -160,7 +162,7 @@ private fun DrawScope.drawSpendTrendBars(
             color = style.primary.copy(alpha = alpha),
             topLeft = Offset(x, bottom - barHeight),
             size = Size(barWidth, barHeight),
-            cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f),
+            cornerRadius = CornerRadius(barRadius, barRadius),
         )
     }
 }

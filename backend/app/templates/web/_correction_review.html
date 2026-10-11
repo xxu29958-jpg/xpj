@@ -1,23 +1,22 @@
 {% if fact_review %}
-<section class="product-panel product-panel--padded" aria-label="核对当前账单">
-  <h2 class="product-panel-title">当前账单 · 版本 {{ fact_review.row_version }}</h2>
+<section class="stack-tight" aria-label="核对当前账单">
+  <input type="hidden" name="review_current_version" value="{{ fact_review.row_version }}">
+  {% if fact_review_ready %}
+  <p class="product-feedback" role="status">已采用当前版本作为依据。请核对下方修改，再保存更正。</p>
+  {% else %}
+  <div class="product-feedback product-feedback--warning" role="status"><strong>你的修改已保留</strong><p>还没有覆盖账单的新内容。请选择发生冲突的部分，再核对后保存。</p></div>
+  {% endif %}
+  <details><summary class="meta">查看当前完整记录 · 版本 {{ fact_review.row_version }}</summary>
   <dl class="offset-summary">
-    <div><dt>商家</dt><dd>{{ fact_review['values'].merchant or '未填写' }}</dd></div>
-    <div><dt>原币金额</dt><dd>{{ fact_review['values'].original_currency }} {{ fact_review['values'].amount_yuan }}</dd></div>
-    <div><dt>分类</dt><dd>{{ fact_review['values'].category or '待分类' }}</dd></div>
-    <div><dt>标签</dt><dd>{{ fact_review['values'].tags or '未填写' }}</dd></div>
-    <div><dt>备注</dt><dd>{{ fact_review['values'].note or '未填写' }}</dd></div>
-    <div><dt>发生时间</dt><dd>{{ fact_review['values'].expense_time or fact_review['values'].user_local_date or '未填写' }}</dd></div>
+    {% for row in fact_scalar_comparisons %}<div><dt>{{ row.label }}</dt><dd>{{ row.current_text }}</dd></div>{% endfor %}
   </dl>
   {% for kind, label in [('items', '当前小票明细'), ('splits', '当前家庭拆账')] %}
   <details><summary>{{ label }}</summary>
     <ul>{% for row in fact_review[kind] %}{% if row.public_id %}<li>{{ row.name if kind == 'items' else (row.account_name or row.member_id) }} · {{ row.amount_yuan }}{% if row.note %} · {{ row.note }}{% endif %}</li>{% endif %}{% endfor %}</ul>
   </details>
   {% endfor %}
-  {% if fact_review_ready %}
-  <p class="product-feedback" role="status">已采用当前版本作为依据；你改过的输入仍保留，未改动的字段采用当前值。请检查下方表单，再保存更正。</p>
-  {% else %}
-  <p class="product-feedback product-feedback--warning" role="status">原输入仍保留。{% if fact_review_required %}请选择有变化的部分，再核对一次。{% else %}当前值供对照，请点击“核对当前账单”继续。{% endif %}这一步不会保存账单。</p>
+  </details>
+  {% if not fact_review_ready %}
   {% for kind, label in [('scalars', '账单字段'), ('items', '小票明细'), ('splits', '家庭拆账')] %}
     {% if fact_review_required[kind] %}
     <fieldset class="product-field">

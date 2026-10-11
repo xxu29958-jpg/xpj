@@ -16,6 +16,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.ui.RealKeyboard
+import com.ticketbox.ui.saveConsumerArtPreview
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.DebtListViewModel
 import kotlinx.coroutines.cancel
@@ -51,6 +52,9 @@ class DebtCreateKeyboardTest {
         }
         compose.waitUntil(5_000) { ::viewModel.isInitialized && viewModel.state.value.homeCurrencyResolved }
         compose.onNodeWithText(text(R.string.debt_list_add)).performTouchInput { click() }
+        compose.waitForIdle()
+        instrumentation.uiAutomation.waitForIdle(500, 5_000)
+        saveConsumerArtPreview("debt-create-header", requireNotNull(instrumentation.uiAutomation.takeScreenshot()))
         val counterparty = compose.onNode(hasSetTextAction() and hasText(text(R.string.debt_create_label_counterparty)))
         counterparty.performScrollTo().performTouchInput { click() }
         counterparty.performTextInput("小王")

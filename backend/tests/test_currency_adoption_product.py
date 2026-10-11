@@ -28,7 +28,7 @@ from app.services.identity_service import (
     new_session_token,
 )
 from tests._infra.env import ADMIN_TEST_DATABASE_URL
-from tests._web_native_form_support import hidden_post_forms
+from tests._web_native_form_support import hidden_post_forms, open_creation_form
 from tests.desktop_activation_support import activate, pair_desktop
 
 pytestmark = [pytest.mark.currency_binding_unbound, pytest.mark.real_db]
@@ -160,6 +160,7 @@ def test_explicit_jpy_choice_drives_real_goal_write_despite_cny_environment(
     assert snapshot["write_compatibility"] == "compatible"
     page = browser.client.get("/web/goals", headers=browser.headers)
     assert page.status_code == 200
+    page = open_creation_form(browser.client, page, "new_goal", headers=browser.headers)
     created = browser.client.post(
         "/web/goals/create", headers=browser.headers,
         data={**hidden_post_forms(page.text)["/web/goals/create"],

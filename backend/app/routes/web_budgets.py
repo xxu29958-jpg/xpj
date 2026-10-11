@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.errors import AppError
 from app.money_contract import projection_sum_to_int
+from app.routes._web_dashboard_calculations import dashboard_percentage_tenths
 from app.routes._web_draft_binding import (
     browser_draft_scope,
     draft_ack_response,
@@ -163,27 +164,40 @@ def _category_form_rows(
 
     rows: list[dict] = []
     for index, (category, amount_yuan) in enumerate(pairs):
-        saved_item = saved[index] if index < len(saved) else None
-        rows.append(
-            {
-                "index": index,
-                "category": category,
-                "saved_category": saved_item.category if saved_item is not None else "",
-                "amount_yuan": amount_yuan,
-                "spent_yuan": (
-                    _amount_yuan(saved_item.spent_amount_cents, currency_code) if saved_item is not None else ""
-                ),
-                "remaining_yuan": (
-                    _amount_yuan(saved_item.remaining_amount_cents, currency_code) if saved_item is not None else ""
-                ),
-                "overspent_yuan": (
-                    _amount_yuan(saved_item.overspent_amount_cents, currency_code) if saved_item is not None else ""
-                ),
-                "has_overspend": bool(saved_item is not None and (saved_item.overspent_amount_cents or 0) > 0),
-                "is_configured": saved_item is not None,
-                "remove_requested": index in removed,
-            }
-        )
+        row = {
+            "index": index,
+            "category": category,
+            "amount_yuan": amount_yuan,
+            "saved_category": "",
+            "saved_amount_yuan": "",
+            "progress_value_cents": 0,
+            "progress_max_cents": 0,
+            "has_progress_basis": False,
+            "spent_yuan": "",
+            "remaining_yuan": "",
+            "overspent_yuan": "",
+            "has_overspend": False,
+            "is_configured": False,
+            "remove_requested": index in removed,
+        }
+        if index < len(saved):
+            saved_item = saved[index]
+            # Saved execution facts stay together; editable values above remain
+            # the original draft even when its category or amount is invalid.
+            row.update(
+                saved_category=saved_item.category,
+                saved_amount_yuan=_amount_yuan(saved_item.amount_cents, currency_code),
+                progress_value_cents=min(max(saved_item.spent_amount_cents or 0, 0), saved_item.amount_cents),
+                progress_max_cents=saved_item.amount_cents,
+                has_progress_basis=(saved_item.amount_cents > 0 and saved_item.spent_amount_cents is not None
+                    and saved_item.spent_amount_cents >= 0),
+                spent_yuan=_amount_yuan(saved_item.spent_amount_cents, currency_code),
+                remaining_yuan=_amount_yuan(saved_item.remaining_amount_cents, currency_code),
+                overspent_yuan=_amount_yuan(saved_item.overspent_amount_cents, currency_code),
+                has_overspend=(saved_item.overspent_amount_cents or 0) > 0,
+                is_configured=True,
+            )
+        rows.append(row)
 
     first_blank_index = len(rows)
     rows.extend(
@@ -217,13 +231,18 @@ def _budget_view(budget: BudgetMonthlyResponse, *, currency_code: str) -> dict:
         label="web_budget.available",
     )
     progress_max = max(available, 0)
+    percent = dashboard_percentage_tenths(budget.spent_amount_cents, available)
+    category_rows = _category_form_rows(budget, currency_code=currency_code)
     return {
         "ledger_id": budget.ledger_id,
         "month": budget.month,
+        "currency_code": currency_code,
         "configured": budget.configured,
         "missing_currency_codes": budget.missing_currency_codes,
         "reference_rates": budget.reference_rates,
         "total_yuan": _amount_yuan(budget.total_amount_cents, currency_code),
+        "available_yuan": _amount_yuan(available, currency_code),
+        "percent_label": f"{percent // 10}.{percent % 10}%" if percent is not None else "",
         "rollover_yuan": _amount_yuan(budget.rollover_amount_cents, currency_code),
         "fixed_yuan": _amount_yuan(budget.fixed_amount_cents, currency_code),
         "non_monthly_yuan": _amount_yuan(budget.non_monthly_amount_cents, currency_code),
@@ -238,10 +257,8 @@ def _budget_view(budget: BudgetMonthlyResponse, *, currency_code: str) -> dict:
             }
             for item in budget.excluded_breakdown
         ],
-        "category_rows": _category_form_rows(
-            budget,
-            currency_code=currency_code,
-        ),
+        "category_rows": category_rows,
+        "category_execution_rows": [row for row in category_rows if row["is_configured"]],
         "form_total_yuan": (_amount_yuan(budget.total_amount_cents, currency_code) if budget.configured else ""),
         "form_rollover_yuan": (_amount_yuan(budget.rollover_amount_cents, currency_code) if budget.configured else ""),
         "form_non_monthly_yuan": (
@@ -249,7 +266,7 @@ def _budget_view(budget: BudgetMonthlyResponse, *, currency_code: str) -> dict:
         ),
         "progress_value_cents": min(spent, progress_max),
         "progress_max_cents": progress_max,
-        "has_progress_basis": progress_max > 0 and budget.spent_amount_cents is not None,
+        "has_progress_basis": progress_max > 0 and budget.spent_amount_cents is not None and budget.spent_amount_cents >= 0,
         "is_over_budget": budget.remaining_amount_cents is not None and budget.remaining_amount_cents < 0,
     }
 

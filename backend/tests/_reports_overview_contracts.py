@@ -70,7 +70,7 @@ def _insert_report_expense(
 def _create_starbucks_alias(client: TestClient, *, identity) -> None:
     alias = client.post(
         "/api/merchants/aliases",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"canonical_merchant": "星巴克", "alias": "STARBUCKS", "enabled": True},
     )
     assert alias.status_code == 201, alias.json()

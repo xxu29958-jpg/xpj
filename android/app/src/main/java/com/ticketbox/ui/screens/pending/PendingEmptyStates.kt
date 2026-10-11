@@ -1,5 +1,7 @@
 package com.ticketbox.ui.screens.pending
 
+import androidx.compose.ui.res.vectorResource
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -11,8 +13,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import com.ticketbox.R
+import com.ticketbox.ui.components.AppButtonIcons
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.ReceiptEmptyIllustration
 import com.ticketbox.ui.design.AppAdaptiveBreakpoints
@@ -34,26 +35,6 @@ import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.AppWindowWidthClass
 import com.ticketbox.ui.design.LocalAppAdaptiveLayoutPolicy
 import com.ticketbox.ui.design.LocalThemeVisuals
-
-@Composable
-internal fun UploadProgressCard() {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-    ) {
-        Text(
-            text = stringResource(R.string.pending_upload_progress_title),
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = AppTextHierarchy.heading.weight,
-        )
-        Text(
-            text = stringResource(R.string.pending_upload_progress_body),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodySmall,
-        )
-        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-    }
-}
 
 @Composable
 internal fun EmptyPendingState(
@@ -118,7 +99,7 @@ internal fun EmptyPendingState(
                 )?.let { cta ->
                     AppPrimaryButton(
                         text = stringResource(cta.labelRes),
-                        icon = Icons.Filled.AddPhotoAlternate,
+                        icons = AppButtonIcons(leading = ImageVector.vectorResource(R.drawable.ic_lucide_image_plus)),
                         modifier = Modifier.fillMaxWidth(),
                         enabled = cta.enabled && state.canStartUpload,
                         onClick = onUploadScreenshot,

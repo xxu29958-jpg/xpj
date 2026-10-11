@@ -119,7 +119,7 @@ def create_merchant_catalog(
         updated_at=now,
     )
     db.add(item)
-    db.commit()
+    db.flush()
     db.refresh(item)
     return _catalog_view(
         item,
@@ -177,7 +177,7 @@ def update_merchant_catalog(
         if current is None or current.deleted_at is not None:
             raise AppError("not_found", "Merchant catalog entry was not found.", status_code=404)
         raise AppError("state_conflict", status_code=409)
-    db.commit()
+    db.flush()
     return _refreshed_view(db, tenant_id=tenant_id, public_id=public_id)
 
 
@@ -212,7 +212,7 @@ def delete_merchant_catalog(
         if current is None or current.deleted_at is not None:
             raise AppError("not_found", "Merchant catalog entry was not found.", status_code=404)
         raise AppError("state_conflict", status_code=409)
-    db.commit()
+    db.flush()
     return _refreshed_view(db, tenant_id=tenant_id, public_id=public_id)
 
 
@@ -286,7 +286,7 @@ def merge_merchant_catalog(
             now=now_utc(),
         )
 
-    db.commit()
+    db.flush()
     db.expire_all()
     return MerchantCatalogMergeView(
         source=_refreshed_view(db, tenant_id=tenant_id, public_id=source_public_id),

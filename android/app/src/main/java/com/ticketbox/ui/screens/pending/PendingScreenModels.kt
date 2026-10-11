@@ -106,6 +106,10 @@ data class PendingUploadSelectionUiState(
     val accepting: Boolean,
     val onRetry: () -> Unit,
     val onStop: () -> Unit,
+    val selectionId: String? = null,
+    val imageRefs: List<String> = emptyList(),
+    val attempted: Boolean = false,
+    val onRemove: (Int) -> Unit = {},
 ) {
     val canRetry: Boolean get() = !accepting && pendingCount in 1..MAX_UPLOAD_BATCH_ITEMS
 }
@@ -121,6 +125,7 @@ data class PendingScreenChromeActions(
     val uploadSelection: PendingUploadSelectionUiState,
     val requestedFilter: NeedsReviewFilter? = null,
     val onRequestedFilterConsumed: () -> Unit = {},
+    val onOpenUploadExpense: (Long) -> Unit = {},
 )
 
 data class PendingExpenseQueueActions(

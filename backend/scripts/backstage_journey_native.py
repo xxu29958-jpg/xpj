@@ -21,7 +21,7 @@ def native_inbox_filters(j):
     j.native.click_counted_tab("全部")
     wait_for(lambda: not j.native.has(empty) and j.native.has("18.51"),
              "The user could not return from the empty filter to the original pending bill")
-    for action, destination in (("还款复核", "还款采集"), ("数据质量", "检查当前账本的待确认、分类完整性与凭证状态。")):
+    for action, destination in (("还款复核", "还款采集"), ("数据体检", "从原记录补齐信息，再刷新统计。")):
         j.native.click("收件工具")
         j.native.capture("inbox-tools")
         j.native.click(action)
@@ -82,13 +82,15 @@ def open_latest_source(j):
     assert nodes, "The real task list has no original source action"
     # Existing task query orders newest first; choose its visible source action.
     j.native.tap(min(nodes, key=lambda node: j.native.bounds(node)[1]))
-    wait_for(lambda: j.native.has("确认账单"), "The uploaded task did not open its original pending bill")
+    wait_for(lambda: j.native.has("核对这张小票"), "The uploaded task did not open its original pending bill")
 
 
 def native_upload_and_ocr(j):
     j.configure_ocr(automatic=False)
     count = len(j.facts()["expenses"])
     digest = share_synthetic_receipt(j)
+    wait_for(lambda: j.native.has("上传 1 张小票"), "The shared original did not reach its explicit upload confirmation")
+    j.native.click("上传 1 张小票")
     wait_for(lambda: len(j.facts()["expenses"]) == count + 1, "Android did not upload its actual shared original", 90)
     wait_for(lambda: j.facts()["tasks"][-1]["status"] == "completed", "The automatic-disabled task did not settle")
     original = j.facts()["expenses"][-1]
@@ -98,6 +100,8 @@ def native_upload_and_ocr(j):
     assert original_task["expense_id"] == original["id"] and original_task["result"]["outcome"] == "no_result"
     open_latest_source(j)
     j.native.fill("27.00", label="金额")
+    j.native.reveal_any("标签与备注")
+    j.native.click("标签与备注")
     j.native.reveal_any("重新识别")
     j.native.click("重新识别")
     wait_for(lambda: j.facts()["expenses"][-1]["amount"] == 2345, "Explicit Android OCR did not run with automatic OCR disabled", 180)
@@ -105,11 +109,11 @@ def native_upload_and_ocr(j):
     j.native.reveal_any("27.00", toward_start=True)
     j.native.capture("backstage-native-ocr-preserved-input")
     assert j.facts()["expenses"][-1]["status"] == "pending", "OCR confirmed a bill without human review"
-    j.native.reveal_any("加载最新账单")
+    j.native.reveal_any("加载最新账单", exact=True)
     j.native.click("加载最新账单")
     j.native.click("保留填写")
     j.native.reveal_any("27.00", toward_start=True)
-    j.native.reveal_any("加载最新账单")
+    j.native.reveal_any("加载最新账单", exact=True)
     j.native.click("加载最新账单")
     j.native.click("替换并载入")
     j.native.reveal_any("23.45", toward_start=True)

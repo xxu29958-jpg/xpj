@@ -1,10 +1,13 @@
 package com.ticketbox.viewmodel
 
+import androidx.lifecycle.SavedStateHandle
 import com.ticketbox.R
 import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.data.repository.RepositoryConflictDetails
 import com.ticketbox.data.repository.TagActions
 import com.ticketbox.data.repository.TagConflictDetails
+import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.domain.model.ManagedTag
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.TagMutationResult
@@ -13,6 +16,7 @@ import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -190,7 +194,7 @@ class TagManagementViewModelTest {
         assertEquals(MessageTone.Info, vm.uiState.value.messageTone)
         // The colliding key isn't a live tag in the list (e.g. soft-deleted) →
         // no merge prefill, just the steering message (契约 5 fallback).
-        assertNull(vm.uiState.value.mergeSuggestion)
+        assertNull(vm.uiState.value.editor)
     }
 
     @Test
@@ -203,14 +207,14 @@ class TagManagementViewModelTest {
         repo.failNext = RepositoryException("标签名已被占用，请改用合并。", "tag_conflict")
         vm.renameTag(tag("a", "出差", 1), "差旅")
         advanceUntilIdle()
-        val sug = vm.uiState.value.mergeSuggestion
+        val sug = vm.uiState.value.editor
         assertTrue(sug != null)
         assertEquals("a", sug.source.publicId)
-        assertEquals("b", sug.target.publicId)
+        assertEquals("b", sug.target?.publicId)
         assertEquals(MessageTone.Info, vm.uiState.value.messageTone)
-        // consume clears it (screen opened the dialog).
-        vm.consumeMergeSuggestion()
-        assertNull(vm.uiState.value.mergeSuggestion)
+        // Closing the explicit merge clears its original draft.
+        vm.editDraft(null)
+        assertNull(vm.uiState.value.editor)
     }
 
     @Test
@@ -233,10 +237,10 @@ class TagManagementViewModelTest {
         )
         vm.renameTag(tag("a", "出差", 1), "差旅")
         advanceUntilIdle()
-        val sug = vm.uiState.value.mergeSuggestion
+        val sug = vm.uiState.value.editor
         assertTrue(sug != null)
-        assertEquals("b", sug.target.publicId)
-        assertEquals(9L, sug.target.rowVersion) // fresh server token, not the local 3
+        assertEquals("b", sug.target?.publicId)
+        assertEquals(9L, sug.target?.rowVersion) // fresh server token, not the local 3
     }
 
     @Test
@@ -368,13 +372,77 @@ class TagManagementViewModelTest {
         assertEquals(1, vm.uiState.value.tagsChangedRevision)
         assertEquals(accepted.undoable, vm.uiState.value.undoable)
     }
+
+    @Test
+    fun recreatedPageRetainsTheOriginalDraftAndNeverReplaysAnAcceptedMerge() = runTest(dispatcher) {
+        val source = tag("a", "出差", 0, 3)
+        val target = tag("b", "月度整理", 2, 7)
+        val repo = FakeTagActions(listOf(source, target))
+        val saved = SavedStateHandle()
+        val vm = TagManagementViewModel(repo, saved)
+        advanceUntilIdle()
+        val draft = TagEditorDraft(TagEditorAction.Merge, source, requireOrphan = true, target = target)
+        vm.editDraft(draft)
+        val restoredState = SavedStateHandle(saved.keys().associateWith { saved.get<Any>(it) })
+
+        val restored = TagManagementViewModel(repo, restoredState)
+        advanceUntilIdle()
+        assertEquals(draft, restored.uiState.value.editor)
+        assertEquals(0, repo.mergeCalls)
+        restored.mergeTags(source, target, requireOrphan = true)
+        advanceUntilIdle()
+
+        assertNull(restored.uiState.value.editor)
+        val acceptedState = SavedStateHandle(restoredState.keys().associateWith { restoredState.get<Any>(it) })
+        val afterAccepted = TagManagementViewModel(repo, acceptedState)
+        advanceUntilIdle()
+        assertNull(afterAccepted.uiState.value.editor)
+        assertEquals(1, repo.mergeCalls)
+    }
+
+    @Test
+    fun changedPrincipalHidesItsPredecessorsDraftAndOriginalSessionCanResume() = runTest(dispatcher) {
+        val source = tag("a", "出差", 3, 7)
+        val repo = FakeTagActions(listOf(source))
+        val saved = SavedStateHandle()
+        val vm = TagManagementViewModel(repo, saved)
+        advanceUntilIdle()
+        val draft = TagEditorDraft(TagEditorAction.Rename, source, name = "九月出差")
+        vm.editDraft(draft)
+        val original = requireNotNull(repo.access.value)
+        repo.access.value = original.copy(binding = original.binding.copy(ownerKey = "another-account"))
+        advanceUntilIdle()
+
+        assertEquals(false, vm.uiState.value.showOriginalDraft)
+        assertEquals(draft, vm.uiState.value.editor)
+        assertTrue(vm.uiState.value.tags.isEmpty())
+        vm.renameTag(source, draft.name)
+        advanceUntilIdle()
+        assertEquals(0, repo.renameCalls)
+        val recreated = TagManagementViewModel(repo, saved)
+        assertEquals(false, recreated.uiState.value.showOriginalDraft)
+        advanceUntilIdle()
+        assertEquals(false, recreated.uiState.value.showOriginalDraft)
+        assertEquals(draft, recreated.uiState.value.editor)
+
+        repo.access.value = original
+        advanceUntilIdle()
+        assertTrue(vm.uiState.value.showOriginalDraft)
+        assertTrue(vm.uiState.value.canModify)
+        assertEquals(listOf(source), vm.uiState.value.tags)
+        assertEquals(draft, vm.uiState.value.editor)
+    }
 }
 
 /** Stateful fake: successful mutations mutate [tags] so the VM's reload reflects them. */
 @OptIn(ExperimentalCoroutinesApi::class)
 private class FakeTagActions(initial: List<ManagedTag>) : TagActions {
     private var tags = initial.toMutableList()
+    val access = MutableStateFlow<LedgerAccessContext?>(LedgerAccessContext(
+        LogicalSessionBinding("https://example.com", "ledger", "owner", "session", "binding"), true,
+    ))
     var canModify = true
+        set(value) { field = value; access.value = access.value?.copy(canModify = value) }
     var failNext: Throwable? = null
     var failNextRead: Throwable? = null
     var renameGate: CompletableDeferred<Unit>? = null
@@ -388,51 +456,53 @@ private class FakeTagActions(initial: List<ManagedTag>) : TagActions {
     private fun consumeFailure(): Throwable? = failNext?.also { failNext = null }
 
     override fun canModifyLedger(): Boolean = canModify
+    override fun captureBinding() = access.value?.binding
+    override fun observeLedgerAccess() = access
 
-    override suspend fun tags(): Result<List<ManagedTag>> {
+    override suspend fun tags(binding: LogicalSessionBinding): Result<List<ManagedTag>> {
         tagsGate?.await()
         failNextRead?.let { failNextRead = null; return Result.failure(it) }
         consumeFailure()?.let { return Result.failure(it) }
         return Result.success(tags.toList())
     }
 
-    override suspend fun renameTag(publicId: String, expectedRowVersion: Long, name: String): Result<Unit> {
+    override suspend fun renameTag(binding: LogicalSessionBinding, tag: ManagedTag, name: String, requireOrphan: Boolean): Result<Unit> {
         renameCalls++
         renameGate?.await()
         consumeFailure()?.let { return Result.failure(it) }
         tags = tags.map {
-            if (it.publicId == publicId) it.copy(name = name.trim(), rowVersion = it.rowVersion + 1) else it
+            if (it.publicId == tag.publicId) it.copy(name = name.trim(), rowVersion = it.rowVersion + 1) else it
         }.toMutableList()
         return Result.success(Unit)
     }
 
-    override suspend fun deleteTag(publicId: String, expectedRowVersion: Long): Result<TagMutationResult> {
+    override suspend fun deleteTag(binding: LogicalSessionBinding, tag: ManagedTag, requireOrphan: Boolean): Result<TagMutationResult> {
         deleteCalls++
         consumeFailure()?.let { return Result.failure(it) }
-        tags = tags.filterNot { it.publicId == publicId }.toMutableList()
+        tags = tags.filterNot { it.publicId == tag.publicId }.toMutableList()
         return Result.success(
-            TagMutationResult("mut-delete", "delete", publicId, expectedRowVersion + 1, null, null, 1),
+            TagMutationResult("mut-delete", "delete", tag.publicId, tag.rowVersion + 1, null, null, 1),
         )
     }
 
     override suspend fun mergeTags(
-        sourcePublicId: String,
-        sourceRowVersion: Long,
-        targetPublicId: String,
-        targetRowVersion: Long,
+        binding: LogicalSessionBinding,
+        source: ManagedTag,
+        target: ManagedTag,
+        requireOrphan: Boolean,
     ): Result<TagMutationResult> {
         mergeCalls++
         consumeFailure()?.let { return Result.failure(it) }
-        tags = tags.filterNot { it.publicId == sourcePublicId }.toMutableList()
+        tags = tags.filterNot { it.publicId == source.publicId }.toMutableList()
         return Result.success(
             TagMutationResult(
-                "mut-merge", "merge", sourcePublicId, sourceRowVersion + 1,
-                targetPublicId, targetRowVersion + 1, 2,
+                "mut-merge", "merge", source.publicId, source.rowVersion + 1,
+                target.publicId, target.rowVersion + 1, 2,
             ),
         )
     }
 
-    override suspend fun undoTagMutation(mutationPublicId: String, expectedRowVersion: Long): Result<TagUndoResult> {
+    override suspend fun undoTagMutation(binding: LogicalSessionBinding, mutationPublicId: String, expectedRowVersion: Long): Result<TagUndoResult> {
         undoCalls++
         lastUndo = mutationPublicId to expectedRowVersion
         consumeFailure()?.let { return Result.failure(it) }

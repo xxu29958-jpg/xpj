@@ -1,27 +1,28 @@
 package com.ticketbox.ui.screens.stats
 
+import com.ticketbox.ui.screens.settings.SettingsEntryRowOptions
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import com.ticketbox.domain.model.CurrencyDisplay
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
-import com.ticketbox.domain.model.DailySpend
+import androidx.compose.ui.platform.testTag
 import com.ticketbox.domain.model.ReportCategoryComparison
 import com.ticketbox.domain.model.ReportGranularity
 import com.ticketbox.domain.model.ReportsOverview
@@ -30,6 +31,8 @@ import com.ticketbox.ui.components.AppAdaptiveAmountRowStyle
 import com.ticketbox.ui.components.AppAdaptiveEditAmountRow
 import com.ticketbox.ui.components.AppSegmentedControl
 import com.ticketbox.ui.components.AppSegmentedItem
+import com.ticketbox.ui.components.AppPrimaryButton
+import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppAmountRole
@@ -40,6 +43,7 @@ import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalChartTokens
 import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.ui.screens.StatsReportActions
+import com.ticketbox.ui.screens.settings.SettingsEntryRow
 import kotlin.math.abs
 
 @Composable
@@ -52,31 +56,59 @@ internal fun ReportsInsightCard(
 ) {
     val model = remember(overview) { reportsAnswerModel(overview) }
     val recentTrend = remember(overview) { reportsRecentWindowTrend(overview) }
-    val hasCurrentSpend = model.count > 0
+    var showRankings by rememberSaveable { mutableStateOf(false) }
+    var showComparisons by rememberSaveable { mutableStateOf(false) }
+    var showData by rememberSaveable { mutableStateOf(false) }
     CompositionLocalProvider(LocalCurrencyDisplay provides CurrencyDisplay.forRecord(overview.homeCurrencyCode)) {
+        if (showData) ReportsDataSheet(overview, exporting, exportMessage, actions.onExport) { showData = false }
         Column(
             modifier = modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap),
         ) {
-            ReportsProjectionControls(overview, actions, exporting, exportMessage)
+            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+                Text(stringResource(R.string.reports_page_title), style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = AppTextHierarchy.hero.weight)
+                Text(stringResource(R.string.reports_scope, displayMonthLabel(overview.month), overview.homeCurrencyCode),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+            }
             ReportsAnswerHeader(model = model)
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft))
+            ReportsProjectionNotice(overview, actions)
             ReportsChartPanel(
                 model = model,
-                recentTrend = recentTrend,
                 onGranularityChange = actions.onGranularityChange,
             )
-            if (hasCurrentSpend || overview.merchantRanking.isNotEmpty()) {
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft))
+            SettingsEntryRow(
+            title = stringResource(R.string.reports_rankings_title),
+            subtitle = stringResource(R.string.reports_rankings_description),
+            icon = R.drawable.ic_lucide_chart_no_axes_combined,
+            onClick = { showRankings = !showRankings },
+            options = SettingsEntryRowOptions(expanded = showRankings),
+        )
+            if (showRankings) {
+                ReportsMerchantCategoryFilter(overview, actions.onMerchantCategoryChange)
                 MerchantRankingBlock(
                     rows = overview.merchantRanking,
                     rankingMetric = overview.rankingMetric,
                     onRankingMetricChange = actions.onRankingMetricChange,
                 )
+                if (overview.categoryComparison.isNotEmpty()) CategoryComparisonBlock(rows = overview.categoryComparison)
             }
-            if (overview.categoryComparison.isNotEmpty()) {
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft))
-                CategoryComparisonBlock(rows = overview.categoryComparison)
+            SettingsEntryRow(
+            title = stringResource(R.string.reports_comparisons_title),
+            subtitle = stringResource(R.string.reports_comparisons_description),
+            icon = R.drawable.ic_lucide_calendar_check,
+            onClick = { showComparisons = !showComparisons },
+            options = SettingsEntryRowOptions(expanded = showComparisons),
+        )
+            if (showComparisons) {
+                ReportsAnswerMetrics(model)
+                model.trendEvidence?.takeIf { it.mode != ReportsTrendMode.Signed }?.let { ReportsTrendDetails(it) }
+                ReportsRecentWindowSummary(recentTrend, avoidRepeatedSparseRows = model.trendEvidence?.mode == ReportsTrendMode.Sparse)
+            }
+            AppPrimaryButton(stringResource(R.string.reports_view_data), modifier = Modifier.fillMaxWidth().testTag("reports-data"),
+                onClick = { showData = true })
+            TextButton(onClick = { actions.onRepairRates(null) }) {
+                Text(stringResource(R.string.reports_repair_rates))
             }
         }
     }
@@ -85,41 +117,19 @@ internal fun ReportsInsightCard(
 @Composable
 private fun ReportsChartPanel(
     model: ReportsAnswerModel,
-    recentTrend: List<DailySpend>,
     onGranularityChange: (ReportGranularity) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingTight)) {
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
-                Text(
-                    stringResource(R.string.stats_reports_trend_title),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = AppTextHierarchy.heading.weight,
-                )
-                Text(
-                    text = stringResource(R.string.stats_reports_trend_subtitle),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-        AppSegmentedControl(
-            options = listOf(
-                AppSegmentedItem(ReportGranularity.Day, stringResource(R.string.stats_reports_granularity_day)),
-                AppSegmentedItem(ReportGranularity.Week, stringResource(R.string.stats_reports_granularity_week)),
-                AppSegmentedItem(ReportGranularity.Month, stringResource(R.string.reports_month_granularity)),
-            ),
-            selectedValue = model.granularity,
-            onValueChange = onGranularityChange,
-        )
         val evidence = model.trendEvidence
         if (evidence == null) {
             Text(stringResource(R.string.reports_trend_unavailable))
-            return@Column
-        }
-        when (evidence.mode) {
+        } else when (evidence.mode) {
+            ReportsTrendMode.Signed -> {
+                Text(stringResource(R.string.reports_signed_trend), style = MaterialTheme.typography.bodyMedium)
+                StatsSparseSpendRows(model.trendPoints.filter { it.amountCents != 0L }.map {
+                    StatsSpendChartPoint(label = it.label, amountCents = it.amountCents)
+                }, contentDescription = trendChartA11y(model.trendPoints, LocalCurrencyDisplay.current).listed)
+            }
             ReportsTrendMode.Empty -> Text(
                 text = stringResource(R.string.stats_reports_chart_empty),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -133,9 +143,14 @@ private fun ReportsChartPanel(
             ReportsTrendMode.Chart,
             -> ReportsTrendFlowChart(points = model.trendPoints)
         }
-        ReportsRecentWindowSummary(
-            recentTrend = recentTrend,
-            avoidRepeatedSparseRows = evidence.mode == ReportsTrendMode.Sparse,
+        AppSegmentedControl(
+            options = listOf(
+                AppSegmentedItem(ReportGranularity.Day, stringResource(R.string.stats_reports_granularity_day)),
+                AppSegmentedItem(ReportGranularity.Week, stringResource(R.string.stats_reports_granularity_week)),
+                AppSegmentedItem(ReportGranularity.Month, stringResource(R.string.reports_month_granularity)),
+            ),
+            selectedValue = model.granularity,
+            onValueChange = onGranularityChange,
         )
     }
 }
@@ -191,11 +206,9 @@ private fun CategoryComparisonBlock(rows: List<ReportCategoryComparison>) {
         )
         chartRows.forEach { row ->
             AmountBarRow(
-                label = row.category,
-                amountCents = row.currentAmountCents,
+                row = row,
                 maxAmountCents = maxAmount,
-                trailingText = categoryYearOverYearText(row),
-                supportingText = categoryComparisonValues(row),
+                showBar = chartRows.none { it.currentAmountCents < 0L } && chartRows.sumOf { it.currentAmountCents } > 0L,
             )
         }
     }
@@ -242,27 +255,25 @@ private fun categoryComparisonValues(row: CategoryComparisonChartRow): String? {
 
 @Composable
 private fun AmountBarRow(
-    label: String,
-    amountCents: Long,
+    row: CategoryComparisonChartRow,
     maxAmountCents: Long,
-    trailingText: String?,
-    supportingText: String? = null,
+    showBar: Boolean = true,
 ) {
     val chartTokens = LocalChartTokens.current
     val currencyDisplay = LocalCurrencyDisplay.current
     val progress = if (maxAmountCents > 0L) {
-        (amountCents.toFloat() / maxAmountCents.toFloat()).coerceIn(0f, 1f)
+        (row.currentAmountCents.toFloat() / maxAmountCents.toFloat()).coerceIn(0f, 1f)
     } else {
         0f
     }
     val fillColor = chartTokens.series.firstOrNull() ?: MaterialTheme.colorScheme.primary
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap + AppSpacing.tinyGap)) {
         AmountBarHeader(
-            label = label,
-            amountText = formatDisplayAmount(amountCents, currencyDisplay),
-            trailingText = trailingText,
+            label = row.category,
+            amountText = formatDisplayAmount(row.currentAmountCents, currencyDisplay),
+            trailingText = categoryYearOverYearText(row),
         )
-        Box(
+        if (showBar) Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(AppSpacing.miniGap)
@@ -277,13 +288,11 @@ private fun AmountBarRow(
                     .background(fillColor.copy(alpha = AppAlpha.heavy)),
             )
         }
-        supportingText?.let {
+        categoryComparisonValues(row)?.let {
             Text(
                 text = it,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.labelSmall.tabularNum(),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
             )
         }
     }
@@ -302,26 +311,19 @@ private fun AmountBarHeader(
             trailingWeight = ReportsCategoryAmountWeight,
         ),
     ) {
-        Row(
+        Column(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-            verticalAlignment = Alignment.CenterVertically,
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
         ) {
             Text(
                 text = label,
-                modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.bodyMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
             )
             trailingText?.let {
                 Text(
                     text = it,
-                    modifier = Modifier.weight(ReportsCategoryTrailingWeight, fill = false),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.labelSmall.tabularNum(),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }
@@ -329,4 +331,3 @@ private fun AmountBarHeader(
 }
 
 private const val ReportsCategoryAmountWeight = 0.58f
-private const val ReportsCategoryTrailingWeight = 0.72f

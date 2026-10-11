@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 from app.services.time_service import to_iso
 
-OriginalOperation = Literal["verify_original", "replenish_original", "retry_original_cleanup", "cancel_original_cleanup"]
+OriginalOperation = Literal["attach_original", "verify_original", "replenish_original", "retry_original_cleanup", "cancel_original_cleanup"]
 
 
 class OriginalCleanupObservation(BaseModel):
@@ -60,6 +60,12 @@ class OriginalReplenishmentRequest(BaseModel):
 
     expected_row_version: int = Field(strict=True, gt=0)
     expected_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class OriginalAttachmentRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_row_version: int = Field(strict=True, gt=0)
 
 
 class OriginalCleanupRequest(BaseModel):

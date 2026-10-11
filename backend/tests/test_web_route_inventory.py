@@ -139,6 +139,8 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("GET", "/web/categories/uncategorized"): "local-only-rendering",
     ("POST", "/web/categories/preferences/{public_id}/delete"): "writer-only",
     ("POST", "/web/categories/uncategorized/bulk-set"): "writer-only",
+    ("GET", "/web/reference/{kind}/new"): "local-only-rendering",
+    ("POST", "/web/reference/{kind}/create"): "writer-only",
     # Dashboard
     ("GET", "/web/dashboard/cards"): "local-only-rendering",
     ("POST", "/web/dashboard/cards/save"): "writer-only",
@@ -164,6 +166,9 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("POST", "/web/debts/{public_id}/void"): "writer-only",
     # Debt goals: full create/edit/review/archive lifecycle.
     ("GET", "/web/debt-goals"): "local-only-rendering",
+    ("GET", "/web/debt-goals/new"): "local-only-rendering",
+    ("GET", "/web/debt-goals/{public_id}/links"): "local-only-rendering",
+    ("GET", "/web/debt-goals/{public_id}/target-date"): "local-only-rendering",
     ("POST", "/web/debt-goals/create"): "writer-only",
     ("POST", "/web/debt-goals/{public_id}/archive"): "writer-only",
     ("POST", "/web/debt-goals/{public_id}/links"): "writer-only",
@@ -186,17 +191,23 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("POST", "/web/debts/{public_id}/split-changes/{proposal_public_id}/withdraw"): "writer-only",
     # Duplicates
     ("GET", "/web/duplicates"): "local-only-rendering",
+    ("GET", "/web/duplicates/{expense_id}/decision"): "local-only-rendering",
+    ("POST", "/web/duplicates/{expense_id}/decision"): "writer-only",
     ("POST", "/web/duplicates/{expense_id}/keep"): "writer-only",
     ("POST", "/web/duplicates/{expense_id}/reject-current"): "writer-only",
     ("POST", "/web/duplicates/{expense_id}/reject-original"): "writer-only",
     # Expense edit / confirmed fact correction
     ("GET", "/web/expenses/new"): "local-only-rendering",
+    ("GET", "/web/expenses/new/result"): "local-only-rendering",
     ("POST", "/web/expenses/new"): "writer-only",
     ("GET", "/web/expenses/{expense_id}/edit"): "local-only-rendering",
+    ("GET", "/web/expenses/{expense_id}/confirmation/{command_key}"): "local-only-rendering",
     ("GET", "/web/expenses/{expense_id}/correct"): "local-only-rendering",
     ("POST", "/web/expenses/{expense_id}/save"): "writer-only",
     ("POST", "/web/expenses/{expense_id}/fx"): "writer-only",
+    ("GET", "/web/expenses/{expense_id}/ocr/retry"): "local-only-rendering",
     ("POST", "/web/expenses/{expense_id}/ocr/retry"): "writer-only",
+    ("GET", "/web/expenses/{expense_id}/recognize-text"): "local-only-rendering",
     ("POST", "/web/expenses/{expense_id}/recognize-text"): "writer-only",
     # Keeps the raw editor draft while reading current saved FX/task state.
     ("POST", "/web/expenses/{expense_id}/fx-status"): "local-only-rendering",
@@ -219,6 +230,7 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     # ADR-0038 undo: restore a recently-rejected expense within the 5-min window.
     # Writer-only same as reject (only writers can reject in the first place).
     ("POST", "/web/expenses/{expense_id}/undo"): "writer-only",
+    ("GET", "/web/expenses/{expense_id}/undo"): "local-only-rendering",
     # Media — handler is in web_media.py (the duplicate in web_app.py was
     # removed in PR #55). Auth happens inside ensure_image_file /
     # ensure_thumbnail_file via ledger_scoped_select.
@@ -272,6 +284,7 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("GET", "/web/expenses/{expense_id}/original"): "local-only-rendering",
     ("GET", "/web/expenses/{expense_id}/original/health"): "local-only-rendering",
     ("POST", "/web/expenses/{expense_id}/original/verify"): "writer-only",
+    ("POST", "/web/expenses/{expense_id}/original/attach"): "writer-only",
     ("POST", "/web/expenses/{expense_id}/original/replenish"): "writer-only",
     ("POST", "/web/expenses/{expense_id}/original/cleanup/retry"): "writer-only",
     ("POST", "/web/expenses/{expense_id}/original/cleanup/cancel"): "writer-only",
@@ -300,7 +313,7 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     # Rules
     ("GET", "/web/rules"): "local-only-rendering",
     ("POST", "/web/rules/create"): "writer-only",
-    ("GET", "/web/rules/{rule_id}/edit"): "writer-only",
+    ("GET", "/web/rules/{rule_id}/edit"): "local-only-rendering",  # Read-only users can inspect retained input.
     ("POST", "/web/rules/{rule_id}/edit"): "writer-only",
     ("POST", "/web/rules/applications/{public_id}/rollback"): "writer-only",
     ("POST", "/web/rules/{rule_id}/toggle"): "writer-only",
@@ -318,6 +331,7 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("GET", "/web/search"): "local-only-rendering",
     # Tags (ADR-0043 slice C)
     ("GET", "/web/tags"): "local-only-rendering",
+    ("GET", "/web/tags/{public_id}/edit"): "local-only-rendering",
     ("POST", "/web/tags/{public_id}/rename"): "writer-only",
     ("POST", "/web/tags/{public_id}/delete"): "writer-only",
     ("POST", "/web/tags/{public_id}/merge"): "writer-only",

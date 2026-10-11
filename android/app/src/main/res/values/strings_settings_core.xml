@@ -65,6 +65,7 @@
 
     <!-- 设置 二级页框架（SettingsComponents：SettingsPageFrame）：返回按钮 -->
     <string name="settings_page_back_to_settings">返回设置</string>
+    <string name="sync_status_back">返回上一页</string>
 
     <!-- 账户概况（SettingsServerComponents：AccountStatusCard / AdvancedStatusCard / StatusPill），设置根屏与连接页共用 -->
     <string name="settings_account_default_account">我</string>
@@ -240,7 +241,7 @@
     <string name="sync_status_overview_quarantined_label">已隔离</string>
     <string name="sync_status_overview_caption_quarantined">有 %1$d 笔旧操作已隔离，不会自动发送。</string>
     <string name="sync_status_overview_caption_needs_action">有 %1$d 笔需要处理，核对后选择后续操作。</string>
-    <string name="sync_status_overview_caption_review_required">%1$d 笔旧提交需要核对当前事实，送达情况尚未确认。</string>
+    <string name="sync_status_overview_caption_review_required">有 %1$d 笔操作需要核对当前记录，原提交仍保留。</string>
     <string name="sync_status_overview_caption_queued">离线改动已保留，恢复连接后会自动同步。</string>
     <string name="sync_status_overview_caption_binding_changed">有 %1$d 笔原提交的连接已变化，请核对并停止本机追踪；原记录会保留。</string>
     <string name="sync_status_overview_caption_settled">没有等待处理的离线改动。</string>
@@ -294,7 +295,10 @@
     <string name="sync_status_mutation_confirm_expense">确认入账</string>
     <string name="sync_status_mutation_reject_expense">删除账单</string>
     <string name="sync_status_mutation_undo_expense">恢复账单</string>
-    <string name="sync_status_expense_original_requires_review">原操作结果暂时无法核实。请打开账单核对；原提交已保留。</string>
+    <string name="sync_status_expense_original_requires_review">原操作已被接受，但首次结果暂时无法核对。请打开账单查看；原提交仍保留。</string>
+    <string name="sync_status_accepted_stop">结束待办</string>
+    <string name="sync_status_accepted_stop_title">结束这条待办？</string>
+    <string name="sync_status_accepted_stop_body">结束待办会停止跟进原提交，不会撤销账单里已被接受的操作。请先核对账单。</string>
     <string name="sync_status_undo_unavailable">当前无法撤销这次删除。请打开账单核对最新状态。</string>
     <string name="sync_status_mutation_mark_not_duplicate">保留账单（非重复）</string>
     <string name="sync_status_mutation_retry_ocr">重新识别</string>
@@ -308,6 +312,7 @@
     <string name="sync_status_mutation_delete_merchant_alias">删除商家别名</string>
     <string name="sync_status_mutation_update_goal">修改目标</string>
     <string name="sync_status_mutation_update_income_plan">修改收入计划</string>
+    <string name="sync_status_mutation_confirm_recurring_candidate">采用固定支出建议</string>
     <string name="sync_status_mutation_create_recurring_item">新建固定支出</string>
     <string name="sync_status_mutation_update_recurring_item">修改固定支出</string>
     <string name="sync_status_mutation_create_expense_offset">登记退回或冲销</string>

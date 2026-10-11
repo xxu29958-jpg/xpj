@@ -26,7 +26,7 @@ def _create_alias(
 ) -> dict:
     response = client.post(
         "/api/merchants/aliases",
-        headers=headers,
+        headers={**headers, "Idempotency-Key": str(uuid4())},
         json={
             "canonical_merchant": canonical,
             "alias": alias,
@@ -83,7 +83,7 @@ def test_merchant_alias_crud_and_conflict_within_ledger(client: TestClient, *, i
 
     conflict = client.post(
         "/api/merchants/aliases",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"canonical_merchant": "另一家", "alias": "starbucks 国贸店"},
     )
     assert conflict.status_code == 409
@@ -91,7 +91,7 @@ def test_merchant_alias_crud_and_conflict_within_ledger(client: TestClient, *, i
 
     same_as_canonical = client.post(
         "/api/merchants/aliases",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"canonical_merchant": "罗森", "alias": " 罗森 "},
     )
     assert same_as_canonical.status_code == 422
@@ -166,12 +166,19 @@ def test_merchant_aliases_are_ledger_isolated(client: TestClient, *, identity) -
 
 def test_viewer_cannot_mutate_merchant_aliases(client: TestClient, *, identity) -> None:
     created = _create_alias(client, identity.app_headers)
+    original_headers = {**identity.app_headers, "Idempotency-Key": str(uuid4())}
+    original_body = {"expected_row_version": created["row_version"], "enabled": False}
+    accepted = client.patch(f"/api/merchants/aliases/{created['public_id']}",
+        headers=original_headers, json=original_body)
+    assert accepted.status_code == 200, accepted.text
     _demote_owner_ledger_to_viewer()
 
     checks = [
+        client.patch(f"/api/merchants/aliases/{created['public_id']}",
+            headers=original_headers, json=original_body),
         client.post(
             "/api/merchants/aliases",
-            headers=identity.app_headers,
+            headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
             json={"canonical_merchant": "KFC", "alias": "肯德基"},
         ),
         client.patch(
@@ -257,7 +264,7 @@ def test_rules_preview_and_apply_use_enabled_merchant_alias(client: TestClient, 
     assert bulk_preview.status_code == 200, bulk_preview.text
     apply = client.post(
         "/api/rules/apply-pending",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"confirm": True, "preview_token": bulk_preview.json()["preview_token"]},
     )
     assert apply.status_code == 200, apply.text

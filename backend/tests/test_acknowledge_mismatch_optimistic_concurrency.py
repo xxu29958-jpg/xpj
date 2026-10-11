@@ -70,13 +70,8 @@ def test_acknowledge_mismatch_without_token_returns_422(client: TestClient, *, i
     assert response.json()["error"] == "invalid_request"
 
 
-def test_acknowledge_mismatch_replay_same_key_returns_canonical_not_409(client: TestClient, *, identity) -> None:
-    """ADR-0042 committed-but-unseen for acknowledge — the one D-1 op whose HIT
-    path re-serialises via ``list_expense_items`` (not ``get_expense``). Same key
-    + same now-stale token must return the canonical (already-acknowledged) items
-    response, never the false-409 the OCC claim would raise (ack is not
-    terminal-idempotent: the second claim's ``items_sum_status='mismatch_known'``
-    predicate would miss)."""
+def test_acknowledge_mismatch_replay_preserves_original_acceptance_after_peer_change(client: TestClient, *, identity) -> None:
+    """Replaying an old acknowledgement cannot accept a peer's new mismatch."""
     expense_id = _create_mismatch_expense(client, identity=identity)
     v0 = client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers).json()["row_version"]
     key = str(uuid4())
@@ -93,14 +88,27 @@ def test_acknowledge_mismatch_replay_same_key_returns_canonical_not_409(client: 
     v1 = first.json()["row_version"]
     assert v1 != v0
 
+    matched = replace_items_api(client, expense_id, headers=identity.app_headers,
+        items=[{"name": "他端先核对一致", "amount_cents": 3500}])
+    assert matched.status_code == 200 and matched.json()["items_sum_status"] == "matched", matched.text
+    peer = replace_items_api(client, expense_id, headers=identity.app_headers,
+        items=[{"name": "他端后来填写", "amount_cents": 4000}])
+    assert peer.status_code == 200, peer.text
+    assert peer.json()["items_sum_status"] == "mismatch_known"
+
     replay = client.post(
         f"/api/expenses/{expense_id}/items/acknowledge-mismatch",
         headers=headers,
         json=body,
     )
-    assert replay.status_code == 200, replay.text  # HIT via list_expense_items, not 409
-    assert replay.json()["items_sum_status"] == "mismatch_acknowledged"
-    assert replay.json()["row_version"] == v1
+    assert replay.status_code == 200, replay.text
+    assert replay.json() == first.json()
+    following = client.post(f"/api/expenses/{expense_id}/items/acknowledge-mismatch",
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"expected_row_version": replay.json()["row_version"]})
+    assert following.status_code == 409, following.text
+    assert following.json()["error"] == "state_conflict"
+    assert client.get(f"/api/expenses/{expense_id}/items", headers=identity.app_headers).json() == peer.json()
 
 
 def test_acknowledge_mismatch_with_stale_token_returns_409(client: TestClient, *, identity) -> None:

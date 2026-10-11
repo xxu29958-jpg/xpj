@@ -12,7 +12,8 @@
       baseline_amount_yuan:'001800',next_expected_date:'2026-10-09'}}
   ];
   const read = f => [...new FormData(f).entries()].filter(([n])=>n!=='csrf_token').map(([n,v])=>
-    [n,n==='draft_scope' ? JSON.stringify(Object.entries(JSON.parse(v)).sort(([a],[b])=>a.localeCompare(b))) : v]);
+    [n,n==='draft_scope' ? JSON.stringify(Object.entries(JSON.parse(v)).sort(([a],[b])=>a.localeCompare(b))) : v])
+    .sort(([a],[b])=>a.localeCompare(b)); // Stable: preserve order within every repeated field.
   const load = async (frame,url,spec) => {
     const loaded = new Promise(r=>frame.onload=r); frame.src=url; await loaded;
     for (let attempt=0; attempt<160; attempt++) {
@@ -40,6 +41,8 @@
     }
     const before=read(f);
     f=await load(frame,url,spec);
+    if (spec.kind==='budget' && !f.closest('#budget-editor').open) throw Error('restored budget draft must reopen its editor');
+    if (spec.kind==='budget' && f.querySelector('[data-budget-add-zone]').hidden) throw Error('restored category inputs must be visible');
     const after=read(f);
     results.push({entry:spec.kind,before,after,retained:JSON.stringify(before)===JSON.stringify(after)});
     frame.remove();

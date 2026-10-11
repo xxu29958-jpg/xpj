@@ -26,7 +26,7 @@ def income_form(client, monkeypatch):
     monkeypatch.setattr(ledger_calendar_service, "now_utc", lambda: clock["now"])
     app.dependency_overrides[_require_local] = lambda: None
     try:
-        page = client.get("/web/income-plans?ledger_id=owner")
+        page = client.get("/web/income-plans?ledger_id=owner&new_income=1")
         assert page.status_code == 200, page.text
         fields = hidden_post_forms(page.text)[ACTION]
         assert fields["intent_month"] == "2026-09" and fields["idempotency_key"]
@@ -104,7 +104,7 @@ def _installed_income_form(installed):
     with SessionLocal() as db:
         auth = authenticate_web_session_token(db, token, ttl_seconds=8 * 60 * 60).auth
         scope = manual_draft_scope(db, auth)
-    page = browser.get("/web/income-plans")
+    page = browser.get("/web/income-plans?new_income=1")
     assert page.status_code == 200, page.text
     fields = {**hidden_post_forms(page.text)[ACTION], "draft_scope": json.dumps(scope),
         "label": "原收入计划", "source_type": "salary", "frequency": "monthly",
@@ -160,7 +160,7 @@ def test_income_draft_cannot_follow_a_replacement_browser_identity(installed_inc
     assert current_scope["accountId"] == scope["accountId"]
     assert current_scope["ledgerId"] == scope["ledgerId"]
     assert current_scope["deviceId"] != scope["deviceId"]
-    refreshed = browser.get("/web/income-plans")
+    refreshed = browser.get("/web/income-plans?new_income=1")
     assert refreshed.status_code == 200, refreshed.text
     original["csrf_token"] = hidden_post_forms(refreshed.text)[ACTION]["csrf_token"]
     refused = browser.post(ACTION, data=original,

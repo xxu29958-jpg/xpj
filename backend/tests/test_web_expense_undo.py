@@ -32,6 +32,8 @@ from __future__ import annotations
 
 import re
 from datetime import timedelta
+from urllib.parse import parse_qs, urlsplit
+from uuid import uuid4
 
 from api_contract_helpers import web_reject_expense, web_undo_expense
 from fastapi.testclient import TestClient
@@ -42,6 +44,7 @@ from app.models import Expense, LedgerAuditLog
 from app.services.soft_delete_policy import SOFT_DELETE_RETENTION
 from app.services.time_service import now_utc
 from tests._infra.assets import PNG_BYTES
+from tests._web_native_form_support import hidden_post_forms
 
 
 def _create_pending(client: TestClient, *, identity) -> int:
@@ -68,6 +71,11 @@ def test_web_reject_redirects_with_undo_query_and_success_flash(
     assert f"undo={expense_id}" in location
     assert "msg=" in location  # 已忽略这笔账单。 banner text
     assert "flash_type=success" in location  # review P2 #1: green banner
+    original = parse_qs(urlsplit(location).query)
+    task = web_client.get(f'/web/expenses/{expense_id}/undo', params={"ledger_id": "owner",
+        "undo_version": original["undo_version"][0], "undo_key": original["undo_key"][0]})
+    fields = hidden_post_forms(task.text)[f"/web/expenses/{expense_id}/undo"]
+    assert (fields["expected_row_version"], fields["idempotency_key"]) == (original["undo_version"][0], original["undo_key"][0])
 
 
 def test_web_reject_from_recurring_occurrence_returns_to_the_original_period(
@@ -90,6 +98,7 @@ def test_web_reject_from_recurring_occurrence_returns_to_the_original_period(
         data={
             "ledger_id": "owner",
             "expected_row_version": snapshot.json()["row_version"],
+            "reject_idempotency_key": str(uuid4()),
             "return_to": "recurring_occurrence",
             "return_recurring_public_id": series_id,
             "return_month": "2026-09",
@@ -173,13 +182,11 @@ def test_web_pending_renders_undo_banner_in_green_when_success_flash(
     web_client: TestClient, *, identity
 ) -> None:
     expense_id = _create_pending(web_client, identity=identity)
-    web_reject_expense(
+    rejection = web_reject_expense(
         web_client, expense_id, identity=identity, follow_redirects=False
     )
 
-    page = web_client.get(
-        f"/web/pending?ledger_id=owner&undo={expense_id}&msg=已忽略这笔账单。&flash_type=success"
-    )
+    page = web_client.get(rejection.headers["location"])
     assert page.status_code == 200, page.text
     body = page.text
     assert f"/web/expenses/{expense_id}/undo" in body
@@ -204,12 +211,10 @@ def test_web_pending_undo_form_carries_csrf_token(
     # would never trigger a 403 in unit tests. Pin the field's presence and a
     # non-empty value so a template regression can't ship green.
     expense_id = _create_pending(web_client, identity=identity)
-    web_reject_expense(
+    rejection = web_reject_expense(
         web_client, expense_id, identity=identity, follow_redirects=False
     )
-    page = web_client.get(
-        f"/web/pending?ledger_id=owner&undo={expense_id}&msg=ok&flash_type=success"
-    )
+    page = web_client.get(rejection.headers["location"])
     assert page.status_code == 200, page.text
     # The form scope: extract csrf_token from the undo banner specifically (not
     # any other form on the page).
@@ -312,7 +317,7 @@ def test_web_undo_after_reject_restores_pending_and_writes_audit(
         assert audit is not None
 
 
-def test_web_undo_after_window_expires_flashes_red_failure(
+def test_web_undo_after_window_expires_preserves_original_with_failure(
     web_client: TestClient, *, identity
 ) -> None:
     expense_id = _create_pending(web_client, identity=identity)
@@ -329,11 +334,9 @@ def test_web_undo_after_window_expires_flashes_red_failure(
         db.commit()
 
     response = web_undo_expense(web_client, expense_id, follow_redirects=False)
-    assert response.status_code == 303, response.text
-    location = response.headers.get("location", "")
-    assert "/web/pending" in location
-    assert "msg=" in location  # 无法撤销 wording
-    assert "flash_type=error" in location  # review P2 #1: failure → red banner
+    assert response.status_code == 404, response.text
+    original = hidden_post_forms(response.text)[f"/web/expenses/{expense_id}/undo"]
+    assert original["idempotency_key"] and original["expected_row_version"]
 
     with SessionLocal() as db:
         row = db.scalar(select(Expense).where(Expense.id == expense_id))
@@ -341,22 +344,18 @@ def test_web_undo_after_window_expires_flashes_red_failure(
         assert row.status == "rejected"
         assert row.rejected_at is not None
 
-    # Follow the redirect to confirm the rendered page uses the danger class,
-    # not the success class.
-    page = web_client.get(location)
-    assert page.status_code == 200, page.text
-    assert "product-feedback--error" in page.text
-    assert "product-feedback--success" not in page.text
+    assert "product-feedback--error" in response.text
+    assert "product-feedback--success" not in response.text
 
 
-def test_web_undo_for_pending_row_flashes_failure(
+def test_web_undo_for_pending_row_retains_failed_original(
     web_client: TestClient, *, identity
 ) -> None:
     # Never rejected — undo has nothing to restore.
     expense_id = _create_pending(web_client, identity=identity)
     response = web_undo_expense(web_client, expense_id, follow_redirects=False)
-    assert response.status_code == 303, response.text
-    assert "/web/pending" in response.headers.get("location", "")
+    assert response.status_code == 404, response.text
+    assert f"/web/expenses/{expense_id}/undo" in hidden_post_forms(response.text)
     # Row remains pending; no audit written.
     with SessionLocal() as db:
         row = db.scalar(select(Expense).where(Expense.id == expense_id))
@@ -370,7 +369,7 @@ def test_web_undo_for_pending_row_flashes_failure(
         assert audit is None
 
 
-def test_web_undo_from_different_ledger_form_flashes_failure(
+def test_web_undo_from_different_ledger_form_preserves_refused_original(
     web_client: TestClient, *, identity
 ) -> None:
     # Cross-ledger: reject in the default 'owner' ledger, then submit /undo
@@ -396,7 +395,8 @@ def test_web_undo_from_different_ledger_form_flashes_failure(
         ledger_id=other_ledger_id,
         follow_redirects=False,
     )
-    assert response.status_code == 303, response.text
+    assert response.status_code == 404, response.text
+    assert hidden_post_forms(response.text)[f"/web/expenses/{expense_id}/undo"]["ledger_id"] == other_ledger_id
 
     with SessionLocal() as db:
         row = db.scalar(select(Expense).where(Expense.id == expense_id))

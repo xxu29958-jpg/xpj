@@ -21,7 +21,7 @@ HONESTY_COPY = "不会自动入账"
 ADD_CTA_COPY = "添加固定支出"
 HERO_LABEL_COPY = "每月固定支出"
 WEB_CANDIDATE_TITLE = "发现的建议"
-ANDROID_CANDIDATE_TITLE = "固定支出候选（未确认）"
+ANDROID_CANDIDATE_TITLE = "确认后才成为计划"
 ANDROID_CANDIDATE_ACTION = "采用建议"
 
 

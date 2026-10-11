@@ -152,6 +152,7 @@ def _render_income_plans(request, db, *, options, selected, message=None, error=
         income_draft_result=draft_result,
         plans_active=plans_active,
         plans_archived=plans_archived,
+        income_creating=draft is not None or request.query_params.get("new_income") == "1",
         total_yuan=minor_amount_value(forecast.expected_amount_cents, home) if forecast.expected_amount_cents is not None else None,
         scheduled_yuan=minor_amount_value(forecast.scheduled_amount_cents, home) if forecast.scheduled_amount_cents is not None else None,
         missing_currency_codes=forecast.missing_currency_codes,

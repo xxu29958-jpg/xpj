@@ -213,6 +213,7 @@ class PlanningRecovery:
         self.offline_reads()
         self.native.plan_home()
         self.native.click("打开账户与设置")
+        self.native.click("通知与外观")
         self.native.click("外观与主题")
         self.native.click("玄夜")
         self.native.open_income()

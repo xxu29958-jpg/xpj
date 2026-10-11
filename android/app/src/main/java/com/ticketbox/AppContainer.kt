@@ -138,7 +138,7 @@ class AppContainer(context: Context) {
 
     val uploadIntentRepository: UploadIntentRepository = UploadIntentRepository(
         apiServiceProvider, outboxRepository, uploadFiles,
-        outboxAdapters.uploadPayloadAdapter, outboxAdapters.uploadReceiptAdapter, settingsStore,
+        outboxAdapters, settingsStore, database.expenseDao(),
     )
 
     private fun outboxApi(row: OutboxRow) = outboxRequestGuard
@@ -251,6 +251,9 @@ class AppContainer(context: Context) {
                 outboxAdapters.categoryRuleSubmissionAdapter, outboxAdapters.categoryRuleReceiptAdapter),
             CategoryRuleDispatcher(PendingMutationType.DeleteCategoryRule, ::outboxApi,
                 outboxAdapters.categoryRuleSubmissionAdapter, outboxAdapters.categoryRuleReceiptAdapter),
+            com.ticketbox.data.repository.ApplyConfirmedRulesDispatcher(::outboxApi,
+                outboxAdapters.ruleApplicationAdapter, outboxAdapters.ruleApplicationReceiptAdapter,
+                refreshConfirmed = { row -> ruleRepository.refreshAcceptedApplication(row).getOrThrow() }),
             // PR-2g.5: DELETE /api/merchants/aliases/{publicId} via outbox.
             DeleteMerchantAliasDispatcher(
                 apiProvider = ::outboxApi,
@@ -326,6 +329,13 @@ class AppContainer(context: Context) {
                 receiptAdapter = outboxAdapters.goalReceiptAdapter,
                 onAccepted = reportsRepository::invalidateGoalReadsAfterDelivery,
             ),
+            com.ticketbox.data.repository.DebtGoalEditDispatcher(::outboxApi,
+                outboxAdapters.goalDebtEditAdapter, outboxAdapters.goalReceiptAdapter,
+                type = PendingMutationType.ReplaceGoalDebtLinks, onAccepted = reportsRepository::invalidateGoalReadsAfterDelivery),
+            com.ticketbox.data.repository.DebtGoalEditDispatcher(::outboxApi,
+                outboxAdapters.goalDebtEditAdapter, outboxAdapters.goalReceiptAdapter,
+                type = PendingMutationType.SetGoalTargetDate,
+                onAccepted = reportsRepository::invalidateGoalReadsAfterDelivery),
             // ADR-0042 Slice F: PATCH /api/income-plans/{publicId} via outbox.
             IncomePlanDispatcher(PendingMutationType.CreateIncomePlan, ::outboxApi,
                 outboxAdapters.incomePlanSubmissionAdapter, outboxAdapters.incomePlanReceiptAdapter),
@@ -341,6 +351,10 @@ class AppContainer(context: Context) {
                 outboxAdapters.arrangementSaveAdapter, outboxAdapters.arrangementReceiptAdapter),
             com.ticketbox.data.repository.ManualExchangeRateDispatcher(::outboxApi,
                 outboxAdapters.manualRateAdapter, outboxAdapters.manualRateReceiptAdapter),
+            com.ticketbox.data.repository.ConfirmRecurringCandidateDispatcher(
+                apiProvider = ::outboxApi,
+                payloadAdapter = outboxAdapters.recurringCandidateAdapter,
+            ),
             CreateRecurringItemDispatcher(
                 apiProvider = ::outboxApi,
                 payloadAdapter = outboxAdapters.recurringCreateAdapter,
@@ -451,6 +465,7 @@ class AppContainer(context: Context) {
     val reportsRepository = repositories.reportsRepository
     val goalEditRepository = repositories.goalEditRepository
     val ruleRepository = repositories.ruleRepository
+    val savedQueryRepository = repositories.savedQueryRepository
     val merchantRepository = repositories.merchantRepository
     val tagRepository = repositories.tagRepository
     val categoryPreferenceRepository = repositories.categoryPreferenceRepository

@@ -554,6 +554,7 @@ fun RuleApplicationBatchDto.toDomain(): RuleApplicationBatch = RuleApplicationBa
     changedCount = changedCount,
     createdAt = createdAt,
     rolledBackAt = rolledBackAt,
+    changeCounts = changeCounts,
 )
 
 fun RuleApplicationRollbackDto.toDomain(): RuleApplicationRollback = RuleApplicationRollback(
@@ -574,6 +575,8 @@ fun RuleApplyPreviewItemDto.toDomain(): RuleApplyPreviewItem = RuleApplyPreviewI
 )
 
 fun RuleApplyConfirmedResponseDto.toDomain(): RuleApplyConfirmedResult = RuleApplyConfirmedResult(
+    commandKey = commandKey,
+    applicationPublicId = applicationPublicId,
     dryRun = dryRun,
     confirmedScanned = confirmedScanned,
     changedCount = changedCount,

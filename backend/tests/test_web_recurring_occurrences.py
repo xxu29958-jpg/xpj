@@ -32,6 +32,17 @@ def _retry_form(body):
     raise AssertionError("the original proposal retry form is missing")
 
 
+def _choice_href(body, action):
+    return next(unescape(href) for href in re.findall(r'href="([^"]+)"', body)
+        if parse_qs(urlsplit(unescape(href)).query).get("command") == [action])
+
+
+def _choose(client, body, action):
+    page = client.get(_choice_href(body, action))
+    assert page.status_code == 200, page.text
+    return _form(page.text, action)
+
+
 def test_web_association_and_undo_share_the_api_result(client: TestClient, *, identity) -> None:
     app.dependency_overrides[_require_local] = lambda: None
     try:
@@ -40,7 +51,7 @@ def test_web_association_and_undo_share_the_api_result(client: TestClient, *, id
         path = f"/web/recurring/{series['public_id']}/occurrence"
         page = client.get(path, params={"ledger_id": "owner", "month": "2026-09"})
         assert page.status_code == 200, page.text
-        original = _form(page.text, "link")
+        original = _choose(client, page.text, "link")
         assert original["expense_public_id"] == payment["public_id"]
         linked = client.post(path, data=original, follow_redirects=False)
         assert linked.status_code == 303, linked.text
@@ -52,7 +63,7 @@ def test_web_association_and_undo_share_the_api_result(client: TestClient, *, id
             headers=identity.app_headers,
         )
         assert api.json()["reserved_amount_cents"] == 0
-        cleared = client.post(path, data=_form(rendered.text, "clear"), follow_redirects=False)
+        cleared = client.post(path, data=_choose(client, rendered.text, "clear"), follow_redirects=False)
         assert cleared.status_code == 303, cleared.text
         assert "本期尚未关联付款" in client.get(cleared.headers["location"]).text
         # Refreshing/retrying the original submitted form cannot relink after undo.
@@ -83,7 +94,7 @@ def _record_payment_href(html: str, *, series_id: str, period: str, ledger_id: s
     raise AssertionError("The period payment entry must open the existing manual-expense owner")
 
 
-def test_unpaid_period_record_payment_is_not_the_global_manual_entry(monkeypatch) -> None:
+def test_period_payment_entries_and_review_keep_the_original_task(monkeypatch) -> None:
     from fastapi import Request
 
     from app.middleware import csrf
@@ -127,6 +138,34 @@ def test_unpaid_period_record_payment_is_not_the_global_manual_entry(monkeypatch
     assert occurrence.reserved_amount_cents == 2000
     assert occurrence.expense_public_id is None
 
+    for reason, explanation in (
+        ("reversed", "原账单已冲销，暂不能作为本期付款依据。"),
+        ("not_confirmed", "原账单当前未确认，暂不能作为本期付款依据。"),
+        ("negative_amount", "原账单金额为负，不能作为本期付款依据。"),
+        (None, "请查看原账单核对当前状态，具体原因未随这份记录提供。"),
+    ):
+        reviewed = occurrence.model_copy(update={
+            "state": "needs_review", "row_version": 4,
+            "expense_public_id": "original-payment", "expense_id": 41,
+            "expense_row_version": 9, "payment_review_reason": reason,
+        })
+        monkeypatch.setattr(web, "occurrence_response", lambda *a, value=reviewed, **kw: value)
+        reviewed_page = web._page(request, object(), public_id=series_id, ledger_id="owner", month="2026-08")
+        reviewed_html = reviewed_page.body.decode()
+        assert explanation in reviewed_html
+        assert "原账单已撤回或冲销" not in reviewed_html
+        assert "本期已关联付款" not in reviewed_html
+        selected_request = Request({**request.scope,
+            "query_string": urlsplit(_choice_href(reviewed_html, "clear")).query.encode()})
+        command_page = web._page(selected_request, object(), public_id=series_id, ledger_id="owner", month="2026-08")
+        original_task = _form(command_page.body.decode(), "clear")
+        assert original_task["month"] == "2026-08"
+        assert original_task["expected_row_version"] == "4"
+        assert original_task["expected_series_row_version"] == "3"
+        assert "return_recurring_public_id=" + series_id in reviewed_html
+        assert "return_month=2026-08" in reviewed_html
+        assert reviewed.expense_id == 41 and reviewed.reserved_amount_cents == 2000
+
 
 def test_expense_return_adapter_keeps_the_original_series_and_period() -> None:
     from app.routes._web_expense_return_context import edit_context_params, return_href
@@ -153,6 +192,15 @@ def test_expense_return_adapter_keeps_the_original_series_and_period() -> None:
     assert edit_context_params(**{**origin, "return_payment_expense_id": "41"}) == {
         **origin, "return_payment_expense_id": "41",
     }
+    for payment_month in ("2026-07", "all"):
+        filtered = {**origin, "return_payment_expense_id": "41", "return_payment_month": payment_month,
+                    "return_query": "宽带 & 返还"}
+        assert edit_context_params(**filtered) == filtered
+        returned = return_href(ledger_id="owner", default_path="/web/pending", **filtered)
+        assert parse_qs(urlsplit(returned).query) == {
+            "ledger_id": ["owner"], "month": ["2026-08"], "payment_id": ["41"],
+            "payment_month": [payment_month], "q": ["宽带 & 返还"],
+        }
     assert "return_payment_expense_id" not in edit_context_params(
         **{**origin, "return_payment_expense_id": "not-an-id"}
     )
@@ -183,10 +231,12 @@ def test_human_confirm_return_reopens_the_original_unpaid_period() -> None:
             return_recurring_public_id=series_id,
             return_month="2026-08",
             return_payment_expense_id="41",
+            return_payment_month="all",
+            return_query="宽带 & 返还",
         ),
     )
     assert focused_path == path
-    assert focused_params == {"month": "2026-08", "payment_id": "41"}
+    assert focused_params == {"month": "2026-08", "payment_id": "41", "payment_month": "all", "q": "宽带 & 返还"}
     unsafe_path, _ = confirm_return_redirect(
         ExpenseReturnContext(
             return_to="recurring_occurrence",
@@ -204,7 +254,7 @@ def test_web_association_invalid_action_keeps_the_original_key(client: TestClien
         payment = _payment(client, identity)
         path = f"/web/recurring/{series['public_id']}/occurrence"
         page = client.get(path, params={"ledger_id": "owner", "month": "2026-09", "payment_id": payment["id"]})
-        original = _form(page.text, "link")
+        original = _choose(client, page.text, "link")
         assert original["expense_public_id"] == payment["public_id"]
         assert original["payment_id"] == str(payment["id"])
         refused = client.post(path, data={**original, "action": "explode"}, follow_redirects=False)
@@ -230,7 +280,7 @@ def test_web_association_state_conflict_keeps_the_original_proposal(client: Test
         payment = _payment(client, identity)
         path = f"/web/recurring/{series['public_id']}/occurrence"
         page = client.get(path, params={"ledger_id": "owner", "month": "2026-09"})
-        original = _form(page.text, "link")
+        original = _choose(client, page.text, "link")
         linked = client.post(path, data=original, follow_redirects=False)
         assert linked.status_code == 303, linked.text
         conflict = client.post(
@@ -291,7 +341,7 @@ def test_occurrence_reject_undo_uses_payment_expense_id_parser(monkeypatch) -> N
 
     sentinel = object()
     for raw in ("²", "0", "-1", "1" * 5000, "2147483648", "12.3", "", None):
-        assert _occurrence_reject_undo(sentinel, selected_id="owner", undo=raw) == (None, None)
+        assert _occurrence_reject_undo(sentinel, selected_id="owner", undo=raw, undo_version="7") == (None, None)
 
     seen: dict[str, object] = {}
 
@@ -303,6 +353,8 @@ def test_occurrence_reject_undo_uses_payment_expense_id_parser(monkeypatch) -> N
         "app.routes.web_recurring_occurrences.fetch_expense_row_version_in_status",
         fetch_expense_row_version_in_status,
     )
-    assert _occurrence_reject_undo(sentinel, selected_id="owner", undo="41") == (41, 7)
+    assert _occurrence_reject_undo(sentinel, selected_id="owner", undo="41", undo_version="7") == (41, 7)
+    assert _occurrence_reject_undo(sentinel, selected_id="owner", undo="41", undo_version="6") == (None, None)
+    assert _occurrence_reject_undo(sentinel, selected_id="owner", undo="41", undo_version=None) == (None, None)
     assert seen == {"db": sentinel, "expense_id": 41, "tenant_id": "owner", "status": "rejected"}
 

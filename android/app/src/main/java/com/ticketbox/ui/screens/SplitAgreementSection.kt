@@ -24,6 +24,7 @@ import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.asString
+import com.ticketbox.ui.components.AppButtonIcons
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppSectionGroup
 import com.ticketbox.ui.components.AppTextInput
@@ -116,7 +117,7 @@ private fun SplitAgreementForm(state: SplitAgreementUiState, model: SplitAgreeme
         } else {
             R.string.split_agreement_submit_replacement
         }),
-            icon = Icons.Filled.Check, modifier = Modifier.fillMaxWidth(),
+            icons = AppButtonIcons(leading = Icons.Filled.Check), modifier = Modifier.fillMaxWidth(),
             onClick = model::propose, enabled = state.canPropose)
     }
 }
@@ -211,7 +212,7 @@ private fun SplitAgreementProposal(state: SplitAgreementUiState, model: SplitAgr
             if (!proposal.proposedByYou) {
                 SplitSettlementConfirmation(state, model)
                 AppPrimaryButton(text = stringResource(R.string.split_agreement_accept),
-                    icon = Icons.Filled.Check, modifier = Modifier.fillMaxWidth(),
+                    icons = AppButtonIcons(leading = Icons.Filled.Check), modifier = Modifier.fillMaxWidth(),
                     onClick = { model.resolve(true) },
                     enabled = state.commandsEnabled && state.previewReady && state.confirmed &&
                         agreement.pendingRepaymentDebtPublicIds.isEmpty())
@@ -255,7 +256,7 @@ private fun SplitAgreementSubmissions(state: SplitAgreementUiState, model: Split
             }))
             if (row.status == PendingMutationStatus.Failed && row.lastError !in com.ticketbox.data.repository.SPLIT_SHARE_REFUSALS) {
                 AppPrimaryButton(text = stringResource(R.string.split_agreement_retry_submission),
-                    icon = Icons.Filled.Refresh, modifier = Modifier.fillMaxWidth(),
+                    icons = AppButtonIcons(leading = Icons.Filled.Refresh), modifier = Modifier.fillMaxWidth(),
                     onClick = { model.recover(row, false) }, enabled = state.canModify)
             }
             if (row.status in setOf(PendingMutationStatus.Failed, PendingMutationStatus.Conflict)) {

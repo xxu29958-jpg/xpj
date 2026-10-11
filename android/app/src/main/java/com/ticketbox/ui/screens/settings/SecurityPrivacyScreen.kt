@@ -44,7 +44,6 @@ import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.SettingsColors
-import com.ticketbox.ui.design.settingsEntrySurface
 
 internal enum class SecurityPrivacyInfoKind {
     LocalUnlock,
@@ -239,9 +238,9 @@ private fun SecurityInfoRow(row: SecurityPrivacyInfoRowModel) {
         verticalAlignment = Alignment.Top,
     ) {
         SettingsEntryIcon(icon = icon, shape = RoundedCornerShape(14.dp),
-            background = settingsEntrySurface(if (row.kind == SecurityPrivacyInfoKind.SessionCredential) {
+            background = if (row.kind == SecurityPrivacyInfoKind.SessionCredential) {
                 SettingsColors.sessionCredential
-            } else SettingsColors.generalEntry))
+            } else SettingsColors.generalEntry)
         Column(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
@@ -302,10 +301,10 @@ private fun SecurityDangerRow(
         verticalAlignment = Alignment.Top,
     ) {
         SettingsEntryIcon(icon = icon, shape = RoundedCornerShape(14.dp),
-            background = settingsEntrySurface(when (action.kind) {
+            background = when (action.kind) {
                 SecurityDangerActionKind.ClearOfflineCopy -> SettingsColors.offlineCopy
                 SecurityDangerActionKind.LeaveLedger -> SettingsColors.sessionExit
-            }))
+            })
         Column(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),

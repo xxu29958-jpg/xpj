@@ -1,0 +1,40 @@
+{% macro binding(kind) -%}
+{% set family = 'expense' ~ kind %}{% set draft = (expense_subtasks|default({})).get(kind, {}) %}
+{% if draft.scope %}data-{{ family }}-draft-scope='{{ draft.scope | tojson }}'{% endif %}
+data-{{ family }}-plan-id="{{ expense.id }}" data-{{ family }}-can-write="{{ 'true' if can_write and not expense_review_inspection else 'false' }}"
+data-{{ family }}-archived="{{ 'false' if (receipt_items.status == 'mismatch_known' if kind == 'ack' else expense.status == 'pending') else 'true' }}"
+data-{{ family }}-native-result="{{ draft.result|default('') }}"
+data-{{ family }}-row-version="{{ expense.row_version }}"
+{%- endmacro %}
+
+{% macro fields(kind, label) -%}
+{% set family = 'expense' ~ kind %}{% set draft = (expense_subtasks|default({})).get(kind, {}) %}
+{% set needs_review = (items_review|default({}) if kind == 'items' else splits_review|default({})).needs_review or (kind == 'ack' and draft.result == 'rejected') %}
+<input type="hidden" name="expense_id" value="{{ expense.id }}">
+<input type="hidden" name="idempotency_key" value="{{ draft.idempotency_key|default('') }}">
+<input type="hidden" name="draft_ref" value="{{ draft.draft_ref|default('') }}">
+<input type="hidden" name="draft_scope" value="{{ draft.draft_scope|default('') }}">
+<p class="hint" data-{{ family }}-draft-status role="status" hidden></p>
+<p class="hint" data-subtask-original hidden>下方是这次填写的{{ label }}，与账本当前内容可能不同。请先核实这次保存结果。</p>
+<div class="product-page-actions" data-subtask-actions{% if not needs_review %} hidden{% endif %}>
+  <button class="product-button product-button--quiet" type="submit" name="review_latest" value="true" formnovalidate
+    data-{{ family }}-review{% if not needs_review %} hidden{% endif %}{% if not can_write or expense_review_inspection %} disabled{% endif %}>核对当前记录，保留填写</button>
+  <a class="product-button product-button--quiet" data-subtask-current hidden>查看账单当前记录</a>
+</div>
+<p class="hint" data-{{ family }}-review-note{% if not needs_review and draft.result != 'prepared' %} hidden{% endif %}>核对只更新提交依据，不保存或入账。请对照当前记录后再保存。</p>
+<details class="expense-review-local" data-{{ family }}-draft-shelf hidden>
+  <summary>保留的{{ label }}</summary><ul data-{{ family }}-draft-list></ul>
+  <button class="product-button product-button--quiet" type="button" data-{{ family }}-discard hidden>放弃本地原稿</button>
+</details>
+{%- endmacro %}
+
+{% macro acknowledge() -%}
+<form method="post" action="/web/expenses/{{ expense.id }}/items/acknowledge-mismatch" class="fact-ack-form" data-review-form {{ binding('ack') }}{% if receipt_items.status != 'mismatch_known' or not can_write or expense_review_inspection %} hidden{% endif %}>
+  {{ fields('ack', '小票差异确认') }}
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+  <input type="hidden" name="expected_row_version" value="{{ (expense_subtasks|default({})).get('ack', {}).get('expected_row_version') or expense.row_version }}">
+  {% for field_name, field_value in edit_return_fields.items() %}<input type="hidden" name="{{ field_name }}" value="{{ field_value }}">{% endfor %}
+  <button type="submit" class="product-button product-button--quiet" data-subtask-submit{% if not can_write or expense_review_inspection %} hidden disabled{% endif %}>原小票如此</button>
+</form>
+{%- endmacro %}

@@ -80,7 +80,7 @@ internal fun NavGraphBuilder.addWorkspaceRoute(
                     onOpenBudget = { month -> navController.navigate(budgetRoute(month)) },
                     onOpenArrangement = { month -> navController.navigate(monthlyArrangementRoute(month)) },
                     onOpenGoalCreation = { original -> navController.navigate(goalCreationRoute(original)) },
-                    onOpenGoalEdit = { id -> navController.navigate(spendingGoalEditRoute(id)) },
+                    onOpenGoalEdit = { original -> navController.navigate(goalEditRoute(original.row.targetId.removePrefix("goal:"), original.row.type)) },
                     onOpenRuleSubmission = { id -> navController.navigate(categoryRuleSubmissionRoute(id)) },
                     onOpenIncomeSubmission = { id -> navController.navigate(incomePlanSubmissionRoute(id)) },
                     onOpenRateSubmission = { id -> navController.navigate(budgetAdviceSubmissionRoute(id)) },
@@ -115,30 +115,35 @@ internal fun NavGraphBuilder.addTransactionRoutes(
     dependencies: MainProductRouteDependencies,
 ) {
     with(dependencies) {
+        composable(ProductSecondaryPage.AccountingDates.route) {
+            AccountingDateReviewRoute(runtime.navController, shellState, screenFactory, onBack)
+        }
         composable(ProductSecondaryPage.GlobalSearch.route) {
             SearchRoute(
                 navController = runtime.navController,
                 screenFactory = screenFactory,
+                onOpenSavedQuery = { route -> navController.navigate(route) },
                 onBack = onBack,
             )
         }
+        savedQueryRoute(dependencies)
         transactionsLibraryGraph(
             navController = navController,
             screenFactory = screenFactory,
-            onVocabularyChanged = shellState::markTransactionVocabularyChanged,
-            // 回收站恢复覆盖 monthly_budget / income_plan / recurring_item 等建议
-            // 输入实体（kind 见 backend recycle_bin_service），与流水恢复同点失效建议缓存。
-            onRestoreCompleted = {
-                shellState.markRecycleBinRestoreCompleted()
-                screenFactory.budgetRepository.invalidateBudgetAdvice()
-            },
-            // 规则应用/回滚与回收站 tag_mutation 恢复会原地改写确认流水行——语义
-            // 等同批量流水编辑完成，复用 expenseEditCompletionRevision 通道让账本
-            // 行重同步（同时失效洞察汇总）。这些写入也改变建议输入，一并失效建议缓存。
-            onTransactionRowsChanged = {
-                shellState.markExpenseEditCompleted()
-                screenFactory.budgetRepository.invalidateBudgetAdvice()
-            },
+            creationOwner = { runtime.navController.getBackStackEntry(MAIN_ROUTE) },
+            writes = TransactionsLibraryWrites(
+                vocabularyChanged = shellState::markTransactionVocabularyChanged,
+                // Restored plans and financial rows also invalidate advice inputs.
+                restoreCompleted = {
+                    shellState.markRecycleBinRestoreCompleted()
+                    screenFactory.budgetRepository.invalidateBudgetAdvice()
+                },
+                // Rule application and tag restoration revise existing financial rows.
+                transactionRowsChanged = {
+                    shellState.markExpenseEditCompleted()
+                    screenFactory.budgetRepository.invalidateBudgetAdvice()
+                },
+            ),
         )
     }
 }
@@ -151,14 +156,19 @@ internal fun NavGraphBuilder.addObligationRoutes(
             BillSplitRoute(screenFactory = screenFactory, onBack = onBack,
                 onOpenExpense = runtime.navController::openExpense)
         }
-        composable("${ProductSecondaryPage.DebtGoals.route}?create={create}",
-            arguments = listOf(navArgument("create") { type = NavType.StringType; nullable = true; defaultValue = null })) { entry ->
+        composable("${ProductSecondaryPage.DebtGoals.route}?create={create}&links={links}&date={date}",
+            arguments = listOf(navArgument("create") { type = NavType.StringType; nullable = true; defaultValue = null },
+                navArgument("links") { type = NavType.StringType; nullable = true; defaultValue = null },
+                navArgument("date") { type = NavType.StringType; nullable = true; defaultValue = null })) { entry ->
             val creationOwner = remember(runtime.navController, entry) { runtime.navController.getBackStackEntry(MAIN_ROUTE) }
             DebtGoalRoute(
                 screenFactory = screenFactory,
                 onBack = onBack,
-                creationOwner = creationOwner,
-                originalCreationId = entry.arguments?.getString("create")?.toLongOrNull(),
+                context = DebtGoalRouteContext(creationOwner,
+                    originalCreationId = entry.arguments?.getString("create")?.toLongOrNull(),
+                    originalLinksId = entry.arguments?.getString("links"), originalDateId = entry.arguments?.getString("date"),
+                    financialDataRevision = shellState.financialDataRevision),
+                onOpenRecycleBin = { navController.navigate(TRANSACTIONS_LIBRARY_RECYCLE_BIN_ROUTE) },
             )
         }
         // 全账本往来二级页（W2-C）：ledger lens 的完整账本视图，标题带当前账本名。
@@ -218,7 +228,7 @@ private fun NavGraphBuilder.addObligationSyncRoute(dependencies: MainProductRout
                     onOpenBudget = { month -> navController.navigate(budgetRoute(month)) },
                     onOpenArrangement = { month -> navController.navigate(monthlyArrangementRoute(month)) },
                     onOpenGoalCreation = { original -> navController.navigate(goalCreationRoute(original)) },
-                    onOpenGoalEdit = { id -> navController.navigate(spendingGoalEditRoute(id)) },
+                    onOpenGoalEdit = { original -> navController.navigate(goalEditRoute(original.row.targetId.removePrefix("goal:"), original.row.type)) },
                     onOpenRuleSubmission = { id -> navController.navigate(categoryRuleSubmissionRoute(id)) },
                     onOpenIncomeSubmission = { id -> navController.navigate(incomePlanSubmissionRoute(id)) },
                     onOpenRateSubmission = { id -> navController.navigate(budgetAdviceSubmissionRoute(id)) },

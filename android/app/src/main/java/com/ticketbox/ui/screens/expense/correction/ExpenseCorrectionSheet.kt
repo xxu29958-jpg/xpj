@@ -13,6 +13,11 @@ import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -20,7 +25,7 @@ import com.ticketbox.ui.screens.expense.toSavedJson
 import com.ticketbox.R
 import com.ticketbox.ui.asString
 import com.ticketbox.domain.model.MessageTone
-import com.ticketbox.ui.components.AppListRow
+import com.ticketbox.ui.components.AppContentCard
 import com.ticketbox.ui.components.AppSectionHeader
 import com.ticketbox.ui.components.AppSheetAction
 import com.ticketbox.ui.components.AppStatusBanner
@@ -28,7 +33,6 @@ import com.ticketbox.ui.components.AppSheetActionRow
 import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
 import com.ticketbox.ui.components.AppTextInputState
-import com.ticketbox.ui.components.StatusPill
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.expense.ExpenseEditCategoryField
 import com.ticketbox.ui.screens.expense.ExpenseEditMerchantField
@@ -37,8 +41,11 @@ import com.ticketbox.ui.screens.expense.ExpenseCurrencySelector
 import com.ticketbox.ui.screens.expense.ExpenseEditSheetScaffold
 import com.ticketbox.viewmodel.ExpenseCorrectionAvailability
 import com.ticketbox.viewmodel.ExpenseFactUiState
+import com.ticketbox.viewmodel.CorrectionReviewSelection
 import com.ticketbox.viewmodel.currentCorrectionItems
 import com.ticketbox.viewmodel.currentCorrectionSplits
+import com.ticketbox.ui.screens.settings.SettingsEntryRow
+import com.ticketbox.ui.screens.settings.SettingsEntryRowOptions
 
 internal data class ExpenseCorrectionSheetActions(
     val onReasonChange: (String) -> Unit,
@@ -54,17 +61,15 @@ internal data class ExpenseCorrectionSheetActions(
     val onOpenItems: () -> Unit,
     val onOpenSplits: () -> Unit,
     val onRefreshFact: () -> Unit,
-    val onReview: (Boolean?, Boolean?) -> Unit,
+    val onReview: (CorrectionReviewSelection) -> Unit,
     val onRetryInputSave: () -> Unit,
     val onSubmit: () -> Unit,
     val onDismiss: () -> Unit,
 )
 
 /**
- * A1 更正组合意图 sheet：reason 居首必填但降层级（一行 helper，不说教）；
- * 基础字段内联编辑；明细/拆账各一个入口行到子 surface，已暂存的变更以
- * 「将随本次更正更新」chip 表达；提交 = 一次 correction intent（标量 +
- * items + splits，只发相对 baseline 变化的部分）。
+ * 更正先对照当前记录与本次修改，原因必填；各分项继续由原更正任务保存。
+ * 展开状态只负责阅读层级，输入、基线与提交仍归既有 ViewModel。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -82,7 +87,7 @@ internal fun ExpenseCorrectionSheet(
             title = stringResource(R.string.expense_correction_sheet_title),
             subtitle = stringResource(R.string.expense_correction_sheet_subtitle),
             actions = {
-                (availability.contextError ?: state.correction.submitError)?.let { error ->
+                (state.correction.submitError ?: availability.contextError.takeIf { availability.review == null })?.let { error ->
                     AppStatusBanner(
                         message = error,
                         tone = MessageTone.Danger,
@@ -105,28 +110,53 @@ internal fun ExpenseCorrectionSheet(
                 )
             },
         ) {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-            ) {
-                // direct 409 冲突：表单保留，banner 说明（VM 已刷新权威事实）。
-                state.correction.conflictMessage?.let { conflict ->
-                    AppStatusBanner(
-                        message = conflict,
-                        tone = MessageTone.Danger,
-                        announceUpdates = true,
-                    )
-                }
-                availability.review?.let { CorrectionReviewPanel(it, state, actions.onReview, actions.onRefreshFact) }
-                val inputState = state.copy(expense = basis,
-                    correction = state.correction.copy(saving = state.correction.saving || !availability.canEditInput))
-                CorrectionReasonSection(state = inputState, actions = actions)
-                CorrectionCurrencySection(state = inputState, actions = actions)
-                CorrectionScalarSection(state = inputState, actions = actions)
-                CorrectionScoreSection(state = inputState, actions = actions)
-                CorrectionCollectionEntries(state, availability, actions)
+            CorrectionFormContent(state, basis, availability, actions)
+        }
+    }
+}
+
+@Composable
+private fun CorrectionFormContent(state: ExpenseFactUiState, basis: com.ticketbox.domain.model.Expense,
+    availability: ExpenseCorrectionAvailability, actions: ExpenseCorrectionSheetActions) {
+    var fieldsExpanded by remember(basis.id) { mutableStateOf(true) }
+    LaunchedEffect(availability.review?.current?.rowVersion) {
+        if (availability.review?.current?.rowVersion?.let { it != basis.rowVersion } == true) fieldsExpanded = false
+    }
+    LaunchedEffect(state.correction.amountError, state.correction.timeError) {
+        if (state.correction.amountError != null || state.correction.timeError != null) fieldsExpanded = true
+    }
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+    ) {
+        // direct 409 冲突：表单保留，banner 说明（VM 已刷新权威事实）。
+        state.correction.conflictMessage?.let { conflict ->
+            AppStatusBanner(
+                message = conflict,
+                tone = MessageTone.Danger,
+                announceUpdates = true,
+            )
+        }
+        availability.review?.let { CorrectionReviewPanel(it, state, actions.onReview, actions.onRefreshFact) }
+        val inputState = state.copy(expense = basis,
+            correction = state.correction.copy(saving = state.correction.saving || !availability.canEditInput))
+        CorrectionReasonSection(state = inputState, actions = actions)
+        SettingsEntryRow(title = stringResource(R.string.expense_correction_fields_title),
+            subtitle = stringResource(R.string.expense_correction_fields_hint), icon = R.drawable.ic_lucide_receipt_text,
+            onClick = { fieldsExpanded = !fieldsExpanded }, options = SettingsEntryRowOptions(expanded = fieldsExpanded))
+        if (fieldsExpanded) {
+            CorrectionCurrencySection(state = inputState, actions = actions)
+            CorrectionScalarSection(state = inputState, actions = actions)
+            CorrectionScoreSection(state = inputState, actions = actions)
+            TextButton(onClick = { fieldsExpanded = false }) { Text(stringResource(R.string.expense_correction_preview)) }
+        }
+        // Live comparisons grow as fields change; keep them after the editor so typing cannot push its focus off-screen.
+        if (availability.review == null) {
+            com.ticketbox.viewmodel.correctionScalarComparisons(basis, basis, state.correction).forEach {
+                CorrectionComparison(it)
             }
         }
+        AppContentCard { CorrectionCollectionEntries(state, availability, actions) }
     }
 }
 
@@ -138,12 +168,14 @@ private fun CorrectionCollectionEntries(
 ) {
     CorrectionEntryRow(
         title = stringResource(R.string.expense_correction_items_entry),
+        icon = R.drawable.ic_lucide_receipt_text,
         touched = state.correction.itemsTouched,
         enabled = !state.correction.saving && availability.canEditItems,
         onClick = actions.onOpenItems,
     )
     CorrectionEntryRow(
         title = stringResource(R.string.expense_correction_splits_entry),
+        icon = R.drawable.ic_lucide_users,
         touched = state.correction.splitsTouched,
         enabled = !state.correction.saving && availability.canEditSplits,
         onClick = actions.onOpenSplits,
@@ -314,30 +346,16 @@ private fun CorrectionScoreRow(
 @Composable
 private fun CorrectionEntryRow(
     title: String,
+    icon: Int,
     touched: Boolean,
     enabled: Boolean,
     onClick: () -> Unit,
 ) {
-    AppListRow(
+    SettingsEntryRow(title = title, icon = icon,
+        subtitle = if (touched) stringResource(R.string.expense_correction_section_pending_change)
+            else stringResource(R.string.expense_correction_collection_hint),
         onClick = if (enabled) onClick else null,
-    ) {
-        Text(
-            text = title,
-            color = if (enabled) {
-                MaterialTheme.colorScheme.onSurface
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            },
-            style = MaterialTheme.typography.bodyLarge,
-            modifier = Modifier.weight(1f),
-        )
-        if (touched) {
-            StatusPill(
-                text = stringResource(R.string.expense_correction_section_pending_change),
-                active = false,
-            )
-        }
-    }
+    )
 }
 
 @Composable

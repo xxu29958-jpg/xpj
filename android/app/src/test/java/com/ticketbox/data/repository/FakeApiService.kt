@@ -86,12 +86,19 @@ internal class FakeApiService(
     private val serverSettingsResult: ServerSettingsDto? = null,
     private val merchantApi: FakeMerchantApi = FakeMerchantApi(),
 ) : ApiService {
+    override suspend fun savedViews(): com.ticketbox.data.remote.dto.SavedViewListDto = error("Saved queries not configured")
+    override suspend fun savedView(publicId: String): com.ticketbox.data.remote.dto.SavedViewDto = error("Saved query not configured")
+    override suspend fun savedViewResults(publicId: String, page: Int): com.ticketbox.data.remote.dto.SavedViewResultsDto = error("Saved query results not configured")
+    override suspend fun createSavedView(request: com.ticketbox.data.remote.dto.SavedViewDefinitionRequestDto, idempotencyKey: String): com.ticketbox.data.remote.dto.SavedViewDto = error("Saved query creation not configured")
+    override suspend fun updateSavedView(publicId: String, request: com.ticketbox.data.remote.dto.SavedViewUpdateRequestDto, idempotencyKey: String): com.ticketbox.data.remote.dto.SavedViewDto = error("Saved query edit not configured")
+    override suspend fun deleteSavedView(publicId: String, request: com.ticketbox.data.remote.dto.SavedViewDeleteRequestDto, idempotencyKey: String): com.ticketbox.data.remote.dto.SavedViewDeletionReceiptDto = error("Saved query deletion not configured")
     override suspend fun portableExportLedgers(): com.ticketbox.data.remote.dto.LedgerListResponseDto =
         error("Portable export not configured")
     override fun portableExport(ledgerId: String, download: com.ticketbox.data.remote.PortableDownloadRequest): retrofit2.Call<ResponseBody> =
         error("Portable export not configured")
     override suspend fun originalHealth(id: Long): com.ticketbox.data.remote.dto.OriginalHealthDto = error("Original health not configured")
     override suspend fun verifyOriginal(id: Long, body: com.ticketbox.data.remote.dto.OriginalVerificationRequestDto, idempotencyKey: String): com.ticketbox.data.remote.dto.OriginalCommandReceiptDto = error("Original verification not configured")
+    override suspend fun attachOriginal(id: Long, file: okhttp3.MultipartBody.Part, expectedRowVersion: Long, idempotencyKey: String): com.ticketbox.data.remote.dto.OriginalCommandReceiptDto = error("Original attachment not configured")
     override suspend fun replenishOriginal(id: Long, file: okhttp3.MultipartBody.Part, expectedRowVersion: Long, expectedSha256: String, idempotencyKey: String): com.ticketbox.data.remote.dto.OriginalCommandReceiptDto = error("Original replenishment not configured")
     override suspend fun retryOriginalCleanup(id: Long, body: com.ticketbox.data.remote.dto.OriginalCleanupRequestDto, idempotencyKey: String): com.ticketbox.data.remote.dto.OriginalCommandReceiptDto = error("Original cleanup not configured")
     override suspend fun cancelOriginalCleanup(id: Long, body: com.ticketbox.data.remote.dto.OriginalCleanupRequestDto, idempotencyKey: String): com.ticketbox.data.remote.dto.OriginalCommandReceiptDto = error("Original cleanup not configured")
@@ -258,6 +265,12 @@ internal class FakeApiService(
     override suspend fun categoryPreferences(): com.ticketbox.data.remote.dto.CategoryPreferenceListResponseDto =
         unsupported()
 
+    override suspend fun createCategoryPreference(key: String, request: com.ticketbox.data.remote.dto.ReferenceCreateRequestDto):
+        com.ticketbox.data.remote.dto.ReferenceCreatedDto = unsupported()
+
+    override suspend fun inspectCategoryPreference(publicId: String):
+        com.ticketbox.data.remote.dto.CategoryPreferenceInspectionDto = unsupported()
+
     override suspend fun deleteCategoryPreference(
         publicId: String,
         request: com.ticketbox.data.remote.dto.CategoryPreferenceTokenRequestDto,
@@ -266,6 +279,8 @@ internal class FakeApiService(
     override suspend fun tags(): TagsDto = unsupported()
 
     override suspend fun listManagedTags(): com.ticketbox.data.remote.dto.TagManagementListDto = unsupported()
+    override suspend fun createTag(key: String, request: com.ticketbox.data.remote.dto.ReferenceCreateRequestDto):
+        com.ticketbox.data.remote.dto.ReferenceCreatedDto = unsupported()
     override suspend fun renameTag(publicId: String, request: com.ticketbox.data.remote.dto.TagRenameRequest): com.ticketbox.data.remote.dto.TagDetailDto = unsupported()
     override suspend fun deleteTag(publicId: String, request: com.ticketbox.data.remote.dto.TagDeleteRequest): com.ticketbox.data.remote.dto.TagMutationDto = unsupported()
     override suspend fun mergeTag(publicId: String, request: com.ticketbox.data.remote.dto.TagMergeRequest): com.ticketbox.data.remote.dto.TagMutationDto = unsupported()
@@ -354,6 +369,7 @@ internal class FakeApiService(
         page: Int,
         pageSize: Int,
         snapshotRevision: Long?,
+        offsetSnapshotId: Long?,
     ): com.ticketbox.data.remote.dto.ExpenseRevisionPageDto = unsupported()
     override suspend fun updateConfirmedBatch(
         idempotencyKey: String,
@@ -538,8 +554,8 @@ internal class FakeApiService(
     override suspend fun merchantCatalog(includeHidden: Boolean): MerchantCatalogListDto =
         merchantApi.merchantCatalog(includeHidden)
 
-    override suspend fun createMerchantCatalog(request: MerchantCatalogCreateRequest): MerchantCatalogDto =
-        merchantApi.createMerchantCatalog(request)
+    override suspend fun createMerchantCatalog(request: MerchantCatalogCreateRequest, idempotencyKey: String): MerchantCatalogDto =
+        merchantApi.createMerchantCatalog(request, idempotencyKey)
 
     override suspend fun updateMerchantCatalog(
         publicId: String,
@@ -556,13 +572,14 @@ internal class FakeApiService(
     override suspend fun mergeMerchantCatalog(
         sourcePublicId: String,
         request: MerchantCatalogMergeRequest,
-    ): MerchantCatalogMergeDto = merchantApi.mergeMerchantCatalog(sourcePublicId, request)
+        idempotencyKey: String,
+    ): MerchantCatalogMergeDto = merchantApi.mergeMerchantCatalog(sourcePublicId, request, idempotencyKey)
 
     override suspend fun merchantAliases(): MerchantAliasListDto =
         merchantApi.merchantAliases()
 
-    override suspend fun createMerchantAlias(request: MerchantAliasRequest): MerchantAliasDto =
-        merchantApi.createMerchantAlias(request)
+    override suspend fun createMerchantAlias(request: MerchantAliasRequest, idempotencyKey: String): MerchantAliasDto =
+        merchantApi.createMerchantAlias(request, idempotencyKey)
 
     override suspend fun updateMerchantAlias(
         publicId: String,
@@ -607,6 +624,7 @@ internal class FakeApiService(
         request: RuleApplyConfirmedRequestDto,
         limit: Int,
         maxScan: Int,
+        idempotencyKey: String?,
     ): RuleApplyConfirmedResponseDto {
         applyConfirmedRequests += request
         return RuleApplyConfirmedResponseDto(
@@ -630,6 +648,8 @@ internal class FakeApiService(
             noMatchCount = 8,
             scanLimit = maxScan,
             previewToken = if (request.confirm) null else "preview-token",
+            commandKey = if (request.confirm) idempotencyKey else null,
+            applicationPublicId = if (request.confirm) "application-1" else null,
         )
     }
 
@@ -829,6 +849,7 @@ internal class FakeApiService(
     override suspend fun confirmRecurringCandidate(
         request: RecurringCandidateConfirmRequestDto,
         timezone: String?,
+        idempotencyKey: String,
     ): RecurringItemDto = unsupported()
     override suspend fun pauseRecurringItem(publicId: String, request: com.ticketbox.data.remote.dto.RecurringItemTokenRequest): RecurringItemDto = unsupported()
     override suspend fun resumeRecurringItem(publicId: String, request: com.ticketbox.data.remote.dto.RecurringItemTokenRequest): RecurringItemDto = unsupported()

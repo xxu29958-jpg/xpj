@@ -2,20 +2,29 @@
 
 from __future__ import annotations
 
-from uuid import uuid4
-
 from fastapi import APIRouter, Depends, Form, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
+from app.routes._web_draft_binding import (
+    browser_draft_scope,
+    draft_ack_response,
+    draft_error_response,
+    draft_refusal_result,
+    rendered_draft_scope,
+    require_draft_binding,
+    reviewed_draft_scope,
+)
 from app.routes._web_expense_return_context import (
     _payment_expense_id,
     edit_context_params,
     flow_href,
 )
+from app.routes._web_expense_undo import undo_command_key
+from app.routes._web_recurring_occurrence_form import occurrence_form, occurrence_href
 from app.routes._web_session_common import resolve_web_actor
 from app.routes.web_common import (
     LocalOnly,
@@ -24,7 +33,7 @@ from app.routes.web_common import (
     _list_ledger_options,
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
-    _web_redirect,
+    parse_form_row_version_token,
     preserve_original_ledger_form,
     templates,
 )
@@ -44,34 +53,37 @@ from app.services.recurring_service import get_recurring_item
 router = APIRouter()
 
 
-def _occurrence_origin(item, occurrence, payment_id=None) -> dict[str, str]:
+def _occurrence_origin(item, occurrence, payment_id=None, *, payment_month=None, query="") -> dict[str, str]:
     origin = edit_context_params(
         return_to="recurring_occurrence",
         return_recurring_public_id=item.public_id,
         return_month=occurrence.period,
         return_payment_expense_id="" if payment_id is None else str(payment_id),
+        # A nonempty token distinguishes all months from older origins with no filter.
+        return_payment_month="" if payment_month is None else payment_month or "all",
+        return_query=query,
     )
     return origin or {}
 
 
-def _payment_edit_href(*, ledger_id: str, expense_id: int, item, occurrence) -> str:
+def _payment_edit_href(*, ledger_id: str, expense_id: int, item, occurrence, payment_month=None, query="") -> str:
     return flow_href(
         f"/web/expenses/{expense_id}/edit",
         ledger_id=ledger_id,
-        **_occurrence_origin(item, occurrence, expense_id),
+        **_occurrence_origin(item, occurrence, expense_id, payment_month=payment_month, query=query),
     )
 
 
-def _payment_view(row, *, ledger_id, item, occurrence) -> dict[str, object]:
+def _payment_view(row, *, ledger_id, item, occurrence, payment_month=None, query="") -> dict[str, object]:
     return {
         "public_id": row.public_id, "id": row.id, "row_version": row.row_version,
         "merchant": row.merchant or "未填写商家",
         "home_currency_code": row.home_currency_code,
         "amount": _amount_yuan(row.amount_cents, row.home_currency_code) if row.home_currency_code else "币种待确认",
         "date": str(row.accounting_date or ""),
-        "key": uuid4().hex,
         "href": _payment_edit_href(
             ledger_id=ledger_id, expense_id=row.id, item=item, occurrence=occurrence,
+            payment_month=payment_month, query=query,
         ),
     }
 
@@ -79,25 +91,26 @@ def _payment_view(row, *, ledger_id, item, occurrence) -> dict[str, object]:
 def _payments(db, *, ledger_id, month, query, item, occurrence):
     rows = find_recurring_payments(db, tenant_id=ledger_id, month=month, query=query)
     return [
-        _payment_view(row, ledger_id=ledger_id, item=item, occurrence=occurrence)
+        _payment_view(row, ledger_id=ledger_id, item=item, occurrence=occurrence, payment_month=month, query=query)
         for row in rows[:100]
     ], len(rows) > 100
 
 
-def _occurrence_reject_undo(db, *, selected_id: str, undo: str | None) -> tuple[int | None, int | None]:
+def _occurrence_reject_undo(db, *, selected_id: str, undo: str | None, undo_version: str | None) -> tuple[int | None, int | None]:
     parsed = _payment_expense_id(undo or "")
-    if not parsed:
+    original_version = parse_form_row_version_token(undo_version or "")
+    if not parsed or original_version is None:
         return None, None
     candidate = int(parsed)
     row_version = fetch_expense_row_version_in_status(
         db, expense_id=candidate, tenant_id=selected_id, status="rejected",
     )
-    if row_version is None:
+    if row_version != original_version:
         return None, None
     return candidate, row_version
 
 
-def _focused_payment(db, *, ledger_id, payment_id, item, occurrence) -> dict[str, object] | None:
+def _focused_payment(db, *, ledger_id, payment_id, item, occurrence, payment_month=None, query="") -> dict[str, object] | None:
     if not _payment_expense_id(payment_id):
         return None
     expense = resolve_expense(db, ledger_id, int(payment_id))
@@ -105,7 +118,7 @@ def _focused_payment(db, *, ledger_id, payment_id, item, occurrence) -> dict[str
         return None
     eligible = eligible_payment(db, tenant_id=ledger_id, expense_id=expense.id)
     return {
-        **_payment_view(expense, ledger_id=ledger_id, item=item, occurrence=occurrence),
+        **_payment_view(expense, ledger_id=ledger_id, item=item, occurrence=occurrence, payment_month=payment_month, query=query),
         "eligible": eligible is not None,
     }
 
@@ -119,7 +132,7 @@ def _recorded_definition_amount(occurrence) -> str | None:
     return f"{snapshot.baseline_amount_cents} 最小单位（原币种未记录）"
 
 
-def _occurrence_page_projection(*, item, occurrence, payments, focused, selected, can_write) -> dict:
+def _occurrence_page_projection(*, item, occurrence, payments, focused, selected, can_write, payment_month=None, query="") -> dict:
     can_associate = can_write and item.status != "archived"
     return {
         "payments": [payment for payment in payments if not focused or payment["id"] != focused["id"]],
@@ -138,13 +151,17 @@ def _occurrence_page_projection(*, item, occurrence, payments, focused, selected
             if occurrence.paid_home_currency_code else "币种待确认"
         ),
         "can_associate": can_associate,
+        "occurrence_edit_return_fields": _occurrence_origin(item, occurrence, focused["id"] if focused else None,
+            payment_month=payment_month, query=query),
         "record_payment_href": (
-            flow_href("/web/expenses/new", ledger_id=selected, **_occurrence_origin(item, occurrence))
+            flow_href("/web/expenses/new", ledger_id=selected,
+                **_occurrence_origin(item, occurrence, payment_month=payment_month, query=query))
             if can_associate and occurrence.state == "unfulfilled" else None
         ),
         "linked_payment_href": (
             _payment_edit_href(
                 ledger_id=selected, expense_id=occurrence.expense_id, item=item, occurrence=occurrence,
+                payment_month=payment_month, query=query,
             )
             if occurrence.expense_id else None
         ),
@@ -153,7 +170,8 @@ def _occurrence_page_projection(*, item, occurrence, payments, focused, selected
 
 def _page(
     request: Request, db: Session, *, public_id: str, ledger_id: str | None, month=None, payment_month=None,
-    query="", message=None, error=None, retry=None, payment_id=None, undo=None, flash_type=None,
+    query="", message=None, error=None, retry=None, payment_id=None, undo=None, undo_version=None, flash_type=None,
+    prepare=False,
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
@@ -163,32 +181,46 @@ def _page(
     context = _base_ctx(
         request, db=db, options=options, selected_ledger_id=selected, page_title="本期固定支出",
     )
-    selected_payment_month = occurrence.period if payment_month is None else payment_month
+    selected_payment_month = occurrence.period if payment_month is None else "" if payment_month == "all" else payment_month
     payments, limited = _payments(
         db, ledger_id=selected, month=selected_payment_month, query=query,
         item=item, occurrence=occurrence,
     )
     focused = _focused_payment(
         db, ledger_id=selected, payment_id=payment_id, item=item, occurrence=occurrence,
+        payment_month=selected_payment_month, query=query,
     )
     context.update(
         item=item, occurrence=occurrence, limited=limited,
         payment_month=selected_payment_month, query=query,
-        command_key=uuid4().hex, error=error, retry=retry,
+        error=error, retry=retry,
         flash_message=message or "",
         flash_type=flash_type if flash_type in {"success", "error"} else ("success" if message else ""),
         undo_expense_id=None, undo_expected_row_version=None, undo_idempotency_key="",
+        undo_draft_scope=browser_draft_scope(db, request),
         **_occurrence_page_projection(
             item=item, occurrence=occurrence, payments=payments, focused=focused,
             selected=selected, can_write=context["can_write"],
+            payment_month=selected_payment_month, query=query,
         ),
     )
+    navigation = {"ledger_id": selected, "month": occurrence.period, "payment_month": selected_payment_month,
+        "q": query, "payment_id": str(payment_id or "")}
+    command_draft = occurrence_form(request=request, item=item, occurrence=occurrence,
+        scope=context["undo_draft_scope"], navigation=navigation, payments=payments, focused=focused,
+        retry=retry, prepare=prepare, can_associate=context["can_associate"])
+    command_scope, binding_required = rendered_draft_scope(db, request,
+        command_draft["draft_scope"] if command_draft else None)
+    context.update(command_draft=command_draft, command_draft_scope=command_scope,
+        command_binding_required=binding_required,
+        command_result="prepared" if prepare else draft_refusal_result(error) if error else "",
+        occurrence_href=occurrence_href(public_id, **navigation))
     undo_expense_id, undo_expected_row_version = _occurrence_reject_undo(
-        db, selected_id=selected, undo=undo,
+        db, selected_id=selected, undo=undo, undo_version=undo_version,
     )
     context["undo_expense_id"] = undo_expense_id
     context["undo_expected_row_version"] = undo_expected_row_version
-    context["undo_idempotency_key"] = str(uuid4()) if undo_expense_id is not None else ""
+    context["undo_idempotency_key"] = undo_command_key(request.query_params.get("undo_key")) if undo_expense_id is not None else ""
     return templates.TemplateResponse(
         request=request, name="recurring_occurrence.html", context=context,
         status_code=error.status_code if error else 200,
@@ -201,13 +233,14 @@ def web_recurring_occurrence(
     month: str | None = None, payment_month: str | None = None,
     q: str = Query(default="", max_length=150), message: str | None = None,
     msg: str | None = None, flash_type: str | None = None, undo: str | None = None,
+    undo_version: str | None = None,
     payment_id: str = "",
     _local: None = LocalOnly, db: Session = Depends(get_db),
 ):
     return _page(
         request, db, public_id=public_id, ledger_id=ledger_id, month=month,
         payment_month=payment_month, query=q.strip(), message=message or msg,
-        payment_id=payment_id, undo=undo, flash_type=flash_type,
+        payment_id=payment_id, undo=undo, undo_version=undo_version, flash_type=flash_type,
     )
 
 
@@ -219,6 +252,9 @@ def web_set_recurring_occurrence(
     expected_expense_row_version: str = Form(default=""),
     expected_row_version: str = Form(default=""), expected_series_row_version: str = Form(default=""),
     idempotency_key: str = Form(default=""), payment_id: str = Form(default=""),
+    payment_month: str | None = Form(default=None), q: str = Form(default=""),
+    draft_scope: str = Form(default=""), review_latest: str = Form(default=""),
+    series_label: str = Form(default=""), payment_label: str = Form(default=""),
     _local: None = LocalOnly, db: Session = Depends(get_db),
 ):
     options = _list_ledger_options(db)
@@ -230,16 +266,24 @@ def web_set_recurring_occurrence(
         "expected_series_row_version": expected_series_row_version,
         "idempotency_key": idempotency_key,
         "payment_id": payment_id,
+        "draft_scope": draft_scope, "series_label": series_label, "payment_label": payment_label,
+        "payment_month": month if payment_month is None else payment_month, "q": q,
     }
     retained = preserve_original_ledger_form(request, db, options=options, selected=selected,
         fields={**attempt, "ledger_id": ledger_id, "month": month}, task="关联固定支出付款")
     if retained is not None:
-        return retained
-    _require_selected_ledger_write(options, selected)
-    actor_id, _ = resolve_web_actor(db, request, selected)
+        return draft_error_response(request, AppError("session_binding_changed", "账本已切换，原提交仍保留。", status_code=409)) or retained
     try:
+        _require_selected_ledger_write(options, selected)
+        attempt["draft_scope"] = reviewed_draft_scope(db, request, draft_scope, review=review_latest == "true")
+        require_draft_binding(db, request, ledger_id=selected, draft_scope=attempt["draft_scope"], require_session=False)
+        actor_id, _ = resolve_web_actor(db, request, selected)
         if action not in {"link", "clear"}:
             raise AppError("invalid_request", status_code=422)
+        if review_latest == "true":
+            return _page(request, db, public_id=public_id, ledger_id=selected, month=month,
+                payment_month=payment_month, query=q, retry=attempt, payment_id=payment_id, prepare=True,
+                message="已读取当前版本，尚未修改关联。请核对后再提交。")
         payload = RecurringOccurrenceWriteRequest(
             action=action,
             expense_public_id=expense_public_id if action == "link" else None,
@@ -247,7 +291,7 @@ def web_set_recurring_occurrence(
             expected_row_version=expected_row_version,
             expected_series_row_version=expected_series_row_version,
         )
-        set_occurrence_payment(
+        receipt = set_occurrence_payment(
             db, tenant_id=selected, public_id=public_id, month=month,
             actor_account_id=actor_id, idempotency_key=idempotency_key, payload=payload,
         )
@@ -256,11 +300,13 @@ def web_set_recurring_occurrence(
         error = exc if isinstance(exc, AppError) else AppError(
             "invalid_request", "付款或页面版本不完整，请刷新并重新核对。", status_code=422,
         )
-        return _page(
+        return draft_error_response(request, error) or _page(
             request, db, public_id=public_id, ledger_id=selected,
-            month=month, error=error, retry=attempt, payment_id=payment_id,
+            month=month, error=error, retry=attempt, payment_id=payment_id, payment_month=payment_month, query=q,
         )
-    return _web_redirect(
-        f"/web/recurring/{public_id}/occurrence", selected, month=month,
+    destination = RedirectResponse(occurrence_href(public_id, ledger_id=selected, month=month,
+        payment_month=month if payment_month is None else payment_month, q=q, payment_id=payment_id,
         message="这次提交已处理，下方显示本期当前状态。",
-    )
+    ), status_code=303)
+    return draft_ack_response(request, draft_scope=draft_scope, idempotency_key=idempotency_key,
+        receipt=receipt, next_href=destination.headers["location"]) or destination

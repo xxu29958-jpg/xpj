@@ -73,6 +73,7 @@ class CategoryRuleSubmissionConnectedTest {
         compose.onNodeWithText("添加规则").performClick()
         compose.onAllNodes(hasSetTextAction())[0].performScrollTo().performTextInput("旅行")
         compose.onAllNodes(hasSetTextAction())[1].performScrollTo().performTextInput("交通")
+        compose.onNodeWithText("金额范围").performScrollTo().performClick()
         compose.onNodeWithText("选择金额币种").performScrollTo().performClick()
         compose.onNodeWithText("JPY · 日元").performClick()
         compose.onAllNodes(hasSetTextAction())[3].performScrollTo().performTextInput("1200")
@@ -84,8 +85,10 @@ class CategoryRuleSubmissionConnectedTest {
         val reopened = fixture.reopen()
         assertEquals(original, fixture.stored().single())
         val adapters = OutboxAdapterGraph()
+        // Admission and replay share the fixture clock; wall time must not age this fresh intent.
         val engine = OutboxDrainEngine(fixture.outbox, listOf(CategoryRuleDispatcher(PendingMutationType.CreateCategoryRule,
-            { api }, adapters.categoryRuleSubmissionAdapter, adapters.categoryRuleReceiptAdapter)), maxAttempts = 1)
+            { api }, adapters.categoryRuleSubmissionAdapter, adapters.categoryRuleReceiptAdapter)),
+            maxAttempts = 1, now = fixture.clock::millis)
         runBlocking {
             assertEquals(1, engine.drainOnce().failures)
             val owner = reopened.ruleRepository
@@ -101,16 +104,21 @@ class CategoryRuleSubmissionConnectedTest {
 
     private fun showScreen() = compose.setContent {
         val state by model.uiState.collectAsStateWithLifecycle()
+        val definitions by model.definitions.state.collectAsStateWithLifecycle()
         TicketboxTheme(skin = AppSkin.Paper) {
             CategoryRulesScreen(CategoryRulesScreenState(
                 CategoryRulesRuleListState(state.categoryRules, state.categoryRulesLoading, state.categoryRulesLoadFailed),
                 CategoryRulesInteractionState(state.busy, false), CategoryRulesStatusState(state.message, state.messageTone),
                 CategoryRulesApplicationState(state.ruleApplications, state.ruleApplicationsLoading, state.confirmedRulesPreview,
                     state.ruleApplicationsLoadFailed),
-                state.undoableRule, state.pendingSubmissions, state.selectedSubmissionId, state.submittedRevision, state.binding),
-                CategoryRulesScreenActions({}, CategoryRulesRuleActions(model::createCategoryRule, model::updateCategoryRule,
-                    model::toggleCategoryRule, model::deleteCategoryRule, model::recoverSubmission, { model.loadCategoryRules() }),
-                    CategoryRulesApplicationActions({}, {}, {}, { model.loadRuleApplications() }), CategoryRulesUndoActions({}, {})))
+                state.undoableRule, submissions = state.pendingSubmissions, selectedSubmissionId = state.selectedSubmissionId,
+                submittedRevision = state.submittedRevision, binding = state.binding, definitions = definitions),
+                CategoryRulesScreenActions({}, CategoryRulesRuleActions(model::toggleCategoryRule, model::deleteCategoryRule,
+                    model::recoverSubmission, { model.loadCategoryRules() }),
+                    CategoryRulesApplicationActions({}, {}, {}, { model.loadRuleApplications() }), CategoryRulesUndoActions({}, {}),
+                    com.ticketbox.ui.screens.settings.CategoryRuleDefinitionActions(model.definitions::begin, model.definitions::open,
+                        model.definitions::change, model.definitions::submit, model.definitions::close,
+                        model.definitions::reviewBinding, model.definitions::reload)))
         }
     }
 }

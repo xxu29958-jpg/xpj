@@ -27,9 +27,11 @@ def _open_entry(client, identity):
     action = f"/web/expenses/{expense_id}/recognize-text"
     editor = client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner&return_to=pending&return_filter=missing_amount")
     assert editor.status_code == 200, editor.text
-    assert f'action="{action}" target="_blank"' in editor.text
+    assert f'href="{action}?' in editor.text
     assert "粘贴小票文字" in editor.text
-    fields = hidden_post_forms(editor.text)[action]
+    task = client.get(action + "?ledger_id=owner&return_to=pending&return_filter=missing_amount")
+    assert task.status_code == 200, task.text
+    fields = hidden_post_forms(task.text)[action]
     fields["raw_text"] = TEXT
     assert fields["csrf_token"] and fields["idempotency_key"]
     assert fields["expected_row_version"] == str(version)
@@ -111,7 +113,7 @@ def test_text_command_rejects_stale_permission_or_fact_and_preserves_input(web_c
         session = mint_session(web_client, identity=identity)
         with public_client() as browser:
             browser.cookies.set(SESSION_COOKIE_NAME, session, path="/")
-            page = browser.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
+            page = browser.get(action + "?ledger_id=owner")
             assert page.status_code == 200, page.text
             fields.update(csrf_token=hidden_post_forms(page.text)[action]["csrf_token"], ledger_id="tester_1")
             response = browser.post(action, data=fields, follow_redirects=False, headers={"Origin": f"https://{PUBLIC_HOST}"})

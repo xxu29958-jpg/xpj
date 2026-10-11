@@ -91,6 +91,17 @@ def list_category_preferences(db: Session, *, tenant_id: str) -> list[CategoryPr
     return [_preference_view(item, usage_counts=usage_counts) for item in rows]
 
 
+def inspect_category_preference(
+    db: Session, *, tenant_id: str, public_id: str,
+) -> tuple[CategoryPreferenceView, list[dict[str, str]]]:
+    """Read the current option and the same blockers checked at deletion time."""
+    item = _preference_by_public_id(db, tenant_id=tenant_id, public_id=public_id)
+    if item is None or item.deleted_at is not None:
+        raise AppError("not_found", "分类偏好不存在。", status_code=404)
+    view = _preference_view(item, usage_counts=_usage_counts_by_category_key(db, tenant_id=tenant_id))
+    return view, _active_category_references(db, tenant_id=tenant_id, name=item.name)
+
+
 def ensure_category_preference_for_name(
     db: Session,
     *,

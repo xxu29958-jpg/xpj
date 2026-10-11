@@ -86,7 +86,7 @@ def test_web_confirmed_tag_filter_is_ledger_scoped(web_client: TestClient, *, id
     assert "Owner Shared" not in gray_page.text
 
 
-def test_web_confirmed_tag_filter_has_a_clear_return_to_the_same_month(
+def test_web_confirmed_tag_filter_clear_preserves_month_and_search_conditions(
     web_client: TestClient,
     *,
     identity,
@@ -100,7 +100,8 @@ def test_web_confirmed_tag_filter_has_a_clear_return_to_the_same_month(
     )
 
     page = web_client.get(
-        "/web/confirmed?ledger_id=owner&month=2026-05&tag=Shared"
+        "/web/confirmed", params={"ledger_id": "owner", "month": "2026-05",
+            "tag": "Shared", "q": "Owner", "category": "餐饮"}
     )
 
     assert page.status_code == 200
@@ -110,8 +111,9 @@ def test_web_confirmed_tag_filter_has_a_clear_return_to_the_same_month(
     assert clear is not None
     destination = urlsplit(unescape(clear.group(1)))
     assert destination.path == "/web/confirmed"
-    assert parse_qs(destination.query) == {"ledger_id": ["owner"], "month": ["2026-05"], "home_currency_code": ["CNY"]}
-    assert ">清除筛选，查看全部</a>" in page.text
+    assert parse_qs(destination.query) == {"ledger_id": ["owner"], "month": ["2026-05"],
+        "home_currency_code": ["CNY"], "q": ["Owner"], "category": ["餐饮"]}
+    assert ">清除标签筛选</a>" in page.text
 
 
 def test_web_export_csv_uses_tag_filter(web_client: TestClient, *, identity) -> None:
@@ -137,7 +139,10 @@ def test_web_export_csv_uses_tag_filter(web_client: TestClient, *, identity) -> 
         tags="Shared",
     )
 
-    form = _CsvExportForm(web_client.get("/web/import?ledger_id=owner").text)
+    hub = web_client.get("/web/import?ledger_id=owner")
+    export_link = re.search(r'href="([^"]+task=export)"', hub.text)
+    assert export_link is not None
+    form = _CsvExportForm(web_client.get(unescape(export_link.group(1))).text)
     assert {"ledger_id", "month", "category", "tag"} <= form.fields.keys()
     form.fields.update(month="2026-05", category="餐饮", tag="Shared")
     response = web_client.get("/web/export.csv", params=form.fields)

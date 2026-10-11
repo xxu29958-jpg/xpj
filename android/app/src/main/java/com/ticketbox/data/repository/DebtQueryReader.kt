@@ -25,6 +25,8 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -63,9 +65,9 @@ internal class DebtQueryReader(
     internal val guard = LedgerRequestGuard(apiProvider)
     private val errors = NetworkErrorHandler({ apiProvider.currentSession()?.serverUrl }, "Debt")
     private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
-    private val debtAdapter = moshi.adapter(DebtDto::class.java)
-    internal val listAdapter = moshi.adapter(DebtListResponseDto::class.java)
-    private val activityAdapter = moshi.adapter(DebtActivityListDto::class.java)
+    private val debtAdapter by lazy { moshi.adapter(DebtDto::class.java) }
+    internal val listAdapter by lazy { moshi.adapter(DebtListResponseDto::class.java) }
+    private val activityAdapter by lazy { moshi.adapter(DebtActivityListDto::class.java) }
     private val readOwner = coordinator.readSequenceOwner
     private val mutex = Mutex()
     internal val generation = AtomicLong()
@@ -124,19 +126,21 @@ internal class DebtQueryReader(
         listQuery(binding, "receivables") { debtReceivables() }
             .map { ReadSnapshot(it.value.items.map(DebtDto::toDomain), it.fetchedAt, it.fromCache) }
 
-    suspend fun detail(binding: LogicalSessionBinding, publicId: String): Result<ReadSnapshot<Debt>> =
+    suspend fun detail(binding: LogicalSessionBinding, publicId: String): Result<ReadSnapshot<Debt>> = withContext(Dispatchers.IO) {
         read(binding, DebtQueryScope(debtScope(binding, "debt_detail", publicId), publicId), DebtReadSpec(debtAdapter, { debt(publicId) },
             validate = { validateDebt(it, binding, publicId, allowShell = true) },
             isNewer = { old, incoming -> incoming.rowVersion > old.rowVersion }, project = { value, _ -> value }))
             .map { ReadSnapshot(it.value.toDomain(), it.fetchedAt, it.fromCache) }
+    }
 
-    suspend fun activity(task: DebtTask, page: Int, focus: String?): Result<ReadSnapshot<DebtActivityPage>> =
+    suspend fun activity(task: DebtTask, page: Int, focus: String?): Result<ReadSnapshot<DebtActivityPage>> = withContext(Dispatchers.IO) {
         read(task.binding, DebtQueryScope(debtScope(task.binding, "debt_activity", "${task.debtPublicId}:$page:${focus.orEmpty()}"),
             task.debtPublicId), DebtReadSpec(activityAdapter, { debtActivity(task.debtPublicId, page, focus) },
             validate = { require(page > 0 && it.debtPublicId == task.debtPublicId && it.page > 0 &&
                 (focus != null || it.page == page) && it.pageSize > 0 && it.total >= 0) },
             isNewer = { _, _ -> false }, project = { value, _ -> value }))
             .map { ReadSnapshot(it.value.toDomain(), it.fetchedAt, it.fromCache) }
+    }
 
     internal suspend fun <T> read(binding: LogicalSessionBinding, scope: DebtQueryScope,
         spec: DebtReadSpec<T>, retryRepair: Boolean = true): Result<ReadSnapshot<T>> = errors.safeCall {
@@ -358,7 +362,7 @@ private suspend fun DebtQueryReader.repairDebtDirectRead(request: DebtReadReques
 
 private fun DebtQueryReader.hasActiveDirect(bindingKey: String) = activeDirect.any { it.startsWith("$bindingKey|") }
 
-    private suspend fun DebtQueryReader.listQuery(binding: LogicalSessionBinding, lens: String, fetch: suspend ApiService.() -> DebtListResponseDto) =
+    private suspend fun DebtQueryReader.listQuery(binding: LogicalSessionBinding, lens: String, fetch: suspend ApiService.() -> DebtListResponseDto) = withContext(Dispatchers.IO) {
         read(binding, DebtQueryScope(debtScope(binding, "debt_list", lens)), DebtReadSpec(listAdapter, fetch,
             validate = { page ->
                 require(page.items.map { it.publicId }.distinct().size == page.items.size)
@@ -369,3 +373,4 @@ private fun DebtQueryReader.hasActiveDirect(bindingKey: String) = activeDirect.a
             } },
             project = { page, denied -> page.copy(items = page.items.filterNot { it.publicId in denied }) },
             publicIds = { page -> page.items.mapTo(mutableSetOf()) { it.publicId } }))
+    }

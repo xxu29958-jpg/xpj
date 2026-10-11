@@ -63,6 +63,8 @@ def reconcile_member_detail(debt_view: dict, agreement: dict | None) -> None:
     current = next((debt for debt in legs if debt.public_id == debt_view.get("public_id")), None)
     if current is not None and current.status == "cleared" and any(debt.status == "open" for debt in legs):
         debt_view.update(relationship)
+        debt_view["direction_sentence"] = relationship["headline"]
+        debt_view["relationship_balance"] = True
 
 
 def split_agreement_context(request, db, *, debt, selected_id: str, account_id: int | None) -> dict | None:

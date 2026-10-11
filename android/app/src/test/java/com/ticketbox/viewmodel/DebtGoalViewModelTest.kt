@@ -23,7 +23,6 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import java.time.LocalDate
 import java.time.ZoneOffset
-import java.util.TimeZone
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -115,52 +114,6 @@ class DebtGoalViewModelTest {
         viewModel.closeDetail()
 
         assertNull(viewModel.state.value.selectedGoal)
-    }
-
-    @Test
-    fun removeVoidedDebtsReplacesWithNonVoidedIdsAndGoalRowVersion() = runTest(dispatcher) {
-        val goal = debtGoal(needsReview = true, rowVersion = 7L)
-        val replaced = debtGoal(needsReview = false, links = listOf(openLink()), voidedIds = emptyList())
-        val repo = FakeReportsActions(
-            debtGoalsResult = Result.success(listOf(goal)),
-            goalResult = Result.success(goal),
-            replaceResult = Result.success(replaced),
-        )
-        val viewModel = DebtGoalViewModel(repo, writes = FakeDebtWriteActions())
-        advanceUntilIdle()
-        viewModel.openDetail(goal)
-        advanceUntilIdle()
-
-        viewModel.removeVoidedDebts()
-        advanceUntilIdle()
-
-        val call = repo.replaceCalls.single()
-        assertEquals("debt-goal-1", call.publicId)
-        assertEquals(7L, call.expectedRowVersion)
-        // only the non-voided link survives the replacement set.
-        assertEquals(listOf("debt-a"), call.debtPublicIds)
-        assertTrue(viewModel.state.value.flashMessage != null)
-        assertEquals(false, viewModel.state.value.selectedGoal?.debtRepayment?.needsReview)
-    }
-
-    @Test
-    fun removeVoidedDebtsWithEverythingVoidedSetsErrorWithoutApiCall() = runTest(dispatcher) {
-        // every link voided → no clean replacement set; the repo is never called.
-        val goal = debtGoal(needsReview = true, links = listOf(voidedLink()), voidedIds = listOf("debt-b"))
-        val repo = FakeReportsActions(
-            debtGoalsResult = Result.success(listOf(goal)),
-            goalResult = Result.success(goal),
-        )
-        val viewModel = DebtGoalViewModel(repo, writes = FakeDebtWriteActions())
-        advanceUntilIdle()
-        viewModel.openDetail(goal)
-        advanceUntilIdle()
-
-        viewModel.removeVoidedDebts()
-        advanceUntilIdle()
-
-        assertTrue(repo.replaceCalls.isEmpty())
-        assertTrue(viewModel.state.value.error != null)
     }
 
     @Test
@@ -338,63 +291,6 @@ class DebtGoalViewModelTest {
 
     // ── ADR-0049 §7.0 / 8e-6c 还清日期 setter ──────────────────────────────────
 
-    @Test
-    fun setTargetDateSetsIsoDateWithGoalRowVersionAndFlashes() = runTest(dispatcher) {
-        val goal = debtGoal(rowVersion = 4L)
-        val repo = FakeReportsActions(
-            debtGoalsResult = Result.success(listOf(goal)),
-            goalResult = Result.success(goal),
-        )
-        repo.setTargetDateResult = Result.success(debtGoal(rowVersion = 5L))
-        val viewModel = DebtGoalViewModel(repo, writes = FakeDebtWriteActions())
-        advanceUntilIdle()
-        viewModel.openDetail(goal)
-        advanceUntilIdle()
-
-        // The Material3 picker reports UTC-midnight millis; the VM renders it to ISO yyyy-MM-dd. Pin a
-        // NEGATIVE-offset default tz around the conversion: epochMillisToIsoDate uses ZoneOffset.UTC, so a
-        // regression to systemDefault() would render 2028-02-29 here and fail (tz off-by-one,
-        // [[feedback_test_month_timezone_alignment]]).
-        val millis = LocalDate.of(2028, 3, 1).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
-        val previousTz = TimeZone.getDefault()
-        TimeZone.setDefault(TimeZone.getTimeZone("America/New_York"))
-        try {
-            viewModel.setTargetDate(millis)
-            advanceUntilIdle()
-        } finally {
-            TimeZone.setDefault(previousTz)
-        }
-
-        val call = repo.targetDateCalls.single()
-        assertEquals("debt-goal-1", call.first)
-        assertEquals(4L, call.second) // OCC carrier = the goal's row_version
-        assertEquals("2028-03-01", call.third) // UTC millis → ISO date, no day-drift
-        assertTrue(viewModel.state.value.flashMessage != null)
-        assertEquals(false, viewModel.state.value.isSubmitting)
-    }
-
-    @Test
-    fun setTargetDateClearPassesNullToTheRepository() = runTest(dispatcher) {
-        val goal = debtGoal(rowVersion = 4L)
-        val repo = FakeReportsActions(
-            debtGoalsResult = Result.success(listOf(goal)),
-            goalResult = Result.success(goal),
-        )
-        repo.setTargetDateResult = Result.success(debtGoal(rowVersion = 5L))
-        val viewModel = DebtGoalViewModel(repo, writes = FakeDebtWriteActions())
-        advanceUntilIdle()
-        viewModel.openDetail(goal)
-        advanceUntilIdle()
-
-        // null epoch-millis = clear the deadline; the repo (and wire) carry a null target_date.
-        viewModel.setTargetDate(null)
-        advanceUntilIdle()
-
-        val call = repo.targetDateCalls.single()
-        assertEquals(4L, call.second)
-        assertNull(call.third)
-    }
-
     // ── ADR-0049 §6.6 计划达成撒花（边沿 / 成分 / 去重，达成只读服务端 evaluation_state）─────────────
 
     @Test
@@ -524,7 +420,7 @@ class DebtGoalViewModelTest {
     }
 
     @Test
-    fun removeVoidedThatCompletesAMemberPlanCelebrates() = runTest(dispatcher) {
+    fun returningFromAssociationEditCelebratesTheConfirmedMemberCompletion() = runTest(dispatcher) {
         // 移除作废欠款后新版本恰好全清（纯成员）→ 用户在该屏目击达成 → 撒花。
         val needsReview = debtGoal(
             evaluationState = "not_evaluable",
@@ -533,18 +429,18 @@ class DebtGoalViewModelTest {
             links = listOf(memberLink("cleared"), memberLink("voided", id = "m-voided")),
             voidedIds = listOf("m-voided"),
         )
-        val completed = debtGoal(evaluationState = "achieved", links = listOf(memberLink("cleared")), voidedIds = emptyList())
+        val completed = debtGoal(evaluationState = "achieved", rowVersion = 6L, links = listOf(memberLink("cleared")), voidedIds = emptyList())
         val repo = FakeReportsActions(
             debtGoalsResult = Result.success(listOf(needsReview)),
             goalResult = Result.success(needsReview),
-            replaceResult = Result.success(completed),
         )
         val viewModel = DebtGoalViewModel(repo, writes = FakeDebtWriteActions())
         advanceUntilIdle()
         viewModel.openDetail(needsReview)
         advanceUntilIdle()
 
-        viewModel.removeVoidedDebts()
+        repo.debtGoalsResult = Result.success(listOf(completed))
+        viewModel.refresh()
         advanceUntilIdle()
 
         assertNotNull(viewModel.celebration.value)
@@ -678,26 +574,17 @@ class DebtGoalViewModelTest {
     )
 }
 
-private data class ReplaceCall(
-    val publicId: String,
-    val expectedRowVersion: Long,
-    val debtPublicIds: List<String>,
-)
-
 private class FakeReportsActions(
     private val canModify: Boolean = true,
     var debtGoalsResult: Result<List<Goal>> = Result.success(emptyList()),
     private val goalResult: Result<Goal> = Result.failure(UnsupportedOperationException()),
-    private val replaceResult: Result<Goal> = Result.failure(UnsupportedOperationException()),
     private val acknowledgeResult: Result<Goal> = Result.failure(UnsupportedOperationException()),
     private val archiveResult: Result<Goal> = Result.failure(UnsupportedOperationException()),
 ) : ReportsActions {
     var fromCache = false
     val goalCalls = mutableListOf<String>()
-    val replaceCalls = mutableListOf<ReplaceCall>()
     val acknowledgeCalls = mutableListOf<Pair<String, Long>>()
     val archiveCalls = mutableListOf<String>()
-    val targetDateCalls = mutableListOf<Triple<String, Long, String?>>()
     var debtGoalsCalls = 0
 
     /** When set, debtGoals() stalls until completed — used to interleave a slow load. */
@@ -706,10 +593,6 @@ private class FakeReportsActions(
     /** When set, the NEXT (and subsequent) goal() return this instead of [goalResult] —
      * lets a test flip the detail re-fetch result between openDetail and a later refresh. */
     var goalResultOverride: Result<Goal>? = null
-
-    /** The 8e-6c setDebtGoalTargetDate result — a var (not a ctor param) so the constructor stays
-     * within the LongParameterList limit; tests set it before exercising the setter. */
-    var setTargetDateResult: Result<Goal> = Result.failure(UnsupportedOperationException())
 
     override fun canModifyLedger(): Boolean = canModify
 
@@ -727,30 +610,12 @@ private class FakeReportsActions(
         return (goalResultOverride ?: goalResult).map { ReadSnapshot(it, "2026-09-09T00:00:00Z", fromCache) }
     }
 
-    override suspend fun replaceDebtLinks(
-        publicId: String,
-        expectedRowVersion: Long,
-        debtPublicIds: List<String>,
-    ): Result<Goal> {
-        replaceCalls += ReplaceCall(publicId, expectedRowVersion, debtPublicIds)
-        return replaceResult
-    }
-
     override suspend fun acknowledgeDebtIntegrityReview(
         publicId: String,
         expectedRowVersion: Long,
     ): Result<Goal> {
         acknowledgeCalls += publicId to expectedRowVersion
         return acknowledgeResult
-    }
-
-    override suspend fun setDebtGoalTargetDate(
-        publicId: String,
-        expectedRowVersion: Long,
-        targetDate: String?,
-    ): Result<Goal> {
-        targetDateCalls += Triple(publicId, expectedRowVersion, targetDate)
-        return setTargetDateResult
     }
 
     // ── unused ReportsActions surface ────────────────────────────────────────

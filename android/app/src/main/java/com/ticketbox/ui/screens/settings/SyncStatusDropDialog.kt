@@ -32,6 +32,7 @@ internal data class SyncStatusDropSelection(
     val goalCreation: com.ticketbox.data.repository.PendingGoalCreation? = null,
     val goalEdit: com.ticketbox.data.repository.PendingGoalEdit? = null,
     val categoryRule: com.ticketbox.data.repository.PendingCategoryRuleSubmission? = null,
+    val ruleApplication: com.ticketbox.data.repository.PendingRuleApplication? = null,
     val arrangement: com.ticketbox.data.repository.PendingMonthlyArrangement? = null,
 )
 
@@ -57,12 +58,10 @@ internal fun SyncStatusDropDialog(
                 selection.recurringOccurrence?.let { com.ticketbox.ui.screens.recurring.RecurringOccurrenceIntentSummary(it) }
                 selection.incomeSubmission?.let { com.ticketbox.ui.screens.IncomePlanIntentSummary(it) }
                 selection.debtWrite?.let { com.ticketbox.ui.screens.DebtWriteIntentSummary(it) }
-                selection.goalEdit?.request?.let { request ->
-                    com.ticketbox.ui.screens.plan.SpendingGoalOriginalSummary(request.name, request.month,
-                        request.targetAmountCents, request.homeCurrencyCode)
-                }
+                selection.goalEdit?.let { com.ticketbox.ui.screens.plan.GoalEditIntentSummary(it) }
                 selection.goalCreation?.let { com.ticketbox.ui.screens.GoalCreationIntentSummary(it) }
                 selection.categoryRule?.let { com.ticketbox.ui.screens.settings.categoryrules.CategoryRuleSubmissionSummary(it) }
+                selection.ruleApplication?.let { com.ticketbox.ui.screens.settings.categoryrules.RuleApplicationSubmissionSummary(it) }
                 selection.recurringOriginal?.let { com.ticketbox.ui.screens.recurring.RecurringManualIntentSummary(it) }
                 selection.budgetSave?.let { com.ticketbox.ui.screens.budget.BudgetSaveIntentSummary(it) }
                 selection.arrangement?.let { com.ticketbox.ui.screens.plan.MonthlyArrangementIntentSummary(it) }
@@ -91,11 +90,11 @@ private fun dropConfirmationText(selection: SyncStatusDropSelection): DropConfir
             stringResource(R.string.category_rule_submission_stop), stringResource(R.string.category_rule_submission_stop_body),
             stringResource(R.string.category_rule_submission_stop),
         )
-        row.type == PendingMutationType.CreateGoal || row.type == PendingMutationType.UpdateGoal -> DropConfirmationText(
+        row.type in setOf(PendingMutationType.CreateGoal, PendingMutationType.UpdateGoal, PendingMutationType.ReplaceGoalDebtLinks, PendingMutationType.SetGoalTargetDate) -> DropConfirmationText(
             stringResource(R.string.goal_creation_drop), stringResource(R.string.goal_submission_stop_body),
             stringResource(R.string.goal_creation_drop),
         )
-        row.type in setOf(PendingMutationType.CreateRecurringItem, PendingMutationType.UpdateRecurringItem) -> DropConfirmationText(
+        row.type in setOf(PendingMutationType.ConfirmRecurringCandidate, PendingMutationType.CreateRecurringItem, PendingMutationType.UpdateRecurringItem) -> DropConfirmationText(
             stringResource(R.string.recurring_original_drop), stringResource(R.string.recurring_original_drop_explanation),
             stringResource(R.string.recurring_original_drop),
         )
@@ -127,6 +126,7 @@ private fun dropConfirmationText(selection: SyncStatusDropSelection): DropConfir
 }
 
 private val originalCreationStopLabels = mapOf(
+    PendingMutationType.ApplyConfirmedRules to (R.string.rule_application_stop to R.string.rule_application_stop_body),
     PendingMutationType.SaveManualExchangeRate to (R.string.advice_rate_stop to R.string.advice_rate_stop_body),
     PendingMutationType.CreateExpense to (R.string.manual_submission_stop to R.string.manual_submission_stop_body),
     PendingMutationType.CapturePaymentNotification to (R.string.notification_capture_stop to R.string.notification_capture_stop_explanation),
@@ -140,6 +140,9 @@ private fun legacyDropConfirmationText(selection: SyncStatusDropSelection): Drop
     val expired = selection.failed && isExpiredFailure(row.lastError)
     val debtCreation = row.type == PendingMutationType.CreateDebt
     return when {
+    row.lastError in com.ticketbox.data.repository.EXPENSE_ORIGINAL_REVIEW_ERRORS -> DropConfirmationText(
+        stringResource(R.string.sync_status_accepted_stop_title), stringResource(R.string.sync_status_accepted_stop_body),
+        stringResource(R.string.sync_status_accepted_stop))
     !selection.failed -> DropConfirmationText(
         stringResource(R.string.sync_status_conflict_drop_dialog_title),
         stringResource(R.string.sync_status_conflict_drop_dialog_text, label),

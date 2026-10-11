@@ -1,33 +1,78 @@
 {% extends "base.html" %}
 {% from '_history_time.html' import saved_time %}
+{% import '_planning_drafts.html' as drafts %}
 {% set product_body_domain = 'plans' %}
+{% set page_surface = 'tertiary' %}
+{% set task_return_href = occurrence_href if command_draft else '/web/recurring?ledger_id=' ~ (selected_ledger_id|urlencode) ~ '&month=' ~ (occurrence.period|urlencode) %}
+{% set task_return_label = '本期付款' if command_draft else '固定支出' %}
 {% block title %}本期固定支出 · 小票夹{% endblock %}
-{% macro command_fields(action, key, expense=None, revision=None) %}
-  {{ csrf_field|safe }}
-  <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-  <input type="hidden" name="month" value="{{ occurrence.period }}">
-  <input type="hidden" name="action" value="{{ action }}">
-  <input type="hidden" name="idempotency_key" value="{{ key }}">
-  <input type="hidden" name="expected_row_version" value="{{ occurrence.row_version }}">
-  <input type="hidden" name="expected_series_row_version" value="{{ occurrence.series_row_version }}">
-  {% if expense %}
-  <input type="hidden" name="expense_public_id" value="{{ expense }}">
-  <input type="hidden" name="expected_expense_row_version" value="{{ revision }}">
-  {% endif %}
-  {% if focused_payment %}<input type="hidden" name="payment_id" value="{{ focused_payment.id }}">{% endif %}
-{% endmacro %}
+{% block page_scripts %}
+<script defer src="/static/web/manual-drafts.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/plan-entry.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/occurrence-entry.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/expense-undo-entry.js?v={{ asset_version }}"></script>
+{% endblock %}
 {% block content %}
 <header class="product-page-header">
   <div class="product-page-heading">
-    <a href="/web/recurring?ledger_id={{ selected_ledger_id }}">固定支出</a>
+    <span class="product-eyebrow">固定支出 · {{ occurrence.period }}</span>
     <h1 class="page-title">{{ item.merchant_name }}</h1>
     <p class="product-page-summary">{{ occurrence.period }} · 当前预计 {{ occurrence.home_currency_code or '' }} {{ planned_amount }} · 当前预留 {{ occurrence.home_currency_code or '' }} {{ reserved_amount }}</p>
   </div>
-  <a class="product-button product-button--quiet" href="/web/recurring/{{ item.public_id }}/history?ledger_id={{ selected_ledger_id|urlencode }}&amp;month={{ occurrence.period|urlencode }}&amp;return_occurrence=true">修改记录</a>
+  <a class="product-button product-button--quiet" href="/web/recurring/{{ item.public_id }}/history?ledger_id={{ selected_ledger_id|urlencode }}&amp;month={{ occurrence.period|urlencode }}&amp;return_occurrence=true&amp;payment_month={{ payment_month|urlencode }}&amp;q={{ query|urlencode }}&amp;payment_id={{ focused_payment.id if focused_payment else '' }}">修改记录</a>
 </header>
 <div class="plan-flow">
-<section class="product-panel product-panel--padded" aria-label="本期首次关联所据定义">
-  <h2 class="product-panel-title">本期首次关联所据定义</h2>
+{{ drafts.shelf('occurrence', '付款关联', undo_draft_scope) }}
+<details class="product-panel product-panel--padded" data-expenseundo-scope='{{ undo_draft_scope | tojson }}' hidden>
+  <summary>待核实的撤销</summary><ul></ul>
+</details>
+{% if flash_message or undo_expense_id %}
+<div class="product-feedback{% if flash_type == 'success' %} product-feedback--success{% elif flash_type == 'error' %} product-feedback--error{% endif %}{% if undo_expense_id %} undo-banner{% endif %}"
+     role="{% if flash_type == 'error' %}alert{% else %}status{% endif %}">
+  <span>{{ flash_message }}</span>
+  {% if undo_expense_id %}
+  {% with undo_scope=undo_draft_scope, undo_origin=occurrence_edit_return_fields %}
+    {% include "_expense_undo_task.html" %}
+  {% endwith %}
+  {% endif %}
+</div>
+{% endif %}
+{% if error %}
+<div class="product-feedback product-feedback--danger" role="alert">
+  <p>{{ error.message }}</p>
+  <a href="{{ occurrence_href }}">刷新本期并重新核对</a>
+</div>
+{% endif %}
+{% include '_recurring_occurrence_command.html' %}
+<section class="product-panel product-panel--padded" aria-label="本期履约">
+  {% if occurrence.state == 'fulfilled' %}
+  <h2>本期已关联付款</h2>
+  <p>账单金额 {{ occurrence.paid_home_currency_code or '' }} {{ paid_amount }}。本期固定支出已不再额外预留。</p>
+  {% elif occurrence.state == 'needs_review' %}
+  <h2>付款需要重新核对</h2>
+  {% set review_explanations = {
+    'reversed': '原账单已冲销，暂不能作为本期付款依据。',
+    'not_confirmed': '原账单当前未确认，暂不能作为本期付款依据。',
+    'negative_amount': '原账单金额为负，不能作为本期付款依据。',
+    'unavailable': '关联的原账单暂不可用，请刷新后重新核对。'
+  } %}
+  <p class="product-feedback product-feedback--warning" role="status">{{ review_explanations.get(occurrence.payment_review_reason, '请查看原账单核对当前状态，具体原因未随这份记录提供。') }}</p>
+  <p class="hint">关联记录仍保留，本期暂不能视为已付。</p>
+  {% else %}
+  <h2>本期尚未关联付款</h2>
+  <p>选一张已确认账单，明确它已经付清本期义务。名称相同不会自动算作已付。</p>
+  {% endif %}
+  {% if occurrence.expense_id %}
+  <a class="product-button" href="{{ linked_payment_href }}">查看原账单</a>
+  {% if can_associate %}
+  <a class="product-button" href="{{ occurrence_href }}&amp;command=clear">解除本期付款关联</a>
+  <p class="hint">解除只改变固定支出的关联，原付款账单不会撤销。</p>
+  {% endif %}
+  {% endif %}
+  <p>下一次提醒：{{ occurrence.next_due_date or '未设置日期' }}。修改提醒日期仍在固定支出编辑中。</p>
+</section>
+<details class="product-panel product-panel--padded" aria-label="本期首次关联所据定义">
+  <summary>本期首次关联所据定义</summary>
   {% if occurrence.recorded_definition %}
   {% set definition = occurrence.recorded_definition %}{% set snapshot = definition.snapshot %}
   <p>版本 {{ definition.series_row_version }} · 记录保存时间 {{ saved_time(definition.recorded_at) }}</p>
@@ -39,68 +84,8 @@
   {% else %}
   <p>首次关联所据定义未记录，原定义与发生时间未知；不能用当前定义补作旧计划。</p>
   {% endif %}
-</section>
-{% if flash_message or undo_expense_id %}
-<div class="product-feedback{% if flash_type == 'success' %} product-feedback--success{% elif flash_type == 'error' %} product-feedback--error{% endif %}{% if undo_expense_id %} undo-banner{% endif %}"
-     role="{% if flash_type == 'error' %}alert{% else %}status{% endif %}">
-  <span>{{ flash_message }}</span>
-  {% if undo_expense_id %}
-  <form method="post" action="/web/expenses/{{ undo_expense_id }}/undo" class="undo-banner-action">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-    <input type="hidden" name="expected_row_version" value="{{ undo_expected_row_version }}">
-    <input type="hidden" name="idempotency_key" value="{{ undo_idempotency_key }}">
-    <input type="hidden" name="return_to" value="recurring_occurrence">
-    <input type="hidden" name="return_recurring_public_id" value="{{ item.public_id }}">
-    <input type="hidden" name="return_month" value="{{ occurrence.period }}">
-    {% if focused_payment %}<input type="hidden" name="return_payment_expense_id" value="{{ focused_payment.id }}">{% endif %}
-    <button type="submit" class="product-button">撤销</button>
-  </form>
-  {% endif %}
-</div>
-{% endif %}
-{% if error %}
-<div class="product-feedback product-feedback--danger" role="alert">
-  <p>{{ error.message }}</p>
-  <a href="/web/recurring/{{ item.public_id }}/occurrence?ledger_id={{ selected_ledger_id }}&amp;month={{ occurrence.period }}">刷新本期并重新核对</a>
-</div>
-{% if retry and can_associate %}
-<details class="product-panel product-panel--padded">
-  <summary>保留的原提交</summary>
-  <p>重新核对前，可用同一原提交查询或重试；不会自动改成另一笔付款或覆盖新状态。</p>
-  <form method="post" action="/web/recurring/{{ item.public_id }}/occurrence">
-    {{ csrf_field|safe }}
-    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-    <input type="hidden" name="month" value="{{ occurrence.period }}">
-    {% for name, value in retry.items() %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
-    <button class="product-button" type="submit">重试原提交</button>
-  </form>
 </details>
-{% endif %}
-{% endif %}
-<section class="product-panel product-panel--padded" aria-label="本期履约">
-  {% if occurrence.state == 'fulfilled' %}
-  <h2>本期已关联付款</h2>
-  <p>账单金额 {{ occurrence.paid_home_currency_code or '' }} {{ paid_amount }}。本期固定支出已不再额外预留。</p>
-  {% elif occurrence.state == 'needs_review' %}
-  <h2>付款需要重新核对</h2>
-  <p>原账单已撤回或冲销，本期重新列为待履约。关联记录仍保留。</p>
-  {% else %}
-  <h2>本期尚未关联付款</h2>
-  <p>选一张已确认账单，明确它已经付清本期义务。名称相同不会自动算作已付。</p>
-  {% endif %}
-  {% if occurrence.expense_id %}
-  <a class="product-button" href="{{ linked_payment_href }}">查看原账单</a>
-  {% if can_associate %}
-  <form class="product-inline-form" method="post" action="/web/recurring/{{ item.public_id }}/occurrence">
-    {{ command_fields('clear', command_key) }}
-    <button class="product-button" type="submit">解除本期付款关联</button>
-  </form>
-  <p class="hint">解除只改变固定支出的关联，原付款账单不会撤销。</p>
-  {% endif %}
-  {% endif %}
-  <p>下一次提醒：{{ occurrence.next_due_date or '未设置日期' }}。修改提醒日期仍在固定支出编辑中。</p>
-</section>
+{% if not command_draft %}
 <form class="product-panel product-panel--padded budget-form" method="get">
   <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
   {% if focused_payment %}<input type="hidden" name="payment_id" value="{{ focused_payment.id }}">{% endif %}
@@ -126,10 +111,7 @@
     <p><strong>{{ focused_payment.merchant }}</strong> · {{ focused_payment.date }} · {{ focused_payment.home_currency_code or '' }} {{ focused_payment.amount }}</p>
     <a href="{{ focused_payment.href }}">核对账单</a>
     {% if focused_payment.eligible and can_associate and occurrence.state != 'fulfilled' %}
-    <form method="post" action="/web/recurring/{{ item.public_id }}/occurrence">
-      {{ command_fields('link', focused_payment.key, focused_payment.public_id, focused_payment.row_version) }}
-      <button class="product-button" type="submit">用这笔付款确认本期已付</button>
-    </form>
+    <a class="product-button" href="{{ occurrence_href }}&amp;command=link&amp;choose_payment={{ focused_payment.public_id|urlencode }}">选择这笔付款</a>
     {% endif %}
   </div>
 </section>
@@ -139,17 +121,15 @@
   <h2>关联已有付款</h2>
   <p>关联表示这张账单已付清本期；不支持拆分一笔付款给多期。付款的原金额、日期与币种保持不变。</p>
   {% for payment in payments %}
-  <div class="product-panel product-panel--padded">
+  <div class="plan-goal">
     <p><strong>{{ payment.merchant }}</strong> · {{ payment.date }} · {{ payment.home_currency_code or '' }} {{ payment.amount }}</p>
     <a href="{{ payment.href }}">核对账单</a>
-    <form method="post" action="/web/recurring/{{ item.public_id }}/occurrence">
-      {{ command_fields('link', payment.key, payment.public_id, payment.row_version) }}
-      <button class="product-button" type="submit">用这笔付款确认本期已付</button>
-    </form>
+    <a class="product-button" href="{{ occurrence_href }}&amp;command=link&amp;choose_payment={{ payment.public_id|urlencode }}">选择这笔付款</a>
   </div>
   {% else %}<p>没有找到可关联的已确认账单。可以调整付款月份，或先到流水中记录并确认付款。</p>{% endfor %}
   {% if limited %}<p>仅显示最近 100 张，请缩小月份或搜索范围。</p>{% endif %}
 </section>
 {% elif not can_associate %}<p class="readonly-inline">当前仅可查看本期记录。</p>{% endif %}
+{% endif %}
 </div>
 {% endblock %}

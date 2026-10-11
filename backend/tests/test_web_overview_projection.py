@@ -53,7 +53,43 @@ def test_overview_category_projection_never_publishes_partial_percentages(monkey
     assert len(result) == 7
     assert result[-1]["amount_cents"] is None and result[-1]["amount_label"] == "待补齐换算信息"
     assert result[0]["amount_major"] == 100
+    assert all(row["percent_label"] is None for row in result)
     assert calls == [("2026-08", "family", {"timezone_name": "Asia/Shanghai", "home_currency_code": "JPY"})]
+
+
+@pytest.mark.parametrize("refund", [False, True])
+def test_category_share_uses_exact_minor_units_and_never_hides_a_negative_tail(monkeypatch, refund):
+    from app.routes import web_common as web
+
+    amounts = [114000, 60000, 48000, 24000] if not refund else [100, 90, 80, 70, 60, 50, -20]
+    monkeypatch.setattr(web, "monthly_stats", lambda *a, **kw: {"home_currency_code": "CNY",
+        "by_category": [{"category": f"类别{i}", "amount_cents": amount, "count": 1}
+            for i, amount in enumerate(amounts)]})
+    rows = web._dashboard_category_share(object(), "family", currency_code="CNY", month="2026-08")
+    assert [row["percent_label"] for row in rows] == (
+        [None] * 6 if refund else ["46.3%", "24.4%", "19.5%", "9.8%"])
+    assert rows[0]["amount_label"] == ("¥1.00" if refund else "¥1,140.00")
+
+
+@pytest.mark.parametrize("spent,percentage", [(2460, "54.7%"), (None, None), (-500, None)])
+def test_overview_budget_uses_budget_spend_and_rollover_without_inventing_unknown_progress(spent, percentage):
+    from app.routes.web_common import _dashboard_budget_goals_block
+
+    budget = SimpleNamespace(home_currency_code="JPY", configured=True, missing_currency_codes=[],
+        total_amount_cents=4000, rollover_amount_cents=500, fixed_amount_cents=2000,
+        non_monthly_amount_cents=300, flex_budget_cents=2200, spent_amount_cents=spent,
+        remaining_amount_cents=None if spent is None else 4500-spent,
+        overspent_amount_cents=None if spent is None else 0,
+        category_budgets=[SimpleNamespace(category="居住", amount_cents=4000, spent_amount_cents=spent,
+            overspent_amount_cents=None if spent is None else 0)])
+    cards = _dashboard_budget_goals_block(budget, [])
+    assert cards["budget_available_label"] == "¥4,500"
+    assert cards["budget_has_rollover"] is True
+    assert cards["budget_percent_label"] == percentage
+    assert cards["budget_progress"] == (547 if spent == 2460 else None)
+    assert cards["budget_spent_label"] == {2460: "¥2,460", None: "待补齐汇率", -500: "-¥500"}[spent]
+    assert cards["budget_top"][0]["percent"] == (62 if spent == 2460 else None)
+    assert cards["budget_top"][0]["spent_label"] == cards["budget_spent_label"]
 
 
 def test_overview_amount_view_uses_owner_currency_and_preserves_unknown():
@@ -101,14 +137,16 @@ def test_actual_overview_template_exposes_unknown_and_original_recovery():
     cards = {"home_currency_code": "JPY", "month": "2026-08", "total_amount_cents": None,
         "delta_amount_cents": None, "delta_direction": "unavailable", "previous_total_amount_cents": 1200,
         "confirmed_count": 2, "pending_count": 0, "budget_top": [], "budget_remaining_cents": None,
-        "budget_home_currency_code": "CNY", "budget_configured": False}
+        "budget_home_currency_code": "CNY", "budget_configured": False, "budget_is_over": False}
     env = Environment(autoescape=True, undefined=StrictUndefined, loader=ChoiceLoader([
-        DictLoader({"base.html": "{% block content %}{% endblock %}"}),
+        DictLoader({"base.html": "{% block page_header %}{% endblock %}{% block content %}{% endblock %}"}),
         FileSystemLoader(Path(__file__).parents[1] / "app/templates/web"),
     ]))
     html = env.get_template("overview.html").render(cards=cards, selected_ledger_id="family", q="?ledger_id=family",
+        home_currency_code="JPY",
+        request=SimpleNamespace(state=SimpleNamespace(web_session_auth=object())),
         can_write=True, has_any_expense=True, overview_load_charts=False, category_chart_available=False,
-        category_share=[{"name": "餐饮", "amount_label": "待补齐换算信息", "amount_cents": None}],
+        category_share=[{"name": "餐饮", "amount_label": "待补齐换算信息", "amount_cents": None, "percent_label": None}],
         overview_cards=[{"key": "monthly_spend"}, {"key": "budget"}, {"key": "reports"}],
         money_task={"ledger_id": "family", "month": "2026-08", "home_currency_code": "JPY", "return_to": "overview"},
         missing_rates=[ProjectionGap("CNY", "JPY", date(2026, 8, 4))], flash_message="",

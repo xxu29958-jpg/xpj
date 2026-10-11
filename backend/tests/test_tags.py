@@ -119,7 +119,9 @@ def test_updating_tags_to_blank_clears_filter_links(client: TestClient, *, ident
 
     tags = client.get("/api/expenses/tags", headers=identity.app_headers)
     assert tags.status_code == 200
-    assert tags.json()["items"] == []
+    # Unlinking a financial record leaves reusable catalogue choices. Explicit
+    # library deletion, rather than absence of usage, removes those choices.
+    assert set(tags.json()["items"]) == {"外卖", "冲动"}
 
     filtered = client.get(
         "/api/expenses/confirmed?month=2026-05&tag=外卖", headers=identity.app_headers

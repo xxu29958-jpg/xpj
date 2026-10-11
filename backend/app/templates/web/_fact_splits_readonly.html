@@ -15,24 +15,18 @@
   {% endif %}
   {% set visible_splits = split_rows.rows | selectattr('member_id') | list %}
   {% if visible_splits %}
-  <table class="product-table fact-lines-table">
-    <thead>
-      <tr>
-        <th>成员</th>
-        <th>金额</th>
-        <th>备注</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for split in visible_splits %}
-      <tr>
-        <td data-label="成员">{{ split.account_name }}{% if split.disabled %}<span class="meta">（已停用）</span>{% endif %}</td>
-        <td data-label="金额" class="num">{{ split.amount_yuan }}</td>
-        <td data-label="备注">{{ split.note }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div role="list">
+    {% for split in visible_splits %}
+    <div class="product-entry product-entry--static" role="listitem">
+      <span class="product-entry-icon product-entry-icon--lilac" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#user-round"/></svg></span>
+      <div class="product-entry-copy">
+        <div class="product-entry-heading"><strong>{{ split.account_name or '原成员' }}</strong><span class="product-entry-amount">{% if split.amount_yuan %}{{ currency_input.currency_symbol }}{{ split.amount_yuan }}{% else %}金额未填{% endif %}</span></div>
+        {% if split.disabled %}<span>已停用，原记录保留</span>{% endif %}
+        {% if split.note %}<span>{{ split.note }}</span>{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
   {% else %}
   <div class="meta">没有拆账记录。</div>
   {% endif %}

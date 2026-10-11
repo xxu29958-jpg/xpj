@@ -6,6 +6,7 @@ import com.ticketbox.domain.model.RecurringItem
 
 /** One user-owned manual editor intent; create and edit share one settlement owner. */
 sealed interface RecurringManualSaveCommand {
+    data class Adopt(val candidate: com.ticketbox.domain.model.RecurringCandidate) : RecurringManualSaveCommand
     data class Create(val draft: RecurringItemDraft) : RecurringManualSaveCommand
     data class Edit(
         val baseline: RecurringItem,

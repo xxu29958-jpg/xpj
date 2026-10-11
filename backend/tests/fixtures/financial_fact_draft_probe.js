@@ -16,7 +16,9 @@
   let form = await load();
   for (const [name, value] of Object.entries({reason: " 原更正依据 ", merchant: "原稿商家", amount_yuan: "0005.50",
       note: "原备注\n第二行", value_score: "4", regret_score: ""})) {
-    form.elements.namedItem(name).value = value;
+    const input = form.elements.namedItem(name);
+    if (typeof input.dispatchEvent === "function") input.value = value;
+    else [...input].find(radio => radio.value === value).click();
     form.dispatchEvent(new frame.contentWindow.Event("input", {bubbles: true}));
   }
   for (const [name, value] of Object.entries({item_name: "原商品修改", split_note: "原拆账输入"})) {
@@ -24,6 +26,28 @@
     form.dispatchEvent(new frame.contentWindow.Event("input", {bubbles: true}));
   }
   const before = read(form);
+  // A retained v1 correction can predate receipt-return navigation fields.
+  const oldKey = Object.keys(localStorage).find(key => key.startsWith("ticketbox:correction-edit-draft:v1:"));
+  const oldRecord = JSON.parse(localStorage.getItem(oldKey));
+  delete oldRecord.values.return_receipt_key;
+  delete oldRecord.values.return_receipt_expense_id;
+  delete oldRecord.values.return_review_ref;
+  delete oldRecord.values.return_review_expense_id;
+  delete oldRecord.values.return_duplicate_expense_id;
+  localStorage.setItem(oldKey, JSON.stringify(oldRecord));
   form = await load();
-  window.__financialDraftProbe = {before, after: read(form)};
+  const after = read(form);
+  const olderOrigin = JSON.parse(localStorage.getItem(oldKey));
+  const unloaded = new Promise(resolve => { frame.onload = resolve; });
+  frame.src = "about:blank"; await unloaded;
+  delete olderOrigin.values.return_payment_month;
+  olderOrigin.values.present_fields = JSON.stringify(JSON.parse(olderOrigin.values.present_fields)
+    .filter(name => name !== "return_payment_month"));
+  localStorage.setItem(oldKey, JSON.stringify(olderOrigin));
+  form = await load();
+  const olderFields = {reason: form.elements.namedItem("reason").value,
+    month: form.elements.namedItem("return_payment_month").value,
+    status: form.querySelector("[data-correction-draft-status]")?.textContent};
+  window.__financialDraftProbe = {before, after, olderFields,
+    olderOriginReadable: olderFields.reason === " 原更正依据 " && olderFields.month === ""};
 })().catch(error => { window.__financialDraftProbe = {error: String(error), stack: error.stack}; });

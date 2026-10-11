@@ -452,6 +452,11 @@ def test_search_edit_save_returns_to_validated_search_context(
         follow_redirects=False,
     )
     assert confirmed.status_code == 303, confirmed.text
-    assert confirmed.headers["location"] == (
-        "/web/search?ledger_id=owner&q=Return+Search"
-    )
+    receipt = web_client.get(confirmed.headers["location"])
+    assert receipt.status_code == 200 and "这张，记好了" in receipt.text
+    finish = re.search(r'<a\b[^>]*href="([^"]+)"[^>]*data-confirmation-finish', receipt.text)
+    assert finish is not None, receipt.text
+    return_href = unescape(finish.group(1))
+    assert return_href == "/web/search?ledger_id=owner&q=Return+Search"
+    returned = web_client.get(return_href)
+    assert returned.status_code == 200 and "Return Search Cafe" in returned.text

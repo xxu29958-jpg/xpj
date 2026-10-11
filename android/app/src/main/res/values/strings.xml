@@ -90,8 +90,8 @@
     <string name="merchant_alias_restore_failed">没有恢复成功，请稍后再试。</string>
 
     <!-- QuickCategory：待确认流「补全分类」sheet -->
-    <string name="quick_category_sheet_title">补全分类</string>
-    <string name="quick_category_sheet_hint">选择常用分类，或输入自定义分类。保存后仍需确认入账。</string>
+    <string name="quick_category_sheet_title">补上分类</string>
+    <string name="quick_category_sheet_hint">只更新这笔账单的分类，金额不变。保存后仍需核对并确认入账。</string>
     <string name="quick_category_custom_label">或者输入新分类</string>
     <string name="quick_category_save_button">保存分类</string>
 
@@ -195,6 +195,7 @@
     <string name="error_image_replenishment_mismatch">所选文件与这笔账单的原件不一致，请保留所选文件并核对同一原件；原账单不变。</string>
     <string name="error_original_review_conflict">原件在核对后发生了变化，请重新查看当前原件后再确认。</string>
     <string name="error_original_already_verified">这份原件已有内容标识，请使用原件检查；不能通过确认改写它的身份。</string>
+    <string name="error_original_already_associated">这笔账单已有关联原件或保留记录，不能用新图片替换。请先查看原件状态，缺失时补回同一原件。</string>
     <string name="error_original_identity_unverified">这笔账单没有可核对的原件标识；现存旧件可先查看并确认，缺失旧件不能直接替换。</string>
     <string name="error_attachment_cleanup_changed">这次清理已经结束或发生了变化，请刷新原件状态后继续。</string>
     <string name="error_attachment_cleanup_invalid">清理记录暂时无法核对，已停止删除原件；账单仍可查看和更正。</string>
@@ -287,10 +288,12 @@
     <string name="expense_correction_review_title">核对当前账单</string>
     <string name="expense_correction_review_versions">原稿依据版本 %1$d；当前版本 %2$d</string>
     <string name="expense_correction_review_scores">价值 %1$s · 后悔 %2$s</string>
-    <string name="expense_correction_review_explainer">下方保留原输入。继续核对会保留你改过的字段，未修改的字段采用当前值；保留修改过的金额时也保留原币。发生变化的明细和拆账请逐项选择，受保护的归属信息保持当前值。</string>
+    <string name="expense_correction_review_explainer">你的修改已保留。请选择有冲突的部分，核对后再保存；未修改的字段采用当前值，更正原因保持不变。</string>
     <string name="expense_correction_review_adopt">按以上选择继续核对</string>
     <string name="expense_correction_review_current_rows">当前记录：\n%1$s</string>
     <string name="expense_correction_review_original_rows">我的原输入：\n%1$s</string>
-    <string name="expense_correction_review_keep_rows">保留我的整组输入，替换当前记录</string>
-    <string name="expense_correction_review_use_current">采用当前记录，放弃这部分原输入</string>
+    <string name="expense_correction_review_keep_rows">改为我的选择，沿用更正原因</string>
+    <string name="expense_correction_review_use_current">使用当前记录，保留另一端的修改</string>
+    <string name="expense_correction_comparison_current">当前记录</string>
+    <string name="expense_correction_comparison_proposed">这次修改</string>
 </resources>

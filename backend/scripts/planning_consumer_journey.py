@@ -118,6 +118,7 @@ def _journey(page, native: PlanningAndroid, fixture, evidence: Path):
     page.locator(f'input[name="ledger_id"][value="{fixture.ledger_id}"]').check()
     page.locator('form[action="/web/auth/local"] button[type="submit"]').click()
     page.wait_for_url("**/web/income-plans*")
+    page.get_by_role("link", name="添加收入计划", exact=True).click()
     income_form = _form(page, "/web/income-plans/create")
     income_form.locator('[name="label"]').fill("联动工资")
     income_form.locator('[name="amount_yuan"]').fill("5000.00")

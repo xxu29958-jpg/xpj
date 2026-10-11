@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 from datetime import date, timedelta
+from html import unescape
 from uuid import uuid4
 
 from api_contract_helpers import insert_confirmed_expense
@@ -19,6 +20,16 @@ from app.models import LedgerMember, RecurringItem
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.merchant_service import normalize_merchant
 from app.services.time_service import now_utc
+
+
+def open_recurring_form(client: TestClient, listing, *, public_id: str = ""):
+    """Follow the actual focused-task link, keeping the selected ledger and month."""
+    entry = "edit=" + public_id if public_id else "new_recurring=1"
+    href = next(unescape(href) for href in re.findall(r'<a[^>]*href="([^"]+)"', listing.text) if entry in href)
+    page = client.get(href)
+    assert page.status_code == 200, page.text
+    assert 'class="recurring-list"' not in page.text
+    return page
 
 
 def seed_candidate() -> None:
@@ -162,6 +173,7 @@ def post_confirm(
             "merchant": merchant,
             "amount_cents": amount_cents,
             "next_expected_date": next_expected_date,
+            "idempotency_key": str(uuid4()),
             **extra,
         },
         follow_redirects=False,

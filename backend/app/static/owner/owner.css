@@ -5,9 +5,6 @@
 @import url("../shared/tokens.css");
 
 :root[data-owner] {
-    /* Owner 比 /web 更紧凑：稍小圆角和更轻阴影 */
-    --radius-card: 8px;
-    --shadow-card: 0 1px 3px rgba(0,0,0,.08);
     /* 双主题导航配对 (Owner 工作台片): 旧白字 rgba 假定深色底, W1 把
        --surface-nav 在 paper 翻成浅色 (#faf6ee) 后导航白字浅底不可读
        (真实浏览器实测 paper 1.06:1 / midnight 10.02:1)。前景改挂主题感知
@@ -33,7 +30,7 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    font-family: var(--font-product);
     font-size: var(--type-body-size);
     background: var(--surface-app);
     color: var(--text-default);
@@ -418,8 +415,8 @@ form.inline { display: inline; }
     display: flex;
     align-items: center;
     gap: var(--space-2);
-    font-size: var(--type-subtitle-size);
-    font-weight: var(--type-subtitle-weight);
+    font-size: var(--type-headline-size);
+    font-weight: var(--type-title-weight);
     color: var(--owner-nav-strong-fg);
     text-decoration: none;
     padding: var(--space-2) var(--space-3);

@@ -273,6 +273,8 @@ class RulePreviewResponse(BaseModel):
 
 
 class RuleApplyPendingResponse(BaseModel):
+    command_key: str
+    application_public_id: str | None
     pending_scanned: int
     changed_count: int
     unavailable_count: int = 0
@@ -302,6 +304,7 @@ class RuleApplicationBatchResponse(BaseModel):
     status: str
     pending_scanned: int
     changed_count: int
+    change_counts: dict[str, int]
     created_at: datetime
     rolled_back_at: datetime | None = None
 
@@ -352,6 +355,8 @@ class RuleApplyPendingPreviewResponse(BaseModel):
 
 class RuleApplyConfirmedResponse(BaseModel):
     dry_run: bool
+    command_key: str | None = None
+    application_public_id: str | None = None
     confirmed_scanned: int
     changed_count: int
     items: list[RuleApplyPendingPreviewItem] = Field(default_factory=list)

@@ -72,6 +72,7 @@ private val errorCodeStringResByCode = mapOf(
     "image_replenishment_mismatch" to R.string.error_image_replenishment_mismatch,
     "original_review_conflict" to R.string.error_original_review_conflict,
     "original_already_verified" to R.string.error_original_already_verified,
+    "original_already_associated" to R.string.error_original_already_associated,
     "original_identity_unverified" to R.string.error_original_identity_unverified,
     "attachment_cleanup_changed" to R.string.error_attachment_cleanup_changed,
     "attachment_cleanup_invalid" to R.string.error_attachment_cleanup_invalid,

@@ -12,6 +12,8 @@ import com.ticketbox.domain.model.ExpenseFactBundle
 import com.ticketbox.domain.model.ExpenseRevisionPage
 import java.time.Instant
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import retrofit2.HttpException
@@ -19,15 +21,15 @@ import retrofit2.HttpException
 /** The existing fact page's query owner; cached history never acknowledges an accepted command. */
 internal class ExpenseFactQueryReader(private val core: ExpenseRepositoryCore) {
     private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
-    private val bundleAdapter = moshi.adapter(ExpenseFactBundleDto::class.java)
-    private val revisionsAdapter = moshi.adapter(ExpenseRevisionPageDto::class.java)
-    private val bindingAdapter = moshi.adapter(LogicalSessionBinding::class.java)
+    private val bundleAdapter by lazy { moshi.adapter(ExpenseFactBundleDto::class.java) }
+    private val revisionsAdapter by lazy { moshi.adapter(ExpenseRevisionPageDto::class.java) }
+    private val bindingAdapter by lazy { moshi.adapter(LogicalSessionBinding::class.java) }
     private val mutex = Mutex()
     private data class AcceptedRead(val ticket: SnapshotReadTicket, val epoch: Any, val snapshot: ExpenseFactQueryCacheEntity)
     private val acceptedReads = mutableMapOf<String, AcceptedRead>()
     private val resourceEpochs = mutableMapOf<String, Any>()
 
-    suspend fun bundle(id: Long, binding: LogicalSessionBinding?): Result<ReadSnapshot<ExpenseFactBundle>> =
+    suspend fun bundle(id: Long, binding: LogicalSessionBinding?): Result<ReadSnapshot<ExpenseFactBundle>> = withContext(Dispatchers.IO) {
         read(id, binding, FactQuery("bundle", bundleAdapter, { api -> api.expenseFactBundle(id.toString()) },
             validate = { require(it.root.id == id) { "账单读取范围不一致。" } },
             publish = { wire, bound ->
@@ -40,15 +42,19 @@ internal class ExpenseFactQueryReader(private val core: ExpenseRepositoryCore) {
                     // This fresh GET remains usable if its rebuildable projection cannot be saved.
                 }
             })).map { ReadSnapshot(it.value.toDomain(), it.fetchedAt, it.fromCache) }
+    }
 
-    suspend fun revisions(id: Long, page: Int, pageSize: Int, snapshot: Long?, binding: LogicalSessionBinding?):
-        Result<ReadSnapshot<ExpenseRevisionPage>> =
-        read(id, binding, FactQuery("revisions:$pageSize:$page:$snapshot", revisionsAdapter,
-            { api -> api.expenseRevisions(id, page, pageSize, snapshot) },
+    suspend fun revisions(id: Long, page: Int, pageSize: Int, snapshot: com.ticketbox.domain.model.ExpenseHistorySnapshot?, binding: LogicalSessionBinding?):
+        Result<ReadSnapshot<ExpenseRevisionPage>> = withContext(Dispatchers.IO) {
+        read(id, binding, FactQuery("history:$pageSize:$page:${snapshot?.revision}:${snapshot?.offsetId}", revisionsAdapter,
+            { api -> api.expenseRevisions(id, page, pageSize, snapshot?.revision, snapshot?.offsetId) },
             validate = { require(it.page == page && it.pageSize == pageSize &&
-                (snapshot == null || it.snapshotRevision == snapshot) &&
-                it.items.all { row -> row.revisionNumber <= it.snapshotRevision }) { "账单历史快照不一致，请重新读取。" } }))
+                it.offsetSnapshotId != null && (snapshot == null || (it.snapshotRevision == snapshot.revision &&
+                it.offsetSnapshotId == snapshot.offsetId)) &&
+                it.items.all { row -> row.offsetPublicId != null || row.revisionNumber <= it.snapshotRevision }) {
+                    "账单历史快照不一致，请重新读取。" } }))
             .map { ReadSnapshot(it.value.toDomain(), it.fetchedAt, it.fromCache) }
+    }
 
     private data class FactQuery<T>(val key: String, val adapter: JsonAdapter<T>, val fetch: suspend (ApiService) -> T,
         val validate: (T) -> Unit, val publish: suspend (T, BoundLedgerRequest) -> Unit = { _, _ -> })

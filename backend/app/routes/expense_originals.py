@@ -7,13 +7,19 @@ from app.auth import get_current_app_context, get_current_writer_context
 from app.database import get_db
 from app.routes._upload_request import read_request_upload
 from app.schemas._original_attachment import (
+    OriginalAttachmentRequest,
     OriginalCleanupRequest,
     OriginalCommandReceipt,
     OriginalHealthResponse,
     OriginalReplenishmentRequest,
     OriginalVerificationRequest,
 )
-from app.services.original_command_service import continue_original_cleanup, replenish_original, verify_original
+from app.services.original_command_service import (
+    attach_original,
+    continue_original_cleanup,
+    replenish_original,
+    verify_original,
+)
 from app.services.original_health_service import inspect_expense_original
 from app.tenants import AuthContext
 
@@ -32,6 +38,23 @@ def post_original_verification(expense_id: int, payload: OriginalVerificationReq
                                auth: AuthContext = Depends(get_current_writer_context),
                                db: Session = Depends(get_db)) -> OriginalCommandReceipt:
     return verify_original(db, expense_id=expense_id, auth=auth, payload=payload, idempotency_key=idempotency_key)
+
+
+@router.post("/{expense_id}/original/attach", response_model=OriginalCommandReceipt,
+    openapi_extra={"requestBody": {"required": True, "content": {
+        "multipart/form-data": {"schema": {"type": "object", "required": ["file"],
+            "properties": {"file": {"type": "string", "format": "binary"}}}},
+        "application/octet-stream": {"schema": {"type": "string", "format": "binary"}},
+    }}})
+async def post_original_attachment(request: Request, expense_id: int,
+                                   expected_row_version: int = Query(gt=0),
+                                   idempotency_key: str = Header(alias="Idempotency-Key", min_length=1, max_length=64),
+                                   auth: AuthContext = Depends(get_current_writer_context),
+                                   db: Session = Depends(get_db)) -> OriginalCommandReceipt:
+    content, _timing = await read_request_upload(request)
+    return attach_original(db, expense_id=expense_id, auth=auth,
+        payload=OriginalAttachmentRequest(expected_row_version=expected_row_version),
+        data=content.data, filename=content.filename, content_type=content.content_type, idempotency_key=idempotency_key)
 
 
 @router.post("/{expense_id}/original/replenish", response_model=OriginalCommandReceipt,

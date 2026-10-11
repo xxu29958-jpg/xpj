@@ -15,7 +15,7 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.routes._web_correction_snapshot import correction_snapshot
+from app.routes._web_correction_snapshot import correction_snapshot, original_correction_basis, scalar_comparisons
 from app.routes._web_draft_binding import rendered_draft_scope
 from app.routes._web_expense_helpers import web_edit_context
 from app.routes._web_expense_return_context import (
@@ -106,6 +106,10 @@ def web_correction_context(
         selected_currency = ctx["expense"]["original_currency_code"]
     ctx["selected_original_currency"] = selected_currency
     ctx["expense_currency_input"] = currency_input_metadata(selected_currency)
+    input_basis = correction_snapshot({**ctx, "current_expense": ctx["expense"], "current_time_form": ctx.get("time_form")})
+    input_basis["values"]["original_currency"] = selected_currency
+    ctx["fact_scalar_comparisons"] = scalar_comparisons(input_basis["values"],
+        original_correction_basis(ctx["fact_basis"], expense_id=expense_id), ctx["fact_current_basis"]["values"])
     if receipt_item_rows is not None:
         ctx["receipt_items"]["rows"] = receipt_item_rows
     if split_form_rows is not None:

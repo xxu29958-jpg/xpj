@@ -13,10 +13,12 @@ from app.routes._original_file_response import OriginalFileResponse
 from app.schemas import (
     BackgroundTaskResponse,
     CategoriesResponse,
+    CategoryPreferenceInspectionResponse,
     CategoryPreferenceListResponse,
     CategoryPreferenceResponse,
     CategoryPreferenceTokenRequest,
     ExpenseAcknowledgeItemsMismatchRequest,
+    ExpenseConfirmationReceipt,
     ExpenseConfirmRequest,
     ExpenseItemReplaceRequest,
     ExpenseItemsResponse,
@@ -40,10 +42,12 @@ from app.schemas import (
     StatusResponse,
     TagsResponse,
 )
+from app.schemas._reference_creation import ReferenceCreatedResponse, ReferenceCreateRequest
 from app.services.background_task_response import task_response_dicts
 from app.services.category_preference_service import (
     CategoryPreferenceView,
     delete_category_preference,
+    inspect_category_preference,
     list_category_preferences,
     restore_category_preference,
 )
@@ -55,7 +59,11 @@ from app.services.expense_response_service import (
     expense_raw_text_by_id,
     expense_to_response,
 )
-from app.services.expense_review_command_service import confirm_expense_submission, submit_expense_rejection
+from app.services.expense_review_command_service import (
+    confirm_expense_submission,
+    submit_expense_duplicate_decision,
+    submit_expense_rejection,
+)
 from app.services.expense_service import (
     create_manual_expense,
     create_notification_draft,
@@ -65,14 +73,10 @@ from app.services.expense_service import (
     get_expense,
     list_confirmed,
     list_pending,
-    mark_expense_not_duplicate,
     resolve_expense_for_mutation,
 )
-from app.services.expense_split_service import list_expense_splits, replace_expense_splits
-from app.services.idempotency import (
-    claim_idempotent_request,
-    mark_idempotency_succeeded,
-)
+from app.services.expense_split_service import list_expense_splits
+from app.services.expense_subtask_command_service import submit_expense_subtask
 from app.services.ledger_calendar_commands import read_ledger_calendar
 from app.services.pending_fx_task_service import (
     request_pending_expense_fx,
@@ -81,11 +85,8 @@ from app.services.pending_suggestion_service import (
     record_pending_suggestion_event,
     suggestions_for_pending_expense,
 )
-from app.services.receipt_item_service import (
-    acknowledge_items_sum_mismatch,
-    list_expense_items,
-    replace_expense_items,
-)
+from app.services.receipt_item_service import list_expense_items
+from app.services.reference_creation_service import create_reference
 from app.services.spending_contract_service import count_undated_expenses
 from app.services.stats_service import export_confirmed_csv, list_categories, list_months
 from app.services.tag_service import list_tags
@@ -216,6 +217,27 @@ def get_expense_category_preferences(
     )
 
 
+@router.post("/categories/preferences", response_model=ReferenceCreatedResponse, status_code=201)
+def create_expense_category_preference(
+    payload: ReferenceCreateRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    auth: AuthContext = Depends(get_current_writer_context),
+    db: Session = Depends(get_db),
+) -> ReferenceCreatedResponse:
+    return create_reference(db, tenant_id=auth.tenant_id, actor_account_id=auth.account_id,
+        kind="category", name=payload.name, idempotency_key=idempotency_key)
+
+
+@router.get("/categories/preferences/{public_id}", response_model=CategoryPreferenceInspectionResponse)
+def get_expense_category_preference(
+    public_id: str,
+    auth: AuthContext = Depends(get_current_app_context),
+    db: Session = Depends(get_db),
+) -> CategoryPreferenceInspectionResponse:
+    category, references = inspect_category_preference(db, tenant_id=auth.tenant_id, public_id=public_id)
+    return CategoryPreferenceInspectionResponse(category=_category_preference_response(category), references=references)
+
+
 @router.post(
     "/categories/preferences/{public_id}/delete",
     response_model=CategoryPreferenceResponse,
@@ -322,28 +344,9 @@ def put_expense_item_rows(
         device_id=auth.device_id,
         expected_row_version=payload.expected_row_version,
     )
-    claim = claim_idempotent_request(
-        db,
-        idempotency_key=idempotency_key,
-        tenant_id=auth.tenant_id,
-        operation="replace_items",
-        target_id=str(expense_pk),
-        body=payload.model_dump(mode="json", exclude_unset=True, exclude={"expected_row_version"}),
-        expected_row_version=payload.expected_row_version,
-    )
-    if claim is None:  # §4.6 HIT — re-serialise current items state
-        return list_expense_items(db, expense_pk, auth.tenant_id)
-
-    response = replace_expense_items(
-        db,
-        expense_pk,
-        auth.tenant_id,
-        payload.model_copy(update={"expected_row_version": effective_row_version}),
-        commit=False,
-    )
-    mark_idempotency_succeeded(db, claim, resource_type="expense", resource_id=str(expense_pk))
-    db.commit()
-    return response
+    return submit_expense_subtask(db, expense_id=expense_pk, tenant_id=auth.tenant_id,
+        payload=payload, expected_row_version=effective_row_version, idempotency_key=idempotency_key,
+        actor_account_id=auth.account_id, actor_device_id=auth.device_id)
 
 
 @router.post(
@@ -369,31 +372,9 @@ def acknowledge_expense_items_mismatch(
         device_id=auth.device_id,
         expected_row_version=payload.expected_row_version,
     )
-    claim = claim_idempotent_request(
-        db,
-        idempotency_key=idempotency_key,
-        tenant_id=auth.tenant_id,
-        operation="acknowledge_items_mismatch",
-        target_id=str(expense_pk),
-        body=payload.model_dump(mode="json", exclude_unset=True, exclude={"expected_row_version"}),
-        expected_row_version=payload.expected_row_version,
-    )
-    if claim is None:  # §4.6 HIT — re-serialise current canonical items state
-        return list_expense_items(db, expense_pk, auth.tenant_id)
-
-    response = acknowledge_items_sum_mismatch(
-        db,
-        expense_pk,
-        auth.tenant_id,
-        expected_row_version=effective_row_version,
-        actor_account_id=auth.account_id,
-        actor_device_id=auth.device_id,
-        idempotency_key=idempotency_key,
-        commit=False,
-    )
-    mark_idempotency_succeeded(db, claim, resource_type="expense", resource_id=str(expense_pk))
-    db.commit()
-    return response
+    return submit_expense_subtask(db, expense_id=expense_pk, tenant_id=auth.tenant_id,
+        payload=payload, expected_row_version=effective_row_version, idempotency_key=idempotency_key,
+        actor_account_id=auth.account_id, actor_device_id=auth.device_id)
 
 
 @router.get("/{expense_id}/splits", response_model=ExpenseSplitsResponse)
@@ -420,29 +401,9 @@ def put_expense_split_rows(
         device_id=auth.device_id,
         expected_row_version=payload.expected_row_version,
     )
-    claim = claim_idempotent_request(
-        db,
-        idempotency_key=idempotency_key,
-        tenant_id=auth.tenant_id,
-        operation="replace_splits",
-        target_id=str(expense_pk),
-        body=payload.model_dump(mode="json", exclude_unset=True, exclude={"expected_row_version"}),
-        expected_row_version=payload.expected_row_version,
-    )
-    if claim is None:  # §4.6 HIT — re-serialise current splits state
-        return list_expense_splits(db, expense_pk, auth.tenant_id)
-
-    response = replace_expense_splits(
-        db,
-        expense_pk,
-        auth.tenant_id,
-        payload.model_copy(update={"expected_row_version": effective_row_version}),
-        actor_account_id=auth.account_id,
-        commit=False,
-    )
-    mark_idempotency_succeeded(db, claim, resource_type="expense", resource_id=str(expense_pk))
-    db.commit()
-    return response
+    return submit_expense_subtask(db, expense_id=expense_pk, tenant_id=auth.tenant_id,
+        payload=payload, expected_row_version=effective_row_version, idempotency_key=idempotency_key,
+        actor_account_id=auth.account_id, actor_device_id=auth.device_id)
 
 
 @router.get("/{expense_id}", response_model=ExpenseResponse)
@@ -567,7 +528,7 @@ def post_confirm_expense(
         device_id=auth.device_id,
         expected_row_version=payload.expected_row_version,
     )
-    expense = confirm_expense_submission(
+    receipt = confirm_expense_submission(
         db,
         expense_id=expense_pk,
         idempotency_key=idempotency_key,
@@ -580,7 +541,9 @@ def post_confirm_expense(
         actor_device_id=auth.device_id,
         require_idempotency=True,
     )
-    return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
+    current = expense_to_response(db, tenant_id=auth.tenant_id, expense=get_expense(db, expense_pk, auth.tenant_id))
+    current.confirmation_receipt = ExpenseConfirmationReceipt.model_validate(receipt)
+    return current
 
 
 @router.post("/{expense_id}/reject", response_model=ExpenseResponse)
@@ -750,29 +713,9 @@ def post_mark_not_duplicate(
         device_id=auth.device_id,
         expected_row_version=payload.expected_row_version,
     )
-    claim = claim_idempotent_request(
-        db,
-        idempotency_key=idempotency_key,
-        tenant_id=auth.tenant_id,
-        operation="mark_not_duplicate",
-        target_id=str(expense_pk),
-        body=payload.model_dump(mode="json", exclude_unset=True, exclude={"expected_row_version"}),
-        expected_row_version=payload.expected_row_version,
-    )
-    if claim is None:
-        expense = get_expense(db, expense_pk, auth.tenant_id)
-        return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
-
-    expense = mark_expense_not_duplicate(
-        db,
-        expense_pk,
-        auth.tenant_id,
-        expected_row_version=effective_row_version,
-        commit=False,
-    )
-    mark_idempotency_succeeded(db, claim, resource_type="expense", resource_id=str(expense_pk))
-    db.commit()
-    db.refresh(expense)
+    expense = submit_expense_duplicate_decision(db, tenant_id=auth.tenant_id, expense_id=expense_pk,
+        idempotency_key=idempotency_key, expected_row_version=effective_row_version,
+        request_expected_row_version=payload.expected_row_version)
     return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
 
 

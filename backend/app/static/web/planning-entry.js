@@ -10,6 +10,8 @@
     arrangement: {label: "本月安排", list: "/web/budget-advise", amount: "savings_target_yuan", idField: "month", titleField: "month",
       names: [...monthly, "arrangement_currency_code", "savings_target_yuan", "reserved_buffer_yuan"],
       action: "/web/budget-advise/save"},
+    candidate: {label: "建议采用", creationLabel: "采用", list: "/web/recurring", titleField: "merchant", multiple: true,
+      names: ["ledger_id", "merchant", "amount_cents", "amount_display", "home_currency_code", "next_expected_date", "month", "status"]},
     recurring: {label: "固定支出", list: "/web/recurring", amount: "baseline_amount_yuan", titleField: "merchant", multiple: true,
       names: ["ledger_id", "public_id", "home_currency_code", "expected_row_version", "merchant", "baseline_amount_yuan", "next_expected_date"]},
   };
@@ -26,13 +28,15 @@
   }
   function budgetRows(form) {
     return [...form.querySelectorAll('[name="category_budget_category"]')].map(input => {
-      const row = input.closest("tr, [data-budget-add-row]");
+      const row = input.closest(".budget-row, [data-budget-add-row]");
       const remove = row.querySelector('[name="category_budget_remove"]');
       return {category: input.value, amount: row.querySelector('[name="category_budget_amount_yuan"]').value,
         savedCategory: row.dataset.savedCategory || "", removeValue: remove?.value ?? null, removed: !!remove?.checked};
     });
   }
   function restoreBudget(form, saved, prototype) {
+    const editor = form.closest("#budget-editor");
+    if (editor) editor.open = true;
     const excluded = JSON.parse(saved.excluded_values);
     let chips = form.querySelector('[aria-label="可排除的分类"]');
     if (!chips) {
@@ -52,14 +56,13 @@
     chips.prepend(...selectedLabels);
     // Current execution stays attached to its saved category. Original inputs get
     // their own rows, never re-labelled as the refreshed server's current facts.
-    form.querySelectorAll(".budget-table input").forEach(input => {
+    form.querySelectorAll(".budget-row input").forEach(input => {
       const span = document.createElement("span");
       span.textContent = input.type === "checkbox" ? "已保存" : input.value;
       if (input.type === "checkbox") input.closest("label").replaceWith(span);
       else input.replaceWith(span);
     });
-    const lastHeading = form.querySelector(".budget-table thead th:last-child");
-    if (lastHeading) lastHeading.textContent = "当前配置";
+    form.querySelector("[data-budget-add-zone]").hidden = false;
     const rows = form.querySelector(".budget-add-rows");
     rows.replaceChildren();
     JSON.parse(saved.category_rows).forEach(row => {
@@ -81,23 +84,42 @@
     });
   }
   Object.entries(definitions).forEach(([family, definition]) => {
-    document.querySelectorAll("[data-" + family + "-draft-scope]").forEach(form => {
-      const names = definition.names;
-      const prototype = family === "budget" ? form.querySelector("[data-budget-add-row]").cloneNode(true) : null;
-      const href = (record, scope, currentForm) => {
+    const names = definition.names;
+    const href = (record, scope, currentForm) => {
         const values = record?.values || Object.fromEntries(names.map(name => [name, field(currentForm, name)?.value || ""]));
         const next = new URL(definition.list, window.location.href);
         next.searchParams.set("ledger_id", scope.ledgerId);
-        for (const name of ["month", "return_category", "return_month"]) if (values[name]) next.searchParams.set(name, values[name]);
+        for (const name of ["month", "return_category", "return_month", "status"]) if (values[name]) next.searchParams.set(name, values[name]);
+        if (family === "recurring") {
+          const navigation = currentForm ? new window.FormData(currentForm) : new URL(window.location.href).searchParams;
+          for (const name of ["month", "status"]) {
+            const value = navigation.get(name);
+            if (value) next.searchParams.set(name, value);
+          }
+          if (!values.public_id) next.searchParams.set("new_recurring", "1");
+        }
+        if (family === "candidate") {
+          next.searchParams.set("view", "suggestions");
+          next.searchParams.set("review", values.merchant);
+          if (record) next.searchParams.set("resume_candidate", "1");
+        }
         if (values.public_id) next.searchParams.set("edit", values.public_id);
         if (record) next.hash = family + (values[definition.idField || "public_id"] ? "-edit-" : "-create-") + record.clientRef;
         else next.searchParams.set("new_" + family, "1");
         return next.href;
-      };
-      window.TicketboxPlanEntry.mount(form, {...definition, family, href, create: names, edit: names,
+    };
+    const config = {...definition, family, href, create: names, edit: names,
+      validRef: /^[0-9a-f]{8}(?:-?[0-9a-f]{4}){3}-?[0-9a-f]{12}$/i};
+    const forms = document.querySelectorAll("[data-" + family + "-draft-scope]");
+    const shelf = document.querySelector("[data-" + family + "-draft-shelf]");
+    if (["recurring", "candidate"].includes(family) && !forms.length && shelf) {
+      window.TicketboxPlanEntry.mountShelf(shelf, config, JSON.parse(shelf.dataset.draftScope));
+    }
+    forms.forEach(form => {
+      const prototype = family === "budget" ? form.querySelector("[data-budget-add-row]").cloneNode(true) : null;
+      window.TicketboxPlanEntry.mount(form, {...config,
         reviewRequiresRejection: true,
         reviewName: "review_latest", submitSelector: "[data-" + family + "-submit]",
-        validRef: /^[0-9a-f]{8}(?:-?[0-9a-f]{4}){3}-?[0-9a-f]{12}$/i,
         read: current => {
           const values = Object.fromEntries(names.map(name => [name, field(current, name)?.value || ""]));
           if (family === "budget") {
@@ -119,6 +141,9 @@
         },
         body: (body, saved) => {
           names.filter(name => !["excluded_values", "category_rows", "input_step", "input_hint"].includes(name)).forEach(name => body.set(name, saved[name]));
+          if (family === "recurring") {
+            for (const name of ["month", "status"]) body.set(name, field(form, name)?.value || "");
+          }
           if (family !== "budget") return;
           JSON.parse(saved.excluded_values).forEach(value => body.append("excluded_category", value));
           JSON.parse(saved.category_rows).forEach(row => {
@@ -126,7 +151,11 @@
             if (row.removed) body.append("category_budget_remove", row.removeValue);
           });
         },
-        receiptMatches: (receipt, saved) => family === "recurring" ?
+        receiptMatches: (receipt, saved) => family === "candidate" ?
+          receipt?.public_id && receipt.source === "candidate" && receipt.status === "active" && receipt.row_version === 1 &&
+          receipt.home_currency_code === saved.home_currency_code &&
+          String(receipt.baseline_amount_cents) === saved.amount_cents &&
+          receipt.next_expected_date === (saved.next_expected_date || null) : family === "recurring" ?
           receipt?.public_id && (!saved.public_id || receipt.public_id === saved.public_id) :
           receipt?.month === saved.month && Number.isInteger(receipt.row_version),
       });

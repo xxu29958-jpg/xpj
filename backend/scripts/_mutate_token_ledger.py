@@ -72,6 +72,7 @@ OWNERS: frozenset[str] = frozenset(
         "owner_console",
         "exchange_rates",
         "saved_views",
+        "reference_library",
         "tasks",
     }
 )
@@ -196,6 +197,18 @@ ALLOWLIST: dict[str, Exempt] = {
     # not a Repayment fact — the confirm route below IS fold-changing and carries the token).
     "POST /api/repayment-drafts": Exempt("create_row", "debts", _REPAYMENT_DRAFTS),
     "POST /api/expenses/manual": Exempt("create_row", "expenses", ("expenses",)),
+    # Explicit unused references have no predecessor version. The shared command
+    # requires an idempotency key and keeps the original receipt; a duplicate
+    # live/deleted name is rejected, never an implicit restore or rename.
+    "POST /api/expenses/categories/preferences": Exempt(
+        "create_row", "reference_library", ("category_preferences", "api_idempotency_keys", "ledger_audit_logs")
+    ),
+    "POST /api/tags": Exempt(
+        "create_row", "reference_library", ("tags", "api_idempotency_keys", "ledger_audit_logs")
+    ),
+    "POST /web/reference/{kind}/create": Exempt(
+        "create_row", "reference_library", ("category_preferences", "tags", "api_idempotency_keys", "ledger_audit_logs")
+    ),
     "POST /api/expenses/notification-drafts": Exempt("create_row", "expenses", ("expenses",)),
     "POST /api/goals": Exempt("create_row", "goals", ("goals",)),
     "POST /api/imports/csv": Exempt("create_row", "imports", _IMPORT_CREATE),
@@ -342,8 +355,8 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /api/maintenance/cleanup-learning": Exempt("batch_db_write", "maintenance", _LEARNING_PRUNE, "medium"),
     "POST /api/maintenance/cleanup-orphans": Exempt("external_side_effect", "maintenance", ()),
     "POST /api/maintenance/cleanup-rejected": Exempt("batch_db_write", "maintenance", ("expenses",)),
-    "POST /api/rules/apply-confirmed": Exempt("batch_db_write", "rules", _RULES_APPLY, "medium"),
-    "POST /api/rules/apply-pending": Exempt("batch_db_write", "rules", _RULES_APPLY, "medium"),
+    "POST /api/rules/apply-confirmed": Exempt("batch_db_write", "rules", _RULES_APPLY + ("api_idempotency_keys",), "medium"),
+    "POST /api/rules/apply-pending": Exempt("batch_db_write", "rules", _RULES_APPLY + ("api_idempotency_keys",), "medium"),
     "POST /api/rules/apply-pending/preview": Exempt("read_only_compute", "rules", ()),
     "POST /api/rules/applications/{public_id}/rollback": Exempt("batch_db_write", "rules", _RULES_APPLY, "medium"),
     "POST /api/rules/preview": Exempt("read_only_compute", "rules", ()),
@@ -369,7 +382,6 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /web/bill-splits/{public_id}/accept": Exempt("terminal_flag_flip", "bill_split", _BILL_SPLIT, "medium"),
     "POST /web/bill-splits/{public_id}/cancel": Exempt("terminal_flag_flip", "bill_split", _BILL_SPLIT),
     "POST /web/bill-splits/{public_id}/reject": Exempt("terminal_flag_flip", "bill_split", _BILL_SPLIT),
-    "POST /web/categories/uncategorized/bulk-set": Exempt("batch_db_write", "expenses", ("expenses",)),
     "POST /web/dashboard/cards/reset": Exempt("upsert_bucket", "budget", _DASHBOARD),
     "POST /web/dashboard/cards/save": Exempt("upsert_bucket", "budget", _DASHBOARD),
     "POST /web/family/invitations": Exempt("create_row", "identity", ("invitations",)),
@@ -400,6 +412,7 @@ ALLOWLIST: dict[str, Exempt] = {
     # Name uniqueness and the original actor/key receipt prevent replacement;
     # subsequent edits/deletes carry the existing SavedView row_version.
     "POST /web/saved-views": Exempt("create_row", "saved_views", ("saved_views", "api_idempotency_keys")),
+    "POST /api/saved-views": Exempt("create_row", "saved_views", ("saved_views", "api_idempotency_keys")),
     "POST /web/merchants/catalog/create": Exempt("create_row", "merchants", _MERCHANT_CATALOG),
     "POST /web/merchants/aliases/create": Exempt("create_row", "merchants", ("merchant_aliases",)),
     "POST /web/merchants/aliases/{public_id}/undo": Exempt(
@@ -408,6 +421,10 @@ ALLOWLIST: dict[str, Exempt] = {
     # Native Inbox capture creates a new pending expense after the selected
     # ledger's writer guard; there is no pre-existing row to version-fence.
     "POST /web/pending/upload": Exempt("create_row", "expenses", ("expenses",)),
+    # Explicit review only reads the current pair and prepares a new browser
+    # command. It writes neither Expense nor a receipt; the subsequent keep /
+    # reject commands still consume their original OCC and idempotency key.
+    "POST /web/duplicates/{expense_id}/decision": Exempt("read_only_compute", "expenses", ()),
     # 218-C5a: POST /web/pending/batch-reject 与 POST /web/review/bulk 现在携带
     # 页面快照 expected_row_version(fail-closed 409),schema 自动判定为 carrier,
     # 不再占用 batch_db_write 豁免。
@@ -415,8 +432,8 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /web/recurring/confirm-candidate": Exempt("create_row", "recurring", _RECURRING),
     "POST /web/recurring/{public_id}/archive": Exempt("terminal_flag_flip", "recurring", _RECURRING),
     "POST /web/rules/applications/{public_id}/rollback": Exempt("batch_db_write", "rules", _RULES_APPLY, "medium"),
-    "POST /web/rules/apply-confirmed": Exempt("batch_db_write", "rules", _RULES_APPLY, "medium"),
-    "POST /web/rules/apply-pending": Exempt("batch_db_write", "rules", _RULES_APPLY, "medium"),
+    "POST /web/rules/apply-confirmed": Exempt("batch_db_write", "rules", _RULES_APPLY + ("api_idempotency_keys",), "medium"),
+    "POST /web/rules/apply-pending": Exempt("batch_db_write", "rules", _RULES_APPLY + ("api_idempotency_keys",), "medium"),
     "POST /web/rules/create": Exempt("create_row", "rules", ("category_rules",)),
     "POST /web/rules/{rule_id}/undo": Exempt(
         "terminal_flag_flip", "rules", ("category_rules", "ledger_audit_logs")

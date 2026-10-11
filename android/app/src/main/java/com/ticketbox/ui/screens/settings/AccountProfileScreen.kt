@@ -3,7 +3,7 @@ package com.ticketbox.ui.screens.settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.Button
+import com.ticketbox.ui.components.AppPrimaryButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -40,10 +40,10 @@ fun AccountProfileScreen(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                Button(onClick = onSave, enabled = state.fresh && !state.busy && state.name.isNotBlank(),
-                    modifier = Modifier.fillMaxWidth()) {
-                    Text(stringResource(if (state.busy) R.string.account_profile_working else R.string.account_profile_save))
-                }
+                AppPrimaryButton(
+                    text = stringResource(if (state.busy) R.string.account_profile_working else R.string.account_profile_save),
+                    onClick = onSave, enabled = state.fresh && !state.busy && state.name.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth())
                 TextButton(onClick = onRefresh, enabled = !state.busy) {
                     Text(stringResource(R.string.account_profile_refresh))
                 }

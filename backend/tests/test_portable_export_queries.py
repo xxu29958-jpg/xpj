@@ -105,6 +105,7 @@ def test_saved_view_export_keeps_ledger_query_configuration_and_stable_tag_refer
         _seed(records, m.SavedView, id=id_, public_id=f"view-{id_}", tenant_id=ledger,
             name="九月旅行", name_key="九月旅行", month_mode="fixed", month="2026-09",
             filter="", tag_public_id="stable-tag-id", home_currency_code="JPY",
+            query_text="便利店", category="购物",
             created_by_account_id=7, created_at="2026-09-28 00:00:00",
             updated_at="2026-09-28 00:00:00", row_version=1)
         _seed(records, m.ApiIdempotencyKey, id=id_, tenant_id=ledger, resource_type="saved_view",
@@ -115,6 +116,7 @@ def test_saved_view_export_keeps_ledger_query_configuration_and_stable_tag_refer
     assert len(rows) == 1
     assert (rows[0]["tenant_id"], rows[0]["month"], rows[0]["tag_public_id"],
             rows[0]["home_currency_code"]) == ("selected", "2026-09", "stable-tag-id", "JPY")
+    assert (rows[0]["query_text"], rows[0]["category"]) == ("便利店", "购物")
     accepted = _rows(records, "accepted_operations")
     assert len(accepted) == 1
     assert (accepted[0]["idempotency_key"], accepted[0]["resource_id"], accepted[0]["response_body"]) == (
@@ -554,10 +556,42 @@ def test_debt_receipts_require_access_to_the_parent_relationship(records):
     }
 
 
-def test_merchant_alias_receipts_remain_exportable_after_the_catalog_row_is_deleted(records):
-    for id_, operation, ledger in ((1, "update_merchant_alias", "selected"),
-        (2, "delete_merchant_alias", "selected"), (3, "delete_merchant_alias", "other")):
+@pytest.mark.parametrize("resource", ["merchant_catalog", "merchant_alias"])
+def test_merchant_receipts_remain_exportable_after_the_object_is_deleted(records, resource):
+    for id_, operation, ledger in ((1, "create_" + resource, "selected"),
+        (2, "update_" + resource, "selected"), (3, "create_" + resource, "other")):
         _seed(records, m.ApiIdempotencyKey, id=id_, tenant_id=ledger, status="succeeded",
-            resource_type="merchant_alias", resource_id="deleted-alias", operation=operation)
+            resource_type=resource, resource_id="deleted-object", operation=operation,
+            response_body=json.dumps({"public_id": "deleted-object", "row_version": id_}))
     assert [(row["id"], row["operation"]) for row in _rows(records, "accepted_operations")] == [
-        (1, "update_merchant_alias"), (2, "delete_merchant_alias")]
+        (1, "create_" + resource), (2, "update_" + resource)]
+    assert [row["response_body"]["row_version"] for row in _rows(records, "accepted_operations")] == [1, 2]
+
+
+def test_catalog_merge_receipt_export_keeps_both_original_snapshots(records):
+    from app.services.portable_export_archive import _receipt_record
+
+    original = {"source": {"public_id": "source", "row_version": 2, "status": "merged"},
+                "target": {"public_id": "target", "row_version": 6, "status": "active"},
+                "created_alias_public_id": "original-alias"}
+    for id_, ledger in ((1, "selected"), (2, "other")):
+        _seed(records, m.ApiIdempotencyKey, id=id_, tenant_id=ledger, status="succeeded",
+            resource_type="merchant_catalog", resource_id="source", operation="merge_merchant_catalog",
+            response_body=json.dumps(original))
+    _seed(records, m.MerchantCatalog, id=1, public_id="target", tenant_id="selected", row_version=12, status="hidden")
+    rows = _rows(records, "accepted_operations")
+    assert len(rows) == 1 and rows[0]["id"] == 1
+    assert _receipt_record(dict(rows[0]))["response_body"] == original
+
+
+def test_application_export_retains_original_zero_and_changed_results_with_ledger_scope(records):
+    from app.services.portable_export_archive import _receipt_record
+
+    for id_, ledger, changed in ((1, "selected", 0), (2, "selected", 2), (3, "other", 4)):
+        _seed(records, m.ApiIdempotencyKey, id=id_, tenant_id=ledger, status="succeeded",
+            resource_type="rule_application_batch", resource_id=f"batch-{id_}" if changed else None,
+            operation="apply_confirmed_rules", response_body=json.dumps({"command_key": f"key-{id_}",
+                "application_public_id": f"batch-{id_}" if changed else None, "changed_count": changed}))
+    rows = _rows(records, "accepted_operations")
+    assert [row["id"] for row in rows] == [1, 2]
+    assert [_receipt_record(dict(row))["response_body"]["changed_count"] for row in rows] == [0, 2]

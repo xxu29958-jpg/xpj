@@ -157,6 +157,8 @@ def web_confirmed_batch_update(
     page: int = Form(default=1),
     filter: str = Form(default=""),
     home_currency_code: str = Form(default=""),
+    query_text: str = Form(default="", max_length=80),
+    query_category: str = Form(default="", max_length=64),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> Response:
@@ -194,6 +196,7 @@ def web_confirmed_batch_update(
             msg=outcome.error_message,
             filter=filter,
             home_currency_code=home_currency_code,
+            query_text=query_text, category=query_category,
             status_code=outcome.error_status,
             flash_type="error",
             batch_category_input=category,
@@ -212,4 +215,5 @@ def web_confirmed_batch_update(
         msg=_confirmed_batch_result_message(outcome.result),
         filter=filter,
         home_currency_code=home_currency_code,
+        query_text=query_text, category=query_category,
     )

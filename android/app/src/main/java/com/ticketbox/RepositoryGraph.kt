@@ -117,9 +117,7 @@ internal class RepositoryGraph(
     val recurringRepository = RecurringRepository(
         apiProvider = apiServiceProvider,
         outbox = outbox,
-        createAdapter = outboxAdapters.recurringCreateAdapter,
-        updateAdapter = outboxAdapters.recurringUpdateAdapter,
-        occurrenceAdapter = outboxAdapters.recurringOccurrenceAdapter,
+        adapters = outboxAdapters,
         queryReader = recurringQueries,
     )
 
@@ -193,7 +191,7 @@ internal class RepositoryGraph(
 
     val goalEditRepository = com.ticketbox.data.repository.GoalEditRepository(
         apiServiceProvider, outbox, outboxAdapters.goalUpdateAdapter, outboxAdapters.goalReceiptAdapter,
-        outboxAdapters.goalCreateAdapter,
+        outboxAdapters.goalCreateAdapter, outboxAdapters.goalDebtEditAdapter,
     )
 
     val reportsRepository = ReportsRepository(
@@ -218,20 +216,28 @@ internal class RepositoryGraph(
         }
     }
 
+    val savedQueryRepository = com.ticketbox.data.repository.SavedQueryRepository(
+        apiServiceProvider, com.ticketbox.data.repository.SavedQueryDraftStore(database.savedQueryInputDao()),
+    )
+
     val ruleRepository = RuleRepository(
         binding = serverSessionBinding,
-        onConfirmedChanged = { expenseRepository.syncConfirmed() },
+        definitionInputs = com.ticketbox.data.repository.RuleDefinitionDraftStore(database.ruleDefinitionInputDao()),
+        onConfirmedChanged = { expenseRepository.syncConfirmed().map { } },
         offlineMutations = CategoryRuleOfflineMutationWiring(
             outbox = outbox,
             updateAdapter = outboxAdapters.categoryRuleUpdateAdapter,
             deleteAdapter = outboxAdapters.categoryRuleDeleteAdapter,
             submissionAdapter = outboxAdapters.categoryRuleSubmissionAdapter,
             receiptAdapter = outboxAdapters.categoryRuleReceiptAdapter,
+            applicationAdapter = outboxAdapters.ruleApplicationAdapter,
+            applicationReceiptAdapter = outboxAdapters.ruleApplicationReceiptAdapter,
         ),
     )
 
     val merchantRepository = MerchantRepository(
         binding = serverSessionBinding,
+        draftStore = com.ticketbox.data.repository.MerchantDraftStore(database.merchantCreationInputDao()),
         // PR-2g.5: outbox + delete adapter.
         // PR-2g.6: + update adapter for updateMerchantAliasAllowingOffline.
         offlineMutations = MerchantAliasOfflineMutationWiring(

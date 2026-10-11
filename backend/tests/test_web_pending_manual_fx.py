@@ -66,7 +66,8 @@ def test_web_writer_recovers_one_pending_bill_then_reviews_canonical_home_amount
         assert "待汇率" in response.text
         assert "缺金额" not in response.text
         assert "金额 · 待补" not in response.text
-        assert "确认入账" not in response.text
+        confirmations = re.findall(r'<button\b([^>]*formaction="[^"]*/confirm"[^>]*)>', response.text)
+        assert all('name="review_latest"' in attributes for attributes in confirmations)
 
     saved = web_client.post(
         f"/web/expenses/{expense['id']}/save",

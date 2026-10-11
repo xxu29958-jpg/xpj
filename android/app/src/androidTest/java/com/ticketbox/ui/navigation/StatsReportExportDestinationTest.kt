@@ -65,7 +65,8 @@ class StatsReportExportDestinationTest {
         } }
         compose.runOnIdle { vm.refresh("2026-09", "") }
         compose.waitUntil(5_000) { vm.uiState.value.reportsOverview != null }
-        compose.onNodeWithTag("reports-export").performScrollTo().performClick()
+        compose.onNodeWithTag("reports-data").performScrollTo().performClick()
+        compose.onNodeWithTag("reports-export").performClick()
         compose.runOnIdle {
             assertEquals(true, vm.uiState.value.exportId != null)
             assertEquals(null, vm.uiState.value.exportFile)

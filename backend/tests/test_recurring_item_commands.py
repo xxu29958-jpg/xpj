@@ -174,7 +174,7 @@ def test_recurring_success_does_not_depend_on_post_commit_refresh(
 
     confirmed = client.post(
         "/api/recurring/from-candidate?timezone=UTC",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"home_currency_code": "CNY",
             "merchant": "云存储",
             "amount_cents": 8_800,

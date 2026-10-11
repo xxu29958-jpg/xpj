@@ -10,12 +10,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
 import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.ui.components.AppAdaptiveAmountRowDefaults
 import com.ticketbox.ui.components.AppAdaptiveAmountRowStyle
 import com.ticketbox.ui.components.AppAdaptiveContentActionRow
+import com.ticketbox.ui.components.AppAdaptiveContentActionStyle
 import com.ticketbox.ui.components.AppAdaptiveEditAmountRow
 import com.ticketbox.ui.components.AppListStateContent
 import com.ticketbox.ui.components.AppListStateSpec
@@ -29,21 +29,14 @@ import com.ticketbox.ui.screens.ReadableListBodyState
 import com.ticketbox.ui.screens.RecurringCandidateActions
 import com.ticketbox.ui.screens.RecurringListSectionModel
 
-internal data class RecurringCandidateSectionOptions(
-    val canModify: Boolean,
-    /** 主列表健康时候选失败才给重试；主列表已失败时全页只留一个下一步。 */
-    val itemsHealthy: Boolean,
-)
-
 /**
- * 候选只是辅助发现：整张卡视觉降权，CTA 是「采用建议」（outlined 次级按钮），
- * 不与主 registry 的创建路径抢焦点。采用走 confirmCandidate，保留 candidate provenance。
- * 失败不再亮红色错误卡：只留一行诚实说明，避免双重红色压过用户任务。
+ * 观察建议在独立分区核对，采用走 confirmCandidate，保留 candidate provenance。
+ * 使用次级动作与文字置信度，不把观察渲染成已生效计划；失败时在本区重试。
  */
 @Composable
 internal fun RecurringCandidatesCard(
     section: RecurringListSectionModel<RecurringCandidate>,
-    options: RecurringCandidateSectionOptions,
+    canModify: Boolean,
     onRetry: () -> Unit,
     actions: RecurringCandidateActions,
 ) {
@@ -66,7 +59,6 @@ internal fun RecurringCandidatesCard(
             )
             when (section.bodyState) {
                 ReadableListBodyState.LoadFailed -> RecurringCandidatesQuietFailure(
-                    showRetry = options.itemsHealthy,
                     onRetry = onRetry,
                 )
                 ReadableListBodyState.Loading,
@@ -78,10 +70,10 @@ internal fun RecurringCandidatesCard(
                         emptyText = stringResource(R.string.recurring_candidates_empty),
                     ),
                 ) {
-                    candidates.take(8).forEach { candidate ->
+                    candidates.forEach { candidate ->
                         RecurringCandidateRow(
                             candidate = candidate,
-                            canModify = options.canModify,
+                            canModify = canModify,
                             actions = actions,
                         )
                     }
@@ -93,25 +85,16 @@ internal fun RecurringCandidatesCard(
 
 @Composable
 private fun RecurringCandidatesQuietFailure(
-    showRetry: Boolean,
     onRetry: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
         Text(
-            text = stringResource(
-                if (showRetry) {
-                    R.string.recurring_candidates_load_failed_body
-                } else {
-                    R.string.recurring_candidates_unavailable_quiet
-                },
-            ),
+            text = stringResource(R.string.recurring_candidates_load_failed_body),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
         )
-        if (showRetry) {
-            TextButton(onClick = onRetry) {
-                Text(stringResource(R.string.common_retry))
-            }
+        TextButton(onClick = onRetry) {
+            Text(stringResource(R.string.common_retry))
         }
     }
 }
@@ -136,27 +119,26 @@ private fun RecurringCandidateRow(
                     text = candidate.merchant.ifBlank { merchantFallback },
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
                 )
                 Text(
                     text = stringResource(
                         R.string.recurring_candidate_meta_summary,
                         candidate.occurrenceCount,
-                        candidate.confidence,
+                        stringResource(if (candidate.confidence == "high") {
+                            R.string.recurring_candidate_stable
+                        } else {
+                            R.string.recurring_candidate_review
+                        }),
                     ),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall.tabularNum(),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }
     }
     if (canModify) {
         AppAdaptiveContentActionRow(
-            wideActionWeight = 0.46f,
-            verticalAlignment = Alignment.Top,
+            style = AppAdaptiveContentActionStyle(wideActionWeight = 0.46f, verticalAlignment = Alignment.Top),
             content = content,
             action = { actionModifier ->
                 AppSecondaryButton(

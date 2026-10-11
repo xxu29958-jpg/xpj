@@ -1,33 +1,33 @@
 {% extends "base.html" %}
 {% set product_body_domain = 'insights' %}
-{% block title %}仪表盘卡片 — 小票夹{% endblock %}
-{% block content %}
+{% set page_surface = 'tertiary' %}
+{% block title %}首页模块 — 小票夹{% endblock %}
+{% block page_header %}
+<a class="product-button product-button--quiet" href="/web/overview{{ q }}"><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-left"/></svg>返回总览</a>
 <header class="product-page-header">
   <div class="product-page-heading">
-    <span class="product-eyebrow">洞察 · 模块设置</span>
-    <h1 class="page-title">仪表盘卡片</h1>
-    {# 218-D S4-R2: /web 根已 303→/web/pending, 卡片归属页是 /web/overview;
-       返回链与说明文案同步, 不再把用户送进收件域。 #}
-    <p class="product-page-summary">调整当前账本在总览页的卡片顺序和可见状态。拖动卡片可以排序，保存后生效。</p>
-  </div>
-  <div class="product-page-actions">
-    <a class="product-button" href="/web/overview{{ q }}">返回总览</a>
+    <h1 class="page-title">首页按你的习惯来</h1>
+    <p class="product-page-summary">选择显示什么，也能调整顺序。保存后用于当前账本的总览。</p>
   </div>
 </header>
+{% endblock %}
+{% block content %}
+{% set purposes = {
+  'monthly_spend': '已确认花费与退回后的净支出', 'budget': '当月额度、已用和剩余',
+  'reports': '分类构成与金额', 'goals': '储蓄与消费目标的进展',
+  'recurring': '已生效与暂停的固定安排', 'pending': '所有日期中还待整理的小票',
+  'recent_uploads': '最近加入的账单', 'backup_status': '最近一份备份的状态',
+  'device_status': '当前账本的连接设备'
+} %}
 
 {% if message %}
 <div class="product-feedback product-feedback--success">{{ message }}</div>
 {% endif %}
 
-<section class="product-panel product-panel--padded">
+<section aria-label="首页模块">
   <form method="post" action="/web/dashboard/cards/save" class="layout-editor" id="dashboard-cards-form">
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
     {{ csrf_field|safe }}
-    <div class="layout-editor-head">
-      <span>卡片</span>
-      <span>显示</span>
-      <span>排序</span>
-    </div>
     <div class="layout-editor-list" data-drag-reorder id="dashboard-cards-list">
     {% for item in dashboard_cards %}
       <div class="layout-editor-row"
@@ -35,22 +35,21 @@
            data-reorder-key="{{ item.key }}"
            draggable="{{ 'true' if can_write else 'false' }}">
         <input type="hidden" name="card_key" value="{{ item.key }}">
-        <div class="layout-editor-title">
-          <span class="layout-drag-handle" aria-hidden="true">⋮⋮</span>
-          <strong>{{ item.title }}</strong>
-        </div>
-        <label class="product-check">
+        <label class="product-check layout-editor-title">
           <input
+            class="checkbox"
             type="checkbox"
             name="visible_key"
             value="{{ item.key }}"
             {% if item.visible %}checked{% endif %}
             {% if not can_write %}disabled{% endif %}
           >
-          <span>显示</span>
+          <span class="product-entry-copy"><strong>{{ item.title }}</strong><span>{{ purposes[item.key] }}</span></span>
         </label>
-        <label class="layout-position">
-          <span class="text-meta">顺序</span>
+        <details class="layout-position">
+          <summary class="product-button product-button--quiet product-button--small">顺序 <span data-card-order>{{ item.position + 1 }}</span></summary>
+          <label class="product-field">
+          <span class="text-meta">排序值，从 0 开始</span>
           <input
             class="product-input"
             type="number"
@@ -61,14 +60,15 @@
             {% if not can_write %}readonly{% endif %}
             data-card-position
           >
-        </label>
+          </label>
+        </details>
       </div>
     {% endfor %}
     </div>
 
     {% if can_write %}
-    <div class="cluster">
-      <button type="submit" class="product-button product-button--primary">保存卡片</button>
+    <div class="product-form-actions">
+      <button type="submit" class="product-button product-button--primary">保存首页布局</button>
     </div>
     {% else %}
     <p class="text-meta">只读角色可以查看当前布局，但不能保存修改。</p>

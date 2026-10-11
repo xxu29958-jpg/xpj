@@ -10,19 +10,24 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
-from app.models import RecurringItem
+from app.models import ApiIdempotencyKey, RecurringItem
 from app.money_contract import (
     MoneySign,
     ensure_money_minor,
     projection_sum_to_int,
 )
-from app.schemas import RecurringCandidateConfirmRequest
+from app.schemas import RecurringCandidateConfirmRequest, RecurringItemResponse
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.currency_common import normalize_currency_code
+from app.services.idempotency import claim_idempotency_key, fingerprint_request
 from app.services.insights_service import recurring_candidates
 from app.services.merchant_service import normalize_merchant
 from app.services.recurring_history_service import record_recurring_item_revision
-from app.services.recurring_item_command_service import raise_recurring_item_conflict
+from app.services.recurring_item_command_service import (
+    publish_recurring_receipt,
+    raise_recurring_item_conflict,
+    replay_recurring_receipt,
+)
 from app.services.recurring_merchant_capacity import ensure_recurring_merchant_storage_shape
 from app.services.time_service import ensure_utc, now_utc, safe_zone
 
@@ -39,42 +44,7 @@ class _RecurringCandidateMatch:
     candidate: dict
 
 
-def _idempotent_formal_match(
-    db: Session,
-    *,
-    tenant_id: str,
-    merchant_key: str,
-    frequency: str,
-    amount_cents: int,
-    home_currency_code: str,
-) -> RecurringItem | None:
-    """已 formal (非 archived) 且金额一致的既有项——幂等返回的命中条件。
-
-    复审 agent-60/R5: 金额匹配是守卫的一部分, 两处 (前置幂等/并发兜底) 共用,
-    防止漂移。
-    """
-    formal = _existing_item(db, tenant_id=tenant_id, merchant_key=merchant_key, frequency=frequency)
-    if formal is not None and formal.status == "archived":
-        raise AppError(
-            "recurring_item_archived",
-            status_code=409,
-            details={"public_id": formal.public_id, "status": formal.status},
-        )
-    if formal is not None and formal.source != "candidate":
-        raise_recurring_item_conflict(formal)
-    if (
-        formal is not None
-        and formal.status != "archived"
-        and formal.archived_at is None
-        and formal.home_currency_code == home_currency_code
-        and projection_sum_to_int(
-            formal.last_amount_cents,
-            label="recurring_candidate.formal_last_amount",
-        )
-        == amount_cents
-    ):
-        return formal
-    return None
+CONFIRM_RECURRING_CANDIDATE_OPERATION = "confirm_recurring_candidate"
 
 
 def confirm_recurring_candidate(
@@ -82,77 +52,36 @@ def confirm_recurring_candidate(
     *,
     tenant_id: str,
     payload: RecurringCandidateConfirmRequest,
+    idempotency_key: str | None = None,
     timezone_name: str | None = None,
     actor_account_id: int | None = None,
-) -> RecurringItem:
-    # PR #253 R4: 候选装配已过滤 active/paused formal — 确认成功后候选自然消失,
-    # 重试同一确认时走既有幂等返回 (不 404/409)。
-    # 复审 agent-60: 幂等匹配必须含金额——已 formal 商家以不同金额重试时
-    # 继续走候选匹配原路径 (恢复 404 守卫), 不静默返回既有项。
+) -> RecurringItemResponse:
+    """Adopt a current observation once, retaining the first accepted definition."""
+    if not idempotency_key:
+        raise AppError("idempotency_key_required", status_code=422)
     merchant_key, frequency, amount_cents = _validated_candidate_intent(payload)
     home = normalize_currency_code(payload.home_currency_code)
-    if merchant_key:
-        formal = _idempotent_formal_match(
-            db,
-            tenant_id=tenant_id,
-            merchant_key=merchant_key,
-            frequency=frequency,
-            amount_cents=amount_cents,
-            home_currency_code=home,
-        )
-        if formal is not None:
-            return formal
-    try:
-        match = _require_recurring_candidate_match(
-            db,
-            tenant_id=tenant_id,
-            payload=payload,
-            timezone_name=timezone_name,
-        )
-    except AppError as exc:
-        # 并发兜底 (R5): 双请求确认同一 candidate, 本请求的前置检查读到对方提交前
-        # 快照, candidate 查找读到对方提交后 (已被 claimed 过滤) — 按
-        # (merchant_key, frequency, amount_cents) 复查 formal, 命中即幂等返回,
-        # 未命中才是真的 not_found。
-        if exc.error != "recurring_candidate_not_found":
-            raise
-        if not merchant_key:
-            raise
-        formal = _idempotent_formal_match(
-            db,
-            tenant_id=tenant_id,
-            merchant_key=merchant_key,
-            frequency=frequency,
-            amount_cents=amount_cents,
-            home_currency_code=home,
-        )
-        if formal is not None:
-            return formal
-        existing = _existing_item(
-            db,
-            tenant_id=tenant_id,
-            merchant_key=merchant_key,
-            frequency=frequency,
-        )
-        if existing is not None:
-            raise_recurring_item_conflict(existing)
-        raise
-    existing = _existing_item(
-        db,
-        tenant_id=tenant_id,
-        merchant_key=match.merchant_key,
-        frequency=match.frequency,
-    )
+    body = {"merchant": payload.merchant, "frequency": frequency, "amount_cents": amount_cents,
+        "home_currency_code": home, "timezone": timezone_name}
+    if "next_expected_date" in payload.model_fields_set:
+        body["next_expected_date"] = payload.next_expected_date.isoformat() if payload.next_expected_date else None
+    outcome = claim_idempotency_key(db, tenant_id=tenant_id, idempotency_key=idempotency_key,
+        operation=CONFIRM_RECURRING_CANDIDATE_OPERATION, target_type="recurring_item",
+        request_fingerprint=fingerprint_request(operation=CONFIRM_RECURRING_CANDIDATE_OPERATION,
+            target_id=None, body=body, expected_row_version=None))
+    replayed = replay_recurring_receipt(outcome)
+    if replayed is not None:
+        return replayed
+    existing = _existing_item(db, tenant_id=tenant_id, merchant_key=merchant_key, frequency=frequency)
     if existing is not None:
+        if existing.status == "archived":
+            raise AppError("recurring_item_archived", status_code=409,
+                details={"public_id": existing.public_id, "status": existing.status})
         raise_recurring_item_conflict(existing)
-    return _create_recurring_item_from_candidate(
-        db,
-        tenant_id=tenant_id,
-        match=match,
-        payload=payload,
-        timezone_name=timezone_name,
-        actor_account_id=actor_account_id,
-    )
+    match = _require_recurring_candidate_match(db, tenant_id=tenant_id, payload=payload,
+        timezone_name=timezone_name)
+    return _create_recurring_item_from_candidate(db, tenant_id=tenant_id, match=match, payload=payload,
+        claim=outcome.row, timezone_name=timezone_name, actor_account_id=actor_account_id)
 
 
 def _validated_candidate_intent(payload: RecurringCandidateConfirmRequest) -> tuple[str, str, int]:
@@ -212,9 +141,10 @@ def _create_recurring_item_from_candidate(
     tenant_id: str,
     match: _RecurringCandidateMatch,
     payload: RecurringCandidateConfirmRequest,
+    claim: ApiIdempotencyKey,
     timezone_name: str | None,
     actor_account_id: int | None = None,
-) -> RecurringItem:
+) -> RecurringItemResponse:
     # Observation provenance belongs to the server-side candidate scan. The
     # request still carries legacy fields for wire compatibility, but a Web or
     # Android consumer must not be able to manufacture a larger occurrence
@@ -246,33 +176,17 @@ def _create_recurring_item_from_candidate(
         created_at=now,
         updated_at=now,
     )
-    db.add(item)
     try:
-        db.flush()
-        record_recurring_item_revision(db, item, change_kind="create", actor_account_id=actor_account_id)
-        db.commit()
+        with db.begin_nested():
+            db.add(item)
+            db.flush()
     except IntegrityError:
-        db.rollback()
-        replayed = _idempotent_formal_match(
-            db,
-            tenant_id=tenant_id,
-            merchant_key=match.merchant_key,
-            frequency=match.frequency,
-            amount_cents=match.amount_cents,
-            home_currency_code=match.home_currency_code,
-        )
-        if replayed is not None:
-            return replayed
-        existing_after_race = _existing_item(
-            db,
-            tenant_id=tenant_id,
-            merchant_key=match.merchant_key,
-            frequency=match.frequency,
-        )
-        if existing_after_race is not None:
-            raise_recurring_item_conflict(existing_after_race)
+        raced = _existing_item(db, tenant_id=tenant_id, merchant_key=match.merchant_key, frequency=match.frequency)
+        if raced is not None:
+            raise_recurring_item_conflict(raced)
         raise
-    return item
+    record_recurring_item_revision(db, item, change_kind="create", actor_account_id=actor_account_id)
+    return publish_recurring_receipt(db, claim, item)
 
 
 def _clean_frequency(value: str | None) -> str:
@@ -359,4 +273,6 @@ def _candidate_next_expected_date(
     last_seen_at: datetime | None,
     timezone_name: str | None,
 ) -> date | None:
-    return payload.next_expected_date or _next_expected_date(last_seen_at, timezone_name)
+    if "next_expected_date" in payload.model_fields_set:
+        return payload.next_expected_date
+    return _next_expected_date(last_seen_at, timezone_name)

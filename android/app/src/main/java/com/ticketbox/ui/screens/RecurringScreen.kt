@@ -1,7 +1,6 @@
 package com.ticketbox.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.material.icons.Icons
@@ -18,8 +17,11 @@ import com.ticketbox.data.repository.RecurringItemDraft
 import com.ticketbox.data.repository.RecurringItemPatch
 import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.domain.model.RecurringItem
-import com.ticketbox.ui.components.AppFilterChip
+import com.ticketbox.ui.components.AppSegmentedControl
+import com.ticketbox.ui.components.AppSegmentedItem
 import com.ticketbox.ui.components.AppPageRole
+import com.ticketbox.ui.components.AppButtonIcons
+import com.ticketbox.ui.components.AppFloatingActionBar
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppSecondaryPageChrome
 import com.ticketbox.ui.components.AppSecondaryPageSlots
@@ -30,7 +32,6 @@ import com.ticketbox.ui.components.StatusPill
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.LocalStateTokens
-import com.ticketbox.ui.screens.recurring.RecurringCandidateSectionOptions
 import com.ticketbox.ui.screens.recurring.RecurringCandidatesCard
 import com.ticketbox.ui.screens.recurring.RecurringConflictAction
 import com.ticketbox.ui.screens.recurring.RecurringConflictBanner
@@ -54,10 +55,8 @@ import com.ticketbox.viewmodel.RecurringListLoadState
 import com.ticketbox.viewmodel.RecurringUiState
 
 /**
- * 固定支出主页。信息层级（A3 合同）：计划总额 hero → 主 CTA「添加固定支出」→
- * 待同步（不进总额，WAITING/CONFLICT/FAILED 三态诚实呈现）→ registry 列表
- * （名称/计划金额/下次日期/状态）→ 候选建议（辅助，降权）。viewer 不见表单、
- * 不见失效 CTA，只在页头看到只读标记。撞单给可行动出口，不只红色错误。
+ * 正式计划与观察建议分区阅读；原待同步在两个分区均可见，不计入计划总额。
+ * 状态筛选与原编辑任务独立保留，viewer 继续浏览但没有写入口。
  */
 @Composable
 fun RecurringScreen(
@@ -66,6 +65,7 @@ fun RecurringScreen(
 ) {
     val currencyDisplay = LocalCurrencyDisplay.current
     var selectedTab by rememberSaveable { mutableStateOf(recurringDefaultTab) }
+    var showCandidates by rememberSaveable { mutableStateOf(false) }
     val editorHost = rememberRecurringEditorHostState(
         editorEpoch = state.editorEpoch,
         runtimeId = state.editorRuntimeId,
@@ -115,16 +115,49 @@ fun RecurringScreen(
                         tone = LocalStateTokens.current.warn,
                     )
                 }
+                AppSegmentedControl(
+                    options = listOf(
+                        AppSegmentedItem(false, stringResource(R.string.recurring_section_formal)),
+                        AppSegmentedItem(true, stringResource(R.string.recurring_section_suggestions)),
+                    ),
+                    selectedValue = showCandidates,
+                    onValueChange = { showCandidates = it },
+                )
             },
+            bottomBar = if (state.canModify && !showCandidates && editorHost.editor == null) {
+                {
+                    AppFloatingActionBar {
+                        AppPrimaryButton(
+                            modifier = Modifier.fillMaxWidth(),
+                            text = stringResource(R.string.recurring_add_cta),
+                            icons = AppButtonIcons(leading = Icons.Filled.Add),
+                            enabled = !state.manualSaveInFlight,
+                            onClick = callbacks.onCreate,
+                        )
+                    }
+                }
+            } else null,
         ),
     ) {
-        recurringOverviewSection(state, derived, callbacks)
-        recurringRegistrySection(
-            derived,
-            actions.copy(items = actions.items.copy(onOpenHistory = actions.items.onOpenHistory.takeIf { editorHost.editor == null })),
-            callbacks,
-            editEnabled = !state.manualSaveInFlight,
-        )
+        recurringOverviewSection(state, derived, callbacks, showCandidates, actions.onOpenSyncStatus)
+        if (showCandidates) {
+            item {
+                RecurringCandidatesCard(
+                    section = derived.candidateSection,
+                    canModify = derived.canModify,
+                    onRetry = actions.onRefresh,
+                    actions = actions.candidates,
+                )
+            }
+        } else {
+            item { RecurringHeroSection(model = derived.hero) }
+            recurringRegistrySection(
+                derived,
+                actions.copy(items = actions.items.copy(onOpenHistory = actions.items.onOpenHistory.takeIf { editorHost.editor == null })),
+                callbacks,
+                editEnabled = !state.manualSaveInFlight,
+            )
+        }
     }
 
     RecurringEditorSheetHost(
@@ -149,6 +182,7 @@ data class RecurringScreenActions(
     val items: RecurringItemActions,
     val candidates: RecurringCandidateActions,
     val onBack: (() -> Unit)? = null,
+    val onOpenSyncStatus: (() -> Unit)? = null,
 )
 
 data class RecurringItemActions(
@@ -177,12 +211,15 @@ private fun LazyListScope.recurringOverviewSection(
     state: RecurringUiState,
     derived: RecurringDerivedModel,
     callbacks: RecurringScreenCallbacks,
+    showCandidates: Boolean,
+    onOpenSyncStatus: (() -> Unit)?,
 ) {
-    item { RecurringReadSource(state.itemsFetchedAt, state.itemsFromCache, state.loading) }
+    if (!showCandidates) {
+        item { RecurringReadSource(state.itemsFetchedAt, state.itemsFromCache, state.loading) }
+    }
+    val visibleBody = if (showCandidates) derived.candidateSection.bodyState else derived.itemSection.bodyState
     state.message?.takeIf {
-        state.duplicateConflict == null &&
-            derived.itemSection.bodyState != ReadableListBodyState.LoadFailed &&
-            derived.candidateSection.bodyState != ReadableListBodyState.LoadFailed
+        state.duplicateConflict == null && visibleBody != ReadableListBodyState.LoadFailed
     }?.let { message ->
         item { AppStatusBanner(message = message, tone = state.messageTone) }
     }
@@ -195,25 +232,12 @@ private fun LazyListScope.recurringOverviewSection(
             item { RecurringConflictBanner(model = conflict, onAction = callbacks.onConflictAction) }
         }
     }
-    item {
-        RecurringHeroSection(model = derived.hero)
-    }
-    if (state.canModify) {
-        item {
-            AppPrimaryButton(
-                modifier = Modifier.fillMaxWidth(),
-                text = stringResource(R.string.recurring_add_cta),
-                icon = Icons.Filled.Add,
-                enabled = !state.manualSaveInFlight,
-                onClick = callbacks.onCreate,
-            )
-        }
-    }
     if (state.pendingIntents.isNotEmpty()) {
         item {
             RecurringPendingSection(
                 intents = state.pendingIntents,
                 items = state.items,
+                onOpenSyncStatus = onOpenSyncStatus,
             )
         }
     }
@@ -245,17 +269,6 @@ private fun LazyListScope.recurringRegistrySection(
             actions = actions.items,
         )
     }
-    item {
-        RecurringCandidatesCard(
-            section = derived.candidateSection,
-            options = RecurringCandidateSectionOptions(
-                canModify = derived.canModify,
-                itemsHealthy = derived.itemSection.bodyState != ReadableListBodyState.LoadFailed,
-            ),
-            onRetry = actions.onRefresh,
-            actions = actions.candidates,
-        )
-    }
 }
 
 @Composable
@@ -264,23 +277,24 @@ private fun RecurringTabRow(
     counts: RecurringTabCounts,
     onSelect: (RecurringTab) -> Unit,
 ) {
-    Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        RecurringTab.entries.forEach { tab ->
+    AppSegmentedControl(
+        options = RecurringTab.entries.map { tab ->
             val count = when (tab) {
                 RecurringTab.Upcoming -> counts.upcoming
                 RecurringTab.Active -> counts.active
                 RecurringTab.Paused -> counts.paused
                 RecurringTab.Archived -> counts.archived
             }
-            AppFilterChip(
-                selected = selected == tab,
-                onClick = { onSelect(tab) },
+            AppSegmentedItem(
+                value = tab,
                 label = if (counts.factual) {
                     stringResource(R.string.recurring_tab_label_count, stringResource(tab.labelRes), count)
                 } else {
                     stringResource(tab.labelRes)
                 },
             )
-        }
-    }
+        },
+        selectedValue = selected,
+        onValueChange = onSelect,
+    )
 }

@@ -30,6 +30,51 @@ import kotlin.test.assertTrue
 internal class PendingViewModelReviewActionsTest : PendingViewModelReviewTestBase() {
 
     @Test
+    fun quickCategoryCannotReplaceAPeerEditAfterTheListRefreshes() = review {
+        val original = expense(id = 1L, category = "未分类")
+        var current = original
+        val fake = FakeReviewActions(pending = listOf(original))
+        fake.expenseResponder = { _, _ -> Result.success(current) }
+        fake.saveResponder = { _, reviewed, draft ->
+            if (reviewed.rowVersion != current.rowVersion) {
+                Result.failure(IllegalStateException("账单已被修改，请核对原填写"))
+            } else {
+                current = current.copy(category = requireNotNull(draft.category), rowVersion = current.rowVersion + 1)
+                Result.success(current)
+            }
+        }
+        val vm = pendingViewModel(fake)
+        advanceUntilIdle()
+        vm.openQuickCategory(original)
+        vm.changeReviewInput(PendingReviewValues(custom = "购物"))
+        current = original.copy(category = "医疗", rowVersion = 2)
+        fake.pending = listOf(current)
+        vm.refresh()
+        advanceUntilIdle()
+        vm.saveQuickCategory((vm.uiState.value.activeSheet as PendingSheet.QuickCategory).expense, "购物")
+        advanceUntilIdle()
+
+        assertEquals("医疗", current.category)
+        assertEquals(2L, current.rowVersion)
+        assertEquals(original.amountCents, current.amountCents)
+        assertEquals(PendingSheet.QuickCategory(original), vm.uiState.value.activeSheet)
+        assertEquals(UiText.raw("账单已被修改，请核对原填写"), vm.uiState.value.message)
+        val binding = fake.uploadIntents.currentBinding
+        val originalKey = fake.originalInputs.loadPendingReviewInputs(binding).getOrThrow().single().originalKey
+        vm.reviewCurrentInputBasis()
+        advanceUntilIdle()
+        val reviewed = vm.uiState.value.activeSheet as PendingSheet.QuickCategory
+        assertEquals(2L, reviewed.expense.rowVersion)
+        assertEquals("购物", vm.uiState.value.reviewInputValues.custom)
+        assertEquals("医疗", current.category, "Reading the new basis must not submit the original input")
+        assertTrue(fake.originalInputs.loadPendingReviewInputs(binding).getOrThrow().single().originalKey != originalKey)
+        vm.saveQuickCategory(reviewed.expense, "购物")
+        advanceUntilIdle()
+        assertEquals("购物", current.category)
+        assertEquals(3L, current.rowVersion)
+    }
+
+    @Test
     fun saveQuickCategorySendsTrimmedDraftAndUpdatesItem() = review {
         val target = expense(id = 1L, category = "未分类")
         val fake = FakeReviewActions(pending = listOf(target))
@@ -43,7 +88,9 @@ internal class PendingViewModelReviewActionsTest : PendingViewModelReviewTestBas
         val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
-        vm.saveQuickCategory(target.id, "  交通  ")
+        vm.openQuickCategory(target)
+        vm.changeReviewInput(PendingReviewValues(custom = "  交通  "))
+        vm.saveQuickCategory(target, "  交通  ")
         advanceUntilIdle()
 
         val state = vm.uiState.value
@@ -57,18 +104,69 @@ internal class PendingViewModelReviewActionsTest : PendingViewModelReviewTestBas
     @Test
     fun saveQuickCategoryShowsErrorOnFailure() = review {
         val target = expense(id = 2L, category = "未分类")
-        val fake = FakeReviewActions(pending = listOf(target))
+        val next = expense(id = 3L, merchant = null)
+        val fake = FakeReviewActions(pending = listOf(target, next))
         fake.updateResponder = { _, _ -> Result.failure(RuntimeException("网络忙")) }
         val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
-        vm.saveQuickCategory(target.id, "餐饮")
+        vm.openQuickCategory(target)
+        fake.inputWriteFailure = RuntimeException("磁盘暂不可写")
+        vm.changeReviewInput(PendingReviewValues(value = "餐饮"))
+        advanceUntilIdle()
+        vm.closeSheet()
+        advanceUntilIdle()
+        assertEquals(PendingSheet.QuickCategory(target), vm.uiState.value.activeSheet)
+        vm.openQuickMerchant(next)
+        advanceUntilIdle()
+        assertEquals(PendingSheet.QuickCategory(target), vm.uiState.value.activeSheet)
+        assertEquals("餐饮", vm.uiState.value.reviewInputValues.value)
+        assertEquals(UiText.raw("磁盘暂不可写"), vm.uiState.value.reviewInputError)
+        assertTrue(fake.admissions.isEmpty())
+        fake.inputWriteFailure = null
+        vm.retryReviewInput()
+        advanceUntilIdle()
+        vm.saveQuickCategory(target, "餐饮")
         advanceUntilIdle()
 
         val state = vm.uiState.value
-        assertEquals("未分类", state.items.single().category)
+        assertEquals("未分类", state.items.first { it.id == target.id }.category)
         assertEquals(UiText.raw("网络忙"), state.message)
         assertTrue(state.actionInProgressIds.isEmpty())
+        vm.closeSheet()
+        advanceUntilIdle()
+        vm.openQuickCategory(target)
+        advanceUntilIdle()
+        assertEquals("餐饮", vm.uiState.value.reviewInputValues.value)
+    }
+
+    @Test
+    fun originalListReadFailureCanBeRetriedWithoutChangingTheSavedTask() = review {
+        val target = expense(id = 3L, merchant = null)
+        val fake = FakeReviewActions(pending = listOf(target))
+        val first = pendingViewModel(fake)
+        advanceUntilIdle()
+        first.openQuickMerchant(target)
+        first.changeReviewInput(PendingReviewValues(value = "  便利店  "))
+        first.closeSheet()
+        advanceUntilIdle()
+        val originalKey = first.uiState.value.reviewTasks.single().original.originalKey
+        clearPendingViewModels()
+
+        fake.inputReadFailure = IllegalStateException("原稿暂时无法读取")
+        val restored = pendingViewModel(fake)
+        advanceUntilIdle()
+        assertEquals(UiText.raw("原稿暂时无法读取"), restored.uiState.value.reviewInputError)
+        fake.inputReadFailure = null
+        restored.retryReviewInput()
+        advanceUntilIdle()
+        assertNull(restored.uiState.value.reviewInputError)
+        val task = restored.uiState.value.reviewTasks.single()
+        assertEquals(originalKey, task.original.originalKey)
+        restored.resumeReviewInput(task)
+        advanceUntilIdle()
+        assertEquals("  便利店  ", restored.uiState.value.reviewInputValues.value)
+        assertTrue(fake.admissions.isEmpty())
     }
 
     @Test
@@ -78,7 +176,7 @@ internal class PendingViewModelReviewActionsTest : PendingViewModelReviewTestBas
         val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
-        vm.saveQuickMerchant(target.id, "   ")
+        vm.saveQuickMerchant(target, "   ")
         advanceUntilIdle()
 
         assertEquals(0, fake.updateCalls)
@@ -96,7 +194,9 @@ internal class PendingViewModelReviewActionsTest : PendingViewModelReviewTestBas
         val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
-        vm.saveQuickMerchant(target.id, "  星巴克 ")
+        vm.openQuickMerchant(target)
+        vm.changeReviewInput(PendingReviewValues(value = "  星巴克 "))
+        vm.saveQuickMerchant(target, "  星巴克 ")
         advanceUntilIdle()
 
         assertEquals("星巴克", vm.uiState.value.items.single().merchant)
@@ -110,12 +210,12 @@ internal class PendingViewModelReviewActionsTest : PendingViewModelReviewTestBas
         val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
-        vm.saveAmountDraft(target.id, 0L)
+        vm.saveAmountDraft(target, 0L)
         advanceUntilIdle()
         assertEquals(0, fake.updateCalls)
         assertEquals(UiText.res(R.string.pending_review_amount_not_positive), vm.uiState.value.message)
 
-        vm.saveAmountDraft(target.id, -100L)
+        vm.saveAmountDraft(target, -100L)
         advanceUntilIdle()
         assertEquals(0, fake.updateCalls)
     }
@@ -133,7 +233,9 @@ internal class PendingViewModelReviewActionsTest : PendingViewModelReviewTestBas
         val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
-        vm.saveAmountDraft(target.id, 1234L)
+        vm.openMissingAmount(target)
+        vm.changeReviewInput(PendingReviewValues(value = "12.34"))
+        vm.saveAmountDraft(target, 1234L)
         advanceUntilIdle()
 
         assertEquals(1234L, vm.uiState.value.items.single().amountCents)
@@ -161,7 +263,9 @@ internal class PendingViewModelReviewActionsTest : PendingViewModelReviewTestBas
         val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
-        vm.saveAmountDraft(target.id, 12345L)
+        vm.openMissingAmount(target)
+        vm.changeReviewInput(PendingReviewValues(value = "123.45"))
+        vm.saveAmountDraft(target, 12345L)
         advanceUntilIdle()
 
         assertEquals(12345L, vm.uiState.value.items.single().originalAmountMinor)
@@ -180,7 +284,9 @@ internal class PendingViewModelReviewActionsTest : PendingViewModelReviewTestBas
         }
         val vm = pendingViewModel(fake)
         advanceUntilIdle()
-        vm.saveAmountAndConfirm(target.id, 4200L)
+        vm.openMissingAmount(target)
+        vm.changeReviewInput(PendingReviewValues(value = "42.00"))
+        vm.saveAmountAndConfirm(target, 4200L)
         advanceUntilIdle()
         assertEquals(1, fake.saveAndConfirmCalls)
         assertEquals(0, fake.updateCalls)
@@ -208,12 +314,12 @@ internal class PendingViewModelReviewActionsTest : PendingViewModelReviewTestBas
         val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
-        vm.saveAmountDraft(target.id, 1200L)
+        vm.saveAmountDraft(target, 1200L)
         advanceUntilIdle()
         assertEquals(0, fake.updateCalls)
         assertEquals(UiText.res(R.string.expense_edit_currency_unsupported), vm.uiState.value.message)
 
-        vm.saveAmountAndConfirm(target.id, 1200L)
+        vm.saveAmountAndConfirm(target, 1200L)
         advanceUntilIdle()
         assertEquals(0, fake.updateCalls)
         assertEquals(0, fake.confirmCalls)
@@ -227,7 +333,9 @@ internal class PendingViewModelReviewActionsTest : PendingViewModelReviewTestBas
         val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
-        vm.saveAmountAndConfirm(target.id, 5000L)
+        vm.openMissingAmount(target)
+        vm.changeReviewInput(PendingReviewValues(value = "50.00"))
+        vm.saveAmountAndConfirm(target, 5000L)
         advanceUntilIdle()
 
         assertEquals(1, vm.uiState.value.items.size)
@@ -242,14 +350,16 @@ internal class PendingViewModelReviewActionsTest : PendingViewModelReviewTestBas
         fake.updateResponder = { _, draft -> Result.success(target.copy(category = requireNotNull(draft.category))) }
         val vm = pendingViewModel(fake)
         advanceUntilIdle()
-        vm.saveQuickCategory(target.id, "交通")
+        vm.openQuickCategory(target)
+        vm.changeReviewInput(PendingReviewValues(value = "交通"))
+        vm.saveQuickCategory(target, "交通")
         runCurrent()
         val rowId = fake.commands.value.single().row.id
         fake.publishCommand(target.id, PendingMutationType.PatchExpense, PendingMutationStatus.Failed)
         runCurrent()
         assertEquals(setOf(target.id), vm.uiState.value.actionInProgressIds)
         assertEquals(setOf(rowId), vm.commandRowsByExpense[target.id])
-        vm.saveQuickCategory(target.id, "餐饮")
+        vm.saveQuickCategory(target, "餐饮")
         runCurrent()
         assertEquals(1, fake.updateCalls, "Failed occupancy must block a new save")
         fake.dropCommands(target.id)
@@ -257,7 +367,9 @@ internal class PendingViewModelReviewActionsTest : PendingViewModelReviewTestBas
         assertFalse(target.id in vm.uiState.value.actionInProgressIds)
         assertNull(vm.commandRowsByExpense[target.id])
         assertEquals(UiText.res(R.string.expense_command_needs_attention), vm.uiState.value.message)
-        vm.saveQuickCategory(target.id, "餐饮")
+        vm.openQuickCategory(target)
+        vm.changeReviewInput(PendingReviewValues(value = "餐饮"))
+        vm.saveQuickCategory(target, "餐饮")
         runCurrent()
         assertEquals(2, fake.updateCalls)
         assertEquals(setOf(target.id), vm.uiState.value.actionInProgressIds)
@@ -273,7 +385,9 @@ internal class PendingViewModelReviewActionsTest : PendingViewModelReviewTestBas
         }
         val vm = pendingViewModel(fake)
         advanceUntilIdle()
-        vm.saveAmountAndConfirm(target.id, 4200L)
+        vm.openMissingAmount(target)
+        vm.changeReviewInput(PendingReviewValues(value = "42.00"))
+        vm.saveAmountAndConfirm(target, 4200L)
         runCurrent()
         assertEquals(2, fake.admissions.single().second.rowIds.size)
         fake.publishCommand(target.id, PendingMutationType.PatchExpense, PendingMutationStatus.Done)
@@ -282,7 +396,7 @@ internal class PendingViewModelReviewActionsTest : PendingViewModelReviewTestBas
         runCurrent()
         assertEquals(setOf(target.id), vm.uiState.value.actionInProgressIds)
         assertEquals(2, vm.commandRowsByExpense[target.id]?.size)
-        vm.saveAmountAndConfirm(target.id, 4300L)
+        vm.saveAmountAndConfirm(target, 4300L)
         runCurrent()
         assertEquals(1, fake.saveAndConfirmCalls, "Mixed occupancy must block a new save")
         fake.dropCommands(target.id, PendingMutationType.ConfirmExpense)
@@ -293,7 +407,9 @@ internal class PendingViewModelReviewActionsTest : PendingViewModelReviewTestBas
             vm.uiState.value.message != UiText.res(R.string.expense_command_completed),
             "Dropping Confirm cannot report the original SaveAndConfirm as finished",
         )
-        vm.saveAmountAndConfirm(target.id, 4300L)
+        vm.openMissingAmount(target)
+        vm.changeReviewInput(PendingReviewValues(value = "43.00"))
+        vm.saveAmountAndConfirm(target, 4300L)
         runCurrent()
         assertEquals(2, fake.saveAndConfirmCalls)
         assertEquals(setOf(target.id), vm.uiState.value.actionInProgressIds)

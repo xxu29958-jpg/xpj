@@ -1,6 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- 待确认页用户可见中文。 -->
 <resources>
+    <string name="pending_review_input_loading">正在读取原稿…</string>
+    <string name="pending_review_input_no_longer_pending">账单已不在待确认状态，原输入仍保留。请打开账单详情核对。</string>
+    <string name="pending_review_input_basis_loaded">已载入当前账单，请核对保留的输入后再保存。</string>
+    <string name="pending_review_input_review_current">核对当前账单</string>
+    <string name="pending_review_input_resume">继续%1$s · %2$s</string>
+    <string name="pending_review_input_summary">%1$s · %2$s · %3$s</string>
+    <string name="pending_review_current_category">原稿依据中的分类：%1$s</string>
     <!-- PendingScreen：列表行左右滑动动作标签 -->
     <string name="pending_swipe_confirm_label">确认入账</string>
     <string name="pending_swipe_ignore_label">删除</string>
@@ -11,8 +18,6 @@
     <string name="pending_celebration_check_desc">全部完成</string>
 
     <!-- 上传进度卡片 -->
-    <string name="pending_upload_progress_title">正在处理原上传</string>
-    <string name="pending_upload_progress_body">截图会先保存在本机，上传完成后自动刷新待确认记录，不会直接入账。</string>
 
     <!-- 空态：内容面板 -->
     <string name="pending_empty_card_title_loading">正在整理待确认账单</string>
@@ -131,14 +136,36 @@
     <string name="pending_upload_stop_action">停止余下上传</string>
     <string name="pending_msg_upload_stopped">已停止余下上传，已上传的小票仍在待确认中。</string>
     <string name="pending_upload_retry_action">重试上传</string>
+    <string name="pending_capture_title">收一张小票</string>
+    <string name="pending_capture_description">选好图片，就交给小票夹。</string>
+    <string name="pending_capture_processing">小票正在整理</string>
+    <string name="pending_capture_all_received">图片已安全收到</string>
+    <string name="pending_capture_preview">图片预览</string>
+    <string name="pending_capture_continue">可以先返回，原任务会留在收件箱。</string>
+    <string name="pending_capture_pick">选择小票图片</string>
+    <string name="pending_capture_selected">本次选择 · %1$d 张</string>
+    <string name="pending_capture_image">第 %1$d 张图片</string>
+    <string name="pending_capture_remove">移除</string>
+    <string name="pending_capture_not_uploaded">准备上传</string>
+    <string name="pending_capture_original_selection">原图片与原请求仍保留</string>
+    <string name="pending_capture_original_note">原图会和账单放在一起。识别完成后，再由你确认金额。</string>
+    <string name="pending_capture_submit">上传 %1$d 张小票</string>
+    <string name="pending_capture_back">返回收件箱</string>
+    <string name="pending_capture_open">查看上传任务</string>
+    <string name="pending_capture_progress">上传进度</string>
+    <string name="pending_capture_received">服务器已收到 %1$d / %2$d 张</string>
+    <string name="pending_capture_received_review">图片已收到</string>
+    <string name="pending_capture_open_original">查看原单</string>
+    <string name="pending_capture_uploading">正在上传原图片</string>
+    <string name="pending_capture_unknown">结果待核实 · 原任务仍保留</string>
+    <string name="pending_capture_not_received">尚未确认收到 · 原任务仍保留</string>
+    <string name="pending_capture_saved_local">原图已保存在本机 · 等待上传</string>
+    <string name="pending_capture_review">打开小票核对</string>
     <string name="pending_upload_selection_saving">正在保存这次选择的 %1$d 张图片，保存后会继续同步。</string>
     <string name="pending_upload_selection_waiting">这次选择的 %1$d 张图片尚未确认保存。可以重试保存原选择，或取消这次选择；已保存的上传仍可在原上传记录中核对。</string>
     <string name="pending_upload_selection_too_many">一次最多保存 %1$d 张图片。请取消这次选择，再分批选择图片。</string>
     <string name="pending_upload_selection_retry">重试保存</string>
     <string name="pending_upload_selection_stop">取消这次选择</string>
-    <string name="pending_upload_original">第 %1$d 张：%2$s</string>
-    <string name="pending_upload_original_unknown">原件信息不可读</string>
-    <string name="pending_upload_original_more">另有 %1$d 张原上传</string>
     <string name="pending_msg_confirmed">已确认入账</string>
     <string name="pending_msg_confirmed_offline">已离线确认，联网后同步</string>
     <string name="pending_msg_confirm_failed">没有确认成功，请稍后再试。</string>
@@ -210,13 +237,29 @@
     <string name="pending_bulk_sheet_confirm_button">确认 %1$d 条</string>
 
     <!-- DuplicateConfirmSheet -->
-    <string name="pending_duplicate_sheet_title">核对疑似重复</string>
-    <string name="pending_duplicate_sheet_hint">先确认当前草稿是否还需要保留。系统不会自动删除或自动入账。</string>
+    <string name="pending_duplicate_sheet_title">像是同一张小票</string>
+    <string name="pending_duplicate_sheet_hint">对照金额、时间和原件，再决定是否保留两笔。</string>
     <string name="pending_duplicate_sheet_merchant_missing">未填写商家</string>
     <string name="pending_duplicate_sheet_reason">可能原因：%1$s</string>
     <string name="pending_duplicate_sheet_processing">处理中…</string>
-    <string name="pending_duplicate_sheet_keep_both">保留两笔（不是重复）</string>
-    <string name="pending_duplicate_sheet_ignore_current">删除当前草稿</string>
+    <string name="pending_duplicate_sheet_keep_both">保留两笔</string>
+    <string name="pending_duplicate_sheet_ignore_current">忽略本次收到的小票</string>
+    <string name="pending_duplicate_current">本次收到</string>
+    <string name="pending_duplicate_reference">相似账单</string>
+    <string name="pending_duplicate_reference_ignored">已忽略</string>
+    <string name="pending_duplicate_reference_loading">正在读取相似账单…</string>
+    <string name="pending_duplicate_reference_failed">暂时无法读取相似账单，请重试。</string>
+    <string name="pending_duplicate_reference_absent">尚未关联可供对照的账单，请打开本张核对原件。</string>
+    <string name="pending_duplicate_reference_cached">当前显示本机保存的账单，联网后可重试更新。</string>
+    <string name="pending_duplicate_different">这两张不是同一笔</string>
+    <string name="pending_duplicate_keep_current">保留本张</string>
+    <string name="pending_duplicate_keep_current_check">这张小票需要保留，之后仍需核对入账</string>
+    <string name="pending_duplicate_originals">对照两张原件</string>
+    <string name="pending_duplicate_return">返回相似核对</string>
+    <string name="pending_review_amount_currency">%1$s · %2$s</string>
+    <string name="pending_category_more">更多分类</string>
+    <string name="pending_category_less">收起分类</string>
+    <string name="pending_category_choose">选择分类</string>
 
     <!-- EnrichmentStatusBand：队列头的识别状态带（ambient，非第二队列） -->
     <string name="pending_enrichment_active">正在识别 %1$d 张小票</string>

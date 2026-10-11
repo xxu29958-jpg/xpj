@@ -12,6 +12,8 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Alignment
@@ -28,6 +30,7 @@ import com.ticketbox.ui.components.AppAdaptiveEditActionMode
 import com.ticketbox.ui.components.AppFloatingActionBar
 import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppOutlinedButtonOptions
+import com.ticketbox.ui.components.AppButtonIcons
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.LocalAppImeVisible
 import com.ticketbox.ui.components.AppSecondaryButton
@@ -52,7 +55,11 @@ internal data class ExpenseEditActionBarState(
     val statusMessage: String?,
     val statusTone: MessageTone,
     val forceCompact: Boolean = false,
+    val originalReviewRequired: Boolean = false,
 ) {
+    val canSubmit: Boolean
+        get() = !saving && !originalReviewRequired
+
     val showBackAction: Boolean
         get() = !allowConfirm || (!allowSave && !allowReject)
 }
@@ -87,11 +94,14 @@ internal fun ExpenseEditActionBar(
 ) {
     val keyboardVisible = LocalAppImeVisible.current
     val compactMode = keyboardVisible || state.forceCompact
+    val statusMessage = state.statusMessage ?: if (state.originalReviewRequired) {
+        stringResource(R.string.original_edit_review_needed)
+    } else null
     AppFloatingActionBar(compact = compactMode) {
         state.validationMessage?.let {
             ExpenseEditActionMessage(it, LocalStateTokens.current.danger.fg)
         }
-        state.statusMessage?.let {
+        statusMessage?.let {
             ExpenseEditActionMessage(it, LocalStateTokens.current.forTone(state.statusTone).fg)
         }
         ExpenseEditResponsiveActionRows(state = state, actions = actions, compactMode = compactMode)
@@ -132,16 +142,16 @@ private fun ExpenseEditStackedActionRows(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
     ) {
-        ExpenseEditSecondaryActionRow(state = state, actions = actions)
         if (state.allowConfirm) {
             AppPrimaryButton(
                 text = stringResource(R.string.expense_edit_confirm_button),
-                icon = Icons.Filled.Check,
+                icons = AppButtonIcons(leading = Icons.Filled.Check),
                 modifier = Modifier.fillMaxWidth(),
-                enabled = !state.saving,
+                enabled = state.canSubmit,
                 onClick = actions.onConfirm,
             )
         }
+        ExpenseEditSecondaryActionRow(state = state, actions = actions)
     }
 }
 
@@ -169,7 +179,7 @@ private fun ExpenseEditSecondaryActionRow(
             CompactTextAction(
                 text = rejectText,
                 weight = 0.82f,
-                enabled = !state.saving,
+                enabled = state.canSubmit,
                 danger = true,
                 onClick = actions.onRequestReject,
             )
@@ -182,7 +192,7 @@ private fun ExpenseEditSecondaryActionRow(
                     stringResource(R.string.expense_edit_primary_save_button)
                 },
                 weight = 1f,
-                enabled = !state.saving,
+                enabled = state.canSubmit,
                 onClick = actions.onSave,
             )
         }
@@ -214,7 +224,7 @@ private fun ExpenseEditActionForwardRow(
             CompactTextAction(
                 text = rejectText,
                 weight = 0.64f,
-                enabled = !state.saving,
+                enabled = state.canSubmit,
                 danger = true,
                 onClick = actions.onRequestReject,
             )
@@ -228,16 +238,16 @@ private fun ExpenseEditActionForwardRow(
                     stringResource(R.string.expense_edit_primary_save_button)
                 },
                 leadingIcon = Icons.Filled.Save,
-                enabled = !state.saving,
+                enabled = state.canSubmit,
                 onClick = actions.onSave,
             )
         }
         if (state.allowConfirm) {
             AppPrimaryButton(
                 text = stringResource(R.string.expense_edit_confirm_button),
-                icon = Icons.Filled.Check,
+                icons = AppButtonIcons(leading = Icons.Filled.Check),
                 modifier = Modifier.weight(if (state.allowSave) 1.24f else 1f),
-                enabled = !state.saving,
+                enabled = state.canSubmit,
                 onClick = actions.onConfirm,
             )
         }
@@ -272,7 +282,7 @@ private fun ExpenseEditKeyboardActionRow(
                     stringResource(R.string.expense_edit_primary_save_button)
                 },
                 weight = if (state.allowConfirm) 0.82f else 1f,
-                enabled = !state.saving,
+                enabled = state.canSubmit,
                 onClick = actions.onSave,
             )
         }
@@ -280,7 +290,7 @@ private fun ExpenseEditKeyboardActionRow(
             CompactFilledAction(
                 text = stringResource(R.string.expense_edit_confirm_button),
                 weight = 1.32f,
-                enabled = !state.saving,
+                enabled = state.canSubmit,
                 onClick = actions.onConfirm,
             )
         }
@@ -288,7 +298,7 @@ private fun ExpenseEditKeyboardActionRow(
             CompactTextAction(
                 text = rejectText,
                 weight = 0.72f,
-                enabled = !state.saving,
+                enabled = state.canSubmit,
                 danger = true,
                 onClick = actions.onRequestReject,
             )
@@ -320,7 +330,7 @@ private fun RowScope.CompactFilledAction(
 ) {
     AppPrimaryButton(
         text = text,
-        icon = Icons.Filled.Check,
+        icons = AppButtonIcons(leading = Icons.Filled.Check),
         modifier = Modifier.weight(weight),
         enabled = enabled,
         onClick = onClick,
@@ -335,10 +345,12 @@ private fun RowScope.CompactTextAction(
     danger: Boolean = false,
     onClick: () -> Unit,
 ) {
-    AppOutlinedButton(
+    TextButton(
         modifier = Modifier.weight(weight).defaultMinSize(minHeight = 48.dp),
         onClick = onClick,
-        options = AppOutlinedButtonOptions(enabled = enabled, danger = danger),
+        enabled = enabled,
+        colors = ButtonDefaults.textButtonColors(contentColor = if (danger)
+            MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary),
     ) {
         ExpenseEditActionLabel(text)
     }

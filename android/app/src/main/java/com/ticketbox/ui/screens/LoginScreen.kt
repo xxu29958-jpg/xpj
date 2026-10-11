@@ -8,7 +8,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
-import androidx.compose.material3.Button
+import com.ticketbox.ui.components.AppPrimaryButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -45,12 +45,11 @@ fun LoginScreen(
                 modifier = Modifier.padding(AppSpacing.cardPadding),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Button(
+                AppPrimaryButton(
+                    text = stringResource(R.string.login_unlock_button),
                     modifier = Modifier.fillMaxWidth(),
                     onClick = onUnlock,
-                ) {
-                    Text(stringResource(R.string.login_unlock_button))
-                }
+                )
             }
         }
         message?.let {

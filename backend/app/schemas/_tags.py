@@ -42,12 +42,14 @@ class TagRenameRequest(BaseModel):
 
     expected_row_version: int
     name: str = Field(min_length=1, max_length=64)
+    require_orphan: bool = False
 
 
 class TagDeleteRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     expected_row_version: int
+    require_orphan: bool = False
 
 
 class TagMergeRequest(BaseModel):
@@ -59,6 +61,7 @@ class TagMergeRequest(BaseModel):
     expected_row_version: int  # source A's OCC token
     target_public_id: str
     target_row_version: int  # target B's OCC token
+    require_orphan: bool = False
 
 
 class TagUndoRequest(BaseModel):

@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% set page_title = action_label %}
+{% set product_body_domain = 'transactions' %}
+{% set page_surface = 'tertiary' %}
+{% set task_return_href = '/web/tags?ledger_id=' ~ selected_ledger_id ~ ('&unused=1' if values.unused == '1' else '') ~ '#tag-' ~ public_id %}
+{% set task_return_label = '标签' %}
+{% block title %}{{ action_label }} · 小票夹{% endblock %}
+{% block page_scripts %}
+{% if tag_draft_scope %}
+<script defer src="/static/web/manual-drafts.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/plan-entry.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/tag-entry.js?v={{ asset_version }}"></script>
+{% endif %}
+{% endblock %}
+{% block content %}
+<div class="library-workspace stack" data-tag-key="{{ public_id }}">
+  <header class="product-page-header"><div class="product-page-heading">
+    <h1 class="page-title">{{ action_label }}</h1><p class="product-page-summary">{{ '清理未使用标签。提交时会再次检查使用情况。' if values.unused == '1' else '先核对影响，再确认整理。' }}</p>
+  </div></header>
+  {% if error %}<div class="product-feedback product-feedback--error" role="alert">{{ error }}</div>{% endif %}
+  {% if not can_write %}<div class="product-feedback" data-tag-role-notice role="status">当前角色为只读，原输入仍保留；恢复编辑权限后可继续。</div>{% endif %}
+  {% if not current %}<div class="product-feedback" role="status">当前标签已不可用。原输入仍保留，可到<a href="/web/recycle-bin?ledger_id={{ selected_ledger_id }}&amp;group=reference">回收站</a>核对。</div>{% endif %}
+  <form method="post" action="/web/tags/{{ public_id }}/{{ action }}" class="stack"
+    {% if tag_draft_scope %}data-tag-draft-scope="{{ tag_draft_scope | tojson | forceescape }}" data-tag-plan-id="{{ edit_key }}"
+    data-tag-native-result="{{ tag_draft_result }}" data-tag-can-write="{{ 'true' if can_write else 'false' }}"
+    data-tag-archived="{{ 'false' if current else 'true' }}"{% endif %}>
+    {{ csrf_field|safe }}
+    {% for field in ['ledger_id', 'expected_row_version', 'unused', 'source_name', 'source_usage_count', 'target_name', 'draft_scope', 'draft_ref'] %}
+    <input type="hidden" name="{{ field }}" value="{{ values[field] }}">
+    {% endfor %}
+    <input type="hidden" name="public_id" value="{{ public_id }}">
+    <input type="hidden" name="tag_action" value="{{ action }}">
+    <input type="hidden" name="edit_key" value="{{ edit_key }}">
+    <p class="meta" data-tag-original>原整理对象：{{ values.source_name or '标签' }}{% if values.source_usage_count %} · {{ values.source_usage_count }} 笔引用{% endif %}</p>
+    {% if action == 'rename' %}
+    <label class="product-field"><span>标签名称</span><input type="text" name="name" value="{{ values.name }}" required maxlength="64" aria-label="标签名称"></label>
+    <input type="hidden" name="target" value="">
+    <p class="meta">名称修改会同步到相关账单。名称已存在时，可以返回标签目录选择合并。</p>
+    {% else %}
+    <input type="hidden" name="name" value="{{ values.name }}">
+    {% if action == 'merge' %}
+    <label class="product-field"><span>合并到</span><select name="target" required aria-label="合并到">
+      <option value="" disabled{% if not values.target %} selected{% endif %}>选择保留的标签</option>
+      {% if values.target %}<option value="{{ values.target }}" selected>{{ values.target_name or (current_target.name if current_target else '目标标签已不可用') }}</option>{% endif %}
+      {% for other in merge_targets if values.target != other.public_id ~ ':' ~ other.row_version %}<option value="{{ other.public_id }}:{{ other.row_version }}">{{ other.name }}</option>{% endfor %}
+    </select></label>
+    <p class="meta">相关账单将改用目标标签，原标签不再单独显示。完成后可撤销。</p>
+    {% else %}
+    <input type="hidden" name="target" value="{{ values.target }}">
+    <p class="product-feedback">相关账单将移除这个标签，账单本身保留。完成后可撤销。</p>
+    {% endif %}
+    {% endif %}
+    <div class="pill-row">
+      <button class="product-button {{ 'product-button--danger' if action == 'delete' else 'product-button--primary' }}" type="submit" data-tag-submit{% if not current %} hidden disabled{% endif %}>{{ '确认' ~ action_label if can_write else '权限恢复后重试' }}</button>
+      <a class="product-button product-button--quiet" href="{{ task_return_href }}">返回标签</a>
+    </div>
+    <p class="product-feedback" data-tag-draft-status role="status" aria-live="polite" hidden></p>
+    <a class="product-button product-button--quiet" data-tag-reconnect href="/web/tags/{{ public_id }}/edit?ledger_id={{ selected_ledger_id }}&amp;action={{ action }}{% if values.unused == '1' %}&amp;unused=1{% endif %}"{% if can_write %} hidden{% endif %}>恢复连接并重读当前状态</a>
+    <p class="meta" data-tag-review-note{% if not error %} hidden{% endif %}>采用当前标签状态准备修改，名称和选择保留。再次确认后才执行。</p>
+    <button class="product-button product-button--quiet" type="submit" name="review_latest" value="true" data-tag-review formnovalidate{% if not current %} disabled{% endif %}>已核对，保留输入准备修改</button>
+    {% if tag_draft_scope %}<button class="product-button product-button--quiet" type="button" data-tag-discard hidden>放弃此浏览器的原稿</button>{% endif %}
+  </form>
+  <section aria-label="当前已保存的标签" class="stack">
+    <h2 class="product-panel-title">当前已保存</h2>
+    {% if current %}<div class="product-entry product-entry--static"><span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#tag"/></svg></span><span class="product-entry-copy"><strong>{{ current.name }}</strong><span>{{ current.usage_count }} 笔引用</span></span></div>
+    <a href="/web/confirmed?ledger_id={{ selected_ledger_id }}&amp;tag={{ current.name | urlencode }}">查看相关账单</a>
+    {% else %}<p class="meta">请先核对当前记录和回收站，再处理保留的原稿。</p>{% endif %}
+    {% if current_target %}<p class="meta">当前目标：{{ current_target.name }} · {{ current_target.usage_count }} 笔引用</p>{% endif %}
+  </section>
+  {% if tag_draft_scope %}<details data-tag-draft-shelf hidden><summary>此浏览器保留的标签整理</summary><ul data-tag-draft-list></ul></details>{% endif %}
+</div>
+{% endblock %}

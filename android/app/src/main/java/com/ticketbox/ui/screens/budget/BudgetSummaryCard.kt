@@ -2,6 +2,9 @@ package com.ticketbox.ui.screens.budget
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Surface
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -21,6 +24,8 @@ import com.ticketbox.ui.components.AppErrorState
 import com.ticketbox.ui.components.SkeletonBlock
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppAmountRole
+import com.ticketbox.ui.design.AppRadius
+import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalStateTokens
@@ -64,10 +69,14 @@ internal fun BudgetSummarySection(
             BudgetSummaryPlaceholder(loading)
             return@BudgetOpenSection
         }
-        BudgetSummaryHero(
-            budget = configuredBudget,
-            currencyDisplay = currencyDisplay,
-        )
+        Surface(shape = RoundedCornerShape(AppRadius.hero), color = LocalThemeVisuals.current.brandPrimaryBg,
+            modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(AppSpacing.screenHorizontal), verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap)) {
+                BudgetSummaryHero(budget = configuredBudget, currencyDisplay = currencyDisplay)
+                Text(stringResource(R.string.budget_header_subtitle, configuredBudget.month) + " · " + (configuredBudget.homeCurrencyCode ?: "UNKNOWN"),
+                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
         BudgetSummaryDetails(configuredBudget, currencyDisplay)
     }
 }

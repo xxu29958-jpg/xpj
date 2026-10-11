@@ -1,0 +1,31 @@
+{% set command_key = (cur.keep_idempotency_key if decision == 'keep' else cur.reject_original_idempotency_key if decision == 'reject-original' else cur.reject_idempotency_key) if cur else duplicate_task_key %}
+<form method="post" action="/web/duplicates/{{ current_id }}/{{ decision }}" class="duplicate-decision-form"
+  data-duplicatechoice-plan-id="{{ current_id }}:{{ decision }}" data-duplicatechoice-can-write="{{ 'true' if can_write else 'false' }}"
+  data-duplicatechoice-archived="{{ 'false' if cur and cur.status == 'pending' and cur.duplicate_status == 'suspected' and (decision != 'reject-original' or (orig and orig.status == 'pending')) else 'true' }}"
+  data-duplicatechoice-native-result="{{ duplicate_task_result or '' }}"
+  {% if duplicate_draft_scope %}data-duplicatechoice-draft-scope="{{ duplicate_draft_scope | forceescape }}"{% endif %}>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+  <input type="hidden" name="expense_id" value="{{ current_id }}">
+  <input type="hidden" name="task_id" value="{{ current_id }}:{{ decision }}">
+  <input type="hidden" name="action" value="{{ decision }}">
+  <input type="hidden" name="label" value="{{ cur.merchant or '原账单' if cur else '原账单' }} · {{ decision_label }}">
+  <input type="hidden" name="idempotency_key" value="{{ command_key }}">
+  <input type="hidden" name="keep_idempotency_key" value="{{ command_key }}">
+  <input type="hidden" name="draft_ref" value="{{ duplicate_task_ref or command_key }}">
+  <input type="hidden" name="expected_row_version" value="{{ cur.row_version if cur else '' }}">
+  <input type="hidden" name="original_expense_id" value="{{ orig.id if orig else '' }}">
+  <input type="hidden" name="expected_original_row_version" value="{{ orig.row_version if orig else '' }}">
+  <input type="hidden" name="draft_scope" value="{{ duplicate_draft_scope }}">
+  <input type="hidden" name="return_to" value="duplicates">
+  <input type="hidden" name="return_duplicate_expense_id" value="{{ next_id }}">
+  <button type="submit" class="product-button product-button--{{ 'primary' if decision == 'keep' or duplicate_task_action else 'quiet' }}" data-duplicatechoice-submit{% if not can_write %} disabled{% endif %}
+    {% if decision != 'keep' %}data-confirm="{{ '将参考账单移入回收站，并保留本次收到的账单。继续吗？' if decision == 'reject-original' else '将本次收到的账单移入回收站。继续吗？' }}"{% endif %}>{{ decision_label }}</button>
+  <p class="hint" role="status" data-duplicatechoice-draft-status hidden></p>
+  <button type="submit" name="review_latest" value="1" formaction="/web/duplicates/{{ current_id }}/decision" class="product-button product-button--quiet" data-duplicatechoice-review hidden>核对当前记录，重新选择</button>
+  <p class="hint" data-duplicatechoice-review-note hidden>这里只重新核对两笔记录，不提交新的决定。</p>
+  <details data-duplicatechoice-draft-shelf hidden><summary>保留的相似账单决定</summary>
+    <ul data-duplicatechoice-draft-list></ul>
+    <button type="button" class="product-button product-button--quiet" data-duplicatechoice-discard hidden>放弃本地原提交</button>
+  </details>
+</form>

@@ -21,9 +21,11 @@ from app.routes import _web_correction_page as correction
 from app.routes import _web_expense_fact as fact
 from app.routes import _web_expense_fx as fx
 from app.routes import _web_expense_helpers as helpers
+from app.routes import _web_expense_recognition as recognition_page
 from app.routes import _web_expense_split_presenter as splits
 from app.routes import _web_money_views as money_views
 from app.routes import web_expense_edit as edit
+from app.routes import web_expense_recognition as recognition
 from app.routes._web_expense_edit_form import WebExpenseEditForm
 from app.routes._web_expense_return_context import ExpenseReturnContext
 from app.routes._web_pending_enrichment_watch import (
@@ -57,7 +59,8 @@ def record_context(monkeypatch):
     monkeypatch.setattr(money_views, "current_pending_expense_fx_tasks", task_query)
     monkeypatch.setattr(helpers, "web_split_members", lambda *_a: [])
     monkeypatch.setattr(helpers, "list_ledger_category_options", lambda *_a, **_k: [])
-    item_response = SimpleNamespace(items_sum_status="mismatch_known", mismatch_cents=200, items=[
+    item_response = SimpleNamespace(items_sum_status="mismatch_known", mismatch_cents=200,
+        items_total_amount_cents=1000, items=[
         SimpleNamespace(public_id="item", kind="product", name="车票", quantity_text="1",
             unit_price_cents=1000, amount_cents=1000, category="交通", is_ocr_draft=False)])
     monkeypatch.setattr(helpers, "list_expense_items", lambda *_a: item_response)
@@ -69,7 +72,7 @@ def record_context(monkeypatch):
     monkeypatch.setattr(fact, "build_split_invite_context", lambda *_a, **_k: None)
     monkeypatch.setattr(fact, "expense_offset_fact_view", lambda *_a: {})
     monkeypatch.setattr(fact.invitation_members, "list_members", lambda *_a, **_k: [])
-    monkeypatch.setattr(fact, "list_expense_revisions", lambda *_a, **_k: ExpenseRevisionListResponse(
+    monkeypatch.setattr(fact, "list_expense_fact_history", lambda *_a, **_k: ExpenseRevisionListResponse(
         items=[], page=1, page_size=50, total=0, snapshot_revision=1))
 
     def read(mode, status="mismatch_known", *, source_unknown=False):
@@ -133,7 +136,8 @@ def test_record_child_templates_keep_home_symbol_separate_from_payment_and_defau
 def test_pending_record_uses_the_same_record_basis_for_child_summaries(record_context):
     html = _render("edit.html", record_context("pending"))
     assert "金额差 ¥2.00" in html and "金额差 $2.00" not in html
-    assert "账单 ¥12.00 · 已拆 ¥10.00" in html
+    assert "账单 ¥12.00" in html
+    assert "<strong>¥10.00</strong>" in html
     assert "还差 ¥2.00 未分配" in html
 
 
@@ -191,13 +195,10 @@ def test_ocr_retry_does_not_consume_original_edit_currency_date_or_command(recor
     assert retained["csrf_token"] == "csrf" and retained["ledger_id"] == "owner"
     assert 'value="00999"' in html and 'value="未保存商家"' in html and "未保存备注" in html
     assert _ocr_retry_targets(html), "保留原填写时也必须能显式选择原单识别重试"
-    retry = hidden_post_forms(html)["/web/expenses/41/ocr/retry"]
-    assert retry["idempotency_key"] not in {retained["idempotency_key"], retained["reject_idempotency_key"]}
-    assert retry["expected_row_version"] == retained["expected_row_version"]
-    assert retry["csrf_token"] == retained["csrf_token"] and retry["ledger_id"] == retained["ledger_id"]
-    assert not {"amount_yuan", "merchant", "note", "original_currency", "time_precision"} & retry.keys()
-    tag = re.search(r'<form\b[^>]*action="/web/expenses/41/ocr/retry"[^>]*>', html).group()
-    assert 'target="_blank"' in tag and 'rel="noopener"' in tag and "data-drawer-form" not in tag
+    target = _ocr_retry_targets(html)[0]
+    assert target.startswith("/web/expenses/41/ocr/retry?ledger_id=owner")
+    assert not any(name + "=" in target for name in ("amount_yuan", "merchant", "note", "original_currency", "time_precision"))
+    assert "/web/expenses/41/ocr/retry" not in hidden_post_forms(html), "打开识别任务不能提交原财务表单"
 
 
 @pytest.mark.parametrize("template", ["edit.html", "_edit_drawer.html"])
@@ -227,37 +228,41 @@ def test_ocr_retry_missing_original_has_an_explicit_safe_next_step(record_contex
 def test_original_ocr_failure_page_preserves_intent_or_guides_review(
     record_context, monkeypatch, code, status, retryable,
 ):
+    monkeypatch.setattr(csrf, "_csrf_secret", lambda: b"recognition-page-test-only")
     record_context("pending")
-    monkeypatch.setattr(edit, "_list_ledger_options", lambda _db: [])
-    monkeypatch.setattr(edit, "_resolve_selected_ledger_id", lambda *_a, **_k: "owner")
-    monkeypatch.setattr(edit, "_require_selected_ledger_write", lambda *_a: None)
-    monkeypatch.setattr(edit, "resolve_web_actor", lambda *_a: (1, None))
-    monkeypatch.setattr(edit, "_base_ctx", helpers._base_ctx)
+    monkeypatch.setattr(recognition, "_list_ledger_options", lambda _db: [])
+    monkeypatch.setattr(recognition, "_resolve_selected_ledger_id", lambda *_a, **_k: "owner")
+    monkeypatch.setattr(recognition, "_require_selected_ledger_write", lambda *_a: None)
+    monkeypatch.setattr(recognition, "resolve_web_actor", lambda *_a: (1, None))
+    monkeypatch.setattr(recognition_page, "_base_ctx", helpers._base_ctx)
+    monkeypatch.setattr(recognition_page, "get_expense", helpers.get_expense)
     failure = SQLAlchemyError("synthetic database detail must stay private") if code == "database" else AppError(code, status_code=status)
-    monkeypatch.setattr(edit, "submit_expense_ocr_retry", Mock(side_effect=failure))
+    monkeypatch.setattr(recognition, "submit_expense_ocr_retry", Mock(side_effect=failure))
     env = templates.env.overlay(loader=ChoiceLoader([
         DictLoader({"base.html": "{% block content %}{% endblock %}"}), templates.env.loader]))
     monkeypatch.setattr(templates, "env", env)
     request = Request({"type": "http", "method": "POST", "headers": [],
         "path": "/web/expenses/41/ocr/retry", "query_string": b""})
-    response = edit.web_retry_expense_ocr(41, request, "owner", "1", "original-ocr-key",
-        ExpenseReturnContext(return_to="pending"), None, Mock())
+    response = recognition.web_recognition_post(request, 41, "owner", "", "1", "original-ocr-key",
+        "", "original-draft-ref", False, ExpenseReturnContext(return_to="pending"), None, Mock())
     body = response.body.decode()
     assert response.status_code == status
     if code == "database":
         assert "暂时未能取得识别结果" in body and str(failure) not in body
     else:
         assert AppError(code).message in body
-    assert "原窗口的填写仍保留" in body
+    assert "账单核对页的未保存填写仍保留" in body
     assert '/web/expenses/41/edit?ledger_id=owner&amp;return_to=pending' in body
     assert '/web/expenses/41/original?ledger_id=owner' in body
     forms = hidden_post_forms(body)
     action = "/web/expenses/41/ocr/retry"
-    assert (action in forms) == retryable
-    if retryable:
-        for name, value in {"ledger_id": "owner", "expected_row_version": "1",
-            "idempotency_key": "original-ocr-key", "return_to": "pending"}.items():
-            assert forms[action][name] == value
+    assert action in forms
+    submit = re.search(r'<button\b[^>]*data-recognition-submit[^>]*>', body).group()
+    assert ("hidden" not in submit) == retryable
+    for name, value in {"ledger_id": "owner", "expected_row_version": "1",
+        "idempotency_key": "original-ocr-key", "return_to": "pending"}.items():
+        assert forms[action][name] == value
+    assert 'data-expenseocr-native-result="' + ("rejected" if code == "state_conflict" else "blocked") + '"' in body
 
 
 @pytest.mark.parametrize("time_fields", [None, {"time_precision": "instant", "calendar_revision": "1",
@@ -311,8 +316,10 @@ def test_fx_status_keeps_original_form_and_offers_review_when_current_bill_no_lo
         assert (expense.home_currency_code, expense.original_currency_code, expense.row_version,
             expense.original_amount_minor, expense.amount_cents) == ("CNY", "CNY", 2, 240, 240)
         assert "载入最新账单（替换未保存填写）" in body
-        assert f'href="{escape(response.context["edit_current_href"])}" data-drawer-reload' in body
-        assert 'formaction="/web/expenses/41/confirm"' not in body
+        assert f'href="{escape(response.context["edit_reload_href"])}" data-drawer-reload' in body
+        assert "new_expensereview=1" in response.context["edit_reload_href"]
+        confirmations = re.findall(r'<button\b([^>]*formaction="/web/expenses/41/confirm"[^>]*)>', body)
+        assert all('name="review_latest"' in attributes for attributes in confirmations)
     db.commit.assert_not_called()
 
 

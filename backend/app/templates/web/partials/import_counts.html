@@ -1,0 +1,24 @@
+{% macro summary(counts) %}
+{% for field, label in [('remaining_valid_rows', '可导入'), ('inserted_count', '消费草稿'), ('confirmed_offset_rows', '事件入账'), ('matched_rows', '已有记录'), ('review_rows', '待复核'), ('error_rows', '需修正')] %}
+<span>{{ label }} <strong data-import-count="{{ field }}">{{ counts[field] }}</strong></span>{% if not loop.last %} · {% endif %}
+{% endfor %}
+{% endmacro %}
+
+{% macro entries(counts, batch_href, pending_href) %}
+{% for field, label, hint, icon, tone, href in [
+  ('remaining_valid_rows', '可导入的记录', '新消费先生成草稿，核对后才计入流水', 'receipt-text', '', batch_href ~ '#batch-rows'),
+  ('inserted_count', '消费草稿已生成', '去待确认核对；导入数量不代表已经入账', 'check', '', pending_href),
+  ('review_rows', '事件需要复核', '核对购买、退款、拒付或冲销与原消费的关联', 'undo-2', 'apricot', batch_href ~ '&status=review#batch-rows'),
+  ('error_rows', '需要修正的行', '下载错误行，补充原文件后重新导入', 'file-question', 'lilac', batch_href.split('?')[0] ~ '/errors.csv?' ~ batch_href.split('?')[1]),
+  ('matched_rows', '已有关联记录', '已识别原事件，不会重复生成', 'check', '', batch_href ~ '&status=matched#batch-rows'),
+  ('confirmed_offset_rows', '退回或冲销已入账', '查看已处理行与当前原单', 'receipt-text', '', batch_href ~ '&status=applied#batch-rows')
+] %}
+{% if counts[field] %}
+<a class="product-entry" href="{{ href }}">
+  <span class="product-entry-icon{% if tone %} product-entry-icon--{{ tone }}{% endif %}" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#{{ icon }}"/></svg></span>
+  <span class="product-entry-copy"><span class="product-entry-heading"><strong>{{ label }}</strong><span class="product-entry-amount"><span data-import-count="{{ field }}">{{ counts[field] }}</span> 行</span></span><span>{{ hint }}</span></span>
+  <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
+</a>
+{% endif %}
+{% endfor %}
+{% endmacro %}

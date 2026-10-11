@@ -2,6 +2,7 @@ package com.ticketbox.ui.screens.expense.fact
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.KeyboardOptions
@@ -14,6 +15,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -86,6 +91,7 @@ private fun FactOffsetFormSheet(
 ) {
     val form = state.offsetForm
     val reversal = !form.kind.isMoneyEvent
+    var reviewed by remember(form.sourceExpense?.id, form.sourceExpense?.rowVersion) { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(
         skipPartiallyExpanded = true,
         confirmValueChange = { target -> !form.saving || target != SheetValue.Hidden },
@@ -102,41 +108,37 @@ private fun FactOffsetFormSheet(
                     R.string.expense_offset_sheet_title_refund
                 },
             ),
-            subtitle = stringResource(
-                if (reversal) {
-                    R.string.expense_offset_sheet_subtitle_reversal
-                } else {
-                    R.string.expense_offset_sheet_subtitle_refund
-                },
-            ),
-            actions = {
-                FactInputSaveStatus(state, viewModel::retryFactInputSave)
-                form.submitError?.let { AppStatusBanner(message = it, tone = MessageTone.Danger) }
-                AppSheetActionRow(
-                    primary = AppSheetAction(
-                        text = stringResource(
-                            if (form.saving) {
-                                R.string.expense_offset_saving
-                            } else if (reversal) {
-                                R.string.expense_offset_submit_reversal
-                            } else {
-                                R.string.expense_offset_submit_refund
-                            },
-                        ),
-                        enabled = viewModel.canSubmitOffset(),
-                        onClick = viewModel::submitOffset,
-                    ),
-                    secondary = AppSheetAction(
-                        text = stringResource(R.string.expense_fact_input_close),
-                        enabled = !form.saving,
-                        onClick = viewModel::closeOffsetSheet,
-                    ),
-                )
-            },
+            subtitle = form.sourceExpense?.let { stringResource(R.string.expense_offset_subject,
+                it.merchant ?: stringResource(R.string.ledger_item_merchant_empty), factAmountLabels(it, null).original) }
+                ?: stringResource(R.string.expense_offset_sheet_subtitle_refund),
+            actions = { OffsetFormActions(state, viewModel, !reversal || reviewed) },
         ) {
-            OffsetFormContent(state = state, viewModel = viewModel, reversal = reversal)
+            OffsetFormContent(state, viewModel, reversal, reviewed) { reviewed = it }
         }
     }
+}
+
+@Composable
+private fun OffsetFormActions(state: ExpenseFactUiState, viewModel: ExpenseFactViewModel, reviewed: Boolean) {
+    val form = state.offsetForm
+    FactInputSaveStatus(state, viewModel::retryFactInputSave)
+    form.submitError?.let { AppStatusBanner(message = it, tone = MessageTone.Danger) }
+    AppSheetActionRow(
+        primary = AppSheetAction(
+            text = stringResource(when {
+                form.saving -> R.string.expense_offset_saving
+                !form.kind.isMoneyEvent -> R.string.expense_offset_submit_reversal
+                else -> R.string.expense_offset_submit_refund
+            }),
+            enabled = viewModel.canSubmitOffset() && reviewed,
+            onClick = viewModel::submitOffset,
+        ),
+        secondary = AppSheetAction(
+            text = stringResource(R.string.expense_fact_input_close),
+            enabled = !form.saving,
+            onClick = viewModel::closeOffsetSheet,
+        ),
+    )
 }
 
 @Composable
@@ -144,6 +146,8 @@ private fun OffsetFormContent(
     state: ExpenseFactUiState,
     viewModel: ExpenseFactViewModel,
     reversal: Boolean,
+    reviewed: Boolean,
+    onReviewed: (Boolean) -> Unit,
 ) {
     val form = state.offsetForm
     Column(
@@ -154,11 +158,7 @@ private fun OffsetFormContent(
             OffsetDraftReview(state = state, viewModel = viewModel)
         }
         if (reversal) {
-            Text(
-                text = stringResource(R.string.expense_offset_reversal_explainer),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodyMedium,
-            )
+            OffsetReversalImpact()
         } else {
             OffsetKindSegmented(
                 kind = form.kind,
@@ -168,6 +168,11 @@ private fun OffsetFormContent(
             OffsetAmountField(state = state, viewModel = viewModel)
         }
         OffsetTextFields(form = form, viewModel = viewModel)
+        if (reversal) {
+            OffsetReversalReview(reviewed, viewModel.canEditFactInput(form.inputKey()), onReviewed)
+        } else if (viewModel.canEditFactInput(form.inputKey()) && !form.saving) {
+            OffsetImpactPreview(state)
+        }
     }
 }
 
@@ -177,7 +182,7 @@ private fun OffsetKindSegmented(
     enabled: Boolean,
     onSelect: (StreamOffsetKind) -> Unit,
 ) {
-    Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
         FilterChip(
             selected = kind == StreamOffsetKind.Refund,
             onClick = { onSelect(StreamOffsetKind.Refund) },
@@ -201,10 +206,7 @@ private fun OffsetAmountField(
     val form = state.offsetForm
     val expense = form.sourceExpense ?: return
     // remaining 提示只认真实 Loaded 的 bundle 快照；Failed/Loading 明示暂不可用。
-    val summary = (state.factBundle?.financialSummary).takeIf {
-        state.factBundleLoadState == ExpenseDetailDataLoadState.Loaded && form.matchesRoot(state.expense) &&
-            state.factBundle?.root?.rowVersion == expense.rowVersion
-    }
+    val summary = currentOffsetSummary(state)
     AppTextInput(
         state = AppTextInputState(
             label = stringResource(
@@ -275,7 +277,7 @@ private fun OffsetTextFields(
             placeholder = reasonPlaceholder,
             enabled = viewModel.canEditFactInput(form.inputKey()),
             singleLine = false,
-            minLines = 2,
+            minLines = 1,
         ),
         actions = AppTextInputActions(
             onValueChange = { viewModel.updateOffsetFormField(OffsetFormField.Reason, it) },

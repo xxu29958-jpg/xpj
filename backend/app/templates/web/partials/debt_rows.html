@@ -1,0 +1,29 @@
+{% macro debt_row(debt, selected_ledger_id) %}
+{% set tone = {'ok': 'product-status--success', 'danger': 'product-status--danger', 'warn': 'product-status--warning', 'info': 'product-status--info'} %}
+<a class="product-entry debt-row{% if debt.recede %} is-receded{% endif %}"
+   href="/web/debts/{{ debt.public_id }}?ledger_id={{ selected_ledger_id|urlencode }}"
+   aria-label="{{ debt.direction_sentence }}，{{ debt.status_label }}，剩余 {{ debt.currency_code }} {{ debt.remaining_label }}，本金 {{ debt.principal_label }}">
+  <span class="product-entry-icon{% if not debt.is_member %} product-entry-icon--lilac{% endif %}" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#user-round"/></svg></span>
+  <span class="product-entry-copy">
+    <span class="debt-row-heading"><strong>{{ debt.name }}</strong><strong class="debt-num">{{ debt.remaining_label }}</strong></span>
+    <span>{{ debt.direction_sentence }} · {{ debt.currency_code }}</span>
+    <span>本金 {{ debt.principal_label }} <span class="product-status{% if debt.status_tone %} {{ tone[debt.status_tone] }}{% endif %}">{{ debt.status_label }}</span></span>
+    {% if debt.recede and debt.member_headline %}<span>{{ debt.member_headline }}</span>{% endif %}
+  </span>
+  <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
+</a>
+{% endmacro %}
+
+{% macro debt_totals_summary(totals) %}
+{% if totals %}
+<div class="obligation-summary" aria-label="未结往来，按方向和币种分别汇总">
+  {% for total in totals %}
+  <section class="product-panel product-panel--padded obligation-summary-item{% if total.direction == 'i_owe' %} obligation-summary-item--payable{% endif %}">
+    <span>{{ total.label }} · {{ total.currency_code }}</span>
+    <strong>{{ total.amount_label }}</strong>
+    <span>{{ total.count }} 笔未结往来</span>
+  </section>
+  {% endfor %}
+</div>
+{% endif %}
+{% endmacro %}

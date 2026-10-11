@@ -21,6 +21,8 @@ import com.ticketbox.viewmodel.SpendingGoalsViewModel
 import com.ticketbox.viewmodel.createSpendingGoalViewModelFactory
 import com.ticketbox.viewmodel.spendingGoalDetailViewModelFactory
 import com.ticketbox.viewmodel.spendingGoalsViewModelFactory
+import com.ticketbox.viewmodel.SpendingGoalEditDraftStore
+import com.ticketbox.viewmodel.spendingGoalEditDraftStoreFactory
 
 private const val SpendingGoalsViewModelKey = "spending-goals"
 private const val SpendingGoalDetailViewModelKey = "spending-goal-detail"
@@ -51,8 +53,13 @@ internal data class SpendingGoalRouteContext(
 internal fun SpendingGoalsRoute(
     screenFactory: MainScreenFactory,
     onBack: () -> Unit,
+    onOpenRecycleBin: () -> Unit,
     context: SpendingGoalRouteContext,
 ) {
+    val editDrafts: SpendingGoalEditDraftStore = viewModel(
+        viewModelStoreOwner = context.creationOwner, key = "spending-goal-edit-drafts",
+        factory = spendingGoalEditDraftStoreFactory(),
+    )
     SpendingGoalRouteContent(
         models = SpendingGoalRouteModels(
             list = viewModel(
@@ -62,7 +69,7 @@ internal fun SpendingGoalsRoute(
             ),
             detail = viewModel(
                 key = SpendingGoalDetailViewModelKey,
-                factory = spendingGoalDetailViewModelFactory(screenFactory.reportsRepository, screenFactory.goalEditRepository),
+                factory = spendingGoalDetailViewModelFactory(screenFactory.reportsRepository, screenFactory.goalEditRepository, editDrafts),
             ),
             create = viewModel(
                 viewModelStoreOwner = context.creationOwner,
@@ -71,6 +78,7 @@ internal fun SpendingGoalsRoute(
             ),
         ),
         onBack = onBack,
+        onOpenRecycleBin = onOpenRecycleBin,
         context = context,
     )
 }
@@ -79,6 +87,7 @@ internal fun SpendingGoalsRoute(
 private fun SpendingGoalRouteContent(
     models: SpendingGoalRouteModels,
     onBack: () -> Unit,
+    onOpenRecycleBin: () -> Unit,
     context: SpendingGoalRouteContext,
 ) {
     var page by rememberSaveable(context.originalCreationId, context.originalGoalPublicId) { mutableStateOf(when {
@@ -95,8 +104,8 @@ private fun SpendingGoalRouteContent(
         if (context.returnToCaller) onBack() else page = SpendingGoalPage.List
     }
 
-    LaunchedEffect(context.financialDataRevision) {
-        if (context.financialDataRevision > 0) models.list.refresh()
+    LaunchedEffect(page, context.financialDataRevision) {
+        if (page == SpendingGoalPage.List && context.financialDataRevision > 0) models.list.refresh()
     }
     LaunchedEffect(page, detailPublicId, context.financialDataRevision, detailState.isEditing) {
         if (page == SpendingGoalPage.Detail && !detailState.isEditing) {
@@ -137,6 +146,7 @@ private fun SpendingGoalRouteContent(
             viewModel = models.detail,
             backText = context.backText,
             onBack = closeDetail,
+            onOpenRecycleBin = onOpenRecycleBin,
         )
     }
 }

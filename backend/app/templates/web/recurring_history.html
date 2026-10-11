@@ -4,11 +4,10 @@
 {% set product_body_domain = 'plans' %}
 {% block title %}固定支出修改记录 · 小票夹{% endblock %}
 {% block content %}
-{% set history_params = '?ledger_id=' ~ (selected_ledger_id|urlencode) ~ '&limit=' ~ limit ~ '&status=' ~ (status_filter|urlencode) ~ ('&month=' ~ (return_month|urlencode) if return_month else '') ~ '&return_occurrence=' ~ ('true' if return_occurrence else 'false') %}
 <header class="product-page-header">
   <div class="product-page-heading"><h1 class="page-title">固定支出修改记录</h1><p class="product-page-summary">保存的定义与生命周期记录，不代表某个账务月生效的计划，也不展示当时的支出或预留。</p></div>
   {% if return_occurrence %}
-  <a class="product-button product-button--quiet" href="/web/recurring/{{ history.public_id }}/occurrence?ledger_id={{ selected_ledger_id|urlencode }}{% if return_month %}&amp;month={{ return_month|urlencode }}{% endif %}">回到原期间</a>
+  <a class="product-button product-button--quiet" href="{{ occurrence_return_href }}">回到原期间</a>
   {% else %}
   <a class="product-button product-button--quiet" href="/web/recurring?ledger_id={{ selected_ledger_id|urlencode }}&amp;status={{ status_filter|urlencode }}{% if return_month %}&amp;month={{ return_month|urlencode }}{% endif %}#item-{{ history.public_id }}">回到原固定支出</a>
   {% endif %}

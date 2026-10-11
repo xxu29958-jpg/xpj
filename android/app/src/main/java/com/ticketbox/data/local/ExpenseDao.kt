@@ -276,11 +276,13 @@ interface ExpenseDao : BudgetReadProtectionDao, ExpenseFactQueryCacheDao, Expens
 
     /** The same Room database serializes this proof with accepted command settlement. */
     @Transaction
-    suspend fun saveRecurringSnapshotIfCurrent(snapshot: StatsProjectionCacheEntity, expectedEpoch: Long) {
+    suspend fun saveRecurringSnapshotIfCurrent(snapshot: StatsProjectionCacheEntity, expectedEpoch: Long, aliasMonth: String? = null) {
         check((recurringReadEpoch(snapshot.bindingKey)?.toLong() ?: 0L) == expectedEpoch) { "固定支出已接受修改，请重新读取。" }
         check(recurringOutboxReadBarrier(snapshot.bindingKey) == null) { "原固定支出提交尚需核对，请重新读取。" }
         check(recurringDirectBarrier(snapshot.bindingKey) == null) { "固定支出操作尚需核对，请重新读取。" }
         saveStatsProjection(snapshot)
+        // A current occurrence and its actual period name must survive or fail together.
+        if (aliasMonth != null) saveStatsProjection(snapshot.copy(month = aliasMonth))
     }
 
     @Transaction

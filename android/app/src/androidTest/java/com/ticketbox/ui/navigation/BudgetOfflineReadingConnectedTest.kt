@@ -17,6 +17,7 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -126,6 +127,7 @@ class BudgetOfflineReadingConnectedTest {
         assertEquals("Reopening must not manufacture a new fetch time", originalReadTime, readTime())
         assertTrue(sourceText().contains("离线"))
         preview("budget-offline-editor")
+        compose.onNodeWithContentDescription(context.getString(R.string.budget_editor_back)).performScrollTo().performClick()
         verifyCachedBudgetPresentation(month)
 
         compose.runOnIdle { harness.shell.selectPrimaryDomain(PrimaryDomain.Insights.key) }

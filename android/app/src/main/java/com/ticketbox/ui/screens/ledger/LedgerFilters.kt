@@ -21,8 +21,8 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import com.ticketbox.ui.components.AppButtonIcons
+import com.ticketbox.ui.components.AppPrimaryButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -207,28 +207,12 @@ private fun LedgerRecordButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Button(
+    AppPrimaryButton(
+        text = stringResource(R.string.ledger_header_add_button),
+        icons = AppButtonIcons(leading = Icons.Filled.Add),
         onClick = onClick,
-        modifier = modifier.heightIn(min = AppSpacing.controlMinHeight),
-        shape = RoundedCornerShape(AppRadius.extraSmall),
-        contentPadding = PaddingValues(horizontal = AppSpacing.smallGap),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = MaterialTheme.colorScheme.primary,
-            contentColor = MaterialTheme.colorScheme.onPrimary,
-        ),
-    ) {
-        Icon(
-            imageVector = Icons.Filled.Add,
-            contentDescription = null,
-            modifier = Modifier.size(LedgerFilterLayout.CompactIconSize),
-        )
-        Text(
-            text = stringResource(R.string.ledger_header_add_button),
-            modifier = Modifier.padding(start = AppSpacing.miniGap),
-            style = MaterialTheme.typography.labelLarge,
-            maxLines = 1,
-        )
-    }
+        modifier = modifier,
+    )
 }
 
 @Composable

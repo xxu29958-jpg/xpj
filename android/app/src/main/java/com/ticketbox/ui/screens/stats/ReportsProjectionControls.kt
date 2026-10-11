@@ -17,32 +17,21 @@ import com.ticketbox.data.remote.dto.MissingExchangeRateDto
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyProjectionGap
 import com.ticketbox.domain.model.ReportsOverview
-import com.ticketbox.domain.model.UiText
-import com.ticketbox.ui.asString
 import com.ticketbox.ui.screens.StatsReportActions
 
 @Composable
-internal fun ReportsProjectionControls(
+internal fun ReportsProjectionNotice(
     overview: ReportsOverview,
     actions: StatsReportActions,
-    exporting: Boolean,
-    exportMessage: UiText?,
 ) {
-    Column {
-        Text(stringResource(R.string.reports_currency, overview.homeCurrencyCode))
+    if (overview.missingRates.isNotEmpty() || (overview.undatedExpenseCount ?: 0) > 0) Column {
         com.ticketbox.ui.components.AccountingDateNotice(overview.undatedExpenseCount)
         ProjectionRateGaps(overview.missingRates, actions.onRepairRates)
-        TextButton(onClick = { actions.onRepairRates(null) }) { Text(stringResource(R.string.reports_repair_rates)) }
-        ReportsMerchantCategoryFilter(overview, actions.onMerchantCategoryChange)
-        TextButton(onClick = actions.onExport, enabled = !exporting, modifier = Modifier.testTag("reports-export")) {
-            Text(stringResource(if (exporting) R.string.reports_exporting else R.string.reports_export))
-        }
-        exportMessage?.let { Text(it.asString()) }
     }
 }
 
 @Composable
-private fun ReportsMerchantCategoryFilter(overview: ReportsOverview, onCategory: (String?) -> Unit) {
+internal fun ReportsMerchantCategoryFilter(overview: ReportsOverview, onCategory: (String?) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     Column {
         TextButton(onClick = { expanded = true }, modifier = Modifier.testTag("reports-category-filter")) {

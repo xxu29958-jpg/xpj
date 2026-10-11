@@ -139,16 +139,16 @@ def evaluate_debt(counts: DebtCounts) -> int:
 # main. See ``_audit_pr_delta_metrics.py`` docstring for what each
 # counter is and how it's computed.
 STRICT_EQUALITY_BASELINE: DebtCounts = {
-    "mutate_token_carriers": 138,  # + Web budget archive with its captured expected row version.
-    "mutate_token_exempted": 144,  # + Ledger label API/Web/Owner with shared field CAS.
+    "mutate_token_carriers": 142,  # First-original association carries the existing bill's OCC version.
+    "mutate_token_exempted": 148,  # Adds duplicate-decision read-only review; bulk-set retains OCC.
     "mutate_token_reason_admin_single_writer": 16,
     "mutate_token_reason_append_only_fact": 3,
-    "mutate_token_reason_batch_db_write": 17,
-    "mutate_token_reason_create_row": 38,
+    "mutate_token_reason_batch_db_write": 16,
+    "mutate_token_reason_create_row": 42,  # New rows with original-key receipts; existing OCC routes unchanged.
     "mutate_token_reason_enqueue_task": 2,
     "mutate_token_reason_external_side_effect": 8,
     "mutate_token_reason_governance_action": 8,
-    "mutate_token_reason_read_only_compute": 5,
+    "mutate_token_reason_read_only_compute": 6,
     "mutate_token_reason_session_rotation": 8,
     "mutate_token_reason_terminal_flag_flip": 35,
     "mutate_token_reason_upsert_bucket": 4,
@@ -181,6 +181,17 @@ BASELINE_RATCHET_DOWN: frozenset[str] = frozenset(
     }
 )
 _MUTATE_TOKEN_EXEMPTION_ADMISSIONS = (
+    # ADR-0038 create_row / Rev3.2 section 6.6 Reference Library: category API,
+    # tag API, shared Web create adapter and native saved-query create have no predecessor row. Their
+    # common command keeps original actor/key receipts and unique ledger names;
+    # duplicates never restore old objects. All 138 original OCC carriers stay protected,
+    # with two new saved-query API carriers. Uncategorized bulk-set graduates from
+    # its old batch exemption to original-selection OCC. The duplicate decision
+    # review adds ADR-0038 read_only_compute: it reads the pair without changing
+    # a fact or writing a receipt, as the existing refusal/recovery browser gate
+    # verifies. Its later keep/reject commands retain OCC; the net admission is four.
+    # Admit only this exact base/count transition, not general exemption growth.
+    ("92983e731072c2daa538bb61a3e782a5c4e60d5e", 144, 148),
     # One existing Ledger.name fact; three adapters share the Owner/credential
     # lock and field CAS. No financial OCC carrier or persistence owner changes.
     ("30beaeca2db6e76e72d7bd5acc5cd54a37212883", 141, 144),

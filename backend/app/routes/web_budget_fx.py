@@ -11,6 +11,14 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
+from app.routes._web_draft_binding import (
+    draft_ack_response,
+    draft_error_response,
+    draft_refusal_result,
+    rendered_draft_scope,
+    require_draft_binding,
+    reviewed_draft_scope,
+)
 from app.routes._web_expense_return_context import CONFIRMED_CROSS_PERIOD_FILTERS, return_context_params
 from app.routes._web_session_common import resolve_web_actor_account_id
 from app.routes.web_common import (
@@ -32,8 +40,8 @@ from app.services.ledger_calendar_service import current_ledger_month
 router = APIRouter(prefix="/rates", tags=["web"])
 _TASK_FIELDS = ("ledger_id", "month", "home_currency_code", "savings_target_yuan", "reserved_buffer_yuan",
     "arrangement_version", "arrangement_key", "arrangement_currency_code",
-    "return_to", "granularity", "ranking_metric", "merchant_category", "tag", "page", "filter")
-_RATE_FIELDS = ("currency_code", "rate_date", "rate_to_cny", "expected_row_version", "idempotency_key")
+    "return_to", "granularity", "ranking_metric", "merchant_category", "tag", "page", "filter", "q", "category")
+_RATE_FIELDS = ("currency_code", "rate_date", "rate_to_cny", "expected_row_version", "idempotency_key", "draft_scope")
 
 
 class BudgetRateForm(BaseModel):
@@ -54,11 +62,14 @@ class BudgetRateForm(BaseModel):
     tag: str = ""
     page: str = ""
     filter: str = ""
+    q: str = ""
+    category: str = ""
     currency_code: str = ""
     rate_date: str = ""
     rate_to_cny: str = ""
     expected_row_version: str = ""
     idempotency_key: str = ""
+    draft_scope: str = ""
     review_latest: str = ""
 
 
@@ -67,7 +78,8 @@ def _task_return(values):
     if values["return_to"] == "overview":
         return "/web/overview", params, "总览"
     if values["return_to"] == "confirmed":
-        params = return_context_params("confirmed", **{f"return_{key}": values[key]
+        params = return_context_params("confirmed", return_query=values.get("q", ""),
+            return_category=values.get("category", ""), **{f"return_{key}": values[key]
             for key in ("month", "home_currency_code", "tag", "page", "filter")})
         return "/web/confirmed", params, "已确认流水"
     if values["return_to"] == "reports":
@@ -105,8 +117,10 @@ def _render_rates(request, db, options, selected, values, *, error=None, conflic
         rates = []
     ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected, page_title="人工汇率")
     path, params, label = _task_return(values)
+    scope, binding_required = rendered_draft_scope(db, request, values["draft_scope"] if request.method == "POST" else None)
     ctx.update(values=values, rates=rates, error=error, conflict=conflict,
         rate_task={key: values[key] for key in _TASK_FIELDS}, currency_codes=sorted(supported_currency_codes()),
+        rate_draft_scope=scope, rate_binding_required=binding_required,
         return_href=path + "?" + urlencode({"ledger_id": values["ledger_id"], **params}), return_label=label)
     return templates.TemplateResponse(request=request, name="budget_rates.html", context=ctx,
         status_code=status_code, headers={"Cache-Control": "no-store"})
@@ -151,9 +165,12 @@ def save_budget_rate(request: Request, form: BudgetRateForm = Form(),
         fields={**values, "review_latest": str(raw.get("review_latest", ""))}, task="保存人工汇率")
     if retained is not None:
         return retained
-    _require_selected_ledger_write(options, selected)
     try:
+        _require_selected_ledger_write(options, selected)
+        values["draft_scope"] = reviewed_draft_scope(db, request, values["draft_scope"], review=raw["review_latest"] == "true")
+        require_draft_binding(db, request, ledger_id=selected, draft_scope=values["draft_scope"], require_session=False)
         if raw.get("review_latest") == "true":
+            values.update(prepared_from_key=values["idempotency_key"], draft_result="prepared")
             _review_rate(db, selected, values, keep_value=True)
             return _render_rates(request, db, options, selected, values)
         receipt = set_exchange_rate_idempotently(db, tenant_id=selected,
@@ -161,11 +178,15 @@ def save_budget_rate(request: Request, form: BudgetRateForm = Form(),
             payload=_rate_payload(values), idempotency_key=values["idempotency_key"])
     except (AppError, ValidationError, ValueError) as exc:
         db.rollback()
-        conflict = isinstance(exc, AppError) and exc.error in {
+        if not isinstance(exc, AppError):
+            exc = AppError("invalid_request", "请检查币种、日期和汇率。原输入已保留。", status_code=422)
+        values["draft_result"] = draft_refusal_result(exc)
+        conflict = exc.error in {
             "state_conflict", "idempotency_key_reused", "idempotency_key_required"}
-        error = exc.message if isinstance(exc, AppError) else "请检查币种、日期和汇率。原输入已保留。"
-        return _render_rates(request, db, options, selected, values, error=error, conflict=conflict,
-            status_code=exc.status_code if isinstance(exc, AppError) else 422)
+        return draft_error_response(request, exc) or _render_rates(request, db, options, selected, values,
+            error=exc.message, conflict=conflict, status_code=exc.status_code)
     path, params, _ = _task_return(values)
-    return _web_redirect(path, ledger_id=selected, **params,
+    redirect = _web_redirect(path, ledger_id=selected, **params,
         msg=f"{receipt.currency_code} → {receipt.home_currency_code} · {receipt.rate_date} 的提交已确认。以下按当前汇率重新计算。")
+    return draft_ack_response(request, draft_scope=values["draft_scope"], idempotency_key=values["idempotency_key"],
+        receipt=receipt, next_href=redirect.headers["location"]) or redirect

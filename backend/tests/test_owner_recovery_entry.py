@@ -6,6 +6,7 @@ import re
 from collections.abc import Iterator
 from pathlib import Path
 from types import SimpleNamespace
+from uuid import uuid4
 
 import pytest
 from jinja2 import Environment, FileSystemLoader
@@ -55,7 +56,7 @@ def test_owner_entry_restores_merchant_through_real_web_identity(installed_web: 
     headers = {"Authorization": f"Bearer {token}"}
     merchant = create_catalog(browser, headers, display_name="恢复入口商家")
     deleted = browser.request(
-        "DELETE", f"/api/merchants/catalog/{merchant['public_id']}", headers=headers,
+        "DELETE", f"/api/merchants/catalog/{merchant['public_id']}", headers={**headers, "Idempotency-Key": str(uuid4())},
         json={"expected_row_version": merchant["row_version"]},
     )
     assert deleted.status_code == 200

@@ -23,10 +23,10 @@ class ExpenseFactReadRoomTest {
                 failure?.let { throw it }
                 return delegate.expenseFactBundle(id)
             }
-            override suspend fun expenseRevisions(id: Long, page: Int, pageSize: Int, snapshotRevision: Long?): ExpenseRevisionPageDto {
+            override suspend fun expenseRevisions(id: Long, page: Int, pageSize: Int, snapshotRevision: Long?, offsetSnapshotId: Long?): ExpenseRevisionPageDto {
                 failure?.let { throw it }
                 return ExpenseRevisionPageDto(listOf(ExpenseRevisionDto("original-history", 1, "corrected", "核对小票",
-                    listOf("note"), after = mapOf("note" to "已确认历史"), createdAt = "2026-09-30T00:00:00Z")), page, pageSize, 1, 1)
+                    listOf("note"), after = mapOf("note" to "已确认历史"), createdAt = "2026-09-30T00:00:00Z")), page, pageSize, 1, 1, offsetSnapshotId = 0)
             }
         }
     }

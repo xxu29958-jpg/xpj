@@ -31,7 +31,6 @@ _BULK_BAR_FIXTURE = _REPO_ROOT / "backend" / "tests" / "fixtures" / "bulk_bar_an
 _BULK_EMPTY_RELOAD_FIXTURE = (
     _REPO_ROOT / "backend" / "tests" / "fixtures" / "bulk_bar_empty_reload_contract.html"
 )
-_DRAWER_BULK_OCC_FIXTURE = _REPO_ROOT / "backend" / "tests" / "fixtures" / "drawer_bulk_occ_contract.html"
 _DRAWER_JS = _REPO_ROOT / "backend" / "app" / "static" / "web" / "desktop" / "drawer.js"
 _REVIEW_KEYBOARD_FIXTURE = (
     _REPO_ROOT / "backend" / "tests" / "fixtures" / "review_keyboard_contract.html"
@@ -70,11 +69,12 @@ def test_accounting_time_subseconds_survive_the_actual_browser_control(tmp_path:
 
 @pytest.mark.parametrize("raw", ["2026-11-01T01:30:15.123456", "2026-11-01 01:30:15"])
 def test_manual_original_time_survives_real_draft_restoration(tmp_path: Path, raw: str) -> None:
+    edge = _discover_edge()
     scope = {"datasetId": "dataset", "clientGeneration": "generation", "accountId": "account", "ledgerId": "ledger", "deviceId": "device"}
     time_values = {"time_precision": "instant", "calendar_revision": "1", "user_local_date": "2026-11-01",
         "source_timezone": "America/New_York", "source_utc_offset_seconds": "-18000", "accounting_date": ""}
     original = dict(amount_major="100.00", currency_code="CNY", home_currency_code="CNY", merchant="原提交商家",
-        category="其他", spent_at=raw, note="原填写", return_to="", return_month="", return_recurring_public_id="",
+        category="其他", spent_at=raw, note="原填写", return_to="recurring_occurrence", return_month="2026-11", return_recurring_public_id="11111111-1111-4111-8111-111111111111",
         return_payment_expense_id="", **time_values)
     ref = "a" * 32
     record = {"version": 1, "scope": scope, "clientRef": ref, "phase": "submitted", "values": original, "updatedAt": 1}
@@ -88,16 +88,52 @@ def test_manual_original_time_survives_real_draft_restoration(tmp_path: Path, ra
         values={"currency_code": "CNY"}, currency_options=["CNY"], category_options=[], edit_return_fields={},
         time_form={**time_values, "wall_time": "2026-11-01T01:30:15", "wall_input_type": "datetime-local", "offset_options": []},
         csrf_token="synthetic", currency_input={}, asset_version="time-contract")
-    for name in ("manual-drafts.js", "manual-entry.js"):
-        body = body.replace(f'/static/web/{name}?v=time-contract', (_REPO_ROOT / "backend/app/static/web" / name).as_uri())
     body += '<script>const timer=setInterval(()=>{const form=document.querySelector("[data-manual-draft-scope]");' + \
         'if(form.dataset.manualDraftState==="submitted"){clearInterval(timer);window.__webConsumerProbe={' + \
+        'resultHref:form.querySelector("[data-manual-result]").getAttribute("href"),' + \
         'values:Object.fromEntries(new FormData(form).entries()),record:JSON.parse(localStorage.getItem(' + \
         json.dumps("ticketbox:manual-draft:v1:" + ref) + '))};}},25);</script>'
-    page = _write_fixture(tmp_path, "original-time.html", body)
-    probe = _evaluate_fixture(tmp_path, page=page, width=390, height=960, profile_name="edge-original-time")
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *_args):
+            pass
+
+        def do_GET(self):
+            path = urlsplit(self.path).path
+            static = (_REPO_ROOT / "backend/app/static").resolve()
+            resource = (static / path.removeprefix("/static/")).resolve()
+            if path == "/web/expenses/new":
+                content, kind = body.encode("utf-8"), "text/html; charset=utf-8"
+            elif path.startswith("/static/") and resource.is_relative_to(static) and resource.is_file():
+                content, kind = resource.read_bytes(), "text/javascript"
+            else:
+                self.send_error(404)
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", kind)
+            self.send_header("Content-Length", str(len(content)))
+            self.end_headers()
+            self.wfile.write(content)
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        probe = _edge_cdp().evaluate_page(edge, profile=tmp_path / "edge-original-time",
+            prepare_url=lambda _: f"http://127.0.0.1:{server.server_port}/web/expenses/new",
+            width=390, height=960, expression="window.__webConsumerProbe || undefined")
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
     assert probe["values"]["spent_at"] == raw, "Reopening changed the original command's known instant"
     assert probe["values"]["client_ref"] == ref and probe["record"] == record
+    result_url = urlsplit(probe["resultHref"])
+    result_query = parse_qs(result_url.query)
+    assert result_url.path == "/web/expenses/new/result" and not result_url.fragment
+    assert result_query["client_ref"] == [ref] and json.loads(result_query["draft_scope"][0]) == scope
+    assert result_query["return_to"] == ["recurring_occurrence"]
+    assert result_query["return_month"] == ["2026-11"]
+    assert result_query["return_recurring_public_id"] == [original["return_recurring_public_id"]]
 
 
 def test_income_create_original_form_draft_survives_refresh_in_real_edge(tmp_path: Path) -> None:
@@ -152,6 +188,7 @@ def test_income_create_original_form_draft_survives_refresh_in_real_edge(tmp_pat
                          "income_month_number": "10" if refreshed else "9"}
                 body = template.render(
                     can_write=True, plans_active=[], plans_archived=[], selected_ledger_id=scope["ledgerId"],
+                    income_creating=parse_qs(urlsplit(self.path).query).get("new_income") == ["1"],
                     income_draft_scope=scope, income_form_draft=draft, income_form_error=None,
                     income_form_review=False, income_year_options=[2025, 2026, 2027, 2028],
                     income_default_year="2026", income_default_month=draft["income_month_number"],
@@ -233,6 +270,7 @@ def test_income_create_original_form_draft_survives_refresh_in_real_edge(tmp_pat
                 "intent_month": "2026-09", "home_currency_code": "JPY", "idempotency_key": "19793a9e-7861-4c02-ae44-1cb35c5a1cdd"}
     assert probe["before"]["fields"] == expected, probe
     assert probe["after"]["fields"] == expected, f"refresh replaced unsent original income draft: {probe}"
+    assert probe["resumed"]["fields"] == expected, f"list resumption replaced the original income draft: {probe}"
     assert probe["after"]["hash"] == probe["before"]["hash"], probe
     assert probe["after"]["navigationType"] == "reload", probe
     assert probe["after"]["amountLabel"] == "预计金额（JPY）", probe
@@ -247,14 +285,8 @@ def test_income_create_original_form_draft_survives_refresh_in_real_edge(tmp_pat
     assert probe["unknown"]["record"]["phase"] == "blocked", probe
     assert probe["duplicate"]["submitDisabled"] is True, probe
     assert probe["duplicate"]["record"] == probe["unknown"]["record"], probe
-    assert probe["completed"] == {"originalRemoved": True, "newFormAvailable": True,
-                                  "newKey": "aa740c64-6e8d-45e8-80fd-5dd26a2f7126",
+    assert probe["completed"] == {"originalRemoved": True, "listHasCreateForm": False,
                                   "location": "/web/income-plans?ledger_id=income-ledger", "hash": ""}, probe
-    assert requests[2:] == [
-        {"currency": "CNY", "month": "2026-10", "key": "aa740c64-6e8d-45e8-80fd-5dd26a2f7126"},
-        {"currency": "CNY", "month": "2026-10", "key": "aa740c64-6e8d-45e8-80fd-5dd26a2f7126"},
-        {"currency": "CNY", "month": "2026-10", "key": "aa740c64-6e8d-45e8-80fd-5dd26a2f7126"},
-    ], requests
     assert len(posts) == 3, posts
     assert posts[0] == posts[1], posts
     for name, value in submitted.items():
@@ -271,14 +303,46 @@ def test_income_create_original_form_draft_survives_refresh_in_real_edge(tmp_pat
 def test_drawer_fx_status_and_retry_keep_draft_until_explicit_load_in_real_edge(tmp_path: Path) -> None:
     fixture = _REPO_ROOT / "backend/tests/fixtures/drawer_fx_original_form_contract.html"
     page = _write_fixture(tmp_path, fixture.name, fixture.read_text(encoding="utf-8").replace(
-        "__DRAWER_URI__", html.escape(_DRAWER_JS.as_uri(), quote=True)))
+        "__DRAWER_URI__", html.escape(_DRAWER_JS.as_uri(), quote=True)).replace(
+        "__CORE_URI__", html.escape(_DRAWER_JS.with_name("core.js").as_uri(), quote=True)))
     value = _evaluate_fixture(tmp_path, page=page, width=1024, height=768, profile_name="edge-drawer-fx-form")
     assert value == {
         "posts": [{"url": f"/web/expenses/1/{action}", "version": "11", "key": "original-key",
             "merchant": "Unsent merchant"} for action in ("fx-status", "fx")],
-        "retained": {"reads": 1, "version": "11", "key": "original-key", "merchant": "Unsent merchant", "rowVersion": "11"},
-        "loaded": {"reads": 2, "version": "12", "merchant": "Saved merchant", "rowVersion": "12"},
+        "retained": {"reads": 1, "listReads": 2, "version": "11", "key": "original-key", "merchant": "Unsent merchant", "rowVersion": "12"},
+        "loaded": {"reads": 2, "listReads": 3, "version": "12", "merchant": "Saved merchant", "rowVersion": "12"},
     }
+
+
+def test_pending_subtasks_preserve_inputs_and_guard_only_other_unsaved_forms(tmp_path: Path) -> None:
+    """Real review template and controllers; PG owns saving and confirmation."""
+    environment = Environment(loader=ChoiceLoader([
+        DictLoader({"base.html": '<html><head><meta charset="utf-8"></head><body>'
+                    '{% block content %}{% endblock %}</body></html>'}),
+        FileSystemLoader(_REPO_ROOT / "backend/app/templates/web"),
+    ]), autoescape=select_autoescape(["html"]))
+    row = {"public_id": "", "name": "", "kind": "product", "amount_yuan": "", "unit_price_yuan": "",
+        "quantity_text": "", "category": "", "errors": {}}
+    body = environment.get_template("edit.html").render(expense={"id": 7, "row_version": 9, "merchant": "原商家",
+        "status": "pending", "amount_label": "CNY 100.00", "original_currency_code": "CNY",
+        "original_amount_value": "100.00", "category_input": "餐饮"}, can_write=True, selected_ledger_id="original-ledger",
+        field_errors={}, category_options=["餐饮"], csrf_token="synthetic", edit_return_fields={"return_to": "search"},
+        edit_current_href="review-subtasks.html", receipt_items={"rows": [{**row, "name": "原明细", "amount_yuan": "100.00"}, row, row, row]},
+        split_rows={"rows": []}, split_members=[], currency_input={"currency_code": "CNY", "currency_symbol": "¥"},
+        expense_currency_input={"amount_step": "0.01", "inputmode": "decimal"})
+    for script in [_DRAWER_JS.with_name("core.js"), _DRAWER_JS,
+                   _REPO_ROOT / "backend/tests/fixtures/review_subtasks_probe.js"]:
+        body += '<script src="' + html.escape(script.as_uri(), quote=True) + '"></script>'
+    page = _write_fixture(tmp_path, "review-subtasks.html", body)
+    result = _evaluate_fixture(tmp_path, page=page, width=393, height=852, profile_name="edge-review-subtasks")
+    assert not result.get("error"), result
+    assert result["detailsVisible"] and result["mainHidden"] and result["mainVisibleOnReturn"]
+    assert result["names"] == ["原明细修改", "", "", "第三个新增位"]
+    assert result["amountText"] == "000100.00" and result["summaryText"] == "原明细修改"
+    assert result["ownSubmitWarned"] is False, "Saving the only edited section is not an unsaved departure"
+    assert result["otherInputWarned"] and result["cancelThenLeaveWarned"]
+    assert result["merchant"] == "未提交的原商家" and result["version"] == "9"
+    assert result["action"].endswith("/web/expenses/7/items/save")
 
 
 def _discover_edge() -> str:
@@ -385,8 +449,6 @@ def _assert_review_keyboard_behaves_in_real_edge(tmp_path: Path) -> None:
         "inputArrow": {"active": "editor", "prevented": False},
         "drawerArrow": {"active": "row-1", "prevented": False},
         "confirm": {"active": "row-1", "prevented": True},
-        "textControlEnter": {"active": "receipt-text", "prevented": False},
-        "textMetaEnter": {"active": "receipt-text", "prevented": False},
         "confirmCalls": 1,
     }
 
@@ -504,39 +566,7 @@ def test_bulk_async_feedback_has_announcement_semantics_in_real_edge(
     _assert_bulk_queue_exhaustion_reloads_authoritative_page(tmp_path)
 
 
-def test_drawer_save_resynchronizes_selected_row_occ_consumers_in_real_edge(
-    tmp_path: Path,
-) -> None:
-    page = _write_fixture(
-        tmp_path,
-        "drawer-bulk-occ-contract.html",
-        _DRAWER_BULK_OCC_FIXTURE.read_text(encoding="utf-8")
-        .replace(
-            "__BULK_BAR_URI__",
-            html.escape(_BULK_BAR_JS.as_uri(), quote=True),
-        )
-        .replace(
-            "__DRAWER_URI__",
-            html.escape(_DRAWER_JS.as_uri(), quote=True),
-        ),
-    )
-    probe = _evaluate_fixture(
-        tmp_path,
-        page=page,
-        width=1024,
-        height=768,
-        profile_name="edge-drawer-bulk-occ-contract",
-    )
-
-    assert probe == {
-        "drawerOpenedWhileSelected": True,
-        "checkboxChecked": True,
-        "checkboxDataRowVersion": "12",
-        "checkboxValue": "1:12",
-        "quickConfirmSnapshot": "1:12",
-        "bulkTokens": ["12"],
-        "selectedCount": "1",
-    }
+def test_review_keyboard_behaves_in_real_edge(tmp_path: Path) -> None:
     _assert_review_keyboard_behaves_in_real_edge(tmp_path)
 
 
@@ -692,18 +722,19 @@ def test_goal_original_input_survives_reload_and_reopening_in_real_edge(tmp_path
     original_key, newer_key = "091b6930-3f0c-4070-b8ef-5b0f1a1d0022", "ff626aac-4e4b-407a-91e2-ec188f112866"
     path = "/web/goals" if kind == "create" else "/web/goals/goal-original/edit"
     action = "/web/goals/create" if kind == "create" else path
-    fields = ["name", "target_amount_yuan", "category", "month", "home_currency_code", "idempotency_key"]
+    fields = ["name", "target_amount_yuan", "category", "month", "home_currency_code", "idempotency_key", "return_include_archived"]
     if kind == "edit":
         fields += ["expected_row_version", "return_category", "return_month"]
     spec = {"kind": kind, "action": action, "fields": fields,
-        "open": path + "?ledger_id=goal-ledger&return_category=food&return_month=2026-09",
+        "open": path + "?ledger_id=goal-ledger&month=2026-09&include_archived=true&return_category=food&return_month=2026-09&return_include_archived=true",
         "reopen": path + "?ledger_id=goal-ledger&month=2026-10",
         "input": {"name": "九月原目标", "target_amount_yuan": " 001200 ", "category": "原分类"}}
     visits, posts, missing = [], [], []
 
     def goal_page(query):
-        newer = bool(visits)
-        visits.append(path)
+        newer = any(visits)
+        creating = query.get("new_goal") == ["1"]
+        visits.append(kind == "edit" or creating)
         currency = "CNY" if newer and kind == "create" else "JPY"
         current = {"name": "另一端已修改" if newer else "已有目标", "month": "2026-10" if newer else "2026-09",
             "category": "交通", "target_amount_yuan": "9999" if newer else "1000",
@@ -711,8 +742,10 @@ def test_goal_original_input_survives_reload_and_reopening_in_real_edge(tmp_path
         if kind == "create":
             current.update(name="", category="", target_amount_yuan="")
         values = {**current, "idempotency_key": newer_key if newer else original_key,
-            "return_category": query.get("return_category", [""])[0], "return_month": query.get("return_month", [""])[0]}
-        return template.render(values=values, current=current, month=current["month"], goals=[], include_archived=False,
+            "return_category": query.get("return_category", [""])[0], "return_month": query.get("return_month", [""])[0],
+            "return_include_archived": query.get("return_include_archived", query.get("include_archived", ["false"]))[0]}
+        return template.render(values=values, current=current, month=current["month"], goals=[],
+            goal_creating=creating, include_archived=query.get("include_archived") == ["true"],
             goal={"public_id": "goal-original", "status": "archived" if posts else "active"}, can_write=True, currency_matches=True,
             form_currency={"currency_code": currency, "amount_input_hint": "整数日元" if currency == "JPY" else "两位小数",
                 "inputmode": "numeric" if currency == "JPY" else "decimal", "amount_example": "0"},
@@ -798,7 +831,8 @@ def _assert_original_goal_recovered(probe, spec, original_key, kind, posts, scop
     if kind == "edit":
         sent["public_id"] = "goal-original"
     assert posts[0] == {"path": spec["action"], "fields": sent}, posts
-    expected = {**spec["input"], "month": "2026-09", "home_currency_code": "JPY", "idempotency_key": original_key}
+    expected = {**spec["input"], "month": "2026-09", "home_currency_code": "JPY", "idempotency_key": original_key,
+        "return_include_archived": "true" if kind == "edit" else ""}
     if kind == "edit":
         expected.update(expected_row_version="7", return_category="food", return_month="2026-09")
     assert probe["before"]["fields"] == expected, probe
@@ -809,6 +843,7 @@ def _assert_original_goal_recovered(probe, spec, original_key, kind, posts, scop
         assert "另一端已修改" in probe["reopened"]["current"], probe
         assert probe["archived"] and probe["destination"] == "/web/categories?ledger_id=goal-ledger&month=2026-09#category-food", probe
     else:
+        assert probe["legacyNavigationMissing"] and "new_goal=1" in probe["shelfHref"], probe
         assert probe["destination"] == "/web/goals?ledger_id=goal-ledger&month=2026-09", probe
     assert probe["unknown"]["fields"] == probe["unresolved"]["fields"] == expected, probe
     assert probe["frozen"] and probe["remaining"] is None, probe

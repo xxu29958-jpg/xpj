@@ -4,22 +4,21 @@
 {% set product_body_domain = 'plans' %}
 {% block title %}月度预算 · 小票夹{% endblock %}
 
-{# C1 计划主入口迁入 product 正文栈 (冻结页面级体验合同):
-   - hero 只回答「本月预算剩余」(remaining = 总预算+结转−已花, Owner 投影),
-     不承诺 safe-to-spend; 六卡 KPI 墙、「Flex 可花」行话与公式副标题退役;
-   - 进度条分母对齐 Android spentProgress = 总预算+结转 (presenter 给
-     progress_value_cents/progress_max_cents), 原生 <progress>, 无 inline style;
-   - 执行事实 (hero/计划背景/排除明细/行内执行列) 永远来自 fresh server query;
-     422 草稿只回填表单 input, banner 明说「没有保存」, 草稿不冒充已保存执行;
-   - 分类预算合并为一张表 (编辑 + 行内执行列), 旧「分类预算执行」重复表退役;
-     移除 = 行尾 native checkbox, 同一全量保存、同一 upsert Owner, 无第二命令;
-   - 添加 = 2 个安静添加行 (服务端跳过 both-empty), budgets.js 纯 DOM 克隆
-     「再加一行」, 无 JS 时添加行完整可用;
-   - 排除分类 = ledger 分类 ∪ 当前已排除的 native checkbox chips + 其它自由
-     文本; normalize/alias/存在性仍归 service Owner, 浏览器不复制规则。 #}
+{# v0.5 25: execution reads fresh server facts; the same native form and draft
+   owner serve the focused editor. Closing the editor never clears inputs. #}
 {% block page_scripts %}
 <script defer src="/static/web/desktop/budgets.js?v={{ asset_version }}"></script>
 {{ drafts.scripts(asset_version) }}
+{% endblock %}
+
+{% block page_header %}
+<header class="product-page-header budget-reading">
+  <div class="product-page-heading">
+    <h1 class="page-title">这个月，心里有数</h1>
+    <p class="product-page-summary">{{ month }} · {{ budget.currency_code }}</p>
+  </div>
+  {% if category_return_url %}<a class="product-button product-button--quiet" href="{{ category_return_url }}">返回分类继续移除</a>{% endif %}
+</header>
 {% endblock %}
 
 {% block content %}
@@ -29,14 +28,8 @@
    表单 input 只读 presenter 的 form_* (GET=server 值, 未配置=空, 422=raw draft)。
    未保存的填写行 (is_configured=false) 留在 add zone, 不混入主表、无 remove;
    已保存行被清空/改坏仍 is_configured=true, 留在主表并保留 remove 勾选。 #}
-<header class="product-page-header">
-  <div class="product-page-heading">
-    <h1 class="page-title">月度预算</h1>
-    <p class="product-page-summary">{{ month }} · 本月预算与执行。</p>
-  </div>
-  {% if category_return_url %}<a class="product-button product-button--quiet" href="{{ category_return_url }}">返回分类继续移除</a>{% endif %}
-  <a class="product-button product-button--quiet" href="/web/budgets/history?ledger_id={{ selected_ledger_id|urlencode }}&amp;month={{ month }}">修改记录</a>
-</header>
+<div class="budget-page">
+
 
 {% if message %}<div class="product-feedback" role="status">{{ message }}</div>{% endif %}
 {% if budget.missing_currency_codes %}
@@ -48,7 +41,8 @@
 {% endif %}
 
 {% if budget.configured %}
-<section class="product-panel product-panel--padded budget-hero{% if budget.is_over_budget %} budget-hero--over{% endif %}" aria-label="本月预算概况">
+<div class="plan-workspace budget-reading">
+<section class="product-panel product-panel--padded budget-hero budget-reading{% if budget.is_over_budget %} budget-hero--over{% endif %}" aria-label="本月预算概况">
   <div class="budget-hero-main">
     {% if budget.is_over_budget %}
     <span class="budget-hero-label">已超支</span>
@@ -58,23 +52,56 @@
     <span class="budget-hero-value"><span class="yuan">{{ budget_currency_symbol }}</span>{{ budget.remaining_yuan or '—' }}</span>
     {% endif %}
   </div>
+  <div class="plan-progress-meta">
+    <span>已用 {{ budget_currency_symbol }}{{ budget.spent_yuan }}</span>
+    <span>可用 {{ budget_currency_symbol }}{{ budget.available_yuan }}</span>
+  </div>
+</section>
+
+<section class="budget-reading budget-execution" aria-label="本月预算执行">
+  <div class="budget-execution-heading"><h2 class="budget-section-title">本月已用</h2>{% if budget.percent_label %}<span>{{ budget.percent_label }}</span>{% endif %}</div>
   {% if budget.has_progress_basis %}
   {# 仅当 总预算+结转>0 才渲染进度; 否则不出非法 max=0, 金额事实仍照常列示。 #}
   <progress class="plan-progress{% if budget.is_over_budget %} is-over{% endif %}" value="{{ budget.progress_value_cents }}" max="{{ budget.progress_max_cents }}" aria-label="本月预算执行进度"></progress>
   {% endif %}
-  <div class="plan-progress-meta">
-    <span>本月已花 {{ budget_currency_symbol }}{{ budget.spent_yuan }}</span>
-    <span>月度总预算 {{ budget_currency_symbol }}{{ budget.total_yuan }}</span>
+
+  {% if not budget.has_progress_basis %}<p class="hint">当前额度或已用金额不适合计算进度，以已显示的金额为准。</p>{% endif %}
+  {% if budget.category_execution_rows %}
+  <h2 class="budget-section-title">分类预算</h2>
+  <div class="budget-execution-list">
+    {% for row in budget.category_execution_rows %}
+    <div class="budget-execution-row" data-category="{{ row.saved_category }}">
+      <div class="budget-execution-heading">
+        <strong>{{ row.saved_category }}</strong>
+        <span>已用 {{ budget_currency_symbol }}{{ row.spent_yuan }} / {{ row.saved_amount_yuan }}</span>
+      </div>
+      {% if row.has_progress_basis %}<progress class="plan-progress{% if row.has_overspend %} is-over{% endif %}" value="{{ row.progress_value_cents }}" max="{{ row.progress_max_cents }}" aria-label="{{ row.saved_category }}预算执行进度"></progress>{% endif %}
+      {% if row.has_overspend %}<span class="product-status product-status--danger">超支 {{ budget_currency_symbol }}{{ row.overspent_yuan }}</span>{% endif %}
+    </div>
+    {% endfor %}
   </div>
+  {% endif %}
+  <a class="product-entry" href="/web/budgets/history?ledger_id={{ selected_ledger_id|urlencode }}&amp;month={{ month }}">
+    <span class="product-entry-icon product-entry-icon--apricot" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#history"/></svg></span>
+    <span class="product-entry-copy"><strong>预算修改记录</strong><span>查看之前的安排</span></span>
+    <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
+  </a>
+  <details class="plan-disclosure">
+    <summary>结转、固定支出与预留</summary>
   <ul class="budget-context">
+    <li>月度总预算 <strong>{{ budget_currency_symbol }}{{ budget.total_yuan }}</strong></li>
     <li>结转 <strong>{{ budget_currency_symbol }}{{ budget.rollover_yuan }}</strong></li>
     <li>固定支出 <strong>{{ budget_currency_symbol }}{{ budget.fixed_yuan }}</strong></li>
     <li>非月度预留 <strong>{{ budget_currency_symbol }}{{ budget.non_monthly_yuan }}</strong></li>
   </ul>
+  </details>
 </section>
 
+</div>
+
 {% if budget.excluded_breakdown %}
-<section class="product-panel product-panel--padded" aria-label="排除分类本月支出">
+<details class="plan-disclosure budget-reading">
+  <summary>不计入预算的支出</summary>
   <div class="product-panel-header">
     <h2 class="product-panel-title">排除分类</h2>
     <p class="product-panel-subtitle">这些分类的支出不计入「本月已花」。</p>
@@ -84,7 +111,7 @@
     <span class="budget-chip-static">{{ item.category }} {{ budget_currency_symbol }}{{ item.amount_yuan }} · {{ item.count }} 笔</span>
     {% endfor %}
   </div>
-</section>
+</details>
 {% endif %}
 {% elif not can_write %}
 <section class="product-state" aria-label="开始设置预算">
@@ -96,19 +123,20 @@
 {% endif %}
 
 {% if can_write %}
-<section class="product-panel product-panel--padded{% if not budget.configured %} budget-first-step{% endif %}" aria-label="{{ '预算设置' if budget.configured else '开始设置预算' }}">
-  {% if budget.configured %}
-  <div class="product-panel-header">
-    <h2 class="product-panel-title">预算设置</h2>
-    <p class="product-panel-subtitle">保存后立即生效。</p>
-  </div>
-  {% else %}
-  <div class="budget-first-heading">
-    <h2 class="product-panel-title">从一个总额开始</h2>
-    <p class="product-panel-subtitle">其他设置随时可补。</p>
-    <p class="hint">本月已确认支出 {{ budget_currency_symbol }}{{ budget.spent_yuan }}</p>
-  </div>
-  {% endif %}
+<details class="budget-editor" id="budget-editor"{% if not budget.configured or error or budget_conflict or budget_currency_changed %} open{% endif %}>
+  <summary class="budget-editor-toggle">
+    <span class="budget-editor-enter">调整本月预算 <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-right"/></svg></span>
+    <span class="budget-editor-back"><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-left"/></svg> 预算 · 返回查看</span>
+  </summary>
+  <div class="budget-editor-content">
+  <header class="product-page-header">
+    <div class="product-page-heading">
+      <h1 class="page-title">给这个月定个额度</h1>
+      <p class="product-page-summary">{{ month }} · <span data-plan-currency>{{ currency_input.currency_code }}</span></p>
+    </div>
+    {% if category_return_url %}<a class="product-button product-button--quiet" href="{{ category_return_url }}">返回分类继续移除</a>{% endif %}
+  </header>
+  {% if not budget.configured %}<p class="hint">先设一个总额。其他设置随时可补；本月已确认支出 {{ budget_currency_symbol }}{{ budget.spent_yuan }}。</p>{% endif %}
   {% if error %}
   {# 草稿只活在表单 input 里; 上方执行区仍是未变更的服务端事实。 #}
   <div class="product-feedback product-feedback--danger" role="alert">预算没有保存：{{ error }} 你填的内容还在下面，修正后可再次保存。</div>
@@ -128,14 +156,57 @@
     <input type="hidden" name="idempotency_key" value="{{ save_intent.idempotency_key }}">
 
     <div class="product-field budget-total-field">
-      <label for="budget-total-amount-yuan">月度总预算（<span data-plan-currency>{{ currency_input.currency_code }}</span><span data-plan-amount-hint> · {{ currency_input.currency_symbol }}，{{ currency_input.amount_input_hint }}</span>）</label>
-      <input id="budget-total-amount-yuan" class="product-input" type="number" name="total_amount_yuan" value="{{ budget.form_total_yuan }}" min="0" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_example }}" required>
+      <label for="budget-total-amount-yuan">总预算 · <span data-plan-currency>{{ currency_input.currency_code }}</span></label>
+      <input id="budget-total-amount-yuan" class="product-input" aria-describedby="budget-total-amount-hint" type="number" name="total_amount_yuan" value="{{ budget.form_total_yuan }}" min="0" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_example }}" required>
+      <span class="hint" id="budget-total-amount-hint" data-plan-amount-hint>{{ currency_input.currency_symbol }} · {{ currency_input.amount_input_hint }}</span>
     </div>
+
+        <section class="budget-category" aria-label="分类额度">
+          <div class="budget-execution-heading">
+            <h2 class="budget-section-title">分类额度</h2>
+            <button type="button" class="product-button product-button--quiet product-button--small" data-budget-add-start hidden>添加分类</button>
+          </div>
+          {% for row in configured_rows %}
+          <div class="budget-row" data-saved-category="{{ row.saved_category }}">
+            <div class="product-field">
+              <label for="budget-category-amount-{{ row.index }}">{{ row.saved_category }}</label>
+              <input id="budget-category-amount-{{ row.index }}" class="product-input" type="number" name="category_budget_amount_yuan" value="{{ row.amount_yuan }}" min="0" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_example }}" aria-label="分类预算金额">
+            </div>
+            <details class="budget-row-options" data-budget-options open data-start-expanded="{{ 'true' if row.category != row.saved_category or row.remove_requested else 'false' }}">
+              <summary hidden>改名、移除与执行情况</summary>
+              <div class="budget-row-saved">已保存：{{ row.saved_category }} · 本月已花 {{ budget_currency_symbol }}{{ row.spent_yuan or '—' }}{% if row.has_overspend %} · 超支 {{ budget_currency_symbol }}{{ row.overspent_yuan }}{% elif row.remaining_yuan %} · 剩余 {{ budget_currency_symbol }}{{ row.remaining_yuan }}{% endif %}</div>
+              <div class="product-field">
+                <label for="budget-category-name-{{ row.index }}">保存后的分类名称</label>
+                <input id="budget-category-name-{{ row.index }}" class="product-input" type="text" name="category_budget_category" value="{{ row.category }}" placeholder="餐饮" aria-label="分类预算分类">
+              </div>
+              <label class="budget-remove"><input type="checkbox" name="category_budget_remove" value="{{ row.index }}"{% if row.remove_requested %} checked{% endif %} aria-label="移除分类预算：{{ row.saved_category }}"><span>移除这项额度，历史流水保留</span></label>
+            </details>
+          </div>
+          {% endfor %}
+          <div class="budget-add-zone" data-budget-add-zone>
+            <div class="budget-add-title">添加分类预算</div>
+            <div class="budget-add-rows">
+              {% for row in add_rows %}
+              <div class="budget-add-row" data-budget-add-row>
+                <input class="product-input" type="text" name="category_budget_category" value="{{ row.category }}" placeholder="分类，如：餐饮" aria-label="分类预算分类">
+                <input class="product-input" type="number" name="category_budget_amount_yuan" value="{{ row.amount_yuan }}" min="0" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_example }}" aria-label="分类预算金额">
+              </div>
+              {% endfor %}
+            </div>
+            <button type="button" class="product-button product-button--quiet product-button--small" data-budget-add-more hidden>再加一行</button>
+            <p class="hint">空白行不会保存，历史流水不受影响。</p>
+          </div>
+        </section>
 
     {# 无 JS 时保持全部输入可见。只在校验显露监听器就位后允许折叠，
        避免关闭的可选项含非法值时原生校验无法聚焦。 #}
-    <details class="plan-disclosure" id="budget-options" open data-start-expanded="{{ 'true' if budget.configured or error else 'false' }}">
-      <summary hidden>更多预算设置（可选）</summary>
+    <div class="budget-option-list">
+    <details id="budget-options" data-budget-options open data-start-expanded="{{ 'true' if error else 'false' }}">
+      <summary class="product-entry" hidden>
+        <span class="product-entry-icon product-entry-icon--lilac" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#layers"/></svg></span>
+        <span class="product-entry-copy"><strong>结转与预留</strong><span>为这个月留一点余地</span></span>
+        <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
+      </summary>
       <div class="budget-sections">
         <div class="budget-fields">
           <div class="product-field">
@@ -148,6 +219,14 @@
           </div>
         </div>
 
+      </div>
+    </details>
+    <details data-budget-options open data-start-expanded="{{ 'true' if error else 'false' }}">
+      <summary class="product-entry" hidden>
+        <span class="product-entry-icon product-entry-icon--apricot" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#list-filter"/></svg></span>
+        <span class="product-entry-copy"><strong>不计入预算的分类</strong><span>查看与调整排除范围</span></span>
+        <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
+      </summary>
         <fieldset class="budget-excluded">
           <legend>排除分类</legend>
           <p class="hint">勾选后，这些分类的支出不计入「本月已花」。</p>
@@ -166,102 +245,23 @@
             <input id="budget-excluded-categories" class="product-input" type="text" name="excluded_categories" value="{{ excluded_categories_other }}" placeholder="不在列表里的分类，多个用英文逗号分隔">
           </div>
         </fieldset>
-
-        <div class="budget-category">
-          <h2 class="budget-section-title">分类预算</h2>
-          {% if configured_rows %}
-          <div class="product-table-wrap">
-            <table class="product-table budget-table">
-              <thead>
-                <tr>
-                  <th scope="col">分类</th>
-                  <th scope="col">预算（{{ currency_input.currency_code }}）</th>
-                  <th scope="col" class="amount">本月已花</th>
-                  <th scope="col" class="amount">剩余</th>
-                  <th scope="col"><span class="sr-only">移除</span></th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for row in configured_rows %}
-                <tr class="budget-row" data-saved-category="{{ row.saved_category }}">
-                  <td>
-                    <input class="product-input" type="text" name="category_budget_category" value="{{ row.category }}" placeholder="餐饮" aria-label="分类预算分类">
-                    {# 已保存身份是不可变事实, 常显且零 JS: input 里是要保存的 draft,
-                       改名/422 时执行列仍明确归属旧行, 三态同一表达。 #}
-                    <div class="budget-row-saved">已保存：{{ row.saved_category }}</div>
-                  </td>
-                  <td><input class="product-input" type="number" name="category_budget_amount_yuan" value="{{ row.amount_yuan }}" min="0" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_example }}" aria-label="分类预算金额"></td>
-                  <td class="amount">{% if row.spent_yuan %}<span class="budget-cell-sign">本月已花</span>{{ budget_currency_symbol }}{{ row.spent_yuan }}{% else %}—{% endif %}</td>
-                  <td class="amount">{% if row.has_overspend %}<span class="product-status product-status--danger">超支 {{ budget_currency_symbol }}{{ row.overspent_yuan }}</span>{% elif row.remaining_yuan %}<span class="budget-cell-sign">剩余</span>{{ budget_currency_symbol }}{{ row.remaining_yuan }}{% else %}—{% endif %}</td>
-                  <td class="budget-remove-cell">
-                    <label class="budget-remove"><input type="checkbox" name="category_budget_remove" value="{{ row.index }}"{% if row.remove_requested %} checked{% endif %} aria-label="移除分类预算：{{ row.saved_category }}"><span>移除</span></label>
-                  </td>
-                </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-          {% endif %}
-          <div class="budget-add-zone" data-budget-add-zone>
-            <div class="budget-add-title">添加分类预算</div>
-            <div class="budget-add-rows">
-              {% for row in add_rows %}
-              <div class="budget-add-row" data-budget-add-row>
-                <input class="product-input" type="text" name="category_budget_category" value="{{ row.category }}" placeholder="分类，如：餐饮" aria-label="分类预算分类">
-                <input class="product-input" type="number" name="category_budget_amount_yuan" value="{{ row.amount_yuan }}" min="0" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_example }}" aria-label="分类预算金额">
-              </div>
-              {% endfor %}
-            </div>
-            <button type="button" class="product-button product-button--quiet product-button--small" data-budget-add-more hidden>再加一行</button>
-            <p class="hint">空白行不会保存；勾选「移除」再保存即可删除该分类预算，历史流水不受影响；保存后可继续添加。</p>
-          </div>
-        </div>
-      </div>
     </details>
+    </div>
 
     <div class="budget-actions">
       {% if budget_currency_changed %}
       <p role="status">原输入使用 {{ save_intent.home_currency_code }}，与当前预算币种不同。原输入保留在此页，请在新页面按当前预算币种重新填写金额。</p>
-      <a class="product-button product-button--primary" href="{{ current_edit_url }}" target="_blank" rel="noopener">打开当前预算重新编辑</a>
+      <a class="product-button product-button--primary" href="{{ current_edit_url }}#budget-editor" target="_blank" rel="noopener">打开当前预算重新编辑</a>
       {% elif budget_conflict and not budget_draft_scope %}<button class="product-button product-button--primary" type="submit" name="review_latest" value="true" formnovalidate>保留输入，核对最新预算</button>{% endif %}
       <button class="product-button product-button--primary" type="submit" data-budget-submit{% if (budget_conflict or budget_currency_changed) and not budget_draft_scope %} disabled{% endif %}>保存预算</button>
       {{ drafts.controls('budget', '预算', budget_draft_scope) }}
     </div>
   </form>
-</section>
-{% elif budget.configured and configured_rows %}
-{# 只读角色: 同一张分类预算表的只读形态, 无写控件。 #}
-<section class="product-panel product-panel--padded">
-  <div class="product-panel-header">
-    <h2 class="product-panel-title">分类预算</h2>
-    <p class="product-panel-subtitle">已配置分类的本月执行。</p>
   </div>
-  <div class="product-table-wrap">
-    <table class="product-table budget-table">
-      <thead>
-        <tr>
-          <th scope="col">分类</th>
-          <th scope="col" class="amount">预算</th>
-          <th scope="col" class="amount">本月已花</th>
-          <th scope="col" class="amount">剩余</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in configured_rows %}
-        <tr class="budget-row">
-          <td>{{ row.category }}</td>
-          <td class="amount">{{ budget_currency_symbol }}{{ row.amount_yuan }}</td>
-          <td class="amount">{% if row.spent_yuan %}<span class="budget-cell-sign">本月已花</span>{{ budget_currency_symbol }}{{ row.spent_yuan }}{% else %}—{% endif %}</td>
-          <td class="amount">{% if row.has_overspend %}<span class="product-status product-status--danger">超支 {{ budget_currency_symbol }}{{ row.overspent_yuan }}</span>{% elif row.remaining_yuan %}<span class="budget-cell-sign">剩余</span>{{ budget_currency_symbol }}{{ row.remaining_yuan }}{% else %}—{% endif %}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</section>
+</details>
 {% endif %}
 {% if budget.configured and can_write %}
-<details class="product-panel product-panel--padded">
+<details class="plan-disclosure budget-reading budget-management">
   <summary>管理本月预算</summary>
   <p>移入回收站后，本月不再启用这份预算。已确认支出、分类额度和修改记录保留，可在回收站恢复。未提交的填写仍保留。</p>
   <form method="post" action="/web/budgets/archive" data-confirm="将 {{ month }} 的预算移入回收站？原支出和修改记录保留。">
@@ -274,4 +274,5 @@
   </form>
 </details>
 {% endif %}
+</div>
 {% endblock %}

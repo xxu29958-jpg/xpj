@@ -1,5 +1,7 @@
 """Rule form values carry the currency selected when the form was opened."""
 
+from pydantic import BaseModel, ValidationError
+
 from app.errors import AppError
 from app.services.currency_common import (
     currency_input_metadata,
@@ -8,6 +10,38 @@ from app.services.currency_common import (
     minor_amount_value,
     normalize_currency_code,
 )
+
+
+class RuleDefinitionForm(BaseModel):
+    ledger_id: str = ""
+    rule_id: str = ""
+    keyword: str = ""
+    category: str = ""
+    priority: str = "100"
+    amount_min_yuan: str = ""
+    amount_max_yuan: str = ""
+    source_contains: str = ""
+    tag_contains: str = ""
+    home_currency_code: str = ""
+    idempotency_key: str = ""
+    draft_ref: str = ""
+    draft_scope: str = ""
+    return_category: str = ""
+    return_month: str = ""
+    review_new: bool = False
+    review_latest: bool = False
+
+
+class RuleEditForm(RuleDefinitionForm):
+    expected_row_version: str = ""
+
+
+def rule_form_failure(exc: AppError | ValidationError) -> tuple[AppError, str]:
+    error = exc if isinstance(exc, AppError) else AppError(
+        "invalid_request", "请检查关键词、分类和金额条件。输入已保留。", status_code=422)
+    refused = error.error in {"state_conflict", "idempotency_key_reused", "idempotency_key_required",
+        "invalid_request", "rule_category_deleted", "rule_not_found"}
+    return error, "rejected" if refused else "blocked"
 
 
 def rule_amount_label(amount: int | None, currency: str | None) -> str:

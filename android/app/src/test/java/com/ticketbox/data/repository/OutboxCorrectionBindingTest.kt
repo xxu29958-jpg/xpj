@@ -135,13 +135,13 @@ private class CorrectionBindingFixture(private val delayedType: PendingMutationT
     fun model() = OutboxStatusViewModel(outbox, repository, com.ticketbox.viewmodel.OutboxRecoveryRepositories(
         DebtCreationRepository(binding.apiProvider, outbox, adapters.debtCreateAdapter),
         recurringOccurrences = null,
-        recurringItems = RecurringRepository(binding.apiProvider, outbox, adapters.recurringCreateAdapter, adapters.recurringUpdateAdapter,
+        recurringItems = RecurringRepository(binding.apiProvider, outbox, adapters,
             queryReader = RecurringQueryReader(binding.apiProvider, recurringCache, LocalLedgerSessionCoordinator(binding.settingsStore, binding.sessionStore, recurringCache, outbox))),
         rules = RuleRepository(binding, offlineMutations = CategoryRuleOfflineMutationWiring(
             outbox, adapters.categoryRuleUpdateAdapter, adapters.categoryRuleDeleteAdapter,
             adapters.categoryRuleSubmissionAdapter, adapters.categoryRuleReceiptAdapter)),
         incomePlans = testIncomePlanRepository(binding.apiProvider, outbox, adapters.incomePlanSubmissionAdapter, adapters.incomePlanReceiptAdapter),
         debtWrites = DebtWriteRepository(binding.apiProvider, outbox, adapters),
-        goalEdits = GoalEditRepository(binding.apiProvider, outbox, adapters.goalUpdateAdapter, adapters.goalReceiptAdapter, adapters.goalCreateAdapter),
+        goalEdits = GoalEditRepository(binding.apiProvider, outbox, adapters.goalUpdateAdapter, adapters.goalReceiptAdapter, adapters.goalCreateAdapter, adapters.goalDebtEditAdapter),
             budgetSaves = testBudgetRepository(binding.apiProvider, outbox), repaymentReviews = com.ticketbox.data.repository.unusedRepaymentReviews()))
 }

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from uuid import uuid4
+
 from fastapi.testclient import TestClient
 
 from app.services.merchant_service import normalize_merchant
@@ -31,7 +33,7 @@ def test_merchant_catalog_merge_creates_alias_and_keeps_historical_facts(
 
     merged = client.post(
         f"/api/merchants/catalog/{source['public_id']}/merge",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "expected_row_version": source["row_version"],
             "target_public_id": target["public_id"],
@@ -67,7 +69,7 @@ def test_merchant_catalog_merge_creates_alias_and_keeps_historical_facts(
     source_after_merge = body["source"]
     reactivate_source = client.patch(
         f"/api/merchants/catalog/{source['public_id']}",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "expected_row_version": source_after_merge["row_version"],
             "status": "active",
@@ -79,7 +81,7 @@ def test_merchant_catalog_merge_creates_alias_and_keeps_historical_facts(
     delete_source = client.request(
         "DELETE",
         f"/api/merchants/catalog/{source['public_id']}",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"expected_row_version": source_after_merge["row_version"]},
     )
     assert delete_source.status_code == 409
@@ -94,7 +96,7 @@ def test_merchant_catalog_merge_none_policy_does_not_create_alias(
 
     merged = client.post(
         f"/api/merchants/catalog/{source['public_id']}/merge",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "expected_row_version": source["row_version"],
             "target_public_id": target["public_id"],
@@ -117,7 +119,7 @@ def test_merchant_catalog_merge_blocks_live_config_and_alias_key_conflict(
 
     blocked_by_canonical_alias = client.post(
         f"/api/merchants/catalog/{source['public_id']}/merge",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "expected_row_version": source["row_version"],
             "target_public_id": target["public_id"],
@@ -132,7 +134,7 @@ def test_merchant_catalog_merge_blocks_live_config_and_alias_key_conflict(
 
     blocked_by_recurring = client.post(
         f"/api/merchants/catalog/{source['public_id']}/merge",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "expected_row_version": source["row_version"],
             "target_public_id": target["public_id"],
@@ -148,7 +150,7 @@ def test_merchant_catalog_merge_blocks_live_config_and_alias_key_conflict(
 
     alias_conflict = client.post(
         f"/api/merchants/catalog/{source['public_id']}/merge",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "expected_row_version": source["row_version"],
             "target_public_id": target["public_id"],
@@ -174,13 +176,13 @@ def test_merchant_catalog_merge_rejects_invalid_state_and_rewrite_flag(
     target = _create_catalog(client, identity.app_headers, display_name="Merge Target")
     hidden_target = client.patch(
         f"/api/merchants/catalog/{target['public_id']}",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"expected_row_version": target["row_version"], "status": "hidden"},
     ).json()
 
     same = client.post(
         f"/api/merchants/catalog/{source['public_id']}/merge",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "expected_row_version": source["row_version"],
             "target_public_id": source["public_id"],
@@ -193,7 +195,7 @@ def test_merchant_catalog_merge_rejects_invalid_state_and_rewrite_flag(
 
     hidden = client.post(
         f"/api/merchants/catalog/{source['public_id']}/merge",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "expected_row_version": source["row_version"],
             "target_public_id": target["public_id"],
@@ -206,7 +208,7 @@ def test_merchant_catalog_merge_rejects_invalid_state_and_rewrite_flag(
 
     rewrite = client.post(
         f"/api/merchants/catalog/{source['public_id']}/merge",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "expected_row_version": source["row_version"],
             "target_public_id": target["public_id"],
@@ -228,7 +230,7 @@ def test_merchant_catalog_merge_stale_tokens_return_conflict_without_partial_mer
 
     target_stale = client.post(
         f"/api/merchants/catalog/{source['public_id']}/merge",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "expected_row_version": source["row_version"],
             "target_public_id": target["public_id"],
@@ -247,7 +249,7 @@ def test_merchant_catalog_merge_stale_tokens_return_conflict_without_partial_mer
     _bump_catalog_row_version(public_id=source["public_id"])
     source_stale = client.post(
         f"/api/merchants/catalog/{source['public_id']}/merge",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "expected_row_version": source["row_version"],
             "target_public_id": target["public_id"],
@@ -275,7 +277,7 @@ def test_merchant_catalog_merge_is_ledger_isolated(
 
     cross_source = client.post(
         f"/api/merchants/catalog/{owner_source['public_id']}/merge",
-        headers=identity.gray_app_headers,
+        headers={**identity.gray_app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "expected_row_version": owner_source["row_version"],
             "target_public_id": owner_target["public_id"],

@@ -34,11 +34,9 @@ class MerchantRepositoryConflictDecodeTest {
             ),
         )
 
-        val result = repo.updateMerchantCatalog(
-            publicId = "source",
-            expectedRowVersion = 1L,
-            displayName = "蓝瓶咖啡",
-        )
+        val result = repo.submitDraft(MerchantDraft(requireNotNull(repo.captureBinding()), MerchantDraftKind.Rename,
+            "original-rename", displayName = "蓝瓶咖啡", source = MerchantCatalogDto("source", "原商家", "原商家", "active",
+                usageCount = 0, createdAt = "2026-10-08T00:00:00Z", updatedAt = "2026-10-08T00:00:00Z", rowVersion = 1).toDomain()))
 
         assertTrue(result.isFailure)
         val ex = result.exceptionOrNull() as? RepositoryException

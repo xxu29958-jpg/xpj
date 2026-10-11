@@ -3,7 +3,9 @@ package com.ticketbox.ui.screens.expense.fact
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -13,14 +15,18 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.annotation.StringRes
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.ui.components.AppSectionHeader
+import com.ticketbox.ui.components.AppAdaptiveContentActionRow
+import com.ticketbox.ui.components.AppAdaptiveContentActionStyle
 import com.ticketbox.ui.components.AppSecondaryButton
-import com.ticketbox.ui.components.StatusPill
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.tabularNum
@@ -52,8 +58,18 @@ internal fun FactTimelineSection(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
     ) {
-        AppSectionHeader(title = stringResource(R.string.expense_fact_timeline_title))
-        FactTimelineStateContent(state, currency, onRetryLoad, onToggleExpanded, onLoadOlder)
+        if (!state.timelineExpanded) AppAdaptiveContentActionRow(
+            style = AppAdaptiveContentActionStyle(compactAction = true),
+            content = { AppSectionHeader(title = stringResource(R.string.expense_fact_recent_changes)) },
+            action = { modifier ->
+                TextButton(onClick = onToggleExpanded, modifier = modifier) {
+                    Text(stringResource(R.string.expense_fact_history_entry))
+                }
+            },
+        )
+        FactTimelineStateContent(state, currency, onRetryLoad, onLoadOlder)
+        if (state.timelineExpanded) Text(stringResource(R.string.expense_fact_history_preserved),
+            color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
     }
 }
 
@@ -62,7 +78,6 @@ private fun FactTimelineStateContent(
     state: ExpenseFactUiState,
     currency: CurrencyCode,
     onRetryLoad: () -> Unit,
-    onToggleExpanded: () -> Unit,
     onLoadOlder: () -> Unit,
 ) {
     when (state.revisionsLoadState) {
@@ -73,7 +88,6 @@ private fun FactTimelineStateContent(
             state = state,
             currency = currency,
             onRetryLoad = onRetryLoad,
-            onToggleExpanded = onToggleExpanded,
             onLoadOlder = onLoadOlder,
         )
         else -> Text(
@@ -89,7 +103,6 @@ private fun FactTimelineLoadedContent(
     state: ExpenseFactUiState,
     currency: CurrencyCode,
     onRetryLoad: () -> Unit,
-    onToggleExpanded: () -> Unit,
     onLoadOlder: () -> Unit,
 ) {
     if (state.revisions.isEmpty()) {
@@ -122,7 +135,6 @@ private fun FactTimelineLoadedContent(
     val visible = if (state.timelineExpanded) entries else entries.take(TIMELINE_PREVIEW_COUNT)
     visible.forEach { entry -> FactTimelineEntryRow(entry = entry) }
     FactTimelineOlderAction(state = state, onLoadOlder = onLoadOlder)
-    FactTimelineExpansionAction(state = state, entriesSize = entries.size, onToggleExpanded = onToggleExpanded)
 }
 
 @Composable
@@ -151,36 +163,24 @@ private fun FactTimelineOlderAction(
 }
 
 @Composable
-private fun FactTimelineExpansionAction(
-    state: ExpenseFactUiState,
-    entriesSize: Int,
-    onToggleExpanded: () -> Unit,
-) {
-    if (state.revisionsTotal <= TIMELINE_PREVIEW_COUNT && entriesSize <= TIMELINE_PREVIEW_COUNT) return
-    // CTA 文案必须等于这一次点击的交付：仍有远端页时只承诺展开本地最近 M 条。
-    val text = when {
-        state.timelineExpanded -> stringResource(R.string.expense_fact_timeline_collapse)
-        state.revisionsTotal > entriesSize -> stringResource(
-            R.string.expense_fact_timeline_expand_loaded,
-            entriesSize,
-        )
-        else -> stringResource(R.string.expense_fact_timeline_expand, state.revisionsTotal)
-    }
-    AppSecondaryButton(text = text, onClick = onToggleExpanded)
-}
-
-@Composable
 private fun FactTimelineEntryRow(entry: FactTimelineEntry) {
+    val line = MaterialTheme.colorScheme.outlineVariant
+    val dot = MaterialTheme.colorScheme.primary
     Column(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().drawBehind {
+            val x = AppSpacing.miniGap.toPx()
+            val y = AppSpacing.smallGap.toPx()
+            drawLine(line, Offset(x, y), Offset(x, size.height), strokeWidth = 1.dp.toPx())
+            drawCircle(dot, radius = AppSpacing.miniGap.toPx(), center = Offset(x, y))
+        }.padding(start = AppSpacing.cardPadding, bottom = AppSpacing.sectionGap),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
     ) {
-        Row(
+        FlowRow(
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
         ) {
-            StatusPill(
+            Text(
                 text = stringResource(entry.kindLabelRes),
-                active = !entry.isCorrection,
+                style = MaterialTheme.typography.titleMedium,
             )
             Text(
                 text = entry.whenText,
@@ -195,12 +195,23 @@ private fun FactTimelineEntryRow(entry: FactTimelineEntry) {
                 )
             }
         }
-        Text(
+        entry.summary?.let { Text(it.asString(), style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        if (entry.reason != stringResource(entry.kindLabelRes)) Text(
             text = entry.reason,
             color = MaterialTheme.colorScheme.onSurface,
             style = MaterialTheme.typography.titleSmall,
         )
-        entry.changes.forEach { change ->
+        FactTimelineChanges(entry.changes)
+        entry.collections.forEach { collection ->
+            FactTimelineCollectionDisclosure(collection = collection)
+        }
+    }
+}
+
+@Composable
+private fun FactTimelineChanges(changes: List<com.ticketbox.viewmodel.FactTimelineChange>) {
+    changes.forEach { change ->
             val before = change.before.asString()
             val after = change.after.asString()
             Row(
@@ -221,10 +232,6 @@ private fun FactTimelineEntryRow(entry: FactTimelineEntry) {
                 )
             }
         }
-        entry.collections.forEach { collection ->
-            FactTimelineCollectionDisclosure(collection = collection)
-        }
-    }
 }
 
 /** 完整 Before/After 集合的原地展开件：默认收起；CTA 前缀字段标签，

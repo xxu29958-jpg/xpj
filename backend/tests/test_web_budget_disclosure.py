@@ -19,33 +19,38 @@ const fs = require('fs');
 const vm = require('vm');
 const assert = require('assert/strict');
 const source = fs.readFileSync(process.argv[1], 'utf8');
+const core = fs.readFileSync(process.argv[2], 'utf8');
 function mount(startExpanded, withSummary = true) {
-  const inside = {};
+  const inside = {closest: selector => selector === "details" ? options : null};
   const summary = {hidden: true};
-  let invalid;
-  const form = {addEventListener(name, handler, capture) {
+  let invalid, nativeInvalid;
+  const form = {querySelectorAll: () => [options], addEventListener(name, handler, capture) {
     assert.equal(name, 'invalid');
     assert.equal(capture, true);
     invalid = handler;
   }};
   const options = {
-    open: true,
+    open: true, parentElement: null,
     querySelector: selector => selector === 'summary' && withSummary ? summary : null,
-    closest: selector => selector === 'form' ? form : null,
     getAttribute: name => name === 'data-start-expanded' ? String(startExpanded) : null,
     contains: target => target === inside,
   };
   const document = {
     readyState: 'complete',
-    querySelector: selector => selector === '#budget-options' ? options : null,
+    querySelectorAll: () => [],
+    addEventListener: (_name, handler) => { nativeInvalid = handler; },
+    querySelector: selector => selector === '.budget-form' ? form : null,
   };
-  vm.runInNewContext(source, {window: {}, document});
-  return {options, summary, inside, invalid};
+  const window = {};
+  vm.runInNewContext(core, {window, document});
+  window.TicketboxWeb.initFormDisclosures();
+  vm.runInNewContext(source, {window, document});
+  return {options, summary, inside, invalid: event => { nativeInvalid(event); invalid(event); }};
 }
 const first = mount(false);
 assert.equal(first.options.open, false);
 assert.equal(first.summary.hidden, false);
-first.invalid({target: {}});
+first.invalid({target: {closest: () => null}});
 assert.equal(first.options.open, false);
 first.invalid({target: first.inside});
 assert.equal(first.options.open, true);
@@ -57,7 +62,7 @@ assert.equal(incomplete.options.open, true);
 assert.equal(incomplete.summary.hidden, true);
 """
     completed = subprocess.run(
-        [node, "-e", script, str(source)],
+        [node, "-e", script, str(source), str(source.with_name("core.js"))],
         check=False,
         capture_output=True,
         text=True,

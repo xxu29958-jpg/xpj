@@ -3,7 +3,8 @@
 from uuid import uuid4
 
 import pytest
-from _web_native_form_support import hidden_post_forms
+from _web_native_form_support import hidden_post_forms, open_creation_form
+from _web_recurring_test_support import open_recurring_form
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -50,6 +51,10 @@ def test_native_create_preserves_selected_ledger_and_money(
     with TestClient(app, base_url="http://127.0.0.1", client=("127.0.0.1", 53005)) as browser:
         page = browser.get(f"{route}?ledger_id=tester_1&month=2026-05")
         assert page.status_code == 200, page.text
+        if route == "/web/recurring":
+            page = open_recurring_form(browser, page)
+        elif route in {"/web/income-plans", "/web/goals"}:
+            page = open_creation_form(browser, page, "new_income" if route == "/web/income-plans" else "new_goal")
         action = f"{route}/create"
         submitted = browser.post(
             action,

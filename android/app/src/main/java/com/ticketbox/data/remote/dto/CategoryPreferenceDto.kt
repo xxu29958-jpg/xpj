@@ -23,6 +23,11 @@ data class CategoryPreferenceListResponseDto(
     val items: List<CategoryPreferenceDto>,
 )
 
+data class CategoryPreferenceInspectionDto(
+    val category: CategoryPreferenceDto,
+    val references: List<CategoryReferenceDto>,
+)
+
 data class CategoryPreferenceTokenRequestDto(
     @param:Json(name = "expected_row_version")
     val expectedRowVersion: Long,

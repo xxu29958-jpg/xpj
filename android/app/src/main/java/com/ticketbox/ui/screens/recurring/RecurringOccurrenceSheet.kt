@@ -2,11 +2,10 @@ package com.ticketbox.ui.screens.recurring
 
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
@@ -17,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -28,6 +28,7 @@ import com.ticketbox.domain.model.ConfirmedStreamItem
 import com.ticketbox.domain.model.ExpenseFilterCriteria
 import com.ticketbox.domain.model.ExpenseLineageStatus
 import com.ticketbox.domain.model.filterConfirmedStreamItems
+import com.ticketbox.ui.components.AppButtonIcons
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppBusyGuardedSheet
@@ -67,44 +68,42 @@ fun RecurringOccurrenceSheet(
     origin: OccurrencePaymentGuard = OccurrencePaymentGuard(),
 ) {
     val item = state.item ?: return
+    val paymentFilters = rememberSaveableStateHolder()
     AppBusyGuardedSheet(isSubmitting = state.saving, onDismiss = actions.onDismiss, skipPartiallyExpanded = true) {
         AppSheetScaffold(
             title = item.merchant,
             subtitle = stringResource(R.string.occurrence_subtitle),
             modifier = Modifier.fillMaxHeight(),
-            actions = occurrenceChoiceActions(state, actions.onSubmit),
+            actions = occurrenceChoiceActions(state, actions),
         ) {
-            OccurrencePeriodControls(state, actions)
-            RecurringReadSource(state.fetchedAt, state.fromCache, state.loading)
-            if (state.fromCache && state.requestedPeriod == "current") {
-                Text(stringResource(R.string.occurrence_cached_period, state.occurrence?.period.orEmpty()))
-            }
+            state.occurrence?.let { OccurrenceCurrentSummary(it) }
             state.message?.let { Text(it.asString(), modifier = Modifier.testTag("occurrence-message")) }
             OccurrencePaymentConflict(origin, actions)
             state.seriesPending.forEach { OccurrencePending(it, state.access?.canModify == true, actions.onRecover) }
             state.occurrence?.let { occurrence ->
-                OccurrenceDefinitionBasis(occurrence)
-                Text(stringResource(occurrenceStateLabel(occurrence.state)), modifier = Modifier.testTag("occurrence-state"))
-                Text(stringResource(R.string.occurrence_reserved, recurringRecordedAmountText(occurrence.reservedAmountCents, occurrence.homeCurrencyCode)))
-                occurrence.paidAmountCents?.let {
-                    Text(stringResource(R.string.occurrence_paid_amount, recurringRecordedAmountText(it, occurrence.paidHomeCurrencyCode)))
-                }
-                occurrence.expenseId?.let { id ->
-                    TextButton(onClick = { actions.onOpenExpense(id) }) { Text(stringResource(R.string.occurrence_open_payment)) }
-                }
-                Text(stringResource(R.string.occurrence_next_due, occurrence.nextDueDate ?: stringResource(R.string.occurrence_no_reminder)))
                 if (occurrence.expensePublicId != null) {
                     TextButton(onClick = { actions.onChoose(null) }, enabled = state.canWrite) { Text(stringResource(R.string.occurrence_clear)) }
                 }
                 if (state.access?.canModify == false) Text(stringResource(R.string.occurrence_readonly))
+                Text(stringResource(R.string.occurrence_next_due, occurrence.nextDueDate ?: stringResource(R.string.occurrence_no_reminder)))
+            }
+            state.occurrence?.let { occurrence ->
+                if (state.canWrite) paymentFilters.SaveableStateProvider("${item.publicId}:${occurrence.period}") {
+                    OccurrencePaymentPicker(state, actions.onChoose, preferredExpenseId)
+                }
                 OccurrenceRecordPayment(
                     canWrite = state.canWrite,
                     unfulfilled = occurrence.state == "unfulfilled",
                     origin = origin,
                     onRecord = actions.onRecordPayment,
                 )
-                if (state.canWrite) OccurrencePaymentPicker(state, actions.onChoose, preferredExpenseId)
             }
+            RecurringReadSource(state.fetchedAt, state.fromCache, state.loading)
+            if (state.fromCache && state.requestedPeriod == "current") {
+                Text(stringResource(R.string.occurrence_cached_period, state.occurrence?.period.orEmpty()))
+            }
+            OccurrencePeriodControls(state, actions)
+            state.occurrence?.let { OccurrenceDefinitionBasis(it) }
         }
     }
 }
@@ -174,14 +173,12 @@ private fun OccurrenceRecordPayment(
     onRecord: () -> Unit,
 ) {
     if (!canWrite || !unfulfilled) return
-    AppPrimaryButton(
-        text = stringResource(R.string.occurrence_record_payment),
-        icon = Icons.Filled.Add,
+    TextButton(
         onClick = onRecord,
         enabled = origin.resolved && !origin.conflict && !origin.localDraftHeld &&
             !origin.priorGenerationOccupied,
-        modifier = Modifier.fillMaxWidth().testTag("occurrence-record-payment"),
-    )
+        modifier = Modifier.testTag("occurrence-record-payment"),
+    ) { Text(stringResource(R.string.occurrence_record_payment)) }
 }
 
 @Composable
@@ -189,7 +186,7 @@ private fun OccurrencePeriodControls(state: RecurringOccurrenceUiState, actions:
     var period by rememberSaveable(state.item?.publicId, state.occurrence?.period) { mutableStateOf(state.occurrence?.period.orEmpty()) }
     OutlinedTextField(value = period, onValueChange = { period = it }, label = { Text(stringResource(R.string.occurrence_period)) },
         singleLine = true, modifier = Modifier.fillMaxWidth().testTag("occurrence-period"))
-    Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
         TextButton(onClick = { actions.onPeriod(period) }, enabled = !state.loading && !state.saving) { Text(stringResource(R.string.occurrence_show_period)) }
         TextButton(onClick = actions.onRefresh, enabled = !state.loading && !state.saving) { Text(stringResource(R.string.occurrence_refresh)) }
     }
@@ -198,16 +195,23 @@ private fun OccurrencePeriodControls(state: RecurringOccurrenceUiState, actions:
 
 private fun occurrenceChoiceActions(
     state: RecurringOccurrenceUiState,
-    submit: () -> Unit,
+    actions: OccurrenceSheetActions,
 ): (@Composable ColumnScope.() -> Unit)? {
-    val choice = state.choice ?: return null
-    if (state.occurrence == null) return null
+    val occurrence = state.occurrence ?: return null
+    val choice = state.choice
+    if (choice == null) {
+        val expenseId = occurrence.expenseId ?: return null
+        return {
+            AppPrimaryButton(text = stringResource(R.string.occurrence_open_payment),
+                onClick = { actions.onOpenExpense(expenseId) }, enabled = !state.saving, modifier = Modifier.fillMaxWidth())
+        }
+    }
     return {
         val label = if (choice.request.action == "clear") stringResource(R.string.occurrence_clear_review)
             else stringResource(R.string.occurrence_link_review, choice.paymentLabel.orEmpty(),
                 occurrencePaymentAmountText(choice.paymentAmountCents, choice.paymentCurrencyCode))
         Text(label)
-        AppPrimaryButton(text = stringResource(R.string.occurrence_submit), icon = Icons.Filled.Check, onClick = submit,
+        AppPrimaryButton(text = stringResource(R.string.occurrence_submit), icons = AppButtonIcons(leading = Icons.Filled.Check), onClick = actions.onSubmit,
             enabled = state.canWrite, modifier = Modifier.fillMaxWidth().testTag("occurrence-submit"))
     }
 }
@@ -244,13 +248,21 @@ private fun OccurrencePaymentPicker(
 ) {
     var month by rememberSaveable(state.occurrence?.period) { mutableStateOf(state.occurrence?.period.orEmpty()) }
     var query by rememberSaveable(state.item?.publicId) { mutableStateOf("") }
+    var filtersExpanded by rememberSaveable(state.item?.publicId, state.occurrence?.period) { mutableStateOf(false) }
     val payments = occurrencePaymentChoices(state.payments, month, query, preferredExpenseId)
     HorizontalDivider()
     Text(stringResource(R.string.occurrence_pick_explanation))
-    OutlinedTextField(value = month, onValueChange = { month = it }, singleLine = true,
-        label = { Text(stringResource(R.string.occurrence_payment_month)) }, modifier = Modifier.fillMaxWidth())
-    OutlinedTextField(value = query, onValueChange = { query = it }, singleLine = true,
-        label = { Text(stringResource(R.string.occurrence_search)) }, modifier = Modifier.fillMaxWidth())
+    val scope = listOf(month.ifBlank { stringResource(R.string.occurrence_all_payment_months) }, query)
+        .filter { it.isNotBlank() }.joinToString(" · ")
+    TextButton(onClick = { filtersExpanded = !filtersExpanded }, modifier = Modifier.testTag("occurrence-payment-filter-toggle")) {
+        Text(stringResource(if (filtersExpanded) R.string.occurrence_filters_hide else R.string.occurrence_filters_show, scope))
+    }
+    if (filtersExpanded) {
+        OutlinedTextField(value = month, onValueChange = { month = it }, singleLine = true,
+            label = { Text(stringResource(R.string.occurrence_payment_month)) }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = query, onValueChange = { query = it }, singleLine = true,
+            label = { Text(stringResource(R.string.occurrence_search)) }, modifier = Modifier.fillMaxWidth())
+    }
     if (payments.isEmpty()) Text(stringResource(R.string.occurrence_no_payments))
     if (payments.size > 20) Text(stringResource(R.string.occurrence_narrow_search))
     payments.take(20).forEach { payment ->
@@ -271,21 +283,12 @@ internal fun occurrencePaymentChoices(
     val eligible = filterConfirmedStreamItems(rows, ExpenseFilterCriteria(month = "", query = ""))
         .filterIsInstance<ConfirmedStreamItem.ExpenseRow>().filter {
             it.root.id > 0 && !it.root.pendingSync && it.root.status == "confirmed" &&
-                it.root.amountCents != null && it.lineageStatus != ExpenseLineageStatus.Reversed
+                it.root.amountCents?.let { amount -> amount >= 0 } == true && it.lineageStatus != ExpenseLineageStatus.Reversed
         }
     val preferred = eligible.filter { it.root.id == preferredExpenseId }
-    val ordinary = filterConfirmedStreamItems(rows, ExpenseFilterCriteria(month = month, query = query))
+    val ordinary = filterConfirmedStreamItems(eligible, ExpenseFilterCriteria(month = month, query = query))
         .filterIsInstance<ConfirmedStreamItem.ExpenseRow>().filter {
-            it.root.id > 0 && !it.root.pendingSync && it.root.status == "confirmed" &&
-                it.root.amountCents != null && it.lineageStatus != ExpenseLineageStatus.Reversed &&
-                it.root.id != preferredExpenseId
+            it.root.id != preferredExpenseId
         }.sortedByDescending { it.streamDate }
     return preferred + ordinary
-}
-
-private fun occurrenceStateLabel(state: String): Int = when (state) {
-    "fulfilled" -> R.string.occurrence_fulfilled
-    "needs_review" -> R.string.occurrence_review
-    "unfulfilled" -> R.string.occurrence_unfulfilled
-    else -> R.string.occurrence_unknown
 }

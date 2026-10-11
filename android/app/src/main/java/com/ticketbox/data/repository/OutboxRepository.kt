@@ -405,11 +405,12 @@ class OutboxRepository private constructor(
     internal suspend fun enqueueExpenseBatch(
         boundRequest: BoundLedgerRequest,
         intents: List<PendingMutationIntent>,
+        afterPersisted: suspend () -> Unit = {},
         validateTargetRows: (List<OutboxRow>) -> Unit,
     ): List<Long> {
         val ids = withActiveBinding(boundRequest) { binding ->
             binding.requireReadyForEnqueue()
-            dao.insertExpenseCommands(binding, intents, nowIso(), validateTargetRows)
+            dao.insertExpenseCommands(binding, intents, nowIso(), validateTargetRows, afterPersisted)
         }
         schedulePending()
         return ids
@@ -419,6 +420,7 @@ class OutboxRepository private constructor(
     internal suspend fun enqueueUploadBatch(
         boundRequest: BoundLedgerRequest,
         intents: List<PendingMutationIntent>,
+        afterPersisted: (suspend () -> Unit)? = null,
     ): List<Long> {
         require(intents.size in 1..100)
         require(intents.map { it.type }.distinct().size == 1)
@@ -441,7 +443,8 @@ class OutboxRepository private constructor(
                 }
             } else {
                 val createdAt = nowIso()
-                dao.insertBatch(intents.map { it.toEntity(binding, createdAt) })
+                val rows = intents.map { it.toEntity(binding, createdAt) }
+                if (afterPersisted == null) dao.insertBatch(rows) else dao.insertBatchAndPublish(rows, afterPersisted)
             }
         }
         schedulePending()
@@ -547,7 +550,7 @@ class OutboxRepository private constructor(
     internal var onIncomeAccepted: suspend (OutboxRow) -> Unit = {}
 
     internal fun affectsRecurringReads(row: OutboxRow) = row.type in setOf(
-        PendingMutationType.CreateRecurringItem, PendingMutationType.UpdateRecurringItem,
+        PendingMutationType.ConfirmRecurringCandidate, PendingMutationType.CreateRecurringItem, PendingMutationType.UpdateRecurringItem,
         PendingMutationType.SetRecurringOccurrencePayment, PendingMutationType.PatchExpense, PendingMutationType.CorrectExpense,
         PendingMutationType.CreateExpense, PendingMutationType.ConfirmExpense, PendingMutationType.UndoExpense,
         PendingMutationType.CreateExpenseOffset, PendingMutationType.VoidExpenseOffset)
@@ -566,9 +569,11 @@ class OutboxRepository private constructor(
     }
 
     suspend fun markDone(id: Long, cacheRefreshVersion: Long? = null, receiptJson: String? = null,
-        budgetReadRefreshRequired: Boolean = false, acceptedRow: OutboxRow? = null) {
-        val refreshError = if (budgetReadRefreshRequired) BUDGET_READ_REFRESH_REQUIRED
-            else cacheRefreshVersion?.let { "$EXPENSE_REFRESH_PREFIX$it" }
+        acceptedReadRefreshRequired: Boolean = false, acceptedRow: OutboxRow? = null) {
+        val refreshError = if (acceptedReadRefreshRequired) mapOf(
+            PendingMutationType.SaveMonthlyBudget to BUDGET_READ_REFRESH_REQUIRED,
+            PendingMutationType.ApplyConfirmedRules to RULE_APPLICATION_READ_REFRESH,
+        ).getValue(requireNotNull(acceptedRow).type) else cacheRefreshVersion?.let { "$EXPENSE_REFRESH_PREFIX$it" }
         val recurringAccepted = acceptedRow?.let(::affectsRecurringReads) == true
         val debtAccepted = acceptedRow?.type in DEBT_QUERY_MUTATION_TYPES
         val incomeAccepted = acceptedRow?.type in INCOME_QUERY_MUTATION_TYPES
@@ -597,9 +602,17 @@ class OutboxRepository private constructor(
             .filter { it.requiresBudgetReadRefresh() }
         for (row in rows) {
             cleanup(row)
-            dao.clearBudgetReadRefresh(row.id, requireNotNull(row.receiptJson))
+            dao.clearAcceptedReadRefresh(row.id, requireNotNull(row.receiptJson), BUDGET_READ_REFRESH_REQUIRED)
         }
     }
+
+    internal suspend fun acknowledgeRuleApplicationRefresh(bound: BoundLedgerRequest, original: OutboxRow) =
+        withActiveBinding(bound) { binding ->
+            val current = dao.activeRowsForTarget(binding, RULE_APPLICATION_TARGET, listOf(PendingMutationStatus.Done.wireValue))
+                .firstOrNull { it.id == original.id }
+            require(current == original && original.requiresRuleApplicationRefresh()) { "原应用状态已变化，请重新核对。" }
+            check(dao.clearAcceptedReadRefresh(original.id, requireNotNull(original.receiptJson), RULE_APPLICATION_READ_REFRESH) == 1)
+        }
 
     internal suspend fun acknowledgeExpenseRefresh(boundRequest: BoundLedgerRequest, versions: Map<Long, Long>) =
         bindingTransitionLease.withLock {
@@ -940,6 +953,7 @@ private suspend fun PendingMutationDao.insertExpenseCommands(
     intents: List<PendingMutationIntent>,
     createdAt: String,
     validateTargetRows: (List<OutboxRow>) -> Unit,
+    afterPersisted: suspend () -> Unit,
 ): List<Long> {
     require(intents.isNotEmpty() && intents.all { it.type in PENDING_EXPENSE_COMMAND_TYPES })
     for (targetId in intents.map { it.targetId }.distinct()) {
@@ -948,5 +962,5 @@ private suspend fun PendingMutationDao.insertExpenseCommands(
                 PendingMutationStatus.Failed, PendingMutationStatus.Done).map { it.wireValue }).map { it.toDomain() }
         validateTargetRows(expenseAdmissionRows(binding, targetId, targetRows))
     }
-    return insertBatch(intents.map { it.toEntity(binding, createdAt) })
+    return insertBatchAndPublish(intents.map { it.toEntity(binding, createdAt) }, afterPersisted)
 }

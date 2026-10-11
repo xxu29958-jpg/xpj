@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.emptyFlow
 
 /** Pending review admits original commands; only delivered receipts establish completion. */
 interface PendingReviewActions {
+    val originalInputs: ExpenseFactInputActions
     fun canModifyLedger(): Boolean = true
     fun observeActiveLedgerId(): Flow<String?> = emptyFlow()
     fun currentActiveLedgerId(): String? = null
@@ -22,9 +23,11 @@ interface PendingReviewActions {
 
     suspend fun saveExpenseAllowingOffline(
         expectedBinding: LogicalSessionBinding, id: Long, draft: ExpenseDraft, baseline: Expense,
+        originalInput: com.ticketbox.data.repository.ExpenseFactOriginalInput?,
     ): Result<ExpenseCommandAcceptance>
     suspend fun saveAndConfirmExpense(
         expectedBinding: LogicalSessionBinding, expense: Expense, draft: ExpenseDraft,
+        originalInput: com.ticketbox.data.repository.ExpenseFactOriginalInput?,
     ): Result<ExpenseCommandAcceptance>
     suspend fun confirmExpenses(
         expectedBinding: LogicalSessionBinding, expenses: List<Expense>,
@@ -34,9 +37,11 @@ interface PendingReviewActions {
     ): Result<ExpenseCommandAcceptance>
     suspend fun rejectExpenseAllowingOffline(
         expectedBinding: LogicalSessionBinding, expense: Expense,
+        originalInput: com.ticketbox.data.repository.ExpenseFactOriginalInput?,
     ): Result<ExpenseCommandAcceptance>
     suspend fun markNotDuplicateAllowingOffline(
         expectedBinding: LogicalSessionBinding, expense: Expense,
+        originalInput: com.ticketbox.data.repository.ExpenseFactOriginalInput?,
     ): Result<ExpenseCommandAcceptance>
     suspend fun undoRejectExpense(
         expectedBinding: LogicalSessionBinding, expense: Expense,
@@ -48,8 +53,9 @@ data class ExpenseCommandAcceptance(val expense: Expense, val rowIds: List<Long>
 
 data class ExpenseCommandObservation(val access: LedgerAccessContext?, val commands: List<PendingExpenseCommand>)
 
-/** Rejection/undo retain the original snapshot; other commands need only the original row. */
-data class PendingExpenseCommand(val row: OutboxRow, val acceptedExpense: Expense?)
+/** Command receipts remain distinct from the latest expense query. */
+data class PendingExpenseCommand(val row: OutboxRow, val acceptedExpense: Expense?,
+    val confirmationReceipt: com.ticketbox.data.remote.dto.ExpenseConfirmationReceiptDto? = null)
 
 internal val PENDING_EXPENSE_COMMAND_TYPES = setOf(
     PendingMutationType.PatchExpense, PendingMutationType.ConfirmExpense, PendingMutationType.RejectExpense,

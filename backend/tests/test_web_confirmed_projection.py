@@ -106,6 +106,7 @@ def test_actual_confirmed_template_distinguishes_unknown_calendar_and_page_sum()
         "merchant": "原账单", "category": "餐饮", "stat_time": "", "lineage_chip_label": "", "amount_label": "CN¥1.00",
         "fx_meta": None}
     html = env.get_template("confirmed.html").render(filter="", tag="", total=1, selected_ledger_id="family",
+        query_text="", category="", category_options=[],
         request=Request({"type": "http", "path": "/web/confirmed", "headers": [],
                          "query_string": b"ledger_id=family&month=2026-08"}),
         selected_month="2026-08", month="2026-08", month_total_amount_yuan=None, month_total_count=1,

@@ -33,6 +33,13 @@ data class AppAdaptiveAmountRowStyle(
     val trailingWeight: Float = AppAdaptiveAmountRowDefaults.trailingWeight,
 )
 
+@Immutable
+data class AppAdaptiveContentActionStyle(
+    val wideActionWeight: Float? = null,
+    val verticalAlignment: Alignment.Vertical = Alignment.CenterVertically,
+    val compactAction: Boolean = false,
+)
+
 object AppAdaptiveAmountRowDefaults {
     val trailingWeight: Float = 0.44f
     val reviewTrailingWeight: Float = 0.62f
@@ -67,15 +74,13 @@ internal enum class AppAdaptiveStatusContentMode {
 @Composable
 fun AppAdaptiveContentActionRow(
     modifier: Modifier = Modifier,
-    wideActionWeight: Float? = null,
-    verticalAlignment: Alignment.Vertical = Alignment.CenterVertically,
+    style: AppAdaptiveContentActionStyle = AppAdaptiveContentActionStyle(),
     content: @Composable () -> Unit,
     action: @Composable (Modifier) -> Unit,
 ) {
     AppAdaptiveContentActionStateRow(
         modifier = modifier,
-        wideActionWeight = wideActionWeight,
-        verticalAlignment = verticalAlignment,
+        style = style,
         content = content,
     ) { actionModifier, _ ->
         action(actionModifier)
@@ -85,8 +90,7 @@ fun AppAdaptiveContentActionRow(
 @Composable
 fun AppAdaptiveContentActionStateRow(
     modifier: Modifier = Modifier,
-    wideActionWeight: Float? = null,
-    verticalAlignment: Alignment.Vertical = Alignment.CenterVertically,
+    style: AppAdaptiveContentActionStyle = AppAdaptiveContentActionStyle(),
     content: @Composable () -> Unit,
     action: @Composable (Modifier, Boolean) -> Unit,
 ) {
@@ -95,6 +99,7 @@ fun AppAdaptiveContentActionStateRow(
             resolveAppAdaptiveContentActionMode(
                 maxWidth = maxWidth,
                 fontScale = LocalDensity.current.fontScale,
+                compactAction = style.compactAction,
             )
         ) {
             AppAdaptiveContentActionMode.Stacked -> {
@@ -110,12 +115,12 @@ fun AppAdaptiveContentActionStateRow(
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-                    verticalAlignment = verticalAlignment,
+                    verticalAlignment = style.verticalAlignment,
                 ) {
                     Box(modifier = Modifier.weight(1f)) {
                         content()
                     }
-                    action(wideActionWeight?.let { Modifier.weight(it) } ?: Modifier, false)
+                    action(style.wideActionWeight?.let { Modifier.weight(it) } ?: Modifier, false)
                 }
             }
         }
@@ -125,12 +130,19 @@ fun AppAdaptiveContentActionStateRow(
 internal fun resolveAppAdaptiveContentActionMode(
     maxWidth: Dp,
     fontScale: Float = 1f,
-): AppAdaptiveContentActionMode =
-    if (maxWidth / fontScale.coerceAtLeast(1f) < AppAdaptiveBreakpoints.contentActionInlineMinWidth) {
+    compactAction: Boolean = false,
+): AppAdaptiveContentActionMode {
+    val inlineMinWidth = if (compactAction) {
+        AppAdaptiveBreakpoints.pairedActionInlineMinWidth
+    } else {
+        AppAdaptiveBreakpoints.contentActionInlineMinWidth
+    }
+    return if (maxWidth / fontScale.coerceAtLeast(1f) < inlineMinWidth) {
         AppAdaptiveContentActionMode.Stacked
     } else {
         AppAdaptiveContentActionMode.Inline
     }
+}
 
 @Composable
 fun AppAdaptiveEditActionLayout(
@@ -173,7 +185,7 @@ fun AppAdaptiveEditAmountRow(
 ) {
     val amountColor = style.amountColor ?: MaterialTheme.colorScheme.onSurface
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
-        when (resolveAppAdaptiveAmountRowMode(maxWidth)) {
+        when (resolveAppAdaptiveAmountRowMode(maxWidth, LocalDensity.current.fontScale)) {
             AppAdaptiveAmountRowMode.Stacked -> Column(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
@@ -205,8 +217,8 @@ fun AppAdaptiveEditAmountRow(
     }
 }
 
-internal fun resolveAppAdaptiveAmountRowMode(maxWidth: Dp): AppAdaptiveAmountRowMode =
-    if (maxWidth < AppAdaptiveBreakpoints.amountRowInlineMinWidth) {
+internal fun resolveAppAdaptiveAmountRowMode(maxWidth: Dp, fontScale: Float = 1f): AppAdaptiveAmountRowMode =
+    if (maxWidth / fontScale.coerceAtLeast(1f) < AppAdaptiveBreakpoints.amountRowInlineMinWidth) {
         AppAdaptiveAmountRowMode.Stacked
     } else {
         AppAdaptiveAmountRowMode.Inline

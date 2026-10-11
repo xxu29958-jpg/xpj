@@ -28,7 +28,8 @@ def apply_rules_to_pending(
     actor_account_id: int | None = None,
     actor_device_id: int | None = None,
     max_scan: int | None = None,
-) -> tuple[int, int, bool]:
+    commit: bool = True,
+) -> tuple[int, int, bool, str | None]:
     """Re-run rule classification on all pending expenses for this tenant.
 
     Only changes category when the current category is in
@@ -36,7 +37,7 @@ def apply_rules_to_pending(
     or rejected records. Never changes the expense status — auto-confirm is
     not allowed.
 
-    Returns ``(pending_scanned, changed_count, scan_limit_reached)``.
+    Returns scan/change counts, the scan limit flag and the created batch ID.
     """
     return _apply_rules_to_status(
         db,
@@ -47,6 +48,7 @@ def apply_rules_to_pending(
         actor_account_id=actor_account_id,
         actor_device_id=actor_device_id,
         max_scan=max_scan,
+        commit=commit,
     )
 
 
@@ -58,7 +60,8 @@ def apply_rules_to_confirmed(
     actor_account_id: int | None = None,
     actor_device_id: int | None = None,
     max_scan: int | None = None,
-) -> tuple[int, int, bool]:
+    commit: bool = True,
+) -> tuple[int, int, bool, str | None]:
     """Apply category rules to confirmed historical rows for this tenant.
 
     This is intentionally separate from pending application because confirmed
@@ -75,6 +78,7 @@ def apply_rules_to_confirmed(
         actor_account_id=actor_account_id,
         actor_device_id=actor_device_id,
         max_scan=max_scan,
+        commit=commit,
     )
 
 
@@ -88,7 +92,8 @@ def _apply_rules_to_status(
     actor_account_id: int | None,
     actor_device_id: int | None,
     max_scan: int | None,
-) -> tuple[int, int, bool]:
+    commit: bool,
+) -> tuple[int, int, bool, str | None]:
     if not preview_token:
         raise AppError("preview_required", "请先预览影响范围，再确认应用规则。", status_code=409)
     expenses, scan_limit_reached = _rule_application_candidates(
@@ -124,6 +129,7 @@ def _apply_rules_to_status(
         )
         if applied is not None:
             changes.append(applied)
+    application_id = None
     if changes:
         batch = RuleApplicationBatch(
             tenant_id=tenant_id, status=audit_status, created_at=now,
@@ -132,6 +138,7 @@ def _apply_rules_to_status(
         )
         db.add(batch)
         db.flush()
+        application_id = batch.public_id
         for expense_id, rule_id, matched_keyword, before_category, after_category in changes:
             db.add(RuleApplicationChange(
                 tenant_id=tenant_id, batch_id=batch.id, expense_id=expense_id,
@@ -139,5 +146,6 @@ def _apply_rules_to_status(
                 before_category=before_category, after_category=after_category,
                 status="applied", created_at=now,
             ))
-        db.commit()
-    return len(expenses), len(changes), scan_limit_reached
+        if commit:
+            db.commit()
+    return len(expenses), len(changes), scan_limit_reached, application_id

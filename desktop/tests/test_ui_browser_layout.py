@@ -95,6 +95,7 @@ def _status(*, degraded: bool) -> dict[str, object]:
 
 def _probe_script(status: dict[str, object]) -> str:
     return f"""    render({json.dumps(status, ensure_ascii=False)});
+    document.querySelector(".connectivity-details > summary").click();
     document.getElementById("publicConnectivityRefreshAction").focus();
     const visibleButtons = [...document.querySelectorAll("button")].filter((button) => {{
       const style = getComputedStyle(button);
@@ -382,7 +383,7 @@ def test_manager_layout_has_no_overflow_overlap_or_unsafe_repair_path(
     assert probe["dataProtectionHidden"] is False
     assert probe["importExportDisabled"] is True
     assert probe["primaryAction"] == ("start" if degraded else "stop")
-    assert probe["primaryText"] == ("▶启动" if degraded else "■停止")
+    assert probe["primaryText"] == ("启动" if degraded else "停止")
     assert probe["overallText"] == ("需要处理" if degraded else "运行正常")
     assert probe["runtimeText"] == "本机安装"
     assert probe["serviceTitle"] == ("小票夹需要修复" if degraded else "小票夹正在运行")
@@ -942,10 +943,24 @@ def test_product_card_visibility_matrix_is_hidden_authoritative(
       render(healthy);
       await loadProductSession();
       const unpaired = {{
+        heading: $("managerTitle").textContent,
+        helpHidden: $("connectionHelp").hidden,
         link: displayOf("productHomeLink"),
         pair: displayOf("productPairGroup"),
         manage: displayOf("productManageGroup"),
         importExportDisabled: $("importExportAction").disabled
+      }};
+      $("connectionRuntimeHelp").querySelector("summary").click();
+      $("connectionPublicHelp").querySelector("summary").click();
+      const runtimeCard = $("runtimeCard");
+      const publicCard = $("publicConnectivityCard");
+      render(healthy);
+      renderProduct();
+      const help = {{
+        service: $("serviceTitle").textContent,
+        publicSummary: $("publicConnectivitySummary").textContent,
+        runtimeOpen: $("connectionRuntimeHelp").open,
+        publicOpen: $("connectionPublicHelp").open
       }};
       window.fetch = async (url) => {{
         if (url === "/api/product/session") return {{status: 200, ok: true, json: async () => pairedSession}};
@@ -955,13 +970,18 @@ def test_product_card_visibility_matrix_is_hidden_authoritative(
       await loadProductSession();
       await loadProductLedgers();
       const paired = {{
+        heading: $("managerTitle").textContent,
+        helpHidden: $("connectionHelp").hidden,
+        sameProjections: runtimeCard === $("runtimeCard") && publicCard === $("publicConnectivityCard"),
+        runtimeVisible: $("runtimeCard").checkVisibility(),
+        publicVisible: $("publicConnectivityCard").checkVisibility(),
         link: displayOf("productHomeLink"),
         pair: displayOf("productPairGroup"),
         manage: displayOf("productManageGroup"),
         importExportDisabled: $("importExportAction").disabled,
         options: [...$("ledgerSelect").options].map((option) => option.value)
       }};
-      document.body.setAttribute("data-visibility-probe", JSON.stringify({{unpaired, paired}}));
+      document.body.setAttribute("data-visibility-probe", JSON.stringify({{unpaired, help, paired}}));
     }})();"""
     page = _render_probe_page(tmp_path, f"product-visibility-{width}x{height}.html", script)
     value = evaluate_page(
@@ -975,10 +995,18 @@ def test_product_card_visibility_matrix_is_hidden_authoritative(
     assert isinstance(value, str)
     probe = json.loads(value)
     assert probe["unpaired"] == {
+        "heading": "连接这台电脑",
+        "helpHidden": False,
         "link": "none",
-        "pair": "flex",
+        "pair": "grid",
         "manage": "none",
         "importExportDisabled": True,
+    }
+    assert probe["help"] == {
+        "service": "小票夹正在运行",
+        "publicSummary": "公网连接状态未知",
+        "runtimeOpen": True,
+        "publicOpen": True,
     }
     # Chromium reports inline-flex's used display as "flex"; the contract is
     # "link visible, pair form gone, manage group visible".
@@ -987,6 +1015,11 @@ def test_product_card_visibility_matrix_is_hidden_authoritative(
     assert probe["paired"]["manage"] == "flex"
     assert probe["paired"]["importExportDisabled"] is False
     assert probe["paired"]["options"] == ["owner", "family"]
+    assert probe["paired"]["heading"] == "小票夹管理器"
+    assert probe["paired"]["helpHidden"] is True
+    assert probe["paired"]["sameProjections"] is True
+    assert probe["paired"]["runtimeVisible"] is True
+    assert probe["paired"]["publicVisible"] is True
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows Edge consumer gate")
@@ -1005,6 +1038,7 @@ def test_prompt_product_failures_retire_prior_dom_without_erasing_public_status(
       const ledgers = {json.dumps(_PRODUCT_LEDGERS, ensure_ascii=False)};
       let mode = "paired";
       const view = () => ({{
+        productTitle: $("productTitle").textContent,
         productState: $("productState").textContent,
         productHomeHidden: $("productHomeLink").hidden,
         productPairHidden: $("productPairGroup").hidden,
@@ -1134,7 +1168,8 @@ def test_prompt_product_failures_retire_prior_dom_without_erasing_public_status(
     assert isinstance(value, str)
     probe = json.loads(value)
     paired = {
-        "productState": "我的小票夹 · 拥有者 · 我",
+        "productTitle": "我的小票夹",
+        "productState": "拥有者 · 我",
         "productHomeHidden": False,
         "productPairHidden": True,
         "productManageHidden": False,
@@ -1144,6 +1179,7 @@ def test_prompt_product_failures_retire_prior_dom_without_erasing_public_status(
         "publicSummary": "公网连接已验证可用",
     }
     degraded = {
+        "productTitle": "桌面账本",
         "productState": "账本状态暂不可验证，请稍后重试。",
         "productHomeHidden": True,
         "productPairHidden": True,
@@ -1161,6 +1197,7 @@ def test_prompt_product_failures_retire_prior_dom_without_erasing_public_status(
     assert probe["sessionSchemaRejected"] == degraded
     assert probe["sessionRoleSchemaRejected"] == degraded
     assert probe["unpaired"] == {
+        "productTitle": "填写连接信息",
         "productState": "获取自己的设备绑定码，连接这台电脑上的桌面账本。",
         "productHomeHidden": True,
         "productPairHidden": False,

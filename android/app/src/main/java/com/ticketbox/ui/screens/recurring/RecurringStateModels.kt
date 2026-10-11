@@ -119,7 +119,7 @@ internal fun resolveRecurringPendingRow(
 ): RecurringPendingRowModel {
     val baseline = intent.publicId?.let { pid -> items.firstOrNull { it.publicId == pid } }
     // 「改为 …」清单只属于 UPDATE；CREATE 行本身就在展示新草稿（名称/金额/日期），不重复。
-    val changes = if (intent.kind == RecurringPendingKind.CREATE) {
+    val changes = if (intent.kind != RecurringPendingKind.UPDATE) {
         emptyList()
     } else {
         buildList {

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import replace
+from html import unescape
 from uuid import UUID, uuid4
 
 import pytest
@@ -28,7 +29,7 @@ _PUBLIC_WEB_ORIGIN = "https://api.example.com"
 def _html_form_value(html: str, name: str) -> str:
     match = re.search(rf'name="{re.escape(name)}" value="([^"]*)"', html)
     assert match is not None, f"missing {name} form field"
-    return match.group(1)
+    return unescape(match.group(1))
 
 
 def _open_public_web_session(client: TestClient, *, identity) -> tuple[TestClient, dict[str, str]]:
@@ -187,6 +188,7 @@ def test_public_web_confirm_records_browser_account_and_device(
                     "expected_row_version",
                 ),
                 "idempotency_key": _html_form_value(form.text, "idempotency_key"),
+                "draft_scope": _html_form_value(form.text, "draft_scope"),
             },
             follow_redirects=False,
         )
@@ -336,6 +338,10 @@ def test_confirm_delete_after_confirm_hides_image_and_thumbnail(
     assert payload["status"] == "confirmed"
     assert payload["image_deleted_at"] is not None
     assert payload["thumbnail_deleted_at"] is not None
+    receipt = payload["confirmation_receipt"]
+    assert (receipt["id"], receipt["status"], receipt["amount_cents"], receipt["merchant"]) == (
+        expense_id, "confirmed", 1851, "A")
+    assert "image_deleted_at" not in receipt
     assert not image_path.exists()
     assert not thumbnail_path.exists()
 

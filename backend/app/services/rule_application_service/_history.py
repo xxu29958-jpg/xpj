@@ -62,9 +62,13 @@ def rollback_rule_application(
     authorize_currency_metadata_write(db)
     batch = db.scalar(
         ledger_scoped_select(RuleApplicationBatch, tenant_id).where(RuleApplicationBatch.public_id == public_id)
+        .with_for_update()
     )
     if batch is None:
         raise AppError("rule_application_not_found", "规则应用批次不存在。", status_code=404)
+    if batch.rolled_back_at is not None:
+        outcomes = rule_application_change_counts(db, tenant_id=tenant_id, batch_ids=[batch.id]).get(batch.id, {})
+        return batch, outcomes.get("rolled_back", 0), outcomes.get("skipped", 0)
 
     changes = list(
         db.scalars(

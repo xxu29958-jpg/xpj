@@ -15,7 +15,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.models import Expense
+from app.models import ApiIdempotencyKey, Expense
 from app.schemas import ExpenseResponse, ExpenseUpdateRequest
 from app.services.cleanup_service import cleanup_after_confirm
 from app.services.expense_response_service import expense_to_response
@@ -39,7 +39,48 @@ from app.services.idempotency import (
 _CONFIRM_OPERATION = "confirm_expense"
 
 
-def _replayed_rejection_receipt(claim: IdempotencyOutcome) -> ExpenseResponse | None:
+def submit_expense_duplicate_decision(
+    db: Session, *, tenant_id: str, expense_id: int, expected_row_version: int,
+    request_expected_row_version: int | None, idempotency_key: str | None,
+) -> Expense:
+    """Accept one non-duplicate decision; replay reads current state without rewriting it."""
+    try:
+        claim = claim_idempotent_request(db, idempotency_key=idempotency_key, tenant_id=tenant_id,
+            operation="mark_not_duplicate", target_id=str(expense_id), body={},
+            expected_row_version=request_expected_row_version)
+        if claim is None:
+            return get_expense(db, expense_id, tenant_id)
+        expense = mark_expense_not_duplicate(db, expense_id, tenant_id,
+            expected_row_version=expected_row_version, commit=False)
+        mark_idempotency_succeeded(db, claim, resource_type="expense", resource_id=str(expense_id))
+        db.commit()
+        db.refresh(expense)
+        return expense
+    except (AppError, SQLAlchemyError):
+        db.rollback()
+        raise
+
+
+def read_expense_confirmation_receipt(
+    db: Session, *, tenant_id: str, expense_id: int, idempotency_key: str,
+    request_fingerprint: str | None = None,
+) -> ExpenseResponse | None:
+    """Read an accepted original before comparing its input with today's fact.
+
+    This read never claims a key or confirms an expense. A POST replay also
+    supplies the original fingerprint; a receipt page only reads its result.
+    """
+    row = db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.tenant_id == tenant_id,
+        ApiIdempotencyKey.idempotency_key == idempotency_key, ApiIdempotencyKey.status == "succeeded"))
+    if row is None:
+        return None
+    if (row.operation != _CONFIRM_OPERATION or row.target_id != str(expense_id)
+            or (request_fingerprint is not None and row.request_fingerprint != request_fingerprint)):
+        raise AppError("idempotency_key_reused", status_code=422)
+    return _replayed_expense_state_receipt(IdempotencyOutcome(IdempotencyOutcomeKind.HIT, row))
+
+
+def _replayed_expense_state_receipt(claim: IdempotencyOutcome) -> ExpenseResponse | None:
     if claim.kind is IdempotencyOutcomeKind.IN_PROGRESS:
         raise AppError("idempotency_key_in_progress", status_code=409)
     if claim.kind is IdempotencyOutcomeKind.FINGERPRINT_MISMATCH:
@@ -48,13 +89,16 @@ def _replayed_rejection_receipt(claim: IdempotencyOutcome) -> ExpenseResponse | 
         return None
     try:
         receipt = ExpenseResponse.model_validate(claim.row.response_body)
-        statuses = {"rejected"} if claim.row.operation == "reject_expense" else {"pending", "confirmed"}
+        statuses = {"confirm_expense": {"confirmed"}, "reject_expense": {"rejected"},
+            "undo_expense": {"pending", "confirmed"}}[claim.row.operation]
         if (claim.row.resource_type != "expense" or str(receipt.id) != claim.row.resource_id
                 or str(receipt.id) != claim.row.target_id or receipt.row_version < 1 or receipt.status not in statuses):
-            raise ValueError("Original rejection receipt does not match its resource")
+            raise ValueError("Original expense-state receipt does not match its resource")
         return receipt
     except (ValueError, ValidationError) as exc:
-        raise AppError("expense_rejection_original_requires_review",
+        error = ("expense_confirmation_original_requires_review" if claim.row.operation == _CONFIRM_OPERATION
+            else "expense_rejection_original_requires_review")
+        raise AppError(error,
             "原操作已被接受，但原回执无法核对。请查看账单，勿重新提交或撤销其它操作。", status_code=409) from exc
 
 
@@ -79,7 +123,7 @@ def submit_expense_rejection(
             operation=operation, target_type="expense", target_id=str(expense_id),
             request_fingerprint=fingerprint_request(operation=operation, target_id=str(expense_id),
                 body={}, expected_row_version=request_expected_row_version))
-        replayed = _replayed_rejection_receipt(claim)
+        replayed = _replayed_expense_state_receipt(claim)
         if replayed is not None:
             return replayed
         if operation == "reject_expense":
@@ -149,7 +193,7 @@ def confirm_expense_submission(
     actor_account_id: int | None = None,
     actor_device_id: int | None = None,
     require_idempotency: bool = False,
-) -> Expense:
+) -> ExpenseResponse:
     """Confirm one browser snapshot, optionally saving its edits atomically.
 
     ``update_payload is None`` is the ordinary confirm command.  A payload means
@@ -166,17 +210,21 @@ def confirm_expense_submission(
         uses_idempotency = bool(idempotency_key) or require_idempotency or update_payload is not None
         claim = None
         if uses_idempotency:
-            claim = claim_idempotent_request(
+            if not idempotency_key:
+                raise AppError("idempotency_key_required", status_code=422)
+            claim = claim_idempotency_key(
                 db,
                 idempotency_key=idempotency_key,
                 tenant_id=tenant_id,
                 operation=_CONFIRM_OPERATION,
+                target_type="expense",
                 target_id=str(expense_id),
-                body=intent_body,
-                expected_row_version=request_expected_row_version,
+                request_fingerprint=fingerprint_request(operation=_CONFIRM_OPERATION, target_id=str(expense_id),
+                    body=intent_body, expected_row_version=request_expected_row_version),
             )
-            if claim is None:
-                return get_expense(db, expense_id, tenant_id)
+            replayed = _replayed_expense_state_receipt(claim)
+            if replayed is not None:
+                return replayed
 
         if update_payload is not None:
             confirmed = _save_then_confirm(
@@ -198,15 +246,17 @@ def confirm_expense_submission(
                 actor_device_id=actor_device_id,
                 commit=False,
             )
+        receipt = expense_to_response(db, tenant_id=tenant_id, expense=confirmed)
         if claim is not None:
             mark_idempotency_succeeded(
                 db,
-                claim,
+                claim.row,
                 resource_type="expense",
                 resource_id=str(expense_id),
+                response_body=receipt.model_dump(mode="json"),
             )
         _commit_confirmation_and_cleanup(db, confirmed)
-        return confirmed
+        return receipt
     except (AppError, SQLAlchemyError):
         db.rollback()
         raise
@@ -220,10 +270,17 @@ def reject_duplicate_original_keep_current(
     tenant_id: str,
     expected_row_version: int,
     expected_original_row_version: int,
+    idempotency_key: str,
 ) -> None:
-    """Apply a two-snapshot duplicate decision as one transaction."""
+    """Accept the original two-snapshot decision and its receipt atomically."""
 
     try:
+        claim = claim_idempotent_request(db, tenant_id=tenant_id, idempotency_key=idempotency_key,
+            operation="reject_duplicate_original", target_id=str(current_expense_id),
+            body={"original_expense_id": original_expense_id, "expected_original_row_version": expected_original_row_version},
+            expected_row_version=expected_row_version)
+        if claim is None:
+            return
         rows = list(
             db.scalars(
                 select(Expense)
@@ -266,6 +323,9 @@ def reject_duplicate_original_keep_current(
             expected_row_version=expected_original_row_version,
             commit=False,
         )
+        mark_idempotency_succeeded(db, claim, resource_type="expense", resource_id=str(current_expense_id),
+            response_body={"operation": "reject_duplicate_original", "expense_id": current_expense_id,
+                "original_expense_id": original_expense_id, "accepted": True, "decision_key": idempotency_key})
         db.commit()
     except (AppError, SQLAlchemyError):
         db.rollback()

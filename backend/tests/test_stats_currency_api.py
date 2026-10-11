@@ -101,7 +101,7 @@ def test_alias_grouping_and_deleted_tags_stay_scoped_and_viewer_can_read(client,
         record(db, amount=3000, currency="JPY", merchant="Canonical")
         record(db, amount=90000, currency="JPY", merchant="Other", tenant="tester_1")
         db.commit()
-    alias = client.post("/api/merchants/aliases", headers=identity.app_headers,
+    alias = client.post("/api/merchants/aliases", headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"canonical_merchant": "Canonical", "alias": "Alias", "enabled": True})
     assert alias.status_code == 201, alias.text
     save_rate(client, identity, "2026-09-09")

@@ -25,7 +25,7 @@ from tests._local_web_identity_support import (
     installed_web_setup,
 )
 from tests._runtime_protocol import current_protocol_headers
-from tests.test_web_recurring_occurrences import _form, _record_payment_href
+from tests.test_web_recurring_occurrences import _choice_href, _form, _record_payment_href
 
 pytestmark = [pytest.mark.real_db, pytest.mark.currency_binding_unbound]
 
@@ -47,7 +47,8 @@ def installed_web(monkeypatch) -> Iterator[_InstalledWeb]:
 def _hidden_fields(html: str) -> dict[str, str]:
     from tests._web_native_form_support import accounting_time_fields
 
-    return {**dict(re.findall(r'<input type="hidden" name="([^"]+)" value="([^"]*)"', html)),
+    return {**{name: unescape(value) for name, value in
+        re.findall(r'<input type="hidden" name="([^"]+)" value="([^"]*)"', html)},
         **accounting_time_fields(html)}
 
 
@@ -199,7 +200,7 @@ def test_period_payment_fx_confirm_return_then_explicit_link_zeros_reserve_once(
 
     unpaid = browser.get(
         occurrence_path,
-        params={"ledger_id": ledger_id, "month": _SERIES_PERIOD},
+        params={"ledger_id": ledger_id, "month": _SERIES_PERIOD, "payment_month": "", "q": "海外"},
         headers={"Cookie": f"{SESSION_COOKIE_NAME}={session_token}"},
     )
     assert unpaid.status_code == 200, unpaid.text
@@ -208,6 +209,8 @@ def test_period_payment_fx_confirm_return_then_explicit_link_zeros_reserve_once(
     )
     parsed = urlsplit(unescape(href))
     assert parse_qs(parsed.query).get("ledger_id") == [ledger_id]
+    assert parse_qs(parsed.query).get("return_payment_month") == ["all"]
+    assert parse_qs(parsed.query).get("return_query") == ["海外"]
 
     new_page = browser.get(href, headers={"Cookie": f"{SESSION_COOKIE_NAME}={session_token}"})
     assert new_page.status_code == 200, new_page.text
@@ -297,13 +300,20 @@ def test_period_payment_fx_confirm_return_then_explicit_link_zeros_reserve_once(
         follow_redirects=False,
     )
     assert confirmed.status_code == 303, confirmed.text
-    confirm_target = urlsplit(confirmed.headers["location"])
+    receipt = browser.get(confirmed.headers["location"],
+        headers={"Cookie": f"{SESSION_COOKIE_NAME}={session_token}"})
+    assert receipt.status_code == 200 and "这张，记好了" in receipt.text
+    finish = re.search(r'<a\b[^>]*href="([^"]+)"[^>]*data-confirmation-finish', receipt.text)
+    assert finish is not None, receipt.text
+    return_href = unescape(finish.group(1))
+    confirm_target = urlsplit(return_href)
     assert confirm_target.path == occurrence_path
     assert parse_qs(confirm_target.query) == {
         "ledger_id": [ledger_id], "month": [_SERIES_PERIOD], "payment_id": [str(created_id)],
+        "payment_month": ["all"], "q": ["海外"],
     }
     focused_page = browser.get(
-        confirmed.headers["location"],
+        return_href,
         headers={"Cookie": f"{SESSION_COOKIE_NAME}={session_token}"},
     )
     assert focused_page.status_code == 200, focused_page.text
@@ -336,10 +346,15 @@ def test_period_payment_fx_confirm_return_then_explicit_link_zeros_reserve_once(
         headers={"Cookie": f"{SESSION_COOKIE_NAME}={session_token}"},
     )
     assert picker.status_code == 200, picker.text
+    choice = browser.get(
+        _choice_href(picker.text, "link"),
+        headers={"Cookie": f"{SESSION_COOKIE_NAME}={session_token}"},
+    )
+    assert choice.status_code == 200, choice.text
     linked = browser.post(
         occurrence_path,
-        data=_form(picker.text, "link"),
-        headers=_headers(session_token, picker),
+        data=_form(choice.text, "link"),
+        headers=_headers(session_token, choice),
         follow_redirects=False,
     )
     assert linked.status_code == 303, linked.text

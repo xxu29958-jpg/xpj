@@ -41,6 +41,16 @@ def test_native_recurring_history_entry_keeps_reader_access_and_original_editor(
         assert fields["csrf_token"] == "original-csrf" and fields["home_currency_code"] == "JPY"
         assert 'name="baseline_amount_yuan"' in body and 'value="001200"' in body
         assert 'value="原未保存名称"' in body
+        ctx = listing_context(status, can_write)
+        ctx["draft_public_id"] = None
+        listing = templates.get_template("recurring.html").render(**ctx)
+        assert 'action="/web/recurring/series-one/edit"' not in listing
+        assert "edit=series-one" in listing
+        actions = hidden_post_forms(listing)
+        for action in ('pause', 'resume', 'archive', 'restore'):
+            fields = actions.get(f'/web/recurring/series-one/{action}')
+            if fields is not None:
+                assert fields['month'] == '2026-05'
     else:
         assert 'action="/web/recurring/series-one/edit"' not in body
 
@@ -54,13 +64,15 @@ def occurrence_context(recorded=True):
     request = Request({"type":"http", "headers":[], "scheme":"http", "server":("test",80), "path":"/web/recurring/series-one/occurrence"})
     return {"request":request, "selected_ledger_id":"owner", "item":SimpleNamespace(public_id="series-one",merchant_name="当前人民币定义"),
         "occurrence":occurrence, "planned_amount":"90.00", "reserved_amount":"0.00", "paid_amount":"1200",
-        "recorded_definition_amount":"1200", "can_associate":False, "payments":[], "limited":False}
+        "recorded_definition_amount":"1200", "can_associate":False, "payments":[], "limited":False,
+        "undo_draft_scope":None}
 
 
 @pytest.mark.parametrize("recorded", [True, False])
 def test_occurrence_does_not_present_current_plan_as_the_unknown_original_definition(recorded):
     body = templates.get_template("recurring_occurrence.html").render(**occurrence_context(recorded))
     assert "当前预计" in body and "当前预留" in body
+    assert '/web/recurring?ledger_id=owner&amp;month=2026-05' in body
     if recorded:
         assert "本期首次关联所据定义" in body and "原日元定义" in body and "JPY 1200" in body
         assert "不代表该账务月生效" in body and "记录保存时间" in body
@@ -136,16 +148,22 @@ def test_recurring_history_real_reader_page_keeps_cursor_filter_and_original_per
     from urllib.parse import parse_qs, urlsplit
 
     client, calls, _, _ = history_reader
-    first = client.get("/web/recurring/series-one/history", params={"ledger_id":"owner", "limit":1, "status":"archived", "month":"2026-05", "return_occurrence":"true"})
+    first = client.get("/web/recurring/series-one/history", params={"ledger_id":"owner", "limit":1, "status":"archived",
+        "month":"2026-05", "return_occurrence":"true", "payment_month":"", "q":"宽带 & 返还", "payment_id":"41"})
     assert first.status_code == 200 and "CNY 90.00" in first.text and "已归档" in first.text
     assert 'method="post"' not in first.text
     older = next(unescape(href) for href,label in re.findall(r'href="([^"]+)"[^>]*>([^<]+)</a>',first.text) if label=="更早的记录")
-    assert parse_qs(urlsplit(older).query) == {"ledger_id":["owner"], "limit":["1"], "status":["archived"], "month":["2026-05"], "return_occurrence":["true"], "before_version":["8"]}
+    assert parse_qs(urlsplit(older).query, keep_blank_values=True) == {
+        "ledger_id":["owner"], "limit":["1"], "status":["archived"], "month":["2026-05"],
+        "return_occurrence":["true"], "before_version":["8"], "payment_month":[""], "q":["宽带 & 返还"], "payment_id":["41"]}
     second = client.get(older)
     assert second.status_code == 200 and "JPY 1200" in second.text and "原日元定义" in second.text
     assert "2026-05-08" in second.text and "更早的修改及发生时间未知" in second.text
     assert 'datetime="2026-09-26T00:00:00Z"' in second.text
     assert '/web/recurring/series-one/occurrence?ledger_id=owner&amp;month=2026-05' in second.text
+    back = next(unescape(href) for href,label in re.findall(r'href="([^"]+)"[^>]*>([^<]+)</a>',second.text) if label=="回到原期间")
+    assert parse_qs(urlsplit(back).query, keep_blank_values=True) == {
+        "ledger_id":["owner"], "month":["2026-05"], "payment_month":[""], "q":["宽带 & 返还"], "payment_id":["41"]}
     assert "最近的记录</a>" in second.text and "更早的记录</a>" not in second.text
     assert calls == [("owner","series-one",1,None),("owner","series-one",1,8)]
     listing = client.get("/web/recurring/series-one/history",params={"ledger_id":"owner", "status":"archived", "month":"2026-05"})
@@ -177,7 +195,9 @@ def test_recurring_history_other_ledger_and_missing_currency_are_not_reconstruct
     ("resume","resume_recurring_item"), ("archive","archive_recurring_item"), ("restore","restore_recurring_item")])
 def test_recurring_web_commands_pass_only_the_original_authenticated_actor(history_reader, monkeypatch, action, owner):
     import json
+    from urllib.parse import parse_qs, urlsplit
 
+    from app.errors import AppError
     from app.routes import web_recurring as route
     from app.services import manual_expense_draft_presenter as drafts
 
@@ -186,18 +206,42 @@ def test_recurring_web_commands_pass_only_the_original_authenticated_actor(histo
     scope = {"datasetId": "installed", "clientGeneration": "generation", "accountId": "42", "deviceId": "21", "ledgerId": "owner"}
     monkeypatch.setattr(drafts, "manual_draft_scope", lambda db, auth: scope)
     captured = []
-    monkeypatch.setattr(route, owner, lambda db, **kw: captured.append(kw))
+    def command(db, **kw):
+        captured.append(kw)
+        return SimpleNamespace(public_id="series-one", status="active")
+    monkeypatch.setattr(route, owner, command)
+    monkeypatch.setattr(route, "get_recurring_item", lambda *a, **kw: SimpleNamespace(public_id="series-one", status="active"))
     url = "/web/recurring/" + (action if action in {"create","confirm-candidate"} else "series-one/"+action)
     body = {"ledger_id":"owner", "merchant":"原计划", "baseline_amount_yuan":"1200", "home_currency_code":"JPY",
         "next_expected_date":"2026-05-08", "expected_row_version":"7", "idempotency_key":"original-key",
-        "amount_cents":"1200", "actor_account_id":"999", "draft_scope":json.dumps(scope)}
+        "amount_cents":"1200", "actor_account_id":"999", "draft_scope":json.dumps(scope), "month":"2026-05"}
     result = client.post(url,data=body,follow_redirects=False)
     assert result.status_code == 303 and len(captured)==1
     assert captured[0]["tenant_id"] == "owner" and captured[0]["actor_account_id"] == 42
-    if action in {"create","edit"}:
+    if action in {"create","edit","confirm-candidate"}:
         assert captured[0]["idempotency_key"] == "original-key"
+    if action in {"create","edit","confirm-candidate"}:
+        assert parse_qs(urlsplit(result.headers["location"]).query)["month"] == ["2026-05"]
+        assert "month" not in captured[0] and "status" not in captured[0]
     if action in {"edit","pause","resume","restore"}:
         assert captured[0]["expected_row_version"] == 7
+    if action in {"pause", "resume", "archive", "restore"}:
+        location = urlsplit(result.headers['location'])
+        returned = parse_qs(location.query)
+        assert returned['month'] == ['2026-05']
+        assert returned['status'] == [{'pause':'paused', 'resume':'active', 'archive':'archived', 'restore':'active'}[action]]
+        assert returned['flash'] and location.fragment == 'item-series-one'
+        assert 'month' not in captured[0], 'Navigation context must not change the definition command'
+    if action in {"pause", "resume", "restore"}:
+        def conflict(db, **kw):
+            raise AppError('state_conflict', status_code=409)
+        monkeypatch.setattr(route, owner, conflict)
+        refused = client.post(url, data=body, follow_redirects=False)
+        location = urlsplit(refused.headers['location'])
+        returned = parse_qs(location.query)
+        assert returned['month'] == ['2026-05'] and returned['edit'] == ['series-one']
+        assert returned['error'] == ['页面已过期，请刷新后重新操作。'] and 'flash' not in returned
+        assert location.fragment == 'item-series-one'
     state["role"] = "viewer"
     assert client.post(url,data=body,follow_redirects=False).status_code == 403 and len(captured)==1
 

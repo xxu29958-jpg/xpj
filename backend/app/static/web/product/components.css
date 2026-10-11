@@ -30,6 +30,7 @@ p {
 
 .product-page-heading {
     display: grid;
+    min-width: 0;
     gap: var(--space-2);
 }
 
@@ -50,11 +51,7 @@ p {
     font-weight: var(--type-hero-weight);
     letter-spacing: -.035em;
     line-height: var(--type-hero-line);
-}
-
-.page-title--compact {
-    font-size: var(--type-headline-size);
-    line-height: var(--type-headline-line);
+    overflow-wrap: anywhere;
 }
 
 .page-sub,
@@ -75,6 +72,7 @@ p {
 }
 
 .product-page-actions,
+.product-form-actions,
 .dt-actions,
 .actions {
     display: flex;
@@ -83,6 +81,8 @@ p {
     justify-content: flex-end;
     gap: var(--space-3);
 }
+
+.product-form-actions { justify-content: flex-start; margin-block-start: var(--space-5); }
 
 /* W1: commandbar 去卡片相框 — 筛选条是内容区的一段节奏, 不是被框住的表单。 */
 .product-commandbar,
@@ -99,19 +99,19 @@ p {
     flex: 1;
 }
 
-/* W1: segmented tonal strip — 一个圆角色面容器, active 段实心浮起;
-   窄屏横滚不折行 (六枚筛选在 360 不再折成两行描边 pill)。 */
+/* Shared filter chips: selected tint carries state, without a second frame.
+   Long sets retain the existing horizontal scrolling on narrow screens. */
 .seg,
 .product-segments {
     display: flex;
     min-width: 0;
     max-width: 100%;
     flex-wrap: nowrap;
-    gap: var(--space-1);
-    padding: var(--space-1);
+    gap: var(--space-3);
+    padding: 0;
     overflow-x: auto;
     border-radius: var(--radius-pill);
-    background: var(--surface-sunken);
+    background: transparent;
     scrollbar-width: none;
 }
 
@@ -126,19 +126,22 @@ p {
 .product-segments a,
 .product-segments button {
     display: inline-flex;
-    min-height: var(--space-9);
+    min-height: var(--target-min);
     flex: 0 0 auto;
     align-items: center;
     gap: var(--space-2);
-    padding: var(--space-2) var(--space-4);
+    padding: var(--space-3) var(--space-5);
     border: 0;
     border-radius: var(--radius-pill);
-    background: transparent;
+    background: var(--surface-card);
     color: var(--text-muted);
     cursor: pointer;
     text-decoration: none;
     white-space: nowrap;
 }
+
+.filter-tab { list-style: none; }
+.filter-tab::-webkit-details-marker { display: none; }
 
 .seg a:hover,
 .seg button:hover,
@@ -152,9 +155,10 @@ p {
 .seg .active,
 .filter-tab.is-active,
 .product-segments [aria-current="page"],
+.product-segments [aria-current="location"],
 .product-segments [aria-selected="true"] {
-    background: var(--surface-card);
-    box-shadow: var(--shadow-card);
+    background: var(--brand-primary-bg);
+    box-shadow: none;
     color: var(--text-default);
     font-weight: var(--type-subtitle-weight);
 }
@@ -164,12 +168,14 @@ p {
 .amount,
 .trend-num,
 .kpi-value {
+    min-width: 0;
+    overflow-wrap: anywhere;
     font-family: var(--font-numeric);
     font-variant-numeric: tabular-nums;
 }
 
-/* W1 Warm Ledger: 按钮三级制 — 默认 tonal 色面 (无描边), primary 实心强调,
-   danger tonal 危险色面, quiet 纯文本。描边白底按钮从 product 语言退役。 */
+/* Shared action hierarchy: evergreen submission, soft secondary actions and
+   quiet text actions. Control geometry is shared with inputs and other clients. */
 .dt-btn,
 .product-button,
 button.dt-btn,
@@ -181,7 +187,7 @@ a.dt-btn {
     gap: var(--space-2);
     padding: var(--space-2) var(--space-5);
     border: 0;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-lg);
     background: var(--surface-sunken);
     color: var(--text-default);
     cursor: pointer;
@@ -194,6 +200,12 @@ a.dt-btn {
         transform var(--motion-fast) var(--ease-standard);
 }
 
+.product-button > svg {
+    flex: 0 0 var(--space-5);
+    width: var(--space-5);
+    height: var(--space-5);
+}
+
 .dt-btn:hover,
 .product-button:hover {
     background: var(--border-card);
@@ -204,10 +216,14 @@ a.dt-btn {
     transform: translateY(var(--space-1));
 }
 
+.product-button--selected { background: var(--brand-primary-bg); color: var(--brand-primary-strong); }
+
 .dt-btn.primary,
 .product-button--primary {
+    min-height: calc(var(--target-min) + var(--space-3));
     background: var(--brand-primary);
     color: var(--text-on-primary);
+    font-weight: var(--type-title-weight);
 }
 
 .dt-btn.primary:hover,
@@ -239,13 +255,13 @@ a.dt-btn {
 }
 
 .dt-btn--sm {
-    min-height: var(--space-8);
+    min-height: var(--target-min);
     padding: var(--space-1) var(--space-3);
     font-size: var(--type-caption-size);
 }
 
 .product-button--small {
-    min-height: var(--space-8);
+    min-height: var(--target-min);
     padding: var(--space-1) var(--space-3);
     font-size: var(--type-caption-size);
 }
@@ -387,11 +403,14 @@ button[disabled] {
     gap: var(--space-2);
 }
 
+.pill-row > .product-button { border-radius: var(--radius-pill); }
+
 /* W1: 反馈带 tonal — 状态色面承担语气, 不再描边。 */
 .dt-alert,
 .callout-info,
 .product-feedback {
     display: flex;
+    flex-wrap: wrap;
     align-items: flex-start;
     justify-content: space-between;
     gap: var(--space-4);
@@ -428,14 +447,17 @@ button[disabled] {
 }
 
 .undo-banner-action {
-    display: flex;
-    flex: 0 0 auto;
+    display: grid;
+    gap: var(--space-3);
+    flex: 0 1 auto;
+    min-inline-size: 0;
+    max-inline-size: 100%;
 }
 
 /* ADR-0038 undo banner: 5s auto-dismiss。product 新栈页不载旧 alert.css
    (断旧栈), 契约动画移植至此 (与旧规则同名同帧内容, 双栈同效);
    行在服务端 5 分钟保留窗内仍可恢复, 横幅只是 UI 提示。 */
-.undo-banner {
+.undo-banner:not(:has([data-expenseundo-plan-id])) {
     overflow: hidden;
     animation: undo-banner-dismiss 5s forwards;
 }
@@ -526,26 +548,29 @@ button[disabled] {
 .dt-form-row,
 .product-field {
     display: grid;
+    min-width: 0;
     gap: var(--space-2);
 }
 
 .dt-form-row > label,
-.product-field > label {
-    color: var(--text-default);
-    font-size: var(--type-caption-size);
-    font-weight: var(--type-subtitle-weight);
+.product-field > label,
+.product-field > span:first-child {
+    color: var(--text-meta);
+    font-size: var(--type-body-size);
+    font-weight: var(--type-body-weight);
 }
 
 .dt-input,
 .product-input,
-input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]),
+input:where(:not([type="hidden"]):not([type="checkbox"]):not([type="radio"])),
 select,
 textarea {
     width: 100%;
+    min-width: 0;
     min-height: var(--space-10);
     padding: var(--space-3) var(--space-4);
     border: 1px solid var(--border-input);
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-input);
     background: var(--surface-card);
     color: var(--text-default);
 }
@@ -561,7 +586,7 @@ progress {
     border: 0;
     border-radius: var(--radius-pill);
     background: var(--surface-sunken);
-    accent-color: var(--brand-primary);
+    accent-color: var(--progress-fill, var(--brand-primary));
 }
 
 progress::-webkit-progress-bar {
@@ -571,22 +596,23 @@ progress::-webkit-progress-bar {
 
 progress::-webkit-progress-value {
     border-radius: var(--radius-pill);
-    background: var(--brand-primary);
+    background: var(--progress-fill, var(--brand-primary));
 }
 
 progress::-moz-progress-bar {
     border-radius: var(--radius-pill);
-    background: var(--brand-primary);
+    background: var(--progress-fill, var(--brand-primary));
 }
 
 textarea {
-    min-height: calc(var(--space-12) * 2);
     resize: vertical;
 }
 
+textarea:not([rows]) { min-height: calc(var(--space-12) * 2); }
+
 .dt-input:hover,
 .product-input:hover,
-input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):hover,
+input:where(:not([type="hidden"]):not([type="checkbox"]):not([type="radio"])):hover,
 select:hover,
 textarea:hover {
     border-color: var(--control-border-hover);
@@ -594,7 +620,7 @@ textarea:hover {
 
 .dt-input:focus,
 .product-input:focus,
-input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):focus,
+input:where(:not([type="hidden"]):not([type="checkbox"]):not([type="radio"])):focus,
 select:focus,
 textarea:focus {
     border-color: var(--control-border-active);
@@ -748,6 +774,12 @@ textarea:focus {
     color: var(--text-muted);
     font-size: var(--type-caption-size);
 }
+
+.file-picker--featured { grid-template-columns: minmax(0, 1fr) var(--space-12); align-items: center; padding: var(--space-6); border-radius: var(--radius-xl); background: var(--brand-primary-bg); gap: var(--space-3); }
+.file-picker--featured > strong { color: var(--text-default); font-size: var(--type-title-size); line-height: var(--type-title-line); }
+.file-picker--featured > span { grid-column: 1; font-size: var(--type-body-size); line-height: var(--type-body-line); }
+.file-picker--featured > input { grid-column: 1 / -1; }
+.file-picker--featured > img { grid-column: 2; grid-row: 1 / 3; width: 100%; height: auto; }
 
 body.product-shell .file-picker > input.file-picker-input {
     width: 100%;
@@ -979,11 +1011,10 @@ body.product-shell .file-picker > input.file-picker-input:focus-visible {
 .product-progress {
     width: 100%;
     height: var(--space-3);
-    accent-color: var(--brand-primary);
 }
 
 .product-progress.is-complete {
-    accent-color: var(--state-success-fg);
+    --progress-fill: var(--state-success-fg);
 }
 
 .product-check {
@@ -994,15 +1025,48 @@ body.product-shell .file-picker > input.file-picker-input:focus-visible {
     font-size: var(--type-body-size);
 }
 
-.product-check input {
+.product-check input:where(:not(.checkbox)) {
     width: var(--space-5);
     height: var(--space-5);
     accent-color: var(--brand-primary);
 }
+fieldset.product-field { border: 0; padding: 0; margin: 0; }
+.product-field > label.product-check { min-height: var(--target-min); font-size: var(--type-body-size); font-weight: normal; }
+
+/* Before/after facts share the same type, spacing and emphasis as editable entry rows. */
+.product-comparison {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 12ch), 1fr));
+    align-items: stretch;
+    gap: var(--space-4);
+}
+.product-comparison > div {
+    display: grid;
+    align-content: center;
+    gap: var(--space-2);
+    padding: var(--space-4);
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+.product-comparison span { color: var(--text-meta); font-size: var(--type-caption-size); }
+.product-comparison strong { font-size: var(--type-title-size); font-weight: var(--type-title-weight); }
+.product-comparison-proposed { background: var(--brand-primary-bg); border-radius: var(--radius-input); }
+.product-panel--highlight { background: var(--brand-primary-bg); }
+.product-panel--apricot { background: var(--surface-apricot); }
 
 .text-warning {
     color: var(--state-warn-fg);
 }
+
+/* Selection mode is enhanced by the existing bulk-bar owner. Native
+   checkboxes and forms remain available when scripts are unavailable. */
+.bulk-selection-ready:not(.bulk-selecting) .exp-row-selector,
+.bulk-selection-ready:not(.bulk-selecting) .exp-head,
+.bulk-selection-ready:not(.bulk-selecting) .lrow-sel,
+.bulk-selection-ready:not(.bulk-selecting) .confirmed-batch-head,
+.bulk-selection-ready .exp-flags { display: none; }
+.bulk-selection-ready:not(.bulk-selecting) .exp-row,
+.bulk-selection-ready:not(.bulk-selecting) .timeline-row.lrow.has-check { grid-template-columns: minmax(0, 1fr); }
 
 /* ── 编辑 core-fields 共享组件 (drawer / 完整整理页共用 _expense_core_fields.html) ──
    展示层唯一 owner: 字段排版、错误挂载、OCC 冲突对比条。值/选项/hidden
@@ -1013,10 +1077,146 @@ body.product-shell .file-picker > input.file-picker-input:focus-visible {
     gap: var(--space-5);
 }
 
-.product-field > span:first-child {
+.product-drawer-field-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(var(--space-12), calc(var(--space-12) * 1.5));
+    gap: var(--space-4);
+}
+
+.product-drawer-input-prefix {
+    position: relative;
+    display: grid;
+    align-items: center;
+}
+
+.product-drawer-input-prefix > span {
+    position: absolute;
+    z-index: 1;
+    inset-inline-start: var(--space-4);
+    color: var(--text-meta);
+    pointer-events: none;
+}
+
+.expense-core-fields .product-drawer-input-prefix > input.product-input {
+    padding-inline-start: var(--space-8);
+}
+
+.expense-manual-fx {
+    display: grid;
+    gap: var(--space-4);
+    padding: var(--space-4);
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius-card);
+    background: var(--surface-sunken);
+}
+
+.expense-manual-fx-copy {
+    display: grid;
+    gap: var(--space-1);
     color: var(--text-default);
+}
+
+.expense-manual-fx-copy > span {
+    color: var(--text-meta);
     font-size: var(--type-caption-size);
-    font-weight: var(--type-subtitle-weight);
+}
+
+.expense-manual-fx-equation {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr) max-content;
+    gap: var(--space-3);
+    align-items: center;
+}
+
+.expense-manual-fx-status {
+    margin: 0;
+}
+
+/* One entry row for editable receipt fields and account/device directories.
+   Links, native disclosures and form buttons retain their own behavior. */
+.product-entry {
+    display: grid;
+    grid-template-columns: var(--space-9) minmax(0, 1fr) var(--space-5);
+    width: 100%;
+    align-items: center;
+    gap: var(--space-4);
+    min-height: calc(var(--target-min) + var(--space-5));
+    padding: var(--space-3) 0;
+    border: 0;
+    background: transparent;
+    font: inherit;
+    text-align: start;
+    list-style: none;
+    cursor: pointer;
+    color: var(--text-default);
+    text-decoration: none;
+}
+.product-button::-webkit-details-marker,
+.product-entry::-webkit-details-marker,
+.review-amount-field > summary::-webkit-details-marker { display: none; }
+.product-entry > svg { width: var(--space-5); height: var(--space-5); color: var(--text-meta); }
+details[open] > .product-entry > svg { transform: rotate(90deg); }
+.product-entry:hover { color: var(--brand-primary-strong); }
+.product-entry--static { grid-template-columns: var(--space-9) minmax(0, 1fr); border-bottom: 1px solid var(--border-card); cursor: default; }
+.product-entry--static:hover { color: var(--text-default); }
+.product-entry-icon {
+    display: grid;
+    place-items: center;
+    width: var(--space-9);
+    height: var(--space-9);
+    border-radius: var(--radius-lg);
+    background: var(--brand-primary-bg);
+    color: var(--text-default);
+}
+.product-entry-icon > svg { width: var(--space-7); height: var(--space-7); }
+.product-entry-icon--receipt { position: relative; height: auto; aspect-ratio: 3 / 4; overflow: hidden; border-radius: var(--radius-sm); background: var(--surface-sunken); }
+.product-entry-icon--receipt > img { position: absolute; width: 100%; height: 100%; object-fit: contain; }
+.product-entry-icon--receipt.is-loaded > svg { visibility: hidden; }
+.product-entry-icon--apricot { background: var(--surface-apricot); }
+.product-entry-icon--lilac { background: var(--surface-lilac); }
+.product-entry-copy { display: grid; gap: var(--space-1); min-width: 0; overflow-wrap: anywhere; }
+.product-entry-copy strong { font-size: var(--type-subtitle-size); font-weight: var(--type-title-weight); }
+.product-entry-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--space-2) var(--space-4); }
+.product-entry-copy > .product-entry-heading { color: var(--text-default); }
+.expense-line-fields { padding-block: var(--space-4) var(--space-5); }
+.expense-lines-editor input:disabled,
+.expense-lines-editor select:disabled { color: var(--text-muted); background: var(--surface-sunken); }
+.product-entry-heading > strong { flex: 1 1 8ch; overflow-wrap: anywhere; }
+.product-entry-amount { min-width: 0; max-width: 100%; margin-inline-start: auto; overflow-wrap: anywhere; font-family: var(--font-numeric); font-size: var(--type-subtitle-size); font-weight: var(--type-title-weight); color: var(--text-default); }
+.fact-reconcile { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--space-2) var(--space-4); margin-block: var(--space-4); padding-block: var(--space-3); border-bottom: 1px solid var(--border-card); color: var(--text-meta); font-size: var(--type-body-size); overflow-wrap: anywhere; }
+.fact-reconcile strong { min-width: 0; max-width: 100%; color: var(--text-default); font-family: var(--font-numeric); font-size: var(--type-subtitle-size); }
+.product-entry-copy > span { color: var(--text-meta); font-size: var(--type-body-size); line-height: var(--type-body-line); }
+.product-entry-list > :not(:last-child) { border-block-end: 1px solid var(--border-card); }
+.product-entry--actions { display: flex; flex-wrap: wrap; }
+.product-entry--actions > .product-entry-copy { flex: 1 1 12ch; }
+.product-entry-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-inline-start: auto; }
+
+/* Native details stay open without JS; the existing drawer enhancement reads
+   the real inputs and folds populated fields, without copying form state. */
+.expense-core-fields--compact { gap: 0; }
+.review-edit-field,
+.review-date-fields,
+.review-note-fields,
+.review-subtask { min-width: 0; border-bottom: 1px solid var(--border-card); }
+.review-edit-field > .product-field { margin: 0 0 var(--space-5) calc(var(--space-9) + var(--space-4)); }
+.review-date-fields fieldset { border: 0; padding: var(--space-4) 0; min-width: 0; }
+.review-note-fields > .product-field { margin-block: var(--space-4); }
+.review-subtask-link { border-bottom: 1px solid var(--border-card); }
+.review-subtask > summary { display: flex; align-items: center; justify-content: space-between; gap: var(--space-5); min-height: calc(var(--target-min) + var(--space-5)); cursor: pointer; font-size: var(--type-subtitle-size); }
+.review-subtask > summary > span { color: var(--text-meta); font-size: var(--type-body-size); overflow-wrap: anywhere; }
+.review-subtask > section { padding-block: var(--space-5); }
+.review-subtask .product-panel-header { display: none; }
+.review-amount-field { padding: var(--space-6); margin-bottom: var(--space-4); border-radius: var(--radius-xl); background: var(--brand-primary-bg); }
+.review-amount-field > summary { display: grid; gap: var(--space-3); min-height: var(--target-min); cursor: pointer; list-style: none; color: var(--text-meta); font-size: var(--type-body-size); }
+.review-amount-value:not([hidden]) { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2); min-width: 0; color: var(--text-default); }
+.review-amount-value [data-review-amount] { min-width: 0; max-width: 100%; overflow-wrap: anywhere; font-family: var(--font-numeric); font-size: var(--type-display-size); font-weight: var(--type-title-weight); line-height: var(--type-display-line); }
+.review-amount-value > svg { flex: none; align-self: center; width: var(--space-5); height: var(--space-5); margin-inline-start: var(--space-3); color: var(--text-meta); }
+.review-amount-field .product-drawer-field-row { grid-template-columns: minmax(0, 1fr); margin-top: var(--space-5); }
+.review-amount-field .product-drawer-field-row > label:last-child { display: none; }
+@media (max-width: 48rem) {
+    .product-drawer-field-row,
+    .expense-manual-fx-equation { grid-template-columns: minmax(0, 1fr); }
+    .review-amount-field { background: var(--surface-raised); padding: var(--space-5); margin-bottom: var(--space-3); }
 }
 
 .error-text {
@@ -1128,6 +1328,8 @@ body.product-shell .file-picker > input.file-picker-input:focus-visible {
 }
 
 @media (max-width: 40rem) {
+    .product-form-actions > .product-button--primary { width: 100%; }
+
     .dt-card {
         padding: var(--space-5);
     }
@@ -1140,6 +1342,16 @@ body.product-shell .file-picker > input.file-picker-input:focus-visible {
     }
 }
 
+/* First-result receipts shared by inbox confirmation and manual entry. */
+.expense-confirmation { display: flex; flex-direction: column; gap: var(--space-6); width: min(100%, 44rem); margin-inline: auto; min-height: calc(100dvh - var(--space-12) * 3); }
+.expense-confirmation-heading { display: flex; flex-direction: column; align-items: center; gap: var(--space-5); padding-block: var(--space-8) var(--space-3); text-align: center; }
+.expense-confirmation-mark { display: grid; place-items: center; width: calc(var(--space-10) * 2); aspect-ratio: 1; border-radius: 50%; background: var(--brand-primary-bg); color: var(--brand-primary); }
+.expense-confirmation h1 { margin: 0; font-size: var(--type-hero-size); line-height: var(--type-hero-line); }
+.expense-confirmation p { margin: 0; color: var(--text-muted); }
+.expense-confirmation-amount { display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-6); border-radius: var(--radius-xl); background: var(--brand-primary-bg); }
+.expense-confirmation-amount strong { font-size: var(--type-display-size); line-height: var(--type-display-line); overflow-wrap: anywhere; }
+.expense-confirmation-actions { display: grid; gap: var(--space-3); margin-top: auto; padding-block: var(--space-5); }
+
 /* K3: coarse 触达地板 (width 管密度, pointer 管目标尺寸)。 */
 @media (pointer: coarse) {
     .filter-tab,
@@ -1147,4 +1359,66 @@ body.product-shell .file-picker > input.file-picker-input:focus-visible {
     .product-segments button {
         min-height: var(--target-min);
     }
+}
+
+.score-fields { display: grid; gap: var(--space-5); }
+
+/* 评价 radiogroup：原生语义 + pill 视觉（radio 透明覆盖，:checked/:focus-visible
+   驱动 pill 态；键盘方向键与读屏走原生 input）。 */
+.score-row {
+    border: 0;
+    margin: 0;
+    padding: 0;
+}
+
+.score-row legend {
+    padding: 0;
+    font-size: var(--type-caption-size);
+    color: var(--text-muted);
+}
+
+.score-seg {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+}
+
+.score-seg-option {
+    position: relative;
+    cursor: pointer;
+}
+
+.score-seg-option input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    margin: 0;
+}
+
+.score-seg-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: var(--target-min);
+    min-height: var(--target-min);
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border-input);
+    border-radius: var(--radius-pill);
+    background: var(--surface-card);
+    color: var(--text-muted);
+    font-size: var(--type-body-size);
+    transition: background var(--motion-fast) var(--ease-standard),
+        color var(--motion-fast) var(--ease-standard),
+        border-color var(--motion-fast) var(--ease-standard);
+}
+
+.score-seg-option input:checked + .score-seg-pill {
+    background: var(--brand-primary);
+    border-color: var(--brand-primary);
+    color: var(--text-on-primary);
+}
+
+.score-seg-option input:focus-visible + .score-seg-pill {
+    outline: var(--space-1) solid var(--brand-focus-ring);
+    outline-offset: var(--space-1);
 }

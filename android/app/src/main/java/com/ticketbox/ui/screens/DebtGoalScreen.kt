@@ -1,5 +1,9 @@
 package com.ticketbox.ui.screens
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.DisposableEffect
+import com.ticketbox.ui.mascot.rememberMascotController
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -8,9 +12,10 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material3.Button
+import com.ticketbox.ui.components.AppPrimaryButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import com.ticketbox.ui.components.AppOutlinedButton
+import com.ticketbox.ui.components.AppOutlinedButtonOptions
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -42,7 +47,18 @@ import com.ticketbox.ui.components.AppSecondaryPageSlots
 import com.ticketbox.ui.components.AppSecondaryRefreshState
 import com.ticketbox.ui.components.AppSecondaryScrollableContent
 import com.ticketbox.ui.components.AppStatusBanner
-import com.ticketbox.ui.components.PrimaryCtaButton
+import com.ticketbox.ui.components.AppFloatingActionBar
+import com.ticketbox.ui.components.AppButtonIcons
+import com.ticketbox.ui.components.AppAdaptiveContentActionRow
+import com.ticketbox.ui.components.AppAdaptiveContentActionStyle
+import com.ticketbox.ui.components.SettingsEntryIcon
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.outlined.Flag
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.TextButton
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.ui.design.tabularNum
@@ -54,27 +70,15 @@ import kotlinx.coroutines.delay
 /** 操作成功提示展示时长，到点自动收起（与 IncomePlanScreen 同惯例）。 */
 private const val DebtGoalFlashDismissMillis = 4000L
 
-/**
- * ADR-0049 §6 (slice 7) 还债目标：列表 → 详情（同一 overlay 内）。详情展示评估状态 +
- * 关联欠款（未结清 / 已结清 / 已作废），并在 needs_review 时给出 §6/F13 复核两出口
- * （移除作废欠款 / 保留存档）。本切片只读 + 复核，创建还债目标随后续债务管理界面落地。
- *
- * 复用共享骨架（[AppScrollableContent] + secondary header +
- * [AppStatusBanner]），三端 token 同步走 MaterialTheme + AppSpacing。屏接 VM（与
- * IncomePlanScreen 同形），返回先收详情、再关 overlay（overlay 无 NavHost 回退栈，
- * 必须自带 [BackHandler] — [[project_overlay_screen_needs_own_backhandler]]）。
- */
+/** The goal list and detail share the canonical read owner and retain their return context. */
 @Composable
 fun DebtGoalScreen(
     viewModel: DebtGoalViewModel,
-    onBack: () -> Unit,
-    onCreate: () -> Unit,
-    onOpenLinkedDebt: (String) -> Unit = {},
-    hasCreationDraft: Boolean = false,
+    navigation: DebtGoalScreenNavigation,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val handleBack = {
-        if (state.selectedGoal != null) viewModel.closeDetail() else onBack()
+        if (state.selectedGoal != null) viewModel.closeDetail() else navigation.onBack()
     }
 
     LaunchedEffect(state.flashMessage) {
@@ -84,35 +88,51 @@ fun DebtGoalScreen(
     }
 
     val selected = state.selectedGoal
-    // 8e-6a「先清小的」排序 + 8e-6c 还清日期 picker 显隐：详情层 composable-local 视图态（无持久化/无 DataStore；
-    // 排序刻意不 keyed-by-goal=会话级视图偏好，跨 closeDetail 保留）。picker 对话框在 AppScrollableContent **外**渲染。
+    var confirmingArchive by rememberSaveable(selected?.publicId) { mutableStateOf(false) }
+    // 「先清小的」排序是会话级视图偏好，跨 closeDetail 保留；日期由独立编辑任务保管。
     var sortMode by rememberSaveable { mutableStateOf(DebtPlanSortMode.Default) }
-    var showDatePicker by rememberSaveable { mutableStateOf(false) }
     val callbacks = DebtGoalScreenBodyCallbacks(
         handleBack = handleBack,
-        onCreate = onCreate,
-        hasCreationDraft = hasCreationDraft,
-        onOpenLinkedDebt = onOpenLinkedDebt,
+        onCreate = navigation.onCreate,
+        hasCreationDraft = navigation.hasCreationDraft,
+        association = navigation.association,
+        onOpenLinkedDebt = navigation.onOpenLinkedDebt,
+        onOpenRecycleBin = navigation.onOpenRecycleBin,
         detailCallbacks = DebtGoalDetailCallbacks(
             sortMode = sortMode,
             onSortModeChange = { sortMode = it },
-            onSetTargetDate = { showDatePicker = true },
+            onSetTargetDate = { selected?.let { navigation.association.onDate(it.publicId) } },
+            onEditLinks = { selected?.let { navigation.association.onOpen(it.publicId) } },
+            onArchive = { confirmingArchive = true },
         ),
     )
-    DebtGoalScreenBody(state = state, viewModel = viewModel, callbacks = callbacks)
-    DebtTargetDatePickerDialog(
-        visible = showDatePicker,
-        selected = selected,
-        onSetTargetDate = viewModel::setTargetDate,
-        onDismiss = { showDatePicker = false },
-    )
+    val mascot = rememberMascotController()
+    val celebration by viewModel.celebration.collectAsStateWithLifecycle()
+    // Leaving the displayed goal consumes any unfinished animation; reentry must not replay it.
+    DisposableEffect(viewModel) { onDispose { viewModel.consumeCelebration(); viewModel.dismissFlash() } }
+    Box(modifier = Modifier.fillMaxSize()) {
+        DebtGoalScreenBody(state = state, viewModel = viewModel, callbacks = callbacks)
+        DebtGoalCelebrationOverlay(celebration, mascot, viewModel::consumeCelebration)
+    }
+    if (confirmingArchive && selected != null && !selected.isArchived && state.canModify) {
+        AlertDialog(
+            onDismissRequest = { confirmingArchive = false },
+            title = { Text(stringResource(R.string.debt_goal_archive_title)) },
+            text = { Text(stringResource(R.string.debt_goal_archive_body)) },
+            confirmButton = { TextButton(onClick = { confirmingArchive = false; viewModel.archiveSelected() },
+                enabled = !state.isSubmitting) { Text(stringResource(R.string.spending_goal_archive_confirm)) } },
+            dismissButton = { TextButton(onClick = { confirmingArchive = false }) { Text(stringResource(R.string.common_cancel)) } },
+        )
+    }
 }
 
 private data class DebtGoalScreenBodyCallbacks(
     val handleBack: () -> Unit,
     val onCreate: () -> Unit,
     val hasCreationDraft: Boolean,
+    val association: DebtGoalEditNavigation,
     val onOpenLinkedDebt: (String) -> Unit,
+    val onOpenRecycleBin: () -> Unit,
     val detailCallbacks: DebtGoalDetailCallbacks,
 )
 
@@ -123,25 +143,12 @@ private fun DebtGoalScreenBody(
     callbacks: DebtGoalScreenBodyCallbacks,
 ) {
     val selected = state.selectedGoal
-    val createAction: (@Composable () -> Unit)? =
-        if (selected == null && (state.canModify || callbacks.hasCreationDraft)) {
-            {
-                PrimaryCtaButton(
-                    text = stringResource(if (callbacks.hasCreationDraft) R.string.goal_draft_continue else R.string.debt_goal_create_cta),
-                    icon = Icons.Default.Add,
-                    onClick = callbacks.onCreate,
-                )
-            }
-        } else {
-            null
-        }
-
     AppSecondaryScrollableContent(
         chrome = AppSecondaryPageChrome(
             role = AppPageRole.Stats,
-            title = selected?.name ?: stringResource(R.string.debt_goal_topbar_title),
+            title = selected?.name ?: stringResource(R.string.debt_goal_page_title),
             subtitle = if (selected == null) stringResource(R.string.debt_goal_intro_body) else null,
-            backText = stringResource(R.string.debt_goal_topbar_back),
+            backText = stringResource(if (selected == null) R.string.spending_goals_back_to_plan else R.string.debt_goal_topbar_title),
             onBack = callbacks.handleBack,
             hasBottomBar = false,
             verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap),
@@ -155,10 +162,20 @@ private fun DebtGoalScreenBody(
         ),
         slots = AppSecondaryPageSlots(
             status = { DebtGoalStatusStack(state = state) },
-            actions = createAction,
+            bottomBar = if (selected == null && (state.canModify || callbacks.hasCreationDraft)) {
+                { DebtGoalCreateAction(callbacks.hasCreationDraft, callbacks.onCreate) }
+            } else null,
         ),
     ) {
         if (selected != null) {
+            if (selected.isArchived) item {
+                Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+                    Text(stringResource(R.string.debt_goal_recovery_body), style = MaterialTheme.typography.bodyMedium)
+                    if (state.canModify) TextButton(onClick = callbacks.onOpenRecycleBin) {
+                        Text(stringResource(R.string.spending_goal_recovery_action))
+                    }
+                }
+            }
             debtGoalDetailSection(
                 state = state,
                 viewModel = viewModel,
@@ -166,14 +183,34 @@ private fun DebtGoalScreenBody(
                 callbacks = callbacks.detailCallbacks,
             )
         } else {
-            debtGoalListSection(state = state, viewModel = viewModel)
+            callbacks.association.retainedId?.let { id ->
+                item { androidx.compose.material3.TextButton(onClick = { callbacks.association.onOpen(id) }) {
+                    Text(stringResource(R.string.debt_goal_links_continue))
+                } }
+            }
+            callbacks.association.retainedDateId?.let { id ->
+                item { androidx.compose.material3.TextButton(onClick = { callbacks.association.onDate(id) }) {
+                    Text(stringResource(R.string.debt_goal_date_continue))
+                } }
+            }
+            debtGoalListSection(state = state, viewModel = viewModel, onOpenLinkedDebt = callbacks.onOpenLinkedDebt)
         }
+    }
+}
+
+@Composable
+private fun DebtGoalCreateAction(hasDraft: Boolean, onCreate: () -> Unit) {
+    AppFloatingActionBar {
+        AppPrimaryButton(text = stringResource(if (hasDraft) R.string.goal_draft_continue else R.string.debt_goal_create_cta),
+            icons = AppButtonIcons(leading = Icons.Default.Add), modifier = Modifier.fillMaxWidth(), onClick = onCreate)
     }
 }
 
 @Composable
 private fun DebtGoalStatusStack(state: DebtGoalUiState) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+        if (!state.canModify) AppStatusBanner(message = com.ticketbox.domain.model.UiText.res(R.string.common_readonly_ledger),
+            tone = MessageTone.Info, announceUpdates = false)
         GoalReadSource(
             if (state.selectedGoal != null) state.selectedFetchedAt else state.fetchedAt,
             if (state.selectedGoal != null) state.selectedFromCache else state.fromCache, state.isLoading)
@@ -188,30 +225,42 @@ private fun DebtGoalStatusStack(state: DebtGoalUiState) {
 private fun LazyListScope.debtGoalListSection(
     state: DebtGoalUiState,
     viewModel: DebtGoalViewModel,
+    onOpenLinkedDebt: (String) -> Unit,
 ) {
-    val summary = debtGoalListSummary(goals = state.goals)
-    item { DebtGoalOverviewSection(summary = summary) }
+    val active = state.goals.filterNot { it.isArchived }
+    if (active.isEmpty()) item {
+        AppListStateContent(state = AppListStateSpec(
+            isEmpty = true, loading = state.isLoading,
+            emptyText = stringResource(R.string.debt_goal_empty_body),
+            emptyTitle = stringResource(R.string.debt_goal_empty_title),
+            emptyBody = stringResource(R.string.debt_goal_empty_body),
+        )) { }
+    }
+    active.forEach { goal ->
+        item(key = goal.publicId) { DebtGoalListRow(goal, { viewModel.openDetail(goal) }, showDivider = false) }
+        item { Text(stringResource(R.string.debt_goal_detail_links_title), style = MaterialTheme.typography.titleMedium) }
+        val links = goal.debtRepayment?.linkedDebts.orEmpty()
+        itemsIndexed(links, key = { _, link -> "${goal.publicId}:${link.debtPublicId}" }) { index, link ->
+            DebtGoalLinkRow(link, onOpenLinkedDebt, showDivider = index < links.lastIndex)
+        }
+    }
     item {
-        DebtGoalOpenSection(
-            title = stringResource(R.string.debt_goal_list_title),
-        ) {
-            AppListStateContent(
-                state = AppListStateSpec(
-                    isEmpty = state.goals.isEmpty(),
-                    loading = state.isLoading,
-                    emptyText = stringResource(R.string.debt_goal_empty_body),
-                    emptyTitle = stringResource(R.string.debt_goal_empty_title),
-                    emptyBody = stringResource(R.string.debt_goal_empty_body),
-                ),
-            ) {
-                state.goals.forEachIndexed { index, goal ->
-                    DebtGoalListRow(
-                        goal = goal,
-                        onClick = { viewModel.openDetail(goal) },
-                        showDivider = index < state.goals.lastIndex,
-                    )
-                }
+        TextButton(onClick = { viewModel.setIncludeArchived(!state.includeArchived) }) {
+            Text(stringResource(if (state.includeArchived) R.string.debt_goal_archived_hide else R.string.debt_goal_archived_show))
+        }
+    }
+    if (state.includeArchived) item {
+        DebtGoalOpenSection(title = stringResource(R.string.debt_goal_archived_title)) {
+            val archived = state.goals.filter { it.isArchived }
+            if (archived.isEmpty() && !state.isLoading) Text(stringResource(R.string.debt_goal_archived_empty))
+            archived.forEachIndexed { index, goal ->
+                DebtGoalListRow(goal, { viewModel.openDetail(goal) }, showDivider = index < archived.lastIndex)
             }
+        }
+    }
+    if (active.isNotEmpty()) item {
+        DebtGoalOpenSection(title = stringResource(R.string.debt_goal_overview_title)) {
+            DebtGoalOverviewSection(debtGoalListSummary(active))
         }
     }
 }
@@ -247,45 +296,28 @@ private fun DebtGoalListRow(
     showDivider: Boolean,
 ) {
     val evaluation = goal.debtRepayment
-    AppListRow(
-        modifier = Modifier.fillMaxWidth(),
-        onClick = onClick,
-        settled = evaluation?.isAchieved == true,
-        showDivider = showDivider,
-    ) {
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
-            Text(
-                goal.name,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                stringResource(
-                    R.string.debt_goal_row_meta,
-                    evaluation?.clearedCount ?: 0,
-                    evaluation?.totalCount ?: 0,
-                    evaluation?.remainingCount ?: 0,
-                ),
-                style = MaterialTheme.typography.bodySmall.tabularNum(),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
-            if (evaluation != null) {
-                DebtStatusBadge(
+    AppListRow(onClick = onClick, settled = goal.isArchived || evaluation?.isAchieved == true, showDivider = showDivider) {
+        AppAdaptiveContentActionRow(style = AppAdaptiveContentActionStyle(compactAction = true), content = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                SettingsEntryIcon(Icons.Outlined.Flag)
+                Spacer(Modifier.width(AppSpacing.compactGap))
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
+                    Text(goal.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text(listOfNotNull(stringResource(R.string.debt_goal_link_count, evaluation?.linkedDebts?.size ?: 0),
+                        evaluation?.targetDate).joinToString(" · "), style = MaterialTheme.typography.bodySmall.tabularNum(),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }, action = { actionModifier ->
+            Row(modifier = actionModifier, verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
+                if (goal.isArchived) Text(stringResource(R.string.debt_goal_archived_title), style = MaterialTheme.typography.labelMedium)
+                else if (evaluation != null) DebtStatusBadge(
                     text = stringResource(debtGoalEvaluationLabelRes(evaluation.evaluationState)),
-                    tone = debtGoalEvaluationTone(evaluation.evaluationState),
-                )
+                    tone = debtGoalEvaluationTone(evaluation.evaluationState))
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
             }
-            if (evaluation?.needsReview == true) {
-                Text(
-                    stringResource(R.string.debt_goal_card_needs_review),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = LocalStateTokens.current.warn.fg,
-                )
-            }
-        }
+        })
     }
 }
 
@@ -297,11 +329,12 @@ private fun LazyListScope.debtGoalDetailSection(
 ) {
     val goal = state.selectedGoal ?: return
     val evaluation = goal.debtRepayment ?: return
+    val canModify = state.canModify && !goal.isArchived
     // §6 hero：件数为主视觉的关系进度卡（含状态徽章 + 达成态 + 8e-6c 纯外部债三态/还清日期/设日期入口）。
     item {
         DebtPlanProgressCard(
             evaluation = evaluation,
-            canModify = state.canModify,
+            canModify = canModify,
             onSetTargetDate = callbacks.onSetTargetDate,
         )
     }
@@ -310,13 +343,12 @@ private fun LazyListScope.debtGoalDetailSection(
             DebtGoalIntegrityReviewCard(
                 achieved = evaluation.isAchieved,
                 canRemoveVoided = evaluation.nonVoidedDebtPublicIds.isNotEmpty(),
-                canModify = state.canModify,
+                canModify = canModify,
                 isSubmitting = state.isSubmitting,
                 onAction = { action ->
                     when (action) {
                         DebtIntegrityAction.Acknowledge -> viewModel.acknowledge()
-                        DebtIntegrityAction.RemoveVoided -> viewModel.removeVoidedDebts()
-                        DebtIntegrityAction.Archive -> viewModel.archiveSelected()
+                        DebtIntegrityAction.RemoveVoided -> callbacks.onEditLinks()
                     }
                 },
             )
@@ -330,6 +362,11 @@ private fun LazyListScope.debtGoalDetailSection(
         DebtGoalOpenSection(
             title = stringResource(R.string.debt_goal_detail_links_title),
         ) {
+            if (canModify) {
+                androidx.compose.material3.TextButton(onClick = callbacks.onEditLinks) {
+                    Text(stringResource(R.string.debt_goal_links_action))
+                }
+            }
             if (isPureExternal) {
                 DebtPlanSortToggle(mode = callbacks.sortMode, onModeChange = callbacks.onSortModeChange)
             }
@@ -344,10 +381,15 @@ private fun LazyListScope.debtGoalDetailSection(
             showDivider = index < links.lastIndex,
         )
     }
+    if (canModify) item {
+        TextButton(onClick = callbacks.onArchive, enabled = !state.isSubmitting) {
+            Text(stringResource(R.string.debt_goal_review_action_archive))
+        }
+    }
 }
 
 /** The §6/F13 integrity-review exits the UI can offer (mapped to VM actions). */
-internal enum class DebtIntegrityAction { Acknowledge, RemoveVoided, Archive }
+internal enum class DebtIntegrityAction { Acknowledge, RemoveVoided }
 
 @Composable
 private fun DebtGoalIntegrityReviewCard(
@@ -397,31 +439,21 @@ private fun DebtGoalIntegrityActions(
     onAction: (DebtIntegrityAction) -> Unit,
 ) {
     val keepAction: @Composable (Modifier) -> Unit = { actionModifier ->
-        OutlinedButton(
+        AppOutlinedButton(
             modifier = actionModifier,
             onClick = { onAction(DebtIntegrityAction.Acknowledge) },
-            enabled = !isSubmitting,
+            options = AppOutlinedButtonOptions(enabled = !isSubmitting),
         ) {
             Text(stringResource(R.string.debt_goal_review_action_keep))
         }
     }
     val removeAction: @Composable (Modifier) -> Unit = { actionModifier ->
-        Button(
+        AppPrimaryButton(
+            text = stringResource(R.string.debt_goal_review_action_remove),
             modifier = actionModifier,
             onClick = { onAction(DebtIntegrityAction.RemoveVoided) },
             enabled = !isSubmitting,
-        ) {
-            Text(stringResource(R.string.debt_goal_review_action_remove))
-        }
-    }
-    val archiveAction: @Composable (Modifier) -> Unit = { actionModifier ->
-        Button(
-            modifier = actionModifier,
-            onClick = { onAction(DebtIntegrityAction.Archive) },
-            enabled = !isSubmitting,
-        ) {
-            Text(stringResource(R.string.debt_goal_review_action_archive))
-        }
+        )
     }
     when {
         // §6/F13: "keep for audit" (acknowledge) only applies to an ALREADY achieved
@@ -452,8 +484,6 @@ private fun DebtGoalIntegrityActions(
         }
         // not_evaluable with a non-voided link to keep: link-replace removes the voided one.
         canRemoveVoided -> AppAdaptiveTrailingActionRow { actionModifier -> removeAction(actionModifier) }
-        // every link voided: no valid replacement set + no Debt picker this slice → archive.
-        else -> AppAdaptiveTrailingActionRow { actionModifier -> archiveAction(actionModifier) }
     }
 }
 
@@ -465,4 +495,6 @@ internal data class DebtGoalDetailCallbacks(
     val sortMode: DebtPlanSortMode,
     val onSortModeChange: (DebtPlanSortMode) -> Unit,
     val onSetTargetDate: () -> Unit,
+    val onEditLinks: () -> Unit,
+    val onArchive: () -> Unit,
 )
