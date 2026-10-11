@@ -139,6 +139,6 @@ def arrangement_history_page(request: Request, ledger_id: str | None = None, mon
     history = list_monthly_arrangement_history(db, tenant_id=selected, month=clean_month(month),
         before_version=before_version, limit=20)
     ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected, page_title="安排修改记录")
-    ctx.update(history=history, arrangement_amount=minor_amount_label)
+    ctx.update(history=history, arrangement_amount=minor_amount_label, before_version=before_version)
     return templates.TemplateResponse(request=request, name="monthly_arrangement_history.html", context=ctx,
         headers={"Cache-Control": "no-store"})

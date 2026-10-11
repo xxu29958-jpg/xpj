@@ -121,7 +121,7 @@ class BudgetRecoveryNavigationRouteTest {
         val action = context.getString(R.string.arrangement_open_month)
         waitForText(action)
         compose.onNodeWithText(action).performScrollTo().performClick()
-        waitForText(context.getString(R.string.arrangement_title))
+        waitForText(context.getString(R.string.budget_advice_page_title))
         compose.waitUntil(5_000) { transport.arrangementReads.lastOrNull() == originalMonth }
         waitForText(summary)
         compose.onNodeWithText(summary).performScrollTo().assertIsDisplayed()

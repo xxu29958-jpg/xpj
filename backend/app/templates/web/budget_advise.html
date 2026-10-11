@@ -11,49 +11,33 @@
 <header class="product-page-header">
   <div class="product-page-heading">
     <span class="product-eyebrow">计划 / 储蓄与备用金</span>
-    <h1 class="page-title">本月想留出多少</h1>
-    <p class="product-page-summary">{{ month }} · 按收入计划与已确认支出估算剩余安排空间；智能建议可选，默认不调用。</p>
+    <h1 class="page-title">给本月做个安排</h1>
+    <p class="product-page-summary">{{ month }} · 先试一试，合适再保存。计划不代表实际到账或账户余额。</p>
   </div>
-  <form method="get" action="/web/budget-advise" class="arrangement-month-form">
+  <details class="plan-disclosure">
+  <summary>更改月份 · {{ month }}</summary>
+  <form method="get" action="/web/budget-advise" class="budget-actions">
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
     <label for="arrangement-month">查看月份</label><input id="arrangement-month" class="product-input" type="month" name="month" value="{{ month }}" required>
     <button class="product-button" type="submit">查看</button>
   </form>
+  </details>
 </header>
 {% if message %}<div class="product-feedback" role="status">{{ message }}</div>{% endif %}
 {% if form_error %}<div class="product-feedback product-feedback--danger" role="alert">{{ form_error }}</div>{% endif %}
 {% if save_error %}<div class="product-feedback product-feedback--danger" role="alert">{{ save_error }}</div>{% endif %}
 
 <div class="plan-flow">
-<section class="product-panel product-panel--padded" aria-label="本月预计可安排">
-  <div class="plan-discretionary">
-    <div>
-      <span class="product-eyebrow">本月预计可安排</span>
-      <span class="plan-amount-value">{{ money(discretionary_yuan) }}</span>
-    </div>
-    <p>计划收入 − 尚未履约的固定支出 − 已花 − 储蓄目标 − 备用金。这是计划估算，不代表实际到账或账户余额；已关联付款的固定支出不会重复预留。</p>
-  </div>
-  <div class="plan-breakdown">
-    <span><small>计划收入</small><strong>{{ money(income_yuan) }}</strong></span>
-    <span><small>待履约预留</small><strong>{{ money(fixed_yuan, true) }}</strong></span>
-    <span><small>已花</small><strong>{{ money(spent_yuan, true) }}</strong></span>
-    <span><small>储蓄目标</small><strong>{{ money(savings_yuan, true) }}</strong></span>
-    <span><small>备用金</small><strong>{{ money(reserved_yuan, true) }}</strong></span>
-  </div>
+<section class="product-panel plan-amount-hero" aria-label="本月预计收入">
+  <span class="product-eyebrow">本月预计收入</span>
+  <span class="plan-amount-value">{{ money(income_yuan) }}</span>
+  <p>{{ home_currency_code }} · 计划金额</p>
 </section>
 {% if has_shortfall %}<div class="product-feedback product-feedback--danger" role="status">当前安排超出计划收入 {{ money(shortfall_yuan) }}。可以减少计划留出的金额，或核对收入和待履约支出；这不是实际欠款或账户亏损。</div>{% endif %}
 {% if undated_expense_count %}<div class="product-feedback" role="status">有账务日期待确认的记录，请核对原记录后查看完整输入并生成建议。</div>{% endif %}
 
-<div class="advice-workspace">
-  <section class="product-panel product-panel--padded" aria-label="本月储蓄与备用金安排">
-    <div class="product-panel-header">
-      <h2 class="product-panel-title">{{ month }} · 计划留出</h2>
-      <p class="product-panel-subtitle">先试算，再明确保存。计划留出不代表已经存入。</p>
-    </div>
-    {% if saved_arrangement %}
-    <p class="hint">已保存第 {{ saved_arrangement.row_version }} 版：储蓄 {{ saved_savings }}、备用金 {{ saved_buffer }}（{{ saved_arrangement.home_currency_code }}）。</p>
-    <a class="product-button product-button--quiet" href="/web/budget-advise/history?ledger_id={{ selected_ledger_id|urlencode }}&month={{ month|urlencode }}">查看修改记录</a>
-    {% else %}<p class="hint">这个月尚未设置，计算暂按零预留。保存为零也会保留一条明确安排。</p>{% endif %}
+  <section class="plan-flow" aria-label="本月储蓄与备用金安排">
+    {% if not saved_arrangement %}<p class="hint">这个月尚未设置，计算暂按零预留。保存为零也会保留一条明确安排。</p>{% endif %}
     {% if is_trial %}<p class="product-feedback" role="status">正在查看临时试算，尚未保存。</p>{% endif %}
     {{ drafts.shelf('arrangement', '本月安排', arrangement_draft_scope) }}
     <form method="post" action="/web/budget-advise" class="budget-form"
@@ -82,16 +66,99 @@
         <label for="advise-reserved">备用金（<span data-plan-currency>{{ '原币种待选' if currency_choice_required else editor_currency.currency_code }}</span>）</label>
         <input id="advise-reserved" class="product-input" type="text" name="reserved_buffer_yuan" inputmode="{{ editor_currency.inputmode }}" placeholder="{{ editor_currency.amount_placeholder }}" value="{{ reserved_buffer_yuan }}">
       </div>
+      <details class="plan-disclosure">
+        <summary>查看剩余安排与计算依据</summary>
+        <div class="plan-discretionary">
+          <div>
+            <span class="product-eyebrow">本月预计可安排</span>
+            <span class="plan-amount-value">{{ money(discretionary_yuan) }}</span>
+          </div>
+          <p>计划收入 − 尚未履约的固定支出 − 已花 − 储蓄目标 − 备用金。这是计划估算，不代表实际到账或账户余额；已关联付款的固定支出不会重复预留。</p>
+        </div>
+        <div class="plan-breakdown">
+          <span><small>计划收入</small><strong>{{ money(income_yuan) }}</strong></span>
+          <span><small>待履约预留</small><strong>{{ money(fixed_yuan, true) }}</strong></span>
+          <span><small>已花</small><strong>{{ money(spent_yuan, true) }}</strong></span>
+          <span><small>储蓄目标</small><strong>{{ money(savings_yuan, true) }}</strong></span>
+          <span><small>备用金</small><strong>{{ money(reserved_yuan, true) }}</strong></span>
+        </div>
+      </details>
       <div class="budget-actions">
         <button class="product-button" type="submit" data-plan-preview>试算，不保存</button>
         {% if can_write %}<button class="product-button product-button--primary" type="submit" formaction="/web/budget-advise/save" data-arrangement-submit{% if arrangement_binding_required %} disabled{% endif %}>保存本月安排</button>{% endif %}
         {% if save_conflict and can_write and not arrangement_draft_scope %}<button class="product-button" type="submit" formaction="/web/budget-advise/save" name="review_latest" value="true">保留输入，核对当前版本</button>{% endif %}
-        {% if advisor_can_request and not missing_rates and not form_error and not undated_expense_count %}
-        <button class="product-button" type="submit" name="run_advise" value="true" data-plan-preview>获取智能建议</button>
-        {% endif %}
       </div>
       {% if can_write %}{{ drafts.controls('arrangement', '本月安排', arrangement_draft_scope, '/web/budget-advise/save') }}{% endif %}
+      <details class="plan-disclosure" id="arrangement-advice"{% if run_advise or advise_error %} open{% endif %}>
+        <summary>看看智能建议</summary>
+        <section class="plan-flow" aria-label="智能建议">
+        <div class="plan-flow">
+          <h2 class="product-panel-title">给你一个参考</h2>
+          <p class="product-panel-subtitle">可选；只发送分类聚合、泛化收入计划、固定支出摘要和这次安排的金额，不发送商户名、姓名、备注或票据图片。</p>
+        </div>
+        {% if form_error %}
+        <div class="product-state"><div class="product-state-title">先核对原输入</div><div class="product-state-body">金额仍保留在参数区，核对后再重新计算。</div></div>
+        {% elif missing_rates or undated_expense_count %}
+        <div class="product-state">
+          <div class="product-state-title">先核对换算所需的信息</div>
+          <div class="product-state-body">完整金额尚未确定，暂不生成智能建议。补齐后会重算 {{ month }}，生成建议仍由你确认。</div>
+        </div>
+        {% elif not provider_enabled %}
+        <div class="product-state">
+          <div class="product-state-title">智能建议未开启</div>
+          <div class="product-state-body">本地计算不受影响，保存也可独立使用。智能建议由你主动请求，不会自动更改安排。</div>
+        </div>
+        {% elif advisor_blocked_message %}
+        <div class="product-state">
+          <div class="product-state-title">智能建议暂不可用</div>
+          <div class="product-state-body">{{ advisor_blocked_message }} 本地计算仍可使用。</div>
+        </div>
+        {% elif advise_error %}
+        <div class="product-feedback product-feedback--danger" role="alert">{{ advise_error }}</div>
+        {% elif not run_advise %}
+        <div class="product-state">
+          <div class="product-state-title">还没有生成建议</div>
+          <div class="product-state-body">你来决定是否生成。使用当前填写的金额作为依据，不会修改已保存的安排。</div>
+        </div>
+        {% elif advice is none %}
+        <div class="product-state">
+          <div class="product-state-title">这次没有返回建议</div>
+          <div class="product-state-body">可能服务暂时不可用，或数据还不足。本地计算不受影响，上方结果照常可用。</div>
+        </div>
+        {% else %}
+        <div class="advice-summary">
+          <strong>{{ advice.summary }}</strong>
+          {% if advice.confidence is not none %}
+          <span class="hint">置信度 {{ '%.0f' % (advice.confidence * 100) }}%</span>
+          {% endif %}
+        </div>
+        {% if advice.suggestions %}
+        <div class="plan-flow" aria-label="各分类建议">
+          {% for s in advice.suggestions %}
+          <section class="budget-execution-row">
+            <h3 class="product-panel-title">{{ s.category if s.category is not none else '整体安排' }}</h3>
+            <p>建议金额 <strong class="plan-history-amount">{{ home_currency_symbol }}{{ minor_amount_label(s.suggested_amount_cents) }}</strong></p>
+            <p>{{ s.rationale }}</p>
+          </section>
+          {% endfor %}
+        </div>
+        {% endif %}
+        <p class="hint">建议只是参考，不是预算——要采纳请到「月度预算」手动设置。</p>
+        {% endif %}
+        {% if advisor_can_request and not missing_rates and not form_error and not undated_expense_count %}
+        <button class="product-button product-button--primary" type="submit" name="run_advise" value="true" data-plan-preview
+          data-confirm="允许发送本次汇总信息生成建议？仅发送分类聚合、泛化收入计划、固定支出摘要和当前填写的安排金额，不发送商户名、姓名、备注或票据图片。建议不会自动保存。">获取智能建议</button>
+        {% endif %}
+        </section>
+      </details>
     </form>
+    {% if saved_arrangement %}
+    <details class="plan-disclosure">
+      <summary>已保存的安排与修改记录</summary>
+      <p class="hint">已保存第 {{ saved_arrangement.row_version }} 版：储蓄 {{ saved_savings }}、备用金 {{ saved_buffer }}（{{ saved_arrangement.home_currency_code }}）。</p>
+      <a class="product-button product-button--quiet" href="/web/budget-advise/history?ledger_id={{ selected_ledger_id|urlencode }}&month={{ month|urlencode }}">查看修改记录</a>
+    </details>
+    {% endif %}
     <div class="budget-actions">
       <a href="/web/budgets?ledger_id={{ selected_ledger_id|urlencode }}&month={{ month|urlencode }}">月度支出预算</a>
       <a href="/web/income-plans?ledger_id={{ selected_ledger_id|urlencode }}&month={{ month|urlencode }}">收入计划</a>
@@ -99,73 +166,6 @@
     </div>
   </section>
 
-  <section class="product-panel product-panel--padded" aria-label="智能建议">
-    <div class="product-panel-header">
-      <h2 class="product-panel-title">智能建议</h2>
-      <p class="product-panel-subtitle">可选；只发送分类聚合、泛化收入计划、固定支出摘要和这次安排的金额，不发送商户名、姓名、备注或票据图片。</p>
-    </div>
-    {% if form_error %}
-    <div class="product-state"><div class="product-state-title">先核对原输入</div><div class="product-state-body">金额仍保留在参数区，核对后再重新计算。</div></div>
-    {% elif missing_rates or undated_expense_count %}
-    <div class="product-state">
-      <div class="product-state-title">先核对换算所需的信息</div>
-      <div class="product-state-body">完整金额尚未确定，暂不生成智能建议。补齐后会重算 {{ month }}，生成建议仍由你确认。</div>
-    </div>
-    {% elif not provider_enabled %}
-    <div class="product-state">
-      <div class="product-state-title">智能建议未开启</div>
-      <div class="product-state-body">本地计算不受影响，保存也可独立使用。智能建议由你主动请求，不会自动更改安排。</div>
-    </div>
-    {% elif advisor_blocked_message %}
-    <div class="product-state">
-      <div class="product-state-title">智能建议暂不可用</div>
-      <div class="product-state-body">{{ advisor_blocked_message }} 本地计算仍可使用。</div>
-    </div>
-    {% elif advise_error %}
-    <div class="product-feedback product-feedback--danger" role="alert">{{ advise_error }}</div>
-    {% elif not run_advise %}
-    <div class="product-state">
-      <div class="product-state-title">还没有生成建议</div>
-      <div class="product-state-body">点「获取智能建议」生成一份参考。建议使用这次填写的金额；试算仍须点击保存才能成为跨端安排。</div>
-    </div>
-    {% elif advice is none %}
-    <div class="product-state">
-      <div class="product-state-title">这次没有返回建议</div>
-      <div class="product-state-body">可能服务暂时不可用，或数据还不足。本地计算不受影响，上方结果照常可用。</div>
-    </div>
-    {% else %}
-    <div class="advice-summary">
-      <strong>{{ advice.summary }}</strong>
-      {% if advice.confidence is not none %}
-      <span class="hint">置信度 {{ '%.0f' % (advice.confidence * 100) }}%</span>
-      {% endif %}
-    </div>
-    {% if advice.suggestions %}
-    <div class="product-table-wrap">
-      <table class="product-table">
-        <thead>
-          <tr>
-            <th scope="col">分类</th>
-            <th scope="col" class="amount">建议金额</th>
-            <th scope="col">理由</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for s in advice.suggestions %}
-          <tr>
-            <td>{{ s.category if s.category is not none else '（整体）' }}</td>
-            <td class="amount">{{ home_currency_symbol }}{{ minor_amount_label(s.suggested_amount_cents) }}</td>
-            <td>{{ s.rationale }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    {% endif %}
-    <p class="hint">建议只是参考，不是预算——要采纳请到「月度预算」手动设置。</p>
-    {% endif %}
-  </section>
-</div>
 {% if not currency_choice_required %}
 {% include 'partials/budget_fx_gaps.html' %}
 {% include 'partials/reference_rates.html' %}

@@ -52,6 +52,9 @@ class BudgetAdviceManualRateRecoveryTest {
     }
 
     @Test fun savingAMissingRateFromTheRouteOnlyRecalculatesUntilExplicitGeneration() {
+        val suggestion = com.ticketbox.data.remote.dto.BudgetSuggestionDto("餐饮与家庭日常采购的长分类名称", 123456789L,
+            "结合近期分类汇总提供参考，可以查看依据后自行调整；建议不会自动改动预算或已确认支出。")
+        fixture.advice = com.ticketbox.data.remote.dto.BudgetAdviceDto("按本月计划收入与已确认支出提供参考。", listOf(suggestion), null)
         show()
         waitForText(context.getString(R.string.advice_rate_add))
         compose.onNodeWithText("‹").performScrollTo().performClick()
@@ -83,9 +86,24 @@ class BudgetAdviceManualRateRecoveryTest {
         assertTrue(fixture.adviceCalls.isEmpty())
         assertEquals(fixture.originalMonth to "JPY", fixture.inputReads.last())
         compose.onNodeWithText(context.getString(R.string.budget_advice_generate)).performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.budget_advice_consent_title)).assertIsDisplayed()
+        assertTrue(fixture.adviceCalls.isEmpty())
+        InstrumentationRegistry.getInstrumentation().uiAutomation.waitForIdle(300, 5_000)
+        saveConsumerArtPreview("arrangement-consent", requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        compose.onNodeWithText(context.getString(R.string.common_cancel)).performClick()
+        assertTrue(fixture.adviceCalls.isEmpty())
+        compose.onNodeWithText(context.getString(R.string.budget_advice_generate)).performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.budget_advice_consent_confirm)).performClick()
         compose.waitUntil(5_000) { fixture.adviceCalls.size == 1 }
         assertEquals(fixture.originalMonth, fixture.adviceCalls.single().month)
         assertEquals("JPY", fixture.adviceCalls.single().homeCurrencyCode)
+        waitForText(requireNotNull(suggestion.category))
+        InstrumentationRegistry.getInstrumentation().uiAutomation.waitForIdle(300, 5_000)
+        compose.onNodeWithText(suggestion.category).performScrollTo().assertIsDisplayed()
+        saveConsumerArtPreview("arrangement-suggestion-heading", requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        compose.onNodeWithText(suggestion.rationale).performScrollTo().assertIsDisplayed()
+        saveConsumerArtPreview("arrangement-suggestion", requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        assertTrue(fixture.arrangementWrites.isEmpty())
     }
 
     @Test fun originalRouteReopensRoomAndReplaysOriginalReceiptWithoutOverwritingLaterCanonicalRate() {

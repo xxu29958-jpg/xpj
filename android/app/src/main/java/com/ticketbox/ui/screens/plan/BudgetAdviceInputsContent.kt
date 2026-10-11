@@ -1,8 +1,10 @@
 package com.ticketbox.ui.screens.plan
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
@@ -24,6 +26,9 @@ import com.ticketbox.data.repository.PendingManualRateSubmission
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.*
+import com.ticketbox.ui.design.AppAmountRole
+import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.viewmodel.BudgetAdviceUiState
 
 internal data class BudgetAdviceActions(val onGenerate: () -> Unit, val onRefreshInputs: () -> Unit,
@@ -45,12 +50,46 @@ internal fun BudgetAdviceInputsContent(state: BudgetAdviceUiState, actions: Budg
         Text(displayMonthLabel(state.month), style = MaterialTheme.typography.titleMedium)
         TextButton(onClick = { actions.onShiftMonth(1) }, enabled = !state.rateBusy) { Text("›") }
     }
+    BudgetAdviceIncome(state)
     MonthlyArrangementContent(state, actions)
+    state.inputs?.let { inputs ->
+        Text(stringResource(if (inputs.isTrial) R.string.arrangement_trial_basis else R.string.arrangement_saved_basis))
+        inputs.breakdown.shortfallCents?.takeIf { it > 0 }?.let {
+            Text(stringResource(R.string.arrangement_shortfall,
+                formatDisplayAmount(it, CurrencyDisplay.forRecord(inputs.homeCurrencyCode))), color = MaterialTheme.colorScheme.error)
+        }
+    }
+}
+
+@Composable
+private fun BudgetAdviceIncome(state: BudgetAdviceUiState) {
+    val inputs = state.inputs ?: return
+    AppPaperCard(containerColor = LocalThemeVisuals.current.brandPrimaryBg) {
+        Column(Modifier.padding(AppSpacing.cardPaddingSmall), verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
+            Text(stringResource(R.string.advice_inputs_income), style = MaterialTheme.typography.bodyMedium)
+            AppAmountText(inputs.breakdown.monthlyIncomeCents?.let {
+                formatDisplayAmount(it, CurrencyDisplay.forRecord(inputs.homeCurrencyCode))
+            } ?: stringResource(R.string.advice_inputs_unknown), role = AppAmountRole.Hero)
+            Text(stringResource(R.string.arrangement_income_currency, inputs.homeCurrencyCode), style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+@Composable
+internal fun BudgetAdviceReferenceContent(state: BudgetAdviceUiState, actions: BudgetAdviceActions) {
+    var expanded by remember(state.binding, state.month) { mutableStateOf(false) }
+    val needsAttention = state.inputsError != null || state.inputs?.readyForAdvice == false ||
+        state.rateEditor != null || state.rateSubmissions.isNotEmpty()
+    if (!needsAttention) {
+        TextButton(onClick = { expanded = !expanded }) {
+            Text(stringResource(if (expanded) R.string.arrangement_basis_hide else R.string.arrangement_basis_show))
+        }
+    }
+    if (!expanded && !needsAttention) return
     AppContentCard {
         Text(stringResource(R.string.advice_inputs_title), style = MaterialTheme.typography.titleMedium)
         state.inputs?.let { inputs ->
             com.ticketbox.ui.components.AccountingDateNotice(inputs.undatedExpenseCount)
-            Text(stringResource(if (inputs.isTrial) R.string.arrangement_trial_basis else R.string.arrangement_saved_basis))
             val currency = CurrencyDisplay.forRecord(inputs.homeCurrencyCode)
             val amounts = listOf(R.string.advice_inputs_income to inputs.breakdown.monthlyIncomeCents,
                 R.string.advice_inputs_fixed to inputs.breakdown.fixedExpensesCents,
@@ -58,29 +97,35 @@ internal fun BudgetAdviceInputsContent(state: BudgetAdviceUiState, actions: Budg
                 R.string.arrangement_savings to inputs.breakdown.savingsTargetCents,
                 R.string.arrangement_buffer to inputs.breakdown.reservedBufferCents,
                 R.string.advice_inputs_available to inputs.breakdown.discretionaryCents)
-            amounts.forEach { (label, amount) -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(stringResource(label))
-                Text(amount?.let { formatDisplayAmount(it, currency) } ?: stringResource(R.string.advice_inputs_unknown))
-            } }
-            inputs.breakdown.shortfallCents?.takeIf { it > 0 }?.let {
-                Text(stringResource(R.string.arrangement_shortfall, formatDisplayAmount(it, currency)), color = MaterialTheme.colorScheme.error)
+            amounts.forEach { (label, amount) ->
+                AppAdaptiveContentActionRow(style = AppAdaptiveContentActionStyle(compactAction = true),
+                    content = { Text(stringResource(label)) }, action = { modifier ->
+                        AppEndAlignedAmountText(amount?.let { formatDisplayAmount(it, currency) }
+                            ?: stringResource(R.string.advice_inputs_unknown), modifier = modifier, role = AppAmountRole.Compact)
+                    })
             }
             com.ticketbox.ui.components.CurrencyReferenceDates(inputs.referenceRates.map { it.toDomain() })
-            if (inputs.missingRates.isNotEmpty()) Text(stringResource(R.string.advice_missing_rates))
-            inputs.missingRates.forEach { gap ->
-                if (!gap.canEnterManualRate()) Text(stringResource(R.string.advice_missing_fact))
-                else {
-                    Text(stringResource(R.string.advice_rate_pair_date, gap.sourceCurrencyCode.orEmpty(), gap.homeCurrencyCode, gap.rateDate.orEmpty()))
-                    TextButton(onClick = { actions.onOpenRate(gap) }, enabled = state.canRequest && !state.rateBusy) {
-                        Text(stringResource(R.string.advice_rate_add))
-                    }
-                }
-            }
+            MissingExchangeRates(inputs.missingRates, state.canRequest && !state.rateBusy, actions.onOpenRate)
         }
         state.inputsError?.let { Text(it.asString(), color = MaterialTheme.colorScheme.error) }
         TextButton(onClick = actions.onRefreshInputs, enabled = !state.inputsLoading) { Text(stringResource(R.string.advice_inputs_refresh)) }
     }
     ManualRateContent(state, actions)
+}
+
+@Composable
+private fun MissingExchangeRates(rates: List<MissingExchangeRateDto>, enabled: Boolean,
+    onOpenRate: (MissingExchangeRateDto) -> Unit) {
+    if (rates.isNotEmpty()) Text(stringResource(R.string.advice_missing_rates))
+    rates.forEach { gap ->
+        if (!gap.canEnterManualRate()) Text(stringResource(R.string.advice_missing_fact))
+        else {
+            Text(stringResource(R.string.advice_rate_pair_date, gap.sourceCurrencyCode.orEmpty(), gap.homeCurrencyCode, gap.rateDate.orEmpty()))
+            TextButton(onClick = { onOpenRate(gap) }, enabled = enabled) {
+                Text(stringResource(R.string.advice_rate_add))
+            }
+        }
+    }
 }
 
 @Composable

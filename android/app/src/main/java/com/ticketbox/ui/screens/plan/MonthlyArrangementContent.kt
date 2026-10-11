@@ -1,6 +1,8 @@
 package com.ticketbox.ui.screens.plan
 
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -13,17 +15,22 @@ import com.ticketbox.data.repository.PendingMonthlyArrangement
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.*
+import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.BudgetAdviceUiState
 
 @Composable
 internal fun MonthlyArrangementContent(state: BudgetAdviceUiState, actions: BudgetAdviceActions) {
     var stopId by remember(state.binding) { mutableStateOf<Long?>(null) }
+    var historyVisible by remember(state.binding, state.month) { mutableStateOf(false) }
     val pending = state.arrangementPending.filter { it.intent?.month == state.month || it.row.targetId == "monthly_arrangement:${state.month}" }
-    MonthlyArrangementEditor(state, actions, pending)
+    MonthlyArrangementEditor(state, actions, pending) {
+        historyVisible = true
+        actions.onHistory(false)
+    }
     pending.forEach { submission ->
         MonthlyArrangementSubmission(state, submission, actions) { stopId = submission.row.id }
     }
-    if (state.arrangementHistoryLoaded) MonthlyArrangementHistory(state, actions)
+    if (historyVisible) MonthlyArrangementHistory(state, actions) { historyVisible = false }
     pending.firstOrNull { it.row.id == stopId && it.canDrop }?.let { submission ->
         AlertDialog(onDismissRequest = { stopId = null }, title = { Text(stringResource(R.string.arrangement_stop)) },
             text = { Text(stringResource(R.string.arrangement_stop_body)) },
@@ -33,10 +40,10 @@ internal fun MonthlyArrangementContent(state: BudgetAdviceUiState, actions: Budg
 }
 
 @Composable
-private fun MonthlyArrangementEditor(state: BudgetAdviceUiState, actions: BudgetAdviceActions, pending: List<PendingMonthlyArrangement>) {
+private fun MonthlyArrangementEditor(state: BudgetAdviceUiState, actions: BudgetAdviceActions,
+    pending: List<PendingMonthlyArrangement>, onHistory: () -> Unit) {
     val busy = state.arrangementBusy || state.arrangementLoading
-    AppContentCard {
-        Text(stringResource(R.string.arrangement_title), style = MaterialTheme.typography.titleMedium)
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
         Text(stringResource(R.string.arrangement_explanation))
         MonthlyArrangementSaved(state)
         state.arrangementDraft?.let {
@@ -53,11 +60,12 @@ private fun MonthlyArrangementEditor(state: BudgetAdviceUiState, actions: Budget
                 modifier = Modifier.testTag("arrangement_trial")) { Text(stringResource(R.string.arrangement_trial)) }
             if (state.reportingHomeCurrencyCode == null) Text(stringResource(
                 if (state.inputsLoading) R.string.arrangement_reading_currency else R.string.arrangement_refresh_currency))
-            TextButton(onClick = actions.onSaveArrangement, enabled = !busy && state.canRequest && state.arrangementRead != null && pending.none { p -> !p.isConfirmed },
-                modifier = Modifier.testTag("arrangement_save")) { Text(stringResource(R.string.arrangement_save)) }
+            AppPrimaryButton(text = stringResource(R.string.arrangement_save), onClick = actions.onSaveArrangement,
+                enabled = !busy && state.canRequest && state.arrangementRead != null && pending.none { p -> !p.isConfirmed },
+                modifier = Modifier.fillMaxWidth().testTag("arrangement_save"))
         }
         TextButton(onClick = actions.onRefreshArrangement, enabled = !busy) { Text(stringResource(R.string.arrangement_refresh)) }
-        TextButton(onClick = { actions.onHistory(false) }, enabled = !busy) { Text(stringResource(R.string.arrangement_history)) }
+        TextButton(onClick = onHistory, enabled = !busy) { Text(stringResource(R.string.arrangement_history)) }
         state.arrangementMessage?.let { Text(it.asString()) }
     }
 }
@@ -105,17 +113,32 @@ internal fun MonthlyArrangementIntentSummary(submission: PendingMonthlyArrangeme
 }
 
 @Composable
-private fun MonthlyArrangementHistory(state: BudgetAdviceUiState, actions: BudgetAdviceActions) {
-    AppContentCard {
-        Text(stringResource(R.string.arrangement_history), style = MaterialTheme.typography.titleMedium)
+private fun MonthlyArrangementHistory(state: BudgetAdviceUiState, actions: BudgetAdviceActions, onDismiss: () -> Unit) {
+    AppBusyGuardedSheet(isSubmitting = false, onDismiss = onDismiss, skipPartiallyExpanded = true) {
+        AppSheetScaffold(title = stringResource(R.string.arrangement_history), subtitle = displayMonthLabel(state.month),
+            modifier = Modifier.testTag("arrangement-history")) {
+        Text(stringResource(R.string.arrangement_history_explanation))
         if (state.arrangementHistoryCached) Text(stringResource(R.string.arrangement_cached))
-        if (state.arrangementHistory.isEmpty()) Text(stringResource(R.string.arrangement_history_empty))
+        if (state.arrangementBusy) Text(stringResource(R.string.budget_history_loading))
+        if (!state.arrangementBusy && state.arrangementMessage != null) {
+            Text(state.arrangementMessage.asString())
+            TextButton(onClick = { actions.onHistory(false) }) { Text(stringResource(R.string.common_retry)) }
+        } else if (!state.arrangementBusy && state.arrangementHistory.isEmpty()) {
+            Text(stringResource(R.string.arrangement_history_empty))
+        }
         state.arrangementHistory.forEach { item ->
-            Text(stringResource(R.string.arrangement_history_item, item.rowVersion, item.recordedAt,
-                formatDisplayAmount(item.savingsTargetCents, CurrencyDisplay.forRecord(item.homeCurrencyCode)),
-                formatDisplayAmount(item.reservedBufferCents, CurrencyDisplay.forRecord(item.homeCurrencyCode))))
+            AppHistoryRecord(title = stringResource(R.string.arrangement_history_revision, item.rowVersion),
+                recordedAt = displayDateTime(item.recordedAt)) {
+                Text(stringResource(R.string.arrangement_history_savings,
+                    formatDisplayAmount(item.savingsTargetCents, CurrencyDisplay.forRecord(item.homeCurrencyCode))),
+                    style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.arrangement_history_buffer,
+                    formatDisplayAmount(item.reservedBufferCents, CurrencyDisplay.forRecord(item.homeCurrencyCode))))
+                Text(item.homeCurrencyCode, style = MaterialTheme.typography.bodySmall)
+            }
         }
         if (state.arrangementHistoryNext != null) TextButton(onClick = { actions.onHistory(true) },
             enabled = !state.arrangementBusy && !state.arrangementLoading) { Text(stringResource(R.string.arrangement_more)) }
+        }
     }
 }

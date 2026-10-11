@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="arrangement_title">本月储蓄与备用金安排</string>
-    <string name="arrangement_explanation">按计划收入、待履约预留和已花金额，估算本月还能安排多少。计划留出不代表已经存入或账户余额；试算不会保存，AI 建议由你主动生成。</string>
+    <string name="arrangement_explanation">先试一试，合适再保存。计划留出不代表已经存入或账户余额。</string>
     <string name="arrangement_savings">储蓄目标</string>
     <string name="arrangement_buffer">备用金</string>
     <string name="arrangement_currency">输入币种：%1$s（按原币精度保存）</string>
@@ -28,8 +27,14 @@
     <string name="arrangement_saved_basis">根据已保存安排计算</string>
     <string name="arrangement_shortfall">当前安排超出计划收入 %1$s。可以调整储蓄、备用金，或核对收入与待履约支出；这不是实际欠款或账户亏损。</string>
     <string name="arrangement_history">查看修改历史</string>
+    <string name="arrangement_history_explanation">这里显示每次保存时的安排，保留当时的金额与币种。修改计划不会改变已经发生的收支。</string>
     <string name="arrangement_history_empty">暂无已保存修改历史</string>
-    <string name="arrangement_history_item">v%1$d · %2$s · 储蓄 %3$s · 备用金 %4$s</string>
+    <string name="arrangement_history_revision">保存本月安排 · 版本 %1$d</string>
+    <string name="arrangement_history_savings">计划储蓄 %1$s</string>
+    <string name="arrangement_history_buffer">备用金 %1$s</string>
+    <string name="arrangement_income_currency">%1$s · 计划金额</string>
+    <string name="arrangement_basis_show">查看计算依据与汇率</string>
+    <string name="arrangement_basis_hide">收起计算依据与汇率</string>
     <string name="arrangement_more">更早的修改</string>
     <string name="arrangement_original">原提交 %1$s · 基于 v%2$d · 储蓄 %3$s · 备用金 %4$s</string>
     <string name="arrangement_original_currency">原提交币种：%1$s</string>

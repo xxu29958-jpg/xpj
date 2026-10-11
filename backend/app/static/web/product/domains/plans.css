@@ -81,7 +81,9 @@
 
 .plan-discretionary > div:first-child {
     display: grid;
-    flex: 0 0 auto;
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
     gap: var(--space-2);
 }
 
@@ -121,37 +123,6 @@
 
 .income-editor form:has([name="frequency"] option[value="monthly"]:checked) [data-income-one-time] {
     display: none;
-}
-
-.advice-workspace {
-    display: grid;
-    grid-template-columns:
-        minmax(calc(var(--space-12) * 5), .8fr)
-        minmax(0, 1.2fr);
-    align-items: start;
-    gap: var(--space-5);
-    margin-block-end: var(--space-6);
-}
-
-.arrangement-month-form {
-    display: grid;
-    grid-template-columns: auto minmax(150px, 180px) auto;
-    align-items: center;
-    gap: var(--space-2);
-}
-
-.arrangement-month-form label,
-.arrangement-month-form button {
-    white-space: nowrap;
-}
-
-.advice-workspace .product-panel-header {
-    display: grid;
-    gap: var(--space-2);
-}
-
-.advice-workspace .budget-form + .budget-actions {
-    margin-block-start: var(--space-4);
 }
 
 .income-month-fields {
@@ -194,6 +165,7 @@
 .advice-summary strong {
     font-family: var(--font-numeric);
     font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
 }
 
 .advice-summary {
@@ -314,9 +286,6 @@
         grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 
-    .advice-workspace {
-        grid-template-columns: minmax(0, 1fr);
-    }
 }
 
 @media (max-width: 40rem) {

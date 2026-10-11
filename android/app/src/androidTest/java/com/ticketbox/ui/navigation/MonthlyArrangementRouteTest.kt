@@ -3,6 +3,7 @@ package com.ticketbox.ui.navigation
 import android.content.Context
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.lifecycle.ViewModelStore
@@ -10,6 +11,7 @@ import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso.closeSoftKeyboard
+import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.R
 import com.ticketbox.data.remote.dto.ExchangeRateDto
 import com.ticketbox.domain.model.AppSkin
@@ -18,6 +20,7 @@ import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.theme.TicketboxTheme
+import com.ticketbox.ui.saveConsumerArtPreview
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.*
@@ -43,6 +46,7 @@ class MonthlyArrangementRouteTest {
             "2026-09-01T00:00:00Z", "2026-09-01T00:00:00Z", 1)
         show()
         waitForInput()
+        capture("arrangement-entry")
         edit("arrangement_savings", "3000")
         edit("arrangement_buffer", "500")
         tap("arrangement_trial")
@@ -65,6 +69,7 @@ class MonthlyArrangementRouteTest {
         val shortfall = context.getString(R.string.arrangement_shortfall,
             formatDisplayAmount(1500L, CurrencyDisplay.forRecord("JPY")))
         assertTextDisplayed(shortfall)
+        capture("arrangement-trial")
         assertEquals(3000L, fixture.arrangement?.savingsTargetCents)
         compose.runOnIdle { mounted.value = false; models.viewModelStore.clear() }
         compose.waitForIdle()
@@ -84,10 +89,24 @@ class MonthlyArrangementRouteTest {
         assertEquals(2L, fixture.arrangement?.rowVersion)
         assertEquals(2, fixture.arrangementWrites.size)
         assertTrue(fixture.adviceCalls.isEmpty())
+        compose.onNodeWithText(context.getString(R.string.arrangement_history)).performScrollTo().performClick()
+        assertTextDisplayed(context.getString(R.string.arrangement_history_revision, 2L))
+        assertTextDisplayed(context.getString(R.string.arrangement_history_savings,
+            formatDisplayAmount(8000L, CurrencyDisplay.forRecord("JPY"))))
+        captureHistory("arrangement-history-latest")
+        assertTextDisplayed(context.getString(R.string.arrangement_history_savings,
+            formatDisplayAmount(3000L, CurrencyDisplay.forRecord("JPY"))))
+        captureHistory("arrangement-history-earlier")
+        androidx.test.espresso.Espresso.pressBack()
+        compose.onNodeWithTag("arrangement-history").assertDoesNotExist()
+        input("arrangement_savings").performScrollTo().assertTextEquals("8000")
+        assertEquals(8000L, fixture.arrangement?.savingsTargetCents)
+        assertEquals(2, fixture.arrangementWrites.size)
     }
 
     private fun show() {
-        compose.setContent { if (mounted.value) TicketboxTheme(skin = AppSkin.Default) {
+        val skin = if (InstrumentationRegistry.getArguments().getString("captureSkin") == "midnight") AppSkin.Midnight else AppSkin.Paper
+        compose.setContent { if (mounted.value) TicketboxTheme(skin = skin) {
             CompositionLocalProvider(LocalViewModelStoreOwner provides models,
                 LocalCurrencyDisplay provides CurrencyDisplay(CurrencyCode.CNY)) {
                 BudgetAdviceRoute(fixture.screenFactory, onBack = {})
@@ -111,4 +130,10 @@ class MonthlyArrangementRouteTest {
         compose.waitForIdle()
     }
     private fun tap(tag: String) { compose.onNodeWithTag(tag).performScrollTo().assertIsEnabled().performClick(); compose.waitForIdle() }
+    private fun capture(name: String) {
+        saveConsumerArtPreview(name, compose.onRoot().captureToImage().asAndroidBitmap())
+    }
+    private fun captureHistory(name: String) {
+        saveConsumerArtPreview(name, compose.onNodeWithTag("arrangement-history").captureToImage().asAndroidBitmap())
+    }
 }

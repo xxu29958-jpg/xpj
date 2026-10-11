@@ -56,6 +56,7 @@ internal class BudgetAdviceManualRateFixture(private val context: Context) : Aut
     val inputReads = CopyOnWriteArrayList<Pair<String, String?>>()
     val writes = CopyOnWriteArrayList<Pair<ExchangeRateRequestDto, String>>()
     val adviceCalls = CopyOnWriteArrayList<BudgetAdviseRequestDto>()
+    var advice: com.ticketbox.data.remote.dto.BudgetAdviceDto? = null
     val arrangementWrites = CopyOnWriteArrayList<Pair<MonthlyArrangementSaveRequest, String>>()
     private val arrangementReceipts = ConcurrentHashMap<String, MonthlyArrangementDto>()
     @Volatile var arrangement: MonthlyArrangementDto? = null
@@ -88,6 +89,13 @@ internal class BudgetAdviceManualRateFixture(private val context: Context) : Aut
                 .copy(arrangementCurrencyCode = arrangement["arrangement_currency_code"] ?: arrangement.getValue("home_currency_code"))
         override suspend fun monthlyArrangement(month: String) = MonthlyArrangementResponseDto(
             session.value.identity.ledgerId, month, arrangement?.takeIf { it.month == month })
+        override suspend fun monthlyArrangementHistory(month: String, beforeVersion: Long?, limit: Int) =
+            com.ticketbox.data.remote.dto.MonthlyArrangementHistoryDto(session.value.identity.ledgerId, month,
+                arrangementReceipts.values.filter { it.month == month && (beforeVersion == null || it.rowVersion < beforeVersion) }
+                    .sortedByDescending { it.rowVersion }.take(limit).map {
+                        com.ticketbox.data.remote.dto.MonthlyArrangementHistoryItemDto(it.rowVersion, it.updatedAt,
+                            it.homeCurrencyCode, it.savingsTargetCents, it.reservedBufferCents)
+                    }, null)
         override suspend fun saveMonthlyArrangement(month: String, request: MonthlyArrangementSaveRequest,
             idempotencyKey: String): MonthlyArrangementDto {
             arrangementWrites += request to idempotencyKey
@@ -115,7 +123,9 @@ internal class BudgetAdviceManualRateFixture(private val context: Context) : Aut
         }
         override suspend fun budgetAdvise(request: BudgetAdviseRequestDto): BudgetAdviseResponseDto {
             adviceCalls += request
-            return BudgetAdviseResponseDto(null, request.homeCurrencyCode, "empty", "ai_advisor_provider_empty", inputs = budgetAdviceInputs(request.month, request.timezone, request.homeCurrencyCode))
+            return BudgetAdviseResponseDto(advice, request.homeCurrencyCode, "controlled",
+                if (advice == null) "ai_advisor_provider_empty" else null,
+                inputs = budgetAdviceInputs(request.month, request.timezone, request.homeCurrencyCode))
         }
     }
     private val provider = ApiServiceProvider(object : ApiServiceFactory {

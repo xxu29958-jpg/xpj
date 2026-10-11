@@ -100,7 +100,7 @@ class BudgetJourney:
         self.native.plan_home()
         self.native.click(CARDS[kind], stable=True)
         if kind == "arrangement":
-            wait_for(lambda: self.native.has("月度安排与试算"), "The actual monthly arrangement page did not open")
+            wait_for(lambda: self.native.has("给本月做个安排"), "The actual monthly arrangement page did not open")
         if kind == "series":
             wait_for(lambda: self.native.has("固定支出暂时打不开") or any(
                 re.fullmatch(r"活跃 \d+", node.attrib.get("text", "")) for node in self.native.tree().iter("node")),
@@ -180,8 +180,9 @@ class BudgetJourney:
         self.native.click("查看修改历史")
         if offline:
             self.native.reveal_any("离线缓存")
-        self.native.reveal_any("v1")
+        self.native.reveal_any("保存本月安排 · 版本 1")
         self.native.capture("arrangement-history-" + suffix)
+        self.native.back()
         self.open_native("series")
         self.native.click("定义历史")
         if offline:
