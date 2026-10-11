@@ -27,7 +27,7 @@
 {% if row %}
 <section class="debt-section" aria-label="原采集与处理记录">
   <span class="product-eyebrow">{{ row.source_label }} · 采集于 {{ row.captured_label }}</span>
-  <p>{{ row.merchant or '还款通知' }} · 原金额 <strong>{{ row.amount_label }}</strong> · {{ row.status_label }}</p>
+  <p>{{ row.merchant or '还款通知' }} · 原金额 <strong>{{ row.currency_code }} {{ row.amount_label }}</strong> · {{ row.status_label }}</p>
   {% if row.conversion_pending %}<p class="hint">确认时按核对后的还款日期换算为 {{ row.home_currency_code }}；未更改日期时沿用原采集时间。</p>{% endif %}
   {% if row.provenance %}<p class="hint">{{ row.provenance }}。请核对后选择。</p>{% endif %}
   {% if row.resolved_label %}<p>处理日期：{{ row.resolved_label }}</p>{% endif %}

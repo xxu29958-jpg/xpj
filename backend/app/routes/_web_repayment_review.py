@@ -206,12 +206,12 @@ def _audit_row_view(
         "amount_label": _home_amount_label(
             row.original_amount_minor if row.original_amount_minor is not None else row.amount_cents,
             row.original_currency_code or row.home_currency_code),
+        "currency_code": row.original_currency_code or row.home_currency_code,
         "conversion_pending": row.status == "pending" and row.amount_cents is None,
         "home_currency_code": row.home_currency_code,
         "captured_label": _day_label(row.captured_at),
         "status_label": _STATUS_LABELS.get(row.status, _STATUS_LABELS["pending"]),
         "status_tone": _STATUS_TONE.get(row.status, ""),
-        "recede": row.status == "dismissed",
         "is_pending": row.status == "pending",
         "committed_debt_public_id": row.committed_debt_public_id,
         "resolved_label": _day_label(row.resolved_at),

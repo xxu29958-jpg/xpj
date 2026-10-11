@@ -2,7 +2,8 @@ package com.ticketbox.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
@@ -23,6 +24,7 @@ import com.ticketbox.ui.components.displayDateTime
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.RepaymentDraftInboxUiState
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun RepaymentDraftReadHeader(state: RepaymentDraftInboxUiState, history: Boolean, onHistory: (Boolean) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
@@ -33,7 +35,8 @@ internal fun RepaymentDraftReadHeader(state: RepaymentDraftInboxUiState, history
                 tone = if (state.capturesFromCache) DataAuthorityTone.LocalCache else DataAuthorityTone.Backend,
             )
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
             FilterChip(!history, { onHistory(false) }, label = {
                 Text(stringResource(R.string.repayment_draft_pending_count, state.drafts.count { it.isPending }))
             })

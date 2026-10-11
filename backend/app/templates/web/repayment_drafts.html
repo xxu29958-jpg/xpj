@@ -1,22 +1,20 @@
 {% extends "base.html" %}
 {% set product_body_domain = 'obligations' %}
-{% block title %}还款捕获 · 小票夹{% endblock %}
+{% set page_title = '还款采集' %}
+{% set pending = rows|selectattr('is_pending')|list %}
+{% set processed = rows|rejectattr('is_pending')|list %}
+{% block title %}还款采集 · 小票夹{% endblock %}
 
-{% block content %}
-{% set _tone = {
-  'ok': 'product-status--success',
-  'warn': 'product-status--warning',
-  'danger': 'product-status--danger',
-  'info': 'product-status--info'
-} %}
+{% block page_header %}
 <header class="product-page-header">
   <div class="product-page-heading">
-    <span class="product-eyebrow">往来 / 还款捕获</span>
-    <h1 class="page-title">还款捕获</h1>
-    <p class="product-page-summary">{{ intro }}</p>
+    <h1 class="page-title">{{ '收到一条还款信息' if pending|length == 1 else '还款采集' }}</h1>
+    <p class="product-page-summary">先核对，再记入往来。</p>
   </div>
 </header>
+{% endblock %}
 
+{% block content %}
 {% if flash_message %}
 <div class="product-feedback" role="status">{{ flash_message }}</div>
 {% endif %}
@@ -27,46 +25,65 @@
 <div class="product-feedback">只读角色可以查看还款捕获；确认与忽略需要该账本的可写权限。</div>
 {% endif %}
 
-{% if not rows %}
-<div class="product-state">
-  <div class="product-state-title">{{ empty_title }}</div>
-  <div class="product-state-body">{{ empty_body }}</div>
-</div>
-{% else %}
-<section class="repayment-audit" aria-label="还款捕获复核与处理记录">
-  <div class="repayment-audit-head" aria-hidden="true">
-    <span>捕获来源</span>
-    <span>对应欠款</span>
-    <span>捕获时间</span>
-    <span class="text-end">金额与状态</span>
-  </div>
-  {% for r in rows %}
-  <article class="repayment-audit-row{% if r.recede %} is-receded{% endif %}">
-    <div class="ra-cell ra-source-cell">
-      <strong class="rd-source">{{ r.source_label }}</strong>
-      {% if r.merchant %}<div class="rd-merchant">{{ r.merchant }}</div>{% endif %}
-    </div>
-    <div class="ra-cell ra-target-cell">
-      {% if r.is_pending %}
-        {% if r.provenance %}<div class="rd-provenance">{{ r.provenance }}</div>{% endif %}
-        <a class="product-button product-button--quiet" href="/web/repayment-drafts/{{ r.public_id }}?ledger_id={{ selected_ledger_id }}">{{ '核对并处理' if can_write else '查看原采集' }}</a>
-        {% if not can_write %}<span class="ra-waiting">等待有写权限的成员处理</span>{% endif %}
-      {% elif r.linked_line %}
-      <a class="rd-linked" href="/web/debts/{{ r.committed_debt_public_id }}?ledger_id={{ selected_ledger_id }}">{{ r.linked_line }}</a>
-      {% else %}
-      <span class="text-meta">未关联往来</span>
-      {% endif %}
-      {% if not r.is_pending %}<a href="/web/repayment-drafts/{{ r.public_id }}?ledger_id={{ selected_ledger_id }}">查看处理记录</a>{% endif %}
-    </div>
-    <div class="ra-cell ra-date-cell"><span class="rd-meta">{{ r.captured_label }}</span></div>
-    <div class="ra-cell ra-side-cell">
-      <span class="text-meta">采集金额</span>
-      <strong class="rd-amount">{{ r.amount_label }}</strong>
-      {% if r.conversion_pending %}<span class="text-meta">原币金额；确认时按还款日期换算 {{ r.home_currency_code }}</span>{% endif %}
-      <span class="product-status {{ _tone.get(r.status_tone, '') }}">{{ r.status_label }}</span>
-    </div>
-  </article>
+{% if pending %}
+<section class="product-entry-list" aria-label="待核对的还款采集">
+  {% for r in pending %}
+  <a class="product-entry" href="/web/repayment-drafts/{{ r.public_id }}?ledger_id={{ selected_ledger_id|urlencode }}"
+     aria-label="{{ '核对并处理' if can_write else '查看原采集' }}：{{ r.source_label }}，{{ r.currency_code }} {{ r.amount_label }}">
+    <span class="product-entry-icon product-entry-icon--apricot" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#smartphone"/></svg></span>
+    <span class="product-entry-copy">
+      <span class="product-entry-heading"><strong>{{ r.source_label }}</strong><span class="product-status">{{ r.status_label }}</span></span>
+      {% if r.merchant %}<span>{{ r.merchant }}</span>{% endif %}
+      <span>采集于 {{ r.captured_label }} · {{ r.currency_code }}</span>
+      <strong class="product-entry-amount">{{ r.amount_label }}</strong>
+      {% if r.provenance %}<span>{{ r.provenance }}</span>{% endif %}
+      {% if r.conversion_pending %}<span>原币金额；确认时按还款日期换算 {{ r.home_currency_code }}</span>{% endif %}
+      <span>{{ '核对并处理' if can_write else '查看原采集' }}</span>
+      {% if not can_write %}<span>等待有写权限的成员处理</span>{% endif %}
+    </span>
+    <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
+  </a>
   {% endfor %}
 </section>
+{% else %}
+<div class="product-state">
+  <div class="product-state-title">{{ '待核对的还款都处理好了' if processed else empty_title }}</div>
+  <div class="product-state-body">{{ '原采集和处理结果都保留在下方。' if processed else empty_body }}</div>
+</div>
+{% endif %}
+
+<section class="debt-section" aria-label="已经处理的还款采集">
+  <h2 class="debt-section-title">已经处理</h2>
+  <details>
+    <summary class="product-entry">
+      <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#history"/></svg></span>
+      <span class="product-entry-copy"><strong>查看处理记录</strong><span>{{ processed|length }} 条记录 · 已记账与已忽略分开保留</span></span>
+      <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
+    </summary>
+    <div class="product-entry-list">
+      {% for r in processed %}
+      <article class="product-entry product-entry--static">
+        <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#{{ 'check' if r.linked_line else 'archive' }}"/></svg></span>
+        <div class="product-entry-copy">
+          <span class="product-entry-heading"><strong>{{ r.merchant or r.source_label }}</strong><span class="product-status{% if r.status_tone == 'ok' %} product-status--success{% endif %}">{{ r.status_label }}</span></span>
+          <span>{{ r.source_label }} · 采集于 {{ r.captured_label }}</span>
+          <span>原金额 {{ r.currency_code }} <strong class="product-entry-amount">{{ r.amount_label }}</strong></span>
+          {% if r.resolved_label %}<span>处理于 {{ r.resolved_label }}</span>{% endif %}
+          {% if r.linked_line %}<a href="/web/debts/{{ r.committed_debt_public_id }}?ledger_id={{ selected_ledger_id|urlencode }}">{{ r.linked_line }}</a>{% endif %}
+          <a href="/web/repayment-drafts/{{ r.public_id }}?ledger_id={{ selected_ledger_id|urlencode }}">查看原采集与处理记录</a>
+        </div>
+      </article>
+      {% else %}<p class="hint">还没有处理记录。</p>{% endfor %}
+    </div>
+  </details>
+</section>
+<div class="product-entry product-entry--static debt-section">
+  <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#info"/></svg></span>
+  <span class="product-entry-copy"><strong>通知不会自动记账</strong><span>请确认对应欠款、方向和金额。忽略通知不会撤销已生效的还款。</span></span>
+</div>
+{% if pending|length == 1 %}
+<div class="product-form-actions">
+  <a class="product-button product-button--primary" href="/web/repayment-drafts/{{ pending[0].public_id }}?ledger_id={{ selected_ledger_id|urlencode }}">{{ '核对这笔还款' if can_write else '查看原采集' }}</a>
+</div>
 {% endif %}
 {% endblock %}

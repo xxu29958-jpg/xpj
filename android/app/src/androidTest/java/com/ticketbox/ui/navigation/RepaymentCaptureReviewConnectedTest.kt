@@ -148,7 +148,11 @@ class RepaymentCaptureReviewConnectedTest {
         compose.waitUntil(5_000) { compose.onAllNodesWithText(history).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText(history).performScrollTo().performClick()
         waitForText(R.string.repayment_review_history)
-        compose.onNodeWithText(context.getString(R.string.repayment_review_history)).performScrollTo().performClick()
+        compose.waitForIdle()
+        capture("capture-history-list")
+        compose.onNodeWithText(context.getString(R.string.repayment_review_history)).performScrollTo()
+        capture("capture-history-record")
+        compose.onNodeWithText(context.getString(R.string.repayment_review_history)).performClick()
         showStatus(R.string.repayment_review_done)
         compose.onNodeWithText("2026-08-31").performScrollTo().assertIsDisplayed()
         assertTrue(compose.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().isEmpty())
@@ -157,7 +161,11 @@ class RepaymentCaptureReviewConnectedTest {
     private fun openReview() {
         compose.runOnIdle { harness.shell.openRepaymentDrafts() }
         waitForText(R.string.repayment_review_open)
-        compose.onNodeWithText(context.getString(R.string.repayment_review_open)).performScrollTo().performClick()
+        compose.waitForIdle()
+        capture("capture-inbox")
+        compose.onNodeWithText(context.getString(R.string.repayment_review_open)).performScrollTo()
+        capture("capture-inbox-record")
+        compose.onNodeWithText(context.getString(R.string.repayment_review_open)).performClick()
         waitForText(R.string.repayment_review_title)
     }
 

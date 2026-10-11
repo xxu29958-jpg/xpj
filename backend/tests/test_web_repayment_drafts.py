@@ -349,7 +349,7 @@ def test_dismiss_is_repeat_safe_and_stays_in_audit_history(web_client: TestClien
     assert replay.status_code == 200  # 终态翻转幂等：重复忽略不报错
     assert "白条-忽略" in html
     assert "已忽略" in html
-    assert "is-receded" in html
+    assert f'/web/repayment-drafts/{draft["public_id"]}?ledger_id=owner' in html
 
 
 # ── confirmed (linked debt) / dismissed (sunk) rendering ─────────────────────
@@ -370,12 +370,13 @@ def test_confirmed_draft_shows_linked_debt(web_client: TestClient, *, identity) 
 # fallback is defensive-only, an unconstructable state, so there is nothing real to pin.)
 
 
-def test_dismissed_draft_receded_and_ignored_label(web_client: TestClient, *, identity) -> None:
+def test_dismissed_draft_keeps_its_history_without_a_confirmation_action(web_client: TestClient, *, identity) -> None:
     draft = _create_draft(web_client, identity.app_headers, merchant_label="白条", amount_cents=8000)
     _dismiss_via_api(web_client, identity.app_headers, draft)
     html = _page(web_client)
     assert "已忽略" in html
-    assert "is-receded" in html  # dismissed rows recede (永不红)
+    assert "查看原采集与处理记录" in html
+    assert "核对这笔还款" not in html
 
 
 # ── account privacy × selected-ledger scope ──────────────────────────────────
