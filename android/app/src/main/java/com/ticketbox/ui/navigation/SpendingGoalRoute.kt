@@ -104,8 +104,8 @@ private fun SpendingGoalRouteContent(
         if (context.returnToCaller) onBack() else page = SpendingGoalPage.List
     }
 
-    LaunchedEffect(context.financialDataRevision) {
-        if (context.financialDataRevision > 0) models.list.refresh()
+    LaunchedEffect(page, context.financialDataRevision) {
+        if (page == SpendingGoalPage.List && context.financialDataRevision > 0) models.list.refresh()
     }
     LaunchedEffect(page, detailPublicId, context.financialDataRevision, detailState.isEditing) {
         if (page == SpendingGoalPage.Detail && !detailState.isEditing) {

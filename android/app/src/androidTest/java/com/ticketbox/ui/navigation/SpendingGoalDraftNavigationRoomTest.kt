@@ -45,6 +45,7 @@ import com.ticketbox.viewmodel.CreateSpendingGoalViewModel
 import com.ticketbox.viewmodel.createSpendingGoalViewModelFactory
 import com.ticketbox.viewmodel.SpendingGoalsViewModel
 import com.ticketbox.viewmodel.spendingGoalsViewModelFactory
+import kotlinx.coroutines.CompletableDeferred
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotSame
@@ -58,6 +59,7 @@ class SpendingGoalDraftNavigationRoomTest {
     @get:Rule val compose = createComposeRule()
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private var restored = false
+    private val restoredDetailRead = CompletableDeferred<Unit>()
     private val restores = java.util.concurrent.CopyOnWriteArrayList<RecycleBinRestoreRequestDto>()
     private var goal = GoalDto(
         publicId = "navigation-spending-goal", ledgerId = "correction-ledger", name = "餐饮控制",
@@ -70,6 +72,8 @@ class SpendingGoalDraftNavigationRoomTest {
     private val harness = FactEntryNavigationHarness(context) { delegate ->
         object : ApiService by delegate {
             override suspend fun goals(month: String?, includeArchived: Boolean, goalType: String?, timezone: String?): GoalListResponseDto {
+                // Reproduce a list response arriving after the restored detail, without a timed delay.
+                if (restored) restoredDetailRead.await()
                 goal = goal.copy(month = month ?: goal.month)
                 val active = listOf(goal, goal.copy(publicId = "navigation-jpy-goal",
                     name = "带家人出行的交通和日常餐饮完整目标名称", category = "旅行期间的交通与日常餐饮支出",
@@ -82,6 +86,7 @@ class SpendingGoalDraftNavigationRoomTest {
             }
             override suspend fun goal(publicId: String, timezone: String?): GoalDto {
                 check(publicId == goal.publicId || publicId == archivedGoal().publicId)
+                if (restored && publicId == archivedGoal().publicId) restoredDetailRead.complete(Unit)
                 return if (publicId == goal.publicId) goal else archivedGoal()
             }
             override suspend fun recycleBin() = RecycleBinListResponseDto(if (restored) emptyList() else listOf(
