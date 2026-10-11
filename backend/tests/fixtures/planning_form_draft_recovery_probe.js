@@ -32,11 +32,13 @@
     {kind:"rule-edit", family:"ruledefinition", action:"/web/rules/41/edit", fields:{keyword:"  原规则编辑  ",category:"家庭交通",priority:"20",amount_min_yuan:"001500",source_contains:"",tag_contains:""}},
   ];
   const debtOnly = new URLSearchParams(location.search).get("group") === "debt";
+  specs.push({kind:"debt-principal", family:"debtcreation", action:"/web/debts",
+    fields:{counterparty_label:"  原往来对象  ",amount_major:"001500",event_time:"2026-01-31",note:"保留原说明"}});
   for (const spec of specs.filter(spec => spec.kind.startsWith("debt-") === debtOnly)) {
     const frame=document.createElement("iframe"); document.body.append(frame);
     const url="/fixture?kind="+spec.kind;
     const getForm=()=>frame.contentDocument.querySelector('form[method="post"][action="'+spec.action+'"]');
-    const submit=form=>form.querySelector("[data-"+spec.family+"-submit]");
+    const submit=form=>[...form.elements].find(input=>input.matches("[data-"+spec.family+"-submit]"));
     const ready=()=>getForm()?.dataset[spec.family+"DraftPhase"] && !submit(getForm()).disabled;
     await load(frame,url); await until(ready,"draft lease unavailable: "+spec.kind);
     let form=getForm();

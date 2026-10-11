@@ -70,6 +70,16 @@ class Debt(Base):
     __table_args__ = (
         *money_check_constraints_for_table("debts"),
         CheckConstraint(
+            "(accounting_time_snapshot IS NULL OR (jsonb_typeof(accounting_time_snapshot) = 'object' "
+            "AND accounting_time_snapshot->>'precision' IN ('instant', 'date_only', 'unknown') "
+            "AND (accounting_time_snapshot->>'precision' <> 'date_only' OR "
+            "(accounting_time_snapshot->>'instant_utc' IS NULL "
+            "AND accounting_time_snapshot->>'user_local_date' IS NOT NULL)) "
+            "AND (accounting_time_snapshot->>'precision' <> 'instant' "
+            "OR accounting_time_snapshot->>'instant_utc' IS NOT NULL))) IS TRUE",
+            name="ck_debts_principal_time",
+        ),
+        CheckConstraint(
             "direction IN ('i_owe', 'owed_to_me')",
             name="ck_debts_direction_valid",
         ),
@@ -194,6 +204,7 @@ class Debt(Base):
     installment_period_months: Mapped[int | None] = mapped_column(Integer, nullable=True)
     source_type: Mapped[str] = mapped_column(String(32), default="manual", nullable=False)
     source_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    accounting_time_snapshot: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)

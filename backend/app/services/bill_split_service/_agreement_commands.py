@@ -21,6 +21,7 @@ from app.services.bill_split_service._agreement_context import (
 from app.services.bill_split_service._create import ensure_changed_share_capacity
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.debt_service._fold import compute_remaining_for_write, derive_status
+from app.services.debt_service._principal_time import agreement_principal_time
 from app.services.optimistic_concurrency import bump_row_version
 from app.services.time_service import ensure_utc, now_utc
 
@@ -119,11 +120,14 @@ def _adjust_to_target(
 
 def _create_return(db: Session, context: AgreementContext, target: int, actor_account_id: int) -> Debt:
     original = context.original
+    accepted_at = now_utc()
+    occurrence = agreement_principal_time(db, ledger_id=original.tenant_id, accepted_at=accepted_at)
     debt = Debt(tenant_id=original.tenant_id, owner_account_id=original.owner_account_id,
         created_by_account_id=actor_account_id, direction="owed_to_me", counterparty_type="member",
         counterparty_account_id=original.counterparty_account_id, counterparty_label=original.counterparty_label,
         principal_amount_cents=target, home_currency_code=original.home_currency_code, status="open",
-        source_type="bill_split_return", source_id=original.source_id)
+        source_type="bill_split_return", source_id=original.source_id,
+        accounting_time_snapshot=occurrence.model_dump(mode="json"), created_at=accepted_at, updated_at=accepted_at)
     db.add(debt)
     db.flush()
     return debt

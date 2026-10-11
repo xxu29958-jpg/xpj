@@ -336,7 +336,7 @@ private fun DebtActionForm(
     if (action == DebtAction.Repayment) {
         DebtPaymentAmountField(state.amountInputCurrency, state.amountInput, state.canModify && !state.isSubmitting,
             state.validationError != null) { viewModel.updateActionInput(amount = it) }
-        PaymentDateField(state.paymentTime?.date.orEmpty(), state.canModify && !state.isSubmitting) {
+        DebtDateField(state.paymentTime?.date.orEmpty(), state.canModify && !state.isSubmitting) {
             viewModel.updateActionInput(paymentDate = it)
         }
         state.debt?.let { DebtRepaymentBalancePreview(it, state.amountInput) }

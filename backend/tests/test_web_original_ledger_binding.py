@@ -18,6 +18,7 @@ from starlette.requests import Request
 from app.database import get_db
 from app.middleware import csrf
 from app.routes import (
+    _web_draft_binding,
     web_budgets,
     web_common,
     web_debt_create,
@@ -185,10 +186,33 @@ def test_final_debt_submit_after_rate_recovery_cannot_follow_a_switched_session(
         "amount_major": "12.50", "event_time": "2026-05-06", "direction": "i_owe",
         "counterparty_label": "Original debt", "note": "Keep original intent", "debt_kind": "unspecified",
         "installment_count": "", "installment_period_months": "", "idempotency_key": "original-debt-key"}
-    response = web_debt_create.web_create_debt(_request("/web/debts"), **original, csrf_token="", db=Mock(), _local=None)
+    response = web_debt_create.web_create_debt(_request("/web/debts"), form=web_debt_create.DebtCreationForm(**original), db=Mock(), _local=None,
+        time_fields=None)
     assert response.status_code == 409
     saved = hidden_post_forms(response.body.decode())["/web/debts"]
     assert all(saved[key] == value for key, value in original.items())
+    writer.assert_not_called()
+
+
+@pytest.mark.parametrize("changed", ["datasetId", "clientGeneration", "accountId", "ledgerId", "deviceId", "role"])
+def test_debt_creation_rejects_changed_original_identity_or_revoked_write_access(monkeypatch, changed):
+    scope = {key: "original-" + key for key in ["datasetId", "clientGeneration", "accountId", "deviceId"]}
+    scope["ledgerId"] = "new-ledger"
+    captured = {**scope, **({changed: "different"} if changed != "role" else {})}
+    request = _request("/web/debts")
+    request.scope["headers"] = [(b"accept", b"application/json")]
+    monkeypatch.setattr(_web_draft_binding.manual_expense_draft_presenter, "manual_draft_scope", lambda *a: scope)
+    monkeypatch.setattr(web_debt_create, "_list_ledger_options", lambda _db:
+        [LedgerOption("new-ledger", "New", "viewer" if changed == "role" else "owner", False, 0, 0)])
+    writer = Mock(side_effect=AssertionError("A refused original must not reach the financial writer"))
+    monkeypatch.setattr(web_debt_create, "create_debt_idempotently", writer)
+    form = web_debt_create.DebtCreationForm(ledger_id="new-ledger", draft_scope=json.dumps(captured),
+        idempotency_key="original-key", direction="i_owe", counterparty_label="Original", amount_major="12.50",
+        home_currency_code="CNY", currency_code="CNY", event_time="2026-01-31", debt_kind="one_off")
+    response = web_debt_create.web_create_debt(request, form=form, time_fields={"calendar_revision": "3"}, db=Mock(), _local=None)
+    assert response.status_code == (403 if changed == "role" else 409)
+    assert json.loads(response.body)["draft_result"] == "blocked"
+    assert form.idempotency_key == "original-key" and json.loads(form.draft_scope) == captured
     writer.assert_not_called()
 
 

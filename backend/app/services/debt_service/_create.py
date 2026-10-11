@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.models import Debt
 from app.schemas import DebtCreateRequest
+from app.schemas._accounting_time import AccountingTimeSnapshot
 from app.services.currency_binding_service import (
     resolve_write_capability,
 )
@@ -33,6 +34,7 @@ from app.services.debt_service._money import (
     freeze_home_amount,
     validate_home_amount_command,
 )
+from app.services.debt_service._principal_time import resolve_principal_time
 from app.services.time_service import now_utc
 
 VALID_DIRECTIONS = frozenset({"i_owe", "owed_to_me"})
@@ -105,7 +107,7 @@ def _clean_counterparty(
     return None, cleaned_label
 
 
-def _freeze_money(db: Session, *, tenant_id: str, payload: DebtCreateRequest) -> dict:
+def _freeze_money(db: Session, *, tenant_id: str, payload: DebtCreateRequest, occurrence: AccountingTimeSnapshot | None) -> dict:
     """Resolve the frozen home principal + optional original-currency provenance.
 
     Delegates the home-vs-foreign-currency freeze to the shared
@@ -125,6 +127,7 @@ def _freeze_money(db: Session, *, tenant_id: str, payload: DebtCreateRequest) ->
         original_currency=payload.original_currency,
         original_amount=payload.original_amount,
         event_time=payload.event_time,
+        event_date=(occurrence.user_local_date or occurrence.accounting_date) if occurrence else None,
         amount_error="debt_amount_invalid",
     )
     return {"principal_amount_cents": money.pop("amount_cents"), **money}
@@ -163,7 +166,8 @@ def create_debt(
     installment_count, installment_period_months = _clean_installment(
         payload.debt_kind, payload.installment_count, payload.installment_period_months
     )
-    money = _freeze_money(db, tenant_id=tenant_id, payload=payload)
+    occurrence = resolve_principal_time(db, ledger_id=tenant_id, time_input=payload.time_input, event_time=payload.event_time)
+    money = _freeze_money(db, tenant_id=tenant_id, payload=payload, occurrence=occurrence)
 
     now = now_utc()
     debt = Debt(
@@ -184,6 +188,7 @@ def create_debt(
         status="open",
         source_type=source_type,
         source_id=None,
+        accounting_time_snapshot=occurrence.model_dump(mode="json") if occurrence else None,
         created_at=now,
         updated_at=now,
         **money,
@@ -207,6 +212,7 @@ def create_bill_split_debt(
     home_currency_code: str,
     source_invitation_public_id: str,
     event_time: datetime | None,
+    accounting_time: AccountingTimeSnapshot | None = None,
 ) -> Debt:
     """ADR-0049 §4: insert the receiver-side member Debt for an accepted bill split.
 
@@ -259,6 +265,8 @@ def create_bill_split_debt(
         status="open",
         source_type="bill_split",
         source_id=source_invitation_public_id,
+        accounting_time_snapshot=(accounting_time.model_dump(mode="json") if accounting_time else
+            AccountingTimeSnapshot(instant_utc=event_time, basis="legacy_unknown").model_dump(mode="json") if event_time else None),
         principal_amount_cents=money.pop("amount_cents"),
         created_at=now,
         updated_at=now,

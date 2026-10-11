@@ -38,6 +38,11 @@ internal fun DebtSummaryCard(debt: Debt) {
     val recordDisplay = CurrencyDisplay.forRecord(debt.homeCurrencyCode)
     val visuals = LocalThemeVisuals.current
     val unknown = stringResource(R.string.debt_detail_component_unknown)
+    val time = debt.accountingTime
+    val occurrence = time?.userLocalDate ?: stringResource(R.string.accounting_time_date_unknown)
+    val principalDate = if (time?.accountingDate != null && time.accountingDate != time.userLocalDate) {
+        stringResource(R.string.accounting_time_date_with_ledger_day, occurrence, time.accountingDate)
+    } else occurrence
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
@@ -45,7 +50,8 @@ internal fun DebtSummaryCard(debt: Debt) {
         DebtRemainingCard(debt)
         Column {
             DebtBalanceFact(stringResource(R.string.debt_detail_principal),
-                formatDisplayAmount(debt.principalAmountCents, recordDisplay), R.drawable.ic_lucide_receipt_text)
+                formatDisplayAmount(debt.principalAmountCents, recordDisplay), R.drawable.ic_lucide_receipt_text,
+                subtitle = principalDate)
             DebtBalanceFact(stringResource(R.string.debt_detail_paid),
                 formatDisplayAmount(debt.paidAmountCents, recordDisplay), R.drawable.ic_lucide_check)
             DebtBalanceFact(stringResource(R.string.debt_detail_forgiven),
@@ -101,14 +107,18 @@ private fun DebtRemainingCard(debt: Debt) {
 
 @Composable
 private fun DebtBalanceFact(label: String, value: String, icon: Int,
-    background: Color = LocalThemeVisuals.current.brandPrimaryBg) {
+    background: Color = LocalThemeVisuals.current.brandPrimaryBg, subtitle: String? = null) {
     AppAdaptiveContentActionRow(modifier = Modifier.padding(vertical = AppSpacing.compactGap),
         style = AppAdaptiveContentActionStyle(compactAction = true),
         content = {
             Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
                 verticalAlignment = Alignment.CenterVertically) {
                 SettingsEntryIcon(ImageVector.vectorResource(icon), background = background)
-                Text(label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                Column {
+                    Text(label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                    subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                }
             }
         },
         action = { modifier -> Text(value, modifier = modifier,

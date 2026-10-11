@@ -159,6 +159,57 @@ class NetworkErrorReportingTest {
     }
 
     @Test
+    fun debtCreateFailureReportsSafelyWithoutSettlingTheOriginal() = runTest {
+        val dao = FakePendingMutationDao()
+        val outbox = testOutboxRepository(dao = dao)
+        val adapter = com.ticketbox.OutboxAdapterGraph().debtCreateAdapter
+        val payload = adapter.toJson(DebtCreateOutboxPayload(1, "CNY", "session", "binding",
+            DebtCreateOutboxRequest("i_owe", "external", "对方", 12_345L)))
+        val originalId = outbox.enqueue(PendingMutationType.CreateDebt, "debt_create:original-key", payload,
+            0L, idempotencyKey = "original-key")
+        var attempts = 0
+        val api = object : ApiService by FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0) {
+            override suspend fun createDebt(request: com.ticketbox.data.remote.dto.DebtCreateRequestDto,
+                idempotencyKey: String?): com.ticketbox.data.remote.dto.DebtDto {
+                attempts++
+                throw IllegalStateException("password=synthetic-debt-secret", IOException("private principal text"))
+            }
+        }
+        val summary = OutboxDrainEngine(outbox, listOf(CreateDebtDispatcher({ api }, adapter))).drainOnce()
+        assertEquals(1, attempts)
+        assertEquals(0, summary.done)
+        assertEquals(1, summary.failures)
+        val original = dao.rows.getValue(originalId)
+        assertEquals(payload, original.payload)
+        assertEquals("original-key", original.idempotencyKey)
+        val output = finalLog()
+        assertTrue(output.contains("operation=Debt create response unverified"))
+        assertTrue(output.contains("CreateDebtDispatcher.kt:"))
+        assertFalse(output.contains("synthetic-debt-secret") || output.contains("private principal text"))
+        assertTrue(ShadowLog.getLogsForTag("TicketboxNetwork").all { it.throwable == null })
+    }
+
+    @Test
+    fun debtLocalPublicationFailureReportsWithoutInventingAcceptance() = runTest {
+        val fixture = DebtCreationFixture()
+        fixture.dao.beforeInsert = { throw IllegalStateException("password=private-local-secret") }
+        val result = fixture.save(creationKey = "retained-original")
+        assertEquals("debt_create_local_save_failed", (result.exceptionOrNull() as RepositoryException).errorCode)
+        assertTrue(fixture.dao.rows.isEmpty())
+        assertTrue(fixture.api.calls.isEmpty())
+        assertTrue(fixture.queueDepthAtSchedule.isEmpty())
+        val output = finalLog()
+        assertTrue(output.contains("operation=Debt create local acceptance unverified"))
+        assertTrue(output.contains("DebtCreationRepository.kt:"))
+        assertFalse(output.contains("private-local-secret"))
+        assertTrue(ShadowLog.getLogsForTag("TicketboxNetwork").all { it.throwable == null })
+        fixture.dao.beforeInsert = null
+        fixture.save(creationKey = "retained-original").getOrThrow()
+        assertEquals("retained-original", fixture.dao.rows.values.single().idempotencyKey)
+        assertTrue(fixture.api.calls.isEmpty())
+    }
+
+    @Test
     fun candidateReplayFailureReportsSafelyAndKeepsItsOriginalCommand() = runTest {
         val dao = FakePendingMutationDao()
         val outbox = testOutboxRepository(dao = dao)

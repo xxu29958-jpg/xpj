@@ -214,6 +214,7 @@ def debt_response(debt: Debt, *, balance: DebtBalance) -> DebtResponse:
         status=status,
         source_type=debt.source_type,
         source_id=debt.source_id,
+        accounting_time=debt.accounting_time_snapshot,
         debt_kind=debt.debt_kind,
         # §B: the stored schedule + the derived deterministic payoff date, all None for non-installment.
         installment_count=debt.installment_count if is_installment else None,

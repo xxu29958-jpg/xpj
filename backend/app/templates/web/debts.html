@@ -3,6 +3,13 @@
 {% set page_title = '往来' %}
 {% set product_body_domain = 'obligations' %}
 {% block title %}往来 · 小票夹{% endblock %}
+{% block page_scripts %}
+{% if debtcreation_draft_scope %}
+<script defer src="/static/web/manual-drafts.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/plan-entry.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/debt-creation-entry.js?v={{ asset_version }}"></script>
+{% endif %}
+{% endblock %}
 
 {% block page_header %}
 <header class="product-page-header">
@@ -14,6 +21,7 @@
 {% endblock %}
 
 {% block content %}
+{% include '_debt_creation_drafts.html' %}
 {% if flash_message %}
 <div class="product-feedback{% if flash_type == 'error' %} product-feedback--error{% endif %}" role="{% if flash_type == 'error' %}alert{% else %}status{% endif %}">{{ flash_message }}</div>
 {% endif %}

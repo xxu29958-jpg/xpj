@@ -18,6 +18,7 @@ from app.routes._web_debt_write import (
     _debt_write_gate,
     _proposal_section,
 )
+from app.routes._web_draft_binding import browser_draft_scope
 from app.routes.web_common import (
     LocalOnly,
     _amount_segments,
@@ -25,7 +26,6 @@ from app.routes.web_common import (
     _currency_input_view,
     _home_amount_label,
     _list_ledger_options,
-    _require_selected_ledger_write,
     _resolve_selected_ledger_id,
     _sidebar_counts,
     templates,
@@ -40,6 +40,7 @@ from app.routes.web_debt_presenters import (
     debt_direction_sentence,
     debt_remaining_totals,
     debt_view_direction,
+    principal_date_label,
 )
 from app.services.debt_service import (
     get_participant_debt_response,
@@ -204,6 +205,7 @@ def _detail_view(debt) -> dict:
         # External keeps the editorial split hero; member detail uses one quiet exact
         # remaining label inside "看看账" rather than inventing another fold.
         "principal_label": _home_amount_label(debt.principal_amount_cents, home),
+        "principal_date_label": principal_date_label(debt),
         "paid_label": _home_amount_label(debt.paid_amount_cents, home),
         "adjustment_label": (
             ("+" if adjustment > 0 else "") + _home_amount_label(adjustment, home)
@@ -294,6 +296,7 @@ def web_debts(
     ctx["member_debts"] = member_debts
     ctx["external_debts"] = external_debts
     ctx["debt_totals"] = debt_remaining_totals(items)
+    ctx["debtcreation_draft_scope"] = browser_draft_scope(db, request)
     return templates.TemplateResponse(request=request, name="debts.html", context=ctx)
 
 
@@ -317,7 +320,6 @@ def web_debt_new(
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
-    _require_selected_ledger_write(options, selected_id)
     return templates.TemplateResponse(
         request=request,
         name="debt_new.html",

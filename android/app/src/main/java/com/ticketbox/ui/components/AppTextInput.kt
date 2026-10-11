@@ -281,7 +281,7 @@ private fun appTextInputTextStyle(state: AppTextInputState, amountRole: AppAmoun
     val color = if (state.enabled) {
         MaterialTheme.colorScheme.onSurface
     } else {
-        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = AppAlpha.strong)
+        MaterialTheme.colorScheme.onSurfaceVariant
     }
     return when (state.emphasis) {
         AppTextInputEmphasis.Amount -> MaterialTheme.typography.headlineSmall

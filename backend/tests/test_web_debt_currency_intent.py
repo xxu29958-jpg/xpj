@@ -26,6 +26,7 @@ def _form(web_client) -> dict[str, str]:
         "csrf_token": "test-client-bypasses-middleware-check", "ledger_id": "owner",
         "idempotency_key": _hidden(page.text, "idempotency_key"),
         "home_currency_code": _hidden(page.text, "home_currency_code"),
+        "calendar_revision": _hidden(page.text, "calendar_revision"),
         "direction": "owed_to_me", "counterparty_label": "Alex", "currency_code": "CNY",
         "amount_major": "12", "event_time": "2026-09-08", "note": "保留原意图",
     }
@@ -38,7 +39,7 @@ def test_error_and_retry_keep_the_captured_currency_amount_and_key(web_client):
     assert _hidden(rejected.text, "idempotency_key") == form["idempotency_key"]
     assert _hidden(rejected.text, "home_currency_code") == "JPY"
     assert 'value="1.005"' in rejected.text
-    assert re.findall(r'<option value="([A-Z]+)" selected>', rejected.text) == ["USD"]
+    assert re.findall(r'<option value="([A-Z]+)"[^>]* selected>', rejected.text) == ["USD"]
     assert "金额（所选币种）" in rejected.text
     assert "按发生日折算为 JPY" in rejected.text
     with SessionLocal() as db:
@@ -56,22 +57,32 @@ def test_error_and_retry_keep_the_captured_currency_amount_and_key(web_client):
         assert debt.principal_amount_cents == 188
         assert debt.original_currency_code == "USD"
         assert debt.original_amount_minor == 125
+        assert debt.accounting_time_snapshot["user_local_date"] == "2026-09-08"
+        assert debt.accounting_time_snapshot["instant_utc"] is None
+        assert debt.accounting_time_snapshot["calendar_revision"] == int(form["calendar_revision"])
+        assert db.scalar(select(func.count()).select_from(Debt)) == 1
+    changed_day = web_client.post("/web/debts", data={**repaired, "event_time": "2026-09-09"})
+    assert changed_day.status_code == 422
+    with SessionLocal() as db:
         assert db.scalar(select(func.count()).select_from(Debt)) == 1
 
 
-def test_editing_an_already_saved_form_requires_review_before_a_new_debt(web_client):
+def test_changed_saved_form_keeps_original_key_until_a_separate_creation_is_opened(web_client):
     form = _form(web_client)
     assert web_client.post("/web/debts", data=form).status_code == 200
     changed = {**form, "amount_major": "13"}
     review = web_client.post("/web/debts", data=changed)
     assert review.status_code == 422
-    assert "请先核对原记录；再次保存将新增一笔往来" in review.text
-    next_key = _hidden(review.text, "idempotency_key")
-    assert next_key != form["idempotency_key"]
+    assert "原编号已保留" in review.text
+    assert _hidden(review.text, "idempotency_key") == form["idempotency_key"]
     assert 'value="13"' in review.text
     with SessionLocal() as db:
         assert db.scalars(select(Debt.principal_amount_cents)).all() == [1200]
-    saved = web_client.post("/web/debts", data={**changed, "idempotency_key": next_key})
+    assert web_client.post("/web/debts", data=changed).status_code == 422
+    assert web_client.post("/web/debts", data=form).status_code == 200
+    next_form = _form(web_client)
+    assert next_form["idempotency_key"] != form["idempotency_key"]
+    saved = web_client.post("/web/debts", data={**next_form, "amount_major": "13"})
     assert saved.status_code == 200
     with SessionLocal() as db:
         assert sorted(db.scalars(select(Debt.principal_amount_cents)).all()) == [1200, 1300]

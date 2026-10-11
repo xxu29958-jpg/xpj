@@ -1,0 +1,7 @@
+<resources>
+    <string name="debt_principal_date_label">本金发生日期（可选）</string>
+    <string name="debt_principal_date_hint">仅记录日期。留空表示未记录，不用建账日代替。</string>
+    <string name="debt_principal_date_invalid">请核对 YYYY-MM-DD 日期，并读取原账本日历后重试。</string>
+    <string name="debt_principal_schedule_unknown">分期起算日未记录，暂不计算结束日</string>
+    <string name="debt_principal_calendar_retry">读取账本日历</string>
+</resources>

@@ -99,8 +99,8 @@ class DebtCreationRecoveryTest {
         val originals = runBlocking {
             val creation = factory.debtCreationRepository
             val binding = requireNotNull(creation.currentAccess()).binding
-            val first = creation.createDebt(binding, draft("小王", 12_345L, "出差垫付车费"), CurrencyCode.CNY).getOrThrow()
-            val second = creation.createDebt(binding, draft("小李", 8_600L, "家庭采购垫付"), CurrencyCode.CNY).getOrThrow()
+            val first = creation.createDebt(binding, draft("小王", 12_345L, "出差垫付车费"), CurrencyCode.CNY, "first-original-debt").getOrThrow()
+            val second = creation.createDebt(binding, draft("小李", 8_600L, "家庭采购垫付"), CurrencyCode.CNY, "second-original-debt").getOrThrow()
             factory.outboxRepository.markFailed(first.intentId, "debt_create_response_unverified")
             factory.outboxRepository.markFailed(second.intentId, "debt_create_response_unverified")
             val failed = withTimeout(5_000) { factory.outboxRepository.observeStatus().first { it.failed.size == 2 }.failed }

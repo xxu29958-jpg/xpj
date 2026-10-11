@@ -22,6 +22,7 @@ import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.DebtDirections
 import com.ticketbox.ui.saveConsumerArtPreview
 import com.ticketbox.ui.theme.TicketboxTheme
+import com.ticketbox.viewmodel.DebtListUiState
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -57,8 +58,7 @@ class DebtPendingConsumerTest {
             draft = DebtDraft(DebtDirections.OWED_TO_ME, "小王", 12_345L, note = "出差垫付车费"),
         )
         val composer = RelationsComposerHandles(
-            canModify = skin == AppSkin.Paper, isParsingBill = false, flashMessage = null, error = null,
-            pendingCreations = listOf(intent),
+            state = DebtListUiState(canModify = skin == AppSkin.Paper, pendingCreations = listOf(intent)),
             actions = RelationsComposerActions(
                 onRetry = {}, onAddDebt = {}, onParseBillImage = {},
                 onOpenSyncStatus = { recoveryOpened = true },

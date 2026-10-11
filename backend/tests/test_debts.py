@@ -450,6 +450,15 @@ def test_create_debt_idempotent_replay_and_fingerprint_mismatch(
     assert listed.status_code == 200, listed.json()
     assert len(listed.json()["items"]) == 1
 
+    paid = client.post(f"/api/debts/{public_id}/repayments",
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"amount_cents": 1000, "expected_row_version": first.json()["row_version"]})
+    assert paid.status_code == 201, paid.json()
+    after_payment = client.post("/api/debts", headers=negotiated_headers(client, headers), json=payload)
+    assert after_payment.status_code == 201 and after_payment.json() == first.json()
+    current = client.get(f"/api/debts/{public_id}", headers=identity.app_headers)
+    assert current.json()["remaining_amount_cents"] == 3500
+
     # Same key + different request → reuse is rejected.
     mismatch = client.post(
         "/api/debts",

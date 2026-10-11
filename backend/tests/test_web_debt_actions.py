@@ -265,7 +265,10 @@ def test_web_viewer_hides_and_cannot_post_direct_commands(
     assert page.status_code == 200
     assert f"/web/debts/{debt['public_id']}/repayments" not in page.text
     assert "当前角色可查看欠款事实" in page.text
-    assert web_client.get("/web/debts/new?ledger_id=owner").status_code == 403
+    original_editor = web_client.get("/web/debts/new?ledger_id=owner")
+    assert original_editor.status_code == 200
+    assert "当前为只读，可以核对原输入" in original_editor.text
+    assert 'data-debtcreation-submit disabled' in original_editor.text
 
     original_key = str(uuid4())
     denied = web_client.post(

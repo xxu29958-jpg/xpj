@@ -14,7 +14,7 @@ from app.errors import AppError
 from app.fx_constants import FX_SOURCE_BASE, FX_STATUS_READY
 from app.models import BillSplitInvitation, Expense, LedgerMember
 from app.schemas._accounting_time import AccountingTimeSnapshot
-from app.services.accounting_time_service import apply_accounting_time, legacy_accounting_time
+from app.services.accounting_time_service import accounting_time_snapshot, apply_accounting_time, legacy_accounting_time
 from app.services.bill_split_service._common import (
     SPLIT_RECEIVED_SOURCE,
     _audit,
@@ -105,7 +105,7 @@ def accept_invitation(
         target_account_id=inv.sender_account_id,
         invitation_public_id=inv.public_id,
     )
-    _create_accept_debt_if_enabled(db, inv, target_ledger_id)
+    _create_accept_debt_if_enabled(db, inv, received)
     db.commit()
     db.refresh(inv)
     db.refresh(received)
@@ -248,7 +248,7 @@ def _claim_invitation_acceptance(
     return rowcount == 1
 
 
-def _create_accept_debt_if_enabled(db: Session, inv: BillSplitInvitation, target_ledger_id: str) -> None:
+def _create_accept_debt_if_enabled(db: Session, inv: BillSplitInvitation, received: Expense) -> None:
     """Create the receiver's member debt in the same transaction when enabled."""
     if not get_settings().debt_rollout_enabled:
         return
@@ -257,13 +257,14 @@ def _create_accept_debt_if_enabled(db: Session, inv: BillSplitInvitation, target
     # backstops any unexpected race.
     create_bill_split_debt(
         db,
-        ledger_id=target_ledger_id,
+        ledger_id=received.tenant_id,
         receiver_account_id=inv.receiver_account_id,
         sender_account_id=inv.sender_account_id,
         amount_cents=inv.amount_cents,
         home_currency_code=inv.home_currency_code,
         source_invitation_public_id=inv.public_id,
         event_time=inv.expense_time_snapshot,
+        accounting_time=accounting_time_snapshot(received),
     )
 
 

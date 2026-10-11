@@ -3823,77 +3823,6 @@
         "title": "Body_web_correct_post_web_expenses__expense_id__corrections_post",
         "type": "object"
       },
-      "Body_web_create_debt_web_debts_post": {
-        "properties": {
-          "amount_major": {
-            "default": "",
-            "title": "Amount Major",
-            "type": "string"
-          },
-          "counterparty_label": {
-            "default": "",
-            "title": "Counterparty Label",
-            "type": "string"
-          },
-          "csrf_token": {
-            "default": "",
-            "title": "Csrf Token",
-            "type": "string"
-          },
-          "currency_code": {
-            "default": "",
-            "title": "Currency Code",
-            "type": "string"
-          },
-          "debt_kind": {
-            "default": "unspecified",
-            "title": "Debt Kind",
-            "type": "string"
-          },
-          "direction": {
-            "default": "",
-            "title": "Direction",
-            "type": "string"
-          },
-          "event_time": {
-            "default": "",
-            "title": "Event Time",
-            "type": "string"
-          },
-          "home_currency_code": {
-            "default": "",
-            "title": "Home Currency Code",
-            "type": "string"
-          },
-          "idempotency_key": {
-            "default": "",
-            "title": "Idempotency Key",
-            "type": "string"
-          },
-          "installment_count": {
-            "default": "",
-            "title": "Installment Count",
-            "type": "string"
-          },
-          "installment_period_months": {
-            "default": "",
-            "title": "Installment Period Months",
-            "type": "string"
-          },
-          "ledger_id": {
-            "default": "",
-            "title": "Ledger Id",
-            "type": "string"
-          },
-          "note": {
-            "default": "",
-            "title": "Note",
-            "type": "string"
-          }
-        },
-        "title": "Body_web_create_debt_web_debts_post",
-        "type": "object"
-      },
       "Body_web_create_expense_offset_web_expenses__expense_id__offsets_post": {
         "properties": {
           "accounting_date": {
@@ -12358,6 +12287,16 @@
             "default": "manual",
             "title": "Source Type",
             "type": "string"
+          },
+          "time_input": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AccountingTimeInput"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -12366,6 +12305,87 @@
           "counterparty_type"
         ],
         "title": "DebtCreateRequest",
+        "type": "object"
+      },
+      "DebtCreationForm": {
+        "properties": {
+          "amount_major": {
+            "default": "",
+            "title": "Amount Major",
+            "type": "string"
+          },
+          "counterparty_label": {
+            "default": "",
+            "title": "Counterparty Label",
+            "type": "string"
+          },
+          "csrf_token": {
+            "default": "",
+            "title": "Csrf Token",
+            "type": "string"
+          },
+          "currency_code": {
+            "default": "",
+            "title": "Currency Code",
+            "type": "string"
+          },
+          "debt_kind": {
+            "default": "unspecified",
+            "title": "Debt Kind",
+            "type": "string"
+          },
+          "direction": {
+            "default": "",
+            "title": "Direction",
+            "type": "string"
+          },
+          "draft_scope": {
+            "default": "",
+            "title": "Draft Scope",
+            "type": "string"
+          },
+          "event_time": {
+            "default": "",
+            "title": "Event Time",
+            "type": "string"
+          },
+          "home_currency_code": {
+            "default": "",
+            "title": "Home Currency Code",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "installment_count": {
+            "default": "",
+            "title": "Installment Count",
+            "type": "string"
+          },
+          "installment_period_months": {
+            "default": "",
+            "title": "Installment Period Months",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          },
+          "review_new": {
+            "default": false,
+            "title": "Review New",
+            "type": "boolean"
+          }
+        },
+        "title": "DebtCreationForm",
         "type": "object"
       },
       "DebtForgiveCreateRequest": {
@@ -12686,6 +12706,16 @@
       },
       "DebtResponse": {
         "properties": {
+          "accounting_time": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AccountingTimeSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "adjustment_amount_cents": {
             "anyOf": [
               {
@@ -22635,6 +22665,16 @@
       "RepaymentCreateResponse": {
         "description": "Fold-after Debt response plus the committed repayment id for void flows.",
         "properties": {
+          "accounting_time": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AccountingTimeSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "adjustment_amount_cents": {
             "anyOf": [
               {
@@ -53215,10 +53255,11 @@
           "content": {
             "application/x-www-form-urlencoded": {
               "schema": {
-                "$ref": "#/components/schemas/Body_web_create_debt_web_debts_post"
+                "$ref": "#/components/schemas/DebtCreationForm"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {

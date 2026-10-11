@@ -15,6 +15,7 @@ from fastapi import Request
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
+from app.routes._web_draft_binding import browser_draft_scope, rendered_draft_scope
 from app.routes.web_common import (
     _base_ctx,
     _home_amount_label,
@@ -196,17 +197,29 @@ def _debt_create_context(
         for value, label, hint in _DEBT_DIRECTION_OPTIONS
     ]
     home = ctx["home_currency_code"]
-    from app.services.currency_common import supported_currency_codes
+    from app.services.currency_common import minor_unit_digits, supported_currency_codes
 
     ctx["currency_options"] = [home, *sorted(supported_currency_codes() - {home})]
-    values = values or {}
+    ctx["currency_digits"] = {code: minor_unit_digits(code) for code in ctx["currency_options"]}
+    ctx["can_write"] = _debt_write_gate(options, selected_id)
+    ctx["today"] = ""
+    if values is None:
+        from app.services.ledger_calendar_service import current_calendar
+
+        rule = current_calendar(db, ledger_id=selected_id)
+        import json
+
+        scope = browser_draft_scope(db, request)
+        values = {"calendar_revision": str(rule.revision) if rule else "", "draft_scope": json.dumps(scope) if scope else ""}
+        ctx["today"] = now_utc().astimezone(ZoneInfo(rule.timezone_name)).date().isoformat() if rule else ""
     captured_home = values.get("home_currency_code", "")
     ctx["form_home_currency_code"] = captured_home if captured_home in supported_currency_codes() else home
     ctx["selected_currency_code"] = values.get("currency_code") or ctx["form_home_currency_code"]
     ctx["idempotency_key"] = values.get("idempotency_key") or str(uuid4())
-    ctx["today"] = now_utc().astimezone(accounting_zone()).strftime("%Y-%m-%d")
     ctx["values"] = values
     ctx["form_error"] = error
+    scope, _ = rendered_draft_scope(db, request, values.get("draft_scope", ""))
+    ctx["debtcreation_draft_scope"] = scope if "calendar_revision" in values else None
     return ctx
 
 

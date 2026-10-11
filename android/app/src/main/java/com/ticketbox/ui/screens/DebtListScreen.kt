@@ -109,7 +109,7 @@ fun DebtListScreen(
     LaunchedEffect(state.addAccepted) {
         if (!state.addAccepted) return@LaunchedEffect
         showAddSheet = false
-        viewModel.resetDraft()
+        viewModel.acknowledgeCreation()
     }
     LaunchedEffect(state.pendingBillParsePrefill) {
         if (!state.pendingBillParsePrefill) return@LaunchedEffect
@@ -124,7 +124,7 @@ fun DebtListScreen(
         onOpenSyncStatus = actions.onOpenSyncStatus,
         onRefresh = viewModel::refresh,
         onAddDebt = {
-            viewModel.resetDraft()
+            viewModel.openDraft()
             showAddSheet = true
         },
     )
@@ -138,7 +138,7 @@ fun DebtListScreen(
             state = state,
             viewModel = viewModel,
             sheetState = sheetState,
-            onClose = { showAddSheet = false; viewModel.resetDraft() },
+            onClose = { showAddSheet = false },
         )
     }
 }
@@ -177,10 +177,11 @@ private fun DebtListContent(
             onRefresh = callbacks.onRefresh,
         ),
         slots = AppSecondaryPageSlots(
-            actions = if (state.canModify) {
+            actions = if (state.canModify || state.hasCreationDraft) {
                 {
                     DebtListHeaderActions(
                         isParsingBill = state.isParsingBill,
+                        canParse = state.canModify,
                         onParseBillImage = callbacks.onParseBillImage,
                         onAddDebt = callbacks.onAddDebt,
                     )
@@ -254,6 +255,7 @@ private fun DebtListEmbeddedContent(
 @Composable
 private fun DebtListHeaderActions(
     isParsingBill: Boolean,
+    canParse: Boolean,
     onParseBillImage: () -> Unit,
     onAddDebt: () -> Unit,
 ) {
@@ -268,7 +270,7 @@ private fun DebtListHeaderActions(
             enabled = !isParsingBill,
             onClick = onAddDebt,
         )
-        DebtBillParseIconButton(isParsingBill = isParsingBill, onClick = onParseBillImage)
+        if (canParse) DebtBillParseIconButton(isParsingBill = isParsingBill, onClick = onParseBillImage)
     }
 }
 

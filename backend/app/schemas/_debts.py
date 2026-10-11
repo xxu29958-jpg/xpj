@@ -81,6 +81,7 @@ class DebtCreateRequest(BaseModel):
     original_currency: str | None = Field(default=None, min_length=3, max_length=3)
     original_amount: PositiveCanonicalDecimalInput | None = None
     event_time: datetime | None = None
+    time_input: AccountingTimeInput | None = None
     source_type: str = "manual"
     # 8e-6e: optional repayment-rhythm classification (external debt). Defaulted (not
     # `required`) so an older client that omits it still creates an `unspecified` Debt —
@@ -130,12 +131,13 @@ class DebtResponse(BaseModel):
     status: str
     source_type: str
     source_id: str | None = None
+    accounting_time: AccountingTimeSnapshot | None = None
     # 8e-6e repayment-rhythm classification. Defaulted (not `required`) so the Android
     # DebtDto can adopt it later without the contract gate's reverse check reddening now;
     # always populated at-rest (the column is NOT NULL).
     debt_kind: DebtKind = "unspecified"
     # §B 完整 installment: the stored schedule (NULL for non-installment) + the DERIVED deterministic
-    # payoff date (建账 + count×period months). The payoff date replaces the suppressed velocity
+    # payoff date (本金发生日期 + count×period months). The payoff date replaces the suppressed velocity
     # projection for an all-installment goal; None when no schedule is set. All defaulted (the
     # Android DebtDto adopts them later without reddening the contract gate's reverse check).
     installment_count: int | None = None

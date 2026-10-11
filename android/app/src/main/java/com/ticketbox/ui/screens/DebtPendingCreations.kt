@@ -74,6 +74,10 @@ internal fun DebtCreationIntentSummary(intent: PendingDebtCreation) {
         draft?.note?.takeIf { it.isNotBlank() }?.let {
             Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+        draft?.timeInput?.let { time ->
+            Text(time.userLocalDate, style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 

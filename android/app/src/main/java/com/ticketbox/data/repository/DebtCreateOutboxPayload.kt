@@ -6,6 +6,7 @@ import com.squareup.moshi.JsonClass
 import com.squareup.moshi.JsonDataException
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.remote.dto.DebtCreateRequestDto
+import com.ticketbox.data.remote.dto.DebtDto
 import com.ticketbox.domain.model.CurrencyCode
 import java.io.IOException
 
@@ -22,6 +23,10 @@ data class DebtCreateOutboxPayload(
     val request: DebtCreateOutboxRequest,
 )
 
+internal fun DebtCreateOutboxPayload.acceptsReceipt(receipt: DebtDto, ledgerId: String?): Boolean =
+    receipt.homeCurrencyCode == homeCurrencyCode && receipt.ledgerId == ledgerId && receipt.publicId.isNotBlank() &&
+        request.matchesTerms(receipt) && request.timeInput?.toDomain()?.matches(receipt.accountingTime?.toDomain()) != false
+
 /** The stored v1 shape is independent of subsequent HTTP protocol fields. */
 @JsonClass(generateAdapter = true)
 data class DebtCreateOutboxRequest(
@@ -34,7 +39,18 @@ data class DebtCreateOutboxRequest(
     @param:Json(name = "installment_count") val installmentCount: Long? = null,
     @param:Json(name = "installment_period_months") val installmentPeriodMonths: Long? = null,
     val note: String? = null,
-)
+    @param:Json(name = "time_input") val timeInput: com.ticketbox.data.remote.dto.ExpenseTimeInputDto? = null,
+) {
+    /** Match the original terms, including the backend's declared monthly-period default. */
+    fun matchesTerms(receipt: DebtDto): Boolean {
+        val period = installmentCount?.let { installmentPeriodMonths ?: 1L }
+        return receipt.direction == direction && receipt.counterpartyType == counterpartyType &&
+            receipt.counterpartyLabel == counterpartyLabel && receipt.principalAmountCents == principalAmountCents &&
+            receipt.sourceType == sourceType && receipt.debtKind == debtKind &&
+            receipt.installmentCount == installmentCount && receipt.installmentPeriodMonths == period &&
+            receipt.note.orEmpty() == note.orEmpty()
+    }
+}
 
 internal fun DebtCreateOutboxPayload.toCreateRequest(): DebtCreateRequestDto = DebtCreateRequestDto(
     direction = request.direction,
@@ -47,6 +63,7 @@ internal fun DebtCreateOutboxPayload.toCreateRequest(): DebtCreateRequestDto = D
     installmentCount = request.installmentCount,
     installmentPeriodMonths = request.installmentPeriodMonths,
     note = request.note,
+    timeInput = request.timeInput,
 )
 
 enum class DebtCreationPendingState { Waiting, Sending, NeedsAttention, Unsupported }
@@ -96,6 +113,7 @@ internal fun OutboxRow.toPendingDebtCreation(adapter: JsonAdapter<DebtCreateOutb
             installmentCount = request.installmentCount?.toInt(),
             installmentPeriodMonths = request.installmentPeriodMonths?.toInt(),
             note = request.note,
+            timeInput = request.timeInput,
         ),
         homeCurrency = CurrencyCode.fromStorageKeyOrNull(payload.homeCurrencyCode),
     )

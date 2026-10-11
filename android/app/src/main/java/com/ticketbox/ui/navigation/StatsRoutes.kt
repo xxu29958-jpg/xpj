@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.ViewModelStoreOwner
+import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ticketbox.domain.model.DebtListLens
 import com.ticketbox.ui.design.LocalCurrencyDisplay
@@ -266,12 +267,16 @@ internal fun DebtGoalRoute(
     }
 }
 
-internal data class DebtRouteActions(val onBack: () -> Unit, val onOpenSyncStatus: () -> Unit)
+internal data class DebtRouteContext(
+    val onBack: () -> Unit,
+    val onOpenSyncStatus: () -> Unit,
+    val creationOwner: ViewModelStoreOwner? = null,
+)
 
 @Composable
 internal fun DebtRoute(
     screenFactory: MainScreenFactory,
-    actions: DebtRouteActions,
+    context: DebtRouteContext,
     chromeOverride: RelationsListChrome? = null,
     lens: DebtListLens = DebtListLens.Ledger,
     listRefreshRevision: Int = 0,
@@ -279,7 +284,8 @@ internal fun DebtRoute(
     // W2-C：VM key 按 lens 区分——个人透镜不得复用/闪现全账本缓存 state（同一
     // ViewModelStore 内「我欠」(payables) 与全账本页 (ledger) 是两份实例）。
     val debtListViewModel: DebtListViewModel = viewModel(
-        key = "$DebtListViewModelKey:${lens.name}",
+        viewModelStoreOwner = context.creationOwner ?: checkNotNull(LocalViewModelStoreOwner.current),
+        key = if (lens == DebtListLens.Ledger) RelationsDebtComposerViewModelKey else "$DebtListViewModelKey:${lens.name}",
         factory = debtViewModelFactory(screenFactory.debtRepository, screenFactory.debtCreationRepository, screenFactory.debtWriteRepository, lens),
     )
     val detailViewModel: DebtDetailViewModel = viewModel(
@@ -296,14 +302,14 @@ internal fun DebtRoute(
         key = DebtActivityViewModelKey,
         factory = debtActivityViewModelFactory(screenFactory.debtActivityRepository),
     )
-    val context = LocalContext.current
+    val androidContext = LocalContext.current
     val parseScope = rememberCoroutineScope()
-    val debtBillPicker = rememberDebtBillImageLauncher(debtListViewModel, context, parseScope)
+    val debtBillPicker = rememberDebtBillImageLauncher(debtListViewModel, androidContext, parseScope)
     val openDebtBillPicker = {
         debtBillPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
     }
-    // 每次进入都 reload，避免账本切换后短暂显示上一账本的数据。
-    LaunchedEffect(Unit) { debtListViewModel.reload() }
+    // Binding observation owns isolation. Same-binding re-entry retains the original and readable values.
+    LaunchedEffect(Unit) { debtListViewModel.refresh() }
     // 域级新建抽屉（RelationsRoute composer）落账后 bump revision，这里刷新可见列表。
     LaunchedEffect(listRefreshRevision) { if (listRefreshRevision > 0) debtListViewModel.refresh() }
     // 列表与详情互斥；详情返回时刷新列表以接收最新折叠状态。
@@ -323,8 +329,8 @@ internal fun DebtRoute(
         DebtListScreen(
             viewModel = debtListViewModel,
             actions = DebtListScreenActions(
-                onBack = actions.onBack,
-                onOpenSyncStatus = actions.onOpenSyncStatus,
+                onBack = context.onBack,
+                onOpenSyncStatus = context.onOpenSyncStatus,
                 onOpenDebt = { detailDebtId = it.publicId },
                 onParseBillImage = openDebtBillPicker,
             ),

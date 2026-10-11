@@ -337,7 +337,7 @@ class DebtListViewModelTest {
         advanceUntilIdle()
 
         assertTrue(viewModel.state.value.addAccepted)
-        viewModel.resetDraft()
+        viewModel.discardDraft()
         assertEquals(false, viewModel.state.value.addAccepted)
     }
 
@@ -368,7 +368,7 @@ class DebtListViewModelTest {
 
         viewModel.updateDraftCounterparty("小王")
         viewModel.updateDraftAmount("100")
-        viewModel.resetDraft()
+        viewModel.discardDraft()
 
         assertEquals("", viewModel.state.value.addDraft.counterpartyLabel)
         assertEquals("", viewModel.state.value.addDraft.amountYuanInput)
@@ -394,16 +394,21 @@ class DebtListViewModelTest {
     }
 
     @Test
-    fun reloadClearsPriorLedgerDebtsThenRefetches() = runTest(dispatcher) {
+    fun bindingChangeClearsPriorLedgerDebtsThenRefetches() = runTest(dispatcher) {
         val repo = FakeDebtActions(listResult = Result.success(listOf(sampleDebt("a"))))
         val viewModel = DebtListViewModel(repo, repo.creation, repo.writes)
         advanceUntilIdle()
         assertEquals("a", viewModel.state.value.debts.single().publicId)
 
-        // Simulate a ledger switch: the cached VM must not show the old ledger's debts.
+        // Change the actual identity, with the next read still pending.
         repo.listResult = Result.success(listOf(sampleDebt("b")))
-        viewModel.reload()
-        assertTrue(viewModel.state.value.debts.isEmpty()) // synchronous clear before the refetch
+        val gate = CompletableDeferred<Unit>()
+        repo.listGate = gate
+        val access = requireNotNull(repo.creation.currentAccess())
+        repo.creation.access.value = access.copy(binding = access.binding.copy(ledgerId = "next", bindingRevision = "next"))
+        runCurrent()
+        assertTrue(viewModel.state.value.debts.isEmpty())
+        gate.complete(Unit)
         advanceUntilIdle()
 
         assertEquals("b", viewModel.state.value.debts.single().publicId)
@@ -457,7 +462,8 @@ class DebtListViewModelTest {
         // ...then a ledger switch reloads with ledger B's debts.
         repo.listGate = null
         repo.listResult = Result.success(listOf(sampleDebt("ledgerB")))
-        viewModel.reload()
+        val access = requireNotNull(repo.creation.currentAccess())
+        repo.creation.access.value = access.copy(binding = access.binding.copy(ledgerId = "next", bindingRevision = "next"))
         advanceUntilIdle()
         assertEquals("ledgerB", viewModel.state.value.debts.single().publicId)
 

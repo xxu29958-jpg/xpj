@@ -100,6 +100,8 @@ data class DebtDto(
     val forgivenAmountCents: Long? = null,
     @param:Json(name = "repayment_calendar")
     val repaymentCalendar: RepaymentCalendarDto? = null,
+    @param:Json(name = "accounting_time")
+    val accountingTime: ExpenseAccountingTimeDto? = null,
 )
 
 @JsonClass(generateAdapter = true)
@@ -179,6 +181,8 @@ data class DebtCreateRequestDto(
     @param:Json(name = "installment_period_months")
     val installmentPeriodMonths: Long? = null,
     val note: String? = null,
+    @param:Json(name = "time_input")
+    val timeInput: ExpenseTimeInputDto? = null,
 )
 
 /**

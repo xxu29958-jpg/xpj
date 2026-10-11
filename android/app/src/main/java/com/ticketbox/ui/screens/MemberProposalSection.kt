@@ -320,7 +320,7 @@ private fun ProposalForm(
             state.amountInput, state.inputsEnabled, state.validationError != null) { value ->
             state.task?.let { viewModel.updateAmount(it, value) }
         }
-        PaymentDateField(state.paymentTime?.date.orEmpty(), state.inputsEnabled && form == ProposalForm.Propose) { value ->
+        DebtDateField(state.paymentTime?.date.orEmpty(), state.inputsEnabled && form == ProposalForm.Propose) { value ->
             state.task?.let { viewModel.updatePaymentDate(it, value) }
         }
         if (form == ProposalForm.Propose) {
@@ -360,10 +360,11 @@ internal fun DebtPaymentAmountField(currency: CurrencyCode, value: String, enabl
 
 /** Date input and its native picker share the parent's raw value, with no ledger lookup here. */
 @Composable
-internal fun PaymentDateField(value: String, enabled: Boolean, onChange: (String) -> Unit) {
+internal fun DebtDateField(value: String, enabled: Boolean,
+    @StringRes labelRes: Int = R.string.debt_payment_date_label, onChange: (String) -> Unit) {
     var pickingDate by rememberSaveable { mutableStateOf(false) }
     AppTextInput(
-        state = AppTextInputState(label = stringResource(R.string.debt_payment_date_label), value = value, enabled = enabled),
+        state = AppTextInputState(label = stringResource(labelRes), value = value, enabled = enabled),
         actions = AppTextInputActions(onValueChange = onChange),
         decorations = AppTextInputDecorations(trailingContent = {
             if (enabled) IconButton(onClick = { pickingDate = true }) {

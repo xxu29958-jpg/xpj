@@ -24,7 +24,7 @@ ENV = Environment(loader=ChoiceLoader([
     DictLoader({"base.html": '<!doctype html><html><head><meta charset="utf-8">'
                 '<script src="/static/web/desktop/core.js" defer></script>'
                 '{% block page_scripts %}{% endblock %}</head><body>'
-                '{% block content %}{% endblock %}</body></html>'}),
+                '{% block content %}{% endblock %}{% block page_footer %}{% endblock %}</body></html>'}),
     FileSystemLoader(ROOT / "backend/app/templates/web"),
 ]), autoescape=select_autoescape(["html"]))
 ENV.filters["to_iso"] = to_iso
@@ -108,6 +108,18 @@ def _debt_definition(kind, common, scope, key):
         entry_href="/web/debt-goals/" + (f"{public_id}/{task}" if public_id else "new"), return_href="/web/debt-goals?ledger_id=owner")
 
 
+def _principal_definition(kind, common, scope, key):
+    first = HITS[kind] == 1
+    currency = "JPY" if first else "CNY"
+    return ENV.get_template("debt_new.html").render(**common, debtcreation_draft_scope=scope,
+        form_home_currency_code=currency, selected_currency_code=currency,
+        currency_digits={"JPY": 0, "CNY": 2, "USD": 2}, idempotency_key=key,
+        direction_options=[{"value": "i_owe", "label": "我欠对方"}, {"value": "owed_to_me", "label": "对方欠我"}],
+        kind_options=[{"value": "one_off", "label": "一次还清"}],
+        values={"ledger_id": "owner", "draft_scope": json.dumps(scope), "calendar_revision": "3" if first else "19",
+            "event_time": "2026-01-31" if first else "2026-10-12", "direction": "i_owe" if first else "owed_to_me"})
+
+
 def render(kind, values=None, native_result=""):
     HITS[kind] = HITS.get(kind, 0) + 1
     key = str(uuid4())
@@ -119,7 +131,8 @@ def render(kind, values=None, native_result=""):
                   "csrf_token": "synthetic", "csrf_field": '<input name="csrf_token" type="hidden" value="synthetic">',
                   "asset_version": "preflight", "request": {"query_params": {}}, "status_filter": ""}
     renderer = {"rate": _rate_definition, "rule-create": _rule_definition, "rule-edit": _rule_definition,
-        "debt-create": _debt_definition, "debt-links": _debt_definition, "debt-target-date": _debt_definition}.get(kind)
+        "debt-create": _debt_definition, "debt-links": _debt_definition, "debt-target-date": _debt_definition,
+        "debt-principal": _principal_definition}.get(kind)
     if renderer:
         return renderer(kind, common, scope, key)
     if kind.startswith("catalog-"):
@@ -231,6 +244,14 @@ def _merchant_receipt(path, values, result):
 
 
 def _planning_receipt(path, values, result):
+    if path == "/web/debts":
+        result["receipt"].update(ledger_id=values["ledger_id"], direction=values["direction"], counterparty_type="external",
+            counterparty_label=values["counterparty_label"].strip(), home_currency_code=values["home_currency_code"],
+            original_currency_code=None, principal_amount_cents=int(values["amount_major"]),
+            note=values["note"].strip(), debt_kind=values["debt_kind"], installment_count=None,
+            accounting_time={"precision": "date_only", "user_local_date": values["event_time"],
+                "calendar_revision": int(values["calendar_revision"])})
+        result["next"] = "/web/debts/" + result["receipt"]["public_id"] + "?ledger_id=owner"
     if path.startswith("/web/debt-goals/"):
         result["receipt"]["goal_type"] = "debt_repayment"
         result["next"] = "/web/debt-goals?ledger_id=owner"
@@ -377,7 +398,7 @@ def test_planning_and_reference_entries_replay_original_body_after_unknown_reply
         ensure_ascii=False, indent=2), encoding="utf-8")
     assert not result.get("error"), result
     assert not MISSING, MISSING
-    expected = {"debt-create", "debt-links", "debt-target-date"} if group == "debt" else {
+    expected = {"debt-create", "debt-links", "debt-target-date", "debt-principal"} if group == "debt" else {
         "budget", "arrangement", "rate", "recurring-create", "recurring-edit", "candidate", "occurrence", "tag-create", "category-create",
         "merchant-create", "alias-create", "catalog-rename", "catalog-toggle", "catalog-delete", "catalog-merge", "rule-create", "rule-edit"}
     assert {row["entry"] for row in result["results"]} == expected

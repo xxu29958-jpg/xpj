@@ -31,11 +31,27 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.currency_binding_contract import CURRENCY_BINDING_ACTIVE, INITIAL_BINDING_REVISION
 from app.fx_constants import DEFAULT_HOME_CURRENCY_CODE
-from app.models import BillSplitInvitation, Debt
+from app.models import BillSplitInvitation, Debt, ExpenseRevision
+from app.schemas._accounting_time import AccountingTimeSnapshot
 from app.services.currency_binding_service import get_capability
 from app.services.debt_service import create_bill_split_debt
 
 _logger = logging.getLogger(__name__)
+
+
+def _accepted_principal_time(db: Session, invitation: BillSplitInvitation) -> AccountingTimeSnapshot | None:
+    original = db.scalar(select(ExpenseRevision.after_snapshot).where(
+        ExpenseRevision.expense_id == invitation.received_expense_id,
+        ExpenseRevision.tenant_id == invitation.receiver_ledger_id,
+        ExpenseRevision.change_kind == "confirmed").order_by(ExpenseRevision.revision_number).limit(1))
+    if original and original.get("accounting_time"):
+        return AccountingTimeSnapshot.model_validate(original["accounting_time"])
+    if invitation.accounting_time_snapshot:
+        # Source occurrence evidence does not prove the recipient's accounting
+        # day or calendar. The invitation retains that source-side provenance.
+        return AccountingTimeSnapshot.model_validate(invitation.accounting_time_snapshot).model_copy(
+            update={"accounting_date": None, "calendar_revision": None, "basis": "legacy_unknown"})
+    return None
 
 
 def backfill_bill_split_debts(db: Session) -> int:
@@ -83,6 +99,7 @@ def backfill_bill_split_debts(db: Session) -> int:
             home_currency_code=inv.home_currency_code,
             source_invitation_public_id=inv.public_id,
             event_time=inv.expense_time_snapshot,
+            accounting_time=_accepted_principal_time(db, inv),
         )
         created += 1
     if created:

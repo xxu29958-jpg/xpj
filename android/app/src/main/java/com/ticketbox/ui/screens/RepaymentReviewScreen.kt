@@ -86,7 +86,7 @@ private fun RepaymentReviewInputs(state: RepaymentDraftInboxUiState, model: Repa
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
         RepaymentReviewMoney(input.currency, input.amountText, editable, model.reviewEditor::updateReviewMoney)
         if (editable) {
-            PaymentDateField(input.paymentDate.orEmpty(), true, model.reviewEditor::updateReviewDate)
+            DebtDateField(input.paymentDate.orEmpty(), true, onChange = model.reviewEditor::updateReviewDate)
             Text(stringResource(R.string.repayment_review_date_hint), style = MaterialTheme.typography.bodySmall)
         } else {
             Text(stringResource(R.string.debt_payment_date_label), style = MaterialTheme.typography.labelMedium)

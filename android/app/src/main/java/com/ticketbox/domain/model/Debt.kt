@@ -106,6 +106,7 @@ data class Debt(
     val forgivenAmountCents: Long? = null,
     /** Calendar of this obligation, including a participant view from another ledger. */
     val repaymentCalendar: DebtRepaymentCalendar? = null,
+    val accountingTime: ExpenseAccountingTime? = null,
 ) {
     val isOpen: Boolean get() = status == DebtLinkStatuses.OPEN
     val isCleared: Boolean get() = status == DebtLinkStatuses.CLEARED

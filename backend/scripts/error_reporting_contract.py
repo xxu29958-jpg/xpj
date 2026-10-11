@@ -61,6 +61,18 @@ REVIEWED_BOUNDARIES = {
         "test": "android/app/src/test/java/com/ticketbox/data/repository/NetworkErrorReportingTest.kt",
         "reason": "Sanitized message plus project frames, with no raw Throwable argument; an output failure cannot change the Result.",
     },
+    (ANDROID + "data/repository/CreateDebtDispatcher.kt", "dispatch"): {
+        "sha256": "115063a62d8963e1acdd03908784189a97df0eec3ab30041166327a98b25207d",
+        "owner": "existing HTTP mapping and sanitized TicketboxNetwork output",
+        "test": "android/app/src/test/java/com/ticketbox/data/repository/NetworkErrorReportingTest.kt::debtCreateFailureReportsSafelyWithoutSettlingTheOriginal",
+        "reason": "Unexpected create replay failures report through logNetworkWarning before a blocking Failure retains the original payload and key. Receipt mismatches emit a static diagnostic. Cancellation propagates; transport retries keep their existing owner, and no raw exception text or unverified acceptance reaches the user.",
+    },
+    (ANDROID + "data/repository/DebtCreationRepository.kt", "createDebt"): {
+        "sha256": "8a3c0e7c61ef07d639bc723d8ada1114aa4156cd9b6d40318bcc82e531fa39f1",
+        "owner": "existing sanitized TicketboxNetwork output and local acceptance Result",
+        "test": "android/app/src/test/java/com/ticketbox/data/repository/NetworkErrorReportingTest.kt::debtLocalPublicationFailureReportsWithoutInventingAcceptance",
+        "reason": "Unexpected storage or encoding errors report through logNetworkWarning before returning unverified local acceptance. Cancellation propagates and existing RepositoryException is preserved. No network call, new creation key, raw exception text or invented Debt receipt is introduced by the reporting boundary.",
+    },
     (ANDROID + "data/repository/RecurringQueryReader.kt", "read"): {
         "sha256": "3fc23c76b1cb3b718259f815af0ee814205430e6d62836aa44ddd71352c34840",
         "owner": "existing NetworkErrorHandler.safeCall and sanitized TicketboxNetwork output",

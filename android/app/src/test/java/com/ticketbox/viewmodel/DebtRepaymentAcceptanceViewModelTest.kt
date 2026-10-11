@@ -57,6 +57,7 @@ class DebtRepaymentAcceptanceViewModelTest {
         assertEquals(3L, model.state.value.paymentTime?.calendarRevision)
         assertEquals("Pacific/Honolulu", model.state.value.paymentTime?.calendarZone)
         assertEquals(originalKey, model.state.value.repaymentKey)
+        assertEquals("2026-01-31", model.state.value.actionTarget?.accountingTime?.userLocalDate)
         writes.access.value = requireNotNull(writes.access.value).copy(canModify = false)
         advanceUntilIdle()
         model.dismissAction()
@@ -163,6 +164,7 @@ class DebtRepaymentAcceptanceViewModelTest {
 private fun repaymentDebt(version: Long, remaining: Long) = sampleDebt("d1").copy(
     rowVersion = version, remainingAmountCents = remaining, paidAmountCents = 50_000L - remaining,
     repaymentCalendar = com.ticketbox.domain.model.DebtRepaymentCalendar(3, "Pacific/Honolulu"),
+    accountingTime = com.ticketbox.domain.model.ExpenseAccountingTime("date_only", userLocalDate = "2026-01-31", calendarRevision = 3),
 )
 
 private fun confirmedRepayment(call: RepaymentSaveCall): com.ticketbox.data.repository.PendingDebtWrite {

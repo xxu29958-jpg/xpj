@@ -1,6 +1,9 @@
 package com.ticketbox.domain.model
 
+import com.squareup.moshi.JsonClass
+
 /** Server-owned time evidence; absent legacy evidence is never inferred from a display timestamp. */
+@JsonClass(generateAdapter = true)
 data class ExpenseAccountingTime(
     val precision: String,
     val instantUtc: String? = null,

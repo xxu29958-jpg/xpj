@@ -87,8 +87,18 @@ class DebtCreateSheetContinuityTest {
             }
         })
         compose.onNodeWithText(context.getString(R.string.debt_list_add)).performClick()
+        compose.runOnIdle {
+            viewModel.refresh(object : com.ticketbox.data.repository.LedgerCalendarReader {
+                override fun currentBinding() = creation.currentAccess().binding
+                override fun cached(binding: LogicalSessionBinding, revision: Long?) =
+                    com.ticketbox.data.remote.dto.LedgerCalendarDto(binding.ledgerId, 3L, "Asia/Shanghai", "adopted", "2026-01-01T00:00:00Z")
+                override suspend fun refresh(binding: LogicalSessionBinding, revision: Long?) = Result.success(cached(binding, revision))
+            })
+        }
         compose.onAllNodes(hasSetTextAction())[0].performTextInput("小王")
         compose.onAllNodes(hasSetTextAction())[1].performScrollTo().performClick().performTextInput("123.45")
+        compose.onNode(hasText(context.getString(R.string.debt_principal_date_label)) and hasSetTextAction())
+            .performScrollTo().performTextInput("2026-01-31")
         capture("debt-create-editing")
         // System window updates can resize the viewport during capture. Locate Save in the
         // current viewport immediately before the user's touch, not before taking the preview.
@@ -108,7 +118,7 @@ class DebtCreateSheetContinuityTest {
 
         compose.onNodeWithText("小王").assertIsNotEnabled()
         compose.onNodeWithText("123.45").assertIsNotEnabled()
-        compose.onNodeWithText(context.getString(R.string.common_cancel)).assertIsNotEnabled()
+        compose.onNodeWithText(context.getString(R.string.debt_creation_keep_exit)).assertIsNotEnabled()
         compose.onNodeWithText(context.getString(R.string.debt_create_submitting)).assertIsNotEnabled()
         capture("debt-create-busy")
         creation.accept.complete(Unit)
@@ -117,11 +127,14 @@ class DebtCreateSheetContinuityTest {
         compose.runOnIdle {
             assertEquals(1, creation.submitted.size)
             assertEquals(12_345L, creation.submitted.single().principalAmountCents)
+            assertEquals("2026-01-31", creation.submitted.single().timeInput?.userLocalDate)
+            assertEquals(3L, creation.submitted.single().timeInput?.calendarRevision)
             assertTrue(viewModel.state.value.debts.isEmpty())
         }
     }
 
     private fun capture(name: String) {
+        compose.waitForIdle()
         val bitmap = requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot())
         saveConsumerArtPreview(name, bitmap)
     }
@@ -143,6 +156,7 @@ internal class SheetCreationGate : DebtCreationActions {
         expectedBinding: LogicalSessionBinding,
         draft: DebtDraft,
         homeCurrency: CurrencyCode,
+        creationKey: String,
     ): Result<DebtCreationReceipt> {
         submitted += draft
         accept.await()

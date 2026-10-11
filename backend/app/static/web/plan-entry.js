@@ -90,7 +90,7 @@
     const editsAllowed = canWrite && !archived;
     const scope = JSON.parse(data("DraftScope"));
     const status = form.querySelector(selector("draft-status"));
-    const submit = form.querySelector(definition.submitSelector || '[type="submit"]:not([name="review_new"]):not([name="review_latest"])');
+    const submit = [...form.elements].find(input => input.matches(definition.submitSelector || '[type="submit"]:not([name="review_new"]):not([name="review_latest"])'));
     if (!submit) return;
     const nativeContent = [...submit.childNodes];
     const nativeRef = (definition.draftRefField && form.elements.namedItem(definition.draftRefField).value) || form.elements.namedItem(commandRefField).value;
@@ -305,7 +305,7 @@
       }
       const next = new URL(result.next, window.location.href);
       const categoryReturn = (isGoal || family === "budget") && planId && record.values.return_category && next.pathname === "/web/categories";
-      const destinationAllowed = definition.acceptsDestination ? definition.acceptsDestination(next, record.values) :
+      const destinationAllowed = definition.acceptsDestination ? definition.acceptsDestination(next, record.values, result.receipt) :
         next.pathname === listPath || categoryReturn;
       if (next.origin !== window.location.origin || !destinationAllowed ||
           next.searchParams.get("ledger_id") !== scope.ledgerId) throw Error("invalid_receipt_destination");

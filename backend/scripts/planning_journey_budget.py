@@ -129,7 +129,8 @@ class BudgetJourney:
         self.login()
         form = self.form("/web/budgets/save")
         form.locator('[name="total_amount_yuan"]').fill("10000.00")
-        form.locator("[data-budget-submit]").click()
+        with self.page.expect_navigation(url=re.compile(r"/web/budgets\?[^#]*$"), wait_until="domcontentloaded"):
+            form.locator("[data-budget-submit]").click()
         self.expect_fact("budget_amount", 1000000)
         self.goto(PAGES["arrangement"])
         form = self.form("/web/budget-advise")
@@ -138,14 +139,16 @@ class BudgetJourney:
         form.get_by_role("button", name="试算，不保存", exact=True).click()
         self.page.wait_for_load_state("networkidle")
         assert self.facts()["arrangement_revisions"] == 0, "Trial wrote a saved arrangement"
-        form.locator("[data-arrangement-submit]").click()
+        with self.page.expect_navigation(url=re.compile(r"/web/budget-advise\?[^#]*$"), wait_until="domcontentloaded"):
+            form.locator("[data-arrangement-submit]").click()
         self.expect_fact("savings", 100000)
         self.goto(PAGES["series"])
         form = self.form("/web/recurring/create")
         form.locator('[name="merchant"]').fill(SERIES)
         form.locator('[name="baseline_amount_yuan"]').fill("1200.00")
         form.locator('[name="next_expected_date"]').fill(self.month + "-15")
-        form.locator("[data-recurring-submit]").click()
+        with self.page.expect_navigation(url=re.compile(r"/web/recurring\?[^#]*$"), wait_until="domcontentloaded"):
+            form.locator("[data-recurring-submit]").click()
         self.expect_fact("series_amount", 120000)
         assert self.facts()["expenses"] == 0, "Planning created a payment"
         self.native.bind(self.fixture.pairing_code, self.port)

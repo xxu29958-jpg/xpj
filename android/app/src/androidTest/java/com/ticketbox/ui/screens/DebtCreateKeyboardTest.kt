@@ -1,5 +1,6 @@
 package com.ticketbox.ui.screens
 
+import androidx.compose.ui.test.performClick
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.test.assertIsDisplayed
@@ -71,6 +72,7 @@ class DebtCreateKeyboardTest {
         amount.performScrollTo().performTouchInput { click() }
         amount.performTextInput("123.45")
         assertSaveAboveKeyboard("debt-create-keyboard-amount")
+        compose.onNodeWithText(text(R.string.debt_creation_details_expand)).performScrollTo().performClick()
         val note = compose.onNode(hasSetTextAction() and hasText(text(R.string.debt_create_label_note)))
         note.performScrollTo().performTouchInput { click() }
         note.performTextInput("出差垫付车费，等本月报销到账后归还")

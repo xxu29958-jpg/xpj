@@ -18,6 +18,7 @@ enum class DebtDraftField {
     Kind,
     InstallmentCount,
     InstallmentPeriod,
+    PrincipalDate,
 }
 
 fun DebtListViewModel.updateDraftDirection(value: String) =
@@ -40,3 +41,6 @@ fun DebtListViewModel.updateDraftInstallmentCount(value: String) =
 
 fun DebtListViewModel.updateDraftInstallmentPeriod(value: String) =
     updateDraftField(DebtDraftField.InstallmentPeriod, value)
+
+fun DebtListViewModel.updateDraftPrincipalDate(value: String) =
+    updateDraftField(DebtDraftField.PrincipalDate, value)

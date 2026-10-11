@@ -57,7 +57,8 @@ class DebtCreationRepositoryTest {
     @Test
     fun lostResponseThenRestartedDrainReusesTheStoredRequestAndKey() = runTest {
         val fixture = DebtCreationFixture()
-        val receipt = fixture.save().getOrThrow()
+        val time = com.ticketbox.data.remote.dto.ExpenseTimeInputDto("date_only", 3L, "2026-01-31")
+        val receipt = fixture.save(time).getOrThrow()
         val original = fixture.dao.rows.getValue(receipt.intentId)
 
         val first = fixture.engine(fixture.outbox, fixture.clock).drainOnce()
@@ -73,6 +74,7 @@ class DebtCreationRepositoryTest {
         assertEquals(1, second.done)
         assertEquals(2, fixture.api.calls.size)
         assertEquals(fixture.api.calls[0], fixture.api.calls[1])
+        assertEquals(time, fixture.api.calls[1].first.timeInput)
         assertEquals(original.idempotencyKey, fixture.api.calls[1].second)
         assertEquals(1, fixture.api.facts.size)
         assertEquals(PendingMutationStatus.Done.wireValue, fixture.dao.rows.getValue(receipt.intentId).status)
@@ -103,6 +105,7 @@ class DebtCreationRepositoryTest {
         assertEquals(1200L, sent.first.principalAmountCents)
         assertEquals(row.idempotencyKey, sent.second)
         assertEquals(original, fixture.dao.rows.getValue(row.id).payload)
+        assertEquals(null, sent.first.timeInput)
         assertEquals(PendingMutationStatus.Done.wireValue, fixture.dao.rows.getValue(row.id).status)
     }
 
@@ -123,6 +126,44 @@ class DebtCreationRepositoryTest {
     }
 
     @Test
+    fun aReceiptWithAnotherDateKeepsTheOriginalKeyAndInput() = runTest {
+        val fixture = DebtCreationFixture()
+        val time = com.ticketbox.data.remote.dto.ExpenseTimeInputDto("date_only", 3L, "2026-01-31")
+        val receipt = fixture.save(time).getOrThrow()
+        val original = fixture.dao.rows.getValue(receipt.intentId)
+        fixture.api.loseResponse = false
+        fixture.api.replyDate = "2026-02-01"
+        fixture.engine(fixture.outbox, fixture.clock).drainOnce()
+        val retained = fixture.dao.rows.getValue(receipt.intentId)
+        assertEquals(PendingMutationStatus.Failed.wireValue, retained.status)
+        assertEquals(original.payload, retained.payload)
+        assertEquals(original.idempotencyKey, retained.idempotencyKey)
+    }
+
+    @Test
+    fun anotherCreationReceiptCannotSettleTheOriginalTerms() = runTest {
+        val mismatches: List<(DebtDto) -> DebtDto> = listOf(
+            { it.copy(principalAmountCents = 1) }, { it.copy(direction = DebtDirections.I_OWE) },
+            { it.copy(counterpartyLabel = "另一位") }, { it.copy(counterpartyType = "member") },
+            { it.copy(sourceType = "bill_split") }, { it.copy(note = "另一用途") },
+            { it.copy(debtKind = "one_off") }, { it.copy(installmentCount = 9) },
+            { it.copy(installmentPeriodMonths = 9) },
+        )
+        for (mismatch in mismatches) {
+            val fixture = DebtCreationFixture()
+            val receipt = fixture.save().getOrThrow()
+            val original = fixture.dao.rows.getValue(receipt.intentId)
+            fixture.api.loseResponse = false
+            fixture.api.replyTransform = mismatch
+            fixture.engine(fixture.outbox, fixture.clock).drainOnce()
+            val retained = fixture.dao.rows.getValue(receipt.intentId)
+            assertEquals(PendingMutationStatus.Failed.wireValue, retained.status)
+            assertEquals(original.payload, retained.payload)
+            assertEquals(original.idempotencyKey, retained.idempotencyKey)
+        }
+    }
+
+    @Test
     fun separateSaveIntentsKeepSeparateKeysEvenWhenTheValuesMatch() = runTest {
         val fixture = DebtCreationFixture()
         val first = fixture.save().getOrThrow()
@@ -131,6 +172,23 @@ class DebtCreationRepositoryTest {
         assertNotEquals(first.intentId, second.intentId)
         assertEquals(2, fixture.dao.rows.size)
         assertEquals(2, fixture.dao.rows.values.map { it.idempotencyKey }.toSet().size)
+    }
+
+    @Test
+    fun originalPublicationKeyReusesOneRowAndRejectsChangedContent() = runTest {
+        val fixture = DebtCreationFixture()
+        val key = java.util.UUID.randomUUID().toString()
+        val first = fixture.save(creationKey = key).getOrThrow()
+        val original = fixture.dao.rows.getValue(first.intentId)
+        val replay = fixture.save(creationKey = key).getOrThrow()
+        assertEquals(first, replay)
+        assertEquals(1, fixture.dao.rows.size)
+        val changed = fixture.save(creationKey = key, time = com.ticketbox.data.remote.dto.ExpenseTimeInputDto(
+            precision = "date_only", userLocalDate = "2026-01-31", calendarRevision = 3L))
+        assertTrue(changed.isFailure)
+        assertEquals(original, fixture.dao.rows.getValue(first.intentId))
+        assertEquals(1, fixture.dao.rows.size)
+        assertTrue(fixture.api.calls.isEmpty())
     }
 
     @Test
@@ -154,12 +212,12 @@ class DebtCreationRepositoryTest {
         val fixture = DebtCreationFixture()
         val draft = DebtDraft(DebtDirections.I_OWE, "  房东  ", 50_000L)
         for (invalid in listOf(draft.copy(counterpartyLabel = "   "), draft.copy(principalAmountCents = 0L))) {
-            val result = fixture.repository.createDebt(fixture.binding, invalid, CurrencyCode.CNY)
+            val result = fixture.repository.createDebt(fixture.binding, invalid, CurrencyCode.CNY, "invalid-draft")
             assertTrue(result.isFailure)
             assertTrue(fixture.dao.rows.isEmpty())
             assertTrue(fixture.api.calls.isEmpty())
         }
-        val receipt = fixture.repository.createDebt(fixture.binding, draft, CurrencyCode.CNY).getOrThrow()
+        val receipt = fixture.repository.createDebt(fixture.binding, draft, CurrencyCode.CNY, "valid-draft").getOrThrow()
         val payload = requireNotNull(fixture.adapters.debtCreateAdapter.fromJson(fixture.dao.rows.getValue(receipt.intentId).payload))
         assertEquals(DebtKinds.UNSPECIFIED, payload.request.debtKind)
         assertEquals("房东", payload.request.counterpartyLabel)
@@ -215,14 +273,17 @@ internal class DebtCreationFixture(role: String = "owner") {
         onEnqueued = { queueDepthAtSchedule += dao.rows.size },
     )
 
-    suspend fun save() = repository.createDebt(
+    suspend fun save(time: com.ticketbox.data.remote.dto.ExpenseTimeInputDto? = null,
+        creationKey: String = java.util.UUID.randomUUID().toString()) = repository.createDebt(
         expectedBinding = binding,
         draft = DebtDraft(
             DebtDirections.OWED_TO_ME, " 小王 ", 12_345L,
             debtKind = DebtKinds.INSTALLMENT, installmentCount = 3, installmentPeriodMonths = 2,
             note = " 出差垫付车费 ",
+            timeInput = time,
         ),
         homeCurrency = CurrencyCode.CNY,
+        creationKey = creationKey,
     )
 
     fun engine(outbox: OutboxRepository, clock: Clock) = OutboxDrainEngine(
@@ -237,6 +298,8 @@ internal class DebtCreationApiProbe : ApiService by FakeApiService(mutableListOf
     val facts = mutableMapOf<String, DebtDto>()
     var loseResponse = true
     var replyHomeCurrency = "CNY"
+    var replyDate: String? = null
+    var replyTransform: (DebtDto) -> DebtDto = { it }
 
     override suspend fun createDebt(request: DebtCreateRequestDto, idempotencyKey: String?): DebtDto {
         calls += request to idempotencyKey
@@ -250,9 +313,11 @@ internal class DebtCreationApiProbe : ApiService by FakeApiService(mutableListOf
                 createdAt = "2026-09-06T00:00:00Z", updatedAt = "2026-09-06T00:00:00Z", rowVersion = 1,
                 debtKind = request.debtKind, installmentCount = request.installmentCount,
                 installmentPeriodMonths = request.installmentPeriodMonths, note = request.note,
+                accountingTime = request.timeInput?.let { com.ticketbox.data.remote.dto.ExpenseAccountingTimeDto(
+                    precision = it.precision, userLocalDate = replyDate ?: it.userLocalDate, calendarRevision = it.calendarRevision) },
             )
         }
         if (loseResponse) throw IOException("Synthetic response loss after acceptance")
-        return fact
+        return replyTransform(fact)
     }
 }

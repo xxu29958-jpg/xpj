@@ -104,6 +104,17 @@ def _member_progress_note(ratio: float) -> str:
     return _MEMBER_PROGRESS_NOTE["most"]
 
 
+def principal_date_label(debt) -> str:
+    evidence = getattr(debt, "accounting_time", None)
+    if evidence is None:
+        return "发生日期未记录"
+    day = evidence.user_local_date
+    parts = [f"发生日期 {day}" if day else "发生日期未记录"]
+    if evidence.accounting_date is not None and evidence.accounting_date != day:
+        parts.append(f"账务归属 {evidence.accounting_date}")
+    return " · ".join(parts)
+
+
 def _installment_view(debt, home: str) -> dict | None:
     count = debt.installment_count
     if debt.debt_kind != "installment" or count is None or debt.status != "open":
@@ -123,7 +134,7 @@ def _installment_view(debt, home: str) -> dict | None:
         "payoff_label": (
             f"按分期合约，预计 {payoff.year} 年 {payoff.month} 月还清"
             if payoff is not None
-            else None
+            else "分期起算日未记录，暂不计算结束日"
         ),
         "per_period_label": (
             f"每期约 {_home_amount_label(per_period_cents, home)} · 估算不含手续费"

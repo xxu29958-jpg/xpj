@@ -1,16 +1,7 @@
-"""ADR-0049 §B 完整 installment: the deterministic payoff date of an installment debt.
+"""A principal's original date anchors its installment schedule, never record creation.
 
-An ``installment`` external debt's payoff is CONTRACTUAL, not a velocity guess: the schedule is
-``installment_count`` periods of ``installment_period_months`` months, so the whole obligation is
-cleared at ``建账日 + count×period months`` regardless of interest, fee, or amortization shape
-(equal-principal vs equal-installment only change the per-period AMOUNT, never the期数/日期 — §A).
-This single source feeds both the per-Debt ``DebtResponse.installment_payoff_date`` and the
-goal-level ``external_payoff_kpi`` (an all-installment plan shows ``max`` of its debts' dates
-instead of the suppressed velocity projection).
-
-The creation instant is read in the accounting timezone (mirroring the KPI's "today is the
-accounting-tz calendar day"), so a debt created near the Asia/Shanghai midnight anchors its
-schedule on the date the user perceives as建账日, not the UTC date.
+Both Debt detail and goal projections consume this calculation. Unknown original
+dates remain unknown; later timezone changes cannot move an accepted schedule.
 """
 
 from __future__ import annotations
@@ -18,10 +9,9 @@ from __future__ import annotations
 import calendar
 from datetime import date
 
-from app.config import get_settings
 from app.models import Debt
 from app.money_contract import projection_sum_to_int
-from app.services.time_service import ensure_utc, safe_zone
+from app.schemas._accounting_time import AccountingTimeSnapshot
 
 
 def _add_months(start: date, months: int) -> date:
@@ -50,9 +40,13 @@ def installment_payoff_date(debt: Debt) -> date | None:
         or debt.installment_period_months is None
     ):
         return None
-    start = ensure_utc(debt.created_at).astimezone(
-        safe_zone(get_settings().ocr_default_timezone)
-    ).date()
+    snapshot = getattr(debt, "accounting_time_snapshot", None)
+    if snapshot is None:
+        return None
+    evidence = AccountingTimeSnapshot.model_validate(snapshot)
+    start = evidence.user_local_date
+    if start is None:
+        return None
     return _add_months(start, debt.installment_count * debt.installment_period_months)
 
 

@@ -1,6 +1,7 @@
 package com.ticketbox.viewmodel
 
 import com.ticketbox.R
+import androidx.lifecycle.SavedStateHandle
 import com.ticketbox.data.repository.DebtCreationQueueSnapshot
 import com.ticketbox.data.repository.DebtCreationPendingState
 import com.ticketbox.data.repository.DebtDraft
@@ -86,6 +87,63 @@ class DebtCreateContinuityViewModelTest {
         FakeDebtActions(listResult = Result.success(listOf(sampleDebt()))).apply {
             creation.createGate = gate
         }
+
+    @Test
+    fun sameLedgerReentryKeepsTheOriginalRawDraft() = runTest(dispatcher) {
+        val repository = FakeDebtActions().apply { listCapability = "CNY" }
+        val viewModel = DebtListViewModel(repository, repository.creation, repository.writes)
+        advanceUntilIdle()
+        fillDraft(viewModel)
+        viewModel.updateDraftPrincipalDate("2026-01-31")
+        val original = viewModel.state.value.addDraft
+
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        assertEquals(original, viewModel.state.value.addDraft)
+        assertTrue(repository.creation.createDrafts.isEmpty())
+    }
+
+    @Test
+    fun savedOriginalReturnsWithItsBindingAndReplaysAnUncertainPublicationKey() = runTest(dispatcher) {
+        val repository = FakeDebtActions().apply { listCapability = "CNY" }
+        val saved = SavedStateHandle()
+        val viewModel = DebtListViewModel(repository, repository.creation, repository.writes, savedStateHandle = saved)
+        advanceUntilIdle()
+        fillDraft(viewModel)
+        val original = viewModel.state.value.addDraft
+        val access = requireNotNull(repository.creation.access.value)
+        repository.creation.access.value = access.copy(binding = access.binding.copy(ledgerId = "other", bindingRevision = "other-binding"))
+        advanceUntilIdle()
+        viewModel.updateDraftCounterparty("另一账本的原稿")
+        repository.creation.access.value = access.copy(canModify = false)
+        advanceUntilIdle()
+        assertEquals(original, viewModel.state.value.addDraft)
+        viewModel.updateDraftAmount("99")
+        viewModel.submitDraft()
+        assertEquals(original, viewModel.state.value.addDraft)
+        assertTrue(repository.creation.createDrafts.isEmpty())
+        repository.creation.access.value = access
+        advanceUntilIdle()
+        repository.creation.createResult = Result.failure(java.io.IOException("local acknowledgement lost"))
+        viewModel.submitDraft()
+        advanceUntilIdle()
+        assertTrue(viewModel.state.value.publicationUnverified)
+        val key = repository.creation.creationKeys.single()
+        val restoredHandle = SavedStateHandle(saved.keys().associateWith { saved.get<Any?>(it) })
+        val restored = DebtListViewModel(repository, repository.creation, repository.writes, savedStateHandle = restoredHandle)
+        advanceUntilIdle()
+        assertTrue(restored.state.value.publicationUnverified)
+        restored.updateDraftAmount("999")
+        restored.discardDraft()
+        assertEquals(original.amountYuanInput, restored.state.value.addDraft.amountYuanInput)
+        repository.creation.createResult = Result.success(Unit)
+        restored.submitDraft()
+        advanceUntilIdle()
+        assertEquals(listOf(key, key), repository.creation.creationKeys)
+        assertEquals(repository.creation.createDrafts.first(), repository.creation.createDrafts.last())
+        assertTrue(restored.state.value.addAccepted)
+    }
 
     @Test
     fun oldBindingAcceptanceCannotClearTheNewLedgerFormOrAnnounceItsSuccess() = runTest(dispatcher) {

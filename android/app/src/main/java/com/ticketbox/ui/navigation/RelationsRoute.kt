@@ -32,9 +32,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ticketbox.R
-import com.ticketbox.data.repository.PendingDebtCreation
 import com.ticketbox.domain.model.DebtDirections
 import com.ticketbox.domain.model.DebtListLens
 import com.ticketbox.domain.model.MessageTone
@@ -58,11 +58,10 @@ import com.ticketbox.ui.screens.RelationsListChrome
 import com.ticketbox.viewmodel.DebtListUiState
 import com.ticketbox.viewmodel.DebtListViewModel
 import com.ticketbox.viewmodel.debtViewModelFactory
-import com.ticketbox.viewmodel.updateDraftDirection
 import kotlinx.coroutines.delay
 
 /** 域级新建抽屉的 VM key：与两个 tab 的列表 VM 实例隔离（同 ViewModelStore 内按 key 区分）。 */
-private const val RelationsDebtComposerViewModelKey = "relations-debt-composer"
+internal const val RelationsDebtComposerViewModelKey = "relations-debt-composer"
 
 internal enum class ObligationsView {
     I_OWE,
@@ -87,6 +86,7 @@ internal data class ObligationsNavigationActions(
 internal fun RelationsRoute(
     shellState: MainShellState,
     screenFactory: MainScreenFactory,
+    creationOwner: ViewModelStoreOwner,
 ) {
     var selectedView by rememberSaveable { mutableStateOf(ObligationsView.I_OWE) }
     val adaptivePolicy = LocalAppAdaptiveLayoutPolicy.current
@@ -101,6 +101,7 @@ internal fun RelationsRoute(
     var listRefreshRevision by rememberSaveable { mutableIntStateOf(0) }
     val composer = RelationsComposerHost(
         screenFactory = screenFactory,
+        creationOwner = creationOwner,
         selectedView = selectedView,
         onCreatedRefresh = { listRefreshRevision += 1 },
         onOpenSyncStatus = { shellState.openSecondaryPage(ProductSecondaryPage.ObligationSync) },
@@ -145,12 +146,7 @@ internal fun RelationsRoute(
 
 /** 域级新建抽屉的呈现把手：RelationsRoute 只读这些状态与动作，创建链路细节全在 host 内。 */
 internal class RelationsComposerHandles(
-    val canModify: Boolean,
-    val isParsingBill: Boolean,
-    val flashMessage: UiText?,
-    /** 创建链路错误（OCR 识别/准备失败、首载失败）：主 chrome 必须可见，不得静默。 */
-    val error: UiText?,
-    val pendingCreations: List<PendingDebtCreation>,
+    val state: DebtListUiState,
     val actions: RelationsComposerActions,
 )
 
@@ -172,11 +168,13 @@ internal class RelationsComposerActions(
 @Composable
 private fun RelationsComposerHost(
     screenFactory: MainScreenFactory,
+    creationOwner: ViewModelStoreOwner,
     selectedView: ObligationsView,
     onCreatedRefresh: () -> Unit,
     onOpenSyncStatus: () -> Unit,
 ): RelationsComposerHandles {
     val composerViewModel: DebtListViewModel = viewModel(
+        viewModelStoreOwner = creationOwner,
         key = RelationsDebtComposerViewModelKey,
         factory = debtViewModelFactory(screenFactory.debtRepository, screenFactory.debtCreationRepository, screenFactory.debtWriteRepository, DebtListLens.Ledger),
     )
@@ -185,9 +183,8 @@ private fun RelationsComposerHost(
     val context = LocalContext.current
     val parseScope = rememberCoroutineScope()
     val debtBillPicker = rememberDebtBillImageLauncher(composerViewModel, context, parseScope)
-    // 重入信号（R1，同 tab 列表 StatsRoutes.DebtRoute）：每次进入往来域 reload composer——
-    // 切账本离开再进入时角色/币种随 reload 重解析（VM 跨 route 存活，旧账本残留不得困住入口）。
-    LaunchedEffect(Unit) { composerViewModel.reload() }
+    // Re-entry refreshes reads; both creation entries retain the main graph's same original draft.
+    LaunchedEffect(Unit) { composerViewModel.refresh() }
     LaunchedEffect(composerState.creationSettlementRevision) {
         if (composerState.creationSettlementRevision > 0) onCreatedRefresh()
     }
@@ -204,21 +201,14 @@ private fun RelationsComposerHost(
     )
 
     return RelationsComposerHandles(
-        canModify = composerState.canModify,
-        isParsingBill = composerState.isParsingBill,
-        flashMessage = composerState.flashMessage,
-        error = composerState.error,
-        pendingCreations = composerState.pendingCreations,
+        state = composerState,
         actions = RelationsComposerActions(
             onRetry = { composerViewModel.refresh() },
             onOpenSyncStatus = onOpenSyncStatus,
             onAddDebt = {
                 retryCurrencyIfUnresolved()
-                composerViewModel.resetDraft()
-                // 欠我 tab 方向预选应收（表单 chips 仍可改）；我欠 tab 保持默认我欠。
-                if (selectedView == ObligationsView.OWED_TO_ME) {
-                    composerViewModel.updateDraftDirection(DebtDirections.OWED_TO_ME)
-                }
+                composerViewModel.openDraft(if (selectedView == ObligationsView.OWED_TO_ME)
+                    DebtDirections.OWED_TO_ME else DebtDirections.I_OWE)
                 showAddSheet = true
             },
             onParseBillImage = {
@@ -251,7 +241,7 @@ private fun RelationsComposerOverlays(
         composerState = composerState,
         onAddAccepted = {
             onSheetVisibility(false)
-            composerViewModel.resetDraft()
+            composerViewModel.acknowledgeCreation()
         },
         onBillParsePrefill = {
             onSheetVisibility(true)
@@ -264,7 +254,7 @@ private fun RelationsComposerOverlays(
             state = composerState,
             viewModel = composerViewModel,
             sheetState = sheetState,
-            onClose = { onSheetVisibility(false); composerViewModel.resetDraft() },
+            onClose = { onSheetVisibility(false) },
         )
     }
 }
@@ -327,7 +317,7 @@ private fun RelationsPrimaryPane(
     when (selectedView) {
         ObligationsView.I_OWE -> DebtRoute(
             screenFactory = screenFactory,
-            actions = DebtRouteActions(onBack = {}, onOpenSyncStatus = onOpenSyncStatus),
+            context = DebtRouteContext(onBack = {}, onOpenSyncStatus = onOpenSyncStatus),
             chromeOverride = chrome,
             lens = DebtListLens.Payables,
             listRefreshRevision = listRefreshRevision,
@@ -351,7 +341,7 @@ internal fun ObligationsPrimaryChrome(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
         ObligationsTabs(selectedView = selectedView, onSelectView = onSelectView)
-        if (composer.canModify) {
+        if (composer.state.canModify || composer.state.hasCreationDraft) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
@@ -360,26 +350,26 @@ internal fun ObligationsPrimaryChrome(
                     text = stringResource(R.string.debt_list_add),
                     icon = Icons.Default.Add,
                     modifier = Modifier.weight(1f),
-                    enabled = !composer.isParsingBill,
+                    enabled = !composer.state.isParsingBill,
                     onClick = composer.actions.onAddDebt,
                 )
-                DebtBillParseIconButton(
-                    isParsingBill = composer.isParsingBill,
+                if (composer.state.canModify) DebtBillParseIconButton(
+                    isParsingBill = composer.state.isParsingBill,
                     onClick = composer.actions.onParseBillImage,
                 )
             }
         }
-        composer.flashMessage?.let { AppStatusBanner(message = it, tone = MessageTone.Info) }
-        DebtPendingCreations(composer.pendingCreations, composer.actions.onOpenSyncStatus)
+        composer.state.flashMessage?.let { AppStatusBanner(message = it, tone = MessageTone.Info) }
+        DebtPendingCreations(composer.state.pendingCreations, composer.actions.onOpenSyncStatus)
         // 错误可见且可继续（R1）：banner 旁给用户重试，不再只有静默文案。
-        composer.error?.let { error ->
+        composer.state.error?.let { error ->
             Row(verticalAlignment = Alignment.CenterVertically) {
                 AppStatusBanner(
                     message = error,
                     tone = MessageTone.Danger,
                     modifier = Modifier.weight(1f),
                 )
-                TextButton(onClick = composer.actions.onRetry, enabled = !composer.isParsingBill) {
+                TextButton(onClick = composer.actions.onRetry, enabled = !composer.state.isParsingBill) {
                     Text(stringResource(R.string.common_retry))
                 }
             }

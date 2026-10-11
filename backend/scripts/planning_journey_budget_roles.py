@@ -1,5 +1,6 @@
 """Use the actual shared-ledger member and viewer sessions for this planning group."""
 
+import re
 from contextlib import closing
 
 from scripts.planning_journey_budget import PAGES
@@ -25,7 +26,9 @@ def member(j, page, base):
         page.goto(f"{base}{path}?ledger_id={j.ledger_id}&month={j.month}")
         form = j.form(action, page=page)
         form.locator(f'[name="{field}"]').fill(amount)
-        form.locator(f"[data-{family}-submit]").click()
+        # A committed fact can precede the browser's ACK and return navigation.
+        with page.expect_navigation(url=re.compile(re.escape(base + path) + r"\?[^#]*$"), wait_until="domcontentloaded"):
+            form.locator(f"[data-{family}-submit]").click()
         j.expect_fact(fact, int(amount.replace(".", "")))
         j.capture("member-" + family, page=page)
 

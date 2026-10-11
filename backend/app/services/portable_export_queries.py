@@ -108,7 +108,7 @@ _LEDGER_RECORDS = (
     (m.Debt, "id public_id tenant_id owner_account_id created_by_account_id direction counterparty_type "
         "counterparty_account_id counterparty_label note principal_amount_cents home_currency_code original_currency_code "
         "original_amount_minor exchange_rate_to_cny exchange_rate_date exchange_rate_source status debt_kind "
-        "installment_count installment_period_months source_type source_id created_at updated_at row_version"),
+        "installment_count installment_period_months source_type source_id accounting_time_snapshot created_at updated_at row_version"),
 )
 
 _DEBT_CHILDREN = (
@@ -209,7 +209,7 @@ def _participant_queries(auth: AuthContext) -> tuple[tuple[str, Select], ...]:
     debts = _record(debt, "public_id direction counterparty_type counterparty_account_id note principal_amount_cents "
         "home_currency_code original_currency_code original_amount_minor exchange_rate_to_cny exchange_rate_date "
         "exchange_rate_source status debt_kind installment_count installment_period_months source_type source_id "
-        "created_at updated_at row_version", participant).add_columns(owner_name.label("counterparty_label"))
+        "accounting_time_snapshot created_at updated_at row_version", participant).add_columns(owner_name.label("counterparty_label"))
     repayment = m.Repayment
     debt_public_id = select(debt.public_id).where(debt.id == repayment.debt_id).scalar_subquery()
     repayments = _record(repayment, "public_id amount_cents original_currency_code original_amount_minor "

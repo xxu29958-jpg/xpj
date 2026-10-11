@@ -22,6 +22,7 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.routes._web_draft_binding import browser_draft_scope
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
@@ -82,4 +83,5 @@ def web_receivables(
     ctx["debt_totals"] = debt_remaining_totals(rows)
     ctx["empty_title"] = _EMPTY_TITLE
     ctx["empty_body"] = _EMPTY_BODY
+    ctx["debtcreation_draft_scope"] = browser_draft_scope(db, request)
     return templates.TemplateResponse(request=request, name="receivables.html", context=ctx)

@@ -47,6 +47,7 @@ internal fun NavGraphBuilder.addPrimaryDomainRoutes(
             RelationsRoute(
                 shellState = shellState,
                 screenFactory = screenFactory,
+                creationOwner = remember(runtime.navController) { runtime.navController.getBackStackEntry(MAIN_ROUTE) },
             )
         }
         composable(PrimaryDomain.Plans.route) {
@@ -175,9 +176,10 @@ internal fun NavGraphBuilder.addObligationRoutes(
         composable(ProductSecondaryPage.AllDebts.route) {
             DebtRoute(
                 screenFactory = screenFactory,
-                actions = DebtRouteActions(
+                context = DebtRouteContext(
                     onBack = onBack,
                     onOpenSyncStatus = { shellState.openSecondaryPage(ProductSecondaryPage.ObligationSync) },
+                    creationOwner = remember(runtime.navController) { runtime.navController.getBackStackEntry(MAIN_ROUTE) },
                 ),
                 lens = DebtListLens.Ledger,
                 chromeOverride = RelationsListChrome(
