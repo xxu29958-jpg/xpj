@@ -58,6 +58,9 @@ data class BillSplitSentDto(
     val homeCurrencyCode: String,
     @param:Json(name = "current_agreed_share_amount_cents")
     val currentAgreedShareAmountCents: Long? = null,
+    @param:Json(name = "original_currency_code") val originalCurrencyCode: String? = null,
+    @param:Json(name = "original_amount_minor") val originalAmountMinor: Long? = null,
+    @param:Json(name = "accounting_time_snapshot") val accountingTimeSnapshot: ExpenseAccountingTimeDto? = null,
 )
 
 /** Receiver view DTO — sender_ledger_id / sender_expense_id absent. */
@@ -93,6 +96,9 @@ data class BillSplitInboxDto(
     val senderDisplayName: String,
     @param:Json(name = "received_bill")
     val receivedBill: BillSplitReceivedBillDto? = null,
+    @param:Json(name = "original_currency_code") val originalCurrencyCode: String? = null,
+    @param:Json(name = "original_amount_minor") val originalAmountMinor: Long? = null,
+    @param:Json(name = "accounting_time_snapshot") val accountingTimeSnapshot: ExpenseAccountingTimeDto? = null,
 )
 
 data class BillSplitReceivedBillDto(

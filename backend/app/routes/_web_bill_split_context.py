@@ -28,6 +28,26 @@ def _fmt_local(value) -> str:
     return ensure_utc(value).astimezone(accounting_zone()).strftime("%Y-%m-%d %H:%M")
 
 
+def invitation_facts(inv) -> dict:
+    """Frozen invitation evidence, separate from the requested share and private source fact."""
+    source_amount = inv.original_amount_minor
+    source_code = inv.original_currency_code
+    snapshot = inv.accounting_time_snapshot or {}
+    original_day = snapshot.get("user_local_date")
+    return {
+        "share_label": f"{inv.home_currency_code} {minor_amount_label(inv.amount_cents, inv.home_currency_code)}",
+        "source_amount_label": f"{source_code} {minor_amount_label(source_amount, source_code)}"
+            if source_amount is not None else "金额未记录",
+        "source_date_label": original_day or _fmt_local(inv.expense_time_snapshot) or "发生日期未记录",
+        "events": [
+            {"label": label, "time": _fmt_local(value)}
+            for label, value in (("发出邀请", inv.created_at), ("已接受", inv.accepted_at),
+                ("已拒绝", inv.rejected_at), ("已撤回", inv.cancelled_at), ("已过期", inv.expired_at))
+            if value is not None
+        ],
+    }
+
+
 def _remaining_split_capacity(
     expense: dict,
     invitations: list,

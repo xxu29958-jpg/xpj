@@ -54,6 +54,7 @@ _EDIT_KEY_BY_LIST_KEY = {
     "receipt": "return_category_receipt_key",
     "focus": "return_duplicate_expense_id",
     "filter": "return_filter",
+    "status": "return_filter",
     "month": "return_month",
     "page": "return_page",
     "tag": "return_tag",
@@ -324,6 +325,8 @@ def _recurring_list_return_params(origin: dict[str, str]) -> dict[str, str]:
 def return_context_params(return_to: str, **origin: str) -> dict[str, str]:
     """Return only query fields valid for the allowlisted origin page."""
     token = clean_return_to(return_to)
+    if token == "bill_splits_inbox":
+        return {"status": "all"} if origin.get("return_filter") == "all" else {}
     if token == "pending":
         clean_filter = (origin.get("return_filter") or "").strip()
         return {"filter": clean_filter} if clean_filter in _PENDING_FILTERS else {}

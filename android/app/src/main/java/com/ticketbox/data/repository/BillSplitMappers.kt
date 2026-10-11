@@ -24,6 +24,9 @@ fun BillSplitSentDto.toDomain(): BillSplitSent = BillSplitSent(
     receiverAccountId = receiverAccountId,
     receiverDisplayNameSnapshot = receiverDisplayNameSnapshot,
     senderExpenseId = senderExpenseId,
+    originalCurrencyCode = originalCurrencyCode,
+    originalAmountMinor = originalAmountMinor,
+    accountingTimeSnapshot = accountingTimeSnapshot?.toDomain(),
 )
 
 fun BillSplitInboxDto.toDomain(): BillSplitInbox = BillSplitInbox(
@@ -43,4 +46,7 @@ fun BillSplitInboxDto.toDomain(): BillSplitInbox = BillSplitInbox(
     senderAccountId = senderAccountId,
     senderDisplayName = senderDisplayName,
     receivedBill = receivedBill?.let { BillSplitReceivedBill(it.expenseId, it.ledgerId, it.ledgerName) },
+    originalCurrencyCode = originalCurrencyCode,
+    originalAmountMinor = originalAmountMinor,
+    accountingTimeSnapshot = accountingTimeSnapshot?.toDomain(),
 )

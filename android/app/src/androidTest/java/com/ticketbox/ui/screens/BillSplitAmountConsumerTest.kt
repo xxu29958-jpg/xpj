@@ -11,6 +11,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.lifecycle.ViewModelStore
 import androidx.test.core.app.ApplicationProvider
+import androidx.test.platform.app.InstrumentationRegistry
 import android.content.Context
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
@@ -25,6 +26,7 @@ import com.ticketbox.domain.model.BillSplitInbox
 import com.ticketbox.domain.model.BillSplitSent
 import com.ticketbox.domain.model.LedgerSummary
 import com.ticketbox.ui.theme.TicketboxTheme
+import com.ticketbox.ui.saveConsumerArtPreview
 import com.ticketbox.viewmodel.BillSplitViewModel
 import org.junit.After
 import org.junit.Rule
@@ -41,20 +43,27 @@ class BillSplitAmountConsumerTest {
         val viewModel = BillSplitViewModel(CurrencySplitActions(), EmptySplitLedgers())
         models.put("splits", viewModel)
         compose.setContent {
-            TicketboxTheme(skin = AppSkin.Default) {
+            TicketboxTheme(skin = if (InstrumentationRegistry.getArguments().getString("captureSkin") == "midnight")
+                AppSkin.Midnight else AppSkin.Paper) {
                 BillSplitScreen(viewModel = viewModel, onBack = {},
                     navigation = BillSplitNavigation(openBill = { _, _, _ -> error("Amount read must not navigate") }))
             }
         }
-        assertFrozenAmounts()
+        assertFrozenAmounts("inbox")
         val context = ApplicationProvider.getApplicationContext<Context>()
         compose.onNodeWithText(context.getString(R.string.bill_split_tab_sent, 3)).performScrollTo().performClick()
-        assertFrozenAmounts()
+        assertFrozenAmounts("sent")
     }
 
-    private fun assertFrozenAmounts() {
+    private fun assertFrozenAmounts(surface: String) {
         listOf("¥1,200", "$12.00", "1200 VND").forEach {
             compose.onNodeWithText(it).performScrollTo().assertIsDisplayed()
+        }
+        listOf("原消费 JPY ¥2,500", "原消费 JPY ¥5,000", "原消费金额未记录").forEachIndexed { index, label ->
+            compose.onNodeWithText(label).performScrollTo().assertIsDisplayed()
+            compose.waitForIdle()
+            saveConsumerArtPreview("split-$surface-source-$index",
+                requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
         }
     }
 }
@@ -71,10 +80,13 @@ private class CurrencySplitActions : BillSplitActions {
     override fun observeAccess(): Flow<LedgerAccessContext?> = access
 
     private val moshi = Moshi.Builder().addLast(KotlinJsonAdapterFactory()).build()
-    private val payloads = listOf("JPY", "USD", "VND").map { currency ->
+    private val payloads = listOf("JPY", "USD", "VND").mapIndexed { index, currency ->
         """{
           "public_id":"split-$currency","status":"accepted","amount_cents":1200,
           "home_currency_code":"$currency","merchant_snapshot":"Shared meal",
+          "original_currency_code":"JPY","original_amount_minor":${if (currency == "VND") "null" else ((index + 1) * 2500).toString()},
+          "accounting_time_snapshot":{"precision":"date_only","user_local_date":"2026-01-31",
+            "accounting_date":"2026-02-01","calendar_revision":7,"basis":"user_date"},
           "category_suggestion":null,"expense_time_snapshot":null,
           "expires_at":"2026-07-02T00:00:00Z","created_at":"2026-07-01T00:00:00Z",
           "accepted_at":"2026-07-01T00:01:00Z","rejected_at":null,"cancelled_at":null,"expired_at":null,

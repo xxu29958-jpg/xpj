@@ -235,12 +235,27 @@ def test_web_split_accept_redirects_to_canonical_fact_receipt(
     assert f"已记入 {owner_ledger_name}" in receipt.text
     assert f"/web/expenses/{received_expense_id}/edit?ledger_id=owner&amp;return_to=bill_splits_inbox" in receipt.text
 
+    history = web_client.get("/web/bill-splits/inbox?ledger_id=owner&status=all")
+    assert history.status_code == 200
+    assert "已接受" in history.text and "发出邀请" in history.text
+    assert "原消费 CNY ¥30.00" in history.text
+    assert "CNY ¥12.00" in history.text
+    assert f"/web/expenses/{received_expense_id}/edit?ledger_id=owner&amp;return_to=bill_splits_inbox&amp;return_filter=all" in history.text
+    assert f'action="/web/bill-splits/{public_id}/accept"' not in history.text
+    assert f'action="/web/bill-splits/{public_id}/reject"' not in history.text
+
     fact = web_client.get(
         f"/web/expenses/{received_expense_id}/edit",
         params={"ledger_id": "owner", "return_to": "bill_splits_inbox"},
     )
     assert fact.status_code == 200
     assert "返回拆账收件箱" in fact.text
+    history_fact = web_client.get(
+        f"/web/expenses/{received_expense_id}/edit",
+        params={"ledger_id": "owner", "return_to": "bill_splits_inbox", "return_filter": "all"},
+    )
+    assert history_fact.status_code == 200
+    assert '/web/bill-splits/inbox?ledger_id=owner&amp;status=all' in history_fact.text
 
 
 def test_web_split_receipt_does_not_leak_another_receivers_acceptance(
@@ -276,6 +291,7 @@ def test_web_split_receipt_does_not_leak_another_receivers_acceptance(
             "ledger_id": "owner",
             "accepted": public_id,
             "flash_type": "success",
+            "status": "all",
         },
     )
     assert page.status_code == 200

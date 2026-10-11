@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
-from app.routes._web_bill_split_context import _cents_to_yuan, _fmt_local
+from app.routes._web_bill_split_context import _cents_to_yuan, _fmt_local, invitation_facts
 from app.routes._web_expense_return_context import (
     ExpenseReturnContext,
     edit_context_params,
@@ -36,6 +38,7 @@ from app.services.currency_binding_service import require_runtime_home_currency_
 from app.services.currency_common import (
     currency_symbol,
     major_amount_to_minor,
+    minor_amount_label,
 )
 from app.services.ledger_service import (
     list_ledgers_for_account,
@@ -98,6 +101,7 @@ def _clean_flash_type(value: str | None) -> str:
 def web_bill_split_inbox(
     request: Request,
     ledger_id: str | None = None,
+    status: Literal["invited", "all"] = "invited",
     msg: str | None = None,
     flash_type: str = "",
     accepted: str | None = None,
@@ -108,7 +112,7 @@ def web_bill_split_inbox(
     selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
     account_id = resolve_web_actor_account_id(db, request, selected_id)
 
-    invitations = bsplit.list_inbox(db, receiver_account_id=account_id, status="invited")
+    invitations = bsplit.list_inbox(db, receiver_account_id=account_id, status=None if status == "all" else "invited")
 
     # Two bounded queries (no N+1 over invitations): the writer-ledger id list
     # for the accept-target filter, and a {id: name} map so the dropdown shows
@@ -135,8 +139,10 @@ def web_bill_split_inbox(
                         "name": ledger_names.get(ledger_id_choice, ledger_id_choice),
                     }
                 )
+        received = bsplit.to_received_bill_reference(inv, receiver_account_id=account_id, visible_ledger_names=ledger_names)
         rows.append(
             {
+                **invitation_facts(inv),
                 "public_id": inv.public_id,
                 "status": inv.status,
                 "amount_yuan": _cents_to_yuan(inv.amount_cents, inv.home_currency_code),
@@ -148,6 +154,10 @@ def web_bill_split_inbox(
                 "expires_at": _fmt_local(inv.expires_at),
                 "is_expired": is_expired,
                 "accept_choices": choices,
+                "received_href": flow_href(f"/web/expenses/{received['expense_id']}/edit",
+                    ledger_id=received["ledger_id"], return_to="bill_splits_inbox",
+                    return_filter=status) if received else "",
+                "received_ledger_name": received["ledger_name"] if received else "",
             }
         )
 
@@ -159,6 +169,7 @@ def web_bill_split_inbox(
         page_title="拆账收件箱",
     )
     ctx["bill_split_rows"] = rows
+    ctx["split_inbox_status"] = status
     ctx["flash_message"] = msg or ""
     ctx["flash_type"] = _clean_flash_type(flash_type)
     ctx["receipt"] = _accepted_receipt(
@@ -191,6 +202,7 @@ def web_bill_split_sent(
         is_expired = inv.status == "invited" and ensure_utc(inv.expires_at) <= presented_at
         rows.append(
             {
+                **invitation_facts(inv),
                 "public_id": inv.public_id,
                 "status": inv.status,
                 "amount_yuan": _cents_to_yuan(inv.amount_cents, inv.home_currency_code),
@@ -201,6 +213,10 @@ def web_bill_split_sent(
                 "is_expired": is_expired,
                 "is_cancellable": inv.status == "invited" and not is_expired,
                 "debt_href": debt_links.get(inv.public_id, ""),
+                "current_share_label": (
+                    f"{inv.home_currency_code} "
+                    f"{minor_amount_label(inv.current_agreed_share_amount_cents, inv.home_currency_code)}"
+                ) if inv.current_agreed_share_amount_cents != inv.amount_cents else "",
                 "source_href": flow_href(
                     f"/web/expenses/{inv.sender_expense_id}/edit",
                     ledger_id=selected_id,

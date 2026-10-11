@@ -90,6 +90,14 @@
     <string name="bill_split_status_rejected">已拒绝</string>
     <string name="bill_split_status_cancelled">已撤回</string>
     <string name="bill_split_status_expired">已过期</string>
+    <string name="bill_split_invitation_share">邀请份额 · %1$s</string>
+    <string name="bill_split_source_amount">原消费 %1$s</string>
+    <string name="bill_split_source_amount_unknown">原消费金额未记录</string>
+    <string name="bill_split_source_date">原消费日期 %1$s</string>
+    <string name="bill_split_current_share">当前约定份额 %1$s</string>
+    <string name="bill_split_created">发出邀请</string>
+    <string name="bill_split_event_time">%1$s · %2$s</string>
+    <string name="bill_split_deadline">截止 %1$s</string>
 
     <!-- BindServerScreen：绑定私人账本 -->
     <string name="bind_server_header_title">连接私人账本</string>

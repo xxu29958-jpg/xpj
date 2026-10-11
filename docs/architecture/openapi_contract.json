@@ -51035,6 +51035,20 @@
           },
           {
             "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "invited",
+              "enum": [
+                "invited",
+                "all"
+              ],
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
             "name": "msg",
             "required": false,
             "schema": {
