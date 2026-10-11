@@ -79,16 +79,17 @@ def _render_entry(request: Request, db: Session, options: list[LedgerOption], se
                   status_code: int = 200, draft_result: str = "") -> Response:
     original = _entry_goal(db, selected_id, public_id)
     goal = _debt_goal_view(original) if original is not None else None
+    prefill = goal or {}
     values = values if values is not None else {
-        "ledger_id": selected_id, "name": goal["name"] if goal else "",
-        "debt_public_ids": goal["linked_debt_ids"] if goal else [],
-        "target_date": goal["target_date_value"] if goal else "",
-        "expected_row_version": str(goal["row_version"]) if goal else "",
+        "ledger_id": selected_id, "name": prefill.get("name", ""),
+        "debt_public_ids": prefill.get("linked_debt_ids", []),
+        "target_date": prefill.get("target_date_value", ""),
+        "expected_row_version": str(prefill.get("row_version", "")),
         "idempotency_key": str(uuid4()),
     }
     scope, binding_required = rendered_draft_scope(db, request, values.get("draft_scope"))
     selected = values["debt_public_ids"]
-    linked = goal["linked_debt_ids"] if goal else []
+    linked = prefill.get("linked_debt_ids", [])
     debts = list_debts(db, tenant_id=selected_id,
         viewer_account_id=_web_viewer_account_id(request, db, selected_id)).items
     choices = [_debt_choice_view(debt) for debt in debts
