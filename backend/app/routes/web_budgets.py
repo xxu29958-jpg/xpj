@@ -426,7 +426,7 @@ def web_budget_history(
 
 
 def _history_money(amount: int, currency: str | None) -> str:
-    return minor_amount_label(amount, currency) if currency else f"{amount} 最小单位（原币种未记录）"
+    return f"{currency} {minor_amount_label(amount, currency)}" if currency else f"{amount} 最小单位（原币种未记录）"
 
 
 def _budget_payload_from_draft(draft: dict) -> BudgetMonthlyUpdateRequest:

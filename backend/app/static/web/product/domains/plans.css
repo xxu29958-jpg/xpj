@@ -755,10 +755,12 @@ fieldset.budget-excluded .hint {
     margin-block-start: var(--space-6);
 }
 
-/* Saved definitions share one reading rhythm without hiding snapshot fields. */
+/* Saved definitions keep the comparison first and the full snapshot on demand. */
 .plan-history-record {
     display: grid;
     gap: var(--space-3);
+    padding-block: var(--space-5);
+    border-block-start: 1px solid var(--border-card);
 }
 
 .plan-history-record > :is(p, dl, ul),
@@ -768,6 +770,11 @@ fieldset.budget-excluded .hint {
 
 .plan-history-record > .text-muted {
     font-size: var(--type-caption-size);
+}
+
+.plan-history-change strong {
+    font-family: var(--font-numeric);
+    font-variant-numeric: tabular-nums;
 }
 
 .plan-history-details {

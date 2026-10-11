@@ -161,13 +161,39 @@ def test_recurring_history_real_reader_page_keeps_cursor_filter_and_original_per
     assert "2026-05-08" in second.text and "更早的修改及发生时间未知" in second.text
     assert 'datetime="2026-09-26T00:00:00Z"' in second.text
     assert '/web/recurring/series-one/occurrence?ledger_id=owner&amp;month=2026-05' in second.text
-    back = next(unescape(href) for href,label in re.findall(r'href="([^"]+)"[^>]*>([^<]+)</a>',second.text) if label=="回到原期间")
+    back = next(unescape(href) for href,label in re.findall(r'href="([^"]+)"[^>]*>(.*?)</a>',second.text) if "回到原期间" in label)
     assert parse_qs(urlsplit(back).query, keep_blank_values=True) == {
         "ledger_id":["owner"], "month":["2026-05"], "payment_month":[""], "q":["宽带 & 返还"], "payment_id":["41"]}
     assert "最近的记录</a>" in second.text and "更早的记录</a>" not in second.text
     assert calls == [("owner","series-one",1,None),("owner","series-one",1,8)]
     listing = client.get("/web/recurring/series-one/history",params={"ledger_id":"owner", "status":"archived", "month":"2026-05"})
     assert '/web/recurring?ledger_id=owner&amp;status=archived&amp;month=2026-05#item-series-one' in listing.text
+
+
+def test_history_comparison_loads_adjacent_original_currency_without_losing_return_context(history_reader):
+    import re
+    from html import unescape
+    from urllib.parse import parse_qs, urlsplit
+
+    client, calls, entries, _ = history_reader
+    first = client.get('/web/recurring/series-one/history', params={
+        'ledger_id': 'owner', 'limit': 1, 'status': 'archived', 'month': '2026-05',
+        'return_occurrence': 'true', 'payment_month': '', 'q': '宽带 & 返还', 'payment_id': '41'})
+    assert '上一版尚未载入' in first.text and '修改前</span>' not in first.text
+    link = next(unescape(href) for href, label in re.findall(r'href="([^"]+)"[^>]*>([^<]+)</a>', first.text)
+        if label == '载入相邻记录以核对')
+    params = parse_qs(urlsplit(link).query, keep_blank_values=True)
+    assert params['before_version'] == ['9'] and params['limit'] == ['2']
+    assert params['q'] == ['宽带 & 返还'] and params['payment_month'] == [''] and params['payment_id'] == ['41']
+    comparison = client.get(link)
+    assert comparison.status_code == 200
+    assert '<span>修改前</span><strong>JPY 1200</strong>' in comparison.text
+    assert '<span>修改后</span><strong>CNY 90.00</strong>' in comparison.text
+    assert '更早的修改及发生时间未知' in comparison.text
+    assert calls == [('owner', 'series-one', 1, None), ('owner', 'series-one', 2, 9)]
+    entries[1]['row_version'] = 6
+    gap = client.get(link)
+    assert '上一版尚未载入' in gap.text and '修改前</span>' not in gap.text
 
 
 @pytest.mark.parametrize("params", [{"limit":0}, {"limit":101}, {"before_version":0}, {"status":"unknown"}])

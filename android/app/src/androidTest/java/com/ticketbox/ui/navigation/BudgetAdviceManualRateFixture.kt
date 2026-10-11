@@ -60,6 +60,7 @@ internal class BudgetAdviceManualRateFixture(private val context: Context) : Aut
     val arrangementWrites = CopyOnWriteArrayList<Pair<MonthlyArrangementSaveRequest, String>>()
     private val arrangementReceipts = ConcurrentHashMap<String, MonthlyArrangementDto>()
     @Volatile var arrangement: MonthlyArrangementDto? = null
+    var historyReadGate: kotlinx.coroutines.CompletableDeferred<Unit>? = null
     private val receipts = ConcurrentHashMap<String, ExchangeRateDto>()
     @Volatile var latest: ExchangeRateDto? = null
     @Volatile var loseAck = false
@@ -89,13 +90,15 @@ internal class BudgetAdviceManualRateFixture(private val context: Context) : Aut
                 .copy(arrangementCurrencyCode = arrangement["arrangement_currency_code"] ?: arrangement.getValue("home_currency_code"))
         override suspend fun monthlyArrangement(month: String) = MonthlyArrangementResponseDto(
             session.value.identity.ledgerId, month, arrangement?.takeIf { it.month == month })
-        override suspend fun monthlyArrangementHistory(month: String, beforeVersion: Long?, limit: Int) =
-            com.ticketbox.data.remote.dto.MonthlyArrangementHistoryDto(session.value.identity.ledgerId, month,
+        override suspend fun monthlyArrangementHistory(month: String, beforeVersion: Long?, limit: Int): com.ticketbox.data.remote.dto.MonthlyArrangementHistoryDto {
+            historyReadGate?.await()
+            return com.ticketbox.data.remote.dto.MonthlyArrangementHistoryDto(session.value.identity.ledgerId, month,
                 arrangementReceipts.values.filter { it.month == month && (beforeVersion == null || it.rowVersion < beforeVersion) }
                     .sortedByDescending { it.rowVersion }.take(limit).map {
                         com.ticketbox.data.remote.dto.MonthlyArrangementHistoryItemDto(it.rowVersion, it.updatedAt,
                             it.homeCurrencyCode, it.savingsTargetCents, it.reservedBufferCents)
                     }, null)
+        }
         override suspend fun saveMonthlyArrangement(month: String, request: MonthlyArrangementSaveRequest,
             idempotencyKey: String): MonthlyArrangementDto {
             arrangementWrites += request to idempotencyKey

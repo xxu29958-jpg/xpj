@@ -73,9 +73,10 @@ class CategoryRuleSubmissionConnectedTest {
         compose.onNodeWithText("添加规则").performClick()
         compose.onAllNodes(hasSetTextAction())[0].performScrollTo().performTextInput("旅行")
         compose.onAllNodes(hasSetTextAction())[1].performScrollTo().performTextInput("交通")
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
         compose.onNodeWithText("金额范围").performScrollTo().performClick()
         compose.onNodeWithText("选择金额币种").performScrollTo().performClick()
-        compose.onNodeWithText("JPY · 日元").performClick()
+        compose.onNodeWithText("JPY · 日元").performScrollTo().performClick()
         compose.onAllNodes(hasSetTextAction())[3].performScrollTo().performTextInput("1200")
         compose.onNodeWithText("添加规则").performScrollTo().performClick()
         compose.waitUntil(10_000) { model.uiState.value.pendingSubmissions.isNotEmpty() }

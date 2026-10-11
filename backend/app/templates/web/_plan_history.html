@@ -1,0 +1,26 @@
+{% macro scope(items, has_more) -%}
+{% if items %}<p class="text-muted">本页 {{ items|length }} 条 · 第 {{ items[0].row_version }} 至 {{ items[-1].row_version }} 版{% if has_more %} · 还有更早的记录{% endif %}</p>{% endif %}
+{%- endmacro %}
+
+{% macro comparison(label, before, after) -%}
+<div class="plan-history-change">
+  <h3 class="product-panel-title">{{ label }}</h3>
+  <div class="product-comparison">
+    {% if before is not none %}<div><span>修改前</span><strong>{{ before }}</strong></div>{% endif %}
+    <div class="product-comparison-proposed"><span>{{ '修改后' if before is not none else '当时保存' }}</span><strong>{{ after }}</strong></div>
+  </div>
+</div>
+{%- endmacro %}
+
+{% macro boundary(entry, previous, is_last) -%}
+{% if not previous and entry.change_kind not in ['baseline', 'create'] and entry.row_version > 1 %}
+<p class="text-muted">上一版尚未载入，不能核对修改前。</p>
+{% if is_last and history.next_before_version %}
+<a class="product-button product-button--quiet product-button--small" href="{{ request.url.include_query_params(ledger_id=selected_ledger_id, before_version=entry.row_version + 1, limit=[limit|default(20), 2]|max) }}">载入相邻记录以核对</a>
+{% endif %}
+{% endif %}
+{%- endmacro %}
+
+{% macro field(label, after, before=none) -%}
+<dt>{{ label }}</dt><dd>{% if before is not none and before != after %}<span class="text-muted">修改前：{{ before }}</span><br>修改后：{% endif %}{{ after }}</dd>
+{%- endmacro %}

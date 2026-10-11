@@ -76,6 +76,8 @@ def test_web_cross_currency_posts_preserve_report_source_and_save_intent(monkeyp
     env = Environment(autoescape=True, loader=ChoiceLoader([
         DictLoader({"base.html": "{% block content %}{% endblock %}"}),
         FileSystemLoader(Path(__file__).parents[1] / "app/templates/web")]))
+    from app.services.time_service import to_iso
+    env.filters["to_iso"] = to_iso
     rendered = []
 
     def render(**kw):

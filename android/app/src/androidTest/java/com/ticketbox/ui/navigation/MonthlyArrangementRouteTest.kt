@@ -89,7 +89,14 @@ class MonthlyArrangementRouteTest {
         assertEquals(2L, fixture.arrangement?.rowVersion)
         assertEquals(2, fixture.arrangementWrites.size)
         assertTrue(fixture.adviceCalls.isEmpty())
+        fixture.historyReadGate = kotlinx.coroutines.CompletableDeferred()
         compose.onNodeWithText(context.getString(R.string.arrangement_history)).performScrollTo().performClick()
+        assertTextDisplayed(context.getString(R.string.budget_history_loading))
+        compose.waitForIdle()
+        fixture.historyReadGate?.complete(Unit)
+        compose.waitUntil(5_000) { compose.onAllNodes(hasText(context.getString(R.string.arrangement_history_revision, 2L))).fetchSemanticsNodes().isNotEmpty() }
+        captureHistory("arrangement-history-after-load")
+        assertHistoryReachable(context.getString(R.string.arrangement_history_revision, 1L))
         assertTextDisplayed(context.getString(R.string.arrangement_history_revision, 2L))
         assertTextDisplayed(context.getString(R.string.arrangement_history_savings,
             formatDisplayAmount(8000L, CurrencyDisplay.forRecord("JPY"))))
@@ -122,6 +129,14 @@ class MonthlyArrangementRouteTest {
     private fun assertTextDisplayed(text: String) {
         compose.waitUntil(5_000) { compose.onAllNodes(hasText(text)).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText(text).performScrollTo().assertIsDisplayed()
+    }
+    private fun assertHistoryReachable(text: String) {
+        repeat(8) {
+            if (compose.onNodeWithText(text).isDisplayed()) return
+            compose.onNodeWithTag("arrangement-history").performTouchInput { swipeUp() }
+            compose.waitForIdle()
+        }
+        compose.onNodeWithText(text).assertIsDisplayed()
     }
     private fun edit(tag: String, value: String) {
         waitForInput()
