@@ -25,8 +25,9 @@ fun expenseClockLabel(expense: Expense): UiText = when {
     else -> UiText.res(R.string.calendar_clock_unknown)
 }
 
-fun timeInputLabel(input: ExpenseTimeInputDto): UiText = if (input.precision == "date_only") {
-    UiText.compound(listOf(UiText.raw(input.accountingDate ?: input.userLocalDate), UiText.res(R.string.calendar_date_only_label)), " · ")
-} else {
-    UiText.raw(listOfNotNull(input.userLocalDate, input.instantUtc?.let(::displayDateTime), input.sourceTimezone).joinToString(" · "))
+fun timeInputLabel(input: ExpenseTimeInputDto?, legacyInstant: String? = null): UiText = when (input?.precision) {
+    null -> UiText.raw(displayDateTime(legacyInstant))
+    "date_only" -> UiText.compound(listOf(UiText.raw(input.accountingDate ?: input.userLocalDate),
+        UiText.res(R.string.calendar_date_only_label)), " · ")
+    else -> UiText.raw(listOfNotNull(input.userLocalDate, input.instantUtc?.let(::displayDateTime), input.sourceTimezone).joinToString(" · "))
 }

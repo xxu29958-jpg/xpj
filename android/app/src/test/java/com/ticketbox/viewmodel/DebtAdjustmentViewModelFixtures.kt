@@ -31,6 +31,8 @@ internal data class RepaymentSaveCall(
     val binding: LogicalSessionBinding,
     val debt: Debt,
     val amountCents: Long,
+    val paymentTime: com.ticketbox.domain.model.ExpenseTimeInput?,
+    val key: String?,
 )
 
 internal data class KindSaveCall(val binding: LogicalSessionBinding, val debt: Debt, val kind: String)
@@ -82,8 +84,9 @@ internal class FakeDebtWriteActions(
         return captured
     }
 
-    override suspend fun saveRepayment(binding: LogicalSessionBinding, debt: Debt, amountCents: Long): Result<Long> {
-        repaymentCalls += RepaymentSaveCall(binding, debt, amountCents)
+    override suspend fun saveRepayment(binding: LogicalSessionBinding, debt: Debt, amountCents: Long,
+        paymentTime: com.ticketbox.domain.model.ExpenseTimeInput?, idempotencyKey: String?): Result<Long> {
+        repaymentCalls += RepaymentSaveCall(binding, debt, amountCents, paymentTime, idempotencyKey)
         val captured = saveResult
         saveGate?.await()
         return captured

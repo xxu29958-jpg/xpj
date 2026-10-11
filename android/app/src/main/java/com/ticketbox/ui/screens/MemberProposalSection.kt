@@ -316,7 +316,10 @@ private fun ProposalForm(
             }
         },
     ) {
-        ProposalAmountField(state, CurrencyDisplay.forRecord(state.formCurrencyCode ?: debt.homeCurrencyCode), viewModel)
+        DebtPaymentAmountField(CurrencyDisplay.forRecord(state.formCurrencyCode ?: debt.homeCurrencyCode).homeCurrency,
+            state.amountInput, state.inputsEnabled, state.validationError != null) { value ->
+            state.task?.let { viewModel.updateAmount(it, value) }
+        }
         PaymentDateField(state.paymentTime?.date.orEmpty(), state.inputsEnabled && form == ProposalForm.Propose) { value ->
             state.task?.let { viewModel.updatePaymentDate(it, value) }
         }
@@ -342,13 +345,13 @@ private fun ProposalForm(
 }
 
 @Composable
-private fun ProposalAmountField(state: MemberProposalUiState, currency: CurrencyDisplay, viewModel: MemberRepaymentProposalViewModel) {
+internal fun DebtPaymentAmountField(currency: CurrencyCode, value: String, enabled: Boolean, isError: Boolean, onChange: (String) -> Unit) {
     AppPaperCard(containerColor = LocalThemeVisuals.current.brandPrimaryBg) {
         AppAmountInput(
-            state = AppAmountInputState(label = stringResource(R.string.debt_payment_this_amount), currency = currency.homeCurrency,
-                value = state.amountInput, enabled = state.inputsEnabled,
-                placeholder = stringResource(R.string.components_amount_input_placeholder), isError = state.validationError != null),
-            actions = AppAmountInputActions(onValueChange = { value -> state.task?.let { viewModel.updateAmount(it, value) } }),
+            state = AppAmountInputState(label = stringResource(R.string.debt_payment_this_amount), currency = currency,
+                value = value, enabled = enabled,
+                placeholder = stringResource(R.string.components_amount_input_placeholder), isError = isError),
+            actions = AppAmountInputActions(onValueChange = onChange),
             modifier = Modifier.fillMaxWidth().padding(AppSpacing.cardPadding),
             decorations = AppTextInputDecorations(amountRole = AppAmountRole.Hero),
         )

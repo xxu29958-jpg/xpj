@@ -191,6 +191,8 @@ fun debtDetailViewModelFactory(
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         return DebtDetailViewModel(repository, writes) as T
     }
+    override fun <T : ViewModel> create(modelClass: Class<T>, extras: CreationExtras): T =
+        modelClass.cast(DebtDetailViewModel(repository, writes, extras.createSavedStateHandle())) as T
 }
 
 @Suppress("UNCHECKED_CAST")

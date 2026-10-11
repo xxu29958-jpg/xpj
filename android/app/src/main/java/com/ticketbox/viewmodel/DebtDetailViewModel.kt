@@ -2,6 +2,7 @@ package com.ticketbox.viewmodel
 
 import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.DebtTask
@@ -18,8 +19,13 @@ import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtLinkStatuses
 import com.ticketbox.domain.model.DebtRepayment
+import com.ticketbox.domain.model.ExpenseTimeInput
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.parseAmountCents
+import com.ticketbox.ui.screens.repaymentVoidActionAllowed
+import com.ticketbox.ui.screens.expense.ExpenseTimeResolution
+import java.time.Clock
+import java.util.UUID
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -37,8 +43,11 @@ data class DebtSettleCelebration(val counterpartyLabel: String?)
 class DebtDetailViewModel(
     private val repository: DebtActions,
     private val writes: DebtWriteActions,
+    savedStateHandle: SavedStateHandle = SavedStateHandle(),
+    private val clock: Clock = Clock.systemDefaultZone(),
 ) : ViewModel() {
 
+    private val repaymentDrafts = DebtRepaymentDraftStore(savedStateHandle)
     private val _state = MutableStateFlow(DebtDetailUiState(canModify = repository.canModifyLedger()))
     val state: StateFlow<DebtDetailUiState> = _state.asStateFlow()
 
@@ -123,6 +132,7 @@ class DebtDetailViewModel(
         refreshedWrites.clear()
         observedTerminals.clear()
         _state.update { it.copy(isLoading = loadedBinding != null, pendingWrites = emptyList(), writeSnapshotLoaded = false,
+            hasRepaymentDraft = loadedBinding?.let { binding -> repaymentDrafts.read(binding, publicId) } != null,
             locallyAcceptedWriteId = null, writeRefreshAfterVersion = null, writeRefreshAtVersion = null) }
         if (previousPublicId != publicId || previousBinding != loadedBinding) {
             _state.update {
@@ -136,6 +146,7 @@ class DebtDetailViewModel(
                     repaymentToVoid = null,
                     amountInput = "",
                     reasonInput = "",
+                    paymentTime = null, repaymentKey = null,
                     adjustmentIncrease = true,
                     validationError = null,
                     isSubmitting = false,
@@ -153,7 +164,8 @@ class DebtDetailViewModel(
                     val arrived = if (initial) emptySet() else terminal - observedTerminals
                     observedTerminals += terminal
                     completedWrites = completedWrites.orEmpty() + done
-                    _state.update { it.withWriteRows(rows, arrived.isNotEmpty(), initial) }
+                    val publishedDraft = repaymentDrafts.published(binding, publicId, rows)
+                    _state.update { it.withWriteRows(rows, arrived.isNotEmpty(), initial).withPublishedRepayment(publishedDraft) }
                     if (initial || arrived.isNotEmpty()) { refreshedWrites += done; refresh() }
                 }
             }
@@ -220,22 +232,32 @@ class DebtDetailViewModel(
 
     fun openAction(action: DebtAction, repayment: DebtRepayment? = null) {
         val current = _state.value
-        if (!current.canWriteActions) return
+        val binding = loadedBinding ?: return
+        val original = if (action == DebtAction.Repayment) repaymentDrafts.read(binding, requireNotNull(loadedPublicId)) else null
+        if (current.isSubmitting || !current.canWriteActions && original == null) return
         if (action == DebtAction.RepaymentVoid) {
-            val debt = current.debt ?: return
-            if (!current.canModify || !debt.isDirectWritable || debt.isVoided || repayment?.isActive != true) return
+            if (repayment == null || !repaymentVoidActionAllowed(requireNotNull(current.debt), current.canModify, repayment)) return
+        }
+        val draft = original ?: when (action) {
+            DebtAction.Repayment -> DebtRepaymentDraft(binding, requireNotNull(current.debt), "",
+                initialDebtPaymentTime(current.debt, clock), UUID.randomUUID().toString())
+            else -> null
         }
         _state.update {
             it.copy(
                 activeAction = action,
-                actionTarget = current.debt,
+                actionTarget = draft?.target ?: current.debt,
                 repaymentToVoid = repayment.takeIf { action == DebtAction.RepaymentVoid },
-                amountInput = "",
+                amountInput = draft?.amount.orEmpty(),
                 reasonInput = "",
+                paymentTime = draft?.paymentTime,
+                repaymentKey = draft?.key,
+                hasRepaymentDraft = it.hasRepaymentDraft || action == DebtAction.Repayment,
                 adjustmentIncrease = true,
                 validationError = null,
             )
         }
+        repaymentDrafts.write(_state.value)
     }
 
     fun updateActionInput(
@@ -243,21 +265,30 @@ class DebtDetailViewModel(
         reason: String = state.value.reasonInput,
         adjustmentIncrease: Boolean = state.value.adjustmentIncrease,
         reviewLatest: Boolean = false,
+        paymentDate: String? = null,
     ) {
+        if (_state.value.isSubmitting) return
         _state.update { it.copy(amountInput = amount, reasonInput = reason,
+            paymentTime = if (paymentDate == null) it.paymentTime else it.paymentTime?.copy(date = paymentDate, changed = true),
             adjustmentIncrease = adjustmentIncrease, validationError = null,
             actionTarget = if (reviewLatest && it.canReviewAction && writes.currentAccess()?.binding == loadedBinding)
                 it.debt else it.actionTarget) }
+        repaymentDrafts.write(_state.value)
     }
 
-    fun dismissAction() {
+    fun dismissAction(discard: Boolean = false) {
         if (_state.value.isSubmitting) return
+        if (discard) loadedBinding?.let { binding -> loadedPublicId?.let { publicId ->
+            repaymentDrafts.remove(binding, publicId, _state.value.repaymentKey)
+        } }
         _state.update {
             it.copy(
                 activeAction = null, actionTarget = null,
                 repaymentToVoid = null,
                 amountInput = "",
                 reasonInput = "",
+                paymentTime = null, repaymentKey = null,
+                hasRepaymentDraft = it.hasRepaymentDraft && !discard,
                 validationError = null,
                 isSubmitting = false,
             )
@@ -279,6 +310,7 @@ class DebtDetailViewModel(
             if (loadedPublicId != debt.publicId || loadedBinding != binding || writes.currentAccess()?.binding != binding) return@launch
             result.fold(
                 onSuccess = { outcome ->
+                    if (action == DebtAction.Repayment) repaymentDrafts.remove(binding, debt.publicId, input.repaymentKey)
                     _state.update { it.acceptAction(outcome, action, completedWrites.orEmpty()) }
                     if (outcome.intentId in completedWrites.orEmpty() &&
                         refreshedWrites.add(outcome.intentId)) refresh()
@@ -348,7 +380,8 @@ private suspend fun DebtActionSubmission.execute(writes: DebtWriteActions,
     binding: LogicalSessionBinding): Result<DebtActionOutcome> = when (action) {
     DebtAction.Adjustment -> writes.save(binding, debt, requireNotNull(input.amountCents), input.reason)
         .map { DebtActionOutcome(it) }
-    DebtAction.Repayment -> writes.saveRepayment(binding, debt, requireNotNull(input.amountCents))
+    DebtAction.Repayment -> writes.saveRepayment(binding, debt, requireNotNull(input.amountCents),
+        requireNotNull(input.paymentTime), requireNotNull(input.repaymentKey))
         .map { DebtActionOutcome(it) }
     DebtAction.Void -> writes.saveVoid(binding, debt, input.reason).map { DebtActionOutcome(it) }
     DebtAction.RepaymentVoid -> writes.saveRepaymentVoid(binding, debt, requireNotNull(input.repaymentPublicId), input.reason)
@@ -356,7 +389,7 @@ private suspend fun DebtActionSubmission.execute(writes: DebtWriteActions,
 }
 
 private fun DebtDetailUiState.actionSubmission(): DebtActionSubmission? {
-    if (!canWriteActions) return null
+    if (!canSubmitAction) return null
     val target = actionTarget ?: debt ?: return null
     val action = activeAction ?: return null
     if (action == DebtAction.RepaymentVoid && repaymentToVoid == null) return null
@@ -369,6 +402,7 @@ private fun DebtDetailUiState.acceptAction(
     completedWrites: Set<Long>,
 ): DebtDetailUiState = copy(
     activeAction = null, actionTarget = null, repaymentToVoid = null, amountInput = "", reasonInput = "",
+    paymentTime = null, repaymentKey = null, hasRepaymentDraft = hasRepaymentDraft && action != DebtAction.Repayment,
     isSubmitting = false, validationError = null,
     locallyAcceptedWriteId = if (outcome.intentId !in completedWrites && pendingWrites.none { it.row.id == outcome.intentId }
     ) outcome.intentId else locallyAcceptedWriteId,
@@ -385,9 +419,12 @@ private data class DebtActionInput(
     val reason: String,
     val repaymentPublicId: String?,
     @param:StringRes val errorRes: Int?,
+    val paymentTime: ExpenseTimeInput? = null,
+    val repaymentKey: String? = null,
 )
 
 private fun DebtDetailUiState.actionInput(debt: Debt, action: DebtAction): DebtActionInput {
+    val time = paymentTime?.resolve() ?: ExpenseTimeResolution(error = R.string.calendar_input_rule_required)
     val currency = CurrencyCode.fromStorageKeyOrNull(debt.homeCurrencyCode)
     val magnitude = currency?.let { parseAmountCents(amountInput, it) }
     val signedAmount = if (action == DebtAction.Adjustment && !adjustmentIncrease) magnitude?.unaryMinus() else magnitude
@@ -404,7 +441,8 @@ private fun DebtDetailUiState.actionInput(debt: Debt, action: DebtAction): DebtA
         amountCents = signedAmount,
         reason = reason,
         repaymentPublicId = repaymentToVoid?.publicId,
-        errorRes = error,
+        errorRes = error ?: time.error.takeIf { action == DebtAction.Repayment },
+        paymentTime = time.input, repaymentKey = repaymentKey,
     )
 }
 

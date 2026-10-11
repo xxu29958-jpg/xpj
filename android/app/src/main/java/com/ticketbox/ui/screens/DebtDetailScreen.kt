@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -124,7 +125,7 @@ fun DebtDetailScreen(
         DebtActionSheet(
             state = state,
             viewModel = viewModel,
-            onClose = viewModel::dismissAction,
+            onClose = { viewModel.dismissAction() },
         )
     }
     DebtMemberProposalForm(state, proposalState, proposalViewModel)
@@ -278,6 +279,7 @@ private fun DebtActionSheet(
     ) {
         AppSheetScaffold(
             title = stringResource(debtActionTitleRes(action)),
+            subtitle = debtDetailTitle(state.actionTarget),
             actions = {
                 state.writeMessage?.let { message -> AppStatusBanner(message = message, tone = MessageTone.Info) }
                 state.validationError?.let { err ->
@@ -288,17 +290,19 @@ private fun DebtActionSheet(
                         text = if (state.isSubmitting) {
                             stringResource(R.string.debt_action_submitting)
                         } else {
-                            stringResource(R.string.debt_action_submit)
+                            stringResource(if (action == DebtAction.Repayment) R.string.debt_repayment_submit else R.string.debt_action_submit)
                         },
                         onClick = viewModel::submit,
-                        enabled = state.canWriteActions,
+                        enabled = state.canSubmitAction,
                     ),
-                    secondary = AppSheetAction(
+                    secondary = if (action == DebtAction.Repayment) null else AppSheetAction(
                         text = stringResource(R.string.common_cancel),
                         onClick = onClose,
                         enabled = !state.isSubmitting,
                     ),
                 )
+                if (action == DebtAction.Repayment) TextButton(onClick = onClose, enabled = !state.isSubmitting,
+                    modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.debt_proposal_back_keep_draft)) }
             },
         ) {
             DebtActionForm(state, viewModel, action)
@@ -313,7 +317,7 @@ private fun DebtActionForm(
     action: DebtAction,
 ) {
     // 金额输入只属于还款/调整；整笔作废(Void)与单笔还款作废(RepaymentVoid)都不带金额。
-    if (action == DebtAction.Repayment || action == DebtAction.Adjustment) {
+    if (action == DebtAction.Adjustment) {
         AppAmountInput(
             state = AppAmountInputState(
                 label = stringResource(debtActionAmountLabelRes(action)),
@@ -321,12 +325,24 @@ private fun DebtActionForm(
                 // 不读恒 Base 的环境 display（PR#255 P1）。
                 currency = state.amountInputCurrency,
                 value = state.amountInput,
+                enabled = state.canModify && !state.isSubmitting,
                 placeholder = stringResource(R.string.components_amount_input_placeholder),
                 isError = state.validationError != null,
             ),
             actions = AppAmountInputActions(onValueChange = { viewModel.updateActionInput(amount = it) }),
             modifier = Modifier.fillMaxWidth(),
         )
+    }
+    if (action == DebtAction.Repayment) {
+        DebtPaymentAmountField(state.amountInputCurrency, state.amountInput, state.canModify && !state.isSubmitting,
+            state.validationError != null) { viewModel.updateActionInput(amount = it) }
+        PaymentDateField(state.paymentTime?.date.orEmpty(), state.canModify && !state.isSubmitting) {
+            viewModel.updateActionInput(paymentDate = it)
+        }
+        state.debt?.let { DebtRepaymentBalancePreview(it, state.amountInput) }
+        TextButton(onClick = { viewModel.dismissAction(discard = true) }, enabled = !state.isSubmitting) {
+            Text(stringResource(R.string.debt_proposal_discard_draft))
+        }
     }
     if (action == DebtAction.Adjustment) {
         DebtAdjustmentSignChips(increase = state.adjustmentIncrease, onSelect = { viewModel.updateActionInput(adjustmentIncrease = it) })

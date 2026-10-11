@@ -1,5 +1,14 @@
 package com.ticketbox.viewmodel
 
+import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.viewModelScope
+import com.ticketbox.R
+import com.ticketbox.data.repository.toRequest
+import com.ticketbox.domain.model.DebtRepaymentCalendar
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneOffset
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -20,6 +29,64 @@ class DebtRepaymentAcceptanceViewModelTest {
     private val dispatcher = StandardTestDispatcher()
     @BeforeTest fun setUp() { Dispatchers.setMain(dispatcher) }
     @AfterTest fun tearDown() { Dispatchers.resetMain() }
+
+    @Test
+    fun returningToRepaymentKeepsRawInputAndOriginalTarget() = runTest(dispatcher) {
+        val repo = AdjustmentDetailActions().apply { getResult = Result.success(repaymentDebt(5, 50_000)) }
+        val writes = FakeDebtWriteActions()
+        val saved = SavedStateHandle()
+        val clock = Clock.fixed(Instant.parse("2026-09-02T01:00:00Z"), ZoneOffset.UTC)
+        var model = DebtDetailViewModel(repo, writes, saved, clock)
+        model.loadDebt("d1")
+        advanceUntilIdle()
+        model.openAction(DebtAction.Repayment)
+        val originalKey = model.state.value.repaymentKey
+        assertEquals("2026-09-01", model.state.value.paymentTime?.date)
+        model.updateActionInput(amount = "0012.00", paymentDate = "2026-09-")
+        model.dismissAction()
+        model.viewModelScope.cancel()
+        val restored = SavedStateHandle(saved.keys().associateWith { saved.get<Any?>(it) })
+        repo.getResult = Result.success(repaymentDebt(8, 30_000).copy(repaymentCalendar = DebtRepaymentCalendar(8, "Asia/Tokyo")))
+        model = DebtDetailViewModel(repo, writes, restored, clock)
+        model.loadDebt("d1")
+        advanceUntilIdle()
+        model.openAction(DebtAction.Repayment)
+        assertEquals("0012.00", model.state.value.amountInput)
+        assertEquals(5L, model.state.value.actionTarget?.rowVersion)
+        assertEquals("2026-09-", model.state.value.paymentTime?.date)
+        assertEquals(3L, model.state.value.paymentTime?.calendarRevision)
+        assertEquals("Pacific/Honolulu", model.state.value.paymentTime?.calendarZone)
+        assertEquals(originalKey, model.state.value.repaymentKey)
+        writes.access.value = requireNotNull(writes.access.value).copy(canModify = false)
+        advanceUntilIdle()
+        model.dismissAction()
+        model.openAction(DebtAction.Repayment)
+        assertEquals("0012.00", model.state.value.amountInput)
+        assertEquals(originalKey, model.state.value.repaymentKey)
+        model.submit()
+        advanceUntilIdle()
+        assertFalse(model.state.value.canSubmitAction)
+        assertTrue(writes.repaymentCalls.isEmpty())
+        writes.access.value = requireNotNull(writes.access.value).copy(canModify = true)
+        advanceUntilIdle()
+        model.updateActionInput(amount = "12.00")
+        model.submit()
+        advanceUntilIdle()
+        assertTrue(writes.repaymentCalls.isEmpty())
+        assertEquals(com.ticketbox.domain.model.UiText.res(R.string.calendar_input_invalid_day), model.state.value.validationError)
+        model.updateActionInput(paymentDate = "2026-09-01")
+        model.submit()
+        advanceUntilIdle()
+        val sent = writes.repaymentCalls.single()
+        assertEquals(originalKey, sent.key)
+        assertEquals(5L, sent.debt.rowVersion)
+        assertEquals(1_200L, sent.amountCents)
+        assertEquals("date_only", sent.paymentTime?.precision)
+        assertEquals("2026-09-01", sent.paymentTime?.userLocalDate)
+        assertEquals(3L, sent.paymentTime?.calendarRevision)
+        assertNull(sent.paymentTime?.instantUtc)
+        assertFalse(model.state.value.hasRepaymentDraft)
+    }
 
     @Test
     fun repaymentPublicationRetainsOriginalOccAndAwaitsCanonicalAcceptance() = runTest(dispatcher) {
@@ -95,6 +162,7 @@ class DebtRepaymentAcceptanceViewModelTest {
 
 private fun repaymentDebt(version: Long, remaining: Long) = sampleDebt("d1").copy(
     rowVersion = version, remainingAmountCents = remaining, paidAmountCents = 50_000L - remaining,
+    repaymentCalendar = com.ticketbox.domain.model.DebtRepaymentCalendar(3, "Pacific/Honolulu"),
 )
 
 private fun confirmedRepayment(call: RepaymentSaveCall): com.ticketbox.data.repository.PendingDebtWrite {
@@ -105,7 +173,7 @@ private fun confirmedRepayment(call: RepaymentSaveCall): com.ticketbox.data.repo
         originSessionGeneration = call.binding.sessionGeneration,
         originBindingRevision = call.binding.bindingRevision,
         request = com.ticketbox.data.remote.dto.RepaymentCreateRequestDto(
-            call.amountCents, call.debt.rowVersion, "2026-09-01T00:00:00Z"),
+            call.amountCents, call.debt.rowVersion, timeInput = call.paymentTime?.toRequest()),
     )
     val old = pendingAdjustment(binding = call.binding)
     return old.copy(row = old.row.copy(
@@ -113,6 +181,6 @@ private fun confirmedRepayment(call: RepaymentSaveCall): com.ticketbox.data.repo
         targetId = "debt:${call.debt.publicId}", expectedRowVersion = call.debt.rowVersion,
         payloadJson = com.ticketbox.OutboxAdapterGraph().debtRepaymentAdapter.toJson(payload),
         status = com.ticketbox.data.local.PendingMutationStatus.Done,
-        idempotencyKey = "original-repayment", completedAt = "2026-09-01T00:01:00Z",
+        idempotencyKey = call.key, completedAt = "2026-09-01T00:01:00Z",
     ), intent = payload)
 }

@@ -124,6 +124,12 @@ internal fun DebtDetailContent(
 
 private fun debtDetailPrimaryAction(state: DebtDetailUiState, panels: DebtDetailPanels,
     callbacks: DebtDetailScreenCallbacks): (@Composable () -> Unit)? {
+    if (state.hasRepaymentDraft) return {
+        AppFloatingActionBar {
+            AppPrimaryButton(text = stringResource(R.string.debt_proposal_resume_draft),
+                onClick = { callbacks.onOpenAction(DebtAction.Repayment) }, modifier = Modifier.fillMaxWidth())
+        }
+    }
     val debt = state.debt ?: return null
     val action: (@Composable () -> Unit)? = if (debt.isMember) {
         memberProposalPrimaryAction(debt, panels.proposalState, panels.proposalViewModel)
@@ -180,7 +186,7 @@ private fun LazyListScope.debtDetailBodyItems(
 }
 
 @Composable
-private fun debtDetailTitle(debt: Debt?): String {
+internal fun debtDetailTitle(debt: Debt?): String {
     if (debt == null) return stringResource(R.string.debt_detail_title)
     val name = debt.counterpartyLabel?.takeIf { it.isNotBlank() }
         ?: stringResource(debtCounterpartyFallbackRes(debt.counterpartyType))

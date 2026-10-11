@@ -21,7 +21,6 @@ import com.ticketbox.ui.components.formatMinorAmountInput
 import com.ticketbox.ui.components.parseAmountCents
 import com.ticketbox.ui.screens.expense.ExpenseTimeForm
 import java.time.Clock
-import java.time.LocalDate
 import java.time.ZoneId
 import java.util.UUID
 import kotlinx.coroutines.Job
@@ -295,11 +294,10 @@ private fun Throwable.memberCommandRejected(): Boolean {
 }
 
 private fun initialPaymentTime(form: ProposalForm, proposal: MemberRepaymentProposal?, debt: Debt?, clock: Clock): ExpenseTimeForm {
+    if (form == ProposalForm.Propose) return initialDebtPaymentTime(debt, clock)
     val calendar = debt?.repaymentCalendar
     val zone = calendar?.timezoneName?.let(ZoneId::of) ?: clock.zone
-    return if (form == ProposalForm.Propose) {
-        ExpenseTimeForm.dateOnly(LocalDate.now(clock.withZone(zone)).toString(), calendar?.revision, zone.id)
-    } else ExpenseTimeForm.initial(proposal?.paidAt, proposal?.accountingTime, null, zone)
+    return ExpenseTimeForm.initial(proposal?.paidAt, proposal?.accountingTime, null, zone)
 }
 
 private fun MemberProposalUiState.withMemberResult(

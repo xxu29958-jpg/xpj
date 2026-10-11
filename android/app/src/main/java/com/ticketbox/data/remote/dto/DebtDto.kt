@@ -196,7 +196,9 @@ data class RepaymentCreateRequestDto(
     @param:Json(name = "expected_row_version")
     val expectedRowVersion: Long,
     @param:Json(name = "paid_at")
-    val paidAt: String,
+    val paidAt: String? = null,
+    @param:Json(name = "time_input")
+    val timeInput: ExpenseTimeInputDto? = null,
 )
 
 /**

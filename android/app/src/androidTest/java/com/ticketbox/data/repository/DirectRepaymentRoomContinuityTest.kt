@@ -21,6 +21,7 @@ import com.ticketbox.ui.screens.DebtDetailScreen
 import com.ticketbox.ui.screens.settings.SyncStatusNavigation
 import com.ticketbox.ui.screens.settings.SyncStatusScreen
 import com.ticketbox.ui.theme.TicketboxTheme
+import com.ticketbox.ui.saveConsumerArtPreview
 import com.ticketbox.viewmodel.DebtDetailViewModel
 import com.ticketbox.viewmodel.DebtActivityViewModel
 import com.ticketbox.viewmodel.MemberRepaymentProposalViewModel
@@ -40,6 +41,7 @@ import org.junit.Test
 class DirectRepaymentRoomContinuityTest {
     @get:Rule val compose = createComposeRule()
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
+    private val skin = if (InstrumentationRegistry.getArguments().getString("captureSkin") == "midnight") AppSkin.Midnight else AppSkin.Paper
     private val fixture = DebtAdjustmentConnectedFixture(context)
     private val detail = mutableStateOf<DebtDetailViewModel?>(null)
     private lateinit var proposals: MemberRepaymentProposalViewModel
@@ -106,13 +108,22 @@ class DirectRepaymentRoomContinuityTest {
         installModels()
         compose.setContent {
             val model = detail.value ?: return@setContent
-            TicketboxTheme(skin = AppSkin.Paper) { DebtDetailScreen(model, proposals, history, {}) }
+            TicketboxTheme(skin = skin) { DebtDetailScreen(model, proposals, history, {}) }
         }
         compose.waitUntil(10_000) { detail.value?.state?.value?.canWriteActions == true }
         compose.onNodeWithText("记还款").assertIsDisplayed().performClick()
-        compose.onAllNodes(hasSetTextAction()).assertCountEquals(1)
+        compose.onAllNodes(hasSetTextAction()).assertCountEquals(2)
         compose.onAllNodes(hasSetTextAction())[0].performTextReplacement("100.00")
-        compose.onNodeWithText("保存").performClick()
+        compose.onAllNodes(hasSetTextAction())[1].performTextReplacement("2026-09-01")
+        val originalKey = detail.value?.state?.value?.repaymentKey
+        compose.onNodeWithText("返回，保留输入").performClick()
+        compose.onNodeWithText("继续填写原还款").performClick()
+        assertEquals("100.00", detail.value?.state?.value?.amountInput)
+        assertEquals("2026-09-01", detail.value?.state?.value?.paymentTime?.date)
+        assertEquals(originalKey, detail.value?.state?.value?.repaymentKey)
+        com.ticketbox.ui.RealKeyboard().dismissAndWait(compose)
+        saveConsumerArtPreview("direct-repayment-original-form", requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        compose.onNodeWithText(context.getString(R.string.debt_repayment_submit)).performClick()
         compose.waitUntil(10_000) { fixture.stored().size == 1 && detail.value?.state?.value?.activeAction == null }
         val original = fixture.stored().single()
         assertEquals(0, fixture.network.repaymentCalls.size)
@@ -130,8 +141,14 @@ class DirectRepaymentRoomContinuityTest {
         val pending = requireNotNull(detail.value?.state?.value?.pendingWrites?.single()?.repayment)
         assertEquals(10_000L, pending.request.amountCents)
         assertEquals(2L, pending.request.expectedRowVersion)
+        assertEquals(originalKey, original["idempotencyKey"])
+        assertEquals(null, pending.request.paidAt)
+        assertEquals("date_only", pending.request.timeInput?.precision)
+        assertEquals("2026-09-01", pending.request.timeInput?.userLocalDate)
+        assertEquals(3L, pending.request.timeInput?.calendarRevision)
         compose.onNodeWithText("原还款金额：", substring = true).performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("原还款时间：", substring = true).performScrollTo().assertIsDisplayed()
+        saveConsumerArtPreview("direct-repayment-original-recovery", requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
         compose.onNodeWithText("重试原提交").performScrollTo().performClick()
         compose.waitUntil(10_000) { fixture.stored().single()["status"] == "pending" && fixture.scheduleCalls == 2 }
         fixture.network.loseResponse = false
@@ -150,6 +167,7 @@ class DirectRepaymentRoomContinuityTest {
         assertEquals(40_000L, detail.value?.state?.value?.debt?.remainingAmountCents)
         assertEquals("repayment-1", history.state.value.items.single().publicId)
         assertEquals(pending.request.paidAt, history.state.value.items.single().repayment?.paidAt)
+        assertEquals("2026-09-01", history.state.value.items.single().repayment?.accountingTime?.accountingDate)
         assertTrue(requireNotNull(detail.value).state.value.canWriteActions)
         assertEquals(2, fixture.network.repaymentCalls.size)
     }

@@ -124,6 +124,7 @@ internal class DebtAdjustmentConnectedNetwork {
         counterpartyType = "external", counterpartyLabel = "原借款对象", principalAmountCents = 50_000,
         remainingAmountCents = 50_000, paidAmountCents = 0, status = "open", sourceType = "manual",
         homeCurrencyCode = "CNY", createdAt = "2026-09-01T00:00:00Z", updatedAt = "2026-09-01T00:00:00Z", rowVersion = 2,
+        repaymentCalendar = com.ticketbox.data.remote.dto.RepaymentCalendarDto(3, "Pacific/Honolulu"),
     )
     var failReads = false
     var readFailure: IOException = IOException("Synthetic unavailable debt read")
@@ -179,7 +180,11 @@ internal class DebtAdjustmentConnectedNetwork {
         override suspend fun debtRepayments(publicId: String, page: Int): RepaymentFactListDto {
             if (failReads) throw IOException("Synthetic unavailable repayment history")
             val facts = repaymentResults.values.map { (request, receipt) ->
-                RepaymentFactDto(receipt.repaymentPublicId, request.amountCents, request.paidAt, request.paidAt, "active")
+                RepaymentFactDto(receipt.repaymentPublicId, request.amountCents, request.paidAt, "2026-09-02T01:00:00Z", "active",
+                    accountingTime = request.timeInput?.let { input -> com.ticketbox.data.remote.dto.ExpenseAccountingTimeDto(
+                        precision = input.precision, instantUtc = input.instantUtc, userLocalDate = input.userLocalDate,
+                        sourceTimezone = input.sourceTimezone, accountingDate = input.accountingDate,
+                        calendarRevision = input.calendarRevision, basis = "manual") })
             }
             return RepaymentFactListDto(publicId, "CNY", facts, page, 20, facts.size)
         }

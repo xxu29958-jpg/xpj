@@ -17,8 +17,9 @@ import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.repository.PendingDebtWrite
 import com.ticketbox.data.repository.DebtAmountIntent
 import com.ticketbox.domain.model.CurrencyDisplay
+import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.formatDisplayAmount
-import com.ticketbox.ui.components.displayDateTime
+import com.ticketbox.ui.components.timeInputLabel
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.settings.isExpiredFailure
 
@@ -38,7 +39,8 @@ internal fun DebtWriteIntentSummary(pending: PendingDebtWrite) {
             formatDisplayAmount(amount.amountCents, CurrencyDisplay.forRecord(intent.subject.homeCurrencyCode))))
     }
     pending.adjustment?.let { Text(it.request.reason) }
-    pending.repayment?.let { Text(stringResource(R.string.debt_repayment_original_date, displayDateTime(it.request.paidAt))) }
+    pending.repayment?.let { Text(stringResource(R.string.debt_repayment_original_date,
+        timeInputLabel(it.request.timeInput, it.request.paidAt).asString())) }
     RepaymentReviewIntentSummary(intent)
     pending.debtVoid?.let { Text(stringResource(R.string.debt_action_void_title)); Text(it.request.reason) }
     pending.kind?.let { Text(stringResource(R.string.debt_kind_pending_value, stringResource(debtKindLabelRes(it.request.debtKind)))) }

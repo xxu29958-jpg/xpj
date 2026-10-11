@@ -1,5 +1,8 @@
 package com.ticketbox.domain.model
 
+import com.squareup.moshi.JsonClass
+
+@JsonClass(generateAdapter = true)
 data class DebtRepaymentCalendar(val revision: Long, val timezoneName: String)
 
 /**
@@ -37,6 +40,7 @@ data class DebtBillSuggestion(
             installmentPeriodMonths != null
 }
 
+@JsonClass(generateAdapter = true)
 data class Debt(
     val publicId: String,
     val ledgerId: String?,
