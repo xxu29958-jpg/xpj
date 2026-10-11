@@ -30,6 +30,11 @@ async function continuity() {
   assert.ok(reopened.fields.target_with_expected_row_version.options.some(option => option.value === parent + ':7'), 'missing stale option is retained');
   reopened.fields.original_amount.value = '90.00'; reopened.form.fire('input');
   const submitted = {...values, original_amount:'90.00'};
+  const query = reopened.form.querySelector;
+  reopened.form.querySelector = selector => selector === '[name="payment_date"]:invalid' ? reopened.fields.payment_date : query(selector);
+  assert.equal(reopened.form.fire('submit').defaultPrevented, true, 'an incomplete native date must not become an unchanged capture confirmation');
+  assert.equal(reopened.store.read(original).phase, 'editing');
+  reopened.form.querySelector = query;
   assert.equal(reopened.form.fire('submit').defaultPrevented, false);
   assert.equal(reopened.store.read(original).phase, 'submitted');
   reopened.window.fire('pagehide'); await tick();

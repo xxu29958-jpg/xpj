@@ -62,9 +62,9 @@ REVIEW_FIELDS = (
 REVIEW_TIME_FIELDS = ("payment_date", "calendar_revision")
 
 
-def _initial_review_values(scope, selected_id, public_id, row, can_create, calendar=None):
+def _initial_review_values(scope, selected_id, public_id, row, can_create, calendar=None, values=None):
     suggested = next((item for item in row.target_debts if item.public_id == row.suggested_debt_public_id), None) if row else None
-    return {
+    initial = {
         "draft_public_id": public_id, "ledger_id": selected_id,
         "origin_binding": json.dumps(scope, ensure_ascii=False, sort_keys=True),
         "review_action": "confirm",
@@ -74,6 +74,12 @@ def _initial_review_values(scope, selected_id, public_id, row, can_create, calen
         "idempotency_key": str(uuid4()) if can_create else "",
         "payment_date": "", "calendar_revision": str(calendar.revision) if calendar else "",
     }
+    if values is not None:
+        initial.update(values)
+        for name in REVIEW_TIME_FIELDS:
+            if name not in values:
+                initial.pop(name, None)
+    return initial
 
 
 def render_review(request: Request, db: Session, *, options, selected_id: str, public_id: str, account_id: int,
@@ -98,14 +104,9 @@ def render_review(request: Request, db: Session, *, options, selected_id: str, p
         if not ack and not error:
             status_code = 503
     can_recover = _debt_write_gate(options, selected_id)
-    can_create = bool(row and row.status == "pending" and can_recover and not read_error and not ack)
+    can_create = calendar is not None and can_recover and not ack
     view = _audit_row_view(row) if row else None
-    initial = _initial_review_values(scope, selected_id, public_id, row, can_create, calendar)
-    if values is not None:
-        initial.update(values)
-        for name in REVIEW_TIME_FIELDS:
-            if name not in values:
-                initial.pop(name, None)
+    initial = _initial_review_values(scope, selected_id, public_id, row, can_create, calendar, values)
     ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id, page_title="核对还款采集")
     ctx.update(row=view, read_error=read_error, currencies=supported_currency_codes(), review={
         "public_id": public_id, "scope": scope, "values": initial,

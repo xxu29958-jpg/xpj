@@ -48,3 +48,24 @@ def test_reviewed_date_is_explicit_and_does_not_replace_frozen_captured_money() 
     assert "time_input" not in unchanged.model_dump(exclude_unset=True)
     with pytest.raises(AppError):
         review_confirmation({**values, "payment_date": "2026-02-30"}, capture)
+
+
+@pytest.mark.parametrize("time_fields", [{"payment_date": "", "calendar_revision": "3"}, {}])
+def test_native_blank_date_retains_ack_identity_without_backfilling_legacy_input(monkeypatch, time_fields):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from app.routes import web_repayment_drafts as routes
+
+    monkeypatch.setattr(routes, "_list_ledger_options", lambda _db: [])
+    monkeypatch.setattr(routes, "_resolve_selected_ledger_id", lambda *_a, **_k: "ledger")
+    monkeypatch.setattr(routes, "_actor_account_id", lambda *_a: 1)
+    monkeypatch.setattr(routes, "submit_review", lambda *_a, **kw: kw["values"])
+    app = FastAPI()
+    app.dependency_overrides[routes.LocalOnly.dependency] = lambda: None
+    app.dependency_overrides[routes.get_db] = lambda: None
+    app.add_api_route("/{public_id}/review", routes.web_submit_repayment_review, methods=["POST"], response_model=None)
+    response = TestClient(app).post("/capture/review", data={"draft_public_id": "capture", "ledger_id": "ledger", **time_fields})
+    assert response.status_code == 200
+    actual = response.json()
+    assert {key: actual[key] for key in ("payment_date", "calendar_revision") if key in actual} == time_fields

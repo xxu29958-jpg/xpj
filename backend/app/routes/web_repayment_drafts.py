@@ -126,6 +126,10 @@ def web_submit_repayment_review(
     values = {"draft_public_id": draft_public_id, "ledger_id": ledger_id, "origin_binding": origin_binding,
         "review_action": review_action, "target_with_expected_row_version": target_with_expected_row_version, "original_currency": original_currency,
         "original_amount": original_amount, "idempotency_key": idempotency_key}
+    # FastAPI maps an empty optional Form string to None. A reviewed calendar marks
+    # the new paired controls; retain its deliberate blank date in the exact ACK.
+    if calendar_revision is not None and payment_date is None:
+        payment_date = ""
     values.update({name: value for name, value in {"payment_date": payment_date,
         "calendar_revision": calendar_revision}.items() if value is not None})
     return submit_review(request, db, options=options, selected_id=selected_id, public_id=public_id,

@@ -463,7 +463,8 @@
   form.addEventListener("submit", function (event) {
     const previewing = preview && event.submitter === preview;
     if (!held || posting || (previewing ? preview.disabled : submit.disabled)) { event.preventDefault(); return; }
-    if (captureReview && phase === "editing" && form.elements.namedItem("payment_date")?.validity?.badInput) {
+    // Native constraints exclude readonly originals; only editable incomplete dates can match.
+    if (form.querySelector('[name="payment_date"]:invalid')) {
       event.preventDefault(); notice("请填写完整有效的还款日期，或清空以沿用原采集时间。", "editing"); return;
     }
     try {
