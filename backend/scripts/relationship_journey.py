@@ -185,15 +185,12 @@ class RelationshipJourney:
             arg=client_ref)
 
     def settle_return(self):
+        from scripts.relationship_journey_recovery import RelationshipRecovery
+
         returned = self.facts()["return_id"]
         self.goto("/web/debts")
         assert self.page.locator(f'a[href*="/web/debts/{returned}"]').count() > 0, "The sender cannot discover the cross-ledger return payable"
-        self.goto(f"/web/debts/{returned}")
-        self.page.get_by_role("button", name="记一次还款", exact=True).click()
-        proposal = self.page.locator(f'form[action="/web/debts/{returned}/repayment-proposals"]')
-        proposal.locator('[name="amount_major"]').fill("2.00")
-        proposal.get_by_role("button", name="提交还款确认", exact=True).click()
-        wait_for(lambda: returned in self.facts()["pending_repayments"], "The return declaration was not retained")
+        RelationshipRecovery(self).declare_return(returned)
         self.native.restart()
         self.open_native(returned=True)
         self.native.reveal_any("收到啦，谢谢～")

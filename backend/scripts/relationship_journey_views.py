@@ -123,7 +123,7 @@ def appearances(j):
         page = j.receiver if receiver else j.page
         for theme in ("paper", "midnight"):
             page.set_viewport_size({"width": 1280, "height": 960})
-            j.goto(f"/web/debts/{current['original_id']}", receiver=receiver)
+            j.goto("/web/debts", receiver=receiver)
             page.locator("#appearance > summary").click()
             page.locator(f'#appearance [data-theme-mode="{theme}"]').click()
             page.wait_for_function("theme => document.documentElement.dataset.theme === theme", arg=theme)

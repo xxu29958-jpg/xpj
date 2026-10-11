@@ -7,12 +7,14 @@
   const voidNames = ["debt_public_id", "ledger_id", "origin_binding", "expected_row_version", "reason", "repayment_public_id"];
   const kindNames = ["debt_public_id", "ledger_id", "origin_binding", "expected_row_version", "debt_kind"];
   const fieldNames = {repayment:repaymentNames, "debt-void":voidNames, "repayment-void":voidNames,
+    "member-repayment":[...repaymentNames.filter(name => name !== "expected_row_version"), "note"],
     "repayment-review":["draft_public_id", "ledger_id", "origin_binding", "review_action", "target_with_expected_row_version", "original_currency", "original_amount"],
     "debt-kind":kindNames, "split-change":["debt_public_id", "ledger_id", "origin_binding", "home_currency_code", "command",
       "proposal_public_id", "expected_row_version", "expected_return_row_version", "new_share_amount_major",
       "settlement_net_amount_major", "reason", "supersedes_proposal_public_id"]};
   const voidLabels = ["确认作废", "继续核实原作废"];
   const submitLabels = {repayment:["记一笔还款", "核实原还款"],
+    "member-repayment":["提交还款确认", "核实原还款"],
     "debt-void":voidLabels, "repayment-void":voidLabels,
     "debt-kind":["保存偿还方式", "继续核实原更正"], "repayment-review":["确认处理", "核实原处理"]};
   function bindBalancePreview(form) {
@@ -48,6 +50,8 @@
   const targetField = captureReview ? "draft_public_id" : "debt_public_id";
   const typedCorrection = voidCommand || kindCorrection || captureReview;
   const namespace = Object.hasOwn(fieldNames, form.dataset.repaymentKind) ? form.dataset.repaymentKind : "repayment";
+  const memberRepayment = namespace === "member-repayment";
+  const repaymentTime = namespace === "repayment" || memberRepayment;
   const names = fieldNames[namespace];
   const kindLabels = {one_off:"一次结清", revolving:"循环往来", installment:"分期偿还", unspecified:"暂不指定"};
   const commandLabels = {create:"发送新约定", accept:"接受这份约定", reject:"拒绝这份约定", withdraw:"撤回我的约定"};
@@ -56,13 +60,15 @@
   const panel = surface.querySelector("[data-repayment-panel]");
   const shelf = surface.querySelector("[data-repayment-shelf]");
   const status = form.querySelector("[data-repayment-status]");
+  const entryLabel = surface.querySelector("[data-repayment-entry-label]");
+  const heading = surface.querySelector("[data-repayment-heading]");
   const submit = form.querySelector("[data-repayment-submit]");
   const replace = form.querySelector("[data-repayment-replace]");
   const preview = form.querySelector("[data-repayment-preview]");
   const updateBalancePreview = bindBalancePreview(form);
   const settlementExplicit = form.elements.namedItem("settlement_explicit");
   const optionalNames = splitChange ? ["settlement_explicit", "settlement_suggestion"] :
-    namespace === "repayment" ? repaymentTimeNames : [];
+    repaymentTime ? repaymentTimeNames : [];
   const hints = optionalNames.map(name => form.elements.namedItem(name)).filter(Boolean);
   const finishReview = form.querySelector("[data-void-finish-review]");
   const finishRejected = form.querySelector("[data-void-finish-rejected]");
@@ -89,13 +95,13 @@
   function values() {
     const result = Object.fromEntries(controls.map(control => [control.name, control.value]));
     hints.forEach(control => {
-      if (namespace === "repayment" ? !control.disabled : control.value !== "") result[control.name] = control.value;
+      if (repaymentTime ? !control.disabled : control.value !== "") result[control.name] = control.value;
     });
     return result;
   }
   function sameValues(left, right) {
     return names.every(name => typeof left[name] === "string" && left[name] === right[name]) &&
-      (namespace !== "repayment" || repaymentTimeNames.every(name => left[name] === right[name]));
+      (!repaymentTime || repaymentTimeNames.every(name => left[name] === right[name]));
   }
   function bound(saved) {
     return saved[targetField] === target && saved.ledger_id === scope.ledgerId &&
@@ -105,6 +111,8 @@
     status.hidden = false;
     status.textContent = captureReview ? message.replaceAll("还款", "采集处理").replaceAll("欠款", "原采集") : kindCorrection ? message.replaceAll("还款", "偿还方式更正").replaceAll("金额、日期", "选择、版本") : voidCommand ? message.replaceAll("还款", "作废提交").replaceAll("金额、日期", "对象、原因") : splitChange ? message.replaceAll("还款", "约定操作") : message;
     form.dataset.repaymentState = state;
+    if (entryLabel) entryLabel.textContent = state === "editing" ? (memberRepayment ? "记一次还款" : "记一笔还款") : "核对原还款";
+    if (heading) heading.textContent = state === "editing" ? "确认这次还款" : "还款记上了吗";
     updateBalancePreview?.();
   }
   function lockInputs(locked) {
@@ -133,7 +141,7 @@
     hints.forEach(control => {
       control.value = saved[control.name] ?? "";
       // Old unresolved submissions must not acquire the new page's date evidence.
-      if (namespace === "repayment") control.disabled = !Object.hasOwn(saved, control.name);
+      if (repaymentTime) control.disabled = !Object.hasOwn(saved, control.name);
     });
     settlementField?.sync();
     if (splitChange) {
@@ -147,7 +155,7 @@
       if (originalCommand) originalCommand.hidden = saved.command === "create";
       if (preview) preview.hidden = saved.command !== "create";
     }
-    const label = form.querySelector('label[for="debt-repay-amount"]');
+    const label = form.querySelector(memberRepayment ? 'label[for="debt-proposal-amount"]' : 'label[for="debt-repay-amount"]');
     if (label) label.textContent = "本次还款（" + (saved.home_currency_code || "原币种") + "）";
     updateBalancePreview?.();
   }
@@ -238,9 +246,9 @@
     }
     const debt = parent(values(), namespace);
     if (!debt) return false;
-    return ["repayment", "debt-void", "repayment-void", "debt-kind", "repayment-review"].some(kind => {
+    return ["repayment", "member-repayment", "debt-void", "repayment-void", "debt-kind", "repayment-review"].some(kind => {
       const store = window.TicketboxDraftStore.createStore({prefix:"ticketbox:" + kind + "-draft:v1:",
-        fields:fieldNames[kind], optionalFields:kind === "repayment" ? repaymentTimeNames : [], validRef:uuid});
+        fields:fieldNames[kind], optionalFields:["repayment", "member-repayment"].includes(kind) ? repaymentTimeNames : [], validRef:uuid});
       return store.list(scope).some(record => parent(record.values, kind) === debt &&
         (kind !== namespace || record.clientRef !== currentRef) && record.phase !== "editing");
     });
@@ -362,7 +370,8 @@
     const ackStatus = surface.querySelector("[data-repayment-ack-status]");
     try {
       const ack = JSON.parse(marker.getAttribute("data-repayment-ack"));
-      if (!uuid.test(ack.clientRef) || !uuid.test(splitChange || typedCorrection ? ack.resultPublicId : ack.repaymentPublicId) ||
+      const resultId = memberRepayment ? ack.proposalPublicId : splitChange || typedCorrection ? ack.resultPublicId : ack.repaymentPublicId;
+      if (!uuid.test(ack.clientRef) || !uuid.test(resultId) ||
           !acknowledgesCommand(ack) ||
           !drafts.matches(ack.scope, scope) || !bound(ack.values)) throw Error("ack_mismatch");
       if (voidCommand) leaseKey = "ticketbox:" + namespace + "-lease:v1:" +
@@ -506,16 +515,18 @@
     const settlementField = window.TicketboxSplitSettlement ? window.TicketboxSplitSettlement(form) : null;
     initialize(form, settlementField);
   });
-  document.querySelectorAll("[data-proposal-balance-preview]").forEach(bindBalancePreview);
   const footer = document.querySelector("[data-debt-primary-footer]");
-  const editor = document.querySelector(".debt-repay-editor");
-  if (footer && editor) {
-    const summary = editor.querySelector(":scope > summary");
+  const editors = Array.from(document.querySelectorAll(".debt-repay-editor"));
+  if (footer && editors.length) {
     const entry = footer.querySelector("[data-debt-open-repayment]");
-    entry.replaceChildren(...Array.from(summary.childNodes, node => node.cloneNode(true)));
+    let editor, summary;
     function syncPrimaryEntry() {
-      footer.hidden = editor.hidden || editor.open;
-      summary.hidden = !footer.hidden;
+      editor = editors.find(panel => !panel.hidden);
+      footer.hidden = !editor || editors.some(panel => !panel.hidden && panel.open);
+      editors.forEach(panel => { panel.querySelector(":scope > summary").hidden = !footer.hidden && panel === editor; });
+      if (!editor) return;
+      summary = editor.querySelector(":scope > summary");
+      entry.replaceChildren(...Array.from(summary.childNodes, node => node.cloneNode(true)));
     }
     entry.addEventListener("click", function () {
       editor.open = true;
@@ -523,8 +534,10 @@
       editor.scrollIntoView({block:"start"});
       summary.focus();
     });
-    editor.addEventListener("toggle", syncPrimaryEntry);
-    new MutationObserver(syncPrimaryEntry).observe(editor, {attributes:true, attributeFilter:["hidden"]});
+    editors.forEach(panel => {
+      panel.addEventListener("toggle", syncPrimaryEntry);
+      new MutationObserver(syncPrimaryEntry).observe(panel, {attributes:true, attributeFilter:["hidden"]});
+    });
     syncPrimaryEntry();
   }
 })(window, document);

@@ -119,13 +119,19 @@ function environment() {
 
 const cases = {
   async date_precision() {
-    const dateValues = {...values, time_precision:'date_only', calendar_revision:'3'};
-    for (const saved of [values, dateValues]) {
+    for (const kind of ['repayment', 'member-repayment']) {
+    const member = kind === 'member-repayment';
+    const baseValues = member ? {...Object.fromEntries(Object.entries(values).filter(([name]) => name !== 'expected_row_version')),
+      note:'  原留言  '} : values;
+    const dateValues = {...baseValues, time_precision:'date_only', calendar_revision:'3'};
+    const config = {kind, fieldNames:[...Object.keys(baseValues), ...timeNames], draftPrefix:'ticketbox:' + kind + '-draft:v1:'};
+    const receipt = member ? {proposalPublicId:repaymentId} : {repaymentPublicId:repaymentId};
+    for (const saved of [baseValues, dateValues]) {
       const env = environment();
-      const first = env.page({fieldNames:[...names, ...timeNames]});
+      const first = env.page(config);
       first.store.save(scope, original, 'submitted', saved);
-      const restored = env.page({fieldNames:[...names, ...timeNames],
-        values:{time_precision:'date_only', calendar_revision:'8'}, hash:'#repayment-' + original});
+      const restored = env.page({...config, canCreate:false,
+        values:{time_precision:'date_only', calendar_revision:'8'}, hash:'#' + kind + '-' + original});
       restored.start(); await tick();
       assert.equal(restored.fields.paid_at.value, saved.paid_at);
       assert.equal(restored.fields.paid_at_timezone.value, saved.paid_at_timezone);
@@ -134,17 +140,18 @@ const cases = {
       assert.equal(restored.form.fire('submit').defaultPrevented, false);
       assert.deepEqual(JSON.parse(JSON.stringify(restored.store.read(original).values)), saved);
       restored.window.fire('pagehide'); await tick();
-      const wrong = env.page({fieldNames:[...names, ...timeNames],
-        values:dateValues, ack:{scope, clientRef:original, repaymentPublicId:repaymentId,
+      const wrong = env.page({...config,
+        values:dateValues, ack:{scope, clientRef:original, ...receipt,
           values:{...saved, calendar_revision:'8'}}});
       wrong.start(); await tick();
       assert.ok(wrong.store.read(original), 'A different calendar cannot acknowledge the original intent');
       assert.match(wrong.ackStatus.textContent, /原提交尚未收起/);
       wrong.window.fire('pagehide'); await tick();
-      const accepted = env.page({fieldNames:[...names, ...timeNames],
-        values:dateValues, ack:{scope, clientRef:original, repaymentPublicId:repaymentId, values:saved}});
+      const accepted = env.page({...config,
+        values:dateValues, ack:{scope, clientRef:original, ...receipt, values:saved}});
       accepted.start(); await tick();
       assert.equal(accepted.store.read(original), null);
+    }
     }
   },
   async balance_preview() {

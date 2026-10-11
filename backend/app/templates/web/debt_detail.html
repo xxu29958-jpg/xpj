@@ -233,42 +233,18 @@
 </section>
 {% endif %}
 
-{% if can_write and debt.is_member and debt_open and action_keys and (viewer_is_debtor == true or (viewer_is_debtor == false and pending_proposal) or action_form.kind in ['proposal_create', 'proposal_reject', 'proposal_withdraw'] or confirm_amount_error) %}
+{% if debt.is_member %}{% with repayment_form=proposal_form %}{% include '_debt_repayment_form.html' %}{% endwith %}{% endif %}
+{% if can_write and debt.is_member and debt_open and action_keys and (pending_proposal or action_form.kind in ['proposal_reject', 'proposal_withdraw'] or confirm_amount_error) %}
 <details class="debt-repay-editor" aria-labelledby="debt-proposal-actions-title"{% if pending_proposal or confirm_amount_error or action_form.kind in ['proposal_create', 'proposal_reject', 'proposal_withdraw'] %} open{% endif %}>
   <summary class="product-button product-button--primary">{{ '核对还款' if pending_proposal else '记一次还款' }} <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-right"/></svg></summary>
   <h2 class="product-panel-title" id="debt-proposal-actions-title">还款确认</h2>
   {# 稳定锚: create/reject/withdraw 的失败不依赖对应表单仍存在 (例如在途
      proposal 已有时 create 表单正当隐藏, 409 仍须在此可见)。 #}
-  {% if action_form.kind == 'proposal_create' %}
-  <div id="debt-action-error-proposal_create" class="product-feedback product-feedback--danger debt-action-error" role="alert">{{ action_form.error }}</div>
-  {% endif %}
   {% if action_form.kind == 'proposal_reject' %}
   <div id="debt-action-error-proposal_reject" class="product-feedback product-feedback--danger debt-action-error" role="alert">{{ action_form.error }}</div>
   {% endif %}
   {% if action_form.kind == 'proposal_withdraw' %}
   <div id="debt-action-error-proposal_withdraw" class="product-feedback product-feedback--danger debt-action-error" role="alert">{{ action_form.error }}</div>
-  {% endif %}
-  {% if viewer_is_debtor and not pending_proposal %}
-  {# 债务人发起: 申报「我还了」。失败锚在本表单, 金额与留言回填。 #}
-  <form class="debt-action-form" data-proposal-balance-preview method="post" action="/web/debts/{{ debt.public_id }}/repayment-proposals">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-    <input type="hidden" name="idempotency_key" value="{{ action_keys.proposal_create }}">
-    <div class="product-form-grid">
-      <div class="product-field">
-        <label for="debt-proposal-amount">本次还款（{{ currency_input.currency_code }}）</label>
-        <input id="debt-proposal-amount" class="product-input" name="amount_major" type="number" step="{{ currency_input.amount_step }}" min="{{ currency_input.positive_amount_min }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_placeholder }}" value="{{ action_form.draft.amount_major if action_form.kind == 'proposal_create' else '' }}"{% if action_form.kind == 'proposal_create' %} aria-invalid="true" aria-describedby="debt-action-error-proposal_create"{% endif %} required>
-      </div>
-      <div class="product-field">
-        <label for="debt-proposal-note">留言（可选）</label>
-        <input id="debt-proposal-note" class="product-input" name="note" type="text" maxlength="80" placeholder="比如：先还一半" value="{{ action_form.draft.note if action_form.kind == 'proposal_create' else '' }}">
-      </div>
-    </div>
-    {% include '_debt_balance_preview.html' %}
-    <div class="product-form-actions">
-      <button class="product-button product-button--primary" type="submit">提交还款确认</button>
-    </div>
-  </form>
   {% endif %}
   {% if pending_proposal %}
   <div class="debt-pending-actions">

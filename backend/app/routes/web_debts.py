@@ -462,13 +462,27 @@ def _render_debt_detail(
         can_recover=ctx["can_write"] and not ctx["debt"]["is_member"],
         values=action_draft if action_kind == "repayment" else None,
         error=action_error if action_kind == "repayment" else "",
-        result=repayment_result, ack=repayment_ack, rejected=repayment_rejected,
+        result=repayment_result if action_kind == "repayment" else "",
+        ack=repayment_ack if action_kind == "repayment" else None, rejected=repayment_rejected,
+    )
+    ctx["proposal_form"] = repayment_context(
+        request, db, selected_id=selected_id, public_id=public_id, member_proposal=True,
+        currency_code=debt.home_currency_code, calendar=debt.repayment_calendar,
+        can_create=ctx["can_write"] and debt.status == "open" and ctx["debt"]["is_member"]
+            and ctx["viewer_is_debtor"] is True and not ctx["pending_proposal"],
+        can_recover=ctx["can_write"] and ctx["debt"]["is_member"] and ctx["viewer_is_debtor"] is True,
+        values=action_draft if action_kind == "proposal_create" else None,
+        error=action_error if action_kind == "proposal_create" else "",
+        result=repayment_result if action_kind == "proposal_create" else "",
+        ack=repayment_ack if action_kind == "proposal_create" else None,
     )
     if action_kind == "repayment":
         # The retained form owns external repayment feedback, including unknown
         # post-commit outcomes. The old terminal fallback's "not saved" claim
         # cannot describe those commands. Member debts retain their static guard.
         ctx["action_form"]["fallback"] = ctx["debt"]["is_member"]
+    elif action_kind == "proposal_create":
+        ctx["action_form"]["fallback"] = not ctx["debt"]["is_member"]
     ctx["activity"] = debt_activity_context(
         request, db,
         selected_id=selected_id,

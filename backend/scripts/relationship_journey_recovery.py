@@ -12,6 +12,45 @@ class RelationshipRecovery:
     def __init__(self, journey):
         self.j = journey
 
+    def declare_return(self, returned):
+        """The real member form keeps its date and key when a committed reply is lost."""
+        j, page = self.j, self.j.page
+        j.goto(f"/web/debts/{returned}")
+        page.get_by_role("button", name="记一次还款", exact=True).click()
+        path = f"/web/debts/{returned}/repayment-proposals"
+        form = page.locator(f'form[action="{path}"]')
+        form.locator('[name="amount_major"]').fill("2.00")
+        form.locator('[name="paid_at"]').fill("2026-09-01")
+        form.locator('[name="note"]').fill("返还的原日期与留言")
+        original = {key: value for key, value in form_values(form).items() if key != "csrf_token"}
+        assert original["time_precision"] == "date_only" and original["calendar_revision"]
+        page.reload()
+        assert {key: value for key, value in form_values(form).items() if key != "csrf_token"} == original
+        delivered = []
+
+        def lose_reply(route):
+            response = route.fetch(max_redirects=0)
+            assert response.status == 200 and "data-repayment-ack=" in response.text()
+            delivered.append(True)
+            route.abort("connectionclosed")
+
+        page.route("**" + path, lose_reply)
+        try:
+            with page.expect_event("requestfailed", predicate=lambda request: request.url.endswith(path)):
+                form.locator("[data-repayment-submit]").click()
+        finally:
+            page.unroute("**" + path, lose_reply)
+        assert delivered == [True]
+        wait_for(lambda: returned in j.facts()["pending_repayments"], "The return declaration was not retained")
+        j.goto(f"/web/debts/{returned}")
+        assert {key: value for key, value in form_values(form).items() if key != "csrf_token"} == original
+        assert j.facts()["return_paid"] == 0, "An unconfirmed member declaration became a repayment fact"
+        j.capture("member-repayment-original-date")
+        form.locator("[data-repayment-submit]").click()
+        page.locator("[data-repayment-ack]").wait_for()
+        page.wait_for_function("ref => localStorage.getItem('ticketbox:member-repayment-draft:v1:' + ref) === null",
+            arg=original["idempotency_key"])
+
     def native_original(self):
         j, native = self.j, self.j.native
         j.open_native(returned=True)

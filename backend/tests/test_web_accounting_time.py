@@ -113,6 +113,58 @@ def test_repayment_native_form_preserves_date_precision_and_original_revision(mo
         assert evidence.calendar_revision == 3
 
 
+@pytest.mark.parametrize("revision", [None, "3", "", "原始错误版本"])
+def test_member_repayment_retains_original_date_and_submission(monkeypatch, revision):
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    from fastapi.testclient import TestClient
+
+    from app.routes import web_debt_proposal_actions as command
+
+    db = Mock()
+    app = FastAPI()
+    app.include_router(command.router)
+    app.dependency_overrides[command.get_db] = lambda: db
+    app.dependency_overrides[command.LocalOnly.dependency] = lambda: None
+    monkeypatch.setattr(command, "_list_ledger_options", lambda *_: [])
+    monkeypatch.setattr(command, "_resolve_selected_ledger_id", lambda *_a, **_kw: "original-ledger")
+    monkeypatch.setattr(command, "_require_selected_ledger_write", lambda *_: None)
+    monkeypatch.setattr(command, "_actor_account_id", lambda *_: 13)
+    monkeypatch.setattr(command, "get_participant_debt_response", lambda *_a, **_kw: SimpleNamespace(
+        home_currency_code="JPY", repayment_calendar=SimpleNamespace(revision=8, timezone_name="Asia/Tokyo")))
+    submit = Mock(side_effect=AppError("dependency_unavailable", status_code=503))
+    monkeypatch.setattr(command, "create_repayment_proposal_idempotently", submit)
+    monkeypatch.setattr(command, "_render_action_error", lambda *_a, **kw: JSONResponse(
+        {"values": kw["draft"], "result": ""}, status_code=kw["status_code"]))
+    monkeypatch.setattr(command, "_repayment_outcome", lambda *_a, **kw: JSONResponse(
+        {"values": kw["values"], "result": kw["result"]}, status_code=kw["status_code"]), raising=False)
+    original = {"ledger_id": "original-ledger", "debt_public_id": "original-debt", "origin_binding": "{}",
+        "home_currency_code": "JPY", "amount_major": "12", "note": "  原留言  ", "paid_at": "2026-09-01",
+        "paid_at_timezone": "Pacific/Honolulu", "idempotency_key": "original-key"}
+    if revision is not None:
+        original.update(time_precision="date_only", calendar_revision=revision)
+    with TestClient(app) as client:
+        response = client.post("/web/debts/original-debt/repayment-proposals", data=original)
+    assert response.json()["values"] == original
+    if revision in ("", "原始错误版本"):
+        assert response.status_code == 422
+        submit.assert_not_called()
+        return
+    assert response.status_code == 503 and response.json()["result"] == "submitted"
+    submitted = submit.call_args.kwargs
+    assert submitted["idempotency_key"] == "original-key"
+    payload = submitted["payload"]
+    assert payload.proposed_amount_cents == 12 and payload.note == "原留言"
+    assert payload.paid_at is None
+    if revision is None:
+        assert payload.time_input is None
+    else:
+        evidence = payload.time_input
+        assert evidence.precision == "date_only" and evidence.instant_utc is None
+        assert evidence.user_local_date.isoformat() == "2026-09-01"
+        assert evidence.calendar_revision == 3 and evidence.source_timezone == "Pacific/Honolulu"
+
+
 def test_offset_only_evidence_does_not_invent_iana_zone():
     parsed = parse_web_accounting_time("2026-11-01T01:30", fields(
         source_timezone="", source_utc_offset_seconds="-18000"))

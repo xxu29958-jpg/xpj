@@ -4102,6 +4102,16 @@
             "title": "Csrf Token",
             "type": "string"
           },
+          "debt_public_id": {
+            "default": "",
+            "title": "Debt Public Id",
+            "type": "string"
+          },
+          "home_currency_code": {
+            "default": "",
+            "title": "Home Currency Code",
+            "type": "string"
+          },
           "idempotency_key": {
             "default": "",
             "title": "Idempotency Key",
@@ -4115,6 +4125,21 @@
           "note": {
             "default": "",
             "title": "Note",
+            "type": "string"
+          },
+          "origin_binding": {
+            "default": "",
+            "title": "Origin Binding",
+            "type": "string"
+          },
+          "paid_at": {
+            "default": "",
+            "title": "Paid At",
+            "type": "string"
+          },
+          "paid_at_timezone": {
+            "default": "",
+            "title": "Paid At Timezone",
             "type": "string"
           }
         },

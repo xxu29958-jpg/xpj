@@ -128,7 +128,7 @@ def _repayment_error(exc: Exception, *, attempted: bool) -> dict:
     result = "blocked"
     if status >= 500 or code == "idempotency_key_in_progress":
         result = "submitted"
-    elif code in {"debt_overpay_rejected", "debt_amount_invalid"} or not attempted and status == 422:
+    elif code in {"debt_overpay_rejected", "debt_amount_invalid", "repayment_proposal_amount_invalid"} or not attempted and status == 422:
         result = "rejected"
     return {"status_code": status, "error": message, "result": result, "rejected": code == "state_conflict"}
 
@@ -136,12 +136,12 @@ def _repayment_error(exc: Exception, *, attempted: bool) -> dict:
 def _repayment_outcome(
     request, db, *, options, selected_id, public_id, values=None,
     error="", result="", status_code=200, ack=None,
-    rejected=False,
+    rejected=False, kind="repayment",
 ):
     try:
         return _render_debt_detail(
             request, db, options=options, selected_id=selected_id, public_id=public_id,
-            action_kind="repayment" if values is not None else None,
+            action_kind=kind if values is not None or ack is not None else None,
             action_error=error, action_draft=values, status_code=status_code,
             repayment_ack=ack, repayment_result=result,
             repayment_rejected=rejected,
@@ -150,7 +150,7 @@ def _repayment_outcome(
         db.rollback()
         return render_repayment_recovery(
             request, db, options=options, selected_id=selected_id, public_id=public_id,
-            values=values, error=error, result=result, status_code=status_code, ack=ack,
+            values=values, error=error, result=result, status_code=status_code, ack=ack, kind=kind,
         )
 
 

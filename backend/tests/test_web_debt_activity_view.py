@@ -118,7 +118,6 @@ def representative_response(monkeypatch):
     from starlette.requests import Request
 
     import app.middleware.csrf as csrf
-    import app.routes._web_debt_repayment as repayment
     import app.routes.web_debts as route
     import app.services.debt_service as service
     from app.schemas._debts import RepaymentVoidFactResponse
@@ -158,7 +157,6 @@ def representative_response(monkeypatch):
         "asset_version": "relationship-preview", "sidebar_counts": {}, "csrf_token": "example",
     }
     monkeypatch.setattr(route, "_load_debt_detail_state", lambda *_a, **_kw: (context, debt, 3, []))
-    monkeypatch.setattr(repayment, "repayment_context", lambda *_a, **_kw: {})
     calls = []
     def list_activity(db, **kwargs):
         calls.append(kwargs)

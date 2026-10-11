@@ -43,6 +43,7 @@ def repayment_context(
     calendar: RepaymentCalendarResponse | None = None,
     values: dict[str, str] | None = None, error: str = "", result: str = "",
     ack: dict | None = None, rejected: bool = False,
+    member_proposal: bool = False,
 ) -> dict:
     scope = _web_debt_write.repayment_scope(request, db)
     zone = strict_zone(calendar.timezone_name) if calendar else _web_debt_write.accounting_zone()
@@ -53,6 +54,9 @@ def repayment_context(
         "amount_major": "", "paid_at": now_utc().astimezone(zone).date().isoformat() if can_create else "",
         "paid_at_timezone": zone.key if can_create else "", "idempotency_key": str(uuid4()) if can_create else "",
     }
+    if member_proposal:
+        initial.pop("expected_row_version")
+        initial["note"] = ""
     if values is not None:
         initial.update(values)
     elif can_create:
@@ -70,6 +74,7 @@ def repayment_context(
                 "expected_row_version": expected_row_version,
             }}
     return {
+        "kind": "member-repayment" if member_proposal else "repayment",
         "public_id": public_id, "scope": scope, "values": initial, "error": error,
         "result": result, "can_create": can_create, "visible": can_create or values is not None,
         "can_recover": can_recover,
@@ -83,6 +88,7 @@ def render_repayment_recovery(
     request: Request, db: Session, *, options: list[dict], selected_id: str, public_id: str,
     values: dict[str, str] | None = None, error: str = "", result: str = "",
     status_code: int = 503, ack: dict | None = None,
+    kind: str = "repayment",
 ) -> HTMLResponse:
     # The identity/installation scope is still authoritative. No Debt fold,
     # history, side counts or inferred latest OCC is needed to retain a command.
@@ -91,6 +97,11 @@ def render_repayment_recovery(
         request, db, selected_id=selected_id, public_id=public_id,
         values=values, error=error, result=result, ack=ack,
         can_recover=_web_debt_write._debt_write_gate(options, selected_id),
+        member_proposal=kind == "proposal_create",
+    )
+    ctx["other_repayment_form"] = repayment_context(
+        request, db, selected_id=selected_id, public_id=public_id,
+        can_recover=ctx["repayment_form"]["can_recover"], member_proposal=kind != "proposal_create",
     )
     from app.routes._web_debt_void import void_context
 
