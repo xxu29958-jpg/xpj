@@ -5,10 +5,13 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasScrollToIndexAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.click
@@ -70,7 +73,9 @@ class DebtAdjustmentRoomContinuityTest {
         assertEquals(originalDebt.publicId, originalQueries.single()["tag"])
         fixture.network.readFailure = java.net.SocketException("Synthetic offline debt read")
         fixture.network.failReads = true
-        compose.onNodeWithText(context.getString(R.string.debt_kind_edit)).performScrollTo().performClick()
+        val editKind = context.getString(R.string.debt_kind_edit)
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(editKind))
+        compose.onNodeWithText(editKind).assertIsDisplayed().performClick()
         compose.onNodeWithText(context.getString(R.string.debt_kind_revolving)).performClick()
         compose.waitUntil(10_000) {
             detail.value?.state?.value?.isSubmitting == false &&
@@ -136,7 +141,8 @@ class DebtAdjustmentRoomContinuityTest {
             TicketboxTheme(skin = AppSkin.Paper) { DebtDetailScreen(model, proposals, history, {}) }
         }
         compose.waitUntil(10_000) { detail.value?.state?.value?.debt != null }
-        compose.onNodeWithText("调整本金").performScrollTo().performClick()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("调整本金"))
+        compose.onNodeWithText("调整本金").assertIsDisplayed().performClick()
         compose.onAllNodes(hasSetTextAction()).assertCountEquals(2)
         compose.onAllNodes(hasSetTextAction())[0].performTextReplacement("30.00")
         compose.onAllNodes(hasSetTextAction())[1].performTextReplacement("补记原借款")

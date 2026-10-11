@@ -13,8 +13,8 @@ from dataclasses import dataclass
 from typing import Literal
 
 RUNTIME_COMPATIBILITY_CONTRACT = "ticketbox-runtime-compatibility-v1"
-# Reject/Undo preserve original acceptance; negotiate keyed Undo before body validation.
-CURRENT_API_VERSION = "2026-09-13"
+# Repayment facts may preserve a date without an instant; old decoders require paid_at.
+CURRENT_API_VERSION = "2026-10-11"
 # Optional keyed app uploads can replay their complete original committed receipt.
 UPLOAD_ORIGINAL_RECEIPT_VERSION = 1
 ACCOUNTING_TIME_INPUT_VERSION = 1

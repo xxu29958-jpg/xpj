@@ -203,10 +203,18 @@ class DebtOfflineReadingConnectedTest {
         // Cached-source feedback can put the note outside the lazy viewport; reach it by scrolling.
         compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("原债务备注"))
         compose.onNodeWithText("原债务备注").performScrollTo().assertIsDisplayed()
+        val adjustment = context.getString(R.string.debt_action_adjustment_title)
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(adjustment))
+        compose.onNodeWithText(adjustment).assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.debt_action_void_title)).assertIsDisplayed()
+        compose.waitForIdle()
+        saveConsumerArtPreview(if (offline) "debt-secondary-actions-offline" else "debt-secondary-actions-online",
+            requireNotNull(androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
     }
 
     private fun assertOriginalPaymentDate() {
         compose.onNodeWithText("2026-08-09 · 账务归属 2026-08-10").performScrollTo().assertIsDisplayed()
+        compose.waitForIdle()
         saveConsumerArtPreview(if (offline) "debt-payment-time-offline" else "debt-payment-time-online",
             requireNotNull(androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
     }
@@ -231,7 +239,7 @@ class DebtOfflineReadingConnectedTest {
         check(page in 1..2) { "The online journey must not prefetch the unread third page" }
         val event = if (page == 1) """{"kind":"repayment","public_id":"debt-payment",
             "recorded_at":"$PAYMENT_TIME","actor_display_name":"原记录人","actor_is_you":false,
-            "amount_cents":300,"reason":"已记录日元还款","repayment":{"public_id":"debt-payment",
+            "amount_cents":null,"reason":"已记录日元还款","repayment":{"public_id":"debt-payment",
             "amount_cents":300,"paid_at":null,"created_at":"$PAYMENT_TIME","status":"active",
             "accounting_time":{"precision":"date_only","user_local_date":"2026-08-09",
             "accounting_date":"2026-08-10","calendar_revision":3,"basis":"user_selected"},

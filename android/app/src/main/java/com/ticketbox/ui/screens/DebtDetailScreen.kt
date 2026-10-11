@@ -193,7 +193,8 @@ internal fun DebtActionPanel(debt: Debt, canModify: Boolean, onAction: (DebtActi
 
 @Composable
 private fun DebtActionButtons(onAction: (DebtAction) -> Unit, amountActionsEnabled: Boolean) {
-    AppAdaptiveEditActionLayout(actionCount = if (amountActionsEnabled) 2 else 1, compact = false) { mode ->
+    AppAdaptiveEditActionLayout(actionCount = if (amountActionsEnabled) 2 else 1,
+        compact = false, stackTwoActionsOnNarrow = true) { mode ->
         when (mode) {
             AppAdaptiveEditActionMode.Stacked -> DebtActionButtonsStacked(
                 onAction = onAction,
@@ -229,32 +230,18 @@ private fun DebtActionButtonsStacked(onAction: (DebtAction) -> Unit, amountActio
         verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
     ) {
         if (amountActionsEnabled) {
-            Row(
+            AppSecondaryButton(
+                text = stringResource(R.string.debt_action_adjustment_title),
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-            ) {
-                AppSecondaryButton(
-                    text = stringResource(R.string.debt_action_adjustment_title),
-                    modifier = Modifier.weight(1f),
-                    onClick = { onAction(DebtAction.Adjustment) },
-                )
-                AppOutlinedButton(
-                    modifier = Modifier.weight(1f),
-                    onClick = { onAction(DebtAction.Void) },
-                    options = AppOutlinedButtonOptions(danger = true),
-                ) {
-                    Text(stringResource(R.string.debt_action_void_title))
-                }
-            }
-        } else {
-            // R10⑤：币种未知（支持集外）时只剩 Void 安全出口，独占一行。
-            AppOutlinedButton(
-                modifier = Modifier.fillMaxWidth(),
-                onClick = { onAction(DebtAction.Void) },
-                options = AppOutlinedButtonOptions(danger = true),
-            ) {
-                Text(stringResource(R.string.debt_action_void_title))
-            }
+                onClick = { onAction(DebtAction.Adjustment) },
+            )
+        }
+        AppOutlinedButton(
+            modifier = Modifier.fillMaxWidth(),
+            onClick = { onAction(DebtAction.Void) },
+            options = AppOutlinedButtonOptions(danger = true),
+        ) {
+            Text(stringResource(R.string.debt_action_void_title))
         }
     }
 }

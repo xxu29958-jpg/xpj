@@ -109,7 +109,7 @@ class DirectRepaymentRoomContinuityTest {
             TicketboxTheme(skin = AppSkin.Paper) { DebtDetailScreen(model, proposals, history, {}) }
         }
         compose.waitUntil(10_000) { detail.value?.state?.value?.canWriteActions == true }
-        compose.onNodeWithText("记还款").performScrollTo().performClick()
+        compose.onNodeWithText("记还款").assertIsDisplayed().performClick()
         compose.onAllNodes(hasSetTextAction()).assertCountEquals(1)
         compose.onAllNodes(hasSetTextAction())[0].performTextReplacement("100.00")
         compose.onNodeWithText("保存").performClick()

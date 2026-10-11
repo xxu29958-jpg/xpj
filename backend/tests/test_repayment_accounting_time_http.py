@@ -33,6 +33,8 @@ def test_date_only_repayment_replays_original_fact_after_calendar_change(client,
     body = {"amount_cents": 3000, "expected_row_version": debt["row_version"], "time_input": original_time}
     headers = {**identity.app_headers, "Idempotency-Key": str(uuid4())}
     url = f"/api/debts/{debt['public_id']}/repayments"
+    old_client = client.post(url, headers={**headers, "Ticketbox-Api-Version": "2026-09-13"}, json=body)
+    assert old_client.status_code == 409 and old_client.json()["error"] == "client_upgrade_required"
     first = client.post(url, headers=headers, json=body)
     assert first.status_code == 201, first.json()
     assert first.json()["remaining_amount_cents"] == 47000
@@ -48,6 +50,10 @@ def test_date_only_repayment_replays_original_fact_after_calendar_change(client,
     assert fact["accounting_time"]["user_local_date"] == "2026-04-30"
     assert fact["accounting_time"]["accounting_date"] == "2026-05-01"
     assert fact["accounting_time"]["calendar_revision"] == original_time["calendar_revision"]
+    for resource in ("activity", "repayments", "repayment-proposals"):
+        for legacy_headers in (identity.auth_headers, {**identity.auth_headers, "Ticketbox-Api-Version": "2026-09-13"}):
+            refused = client.get(f"/api/debts/{debt['public_id']}/{resource}", headers=legacy_headers)
+            assert refused.status_code == 409 and refused.json()["error"] == "client_upgrade_required"
     changed = client.post(url, headers=headers,
         json={**body, "time_input": {**original_time, "user_local_date": "2026-05-02"}})
     assert changed.status_code == 422 and changed.json()["error"] == "idempotency_key_reused"

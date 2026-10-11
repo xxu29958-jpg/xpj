@@ -19,8 +19,9 @@ class DebtActivityContractTest {
         assertEquals(null, reopened.paidAt)
         assertEquals("2026-04-30", reopened.accountingTime?.userLocalDate)
         assertEquals(3L, reopened.accountingTime?.calendarRevision)
-        assertEquals("2026-04-30 · 账务归属 2026-05-01",
-            com.ticketbox.ui.components.displayAccountingTimeDate(reopened.accountingTime, reopened.paidAt))
+        assertEquals(com.ticketbox.domain.model.UiText.res(
+            com.ticketbox.R.string.accounting_time_date_with_ledger_day, "2026-04-30", "2026-05-01"),
+            com.ticketbox.ui.components.accountingTimeDateText(reopened.accountingTime, reopened.paidAt))
     }
 
     @Test fun splitAgreementHistoryKeepsImmutableSharesCashAndForgivenessWithoutReplacingOtherEvents() {

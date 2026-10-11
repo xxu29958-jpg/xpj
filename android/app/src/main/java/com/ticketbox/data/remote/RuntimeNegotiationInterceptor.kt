@@ -81,7 +81,7 @@ internal class RuntimeNegotiationInterceptor : Interceptor {
     }
 
     private fun Request.requiresRuntimeNegotiation(incomeForecastRead: Boolean, requiresCapabilityEvidence: Boolean): Boolean =
-        requiresCapabilityEvidence || ((incomeForecastRead || isDebtGoalRead() || method in MUTATING_HTTP_METHODS) &&
+        requiresCapabilityEvidence || isRepaymentRead() || ((incomeForecastRead || isDebtGoalRead() || method in MUTATING_HTTP_METHODS) &&
             header("Authorization") != null && !url.encodedPath.startsWith("/api/auth/") &&
             // Label commands authorize their own account or target ledger. The
             // currency handshake for the selected ledger owns no part of them.
@@ -129,6 +129,9 @@ private fun Request.requiredTimeInput(): RuntimeTimeInput? = tag(Invocation::cla
 
 private fun Request.isDebtActivityRead(): Boolean =
     method == "GET" && Regex("^/api/debts/[^/]+/activity$").matches(url.encodedPath)
+
+private fun Request.isRepaymentRead(): Boolean =
+    method == "GET" && Regex("^/api/debts/[^/]+/(repayments|repayment-proposals)$").matches(url.encodedPath)
 
 /** A writer's first read after clearance latches achievement using the server's currency fence. */
 private fun Request.isDebtGoalRead(): Boolean = method == "GET" &&

@@ -17,6 +17,8 @@
     <string name="debt_activity_proposed_amount">申报金额：%1$s</string>
     <string name="debt_activity_confirmed_amount">实际确认：%1$s</string>
     <string name="debt_activity_paid_at">付款日期：%1$s</string>
+    <string name="accounting_time_date_unknown">日期未记录</string>
+    <string name="accounting_time_date_with_ledger_day">%1$s · 账务归属 %2$s</string>
     <string name="debt_activity_proposal_expires">申报有效期至：%1$s</string>
     <string name="debt_activity_open_repayment">查看关联还款</string>
     <string name="debt_activity_linked_payment">已定位关联还款</string>

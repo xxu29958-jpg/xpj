@@ -3,10 +3,21 @@
 from datetime import UTC, datetime
 
 import pytest
-from sqlalchemy import Column, MetaData, Table, create_engine
+from sqlalchemy import JSON, Column, MetaData, Table, create_engine
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session
 
-from app.models import Account, Debt, DebtAdjustment, DebtForgiveness, LedgerMember, Repayment, RepaymentVoid
+from app.models import (
+    Account,
+    Debt,
+    DebtAdjustment,
+    DebtForgiveness,
+    Ledger,
+    LedgerCalendarRevision,
+    LedgerMember,
+    Repayment,
+    RepaymentVoid,
+)
 from app.services.debt_service import _query as query
 
 WHEN = datetime(2026, 9, 20, 12, tzinfo=UTC)
@@ -18,15 +29,21 @@ def records(monkeypatch):
     # the split-return writer belong to their separate transaction tests.
     engine = create_engine("sqlite://")
     metadata = MetaData()
-    for model in (Account, Debt, DebtAdjustment, DebtForgiveness, LedgerMember, Repayment, RepaymentVoid):
+    for model in (Account, Debt, DebtAdjustment, DebtForgiveness, Ledger, LedgerCalendarRevision,
+                  LedgerMember, Repayment, RepaymentVoid):
         Table(model.__tablename__, metadata, *(
-            Column(column.name, column.type, primary_key=column.primary_key)
+            Column(column.name, JSON() if isinstance(column.type, JSONB) else column.type, primary_key=column.primary_key)
             for column in model.__table__.columns))
     metadata.create_all(engine)
     monkeypatch.setattr(query, "runtime_home_currency_code", lambda _db: "CNY")
     with Session(engine) as db:
         db.add_all([Account(id=1, display_name="Sender"), Account(id=2, display_name="Receiver"),
                     Account(id=3, display_name="Bystander")])
+        for ledger_id, owner, revision, timezone in (("mine", 1, 1, "Asia/Shanghai"),
+                                                    ("theirs", 2, 7, "Pacific/Honolulu")):
+            db.add(Ledger(ledger_id=ledger_id, name=ledger_id, owner_account_id=owner, calendar_revision=revision))
+            db.add(LedgerCalendarRevision(ledger_id=ledger_id, revision=revision, timezone_name=timezone,
+                basis="user_selected", adopted_at=WHEN, actor_account_id=owner))
         db.add_all([LedgerMember(ledger_id="mine", account_id=1, role="owner"),
                     LedgerMember(ledger_id="theirs", account_id=2, role="owner")])
         db.flush()
@@ -68,8 +85,12 @@ def test_return_counterparty_discovers_payable_with_canonical_role_name_and_bala
     assert item.direction == "owed_to_me" and item.source_type == "bill_split_return"
     assert (item.principal_amount_cents, item.paid_amount_cents, item.remaining_amount_cents) == (4000, 1000, 3000)
     detail = query.get_participant_debt_response(records, public_id=debt.public_id, ledger_id="mine", account_id=1)
-    assert item == detail
+    assert item.model_dump(exclude={"repayment_calendar"}) == detail.model_dump(exclude={"repayment_calendar"})
+    assert item.repayment_calendar is None  # Lists do not perform per-row calendar reads.
+    assert detail.repayment_calendar.revision == 7
+    assert detail.repayment_calendar.timezone_name == "Pacific/Honolulu"
     assert "theirs" not in item.model_dump_json()
+    assert "theirs" not in detail.model_dump_json()
 
 
 def test_local_payables_remain_and_cross_lookup_does_not_grant_third_party_or_external_access(records):
@@ -143,7 +164,8 @@ def test_balance_components_keep_adjustments_forgiveness_and_voided_payments_dis
             detail.forgiven_amount_cents, detail.remaining_amount_cents) == (4000, 1000, -500, 500, 2000)
     assert detail.ledger_id is None and detail.viewer_is_debtor is True
     assert not detail.is_forgiven  # A later reopened obligation still has an independent prior waiver.
-    assert _payables(records)[debt.public_id] == detail
+    assert _payables(records)[debt.public_id].model_dump(exclude={"repayment_calendar"}) == detail.model_dump(
+        exclude={"repayment_calendar"})
     legacy = detail.model_dump(exclude={"adjustment_amount_cents", "forgiven_amount_cents"})
     old_receipt = type(detail).model_validate(legacy)
     assert old_receipt.adjustment_amount_cents is old_receipt.forgiven_amount_cents is None

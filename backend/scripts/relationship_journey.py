@@ -117,8 +117,8 @@ class RelationshipJourney:
         self.open_native()
         self.native.reveal_any("提交还款确认")
         self.native.click("提交还款确认")
-        self.native.fill("30.00", label="金额")
-        self.native.click("保存")
+        self.native.fill("30.00", label="本次还款")
+        self.native.click("提交还款确认")
         original = self.facts()["original_id"]
         wait_for(lambda: original in self.facts()["pending_repayments"], "Native repayment declaration was not retained")
         self.goto(f"/web/debts/{original}")

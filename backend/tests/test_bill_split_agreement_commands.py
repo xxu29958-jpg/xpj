@@ -19,6 +19,8 @@ from app.models import (
     DebtForgiveness,
     DebtVoid,
     Expense,
+    Ledger,
+    LedgerCalendarRevision,
     MemberRepaymentProposal,
     Repayment,
     RepaymentVoid,
@@ -44,7 +46,7 @@ def agreement_db(monkeypatch):
         connection.exec_driver_sql("BEGIN")
 
     metadata = MetaData()
-    models = (Account, ApiIdempotencyKey, BillSplitInvitation, BillSplitChangeProposal, BillSplitAgreementChange,
+    models = (Account, Ledger, LedgerCalendarRevision, ApiIdempotencyKey, BillSplitInvitation, BillSplitChangeProposal, BillSplitAgreementChange,
               Debt, DebtAdjustment, DebtForgiveness, DebtVoid, Expense, MemberRepaymentProposal, Repayment, RepaymentVoid)
     for model in models:
         table = Table(model.__tablename__, metadata, *(Column(column.name,
@@ -57,6 +59,10 @@ def agreement_db(monkeypatch):
     with Session(engine) as db:
         db.add_all([Account(id=1, display_name="Receiver"), Account(id=2, display_name="Sender"),
                     Account(id=3, display_name="Ledger viewer")])
+        for ledger_id, owner in (("receiver-private", 1), ("sender-private", 2)):
+            db.add(Ledger(ledger_id=ledger_id, name=ledger_id, owner_account_id=owner, calendar_revision=1))
+            db.add(LedgerCalendarRevision(ledger_id=ledger_id, revision=1, timezone_name="Asia/Shanghai",
+                basis="user_selected", adopted_at=WHEN, actor_account_id=owner))
         db.add(BillSplitInvitation(id=1, public_id="invitation", sender_account_id=2,
             sender_ledger_id="sender-private", sender_expense_id=100, receiver_account_id=1,
             receiver_ledger_id="receiver-private", received_expense_id=200,

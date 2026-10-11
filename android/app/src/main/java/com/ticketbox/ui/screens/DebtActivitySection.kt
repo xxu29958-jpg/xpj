@@ -26,7 +26,8 @@ import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.components.AppSectionGroup
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.AppSecondaryButton
-import com.ticketbox.ui.components.displayAccountingTimeDate
+import com.ticketbox.ui.asString
+import com.ticketbox.ui.components.accountingTimeDateText
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalStateTokens
@@ -133,7 +134,7 @@ internal fun DebtActivityRepayment(
                 }
             }
             Text(
-                text = displayAccountingTimeDate(repayment.accountingTime, repayment.paidAt),
+                text = accountingTimeDateText(repayment.accountingTime, repayment.paidAt).asString(),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -218,7 +219,7 @@ internal fun DebtRepaymentVoidTarget(repayment: DebtRepayment, homeCurrencyCode:
         value = stringResource(
             R.string.debt_action_repayment_void_target_value,
             formatDisplayAmount(repayment.amountCents, CurrencyDisplay.forRecord(homeCurrencyCode)),
-            displayAccountingTimeDate(repayment.accountingTime, repayment.paidAt),
+            accountingTimeDateText(repayment.accountingTime, repayment.paidAt).asString(),
         ),
     )
 }
