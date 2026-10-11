@@ -17,7 +17,7 @@ from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import Debt, RepaymentDraft
 from app.schemas import RepaymentCreateRequest
-from app.schemas._accounting_time import AccountingTimeSnapshot
+from app.schemas._accounting_time import AccountingTimeInput, AccountingTimeSnapshot
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.currency_common import minor_amount_value
 from app.services.debt_service._repayment import record_repayment
@@ -51,6 +51,7 @@ def confirm_repayment_draft(
     idempotency_key: str,
     original_currency: str | None = None,
     original_amount: Decimal | None = None,
+    time_input: AccountingTimeInput | None = None,
     commit: bool = False,
 ) -> RepaymentDraft:
     """Confirm a pending draft → record one ``Repayment`` on the chosen Debt (§杠杆③).
@@ -92,19 +93,16 @@ def confirm_repayment_draft(
         actor_account_id=actor_account_id,
         payload=RepaymentCreateRequest(
             **money,
-            # The whole point of NLS capture is that it knows WHEN the repayment happened
-            # (captured_at = the notification post time). Confirm may be days later, so pass
-            # captured_at through as the repayment's paid_at instead of letting
-            # record_repayment fall back to now() — otherwise a delayed review back-stamps
-            # the debt history to review time. (The §6 projection keys off created_at, not
-            # paid_at, so this only sharpens the user-facing payment time, never the velocity.)
-            paid_at=draft.captured_at,
+            # Human review may correct the payment day without changing capture evidence.
+            # Old submissions still use the original captured instant/snapshot, never now().
+            paid_at=draft.captured_at if time_input is None else None,
+            time_input=time_input,
             expected_row_version=expected_row_version,
         ),
         idempotency_key=idempotency_key,
         commit=False,
         captured_time=(AccountingTimeSnapshot.model_validate(draft.accounting_time_snapshot)
-            if draft.accounting_time_snapshot is not None else None),
+            if time_input is None and draft.accounting_time_snapshot is not None else None),
     )
 
     draft.status = "confirmed"

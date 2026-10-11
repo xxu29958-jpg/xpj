@@ -5,7 +5,7 @@ from html import unescape
 from html.parser import HTMLParser
 
 _TIME_FIELDS = {"time_precision", "calendar_revision", "user_local_date", "source_timezone",
-    "source_utc_offset_seconds", "accounting_date", "expense_time", "spent_at"}
+    "source_utc_offset_seconds", "accounting_date", "expense_time", "spent_at", "paid_at", "payment_date"}
 
 
 class _PostForms(HTMLParser):

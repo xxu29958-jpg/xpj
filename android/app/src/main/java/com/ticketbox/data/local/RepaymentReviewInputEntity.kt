@@ -24,6 +24,8 @@ data class RepaymentReviewInputEntity(
     val debtHomeCurrency: String? = null,
     val debtRowVersion: Long? = null,
     val submittedAction: String? = null,
+    val paymentDate: String? = null,
+    val calendarRevision: Long? = null,
 )
 
 @Dao

@@ -28,7 +28,7 @@ from app.routes._web_debt_write import (
 )
 from app.services.debt_service import get_participant_debt_response
 from app.services.time_service import now_utc
-from tests._web_native_form_support import open_repayment_task
+from tests._web_native_form_support import hidden_post_forms, open_repayment_task
 
 # Uses the shared ``web_client`` fixture (conftest.py) which bypasses the /web loopback
 # gate; the loopback web viewer resolves to the ledger owner account.
@@ -179,10 +179,10 @@ def test_web_debtor_can_create_replay_and_withdraw_proposal(
     web_client: TestClient,
 ) -> None:
     public_id, debt_id, _owner_id, _member_id = _seed_member_debt_for_proposals(direction="i_owe")
-    create_form = _proposal_form(
-        amount_major="35.50",
-        note="刚刚转给你啦",
-    )
+    detail = web_client.get(f"/web/debts/{public_id}?ledger_id=owner")
+    task = open_repayment_task(web_client, detail)
+    create_form = {**hidden_post_forms(task.text)[f"/web/debts/{public_id}/repayment-proposals"],
+        "amount_major": "35.50", "note": "刚刚转给你啦"}
 
     created = web_client.post(
         f"/web/debts/{public_id}/repayment-proposals",

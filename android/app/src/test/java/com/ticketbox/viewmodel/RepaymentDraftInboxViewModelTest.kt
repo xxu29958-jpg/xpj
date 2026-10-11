@@ -672,6 +672,7 @@ private class FakeRepaymentDraftActions(
         kotlinx.coroutines.flow.flowOf(com.ticketbox.data.repository.RepaymentReviewState(null))
     override suspend fun open(binding: com.ticketbox.data.repository.LogicalSessionBinding, draft: RepaymentDraft, suggested: Debt?) = Result.success(Unit)
     override suspend fun money(binding: com.ticketbox.data.repository.LogicalSessionBinding, draftId: String, currency: String, amount: String) = Result.success(Unit)
+    override suspend fun date(binding: com.ticketbox.data.repository.LogicalSessionBinding, draftId: String, value: String) = Result.success(Unit)
     override suspend fun select(binding: com.ticketbox.data.repository.LogicalSessionBinding, draftId: String, debt: Debt): Result<Unit> {
         selected[draftId] = debt
         return Result.success(Unit)

@@ -102,8 +102,9 @@ function environment() {
       const hash = String(url).indexOf('#'); window.location.hash = hash < 0 ? '' : String(url).slice(hash);
     }};
     vm.runInNewContext(fs.readFileSync(process.argv[2], 'utf8'), {window});
+    const optionalFields = options.optionalFields || timeNames;
     const store = window.TicketboxDraftStore.createStore({prefix:draftPrefix,
-      fields:fieldNames.filter(name => !timeNames.includes(name)), optionalFields:fieldNames.filter(name => timeNames.includes(name)),
+      fields:fieldNames.filter(name => !optionalFields.includes(name)), optionalFields:fieldNames.filter(name => optionalFields.includes(name)),
       validRef:/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i});
     const start = () => {
       if (options.splitChange) vm.runInNewContext(fs.readFileSync(require('node:path').join(

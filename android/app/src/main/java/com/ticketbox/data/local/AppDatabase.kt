@@ -10,7 +10,7 @@ import com.ticketbox.domain.model.FxContract
 
 @Database(
     entities = [SavedQueryInputEntity::class, RuleDefinitionInputEntity::class, MerchantCreationInputEntity::class, ExpenseEntity::class, PendingMutationEntity::class, ExpenseOffsetStreamEntity::class, StatsProjectionCacheEntity::class, GoalQueryCacheEntity::class, MonthlyArrangementCacheEntity::class, RepaymentReviewInputEntity::class, ExpenseFactQueryCacheEntity::class, ExpenseFactInputEntity::class],
-    version = 27,
+    version = 28,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -608,6 +608,13 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        internal val Migration27To28 = object : Migration(27, 28) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE repayment_review_inputs ADD COLUMN paymentDate TEXT")
+                db.execSQL("ALTER TABLE repayment_review_inputs ADD COLUMN calendarRevision INTEGER")
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -642,6 +649,7 @@ abstract class AppDatabase : RoomDatabase() {
                         Migration24To25,
                         Migration25To26,
                         Migration26To27,
+                        Migration27To28,
                     )
                     .build()
                     .also { instance = it }

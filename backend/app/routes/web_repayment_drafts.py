@@ -118,6 +118,7 @@ def web_submit_repayment_review(
     origin_binding: str = Form(default=""), review_action: str = Form(default=""),
     target_with_expected_row_version: str = Form(default=""), original_currency: str = Form(default=""),
     original_amount: str = Form(default=""), idempotency_key: str = Form(default=""),
+    payment_date: str | None = Form(default=None), calendar_revision: str | None = Form(default=None),
     csrf_token: str = Form(default=""), _local: None = LocalOnly, db: Session = Depends(get_db),
 ) -> Response:
     options = _list_ledger_options(db)
@@ -125,5 +126,7 @@ def web_submit_repayment_review(
     values = {"draft_public_id": draft_public_id, "ledger_id": ledger_id, "origin_binding": origin_binding,
         "review_action": review_action, "target_with_expected_row_version": target_with_expected_row_version, "original_currency": original_currency,
         "original_amount": original_amount, "idempotency_key": idempotency_key}
+    values.update({name: value for name, value in {"payment_date": payment_date,
+        "calendar_revision": calendar_revision}.items() if value is not None})
     return submit_review(request, db, options=options, selected_id=selected_id, public_id=public_id,
         account_id=_actor_account_id(request, db, selected_id), values=values)

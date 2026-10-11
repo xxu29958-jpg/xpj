@@ -26,6 +26,7 @@ class RepaymentReviewRoomTest {
         "pending", createdAt = "2026-09-01T00:00:01Z", originalCurrencyCode = "CNY", originalAmountMinor = 10000)
     private var loseReply = true
     private var refuseReview = false
+    private var expectedReviewDate: String? = null
     private val accepted = mutableSetOf<String>()
     private val fixture = ExpenseCorrectionConnectedFixture(ApplicationProvider.getApplicationContext()) { api ->
         object : ApiService by api {
@@ -37,6 +38,7 @@ class RepaymentReviewRoomTest {
                 assertEquals(capture.publicId, publicId)
                 assertEquals("90.00", request.originalAmount)
                 assertEquals(7L, request.expectedRowVersion)
+                assertEquals(expectedReviewDate, request.timeInput?.userLocalDate)
                 refuseReviewIfRequired()
                 accepted += requireNotNull(idempotencyKey)
                 if (loseReply) throw IOException("isolated lost reply")
@@ -52,11 +54,13 @@ class RepaymentReviewRoomTest {
     @After fun close() = fixture.close()
 
     @Test fun rawInputAndOriginalReceiptSurviveReopenAndQueryCleanup() = runBlocking {
+        expectedReviewDate = "2026-08-31"
         var graph = fixture.reopen()
         var binding = requireNotNull(graph.reportsRepository.dashboardAccess()).binding
         graph.repaymentReviewRepository.open(binding, capture.toDomain()).getOrThrow()
         graph.repaymentReviewRepository.select(binding, capture.publicId, debt(binding)).getOrThrow()
         graph.repaymentReviewRepository.money(binding, capture.publicId, "CNY", " 90.").getOrThrow()
+        graph.repaymentReviewRepository.date(binding, capture.publicId, "2026-08-31").getOrThrow()
         val raw = graph.repaymentReviewRepository.observe(binding, capture.publicId).first()
         graph = fixture.reopen()
         graph.expenseRepository.clearLocalCache()
@@ -66,10 +70,13 @@ class RepaymentReviewRoomTest {
         val oldIdentity = graph.repaymentReviewRepository.observe(binding, capture.publicId).first()
         assertTrue(oldIdentity.bindingChanged)
         assertEquals(" 90.", oldIdentity.input?.amountText)
+        assertEquals("2026-08-31", oldIdentity.input?.paymentDate)
+        assertEquals(3L, oldIdentity.input?.calendarRevision)
         assertTrue(graph.repaymentReviewRepository.money(binding, capture.publicId, "CNY", "50.00").isFailure)
         graph.repaymentReviewRepository.reviewAgain(binding, capture.publicId).getOrThrow()
         val reopened = graph.repaymentReviewRepository.observe(binding, capture.publicId).first()
         assertEquals(" 90.", reopened.input?.amountText)
+        assertEquals("2026-08-31", reopened.input?.paymentDate)
         assertEquals(null, reopened.input?.debtPublicId)
         assertTrue(reopened.input?.originalKey != raw.input?.originalKey)
         graph.repaymentReviewRepository.select(binding, capture.publicId, debt(binding)).getOrThrow()
@@ -80,6 +87,7 @@ class RepaymentReviewRoomTest {
         assertEquals("pending", fixture.stored().single()["status"])
         graph = fixture.reopen()
         assertTrue(graph.repaymentReviewRepository.money(binding, capture.publicId, "CNY", "50.00").isFailure)
+        assertTrue(graph.repaymentReviewRepository.date(binding, capture.publicId, "2026-09-15").isFailure)
         assertEquals(id, graph.repaymentReviewRepository.submit(binding, capture.toDomain(), false).getOrThrow())
         loseReply = false
         drain()
@@ -169,5 +177,6 @@ class RepaymentReviewRoomTest {
         direction = "i_owe", counterpartyType = "external", counterpartyAccountId = null, counterpartyLabel = "原欠款",
         principalAmountCents = 10000, remainingAmountCents = 10000, paidAmountCents = 0, status = "open", sourceType = "manual",
         sourceId = null, homeCurrencyCode = "JPY", originalCurrencyCode = "JPY", originalAmountMinor = 10000,
-        createdAt = "2026-09-01T00:00:00Z", updatedAt = "2026-09-01T00:00:00Z", rowVersion = 7)
+        createdAt = "2026-09-01T00:00:00Z", updatedAt = "2026-09-01T00:00:00Z", rowVersion = 7,
+        repaymentCalendar = com.ticketbox.domain.model.DebtRepaymentCalendar(3, "Pacific/Honolulu"))
 }

@@ -102,6 +102,8 @@ data class RepaymentDraftConfirmRequestDto(
     val originalCurrency: String? = null,
     @param:Json(name = "original_amount")
     val originalAmount: String? = null,
+    @param:Json(name = "time_input")
+    val timeInput: ExpenseTimeInputDto? = null,
 )
 
 /**

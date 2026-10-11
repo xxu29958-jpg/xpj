@@ -161,6 +161,43 @@ def test_notification_capture_keeps_its_offset_and_calendar_before_review(monkey
     assert snapshot.source_utc_offset_seconds == 28800
 
 
+def test_human_review_date_drives_the_repayment_and_fx_without_rewriting_capture(monkeypatch):
+    from app.models import RepaymentDraft
+    from app.schemas import RepaymentDraftConfirmRequest
+    from app.services.debt_service import _repayment_draft_confirm as confirm
+
+    original_time = {"precision": "instant", "instant_utc": "2026-05-02T00:00:00Z",
+        "user_local_date": "2026-05-02", "accounting_date": "2026-05-01", "calendar_revision": 2}
+    draft = RepaymentDraft(public_id="capture", status="pending", home_currency_code="CNY",
+        original_currency_code="USD", original_amount_minor=1000, amount_cents=None,
+        captured_at=datetime(2026, 5, 2, tzinfo=UTC), accounting_time_snapshot=original_time.copy())
+    request = RepaymentDraftConfirmRequest(target_debt_public_id="debt", expected_row_version=7,
+        time_input={"precision": "date_only", "calendar_revision": 3, "user_local_date": "2026-04-30"})
+    db = MagicMock(spec=Session)
+    db.scalar.return_value = "CNY"
+    db.get.return_value = LedgerCalendarRevision(ledger_id="original-ledger", revision=3, timezone_name="Pacific/Honolulu")
+    debt = Debt(id=4, tenant_id="original-ledger", home_currency_code="CNY")
+    rates = []
+    def rate(_db, **values):
+        rates.append(values["rate_date"])
+        return Decimal("7"), "manual", "ready", values["rate_date"]
+    monkeypatch.setattr(confirm, "_lock_pending_draft", lambda *_a, **_k: draft)
+    monkeypatch.setattr(_repayment, "resolve_write_capability", lambda _db: None)
+    monkeypatch.setattr(_repayment, "guard_direct_fact_writable", lambda _debt: None)
+    monkeypatch.setattr(_repayment, "lock_and_fold", lambda _db, **kw: (debt, kw["mutate"](debt, 10000)))
+    monkeypatch.setattr(_money, "resolve_payload_rate", rate)
+    confirm.confirm_repayment_draft(db, tenant_id="original-ledger", actor_account_id=2,
+        public_id=draft.public_id, idempotency_key="original-review", time_input=request.time_input,
+        **request.model_dump(exclude={"time_input"}))
+    payment = db.add.call_args.args[0]
+    assert payment.paid_at is None and payment.amount_cents == 7000
+    assert payment.accounting_time_snapshot["user_local_date"] == "2026-04-30"
+    assert payment.accounting_time_snapshot["calendar_revision"] == 3
+    assert rates == [date(2026, 4, 30)]
+    assert draft.accounting_time_snapshot == original_time and draft.captured_at == datetime(2026, 5, 2, tzinfo=UTC)
+    assert draft.original_amount_minor == 1000 and draft.status == "confirmed"
+
+
 def test_repayment_history_reads_frozen_days_without_current_display_timezone(monkeypatch):
     from app.routes._web_debt_activity import _repayment_view
     from app.services.debt_service._repayment_activity import repayment_fact_response

@@ -31,6 +31,7 @@ interface RepaymentReviewActions {
     fun observe(binding: LogicalSessionBinding, draftId: String): Flow<RepaymentReviewState>
     suspend fun open(binding: LogicalSessionBinding, draft: RepaymentDraft, suggested: Debt? = null): Result<Unit>
     suspend fun money(binding: LogicalSessionBinding, draftId: String, currency: String, amount: String): Result<Unit>
+    suspend fun date(binding: LogicalSessionBinding, draftId: String, value: String): Result<Unit>
     suspend fun select(binding: LogicalSessionBinding, draftId: String, debt: Debt): Result<Unit>
     suspend fun submit(binding: LogicalSessionBinding, draft: RepaymentDraft, dismiss: Boolean): Result<Long>
     suspend fun recover(binding: LogicalSessionBinding, draftId: String, stop: Boolean): Result<Unit>
@@ -78,6 +79,9 @@ class RepaymentReviewRepository internal constructor(
 
     override suspend fun select(binding: LogicalSessionBinding, draftId: String, debt: Debt): Result<Unit> =
         edit(binding, draftId) { it.selectDebt(binding, debt) }
+
+    override suspend fun date(binding: LogicalSessionBinding, draftId: String, value: String): Result<Unit> =
+        edit(binding, draftId) { it.copy(paymentDate = value) }
 
     private suspend fun edit(binding: LogicalSessionBinding, draftId: String,
         transform: (RepaymentReviewInputEntity) -> RepaymentReviewInputEntity): Result<Unit> = errors.safeCall {
@@ -166,5 +170,6 @@ private fun RepaymentReviewInputEntity.selectDebt(binding: LogicalSessionBinding
         "请选择当前账本中可直接偿还的欠款。"
     }
     return copy(debtPublicId = debt.publicId, debtLabel = debt.counterpartyLabel,
-        debtHomeCurrency = debt.homeCurrencyCode, debtRowVersion = debt.rowVersion)
+        debtHomeCurrency = debt.homeCurrencyCode, debtRowVersion = debt.rowVersion,
+        calendarRevision = calendarRevision ?: debt.repaymentCalendar?.revision)
 }

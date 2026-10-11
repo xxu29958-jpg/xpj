@@ -33,3 +33,18 @@ def test_reused_key_is_not_a_success_or_permission_to_replace_original() -> None
     error = _review_error(AppError("idempotency_key_reused", status_code=422))
     assert error["result"] == "blocked" and error["rejected"] is False
     assert "不能认定本次处理成功" in error["error"]
+
+
+def test_reviewed_date_is_explicit_and_does_not_replace_frozen_captured_money() -> None:
+    capture = SimpleNamespace(original_currency_code="CNY", original_amount_minor=10000,
+        home_currency_code="USD", amount_cents=1400)
+    values = {"target_with_expected_row_version": "debt:7", "original_currency": "CNY", "original_amount": "100.00",
+        "payment_date": "2026-08-31", "calendar_revision": "3"}
+    reviewed = review_confirmation(values, capture)
+    assert reviewed.time_input.precision == "date_only"
+    assert str(reviewed.time_input.user_local_date) == "2026-08-31" and reviewed.time_input.calendar_revision == 3
+    assert reviewed.original_amount is None and reviewed.original_currency is None
+    unchanged = review_confirmation({**values, "payment_date": ""}, capture)
+    assert "time_input" not in unchanged.model_dump(exclude_unset=True)
+    with pytest.raises(AppError):
+        review_confirmation({**values, "payment_date": "2026-02-30"}, capture)

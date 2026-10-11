@@ -27,7 +27,7 @@
 {% if not can_write %}当前为只读，可以查看原输入和记录，不能提交还款。
 {% elif pending_proposal %}{{ proposals.pending_line }} · {{ pending_proposal.amount_label }}。可返回往来详情查看确认进度。
 {% elif debt.is_member and viewer_is_debtor != true %}这笔成员往来由欠款方发起还款；可返回详情查看双方确认。
-{% elif not debt_open %}这笔往来当前不能新增还款，原提交仍可在这里核对。
+{% elif not debt_open %}这笔往来{{ debt.member_status_label if debt.is_member else debt.status_label }}，当前不能新增还款，原提交仍可在这里核对。
 {% endif %}
 </p>
 {% endif %}

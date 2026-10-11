@@ -4,6 +4,7 @@
   const repaymentNames = ["debt_public_id", "ledger_id", "origin_binding", "home_currency_code",
     "expected_row_version", "amount_major", "paid_at", "paid_at_timezone"];
   const repaymentTimeNames = ["time_precision", "calendar_revision"];
+  const captureTimeNames = ["payment_date", "calendar_revision"];
   const voidNames = ["debt_public_id", "ledger_id", "origin_binding", "expected_row_version", "reason", "repayment_public_id"];
   const kindNames = ["debt_public_id", "ledger_id", "origin_binding", "expected_row_version", "debt_kind"];
   const fieldNames = {repayment:repaymentNames, "debt-void":voidNames, "repayment-void":voidNames,
@@ -43,16 +44,26 @@
   function originalAmountPresentation(form) {
     const output = form.querySelector("[data-repayment-original-amount]");
     if (!output) return null;
-    const input = form.elements.namedItem("amount_major");
+    const input = form.elements.namedItem("amount_major") || form.elements.namedItem("original_amount");
     const currency = form.querySelector("[data-repayment-currency]");
-    const initialCurrency = form.elements.namedItem("home_currency_code").value;
-    const initialLabel = currency.textContent;
+    const currencyInput = form.elements.namedItem("home_currency_code") || form.elements.namedItem("original_currency");
+    const initialCurrency = currencyInput.value;
+    const initialLabel = currency?.textContent;
     return function () {
       output.textContent = input.value || "未填金额";
       output.hidden = !input.readOnly;
       input.hidden = input.readOnly;
-      const originalCurrency = form.elements.namedItem("home_currency_code").value;
-      currency.textContent = originalCurrency === initialCurrency ? initialLabel : originalCurrency;
+      const originalCurrency = currencyInput.value;
+      if (currency) currency.textContent = originalCurrency === initialCurrency ? initialLabel : originalCurrency;
+    };
+  }
+  function captureTargetPresentation(form) {
+    const output = form.querySelector("[data-repayment-target-description]");
+    if (!output) return null;
+    const target = form.elements.namedItem("target_with_expected_row_version");
+    return function () {
+      output.hidden = !target.value;
+      output.textContent = target.selectedOptions[0]?.textContent || "";
     };
   }
   function initialize(form, settlementField) {
@@ -67,6 +78,7 @@
   const namespace = Object.hasOwn(fieldNames, form.dataset.repaymentKind) ? form.dataset.repaymentKind : "repayment";
   const memberRepayment = namespace === "member-repayment";
   const repaymentTime = namespace === "repayment" || memberRepayment;
+  const timeNames = captureReview ? captureTimeNames : repaymentTime ? repaymentTimeNames : [];
   const names = fieldNames[namespace];
   const kindLabels = {one_off:"一次结清", revolving:"循环往来", installment:"分期偿还", unspecified:"暂不指定"};
   const commandLabels = {create:"发送新约定", accept:"接受这份约定", reject:"拒绝这份约定", withdraw:"撤回我的约定"};
@@ -82,9 +94,10 @@
   const preview = form.querySelector("[data-repayment-preview]");
   const updateBalancePreview = bindBalancePreview(form);
   const updateOriginalAmount = originalAmountPresentation(form);
+  const updateCaptureTarget = captureTargetPresentation(form);
   const settlementExplicit = form.elements.namedItem("settlement_explicit");
   const optionalNames = splitChange ? ["settlement_explicit", "settlement_suggestion"] :
-    repaymentTime ? repaymentTimeNames : [];
+    timeNames;
   const hints = optionalNames.map(name => form.elements.namedItem(name)).filter(Boolean);
   const finishReview = form.querySelector("[data-void-finish-review]");
   const finishRejected = form.querySelector("[data-void-finish-rejected]");
@@ -111,13 +124,13 @@
   function values() {
     const result = Object.fromEntries(controls.map(control => [control.name, control.value]));
     hints.forEach(control => {
-      if (repaymentTime ? !control.disabled : control.value !== "") result[control.name] = control.value;
+      if (timeNames.length ? !control.disabled : control.value !== "") result[control.name] = control.value;
     });
     return result;
   }
   function sameValues(left, right) {
     return names.every(name => typeof left[name] === "string" && left[name] === right[name]) &&
-      (!repaymentTime || repaymentTimeNames.every(name => left[name] === right[name]));
+      timeNames.every(name => left[name] === right[name]);
   }
   function bound(saved) {
     return saved[targetField] === target && saved.ledger_id === scope.ledgerId &&
@@ -131,8 +144,10 @@
     if (heading) heading.textContent = state === "editing" ? "确认这次还款" : "这笔还款记上了吗";
     updateOriginalAmount?.();
     updateBalancePreview?.();
+    updateCaptureTarget?.();
   }
   function lockInputs(locked) {
+    if (captureReview) hints.forEach(control => { control.readOnly = locked; });
     controls.forEach(control => {
       control.readOnly = locked;
       const original = selectOriginals.get(control);
@@ -157,9 +172,14 @@
       control.value = value;
     });
     hints.forEach(control => {
+      if (captureReview && control.name === "payment_date") {
+        control.type = "date";
+        control.value = saved[control.name] ?? "";
+        if (control.value !== (saved[control.name] ?? "")) control.type = "text";
+      }
       control.value = saved[control.name] ?? "";
       // Old unresolved submissions must not acquire the new page's date evidence.
-      if (repaymentTime) control.disabled = !Object.hasOwn(saved, control.name);
+      if (timeNames.length) control.disabled = !Object.hasOwn(saved, control.name);
     });
     settlementField?.sync();
     if (splitChange) {
@@ -232,7 +252,8 @@
     return items;
   }
   function describeOriginal(saved) {
-    if (captureReview) return [saved.review_action === "dismiss" ? "忽略通知" : "记为还款", saved.original_currency, saved.original_amount || "未填金额"];
+    if (captureReview) return [saved.review_action === "dismiss" ? "忽略通知" : "记为还款", saved.original_currency,
+      saved.original_amount || "未填金额", saved.payment_date || "沿用采集时间"];
     if (kindCorrection) return [kindLabels[saved.debt_kind] || saved.debt_kind];
     if (voidCommand) return [saved.home_currency_code, saved.reason || "未填原因", saved.repayment_public_id || saved.debt_public_id];
     if (splitChange) return [saved.home_currency_code, commandLabels[saved.command], saved.new_share_amount_major];
@@ -267,7 +288,8 @@
     if (!debt) return false;
     return ["repayment", "member-repayment", "debt-void", "repayment-void", "debt-kind", "repayment-review"].some(kind => {
       const store = window.TicketboxDraftStore.createStore({prefix:"ticketbox:" + kind + "-draft:v1:",
-        fields:fieldNames[kind], optionalFields:["repayment", "member-repayment"].includes(kind) ? repaymentTimeNames : [], validRef:uuid});
+        fields:fieldNames[kind], optionalFields:kind === "repayment-review" ? captureTimeNames :
+          ["repayment", "member-repayment"].includes(kind) ? repaymentTimeNames : [], validRef:uuid});
       return store.list(scope).some(record => parent(record.values, kind) === debt &&
         (kind !== namespace || record.clientRef !== currentRef) && record.phase !== "editing");
     });
@@ -441,6 +463,9 @@
   form.addEventListener("submit", function (event) {
     const previewing = preview && event.submitter === preview;
     if (!held || posting || (previewing ? preview.disabled : submit.disabled)) { event.preventDefault(); return; }
+    if (captureReview && phase === "editing" && form.elements.namedItem("payment_date")?.validity?.badInput) {
+      event.preventDefault(); notice("请填写完整有效的还款日期，或清空以沿用原采集时间。", "editing"); return;
+    }
     try {
       if (previewing) {
         if (phase !== "editing") throw Error("original_is_submitted");

@@ -71,6 +71,12 @@ internal class RepaymentReviewEditor(private val reviews: RepaymentReviewActions
 
     fun selectReviewDebt(debt: Debt) = reviewAction { binding, publicId -> reviews.select(binding, publicId, debt) }
 
+    fun updateReviewDate(value: String) {
+        val input = context.state.value.review.input ?: return
+        context.state.update { it.copy(review = it.review.copy(input = input.copy(paymentDate = value))) }
+        reviewAction { binding, publicId -> reviews.date(binding, publicId, value) }
+    }
+
     fun submitReview() {
         val input = context.state.value.review.input ?: return
         val selected = context.state.value.targetDebts.singleOrNull { it.publicId == input.debtPublicId }

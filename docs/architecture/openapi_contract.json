@@ -8524,6 +8524,17 @@
       },
       "Body_web_submit_repayment_review_web_repayment_drafts__public_id__review_post": {
         "properties": {
+          "calendar_revision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calendar Revision"
+          },
           "csrf_token": {
             "default": "",
             "title": "Csrf Token",
@@ -8558,6 +8569,17 @@
             "default": "",
             "title": "Original Currency",
             "type": "string"
+          },
+          "payment_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Date"
           },
           "review_action": {
             "default": "",
@@ -22970,6 +22992,16 @@
             "minLength": 1,
             "title": "Target Debt Public Id",
             "type": "string"
+          },
+          "time_input": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AccountingTimeInput"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [

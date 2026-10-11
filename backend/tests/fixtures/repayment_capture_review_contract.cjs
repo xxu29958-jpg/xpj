@@ -1,13 +1,15 @@
 /* Capture review uses the real shared form engine, store and exclusive leases. */
 const assert = require('node:assert/strict');
 const {environment, scope, original, fresh, target, repaymentId, tick} = require('./repayment_draft_contract.cjs');
-const fieldNames = ['draft_public_id', 'ledger_id', 'origin_binding', 'review_action', 'target_with_expected_row_version', 'original_currency', 'original_amount'];
+const optionalFields = ['payment_date', 'calendar_revision'];
+const fieldNames = ['draft_public_id', 'ledger_id', 'origin_binding', 'review_action', 'target_with_expected_row_version', 'original_currency', 'original_amount', ...optionalFields];
 const draftPrefix = 'ticketbox:repayment-review-draft:v1:';
 const parent = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
 const values = {draft_public_id:target, ledger_id:scope.ledgerId, origin_binding:JSON.stringify(scope),
-  review_action:'confirm', target_with_expected_row_version:parent + ':7', original_currency:'CNY', original_amount:' 90.'};
+  review_action:'confirm', target_with_expected_row_version:parent + ':7', original_currency:'CNY', original_amount:' 90.',
+  payment_date:'2026-08-31', calendar_revision:'3'};
 function page(env, options = {}) {
-  const result = env.page({kind:'repayment-review', fieldNames, draftPrefix, values, ...options});
+  const result = env.page({kind:'repayment-review', fieldNames, optionalFields, draftPrefix, values, ...options});
   for (const name of ['review_action', 'target_with_expected_row_version', 'original_currency']) {
     const control = result.fields[name];
     control.tagName = 'SELECT'; control.options = [{value:control.value}];
@@ -22,7 +24,7 @@ async function continuity() {
   editing.form.fire('input');
   assert.equal(editing.store.read(original).values.original_amount, ' 90.');
   editing.window.fire('pagehide'); await tick();
-  const reopened = page(env, {values:{...values, target_with_expected_row_version:parent + ':99', original_currency:'USD', original_amount:'100'}});
+  const reopened = page(env, {values:{...values, target_with_expected_row_version:parent + ':99', original_currency:'USD', original_amount:'100', calendar_revision:'9'}});
   reopened.start(); await tick();
   assert.deepEqual(reopened.snapshot(), values, 'raw input, selected debt and its original version survive reopening');
   assert.ok(reopened.fields.target_with_expected_row_version.options.some(option => option.value === parent + ':7'), 'missing stale option is retained');
@@ -42,6 +44,7 @@ async function continuity() {
     assert.equal(mirror.value, submitted[name]);
   }
   retry.fields.review_action.value = 'dismiss';
+  retry.fields.payment_date.value = '2026-09-15';
   assert.equal(retry.form.fire('submit').defaultPrevented, false);
   assert.deepEqual(retry.snapshot(), submitted, 'retry cannot change the action, money, key or OCC');
   retry.window.fire('pagehide'); await tick();
@@ -49,9 +52,20 @@ async function continuity() {
   const invalid = page(env, {canCreate:false, ack:badAck}); invalid.start(); await tick();
   assert.ok(invalid.store.read(original), 'a mismatched result never removes the original');
   invalid.window.fire('pagehide'); await tick();
+  const changedDate = page(env, {canCreate:false, ack:{...badAck, status:'confirmed', values:{...submitted, payment_date:'2026-09-15'}}});
+  changedDate.start(); await tick();
+  assert.ok(changedDate.store.read(original), 'a receipt for a different day cannot consume the original');
+  changedDate.window.fire('pagehide'); await tick();
   const accepted = page(env, {canCreate:false, ack:{...badAck, status:'confirmed'}}); accepted.start(); await tick();
   assert.equal(accepted.store.read(original), null);
   assert.equal(accepted.store.read(fresh), null, 'receipt does not create another command');
+  accepted.window.fire('pagehide'); await tick();
+  const legacyValues = Object.fromEntries(Object.entries(values).filter(([name]) => !optionalFields.includes(name)));
+  const legacy = page(env, {canCreate:false});
+  legacy.store.save(scope, original, 'submitted', legacyValues); legacy.start(); await tick();
+  assert.equal(legacy.fields.payment_date.disabled, true);
+  assert.equal(legacy.form.fire('submit').defaultPrevented, false);
+  assert.deepEqual({...legacy.store.read(original).values}, legacyValues, 'old submitted capture does not acquire a new date or calendar');
 }
 
 async function rejectionAndBinding() {
