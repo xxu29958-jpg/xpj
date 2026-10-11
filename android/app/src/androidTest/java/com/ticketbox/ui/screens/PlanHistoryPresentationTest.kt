@@ -86,7 +86,14 @@ class PlanHistoryPresentationTest {
         assertEquals(1, reads)
         com.ticketbox.ui.RealKeyboard().dismissAndWait(compose)
         Espresso.pressBack()
-        compose.waitUntil(5_000) { !open.value && compose.onNodeWithText("历史已关闭").isDisplayed() }
+        try {
+            compose.waitUntil(5_000) { !open.value && compose.onNodeWithText("历史已关闭").isDisplayed() }
+        } catch (failure: ComposeTimeoutException) {
+            val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+            runCatching { automation.takeScreenshot()?.let { saveConsumerArtPreview("history-$kind-back-failure", it) } }
+            println("History dismissal timed out: kind=$kind open=${open.value}")
+            throw failure
+        }
         compose.onNodeWithText("历史已关闭").assertIsDisplayed()
     }
 

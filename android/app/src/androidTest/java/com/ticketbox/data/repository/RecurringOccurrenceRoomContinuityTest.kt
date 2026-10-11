@@ -17,7 +17,6 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
 import androidx.lifecycle.SavedStateHandle
-import androidx.lifecycle.viewModelScope
 import androidx.test.espresso.Espresso.pressBack
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.OutboxAdapterGraph
@@ -39,7 +38,6 @@ import com.ticketbox.ui.screens.recurring.OccurrenceSheetActions
 import com.ticketbox.ui.screens.recurring.RecurringOccurrenceSheet
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.RecurringOccurrenceViewModel
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -102,7 +100,7 @@ class RecurringOccurrenceRoomContinuityTest {
         assertEquals("recurring-ledger", original["ledgerId"])
         assertEquals("unfulfilled", host.model.value?.uiState?.value?.occurrence?.state)
 
-        compose.runOnIdle { host.model.value?.viewModelScope?.cancel() }
+        host.stopModel()
         fixture.reopen()
         assertEquals(original, fixture.stored().single())
         assertEquals(1, runBlocking { fixture.drain() }.retryable)
