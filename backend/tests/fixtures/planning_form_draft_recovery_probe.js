@@ -10,10 +10,10 @@
     await ready;
   }
   const specs = [
-    {kind:"debt-create", family:"debtgoal", action:"/web/debt-goals/create", fields:{name:"  原还债任务  "}},
-    {kind:"debt-links", family:"debtgoal", action:"/web/debt-goals/original-debt-goal/links", fields:{}},
+    {kind:"debt-create", family:"debtgoal", action:"/web/debt-goals/create", checks:["debt_public_ids"], fields:{name:"  原还债任务  "}},
+    {kind:"debt-links", family:"debtgoal", action:"/web/debt-goals/original-debt-goal/links", checks:["debt_public_ids"], fields:{}},
     {kind:"debt-target-date", family:"debtgoal", action:"/web/debt-goals/original-debt-goal/target-date", fields:{target_date:"2031-01-02"}},
-    {kind:"budget", family:"budget", action:"/web/budgets/save", fields:{total_amount_yuan:"009876", rollover_amount_yuan:"-0020", non_monthly_amount_yuan:"0050"}},
+    {kind:"budget", family:"budget", action:"/web/budgets/save", checks:["excluded_category", "category_budget_remove"], fields:{total_amount_yuan:"009876", rollover_amount_yuan:"-0020", non_monthly_amount_yuan:"0050"}},
     {kind:"arrangement", family:"arrangement", action:"/web/budget-advise", fields:{savings_target_yuan:"001200", reserved_buffer_yuan:"00030"}},
     {kind:"rate", family:"rate", action:"/web/budget-advise/rates", fields:{rate_to_cny:"0.04876543"}},
     {kind:"recurring-create", family:"recurring", action:"/web/recurring/create", fields:{merchant:"原创建方案",baseline_amount_yuan:"001500",next_expected_date:"2026-10-08"}},
@@ -44,15 +44,10 @@
       const input=form.elements.namedItem(name); input.value=value;
       input.dispatchEvent(new frame.contentWindow.Event("input",{bubbles:true}));
     }
-    if (["debt-create", "debt-links"].includes(spec.kind)) {
-      form.querySelectorAll('[name="debt_public_ids"]').forEach(input=>{input.checked=true;});
+    (spec.checks || []).forEach(name => {
+      form.querySelectorAll('[name="'+name+'"]').forEach(input=>{input.checked=true;});
       form.dispatchEvent(new frame.contentWindow.Event("change",{bubbles:true}));
-    }
-    if (spec.kind==="budget") {
-      form.querySelectorAll('[name="excluded_category"]').forEach(input=>{input.checked=true;});
-      form.querySelector('[name="category_budget_remove"]').checked=true;
-      form.dispatchEvent(new frame.contentWindow.Event("change",{bubbles:true}));
-    }
+    });
     const ref=form.elements.namedItem("idempotency_key").value;
     if (spec.kind === "catalog-delete") form.dispatchEvent(new frame.contentWindow.Event("change",{bubbles:true}));
     const storageRef=form.elements.namedItem("draft_ref")?.value || ref;

@@ -118,9 +118,8 @@ def render(kind, values=None, native_result=""):
                   "currency_input": JPY_INPUT, "currency_options": ["JPY", "CNY", "USD"],
                   "csrf_token": "synthetic", "csrf_field": '<input name="csrf_token" type="hidden" value="synthetic">',
                   "asset_version": "preflight", "request": {"query_params": {}}, "status_filter": ""}
-    if kind.startswith("debt-"):
-        return _debt_definition(kind, common, scope, key)
-    renderer = {"rate": _rate_definition, "rule-create": _rule_definition, "rule-edit": _rule_definition}.get(kind)
+    renderer = {"rate": _rate_definition, "rule-create": _rule_definition, "rule-edit": _rule_definition,
+        "debt-create": _debt_definition, "debt-links": _debt_definition, "debt-target-date": _debt_definition}.get(kind)
     if renderer:
         return renderer(kind, common, scope, key)
     if kind.startswith("catalog-"):
