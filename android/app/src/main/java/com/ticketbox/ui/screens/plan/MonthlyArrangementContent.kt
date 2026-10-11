@@ -89,6 +89,10 @@ private fun MonthlyArrangementSubmission(state: BudgetAdviceUiState, submission:
     AppContentCard {
         MonthlyArrangementIntentSummary(submission)
         Text(stringResource(if (submission.isConfirmed) R.string.arrangement_confirmed else R.string.arrangement_pending))
+        submission.receipt?.let {
+            Text(stringResource(R.string.arrangement_receipt_revision, it.rowVersion, displayDateTime(it.updatedAt)),
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         submission.row.lastError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         if (submission.canRetry) TextButton(onClick = { actions.onRecoverArrangement(submission, false) }, enabled = !busy && state.canRequest) {
             Text(stringResource(R.string.arrangement_retry))
@@ -118,20 +122,30 @@ private fun MonthlyArrangementHistory(state: BudgetAdviceUiState, actions: Budge
     AppBusyGuardedSheet(isSubmitting = false, onDismiss = onDismiss, skipPartiallyExpanded = true) {
         AppSheetScaffold(title = stringResource(R.string.arrangement_history), subtitle = displayMonthLabel(state.month),
             modifier = Modifier.fillMaxHeight().testTag("arrangement-history")) {
-        AppHistoryScope(state.arrangementHistory.map { it.rowVersion }, state.arrangementHistoryNext != null, state.arrangementHistoryCached)
-        Text(stringResource(if (state.arrangementHistoryCached) R.string.plan_history_cached_receipts else R.string.plan_history_query_receipt),
-            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        AppHistoryScope(state.arrangementHistory.map { it.rowVersion }, state.arrangementHistoryNext != null,
+            state.arrangementHistoryCached, state.arrangementHistoryFetchedAt?.toString())
+        if (state.arrangementHistoryCached && state.arrangementHistoryFetchedAt == null) {
+            Text(stringResource(R.string.arrangement_history_read_time_unknown), style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         if (state.arrangementBusy) Text(stringResource(R.string.budget_history_loading))
-        if (!state.arrangementBusy && state.arrangementMessage != null) {
-            Text(state.arrangementMessage.asString())
-            TextButton(onClick = { actions.onHistory(false) }) { Text(stringResource(R.string.common_retry)) }
-        } else if (!state.arrangementBusy && state.arrangementHistory.isEmpty()) {
-            Text(stringResource(R.string.arrangement_history_empty))
+        if (!state.arrangementBusy) {
+            when {
+                state.arrangementMessage != null -> {
+                    Text(state.arrangementMessage.asString())
+                    TextButton(onClick = { actions.onHistory(false) }) { Text(stringResource(R.string.common_retry)) }
+                }
+                state.arrangementHistory.isEmpty() -> Text(stringResource(R.string.arrangement_history_empty))
+            }
         }
         state.arrangementHistory.forEachIndexed { index, item ->
             val before = state.arrangementHistory.getOrNull(index + 1)?.takeIf { it.rowVersion == item.rowVersion - 1 }
             AppHistoryRecord(title = stringResource(R.string.arrangement_history_revision, item.rowVersion),
                 recordedAt = displayDateTime(item.recordedAt), summary = {
+                    if (item.rowVersion in state.arrangementHistoryReceiptVersions) {
+                        Text(stringResource(R.string.arrangement_history_receipt_source), style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                     AppHistoryComparison(stringResource(R.string.arrangement_savings),
                         before?.let { historyRecordedAmount(it.savingsTargetCents, it.homeCurrencyCode) },
                         historyRecordedAmount(item.savingsTargetCents, item.homeCurrencyCode))
@@ -144,6 +158,8 @@ private fun MonthlyArrangementHistory(state: BudgetAdviceUiState, actions: Budge
         }
         if (state.arrangementHistoryNext != null) TextButton(onClick = { actions.onHistory(true) },
             enabled = !state.arrangementBusy && !state.arrangementLoading) { Text(stringResource(R.string.arrangement_more)) }
+        Text(stringResource(if (state.arrangementHistoryCached) R.string.plan_history_cached_receipts else R.string.plan_history_query_receipt),
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(stringResource(R.string.arrangement_history_explanation), style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
         }

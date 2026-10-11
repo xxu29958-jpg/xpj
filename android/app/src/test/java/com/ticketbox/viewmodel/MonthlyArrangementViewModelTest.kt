@@ -13,6 +13,8 @@ class MonthlyArrangementViewModelTest {
     @Test fun reconnectingHistoryFillsTheMissingRevisionInOrderAndKeepsTheEditedDraft() = budgetTest {
         val base = FakeBudgetActions(budget())
         var online = false
+        val earlierRead = java.time.Instant.parse("2026-09-27T00:00:00Z")
+        val laterRead = earlierRead.plusSeconds(3600)
         val versions = listOf(3L, 2L, 1L).map { version ->
             MonthlyArrangementHistoryItemDto(version, "2026-09-27T00:00:00Z", "JPY", version * 1000, 300)
         }
@@ -21,7 +23,8 @@ class MonthlyArrangementViewModelTest {
                 if (beforeVersion != null && !online) Result.failure(java.net.ConnectException("offline"))
                 else Result.success(MonthlyArrangementHistoryRead(MonthlyArrangementHistoryDto(binding.ledgerId, month,
                     if (beforeVersion != null) versions.drop(1) else if (online) versions else listOf(versions[0], versions[2]),
-                    if (beforeVersion == null && !online) 3 else null), fromCache = beforeVersion == null && !online))
+                    if (beforeVersion == null && !online) 3 else null), fromCache = beforeVersion == null && !online,
+                    fetchedAt = if (online) laterRead else earlierRead, receiptVersions = if (online) emptySet() else setOf(3)))
         }
         val vm = BudgetAdviceViewModel(repository, initialMonth = "2026-09")
         advanceUntilIdle()
@@ -32,6 +35,8 @@ class MonthlyArrangementViewModelTest {
         advanceUntilIdle()
         assertEquals(listOf(3L, 1L), vm.uiState.value.arrangementHistory.map { it.rowVersion })
         assertTrue(vm.uiState.value.arrangementHistoryCached)
+        assertEquals(earlierRead, vm.uiState.value.arrangementHistoryFetchedAt)
+        assertEquals(setOf(3L), vm.uiState.value.arrangementHistoryReceiptVersions)
         vm.loadArrangementHistory(more = true)
         advanceUntilIdle()
         assertTrue(vm.uiState.value.arrangementHistoryLoaded)
@@ -43,6 +48,8 @@ class MonthlyArrangementViewModelTest {
         advanceUntilIdle()
         assertEquals(versions, vm.uiState.value.arrangementHistory)
         assertNull(vm.uiState.value.arrangementHistoryNext)
+        assertEquals(earlierRead, vm.uiState.value.arrangementHistoryFetchedAt)
+        assertEquals(setOf(3L), vm.uiState.value.arrangementHistoryReceiptVersions)
         // Reading an older page does not establish that the cached first page is still the latest.
         assertTrue(vm.uiState.value.arrangementHistoryCached)
         assertEquals(draft, vm.uiState.value.arrangementDraft)
@@ -50,7 +57,26 @@ class MonthlyArrangementViewModelTest {
         advanceUntilIdle()
         assertEquals(versions, vm.uiState.value.arrangementHistory)
         assertFalse(vm.uiState.value.arrangementHistoryCached)
+        assertEquals(laterRead, vm.uiState.value.arrangementHistoryFetchedAt)
+        assertTrue(vm.uiState.value.arrangementHistoryReceiptVersions.isEmpty())
         assertEquals(draft, vm.uiState.value.arrangementDraft)
+        vm.shiftMonth(1)
+        advanceUntilIdle()
+        assertNull(vm.uiState.value.arrangementHistoryFetchedAt)
+        assertTrue(vm.uiState.value.arrangementHistoryReceiptVersions.isEmpty())
+    }
+
+    @Test fun anUntimedOldPageDoesNotBorrowTheReadTimeOfANewerPage() {
+        val response = MonthlyArrangementHistoryDto("owner", "2026-09", emptyList(), null)
+        val older = BudgetAdviceUiState().arrangementHistoryRefreshed(
+            Result.success(MonthlyArrangementHistoryRead(response, fromCache = true)), more = false)
+        val fresh = MonthlyArrangementHistoryRead(response, fetchedAt = java.time.Instant.parse("2026-09-28T00:00:00Z"))
+        val combined = older.arrangementHistoryRefreshed(Result.success(fresh), more = true)
+        assertNull(combined.arrangementHistoryFetchedAt)
+        assertTrue(combined.arrangementHistoryCached)
+        val refreshed = combined.arrangementHistoryRefreshed(Result.success(fresh), more = false)
+        assertEquals(fresh.fetchedAt, refreshed.arrangementHistoryFetchedAt)
+        assertFalse(refreshed.arrangementHistoryCached)
     }
 
     @Test fun changedTrialRefreshPreventsAnOlderInFlightAdviceFromReturning() = budgetTest {

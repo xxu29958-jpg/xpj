@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.first
 import retrofit2.HttpException
+import java.time.Instant
 import java.util.UUID
 
 @JsonClass(generateAdapter = true)
@@ -25,7 +26,12 @@ data class MonthlyArrangementDraft(val homeCurrencyCode: String, val savings: St
     }
 }
 data class MonthlyArrangementRead(val response: MonthlyArrangementResponseDto, val fromCache: Boolean = false)
-data class MonthlyArrangementHistoryRead(val response: MonthlyArrangementHistoryDto, val fromCache: Boolean = false)
+data class MonthlyArrangementHistoryRead(val response: MonthlyArrangementHistoryDto, val fromCache: Boolean = false,
+    val fetchedAt: Instant? = null, val receiptVersions: Set<Long> = emptySet())
+/** Legacy raw pages remain readable; absent metadata never becomes a new read time. */
+@JsonClass(generateAdapter = true)
+internal data class MonthlyArrangementHistoryCache(val response: MonthlyArrangementHistoryDto? = null,
+    val fetchedAt: String? = null, val receipts: List<MonthlyArrangementHistoryItemDto> = emptyList())
 interface MonthlyArrangementActions {
     suspend fun arrangement(binding: LogicalSessionBinding, month: String): Result<MonthlyArrangementRead>
     suspend fun arrangementHistory(binding: LogicalSessionBinding, month: String, beforeVersion: Long? = null): Result<MonthlyArrangementHistoryRead>
@@ -49,6 +55,7 @@ class MonthlyArrangementRepository internal constructor(private val apiProvider:
     private val moshi = Moshi.Builder().build()
     private val saved = moshi.adapter(MonthlyArrangementResponseDto::class.java).serializeNulls()
     private val history = moshi.adapter(MonthlyArrangementHistoryDto::class.java)
+    private val historyCache = moshi.adapter(MonthlyArrangementHistoryCache::class.java)
     private val drafts = moshi.adapter(MonthlyArrangementDraft::class.java).serializeNulls()
     override suspend fun arrangement(binding: LogicalSessionBinding, month: String) = errors.safeCall {
         val clean = validatedBudgetMonth(month).getOrThrow()
@@ -106,20 +113,30 @@ class MonthlyArrangementRepository internal constructor(private val apiProvider:
         } catch (error: Exception) {
             if (!error.isReadTransportUnavailable()) throw error
             val receipts = observeArrangements(binding).first().filter { it.isConfirmed && it.receipt?.month == clean }
-                .mapNotNull { it.receipt }
+                .mapNotNull { it.receipt }.map { MonthlyArrangementHistoryItemDto(it.rowVersion, it.updatedAt,
+                    it.homeCurrencyCode, it.savingsTargetCents, it.reservedBufferCents) }
             return@safeCall coordinator.acceptSnapshotRead(ticket, bound, fromCache = true) {
-                val local = dao.read(key, clean, kind)?.let { history.fromJson(it.json) } ?: throw error
+                val json = dao.read(key, clean, kind)?.json ?: throw error
+                val cache = requireNotNull(historyCache.fromJson(json))
+                val local = cache.response ?: requireNotNull(history.fromJson(json))
                 verifyArrangementHistory(local, binding, clean)
-                val projection = local.withNewerReceipts(receipts, beforeVersion)
+                val projection = local.withNewerReceipts(receipts + cache.receipts, beforeVersion)
                 verifyArrangementHistory(projection, binding, clean)
-                dao.write(MonthlyArrangementCacheEntity(key, clean, kind, history.toJson(projection)))
-                MonthlyArrangementHistoryRead(projection, fromCache = true)
+                val queriedVersions = local.items.map { it.rowVersion }.toSet()
+                val retainedReceipts = projection.items.filter { it.rowVersion !in queriedVersions }
+                // Keep the query intact; cached receipt snapshots survive normal completed-outbox retention.
+                if (retainedReceipts != cache.receipts) dao.write(MonthlyArrangementCacheEntity(key, clean, kind,
+                    historyCache.toJson(cache.copy(response = local, receipts = retainedReceipts))))
+                MonthlyArrangementHistoryRead(projection, fromCache = true, fetchedAt = cache.fetchedAt?.let(Instant::parse),
+                    receiptVersions = retainedReceipts.map { it.rowVersion }.toSet())
             }
         }
         verifyArrangementHistory(response, binding, clean)
+        val fetchedAt = Instant.now()
         coordinator.acceptSnapshotRead(ticket, bound, fromCache = false) { cacheAllowed ->
-            if (cacheAllowed) dao.write(MonthlyArrangementCacheEntity(key, clean, kind, history.toJson(response)))
-            MonthlyArrangementHistoryRead(response)
+            if (cacheAllowed) dao.write(MonthlyArrangementCacheEntity(key, clean, kind,
+                historyCache.toJson(MonthlyArrangementHistoryCache(response, fetchedAt.toString()))))
+            MonthlyArrangementHistoryRead(response, fetchedAt = fetchedAt)
         }
     }
     private fun verifyArrangementHistory(response: MonthlyArrangementHistoryDto, binding: LogicalSessionBinding, clean: String) {
@@ -179,11 +196,9 @@ class MonthlyArrangementRepository internal constructor(private val apiProvider:
 
 internal val logicalBindingAdapter = Moshi.Builder().build().adapter(LogicalSessionBinding::class.java)
 
-private fun MonthlyArrangementHistoryDto.withNewerReceipts(receipts: List<MonthlyArrangementDto>, beforeVersion: Long?): MonthlyArrangementHistoryDto {
+private fun MonthlyArrangementHistoryDto.withNewerReceipts(receipts: List<MonthlyArrangementHistoryItemDto>, beforeVersion: Long?): MonthlyArrangementHistoryDto {
     val latest = items.maxOfOrNull { it.rowVersion } ?: 0
     val newer = receipts.filter { it.rowVersion > latest && (beforeVersion == null || it.rowVersion < beforeVersion) }
-        .map { MonthlyArrangementHistoryItemDto(it.rowVersion, it.updatedAt, it.homeCurrencyCode,
-            it.savingsTargetCents, it.reservedBufferCents) }
     if (newer.isEmpty()) return this
     val known = (newer + items).distinctBy { it.rowVersion }.sortedByDescending { it.rowVersion }
     // Preserve known revisions; a receipt does not prove intervening changes from another device.

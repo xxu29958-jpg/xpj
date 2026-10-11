@@ -118,7 +118,8 @@ fun BudgetAdviceViewModel.shiftMonth(delta: Long) {
     _state.update { it.copy(month = month, inputs = null, result = null, loadState = BudgetAdviceLoadState.Idle,
         error = null, terminalErrorCode = null, selectedRateSubmissionId = null, rateEditor = null,
         arrangementRead = null, arrangementDraft = null, trialRequest = null, arrangementHistory = emptyList(),
-        arrangementHistoryLoaded = false, arrangementHistoryNext = null, arrangementMessage = null) }
+        arrangementHistoryLoaded = false, arrangementHistoryNext = null, arrangementHistoryCached = false,
+        arrangementHistoryFetchedAt = null, arrangementHistoryReceiptVersions = emptySet(), arrangementMessage = null) }
     openArrangementMonth()
 }
 
@@ -134,7 +135,8 @@ fun BudgetAdviceViewModel.openRateSubmission(id: Long) {
         _state.update { it.copy(month = month, reportingHomeCurrencyCode = home, inputs = null, result = null,
             rateEditor = null, loadState = BudgetAdviceLoadState.Idle,
             arrangementRead = null, arrangementDraft = null, trialRequest = null, arrangementHistory = emptyList(),
-            arrangementHistoryLoaded = false, arrangementHistoryNext = null) }
+            arrangementHistoryLoaded = false, arrangementHistoryNext = null, arrangementHistoryCached = false,
+            arrangementHistoryFetchedAt = null, arrangementHistoryReceiptVersions = emptySet()) }
         openArrangementMonth()
     }
 }

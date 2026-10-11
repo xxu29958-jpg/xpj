@@ -64,6 +64,8 @@ data class BudgetAdviceUiState(
     val arrangementHistoryNext: Long? = null,
     val arrangementHistoryLoaded: Boolean = false,
     val arrangementHistoryCached: Boolean = false,
+    val arrangementHistoryFetchedAt: java.time.Instant? = null,
+    val arrangementHistoryReceiptVersions: Set<Long> = emptySet(),
     val arrangementBusy: Boolean = false,
     val arrangementLoading: Boolean = false,
     val arrangementMessage: UiText? = null,

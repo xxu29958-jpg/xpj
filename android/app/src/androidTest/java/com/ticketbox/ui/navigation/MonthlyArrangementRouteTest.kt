@@ -64,6 +64,9 @@ class MonthlyArrangementRouteTest {
         assertEquals(1, runBlocking { fixture.drain().done })
         compose.waitUntil(5_000) { compose.onAllNodes(hasText(context.getString(R.string.arrangement_confirmed))).fetchSemanticsNodes().isNotEmpty() }
         assertEquals(3000L, fixture.arrangement?.savingsTargetCents)
+        compose.onNodeWithText(context.getString(R.string.arrangement_history)).performScrollTo().performClick()
+        assertTextDisplayed(context.getString(R.string.arrangement_history_revision, 1L))
+        androidx.test.espresso.Espresso.pressBack()
         edit("arrangement_savings", "8000")
         tap("arrangement_trial")
         val shortfall = context.getString(R.string.arrangement_shortfall,
@@ -89,6 +92,8 @@ class MonthlyArrangementRouteTest {
         assertEquals(2L, fixture.arrangement?.rowVersion)
         assertEquals(2, fixture.arrangementWrites.size)
         assertTrue(fixture.adviceCalls.isEmpty())
+        val receiptsBeforeRead = runBlocking { fixture.rows() }
+        fixture.historyUnavailable = true
         fixture.historyReadGate = kotlinx.coroutines.CompletableDeferred()
         compose.onNodeWithText(context.getString(R.string.arrangement_history)).performScrollTo().performClick()
         assertTextDisplayed(context.getString(R.string.budget_history_loading))
@@ -99,6 +104,7 @@ class MonthlyArrangementRouteTest {
         assertHistoryReachable(context.getString(R.string.arrangement_history_revision, 1L))
         assertTextDisplayed(context.getString(R.string.arrangement_history_revision, 2L))
         assertTextDisplayed("JPY ¥8,000")
+        assertTextDisplayed(context.getString(R.string.arrangement_history_receipt_source))
         captureHistory("arrangement-history-latest")
         compose.onAllNodesWithText("JPY ¥3,000")[0].performScrollTo().assertIsDisplayed()
         compose.onAllNodesWithText("查看当时定义")[0].performScrollTo().performClick()
@@ -110,6 +116,14 @@ class MonthlyArrangementRouteTest {
         input("arrangement_savings").performScrollTo().assertTextEquals("8000")
         assertEquals(8000L, fixture.arrangement?.savingsTargetCents)
         assertEquals(2, fixture.arrangementWrites.size)
+        fixture.historyUnavailable = false
+        compose.onNodeWithText(context.getString(R.string.arrangement_history)).performScrollTo().performClick()
+        compose.waitUntil(5_000) { compose.onAllNodes(hasText(context.getString(R.string.plan_history_query_receipt))).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText(context.getString(R.string.arrangement_history_receipt_source)).assertDoesNotExist()
+        captureHistory("arrangement-history-refreshed")
+        androidx.test.espresso.Espresso.pressBack()
+        input("arrangement_savings").performScrollTo().assertTextEquals("8000")
+        assertEquals(receiptsBeforeRead, runBlocking { fixture.rows() })
     }
 
     private fun show() {

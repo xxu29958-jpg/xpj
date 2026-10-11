@@ -61,6 +61,7 @@ internal class BudgetAdviceManualRateFixture(private val context: Context) : Aut
     private val arrangementReceipts = ConcurrentHashMap<String, MonthlyArrangementDto>()
     @Volatile var arrangement: MonthlyArrangementDto? = null
     var historyReadGate: kotlinx.coroutines.CompletableDeferred<Unit>? = null
+    var historyUnavailable = false
     private val receipts = ConcurrentHashMap<String, ExchangeRateDto>()
     @Volatile var latest: ExchangeRateDto? = null
     @Volatile var loseAck = false
@@ -92,6 +93,7 @@ internal class BudgetAdviceManualRateFixture(private val context: Context) : Aut
             session.value.identity.ledgerId, month, arrangement?.takeIf { it.month == month })
         override suspend fun monthlyArrangementHistory(month: String, beforeVersion: Long?, limit: Int): com.ticketbox.data.remote.dto.MonthlyArrangementHistoryDto {
             historyReadGate?.await()
+            if (historyUnavailable) throw java.net.ConnectException("offline")
             return com.ticketbox.data.remote.dto.MonthlyArrangementHistoryDto(session.value.identity.ledgerId, month,
                 arrangementReceipts.values.filter { it.month == month && (beforeVersion == null || it.rowVersion < beforeVersion) }
                     .sortedByDescending { it.rowVersion }.take(limit).map {
