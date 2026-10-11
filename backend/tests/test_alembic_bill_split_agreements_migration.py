@@ -1,10 +1,11 @@
 """Real PostgreSQL migration and immutable-history probes; never executed on SQLite."""
 
 from datetime import UTC, datetime, timedelta
+from uuid import uuid4
 
 import pytest
 from alembic import command
-from sqlalchemy import inspect, select, text
+from sqlalchemy import MetaData, Table, inspect, select, text
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from app.database import SessionLocal, engine
@@ -13,7 +14,6 @@ from app.models import (
     BillSplitAgreementChange,
     BillSplitChangeProposal,
     BillSplitInvitation,
-    Debt,
     Expense,
     Ledger,
     LedgerMember,
@@ -25,6 +25,16 @@ from tests.test_bill_split_agreement_models import proposal_values
 pytestmark = [pytest.mark.real_db, pytest.mark.currency_binding_unbound]
 _PARENT = "20260920_0002"
 _HEAD = "20260920_0003"
+
+
+def _historical_debt(db, **values):
+    # This fixture runs at the historical edge, before later Debt columns exist.
+    # Reflect that schema instead of letting today's ORM insert future fields.
+    debts = Table("debts", MetaData(), autoload_with=db.connection())
+    now = datetime.now(UTC)
+    db.flush()
+    return db.scalar(debts.insert().values(public_id=str(uuid4()), status="open", debt_kind="unspecified",
+        created_at=now, updated_at=now, row_version=1, **values).returning(debts.c.id))
 
 
 def _seed_accepted_split():
@@ -55,12 +65,10 @@ def _seed_accepted_split():
         db.add(invitation)
         db.flush()
         received.split_origin_invitation_id = invitation.public_id
-        debt = Debt(tenant_id="agreement-receiver", owner_account_id=receiver.id, created_by_account_id=receiver.id,
+        debt_id = _historical_debt(db, tenant_id="agreement-receiver", owner_account_id=receiver.id, created_by_account_id=receiver.id,
             direction="i_owe", counterparty_type="member", counterparty_account_id=sender_id,
             principal_amount_cents=40, home_currency_code="CNY", source_type="bill_split", source_id=invitation.public_id)
-        db.add(debt)
-        db.flush()
-        return {"invitation_id": invitation.id, "source_id": invitation.public_id, "debt_id": debt.id,
+        return {"invitation_id": invitation.id, "source_id": invitation.public_id, "debt_id": debt_id,
                 "sender_id": sender_id, "receiver_id": receiver.id}
 
 
@@ -86,13 +94,10 @@ def _proposal(edge):
 
 
 def _create_return(db, edge):
-    debt = Debt(tenant_id="agreement-receiver", owner_account_id=edge["receiver_id"],
+    return _historical_debt(db, tenant_id="agreement-receiver", owner_account_id=edge["receiver_id"],
         created_by_account_id=edge["receiver_id"], direction="owed_to_me", counterparty_type="member",
         counterparty_account_id=edge["sender_id"], principal_amount_cents=20, home_currency_code="CNY",
         source_type="bill_split_return", source_id=edge["source_id"])
-    db.add(debt)
-    db.flush()
-    return debt.id
 
 
 def test_empty_edge_preserves_existing_facts_and_round_trips(agreement_edge):

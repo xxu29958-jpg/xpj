@@ -49,8 +49,10 @@ def test_principal_migration_preserves_old_rows_and_refuses_erasing_new_evidence
             "accounting_date": "2026-01-31", "calendar_revision": 3, "basis": "user_date"}
         update = text("UPDATE debts SET accounting_time_snapshot = CAST(:snapshot AS jsonb)")
         with SessionLocal.begin() as db, pytest.raises(DBAPIError, match="ck_debts_principal_time"):
+            activate_test_currency_authority(db, "CNY")
             db.execute(update, {"snapshot": json.dumps({**snapshot, "instant_utc": "2026-01-31T00:00:00Z"})})
         with SessionLocal.begin() as db:
+            activate_test_currency_authority(db, "CNY")
             db.execute(update, {"snapshot": json.dumps(snapshot)})
         saved = _rows()
         with pytest.raises(RuntimeError, match="cannot erase original principal time evidence"):

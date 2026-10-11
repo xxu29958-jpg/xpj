@@ -290,7 +290,9 @@ def test_web_debt_goals_all_installment_renders_contract_payoff(web_client: Test
             direction="i_owe", counterparty_type="external", counterparty_label="花呗分期",
             principal_amount_cents=120000, home_currency_code="CNY", status="open",
             source_type="manual", debt_kind="installment", installment_count=6,
-            installment_period_months=1, created_at=datetime(2026, 3, 10, 4, 0, tzinfo=UTC),
+            installment_period_months=1, created_at=datetime(2026, 9, 1, 4, 0, tzinfo=UTC),
+            accounting_time_snapshot={"precision": "date_only", "user_local_date": "2026-03-10",
+                "accounting_date": "2026-03-10", "calendar_revision": 1, "basis": "user_date"},
         )
         db.add(debt)
         db.flush()
@@ -299,7 +301,7 @@ def test_web_debt_goals_all_installment_renders_contract_payoff(web_client: Test
     resp = web_client.get("/web/debt-goals")
     assert resp.status_code == 200
     assert "按分期合约" in resp.text  # deterministic contract framing (not velocity "按最近 N 天")
-    assert "2026 年 9 月" in resp.text  # 建账 2026-03 + 6 期 = 2026-09
+    assert "2026 年 9 月" in resp.text  # 本金发生于2026-03 + 6期；9月补记不重启合约。
     assert "还没有足够数据估算还清日期" not in resp.text  # NOT the insufficient arm (the fixed bug)
 
 

@@ -43,11 +43,11 @@ internal fun NavGraphBuilder.addPrimaryDomainRoutes(
                 screenFactory = screenFactory,
             )
         }
-        composable(PrimaryDomain.Obligations.route) {
+        composable(PrimaryDomain.Obligations.route) { entry ->
             RelationsRoute(
                 shellState = shellState,
                 screenFactory = screenFactory,
-                creationOwner = remember(runtime.navController) { runtime.navController.getBackStackEntry(MAIN_ROUTE) },
+                creationOwner = remember(runtime.navController, entry) { runtime.navController.getBackStackEntry(MAIN_ROUTE) },
             )
         }
         composable(PrimaryDomain.Plans.route) {
@@ -173,13 +173,13 @@ internal fun NavGraphBuilder.addObligationRoutes(
             )
         }
         // 全账本往来二级页（W2-C）：ledger lens 的完整账本视图，标题带当前账本名。
-        composable(ProductSecondaryPage.AllDebts.route) {
+        composable(ProductSecondaryPage.AllDebts.route) { entry ->
             DebtRoute(
                 screenFactory = screenFactory,
                 context = DebtRouteContext(
                     onBack = onBack,
                     onOpenSyncStatus = { shellState.openSecondaryPage(ProductSecondaryPage.ObligationSync) },
-                    creationOwner = remember(runtime.navController) { runtime.navController.getBackStackEntry(MAIN_ROUTE) },
+                    creationOwner = remember(runtime.navController, entry) { runtime.navController.getBackStackEntry(MAIN_ROUTE) },
                 ),
                 lens = DebtListLens.Ledger,
                 chromeOverride = RelationsListChrome(
