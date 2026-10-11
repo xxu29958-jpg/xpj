@@ -136,10 +136,10 @@ def _repayment_error(exc: Exception, *, attempted: bool, message_for: Callable[[
 
 
 def _repayment_outcome(
-    request, db, *, options, selected_id, public_id, values=None,
+    request: Request, db: Session, *, options, selected_id, public_id, values=None,
     error="", result="", status_code=200, ack=None,
     rejected=False, kind="repayment",
-):
+) -> Response:
     try:
         return _render_debt_detail(
             request, db, options=options, selected_id=selected_id, public_id=public_id,

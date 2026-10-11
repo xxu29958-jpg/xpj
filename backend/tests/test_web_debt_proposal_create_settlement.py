@@ -65,7 +65,8 @@ def test_member_date_only_proposal_recovers_original_after_lost_reply_and_unread
 
     public_id, debt_id, _, _ = seed_member_debt(direction="i_owe", currency="JPY")
     action = f"/web/debts/{public_id}/repayment-proposals"
-    form = _NativeForm(web_client.get(f"/web/debts/{public_id}?ledger_id=owner").text, action)
+    identity = ("csrf_token", "idempotency_key", "origin_binding")
+    form = _NativeForm(web_client.get(f"/web/debts/{public_id}?ledger_id=owner").text, action, identity_fields=identity)
     form.set("amount_major", "12")
     form.set("paid_at", "2026-09-01")
     form.set("note", "  原留言  ")
@@ -90,7 +91,7 @@ def test_member_date_only_proposal_recovers_original_after_lost_reply_and_unread
     unknown = web_client.post(action, data=original)
     assert unknown.status_code == 503
     assert 'data-repayment-result="submitted"' in unknown.text
-    retained = _NativeForm(unknown.text, action)
+    retained = _NativeForm(unknown.text, action, identity_fields=identity)
     assert {name: retained.one(name) for name in retained.fields} == original
     accepted = web_client.post(action, data=original)
     assert accepted.status_code == 200 and "这次还款申报已记录" in accepted.text
