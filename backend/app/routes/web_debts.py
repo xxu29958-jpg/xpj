@@ -454,27 +454,21 @@ def _render_debt_detail(
         kind=action_kind, values=action_draft, error=action_error, result=kind_result, ack=kind_ack, rejected=kind_rejected)
     from app.routes._web_debt_repayment import repayment_context
 
+    repayment_outcome = {"values": action_draft, "error": action_error, "result": repayment_result, "ack": repayment_ack}
+    external_write = ctx["can_write"] and not ctx["debt"]["is_member"]
+    member_write = ctx["can_write"] and ctx["debt"]["is_member"] and ctx["viewer_is_debtor"] is True
     ctx["repayment_form"] = repayment_context(
         request, db, selected_id=selected_id, public_id=public_id,
         currency_code=debt.home_currency_code, expected_row_version=str(debt.row_version),
         calendar=debt.repayment_calendar,
-        can_create=ctx["can_write"] and debt.status == "open" and not ctx["debt"]["is_member"],
-        can_recover=ctx["can_write"] and not ctx["debt"]["is_member"],
-        values=action_draft if action_kind == "repayment" else None,
-        error=action_error if action_kind == "repayment" else "",
-        result=repayment_result if action_kind == "repayment" else "",
-        ack=repayment_ack if action_kind == "repayment" else None, rejected=repayment_rejected,
+        can_create=external_write and debt.status == "open", can_recover=external_write,
+        rejected=repayment_rejected, **(repayment_outcome if action_kind == "repayment" else {}),
     )
     ctx["proposal_form"] = repayment_context(
         request, db, selected_id=selected_id, public_id=public_id, member_proposal=True,
         currency_code=debt.home_currency_code, calendar=debt.repayment_calendar,
-        can_create=ctx["can_write"] and debt.status == "open" and ctx["debt"]["is_member"]
-            and ctx["viewer_is_debtor"] is True and not ctx["pending_proposal"],
-        can_recover=ctx["can_write"] and ctx["debt"]["is_member"] and ctx["viewer_is_debtor"] is True,
-        values=action_draft if action_kind == "proposal_create" else None,
-        error=action_error if action_kind == "proposal_create" else "",
-        result=repayment_result if action_kind == "proposal_create" else "",
-        ack=repayment_ack if action_kind == "proposal_create" else None,
+        can_create=member_write and debt.status == "open" and not ctx["pending_proposal"],
+        can_recover=member_write, **(repayment_outcome if action_kind == "proposal_create" else {}),
     )
     if action_kind == "repayment":
         # The retained form owns external repayment feedback, including unknown

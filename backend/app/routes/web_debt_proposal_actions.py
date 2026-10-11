@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from starlette.responses import Response
 
 from app.database import get_db
+from app.error_reporting import retain_handled_error
 from app.errors import AppError
 from app.money_carrier import MAX_MAJOR_DECIMAL_TEXT_LENGTH
 from app.routes._web_accounting_time import accounting_time_form_fields, parse_web_accounting_time
@@ -104,7 +105,7 @@ def web_create_repayment_proposal(
         request=request,
     )
     time_fields = {name: value for name, value in (time_fields or {}).items() if name in REPAYMENT_TIME_FIELDS}
-    retained = bool(debt_public_id or origin_binding or home_currency_code or time_fields)
+    retained = any((debt_public_id, origin_binding, home_currency_code, time_fields))
     values = dict(ledger_id=ledger_id, debt_public_id=debt_public_id, origin_binding=origin_binding,
         home_currency_code=home_currency_code, amount_major=amount_major, note=note,
         paid_at=paid_at, paid_at_timezone=paid_at_timezone, idempotency_key=idempotency_key, **time_fields)
@@ -131,7 +132,7 @@ def web_create_repayment_proposal(
                 currency_code=debt.home_currency_code,
                 allow_negative=False,
             ),
-            note=(note or "").strip() or None,
+            note=note.strip() or None,
             **({"time_input": time_input} if time_input is not None else {}),
         )
         attempted = True
@@ -141,13 +142,12 @@ def web_create_repayment_proposal(
             actor_account_id=actor_account_id,
             public_id=public_id,
             payload=payload,
-            idempotency_key=(idempotency_key or "").strip() or None,
+            idempotency_key=idempotency_key.strip() or None,
         )
     except (AppError, ValidationError, SQLAlchemyError) as exc:
         db.rollback()
-        outcome = _repayment_error(exc, attempted=attempted)
-        if isinstance(exc, AppError) and exc.status_code < 500:
-            outcome["error"] = _proposal_error_message(exc)
+        retain_handled_error(request, exc)
+        outcome = _repayment_error(exc, attempted=attempted, message_for=_proposal_error_message)
         return _repayment_outcome(request, db, options=options, selected_id=selected_id, public_id=public_id,
             kind="proposal_create", values=values, **outcome)
     if retained:

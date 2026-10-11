@@ -121,6 +121,12 @@ REVIEWED_BOUNDARIES = {
         "test": "backend/tests/test_web_recognition_runtime.py::test_recognition_failure_preserves_original_and_reports_through_http_owner",
         "reason": "Text and image consumers share the original OCR commands. Expected 4xx refusals preserve input; 5xx/SQL failures roll back and retain the exception for the common HTTP reporter. Native and JSON responses preserve the original identity, key and version without exposing the cause or acknowledging a failed command.",
     },
+    ("backend/app/routes/web_debt_actions.py", "_repayment_outcome"): {
+        "sha256": "c3eb3e9a452867e24e91c3cb3948fbf5b3e9c1a676207b013ec7c03f37663adf",
+        "owner": "existing HTTP reporter, with original command failures retained across an unavailable detail read",
+        "test": "backend/tests/test_web_accounting_time.py::test_repayment_detail_failure_keeps_original_receipt_and_reporting_owner",
+        "reason": "A failed detail read never replaces the accepted command receipt or unresolved original. HTTP 5xx is reported once by middleware with the retained first failure. A server-side read failure after acceptance reports through the same sanitized sink while keeping the actual response status and receipt. Expected read refusals do not emit error reports, and sink failure cannot change the business outcome.",
+    },
     ("backend/packaging/launch.py", "_build_log_config"): {
         "sha256": "e2e66d7e5752900a201b3cd2c9b9b18c4d969dc095b7ae327c3fe18b88f551ee", "owner": "existing shared rotating file and optional console handlers",
         "test": "backend/tests/test_error_reporting_runtime.py::test_rotated_files_keep_build_identity_and_final_sanitization",

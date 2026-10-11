@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from starlette.responses import Response
 
 from app.database import get_db
+from app.error_reporting import report_http_error, retain_handled_error
 from app.errors import AppError
 from app.routes import _web_debt_write
 from app.routes._web_accounting_time import accounting_time_form_fields, parse_web_accounting_time
@@ -118,11 +119,12 @@ def _actor_account_id(request: Request, db: Session, ledger_id: str) -> int:
     return account_id
 
 
-def _repayment_error(exc: Exception, *, attempted: bool) -> dict:
+def _repayment_error(exc: Exception, *, attempted: bool, message_for: Callable[[AppError], str] = _error_message) -> dict:
     """Classify whether the original command can be corrected or only recovered."""
     status, code, message = 422, "", "还款信息不完整，请检查后重试。"
     if isinstance(exc, AppError):
-        status, code, message = exc.status_code, exc.error, _error_message(exc)
+        status, code = exc.status_code, exc.error
+        message = message_for(exc) if status < 500 else _error_message(exc)
     elif isinstance(exc, SQLAlchemyError):
         status, message = 503, "还款结果暂未确认，请继续核实原提交。"
     result = "blocked"
@@ -146,8 +148,15 @@ def _repayment_outcome(
             repayment_ack=ack, repayment_result=result,
             repayment_rejected=rejected,
         )
-    except (AppError, SQLAlchemyError):
+    except (AppError, SQLAlchemyError) as exc:
         db.rollback()
+        if status_code >= 500:
+            if getattr(request.state, "reporting_error", None) is None:
+                retain_handled_error(request, exc)
+        elif isinstance(exc, SQLAlchemyError) or exc.status_code >= 500:
+            # An accepted command keeps its receipt and HTTP status even when
+            # the independent detail read fails; report that read through the same sink.
+            report_http_error(request, status_code, error=exc)
         return render_repayment_recovery(
             request, db, options=options, selected_id=selected_id, public_id=public_id,
             values=values, error=error, result=result, status_code=status_code, ack=ack, kind=kind,
@@ -219,6 +228,7 @@ def web_record_repayment(
         )
     except (AppError, ValidationError, SQLAlchemyError) as exc:
         db.rollback()
+        retain_handled_error(request, exc)
         return _repayment_outcome(
             request, db, options=options, selected_id=selected_id, public_id=public_id,
             values=values, **_repayment_error(exc, attempted=attempted),

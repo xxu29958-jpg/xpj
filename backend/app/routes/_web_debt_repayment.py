@@ -51,16 +51,18 @@ def repayment_context(
         "debt_public_id": public_id, "ledger_id": selected_id,
         "origin_binding": json.dumps(scope, ensure_ascii=False, sort_keys=True),
         "home_currency_code": currency_code, "expected_row_version": expected_row_version,
-        "amount_major": "", "paid_at": now_utc().astimezone(zone).date().isoformat() if can_create else "",
-        "paid_at_timezone": zone.key if can_create else "", "idempotency_key": str(uuid4()) if can_create else "",
+        "amount_major": "", "paid_at": "", "paid_at_timezone": "", "idempotency_key": "",
     }
+    if can_create:
+        initial.update(paid_at=now_utc().astimezone(zone).date().isoformat(),
+            paid_at_timezone=zone.key, idempotency_key=str(uuid4()))
     if member_proposal:
         initial.pop("expected_row_version")
         initial["note"] = ""
     if values is not None:
         initial.update(values)
     elif can_create:
-        initial.update(time_precision="date_only", calendar_revision=str(calendar.revision) if calendar else "")
+        initial.update(time_precision="date_only", calendar_revision=str(getattr(calendar, "revision", "")))
     code = initial["home_currency_code"]
     replacement = None
     if rejected and can_create and values is not None:
