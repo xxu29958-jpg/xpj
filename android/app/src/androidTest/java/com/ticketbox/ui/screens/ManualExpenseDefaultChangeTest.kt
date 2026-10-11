@@ -42,7 +42,7 @@ class ManualExpenseDefaultChangeTest {
                         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
                         ManualExpenseSheet(
                             state = ManualExpenseSheetState(emptyList(), saving = false, initialCurrency = defaultCurrency.value),
-                            actions = ManualExpenseSheetActions(onCreate = { submitted += it }, onDismiss = {}),
+                            actions = ManualExpenseSheetActions(onCreate = { submitted += it; visible.value = false }, onDismiss = {}),
                         )
                     }
                 }
@@ -62,7 +62,6 @@ class ManualExpenseDefaultChangeTest {
         // Removing the dialog also posts an OS input-session hide. Settle that
         // removal before opening the next task; settling only before disposal
         // can let the old window's hide overtake the new keyboard's show.
-        compose.runOnIdle { visible.value = false }
         compose.waitForIdle()
         keyboard.dismissAndWait(compose)
         compose.runOnIdle { visible.value = true }
@@ -75,6 +74,10 @@ class ManualExpenseDefaultChangeTest {
         assertEquals(CurrencyCode.JPY, next.originalCurrencyCode)
         assertEquals(12L, next.originalAmountMinor)
         assertEquals(CurrencyCode.JPY, next.ledgerHomeCurrency)
+        // The real LedgerScreen closes after successful creation. Finish that
+        // same exit before the rule tears down the host and restores IME settings.
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_sheet_title)).assertDoesNotExist()
+        keyboard.dismissAndWait(compose)
     }
 
     private fun enterAmount() {
