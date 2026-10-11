@@ -104,15 +104,13 @@ private fun SpendingGoalRouteContent(
         if (context.returnToCaller) onBack() else page = SpendingGoalPage.List
     }
 
-    LaunchedEffect(page, context.financialDataRevision) {
-        if (page == SpendingGoalPage.List && context.financialDataRevision > 0) models.list.refresh()
-    }
     LaunchedEffect(page, detailPublicId, context.financialDataRevision, detailState.isEditing) {
         if (page == SpendingGoalPage.Detail && !detailState.isEditing) {
             detailPublicId?.let(models.detail::load)
         }
     }
-    SpendingGoalDetailResultEffect(detailState, models, closeDetail)
+    SpendingGoalDetailResultEffect(detailState, models, closeDetail,
+        page == SpendingGoalPage.List, context.financialDataRevision)
 
     when (page) {
         SpendingGoalPage.List -> SpendingGoalsScreen(
@@ -152,14 +150,20 @@ private fun SpendingGoalRouteContent(
 }
 
 @Composable
-private fun SpendingGoalDetailResultEffect(state: SpendingGoalDetailUiState, models: SpendingGoalRouteModels, onArchived: () -> Unit) {
+private fun SpendingGoalDetailResultEffect(
+    state: SpendingGoalDetailUiState,
+    models: SpendingGoalRouteModels,
+    onArchived: () -> Unit,
+    listVisible: Boolean,
+    financialDataRevision: Int,
+) {
+    LaunchedEffect(listVisible, financialDataRevision, state.mutationRevision) {
+        if (listVisible && (financialDataRevision > 0 || state.mutationRevision > 0)) models.list.refresh()
+    }
     LaunchedEffect(state.mutationRevision, state.archiveCompleted) {
-        if (state.mutationRevision > 0) {
-            if (state.archiveCompleted) {
-                models.detail.acceptedArchive?.let { (binding, archived) -> models.list.acceptArchived(binding, archived) }
-                onArchived()
-            }
-            models.list.refresh()
+        if (state.mutationRevision > 0 && state.archiveCompleted) {
+            models.detail.acceptedArchive?.let { (binding, archived) -> models.list.acceptArchived(binding, archived) }
+            onArchived()
         }
     }
 }

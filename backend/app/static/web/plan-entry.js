@@ -92,7 +92,7 @@
     const status = form.querySelector(selector("draft-status"));
     const submit = form.querySelector(definition.submitSelector || '[type="submit"]:not([name="review_new"]):not([name="review_latest"])');
     if (!submit) return;
-    const nativeLabel = submit.textContent;
+    const nativeContent = [...submit.childNodes];
     const nativeRef = (definition.draftRefField && form.elements.namedItem(definition.draftRefField).value) || form.elements.namedItem(commandRefField).value;
     const amount = definition.amount ? form.elements.namedItem(definition.amount) : null;
     const shelf = form.querySelector(selector("draft-shelf")) || document.querySelector(selector("draft-shelf"));
@@ -165,7 +165,8 @@
       updateFields(fieldsEditable());
       submit.hidden = !canWrite || (archived && phase === "editing");
       submit.disabled = !commandAllowed() || actionUnavailable();
-      submit.textContent = phase === "editing" ? nativeLabel : definition.pendingLabel || "核实原" + taskLabel;
+      if (phase === "editing") submit.replaceChildren(...nativeContent);
+      else submit.textContent = definition.pendingLabel || "核实原" + taskLabel;
       review.hidden = !reviewAvailable();
       review.disabled = actionUnavailable();
       discard.hidden = blocked || !retained;

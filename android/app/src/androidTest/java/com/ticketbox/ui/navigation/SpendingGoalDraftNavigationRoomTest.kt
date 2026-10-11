@@ -44,6 +44,7 @@ import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.CreateSpendingGoalViewModel
 import com.ticketbox.viewmodel.createSpendingGoalViewModelFactory
 import com.ticketbox.viewmodel.SpendingGoalsViewModel
+import com.ticketbox.data.repository.toDomain
 import com.ticketbox.viewmodel.spendingGoalsViewModelFactory
 import kotlinx.coroutines.CompletableDeferred
 import org.junit.After
@@ -60,6 +61,8 @@ class SpendingGoalDraftNavigationRoomTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private var restored = false
     private val restoredDetailRead = CompletableDeferred<Unit>()
+    private val goalReadStarted = CompletableDeferred<Unit>()
+    private var releaseGoalRead: CompletableDeferred<Unit>? = null
     private val restores = java.util.concurrent.CopyOnWriteArrayList<RecycleBinRestoreRequestDto>()
     private var goal = GoalDto(
         publicId = "navigation-spending-goal", ledgerId = "correction-ledger", name = "餐饮控制",
@@ -87,6 +90,10 @@ class SpendingGoalDraftNavigationRoomTest {
             override suspend fun goal(publicId: String, timezone: String?): GoalDto {
                 check(publicId == goal.publicId || publicId == archivedGoal().publicId)
                 if (restored && publicId == archivedGoal().publicId) restoredDetailRead.complete(Unit)
+                if (publicId == goal.publicId) {
+                    goalReadStarted.complete(Unit)
+                    releaseGoalRead?.await()
+                }
                 return if (publicId == goal.publicId) goal else archivedGoal()
             }
             override suspend fun recycleBin() = RecycleBinListResponseDto(if (restored) emptyList() else listOf(
@@ -199,6 +206,46 @@ class SpendingGoalDraftNavigationRoomTest {
         assertEquals("", compose.onAllNodes(hasSetTextAction())[1].fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
         assertEquals("", compose.onAllNodes(hasSetTextAction())[2].fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
         assertTrue(harness.fixture.stored().isEmpty())
+    }
+
+    @Test fun reopenedReceiptKeepsOriginalAmountWhileTheVisibleDetailReadsTheMembersNewAmount() {
+        val edits = harness.screenFactory.goalEditRepository
+        val receipt = goal.copy(targetAmountCents = 240_000, remainingAmountCents = 180_000, rowVersion = 3)
+        val original = kotlinx.coroutines.runBlocking {
+            val binding = requireNotNull(edits.currentAccess()).binding
+            val id = edits.save(binding, goal.toDomain(),
+                com.ticketbox.domain.model.GoalUpdate(2, targetAmountCents = 240_000, homeCurrencyCode = "CNY")).getOrThrow()
+            harness.fixture.outbox.markDone(id, receiptJson = com.ticketbox.OutboxAdapterGraph().goalReceiptAdapter.toJson(receipt))
+            harness.fixture.stored()
+        }
+        goal = goal.copy(targetAmountCents = 250_000, remainingAmountCents = 190_000, rowVersion = 4)
+        releaseGoalRead = CompletableDeferred()
+        showRoutes()
+        enterGoals()
+        val list = listOwner()
+        compose.onNodeWithText(goal.name).performClick()
+        compose.waitUntil(10_000) { goalReadStarted.isCompleted }
+        val detail = compose.runOnIdle {
+            ViewModelProvider(requireNotNull(inner.currentBackStackEntry))[
+                "spending-goal-detail", com.ticketbox.viewmodel.SpendingGoalDetailViewModel::class.java]
+        }
+        compose.waitUntil(10_000) { detail.state.value.mutationRevision > 0 }
+        compose.waitForIdle()
+        compose.waitUntil(10_000) { !list.state.value.isLoading }
+        releaseGoalRead?.complete(Unit)
+        compose.waitUntil(10_000) { !detail.state.value.isLoading }
+        assertEquals(null, detail.state.value.loadError)
+        assertEquals(250_000L, detail.state.value.goal?.targetAmountCents)
+        assertEquals(240_000L, detail.state.value.pendingEdits.single().confirmed?.targetAmountCents)
+        compose.onNodeWithText("CNY ¥2,500.00").performScrollTo().assertExists()
+        capture("goal-current-with-original-receipt")
+        goal = goal.copy(targetAmountCents = 260_000, remainingAmountCents = 200_000, rowVersion = 5)
+        scrollToText(context.getString(R.string.spending_goal_detail_back))
+        compose.onNodeWithText(context.getString(R.string.spending_goal_detail_back)).performClick()
+        compose.waitUntil(10_000) { !list.state.value.isLoading &&
+            list.state.value.goals.any { it.publicId == goal.publicId && it.targetAmountCents == 260_000L } }
+        assertEquals(260_000L, list.state.value.goals.first { it.publicId == goal.publicId }.targetAmountCents)
+        assertEquals(original, harness.fixture.stored())
     }
 
     private fun creationOwner(): CreateSpendingGoalViewModel = compose.runOnIdle {

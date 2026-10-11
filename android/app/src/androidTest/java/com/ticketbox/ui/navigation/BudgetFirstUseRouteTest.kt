@@ -18,6 +18,7 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
@@ -155,12 +156,15 @@ class BudgetFirstUseRouteTest {
             })
         }
         compose.onNodeWithText(text(R.string.budget_history_title)).performScrollTo().performTouchInput { click() }
-        compose.waitUntil(5_000) { transport.historyCursors.size == 1 }
-        compose.onNodeWithText(text(R.string.budget_history_edit)).assertIsDisplayed()
+        val modified = context.getString(R.string.goal_history_version, 2, text(R.string.budget_history_edit))
+        compose.waitUntil(5_000) { compose.onAllNodesWithText(modified).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText(modified).performScrollTo().assertIsDisplayed()
         compose.onNodeWithText(text(R.string.budget_history_more)).performScrollTo().performClick()
-        compose.waitUntil(5_000) { transport.historyCursors.size == 2 }
-        compose.onNodeWithText(text(R.string.budget_history_create)).performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("餐饮 · ¥300").performScrollTo().assertIsDisplayed()
+        val created = context.getString(R.string.goal_history_version, 1, text(R.string.budget_history_create))
+        compose.waitUntil(5_000) { compose.onAllNodesWithText(created).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText(created).performScrollTo().assertIsDisplayed()
+        compose.onAllNodesWithText(text(R.string.plan_history_expand))[1].performScrollTo().performClick()
+        compose.onNodeWithText("餐饮 · JPY ¥300").performScrollTo().assertIsDisplayed()
         compose.waitForIdle()
         val bitmap = requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot())
         saveConsumerArtPreview("budget-history-jpy", bitmap)

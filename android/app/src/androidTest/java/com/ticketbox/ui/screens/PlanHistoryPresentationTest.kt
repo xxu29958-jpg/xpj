@@ -84,6 +84,7 @@ class PlanHistoryPresentationTest {
         compose.onNodeWithText("收起当时定义").assertExists()
         capture("history-$kind-definition")
         assertEquals(1, reads)
+        com.ticketbox.ui.RealKeyboard().dismissAndWait(compose)
         Espresso.pressBack()
         compose.waitUntil(5_000) { !open.value && compose.onNodeWithText("历史已关闭").isDisplayed() }
         compose.onNodeWithText("历史已关闭").assertIsDisplayed()
