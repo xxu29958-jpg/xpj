@@ -44,11 +44,13 @@
 {% else %}
 {% for goal in goals_active %}
 <section id="goal-{{ goal.public_id }}" class="plan-debt-goal" aria-label="还债目标：{{ goal.name }}">
-  <div class="product-panel-header">
-    <h2 class="product-panel-title">{{ goal.name }}</h2>
-    {{ status_pill(goal.eval_tone, goal.eval_label) }}
-  </div>
-
+  <details class="plan-disclosure">
+    <summary class="product-entry product-entry--actions">
+      <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#flag"/></svg></span>
+      <span class="product-entry-copy"><span class="product-entry-heading"><strong>{{ goal.name }}</strong></span><span>{{ goal.links | length }} 笔关联{% if goal.target_date_value %} · {{ goal.target_date_value }}{% endif %}</span></span>
+      <span class="product-entry-actions">{{ status_pill(goal.eval_tone, goal.eval_label) }}<span>查看</span></span>
+    </summary>
+    <div class="plan-debt-goal">
   {% if goal.all_voided %}
   <div class="product-state">
     <div class="product-state-body">{{ all_voided_text }}</div>
@@ -71,6 +73,30 @@
   </div>
   {% endif %}
   {% endif %}
+    </div>
+  </details>
+
+  <div class="plan-link-list">
+    <div class="plan-link-list-title">{{ goal.links_title }}</div>
+    {% for link in goal.links %}
+    <a class="plan-link{% if link.recede %} is-receding{% endif %}" href="/web/debts/{{ link.public_id }}?ledger_id={{ selected_ledger_id|urlencode }}">
+      <div class="plan-link-top">
+        <span class="plan-link-name">{{ link.name }}</span>
+        {{ status_pill(link.status_tone, link.status_label) }}
+      </div>
+      {% if link.show_bar %}
+      {# 成员条用进度档语 (镜像 debts.html，communal 面不读裸百分比)；外部条读百分比。 #}
+      <progress class="plan-progress{% if link.is_cleared %} is-cleared{% endif %}" value="{{ link.fraction_percent }}" max="100" aria-label="{% if link.is_member %}{{ link.note }}{% else %}已对上 {{ link.fraction_percent }}%{% endif %}"></progress>
+      {% endif %}
+      {% if link.is_member %}
+      <div class="plan-link-note">{{ link.note }}</div>
+      {% else %}
+      <div class="plan-link-meta">{{ link.meta }}</div>
+      {% endif %}
+    </a>
+    {% endfor %}
+  </div>
+
 
   {% if goal.needs_review %}
   <div class="product-feedback product-feedback--warning" role="status">
@@ -100,26 +126,6 @@
   {% endif %}
   {% endif %}
 
-  <div class="plan-link-list">
-    <div class="plan-link-list-title">{{ goal.links_title }}</div>
-    {% for link in goal.links %}
-    <a class="plan-link{% if link.recede %} is-receding{% endif %}" href="/web/debts/{{ link.public_id }}?ledger_id={{ selected_ledger_id|urlencode }}">
-      <div class="plan-link-top">
-        <span class="plan-link-name">{{ link.name }}</span>
-        {{ status_pill(link.status_tone, link.status_label) }}
-      </div>
-      {% if link.show_bar %}
-      {# 成员条用进度档语 (镜像 debts.html，communal 面不读裸百分比)；外部条读百分比。 #}
-      <progress class="plan-progress{% if link.is_cleared %} is-cleared{% endif %}" value="{{ link.fraction_percent }}" max="100" aria-label="{% if link.is_member %}{{ link.note }}{% else %}已对上 {{ link.fraction_percent }}%{% endif %}"></progress>
-      {% endif %}
-      {% if link.is_member %}
-      <div class="plan-link-note">{{ link.note }}</div>
-      {% else %}
-      <div class="plan-link-meta">{{ link.meta }}</div>
-      {% endif %}
-    </a>
-    {% endfor %}
-  </div>
 
   {% if can_write %}
   <div class="budget-actions">
@@ -147,6 +153,8 @@
 </div>
 {% endif %}
 
+<details class="plan-disclosure">
+  <summary>查看已归档目标{% if goals_archived %} · {{ goals_archived | length }}{% endif %}</summary>
 {% if goals_archived %}
 <section class="product-panel product-panel--padded" aria-label="已归档计划">
   <div class="product-panel-header">
@@ -176,6 +184,7 @@
     {% endfor %}
   </div>
 </section>
-{% endif %}
+{% else %}<p class="meta">还没有已归档的目标。</p>{% endif %}
+</details>
 </div>
 {% endblock %}

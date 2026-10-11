@@ -166,7 +166,9 @@ internal fun NavGraphBuilder.addObligationRoutes(
                 onBack = onBack,
                 context = DebtGoalRouteContext(creationOwner,
                     originalCreationId = entry.arguments?.getString("create")?.toLongOrNull(),
-                    originalLinksId = entry.arguments?.getString("links"), originalDateId = entry.arguments?.getString("date")),
+                    originalLinksId = entry.arguments?.getString("links"), originalDateId = entry.arguments?.getString("date"),
+                    financialDataRevision = shellState.financialDataRevision),
+                onOpenRecycleBin = { navController.navigate(TRANSACTIONS_LIBRARY_RECYCLE_BIN_ROUTE) },
             )
         }
         // 全账本往来二级页（W2-C）：ledger lens 的完整账本视图，标题带当前账本名。

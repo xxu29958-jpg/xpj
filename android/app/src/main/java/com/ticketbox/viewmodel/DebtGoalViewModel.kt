@@ -28,6 +28,7 @@ data class DebtGoalUiState(
     val isLoading: Boolean = false,
     val canModify: Boolean = true,
     val goals: List<Goal> = emptyList(),
+    val includeArchived: Boolean = false,
     /** Non-null = the detail page for this goal is open; null = the list. */
     val selectedGoal: Goal? = null,
     val isSubmitting: Boolean = false,
@@ -77,6 +78,11 @@ class DebtGoalViewModel(
 
     init {
         viewModelScope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+            writes.observeActiveLedgerAccess().collect { access ->
+                _state.update { it.copy(canModify = access != null && repository.canModifyLedger()) }
+            }
+        }
+        viewModelScope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
             repository.readAccessDenials.collect { denial ->
                 if (denial.binding != adjustmentBinding || writes.currentAccess()?.binding != denial.binding) return@collect
                 loadGeneration += 1
@@ -120,7 +126,8 @@ class DebtGoalViewModel(
         latestRefreshGeneration = gen
         _state.update { it.copy(isLoading = true, error = null) }
         viewModelScope.launch {
-            val result = repository.debtGoals(expectedBinding = binding, timezone = timezone)
+            val result = repository.debtGoals(includeArchived = _state.value.includeArchived,
+                expectedBinding = binding, timezone = timezone)
             // Drop a load superseded by a newer load or a committed mutation.
             if (gen != loadGeneration || binding != writes.currentAccess()?.binding) {
                 // Clear our loading flag unless a newer refresh now owns it (else a
@@ -197,6 +204,12 @@ class DebtGoalViewModel(
         _state.update { it.copy(selectedGoal = null, selectedFetchedAt = null, selectedFromCache = false, error = null) }
     }
 
+    fun setIncludeArchived(include: Boolean) {
+        if (_state.value.includeArchived == include) return
+        _state.update { it.copy(includeArchived = include) }
+        refresh()
+    }
+
     /** §6/F13 exit (b): acknowledge ("keep for audit") → clears needs_review. */
     fun acknowledge() {
         val goal = _state.value.selectedGoal ?: return
@@ -214,7 +227,7 @@ class DebtGoalViewModel(
     fun archiveSelected() {
         val goal = _state.value.selectedGoal ?: return
         val binding = adjustmentBinding ?: return
-        if (!_state.value.canModify || writes.currentAccess()?.binding != binding) return
+        if (!_state.value.canModify || _state.value.isSubmitting || goal.isArchived || writes.currentAccess()?.binding != binding) return
         _state.update { it.copy(isSubmitting = true, error = null) }
         viewModelScope.launch {
             val result = repository.archiveGoal(goal.publicId, binding)
@@ -228,7 +241,8 @@ class DebtGoalViewModel(
                         it.copy(
                             isSubmitting = false,
                             selectedGoal = null,
-                            goals = it.goals.filterNot { listed -> listed.publicId == archived.publicId && listed.rowVersion <= archived.rowVersion },
+                            goals = if (it.includeArchived) it.goals.replaceGoal(archived) else
+                                it.goals.filterNot { listed -> listed.publicId == archived.publicId && listed.rowVersion <= archived.rowVersion },
                             fetchedAt = null, fromCache = false, selectedFetchedAt = null, selectedFromCache = false,
                             flashMessage = UiText.res(R.string.debt_goal_archived),
                             error = null,

@@ -36,7 +36,8 @@ import com.ticketbox.viewmodel.DebtGoalEditKind
 data class DebtGoalEditNavigation(val onOpen: (String) -> Unit, val onDate: (String) -> Unit,
     val retainedId: String? = null, val retainedDateId: String? = null)
 data class DebtGoalScreenNavigation(val onBack: () -> Unit, val onCreate: () -> Unit,
-    val onOpenLinkedDebt: (String) -> Unit, val hasCreationDraft: Boolean, val association: DebtGoalEditNavigation)
+    val onOpenLinkedDebt: (String) -> Unit, val hasCreationDraft: Boolean, val association: DebtGoalEditNavigation,
+    val onOpenRecycleBin: () -> Unit)
 
 @Composable
 fun DebtGoalEditScreen(viewModel: DebtGoalEditViewModel, publicId: String, onBack: () -> Unit,

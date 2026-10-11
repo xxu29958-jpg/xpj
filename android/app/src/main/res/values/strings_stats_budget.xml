@@ -296,7 +296,16 @@
     <!-- ADR-0049 §6 (slice 7) 还债目标：还债目标列表/详情 + §6/F13 完整性复核 -->
     <string name="debt_goal_topbar_back">返回</string>
     <string name="debt_goal_topbar_title">还债目标</string>
-    <string name="debt_goal_intro_body">跟踪关联欠款的清偿，全部还清即达成目标。</string>
+    <string name="debt_goal_intro_body">每一步都以真实欠款为依据。</string>
+    <string name="debt_goal_page_title">离还清更近一点</string>
+    <string name="debt_goal_archived_show">查看已归档目标</string>
+    <string name="debt_goal_archived_hide">收起已归档目标</string>
+    <string name="debt_goal_archived_title">已归档目标</string>
+    <string name="debt_goal_archived_empty">还没有已归档的目标。</string>
+    <string name="debt_goal_recovery_body">目标已归档，关联欠款与清偿记录仍保留。可从回收站恢复。</string>
+    <string name="debt_goal_archive_title">归档这个还债目标？</string>
+    <string name="debt_goal_archive_body">归档后可在已归档目标中查看，也可从回收站恢复。关联欠款与清偿记录不会改变。</string>
+    <string name="debt_goal_link_count">%1$d 笔关联</string>
     <string name="debt_goal_overview_title">目标概况</string>
     <string name="debt_goal_metric_active">当前目标</string>
     <string name="debt_goal_metric_achieved">已达成</string>

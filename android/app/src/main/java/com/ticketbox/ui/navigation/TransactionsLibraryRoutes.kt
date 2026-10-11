@@ -165,8 +165,8 @@ private fun RecycleBinLibraryRoute(
     RecycleBinScreen(
         viewModel = viewModel,
         onBack = navController::popBackStack,
-        backText = stringResource(if (navController.previousBackStackEntry?.destination?.route?.substringBefore('?') ==
-            ProductSecondaryPage.SpendingGoal.route) R.string.spending_goal_recovery_back
+        backText = stringResource(if (navController.previousBackStackEntry?.destination?.route?.substringBefore('?') in
+            setOf(ProductSecondaryPage.SpendingGoal.route, ProductSecondaryPage.DebtGoals.route)) R.string.spending_goal_recovery_back
             else R.string.transactions_library_back_to_library),
     )
 }

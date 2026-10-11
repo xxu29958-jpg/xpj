@@ -192,13 +192,15 @@ internal fun IncomePlanRoute(
 }
 
 internal data class DebtGoalRouteContext(val creationOwner: ViewModelStoreOwner,
-    val originalCreationId: Long? = null, val originalLinksId: String? = null, val originalDateId: String? = null)
+    val originalCreationId: Long? = null, val originalLinksId: String? = null, val originalDateId: String? = null,
+    val financialDataRevision: Int = 0)
 
 @Composable
 internal fun DebtGoalRoute(
     screenFactory: MainScreenFactory,
     onBack: () -> Unit,
     context: DebtGoalRouteContext,
+    onOpenRecycleBin: () -> Unit,
 ) {
     val creationOwner = context.creationOwner
     val originalCreationId = context.originalCreationId
@@ -210,9 +212,9 @@ internal fun DebtGoalRoute(
     var editDateId by rememberSaveable { mutableStateOf(context.originalDateId) }
     val date = routeModels.date
     val dateState by date.state.collectAsStateWithLifecycle()
-    // overlay 在 open/close 间复用缓存 VM 且跨账本切换存活;每次(重新)进入都 refresh(clearStale=true)
-    // (先清旧账本的债务再拉),避免在新账本下短暂看到上一账本的欠款(账本隔离)。
-    LaunchedEffect(Unit) { routeModels.debtGoal.refresh(clearStale = true) }
+    // The VM withdraws facts on binding changes. A return from recovery retains this
+    // goal and filter, then reads the restored row through the same query owner.
+    LaunchedEffect(context.financialDataRevision) { routeModels.debtGoal.refresh() }
     // 新建还债目标是 overlay 内的子页（与列表/详情互斥渲染）：showCreate 切换,各屏自带
     // BackHandler（互斥 if/else 故同一时刻只有一个生效）。返回回到目标列表,创建成功后
     // 关闭子页并让目标列表重拉。
@@ -254,6 +256,7 @@ internal fun DebtGoalRoute(
         DebtGoalScreen(
             viewModel = routeModels.debtGoal,
             navigation = com.ticketbox.ui.screens.DebtGoalScreenNavigation(onBack = onBack,
+                onOpenRecycleBin = onOpenRecycleBin,
                 onCreate = { openedCreationId = null; showCreate = true },
                 association = com.ticketbox.ui.screens.DebtGoalEditNavigation(
                     onOpen = { editLinksId = it }, retainedId = linksState.publicId.takeIf { linksState.hasDraft },
