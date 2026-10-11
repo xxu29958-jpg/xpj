@@ -4,6 +4,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
@@ -80,6 +84,15 @@ internal fun DebtDetailContent(
         MemberOriginalSubmission(state, readableProposalState, panels.proposalViewModel, callbacks)
         return
     }
+    val originalRepayment = state.pendingWrites.filterNot { it.isTerminal }.singleOrNull()?.takeIf { it.repayment != null }
+    var originalRepaymentFocused by rememberSaveable(originalRepayment?.row?.id) { mutableStateOf(true) }
+    if (originalRepayment != null && originalRepaymentFocused) {
+        DebtRepaymentOriginalSubmission(state, originalRepayment, callbacks, onOpenDebt = {
+            originalRepaymentFocused = false
+            callbacks.onRefresh()
+        })
+        return
+    }
     AppSecondaryScrollableContent(
         chrome = AppSecondaryPageChrome(
             role = AppPageRole.Stats,
@@ -108,10 +121,7 @@ internal fun DebtDetailContent(
             bodyState = bodyState,
         )
         if (state.pendingWrites.isNotEmpty()) item {
-            DebtPendingWrites(state.pendingWrites.filter {
-                it.isVoid || it.kind != null || it.row.status != com.ticketbox.data.local.PendingMutationStatus.Done ||
-                    (state.debt?.rowVersion ?: 0) <= (it.row.expectedRowVersion ?: Long.MAX_VALUE)
-            }, state.canModify, callbacks.onRecoverDebtWrite)
+            DebtPendingWrites(state, originalRepayment, { originalRepaymentFocused = true }, callbacks.onRecoverDebtWrite)
         }
         debtDetailBodyItems(
             state = state,

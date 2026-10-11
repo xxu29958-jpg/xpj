@@ -2,8 +2,11 @@ package com.ticketbox.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -11,16 +14,32 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.repository.PendingDebtWrite
 import com.ticketbox.data.repository.DebtAmountIntent
 import com.ticketbox.domain.model.CurrencyDisplay
+import com.ticketbox.domain.model.MessageTone
+import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.asString
+import com.ticketbox.ui.components.AppAmountText
+import com.ticketbox.ui.components.AppFloatingActionBar
+import com.ticketbox.ui.components.AppPageRole
+import com.ticketbox.ui.components.AppPaperCard
+import com.ticketbox.ui.components.AppPrimaryButton
+import com.ticketbox.ui.components.AppSecondaryPageChrome
+import com.ticketbox.ui.components.AppSecondaryPageSlots
+import com.ticketbox.ui.components.AppSecondaryRefreshState
+import com.ticketbox.ui.components.AppSecondaryScrollableContent
+import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.components.timeInputLabel
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.AppAmountRole
+import com.ticketbox.ui.design.LocalStateTokens
+import com.ticketbox.viewmodel.DebtDetailUiState
 import com.ticketbox.ui.screens.settings.isExpiredFailure
 
 @Composable
@@ -75,33 +94,36 @@ private fun DebtWriteRecoveryContext(pending: PendingDebtWrite) {
 
 /** Original commands remain readable even when the canonical detail cannot be fetched. */
 @Composable
-internal fun DebtPendingWrites(pending: List<PendingDebtWrite>, canModify: Boolean, recover: (PendingDebtWrite, Boolean) -> Unit) {
+internal fun DebtPendingWrites(state: DebtDetailUiState, originalRepayment: PendingDebtWrite?, onResume: () -> Unit,
+    recover: (PendingDebtWrite, Boolean) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        pending.forEach { row -> DebtPendingWrite(row, canModify, recover) }
+        if (originalRepayment != null) TextButton(onClick = onResume) {
+            Text(stringResource(R.string.debt_repayment_resume_original))
+        }
+        state.pendingWrites.filter {
+            it.row.id != originalRepayment?.row?.id && (it.isVoid || it.kind != null || it.row.status != PendingMutationStatus.Done ||
+                (state.debt?.rowVersion ?: 0) <= (it.row.expectedRowVersion ?: Long.MAX_VALUE))
+        }.forEach { row -> DebtPendingWrite(row, state.canModify, recover) }
     }
 }
 
 @Composable
 private fun DebtPendingWrite(pending: PendingDebtWrite, canModify: Boolean, recover: (PendingDebtWrite, Boolean) -> Unit) {
-    var confirmDrop by rememberSaveable(pending.row.id) { mutableStateOf(false) }
-    val status = pending.row.status
     HorizontalDivider()
     Text(stringResource(debtPendingWriteTitle(pending)))
     DebtWriteIntentSummary(pending)
-    val expired = isExpiredFailure(pending.row.lastError)
-    when {
-        status == PendingMutationStatus.Abandoned -> Unit
-        expired -> Text(stringResource(R.string.debt_write_expired))
-        status == PendingMutationStatus.Conflict -> Text(stringResource(R.string.debt_write_conflict))
-        pending.row.lastError in setOf("runtime_version_mismatch", "client_upgrade_required") ->
-            Text(stringResource(R.string.sync_status_error_protocol_mismatch))
-    }
+    DebtPendingWriteFailure(pending)
     if (pending.canRetry) {
         TextButton(enabled = canModify, onClick = { recover(pending, false) }) { Text(stringResource(R.string.debt_write_retry)) }
     }
-    if (pending.canStop) {
-        TextButton(onClick = { confirmDrop = true }) { Text(stringResource(R.string.debt_write_drop)) }
-    }
+    DebtWriteStopAction(pending, recover)
+}
+
+@Composable
+private fun DebtWriteStopAction(pending: PendingDebtWrite, recover: (PendingDebtWrite, Boolean) -> Unit) {
+    if (!pending.canStop) return
+    var confirmDrop by rememberSaveable(pending.row.id) { mutableStateOf(false) }
+    TextButton(onClick = { confirmDrop = true }) { Text(stringResource(R.string.debt_write_drop)) }
     if (confirmDrop) AlertDialog(
         onDismissRequest = { confirmDrop = false },
         title = { Text(stringResource(R.string.debt_write_drop)) },
@@ -131,4 +153,67 @@ internal fun debtWriteStopExplanation(pending: PendingDebtWrite?): Int = when {
     pending?.legacyKindAccepted == true -> R.string.debt_kind_review_stop_explanation
     pending?.requiresReview == true -> R.string.debt_void_review_stop_explanation
     else -> R.string.debt_write_drop_explanation
+}
+
+@Composable
+private fun DebtPendingWriteFailure(pending: PendingDebtWrite) {
+    val status = pending.row.status
+    val expired = isExpiredFailure(pending.row.lastError)
+    when {
+        status == PendingMutationStatus.Abandoned -> Unit
+        expired -> Text(stringResource(R.string.debt_write_expired))
+        status == PendingMutationStatus.Conflict -> Text(stringResource(R.string.debt_write_conflict))
+        pending.row.lastError in setOf("runtime_version_mismatch", "client_upgrade_required") ->
+            Text(stringResource(R.string.sync_status_error_protocol_mismatch))
+    }
+}
+
+/** The original Outbox command is sufficient to read and resume this task, even without the latest debt. */
+@Composable
+internal fun DebtRepaymentOriginalSubmission(detail: DebtDetailUiState, pending: PendingDebtWrite,
+    callbacks: DebtDetailScreenCallbacks, onOpenDebt: () -> Unit) {
+    val original = pending.repayment ?: return
+    val palette = if (pending.row.status == PendingMutationStatus.Conflict) LocalStateTokens.current.danger else LocalStateTokens.current.warn
+    AppSecondaryScrollableContent(
+        chrome = AppSecondaryPageChrome(role = AppPageRole.Stats,
+            title = stringResource(R.string.debt_repayment_result_title), subtitle = original.subject.label,
+            backText = stringResource(R.string.debt_proposal_back_keep_draft), onBack = callbacks.onBack,
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap)),
+        refresh = AppSecondaryRefreshState(detail.isLoading, callbacks.onRefresh),
+        slots = AppSecondaryPageSlots(bottomBar = {
+            AppFloatingActionBar {
+                if (pending.canRetry) AppPrimaryButton(text = stringResource(R.string.debt_write_retry),
+                    enabled = detail.canModify, onClick = { callbacks.onRecoverDebtWrite(pending, false) }, modifier = Modifier.fillMaxWidth())
+                TextButton(onClick = callbacks.onBack, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.debt_proposal_back_keep_draft))
+                }
+            }
+        }),
+    ) {
+        item {
+            AppPaperCard(containerColor = palette.bg) {
+                Text(stringResource(debtPendingWriteTitle(pending)), color = palette.fg,
+                    style = MaterialTheme.typography.bodyMedium, modifier = Modifier.fillMaxWidth().padding(AppSpacing.cardPadding))
+            }
+        }
+        item {
+            AppPaperCard {
+                Column(Modifier.fillMaxWidth().padding(AppSpacing.cardPadding), verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
+                    Text(stringResource(R.string.debt_payment_original_amount), style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    AppAmountText(formatDisplayAmount(original.amountCents, CurrencyDisplay.forRecord(original.subject.homeCurrencyCode)), role = AppAmountRole.Hero)
+                    Text(original.subject.homeCurrencyCode, style = MaterialTheme.typography.bodyMedium)
+                    Text(stringResource(R.string.debt_repayment_original_date, timeInputLabel(original.request.timeInput, original.request.paidAt).asString()))
+                }
+            }
+        }
+        item {
+            DebtWriteRecoveryContext(pending)
+            DebtPendingWriteFailure(pending)
+            if (!detail.canModify) AppStatusBanner(UiText.res(R.string.debt_proposal_readonly_note), MessageTone.Info)
+            if (pending.canRetry) Text(stringResource(R.string.debt_repayment_original_retry_hint), style = MaterialTheme.typography.bodyMedium)
+            TextButton(onClick = onOpenDebt) { Text(stringResource(R.string.debt_repayment_open_original_debt)) }
+            DebtWriteStopAction(pending, callbacks.onRecoverDebtWrite)
+        }
+    }
 }

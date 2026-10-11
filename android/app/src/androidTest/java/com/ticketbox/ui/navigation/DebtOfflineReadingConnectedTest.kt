@@ -181,20 +181,22 @@ class DebtOfflineReadingConnectedTest {
             requireNotNull(androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
         if (!offline) {
             compose.onNodeWithText(context.getString(R.string.debt_action_repayment_title)).assertIsDisplayed().performClick()
-            val cancel = context.getString(R.string.common_cancel)
-            waitForText(cancel)
+            val returnWithDraft = context.getString(R.string.debt_proposal_back_keep_draft)
+            waitForText(returnWithDraft)
             saveConsumerArtPreview("debt-repayment-entry", requireNotNull(
                 androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
-            compose.onNodeWithText(cancel).performClick()
-            compose.waitUntil(5_000) { compose.onAllNodesWithText(cancel).fetchSemanticsNodes().isEmpty() }
+            compose.onNodeWithText(returnWithDraft).assertIsDisplayed().performClick()
+            compose.waitUntil(5_000) { compose.onAllNodesWithText(returnWithDraft).fetchSemanticsNodes().isEmpty() }
         }
         val breakdownHint = context.getString(R.string.debt_detail_component_hint)
         compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(breakdownHint))
         compose.onNodeWithText(breakdownHint).performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("¥-120").performScrollTo().assertIsDisplayed()
         val adjustmentBounds = compose.onNodeWithText("¥-120").getUnclippedBoundsInRoot()
-        val actionBounds = compose.onNodeWithText(context.getString(R.string.debt_action_repayment_title))
-            .getUnclippedBoundsInRoot()
+        // Returning from the online form retains that task; the reopened graph has no form draft.
+        val primaryAction = context.getString(if (offline) R.string.debt_action_repayment_title
+            else R.string.debt_proposal_resume_draft)
+        val actionBounds = compose.onNodeWithText(primaryAction).assertIsDisplayed().getUnclippedBoundsInRoot()
         assertTrue("The complete adjustment amount must remain above the primary action",
             adjustmentBounds.bottom <= actionBounds.top)
         compose.onNodeWithText("剩余 · JPY").assertExists()

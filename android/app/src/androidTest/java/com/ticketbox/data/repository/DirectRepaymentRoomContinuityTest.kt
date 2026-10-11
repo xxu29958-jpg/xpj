@@ -1,17 +1,24 @@
 package com.ticketbox.data.repository
 
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextReplacement
 import androidx.lifecycle.viewModelScope
 import androidx.test.platform.app.InstrumentationRegistry
@@ -89,7 +96,8 @@ class DirectRepaymentRoomContinuityTest {
                     .performScrollTo().assertIsDisplayed()
                 compose.onNodeWithText("离线改动已保留，恢复连接后会自动同步。").assertDoesNotExist()
             }
-            compose.onNodeWithText("原还款金额：", substring = true).performScrollTo().assertIsDisplayed()
+            compose.onNodeWithText(if (global) "原还款金额：" else context.getString(R.string.debt_payment_original_amount),
+                substring = global).performScrollTo().assertIsDisplayed()
             compose.onNodeWithText("原还款时间：", substring = true).performScrollTo().assertIsDisplayed()
             compose.onNodeWithText("重试原提交").assertDoesNotExist()
             val stop = context.getString(R.string.debt_write_drop)
@@ -105,6 +113,11 @@ class DirectRepaymentRoomContinuityTest {
     }
 
     @Test fun actualSaveLostAckRoomReopenAndOriginalRetryKeepOneRepaymentWhileCanonicalReadFails() {
+        val longContent = InstrumentationRegistry.getArguments().getString("captureLongContent") == "true"
+        val amountCents = if (longContent) 12_345_678_901L else 10_000L
+        val initialBalance = if (longContent) 60_000_000_000L else 50_000L
+        fixture.network.current = fixture.network.current.copy(principalAmountCents = initialBalance, remainingAmountCents = initialBalance,
+            counterpartyLabel = if (longContent) "共同装修与旅行费用往来需要完整核对的原借款对象名称" else "原借款对象")
         installModels()
         compose.setContent {
             val model = detail.value ?: return@setContent
@@ -113,12 +126,12 @@ class DirectRepaymentRoomContinuityTest {
         compose.waitUntil(10_000) { detail.value?.state?.value?.canWriteActions == true }
         compose.onNodeWithText("记还款").assertIsDisplayed().performClick()
         compose.onAllNodes(hasSetTextAction()).assertCountEquals(2)
-        compose.onAllNodes(hasSetTextAction())[0].performTextReplacement("100.00")
+        compose.onAllNodes(hasSetTextAction())[0].performTextReplacement(if (longContent) "123456789.01" else "100.00")
         compose.onAllNodes(hasSetTextAction())[1].performTextReplacement("2026-09-01")
         val originalKey = detail.value?.state?.value?.repaymentKey
         compose.onNodeWithText("返回，保留输入").performClick()
         compose.onNodeWithText("继续填写原还款").performClick()
-        assertEquals("100.00", detail.value?.state?.value?.amountInput)
+        assertEquals(if (longContent) "123456789.01" else "100.00", detail.value?.state?.value?.amountInput)
         assertEquals("2026-09-01", detail.value?.state?.value?.paymentTime?.date)
         assertEquals(originalKey, detail.value?.state?.value?.repaymentKey)
         com.ticketbox.ui.RealKeyboard().dismissAndWait(compose)
@@ -128,7 +141,7 @@ class DirectRepaymentRoomContinuityTest {
         val original = fixture.stored().single()
         assertEquals(0, fixture.network.repaymentCalls.size)
         assertEquals(1, fixture.scheduleCalls)
-        assertEquals(50_000L, detail.value?.state?.value?.debt?.remainingAmountCents)
+        assertEquals(initialBalance, detail.value?.state?.value?.debt?.remainingAmountCents)
         assertEquals(1, runBlocking { fixture.drain(maxAttempts = 1) }.failures)
         assertEquals(1, fixture.network.repaymentResults.size)
 
@@ -139,22 +152,46 @@ class DirectRepaymentRoomContinuityTest {
             detail.value?.state?.value?.pendingWrites?.size == 1 }
         assertOriginalColumns(original)
         val pending = requireNotNull(detail.value?.state?.value?.pendingWrites?.single()?.repayment)
-        assertEquals(10_000L, pending.request.amountCents)
+        assertEquals(amountCents, pending.request.amountCents)
         assertEquals(2L, pending.request.expectedRowVersion)
         assertEquals(originalKey, original["idempotencyKey"])
         assertEquals(null, pending.request.paidAt)
         assertEquals("date_only", pending.request.timeInput?.precision)
         assertEquals("2026-09-01", pending.request.timeInput?.userLocalDate)
         assertEquals(3L, pending.request.timeInput?.calendarRevision)
-        compose.onNodeWithText("原还款金额：", substring = true).performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("原还款时间：", substring = true).performScrollTo().assertIsDisplayed()
-        saveConsumerArtPreview("direct-repayment-original-recovery", requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
-        compose.onNodeWithText("重试原提交").performScrollTo().performClick()
+        scrollToText(context.getString(R.string.debt_payment_original_amount))
+        scrollToText("原还款时间：", substring = true)
+        val openOriginalDebt = context.getString(R.string.debt_repayment_open_original_debt)
+        scrollToText(openOriginalDebt)
+        saveConsumerArtPreview("direct-repayment-before-open-debt", compose.onRoot().captureToImage().asAndroidBitmap())
+        compose.onNodeWithText(openOriginalDebt).assertIsDisplayed().performClick()
+        val resumeOriginal = context.getString(R.string.debt_repayment_resume_original)
+        scrollToText(resumeOriginal)
+        saveConsumerArtPreview("direct-repayment-related-debt", compose.onRoot().captureToImage().asAndroidBitmap())
+        compose.onNodeWithText(resumeOriginal).performClick()
+        assertOriginalColumns(original)
+        assertEquals(1, fixture.network.repaymentCalls.size)
+        scrollToText("原还款时间：", substring = true)
+        saveConsumerArtPreview("direct-repayment-original-recovery", compose.onRoot().captureToImage().asAndroidBitmap())
+        stopModels()
+        fixture.session = fixture.session.copy(identity = fixture.session.identity.copy(role = "viewer"))
+        installModels()
+        compose.waitUntil(10_000) { detail.value?.state?.value?.pendingWrites?.size == 1 && detail.value?.state?.value?.canModify == false }
+        compose.onNodeWithText("重试原提交").assertIsNotEnabled()
+        scrollToText(context.getString(R.string.debt_proposal_readonly_note))
+        assertOriginalColumns(original)
+        assertEquals(1, fixture.network.repaymentCalls.size)
+        saveConsumerArtPreview("direct-repayment-original-readonly", compose.onRoot().captureToImage().asAndroidBitmap())
+        stopModels()
+        fixture.session = fixture.session.copy(identity = fixture.session.identity.copy(role = "owner"))
+        installModels()
+        compose.waitUntil(10_000) { detail.value?.state?.value?.pendingWrites?.size == 1 && detail.value?.state?.value?.canModify == true }
+        compose.onNodeWithText("重试原提交").performClick()
         compose.waitUntil(10_000) { fixture.stored().single()["status"] == "pending" && fixture.scheduleCalls == 2 }
         fixture.network.loseResponse = false
         assertEquals(1, runBlocking { fixture.drain() }.done)
         compose.waitUntil(10_000) { detail.value?.state?.value?.pendingWrites?.singleOrNull()?.row?.receiptJson != null }
-        compose.onNodeWithText(context.getString(R.string.debt_repayment_confirmed)).performScrollTo().assertIsDisplayed()
+        scrollToText(context.getString(R.string.debt_repayment_confirmed))
         assertFalse(requireNotNull(detail.value).state.value.canWriteActions)
         assertNotNull(fixture.stored().single()["receiptJson"])
         assertOriginalColumns(original)
@@ -164,12 +201,17 @@ class DirectRepaymentRoomContinuityTest {
         fixture.network.failReads = false
         compose.runOnIdle { detail.value?.refresh() }
         compose.waitUntil(10_000) { detail.value?.state?.value?.debt?.rowVersion == 3L && history.state.value.items.size == 1 }
-        assertEquals(40_000L, detail.value?.state?.value?.debt?.remainingAmountCents)
+        assertEquals(initialBalance - amountCents, detail.value?.state?.value?.debt?.remainingAmountCents)
         assertEquals("repayment-1", history.state.value.items.single().publicId)
         assertEquals(pending.request.paidAt, history.state.value.items.single().repayment?.paidAt)
         assertEquals("2026-09-01", history.state.value.items.single().repayment?.accountingTime?.accountingDate)
         assertTrue(requireNotNull(detail.value).state.value.canWriteActions)
         assertEquals(2, fixture.network.repaymentCalls.size)
+    }
+
+    private fun scrollToText(text: String, substring: Boolean = false): SemanticsNodeInteraction {
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(text, substring = substring))
+        return compose.onNodeWithText(text, substring = substring).assertIsDisplayed()
     }
 
     @Test fun backgroundRepaymentRefreshesAllFiveRetainedConsumersAndGlobalStopPreservesUnknownOriginal() {
@@ -257,7 +299,7 @@ class DirectRepaymentRoomContinuityTest {
         val state = requireNotNull(detail.value).state.value
         val pending = state.pendingWrites.single()
         assertNotNull(pending.intent)
-        compose.onNodeWithText("原还款金额：", substring = true).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.debt_payment_original_amount)).performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("原还款时间：", substring = true).performScrollTo().assertIsDisplayed()
         compose.onNodeWithText(context.getString(R.string.debt_write_original_binding_changed).substringBefore('，'),
             substring = true).assertExists()

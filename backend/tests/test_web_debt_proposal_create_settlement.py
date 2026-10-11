@@ -92,8 +92,13 @@ def test_member_date_only_proposal_recovers_original_after_lost_reply_and_unread
     assert unknown.status_code == 503
     assert 'data-repayment-result="submitted"' in unknown.text
     retained = _NativeForm(unknown.text, action, identity_fields=identity)
-    assert {name: retained.one(name) for name in retained.fields} == original
-    accepted = web_client.post(action, data=original)
+    retry = {name: retained.one(name) for name in retained.fields}
+    # CSRF belongs to the current HTTP session, not the frozen business command.
+    assert retry["csrf_token"]
+    assert {name: value for name, value in retry.items() if name != "csrf_token"} == {
+        name: value for name, value in original.items() if name != "csrf_token"
+    }
+    accepted = retained.post(web_client)
     assert accepted.status_code == 200 and "这次还款申报已记录" in accepted.text
     assert "还款事实已记录" not in accepted.text
     with SessionLocal() as db:
