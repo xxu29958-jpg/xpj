@@ -44,6 +44,7 @@ data class RepaymentDraftDto(
     val originalCurrencyCode: String = homeCurrencyCode,
     @param:Json(name = "original_amount_minor")
     val originalAmountMinor: Long = requireNotNull(amountCents),
+    @param:Json(name = "accounting_time") val accountingTime: ExpenseAccountingTimeDto? = null,
 )
 
 data class RepaymentDraftListResponseDto(

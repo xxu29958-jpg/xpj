@@ -15,6 +15,7 @@ the single definition both that future writer and the read endpoints share.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 
 from sqlalchemy import func, select
@@ -91,21 +92,6 @@ def _forgiveness_total(
     )
 
 
-def has_forgiveness(db: Session, debt_id: int) -> bool:
-    """Whether any ``DebtForgiveness`` fact exists for this Debt (drives ``is_forgiven``).
-
-    A forgiven Debt folds to ``cleared`` via :func:`compute_remaining`; the response
-    distinguishes it from a repayment-cleared Debt by also checking this fact exists
-    (§4.3 — the debtor sees a "被请客" headline, not a generic "两清").
-    """
-    return (
-        db.scalar(
-            select(DebtForgiveness.id).where(DebtForgiveness.debt_id == debt_id).limit(1)
-        )
-        is not None
-    )
-
-
 def latest_fact_at(db: Session, debt: Debt) -> datetime | None:
     """The most recent append-only fact ``created_at`` on the Debt, or ``None`` if it has none.
 
@@ -148,40 +134,47 @@ def compute_paid(db: Session, debt: Debt) -> int:
     return _non_voided_repayment_total(db, debt.id)
 
 
-def _compute_remaining(
+@dataclass(frozen=True)
+class DebtBalance:
+    remaining: int
+    paid: int
+    adjustment: int
+    forgiven: int
+
+
+def compute_balance(
     db: Session,
     debt: Debt,
     *,
-    for_write: bool,
-) -> int:
+    for_write: bool = False,
+) -> DebtBalance:
+    """Keep each cause of the canonical balance from its own fact stream."""
     materialize = fold_sum_to_int if for_write else projection_sum_to_int
     principal = materialize(
         debt.principal_amount_cents,
         label="debt.principal",
     )
-    total = (
-        principal
-        + _adjustment_total(db, debt.id, for_write=for_write)
-        - _non_voided_repayment_total(db, debt.id, for_write=for_write)
-        - _forgiveness_total(db, debt.id, for_write=for_write)
-    )
-    return _materialize_total(
-        total,
+    adjustment = _adjustment_total(db, debt.id, for_write=for_write)
+    paid = _non_voided_repayment_total(db, debt.id, for_write=for_write)
+    forgiven = _forgiveness_total(db, debt.id, for_write=for_write)
+    remaining = _materialize_total(
+        principal + adjustment - paid - forgiven,
         label="debt.remaining",
         for_write=for_write,
     )
+    return DebtBalance(remaining=remaining, paid=paid, adjustment=adjustment, forgiven=forgiven)
 
 
 def compute_remaining(db: Session, debt: Debt) -> int:
     """Read projection of the canonical remaining balance."""
 
-    return _compute_remaining(db, debt, for_write=False)
+    return compute_balance(db, debt).remaining
 
 
 def compute_remaining_for_write(db: Session, debt: Debt) -> int:
     """Canonical remaining balance inside a serialized write transaction."""
 
-    return _compute_remaining(db, debt, for_write=True)
+    return compute_balance(db, debt, for_write=True).remaining
 
 
 def _non_voided_repayment_total_as_of(db: Session, debt_id: int, cutoff: datetime) -> int:

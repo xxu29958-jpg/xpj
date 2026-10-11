@@ -19,6 +19,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class MemberRepaymentProposalViewModelTest {
@@ -93,7 +94,7 @@ class MemberRepaymentProposalViewModelTest {
         viewModel.load(memberDebtTask("d1"))
         advanceUntilIdle()
 
-        viewModel.openForm(requireNotNull(viewModel.state.value.task), ProposalForm.Propose)
+        viewModel.openForm(requireNotNull(viewModel.state.value.task), ProposalForm.Propose, debt = sampleMemberDebt().copy(publicId = requireNotNull(viewModel.state.value.task).debtPublicId))
         viewModel.updateAmount(requireNotNull(viewModel.state.value.task), "150")
         viewModel.updateNote(requireNotNull(viewModel.state.value.task), "微信转账")
         viewModel.submit(requireNotNull(viewModel.state.value.task), expectedRowVersion = 7L, currency = CurrencyCode.CNY)
@@ -118,7 +119,7 @@ class MemberRepaymentProposalViewModelTest {
         viewModel.load(memberDebtTask("d1"))
         advanceUntilIdle()
 
-        viewModel.openForm(requireNotNull(viewModel.state.value.task), ProposalForm.Propose)
+        viewModel.openForm(requireNotNull(viewModel.state.value.task), ProposalForm.Propose, debt = sampleMemberDebt().copy(publicId = requireNotNull(viewModel.state.value.task).debtPublicId))
         viewModel.updateAmount(requireNotNull(viewModel.state.value.task), "1.230")
         viewModel.submit(requireNotNull(viewModel.state.value.task), expectedRowVersion = 7L, currency = CurrencyCode.CNY)
         advanceUntilIdle()
@@ -133,7 +134,7 @@ class MemberRepaymentProposalViewModelTest {
         viewModel.load(memberDebtTask("d1"))
         advanceUntilIdle()
 
-        viewModel.openForm(requireNotNull(viewModel.state.value.task), ProposalForm.Propose)
+        viewModel.openForm(requireNotNull(viewModel.state.value.task), ProposalForm.Propose, debt = sampleMemberDebt().copy(publicId = requireNotNull(viewModel.state.value.task).debtPublicId))
         viewModel.updateAmount(requireNotNull(viewModel.state.value.task), "0")
         viewModel.submit(requireNotNull(viewModel.state.value.task), expectedRowVersion = 1L, currency = CurrencyCode.CNY)
         advanceUntilIdle()
@@ -339,7 +340,7 @@ class MemberRepaymentProposalViewModelTest {
         // §4.3 / P2#10: an OCC / already-settled 409 (backend `state_conflict`) shows the warm
         // "有人刚记了一笔" copy (errorCode branch), not the generic failed fallback; fold untouched.
         val repo = ProposalTestActions(
-            forgiveResult = Result.failure(RepositoryException("欠款或提案状态已变化，请刷新后再试。", errorCode = "state_conflict")),
+            forgiveResult = Result.failure(RepositoryException("欠款或提案状态已变化，请刷新后再试。", errorCode = "state_conflict", httpStatusCode = 409)),
         )
         val viewModel = MemberRepaymentProposalViewModel(repo)
         viewModel.load(memberDebtTask("d1"))
@@ -356,9 +357,7 @@ class MemberRepaymentProposalViewModelTest {
     }
 
     @Test
-    fun forgiveGenericFailureUsesFailedFallback() = runTest(dispatcher) {
-        // A non-coded failure (e.g. a transport error with no message) falls back to the
-        // forgive-specific failed copy, not the conflict copy.
+    fun lostForgivenessReplyReportsUnknownAndRetainsTheOriginalRequest() = runTest(dispatcher) {
         val repo = ProposalTestActions(forgiveResult = Result.failure(RuntimeException()))
         val viewModel = MemberRepaymentProposalViewModel(repo)
         viewModel.load(memberDebtTask("d1"))
@@ -369,7 +368,8 @@ class MemberRepaymentProposalViewModelTest {
 
         val error = viewModel.state.value.error
         assertTrue(error is UiText.Res)
-        assertEquals(R.string.debt_member_forgive_failed, (error as UiText.Res).id)
+        assertEquals(R.string.debt_proposal_original_unknown, (error as UiText.Res).id)
+        assertNotNull(viewModel.state.value.originalAttempt)
         assertNull(viewModel.state.value.committedDebt)
     }
 

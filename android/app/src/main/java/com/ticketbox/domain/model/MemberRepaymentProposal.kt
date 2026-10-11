@@ -31,13 +31,14 @@ data class MemberRepaymentProposal(
     val homeCurrencyCode: String,
     val originalCurrencyCode: String?,
     val originalAmountMinor: Long?,
-    val paidAt: String,
+    val paidAt: String?,
     val note: String?,
     val expiresAt: String,
     val createdAt: String,
     val resolvedAt: String?,
     val supersedesProposalPublicId: String?,
     val committedRepaymentPublicId: String?,
+    val accountingTime: ExpenseAccountingTime? = null,
 ) {
     /** Still awaiting the creditor: the only state the debtor may withdraw or the creditor act on. */
     val isPending: Boolean get() = status == MemberProposalStatuses.PENDING

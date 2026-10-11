@@ -3,29 +3,28 @@ package com.ticketbox.ui.screens
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.material3.AlertDialog
 import com.ticketbox.ui.components.AppPrimaryButton
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppOutlinedButtonOptions
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.text.font.FontWeight
 import com.ticketbox.R
 import com.ticketbox.data.repository.DebtTask
@@ -33,10 +32,10 @@ import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.MessageTone
-import com.ticketbox.domain.model.MemberRepaymentProposal
 import com.ticketbox.ui.components.AppAmountInput
 import com.ticketbox.ui.components.AppAmountInputActions
 import com.ticketbox.ui.components.AppAmountInputState
+import com.ticketbox.ui.components.AppBusyGuardedSheet
 import com.ticketbox.ui.components.AppPaperCard
 import com.ticketbox.ui.components.AppSheetAction
 import com.ticketbox.ui.components.AppSheetActionRow
@@ -44,11 +43,15 @@ import com.ticketbox.ui.components.AppSheetScaffold
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
+import com.ticketbox.ui.components.AppTextInputDecorations
 import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.components.rememberAppHaptics
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.AppAmountRole
+import com.ticketbox.ui.screens.expense.ExpenseTimeDatePicker
 import com.ticketbox.ui.design.LocalStateTokens
+import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.viewmodel.MemberProposalUiState
 import com.ticketbox.viewmodel.MemberRepaymentProposalViewModel
 import com.ticketbox.viewmodel.ProposalForm
@@ -71,6 +74,7 @@ internal fun MemberProposalSection(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap)) {
         when {
+            state.originalAttempt != null -> Unit // The detail route renders the focused original-submission task.
             debt.isVoided -> DebtNoteCard(stringResource(R.string.debt_proposal_voided_note))
             debt.isCleared -> DebtNoteCard(stringResource(
                 if (debt.sourceType in setOf("bill_split", "bill_split_return")) R.string.split_agreement_leg_cleared
@@ -79,9 +83,10 @@ internal fun MemberProposalSection(
             state.task == null -> Unit
             !state.canModify -> DebtNoteCard(stringResource(R.string.debt_proposal_readonly_note))
             debt.viewerIsDebtor == null -> DebtNoteCard(stringResource(R.string.debt_proposal_not_party_note))
-            state.isLoading && state.proposals.isEmpty() -> Unit
-            state.error != null && state.proposals.isEmpty() && state.committedDebt == null -> {
-                TextButton(onClick = viewModel::refresh) { Text(stringResource(R.string.common_retry)) }
+            !state.hasReadableProposalState -> {
+                if (!state.isLoading) {
+                    TextButton(onClick = viewModel::refresh) { Text(stringResource(R.string.common_retry)) }
+                }
             }
             debt.viewerIsDebtor == true -> DebtorProposalCard(state = state, viewModel = viewModel)
             else -> CreditorProposalCard(debt = debt, state = state, viewModel = viewModel)
@@ -128,12 +133,6 @@ private fun DebtorProposalCard(state: MemberProposalUiState, viewModel: MemberRe
                     stringResource(R.string.debt_proposal_debtor_hint),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                AppPrimaryButton(
-                    text = stringResource(R.string.debt_proposal_propose_action),
-                    onClick = { viewModel.openForm(task, ProposalForm.Propose) },
-                    enabled = !state.isSubmitting,
-                    modifier = Modifier.fillMaxWidth(),
                 )
             }
         }
@@ -183,32 +182,39 @@ private fun CreditorProposalCard(
                 pending.note?.takeIf { it.isNotBlank() }?.let { note ->
                     Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                CreditorActionButtons(task = task, pending = pending, isSubmitting = state.isSubmitting, viewModel = viewModel)
+                AppOutlinedButton(
+                    onClick = { viewModel.reject(task, pending.publicId) },
+                    options = AppOutlinedButtonOptions(enabled = !state.isSubmitting),
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(stringResource(R.string.debt_proposal_reject_action)) }
             }
         }
     }
 }
 
-@Composable
-private fun CreditorActionButtons(
-    task: DebtTask,
-    pending: MemberRepaymentProposal,
-    isSubmitting: Boolean,
+internal fun memberProposalPrimaryAction(
+    debt: Debt,
+    state: MemberProposalUiState,
     viewModel: MemberRepaymentProposalViewModel,
-) {
-    Row(modifier = Modifier.fillMaxWidth()) {
+) : (@Composable () -> Unit)? {
+    val task = state.task ?: return null
+    if (!state.canStartCommand || debt.viewerIsDebtor == null || !state.hasReadableProposalState) return null
+    val pending = state.pendingProposal
+    val form = state.retainedForm ?: when {
+        !debt.isOpen -> return null
+        debt.viewerIsDebtor && pending == null -> ProposalForm.Propose
+        !debt.viewerIsDebtor && pending != null -> ProposalForm.Confirm
+        else -> return null
+    }
+    return {
         AppPrimaryButton(
-            text = stringResource(R.string.debt_proposal_confirm_action),
-            onClick = { viewModel.openForm(task, ProposalForm.Confirm, pending) },
-            enabled = !isSubmitting,
-            modifier = Modifier.weight(1f),
+            text = stringResource(if (state.retainedForm != null) R.string.debt_proposal_resume_draft
+                else if (form == ProposalForm.Propose) R.string.debt_proposal_propose_action
+                else R.string.debt_proposal_confirm_action),
+            onClick = { viewModel.openForm(task, form, pending, debt) },
+            enabled = !state.isSubmitting,
+            modifier = Modifier.fillMaxWidth(),
         )
-        Spacer(Modifier.width(AppSpacing.smallGap))
-        AppOutlinedButton(
-            onClick = { viewModel.reject(task, pending.publicId) },
-            options = AppOutlinedButtonOptions(enabled = !isSubmitting),
-            modifier = Modifier.weight(1f),
-        ) { Text(stringResource(R.string.debt_proposal_reject_action)) }
     }
 }
 
@@ -263,12 +269,10 @@ internal fun ProposalFormSheet(
     onClose: () -> Unit,
 ) {
     val task = state.task ?: return
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val recordDisplay = CurrencyDisplay.forRecord(debt.homeCurrencyCode)
-    ModalBottomSheet(onDismissRequest = onClose, sheetState = sheetState) {
+    AppBusyGuardedSheet(isSubmitting = state.isSubmitting, onDismiss = onClose, skipPartiallyExpanded = true) {
         ProposalForm(
             state = state,
-            currency = recordDisplay,
+            debt = debt,
             viewModel = viewModel,
             onSubmit = {
                 viewModel.submit(
@@ -286,7 +290,7 @@ internal fun ProposalFormSheet(
 @Composable
 private fun ProposalForm(
     state: MemberProposalUiState,
-    currency: CurrencyDisplay,
+    debt: Debt,
     viewModel: MemberRepaymentProposalViewModel,
     onSubmit: () -> Unit,
     onCancel: () -> Unit,
@@ -294,50 +298,78 @@ private fun ProposalForm(
     val form = state.activeForm ?: return
     AppSheetScaffold(
         title = stringResource(proposalFormTitleRes(form)),
+        subtitle = debt.counterpartyLabel?.let { label -> stringResource(if (debt.viewerIsDebtor == true)
+            R.string.debt_payment_direction_out else R.string.debt_payment_direction_in, label) },
         actions = {
             state.validationError?.let { err ->
                 AppStatusBanner(message = err, tone = MessageTone.Danger)
             }
             AppSheetActionRow(
                 primary = AppSheetAction(
-                    text = if (state.isSubmitting) {
-                        stringResource(R.string.debt_action_submitting)
-                    } else {
-                        stringResource(R.string.debt_action_submit)
-                    },
+                    text = stringResource(state.submitLabelRes),
                     onClick = onSubmit,
-                    enabled = !state.isSubmitting,
-                ),
-                secondary = AppSheetAction(
-                    text = stringResource(R.string.common_cancel),
-                    onClick = onCancel,
-                    enabled = !state.isSubmitting,
+                    enabled = state.canModify && !state.isSubmitting,
                 ),
             )
+            TextButton(onClick = onCancel, enabled = !state.isSubmitting, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.debt_proposal_back_keep_draft))
+            }
         },
     ) {
-        AppAmountInput(
-            state = AppAmountInputState(
-                label = stringResource(R.string.debt_action_amount_label),
-                currency = currency.homeCurrency,
-                value = state.amountInput,
-                placeholder = stringResource(R.string.components_amount_input_placeholder),
-                isError = state.validationError != null,
-            ),
-            actions = AppAmountInputActions(onValueChange = { value -> state.task?.let { viewModel.updateAmount(it, value) } }),
-            modifier = Modifier.fillMaxWidth(),
-        )
+        ProposalAmountField(state, CurrencyDisplay.forRecord(state.formCurrencyCode ?: debt.homeCurrencyCode), viewModel)
+        PaymentDateField(state.paymentTime?.date.orEmpty(), state.inputsEnabled && form == ProposalForm.Propose) { value ->
+            state.task?.let { viewModel.updatePaymentDate(it, value) }
+        }
         if (form == ProposalForm.Propose) {
             AppTextInput(
                 state = AppTextInputState(
                     label = stringResource(R.string.debt_proposal_note_label),
                     value = state.noteInput,
+                    enabled = state.inputsEnabled,
                 ),
                 actions = AppTextInputActions(onValueChange = { value -> state.task?.let { viewModel.updateNote(it, value) } }),
                 modifier = Modifier.fillMaxWidth(),
             )
         }
+        DebtRepaymentBalancePreview(debt, state.amountInput)
+        Text(stringResource(if (form == ProposalForm.Propose) R.string.debt_payment_waiting_confirmation
+            else R.string.debt_payment_confirmation_effect), style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        TextButton(onClick = { state.task?.let(viewModel::discardDraft) }, enabled = !state.isSubmitting) {
+            Text(stringResource(R.string.debt_proposal_discard_draft))
+        }
     }
+}
+
+@Composable
+private fun ProposalAmountField(state: MemberProposalUiState, currency: CurrencyDisplay, viewModel: MemberRepaymentProposalViewModel) {
+    AppPaperCard(containerColor = LocalThemeVisuals.current.brandPrimaryBg) {
+        AppAmountInput(
+            state = AppAmountInputState(label = stringResource(R.string.debt_payment_this_amount), currency = currency.homeCurrency,
+                value = state.amountInput, enabled = state.inputsEnabled,
+                placeholder = stringResource(R.string.components_amount_input_placeholder), isError = state.validationError != null),
+            actions = AppAmountInputActions(onValueChange = { value -> state.task?.let { viewModel.updateAmount(it, value) } }),
+            modifier = Modifier.fillMaxWidth().padding(AppSpacing.cardPadding),
+            decorations = AppTextInputDecorations(amountRole = AppAmountRole.Hero),
+        )
+    }
+}
+
+/** Date input and its native picker share the parent's raw value, with no ledger lookup here. */
+@Composable
+internal fun PaymentDateField(value: String, enabled: Boolean, onChange: (String) -> Unit) {
+    var pickingDate by rememberSaveable { mutableStateOf(false) }
+    AppTextInput(
+        state = AppTextInputState(label = stringResource(R.string.debt_payment_date_label), value = value, enabled = enabled),
+        actions = AppTextInputActions(onValueChange = onChange),
+        decorations = AppTextInputDecorations(trailingContent = {
+            if (enabled) IconButton(onClick = { pickingDate = true }) {
+                Icon(ImageVector.vectorResource(R.drawable.ic_lucide_calendar_check),
+                    contentDescription = stringResource(R.string.expense_edit_date_pick_date_button))
+            }
+        }),
+    )
+    if (pickingDate) ExpenseTimeDatePicker(value, onChange) { pickingDate = false }
 }
 
 @StringRes

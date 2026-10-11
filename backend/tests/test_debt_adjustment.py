@@ -109,6 +109,8 @@ def test_positive_adjustment_raises_remaining(client: TestClient, *, identity) -
     assert response.status_code == 201, response.json()
     body = response.json()
     assert body["remaining_amount_cents"] == 55000  # 50000 + 5000
+    assert body["adjustment_amount_cents"] == 5000
+    assert body["paid_amount_cents"] == body["forgiven_amount_cents"] == 0
     # F9: the frozen principal column is unchanged; only the fold moved.
     assert body["principal_amount_cents"] == 50000
     assert body["row_version"] == debt["row_version"] + 1
@@ -124,6 +126,8 @@ def test_negative_adjustment_lowers_remaining(client: TestClient, *, identity) -
     assert response.status_code == 201, response.json()
     body = response.json()
     assert body["remaining_amount_cents"] == 42000  # 50000 - 8000
+    assert body["adjustment_amount_cents"] == -8000
+    assert body["paid_amount_cents"] == body["forgiven_amount_cents"] == 0
     assert body["principal_amount_cents"] == 50000
 
 

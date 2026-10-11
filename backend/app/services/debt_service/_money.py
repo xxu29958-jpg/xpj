@@ -15,7 +15,7 @@ rates or compute home amounts.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
@@ -75,6 +75,7 @@ def freeze_home_amount(
     original_currency: str | None,
     original_amount: Decimal | None,
     event_time: datetime | None,
+    event_date: date | None = None,
     amount_error: str = "debt_amount_invalid",
 ) -> dict:
     """Resolve a frozen home amount + optional original-currency provenance.
@@ -82,7 +83,8 @@ def freeze_home_amount(
     Home-currency path: ``amount_cents`` is the home amount (> 0), provenance
     fields stay NULL. Foreign-currency path: convert ``original_amount`` in
     ``original_currency`` to home minor units via the [[0027]] snapshot for the
-    ``event_time`` accounting date and reject when the rate is pending (§2.2).
+    original ``event_date`` when known, otherwise the legacy ``event_time``
+    interpretation, and reject when the rate is pending (§2.2).
     The two inputs are mutually exclusive — mixing an explicit home amount with
     original-currency fields is rejected as ambiguous (``invalid_request``).
 
@@ -127,6 +129,7 @@ def freeze_home_amount(
         original_currency=original_currency,
         original_amount=original_amount,
         event_time=event_time,
+        event_date=event_date,
         amount_error=amount_error,
     )
 
@@ -139,6 +142,7 @@ def _freeze_foreign_amount(
     original_currency: str,
     original_amount: Decimal,
     event_time: datetime | None,
+    event_date: date | None,
     amount_error: str,
 ) -> dict:
     """Convert a foreign ``original_amount`` to home minor units via [[0027]]."""
@@ -157,7 +161,7 @@ def _freeze_foreign_amount(
         label="debt.original_amount_minor",
         error_code=amount_error,
     )
-    rate_date = default_rate_date(event_time)
+    rate_date = event_date or default_rate_date(event_time)
 
     if code == home:
         # Original currency IS home — no FX, store as a home amount but keep the

@@ -12639,6 +12639,20 @@
       },
       "DebtResponse": {
         "properties": {
+          "adjustment_amount_cents": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adjustment Amount Cents"
+          },
           "counterparty_account_id": {
             "anyOf": [
               {
@@ -12724,6 +12738,20 @@
               }
             ],
             "title": "Exchange Rate To Cny"
+          },
+          "forgiven_amount_cents": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Forgiven Amount Cents"
           },
           "home_currency_code": {
             "title": "Home Currency Code",
@@ -12850,6 +12878,16 @@
             "minimum": 0.0,
             "title": "Remaining Amount Cents",
             "type": "integer"
+          },
+          "repayment_calendar": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RepaymentCalendarResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "row_version": {
             "title": "Row Version",
@@ -19093,6 +19131,16 @@
               }
             ],
             "title": "Supersedes Proposal Public Id"
+          },
+          "time_input": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AccountingTimeInput"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "title": "MemberRepaymentProposalCreateRequest",
@@ -19123,6 +19171,16 @@
       },
       "MemberRepaymentProposalResponse": {
         "properties": {
+          "accounting_time": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AccountingTimeSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "committed_repayment_public_id": {
             "anyOf": [
               {
@@ -19269,7 +19327,6 @@
           "status",
           "proposed_amount_cents",
           "home_currency_code",
-          "paid_at",
           "expires_at",
           "created_at"
         ],
@@ -22432,6 +22489,25 @@
         "title": "RefreshSessionResponse",
         "type": "object"
       },
+      "RepaymentCalendarResponse": {
+        "description": "A participant may use the rule without learning the other ledger's identity.",
+        "properties": {
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "timezone_name": {
+            "title": "Timezone Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "revision",
+          "timezone_name"
+        ],
+        "title": "RepaymentCalendarResponse",
+        "type": "object"
+      },
       "RepaymentCreateRequest": {
         "additionalProperties": false,
         "description": "Record one committed repayment fact (ADR-0049 §3.1).\n\nHome-currency repayment submits ``amount_cents``. A foreign-currency\nrepayment submits ``original_currency`` + ``original_amount`` (+ optional\n``paid_at``); the backend freezes the home ``amount_cents`` from the [[0027]]\nsnapshot for ``paid_at`` and rejects when the rate is pending (§2.2). The two\namount inputs are mutually exclusive. ``expected_row_version`` is the §2.1\nstale-intent token + §3.6 fingerprint component. The debtor \"I paid\"\nproposal (``proposal_id``) is slice 3 and is NOT accepted here.",
@@ -22491,6 +22567,16 @@
               }
             ],
             "title": "Paid At"
+          },
+          "time_input": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AccountingTimeInput"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -22502,6 +22588,20 @@
       "RepaymentCreateResponse": {
         "description": "Fold-after Debt response plus the committed repayment id for void flows.",
         "properties": {
+          "adjustment_amount_cents": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adjustment Amount Cents"
+          },
           "counterparty_account_id": {
             "anyOf": [
               {
@@ -22587,6 +22687,20 @@
               }
             ],
             "title": "Exchange Rate To Cny"
+          },
+          "forgiven_amount_cents": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Forgiven Amount Cents"
           },
           "home_currency_code": {
             "title": "Home Currency Code",
@@ -22713,6 +22827,16 @@
             "minimum": 0.0,
             "title": "Remaining Amount Cents",
             "type": "integer"
+          },
+          "repayment_calendar": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RepaymentCalendarResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "repayment_public_id": {
             "title": "Repayment Public Id",
@@ -22948,6 +23072,16 @@
       },
       "RepaymentDraftResponse": {
         "properties": {
+          "accounting_time": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AccountingTimeSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "amount_cents": {
             "anyOf": [
               {
@@ -23126,6 +23260,16 @@
       "RepaymentFactResponse": {
         "description": "One committed repayment plus its optional append-only void fact.\n\n``status`` is a read projection derived only from whether a\n``RepaymentVoid`` row exists. The original repayment remains in ``items``\nafter it is voided so a restarting client can recover both the historical\npayment and the correction without guessing from the parent Debt balance.\nInternal actor ids and idempotency keys are intentionally not exposed.",
         "properties": {
+          "accounting_time": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AccountingTimeSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "amount_cents": {
             "format": "int64",
             "maximum": 9000000000000.0,
@@ -23240,7 +23384,6 @@
         "required": [
           "public_id",
           "amount_cents",
-          "paid_at",
           "created_at",
           "status"
         ],
@@ -24727,6 +24870,11 @@
             "title": "Original Attachment Version",
             "type": "integer"
           },
+          "repayment_time_input_version": {
+            "minimum": 1.0,
+            "title": "Repayment Time Input Version",
+            "type": "integer"
+          },
           "upload_original_receipt_version": {
             "minimum": 1.0,
             "title": "Upload Original Receipt Version",
@@ -24736,6 +24884,7 @@
         "required": [
           "upload_original_receipt_version",
           "accounting_time_input_version",
+          "repayment_time_input_version",
           "original_attachment_version",
           "original_attachment_create_version",
           "debt_activity_read_version",

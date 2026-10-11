@@ -7,6 +7,22 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 
 class DebtActivityContractTest {
+    @Test fun dateOnlyPaymentSurvivesWireAndCacheWithoutAnInventedInstant() {
+        val adapter = com.squareup.moshi.Moshi.Builder().add(com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory())
+            .build().adapter(com.ticketbox.data.remote.dto.RepaymentFactDto::class.java)
+        val body = """{"public_id":"original","amount_cents":300,"paid_at":null,
+            "created_at":"2026-05-05T01:02:03Z","status":"active","accounting_time":{
+            "precision":"date_only","user_local_date":"2026-04-30","accounting_date":"2026-05-01",
+            "calendar_revision":3,"basis":"user_selected"}}"""
+        val original = requireNotNull(adapter.fromJson(body))
+        val reopened = requireNotNull(adapter.fromJson(adapter.toJson(original))).toDomain()
+        assertEquals(null, reopened.paidAt)
+        assertEquals("2026-04-30", reopened.accountingTime?.userLocalDate)
+        assertEquals(3L, reopened.accountingTime?.calendarRevision)
+        assertEquals("2026-04-30 · 账务归属 2026-05-01",
+            com.ticketbox.ui.components.displayAccountingTimeDate(reopened.accountingTime, reopened.paidAt))
+    }
+
     @Test fun splitAgreementHistoryKeepsImmutableSharesCashAndForgivenessWithoutReplacingOtherEvents() {
         val event = com.ticketbox.data.remote.dto.DebtActivityDto(
             kind = "split_agreement_changed", publicId = "change", recordedAt = "2026-09-20T00:00:00Z",

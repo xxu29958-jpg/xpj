@@ -4,17 +4,22 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasScrollToIndexAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performTouchInput
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.ui.screens.DebtDetailScreen
+import com.ticketbox.ui.saveConsumerArtPreview
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.DebtDetailViewModel
 import com.ticketbox.viewmodel.DebtActivityViewModel
@@ -34,6 +39,8 @@ class MemberSettlementConnectedTest {
     private val detail = mutableStateOf<DebtDetailViewModel?>(null)
     private lateinit var proposals: MemberRepaymentProposalViewModel
     private lateinit var history: DebtActivityViewModel
+    private var proposalSavedState = SavedStateHandle()
+    private val skin = if (InstrumentationRegistry.getArguments().getString("captureSkin") == "midnight") AppSkin.Midnight else AppSkin.Paper
 
     @After fun close() { stopModels(); fixture.close() }
 
@@ -46,21 +53,35 @@ class MemberSettlementConnectedTest {
         installModels()
         compose.setContent {
             val model = detail.value ?: return@setContent
-            TicketboxTheme(skin = AppSkin.Paper) { DebtDetailScreen(model, proposals, history, {}) }
+            TicketboxTheme(skin = skin) { DebtDetailScreen(model, proposals, history, {}) }
         }
         compose.waitUntil(10_000) { proposals.state.value.pendingProposal != null }
-        compose.onNodeWithText("收到啦，谢谢～").performScrollTo().performClick()
+        saveConsumerArtPreview("member-debt-primary", requireNotNull(
+            InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        compose.onNodeWithText("收到啦，谢谢～").assertIsDisplayed().performClick()
         compose.onAllNodes(hasSetTextAction())[0].performTextReplacement("450")
-        compose.onNodeWithText("保存").performTouchInput { click() }
+        compose.onNodeWithText("确认这笔到账").performTouchInput { click() }
         compose.waitUntil(10_000) { network.confirms.size == 1 && !proposals.state.value.isSubmitting }
         assertEquals("450", proposals.state.value.amountInput)
         assertNull(proposals.state.value.flashMessage)
-        compose.onNodeWithText("保存").performTouchInput { click() }
+        stopModels()
+        proposalSavedState = SavedStateHandle(proposalSavedState.keys().associateWith { proposalSavedState.get<Any?>(it) })
+        installModels()
+        compose.waitUntil(10_000) { proposals.state.value.originalAttempt != null }
+        assertNull(detail.value?.state?.value?.debt)
+        assertEquals("450", proposals.state.value.amountInput)
+        assertEquals("JPY", proposals.state.value.formCurrencyCode)
+        assertEquals(network.current.counterpartyLabel, proposals.state.value.originalContext?.counterpartyLabel)
+        compose.onNodeWithText("核实原提交结果").assertIsDisplayed()
+        saveConsumerArtPreview("member-original-recovery", requireNotNull(
+            InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        compose.onNodeWithText("核实原提交结果").performClick()
         compose.waitUntil(10_000) { detail.value?.state?.value?.debt?.rowVersion == 2L && history.state.value.total == 3 }
         assertEquals(2, network.confirms.size)
         assertEquals(network.confirms.first(), network.confirms.last())
         assertEquals(1, network.accepted.size)
         assertEquals(450L, history.state.value.items.single { it.kind == "repayment" }.repayment?.amountCents)
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("实际确认：¥450"))
         compose.onNodeWithText("实际确认：¥450").performScrollTo().assertIsDisplayed()
         assertEquals(retained, fixture.stored())
 
@@ -70,6 +91,7 @@ class MemberSettlementConnectedTest {
         compose.waitUntil(10_000) { detail.value?.state?.value?.debt?.rowVersion == 2L && history.state.value.total == 3 }
         assertEquals(2, network.confirms.size)
         assertEquals(retained, fixture.stored())
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("算了，不用还了"))
         compose.onNodeWithText("算了，不用还了").performScrollTo().performClick()
         compose.onNodeWithText("嗯，这份我请").performClick()
         compose.waitUntil(10_000) { detail.value?.state?.value?.debt?.isForgiven == true }
@@ -84,22 +106,77 @@ class MemberSettlementConnectedTest {
         installModels()
         compose.setContent {
             val model = detail.value ?: return@setContent
-            TicketboxTheme(skin = AppSkin.Paper) { DebtDetailScreen(model, proposals, history, {}) }
+            TicketboxTheme(skin = skin) { DebtDetailScreen(model, proposals, history, {}) }
         }
         compose.waitUntil(10_000) { proposals.state.value.error != null }
         compose.onNodeWithText("算了，不用还了").assertDoesNotExist()
         compose.onNodeWithText("还没有新消息", substring = true).assertDoesNotExist()
+        compose.onNodeWithText("收到啦，谢谢～").assertDoesNotExist()
         network.failProposalReads = false
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("重试"))
+        saveConsumerArtPreview("member-debt-failed-read", requireNotNull(
+            InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
         compose.onNodeWithText("重试").performScrollTo().performClick()
         compose.waitUntil(10_000) { proposals.state.value.pendingProposal != null }
-        compose.onNodeWithText("收到啦，谢谢～").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("收到啦，谢谢～").assertIsDisplayed()
         assertEquals(0, network.accepted.size)
+    }
+
+    @Test
+    fun selectedPaymentDaySurvivesReturnRecreationAndOriginalSubmissionRecovery() {
+        network.current = network.current.copy(viewerIsDebtor = true)
+        network.hasProposal = false
+        installModels()
+        val retained = fixture.stored()
+        compose.setContent {
+            val model = detail.value ?: return@setContent
+            TicketboxTheme(skin = skin) { DebtDetailScreen(model, proposals, history, {}) }
+        }
+        compose.waitUntil(10_000) { detail.value?.state?.value?.debt != null && proposals.state.value.hasReadableProposalState }
+        compose.onNodeWithText("提交还款确认").performClick()
+        compose.onAllNodes(hasSetTextAction())[0].performTextReplacement("750")
+        compose.onAllNodes(hasSetTextAction())[1].performTextReplacement("2026-04-")
+        compose.onNodeWithText("返回，保留输入").performTouchInput { click() }
+        compose.onNodeWithText("继续填写原还款").performClick()
+        compose.onNodeWithText("2026-04-").assertIsDisplayed()
+        compose.onAllNodes(hasSetTextAction())[1].performTextReplacement("2026-04-30")
+        compose.onNodeWithText("2026-04-30").assertIsDisplayed()
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        compose.waitForIdle()
+        saveConsumerArtPreview("member-payment-date-form", requireNotNull(
+            InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        compose.onNodeWithText("¥450").performScrollTo().assertIsDisplayed()
+        assertEquals(1200L, network.current.remainingAmountCents)
+        compose.waitForIdle()
+        saveConsumerArtPreview("member-payment-date-preview", requireNotNull(
+            InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        compose.onNodeWithText("提交还款确认").performTouchInput { click() }
+        compose.waitUntil(10_000) { network.proposes.size == 1 && !proposals.state.value.isSubmitting }
+        assertEquals("2026-04-30", network.proposes.single().first.timeInput?.userLocalDate)
+        assertEquals(3L, network.proposes.single().first.timeInput?.calendarRevision)
+        assertNull(network.proposes.single().first.timeInput?.instantUtc)
+        stopModels()
+        proposalSavedState = SavedStateHandle(proposalSavedState.keys().associateWith { proposalSavedState.get<Any?>(it) })
+        network.current = network.current.copy(repaymentCalendar = com.ticketbox.data.remote.dto.RepaymentCalendarDto(4, "Pacific/Honolulu"))
+        installModels()
+        compose.waitUntil(10_000) { proposals.state.value.originalAttempt != null }
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("原还款日：2026-04-30"))
+        compose.onNodeWithText("原还款日：2026-04-30").assertIsDisplayed()
+        compose.waitForIdle()
+        saveConsumerArtPreview("member-payment-date-recovery", requireNotNull(
+            InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        compose.onNodeWithText("核实原提交结果").assertIsDisplayed().performClick()
+        compose.waitUntil(10_000) { network.proposes.size == 2 && proposals.state.value.originalAttempt == null }
+        assertEquals(network.proposes.first(), network.proposes.last())
+        assertEquals(1, network.acceptedProposals.size)
+        assertEquals("2026-04-30", proposals.state.value.pendingProposal?.accountingTime?.userLocalDate)
+        assertEquals(retained, fixture.stored())
     }
 
     private fun installModels() {
         val graph = fixture.reopen()
         compose.runOnIdle {
-            proposals = MemberRepaymentProposalViewModel(graph.debtRepository.proposals)
+            proposals = MemberRepaymentProposalViewModel(graph.debtRepository.proposals, proposalSavedState)
             history = DebtActivityViewModel(graph.debtRepository.activity)
             detail.value = DebtDetailViewModel(graph.debtRepository, graph.debtWriteRepository).also { it.loadDebt(network.current.publicId) }
         }

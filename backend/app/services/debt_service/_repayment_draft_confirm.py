@@ -17,6 +17,7 @@ from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import Debt, RepaymentDraft
 from app.schemas import RepaymentCreateRequest
+from app.schemas._accounting_time import AccountingTimeSnapshot
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.currency_common import minor_amount_value
 from app.services.debt_service._repayment import record_repayment
@@ -102,6 +103,8 @@ def confirm_repayment_draft(
         ),
         idempotency_key=idempotency_key,
         commit=False,
+        captured_time=(AccountingTimeSnapshot.model_validate(draft.accounting_time_snapshot)
+            if draft.accounting_time_snapshot is not None else None),
     )
 
     draft.status = "confirmed"

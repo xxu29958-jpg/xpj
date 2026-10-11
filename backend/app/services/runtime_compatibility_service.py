@@ -19,6 +19,7 @@ from app.runtime_compatibility_contract import (
     ACCOUNTING_TIME_INPUT_VERSION,
     CURRENT_API_VERSION,
     DEBT_ACTIVITY_READ_VERSION,
+    REPAYMENT_TIME_INPUT_VERSION,
     RUNTIME_COMPATIBILITY_CONTRACT,
     TICKETBOX_API_VERSION_HEADER,
     TICKETBOX_CURRENCY_BINDING_HEADER,
@@ -62,6 +63,7 @@ class RuntimeCompatibilitySnapshot:
     legacy_write_compatibility: Literal["compatible", "client_upgrade_required"]
     upload_original_receipt_version: int
     accounting_time_input_version: int
+    repayment_time_input_version: int
     original_attachment_version: int
     original_attachment_create_version: int
     debt_activity_read_version: int
@@ -105,6 +107,7 @@ def runtime_compatibility_snapshot(db: Session) -> RuntimeCompatibilitySnapshot:
         legacy_write_compatibility="client_upgrade_required",
         upload_original_receipt_version=UPLOAD_ORIGINAL_RECEIPT_VERSION,
         accounting_time_input_version=ACCOUNTING_TIME_INPUT_VERSION,
+        repayment_time_input_version=REPAYMENT_TIME_INPUT_VERSION,
         original_attachment_version=1,
         original_attachment_create_version=1,
         debt_activity_read_version=DEBT_ACTIVITY_READ_VERSION,

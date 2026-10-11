@@ -94,6 +94,18 @@ data class DebtDto(
     @param:Json(name = "is_forgiven")
     val isForgiven: Boolean = false,
     val note: String? = null,
+    @param:Json(name = "adjustment_amount_cents")
+    val adjustmentAmountCents: Long? = null,
+    @param:Json(name = "forgiven_amount_cents")
+    val forgivenAmountCents: Long? = null,
+    @param:Json(name = "repayment_calendar")
+    val repaymentCalendar: RepaymentCalendarDto? = null,
+)
+
+@JsonClass(generateAdapter = true)
+data class RepaymentCalendarDto(
+    val revision: Long,
+    @param:Json(name = "timezone_name") val timezoneName: String,
 )
 
 data class DebtListResponseDto(

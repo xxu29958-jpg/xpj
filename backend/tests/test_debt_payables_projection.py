@@ -121,3 +121,29 @@ def test_existing_receivable_discovery_keeps_its_direction_and_membership_scope(
     local = query.list_receivables_for_account(records, tenant_id="theirs", account_id=1).items
     assert [item.public_id for item in local] == ["receivable"]
     assert local[0].ledger_id == "theirs"
+
+
+def test_balance_components_keep_adjustments_forgiveness_and_voided_payments_distinct(records):
+    debt = _debt(records, "balance-components")
+    records.add_all([
+        DebtAdjustment(debt_id=debt.id, amount_cents=-1000, reason="原约定减少", actor_account_id=2),
+        DebtAdjustment(debt_id=debt.id, amount_cents=500, reason="双方后来调整", actor_account_id=2),
+        DebtForgiveness(debt_id=debt.id, amount_cents=500, actor_account_id=2),
+        Repayment(public_id="active-payment", debt_id=debt.id, amount_cents=1000,
+                  paid_at=WHEN, actor_account_id=1, idempotency_key="active-payment"),
+    ])
+    voided = Repayment(public_id="voided-payment", debt_id=debt.id, amount_cents=900,
+                       paid_at=WHEN, actor_account_id=1, idempotency_key="voided-payment")
+    records.add(voided)
+    records.flush()
+    records.add(RepaymentVoid(repayment_id=voided.id, actor_account_id=1))
+    records.flush()
+    detail = query.get_participant_debt_response(records, public_id=debt.public_id, ledger_id="mine", account_id=1)
+    assert (detail.principal_amount_cents, detail.paid_amount_cents, detail.adjustment_amount_cents,
+            detail.forgiven_amount_cents, detail.remaining_amount_cents) == (4000, 1000, -500, 500, 2000)
+    assert detail.ledger_id is None and detail.viewer_is_debtor is True
+    assert not detail.is_forgiven  # A later reopened obligation still has an independent prior waiver.
+    assert _payables(records)[debt.public_id] == detail
+    legacy = detail.model_dump(exclude={"adjustment_amount_cents", "forgiven_amount_cents"})
+    old_receipt = type(detail).model_validate(legacy)
+    assert old_receipt.adjustment_amount_cents is old_receipt.forgiven_amount_cents is None

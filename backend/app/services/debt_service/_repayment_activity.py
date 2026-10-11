@@ -89,6 +89,7 @@ def repayment_fact_response(repayment: Repayment, void: RepaymentVoid | None) ->
         exchange_rate_date=repayment.exchange_rate_date,
         exchange_rate_source=repayment.exchange_rate_source,
         paid_at=repayment.paid_at,
+        accounting_time=repayment.accounting_time_snapshot,
         created_at=repayment.created_at,
         status="voided" if void is not None else "active",
         void_fact=(

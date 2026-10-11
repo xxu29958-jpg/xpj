@@ -6,10 +6,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -18,7 +15,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.data.repository.DebtTask
@@ -35,8 +31,6 @@ import com.ticketbox.ui.components.AppBusyGuardedSheet
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppOutlinedButtonOptions
-import com.ticketbox.ui.components.AppButtonIcons
-import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppSectionGroup
 import com.ticketbox.ui.components.AppSheetAction
 import com.ticketbox.ui.components.AppSheetActionRow
@@ -48,7 +42,6 @@ import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.viewmodel.DebtAction
 import com.ticketbox.viewmodel.DebtDetailUiState
 import com.ticketbox.viewmodel.DebtDetailViewModel
@@ -83,7 +76,7 @@ fun DebtDetailScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val observedProposalState by proposalViewModel.state.collectAsStateWithLifecycle()
     val proposalState = observedProposalState.takeIf {
-        it.task?.binding == state.binding && it.task?.debtPublicId == state.debt?.publicId
+        it.task?.binding == state.binding && it.task?.debtPublicId == (state.requestedPublicId ?: state.debt?.publicId)
     } ?: MemberProposalUiState()
     val observedHistoryState by historyViewModel.state.collectAsStateWithLifecycle()
     val historyState = boundDebtHistory(state, observedHistoryState)
@@ -145,19 +138,20 @@ internal fun DebtDetailEffects(
     historyViewModel: DebtActivityViewModel,
 ) {
     val debt = state.debt
-    LaunchedEffect(state.binding, debt?.publicId, debt?.isMember) {
-        if (debt != null && debt.isMember) state.binding?.let { binding ->
-            proposalViewModel.load(DebtTask(binding, debt.publicId))
+    LaunchedEffect(proposalViewModel, state.binding, state.requestedPublicId, debt?.isMember) {
+        val publicId = state.requestedPublicId ?: debt?.publicId
+        if (publicId != null) state.binding?.let { binding ->
+            proposalViewModel.load(DebtTask(binding, publicId), readProposals = debt?.isMember == true, debt = debt)
         }
     }
     // 此 effect 仅在进入页面或 key 变化时运行；重入也读取不改变父版本的远端申报变化。
-    LaunchedEffect(state.binding, debt?.publicId, debt?.rowVersion, proposalState.acknowledgedCommandRevision) {
+    LaunchedEffect(historyViewModel, state.binding, debt?.publicId, debt?.rowVersion, proposalState.acknowledgedCommandRevision) {
         val task = state.binding?.let { binding -> debt?.let { DebtTask(binding, it.publicId) } }
         historyViewModel.loadDebt(
             task, debt?.rowVersion ?: 0, proposalState.acknowledgedCommandRevision, forceRefresh = true,
         )
     }
-    LaunchedEffect(proposalState.task, proposalState.committedDebt) {
+    LaunchedEffect(viewModel, proposalState.task, proposalState.committedDebt) {
         val task = proposalState.task ?: return@LaunchedEffect
         proposalState.committedDebt?.let { viewModel.applyMemberResult(task, it) }
     }
@@ -170,80 +164,6 @@ internal fun DebtDetailEffects(
         if (proposalState.flashMessage == null) return@LaunchedEffect
         delay(DebtDetailFlashDismissMillis)
         proposalViewModel.dismissFlash()
-    }
-}
-
-// Member debt routes to MemberSharedThingCard; this businesslike accounting card serves external
-// debt (unchanged) and the member foreign-currency defensive fallback (§2.6) — hence internal.
-@Composable
-internal fun DebtSummaryCard(debt: Debt) {
-    // 金额全部按 record 自身 homeCurrencyCode 渲染（CurrencyDisplay.forRecord）：路由级环境
-    // display 恒 Base，JPY/KRW 欠款会把零小数 minor 按两位小数显示（PR#255 R5 P1，与解析
-    // 同源的 D8 范式）。
-    val recordDisplay = CurrencyDisplay.forRecord(debt.homeCurrencyCode)
-    AppSectionGroup(
-        modifier = Modifier.fillMaxWidth(),
-        contentPadding = PaddingValues(vertical = AppSpacing.contentGap),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
-    ) {
-        Text(
-            stringResource(R.string.debt_detail_remaining),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text(
-            formatDisplayAmount(debt.remainingAmountCents, recordDisplay),
-            style = MaterialTheme.typography.headlineMedium.tabularNum(),
-            fontWeight = FontWeight.SemiBold,
-        )
-        HorizontalDivider()
-        DebtSummaryRow(
-            label = stringResource(R.string.debt_detail_principal),
-            value = formatDisplayAmount(debt.principalAmountCents, recordDisplay),
-        )
-        DebtSummaryRow(
-            label = stringResource(R.string.debt_detail_paid),
-            value = formatDisplayAmount(debt.paidAmountCents, recordDisplay),
-        )
-        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                stringResource(R.string.debt_detail_status),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.weight(1f),
-            )
-            DebtStatusBadge(
-                text = stringResource(debtLinkStatusLabelRes(debt.status)),
-                tone = debtLinkStatusTone(debt.status),
-            )
-        }
-        debt.note?.takeIf { it.isNotBlank() }?.let { note ->
-            HorizontalDivider()
-            Text(
-                stringResource(R.string.debt_context_title),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(note, style = MaterialTheme.typography.bodyMedium)
-        }
-    }
-}
-
-// Shared by DebtSummaryCard and MemberSharedThingCard's "看看账" expander — hence internal.
-@Composable
-internal fun DebtSummaryRow(label: String, value: String) {
-    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(
-            label,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.weight(1f),
-        )
-        Text(
-            value,
-            style = MaterialTheme.typography.bodyMedium.tabularNum(),
-            fontWeight = FontWeight.Medium,
-        )
     }
 }
 
@@ -273,7 +193,7 @@ internal fun DebtActionPanel(debt: Debt, canModify: Boolean, onAction: (DebtActi
 
 @Composable
 private fun DebtActionButtons(onAction: (DebtAction) -> Unit, amountActionsEnabled: Boolean) {
-    AppAdaptiveEditActionLayout(actionCount = if (amountActionsEnabled) 3 else 1, compact = false) { mode ->
+    AppAdaptiveEditActionLayout(actionCount = if (amountActionsEnabled) 2 else 1, compact = false) { mode ->
         when (mode) {
             AppAdaptiveEditActionMode.Stacked -> DebtActionButtonsStacked(
                 onAction = onAction,
@@ -285,11 +205,6 @@ private fun DebtActionButtons(onAction: (DebtAction) -> Unit, amountActionsEnabl
                 horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap, Alignment.End),
             ) {
                 if (amountActionsEnabled) {
-                    AppPrimaryButton(
-                        text = stringResource(R.string.debt_action_repayment_title),
-                        icons = AppButtonIcons(leading = Icons.Filled.Check),
-                        onClick = { onAction(DebtAction.Repayment) },
-                    )
                     AppSecondaryButton(
                         text = stringResource(R.string.debt_action_adjustment_title),
                         onClick = { onAction(DebtAction.Adjustment) },
@@ -306,7 +221,7 @@ private fun DebtActionButtons(onAction: (DebtAction) -> Unit, amountActionsEnabl
     }
 }
 
-/** 窄屏堆叠态：记还款独占主视觉；调整/作废收成同权重安静二级行（danger 语义色区分破坏动作）。 */
+/** 还款入口归详情底部操作槽；这里仅保留调整和作废。 */
 @Composable
 private fun DebtActionButtonsStacked(onAction: (DebtAction) -> Unit, amountActionsEnabled: Boolean) {
     Column(
@@ -314,12 +229,6 @@ private fun DebtActionButtonsStacked(onAction: (DebtAction) -> Unit, amountActio
         verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
     ) {
         if (amountActionsEnabled) {
-            AppPrimaryButton(
-                text = stringResource(R.string.debt_action_repayment_title),
-                icons = AppButtonIcons(leading = Icons.Filled.Check),
-                modifier = Modifier.fillMaxWidth(),
-                onClick = { onAction(DebtAction.Repayment) },
-            )
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),

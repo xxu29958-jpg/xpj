@@ -9,7 +9,7 @@ object DebtRepaymentStatuses {
 data class DebtRepayment(
     val publicId: String,
     val amountCents: Long,
-    val paidAt: String,
+    val paidAt: String?,
     val createdAt: String,
     val status: String,
     val voidFact: DebtRepaymentVoid? = null,
@@ -18,6 +18,7 @@ data class DebtRepayment(
     val exchangeRateToCny: String? = null,
     val exchangeRateDate: String? = null,
     val exchangeRateSource: String? = null,
+    val accountingTime: ExpenseAccountingTime? = null,
 ) {
     val isActive: Boolean get() = status == DebtRepaymentStatuses.ACTIVE
 }

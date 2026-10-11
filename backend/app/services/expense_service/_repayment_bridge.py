@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import Expense, RepaymentDraft
+from app.services.accounting_time_service import accounting_time_snapshot
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.expense_service._query import get_expense
 from app.services.time_service import ensure_utc, now_utc
@@ -100,6 +101,7 @@ def create_repayment_draft_from_expense(
 
     now = now_utc()
     captured_at = ensure_utc(expense.expense_time or expense.confirmed_at or expense.created_at)
+    payment_time = accounting_time_snapshot(expense)
     draft = RepaymentDraft(
         tenant_id=tenant_id,
         created_by_account_id=actor_account_id,
@@ -110,6 +112,7 @@ def create_repayment_draft_from_expense(
         original_amount_minor=expense.original_amount_minor or expense.amount_cents,
         merchant_label=_expense_repayment_label(expense),
         captured_at=captured_at,
+        accounting_time_snapshot=payment_time.model_dump(mode="json") if payment_time else None,
         draft_idempotency_key=idempotency_key,
         status="pending",
         created_at=now,

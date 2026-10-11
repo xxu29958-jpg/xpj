@@ -23,7 +23,7 @@ import com.ticketbox.domain.model.MemberRepaymentProposal
 import com.ticketbox.ui.components.AppListRow
 import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.displayDateTime
-import com.ticketbox.ui.components.displayDate
+import com.ticketbox.ui.components.displayAccountingTimeDate
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
 
@@ -80,7 +80,8 @@ internal fun DebtActivityRow(state: DebtActivityRowState, callbacks: DebtActivit
 private fun DebtActivityProposal(proposal: MemberRepaymentProposal, resolved: Boolean, openRepayment: (String) -> Unit) {
     val display = CurrencyDisplay.forRecord(proposal.homeCurrencyCode)
     Text(stringResource(R.string.debt_activity_proposed_amount, formatDisplayAmount(proposal.proposedAmountCents, display)))
-    Text(stringResource(R.string.debt_activity_paid_at, displayDate(proposal.paidAt)), style = MaterialTheme.typography.bodySmall)
+    Text(stringResource(R.string.debt_activity_paid_at, displayAccountingTimeDate(proposal.accountingTime, proposal.paidAt)),
+        style = MaterialTheme.typography.bodySmall)
     if (resolved) {
         Text(stringResource(memberProposalStatusLabel(proposal.status)), style = MaterialTheme.typography.labelMedium)
         proposal.confirmedAmountCents?.let {

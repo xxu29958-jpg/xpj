@@ -8,4 +8,5 @@ internal fun RepaymentFactDto.toDomain() = DebtRepayment(
     publicId, amountCents, paidAt, createdAt, status,
     voidFact?.let { DebtRepaymentVoid(it.publicId, it.reason, it.createdAt) },
     originalCurrencyCode, originalAmountMinor, exchangeRateToCny, exchangeRateDate, exchangeRateSource,
+    accountingTime?.toDomain(),
 )

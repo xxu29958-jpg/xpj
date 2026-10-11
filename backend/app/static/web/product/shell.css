@@ -771,6 +771,34 @@ details[open] > .chrome-trigger {
     width: min(100%, var(--layout-page-narrow-max));
 }
 
+/* A task action occupies its own row; the reading area never runs behind it. */
+.product-workspace:has(> .product-task-footer) {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+}
+
+.product-workspace:has(> .product-task-footer) > main.content {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.product-workspace:has(> .product-task-footer) > .mobile-chrome,
+.product-workspace:has(> .product-task-footer) .product-topbar {
+    flex-shrink: 0;
+}
+
+.product-task-footer {
+    flex-shrink: 0;
+    padding-block: var(--space-3) calc(var(--space-3) + env(safe-area-inset-bottom));
+    background: var(--surface-app);
+}
+
+.product-task-footer > .product-button {
+    width: 100%;
+}
+
 .readonly-callout {
     margin-block-end: var(--space-5);
     padding: var(--space-4) var(--space-5);
@@ -933,9 +961,9 @@ details[open] > .chrome-trigger {
 
     /* 内容区给 fixed 底部 nav 让位: 56px nav + safe-area + 一档间距,
        最后一行卡片与 bulk 条永不被遮。 */
-    .content,
-    .content[data-page-level="secondary"],
-    .content[data-page-level="tertiary"] {
+    main.content,
+    main.content[data-page-level="secondary"],
+    main.content[data-page-level="tertiary"] {
         width: 100%;
         padding: var(--space-6) var(--space-7)
             calc(var(--mobile-nav-block-size) + env(safe-area-inset-bottom) + var(--space-7));

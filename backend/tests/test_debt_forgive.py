@@ -122,6 +122,8 @@ def test_creditor_forgives_full_open_debt(client: TestClient, *, identity) -> No
     assert body["status"] == "cleared"
     assert body["remaining_amount_cents"] == 0
     assert body["paid_amount_cents"] == 0  # a gift, not a payment
+    assert body["forgiven_amount_cents"] == 50000
+    assert body["adjustment_amount_cents"] == 0
     assert body["is_forgiven"] is True
     assert body["viewer_is_debtor"] is False  # owner is the creditor
     assert body["row_version"] == 2
@@ -149,6 +151,8 @@ def test_creditor_forgives_after_partial_repayment_clears(client: TestClient, *,
     body = resp.json()
     assert body["remaining_amount_cents"] == 0
     assert body["paid_amount_cents"] == 20000
+    assert body["forgiven_amount_cents"] == 30000
+    assert body["adjustment_amount_cents"] == 0
     assert body["status"] == "cleared"
     assert body["is_forgiven"] is True
 

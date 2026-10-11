@@ -191,6 +191,8 @@ def _detail_view(debt) -> dict:
         debt.counterparty_type, _COUNTERPARTY_FALLBACK["external"]
     )
     status = debt.status
+    adjustment = getattr(debt, "adjustment_amount_cents", None)
+    forgiven = getattr(debt, "forgiven_amount_cents", None)
     view = {
         "public_id": debt.public_id,
         "name": name,
@@ -202,6 +204,11 @@ def _detail_view(debt) -> dict:
         # remaining label inside "看看账" rather than inventing another fold.
         "principal_label": _home_amount_label(debt.principal_amount_cents, home),
         "paid_label": _home_amount_label(debt.paid_amount_cents, home),
+        "adjustment_label": (
+            ("+" if adjustment > 0 else "") + _home_amount_label(adjustment, home)
+            if adjustment is not None else "未记录"
+        ),
+        "forgiven_label": _home_amount_label(forgiven, home) if forgiven is not None else "未记录",
         "remaining_label": _home_amount_label(debt.remaining_amount_cents, home),
         "remaining_minor": str(debt.remaining_amount_cents),
         "direction_sentence": debt_direction_sentence(debt, name),

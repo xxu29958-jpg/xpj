@@ -221,6 +221,8 @@ fun memberRepaymentProposalViewModelFactory(
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         return MemberRepaymentProposalViewModel(repository) as T
     }
+    override fun <T : ViewModel> create(modelClass: Class<T>, extras: CreationExtras): T =
+        modelClass.cast(MemberRepaymentProposalViewModel(repository, extras.createSavedStateHandle())) as T
 }
 
 @Suppress("UNCHECKED_CAST")

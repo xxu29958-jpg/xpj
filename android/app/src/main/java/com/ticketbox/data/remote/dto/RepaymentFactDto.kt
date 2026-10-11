@@ -11,7 +11,7 @@ data class RepaymentVoidFactDto(
 data class RepaymentFactDto(
     @param:Json(name = "public_id") val publicId: String,
     @param:Json(name = "amount_cents") val amountCents: Long,
-    @param:Json(name = "paid_at") val paidAt: String,
+    @param:Json(name = "paid_at") val paidAt: String?,
     @param:Json(name = "created_at") val createdAt: String,
     val status: String,
     @param:Json(name = "void_fact") val voidFact: RepaymentVoidFactDto? = null,
@@ -20,6 +20,7 @@ data class RepaymentFactDto(
     @param:Json(name = "exchange_rate_to_cny") val exchangeRateToCny: String? = null,
     @param:Json(name = "exchange_rate_date") val exchangeRateDate: String? = null,
     @param:Json(name = "exchange_rate_source") val exchangeRateSource: String? = null,
+    @param:Json(name = "accounting_time") val accountingTime: ExpenseAccountingTimeDto? = null,
 )
 
 data class RepaymentFactListDto(

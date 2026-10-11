@@ -113,13 +113,13 @@ _LEDGER_RECORDS = (
 
 _DEBT_CHILDREN = (
     (m.Repayment, "id public_id debt_id amount_cents original_currency_code original_amount_minor exchange_rate_to_cny "
-        "exchange_rate_date exchange_rate_source paid_at actor_account_id proposal_id idempotency_key created_at"),
+        "exchange_rate_date exchange_rate_source paid_at accounting_time_snapshot actor_account_id proposal_id idempotency_key created_at"),
     (m.DebtAdjustment, "id public_id debt_id amount_cents reason actor_account_id idempotency_key created_at"),
     (m.DebtVoid, "id public_id debt_id reason actor_account_id idempotency_key created_at"),
     (m.DebtForgiveness, "id public_id debt_id amount_cents actor_account_id idempotency_key created_at"),
     (m.MemberRepaymentProposal, "id public_id debt_id debtor_account_id creditor_account_id proposed_by_account_id "
         "proposed_amount_cents home_currency_code original_currency_code original_amount_minor exchange_rate_to_cny "
-        "exchange_rate_date exchange_rate_source paid_at note status confirmed_amount_cents committed_repayment_id "
+        "exchange_rate_date exchange_rate_source paid_at accounting_time_snapshot note status confirmed_amount_cents committed_repayment_id "
         "supersedes_proposal_id idempotency_key created_at expires_at resolved_at resolved_by_account_id"),
 )
 
@@ -171,7 +171,7 @@ def _ledger_relationships(auth: AuthContext) -> tuple[tuple[str, Select], ...]:
             m.DebtGoalLink.goal_id.in_(select(m.Goal.id).where(m.Goal.tenant_id == auth.ledger_id)))),
         ("repayment_drafts", _record(m.RepaymentDraft, "id public_id tenant_id created_by_account_id source "
             "amount_cents home_currency_code original_currency_code original_amount_minor "
-            "merchant_label captured_at draft_idempotency_key status "
+            "merchant_label captured_at accounting_time_snapshot draft_idempotency_key status "
             "committed_debt_public_id committed_repayment_public_id resolved_at resolved_by_account_id created_at",
             _owned_drafts(auth))),
     )
@@ -213,7 +213,7 @@ def _participant_queries(auth: AuthContext) -> tuple[tuple[str, Select], ...]:
     repayment = m.Repayment
     debt_public_id = select(debt.public_id).where(debt.id == repayment.debt_id).scalar_subquery()
     repayments = _record(repayment, "public_id amount_cents original_currency_code original_amount_minor "
-        "exchange_rate_to_cny exchange_rate_date exchange_rate_source paid_at created_at",
+        "exchange_rate_to_cny exchange_rate_date exchange_rate_source paid_at accounting_time_snapshot created_at",
         repayment.debt_id.in_(ids)).add_columns(debt_public_id.label("debt_public_id"))
     voids = _record(m.RepaymentVoid, "public_id reason created_at", m.RepaymentVoid.repayment_id.in_(
         select(repayment.id).where(repayment.debt_id.in_(ids)))).add_columns(select(repayment.public_id).where(
@@ -221,7 +221,7 @@ def _participant_queries(auth: AuthContext) -> tuple[tuple[str, Select], ...]:
     proposal = m.MemberRepaymentProposal
     previous = proposal.__table__.alias("previous_proposal")
     proposals = _record(proposal, "public_id status proposed_amount_cents confirmed_amount_cents home_currency_code "
-        "original_currency_code original_amount_minor paid_at note expires_at created_at resolved_at",
+        "original_currency_code original_amount_minor paid_at accounting_time_snapshot note expires_at created_at resolved_at",
         proposal.debt_id.in_(ids)).add_columns(
             select(debt.public_id).where(debt.id == proposal.debt_id).scalar_subquery().label("debt_public_id"),
             select(previous.c.public_id).where(previous.c.id == proposal.supersedes_proposal_id)

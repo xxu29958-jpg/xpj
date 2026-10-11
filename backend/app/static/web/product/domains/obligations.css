@@ -89,9 +89,9 @@ body[data-domain="obligations"] .content { max-inline-size: var(--layout-page-na
 }
 
 .debt-history-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
     gap: var(--space-4);
     padding-block-end: var(--space-3);
     border-block-end: 1px solid var(--border-card);
@@ -110,6 +110,8 @@ body[data-domain="obligations"] .content { max-inline-size: var(--layout-page-na
 
 .debt-history-main {
     display: grid;
+    flex: 1 1 24ch;
+    min-inline-size: 0;
     gap: var(--space-1);
 }
 
@@ -547,6 +549,7 @@ body[data-domain="obligations"] .content { max-inline-size: var(--layout-page-na
 
 .debt-history-side {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: var(--space-3);
 }

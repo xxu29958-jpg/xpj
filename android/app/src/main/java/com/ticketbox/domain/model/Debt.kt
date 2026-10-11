@@ -1,5 +1,7 @@
 package com.ticketbox.domain.model
 
+data class DebtRepaymentCalendar(val revision: Long, val timezoneName: String)
+
 /**
  * ADR-0049 §2 (slice 8) Debt entity domain model.
  *
@@ -95,6 +97,11 @@ data class Debt(
      */
     val isForgiven: Boolean = false,
     val note: String? = null,
+    /** Independent server projections; old cached responses remain unknown. */
+    val adjustmentAmountCents: Long? = null,
+    val forgivenAmountCents: Long? = null,
+    /** Calendar of this obligation, including a participant view from another ledger. */
+    val repaymentCalendar: DebtRepaymentCalendar? = null,
 ) {
     val isOpen: Boolean get() = status == DebtLinkStatuses.OPEN
     val isCleared: Boolean get() = status == DebtLinkStatuses.CLEARED

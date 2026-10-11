@@ -18,6 +18,7 @@ CURRENT_API_VERSION = "2026-09-13"
 # Optional keyed app uploads can replay their complete original committed receipt.
 UPLOAD_ORIGINAL_RECEIPT_VERSION = 1
 ACCOUNTING_TIME_INPUT_VERSION = 1
+REPAYMENT_TIME_INPUT_VERSION = 1
 DEBT_ACTIVITY_READ_VERSION = 1
 
 # RFC 6648 discourages new ``X-`` names.  The application prefix keeps these

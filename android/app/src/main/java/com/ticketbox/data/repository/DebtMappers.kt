@@ -37,6 +37,9 @@ fun DebtDto.toDomain(): Debt = Debt(
     viewerIsDebtor = viewerIsDebtor,
     isForgiven = isForgiven,
     note = note,
+    adjustmentAmountCents = adjustmentAmountCents,
+    forgivenAmountCents = forgivenAmountCents,
+    repaymentCalendar = repaymentCalendar?.let { com.ticketbox.domain.model.DebtRepaymentCalendar(it.revision, it.timezoneName) },
 )
 
 fun DebtBillParseResponseDto.toDomain(): DebtBillSuggestion = DebtBillSuggestion(
@@ -107,4 +110,5 @@ fun MemberRepaymentProposalDto.toDomain(): MemberRepaymentProposal = MemberRepay
     resolvedAt = resolvedAt,
     supersedesProposalPublicId = supersedesProposalPublicId,
     committedRepaymentPublicId = committedRepaymentPublicId,
+    accountingTime = accountingTime?.toDomain(),
 )

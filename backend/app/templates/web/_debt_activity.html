@@ -6,7 +6,7 @@
     <div class="debt-history-row" id="{{ row.anchor }}">
       <div class="debt-history-main">
         <strong class="debt-activity-title">{{ row.title }}</strong>
-        {% if row.amount_label %}<span class="debt-history-amt">{{ row.amount_label }}</span>{% endif %}
+        {% if row.amount_label and row.kind != 'repayment' %}<span class="debt-history-amt">{{ row.amount_label }}</span>{% endif %}
         <span class="debt-history-date">记录于 {{ row.recorded_at }} · {{ row.actor_label }}</span>
         {% if row.reason %}<span class="debt-history-note">{{ row.reason }}</span>{% endif %}
         {% if row.split_change %}

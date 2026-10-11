@@ -3,6 +3,7 @@ package com.ticketbox.ui.components
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Expense
+import com.ticketbox.domain.model.ExpenseAccountingTime
 import com.ticketbox.domain.model.FxContract
 import com.ticketbox.domain.model.maxMoneyMajorInputLength
 import com.ticketbox.domain.model.parseExactMoneyMinor
@@ -198,6 +199,17 @@ fun displayDate(value: String?): String {
     return runCatching { formatter.format(Instant.parse(value)) }
         .recoverCatching { formatter.format(OffsetDateTime.parse(value).toInstant()) }
         .getOrElse { value.take(10) }
+}
+
+/** Frozen input/ledger days stay independent of the current device time zone. */
+fun displayAccountingTimeDate(evidence: ExpenseAccountingTime?, legacyInstant: String?): String {
+    if (evidence == null) return displayDate(legacyInstant)
+    val day = evidence.userLocalDate ?: evidence.accountingDate
+    val label = day?.let(::displayDate) ?: "日期未记录"
+    val accountingDay = evidence.accountingDate
+    return if (accountingDay != null && accountingDay != day) {
+        "$label · 账务归属 ${displayDate(accountingDay)}"
+    } else label
 }
 
 fun displayDateTime(value: String?): String {

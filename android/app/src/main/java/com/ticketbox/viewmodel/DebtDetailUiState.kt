@@ -17,6 +17,8 @@ import com.ticketbox.domain.model.UiText
  */
 data class DebtDetailUiState(
     val binding: LogicalSessionBinding? = null,
+    /** Route identity remains available while the canonical read is unavailable. */
+    val requestedPublicId: String? = null,
     val isLoading: Boolean = false,
     val fetchedAt: String? = null,
     val fromCache: Boolean = false,

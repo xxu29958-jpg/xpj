@@ -128,6 +128,7 @@ class DebtDetailViewModel(
             _state.update {
                 it.copy(
                     binding = loadedBinding,
+                    requestedPublicId = publicId,
                     debt = null,
                     fetchedAt = null, fromCache = false,
                     error = null,
@@ -206,10 +207,10 @@ class DebtDetailViewModel(
 
     /** Install the acknowledged participant fold in its original detail projection. */
     fun applyMemberResult(task: DebtTask, updated: Debt) {
-        val current = _state.value.debt ?: return
+        val current = _state.value.debt
         if (loadedPublicId != task.debtPublicId || loadedBinding != task.binding ||
             writes.currentAccess()?.binding != task.binding || updated.publicId != task.debtPublicId ||
-            updated.rowVersion < current.rowVersion) return
+            updated.rowVersion < (current?.rowVersion ?: 0)) return
         loadGeneration++
         detectSettleCelebration(updated, previousStatusByPublicId, celebratedDebtIds)?.let { _celebration.value = it }
         _state.update { it.copy(debt = updated, fetchedAt = null, fromCache = false, isLoading = false, error = null,

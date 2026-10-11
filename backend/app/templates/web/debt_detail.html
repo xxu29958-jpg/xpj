@@ -1,6 +1,13 @@
 {% extends "base.html" %}
-{% set page_title = '欠款详情' %}
+{% set page_title = '往来详情' %}
 {% set product_body_domain = 'obligations' %}
+{% set task_return_href = '/web/debts?ledger_id=' ~ selected_ledger_id %}
+{% set task_return_label = '往来' %}
+{% block page_footer %}
+<footer class="content product-task-footer" data-page-level="tertiary" data-debt-primary-footer hidden>
+  <button class="product-button product-button--primary" type="button" data-debt-open-repayment></button>
+</footer>
+{% endblock %}
 {% block title %}{{ debt.name }} · 欠款详情 · 小票夹{% endblock %}
 
 {% block page_scripts %}
@@ -8,9 +15,7 @@
 <script defer src="/static/web/repayment-entry.js?v={{ asset_version }}"></script>
 {% endblock %}
 
-{# C3a 欠款详情 (product 正文栈)。成员 communal / 外部 businesslike 双语义不变:
-   成员 = 关系主句 + 剩余金额 + native progress + 「看看账」; 外部 = 剩余
-   editorial 英雄 + 中性已偿还 progress + 本金/已偿还/类型/状态行。
+{# 往来详情共用方向、未结金额与金额构成；成员/外部的权限与命令仍分别裁决。
    失败诚实 (与 Codex action_form 合同配套): 任一动作 422/409 原页重渲染,
    错误锚定到被提交表单 (id=debt-action-error-<kind> + aria-invalid/
    describedby), draft 回填, 折叠面板经 id=debt-action-panel-<kind> + open
@@ -38,9 +43,9 @@
 {% with kind_term=term, kind_hint=hint_text %}{% include '_debt_kind_form.html' %}{% endwith %}
 {% endmacro %}
 {% block page_header %}
-<a class="debt-back" href="/web/debts?ledger_id={{ selected_ledger_id }}">← 往来</a>
 <header class="product-page-header">
   <div class="product-page-heading">
+    <span class="product-entry-icon product-entry-icon--apricot product-entry-icon--hero" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#users"/></svg></span>
     <h1 class="page-title">{{ debt.direction_sentence }}</h1>
     <p class="product-page-summary">{{ '家庭往来' if debt.is_member else debt.kind_label }} · {{ debt.currency_code }}</p>
   </div>
@@ -87,8 +92,18 @@
     <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
   </a>
   <a class="product-entry" href="#debt-activity">
-    <span class="product-entry-icon product-entry-icon--lilac" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#history"/></svg></span>
-    <span class="product-entry-copy"><strong>调整、免除与往来记录</strong><span>逐笔查看变动，不计作已付款</span></span>
+    <span class="product-entry-icon product-entry-icon--apricot" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#heart-handshake"/></svg></span>
+    <span class="product-entry-copy"><span class="debt-row-heading"><strong>本笔已免除</strong><strong class="debt-num">{{ debt.forgiven_label }}</strong></span><span>不计作已付款</span></span>
+    <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
+  </a>
+  <a class="product-entry" href="#debt-activity">
+    <span class="product-entry-icon product-entry-icon--lilac" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#sliders-horizontal"/></svg></span>
+    <span class="product-entry-copy"><span class="debt-row-heading"><strong>本笔调整净额</strong><strong class="debt-num">{{ debt.adjustment_label }}</strong></span><span>正数增加、负数减少未结金额</span></span>
+    <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
+  </a>
+  <a class="product-entry" href="#debt-activity">
+    <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#history"/></svg></span>
+    <span class="product-entry-copy"><strong>往来记录</strong><span>逐笔查看还款、调整、免除与作废</span></span>
     <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
   </a>
   {% if debt.note %}

@@ -24,6 +24,7 @@ internal data class ProposalCreateCall(
     val proposedAmountCents: Long,
     val note: String?,
     val supersedesProposalPublicId: String?,
+    val timeInput: com.ticketbox.data.remote.dto.ExpenseTimeInputDto? = null,
 )
 
 internal data class ProposalConfirmCall(
@@ -74,7 +75,7 @@ internal class ProposalTestActions(
         commandKeys += idempotencyKey
         return when (command) {
             is MemberSettlementCommand.Propose -> {
-                proposeCalls += ProposalCreateCall(task.debtPublicId, command.amountCents, command.note, command.supersedesProposalPublicId)
+                proposeCalls += ProposalCreateCall(task.debtPublicId, command.amountCents, command.note, command.supersedesProposalPublicId, command.timeInput)
                 val captured = proposalResult
                 if (nonCooperative) withContext(NonCancellable) { proposeGate?.await() } else proposeGate?.await()
                 captured.map { MemberSettlementResult.Proposal(it) }
@@ -147,4 +148,5 @@ internal fun sampleMemberDebt(
     updatedAt = "2026-06-16T00:00:00Z",
     rowVersion = 6,
     isForgiven = isForgiven,
+    repaymentCalendar = com.ticketbox.domain.model.DebtRepaymentCalendar(3, "Asia/Shanghai"),
 )

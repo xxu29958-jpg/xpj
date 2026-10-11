@@ -498,4 +498,24 @@
     initialize(form, settlementField);
   });
   document.querySelectorAll("[data-proposal-balance-preview]").forEach(bindBalancePreview);
+  const footer = document.querySelector("[data-debt-primary-footer]");
+  const editor = document.querySelector(".debt-repay-editor");
+  if (footer && editor) {
+    const summary = editor.querySelector(":scope > summary");
+    const entry = footer.querySelector("[data-debt-open-repayment]");
+    entry.replaceChildren(...Array.from(summary.childNodes, node => node.cloneNode(true)));
+    function syncPrimaryEntry() {
+      footer.hidden = editor.hidden || editor.open;
+      summary.hidden = !footer.hidden;
+    }
+    entry.addEventListener("click", function () {
+      editor.open = true;
+      syncPrimaryEntry();
+      editor.scrollIntoView({block:"start"});
+      summary.focus();
+    });
+    editor.addEventListener("toggle", syncPrimaryEntry);
+    new MutationObserver(syncPrimaryEntry).observe(editor, {attributes:true, attributeFilter:["hidden"]});
+    syncPrimaryEntry();
+  }
 })(window, document);

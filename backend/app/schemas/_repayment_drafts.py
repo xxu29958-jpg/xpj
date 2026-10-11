@@ -17,6 +17,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
+from app.schemas._accounting_time import AccountingTimeSnapshot
 from app.schemas._money import PositiveCanonicalDecimalInput, PositiveMoneyMinor
 from app.services.time_service import to_iso
 
@@ -90,6 +91,7 @@ class RepaymentDraftResponse(BaseModel):
     original_amount_minor: PositiveMoneyMinor
     merchant_label: str | None = None
     captured_at: datetime
+    accounting_time: AccountingTimeSnapshot | None = None
     status: str
     # §杠杆③ slice 3b: the inbox's server-suggested target Debt (fuzzy counterparty_label +
     # amount). Ephemeral — recomputed every list, never stored — and populated ONLY for a

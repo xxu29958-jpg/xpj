@@ -12,7 +12,7 @@ internal fun DebtMemberProposalForm(
     proposalViewModel: MemberRepaymentProposalViewModel,
 ) {
     val debt = state.debt
-    if (debt?.isMember == true && proposalState.activeForm != null) {
+    if (debt?.isMember == true && proposalState.activeForm != null && proposalState.originalAttempt == null) {
         ProposalFormSheet(
             state = proposalState,
             viewModel = proposalViewModel,
