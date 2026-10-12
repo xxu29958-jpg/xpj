@@ -240,7 +240,7 @@ def test_accepted_invitation_keeps_long_member_name_outside_status_pill(
 
     assert response.status_code == 200
     assert '<span class="product-status product-status--success">已接受</span>' in response.text
-    assert f'<span class="family-state-meta">{account_name} ·' in response.text
+    assert f'<span>{account_name} ·' in response.text
 
 
 def test_viewer_sees_roster_without_owner_commands(
