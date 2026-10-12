@@ -98,6 +98,11 @@ p {
    没有任何类名的 details/summary 也按这一种呈现, 不再露出浏览器默认三角。 */
 .product-disclosure > summary,
 main details:not([class]) > summary:not([class]) { display: inline-flex; align-items: center; min-height: var(--target-min); color: var(--brand-primary-strong); font-weight: var(--type-subtitle-weight); cursor: pointer; }
+/* 可展开的文字后面带一个小箭头, 展开后转向; 不靠粗体猜它能不能点。 */
+.product-disclosure > summary::after,
+main details:not([class]) > summary:not([class])::after { content: "›"; margin-inline-start: var(--space-2); color: var(--text-meta); font-weight: var(--type-body-weight); }
+.product-disclosure[open] > summary::after,
+main details:not([class])[open] > summary:not([class])::after { rotate: 90deg; }
 .product-disclosure--danger > summary { color: var(--state-danger-fg); }
 .product-disclosure[open] > summary { margin-block-end: var(--space-2); }
 
