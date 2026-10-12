@@ -12,7 +12,7 @@
   </dl>
   {% for kind, label in [('items', '当前小票明细'), ('splits', '当前家庭拆账')] %}
   <details><summary>{{ label }}</summary>
-    <ul>{% for row in fact_review[kind] %}{% if row.public_id %}<li>{{ row.name if kind == 'items' else (row.account_name or row.member_id) }} · {{ row.amount_yuan }}{% if row.note %} · {{ row.note }}{% endif %}</li>{% endif %}{% endfor %}</ul>
+    <ul>{% for row in fact_review[kind] %}{% if row.public_id %}<li>{{ row.name if kind == 'items' else (row.account_name or row.member_id) }} · {{ row.amount_yuan|grouped }}{% if row.note %} · {{ row.note }}{% endif %}</li>{% endif %}{% endfor %}</ul>
   </details>
   {% endfor %}
   </details>

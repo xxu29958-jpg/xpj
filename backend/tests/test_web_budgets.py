@@ -240,7 +240,7 @@ def test_web_budgets_save_and_display_budget_dashboard(web_client: TestClient, *
     assert page.status_code == 200
     assert "本月预算剩余" in page.text
     assert "¥925.00" in re.sub(r"<[^>]+>", "", page.text)
-    assert "¥1000.00" in page.text
+    assert "¥1,000.00" in page.text
     assert "¥50.00" in page.text
     assert 'name="non_monthly_amount_yuan" value="120.00"' in page.text
     assert "餐饮" in page.text
@@ -312,7 +312,7 @@ def test_web_budgets_selected_ledger_isolated(web_client: TestClient, *, identit
     assert re.search(r'<details[^>]+id="budget-editor" open>', response.text)
     assert 'name="total_amount_yuan" value=""' in response.text
     assert "本月预算剩余" not in response.text
-    assert "¥1000.00" not in response.text
+    assert "¥1,000.00" not in response.text
 
     gray_expense = web_client.post(
         "/api/expenses/manual",

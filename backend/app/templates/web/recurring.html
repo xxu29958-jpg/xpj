@@ -59,14 +59,14 @@
 <section class="recurring-metrics recurring-metrics--duo" aria-label="固定支出概览">
   <div class="recurring-metric">
     <span>每月固定支出</span>
-    <strong><small>{{ home_currency_symbol }}</small>{{ hero.monthly_total_yuan }}</strong>
+    <strong><small>{{ home_currency_symbol }}</small>{{ hero.monthly_total_yuan|grouped }}</strong>
     <small>{{ hero.active_count }} 项活跃固定支出合计</small>
   </div>
   <div class="recurring-metric">
     <span>下一笔到期</span>
     {% if hero.next_due %}
     <strong>{{ hero.next_due.date }}</strong>
-    <small>{{ hero.next_due.merchant }} · {{ hero.next_due.home_currency_code or '' }} {{ hero.next_due.amount_yuan }}</small>
+    <small>{{ hero.next_due.merchant }} · {{ hero.next_due.home_currency_code or '' }} {{ hero.next_due.amount_yuan|grouped }}</small>
     {% else %}
     <strong>未设置日期</strong>
     <small>留下下次预计日期才会提醒</small>
@@ -108,18 +108,18 @@
         </div>
         <div class="recurring-row-meta">
           {% if item.observed %}
-          已观察 {{ item.occurrence_count }} 次{% if item.last_seen_date %} · 最近 {{ item.last_seen_date }}{% endif %} · 上次 {{ item.home_currency_code or '' }} {{ item.last_amount_yuan }}
+          已观察 {{ item.occurrence_count }} 次{% if item.last_seen_date %} · 最近 {{ item.last_seen_date }}{% endif %} · 上次 {{ item.home_currency_code or '' }} {{ item.last_amount_yuan|grouped }}
           {% else %}
           手动记录 · 还没有观察到账单
           {% endif %}
         </div>
         {% if item.anomaly_status == 'higher_than_average' %}
-        <div class="recurring-row-meta">本月 {{ item.home_currency_code or '' }} {{ item.current_month_amount_yuan }} · 月均 {{ item.home_currency_code or '' }} {{ item.historical_average_amount_yuan }}</div>
+        <div class="recurring-row-meta">本月 {{ item.home_currency_code or '' }} {{ item.current_month_amount_yuan|grouped }} · 月均 {{ item.home_currency_code or '' }} {{ item.historical_average_amount_yuan|grouped }}</div>
         {% endif %}
       </div>
       <div class="recurring-row-values">
         <div class="recurring-row-amount">
-        <strong>{{ item.home_currency_code or '' }} {{ item.baseline_amount_yuan }}<small>/月</small></strong>
+        <strong>{{ item.home_currency_code or '' }} {{ item.baseline_amount_yuan|grouped }}<small>/月</small></strong>
         <span>{% if item.observed %}每月基准{% else %}每月预计{% endif %}</span>
         </div>
         <div class="recurring-row-next">
@@ -381,7 +381,7 @@
         {% if candidate.reason %}<div class="recurring-row-meta">{{ candidate.reason }}</div>{% endif %}
       </div>
       <div class="recurring-row-amount">
-        <strong>{{ candidate.home_currency_code }} {{ candidate.amount_yuan }}<small>/月</small></strong>
+        <strong>{{ candidate.home_currency_code }} {{ candidate.amount_yuan|grouped }}<small>/月</small></strong>
         <span>观察金额</span>
       </div>
       <div class="recurring-row-actions">

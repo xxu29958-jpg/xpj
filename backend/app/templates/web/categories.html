@@ -32,7 +32,7 @@
     {{ category_icon(row.category) }}
     <div class="product-entry-copy">
       <strong>{{ row.category }}</strong>
-      <span>本月 <span class="num">{{ home_currency_code }} {{ home_currency_symbol }}{{ row.amount_yuan }}</span> · {{ row.confirmed_count }} 笔已确认</span>
+      <span>本月 <span class="num">{{ home_currency_code }} {{ home_currency_symbol }}{{ row.amount_yuan|grouped }}</span> · {{ row.confirmed_count }} 笔已确认</span>
       {% if row.pending_count %}<small class="meta">{{ row.pending_count }} 笔待确认{% if row.is_uncategorized %} · 未分类{% endif %}</small>{% endif %}
     </div>
   </div>

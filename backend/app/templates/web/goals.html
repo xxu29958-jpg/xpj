@@ -46,7 +46,7 @@
       <div class="product-panel plan-amount-hero goal-balance">
         <span class="product-eyebrow">剩余额度 · {{ goal.home_currency_code or '原币种待确认' }}</span>
         <span class="plan-amount-value">{{ goal.remaining_yuan if goal.progress_percent is not none else '暂不可计算' }}</span>
-        <p>目标 {{ goal.target_yuan }} · 已用 {{ goal.spent_yuan or '暂不可计算' }}</p>
+        <p>目标 {{ goal.target_yuan|grouped }} · 已用 {{ (goal.spent_yuan or '暂不可计算')|grouped }}</p>
       </div>
       {% if goal.progress_percent is not none %}
       <div class="plan-progress-meta"><span>目标进度</span><span>{{ goal.progress_percent }}%</span></div>

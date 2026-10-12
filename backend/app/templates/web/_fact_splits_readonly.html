@@ -8,9 +8,9 @@
   </div>
   {% if split_rows.total_yuan %}
   <div class="fact-reconcile">
-    账单 {{ currency_input.currency_symbol }}{{ split_rows.parent_amount_yuan }} · 已拆 {{ currency_input.currency_symbol }}{{ split_rows.total_yuan }}
-    {% if split_rows.reconcile_state == 'partial' %}· 还差 {{ currency_input.currency_symbol }}{{ split_rows.reconcile_delta_yuan }} 未分配{% endif %}
-    {% if split_rows.reconcile_state == 'overallocated' %}<span class="field-error">· 已拆超出 {{ currency_input.currency_symbol }}{{ split_rows.reconcile_delta_yuan }}</span>{% endif %}
+    账单 {{ currency_input.currency_symbol }}{{ split_rows.parent_amount_yuan|grouped }} · 已拆 {{ currency_input.currency_symbol }}{{ split_rows.total_yuan|grouped }}
+    {% if split_rows.reconcile_state == 'partial' %}· 还差 {{ currency_input.currency_symbol }}{{ split_rows.reconcile_delta_yuan|grouped }} 未分配{% endif %}
+    {% if split_rows.reconcile_state == 'overallocated' %}<span class="field-error">· 已拆超出 {{ currency_input.currency_symbol }}{{ split_rows.reconcile_delta_yuan|grouped }}</span>{% endif %}
   </div>
   {% endif %}
   {% set visible_splits = split_rows.rows | selectattr('member_id') | list %}
@@ -20,7 +20,7 @@
     <div class="product-entry product-entry--static" role="listitem">
       <span class="product-entry-icon product-entry-icon--lilac" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#user-round"/></svg></span>
       <div class="product-entry-copy">
-        <div class="product-entry-heading"><strong>{{ split.account_name or '原成员' }}</strong><span class="product-entry-amount">{% if split.amount_yuan %}{{ currency_input.currency_symbol }}{{ split.amount_yuan }}{% else %}金额未填{% endif %}</span></div>
+        <div class="product-entry-heading"><strong>{{ split.account_name or '原成员' }}</strong><span class="product-entry-amount">{% if split.amount_yuan %}{{ currency_input.currency_symbol }}{{ split.amount_yuan|grouped }}{% else %}金额未填{% endif %}</span></div>
         {% if split.disabled %}<span>已停用，原记录保留</span>{% endif %}
         {% if split.note %}<span>{{ split.note }}</span>{% endif %}
       </div>

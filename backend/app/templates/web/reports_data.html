@@ -20,7 +20,7 @@
   </section>
   {% endfor %}
   <div class="report-monthly-row"><strong>六个月合计</strong><strong class="num">{{ six_month_total_label }}</strong></div>
-  <div class="report-monthly-row"><strong>月平均</strong><strong class="num">{% if six_month_average_amount_yuan is none %}待补信息{% else %}{{ home_currency_symbol }}{{ six_month_average_amount_yuan }}{% endif %}</strong></div>
+  <div class="report-monthly-row"><strong>月平均</strong><strong class="num">{% if six_month_average_amount_yuan is none %}待补信息{% else %}{{ home_currency_symbol }}{{ six_month_average_amount_yuan|grouped }}{% endif %}</strong></div>
 </div>
 <div class="product-form-actions"><a class="product-button product-button--primary" href="/web/reports/export.csv?{{ report_export_query }}&amp;scope=six_month">导出这六个月的数据 <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#download"/></svg></a></div>
 {% endblock %}

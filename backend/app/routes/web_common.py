@@ -118,6 +118,26 @@ templates = Jinja2Templates(
 templates.env.filters["to_iso"] = _datetime_to_iso
 
 
+def _grouped_amount(value: object) -> str:
+    """Group the integer digits of an already formatted amount for reading.
+
+    Display only: the digits are never parsed as a number. Sign and fraction
+    stay as written; raw user input with leading zeros or spaces, and
+    non-amount fallbacks such as an em dash, pass through unchanged.
+    """
+    text = "" if value is None else str(value)
+    sign = "-" if text.startswith("-") else ""
+    whole, dot, fraction = text[len(sign):].partition(".")
+    if len(whole) <= 3 or not whole.isdecimal() or whole[0] == "0" or (fraction and not fraction.isdecimal()):
+        return text
+    head = len(whole) % 3 or 3
+    groups = [whole[:head], *(whole[i:i + 3] for i in range(head, len(whole), 3))]
+    return f"{sign}{','.join(groups)}{dot}{fraction}"
+
+
+templates.env.filters["grouped"] = _grouped_amount
+
+
 def category_return_url(ledger_id: str, category_id: str, month: str, *, message: str = "") -> str:
     """Return only to the originating category row, never to a supplied path."""
     if not category_id:

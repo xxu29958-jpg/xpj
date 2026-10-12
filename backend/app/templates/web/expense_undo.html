@@ -17,7 +17,7 @@
 <section class="product-panel product-panel--padded">
   {% if undo_current %}
   <h2 class="product-panel-title">{{ undo_current.merchant or '未填写商家' }}</h2>
-  <p>{% if undo_current.original_amount_minor is not none %}{{ undo_current.original_currency_code }} {{ undo_current.original_amount_value }}{% else %}原币金额未记录 · {{ undo_current.home_currency_code }} {{ undo_current.amount_yuan }}{% endif %} · {{ {'pending':'待确认', 'confirmed':'已入账', 'rejected':'已忽略'}.get(undo_current.status, '请查看当前记录') }}</p>
+  <p>{% if undo_current.original_amount_minor is not none %}{{ undo_current.original_currency_code }} {{ undo_current.original_amount_value }}{% else %}原币金额未记录 · {{ undo_current.home_currency_code }} {{ undo_current.amount_yuan|grouped }}{% endif %} · {{ {'pending':'待确认', 'confirmed':'已入账', 'rejected':'已忽略'}.get(undo_current.status, '请查看当前记录') }}</p>
   <p class="hint">这里是账本当前记录，不替代原操作结果。</p>
   {% endif %}
   {% if error %}<p class="product-feedback product-feedback--warning" role="alert">{{ error }}</p>{% endif %}

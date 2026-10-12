@@ -4,7 +4,7 @@
 {% set _earliest_month = six_month_trend[0].month if six_month_trend else r.month %}
 {% set _mc = '&merchant_category=' ~ (r.merchant_category | urlencode) if r.merchant_category else '' %}
 {% block title %}报表 · 小票夹{% endblock %}
-{% macro report_money(value) %}{% if value is none %}待补汇率{% else %}{{ home_currency_symbol }}{{ value }}{% endif %}{% endmacro %}
+{% macro report_money(value) %}{% if value is none %}待补汇率{% else %}{{ home_currency_symbol }}{{ value|grouped }}{% endif %}{% endmacro %}
 {% macro report_projection_gaps(gaps, month) %}
   {% for gap in gaps %}
     {% set rate_context = {'ledger_id': selected_ledger_id, 'month': month, 'home_currency_code': gap.home_currency_code, 'return_to': 'reports', 'granularity': report.granularity, 'ranking_metric': report.ranking_metric, 'merchant_category': report.merchant_category} %}
@@ -193,7 +193,7 @@
             <td><a href="{{ row.edit_href }}">{{ row.merchant }}</a></td>
             <td>{{ row.category }}</td>
             <td class="text-meta">{{ row.expense_time }}</td>
-            <td class="amount">{{ home_currency_symbol }}{{ row.amount_yuan }}</td>
+            <td class="amount">{{ home_currency_symbol }}{{ row.amount_yuan|grouped }}</td>
           </tr>
         {% endfor %}
         </tbody>
@@ -221,7 +221,7 @@
     <div class="report-summary">
       <div>
         <span>本月合计</span>
-        <strong>{% if monthly_report.total_amount_yuan is not none %}<small>{{ monthly_report.home_currency_code }}</small>{{ monthly_report.total_amount_yuan }}{% else %}待补信息{% endif %}</strong>
+        <strong>{% if monthly_report.total_amount_yuan is not none %}<small>{{ monthly_report.home_currency_code }}</small>{{ monthly_report.total_amount_yuan|grouped }}{% else %}待补信息{% endif %}</strong>
       </div>
       <div>
         <span>较上月</span>
@@ -240,7 +240,7 @@
       {% for c in monthly_report.top_categories[:4] %}
       <div class="report-ranked-row">
         <span>{{ c.category }}</span>
-        <strong class="num">{% if c.amount_yuan is not none %}{{ monthly_report.home_currency_code }} {{ c.amount_yuan }}{% else %}待补信息{% endif %}</strong>
+        <strong class="num">{% if c.amount_yuan is not none %}{{ monthly_report.home_currency_code }} {{ c.amount_yuan|grouped }}{% else %}待补信息{% endif %}</strong>
       </div>
       {% else %}
       <div class="text-meta">本月还没有已确认账单。</div>
@@ -263,10 +263,10 @@
           <strong>{{ item.category }}</strong>
           <span>{{ item.verdict_label }}</span>
         </div>
-        <strong class="num">{% if item.actual_yuan is not none %}{{ item.home_currency_code }} {{ item.actual_yuan }}{% else %}待补信息{% endif %}</strong>
+        <strong class="num">{% if item.actual_yuan is not none %}{{ item.home_currency_code }} {{ item.actual_yuan|grouped }}{% else %}待补信息{% endif %}</strong>
         <span>
           {% if item.p75_yuan is not none %}
-            P75 {{ item.home_currency_code }} {{ item.p75_yuan }}
+            P75 {{ item.home_currency_code }} {{ item.p75_yuan|grouped }}
           {% elif item.verdict == 'no_history' %}
             无历史
           {% else %}
