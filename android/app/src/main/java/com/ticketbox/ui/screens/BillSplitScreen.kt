@@ -284,10 +284,11 @@ private fun InboxRow(
 private fun BillSplitInboxActions(row: BillSplitInbox, acceptance: BillSplitAcceptanceControls,
                                   onReject: (String) -> Unit, enabled: Boolean) {
     if (row.publicId in acceptance.pendingIds) return
-    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        BillSplitAcceptancePicker(row.publicId, acceptance, enabled)
-        AppSecondaryButton(text = stringResource(R.string.bill_split_inbox_reject), enabled = enabled,
-            onClick = { onReject(row.publicId) })
+    var reviewing by rememberSaveable(row.publicId) { mutableStateOf(false) }
+    AppSecondaryButton(text = stringResource(R.string.bill_split_review_invitation), enabled = enabled,
+        onClick = { reviewing = true })
+    if (reviewing) {
+        BillSplitInvitationSheet(row, acceptance, enabled, onReject) { reviewing = false }
     }
 }
 
@@ -370,7 +371,7 @@ private fun BillSplitPartyAmountRow(
 }
 
 @Composable
-private fun BillSplitSourceEvidence(amount: Long?, currency: String?, time: ExpenseAccountingTime?, legacyTime: String?) {
+internal fun BillSplitSourceEvidence(amount: Long?, currency: String?, time: ExpenseAccountingTime?, legacyTime: String?) {
     val label = if (amount != null && currency != null) stringResource(R.string.bill_split_source_amount,
         "$currency ${formatDisplayAmount(amount, CurrencyDisplay.forRecord(currency))}")
         else stringResource(R.string.bill_split_source_amount_unknown)

@@ -5,12 +5,16 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
@@ -64,18 +68,26 @@ class BillSplitResultNavigationTest {
         harness.fixture.network.splitInbox = BillSplitInboxListResponseDto(listOf(row))
         installSplitCenter()
 
+        val review = context.getString(R.string.bill_split_review_invitation)
+        waitForText(review)
+        capture("split-inbox-list")
+        compose.onNodeWithText(review).performScrollTo().performClick()
         val picker = context.getString(R.string.bill_split_accept_picker_title)
         waitForText(picker)
         compose.onNodeWithText(picker).performScrollTo().performClick()
         compose.onNodeWithText(targetName, useUnmergedTree = true).performClick()
         assertTrue(harness.fixture.network.splitAcceptCalls.isEmpty())
+        compose.onNodeWithText(context.getString(R.string.bill_split_back_keep_selection)).performClick()
         compose.onNodeWithText(context.getString(R.string.bill_split_topbar_back)).performScrollTo().performClick()
         compose.waitForIdle()
         compose.runOnIdle { harness.shell.openSecondaryPage(ProductSecondaryPage.BillSplits) }
-        val accept = context.getString(R.string.bill_split_inbox_accept, targetName)
+        waitForText(review)
+        compose.onNodeWithText(review).performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.bill_split_accept_selection, targetName)).performScrollTo().assertIsDisplayed()
+        val accept = context.getString(R.string.bill_split_inbox_accept)
         waitForText(accept)
         capture("split-accept-selected")
-        compose.onNodeWithText(accept).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(accept).assertIsDisplayed()
         capture("split-accept-selected-actions")
         compose.onNodeWithText(accept).performClick()
         compose.waitUntil(5_000) { acceptanceRow() != null || harness.fixture.network.splitAcceptCalls.isNotEmpty() }
@@ -208,7 +220,10 @@ class BillSplitResultNavigationTest {
 
     private fun capture(name: String) {
         compose.waitForIdle()
-        saveConsumerArtPreview(name, requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        val target = if (compose.onAllNodes(isDialog()).fetchSemanticsNodes().isNotEmpty()) {
+            compose.onNode(isDialog())
+        } else compose.onRoot()
+        saveConsumerArtPreview(name, target.captureToImage().asAndroidBitmap())
     }
 
     private fun splitJson(status: String): String = """{

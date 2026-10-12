@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -22,14 +23,22 @@ import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.repository.BillSplitAcceptPayload
 import com.ticketbox.data.repository.PendingBillSplitAcceptance
 import com.ticketbox.domain.model.CurrencyDisplay
+import com.ticketbox.domain.model.BillSplitInbox
 import com.ticketbox.domain.model.BillSplitStatusValues
 import com.ticketbox.domain.model.isInviteLocallyExpired
 import com.ticketbox.ui.components.AppPaperCard
+import com.ticketbox.ui.components.AppAmountText
+import com.ticketbox.ui.components.AppBusyGuardedSheet
+import com.ticketbox.ui.components.AppSheetAction
+import com.ticketbox.ui.components.AppSheetActionRow
+import com.ticketbox.ui.components.AppSheetScaffold
 import com.ticketbox.viewmodel.BillSplitViewModel
 import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.AppAmountRole
+import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.screens.settings.friendlyLastError
 import com.ticketbox.viewmodel.BillSplitTargetLedger
 
@@ -44,11 +53,10 @@ internal data class BillSplitAcceptanceControls(
 @Composable
 internal fun BillSplitAcceptancePicker(publicId: String, controls: BillSplitAcceptanceControls, enabled: Boolean) {
     val selected = controls.selections[publicId]
-    val targetId = selected?.targetLedgerId ?: controls.candidates.singleOrNull()?.ledgerId
     val targetName = selected?.targetLedgerName ?: controls.candidates.singleOrNull()?.name
     var expanded by rememberSaveable(publicId) { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        if (controls.candidates.size != 1 || selected != null) {
+        if (controls.candidates.isNotEmpty() || selected != null) {
             Box {
                 AppSecondaryButton(text = targetName?.let { stringResource(R.string.bill_split_accept_selection, it) }
                     ?: stringResource(R.string.bill_split_accept_picker_title), enabled = enabled && controls.candidates.isNotEmpty(),
@@ -62,10 +70,39 @@ internal fun BillSplitAcceptancePicker(publicId: String, controls: BillSplitAcce
                 }
             }
         }
-        if (targetId != null && targetName != null) AppPrimaryButton(
-            text = stringResource(R.string.bill_split_inbox_accept, targetName),
-            enabled = enabled && controls.candidates.any { it.ledgerId == targetId },
-            onClick = { controls.accept(publicId, targetId) })
+    }
+}
+
+@Composable
+internal fun BillSplitInvitationSheet(row: BillSplitInbox, controls: BillSplitAcceptanceControls,
+    enabled: Boolean, onReject: (String) -> Unit, onClose: () -> Unit) {
+    val targetId = controls.selections[row.publicId]?.targetLedgerId ?: controls.candidates.singleOrNull()?.ledgerId
+    AppBusyGuardedSheet(isSubmitting = false, onDismiss = onClose, skipPartiallyExpanded = true) {
+        AppSheetScaffold(title = stringResource(R.string.bill_split_invitation_title),
+            subtitle = stringResource(R.string.bill_split_invitation_sender, row.senderDisplayName), actions = {
+                AppSheetActionRow(primary = AppSheetAction(text = stringResource(R.string.bill_split_inbox_accept),
+                    enabled = enabled && controls.candidates.any { it.ledgerId == targetId },
+                    onClick = { targetId?.let { controls.accept(row.publicId, it); onClose() } }),
+                    secondary = AppSheetAction(text = stringResource(R.string.bill_split_back_keep_selection), onClick = onClose))
+            }) {
+            AppPaperCard(containerColor = LocalThemeVisuals.current.surfaceApricot) {
+                Column(Modifier.padding(AppSpacing.cardPadding), verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+                    Text(stringResource(R.string.bill_split_invitation_share, row.homeCurrencyCode),
+                        style = MaterialTheme.typography.bodySmall)
+                    AppAmountText(formatDisplayAmount(row.amountCents, CurrencyDisplay.forRecord(row.homeCurrencyCode)),
+                        role = AppAmountRole.Hero)
+                    row.merchantSnapshot?.let { Text(it) }
+                    BillSplitSourceEvidence(row.originalAmountMinor, row.originalCurrencyCode,
+                        row.accountingTimeSnapshot, row.expenseTimeSnapshot)
+                }
+            }
+            BillSplitAcceptancePicker(row.publicId, controls, enabled)
+            Text(stringResource(if (controls.candidates.isEmpty()) R.string.bill_split_inbox_no_target
+                else R.string.bill_split_accept_privacy), style = MaterialTheme.typography.bodySmall)
+            TextButton(onClick = { onReject(row.publicId); onClose() }, enabled = enabled) {
+                Text(stringResource(R.string.bill_split_inbox_reject))
+            }
+        }
     }
 }
 
@@ -119,6 +156,9 @@ internal fun BillSplitAcceptanceSelection(original: BillSplitAcceptPayload, cont
             formatDisplayAmount(original.amountCents, CurrencyDisplay.forRecord(original.homeCurrencyCode)))
         Text(stringResource(R.string.bill_split_accept_original_target, original.targetLedgerName))
         BillSplitAcceptancePicker(original.publicId, controls, !busy)
+        AppPrimaryButton(text = stringResource(R.string.bill_split_inbox_accept),
+            enabled = !busy && controls.candidates.any { it.ledgerId == original.targetLedgerId },
+            onClick = { controls.accept(original.publicId, original.targetLedgerId) })
         TextButton(onClick = remove, enabled = !busy) { Text(stringResource(R.string.bill_split_accept_remove_selection)) }
     }
 }
