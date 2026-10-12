@@ -503,19 +503,24 @@ button[disabled] {
 }
 
 /* W1: 空态是编辑式引导区, 不是虚线工程占位框。 */
+/* 空态与说明态: 开放排版, 不是一块灰色的卡。一条细线起头, 标题说清现在是什么情况,
+   说明给出下一步; 需要插画的页面用 .product-state-figure。 */
 .product-state,
 .empty-cell {
     display: grid;
-    min-height: calc(var(--space-12) * 2);
-    align-content: center;
+    align-content: start;
     justify-items: start;
-    gap: var(--space-3);
-    padding: var(--space-8);
+    gap: var(--space-2);
+    padding-block: var(--space-5);
+    padding-inline-start: var(--space-5);
     border: 0;
-    border-radius: var(--radius-card);
-    background: var(--surface-sunken);
+    border-inline-start: var(--space-1) solid var(--brand-primary-bg);
+    border-radius: 0;
+    background: transparent;
     color: var(--text-muted);
 }
+.product-state > .product-button,
+.product-state > .cluster { margin-block-start: var(--space-3); }
 
 .product-state-title {
     color: var(--text-default);
@@ -1141,6 +1146,19 @@ html:has(.product-workspace > .product-task-actions) { scroll-padding-block-end:
     :is(.product-workspace > .product-task-actions, .product-task-actions--page) > .product-button--primary { flex: 0 0 auto; min-inline-size: 16rem; }
     :is(.product-workspace > .product-task-actions, .product-task-actions--page) > :is(button, a):not(.product-button--primary) { flex: 0 0 auto; }
     .product-task-actions--page { position: static; padding-block: 0; border-block-start: 0; }
+    /* 宽屏: 根页与目录页的主动作回到页头右侧, 与标题同一行; 列表不再把它挤到最底下。 */
+    main.content:has(> .product-task-actions--page:not(.inbox-review-start), > .product-flow > .product-task-actions--page) { position: relative; }
+    main.content > .product-task-actions--page:not(.inbox-review-start),
+    main.content > .product-flow > .product-task-actions--page {
+        position: absolute;
+        inset-block: var(--space-6) auto;
+        inset-inline: auto var(--space-7);
+        width: auto;
+        margin: 0;
+        background: transparent;
+    }
+    main.content > .product-task-actions--page:not(.inbox-review-start) > .product-button--primary,
+    main.content > .product-flow > .product-task-actions--page > .product-button--primary { min-inline-size: 0; }
     /* 整页表单里的吸底提交也保持自身宽度 (抽屉与分栏里的仍占满一栏)。 */
     .product-form > .product-task-actions > .product-button--primary { flex: 0 0 auto; min-inline-size: 16rem; }
     /* 宽屏: 发丝线与正文左右对齐, 不伸进页边距。 */
@@ -1321,6 +1339,17 @@ details[open]:has(> summary.product-entry) { padding-block-end: var(--space-5); 
 .product-entry--actions { display: flex; flex-wrap: wrap; }
 .product-entry--actions > .product-entry-copy { flex: 1 1 12ch; }
 .product-entry-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-inline-start: auto; }
+/* 行内「更多」: 低频、会改变状态的动作 (暂停、归档、删除) 收进一个小菜单, 行上只留常用动作。
+   原生 details, 无脚本可用; 菜单里的表单与链接照常提交。 */
+.product-more { position: relative; }
+.product-more > summary { display: inline-flex; align-items: center; justify-content: center; min-width: var(--target-min); min-height: var(--target-min); border-radius: var(--radius-lg); color: var(--text-muted); cursor: pointer; list-style: none; }
+.product-more > summary::-webkit-details-marker { display: none; }
+.product-more > summary > svg { width: var(--space-6); height: var(--space-6); }
+.product-more > summary:hover,
+.product-more[open] > summary { background: var(--surface-sunken); color: var(--text-default); }
+.product-more-menu { position: absolute; inset-block-start: calc(100% + var(--space-1)); inset-inline-end: 0; z-index: calc(var(--z-sticky) + 1); display: grid; gap: var(--space-1); min-inline-size: 9rem; padding: var(--space-2); border-radius: var(--radius-lg); background: var(--surface-card); box-shadow: var(--shadow-raised); }
+.product-more-menu :is(a, button).product-button { justify-content: flex-start; width: 100%; }
+.product-more-menu > form { display: grid; }
 
 /* Native details stay open without JS; the existing drawer enhancement reads
    the real inputs and folds populated fields, without copying form state. */

@@ -114,6 +114,9 @@
         {% endif %}
         <a class="product-button product-button--quiet product-button--small" href="/web/recurring/{{ item.public_id }}/history?ledger_id={{ selected_ledger_id|urlencode }}&amp;status={{ status_filter|urlencode }}{% if history_month %}&amp;month={{ history_month|urlencode }}{% endif %}">修改记录</a>
         {% if can_write %}
+          <details class="product-more">
+          <summary aria-label="更多操作：{{ item.merchant }}"><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#ellipsis"/></svg></summary>
+          <div class="product-more-menu">
           {# ADR-0038 PR-A: hidden expected_row_version OCC token. Without it
              a stale pause/resume POST (e.g. from a tab opened before another
              tab toggled the state) would silently flip the row again. #}
@@ -151,6 +154,8 @@
             <button type="submit" class="product-button product-button--quiet product-button--small">归档</button>
           </form>
           {% endif %}
+          </div>
+          </details>
         {% else %}
         <span class="readonly-inline">只读</span>
         {% endif %}

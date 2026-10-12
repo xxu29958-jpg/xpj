@@ -120,6 +120,9 @@
           <div class="product-entry-actions">
             {% if can_write %}
               <a href="/web/rules/{{ r.id }}/edit{{ q }}" class="product-button product-button--small">编辑</a>
+              <details class="product-more">
+          <summary aria-label="更多操作：{{ r.keyword }}"><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#ellipsis"/></svg></summary>
+          <div class="product-more-menu">
               <form method="post" action="/web/rules/{{ r.id }}/toggle" class="product-inline-form">
                 <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
                 <input type="hidden" name="expected_row_version" value="{{ r.row_version }}">
@@ -135,6 +138,8 @@
                 <input type="hidden" name="expected_row_version" value="{{ r.row_version }}">
                 <button type="submit" class="product-button product-button--quiet product-button--small">删除</button>
               </form>
+              </div>
+              </details>
             {% else %}<span class="readonly-inline">只读</span>{% endif %}
           </div>
         </li>

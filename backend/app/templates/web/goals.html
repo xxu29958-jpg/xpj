@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from '_month_label.html' import month_label %}
 {% set page_title = '新建消费目标' if goal_creating else '消费目标' %}
 {% set product_body_domain = 'plans' %}
 {% set list_href = '/web/goals?ledger_id=' ~ (selected_ledger_id|urlencode) ~ '&month=' ~ (month|urlencode) ~ '&include_archived=' ~ ('true' if include_archived else 'false') %}
@@ -30,7 +31,7 @@
     <article id="goal-{{ goal.public_id }}" class="product-flow product-section{% if goal.is_archived %} is-receded{% endif %}" aria-label="{{ goal.name }}">
       <div class="product-entry-heading">
         <h3 class="product-panel-title">{{ goal.name }}</h3>
-        <span class="hint">{{ goal.category }} · {{ goal.month }} · {{ goal.home_currency_code or '原币种待确认' }}</span>
+        <span class="hint">{{ goal.category }} · {{ month_label(goal.month) }} · {{ goal.home_currency_code or '原币种待确认' }}</span>
       </div>
       <div class="product-surface product-surface--apricot">
         <span class="product-amount-label">剩余额度 · {{ goal.home_currency_code or '原币种待确认' }}</span>
@@ -51,12 +52,17 @@
       {% endif %}
       <a class="product-button product-button--quiet product-button--small" href="/web/goals/{{ goal.public_id }}/history?ledger_id={{ selected_ledger_id|urlencode }}&amp;month={{ month|urlencode }}&amp;include_archived={{ 'true' if include_archived else 'false' }}">修改记录</a>
       {% if can_write and not goal.is_archived %}
+      <details class="product-more">
+          <summary aria-label="更多操作：{{ goal.name }}"><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#ellipsis"/></svg></summary>
+          <div class="product-more-menu">
       <form method="post" action="/web/goals/{{ goal.public_id }}/archive" class="product-inline-form">
         <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
         <input type="hidden" name="month" value="{{ month }}">
         {{ csrf_field|safe }}
         <button type="submit" class="product-button product-button--quiet product-button--small">归档</button>
       </form>
+      </div>
+      </details>
       {% endif %}
       </div>
     </article>
@@ -124,7 +130,7 @@
 {% endif %}
 {% set active_goals = goals|rejectattr('is_archived')|list %}
 <section aria-label="当前消费目标">
-  <div class="product-entry-heading"><h2 class="product-panel-title">本月目标</h2><span class="hint">{{ active_goals|length }} 个 · {{ month }}</span></div>
+  <div class="product-entry-heading"><h2 class="product-panel-title">本月目标</h2><span class="hint">{{ active_goals|length }} 个 · {{ month_label(month) }}</span></div>
   {{ goal_rows(active_goals) }}
   {% if not active_goals %}<div class="product-state"><div class="product-state-title">这个月还没有目标</div><div class="product-state-body">可以先设一个总支出目标，再按需要添加餐饮、购物等分类目标。</div></div>{% endif %}
 </section>

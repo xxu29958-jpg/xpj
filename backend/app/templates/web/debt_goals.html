@@ -117,6 +117,9 @@
   <div class="product-form-actions">
     <a class="product-button product-button--small" href="/web/debt-goals/{{ goal.public_id }}/links?ledger_id={{ selected_ledger_id|urlencode }}">调整关联欠款</a>
     {% if goal.can_set_target_date %}<a class="product-button product-button--quiet product-button--small" href="/web/debt-goals/{{ goal.public_id }}/target-date?ledger_id={{ selected_ledger_id|urlencode }}">{{ '修改还清日期' if goal.target_date_value else '设置还清日期' }}</a>{% endif %}
+    <details class="product-more">
+          <summary aria-label="更多操作：{{ goal.name }}"><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#ellipsis"/></svg></summary>
+          <div class="product-more-menu">
     <form method="post" action="/web/debt-goals/{{ goal.public_id }}/archive" class="product-inline-form"
           data-confirm="归档「{{ goal.name }}」？关联欠款不会被删除，之后仍可恢复这个目标。">
       {{ csrf_field|safe }}
@@ -125,6 +128,8 @@
       <input type="hidden" name="idempotency_key" value="{{ goal.idempotency_keys['archive'] }}">
       <button class="product-button product-button--quiet product-button--small" type="submit">归档目标</button>
     </form>
+    </div>
+    </details>
   </div>
   {% endif %}
 </section>

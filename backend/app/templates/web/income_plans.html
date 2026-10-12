@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from '_month_label.html' import month_label %}
 {% from "_income_source_types.html" import source_type_labels %}
 {% set page_title = '添加收入计划' if income_creating else '收入计划' %}
 {% set product_body_domain = 'plans' %}
@@ -44,6 +45,9 @@
       {% if can_write and action == 'archive' %}<a class="product-button product-button--small" href="/web/income-plans/{{ plan.public_id }}/edit?ledger_id={{ selected_ledger_id }}&intent_month={{ intent_month }}">编辑计划</a>{% endif %}
       <a class="product-button product-button--quiet product-button--small" href="/web/income-plans/{{ plan.public_id }}/history?ledger_id={{ selected_ledger_id|urlencode }}">修改记录</a>
       {% if can_write %}
+      <details class="product-more">
+          <summary aria-label="更多操作：{{ plan.label }}"><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#ellipsis"/></svg></summary>
+          <div class="product-more-menu">
       <form method="post" action="/web/income-plans/{{ plan.public_id }}/{{ action }}" class="product-inline-form">
         {{ csrf_field|safe }}
         <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
@@ -54,6 +58,8 @@
         <input type="hidden" name="expected_row_version" value="{{ plan.row_version }}">
         <button class="product-button product-button--quiet product-button--small" type="submit">{{ '归档' if action == 'archive' else '恢复' }}</button>
       </form>
+      </div>
+      </details>
       {% endif %}
     </div>
   </article>
@@ -165,9 +171,9 @@
 <section class="product-surface" aria-label="本月预计收入">
   <span class="product-amount-label">本月预计 · {{ home_currency_code }}</span>
   <strong class="product-amount">{% if total_yuan is not none %}{{ home_currency_symbol }}{{ total_yuan|grouped }}{% else %}待补汇率{% endif %}</strong>
-  <span class="product-amount-meta">{{ intent_month }}</span>
+  <span class="product-amount-meta">{{ month_label(intent_month) }}</span>
 </section>
-<p class="hint">按计划截至今日：{% if scheduled_yuan is not none %}{{ home_currency_symbol }}{{ scheduled_yuan|grouped }}{% else %}待补汇率{% endif %}。每月计划从 {{ intent_month }} 生效，单次计划使用所选预计月份。</p>
+<p class="hint">按计划截至今日：{% if scheduled_yuan is not none %}{{ home_currency_symbol }}{{ scheduled_yuan|grouped }}{% else %}待补汇率{% endif %}。每月计划从 {{ month_label(intent_month) }} 生效，单次计划使用所选预计月份。</p>
 {% if missing_currency_codes %}<p class="product-feedback" role="status">{{ missing_currency_codes|join('、') }} 金额缺少兑换为 {{ home_currency_code }} 的汇率，补齐后显示完整合计。每项计划仍保留原币种。</p>{% endif %}
 {% include 'partials/reference_rates.html' %}
 {% if income_draft_scope %}

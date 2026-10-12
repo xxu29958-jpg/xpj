@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from '_month_label.html' import month_label %}
 {% import '_planning_drafts.html' as drafts %}
 {% set page_title = '月度预算' %}
 {% set product_body_domain = 'plans' %}
@@ -16,7 +17,7 @@
 <header class="product-page-header budget-reading">
   <div class="product-page-heading">
     <h1 class="page-title">这个月，心里有数</h1>
-    <p class="product-page-summary">{{ month }} · {{ budget.currency_code }}</p>
+    <p class="product-page-summary">{{ month_label(month) }} · {{ budget.currency_code }}</p>
   </div>
   {% if category_return_url %}<a class="product-button product-button--quiet" href="{{ category_return_url }}">返回分类继续移除</a>{% endif %}
 </header>
@@ -100,7 +101,7 @@
   <header class="product-page-header">
     <div class="product-page-heading">
       <h1 class="page-title">给这个月定个额度</h1>
-      <p class="product-page-summary">{{ month }} · <span data-plan-currency>{{ currency_input.currency_code }}</span></p>
+      <p class="product-page-summary">{{ month_label(month) }} · <span data-plan-currency>{{ currency_input.currency_code }}</span></p>
     </div>
     {% if category_return_url %}<a class="product-button product-button--quiet" href="{{ category_return_url }}">返回分类继续移除</a>{% endif %}
   </header>

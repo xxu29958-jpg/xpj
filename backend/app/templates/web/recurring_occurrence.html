@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from '_month_label.html' import month_label %}
 {% from '_history_time.html' import saved_time %}
 {% import '_planning_drafts.html' as drafts %}
 {% set product_body_domain = 'plans' %}
@@ -16,7 +17,7 @@
 <header class="product-page-header">
   <div class="product-page-heading">
     <h1 class="page-title">{{ item.merchant_name }}</h1>
-    <p class="product-page-summary">{{ occurrence.period }} · 当前预计 {{ occurrence.home_currency_code or '' }} {{ planned_amount|grouped }} · 当前预留 {{ occurrence.home_currency_code or '' }} {{ reserved_amount|grouped }}</p>
+    <p class="product-page-summary">{{ month_label(occurrence.period) }} · 当前预计 {{ occurrence.home_currency_code or '' }} {{ planned_amount|grouped }} · 当前预留 {{ occurrence.home_currency_code or '' }} {{ reserved_amount|grouped }}</p>
   </div>
 </header>
 <div class="product-flow">
@@ -142,7 +143,7 @@
   <details>
     <summary class="product-entry">
       <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#search"/></svg></span>
-      <span class="product-entry-copy"><strong>换月份或查找付款</strong><span>义务月份 {{ occurrence.period }}{% if payment_month %} · 付款账单月份 {{ payment_month }}{% endif %}</span></span>
+      <span class="product-entry-copy"><strong>换月份或查找付款</strong><span>义务月份 {{ month_label(occurrence.period) }}{% if payment_month %} · 付款账单月份 {{ month_label(payment_month) }}{% endif %}</span></span>
       <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
     </summary>
     <form class="product-form" method="get">

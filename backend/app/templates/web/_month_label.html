@@ -1,0 +1,6 @@
+{# 展示用月份: "2026-10" → "2026年10月"。只管显示; 表单值、链接参数和排序仍用原始月份。
+   不是 YYYY-MM 的值原样返回, 不猜测。 #}
+{% macro month_label(value) -%}
+{%- set text = value|string if value is not none else '' -%}
+{%- if text|length == 7 and text[4] == '-' and text[:4].isdigit() and text[5:].isdigit() -%}{{ text[:4] }}年{{ text[5:]|int }}月{%- else -%}{{ text }}{%- endif -%}
+{%- endmacro %}

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from '_month_label.html' import month_label %}
 {% import '_planning_drafts.html' as drafts %}
 {% from '_history_time.html' import saved_time %}
 {% set page_title = '本月安排' %}
@@ -12,10 +13,10 @@
 <header class="product-page-header">
   <div class="product-page-heading">
     <h1 class="page-title">给本月做个安排</h1>
-    <p class="product-page-summary">{{ month }} · 先试一试，合适再保存。计划不代表实际到账或账户余额。</p>
+    <p class="product-page-summary">{{ month_label(month) }} · 先试一试，合适再保存。计划不代表实际到账或账户余额。</p>
   </div>
   <details class="product-disclosure">
-  <summary>更改月份 · {{ month }}</summary>
+  <summary>更改月份 · {{ month_label(month) }}</summary>
   <form method="get" action="/web/budget-advise" class="product-form">
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
     <div class="product-field"><label for="arrangement-month">查看月份</label><input id="arrangement-month" class="product-input" type="month" name="month" value="{{ month }}" required></div>
@@ -113,7 +114,7 @@
           <h2 class="product-panel-title">给你一个参考</h2>
           <p class="hint">可选；只发送分类聚合、泛化收入计划、固定支出摘要和这次安排的金额，不发送商户名、姓名、备注或票据图片。</p>
           {% if data_scope %}
-          <p class="hint">{{ month }} 的已确认花费与当前计划 · 读取于 {{ saved_time(data_scope.read_at) }}。</p>
+          <p class="hint">{{ month_label(month) }} 的已确认花费与当前计划 · 读取于 {{ saved_time(data_scope.read_at) }}。</p>
           <p class="hint">历史参考窗口 {{ data_scope.history_from_month }} 至 {{ data_scope.history_to_month }}，本次纳入 {{ data_scope.history_category_count }} 类参考。没有足够历史的分类不提供历史参考。</p>
           {% else %}<p class="hint">这次读取未提供数据时间与历史范围，请刷新依据后核对。</p>{% endif %}
         </div>
@@ -122,7 +123,7 @@
         {% elif missing_rates or undated_expense_count %}
         <div class="product-state">
           <div class="product-state-title">先核对换算所需的信息</div>
-          <div class="product-state-body">完整金额尚未确定，暂不生成智能建议。补齐后会重算 {{ month }}，生成建议仍由你确认。</div>
+          <div class="product-state-body">完整金额尚未确定，暂不生成智能建议。补齐后会重算 {{ month_label(month) }}，生成建议仍由你确认。</div>
         </div>
         {% elif not provider_enabled %}
         <div class="product-state">

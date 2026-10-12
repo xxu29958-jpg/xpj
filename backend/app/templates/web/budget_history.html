@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from '_month_label.html' import month_label %}
 {% from '_history_time.html' import saved_time %}
 {% from '_plan_history.html' import scope, comparison, boundary, field with context %}
 {% set page_title = '预算修改记录' %}
@@ -11,7 +12,7 @@
 <header class="product-page-header">
   <div class="product-page-heading">
     <h1 class="page-title">预算修改记录</h1>
-    <p class="product-page-summary">{{ month }} · 回看每次保存的安排；这里的金额不是当时的实际支出。</p>
+    <p class="product-page-summary">{{ month_label(month) }} · 回看每次保存的安排；这里的金额不是当时的实际支出。</p>
   </div>
 </header>
 <div class="product-flow">
