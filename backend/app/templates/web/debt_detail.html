@@ -3,13 +3,14 @@
 {% set product_body_domain = 'obligations' %}
 {% set task_return_href = '/web/debts?ledger_id=' ~ selected_ledger_id %}
 {% set task_return_label = '往来' %}
+{% set page_readonly_notice = true %}
 {% set repayment_entry = proposal_form if debt.is_member else repayment_form %}
-{% block page_footer %}
-<footer class="content product-task-footer" data-page-level="tertiary"{% if not repayment_entry.can_create %} hidden{% endif %}>
+{% block page_actions %}
+<div class="product-task-actions"{% if not repayment_entry.can_create %} hidden{% endif %}>
   <a class="product-button product-button--primary" href="/web/debts/{{ debt.public_id }}?ledger_id={{ selected_ledger_id|urlencode }}&amp;task={{ repayment_entry.kind }}"
      data-repayment-task-kind="{{ repayment_entry.kind }}" data-repayment-task-target="{{ debt.public_id }}"
      data-repayment-task-scope="{{ repayment_entry.scope|tojson|forceescape }}">{{ '记一次还款' if repayment_entry.can_create else '查看原还款' }} <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-right"/></svg></a>
-</footer>
+</div>
 {% endblock %}
 {% block title %}{{ debt.name }} · 欠款详情 · 小票夹{% endblock %}
 
@@ -77,13 +78,13 @@
 <div class="product-feedback" role="status">当前角色可查看欠款事实；还款、调整或作废请联系拥有者或成员。</div>
 {% endif %}
 
-<section class="product-panel product-panel--padded debt-summary-card{% if debt.is_voided %} is-receded{% endif %}" aria-label="欠款概况">
-  <div class="debt-card-label">{{ '这件事未结金额' if debt.relationship_balance else '当前未结金额' }} · {{ debt.currency_code }}</div>
-  <div class="debt-summary-headline"><strong class="dh-amt dh-amt--hero">{{ debt.remaining_label }}</strong></div>
+<section class="product-surface product-surface--plain{% if debt.is_voided %} is-receded{% endif %}" aria-label="欠款概况">
+  <span class="product-amount-label">{{ '这件事未结金额' if debt.relationship_balance else '当前未结金额' }} · {{ debt.currency_code }}</span>
+  <strong class="product-amount">{{ debt.remaining_label }}</strong>
   <span class="product-status{% if debt.is_member and debt.member_status_tone %} {{ _tone[debt.member_status_tone] }}{% elif not debt.is_member and debt.status_tone %} {{ _tone[debt.status_tone] }}{% endif %}">{{ debt.member_status_label if debt.is_member else debt.status_label }}</span>
-  {% if debt.is_member %}<p class="product-page-summary">{{ debt.headline }}</p>{% endif %}
+  {% if debt.is_member %}<p class="product-amount-meta">{{ debt.headline }}</p>{% endif %}
 </section>
-<div class="debt-facts">
+<div class="product-entry-list product-section">
   <a class="product-entry" href="#debt-activity">
     <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#receipt-text"/></svg></span>
     <span class="product-entry-copy"><span class="product-entry-heading"><strong>本笔原本金</strong><strong class="product-entry-amount">{{ debt.principal_label }}</strong></span><span>{{ debt.principal_date_label }}</span></span>
@@ -130,19 +131,16 @@
 </div>
 {% endif %}
 {% if proposals.pending_line %}
-<section class="product-panel product-panel--padded debt-proposal-flow" aria-label="还款确认状态">
-  <div class="debt-proposal-status">{{ proposals.pending_line }}</div>
-</section>
+<section class="product-feedback product-section" aria-label="还款确认状态">{{ proposals.pending_line }}</section>
 {% endif %}
 {% endif %}
 {% else %}
 {% if debt.installment %}
-<section class="product-panel product-panel--padded debt-installment-card" aria-label="分期计划">
-  <div class="debt-card-label">分期计划</div>
-  <div class="debt-installment-schedule">{{ debt.installment.schedule_label }}</div>
-  <div class="debt-installment-progress">{{ debt.installment.progress_label }}</div>
-  {% if debt.installment.payoff_label %}<div class="debt-installment-payoff">{{ debt.installment.payoff_label }}</div>{% endif %}
-  <div class="debt-installment-per-period">{{ debt.installment.per_period_label }}</div>
+<section class="product-surface product-surface--plain product-section" aria-label="分期计划">
+  <span class="product-amount-label">分期计划</span>
+  <strong>{{ debt.installment.schedule_label }} · {{ debt.installment.progress_label }}</strong>
+  {% if debt.installment.payoff_label %}<span class="product-amount-meta">{{ debt.installment.payoff_label }}</span>{% endif %}
+  <span class="product-amount-meta">{{ debt.installment.per_period_label }}</span>
 </section>
 {% endif %}
 {% endif %}
@@ -163,29 +161,29 @@
    creditor 专属 (guard_member_debt + creditor-only, external 必 409), 且
    service 原子 supersede pending proposal, 不以 pending 为闸门; member
    debtor 无任何 direct 动作, 只走下方 proposal flow。 #}
-{% if not debt.is_member %}
-{% include '_debt_void_form.html' %}
-{% if repayment_void_recovery %}
-{% with void_form = repayment_void_recovery %}{% include '_debt_void_form.html' %}{% endwith %}
-{% endif %}
-{% endif %}
-
-{% if can_write and debt_open and action_keys and (not debt.is_member or viewer_is_debtor == false) %}
-<section class="product-panel product-panel--padded debt-actions" aria-labelledby="debt-actions-title">
+{# 作废整笔欠款的可见性由 void_form 自己裁决 (终态下仍可能要核对原提交), 与下面
+   动作区的闸门无关: 动作区存在时并入同一组, 否则单独呈现。 #}
+{% set _show_actions = can_write and debt_open and action_keys and (not debt.is_member or viewer_is_debtor == false) %}
+{% if _show_actions %}
+<section class="product-section" aria-labelledby="debt-actions-title">
   <h2 class="product-panel-title" id="debt-actions-title">处理这笔欠款</h2>
 
-  {# 低频/危险动作收进 secondary disclosure; 提交失败时对应面板自动展开。 #}
-  <div class="debt-secondary-actions">
+  {# 低频/危险动作收进折叠行; 提交失败时对应面板自动展开。 #}
+  <div class="product-entry-list">
     {% if not debt.is_member %}
-    <details class="debt-action-panel" id="debt-action-panel-adjustment"{% if action_form.kind == 'adjustment' %} open{% endif %}>
-      <summary>调整金额</summary>
-      <form class="debt-action-form" method="post" action="/web/debts/{{ debt.public_id }}/adjustments">
+    <details id="debt-action-panel-adjustment"{% if action_form.kind == 'adjustment' %} open{% endif %}>
+      <summary class="product-entry">
+        <span class="product-entry-icon product-entry-icon--lilac" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#sliders-horizontal"/></svg></span>
+        <span class="product-entry-copy"><strong>调整金额</strong><span>正数调增、负数调减未结金额</span></span>
+        <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
+      </summary>
+      <form class="product-form" method="post" action="/web/debts/{{ debt.public_id }}/adjustments">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
         <input type="hidden" name="idempotency_key" value="{{ action_keys.adjust }}">
         <input type="hidden" name="expected_row_version" value="{{ expected_row_version }}">
         {% if action_form.kind == 'adjustment' %}
-        <div id="debt-action-error-adjustment" class="product-feedback product-feedback--danger debt-action-error" role="alert">{{ action_form.error }}</div>
+        <div id="debt-action-error-adjustment" class="product-feedback product-feedback--danger" role="alert">{{ action_form.error }}</div>
         {% endif %}
         <div class="product-form-grid">
           <div class="product-field">
@@ -198,7 +196,7 @@
           </div>
         </div>
         <div class="product-form-actions">
-          <button class="product-button product-button--quiet" type="submit">记录调整</button>
+          <button class="product-button" type="submit">记录调整</button>
         </div>
       </form>
     </details>
@@ -209,81 +207,91 @@
     {# forgive 仅 member creditor 可见 (外层闸门保证); 有 pending 时 service
        原子 supersede, 页面不挡。 #}
     {% if debt.is_member %}
-    <details class="debt-action-panel" id="debt-action-panel-forgive"{% if action_form.kind == 'forgive' %} open{% endif %}>
-      <summary>免除这笔往来</summary>
-      <form class="debt-action-form" method="post" action="/web/debts/{{ debt.public_id }}/forgive">
+    <details id="debt-action-panel-forgive"{% if action_form.kind == 'forgive' %} open{% endif %}>
+      <summary class="product-entry">
+        <span class="product-entry-icon product-entry-icon--apricot" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#heart-handshake"/></svg></span>
+        <span class="product-entry-copy"><strong>免除这笔往来</strong><span>免除后这件事按「已结清」处理，不再追讨。</span></span>
+        <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
+      </summary>
+      <form class="product-form" method="post" action="/web/debts/{{ debt.public_id }}/forgive">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
         <input type="hidden" name="idempotency_key" value="{{ action_keys.forgive }}">
         <input type="hidden" name="expected_row_version" value="{{ expected_row_version }}">
         {% if action_form.kind == 'forgive' %}
-        <div id="debt-action-error-forgive" class="product-feedback product-feedback--danger debt-action-error" role="alert">{{ action_form.error }}</div>
+        <div id="debt-action-error-forgive" class="product-feedback product-feedback--danger" role="alert">{{ action_form.error }}</div>
         {% endif %}
-        <p class="hint">免除后这件事按「已结清」处理，不再追讨。</p>
         <div class="product-form-actions">
-          <button class="product-button product-button--quiet" type="submit">确认免除</button>
+          <button class="product-button" type="submit">确认免除</button>
         </div>
       </form>
     </details>
     {% endif %}
 
-
+    {% if not debt.is_member %}{% include '_debt_void_form.html' %}{% endif %}
   </div>
 </section>
+{% elif not debt.is_member %}
+{% include '_debt_void_form.html' %}
+{% endif %}
+{% if not debt.is_member and repayment_void_recovery %}
+{% with void_form = repayment_void_recovery %}{% include '_debt_void_form.html' %}{% endwith %}
 {% endif %}
 
 {% if can_write and debt.is_member and debt_open and action_keys and (pending_proposal or action_form.kind in ['proposal_reject', 'proposal_withdraw'] or confirm_amount_error) %}
-<details class="debt-repay-editor" aria-labelledby="debt-proposal-actions-title"{% if pending_proposal or confirm_amount_error or action_form.kind in ['proposal_create', 'proposal_reject', 'proposal_withdraw'] %} open{% endif %}>
-  <summary class="product-button product-button--primary">{{ '核对还款' if pending_proposal else '记一次还款' }} <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-right"/></svg></summary>
+<section class="product-section" aria-labelledby="debt-proposal-actions-title">
   <h2 class="product-panel-title" id="debt-proposal-actions-title">还款确认</h2>
   {# 稳定锚: create/reject/withdraw 的失败不依赖对应表单仍存在 (例如在途
      proposal 已有时 create 表单正当隐藏, 409 仍须在此可见)。 #}
   {% if action_form.kind == 'proposal_reject' %}
-  <div id="debt-action-error-proposal_reject" class="product-feedback product-feedback--danger debt-action-error" role="alert">{{ action_form.error }}</div>
+  <div id="debt-action-error-proposal_reject" class="product-feedback product-feedback--danger" role="alert">{{ action_form.error }}</div>
   {% endif %}
   {% if action_form.kind == 'proposal_withdraw' %}
-  <div id="debt-action-error-proposal_withdraw" class="product-feedback product-feedback--danger debt-action-error" role="alert">{{ action_form.error }}</div>
+  <div id="debt-action-error-proposal_withdraw" class="product-feedback product-feedback--danger" role="alert">{{ action_form.error }}</div>
   {% endif %}
   {% if pending_proposal %}
-  <div class="debt-pending-actions">
-    {% if viewer_is_debtor == false %}
-    <form class="debt-inline-form" method="post" action="/web/debts/{{ debt.public_id }}/repayment-proposals/{{ pending_proposal.public_id }}/confirm">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-      <input type="hidden" name="idempotency_key" value="{{ action_keys.proposal_confirm }}">
-      <input type="hidden" name="expected_row_version" value="{{ expected_row_version }}">
-      {% if _anchor_form %}
-      {# 三路互斥之「表单锚」: 金额校验 422 锚定到在途 proposal 的确认输入。 #}
-      <div id="proposal-confirm-amount-error" class="product-feedback product-feedback--danger debt-action-error" role="alert" data-proposal-public-id="{{ confirm_error_proposal_id }}">{{ confirm_amount_error }}</div>
-      {% endif %}
-      <label class="debt-inline-label" for="debt-confirm-amount">确认金额</label>
-      <input id="debt-confirm-amount" class="product-input" name="{{ proposal_confirm_amount_field }}" type="number" step="{{ currency_input.amount_step }}" min="{{ currency_input.positive_amount_min }}" inputmode="{{ currency_input.inputmode }}" value="{{ confirm_amount_value if _anchor_form else pending_proposal.amount_value }}" aria-label="确认金额（可按对方申报全额或改填部分）"{% if _anchor_form %} aria-invalid="true" aria-describedby="proposal-confirm-amount-error"{% endif %}>
+  {% if viewer_is_debtor == false %}
+  <form class="product-form" method="post" action="/web/debts/{{ debt.public_id }}/repayment-proposals/{{ pending_proposal.public_id }}/confirm">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+    <input type="hidden" name="idempotency_key" value="{{ action_keys.proposal_confirm }}">
+    <input type="hidden" name="expected_row_version" value="{{ expected_row_version }}">
+    {% if _anchor_form %}
+    {# 三路互斥之「表单锚」: 金额校验 422 锚定到在途 proposal 的确认输入。 #}
+    <div id="proposal-confirm-amount-error" class="product-feedback product-feedback--danger" role="alert" data-proposal-public-id="{{ confirm_error_proposal_id }}">{{ confirm_amount_error }}</div>
+    {% endif %}
+    <div class="product-surface">
+      <label class="product-amount-label" for="debt-confirm-amount">确认金额</label>
+      <input id="debt-confirm-amount" class="product-amount" name="{{ proposal_confirm_amount_field }}" type="number" step="{{ currency_input.amount_step }}" min="{{ currency_input.positive_amount_min }}" inputmode="{{ currency_input.inputmode }}" value="{{ confirm_amount_value if _anchor_form else pending_proposal.amount_value }}" aria-label="确认金额（可按对方申报全额或改填部分）"{% if _anchor_form %} aria-invalid="true" aria-describedby="proposal-confirm-amount-error"{% endif %}>
+      <span class="product-amount-meta">{{ debt.currency_code }} · 可按对方申报全额或改填部分</span>
+    </div>
+    <div class="product-form-actions">
       <button class="product-button product-button--primary" type="submit">确认到账</button>
-    </form>
-    <form class="debt-inline-form" method="post" action="/web/debts/{{ debt.public_id }}/repayment-proposals/{{ pending_proposal.public_id }}/reject">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-      <input type="hidden" name="idempotency_key" value="{{ action_keys.proposal_reject }}">
-      <button class="product-button product-button--quiet" type="submit">没收到</button>
-    </form>
-    {% endif %}
-    {% if viewer_is_debtor %}
-    <form class="debt-inline-form" method="post" action="/web/debts/{{ debt.public_id }}/repayment-proposals/{{ pending_proposal.public_id }}/withdraw">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-      <input type="hidden" name="idempotency_key" value="{{ action_keys.proposal_withdraw }}">
-      <button class="product-button product-button--quiet" type="submit">撤回我的还款确认</button>
-    </form>
-    {% endif %}
-  </div>
+    </div>
+  </form>
+  <form class="product-form-actions" method="post" action="/web/debts/{{ debt.public_id }}/repayment-proposals/{{ pending_proposal.public_id }}/reject">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+    <input type="hidden" name="idempotency_key" value="{{ action_keys.proposal_reject }}">
+    <button class="product-button product-button--quiet" type="submit">没收到</button>
+  </form>
   {% endif %}
-</details>
+  {% if viewer_is_debtor %}
+  <form class="product-form-actions" method="post" action="/web/debts/{{ debt.public_id }}/repayment-proposals/{{ pending_proposal.public_id }}/withdraw">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+    <input type="hidden" name="idempotency_key" value="{{ action_keys.proposal_withdraw }}">
+    <button class="product-button product-button--quiet" type="submit">撤回我的还款确认</button>
+  </form>
+  {% endif %}
+  {% endif %}
+</section>
 {% endif %}
 
 {% if can_change_member_kind %}
 {# member 记录方式更正 (owner/debtor · open · 非 cross-ledger): kind 在 member
    上只改记录方式, 不影响对账与进度——hint 明说, 不许用户期待事实变化。 #}
-<section class="product-panel product-panel--padded debt-actions" aria-labelledby="debt-kind-title">
+<section class="product-section" aria-labelledby="debt-kind-title">
   <h2 class="product-panel-title" id="debt-kind-title">记录方式</h2>
   {{ debt_kind_panel('偿还方式', '这里只改正记录方式，不影响你们实际的对账与进度。') }}
 </section>

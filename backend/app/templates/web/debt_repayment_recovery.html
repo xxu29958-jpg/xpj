@@ -11,11 +11,11 @@
 <script defer src="/static/web/manual-drafts.js?v={{ asset_version }}"></script>
 <script defer src="/static/web/repayment-entry.js?v={{ asset_version }}"></script>
 {% endblock %}
-{% block page_footer %}
-<footer class="content product-task-footer" data-page-level="tertiary">
+{% block page_actions %}
+<div class="product-task-actions">
   {{ repayment_actions(repayment_form) }}
   <a class="product-button product-button--{{ 'primary' if repayment_form.ack else 'quiet' }}" href="{{ task_return_href }}">{{ '返回往来详情' if repayment_form.ack else '返回，保留输入' }}</a>
-</footer>
+</div>
 {% endblock %}
 {% block content %}
 {% include '_debt_repayment_form.html' %}

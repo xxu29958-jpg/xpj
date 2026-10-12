@@ -769,34 +769,6 @@ details[open] > .chrome-trigger {
     width: min(100%, var(--layout-page-narrow-max));
 }
 
-/* A task action occupies its own row; the reading area never runs behind it. */
-.product-workspace:has(> .product-task-footer) {
-    display: flex;
-    flex-direction: column;
-    height: 100dvh;
-}
-
-.product-workspace:has(> .product-task-footer) > main.content {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-}
-
-.product-workspace:has(> .product-task-footer) > .mobile-chrome,
-.product-workspace:has(> .product-task-footer) .product-topbar {
-    flex-shrink: 0;
-}
-
-.product-task-footer {
-    flex-shrink: 0;
-    padding-block: var(--space-3) calc(var(--space-3) + env(safe-area-inset-bottom));
-    background: var(--surface-app);
-}
-
-.product-task-footer > .product-button {
-    width: 100%;
-}
-
 .readonly-callout {
     margin-block-end: var(--space-5);
     padding: var(--space-4) var(--space-5);

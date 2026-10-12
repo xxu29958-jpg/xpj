@@ -311,7 +311,8 @@
       {% endif %}
       {% block content %}{% endblock %}
     </main>
-    {% block page_footer %}{% endblock %}
+    {# 任务页的动作条: 正文之后、工作区之内 (见 components.css 的 .product-task-actions)。 #}
+    {% block page_actions %}{% endblock %}
     {# W1 IA-B: 五域主导航在 ≤64rem 是 fixed 底部 nav (拇指区), >64rem 由
        CSS 隐藏 (桌面 sidebar 域轨是唯一主导航)。 #}
     {% if _page_level != 'tertiary' %}{% include "_bottom_nav.html" %}{% endif %}

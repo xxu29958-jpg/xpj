@@ -117,10 +117,11 @@ def test_web_receivables_open_row_is_communal_with_debtor_name(web_client: TestC
     assert "阿明欠我" in html  # communal creditor-side headline (viewer_is_debtor False)
     assert "进行中" in html  # member status pill (open)
     assert 'class="product-entry-amount">¥25.00</strong>' in html  # progress bar on open rows
-    # Communal, NOT market: no 应付/应收 accounting framing, no amount hero.
+    # Communal, NOT market: no 应付/应收 accounting framing; the only large read-out is the
+    # page total, rows never carry an amount hero of their own.
     assert "应收" not in html
     assert "应付" not in html
-    assert "dh-amt" not in html
+    assert html.count('class="product-amount"') == 1
 
 
 def test_web_receivables_cleared_row_receded(web_client: TestClient, *, identity) -> None:
@@ -185,7 +186,7 @@ def test_web_receivable_preserves_remaining_and_opens_redacted_detail(
     html = _page(web_client)
     assert 'class="product-entry-amount">¥15.00</strong>' in html
     assert f'href="/web/debts/{public_id}?ledger_id=owner"' in html
-    assert 'class="dh-amt dh-amt--hero">¥15.00</strong>' in detail.text
+    assert 'class="product-amount">¥15.00</strong>' in detail.text
     assert "¥15.00" in detail.text
 
 

@@ -77,6 +77,22 @@ p {
 
 .product-form-actions { justify-content: flex-start; margin-block-start: var(--space-5); }
 
+/* 表单是一列: 提示、字段、预览、动作依次排开, 间距由这一处决定。 */
+.product-form { display: grid; gap: var(--space-5); min-width: 0; }
+.product-form > :is(.product-feedback, .product-form-actions, p) { margin-block: 0; }
+/* 原提交结果未知或被拦下时, 状态句升格为提示块; 填写中保持安静的一行。 */
+:is([data-repayment-state="submitted"], [data-repayment-state="blocked"]) [data-repayment-status] {
+    margin: 0;
+    padding: var(--space-4) var(--space-5);
+    border-radius: var(--radius-md);
+    background: var(--state-warn-bg);
+    color: var(--state-warn-fg);
+}
+/* 一句可点开的文字: 行内的低频动作, 或需要再确认一次的动作。 */
+.product-disclosure > summary { display: inline-flex; align-items: center; min-height: var(--target-min); color: var(--brand-primary-strong); font-weight: var(--type-subtitle-weight); cursor: pointer; }
+.product-disclosure--danger > summary { color: var(--state-danger-fg); }
+.product-disclosure[open] > summary { margin-block-end: var(--space-2); }
+
 /* W1: commandbar 去卡片相框 — 筛选条是内容区的一段节奏, 不是被框住的表单。 */
 .product-commandbar {
     display: flex;
@@ -1031,6 +1047,18 @@ details.product-surface { display: block; }
 .product-surface-rows dd { margin: 0; color: var(--text-default); font-family: var(--font-numeric); font-size: var(--type-subtitle-size); font-variant-numeric: tabular-nums; font-weight: var(--type-title-weight); overflow-wrap: anywhere; }
 .product-surface--apricot { background: var(--surface-apricot); }
 .product-surface--lilac { background: var(--surface-lilac); }
+.product-surface > .product-status { justify-self: start; }
+/* 直接在承载面里填写的金额: 与读数同一字号, 只留一条下划线。 */
+input.product-amount { width: 100%; padding: 0 0 var(--space-2); border: 0; border-block-end: 1px solid var(--border-card); border-radius: 0; background: transparent; }
+input.product-amount:focus { outline: 0; border-block-end-color: var(--brand-primary); box-shadow: 0 1px 0 var(--brand-primary); }
+input.product-amount:read-only { border-block-end-color: transparent; box-shadow: none; }
+/* 影响预览: 当前 → 本次之后。两个数字同一字号, 之后的一格落在金额面上。 */
+.product-compare { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3) var(--space-4); }
+.product-compare > div { display: grid; flex: 1 1 8ch; gap: var(--space-1); min-width: 0; }
+.product-compare > div:last-child { padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: var(--brand-primary-bg); }
+.product-compare span { color: var(--text-meta); font-size: var(--type-caption-size); }
+.product-compare :is(strong, output) { color: var(--text-default); font-family: var(--font-numeric); font-size: var(--type-title-size); font-variant-numeric: tabular-nums; font-weight: var(--type-title-weight); overflow-wrap: anywhere; }
+.product-compare > svg { flex: none; width: var(--space-5); height: var(--space-5); color: var(--text-meta); }
 .product-amount-label,
 .product-amount-meta {
     margin: 0;
@@ -1075,19 +1103,41 @@ details.product-surface { display: block; }
     color: var(--brand-primary);
 }
 .product-task-actions > button.product-button--danger { color: var(--state-danger-fg); }
-/* 根页的主动作: 宽屏留在正文流里、按钮保持自身宽度; 窄屏吸在五域底栏之上。 */
-.product-task-actions--page { position: static; padding-block: 0; border-block-start: 0; }
-.product-task-actions--page > .product-button--primary { flex: 0 0 auto; }
+/* 页面级动作条有两种位置。
+   任务页: 动作条是工作区的直接子节点, 排在正文之后——工作区至少一屏高, 正文短时
+   它落在屏底, 正文长时吸底; 文档本身仍是滚动容器。
+   根页 (--page): 留在正文里, 窄屏吸在五域底栏之上, 宽屏回到正文流。
+   宽屏上两者的主动作都保持自身宽度。 */
+.product-workspace:has(> .product-task-actions) { display: flex; flex-direction: column; min-block-size: 100dvh; }
+.product-workspace:has(> .product-task-actions) > main.content { flex: 1 0 auto; }
+.product-workspace > .product-task-actions { width: min(100%, var(--layout-page-narrow-max)); margin: 0 auto; padding-inline: var(--space-7); }
+html:has(.product-workspace > .product-task-actions) { scroll-padding-block-end: calc(var(--target-min) + var(--space-10)); }
 @media (max-width: 64rem) {
-    /* 窄屏: 动作条出血到屏幕两侧, 内容仍与正文边距对齐。 */
+    /* 窄屏: 正文里的动作条出血到屏幕两侧, 内容仍与正文边距对齐。 */
     .product-task-actions { margin-inline: calc(var(--space-7) * -1); padding-inline: var(--space-7); }
-    .product-task-actions--page { position: sticky; inset-block-end: calc(var(--mobile-nav-block-size) + env(safe-area-inset-bottom)); padding-block: var(--space-4) var(--space-3); border-block-start: 1px solid var(--border-card); }
-    .product-task-actions--page > .product-button--primary { flex: 1 0 100%; }
+    .product-task-actions--page { inset-block-end: calc(var(--mobile-nav-block-size) + env(safe-area-inset-bottom)); padding-block-end: var(--space-4); }
+}
+@media (width > 64rem) {
+    :is(.product-workspace > .product-task-actions, .product-task-actions--page) > .product-button--primary { flex: 0 0 auto; min-inline-size: 16rem; }
+    :is(.product-workspace > .product-task-actions, .product-task-actions--page) > :is(button, a):not(.product-button--primary) { flex: 0 0 auto; }
+    .product-task-actions--page { position: static; padding-block: 0; border-block-start: 0; }
+    /* 宽屏: 发丝线与正文左右对齐, 不伸进页边距。 */
+    .product-workspace > .product-task-actions { width: calc(min(100%, var(--layout-page-narrow-max)) - var(--space-7) * 2); padding-inline: 0; }
 }
 
 /* 页内分区: 一个标题带一组内容; 分区之间用留白分组, 不加卡片相框。 */
 .product-section { min-width: 0; margin-block-start: var(--space-8); }
 .product-section > .product-panel-title { margin: 0 0 var(--space-3); }
+
+/* 历史记录: 每条先是「发生了什么 + 金额」, 下面逐行是时间与经过; 条目之间发丝分隔。 */
+.product-history { display: grid; margin: 0; padding: 0; list-style: none; }
+.product-history-item { display: grid; justify-items: start; gap: var(--space-1); min-width: 0; padding-block: var(--space-4); }
+.product-history-item + .product-history-item { border-block-start: 1px solid var(--border-card); }
+.product-history-item > div { justify-self: stretch; }
+.product-history-item > .product-entry-heading > strong { font-size: var(--type-subtitle-size); font-weight: var(--type-title-weight); }
+.product-history-item > span:not(.product-status, .hint) { color: var(--text-meta); font-size: var(--type-body-size); line-height: var(--type-body-line); overflow-wrap: anywhere; }
+.product-history-item > :is(.product-status, .product-button, details) { margin-block-start: var(--space-2); }
+.product-entry-amount.is-voided { color: var(--text-meta); text-decoration: line-through; }
 
 .text-warning {
     color: var(--state-warn-fg);
@@ -1191,11 +1241,13 @@ details.product-surface { display: block; }
 .review-amount-field > summary::-webkit-details-marker { display: none; }
 .product-entry > svg { width: var(--space-5); height: var(--space-5); color: var(--text-meta); }
 details[open] > .product-entry > svg { transform: rotate(90deg); }
+details[open]:has(> summary.product-entry) { padding-block-end: var(--space-5); }
+.product-entry--danger .product-entry-copy > strong { color: var(--state-danger-fg); }
 .product-entry:hover { color: var(--brand-primary-strong); }
 .product-entry--static { grid-template-columns: var(--space-9) minmax(0, 1fr); border-bottom: 1px solid var(--border-card); cursor: default; }
 .product-entry--static:hover { color: var(--text-default); }
 /* 已了结的记录退后一步, 仍可读可进入; 不用红色表达。 */
-.product-entry.is-receded { opacity: .62; }
+:is(.product-entry, .product-surface).is-receded { opacity: .62; }
 .product-entry-icon {
     display: grid;
     place-items: center;

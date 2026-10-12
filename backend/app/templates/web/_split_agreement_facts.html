@@ -3,7 +3,7 @@
   {% if agreement.error %}
   <p class="product-feedback" role="status">{{ agreement.error }}</p>
   {% else %}
-  <p class="debt-summary-headline"><span class="product-status">{{ agreement.settlement_label }}</span></p>
+  <p><span class="product-status">{{ agreement.settlement_label }}</span></p>
   <dl class="debt-look-rows">
     <div class="debt-look-row"><dt>当前约定份额</dt><dd>{{ agreement.agreed_share_label }}</dd></div>
     <div class="debt-look-row"><dt>实际已付款</dt><dd>{{ agreement.original_paid_label }}</dd></div>

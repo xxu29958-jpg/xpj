@@ -46,7 +46,7 @@ def web_history(j, public_id, name):
     for _ in range(4):
         history = j.page.locator("#debt-activity")
         history.wait_for(state="visible")
-        rows.extend(history.locator(".debt-history-row").evaluate_all(
+        rows.extend(history.locator(".product-history-item").evaluate_all(
             "rows => rows.map(row => ({id:row.id,text:row.innerText}))"))
         pages += 1
         j.capture(f"{name}-history-page-{pages}")

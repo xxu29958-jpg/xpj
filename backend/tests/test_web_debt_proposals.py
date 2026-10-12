@@ -373,7 +373,7 @@ def test_web_debt_detail_resolved_history_is_sunk_and_neutral(web_client: TestCl
     assert "对上" in resp.text  # confirmed date prefix
     # An optional note renders in the history row (the {% if row.note %} path).
     assert "微信转的" in resp.text
-    assert "debt-history-note" in resp.text
+    assert "<span>微信转的</span>" in resp.text
     assert "在对账" in resp.text  # rejected reads 在对账, NOT failure
     assert "已拒绝" not in resp.text
     assert "失败" not in resp.text
@@ -423,7 +423,7 @@ def test_web_debt_detail_external_has_no_proposal_section(web_client: TestClient
     resp = web_client.get(f"/web/debts/{public_id}")
     assert resp.status_code == 200
     assert "往来历史" in resp.text
-    assert "debt-proposal-status" not in resp.text
+    assert 'aria-label="还款确认状态"' not in resp.text
     assert "在对账" in resp.text  # anomalous retained facts stay traceable; no new write permission
     assert 'aria-labelledby="debt-proposal-actions-title"' not in resp.text
 

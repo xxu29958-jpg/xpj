@@ -22,14 +22,14 @@
   <p class="product-page-summary">{{ '保留最初选择，核实原提交的接受结果。' if accept_task and splitaccept_original_only else '先核对邀请份额，再选择记入哪个账本。' }}</p>
 </div></header>
 {% endblock %}
-{% block page_footer %}
+{% block page_actions %}
 {% if accept_task %}
-<footer class="content product-task-footer" data-page-level="tertiary">
+<div class="product-task-actions">
   {% for row in bill_split_rows %}
   <button type="submit" form="split-accept-form" name="splitaccept_submit" class="product-button product-button--primary" data-splitaccept-submit{% if row.status != 'invited' or row.is_expired or not row.accept_choices %} hidden disabled{% endif %}>接受并记账</button>
   {% endfor %}
   <a class="product-button product-button--quiet" href="{{ task_return_href }}">返回，保留选择</a>
-</footer>
+</div>
 {% endif %}
 {% endblock %}
 {% block content %}

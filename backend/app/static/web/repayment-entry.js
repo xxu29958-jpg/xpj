@@ -571,12 +571,12 @@
       const retained = drafts.list(scope).filter(record => record.values.debt_public_id === entry.dataset.repaymentTaskTarget);
       const original = retained.find(record => record.phase !== "editing") || retained[0];
       if (original) {
-        entry.closest(".product-task-footer").hidden = false;
+        entry.closest(".product-task-actions").hidden = false;
         entry.firstChild.textContent = original.phase === "editing" ? "继续填写原还款 " : "核对原还款 ";
         entry.hash = kind + "-" + original.clientRef;
       }
     } catch (_) {
-      entry.closest(".product-task-footer").hidden = false;
+      entry.closest(".product-task-actions").hidden = false;
       entry.firstChild.textContent = "查看还款任务 ";
     }
   }

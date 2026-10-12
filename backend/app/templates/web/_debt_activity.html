@@ -1,51 +1,50 @@
-<section class="product-panel product-panel--padded debt-activity" id="debt-activity" aria-labelledby="debt-facts-title">
+<section class="product-section" id="debt-activity" aria-labelledby="debt-facts-title">
   <h2 class="product-panel-title" id="debt-facts-title">往来历史</h2>
   <p class="hint">余额以页面概况为准；这里保留每次记录和处理经过。</p>
-  <div class="debt-history">
+  {% if activity.rows %}
+  <ol class="product-history">
     {% for row in activity.rows %}
-    <div class="debt-history-row" id="{{ row.anchor }}">
-      <div class="debt-history-main">
-        <strong class="debt-activity-title">{{ row.title }}</strong>
-        {% if row.amount_label and row.kind != 'repayment' %}<span class="debt-history-amt">{{ row.amount_label }}</span>{% endif %}
-        <span class="debt-history-date">记录于 {{ row.recorded_at }} · {{ row.actor_label }}</span>
-        {% if row.reason %}<span class="debt-history-note">{{ row.reason }}</span>{% endif %}
-        {% if row.split_change %}
-        <span class="debt-history-amt">份额 {{ row.split_change.share_label }} · {{ row.split_change.settlement_label }}</span>
-        <span class="debt-history-note">当时原付款 {{ row.split_change.original_paid_label }} · 已返还 {{ row.split_change.return_paid_label }}</span>
-        <span class="debt-history-note">原付款已豁免 {{ row.split_change.original_forgiven_label }} · 返还已豁免 {{ row.split_change.return_forgiven_label }}</span>
-        <span class="product-status">{{ row.split_change.status_label }}</span>
-        <span class="hint">约定记录不代表实际转账；收付款仍以确认记录为准。</span>
-        {% endif %}
-        {% if row.proposal %}
-        <span class="debt-history-amt">申报 {{ row.proposal.amount_label }}{% if row.proposal.confirmed_amount_label %} · 实际确认 {{ row.proposal.confirmed_amount_label }}{% endif %}</span>
-        <span class="debt-history-date">付款日期 {{ row.proposal.paid_at }}</span>
-        {% if row.kind == 'proposal_resolved' %}<span class="product-status">{{ row.proposal.status_label }}</span>{% endif %}
-        {% if row.proposal.original_label %}<span class="debt-history-note">申报原币 {{ row.proposal.original_label }}</span>{% endif %}
-        {% if row.proposal.note %}<span class="debt-history-note">{{ row.proposal.note }}</span>{% endif %}
-        <span class="hint">申报本身不计入已偿还金额；确认后以关联还款为准。</span>
-        {% endif %}
-        {% if row.repayment %}
-        {% set fact = row.repayment %}
-        <span class="debt-history-amt{% if fact.is_voided %} debt-history-amt--voided{% endif %}">{{ fact.amount_label }}</span>
-        <span class="debt-history-date">付款日期 {{ fact.date_text }}</span>
-        {% if fact.original_label %}<span class="debt-history-note">原币 {{ fact.original_label }}</span>{% endif %}
-        {% if fact.exchange_rate %}<span class="debt-history-note">冻结汇率 {{ fact.exchange_rate }}{% if fact.exchange_rate_date %} · {{ fact.exchange_rate_date }}{% endif %}{% if fact.exchange_rate_source %} · {{ fact.exchange_rate_source }}{% endif %}</span>{% endif %}
-        {% if fact.is_voided %}<span class="debt-history-note">已作废{% if fact.void_reason %}：{{ fact.void_reason }}{% endif %}{% if fact.void_date_text %}（{{ fact.void_date_text }}）{% endif %}</span>{% endif %}
-        {% endif %}
-        {% if row.repayment_href %}<a class="product-button product-button--quiet product-button--small" href="{{ row.repayment_href }}">查看关联还款</a>{% endif %}
+    {% set fact = row.repayment %}
+    <li class="product-history-item" id="{{ row.anchor }}">
+      <div class="product-entry-heading">
+        <strong>{{ row.title }}</strong>
+        {% if row.kind == 'repayment' and fact %}<strong class="product-entry-amount{% if fact.is_voided %} is-voided{% endif %}">{{ fact.amount_label }}</strong>
+        {% elif row.amount_label %}<strong class="product-entry-amount">{{ row.amount_label }}</strong>{% endif %}
       </div>
-      {% if row.kind == 'repayment' %}
-      {% set fact = row.repayment %}
-      <div class="debt-history-side">
-        <span class="product-status">{{ '已作废' if fact.is_voided else '已生效' }}</span>
-        {% if not debt.is_member %}
-        {% with void_form = fact.void_form %}{% include '_debt_void_form.html' %}{% endwith %}
-        {% endif %}
-      </div>
+      <span>记录于 {{ row.recorded_at }} · {{ row.actor_label }}</span>
+      {% if row.reason %}<span>{{ row.reason }}</span>{% endif %}
+      {% if row.split_change %}
+      <span>份额 {{ row.split_change.share_label }} · {{ row.split_change.settlement_label }}</span>
+      <span>当时原付款 {{ row.split_change.original_paid_label }} · 已返还 {{ row.split_change.return_paid_label }}</span>
+      <span>原付款已豁免 {{ row.split_change.original_forgiven_label }} · 返还已豁免 {{ row.split_change.return_forgiven_label }}</span>
+      <span class="product-status">{{ row.split_change.status_label }}</span>
+      <span class="hint">约定记录不代表实际转账；收付款仍以确认记录为准。</span>
       {% endif %}
-    </div>
-    {% else %}<p class="hint">本页没有历史记录。</p>{% endfor %}
-  </div>
+      {% if row.proposal %}
+      <span>申报 {{ row.proposal.amount_label }}{% if row.proposal.confirmed_amount_label %} · 实际确认 {{ row.proposal.confirmed_amount_label }}{% endif %}</span>
+      <span>付款日期 {{ row.proposal.paid_at }}</span>
+      {% if row.kind == 'proposal_resolved' %}<span class="product-status">{{ row.proposal.status_label }}</span>{% endif %}
+      {% if row.proposal.original_label %}<span>申报原币 {{ row.proposal.original_label }}</span>{% endif %}
+      {% if row.proposal.note %}<span>{{ row.proposal.note }}</span>{% endif %}
+      <span class="hint">申报本身不计入已偿还金额；确认后以关联还款为准。</span>
+      {% endif %}
+      {% if fact %}
+      <span>付款日期 {{ fact.date_text }}</span>
+      {% if fact.original_label %}<span>原币 {{ fact.original_label }}</span>{% endif %}
+      {% if fact.exchange_rate %}<span>冻结汇率 {{ fact.exchange_rate }}{% if fact.exchange_rate_date %} · {{ fact.exchange_rate_date }}{% endif %}{% if fact.exchange_rate_source %} · {{ fact.exchange_rate_source }}{% endif %}</span>{% endif %}
+      {% if fact.is_voided %}<span>已作废{% if fact.void_reason %}：{{ fact.void_reason }}{% endif %}{% if fact.void_date_text %}（{{ fact.void_date_text }}）{% endif %}</span>{% endif %}
+      {% endif %}
+      {% if row.repayment_href %}<a class="product-button product-button--quiet product-button--small" href="{{ row.repayment_href }}">查看关联还款</a>{% endif %}
+      {% if row.kind == 'repayment' %}
+      <span class="product-status">{{ '已作废' if fact.is_voided else '已生效' }}</span>
+      {% if not debt.is_member %}
+      {% with void_form = fact.void_form %}{% include '_debt_void_form.html' %}{% endwith %}
+      {% endif %}
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+  {% else %}<p class="hint">本页没有历史记录。</p>{% endif %}
   <nav class="product-form-actions" aria-label="往来历史分页">
     {% if activity.previous_href %}<a class="product-button product-button--quiet" href="{{ activity.previous_href }}">上一页</a>{% endif %}
     <span class="hint">第 {{ activity.page }} 页 · 共 {{ activity.total }} 条</span>

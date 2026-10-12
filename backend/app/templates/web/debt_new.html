@@ -131,12 +131,12 @@
 </section>
 {% endblock %}
 
-{% block page_footer %}
-<footer class="content product-task-footer" data-page-level="tertiary">
+{% block page_actions %}
+<div class="product-task-actions">
   {% if accepted_creation %}
   <a class="product-button product-button--primary" href="{{ creation_destination }}">查看这笔往来</a>
   {% else %}
   <button class="product-button product-button--primary" type="submit" form="debt-creation" data-debtcreation-submit{% if not can_write %} disabled{% endif %}>记下这笔欠款</button>
   {% endif %}
-</footer>
+</div>
 {% endblock %}

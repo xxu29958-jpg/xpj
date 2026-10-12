@@ -15,12 +15,12 @@
   <p class="product-page-summary">已经发生的付款与返还保留；新约定由双方共同确认。</p>
 </div></header>
 {% endblock %}
-{% block page_footer %}
-<footer class="content product-task-footer" data-page-level="tertiary">
+{% block page_actions %}
+<div class="product-task-actions">
   <button class="product-button product-button--primary" type="submit" form="split-change-form" name="repayment_submit" data-repayment-submit{% if not change.can_create and not change.result %} disabled{% endif %}{% if change.ack or (not change.can_create and not change.result) %} hidden{% endif %}>{{ change.submit_label }}</button>
   {% if change.replacement %}<button class="product-button product-button--quiet" type="button" form="split-change-form" name="repayment_replace" data-repayment-replace hidden>核对当前事实后重新拟定</button>{% endif %}
   <a class="product-button product-button--{{ 'primary' if change.ack else 'quiet' }}" href="{{ task_return_href }}">{{ '返回往来详情' if change.ack else '返回，保留输入' }}</a>
-</footer>
+</div>
 {% endblock %}
 {% block content %}
 <div class="debt-create-form" data-repayment-container>

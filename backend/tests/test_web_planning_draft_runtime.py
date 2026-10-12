@@ -24,7 +24,7 @@ ENV = Environment(loader=ChoiceLoader([
     DictLoader({"base.html": '<!doctype html><html><head><meta charset="utf-8">'
                 '<script src="/static/web/desktop/core.js" defer></script>'
                 '{% block page_scripts %}{% endblock %}</head><body>'
-                '{% block content %}{% endblock %}{% block page_footer %}{% endblock %}</body></html>'}),
+                '{% block content %}{% endblock %}{% block page_actions %}{% endblock %}</body></html>'}),
     FileSystemLoader(ROOT / "backend/app/templates/web"),
 ]), autoescape=select_autoescape(["html"]))
 ENV.filters["to_iso"] = to_iso

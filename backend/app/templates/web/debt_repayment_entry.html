@@ -7,17 +7,18 @@
 {% set repayment_task = true %}
 {% set task_return_href = '/web/debts/' ~ repayment_form.public_id ~ '?ledger_id=' ~ selected_ledger_id|urlencode %}
 {% set task_return_label = '往来详情' %}
+{% set page_readonly_notice = true %}
 {% from '_debt_repayment_form.html' import repayment_actions with context %}
 {% block title %}还款核对 · 小票夹{% endblock %}
 {% block page_scripts %}
 <script defer src="/static/web/manual-drafts.js?v={{ asset_version }}"></script>
 <script defer src="/static/web/repayment-entry.js?v={{ asset_version }}"></script>
 {% endblock %}
-{% block page_footer %}
-<footer class="content product-task-footer" data-page-level="tertiary">
+{% block page_actions %}
+<div class="product-task-actions">
   {{ repayment_actions(repayment_form) }}
   <a class="product-button product-button--{{ 'primary' if repayment_form.ack else 'quiet' }}" href="{{ task_return_href }}">{{ '返回往来详情' if repayment_form.ack else '返回，保留输入' }}</a>
-</footer>
+</div>
 {% endblock %}
 {% block content %}
 {% if action_form.fallback %}<p class="product-feedback product-feedback--danger" role="alert">{{ action_form.error }}{% if action_form.attempted_label %} 你刚才填写：{{ action_form.attempted_label }}——仅作记录，未保存。{% endif %}</p>{% endif %}

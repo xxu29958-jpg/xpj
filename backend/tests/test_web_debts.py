@@ -409,9 +409,8 @@ def test_web_debt_detail_external_renders_summary(web_client: TestClient, *, ide
         assert label in resp.text
     assert "500.00" in resp.text  # principal row
     # The summary exposes the complete remaining amount before supporting facts.
-    assert "dh-amt--hero" in resp.text
-    assert "¥500.00" in resp.text
-    assert "debt-card-label" in resp.text
+    assert 'class="product-amount">¥500.00</strong>' in resp.text
+    assert "product-amount-label" in resp.text
     # The duplicate 剩余 ROW is removed (剩余 now lives only in the eyebrow/aria);
     # there must be no 剩余 row label left.
     assert "<span>剩余</span>" not in resp.text
@@ -429,7 +428,7 @@ def test_web_debt_detail_member_renders_communal(web_client: TestClient) -> None
     # Red lines: member detail must not show accounting framing or danger tone.
     assert "应付" not in detail.text
     assert "应收" not in detail.text
-    assert 'class="dh-amt dh-amt--hero">¥200.00</strong>' in detail.text
+    assert 'class="product-amount">¥200.00</strong>' in detail.text
     assert "product-status--danger" not in detail.text  # never red for member debt
     assert "进行中" in detail.text  # member open status badge (neutral)
 
