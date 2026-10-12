@@ -17,13 +17,12 @@
 {% block content %}
 <header class="product-page-header">
   <div class="product-page-heading">
-    <span class="product-eyebrow">计划 / 还债目标</span>
     <h1 class="page-title">离还清更近一点</h1>
     <p class="product-page-summary">每一步都以真实欠款为依据。</p>
   </div>
 </header>
 
-<div class="plan-flow goal-page">
+<div class="product-flow">
 {% include "partials/debt_goal_drafts.html" %}
 {% if message %}<div class="product-feedback product-feedback--success" role="status">{{ message }}</div>{% endif %}
 {% if error %}<div class="product-feedback product-feedback--danger" role="alert">{{ error }}</div>{% endif %}
@@ -32,7 +31,7 @@
 {% endif %}
 
 {% if not goals_active %}
-<section class="product-panel product-panel--padded" aria-label="还债目标空态">
+<section aria-label="还债目标空态">
   <div class="product-state">
     <div class="product-state-title">{{ empty_title }}</div>
     <div class="product-state-body">{{ empty_body }}</div>
@@ -43,76 +42,55 @@
 </section>
 {% else %}
 {% for goal in goals_active %}
-<section id="goal-{{ goal.public_id }}" class="plan-debt-goal" aria-label="还债目标：{{ goal.name }}">
-  <details class="plan-disclosure">
-    <summary class="product-entry product-entry--actions">
-      <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#flag"/></svg></span>
-      <span class="product-entry-copy"><span class="product-entry-heading"><strong>{{ goal.name }}</strong></span><span>{{ goal.links | length }} 笔关联{% if goal.target_date_value %} · {{ goal.target_date_value }}{% endif %}</span></span>
-      <span class="product-entry-actions">{{ status_pill(goal.eval_tone, goal.eval_label) }}<span>查看</span></span>
-    </summary>
-    <div class="plan-debt-goal">
+<section id="goal-{{ goal.public_id }}" class="product-flow" aria-label="还债目标：{{ goal.name }}">
+  <div class="product-entry-heading"><h2 class="product-panel-title">{{ goal.name }}</h2>{{ status_pill(goal.eval_tone, goal.eval_label) }}</div>
+  {# 先说关联了几笔、现在到哪一步; 多币种金额由 amount_line 分别列示, 不合成一个总额。 #}
   {% if goal.all_voided %}
   <div class="product-state">
     <div class="product-state-body">{{ all_voided_text }}</div>
   </div>
   {% else %}
-  <p class="plan-debt-headline">{{ goal.headline }}</p>
-  <progress class="product-progress{% if goal.cleared_count == goal.total_count %} is-complete{% endif %}" value="{{ goal.fraction_percent }}" max="100" aria-label="已两清 {{ goal.cleared_count }} 笔，共 {{ goal.total_count }} 笔"></progress>
-  {% if goal.amount_line %}
-  <p class="plan-debt-amount">{{ goal.amount_line }}</p>
-  {% endif %}
-  {% if goal.kpi %}
-  <div class="plan-debt-kpi">
-    {% if goal.kpi.three_state_label %}
-    {{ status_pill(goal.kpi.three_state_tone, goal.kpi.three_state_label) }}
+  <div class="product-surface product-surface--plain">
+    <span class="product-amount-label">{{ goal.links | length }} 笔关联{% if goal.target_date_value %} · {{ goal.target_date_value }}{% endif %}</span>
+    <strong>{{ goal.headline }}</strong>
+    <progress class="product-progress{% if goal.cleared_count == goal.total_count %} is-complete{% endif %}" value="{{ goal.fraction_percent }}" max="100" aria-label="已两清 {{ goal.cleared_count }} 笔，共 {{ goal.total_count }} 笔"></progress>
+    {% if goal.amount_line %}<span class="product-amount-meta">{{ goal.amount_line }}</span>{% endif %}
+    {% if goal.kpi %}
+    <span class="pill-row">
+      {% if goal.kpi.three_state_label %}{{ status_pill(goal.kpi.three_state_tone, goal.kpi.three_state_label) }}{% endif %}
+      {% if goal.kpi.target_label %}<span class="product-status">{{ goal.kpi.target_label }}</span>{% endif %}
+      <span class="product-status{% if goal.kpi.payoff.tone == 'warn' %} product-status--warning{% endif %}">{{ goal.kpi.payoff.text }}</span>
+    </span>
     {% endif %}
-    {% if goal.kpi.target_label %}
-    <span class="plan-debt-target">{{ goal.kpi.target_label }}</span>
-    {% endif %}
-    <span class="plan-projection{% if goal.kpi.payoff.tone == 'warn' %} is-warn{% endif %}">{{ goal.kpi.payoff.text }}</span>
   </div>
   {% endif %}
-  {% endif %}
-    </div>
-  </details>
 
-  <div class="plan-link-list">
-    <div class="plan-link-list-title">{{ goal.links_title }}</div>
+  <div>
+    <p class="hint">{{ goal.links_title }}</p>
+    <div class="product-entry-list">
     {% for link in goal.links %}
-    <a class="plan-link{% if link.recede %} is-receding{% endif %}" href="/web/debts/{{ link.public_id }}?ledger_id={{ selected_ledger_id|urlencode }}">
-      <div class="plan-link-top">
-        <span class="plan-link-name">{{ link.name }}</span>
-        {{ status_pill(link.status_tone, link.status_label) }}
-      </div>
-      {% if link.show_bar %}
-      {# 成员条用进度档语 (镜像 debts.html，communal 面不读裸百分比)；外部条读百分比。 #}
-      <progress class="product-progress{% if link.is_cleared %} is-complete{% endif %}" value="{{ link.fraction_percent }}" max="100" aria-label="{% if link.is_member %}{{ link.note }}{% else %}已对上 {{ link.fraction_percent }}%{% endif %}"></progress>
-      {% endif %}
-      {% if link.is_member %}
-      <div class="plan-link-note">{{ link.note }}</div>
-      {% else %}
-      <div class="plan-link-meta">{{ link.meta }}</div>
-      {% endif %}
+    <a class="product-entry{% if link.recede %} is-receded{% endif %}" href="/web/debts/{{ link.public_id }}?ledger_id={{ selected_ledger_id|urlencode }}">
+      <span class="product-entry-icon product-entry-icon--apricot" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#users"/></svg></span>
+      <span class="product-entry-copy">
+        <span class="product-entry-heading"><strong>{{ link.name }}</strong>{{ status_pill(link.status_tone, link.status_label) }}</span>
+        {% if link.show_bar %}
+        {# 成员条用进度档语 (镜像 debts.html，communal 面不读裸百分比)；外部条读百分比。 #}
+        <progress class="product-progress{% if link.is_cleared %} is-complete{% endif %}" value="{{ link.fraction_percent }}" max="100" aria-label="{% if link.is_member %}{{ link.note }}{% else %}已对上 {{ link.fraction_percent }}%{% endif %}"></progress>
+        {% endif %}
+        <span>{{ link.note if link.is_member else link.meta }}</span>
+      </span>
+      <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
     </a>
     {% endfor %}
+    </div>
   </div>
-
 
   {% if goal.needs_review %}
   <div class="product-feedback product-feedback--warning" role="status">
     <span><strong>{{ needs_review_note }}</strong><br>{{ goal.review_body }}</span>
   </div>
   {% if can_write %}
-  <div class="plan-debt-review-actions">
-    {% if goal.can_acknowledge_review %}
-    <form method="post" action="/web/debt-goals/{{ goal.public_id }}/review/acknowledge" class="product-inline-form">
-      {{ csrf_field|safe }}
-      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-      <input type="hidden" name="expected_row_version" value="{{ goal.row_version }}">
-      <input type="hidden" name="idempotency_key" value="{{ goal.idempotency_keys['acknowledge'] }}">
-      <button class="product-button" type="submit">保留存档</button>
-    </form>
-    {% endif %}
+  <div class="product-form-actions">
     {% if goal.can_remove_voided %}
     <form method="post" action="/web/debt-goals/{{ goal.public_id }}/review/remove-voided" class="product-inline-form">
       {{ csrf_field|safe }}
@@ -122,57 +100,56 @@
       <button class="product-button product-button--primary" type="submit">移除不再有效的欠款</button>
     </form>
     {% endif %}
+    {% if goal.can_acknowledge_review %}
+    <form method="post" action="/web/debt-goals/{{ goal.public_id }}/review/acknowledge" class="product-inline-form">
+      {{ csrf_field|safe }}
+      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+      <input type="hidden" name="expected_row_version" value="{{ goal.row_version }}">
+      <input type="hidden" name="idempotency_key" value="{{ goal.idempotency_keys['acknowledge'] }}">
+      <button class="product-button" type="submit">保留存档</button>
+    </form>
+    {% endif %}
   </div>
   {% endif %}
   {% endif %}
-
 
   {% if can_write %}
-  <div class="budget-actions">
-    <a class="product-button" href="/web/debt-goals/{{ goal.public_id }}/links?ledger_id={{ selected_ledger_id|urlencode }}">调整关联欠款</a>
-    {% if goal.can_set_target_date %}<a class="product-button product-button--quiet" href="/web/debt-goals/{{ goal.public_id }}/target-date?ledger_id={{ selected_ledger_id|urlencode }}">{{ '修改还清日期' if goal.target_date_value else '设置还清日期' }}</a>{% endif %}
+  <div class="product-form-actions">
+    <a class="product-button product-button--small" href="/web/debt-goals/{{ goal.public_id }}/links?ledger_id={{ selected_ledger_id|urlencode }}">调整关联欠款</a>
+    {% if goal.can_set_target_date %}<a class="product-button product-button--quiet product-button--small" href="/web/debt-goals/{{ goal.public_id }}/target-date?ledger_id={{ selected_ledger_id|urlencode }}">{{ '修改还清日期' if goal.target_date_value else '设置还清日期' }}</a>{% endif %}
+    <form method="post" action="/web/debt-goals/{{ goal.public_id }}/archive" class="product-inline-form"
+          data-confirm="归档「{{ goal.name }}」？关联欠款不会被删除，之后仍可恢复这个目标。">
+      {{ csrf_field|safe }}
+      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+      <input type="hidden" name="expected_row_version" value="{{ goal.row_version }}">
+      <input type="hidden" name="idempotency_key" value="{{ goal.idempotency_keys['archive'] }}">
+      <button class="product-button product-button--quiet product-button--small" type="submit">归档目标</button>
+    </form>
   </div>
-  <form method="post" action="/web/debt-goals/{{ goal.public_id }}/archive"
-        data-confirm="归档「{{ goal.name }}」？关联欠款不会被删除，之后仍可恢复这个目标。">
-    {{ csrf_field|safe }}
-    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-    <input type="hidden" name="expected_row_version" value="{{ goal.row_version }}">
-    <input type="hidden" name="idempotency_key" value="{{ goal.idempotency_keys['archive'] }}">
-    <div class="budget-actions">
-      <button class="product-button" type="submit">归档目标</button>
-    </div>
-  </form>
   {% endif %}
 </section>
 {% endfor %}
 {% endif %}
 
-{% if can_write %}
-<div class="budget-actions">
-  <a class="product-button product-button--primary" href="/web/debt-goals/new?ledger_id={{ selected_ledger_id|urlencode }}&amp;new_debtgoal=1">新建还债目标 <span aria-hidden="true">→</span></a>
-</div>
-{% endif %}
-
-<details class="plan-disclosure">
-  <summary>查看已归档目标{% if goals_archived %} · {{ goals_archived | length }}{% endif %}</summary>
+<div class="product-entry-list">
+<details>
+  <summary class="product-entry">
+    <span class="product-entry-icon product-entry-icon--lilac" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#archive"/></svg></span>
+    <span class="product-entry-copy"><strong>查看已归档目标{% if goals_archived %} · {{ goals_archived | length }}{% endif %}</strong><span>恢复不会改动关联欠款。</span></span>
+    <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
+  </summary>
 {% if goals_archived %}
-<section class="product-panel product-panel--padded" aria-label="已归档计划">
-  <div class="product-panel-header">
-    <h2 class="product-panel-title">已归档计划</h2>
-    <p class="product-panel-subtitle">{{ goals_archived | length }} 条 · 恢复不会改动关联欠款。</p>
-  </div>
-  <div class="plan-goal-list">
+  <div class="product-entry-list" aria-label="已归档计划">
     {% for goal in goals_archived %}
-    <div class="plan-goal is-receding">
-      <div class="plan-goal-header">
-        <div>
-          <strong>{{ goal.name }}</strong>
-          {{ status_pill('', goal.eval_label) }}
-        </div>
-        <span class="hint">{{ goal.links | length }} 笔关联欠款</span>
+    <div class="product-entry product-entry--static product-entry--actions is-receded">
+      <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#flag"/></svg></span>
+      <div class="product-entry-copy">
+        <strong>{{ goal.name }}</strong>
+        <span>{{ goal.links | length }} 笔关联欠款</span>
+        {{ status_pill('', goal.eval_label) }}
       </div>
       {% if can_write %}
-      <form method="post" action="/web/debt-goals/{{ goal.public_id }}/restore" class="product-inline-form">
+      <form method="post" action="/web/debt-goals/{{ goal.public_id }}/restore" class="product-entry-actions">
         {{ csrf_field|safe }}
         <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
         <input type="hidden" name="expected_row_version" value="{{ goal.row_version }}">
@@ -183,8 +160,14 @@
     </div>
     {% endfor %}
   </div>
-</section>
-{% else %}<p class="meta">还没有已归档的目标。</p>{% endif %}
+{% else %}<p class="hint">还没有已归档的目标。</p>{% endif %}
 </details>
+</div>
+
+{% if can_write %}
+<div class="product-task-actions product-task-actions--page">
+  <a class="product-button product-button--primary" href="/web/debt-goals/new?ledger_id={{ selected_ledger_id|urlencode }}&amp;new_debtgoal=1">新建还债目标 <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-right"/></svg></a>
+</div>
+{% endif %}
 </div>
 {% endblock %}

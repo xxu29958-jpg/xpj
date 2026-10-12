@@ -90,7 +90,7 @@ def test_archived_income_history_is_visible_to_reader_and_hidden_from_other_ledg
     page = client.get(f"/web/income-plans/{public_id}/history?ledger_id=owner")
     assert page.status_code == 200, page.text
     assert "原工资预测" in page.text and "JPY 1200" in page.text and "不代表实际到账或账户余额" in page.text
-    assert f"#income-{public_id}" in page.text and 'method="post"' not in page.text.split('<div class="plan-flow">')[1]
+    assert f"#income-{public_id}" in page.text and 'method="post"' not in page.text.split('<div class="product-flow">')[1]
     assert client.get(f"/api/income-plans/{public_id}/history", headers=identity.gray_app_headers).status_code == 404
     with SessionLocal.begin() as db:
         member = db.scalar(select(LedgerMember).where(LedgerMember.ledger_id == "owner"))

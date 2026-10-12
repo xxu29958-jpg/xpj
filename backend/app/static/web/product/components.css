@@ -78,6 +78,9 @@ p {
 .product-form-actions { justify-content: flex-start; margin-block-start: var(--space-5); }
 .product-form-actions > p { flex: 1 0 100%; margin: 0; }
 
+/* 行内动作表单: 一个按钮就是一次提交, 与同行的链接并排。 */
+.product-inline-form { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 0; }
+
 /* 表单是一列: 提示、字段、预览、动作依次排开, 间距由这一处决定。 */
 .product-form { display: grid; gap: var(--space-5); min-width: 0; }
 .product-form > :is(.product-feedback, .product-form-actions, p) { margin-block: 0; }
@@ -166,6 +169,24 @@ p {
     color: var(--text-default);
     font-weight: var(--type-subtitle-weight);
 }
+
+/* 勾选行: 一行一个可勾选的对象, 名称一行、说明一行; 真实 checkbox, 整行可点。 */
+.product-choice-set { display: grid; min-inline-size: 0; margin: 0; padding: 0; border: 0; }
+.product-choice-set > legend { margin-block-end: var(--space-2); padding: 0; color: var(--text-meta); font-size: var(--type-body-size); }
+.product-choice-set > .hint { margin-block: 0; }
+.product-choice {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: var(--space-1) var(--space-4);
+    min-block-size: calc(var(--target-min) + var(--space-5));
+    padding-block: var(--space-3);
+    cursor: pointer;
+}
+.product-choice + .product-choice { border-block-start: 1px solid var(--border-card); }
+.product-choice > input { grid-row: span 2; width: var(--space-6); height: var(--space-6); margin: 0; accent-color: var(--brand-primary); }
+.product-choice-name { color: var(--text-default); font-weight: var(--type-title-weight); }
+.product-choice-meta { grid-column: 2; overflow-wrap: anywhere; color: var(--text-meta); font-size: var(--type-body-size); line-height: var(--type-body-line); }
 
 /* 多选时胶囊换行排列, 不做横向滚动。 */
 .product-segments--wrap { flex-wrap: wrap; overflow: visible; }
@@ -996,23 +1017,32 @@ fieldset.product-field { border: 0; padding: 0; margin: 0; }
 .product-field > label.product-check { min-height: var(--target-min); font-size: var(--type-body-size); font-weight: normal; }
 
 /* Before/after facts share the same type, spacing and emphasis as editable entry rows. */
+/* 前后对照: 当前 → 这次之后 (或 修改前 → 修改后)。两个数字同一字号, 后者落在金额面上;
+   中间可以放一个箭头图标。 */
 .product-comparison {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 12ch), 1fr));
+    display: flex;
+    flex-wrap: wrap;
     align-items: stretch;
-    gap: var(--space-4);
+    gap: var(--space-3) var(--space-4);
 }
 .product-comparison > div {
     display: grid;
+    flex: 1 1 12ch;
     align-content: center;
-    gap: var(--space-2);
-    padding: var(--space-4);
+    gap: var(--space-1);
     min-width: 0;
     overflow-wrap: anywhere;
 }
+.product-comparison > svg { flex: none; align-self: center; width: var(--space-5); height: var(--space-5); color: var(--text-meta); }
 .product-comparison span { color: var(--text-meta); font-size: var(--type-caption-size); }
-.product-comparison strong { font-size: var(--type-title-size); font-weight: var(--type-title-weight); }
-.product-comparison-proposed { background: var(--brand-primary-bg); border-radius: var(--radius-input); }
+.product-comparison :is(strong, output) {
+    color: var(--text-default);
+    font-family: var(--font-numeric);
+    font-size: var(--type-title-size);
+    font-variant-numeric: tabular-nums;
+    font-weight: var(--type-title-weight);
+}
+.product-comparison-proposed { padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: var(--brand-primary-bg); }
 .product-panel--highlight { background: var(--brand-primary-bg); }
 .product-panel--apricot { background: var(--surface-apricot); }
 
@@ -1038,6 +1068,8 @@ details.product-surface { display: block; }
 .product-surface-rows dt { color: var(--text-meta); font-size: var(--type-body-size); }
 .product-surface-rows dd { margin: 0; color: var(--text-default); font-family: var(--font-numeric); font-size: var(--type-subtitle-size); font-variant-numeric: tabular-nums; font-weight: var(--type-title-weight); overflow-wrap: anywhere; }
 .product-surface--apricot { background: var(--surface-apricot); }
+/* 建议与观察 (尚未生效) 用紫色面, 与已生效的常青面区分。 */
+.product-surface--lilac { background: var(--surface-lilac); }
 .product-surface > .product-status { justify-self: start; }
 .product-surface > :is(p, h2, h3) { margin: 0; }
 .product-surface > .product-button { justify-self: start; }
@@ -1045,13 +1077,6 @@ details.product-surface { display: block; }
 input.product-amount { width: 100%; padding: 0 0 var(--space-2); border: 0; border-block-end: 1px solid var(--border-card); border-radius: 0; background: transparent; }
 input.product-amount:focus { outline: 0; border-block-end-color: var(--brand-primary); box-shadow: 0 1px 0 var(--brand-primary); }
 input.product-amount:read-only { border-block-end-color: transparent; box-shadow: none; }
-/* 影响预览: 当前 → 本次之后。两个数字同一字号, 之后的一格落在金额面上。 */
-.product-compare { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3) var(--space-4); }
-.product-compare > div { display: grid; flex: 1 1 8ch; gap: var(--space-1); min-width: 0; }
-.product-compare > div:last-child { padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: var(--brand-primary-bg); }
-.product-compare span { color: var(--text-meta); font-size: var(--type-caption-size); }
-.product-compare :is(strong, output) { color: var(--text-default); font-family: var(--font-numeric); font-size: var(--type-title-size); font-variant-numeric: tabular-nums; font-weight: var(--type-title-weight); overflow-wrap: anywhere; }
-.product-compare > svg { flex: none; width: var(--space-5); height: var(--space-5); color: var(--text-meta); }
 .product-amount-label,
 .product-amount-meta {
     margin: 0;
@@ -1134,12 +1159,14 @@ html:has(.product-workspace > .product-task-actions) { scroll-padding-block-end:
 .product-history { display: grid; margin: 0; padding: 0; list-style: none; }
 .product-history-item { display: grid; justify-items: start; gap: var(--space-1); min-width: 0; padding-block: var(--space-4); }
 .product-history-item + .product-history-item { border-block-start: 1px solid var(--border-card); }
-.product-history-item > div { justify-self: stretch; }
+.product-history-item > :is(div, details[open]) { justify-self: stretch; }
 .product-history-item > strong,
 .product-history-item > .product-entry-heading > strong { font-size: var(--type-subtitle-size); font-weight: var(--type-title-weight); }
 .product-history-item > span:not(.product-status, .hint) { color: var(--text-meta); font-size: var(--type-body-size); line-height: var(--type-body-line); overflow-wrap: anywhere; }
 .product-history-item > :is(.product-status, .product-button, details) { margin-block-start: var(--space-2); }
 .product-entry-amount.is-voided { color: var(--text-meta); text-decoration: line-through; }
+.product-history-item > :is(p, h2, h3) { margin: 0; }
+.product-history-item > .product-comparison { margin-block: var(--space-2); }
 
 
 /* Selection mode is enhanced by the existing bulk-bar owner. Native

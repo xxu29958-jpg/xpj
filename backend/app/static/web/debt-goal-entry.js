@@ -17,25 +17,25 @@
     read(form) {
       return {...Object.fromEntries(names.filter(name => name !== "selected_debts").map(name => [name, field(form, name)?.value || ""])),
         selected_debts: JSON.stringify([...form.querySelectorAll('[name="debt_public_ids"]:checked')].map(input => ({
-          id: input.value, name: input.closest("label").querySelector(".plan-choice-name").textContent,
+          id: input.value, name: input.closest("label").querySelector(".product-choice-name").textContent,
         })))};
     },
     restore(form, saved) {
       names.filter(name => name !== "selected_debts").forEach(name => { if (field(form, name)) field(form, name).value = saved[name]; });
       const selected = JSON.parse(saved.selected_debts);
-      const set = form.querySelector(".plan-choice-set");
+      const set = form.querySelector(".product-choice-set");
       selected.forEach(debt => {
         if ([...form.querySelectorAll('[name="debt_public_ids"]')].some(input => input.value === debt.id)) return;
         const label = document.createElement("label"), input = document.createElement("input"), name = document.createElement("span"), meta = document.createElement("span");
-        label.className = "plan-choice"; input.type = "checkbox"; input.name = "debt_public_ids"; input.value = debt.id;
-        name.className = "plan-choice-name"; name.textContent = debt.name;
-        meta.className = "plan-choice-meta"; meta.textContent = "原稿中的选择，当前不可关联；请核对后继续。";
+        label.className = "product-choice"; input.type = "checkbox"; input.name = "debt_public_ids"; input.value = debt.id;
+        name.className = "product-choice-name"; name.textContent = debt.name;
+        meta.className = "product-choice-meta"; meta.textContent = "原稿中的选择，当前不可关联；请核对后继续。";
         label.append(input, name, meta); set.append(label);
       });
       form.querySelectorAll('[name="debt_public_ids"]').forEach(input => { input.checked = selected.some(debt => debt.id === input.value); });
       if (set) set.querySelector("legend").after(...selected.map(debt => {
         const input = [...form.querySelectorAll('[name="debt_public_ids"]')].find(item => item.value === debt.id);
-        input.closest("label").querySelector(".plan-choice-name").textContent = debt.name;
+        input.closest("label").querySelector(".product-choice-name").textContent = debt.name;
         return input.closest("label");
       }));
     },

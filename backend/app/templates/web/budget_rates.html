@@ -14,16 +14,15 @@
 {% block content %}
 <header class="product-page-header">
   <div class="product-page-heading">
-    <span class="product-eyebrow">{{ return_label }} / 金额换算</span>
     <h1 class="page-title">{{ '纠正这一天的汇率' if values.expected_row_version not in ['', '0'] else '补一个换算依据' }}</h1>
     <p class="product-page-summary">补录或纠正后，回到{{ '全部月份的待补分类流水' if values.return_to == 'confirmed' and values.filter == 'missing_category' else values.month ~ ' 的' ~ return_label }}。原记录的金额与币种保持不变。</p>
   </div>
 </header>
 {% if error %}<div class="product-feedback product-feedback--danger" role="alert">{{ error }}</div>{% endif %}
-<div class="plan-flow rate-editor">
+<div class="product-flow">
 {{ drafts.shelf('rate', '人工汇率', rate_draft_scope) }}
 <section aria-label="填写汇率">
-  <form method="post" action="/web/budget-advise/rates" class="budget-form"
+  <form method="post" action="/web/budget-advise/rates" class="product-form"
     data-rate-can-write="{{ 'true' if can_write else 'false' }}"
     data-rate-native-result="{{ values.draft_result or '' }}" data-rate-prepared-from="{{ values.prepared_from_key or '' }}"
     {% if rate_draft_scope %}data-rate-draft-scope="{{ rate_draft_scope | tojson | forceescape }}"{% endif %}>
@@ -34,7 +33,7 @@
     <input type="hidden" name="idempotency_key" value="{{ values.idempotency_key }}">
     <input type="hidden" name="return_href" value="{{ return_href }}">
     {{ drafts.controls('rate', '汇率', rate_draft_scope) }}
-    <fieldset class="rate-fields"{% if not can_write %} disabled{% endif %}>
+    <fieldset class="product-form"{% if not can_write %} disabled{% endif %}>
     {% if values.expected_row_version not in ['', '0'] %}
     <input type="hidden" name="currency_code" value="{{ values.currency_code }}">
     <input type="hidden" name="rate_date" value="{{ values.rate_date }}">
@@ -56,7 +55,7 @@
     </div>
     {% endif %}
     <div class="product-field">
-      <span>换算为</span><strong class="rate-target" data-rate-target>{{ values.home_currency_code }}</strong>
+      <span>换算为</span><strong data-rate-target>{{ values.home_currency_code }}</strong>
       <p class="hint">沿用原任务的展示币种，不改变预算或原账单的币种。</p>
     </div>
     <div class="product-field">
@@ -66,16 +65,16 @@
     </div>
     </fieldset>
     <p class="hint">来源：人工填写。保存汇率后回到原任务继续核对，不会自动提交原财务操作。</p>
-    <div class="budget-actions rate-primary-action">
+    <div class="product-task-actions">
       <button class="product-button product-button--primary" type="submit" data-rate-submit{% if not can_write or rate_binding_required or (conflict and not rate_draft_scope) %} disabled{% endif %}>保存汇率并继续</button>
       {% if can_write and (rate_binding_required or (conflict and not rate_draft_scope)) %}<button class="product-button" name="review_latest" value="true" formnovalidate>核对当前汇率</button>{% endif %}
     </div>
     {% if not can_write %}<p class="hint">当前身份可查看汇率，原输入会保留；请由账本成员补录或纠正。</p>{% endif %}
   </form>
 </section>
-<details class="product-panel product-panel--padded" aria-label="当前汇率">
-  <summary class="product-panel-title">查找和核对已有汇率</summary>
-  <form method="get" action="/web/budget-advise/rates" class="budget-form">
+<details class="product-disclosure" aria-label="当前汇率">
+  <summary>查找和核对已有汇率</summary>
+  <form method="get" action="/web/budget-advise/rates" class="product-form">
     {% for name, value in rate_task.items() %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
     <div class="product-field"><label for="find-rate-currency">查找原币种</label>
       <select class="product-input" id="find-rate-currency" name="currency_code">
@@ -86,7 +85,7 @@
     <div class="product-field"><label for="find-rate-date">查找日期</label>
       <input class="product-input" id="find-rate-date" type="date" name="rate_date" value="{{ values.rate_date }}">
     </div>
-    <div class="budget-actions"><button class="product-button" type="submit">查看汇率</button></div>
+    <div class="product-form-actions"><button class="product-button" type="submit">查看汇率</button></div>
   </form>
   <p class="hint">显示最近 90 条符合条件的记录；更早的汇率可按日期查找。</p>
   {% if rates %}<div class="product-table-wrap"><table class="product-table">

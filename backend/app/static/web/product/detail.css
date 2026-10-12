@@ -1,30 +1,5 @@
 /* 二、三级页：稳定的工作区骨架，不复制首屏卡片布局。 */
 
-.rate-editor {
-    max-inline-size: 42rem;
-}
-
-.rate-editor > * + *, .rate-editor details[open] > * + * {
-    margin-block-start: var(--space-6);
-}
-
-.rate-editor form, .rate-fields {
-    display: grid;
-    gap: var(--space-6);
-}
-
-.rate-fields {
-    min-inline-size: 0;
-    margin: 0;
-    padding: 0;
-    border: 0;
-}
-
-.rate-target { font-size: var(--type-subtitle-size); }
-.rate-primary-action { display: grid; gap: var(--space-3); }
-.rate-primary-action > button { inline-size: 100%; }
-
-
 .detail-layout {
     display: grid;
     grid-template-columns: minmax(0, 1.4fr) minmax(calc(var(--space-12) * 4), .6fr);
@@ -54,7 +29,6 @@
 }
 
 .original-scan-actions > .product-button { flex: 1; }
-
 
 .expense-detail-layout {
     margin-block-end: var(--space-6);
@@ -155,15 +129,6 @@
     gap: var(--space-6);
 }
 
-
-.product-inline-form {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--space-2);
-}
-
-
 @media (max-width: 56rem) {
     .detail-layout {
         grid-template-columns: minmax(0, 1fr);
@@ -173,16 +138,13 @@
         grid-template-columns: minmax(0, 1fr);
     }
 
-
     .receipt-preview {
         position: relative;
         inset-block-start: auto;
     }
 
-
     .split-invite-fields {
         grid-template-columns: minmax(0, 1fr);
     }
-
 
 }

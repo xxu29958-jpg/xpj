@@ -9,7 +9,7 @@
   <p>以下换算还缺信息。原记录的金额和币种保持不变，补齐后再显示完整合计。</p>
   {% for gap in missing_rates %}
     {% if gap.source_currency_code and gap.rate_date %}
-    <div class="plan-row-meta">
+    <div class="product-entry-heading">
       <span>{{ gap.source_currency_code }} → {{ gap.home_currency_code }} · {{ gap.rate_date }}</span>
       {% if can_write %}<a class="product-button product-button--small" href="/web/budget-advise/rates?{{ rate_context|urlencode }}&amp;currency_code={{ gap.source_currency_code|urlencode }}&amp;rate_date={{ gap.rate_date|string|urlencode }}">补录汇率</a>{% endif %}
     </div>

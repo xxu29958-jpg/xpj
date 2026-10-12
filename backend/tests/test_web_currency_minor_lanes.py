@@ -182,11 +182,11 @@ def test_budget_advise_render_follows_zero_decimal_home(jpy_env, web_client: Tes
     )
     assert page.status_code == 200, page.text
     assert re.search(
-        r"<small>\s*储蓄目标\s*</small>\s*<strong>\s*−\s*¥1,200\s*</strong>",
+        r"<dt>\s*储蓄目标\s*</dt>\s*<dd>\s*−\s*¥1,200\s*</dd>",
         page.text,
     )
     assert not re.search(
-        r"<small>\s*储蓄目标\s*</small>\s*<strong>\s*−\s*¥12\.00\s*</strong>",
+        r"<dt>\s*储蓄目标\s*</dt>\s*<dd>\s*−\s*¥12\.00\s*</dd>",
         page.text,
     )
     rendered_text = re.sub(r"<[^>]+>", "", page.text)
@@ -236,7 +236,7 @@ def test_render_lanes_still_work_on_cny_default(web_client: TestClient, *, ident
     )
     assert advise.status_code == 200, advise.text
     assert re.search(
-        r"<small>\s*储蓄目标\s*</small>\s*<strong>\s*−\s*¥12\.00\s*</strong>",
+        r"<dt>\s*储蓄目标\s*</dt>\s*<dd>\s*−\s*¥12\.00\s*</dd>",
         advise.text,
     )
     assert re.search(
