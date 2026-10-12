@@ -1,40 +1,5 @@
 /* 计划：决策数据先行，编辑器作为独立工作区。 */
 
-.plan-metrics {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    margin-block-end: var(--space-6);
-    border-block: 1px solid var(--border-card);
-}
-
-.plan-metric {
-    display: grid;
-    gap: var(--space-2);
-    padding: var(--space-5);
-    border-inline-end: 1px solid var(--border-card);
-}
-
-.plan-metric:last-child {
-    border-inline-end: 0;
-}
-
-.plan-metric-label {
-    color: var(--text-meta);
-    font-size: var(--type-caption-size);
-}
-
-.plan-metric-value {
-    color: var(--text-default);
-    font-family: var(--font-numeric);
-    font-size: var(--type-headline-size);
-    font-variant-numeric: tabular-nums;
-    font-weight: var(--type-headline-weight);
-}
-
-.plan-metric-value .yuan {
-    color: var(--text-muted);
-    font-size: var(--type-caption-size);
-}
 
 .plan-workspace {
     display: grid;
@@ -49,9 +14,6 @@
         minmax(0, 1.2fr);
 }
 
-.plan-workspace--single {
-    grid-template-columns: minmax(0, 1fr);
-}
 
 .plan-amount-hero {
     display: grid;
@@ -270,17 +232,7 @@
 }
 
 @media (max-width: 64rem) {
-    .plan-metrics {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
 
-    .plan-metric:nth-child(2) {
-        border-inline-end: 0;
-    }
-
-    .plan-metric:nth-child(-n + 2) {
-        border-block-end: 1px solid var(--border-card);
-    }
 
     .plan-workspace {
         grid-template-columns: minmax(0, 1fr);
@@ -298,14 +250,7 @@
 }
 
 @media (max-width: 40rem) {
-    .plan-metrics {
-        grid-template-columns: minmax(0, 1fr);
-    }
 
-    .plan-metric {
-        border-inline-end: 0;
-        border-block-end: 1px solid var(--border-card);
-    }
 
     .plan-discretionary,
     .advice-summary {

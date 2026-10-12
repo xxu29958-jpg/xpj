@@ -22,45 +22,6 @@
 .ledger-read-day-totals { display: grid; grid-template-columns: 1fr auto; gap: var(--space-2) var(--space-5); }
 .ledger-read-day-totals dd { margin: 0; }
 
-.ledger-hero {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: end;
-    gap: var(--space-6);
-    margin-block-end: var(--space-6);
-    padding-block-end: var(--space-6);
-    border-block-end: 1px solid var(--border-card);
-}
-
-.ledger-hero-copy {
-    display: grid;
-    gap: var(--space-2);
-}
-
-.ledger-hero-amount {
-    text-align: end;
-}
-
-.lh-month,
-.lh-ctx {
-    color: var(--text-meta);
-    font-size: var(--type-caption-size);
-}
-
-.lh-amt {
-    color: var(--text-default);
-    font-family: var(--font-numeric);
-    font-size: var(--type-display-size);
-    font-variant-numeric: tabular-nums;
-    font-weight: var(--type-display-weight);
-    line-height: var(--type-display-line);
-}
-
-.lh-amt .cur,
-.lh-amt .dec {
-    color: var(--text-muted);
-    font-size: var(--type-title-size);
-}
 
 /* 票面头条: 当期合计的唯一大数字 (summary 不再重复金额文本, 金额只出现一次) */
 .confirmed-hero-amount {
@@ -417,13 +378,7 @@
 }
 
 @media (max-width: 56rem) {
-    .ledger-hero {
-        grid-template-columns: minmax(0, 1fr);
-    }
 
-    .ledger-hero-amount {
-        text-align: start;
-    }
 
     .month-overview {
         grid-template-columns: minmax(0, 1fr);
@@ -1135,7 +1090,6 @@
 .correction-actions-note {
     margin: 0;
 }
-
 
 
 /* ── 窄屏（56rem，与 detail.css 同约定） ─────────────────────────────── */

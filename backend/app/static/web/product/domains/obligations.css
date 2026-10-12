@@ -169,50 +169,6 @@ body[data-domain="obligations"] .content { max-inline-size: var(--layout-page-na
     cursor: pointer;
 }
 
-.obligation-goal-list,
-.obligation-links {
-    display: grid;
-    gap: var(--space-5);
-}
-
-.obligation-goal {
-    display: grid;
-    gap: var(--space-5);
-}
-
-.obligation-goal-amount {
-    margin: 0;
-    color: var(--text-default);
-    font-family: var(--font-numeric);
-    font-size: var(--type-subtitle-size);
-    font-variant-numeric: tabular-nums;
-    font-weight: var(--type-subtitle-weight);
-}
-
-.obligation-goal-metrics {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--space-3) var(--space-5);
-    color: var(--text-muted);
-}
-
-.obligation-link {
-    display: grid;
-    gap: var(--space-3);
-    padding: var(--space-4);
-    border: 1px solid var(--border-card);
-    border-radius: var(--radius-sm);
-    background: var(--surface-sunken);
-}
-
-.obligation-link-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-4);
-}
-
 
 /* ===== C3a 往来核心：列表 / 新建 / 详情的产品化表达 ===== */
 
@@ -224,20 +180,6 @@ body[data-domain="obligations"] .content { max-inline-size: var(--layout-page-na
     opacity: .85;
 }
 
-/* 三级页返回链接：安静的导航，不与正文争层级。 */
-.debt-back {
-    display: inline-block;
-    margin-block-end: var(--space-4);
-    color: var(--text-meta);
-    font-size: var(--type-caption-size);
-    text-decoration: none;
-}
-
-.debt-back:hover {
-    color: var(--brand-primary-strong);
-    text-decoration: underline;
-    text-underline-offset: var(--space-1);
-}
 
 /* 列表行状态徽章簇。 */
 /* ===== 详情：成员往来卡 ===== */
@@ -381,13 +323,6 @@ body[data-domain="obligations"] .content { max-inline-size: var(--layout-page-na
 
 /* ===== 详情：还款事实 ===== */
 
-.debt-history-title {
-    margin: 0 0 var(--space-3);
-    color: var(--text-meta);
-    font-size: var(--type-caption-size);
-    font-weight: var(--type-meta-weight);
-    letter-spacing: var(--type-meta-tracking);
-}
 
 .debt-history-side {
     display: flex;
@@ -401,12 +336,6 @@ body[data-domain="obligations"] .content { max-inline-size: var(--layout-page-na
     text-decoration: line-through;
 }
 
-/* 行内误记撤销：不额外造卡片。 */
-.debt-fact-void {
-    margin: 0;
-    padding: 0;
-    border: 0;
-}
 
 /* ===== 新建：方向 / 偿还方式选择卡 ===== */
 

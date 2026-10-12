@@ -36,15 +36,13 @@ p {
 
 /* W1 Warm Ledger: 中文层级靠字重/字号/灰度, 不用拉丁大写追踪 ——
    letterspacing 用在中文上是后台味本体, 从中文 eyebrow 退役。 */
-.product-eyebrow,
-.dt-eyebrow {
+.product-eyebrow {
     color: var(--brand-primary-strong);
     font-size: var(--type-caption-size);
     font-weight: var(--type-subtitle-weight);
 }
 
-.page-title,
-.lh-title {
+.page-title {
     margin: 0;
     color: var(--text-default);
     font-size: var(--type-hero-size);
@@ -54,8 +52,6 @@ p {
     overflow-wrap: anywhere;
 }
 
-.page-sub,
-.page-hint,
 .product-page-summary {
     max-width: 72ch;
     margin: 0;
@@ -64,16 +60,13 @@ p {
     line-height: var(--type-body-line);
 }
 
-.product-page-summary a,
-.page-sub a,
-.page-hint a {
+.product-page-summary a {
     color: var(--brand-primary-strong);
     text-underline-offset: var(--space-1);
 }
 
 .product-page-actions,
 .product-form-actions,
-.dt-actions,
 .actions {
     display: flex;
     flex-wrap: wrap;
@@ -85,8 +78,7 @@ p {
 .product-form-actions { justify-content: flex-start; margin-block-start: var(--space-5); }
 
 /* W1: commandbar 去卡片相框 — 筛选条是内容区的一段节奏, 不是被框住的表单。 */
-.product-commandbar,
-.toolbar {
+.product-commandbar {
     display: flex;
     min-height: var(--space-10);
     align-items: center;
@@ -101,7 +93,6 @@ p {
 
 /* Shared filter chips: selected tint carries state, without a second frame.
    Long sets retain the existing horizontal scrolling on narrow screens. */
-.seg,
 .product-segments {
     display: flex;
     min-width: 0;
@@ -115,13 +106,10 @@ p {
     scrollbar-width: none;
 }
 
-.seg::-webkit-scrollbar,
 .product-segments::-webkit-scrollbar {
     display: none;
 }
 
-.seg a,
-.seg button,
 .filter-tab,
 .product-segments a,
 .product-segments button {
@@ -143,16 +131,12 @@ p {
 .filter-tab { list-style: none; }
 .filter-tab::-webkit-details-marker { display: none; }
 
-.seg a:hover,
-.seg button:hover,
 .filter-tab:hover,
 .product-segments a:hover,
 .product-segments button:hover {
     color: var(--text-default);
 }
 
-.seg .is-active,
-.seg .active,
 .filter-tab.is-active,
 .product-segments [aria-current="page"],
 .product-segments [aria-current="location"],
@@ -165,9 +149,7 @@ p {
 
 .count,
 .num,
-.amount,
-.trend-num,
-.kpi-value {
+.amount {
     min-width: 0;
     overflow-wrap: anywhere;
     font-family: var(--font-numeric);
@@ -254,11 +236,6 @@ a.dt-btn {
     color: var(--text-default);
 }
 
-.dt-btn--sm {
-    min-height: var(--target-min);
-    padding: var(--space-1) var(--space-3);
-    font-size: var(--type-caption-size);
-}
 
 .product-button--small {
     min-height: var(--target-min);
@@ -274,7 +251,6 @@ button[disabled] {
 }
 
 /* W1: 面板/卡片实色 + 暖阴影分层, 不描边。 */
-.dt-card,
 .product-panel {
     border: 0;
     border-radius: var(--radius-card);
@@ -282,9 +258,6 @@ button[disabled] {
     box-shadow: var(--shadow-card);
 }
 
-.dt-card {
-    padding: var(--space-6);
-}
 
 .product-panel--padded {
     padding: var(--space-6);
@@ -314,12 +287,7 @@ button[disabled] {
     color: var(--text-default);
 }
 
-.dt-card--static:hover {
-    transform: none;
-}
 
-.card-head,
-.card-header,
 .product-panel-header {
     display: flex;
     align-items: flex-start;
@@ -328,7 +296,6 @@ button[disabled] {
     margin-block-end: var(--space-5);
 }
 
-.card-title,
 .product-panel-title {
     color: var(--text-default);
     font-size: var(--type-title-size);
@@ -336,7 +303,6 @@ button[disabled] {
     line-height: var(--type-title-line);
 }
 
-.card-sub,
 .product-panel-subtitle,
 .hint,
 .meta,
@@ -346,15 +312,9 @@ button[disabled] {
     line-height: var(--type-caption-line);
 }
 
-.card-sub--gap {
-    margin-block-start: var(--space-1);
-}
 
 /* W1: 状态/chip 是色面标签 — 12% 状态色底 + 同色深字, 无描边。 */
-.dt-pill,
-.product-status,
-.dt-tag,
-.exp-cat {
+.product-status {
     display: inline-flex;
     min-height: var(--space-7);
     align-items: center;
@@ -373,25 +333,21 @@ button[disabled] {
     white-space: nowrap;
 }
 
-.dt-pill.ok,
 .product-status--success {
     background: var(--state-success-bg);
     color: var(--state-success-fg);
 }
 
-.dt-pill.warn,
 .product-status--warning {
     background: var(--state-warn-bg);
     color: var(--state-warn-fg);
 }
 
-.dt-pill.danger,
 .product-status--danger {
     background: var(--state-danger-bg);
     color: var(--state-danger-fg);
 }
 
-.dt-pill.info,
 .product-status--info {
     background: var(--state-info-bg);
     color: var(--state-info-fg);
@@ -407,7 +363,6 @@ button[disabled] {
 
 /* W1: 反馈带 tonal — 状态色面承担语气, 不再描边。 */
 .dt-alert,
-.callout-info,
 .product-feedback {
     display: flex;
     flex-wrap: wrap;
@@ -1339,13 +1294,11 @@ details[open] > .product-entry > svg { transform: rotate(90deg); }
     }
 
     .product-page-actions,
-    .dt-actions,
     .actions {
         justify-content: flex-start;
     }
 
-    .product-commandbar,
-    .toolbar {
+    .product-commandbar {
         align-items: stretch;
         flex-direction: column;
     }
@@ -1360,9 +1313,6 @@ details[open] > .product-entry > svg { transform: rotate(90deg); }
 @media (max-width: 40rem) {
     .product-form-actions > .product-button--primary { width: 100%; }
 
-    .dt-card {
-        padding: var(--space-5);
-    }
 
     .product-state,
     .empty-cell,

@@ -636,8 +636,7 @@ details[open] > .chrome-trigger {
     white-space: nowrap;
 }
 
-.ledger-kind,
-.ledger-switch-label {
+.ledger-kind {
     color: var(--text-meta);
     font-size: var(--type-caption-size);
 }

@@ -62,10 +62,6 @@ body {
     color: var(--state-success-fg);
 }
 
-.adoption-status--quiet {
-    background: var(--surface-sunken);
-    color: var(--text-muted);
-}
 
 h1 {
     max-width: 15ch;
@@ -160,11 +156,6 @@ h1 {
     letter-spacing: 0.08em;
 }
 
-.adoption-config-note {
-    margin: var(--space-4) 0 0;
-    color: var(--text-meta);
-    font-size: var(--type-caption-size);
-}
 
 .currency-change-reason {
     display: grid;
