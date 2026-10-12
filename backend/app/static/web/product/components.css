@@ -1214,15 +1214,39 @@ details[open] > .product-entry > svg { transform: rotate(90deg); }
 .review-subtask .product-panel-header { display: none; }
 .review-amount-field { padding: var(--space-6); margin-bottom: var(--space-4); border-radius: var(--radius-xl); background: var(--brand-primary-bg); }
 .review-amount-field > summary { display: grid; gap: var(--space-3); min-height: var(--target-min); cursor: pointer; list-style: none; color: var(--text-meta); font-size: var(--type-body-size); }
-.review-amount-value:not([hidden]) { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2); min-width: 0; color: var(--text-default); }
-.review-amount-value [data-review-amount] { min-width: 0; max-width: 100%; overflow-wrap: anywhere; font-family: var(--font-numeric); font-size: var(--type-display-size); font-weight: var(--type-title-weight); line-height: var(--type-display-line); }
+.review-amount-value:not([hidden]) { display: flex; flex-wrap: wrap; align-items: baseline; min-width: 0; color: var(--text-default); }
+/* 币种符号与数字同档: 完整金额一眼读完, 不把符号缩成角标。 */
+.review-amount-value > span { min-width: 0; max-width: 100%; overflow-wrap: anywhere; font-family: var(--font-numeric); font-size: var(--type-display-size); font-weight: var(--type-title-weight); line-height: var(--type-display-line); }
 .review-amount-value > svg { flex: none; align-self: center; width: var(--space-5); height: var(--space-5); margin-inline-start: var(--space-3); color: var(--text-meta); }
-.review-amount-field .product-drawer-field-row { grid-template-columns: minmax(0, 1fr); margin-top: var(--space-5); }
+.review-amount-field .product-drawer-field-row { grid-template-columns: minmax(0, 1fr); margin-top: var(--space-3); }
 .review-amount-field .product-drawer-field-row > label:last-child { display: none; }
+/* 行标题已经说明字段; 展开后的输入不再重复一遍可见标签 (读屏仍读到)。 */
+.review-amount-field .product-field > span:first-child,
+.review-edit-field > .product-field > span:first-child {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+/* 展开即编辑: 数值由输入框承载, 大号读数与输入框不同时出现。 */
+.review-amount-field[open] > summary .review-amount-value { display: none; }
+.review-amount-field .product-drawer-input-prefix > span { color: var(--text-default); font-family: var(--font-numeric); font-size: var(--type-title-size); font-weight: var(--type-title-weight); }
+.review-amount-field .product-drawer-input-prefix > input.product-input {
+    min-height: calc(var(--target-min) + var(--space-4));
+    padding-inline-start: var(--space-9);
+    border-color: transparent;
+    background: var(--surface-card);
+    font-family: var(--font-numeric);
+    font-size: var(--type-headline-size);
+    font-weight: var(--type-title-weight);
+}
+.review-amount-field .product-drawer-input-prefix > input.product-input::placeholder { color: var(--text-faint); font-weight: var(--type-body-weight); }
 @media (max-width: 48rem) {
     .product-drawer-field-row,
     .expense-manual-fx-equation { grid-template-columns: minmax(0, 1fr); }
-    .review-amount-field { background: var(--surface-raised); padding: var(--space-5); margin-bottom: var(--space-3); }
+    .review-amount-field { padding: var(--space-5) var(--space-6); margin-bottom: var(--space-3); }
 }
 
 .error-text {

@@ -244,16 +244,15 @@
       </div>
       <div class="exp-row-description">
         <div class="exp-merch">{{ e.merchant or '待识别商家' }}</div>
-        <div class="exp-meta">{{ e.expense_time or '时间待核对' }} · {{ e.source_label }}</div>
-        <span class="exp-row-status exp-row-status--{{ _status_tone }}">{{ _status_label }}</span>
+        <div class="exp-meta">{{ e.expense_time or '时间待核对' }}<span class="exp-source"> · {{ e.source_label }}</span></div>
       </div>
-      <div class="text-end">
+      {# 金额列: 有金额读金额, 状态跟在金额下; 缺金额时状态就是这一列的全部内容。 #}
+      <div class="text-end exp-row-result">
         {% if e.amount_label %}
         <span class="exp-amt">{{ e.amount_label }}</span>
         {% if e.fx_meta %}<div class="exp-meta">{{ e.fx_meta }}</div>{% endif %}
-        {% else %}
-        <span class="exp-amt-missing">未识别</span>
         {% endif %}
+        <span class="exp-row-status exp-row-status--{{ _status_tone }}">{{ _status_label }}</span>
       </div>
       <svg class="exp-row-chevron" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
     </a>
