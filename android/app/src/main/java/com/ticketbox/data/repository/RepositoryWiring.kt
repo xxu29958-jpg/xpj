@@ -39,6 +39,8 @@ data class ExpenseOfflineMutationWiring(
     val legacyCorrectionAdapter: JsonAdapter<ExpenseCorrectionRequestDto>,
     val billSplitCreateAdapter: JsonAdapter<BillSplitCreatePayload>,
     val billSplitReceiptAdapter: JsonAdapter<com.ticketbox.data.remote.dto.BillSplitSentDto>,
+    val billSplitAcceptAdapter: JsonAdapter<BillSplitAcceptPayload>,
+    val billSplitAcceptedAdapter: JsonAdapter<com.ticketbox.data.remote.dto.BillSplitInboxDto>,
     val patchExpenseAdapter: JsonAdapter<ExpenseUpdateRequest>,
     val expenseStateTokenAdapter: JsonAdapter<ExpenseStateTokenRequest>,
     val replaceItemsAdapter: JsonAdapter<ExpenseItemReplaceRequestDto>? = null,

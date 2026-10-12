@@ -202,6 +202,10 @@ internal class ExpenseCorrectionConnectedFixture(
             ConfirmExpenseDispatcher({ network.service }, adapters.expenseStateTokenAdapter, ::publishExpenseSnapshot),
         ), maxAttempts = maxAttempts, now = clock::millis).drainOnce()
 
+    suspend fun drainSplitAcceptance(maxAttempts: Int = 10) = OutboxDrainEngine(outbox,
+        listOf(AcceptBillSplitDispatcher({ network.service }, adapters.billSplitAcceptAdapter, adapters.billSplitAcceptedAdapter)),
+        maxAttempts = maxAttempts, now = clock::millis).drainOnce()
+
     private suspend fun publishExpenseSnapshot(ledgerId: String, expense: ExpenseDto) {
         val accepted = expenseDao.applyServerExpense(ledgerId, expense.toEntity(ledgerId))
         if (accepted && expense.status == "confirmed") {
@@ -233,6 +237,9 @@ internal class CorrectionConnectedNetwork {
     var splitSent = BillSplitSentListResponseDto(emptyList())
     var splitLedgers: com.ticketbox.data.remote.dto.LedgerListResponseDto? = null
     val splitAcceptCalls = CopyOnWriteArrayList<Pair<String, String>>()
+    val splitAcceptResults = mutableMapOf<String, com.ticketbox.data.remote.dto.BillSplitInboxDto>()
+    var loseSplitAcceptResponse = false
+    var splitReceiptTargetOverride: String? = null
     val ledgerSwitchRequests = CopyOnWriteArrayList<String>()
     var splitMembers = emptyList<com.ticketbox.data.remote.dto.LedgerMemberDto>()
     var confirmedStreamItems: ((ExpenseDto) -> List<ConfirmedExpenseStreamItemDto>)? = null
@@ -365,12 +372,17 @@ internal class CorrectionConnectedNetwork {
         }
         override suspend fun acceptBillSplitInvitation(publicId: String, request: com.ticketbox.data.remote.dto.BillSplitAcceptRequestDto): com.ticketbox.data.remote.dto.BillSplitInboxDto {
             splitAcceptCalls += publicId to request.targetLedgerId
-            val target = requireNotNull(splitLedgers).ledgers.single { it.ledgerId == request.targetLedgerId }
-            current = current.copy(id = 84L, merchant = "已接受的分摊")
-            val accepted = splitInbox.items.single { it.publicId == publicId }.copy(status = "accepted",
-                receivedBill = com.ticketbox.data.remote.dto.BillSplitReceivedBillDto(current.id, target.ledgerId, target.name))
-            splitInbox = com.ticketbox.data.remote.dto.BillSplitInboxListResponseDto(listOf(accepted))
-            return accepted
+            val accepted = splitAcceptResults.getOrPut(publicId) {
+                val target = requireNotNull(splitLedgers).ledgers.single { it.ledgerId == request.targetLedgerId }
+                current = current.copy(id = 84L, merchant = "已接受的分摊")
+                splitInbox.items.single { it.publicId == publicId }.copy(status = "accepted", acceptedTargetLedgerId = target.ledgerId,
+                    receivedBill = com.ticketbox.data.remote.dto.BillSplitReceivedBillDto(current.id, target.ledgerId, target.name))
+            }
+            check(accepted.acceptedTargetLedgerId == request.targetLedgerId)
+            // The account's latest-50 list may no longer include this original task.
+            splitInbox = com.ticketbox.data.remote.dto.BillSplitInboxListResponseDto(emptyList())
+            if (loseSplitAcceptResponse) throw IOException("Accepted split response lost")
+            return splitReceiptTargetOverride?.let { accepted.copy(acceptedTargetLedgerId = it) } ?: accepted
         }
         override suspend fun expenseItems(id: Long): ExpenseItemsResponseDto {
             readable()

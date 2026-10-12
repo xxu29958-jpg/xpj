@@ -22,10 +22,12 @@ import kotlinx.coroutines.launch
 @Composable
 internal fun BillSplitRoute(
     screenFactory: MainScreenFactory,
+    draftOwner: androidx.lifecycle.ViewModelStoreOwner,
     onBack: () -> Unit,
     onOpenExpense: (Long) -> Unit,
 ) {
     val viewModel: BillSplitViewModel = viewModel(
+        viewModelStoreOwner = draftOwner,
         factory = billSplitViewModelFactory(screenFactory.repository, screenFactory.ledgerRepository),
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()

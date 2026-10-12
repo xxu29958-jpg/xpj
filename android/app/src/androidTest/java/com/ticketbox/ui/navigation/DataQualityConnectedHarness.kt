@@ -115,9 +115,9 @@ internal class DataQualityConnectedHarness : AutoCloseable {
             accountProfile = com.ticketbox.data.repository.AccountProfileRepository(apiProvider, coordinator),
             uploadIntents = com.ticketbox.data.repository.UploadIntentRepository(apiProvider, outbox,
                 com.ticketbox.data.repository.UploadIntentFileStore(context), adapters, settingsStore, database.expenseDao()),
-            repository = ExpenseRepository(database.expenseDao(), binding, sessionCoordinator = coordinator, debtQueryReader = debtQueries, offlineMutations =
+            repository = ExpenseRepository(database.expenseDao(), binding, sessionCoordinator = coordinator, offlineMutations =
                 com.ticketbox.data.repository.ExpenseOfflineMutationWiring(outbox, adapters.correctionAdapter, adapters.legacyCorrectionAdapter,
-                    adapters.billSplitCreateAdapter, adapters.billSplitReceiptAdapter,
+                    adapters.billSplitCreateAdapter, adapters.billSplitReceiptAdapter, adapters.billSplitAcceptAdapter, adapters.billSplitAcceptedAdapter,
                     manualCreateAdapter = com.ticketbox.OutboxAdapterGraph().manualCreateAdapter,
 
         patchExpenseAdapter = com.ticketbox.OutboxAdapterGraph().patchExpenseAdapter,

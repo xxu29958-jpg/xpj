@@ -170,7 +170,7 @@ internal fun SyncStatusScreenContent(
                 onDropMine = { confirmingDrop = SyncStatusDropSelection(it, failed = false, debtCreation = null,
                     recurringOccurrence = state.recurringOccurrences[it.id], incomeSubmission = state.incomeSubmissions[it.id], debtWrite = state.debtWrites[it.id], budgetSave = state.budgetSaves[it.id], recurringOriginal = state.recurringItems[it.id], goalCreation = state.goalCreations[it.id], goalEdit = state.goalEdits[it.id], categoryRule = state.categoryRules[it.id], ruleApplication = state.ruleApplications[it.id], arrangement = state.arrangements[it.id]) },
                 onDropFailed = { row ->
-                    if (row.type in setOf(PendingMutationType.CorrectExpense, PendingMutationType.CreateBillSplitInvitation)) actions.onDropFailed(row)
+                    if (row.type in setOf(PendingMutationType.CorrectExpense, PendingMutationType.CreateBillSplitInvitation, PendingMutationType.AcceptBillSplitInvitation)) actions.onDropFailed(row)
                     else confirmingDrop = SyncStatusDropSelection(row, failed = true, debtCreation = state.failedDebtCreations[row.id],
                         recurringOccurrence = state.recurringOccurrences[row.id], incomeSubmission = state.incomeSubmissions[row.id], debtWrite = state.debtWrites[row.id], budgetSave = state.budgetSaves[row.id], recurringOriginal = state.recurringItems[row.id], goalCreation = state.goalCreations[row.id], goalEdit = state.goalEdits[row.id], categoryRule = state.categoryRules[row.id], ruleApplication = state.ruleApplications[row.id], arrangement = state.arrangements[row.id])
                 },
@@ -244,7 +244,7 @@ private fun SyncStatusPageBody(
     SyncStatusOverviewSection(status, state.correctionObservation.corrections, state.debtWrites.values.toList(), state.incomeSubmissions.values.toList(), state.manualRates.values.toList())
 }
 
-private val SEPARATE_RECOVERY_TYPES = setOf(PendingMutationType.CreateExpense, PendingMutationType.CreateBillSplitInvitation,
+private val SEPARATE_RECOVERY_TYPES = setOf(PendingMutationType.CreateExpense, PendingMutationType.CreateBillSplitInvitation, PendingMutationType.AcceptBillSplitInvitation,
     PendingMutationType.CorrectExpense, PendingMutationType.UploadScreenshot, PendingMutationType.OriginalAttachment)
 
 @Composable
@@ -492,6 +492,7 @@ internal val syncStatusMutationLabelResources = mapOf(
     PendingMutationType.CreateExpense to R.string.sync_status_mutation_create_expense,
     PendingMutationType.CapturePaymentNotification to R.string.notification_capture_payment,
     PendingMutationType.CreateBillSplitInvitation to R.string.sync_status_mutation_create_bill_split,
+    PendingMutationType.AcceptBillSplitInvitation to R.string.bill_split_accept_recovery,
     PendingMutationType.CreateDebt to R.string.sync_status_mutation_create_debt,
     PendingMutationType.RecordDebtAdjustment to R.string.debt_action_adjustment_title,
     PendingMutationType.SplitAgreement to R.string.split_agreement_submission,

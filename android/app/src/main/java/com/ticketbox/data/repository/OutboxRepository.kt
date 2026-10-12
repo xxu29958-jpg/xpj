@@ -382,7 +382,7 @@ class OutboxRepository private constructor(
     /** Room, rather than this instance's binding mutex, owns the original create's atomic acceptance. */
     internal suspend fun enqueueOriginalCreation(boundRequest: BoundLedgerRequest, intent: PendingMutationIntent): Long {
         require(intent.type in setOf(PendingMutationType.CreateIncomePlan, PendingMutationType.CreateGoal,
-            PendingMutationType.CapturePaymentNotification, PendingMutationType.CreateDebt))
+            PendingMutationType.CapturePaymentNotification, PendingMutationType.CreateDebt, PendingMutationType.AcceptBillSplitInvitation))
         val id = withActiveBinding(boundRequest) { binding ->
             binding.requireReadyForEnqueue()
             dao.insertOriginalCreation(intent.toEntity(binding, nowIso()))
@@ -553,7 +553,7 @@ class OutboxRepository private constructor(
     internal fun affectsRecurringReads(row: OutboxRow) = row.type in setOf(
         PendingMutationType.ConfirmRecurringCandidate, PendingMutationType.CreateRecurringItem, PendingMutationType.UpdateRecurringItem,
         PendingMutationType.SetRecurringOccurrencePayment, PendingMutationType.PatchExpense, PendingMutationType.CorrectExpense,
-        PendingMutationType.CreateExpense, PendingMutationType.ConfirmExpense, PendingMutationType.UndoExpense,
+        PendingMutationType.CreateExpense, PendingMutationType.AcceptBillSplitInvitation, PendingMutationType.ConfirmExpense, PendingMutationType.UndoExpense,
         PendingMutationType.CreateExpenseOffset, PendingMutationType.VoidExpenseOffset)
 
 

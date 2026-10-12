@@ -88,6 +88,8 @@ internal class ExpenseCorrectionQueueContinuationTest(private val status: Pendin
             seededTokenStore()), offlineMutations = ExpenseOfflineMutationWiring(outbox = outbox,
             offsetVoidAdapter = moshi().adapter(ExpenseOffsetVoidOutboxPayload::class.java),
             correctionAdapter = adapters.correctionAdapter, billSplitReceiptAdapter = adapters.billSplitReceiptAdapter,
+        billSplitAcceptAdapter = adapters.billSplitAcceptAdapter,
+        billSplitAcceptedAdapter = adapters.billSplitAcceptedAdapter,
             billSplitCreateAdapter = adapters.billSplitCreateAdapter,
             legacyCorrectionAdapter = adapters.legacyCorrectionAdapter,
                 manualCreateAdapter = com.ticketbox.OutboxAdapterGraph().manualCreateAdapter,

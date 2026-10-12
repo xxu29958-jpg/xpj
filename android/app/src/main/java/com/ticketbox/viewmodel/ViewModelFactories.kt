@@ -409,8 +409,8 @@ fun billSplitViewModelFactory(
     expenseRepository: ExpenseRepository,
     ledgerRepository: LedgerRepository,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
-    override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return BillSplitViewModel(expenseRepository, ledgerRepository) as T
+    override fun <T : ViewModel> create(modelClass: Class<T>, extras: CreationExtras): T {
+        return BillSplitViewModel(expenseRepository, ledgerRepository, extras.createSavedStateHandle()) as T
     }
 }
 

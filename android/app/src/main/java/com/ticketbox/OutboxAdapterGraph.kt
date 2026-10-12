@@ -260,6 +260,12 @@ internal class OutboxAdapterGraph {
     val billSplitReceiptAdapter: JsonAdapter<com.ticketbox.data.remote.dto.BillSplitSentDto> = lazyJsonAdapter {
         moshi.adapter(com.ticketbox.data.remote.dto.BillSplitSentDto::class.java)
     }
+    val billSplitAcceptAdapter: JsonAdapter<com.ticketbox.data.repository.BillSplitAcceptPayload> = lazyJsonAdapter {
+        moshi.adapter(com.ticketbox.data.repository.BillSplitAcceptPayload::class.java)
+    }
+    val billSplitAcceptedAdapter: JsonAdapter<com.ticketbox.data.remote.dto.BillSplitInboxDto> = lazyJsonAdapter {
+        moshi.adapter(com.ticketbox.data.remote.dto.BillSplitInboxDto::class.java)
+    }
     val recurringOccurrenceAdapter: JsonAdapter<com.ticketbox.data.repository.RecurringOccurrencePayload> = lazyJsonAdapter {
         moshi.adapter(com.ticketbox.data.repository.RecurringOccurrencePayload::class.java)
     }

@@ -42,6 +42,7 @@ from app.schemas._background_task import (
     BackgroundTaskStatus,
 )
 from app.schemas._bill_split import (
+    BillSplitAcceptanceResponse,
     BillSplitAcceptRequest,
     BillSplitInboxListResponse,
     BillSplitInboxResponse,
@@ -338,6 +339,7 @@ __all__ = [
     "BillSplitAcceptRequest",
     "BillSplitInboxListResponse",
     "BillSplitInboxResponse",
+    "BillSplitAcceptanceResponse",
     "BillSplitInviteRequest",
     "BillSplitSentListResponse",
     "BillSplitSentResponse",

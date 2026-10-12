@@ -16,6 +16,7 @@ from app.main import app
 from app.models import Account, BillSplitInvitation, Expense, Ledger, LedgerMember
 from app.routes.web_common import _require_local as _web_require_local
 from app.services import bill_split_service as bsplit
+from app.services.currency_binding_service import resolve_write_capability
 from app.services.expense_accounting_time_service import refresh_legacy_expense_time
 from app.services.ledger_calendar_service import adopt_ledger_calendar
 from app.services.spending_contract_service import accounting_zone
@@ -406,6 +407,7 @@ def test_web_split_invite_duplicate_pending_flashes_message(
 
 def _seed_expense_in(ledger_id: str, amount_cents: int = 3000) -> int:
     with SessionLocal() as db:
+        resolve_write_capability(db)
         e = Expense(
             tenant_id=ledger_id,
             amount_cents=amount_cents,

@@ -77,7 +77,6 @@ internal class RepositoryGraph(
         expenseDao = database.expenseDao(),
         sessionCoordinator = ledgerSessionCoordinator,
         binding = serverSessionBinding,
-        debtQueryReader = debtQueries,
         // PR-2g.3: pass the outbox + adapter so the PATCH expense
         // call site can fall back to enqueue on IOException.
         // PR-2g.7: + token adapter for confirm/reject offline routing.
@@ -88,6 +87,8 @@ internal class RepositoryGraph(
             legacyCorrectionAdapter = outboxAdapters.legacyCorrectionAdapter,
             billSplitCreateAdapter = outboxAdapters.billSplitCreateAdapter,
             billSplitReceiptAdapter = outboxAdapters.billSplitReceiptAdapter,
+            billSplitAcceptAdapter = outboxAdapters.billSplitAcceptAdapter,
+            billSplitAcceptedAdapter = outboxAdapters.billSplitAcceptedAdapter,
             expenseStateTokenAdapter = outboxAdapters.expenseStateTokenAdapter,
             replaceItemsAdapter = outboxAdapters.replaceItemsAdapter,
             replaceSplitsAdapter = outboxAdapters.replaceSplitsAdapter,

@@ -398,6 +398,11 @@ class AppContainer(context: Context) {
                 payloadAdapter = outboxAdapters.billSplitCreateAdapter,
                 receiptAdapter = outboxAdapters.billSplitReceiptAdapter,
             ),
+            com.ticketbox.data.repository.AcceptBillSplitDispatcher(
+                apiProvider = ::outboxApi,
+                payloadAdapter = outboxAdapters.billSplitAcceptAdapter,
+                receiptAdapter = outboxAdapters.billSplitAcceptedAdapter,
+            ),
             com.ticketbox.data.repository.RecurringOccurrenceDispatcher(
                 apiProvider = ::outboxApi,
                 payloadAdapter = outboxAdapters.recurringOccurrenceAdapter,

@@ -153,8 +153,9 @@ internal fun NavGraphBuilder.addObligationRoutes(
     dependencies: MainProductRouteDependencies,
 ) {
     with(dependencies) {
-        composable(ProductSecondaryPage.BillSplits.route) {
-            BillSplitRoute(screenFactory = screenFactory, onBack = onBack,
+        composable(ProductSecondaryPage.BillSplits.route) { entry ->
+            val draftOwner = remember(runtime.navController, entry) { runtime.navController.getBackStackEntry(MAIN_ROUTE) }
+            BillSplitRoute(screenFactory = screenFactory, draftOwner = draftOwner, onBack = onBack,
                 onOpenExpense = runtime.navController::openExpense)
         }
         composable("${ProductSecondaryPage.DebtGoals.route}?create={create}&links={links}&date={date}",

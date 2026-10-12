@@ -212,4 +212,15 @@
     <string name="bind_server_configured_url">账本地址：%1$s</string>
     <string name="bind_server_continuity_title">中途离开也能继续</string>
     <string name="bind_server_continuity_body">返回此页时保留已填信息。未完成的绑定可以继续，放弃前会请你确认。</string>
+    <string name="bill_split_accept_queued">接受任务已保留，等待同步核实结果。</string>
+    <string name="bill_split_accept_original_target">原选择账本：%1$s</string>
+    <string name="bill_split_accept_selection">记入：%1$s</string>
+    <string name="bill_split_accept_pending">接受结果尚未确认，原选择保持不变。</string>
+    <string name="bill_split_accept_recovery">接受拆账邀请</string>
+    <string name="bill_split_accept_unsupported">原接受任务暂时无法核对，请保留它并更新应用。</string>
+    <string name="bill_split_accept_requires_review">这份邀请当前无法按原选择接受。请核对最新结果；本地任务仍保留。</string>
+    <string name="bill_split_accept_retry">核实原接受结果</string>
+    <string name="bill_split_accept_forget_explanation">只移除此设备保留的接受任务，不会撤销已发出的请求或已完成的记账。请先核对邀请的最新结果。</string>
+    <string name="bill_split_accept_unsubmitted">未提交的接受选择</string>
+    <string name="bill_split_accept_remove_selection">移除这项选择</string>
 </resources>

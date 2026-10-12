@@ -68,6 +68,7 @@ internal suspend fun PendingMutationDao.cascadePreservedTokens(
         PendingMutationType.UndoExpense.wireValue,
         PendingMutationType.VoidExpenseOffset.wireValue,
         PendingMutationType.CreateBillSplitInvitation.wireValue,
+        PendingMutationType.AcceptBillSplitInvitation.wireValue,
         PendingMutationType.CorrectExpense.wireValue,
         PendingMutationType.CreateExpenseOffset.wireValue,
         PendingMutationType.UploadScreenshot.wireValue,

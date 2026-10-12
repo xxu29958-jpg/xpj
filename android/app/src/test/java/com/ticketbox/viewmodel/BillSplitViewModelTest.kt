@@ -1,5 +1,12 @@
 package com.ticketbox.viewmodel
 
+import androidx.lifecycle.SavedStateHandle
+import com.ticketbox.data.local.PendingMutationStatus
+import com.ticketbox.data.local.PendingMutationType
+import com.ticketbox.data.repository.BillSplitAcceptPayload
+import com.ticketbox.data.repository.BillSplitAcceptanceObservation
+import com.ticketbox.data.repository.PendingBillSplitAcceptance
+import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.LedgerAccessContext
 import kotlinx.coroutines.flow.Flow
@@ -121,17 +128,24 @@ class BillSplitViewModelTest {
         vm.accept(requireNotNull(fake.currentAccess()).binding, "split_in_1", "receiver")
         advanceUntilIdle()
 
-        assertEquals(BillSplitStatusValues.ACCEPTED, vm.uiState.value.inbox.single().status)
+        assertEquals(BillSplitStatusValues.INVITED, vm.uiState.value.inbox.single().status)
+        fake.deliverAcceptance()
+        advanceUntilIdle()
+
+        assertEquals(BillSplitStatusValues.ACCEPTED, vm.uiState.value.acceptances.single().invitation?.status)
+        assertEquals(true, vm.uiState.value.acceptances.single().delivered)
         assertEquals(false, vm.uiState.value.loading)
         assertNotNull(vm.uiState.value.message)
     }
 
     @Test
     fun repeatedAcceptTapDoesNotStartAnotherCommand() = billSplitTest {
-        val fake = FakeBillSplitActions()
+        val fake = FakeBillSplitActions(inboxResult = Result.success(listOf(inboxInvite())))
         val gate = CompletableDeferred<Unit>()
         fake.acceptGate = gate
         val vm = BillSplitViewModel(fake, FakeBillSplitLedgerActions())
+        vm.refresh()
+        advanceUntilIdle()
         try {
             vm.accept(requireNotNull(fake.currentAccess()).binding, "split_in_1", "receiver")
             vm.accept(requireNotNull(fake.currentAccess()).binding, "split_in_1", "receiver")
@@ -141,6 +155,29 @@ class BillSplitViewModelTest {
             gate.complete(Unit)
             advanceUntilIdle()
         }
+    }
+
+    @Test
+    fun originalSelectionSurvivesSavedStateAndDisappearingInboxButCannotCrossBinding() = billSplitTest {
+        val fake = FakeBillSplitActions(inboxResult = Result.success(listOf(inboxInvite())))
+        val state = SavedStateHandle()
+        val ledgers = FakeBillSplitLedgerActions(refreshResult = Result.success(listOf(ledger("receiver", "原目标"), ledger("other", "其他"))))
+        val vm = BillSplitViewModel(fake, ledgers, state)
+        vm.refresh()
+        advanceUntilIdle()
+        val binding = requireNotNull(fake.currentAccess()).binding
+        vm.selectTarget(binding, "split_in_1", "receiver")
+        fake.inboxResult = Result.success(emptyList())
+        val restored = BillSplitViewModel(fake, ledgers, SavedStateHandle(state.keys().associateWith { state.get<Any?>(it) }))
+        restored.refresh()
+        advanceUntilIdle()
+        assertEquals("原目标", restored.uiState.value.selectedTargets.getValue("split_in_1").targetLedgerName)
+        assertEquals(0, fake.acceptCalls)
+        fake.access.value = fake.currentAccess()!!.copy(binding = binding.copy(bindingRevision = "replaced"))
+        advanceUntilIdle()
+        restored.accept(binding, "split_in_1", "receiver")
+        assertEquals(emptyMap(), restored.uiState.value.selectedTargets)
+        assertEquals(0, fake.acceptCalls)
     }
 
     @Test
@@ -188,10 +225,15 @@ private class FakeBillSplitActions(
         LogicalSessionBinding("https://split-test.example", "owner", "test-owner", "session", "revision"), true))
     override fun currentAccess(): LedgerAccessContext? = access.value
     override fun observeAccess(): Flow<LedgerAccessContext?> = access
+    private val acceptances = MutableStateFlow(BillSplitAcceptanceObservation(access.value))
+    override fun observeAcceptances(): Flow<BillSplitAcceptanceObservation> = acceptances
+    override suspend fun recoverAcceptance(binding: LogicalSessionBinding, id: Long, drop: Boolean): Result<Unit> =
+        error("Recovery is exercised with real Room and Outbox")
 
     var inboxGate: CompletableDeferred<Unit>? = null
     var acceptGate: CompletableDeferred<Unit>? = null
     var acceptCalls = 0
+    private var original: BillSplitAcceptPayload? = null
     override suspend fun fetchBillSplitInbox(binding: LogicalSessionBinding): Result<List<BillSplitInbox>> {
         val original = inboxResult
         inboxGate?.let { gate -> kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { gate.await() } }
@@ -202,12 +244,22 @@ private class FakeBillSplitActions(
 
     override suspend fun acceptBillSplitInvitation(
         binding: LogicalSessionBinding,
-        publicId: String,
-        targetLedgerId: String,
-    ): Result<BillSplitInbox> {
+        original: BillSplitAcceptPayload,
+    ): Result<Long> {
         acceptCalls += 1
         acceptGate?.await()
-        return Result.success(inboxInvite(publicId = publicId, status = BillSplitStatusValues.ACCEPTED))
+        this.original = original
+        return Result.success(1L)
+    }
+
+    fun deliverAcceptance() {
+        val payload = requireNotNull(original)
+        val binding = requireNotNull(currentAccess()).binding
+        val row = OutboxRow(1L, binding.serverUrl, binding.ledgerId, binding.ownerKey,
+            PendingMutationType.AcceptBillSplitInvitation, "bill-split:${payload.publicId}", "{}", 0L,
+            PendingMutationStatus.Done, 0, null, "2026-10-12T00:00:00Z", null, "2026-10-12T00:01:00Z", payload.publicId)
+        acceptances.value = BillSplitAcceptanceObservation(currentAccess(), listOf(PendingBillSplitAcceptance(row, payload,
+            inboxInvite(publicId = payload.publicId, status = BillSplitStatusValues.ACCEPTED))))
     }
 
     override suspend fun rejectBillSplitInvitation(binding: LogicalSessionBinding, publicId: String): Result<BillSplitInbox> =
@@ -219,7 +271,7 @@ private class FakeBillSplitActions(
 
 private class FakeBillSplitLedgerActions(
     private val cached: List<LedgerSummary> = emptyList(),
-    var refreshResult: Result<List<LedgerSummary>> = Result.success(emptyList()),
+    var refreshResult: Result<List<LedgerSummary>> = Result.success(listOf(ledger("receiver", "接收账本"))),
 ) : BillSplitLedgerActions {
     override fun cachedLedgers(): List<LedgerSummary> = cached
 

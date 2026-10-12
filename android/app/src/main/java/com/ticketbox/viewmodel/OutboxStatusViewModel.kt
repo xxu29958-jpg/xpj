@@ -120,6 +120,7 @@ class OutboxStatusViewModel(
                     state.copy(binding = binding, bindingReady = ready,
                     correctionObservation = currentCorrections, status = status, failedDebtCreations = descriptions,
                     billSplitCreations = status.failed.mapNotNull { row -> expenseRepository.describeBillSplitCreation(row)?.let { row.id to it } }.toMap(),
+                    billSplitAcceptances = status.failed.mapNotNull { row -> expenseRepository.describeBillSplitAcceptance(row)?.let { row.id to it } }.toMap(),
                     debtWrites = writeDescriptions,
                     waitingDebtWrites = writeDescriptions.values.filter {
                         it.row.status in setOf(com.ticketbox.data.local.PendingMutationStatus.Pending,
@@ -195,7 +196,7 @@ class OutboxStatusViewModel(
 
     /** "重试" — flip a FAILED row back to PENDING for the next drain. */
     fun retry(row: OutboxRow) {
-        if (row.type == PendingMutationType.CreateBillSplitInvitation) { recoverSubmission(row, false); return }
+        if (row.type in setOf(PendingMutationType.CreateBillSplitInvitation, PendingMutationType.AcceptBillSplitInvitation)) { recoverSubmission(row, false); return }
         if (!_uiState.value.accepts(row, expenseRepository.captureDeferredLedgerBinding())) return
         if (row.type in setOf(PendingMutationType.UploadScreenshot, PendingMutationType.OriginalAttachment)) {
             _uiState.update { it.copy(message = UiText.res(R.string.sync_status_upload_recovery_body), messageTone = MessageTone.Info) }
@@ -230,7 +231,7 @@ class OutboxStatusViewModel(
 
     /** "放弃" — drop a FAILED row. */
     fun dropFailed(row: OutboxRow) {
-        if (row.type == PendingMutationType.CreateBillSplitInvitation) { recoverSubmission(row, true); return }
+        if (row.type in setOf(PendingMutationType.CreateBillSplitInvitation, PendingMutationType.AcceptBillSplitInvitation)) { recoverSubmission(row, true); return }
         if (!_uiState.value.accepts(row, expenseRepository.captureDeferredLedgerBinding())) return
         if (row.type == PendingMutationType.CreateExpense) { recoverSubmission(row, true); return }
         if (row.type in setOf(PendingMutationType.UploadScreenshot, PendingMutationType.OriginalAttachment)) return
@@ -272,6 +273,7 @@ class OutboxStatusViewModel(
             val result = when (row.type) {
                 PendingMutationType.CreateExpense -> expenseRepository.stopManualCreation(row)
                 PendingMutationType.CreateBillSplitInvitation -> expenseRepository.recoverBillSplitCreation(binding, row.id, drop)
+                PendingMutationType.AcceptBillSplitInvitation -> expenseRepository.recoverBillSplitAcceptance(binding, row.id, drop)
                 PendingMutationType.DismissRepaymentDraft -> recoveries.repaymentReviews.recoverOriginal(binding, row, drop)
                 else -> recoveries.recoverPlanningSubmission(binding, row, drop)
                     ?: expenseRepository.recoverCorrection(binding, row.id, drop)
@@ -384,6 +386,7 @@ data class OutboxStatusUiState(
         com.ticketbox.data.repository.ExpenseCorrectionObservation(null, emptyList()),
     val status: OutboxStatus = OutboxStatus(queueDepth = 0, conflicts = emptyList(), failed = emptyList()),
     val billSplitCreations: Map<Long, com.ticketbox.data.repository.PendingBillSplitCreation> = emptyMap(),
+    val billSplitAcceptances: Map<Long, com.ticketbox.data.repository.PendingBillSplitAcceptance> = emptyMap(),
     val failedDebtCreations: Map<Long, PendingDebtCreation> = emptyMap(),
     val recurringOccurrences: Map<Long, com.ticketbox.data.repository.PendingOccurrencePayment> = emptyMap(),
     val incomeSubmissions: Map<Long, com.ticketbox.data.repository.PendingIncomePlanSubmission> = emptyMap(),
@@ -433,7 +436,7 @@ private fun OutboxRow.refusesKeepMine(): Boolean =
     type == PendingMutationType.CreateExpense || type == PendingMutationType.UndoExpense ||
         lastError == EXPENSE_REJECTION_ORIGINAL_REQUIRES_REVIEW ||
         type in originalSubmissionTypes || type in DEBT_WRITE_TYPES ||
-        type == PendingMutationType.CreateBillSplitInvitation
+        type in setOf(PendingMutationType.CreateBillSplitInvitation, PendingMutationType.AcceptBillSplitInvitation)
 
 private fun OutboxRow.refusesRetry(observation: ExpenseCorrectionObservation): Boolean =
     (type == PendingMutationType.SplitAgreement && lastError in com.ticketbox.data.repository.SPLIT_SHARE_REFUSALS) ||

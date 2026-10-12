@@ -47,7 +47,6 @@ class ExpenseRepository internal constructor(
     ),
     deviceNameProvider: () -> String = ::defaultAndroidDeviceName,
     offlineMutations: ExpenseOfflineMutationWiring,
-    debtQueryReader: DebtQueryReader = DebtQueryReader(binding.apiProvider, expenseDao, sessionCoordinator),
 ) : ServerBindingRepository,
     PendingReviewActions,
     LedgerActions,
@@ -97,7 +96,8 @@ class ExpenseRepository internal constructor(
     private val correctionRepository = ExpenseCorrectionRepository(core, factInputs, offlineMutations.outbox,
         offlineMutations.correctionAdapter, offlineMutations.legacyCorrectionAdapter)
     private val offsetRepository = ExpenseOffsetRepository(core, correctionRepository, factInputs)
-    private val billSplitRepository = ExpenseBillSplitRepository(core, debtQueryReader)
+    private val billSplitRepository = ExpenseBillSplitRepository(core)
+    private val billSplitAcceptance = BillSplitAcceptanceRepository(core)
     private val backgroundTaskRepository = ExpenseBackgroundTaskRepository(core)
 
     override fun hasActiveSession(): Boolean = bindingRepository.hasActiveSession()
@@ -284,9 +284,13 @@ class ExpenseRepository internal constructor(
 
     suspend fun acceptBillSplitInvitation(
         binding: LogicalSessionBinding,
-        publicId: String,
-        targetLedgerId: String,
-    ): Result<BillSplitInbox> = billSplitRepository.acceptBillSplitInvitation(binding, publicId, targetLedgerId)
+        original: BillSplitAcceptPayload,
+    ): Result<Long> = billSplitAcceptance.acceptBillSplitInvitation(binding, original)
+
+    fun observeBillSplitAcceptances(): Flow<BillSplitAcceptanceObservation> = billSplitAcceptance.observeAcceptances()
+    fun describeBillSplitAcceptance(row: OutboxRow): PendingBillSplitAcceptance? = billSplitAcceptance.describeAcceptance(row)
+    suspend fun recoverBillSplitAcceptance(binding: LogicalSessionBinding, id: Long, drop: Boolean): Result<Unit> =
+        billSplitAcceptance.recoverAcceptance(binding, id, drop)
 
     suspend fun rejectBillSplitInvitation(binding: LogicalSessionBinding, publicId: String): Result<BillSplitInbox> =
         billSplitRepository.rejectBillSplitInvitation(binding, publicId)

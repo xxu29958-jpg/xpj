@@ -106,8 +106,13 @@ private class CurrencySplitActions : BillSplitActions {
         payloads.map { requireNotNull(moshi.adapter(BillSplitSentDto::class.java).fromJson(it)).toDomain() },
     )
 
-    override suspend fun acceptBillSplitInvitation(binding: LogicalSessionBinding, publicId: String, targetLedgerId: String): Result<BillSplitInbox> =
+    override suspend fun acceptBillSplitInvitation(binding: LogicalSessionBinding, original: com.ticketbox.data.repository.BillSplitAcceptPayload): Result<Long> =
         error("This read-only consumer must not accept a split")
+
+    override fun observeAcceptances() = kotlinx.coroutines.flow.flowOf(com.ticketbox.data.repository.BillSplitAcceptanceObservation(access.value))
+
+    override suspend fun recoverAcceptance(binding: LogicalSessionBinding, id: Long, drop: Boolean): Result<Unit> =
+        error("This read-only consumer must not recover a split")
 
     override suspend fun rejectBillSplitInvitation(binding: LogicalSessionBinding, publicId: String): Result<BillSplitInbox> =
         error("This read-only consumer must not reject a split")

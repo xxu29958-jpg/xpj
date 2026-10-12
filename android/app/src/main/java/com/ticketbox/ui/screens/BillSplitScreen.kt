@@ -1,15 +1,12 @@
 package com.ticketbox.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -17,10 +14,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
@@ -40,8 +35,6 @@ import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.ExpenseAccountingTime
 import com.ticketbox.domain.model.isInviteLocallyExpired
 import com.ticketbox.domain.model.presentedStatus
-import com.ticketbox.ui.components.AppAdaptiveEditActionLayout
-import com.ticketbox.ui.components.AppAdaptiveEditActionMode
 import com.ticketbox.ui.components.AppAdaptiveContentActionRow
 import com.ticketbox.ui.components.AppAdaptiveContentActionStyle
 import com.ticketbox.ui.components.AppAdaptiveTrailingActionRow
@@ -65,7 +58,6 @@ import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.asString
-import com.ticketbox.viewmodel.BillSplitTargetLedger
 import com.ticketbox.viewmodel.BillSplitViewModel
 
 data class BillSplitNavigation(
@@ -83,8 +75,11 @@ fun BillSplitScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var selectedTab by rememberSaveable { mutableStateOf(0) }
-    val hasReadableData = state.inbox.isNotEmpty() || state.sent.isNotEmpty()
+    val hasReadableData = state.inboxEntryCount > 0 || state.sent.isNotEmpty()
     val bodyStates = billSplitScreenBodyStates(state = state, selectedTab = selectedTab)
+    val acceptance = BillSplitAcceptanceControls(state.selectedTargets, state.acceptances.mapNotNull { it.payload?.publicId }.toSet(),
+        state.candidateTargetLedgers, select = { id, target -> state.access?.binding?.let { viewModel.selectTarget(it, id, target) } },
+        accept = { id, target -> state.access?.binding?.let { viewModel.accept(it, id, target) } })
 
     LaunchedEffect(state.access?.binding) {
         viewModel.refresh()
@@ -109,13 +104,7 @@ fun BillSplitScreen(
         ),
     ) {
         item {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-                AppFilterChip(selected = selectedTab == 0, onClick = { selectedTab = 0 },
-                    label = stringResource(R.string.bill_split_tab_inbox, state.inbox.size))
-                AppFilterChip(selected = selectedTab == 1, onClick = { selectedTab = 1 },
-                    label = stringResource(R.string.bill_split_tab_sent, state.sent.size))
-            }
+            BillSplitTabs(state.inboxEntryCount, state.sent.size, selectedTab) { selectedTab = it }
         }
         state.message?.takeIf { bodyStates.selected != ReadableListBodyState.LoadFailed }?.let {
             item {
@@ -123,14 +112,16 @@ fun BillSplitScreen(
             }
         }
         navigation.error?.let { item { AppStatusBanner(message = it, tone = MessageTone.Danger) } }
+        if (selectedTab == 0) billSplitAcceptanceTasks(state, viewModel, navigation, acceptance)
         item {
             if (selectedTab == 0) {
                 InboxCard(
-                    inbox = state.inbox,
+                    inbox = state.inbox.filterNot { row -> row.status != BillSplitStatusValues.ACCEPTED &&
+                        state.acceptances.any { it.delivered && it.payload?.publicId == row.publicId } },
                     chrome = BillSplitListChrome(bodyStates.inbox, viewModel::refresh, state.access, navigation, !state.loading && !navigation.busy),
-                    onAccept = { id, target -> state.access?.binding?.let { viewModel.accept(it, id, target) } },
+                    acceptance = acceptance,
+                    showEmpty = state.inboxEntryCount == 0,
                     onReject = { id -> state.access?.binding?.let { viewModel.reject(it, id) } },
-                    candidates = state.candidateTargetLedgers,
                 )
             } else {
                 SentCard(
@@ -140,6 +131,18 @@ fun BillSplitScreen(
                 )
             }
         }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun BillSplitTabs(inboxCount: Int, sentCount: Int, selected: Int, select: (Int) -> Unit) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+        AppFilterChip(selected = selected == 0, onClick = { select(0) },
+            label = stringResource(R.string.bill_split_tab_inbox, inboxCount))
+        AppFilterChip(selected = selected == 1, onClick = { select(1) },
+            label = stringResource(R.string.bill_split_tab_sent, sentCount))
     }
 }
 
@@ -155,9 +158,9 @@ private data class BillSplitListChrome(
 private fun InboxCard(
     inbox: List<BillSplitInbox>,
     chrome: BillSplitListChrome,
-    onAccept: (String, String) -> Unit,
+    acceptance: BillSplitAcceptanceControls,
+    showEmpty: Boolean,
     onReject: (String) -> Unit,
-    candidates: List<BillSplitTargetLedger>,
 ) {
     when (chrome.bodyState) {
         ReadableListBodyState.Loading -> BillSplitLoadingState(
@@ -171,7 +174,7 @@ private fun InboxCard(
             onRetry = chrome.onRetry,
         )
         ReadableListBodyState.Empty,
-        ReadableListBodyState.Content -> AppPaperCard {
+        ReadableListBodyState.Content -> if (inbox.isNotEmpty() || showEmpty) AppPaperCard {
             AppListStateContent(
                 modifier = Modifier.padding(AppSpacing.cardPaddingSmall),
                 state = AppListStateSpec(
@@ -186,9 +189,8 @@ private fun InboxCard(
                     }
                     InboxRow(
                         row = row,
-                        onAccept = onAccept,
+                        acceptance = acceptance,
                         onReject = onReject,
-                        candidates = candidates,
                         chrome = chrome,
                     )
                 }
@@ -238,9 +240,8 @@ private fun SentCard(
 @Composable
 private fun InboxRow(
     row: BillSplitInbox,
-    onAccept: (String, String) -> Unit,
+    acceptance: BillSplitAcceptanceControls,
     onReject: (String) -> Unit,
-    candidates: List<BillSplitTargetLedger>,
     chrome: BillSplitListChrome,
 ) {
     // Between expires_at and the server sweep the row is still status=invited;
@@ -271,8 +272,7 @@ private fun InboxRow(
         if (row.status == BillSplitStatusValues.INVITED && !locallyExpired) {
             BillSplitInboxActions(
                 row = row,
-                candidates = candidates,
-                onAccept = onAccept,
+                acceptance = acceptance,
                 onReject = onReject,
                 enabled = chrome.actionsEnabled,
             )
@@ -281,66 +281,13 @@ private fun InboxRow(
 }
 
 @Composable
-private fun BillSplitInboxActions(
-    row: BillSplitInbox,
-    candidates: List<BillSplitTargetLedger>,
-    onAccept: (String, String) -> Unit,
-    onReject: (String) -> Unit,
-    enabled: Boolean,
-) {
-    val hasAcceptAction = candidates.isNotEmpty()
-    val actionCount = if (hasAcceptAction) 2 else 1
-    val acceptAction: @Composable (Modifier) -> Unit = { actionModifier ->
-        // Audit P3 #3: show the ledger NAME (the button used to print the internal ledger_id),
-        // and let a multi-ledger member PICK the target instead of hard-wiring the first writable one.
-        when {
-            candidates.isEmpty() -> Unit
-            candidates.size == 1 -> AppSecondaryButton(
-                text = stringResource(R.string.bill_split_inbox_accept, candidates.single().name),
-                modifier = actionModifier,
-                enabled = enabled,
-                onClick = { onAccept(row.publicId, candidates.single().ledgerId) },
-            )
-            else -> AcceptTargetPicker(
-                modifier = actionModifier,
-                enabled = enabled,
-                publicId = row.publicId,
-                candidates = candidates,
-                onAccept = onAccept,
-            )
-        }
-    }
-    AppAdaptiveEditActionLayout(
-        actionCount = actionCount,
-        compact = false,
-        stackTwoActionsOnNarrow = hasAcceptAction,
-    ) { mode ->
-        when (mode) {
-            AppAdaptiveEditActionMode.Stacked -> Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
-            ) {
-                acceptAction(Modifier.fillMaxWidth())
-                AppSecondaryButton(
-                    text = stringResource(R.string.bill_split_inbox_reject),
-                    enabled = enabled,
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = { onReject(row.publicId) },
-                )
-            }
-            AppAdaptiveEditActionMode.Compact,
-            AppAdaptiveEditActionMode.Inline -> Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap, Alignment.End),
-            ) {
-                acceptAction(Modifier)
-                AppSecondaryButton(
-                    text = stringResource(R.string.bill_split_inbox_reject),
-                    enabled = enabled,
-                    onClick = { onReject(row.publicId) },
-                )
-            }
-        }
+private fun BillSplitInboxActions(row: BillSplitInbox, acceptance: BillSplitAcceptanceControls,
+                                  onReject: (String) -> Unit, enabled: Boolean) {
+    if (row.publicId in acceptance.pendingIds) return
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+        BillSplitAcceptancePicker(row.publicId, acceptance, enabled)
+        AppSecondaryButton(text = stringResource(R.string.bill_split_inbox_reject), enabled = enabled,
+            onClick = { onReject(row.publicId) })
     }
 }
 
@@ -439,36 +386,6 @@ private fun BillSplitTimeline(created: String, accepted: String?, rejected: Stri
         R.string.bill_split_expiry_recorded to expired).forEach { (label, time) ->
         if (time != null) Text(stringResource(R.string.bill_split_event_time, stringResource(label), displayDateTime(time)),
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-}
-
-@Composable
-private fun AcceptTargetPicker(
-    modifier: Modifier = Modifier,
-    enabled: Boolean,
-    publicId: String,
-    candidates: List<BillSplitTargetLedger>,
-    onAccept: (String, String) -> Unit,
-) {
-    var expanded by remember { mutableStateOf(false) }
-    Box(modifier = modifier) {
-        AppSecondaryButton(
-            text = stringResource(R.string.bill_split_accept_picker_title),
-            modifier = Modifier.fillMaxWidth(),
-            enabled = enabled,
-            onClick = { expanded = true },
-        )
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            candidates.forEach { candidate ->
-                DropdownMenuItem(
-                    text = { Text(candidate.name) },
-                    onClick = {
-                        expanded = false
-                        onAccept(publicId, candidate.ledgerId)
-                    },
-                )
-            }
-        }
     }
 }
 

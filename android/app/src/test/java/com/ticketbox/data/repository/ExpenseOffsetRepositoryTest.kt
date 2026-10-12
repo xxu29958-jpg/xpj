@@ -410,6 +410,8 @@ internal class ExpenseOffsetRepositoryTest : ExpensePendingRepositoryOutboxTestB
             offsetVoidAdapter = moshi().adapter(ExpenseOffsetVoidOutboxPayload::class.java),
             correctionAdapter = com.ticketbox.OutboxAdapterGraph().correctionAdapter,
             billSplitReceiptAdapter = com.ticketbox.OutboxAdapterGraph().billSplitReceiptAdapter,
+        billSplitAcceptAdapter = com.ticketbox.OutboxAdapterGraph().billSplitAcceptAdapter,
+        billSplitAcceptedAdapter = com.ticketbox.OutboxAdapterGraph().billSplitAcceptedAdapter,
             billSplitCreateAdapter = com.ticketbox.OutboxAdapterGraph().billSplitCreateAdapter,
             legacyCorrectionAdapter = com.ticketbox.OutboxAdapterGraph().legacyCorrectionAdapter,
             manualCreateAdapter = com.ticketbox.OutboxAdapterGraph().manualCreateAdapter,

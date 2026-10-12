@@ -281,6 +281,11 @@ internal val syncStatusExactErrorMessageResources = mapOf(
 
 @Composable
 internal fun SyncStatusBillSplitSection(state: com.ticketbox.viewmodel.OutboxStatusUiState, actions: SyncStatusActions) {
+    state.billSplitAcceptances.values.forEach { pending ->
+        com.ticketbox.ui.screens.BillSplitAcceptanceCard(pending, state.busyRowId == pending.row.id) { drop ->
+            if (drop) actions.onDropFailed(pending.row) else actions.onRetry(pending.row)
+        }
+    }
     state.billSplitCreations.values.forEach { pending ->
         com.ticketbox.ui.screens.expense.fact.BillSplitSubmissionCard(pending, state.correctionObservation.access?.canModify == true,
             state.busyRowId == pending.row.id, recover = { drop ->

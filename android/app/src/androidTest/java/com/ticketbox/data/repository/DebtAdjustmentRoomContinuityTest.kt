@@ -101,8 +101,9 @@ class DebtAdjustmentRoomContinuityTest {
         assertEquals(listOf(original), fixture.stored())
         assertEquals(originalDebt.debtKind, detail.value?.state?.value?.debt?.debtKind)
         assertTrue(detail.value?.state?.value?.fromCache == true)
-        compose.onNodeWithText(context.getString(R.string.debt_kind_revolving), substring = true)
-            .performScrollTo().assertIsDisplayed()
+        val originalKind = context.getString(R.string.debt_kind_revolving)
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(originalKind, substring = true))
+        compose.onNodeWithText(originalKind, substring = true).assertIsDisplayed()
         settleOriginalKindAfterReopen(original)
     }
 

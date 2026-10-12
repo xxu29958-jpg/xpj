@@ -95,7 +95,8 @@ interface PendingMutationDao {
     @Transaction
     suspend fun insertOriginalCreation(row: PendingMutationEntity): Long {
         require(row.type in setOf(PendingMutationType.CreateIncomePlan.wireValue, PendingMutationType.CreateGoal.wireValue,
-            PendingMutationType.CapturePaymentNotification.wireValue, PendingMutationType.CreateDebt.wireValue) &&
+            PendingMutationType.CapturePaymentNotification.wireValue, PendingMutationType.CreateDebt.wireValue,
+            PendingMutationType.AcceptBillSplitInvitation.wireValue) &&
             !row.idempotencyKey.isNullOrBlank())
         val originals = findByIdempotencyKeys(requireNotNull(row.ownerKey), row.ledgerId, row.type,
             listOf(requireNotNull(row.idempotencyKey)))

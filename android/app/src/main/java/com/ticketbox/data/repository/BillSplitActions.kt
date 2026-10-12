@@ -15,9 +15,11 @@ interface BillSplitActions {
 
     suspend fun acceptBillSplitInvitation(
         binding: LogicalSessionBinding,
-        publicId: String,
-        targetLedgerId: String,
-    ): Result<BillSplitInbox>
+        original: BillSplitAcceptPayload,
+    ): Result<Long>
+
+    fun observeAcceptances(): Flow<BillSplitAcceptanceObservation>
+    suspend fun recoverAcceptance(binding: LogicalSessionBinding, id: Long, drop: Boolean): Result<Unit>
 
     suspend fun rejectBillSplitInvitation(binding: LogicalSessionBinding, publicId: String): Result<BillSplitInbox>
 

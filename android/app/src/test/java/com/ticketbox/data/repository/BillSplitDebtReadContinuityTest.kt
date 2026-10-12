@@ -31,8 +31,8 @@ class BillSplitDebtReadContinuityTest {
             val originalTarget = fixture.binding
             assertTrue(reader().list(originalTarget, DebtListLens.Ledger).getOrThrow().value.debts.isEmpty())
             select("owner")
-            val accepted = fixture.stats.acceptBillSplitInvitation(fixture.binding, "split-jpy", "target")
-            assertEquals(!loseAck, accepted.isSuccess)
+            val accepted = fixture.acceptOriginal(api, "target")
+            assertEquals(if (loseAck) 0 else 1, accepted.done)
             assertEquals(BillSplitAcceptRequestDto("target"), api.request)
             select("target")
             assertTrue(originalTarget.bindingRevision != fixture.binding.bindingRevision)
@@ -57,8 +57,8 @@ class BillSplitDebtReadContinuityTest {
         fun reader() = DebtQueryReader(fixture.provider, fixture.dao, fixture.coordinator)
         val before = reader().list(fixture.binding, DebtListLens.Ledger).getOrThrow()
         assertTrue(before.value.debts.isEmpty())
-        val accepted = fixture.stats.acceptBillSplitInvitation(fixture.binding, "split-jpy", "owner").getOrThrow()
-        assertEquals("accepted", accepted.status)
+        val accepted = fixture.acceptOriginal(api, "owner")
+        assertEquals(1, accepted.done)
         assertEquals(BillSplitAcceptRequestDto("owner"), api.request)
         api.offline = true
         assertTrue(reader().list(fixture.binding, DebtListLens.Ledger).isFailure,
@@ -79,13 +79,26 @@ class BillSplitDebtReadContinuityTest {
         val fixture = GoalReadFixture { api }
         fun reader() = DebtQueryReader(fixture.provider, fixture.dao, fixture.coordinator)
         val original = reader().list(fixture.binding, DebtListLens.Ledger).getOrThrow()
-        val rejected = fixture.stats.acceptBillSplitInvitation(fixture.binding, "split-jpy", "owner")
-        assertEquals(409, (rejected.exceptionOrNull() as RepositoryException).httpStatusCode)
+        val rejected = fixture.acceptOriginal(api, "owner")
+        assertEquals(1, rejected.failures)
         api.offline = true
         assertEquals(original.copy(fromCache = true), reader().list(fixture.binding, DebtListLens.Ledger).getOrThrow())
         assertFalse(api.accepted)
         assertEquals(1, api.acceptCalls)
     }
+}
+
+private suspend fun GoalReadFixture.acceptOriginal(api: InvitationDebtApi, target: String): DrainSummary {
+    val reads = DebtQueryReader(provider, dao, coordinator)
+    outbox.onDebtDispatchPreparing = reads::prepareDebtDispatch
+    outbox.onDebtDispatchFinished = reads::finishDebtDispatch
+    outbox.onDebtAccepted = reads::invalidateDebtAccepted
+    val adapters = com.ticketbox.OutboxAdapterGraph()
+    stats.acceptBillSplitInvitation(binding, BillSplitAcceptPayload(publicId = "split-jpy", amountCents = 1200,
+        homeCurrencyCode = "JPY", senderName = "原拆账发起人", targetLedgerId = target, targetLedgerName = target)).getOrThrow()
+    assertEquals(0, api.acceptCalls, "Admission must save the original before sending")
+    return OutboxDrainEngine(outbox, listOf(AcceptBillSplitDispatcher({ api }, adapters.billSplitAcceptAdapter,
+        adapters.billSplitAcceptedAdapter)), maxAttempts = 1).drainOnce()
 }
 
 private class InvitationDebtApi : ApiService by FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0) {
@@ -106,11 +119,11 @@ private class InvitationDebtApi : ApiService by FakeApiService(mutableListOf(), 
     override suspend fun acceptBillSplitInvitation(publicId: String, request: BillSplitAcceptRequestDto): com.ticketbox.data.remote.dto.BillSplitInboxDto {
         this.request = request
         acceptCalls++
-        if (reject) throw HttpException(Response.error<Any>(409, """{"error":"bill_split_not_pending"}""".toResponseBody()))
+        if (reject) throw HttpException(Response.error<Any>(409, """{"error":"invitation_not_acceptable"}""".toResponseBody()))
         accepted = true
         if (loseAck) throw ConnectException("accepted invitation ACK lost")
         return FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0).acceptBillSplitInvitation(publicId, request)
             .copy(publicId = publicId, status = "accepted", amountCents = 1200, homeCurrencyCode = "JPY",
-                acceptedAt = "2026-09-27T01:00:00Z")
+                acceptedAt = "2026-09-27T01:00:00Z", acceptedTargetLedgerId = request.targetLedgerId)
     }
 }

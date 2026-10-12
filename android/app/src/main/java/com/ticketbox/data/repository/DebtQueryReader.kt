@@ -37,7 +37,7 @@ data class DebtReadResourceDenial(val binding: LogicalSessionBinding, val debtPu
 
 internal val DEBT_QUERY_MUTATION_TYPES = setOf(PendingMutationType.CreateDebt, PendingMutationType.RecordDebtRepayment,
     PendingMutationType.RecordDebtAdjustment, PendingMutationType.VoidDebt, PendingMutationType.VoidDebtRepayment,
-    PendingMutationType.SplitAgreement, PendingMutationType.SetDebtKind,
+    PendingMutationType.SplitAgreement, PendingMutationType.SetDebtKind, PendingMutationType.AcceptBillSplitInvitation,
     PendingMutationType.ConfirmRepaymentDraft, PendingMutationType.DismissRepaymentDraft,
     PendingMutationType.CapturePaymentNotification)
 
