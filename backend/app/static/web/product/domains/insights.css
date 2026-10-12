@@ -327,9 +327,6 @@ body[data-domain="insights"] .content[data-page-level="tertiary"] { max-inline-s
     margin-block-end: var(--space-6);
 }
 
-.report-span-4 {
-    grid-column: span 4;
-}
 
 .report-span-5 {
     grid-column: span 5;
@@ -491,7 +488,6 @@ body[data-domain="insights"] .content[data-page-level="tertiary"] { max-inline-s
 
 @media (max-width: 64rem) {
 
-    .report-span-4,
     .report-span-5,
     .report-span-7,
     .report-span-8 {
@@ -506,7 +502,6 @@ body[data-domain="insights"] .content[data-page-level="tertiary"] { max-inline-s
         grid-template-columns: minmax(0, 1fr);
     }
 
-    .report-span-4,
     .report-span-5,
     .report-span-7,
     .report-span-8,
@@ -519,19 +514,4 @@ body[data-domain="insights"] .content[data-page-level="tertiary"] { max-inline-s
     .report-chart--tall {
         min-height: calc(var(--space-12) * 4);
     }
-}
-
-.ov-status {
-    margin: 0;
-    color: var(--text-muted);
-    font-size: var(--type-caption-size);
-    line-height: var(--type-caption-line);
-}
-
-.ov-status a {
-    display: inline-flex;
-    align-items: center;
-    min-height: var(--target-min);
-    color: var(--brand-primary-strong);
-    text-underline-offset: var(--space-1);
 }

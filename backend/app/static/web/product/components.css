@@ -474,9 +474,7 @@ button[disabled] {
 
 /* W1: 空态是编辑式引导区, 不是虚线工程占位框。 */
 .product-state,
-.empty-cell,
-.dt-card--empty,
-.empty-state {
+.empty-cell {
     display: grid;
     min-height: calc(var(--space-12) * 2);
     align-content: center;
@@ -489,8 +487,6 @@ button[disabled] {
     color: var(--text-muted);
 }
 
-.empty-headline,
-.empty-state-title,
 .product-state-title {
     color: var(--text-default);
     font-size: var(--type-title-size);
@@ -508,32 +504,26 @@ button[disabled] {
     height: auto;
 }
 
-.empty-body,
-.empty-state-hint,
 .product-state-body {
     max-width: 64ch;
     color: var(--text-muted);
 }
 
-.empty-state-cta,
 .product-state-action {
     font-weight: var(--type-subtitle-weight);
     text-underline-offset: var(--space-1);
 }
 
-.empty-state-cta:not(.product-button),
 .product-state-action:not(.product-button) {
     color: var(--brand-primary-strong);
 }
 
-.dt-form-grid,
 .product-form-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: var(--space-5);
 }
 
-.dt-form-row,
 .product-field {
     display: grid;
     /* 同一行里别的字段带说明而变高时, 输入框不跟着被拉高。 */
@@ -544,7 +534,6 @@ button[disabled] {
 fieldset:is(.product-field, .product-form) { min-inline-size: 0; margin: 0; padding: 0; border: 0; }
 .product-field > legend { margin-block-end: var(--space-2); padding: 0; }
 
-.dt-form-row > label,
 .product-field > label,
 .product-field > legend,
 .product-field > span:first-child {
@@ -553,7 +542,6 @@ fieldset:is(.product-field, .product-form) { min-inline-size: 0; margin: 0; padd
     font-weight: var(--type-body-weight);
 }
 
-.dt-input,
 .product-input,
 input:where(:not([type="hidden"]):not([type="checkbox"]):not([type="radio"])),
 select,
@@ -603,7 +591,6 @@ textarea {
 
 textarea:not([rows]) { min-height: calc(var(--space-12) * 2); }
 
-.dt-input:hover,
 .product-input:hover,
 input:where(:not([type="hidden"]):not([type="checkbox"]):not([type="radio"])):hover,
 select:hover,
@@ -611,7 +598,6 @@ textarea:hover {
     border-color: var(--control-border-hover);
 }
 
-.dt-input:focus,
 .product-input:focus,
 input:where(:not([type="hidden"]):not([type="checkbox"]):not([type="radio"])):focus,
 select:focus,
@@ -621,7 +607,6 @@ textarea:focus {
     outline-offset: 0;
 }
 
-.dt-table-wrap,
 .product-table-wrap {
     max-width: 100%;
     overflow-x: auto;
@@ -631,7 +616,6 @@ textarea:focus {
     box-shadow: var(--shadow-card);
 }
 
-.dt-table,
 .product-table {
     width: 100%;
     border-collapse: collapse;
@@ -639,7 +623,6 @@ textarea:focus {
 }
 
 /* W1: 中文表头去全大写追踪 (同 eyebrow 退役理由), 保留发丝分隔。 */
-.dt-table th,
 .product-table th {
     padding: var(--space-3) var(--space-4);
     border-block-end: 1px solid var(--border-card);
@@ -649,41 +632,33 @@ textarea:focus {
     text-align: start;
 }
 
-.dt-table td,
 .product-table td {
     padding: var(--space-4);
     border-block-end: 1px solid var(--border-card);
     vertical-align: middle;
 }
 
-.dt-table tbody tr:last-child td,
 .product-table tbody tr:last-child td {
     border-block-end: 0;
 }
 
-.dt-table tbody tr:hover,
 .product-table tbody tr:hover {
     background: var(--surface-sunken);
 }
 
-.dt-table-wrap .dt-table,
 .product-table-wrap .product-table {
     min-width: calc(var(--space-12) * 8);
 }
 
-.dt-table input,
-.dt-table select,
 .product-table input,
 .product-table select {
     min-width: calc(var(--space-12) * 2);
 }
 
-.dt-table .amount,
 .product-table .amount {
     text-align: end;
 }
 
-.pager-row,
 .product-pagination {
     display: flex;
     align-items: center;
@@ -937,35 +912,14 @@ body.product-shell .file-picker > input.file-picker-input:focus-visible {
     transform: translateX(0);
 }
 
-[data-body-stack="product"] .drawer-head {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: var(--space-4);
-    margin-block-end: var(--space-5);
-}
 
-.inline-form,
-.dt-inline-form {
+.inline-form {
     display: inline-flex;
     flex-wrap: wrap;
     align-items: center;
     gap: var(--space-2);
 }
 
-.form-inline,
-.form--gap {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: end;
-    gap: var(--space-3);
-}
-
-.form-inline label,
-.dt-form-grid label {
-    display: grid;
-    gap: var(--space-2);
-}
 
 .text-muted {
     color: var(--text-muted);
@@ -975,8 +929,7 @@ body.product-shell .file-picker > input.file-picker-input:focus-visible {
     color: var(--text-meta);
 }
 
-.text-danger,
-.text-over {
+.text-danger {
     color: var(--state-danger-fg);
 }
 
@@ -1084,7 +1037,6 @@ details.product-surface { display: block; }
 .product-surface-rows dt { color: var(--text-meta); font-size: var(--type-body-size); }
 .product-surface-rows dd { margin: 0; color: var(--text-default); font-family: var(--font-numeric); font-size: var(--type-subtitle-size); font-variant-numeric: tabular-nums; font-weight: var(--type-title-weight); overflow-wrap: anywhere; }
 .product-surface--apricot { background: var(--surface-apricot); }
-.product-surface--lilac { background: var(--surface-lilac); }
 .product-surface > .product-status { justify-self: start; }
 .product-surface > :is(p, h2, h3) { margin: 0; }
 .product-surface > .product-button { justify-self: start; }
@@ -1187,9 +1139,6 @@ html:has(.product-workspace > .product-task-actions) { scroll-padding-block-end:
 .product-history-item > :is(.product-status, .product-button, details) { margin-block-start: var(--space-2); }
 .product-entry-amount.is-voided { color: var(--text-meta); text-decoration: line-through; }
 
-.text-warning {
-    color: var(--state-warn-fg);
-}
 
 /* Selection mode is enhanced by the existing bulk-bar owner. Native
    checkboxes and forms remain available when scripts are unavailable. */
@@ -1491,7 +1440,6 @@ details[open]:has(> summary.product-entry) { padding-block-end: var(--space-5); 
         flex-direction: column;
     }
 
-    .dt-form-grid,
     .product-form-grid {
         grid-template-columns: minmax(0, 1fr);
     }
@@ -1503,9 +1451,7 @@ details[open]:has(> summary.product-entry) { padding-block-end: var(--space-5); 
 
 
     .product-state,
-    .empty-cell,
-    .dt-card--empty,
-    .empty-state {
+    .empty-cell {
         padding: var(--space-6);
     }
 }

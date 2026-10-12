@@ -288,7 +288,6 @@ def test_bill_split_body_uses_product_hook_and_drawer_scope_stays_isolated(
     assert not re.search(r"^\.scrim\s*\{", css.text, re.M)
     assert '[data-body-stack="product"] .drawer {' in css.text
     assert '[data-body-stack="product"] .scrim {' in css.text
-    assert '[data-body-stack="product"] .drawer-head {' in css.text
 
 
 def test_overview_new_body_omits_desktop_hook(web_client: TestClient) -> None:
