@@ -87,7 +87,7 @@
           {% include "_expense_core_fields.html" %}
         </details>
 
-        <div class="product-page-actions detail-form-actions product-drawer-actions">
+        <div class="product-task-actions">
           {% if expense_review_inspection %}
           <a class="product-button product-button--primary" href="{{ edit_return_href }}">返回原核对任务</a>
           {% else %}
@@ -101,7 +101,6 @@
                   type="submit"
                   formaction="/web/duplicates/{{ e.id }}/keep">标为非重复</button>
           {% endif %}
-          <div class="spacer"></div>
           <button class="product-button" type="submit"{% if expense_review_basis_changed %} disabled{% endif %}>保存草稿</button>
           {% endif %}
           {% if expense_review_scope or (e.status == 'pending' and not e.fx_pending and not fx_revision_changed) %}

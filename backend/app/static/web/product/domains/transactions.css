@@ -23,20 +23,6 @@
 .ledger-read-day-totals dd { margin: 0; }
 
 
-/* 票面头条: 当期合计的唯一大数字 (summary 不再重复金额文本, 金额只出现一次) */
-.confirmed-hero-amount {
-    margin: 0;
-    max-inline-size: 100%;
-    color: var(--text-default);
-    font-family: var(--font-numeric);
-    font-size: var(--type-display-size);
-    font-variant-numeric: tabular-nums;
-    font-weight: var(--type-display-weight);
-    letter-spacing: -.02em;
-    line-height: var(--type-display-line);
-    overflow-wrap: anywhere;
-}
-
 .ledger-view-actions {
     display: flex;
     align-items: start;
@@ -216,10 +202,9 @@
     margin-block-start: var(--space-6);
 }
 
-/* 06 月度合计: 一张安静的白卡承载本页唯一的大金额; 视图动作是卡内次级动作。 */
-.ledger-summary { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: var(--space-3) var(--space-5); margin-block: var(--space-5) var(--space-7); padding: var(--space-6) var(--space-7); border-radius: var(--radius-xl); background: var(--surface-card); }
-.ledger-summary .confirmed-hero-amount { margin-top: var(--space-2); }
-.ledger-summary .ledger-view-actions { margin: 0 calc(var(--space-5) * -1) calc(var(--space-3) * -1); }
+/* 06 月度合计: 共享金额承载面 (白面); 这里只留它在本页的位置与卡内的视图动作。 */
+.ledger-summary { margin-block: var(--space-5) var(--space-7); }
+.ledger-summary > .ledger-view-actions { margin: var(--space-2) calc(var(--space-5) * -1) calc(var(--space-3) * -1); }
 .ledger-stream.product-panel { box-shadow: none; border-radius: var(--radius-xl); padding: var(--space-5) var(--space-7); }
 .ledger-stream-heading { display: none; }
 .ledger-stream-footer { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: var(--space-3); padding-top: var(--space-5); color: var(--text-meta); font-size: var(--type-caption-size); }

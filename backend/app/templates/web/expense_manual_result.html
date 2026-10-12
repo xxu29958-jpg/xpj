@@ -11,10 +11,10 @@
     <h1>这笔记录，已保存</h1>
     <p>{{ receipt.merchant or '未填写商家' }} · {{ selected_ledger_name }}</p>
   </div>
-  <div class="expense-confirmation-amount">
+  <div class="product-surface">
     <p>{{ '创建时已入账' if receipt.status == 'confirmed' else '创建时待核对，尚未入账' }}</p>
     {% if receipt_amount is not none %}
-    <strong class="money-value">{{ receipt_amount }}</strong>
+    <strong class="product-amount money-value">{{ receipt_amount }}</strong>
     <p>{{ receipt.home_currency }}</p>
     {% else %}<p>本位币金额待核对</p>{% endif %}
     {% if receipt.original_currency_code != receipt.home_currency %}<p>原币 {{ receipt_original if receipt_original is not none else '金额待核对' }} · {{ receipt.original_currency_code }}</p>{% endif %}

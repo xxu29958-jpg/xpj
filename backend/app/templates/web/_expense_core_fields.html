@@ -76,10 +76,10 @@
   {% endif %}
 
   {% if core_fields_compact|default(false) %}
-  <details class="review-amount-field" open>
+  <details class="product-surface review-amount-field" open>
     <summary>
       <span>金额 · {{ e.original_currency_code }}{% if e.needs_amount %} · 待补{% endif %}</span>
-      <span class="review-amount-value" data-review-display hidden><span aria-hidden="true">{{ e.amount_symbol }}</span><span data-review-amount data-review-value="amount_yuan" data-empty="待补金额"></span>{% if can_write and not e.is_split_received %}<svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#pencil"/></svg>{% endif %}</span>
+      <span class="product-amount review-amount-value" data-review-display hidden><span aria-hidden="true">{{ e.amount_symbol }}</span><span data-review-amount data-review-value="amount_yuan" data-empty="待补金额"></span>{% if can_write and not e.is_split_received %}<svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#pencil"/></svg>{% endif %}</span>
     </summary>
   {% endif %}
   <div class="product-drawer-field-row">

@@ -392,7 +392,6 @@ body:has(:is(.inbox-capture-panel, .inbox-empty-capture)[open]) .content { max-w
 
 .product-drawer-section-header,
 .product-drawer-header,
-.product-drawer-actions,
 .product-drawer-evidence-actions,
 .product-drawer-header-actions {
     display: flex;
@@ -525,17 +524,6 @@ body:has(:is(.inbox-capture-panel, .inbox-empty-capture)[open]) .content { max-w
     gap: var(--space-5);
 }
 
-.product-drawer-actions {
-    position: sticky;
-    inset-block-end: 0;
-    z-index: var(--z-sticky);
-    flex-wrap: wrap;
-    align-items: center;
-    margin: var(--space-2) calc(var(--space-6) * -1) calc(var(--space-6) * -1);
-    padding: var(--space-4) var(--space-6);
-    border-block-start: 1px solid var(--border-card);
-    background: var(--surface-raised);
-}
 
 @media (max-width: 48rem) {
     .product-drawer-facts {
@@ -579,13 +567,6 @@ body:has(:is(.inbox-capture-panel, .inbox-empty-capture)[open]) .content { max-w
 .review-mobile-state { display: flex; justify-content: space-between; align-items: center; margin-block: var(--space-1) var(--space-3); color: var(--text-meta); font-size: var(--type-body-size); }
 .review-original-details > summary { display: flex; align-items: center; justify-content: space-between; min-height: var(--target-min); cursor: pointer; color: var(--text-meta); font-size: var(--type-caption-size); }
 .review-original-details[open] { display: grid; gap: var(--space-4); }
-.product-drawer-form .product-drawer-actions { margin: var(--space-5) 0 0; padding: var(--space-4-5) 0 max(var(--space-4-5), env(safe-area-inset-bottom)); background: var(--surface-app); gap: var(--space-3); }
-.product-drawer-form .product-drawer-actions > .product-button--primary { order: -1; flex-basis: 100%; border-radius: var(--radius-lg); }
-.product-drawer-form .product-drawer-actions > .spacer { display: none; }
-.product-drawer-form .product-drawer-actions > button { flex-grow: 1; }
-/* 核对动作的统一层级 (抽屉与完整页共用): 确认入账是唯一主提交, 保存草稿、忽略等退成文字动作。 */
-.product-drawer-form .product-drawer-actions > button:not(.product-button--primary) { min-height: var(--target-min); background: transparent; color: var(--brand-primary); }
-.product-drawer-form .product-drawer-actions > button.product-button--danger { color: var(--state-danger-fg); }
 .review-more-actions { position: relative; }
 .review-more-actions summary { display: grid; place-items: center; width: var(--target-min); min-height: var(--target-min); padding: var(--space-3); list-style: none; cursor: pointer; color: var(--text-meta); }
 .review-more-actions summary::-webkit-details-marker { display: none; }
@@ -642,8 +623,7 @@ body:has(:is(.inbox-capture-panel, .inbox-empty-capture)[open]) .content { max-w
 }
 .review-full-heading .page-title { font-size: var(--type-hero-size); }
 body[data-page="expense-detail"][data-domain="inbox"] .product-panel { background: transparent; box-shadow: none; border: 0; padding: 0; }
-/* 03 核对: 页头一行读完「在核对什么 / 现在什么状态」; 主提交在任何宽度都吸在视口底部。 */
-body[data-page="expense-detail"][data-domain="inbox"] .detail-form-actions { width: 100%; }
+/* 03 核对: 页头一行读完「在核对什么 / 现在什么状态」。 */
 body[data-page="expense-detail"][data-domain="inbox"] .review-full-heading { grid-template-columns: minmax(0, 1fr) auto; align-items: start; margin-block-end: var(--space-5); }
 body[data-page="expense-detail"][data-domain="inbox"] .review-full-heading > .product-page-actions { padding-block-start: var(--space-3); }
 /* 「核对当前记录」按钮未出现时, 它的空容器不占一档间距。 */
@@ -660,8 +640,6 @@ body[data-page="expense-detail"][data-domain="inbox"] .receipt-preview { positio
     body[data-page="expense-detail"][data-domain="inbox"] .receipt-image-shell { display: block; place-items: normal; height: calc(var(--space-12) * 2.5); overflow: hidden; border-radius: var(--radius-xl); background: var(--surface-sunken); }
     body[data-page="expense-detail"][data-domain="inbox"] .receipt-image-shell > a { display: block; height: 100%; min-height: 0; }
     body[data-page="expense-detail"][data-domain="inbox"] .receipt-image-shell .receipt-img { height: 100%; max-height: none; border-radius: 0; object-fit: cover; object-position: 50% 60%; }
-    /* 窄屏: 吸底动作条出血到屏幕两侧, 与正文边距对齐。 */
-    body[data-page="expense-detail"][data-domain="inbox"] .edit-form > .detail-form-actions { width: auto; margin-inline: calc(var(--space-7) * -1); padding: var(--space-4) var(--space-7) max(var(--space-3), env(safe-area-inset-bottom)); row-gap: 0; }
     body[data-page="expense-detail"][data-domain="inbox"] .content { padding: var(--space-6) var(--space-7) var(--space-9); }
     body[data-page="expense-detail"][data-domain="inbox"] .detail-main { width: 100%; }
 }
@@ -686,9 +664,9 @@ body[data-page="expense-detail"][data-domain="inbox"] .receipt-preview { positio
 .expense-review-pending .edit-form { display: flex; flex-direction: column; gap: var(--space-5); min-height: calc(100dvh - var(--space-12) * 3); }
 .expense-review-recovery h1 { margin: 0; font-size: var(--type-hero-size); line-height: var(--type-hero-line); }
 .expense-review-recovery p { color: var(--text-muted); overflow-wrap: anywhere; }
-.expense-review-pending .edit-form > .product-page-actions:empty { display: none; }
-.expense-review-pending .edit-form > .detail-form-actions { margin-top: auto; }
-.expense-review-pending .detail-form-actions > button:disabled:not([data-expensereview-submit]) { display: none; }
+.expense-review-pending .edit-form > .product-task-actions:empty { display: none; }
+.expense-review-pending .edit-form > .product-task-actions { margin-top: auto; }
+.expense-review-pending .edit-form > .product-task-actions > button:disabled:not([data-expensereview-submit]) { display: none; }
 .expense-review-pending .expense-review-local { order: 1; }
 .expense-review-local { color: var(--text-muted); }
 .expense-review-local summary { min-height: var(--target-min); cursor: pointer; }
@@ -696,11 +674,11 @@ body[data-page="expense-detail"][data-domain="inbox"] .receipt-preview { positio
 .product-drawer-fields > .expense-review-refresh { order: 2; }
 .product-drawer-fields > [data-expensereview-review-note],
 .product-drawer-fields > .expense-review-local { order: 3; }
-.product-drawer-fields > .product-drawer-actions { order: 4; }
+.product-drawer-fields > .product-task-actions { order: 4; }
 .product-drawer-fields.expense-review-needs-review > .expense-review-refresh { order: -2; }
 .product-drawer-fields.expense-review-needs-review > [data-expensereview-review-note] { order: -1; }
-.product-drawer-fields.expense-review-needs-review > .product-drawer-actions { position: static; }
-.product-drawer-fields.expense-review-needs-review > .product-drawer-actions > button[type="submit"] { display: none; }
+.product-drawer-fields.expense-review-needs-review > .product-task-actions { position: static; }
+.product-drawer-fields.expense-review-needs-review > .product-task-actions > button[type="submit"] { display: none; }
 .product-drawer-fields > [data-expensereview-draft-status]:not(.product-feedback--warning) { background: transparent; padding: 0; font-size: var(--type-caption-size); }
 .product-drawer-editor.expense-review-pending { grid-template-columns: minmax(0, 1fr); width: min(100%, 44rem); margin-inline: auto; }
 .product-drawer-editor.expense-review-pending .review-mobile-heading,
@@ -709,12 +687,12 @@ body[data-page="expense-detail"][data-domain="inbox"] .receipt-preview { positio
 .product-drawer-editor.expense-review-pending .review-original-details,
 .product-drawer-editor.expense-review-pending [data-review-full],
 .product-drawer-editor.expense-review-pending .review-more-actions,
-.product-drawer-editor.expense-review-pending .product-drawer-actions > button:disabled:not([data-expensereview-submit]) { display: none; }
+.product-drawer-editor.expense-review-pending .product-task-actions > button:disabled:not([data-expensereview-submit]) { display: none; }
 .product-drawer-editor.expense-review-pending .review-task-header { display: flex; }
 .product-drawer-editor.expense-review-pending .review-position { display: inline; }
 .product-drawer-editor.expense-review-pending .product-drawer-fields { display: flex; flex-direction: column; min-height: calc(100dvh - var(--space-12) * 3); }
 .product-drawer-editor.expense-review-pending .product-drawer-fields > * { order: 0; }
-.product-drawer-editor.expense-review-pending .product-drawer-actions { position: static; margin-top: auto; }
+.product-drawer-editor.expense-review-pending .product-task-actions { position: static; margin-top: auto; }
 .product-drawer-editor.expense-review-pending .expense-review-local { order: 1; }
 .inbox-read-error-header a {
     display: inline-flex;

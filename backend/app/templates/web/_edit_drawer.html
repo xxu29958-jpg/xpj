@@ -112,7 +112,7 @@
       </details>
 
       {% if can_write %}
-      <div class="product-drawer-actions">
+      <div class="product-task-actions">
         <details class="review-more-actions"><summary aria-label="更多操作"><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#ellipsis"/></svg></summary><div>
         <a class="product-button product-button--quiet" data-review-full href="{{ edit_current_href }}">完整整理</a>
         <button class="product-button product-button--quiet" type="button" data-drawer-close>返回收件箱</button>
@@ -126,7 +126,6 @@
                 formaction="/web/duplicates/{{ e.id }}/keep">标为非重复</button>
         {% endif %}
         </div></details>
-        <div class="spacer"></div>
         <button class="product-button product-button--quiet" type="submit"{% if expense_review_basis_changed %} disabled{% endif %}>保存草稿</button>
         {% if expense_review_scope or (e.status == 'pending' and not e.fx_pending and not fx_revision_changed) %}
         <button class="product-button product-button--primary"
@@ -136,8 +135,7 @@
         <button class="product-button product-button--quiet" type="button" data-drawer-close data-expensereview-later hidden>稍后继续</button>
       </div>
       {% else %}
-      <div class="product-drawer-actions">
-        <div class="spacer"></div>
+      <div class="product-task-actions">
         <button class="product-button product-button--primary" type="submit" formaction="/web/expenses/{{ e.id }}/confirm" data-expensereview-submit disabled>核实这次结果</button>
         <button class="product-button" type="button" data-drawer-close data-expensereview-later>关闭</button>
       </div>

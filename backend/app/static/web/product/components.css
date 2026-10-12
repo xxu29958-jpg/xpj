@@ -86,7 +86,6 @@ p {
     margin-block-end: var(--space-5);
 }
 
-.spacer,
 .grow {
     flex: 1;
 }
@@ -1009,6 +1008,73 @@ fieldset.product-field { border: 0; padding: 0; margin: 0; }
 .product-panel--highlight { background: var(--brand-primary-bg); }
 .product-panel--apricot { background: var(--surface-apricot); }
 
+/* ── v0.6 共享原语 ───────────────────────────────────────────────────────────
+   各域页面只组合这些原语; 域样式文件只保留该页真正独有的布局。 */
+
+/* 金额承载面: 每屏至多一处强调。读数随承载面宽度收放 (cqi), 长金额换行而不截断或缩写;
+   币种符号与数字同档。色面只换底色, 不改内容顺序。 */
+.product-surface {
+    display: grid;
+    gap: var(--space-2);
+    min-width: 0;
+    padding: var(--space-6) var(--space-7);
+    border-radius: var(--radius-xl);
+    background: var(--brand-primary-bg);
+    container-type: inline-size;
+}
+details.product-surface { display: block; }
+.product-surface--plain { background: var(--surface-card); }
+.product-surface--apricot { background: var(--surface-apricot); }
+.product-surface--lilac { background: var(--surface-lilac); }
+.product-amount-label,
+.product-amount-meta {
+    margin: 0;
+    color: var(--text-meta);
+    font-size: var(--type-body-size);
+    line-height: var(--type-body-line);
+    overflow-wrap: anywhere;
+}
+.product-amount {
+    min-width: 0;
+    margin: 0;
+    color: var(--text-default);
+    font-family: var(--font-numeric);
+    font-size: clamp(var(--type-headline-size), 13cqi, var(--type-display-size));
+    font-variant-numeric: tabular-nums;
+    font-weight: var(--type-title-weight);
+    letter-spacing: -.02em;
+    line-height: var(--type-display-line);
+    overflow-wrap: anywhere;
+}
+
+/* 吸底动作条: 主提交留在表单内, 吸在所在滚动容器的底部; 其余动作是文字动作,
+   常青色只留给这一个主提交。危险动作只换文字颜色, 不抢层级。 */
+.product-task-actions {
+    position: sticky;
+    inset-block-end: 0;
+    z-index: var(--z-sticky);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0 var(--space-3);
+    margin-block-start: var(--space-5);
+    padding-block: var(--space-4) max(var(--space-3), env(safe-area-inset-bottom));
+    border-block-start: 1px solid var(--border-card);
+    background: var(--surface-app);
+}
+.product-task-actions > .product-button--primary { order: -1; flex: 1 0 100%; }
+.product-task-actions > :is(button, a):not(.product-button--primary) {
+    flex: 1 1 auto;
+    min-height: var(--target-min);
+    background: transparent;
+    color: var(--brand-primary);
+}
+.product-task-actions > button.product-button--danger { color: var(--state-danger-fg); }
+@media (max-width: 64rem) {
+    /* 窄屏: 动作条出血到屏幕两侧, 内容仍与正文边距对齐。 */
+    .product-task-actions { margin-inline: calc(var(--space-7) * -1); padding-inline: var(--space-7); }
+}
+
 .text-warning {
     color: var(--state-warn-fg);
 }
@@ -1167,11 +1233,9 @@ details[open] > .product-entry > svg { transform: rotate(90deg); }
 .review-subtask > summary > span { color: var(--text-meta); font-size: var(--type-body-size); overflow-wrap: anywhere; }
 .review-subtask > section { padding-block: var(--space-5); }
 .review-subtask .product-panel-header { display: none; }
-.review-amount-field { padding: var(--space-6); margin-bottom: var(--space-4); border-radius: var(--radius-xl); background: var(--brand-primary-bg); }
+.review-amount-field { margin-bottom: var(--space-4); }
 .review-amount-field > summary { display: grid; gap: var(--space-3); min-height: var(--target-min); cursor: pointer; list-style: none; color: var(--text-meta); font-size: var(--type-body-size); }
 .review-amount-value:not([hidden]) { display: flex; flex-wrap: wrap; align-items: baseline; min-width: 0; color: var(--text-default); }
-/* 币种符号与数字同档: 完整金额一眼读完, 不把符号缩成角标。 */
-.review-amount-value > span { min-width: 0; max-width: 100%; overflow-wrap: anywhere; font-family: var(--font-numeric); font-size: var(--type-display-size); font-weight: var(--type-title-weight); line-height: var(--type-display-line); }
 .review-amount-value > svg { flex: none; align-self: center; width: var(--space-5); height: var(--space-5); margin-inline-start: var(--space-3); color: var(--text-meta); }
 .review-amount-field .product-drawer-field-row { grid-template-columns: minmax(0, 1fr); margin-top: var(--space-3); }
 .review-amount-field .product-drawer-field-row > label:last-child { display: none; }
@@ -1201,7 +1265,6 @@ details[open] > .product-entry > svg { transform: rotate(90deg); }
 @media (max-width: 48rem) {
     .product-drawer-field-row,
     .expense-manual-fx-equation { grid-template-columns: minmax(0, 1fr); }
-    .review-amount-field { padding: var(--space-5) var(--space-6); margin-bottom: var(--space-3); }
 }
 
 .error-text {
@@ -1328,8 +1391,6 @@ details[open] > .product-entry > svg { transform: rotate(90deg); }
 .expense-confirmation-mark { display: grid; place-items: center; width: calc(var(--space-10) * 2); aspect-ratio: 1; border-radius: 50%; background: var(--brand-primary-bg); color: var(--brand-primary); }
 .expense-confirmation h1 { margin: 0; font-size: var(--type-hero-size); line-height: var(--type-hero-line); }
 .expense-confirmation p { margin: 0; color: var(--text-muted); }
-.expense-confirmation-amount { display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-6); border-radius: var(--radius-xl); background: var(--brand-primary-bg); }
-.expense-confirmation-amount strong { font-size: var(--type-display-size); line-height: var(--type-display-line); overflow-wrap: anywhere; }
 .expense-confirmation-actions { display: grid; gap: var(--space-3); margin-top: auto; padding-block: var(--space-5); }
 
 /* K3: coarse 触达地板 (width 管密度, pointer 管目标尺寸)。 */
