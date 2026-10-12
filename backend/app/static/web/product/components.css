@@ -94,8 +94,10 @@ p {
     background: var(--state-warn-bg);
     color: var(--state-warn-fg);
 }
-/* 一句可点开的文字: 行内的低频动作, 或需要再确认一次的动作。 */
-.product-disclosure > summary { display: inline-flex; align-items: center; min-height: var(--target-min); color: var(--brand-primary-strong); font-weight: var(--type-subtitle-weight); cursor: pointer; }
+/* 一句可点开的文字: 行内的低频动作, 或需要再确认一次的动作。
+   没有任何类名的 details/summary 也按这一种呈现, 不再露出浏览器默认三角。 */
+.product-disclosure > summary,
+main details:not([class]) > summary:not([class]) { display: inline-flex; align-items: center; min-height: var(--target-min); color: var(--brand-primary-strong); font-weight: var(--type-subtitle-weight); cursor: pointer; }
 .product-disclosure--danger > summary { color: var(--state-danger-fg); }
 .product-disclosure[open] > summary { margin-block-end: var(--space-2); }
 
