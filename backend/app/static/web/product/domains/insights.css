@@ -19,11 +19,15 @@
 [data-overview-card="recurring"] .insight-module-icon { background: var(--surface-apricot); }
 [data-overview-card="recent_uploads"] .insight-module-icon { background: var(--surface-lilac); }
 [data-overview-card="backup_status"] .insight-module-icon { background: var(--surface-sand); }
-.insight-grid > .product-panel { border: 0; border-radius: 0; background: transparent; box-shadow: none; padding-inline: 0; }
+/* 窄屏: 模块不是卡片, 只靠留白分组; 宽屏才各自成卡 (见下方媒体查询)。 */
+.insight-grid > .product-panel { border: 0; border-radius: 0; background: transparent; box-shadow: none; padding: 0; }
 .insight-grid > .insight-hero { padding: var(--space-6); border-radius: var(--radius-xl); background: var(--brand-primary-bg); }
 .insight-grid > [data-overview-card="budget"] .insight-stat-value { font-size: clamp(var(--type-headline-size), 14cqi, var(--type-display-size)); }
 .insight-grid .product-status { justify-self: start; }
-.insight-grid > .insight-brief > .insight-module-icon { grid-column: 1 / -1; }
+/* 小模块是一行: 图标、它是什么、去哪里; 补充说明另起一行。 */
+.insight-grid > .insight-brief > .insight-module-icon { grid-row: span 2; align-self: start; }
+.insight-grid > .insight-brief > :not(.insight-module-icon, a) { grid-column: 2; }
+.insight-grid > .insight-brief > a { grid-column: 3; grid-row: 1; }
 .insight-page-actions { display: none; }
 .insight-grid > [data-overview-card="pending"] { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
 .insight-pending-icon { flex: 0 0 auto; }
@@ -54,9 +58,9 @@
 
 .insight-brief {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: auto minmax(0, 1fr) auto;
     align-content: start;
-    align-items: baseline;
+    align-items: center;
     gap: var(--space-2) var(--space-4);
     padding: var(--space-6);
 }
@@ -73,7 +77,6 @@
 }
 
 .insight-brief-detail {
-    grid-column: 1 / -1;
     margin: 0;
 }
 
@@ -112,10 +115,13 @@
 
 .insight-module {
     display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
     container-type: inline-size;
     align-content: start;
-    gap: var(--space-5);
+    align-items: center;
+    gap: var(--space-5) var(--space-4);
 }
+.insight-module > :not(.insight-module-icon, .insight-module-icon + .product-panel-header) { grid-column: 1 / -1; }
 .insight-module > .product-panel-header { margin-block-end: 0; }
 
 
@@ -200,13 +206,14 @@
 
 @media (min-width: 64rem) {
     .insight-page-actions { display: flex; }
-    .insight-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
-    .insight-grid > * { grid-column: span 2; min-width: 0; }
+    /* 模块顺序由用户决定: 用可换行的一行行排布, 每行都铺满, 不留空格子。 */
+    .insight-grid { display: flex; flex-wrap: wrap; }
+    .insight-grid > * { flex: 1 1 16rem; min-width: 0; }
     .insight-grid > .product-panel { padding: var(--space-6); border-radius: var(--radius-xl); background: var(--surface-card); }
     .insight-grid > [data-overview-card="monthly_spend"],
     .insight-grid > [data-overview-card="pending"],
     .insight-grid > [data-overview-card="budget"],
-    .insight-grid > [data-overview-card="reports"] { grid-column: span 3; }
+    .insight-grid > [data-overview-card="reports"] { flex: 2 1 26rem; }
     .insight-grid > .insight-hero { min-height: calc(var(--space-12) * 4); background: var(--brand-primary-bg); }
     .insight-hero-art { display: block; width: calc(var(--space-12) * 2); }
     .insight-grid > [data-overview-card="pending"] { flex-direction: column; align-items: stretch; gap: var(--space-5); }

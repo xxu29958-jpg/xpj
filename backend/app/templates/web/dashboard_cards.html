@@ -1,9 +1,12 @@
 {% extends "base.html" %}
 {% set product_body_domain = 'insights' %}
 {% set page_surface = 'tertiary' %}
+{% set page_title = '模块设置' %}
+{% set task_return_href = '/web/overview?ledger_id=' ~ (selected_ledger_id|urlencode) %}
+{% set task_return_label = '返回总览' %}
+{% set page_readonly_notice = true %}
 {% block title %}首页模块 — 小票夹{% endblock %}
 {% block page_header %}
-<a class="product-button product-button--quiet" href="/web/overview{{ q }}"><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-left"/></svg>返回总览</a>
 <header class="product-page-header">
   <div class="product-page-heading">
     <h1 class="page-title">首页按你的习惯来</h1>
@@ -67,7 +70,7 @@
     </div>
 
     {% if can_write %}
-    <div class="product-form-actions">
+    <div class="product-task-actions">
       <button type="submit" class="product-button product-button--primary">保存首页布局</button>
     </div>
     {% else %}

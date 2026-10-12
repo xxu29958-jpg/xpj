@@ -318,10 +318,16 @@ button[disabled] {
 }
 
 .money-context > summary {
+    display: flex;
+    align-items: center;
     min-height: var(--target-min);
     padding-block: var(--space-3);
     cursor: pointer;
+    list-style: none;
 }
+.money-context > summary::-webkit-details-marker { display: none; }
+.money-context > summary::after { content: "›"; margin-inline-start: auto; color: var(--text-meta); }
+.money-context[open] > summary::after { rotate: 90deg; }
 
 .money-context-body {
     padding-block-end: var(--space-4);
