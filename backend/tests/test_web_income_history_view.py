@@ -7,6 +7,8 @@ from types import SimpleNamespace
 import pytest
 from jinja2 import ChoiceLoader, DictLoader, Environment, FileSystemLoader, select_autoescape
 
+from app.routes.web_common import _grouped_amount
+
 
 @pytest.mark.parametrize(("can_write", "archived"), [(True, False), (False, False), (False, True)])
 def test_income_rows_offer_readable_history_without_requiring_edit_permission(can_write, archived):
@@ -14,6 +16,7 @@ def test_income_rows_offer_readable_history_without_requiring_edit_permission(ca
     environment = Environment(loader=ChoiceLoader([
         DictLoader({"base.html": "{% block content %}{% endblock %}"}), FileSystemLoader(templates),
     ]), autoescape=select_autoescape(["html"]))
+    environment.filters["grouped"] = _grouped_amount
     plan = {"public_id": "income-original", "label": "工资预测", "source_type": "salary", "frequency": "monthly",
         "home_currency_code": "JPY", "amount_cents": 1200, "pay_day": 31, "row_version": 7}
     body = environment.get_template("income_plans.html").render(
@@ -24,7 +27,7 @@ def test_income_rows_offer_readable_history_without_requiring_edit_permission(ca
             "income_month_year": "2026", "income_month_number": "9"},
         income_form_currency={"currency_code": "JPY"}, income_month_years=[2026],
     )
-    assert "工资预测" in body and "JPY 1200" in body
+    assert "工资预测" in body and "JPY 1,200" in body
     assert '/web/income-plans/income-original/history?ledger_id=household' in body, \
         "A saved income plan has no reachable revision history for this reader"
     if not can_write:
@@ -38,6 +41,7 @@ def test_history_renders_original_definition_and_unknown_months_without_mutation
     environment = Environment(loader=ChoiceLoader([
         DictLoader({"base.html": "{% block content %}{% endblock %}"}), FileSystemLoader(templates),
     ]), autoescape=select_autoescape(["html"]))
+    environment.filters["grouped"] = _grouped_amount
     environment.filters["to_iso"] = str
     snapshot = {"label": "<原工资预测>", "source_type": "salary", "frequency": "one_time",
         "income_month": "2026-11", "amount_cents": 1200, "home_currency_code": currency, "pay_day": 31, "status": "archived"}

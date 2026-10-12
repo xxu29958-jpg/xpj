@@ -18,44 +18,39 @@
 {% block content %}
 <header class="product-page-header">
   <div class="product-page-heading">
-    <span class="product-eyebrow">计划 / 消费目标</span>
     <h1 class="page-title">{{ '新建消费目标' if goal_creating else '给日常留点余地' }}</h1>
     <p class="product-page-summary">{{ '设定月份、额度和分类，只影响提醒，不会修改已记录的消费。' if goal_creating else '按月留出消费额度，花超会提醒，不会拦你记账。' }}</p>
   </div>
 </header>
-
-<div class="plan-flow goal-page{% if goal_creating %} goal-editor{% endif %}">
 {% if message %}<div class="product-feedback product-feedback--success" role="status">{{ message }}</div>{% endif %}
 {% if error %}<div class="product-feedback product-feedback--danger" role="alert">{{ error }}</div>{% endif %}
 
 {% macro goal_rows(rows) %}
-  <div class="plan-goal-list">
     {% for goal in rows %}
-    <article id="goal-{{ goal.public_id }}" class="plan-goal" aria-label="{{ goal.name }}">
-      <div class="plan-goal-header">
-        <div>
-          <h3 class="product-panel-title">{{ goal.name }}</h3>
-          <span class="pill-row">
-            <span class="product-status">{{ goal.category }}</span>
-            <span class="meta">{{ goal.month }} · {{ goal.home_currency_code or '原币种待确认' }}</span>
-            {% if goal.is_archived %}<span class="product-status">已归档</span>{% endif %}
-            {% if goal.is_over_limit %}<span class="product-status product-status--danger">已超出</span>{% endif %}
-          </span>
-        </div>
+    <article id="goal-{{ goal.public_id }}" class="product-flow product-section{% if goal.is_archived %} is-receded{% endif %}" aria-label="{{ goal.name }}">
+      <div class="product-entry-heading">
+        <h3 class="product-panel-title">{{ goal.name }}</h3>
+        <span class="hint">{{ goal.category }} · {{ goal.month }} · {{ goal.home_currency_code or '原币种待确认' }}</span>
       </div>
-      <div class="product-panel plan-amount-hero goal-balance">
-        <span class="product-eyebrow">剩余额度 · {{ goal.home_currency_code or '原币种待确认' }}</span>
-        <span class="plan-amount-value">{{ goal.remaining_yuan if goal.progress_percent is not none else '暂不可计算' }}</span>
-        <p>目标 {{ goal.target_yuan|grouped }} · 已用 {{ (goal.spent_yuan or '暂不可计算')|grouped }}</p>
+      <div class="product-surface product-surface--apricot">
+        <span class="product-amount-label">剩余额度 · {{ goal.home_currency_code or '原币种待确认' }}</span>
+        <strong class="product-amount">{{ (goal.remaining_yuan|grouped) if goal.progress_percent is not none else '暂不可计算' }}</strong>
+        <span class="product-amount-meta">目标 {{ goal.target_yuan|grouped }} · 已用 {{ (goal.spent_yuan or '暂不可计算')|grouped }}</span>
+        {% if goal.is_archived %}<span class="product-status">已归档</span>{% endif %}
+        {% if goal.is_over_limit %}<span class="product-status product-status--danger">已超出</span>{% endif %}
       </div>
       {% if goal.progress_percent is not none %}
-      <div class="plan-progress-meta"><span>目标进度</span><span>{{ goal.progress_percent }}%</span></div>
-      <progress class="product-progress{% if goal.is_over_limit %} is-over{% endif %}" value="{{ goal.bar_percent }}" max="100" aria-label="{{ goal.name }}目标进度 {{ goal.progress_percent }}%"></progress>
+      <div class="product-meter">
+        <div class="product-entry-heading"><strong>目标进度</strong><span>{{ goal.progress_percent }}%</span></div>
+        <progress class="product-progress{% if goal.is_over_limit %} is-over{% endif %}" value="{{ goal.bar_percent }}" max="100" aria-label="{{ goal.name }}目标进度 {{ goal.progress_percent }}%"></progress>
+      </div>
       {% else %}<p class="product-feedback" role="status">币种或汇率待补充，暂时无法计算进度。目标金额已保留。</p>{% endif %}
-      <div class="budget-actions">
+      <div class="product-form-actions">
+      {% if can_write and not goal.is_archived %}
+      <a class="product-button product-button--small" href="/web/goals/{{ goal.public_id }}/edit?ledger_id={{ selected_ledger_id|urlencode }}&return_month={{ month|urlencode }}&return_include_archived={{ 'true' if include_archived else 'false' }}">编辑目标</a>
+      {% endif %}
       <a class="product-button product-button--quiet product-button--small" href="/web/goals/{{ goal.public_id }}/history?ledger_id={{ selected_ledger_id|urlencode }}&amp;month={{ month|urlencode }}&amp;include_archived={{ 'true' if include_archived else 'false' }}">修改记录</a>
       {% if can_write and not goal.is_archived %}
-      <a class="product-button product-button--quiet product-button--small" href="/web/goals/{{ goal.public_id }}/edit?ledger_id={{ selected_ledger_id|urlencode }}&return_month={{ month|urlencode }}&return_include_archived={{ 'true' if include_archived else 'false' }}">编辑目标</a>
       <form method="post" action="/web/goals/{{ goal.public_id }}/archive" class="product-inline-form">
         <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
         <input type="hidden" name="month" value="{{ month }}">
@@ -66,13 +61,12 @@
       </div>
     </article>
     {% endfor %}
-  </div>
 {% endmacro %}
 
 {% if goal_creating %}
 <section id="new-goal" aria-label="新建消费目标">
   {% if goal_draft_scope %}<div data-goal-draft-shelf hidden><p class="meta">此浏览器保留的目标任务</p><ul data-goal-draft-list></ul></div>{% endif %}
-  <form method="post" action="/web/goals/create" class="budget-form"
+  <form method="post" action="/web/goals/create" class="product-form"
     {% if goal_draft_scope %}data-goal-draft-scope="{{ goal_draft_scope | tojson | forceescape }}"
     data-goal-native-result="{{ goal_draft_result | default('') }}" data-goal-can-write="{{ 'true' if can_write else 'false' }}"{% endif %}>
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
@@ -81,7 +75,7 @@
     <input type="hidden" name="idempotency_key" value="{{ values.idempotency_key }}">
     {% if goal_draft_scope %}<input type="hidden" name="draft_scope" value="{{ values.get('draft_scope', goal_draft_scope | tojson) | forceescape }}">{% endif %}
     {{ csrf_field|safe }}
-    <p class="meta" data-goal-intent>本次目标属于 {{ values.month }}，失败重试保留原月份和金额。</p>
+    <p class="hint" data-goal-intent>本次目标属于 {{ values.month }}，失败重试保留原月份和金额。</p>
     <div class="product-form-grid">
       <div class="product-field">
         <label for="goal-create-name">目标名称</label>
@@ -100,17 +94,25 @@
         <input id="goal-create-category" class="product-input" type="text" name="category" value="{{ values.category }}" maxlength="64" placeholder="餐饮">
       </div>
     </div>
-    <div class="budget-actions">
+    <p class="product-note">
+      <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#info"/></svg>
+      <strong>不填分类时作用于总支出</strong>
+      <span>目标只影响提醒，不会修改已记录的消费。</span>
+    </p>
+    {# 主提交先于原稿控件: 回车隐式提交的仍是保存。 #}
+    <div class="product-task-actions">
       {% if form_currency %}
         {% if goal_draft_scope and goal_draft_result == 'blocked' and not values.get('draft_scope') %}<button class="product-button product-button--primary" type="submit" name="review_new" value="true" formnovalidate>已核对，准备新目标</button>
         {% else %}<button class="product-button product-button--primary" type="submit">{{ '保存目标' if can_write else '权限恢复后重试保存' }}</button>{% endif %}
       {% else %}<p role="status">原表单缺少可确认的币种，输入已保留。请重新打开目标页后核对新表单。</p>{% endif %}
     </div>
     {% if goal_draft_scope %}
+    <div class="product-form-actions">
     <p class="product-feedback" data-goal-draft-status role="status" aria-live="polite" hidden></p>
     <p class="meta" data-goal-review-note hidden>请先核对已保存的目标。准备新目标只保留输入并换用新编号，不会写入；原提交仍保留。</p>
     <button class="product-button product-button--quiet" type="submit" name="review_new" value="true" data-goal-review formnovalidate hidden>已核对，保留输入准备新目标</button>
     <button class="product-button product-button--quiet" type="button" data-goal-discard hidden>放弃此浏览器的原稿</button>
+    </div>
     {% endif %}
   </form>
 </section>
@@ -122,23 +124,33 @@
 {% endif %}
 {% set active_goals = goals|rejectattr('is_archived')|list %}
 <section aria-label="当前消费目标">
-  <div class="product-panel-header"><h2 class="product-panel-title">本月目标</h2><p class="product-panel-subtitle">{{ active_goals|length }} 个 · {{ month }}</p></div>
+  <div class="product-entry-heading"><h2 class="product-panel-title">本月目标</h2><span class="hint">{{ active_goals|length }} 个 · {{ month }}</span></div>
   {{ goal_rows(active_goals) }}
   {% if not active_goals %}<div class="product-state"><div class="product-state-title">这个月还没有目标</div><div class="product-state-body">可以先设一个总支出目标，再按需要添加餐饮、购物等分类目标。</div></div>{% endif %}
 </section>
 {% if include_archived %}
 {% set archived_goals = goals|selectattr('is_archived')|list %}
-<section id="archived-goals" aria-label="已归档目标">
-  <div class="product-panel-header"><h2 class="product-panel-title">已归档目标</h2><a class="product-button product-button--quiet product-button--small" href="/web/goals?ledger_id={{ selected_ledger_id|urlencode }}&month={{ month|urlencode }}">收起已归档</a></div>
-  <p class="meta">回看之前的安排与修改记录。<a href="/web/recycle-bin?ledger_id={{ selected_ledger_id|urlencode }}&group=plans" target="_blank" rel="noopener">在新窗口查看回收站</a>，可恢复保留期内的目标。</p>
+<section id="archived-goals" class="product-section" aria-label="已归档目标">
+  <div class="product-entry-heading"><h2 class="product-panel-title">已归档目标</h2><a class="product-button product-button--quiet product-button--small" href="/web/goals?ledger_id={{ selected_ledger_id|urlencode }}&month={{ month|urlencode }}">收起已归档</a></div>
+  <p class="hint">回看之前的安排与修改记录。<a href="/web/recycle-bin?ledger_id={{ selected_ledger_id|urlencode }}&group=plans" target="_blank" rel="noopener">在新窗口查看回收站</a>，可恢复保留期内的目标。</p>
   {{ goal_rows(archived_goals) }}
-  {% if not archived_goals %}<p class="meta">这个月没有已归档的目标。</p>{% endif %}
+  {% if not archived_goals %}<p class="hint">这个月没有已归档的目标。</p>{% endif %}
 </section>
-{% else %}
-<a class="product-button product-button--quiet" href="{{ list_href|replace('include_archived=false', 'include_archived=true') }}#archived-goals">已归档目标 · 回看之前的安排 →</a>
 {% endif %}
-<a class="product-button product-button--quiet" href="/web/reports?ledger_id={{ selected_ledger_id|urlencode }}&month={{ month|urlencode }}">查看动态报表 →</a>
-{% if can_write %}<div class="budget-actions"><a class="product-button product-button--primary" href="{{ list_href }}&new_goal=1">新建消费目标 →</a></div>{% endif %}
-{% endif %}
+<div class="product-entry-list product-section">
+  {% if not include_archived %}
+  <a class="product-entry" href="{{ list_href|replace('include_archived=false', 'include_archived=true') }}#archived-goals">
+    <span class="product-entry-icon product-entry-icon--lilac" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#archive"/></svg></span>
+    <span class="product-entry-copy"><strong>已归档目标</strong><span>回看之前的安排</span></span>
+    <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
+  </a>
+  {% endif %}
+  <a class="product-entry" href="/web/reports?ledger_id={{ selected_ledger_id|urlencode }}&month={{ month|urlencode }}">
+    <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#chart-no-axes-combined"/></svg></span>
+    <span class="product-entry-copy"><strong>动态报表</strong><span>查看这个月的消费去向</span></span>
+    <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
+  </a>
 </div>
+{% if can_write %}<div class="product-task-actions product-task-actions--page"><a class="product-button product-button--primary" href="{{ list_href }}&new_goal=1">新建消费目标 <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-right"/></svg></a></div>{% endif %}
+{% endif %}
 {% endblock %}

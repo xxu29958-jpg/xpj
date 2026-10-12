@@ -15,18 +15,17 @@
 {% block content %}
 <header class="product-page-header">
   <div class="product-page-heading">
-    <span class="product-eyebrow">计划 / 收入</span>
     <h1 class="page-title">编辑收入计划</h1>
     <p class="product-page-summary">核对计划和生效月份后发布修改，已有版本保留。计划不代表实际到账。</p>
   </div>
 </header>
-<div class="plan-flow income-editor">
+<div class="product-flow">
   {% if error %}<div class="product-feedback product-feedback--danger" role="alert">{{ error }}</div>{% endif %}
   {% if can_write is defined and not can_write %}<div class="product-feedback" role="status">当前角色为只读，可以核对计划；已保留的原修改可在权限恢复后继续。</div>{% endif %}
   {% if plan.status == 'archived' %}<div class="product-feedback" role="status">计划已归档。请返回收入计划恢复后再修改。</div>{% endif %}
   <section aria-label="编辑收入计划">
     {% if income_draft_scope %}<div data-income-draft-shelf hidden><p class="meta">此浏览器保留的收入任务</p><ul data-income-draft-list></ul></div>{% endif %}
-    <form method="post" action="/web/income-plans/{{ plan.public_id }}/edit" class="budget-form"
+    <form method="post" action="/web/income-plans/{{ plan.public_id }}/edit" class="product-form income-form"
       {% if income_draft_scope %}data-income-draft-scope="{{ income_draft_scope | tojson | forceescape }}"
       data-income-plan-id="{{ plan.public_id }}" data-income-native-result="{{ income_draft_result | default('') }}"
       data-income-can-write="{{ 'true' if can_write else 'false' }}" data-income-archived="{{ 'true' if plan.status == 'archived' else 'false' }}"
@@ -37,7 +36,7 @@
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
       <input type="hidden" name="public_id" value="{{ plan.public_id }}">
       <input type="hidden" name="home_currency_code" value="{{ plan.home_currency_code or '' }}">
-      <p class="meta" data-income-intent>本次每月计划从 {{ values.intent_month }} 生效，单次计划使用所选预计月份。失败重试保留原月份和金额。</p>
+      <p class="hint" data-income-intent>本次每月计划从 {{ values.intent_month }} 生效，单次计划使用所选预计月份。失败重试保留原月份和金额。</p>
       <div class="product-form-grid">
         <div class="product-field">
           <label for="income-edit-label">名称</label>
@@ -71,7 +70,8 @@
           <input id="income-edit-day" class="product-input" type="number" name="pay_day" value="{{ values.pay_day }}" min="1" max="31" required>
         </div>
       </div>
-      <div class="budget-actions">
+      {# 主提交先于原稿控件: 回车隐式提交的仍是保存。 #}
+      <div class="product-task-actions">
         {% if plan.status != 'archived' %}
           {% if permission_refused %}<button class="product-button product-button--primary" type="submit" {% if values.review_latest %}name="review_latest" value="true" formnovalidate{% endif %}>权限恢复后重试{% if values.review_latest %}核对{% else %}保存{% endif %}</button>
           {% elif conflict %}<button class="product-button product-button--primary" type="submit" name="review_latest" value="true" formnovalidate>保留输入，按 {{ review_month }} 核对</button>
@@ -79,18 +79,20 @@
         {% elif income_draft_scope %}<button class="product-button" type="submit" disabled hidden>核实原收入修改</button>{% endif %}
       </div>
       {% if income_draft_scope %}
+      <div class="product-form-actions">
       <p class="product-feedback" data-income-draft-status role="status" aria-live="polite" hidden></p>
       <p class="meta" data-income-review-note hidden>请先核对下方已保存的计划。按 {{ review_month }} 重新核对只准备新修改；原提交仍保留，不会再次保存。</p>
       <button class="product-button product-button--quiet" type="submit" name="review_latest" value="true" data-income-review formnovalidate hidden>已核对，保留输入准备修改</button>
       <button class="product-button product-button--quiet" type="button" data-income-discard hidden>放弃此浏览器的原稿</button>
+      </div>
       {% endif %}
     </form>
   </section>
-  <section class="product-panel product-panel--padded" aria-label="当前已保存的收入计划">
+  <section class="product-surface product-surface--plain" aria-label="当前已保存的收入计划">
     <h2 class="product-panel-title">当前已保存</h2>
     <p><strong>{{ current.label }}</strong> · {{ source_type_labels.get(current.source_type, '原类型') }}</p>
     <p>{{ plan.home_currency_code }} {{ current.amount_yuan|grouped }} · {% if current.frequency == 'one_time' %}单次预计 {{ current.income_month }}{% else %}每月固定{% endif %} · {{ current.pay_day }} 号</p>
-    <p class="product-panel-subtitle">上方输入再次保存成功后，才会发布计划修改。已有版本保留。</p>
+    <p class="product-amount-meta">上方输入再次保存成功后，才会发布计划修改。已有版本保留。</p>
     <a class="product-button product-button--quiet" target="_blank" rel="noopener" href="/web/income-plans/{{ plan.public_id }}/history?ledger_id={{ selected_ledger_id|urlencode }}">在新窗口查看修改记录</a>
   </section>
 </div>

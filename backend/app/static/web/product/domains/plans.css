@@ -15,8 +15,6 @@
     .budget-layout > .product-surface { grid-area: summary; }
     .budget-execution { grid-area: execution; }
     .budget-directory { grid-area: directory; }
-    /* 宽屏编辑器里保存按钮保持自身宽度。 */
-    .budget-editor .product-task-actions > .product-button--primary { flex: 0 0 auto; min-inline-size: 16rem; }
 }
 
 /* 编辑器是同一页里的专注视图: 展开后页面只剩编辑器, 折叠行变成返回行。
@@ -50,11 +48,6 @@ body:has(.budget-editor[open]) .budget-layout { display: block; }
 
 .budget-editor-back > svg { width: var(--space-6); height: var(--space-6); }
 
-.goal-workspace {
-    grid-template-columns:
-        minmax(calc(var(--space-12) * 4), .8fr)
-        minmax(0, 1.2fr);
-}
 
 .plan-amount-hero {
     display: grid;
@@ -67,7 +60,6 @@ body:has(.budget-editor[open]) .budget-layout { display: block; }
     box-shadow: none;
 }
 
-.goal-balance { background: var(--surface-apricot); }
 
 .plan-amount-hero .plan-amount-value,
 .plan-discretionary .plan-amount-value {
@@ -118,39 +110,12 @@ body:has(.budget-editor[open]) .budget-layout { display: block; }
     font-size: var(--type-caption-size);
 }
 
-.income-row-heading {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-3);
-}
 
-.income-row-heading > div {
-    display: grid;
-    gap: var(--space-2);
-}
-
-.income-editor form:has([name="frequency"] option[value="monthly"]:checked) [data-income-one-time] {
+/* 每月固定的收入不需要「预计月份」: 选中后那一组收起 (无脚本也成立)。 */
+.income-form:has([name="frequency"] option[value="monthly"]:checked) [data-income-one-time] {
     display: none;
 }
 
-.income-month-fields {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--space-3);
-    margin: 0;
-    padding: 0;
-    border: 0;
-}
-
-.income-month-fields legend {
-    grid-column: 1 / -1;
-    margin-block-end: var(--space-2);
-    color: var(--text-muted);
-    font-size: var(--type-caption-size);
-    font-weight: var(--type-meta-weight);
-}
 
 .plan-breakdown {
     display: flex;
@@ -221,14 +186,6 @@ body:has(.budget-editor[open]) .budget-layout { display: block; }
     font-weight: var(--type-headline-weight);
 }
 
-.plan-progress-meta {
-    display: flex;
-    justify-content: space-between;
-    gap: var(--space-4);
-    margin-block-start: var(--space-3);
-    color: var(--text-meta);
-    font-size: var(--type-caption-size);
-}
 
 .budget-form {
     display: grid;
@@ -328,12 +285,6 @@ body:has(.budget-editor[open]) .budget-layout { display: block; }
     gap: var(--space-2);
 }
 
-.plan-goal-amount {
-    color: var(--text-default);
-    font-family: var(--font-numeric);
-    font-variant-numeric: tabular-nums;
-    font-weight: var(--type-subtitle-weight);
-}
 
 .plan-goal .product-inline-form {
     justify-self: start;
@@ -499,19 +450,6 @@ body:has(.budget-editor[open]) .budget-layout { display: block; }
     margin-block-end: var(--space-5);
 }
 
-.plan-filter-check {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    color: var(--text-muted);
-    cursor: pointer;
-    font-size: var(--type-caption-size);
-}
-
-.plan-filter-check input {
-    margin: 0;
-    accent-color: var(--brand-primary);
-}
 
 /* 反馈条内的行动链接 (409 引导等): 继承状态色, 只加重字重。 */
 .plan-feedback-link {
@@ -669,7 +607,6 @@ body:has(.budget-editor[open]) .budget-layout { display: block; }
 }
 
 .recurring-editor .budget-actions,
-.income-page > .budget-actions,
 .goal-page > .budget-actions,
 .goal-editor .budget-actions,
 .income-editor .budget-actions {

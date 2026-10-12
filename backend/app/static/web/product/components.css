@@ -541,7 +541,7 @@ button[disabled] {
     min-width: 0;
     gap: var(--space-2);
 }
-fieldset.product-field { margin: 0; padding: 0; border: 0; }
+fieldset:is(.product-field, .product-form) { min-inline-size: 0; margin: 0; padding: 0; border: 0; }
 .product-field > legend { margin-block-end: var(--space-2); padding: 0; }
 
 .dt-form-row > label,
@@ -1162,6 +1162,8 @@ html:has(.product-workspace > .product-task-actions) { scroll-padding-block-end:
     :is(.product-workspace > .product-task-actions, .product-task-actions--page) > .product-button--primary { flex: 0 0 auto; min-inline-size: 16rem; }
     :is(.product-workspace > .product-task-actions, .product-task-actions--page) > :is(button, a):not(.product-button--primary) { flex: 0 0 auto; }
     .product-task-actions--page { position: static; padding-block: 0; border-block-start: 0; }
+    /* 整页表单里的吸底提交也保持自身宽度 (抽屉与分栏里的仍占满一栏)。 */
+    .product-form > .product-task-actions > .product-button--primary { flex: 0 0 auto; min-inline-size: 16rem; }
     /* 宽屏: 发丝线与正文左右对齐, 不伸进页边距。 */
     .product-workspace > .product-task-actions { width: calc(min(100%, var(--layout-page-narrow-max)) - var(--space-7) * 2); padding-inline: 0; }
 }
