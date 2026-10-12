@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from '_month_label.html' import month_label %}
 {% set product_body_domain = 'insights' %}
 {% set r = report %}
 {% set _earliest_month = six_month_trend[0].month if six_month_trend else r.month %}
@@ -32,16 +33,16 @@
 {% block page_header %}
 <header class="product-page-header"><div class="product-page-heading">
   <h1 class="page-title">这半年的花费</h1>
-  <p class="product-page-summary">{{ _earliest_month }} 至 {{ r.month }} · {{ r.home_currency_code }}</p>
+  <p class="product-page-summary">{{ month_label(_earliest_month) }} 至 {{ month_label(r.month) }} · {{ r.home_currency_code }}</p>
 </div></header>
 {% endblock %}
 {% block content %}
 {% if flash_message %}<div class="product-feedback{% if flash_type == 'error' %} product-feedback--error{% endif %}" role="{% if flash_type == 'error' %}alert{% else %}status{% endif %}">{{ flash_message }}</div>{% endif %}
 {% if report_missing_rates %}<div class="product-feedback product-feedback--warning" role="status">{{ report_projection_gaps(report_missing_rates, r.month) }}</div>{% endif %}
-<section class="product-panel product-panel--padded report-hero" aria-label="本月净支出">
-  <span>本月净支出 · {{ r.month }}</span>
-  <strong class="report-hero-value">{{ r.total_amount_label }}</strong>
-  <span>六个月平均 {{ report_money(six_month_average_amount_yuan) }}</span>
+<section class="product-surface product-surface--plain" aria-label="本月净支出">
+  <span class="product-amount-label">本月净支出 · {{ month_label(r.month) }}</span>
+  <strong class="product-amount">{{ r.total_amount_label }}</strong>
+  <span class="product-amount-meta">六个月平均 {{ report_money(six_month_average_amount_yuan) }}</span>
 </section>
 <section class="report-history" aria-label="半年趋势">
   <div id="chart-trend" class="report-chart report-chart--tall" data-series='{{ six_month_trend | tojson }}'></div>
@@ -50,7 +51,7 @@
 <div class="product-form-actions report-primary-action"><a class="product-button product-button--primary" href="/web/reports?{{ report_query }}&amp;view=data">查看明细数据 <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-right"/></svg></a></div>
 <script type="application/json" id="reports-overview-data">{{ report | tojson }}</script>
 <details class="report-section" id="report-month-detail">
-  {{ report_entry('chart-no-axes-combined', '本月细看', r.month ~ ' · 按月、周或日查看走势') }}
+  {{ report_entry('chart-no-axes-combined', '本月细看', month_label(r.month) ~ ' · 按月、周或日查看走势') }}
   <div class="reports-control-group">{{ report_controls(granularity_options, 'granularity', 'report-month-detail') }}</div>
 <section class="product-panel product-panel--padded reports-panel report-span-8">
     <div class="product-panel-header">
@@ -94,7 +95,7 @@
   </dl>
 </details>
 <details class="report-section" id="report-ranking">
-  {{ report_entry('list-filter', '分类与商家排行', r.month ~ ' · ' ~ ('分类：' ~ r.merchant_category if r.merchant_category else '按当前范围查看'), 'apricot') }}
+  {{ report_entry('list-filter', '分类与商家排行', month_label(r.month) ~ ' · ' ~ ('分类：' ~ r.merchant_category if r.merchant_category else '按当前范围查看'), 'apricot') }}
   <div class="reports-control-group"><span>商家排行按</span>{{ report_controls(ranking_metric_options, 'ranking_metric', 'report-ranking') }}</div>
   <div class="report-grid">
 <section class="product-panel product-panel--padded reports-panel report-span-12">
@@ -215,7 +216,7 @@
     <div class="product-panel-header">
       <div>
         <div class="product-panel-title">月报摘要</div>
-        <div class="product-panel-subtitle">{{ monthly_report.year_month }} · 本月账单汇总 · {{ monthly_report.home_currency_code }}</div>
+        <div class="product-panel-subtitle">{{ month_label(monthly_report.year_month) }} · 本月账单汇总 · {{ monthly_report.home_currency_code }}</div>
       </div>
     </div>
     <div class="report-summary">

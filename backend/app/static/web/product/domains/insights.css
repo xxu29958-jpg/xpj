@@ -36,8 +36,7 @@
 .insight-grid > [data-overview-card="pending"] .insight-brief-detail { margin-block-start: var(--space-3); }
 
 
-.insight-hero-value,
-.report-hero-value {
+.insight-hero-value {
     min-width: 0;
     overflow-wrap: anywhere;
     color: var(--text-default);
@@ -309,8 +308,6 @@ body[data-domain="insights"] .content[data-page-level="tertiary"] { max-inline-s
 .layout-position .product-input { max-inline-size: 8em; }
 .layout-reset { margin-block-start: var(--space-5); }
 
-.report-hero { display: grid; container-type: inline-size; gap: var(--space-4); box-shadow: none; }
-.report-hero > span { color: var(--text-meta); }
 .report-history { margin-block: var(--space-6); }
 .report-primary-action { margin-block: var(--space-6); }
 .report-section { border-block-start: 1px solid var(--border-card); }
