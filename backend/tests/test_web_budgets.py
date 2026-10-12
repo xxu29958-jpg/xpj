@@ -245,7 +245,7 @@ def test_web_budgets_save_and_display_budget_dashboard(web_client: TestClient, *
     assert 'name="non_monthly_amount_yuan" value="120.00"' in page.text
     assert "餐饮" in page.text
     assert "超支 ¥25.00" in page.text
-    assert "医疗 ¥30.00" in page.text
+    assert "<dt>医疗 · 1 笔</dt><dd>¥30.00</dd>" in page.text
     assert re.search(r'<progress[^>]+value="12500"[^>]+max="105000"', page.text)
     assert 'class="budget-row" data-saved-category="餐饮"' in page.text
     assert "分类预算执行" not in page.text

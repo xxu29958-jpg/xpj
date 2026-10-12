@@ -57,7 +57,7 @@
   </div>
   {% else %}
   <p class="plan-debt-headline">{{ goal.headline }}</p>
-  <progress class="plan-progress{% if goal.cleared_count == goal.total_count %} is-cleared{% endif %}" value="{{ goal.fraction_percent }}" max="100" aria-label="已两清 {{ goal.cleared_count }} 笔，共 {{ goal.total_count }} 笔"></progress>
+  <progress class="product-progress{% if goal.cleared_count == goal.total_count %} is-complete{% endif %}" value="{{ goal.fraction_percent }}" max="100" aria-label="已两清 {{ goal.cleared_count }} 笔，共 {{ goal.total_count }} 笔"></progress>
   {% if goal.amount_line %}
   <p class="plan-debt-amount">{{ goal.amount_line }}</p>
   {% endif %}
@@ -86,7 +86,7 @@
       </div>
       {% if link.show_bar %}
       {# 成员条用进度档语 (镜像 debts.html，communal 面不读裸百分比)；外部条读百分比。 #}
-      <progress class="plan-progress{% if link.is_cleared %} is-cleared{% endif %}" value="{{ link.fraction_percent }}" max="100" aria-label="{% if link.is_member %}{{ link.note }}{% else %}已对上 {{ link.fraction_percent }}%{% endif %}"></progress>
+      <progress class="product-progress{% if link.is_cleared %} is-complete{% endif %}" value="{{ link.fraction_percent }}" max="100" aria-label="{% if link.is_member %}{{ link.note }}{% else %}已对上 {{ link.fraction_percent }}%{% endif %}"></progress>
       {% endif %}
       {% if link.is_member %}
       <div class="plan-link-note">{{ link.note }}</div>

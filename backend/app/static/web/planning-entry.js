@@ -40,14 +40,14 @@
     const excluded = JSON.parse(saved.excluded_values);
     let chips = form.querySelector('[aria-label="可排除的分类"]');
     if (!chips) {
-      chips = document.createElement("div"); chips.className = "budget-chip-grid";
+      chips = document.createElement("div"); chips.className = "product-segments product-segments--wrap";
       chips.setAttribute("role", "group"); chips.setAttribute("aria-label", "可排除的分类");
       form.querySelector(".budget-excluded .product-field").before(chips);
     }
     excluded.forEach(value => {
       if ([...form.querySelectorAll('[name="excluded_category"]')].some(input => input.value === value)) return;
       const label = document.createElement("label"), input = document.createElement("input");
-      label.className = "budget-chip"; input.type = "checkbox"; input.name = "excluded_category"; input.value = value;
+      input.type = "checkbox"; input.name = "excluded_category"; input.value = value;
       label.append(input, document.createTextNode(value)); chips.append(label);
     });
     form.querySelectorAll('[name="excluded_category"]').forEach(input => { input.checked = excluded.includes(input.value); });

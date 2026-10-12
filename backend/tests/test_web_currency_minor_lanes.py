@@ -283,7 +283,7 @@ def test_zero_fraction_no_js_forms_and_dashboard_share_input_contract(
 
     budgets = web_client.get("/web/budgets?ledger_id=owner&month=2026-05")
     assert budgets.status_code == 200, budgets.text
-    total_field = re.search(r'<div class="product-field budget-total-field">(.*?)</div>', budgets.text, re.S)
+    total_field = re.search(r'<div class="product-surface product-surface--plain budget-total-field">(.*?)</div>', budgets.text, re.S)
     assert total_field is not None
     field_text = re.sub(r"<[^>]+>", "", total_field.group(1))
     assert "总预算 · JPY" in field_text

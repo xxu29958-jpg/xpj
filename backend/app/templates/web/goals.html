@@ -50,7 +50,7 @@
       </div>
       {% if goal.progress_percent is not none %}
       <div class="plan-progress-meta"><span>目标进度</span><span>{{ goal.progress_percent }}%</span></div>
-      <progress class="plan-progress{% if goal.is_over_limit %} is-over{% endif %}" value="{{ goal.bar_percent }}" max="100" aria-label="{{ goal.name }}目标进度 {{ goal.progress_percent }}%"></progress>
+      <progress class="product-progress{% if goal.is_over_limit %} is-over{% endif %}" value="{{ goal.bar_percent }}" max="100" aria-label="{{ goal.name }}目标进度 {{ goal.progress_percent }}%"></progress>
       {% else %}<p class="product-feedback" role="status">币种或汇率待补充，暂时无法计算进度。目标金额已保留。</p>{% endif %}
       <div class="budget-actions">
       <a class="product-button product-button--quiet product-button--small" href="/web/goals/{{ goal.public_id }}/history?ledger_id={{ selected_ledger_id|urlencode }}&amp;month={{ month|urlencode }}&amp;include_archived={{ 'true' if include_archived else 'false' }}">修改记录</a>

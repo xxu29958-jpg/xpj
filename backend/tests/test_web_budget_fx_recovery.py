@@ -7,6 +7,7 @@ from unittest.mock import Mock
 
 from jinja2 import ChoiceLoader, DictLoader, Environment, FileSystemLoader
 
+from app.routes.web_common import _grouped_amount
 from app.services.currency_common import currency_input_metadata
 from app.services.time_service import to_iso
 
@@ -17,6 +18,7 @@ def _budget_page(**changes):
         FileSystemLoader(Path(__file__).parents[1] / "app/templates/web"),
     ]))
     env.filters["to_iso"] = to_iso
+    env.filters["grouped"] = _grouped_amount
     context = {"month": "2026-09", "selected_ledger_id": "owner", "can_write": True,
         "home_currency_code": "JPY", "home_currency_symbol": "¥", "currency_input": currency_input_metadata("JPY"),
         "income_yuan": "1200", "fixed_yuan": "0", "spent_yuan": None, "savings_yuan": "0", "reserved_yuan": "0",

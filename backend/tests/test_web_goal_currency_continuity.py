@@ -16,7 +16,7 @@ def test_jpy_goal_editor_uses_recorded_units_under_cny_runtime(web_client, ident
     assert 'name="target_amount_yuan" value="1200"' in editor.text
     assert "目标金额（JPY，仅支持整数）" in editor.text
     listing = web_client.get("/web/goals?ledger_id=owner&month=2026-05")
-    assert "剩余额度 · JPY" in listing.text and "目标 1200 · 已用 0" in listing.text
+    assert "剩余额度 · JPY" in listing.text and "目标 1,200 · 已用 0" in listing.text
     fields.update(name="日元目标调整", month="2026-05", category="餐饮", target_amount_yuan="1500")
     saved = web_client.post(action, data=fields, follow_redirects=False)
     assert saved.status_code == 303, saved.text
