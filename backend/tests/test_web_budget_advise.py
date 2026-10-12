@@ -188,7 +188,7 @@ def test_web_budget_advise_post_accepts_canonical_jpy_integer_text(
 
     assert response.status_code == 200, response.text
     assert re.search(
-        r"<small>\s*储蓄目标\s*</small>\s*<strong>\s*−\s*¥1234\s*</strong>",
+        r"<small>\s*储蓄目标\s*</small>\s*<strong>\s*−\s*¥1,234\s*</strong>",
         response.text,
     )
     assert (

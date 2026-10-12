@@ -250,7 +250,7 @@ def test_confirmed_search_and_reports_use_zero_fraction_home_amounts(
         )
         assert confirmed.status_code == 200, confirmed.text
         assert (
-            f'<span class="sr-only">{month} 合计 </span>¥1234'
+            f'<span class="sr-only">{month} 合计 </span>¥1,234'
             in confirmed.text
         )
         assert f"{month} · 共 1 笔 ·" in confirmed.text

@@ -182,7 +182,7 @@ def test_budget_advise_render_follows_zero_decimal_home(jpy_env, web_client: Tes
     )
     assert page.status_code == 200, page.text
     assert re.search(
-        r"<small>\s*储蓄目标\s*</small>\s*<strong>\s*−\s*¥1200\s*</strong>",
+        r"<small>\s*储蓄目标\s*</small>\s*<strong>\s*−\s*¥1,200\s*</strong>",
         page.text,
     )
     assert not re.search(
@@ -209,7 +209,7 @@ def test_budget_advise_suggestion_table_follows_zero_decimal_home(
         data={"ledger_id": "owner", "month": "2026-05", "home_currency_code": "JPY", "run_advise": "true"},
     )
     assert page.status_code == 200, page.text
-    assert "¥1200" in page.text
+    assert "¥1,200" in page.text
     assert "¥12.00" not in page.text
 
 

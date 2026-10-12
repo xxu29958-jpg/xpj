@@ -199,20 +199,20 @@ def test_household_can_plan_income_and_spending_then_revise_without_creating_fin
     income = browser.post(income_action, data=income_fields, headers=headers)
     assert income.status_code == 200, income.text
     income_receipt = income.json()
-    _assert_household_forecast(browser, scope["ledgerId"], month, 500000, "5000.00")
+    _assert_household_forecast(browser, scope["ledgerId"], month, 500000, "5,000.00")
     goal_fields.update(name="本月餐饮提醒", month=month, target_amount_yuan="2000.00")
     goal = browser.post(goal_action, data=goal_fields, headers=headers)
     assert goal.status_code == 200, goal.text
     goal_receipt = goal.json()
     assert goal_receipt["receipt"]["spent_amount_cents"] == 0
     goal_page = browser.get(goal_receipt["next"])
-    assert goal_page.status_code == 200 and "本月餐饮提醒" in goal_page.text and "目标 2000.00 · 已用 0.00" in goal_page.text
+    assert goal_page.status_code == 200 and "本月餐饮提醒" in goal_page.text and "目标 2,000.00 · 已用 0.00" in goal_page.text
     income_edit = f'/web/income-plans/{income_receipt["receipt"]["public_id"]}/edit'
     editor = browser.get(income_edit, params={"intent_month": month})
     changed_income = browser.post(income_edit, data={**income_fields, **hidden_post_forms(editor.text)[income_edit],
         "amount_yuan": "6000.00"}, headers=headers)
     assert changed_income.status_code == 200 and changed_income.json()["receipt"]["row_version"] == 2, changed_income.text
-    _assert_household_forecast(browser, scope["ledgerId"], month, 600000, "6000.00")
+    _assert_household_forecast(browser, scope["ledgerId"], month, 600000, "6,000.00")
     goal_edit = f'/web/goals/{goal_receipt["receipt"]["public_id"]}/edit'
     editor = browser.get(goal_edit)
     changed_goal = browser.post(goal_edit, data={**goal_fields, **hidden_post_forms(editor.text)[goal_edit],
@@ -225,7 +225,7 @@ def test_household_can_plan_income_and_spending_then_revise_without_creating_fin
     original_goal = browser.post(goal_action, data=goal_fields, headers=headers)
     assert original_income.status_code == 200 and original_income.json() == income_receipt
     assert original_goal.status_code == 200 and original_goal.json() == goal_receipt
-    _assert_household_forecast(browser, scope["ledgerId"], month, 600000, "6000.00")
+    _assert_household_forecast(browser, scope["ledgerId"], month, 600000, "6,000.00")
     with SessionLocal() as db:
         assert db.scalar(select(func.count()).select_from(Expense)) == 0
         assert db.scalar(select(func.count()).select_from(Budget)) == 0

@@ -158,7 +158,7 @@
           {% for s in advice.suggestions %}
           <section class="budget-execution-row">
             <h3 class="product-panel-title">{{ s.category if s.category is not none else '整体安排' }}</h3>
-            <p>建议金额 <strong class="plan-history-amount">{{ home_currency_symbol }}{{ minor_amount_label(s.suggested_amount_cents) }}</strong></p>
+            <p>建议金额 <strong class="plan-history-amount">{{ home_currency_symbol }}{{ minor_amount_label(s.suggested_amount_cents)|grouped }}</strong></p>
             <p>{{ s.rationale }}</p>
           </section>
           {% endfor %}
