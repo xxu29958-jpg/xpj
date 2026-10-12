@@ -1,21 +1,23 @@
-<section{% if not agreement_task|default(false) %} class="product-panel product-panel--padded"{% endif %} aria-labelledby="split-agreement-title">
+<section class="product-section" aria-labelledby="split-agreement-title">
   <h2 class="product-panel-title" id="split-agreement-title">整段拆账约定</h2>
   {% if agreement.error %}
   <p class="product-feedback" role="status">{{ agreement.error }}</p>
   {% else %}
-  <p><span class="product-status">{{ agreement.settlement_label }}</span></p>
-  <dl class="debt-look-rows">
-    <div class="debt-look-row"><dt>当前约定份额</dt><dd>{{ agreement.agreed_share_label }}</dd></div>
-    <div class="debt-look-row"><dt>实际已付款</dt><dd>{{ agreement.original_paid_label }}</dd></div>
-    <div class="debt-look-row"><dt>实际已返还</dt><dd>{{ agreement.return_paid_label }}</dd></div>
-  </dl>
-  <details class="debt-history-more"{% if not agreement_task|default(false) %} open{% endif %}>
+  <div class="product-surface product-surface--plain">
+    <span class="product-status">{{ agreement.settlement_label }}</span>
+    <dl class="product-surface-rows">
+      <div><dt>当前约定份额</dt><dd>{{ agreement.agreed_share_label }}</dd></div>
+      <div><dt>实际已付款</dt><dd>{{ agreement.original_paid_label }}</dd></div>
+      <div><dt>实际已返还</dt><dd>{{ agreement.return_paid_label }}</dd></div>
+    </dl>
+  </div>
+  <details class="product-disclosure"{% if not agreement_task|default(false) %} open{% endif %}>
   <summary>原份额、免除与对应往来</summary>
   <p class="hint">待付款：原承担方向原垫付方付款；待返还：原垫付方向原承担方返还。</p>
-  <dl class="debt-look-rows">
-    <div class="debt-look-row"><dt>原接受份额</dt><dd>{{ agreement.original_share_label }}</dd></div>
-    <div class="debt-look-row"><dt>原付款已免除</dt><dd>{{ agreement.original_forgiven_label }}</dd></div>
-    <div class="debt-look-row"><dt>返还款已免除</dt><dd>{{ agreement.return_forgiven_label }}</dd></div>
+  <dl class="product-surface-rows">
+    <div><dt>原接受份额</dt><dd>{{ agreement.original_share_label }}</dd></div>
+    <div><dt>原付款已免除</dt><dd>{{ agreement.original_forgiven_label }}</dd></div>
+    <div><dt>返还款已免除</dt><dd>{{ agreement.return_forgiven_label }}</dd></div>
   </dl>
   <div class="product-form-actions">
     {% for leg in agreement.legs %}<a class="product-button product-button--quiet" href="{{ leg.href }}">{{ leg.label }} · 剩余 {{ leg.remaining_label }}</a>{% endfor %}

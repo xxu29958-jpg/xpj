@@ -400,7 +400,7 @@ def test_web_debt_detail_resolved_history_uses_complete_activity(web_client: Tes
     assert "共 11 条" in resp.text
     assert resp.text.count("处理还款申报</strong>") == 5
     assert resp.text.count("申报还款</strong>") == 5
-    assert '<details class="debt-history-more">' not in resp.text
+    assert resp.text.count('class="product-history"') == 1  # one paged list, no collapsed remainder
 
 
 def test_web_debt_detail_member_no_proposals_renders_debtor_action(web_client: TestClient) -> None:

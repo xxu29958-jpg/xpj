@@ -161,6 +161,56 @@
    creditor 专属 (guard_member_debt + creditor-only, external 必 409), 且
    service 原子 supersede pending proposal, 不以 pending 为闸门; member
    debtor 无任何 direct 动作, 只走下方 proposal flow。 #}
+{% if can_write and debt.is_member and debt_open and action_keys and (pending_proposal or action_form.kind in ['proposal_reject', 'proposal_withdraw'] or confirm_amount_error) %}
+<section class="product-section" aria-labelledby="debt-proposal-actions-title">
+  <h2 class="product-panel-title" id="debt-proposal-actions-title">还款确认</h2>
+  {# 稳定锚: create/reject/withdraw 的失败不依赖对应表单仍存在 (例如在途
+     proposal 已有时 create 表单正当隐藏, 409 仍须在此可见)。 #}
+  {% if action_form.kind == 'proposal_reject' %}
+  <div id="debt-action-error-proposal_reject" class="product-feedback product-feedback--danger" role="alert">{{ action_form.error }}</div>
+  {% endif %}
+  {% if action_form.kind == 'proposal_withdraw' %}
+  <div id="debt-action-error-proposal_withdraw" class="product-feedback product-feedback--danger" role="alert">{{ action_form.error }}</div>
+  {% endif %}
+  {% if pending_proposal %}
+  {% if viewer_is_debtor == false %}
+  <form class="product-form" method="post" action="/web/debts/{{ debt.public_id }}/repayment-proposals/{{ pending_proposal.public_id }}/confirm">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+    <input type="hidden" name="idempotency_key" value="{{ action_keys.proposal_confirm }}">
+    <input type="hidden" name="expected_row_version" value="{{ expected_row_version }}">
+    {% if _anchor_form %}
+    {# 三路互斥之「表单锚」: 金额校验 422 锚定到在途 proposal 的确认输入。 #}
+    <div id="proposal-confirm-amount-error" class="product-feedback product-feedback--danger" role="alert" data-proposal-public-id="{{ confirm_error_proposal_id }}">{{ confirm_amount_error }}</div>
+    {% endif %}
+    <div class="product-surface">
+      <label class="product-amount-label" for="debt-confirm-amount">确认金额</label>
+      <input id="debt-confirm-amount" class="product-amount" name="{{ proposal_confirm_amount_field }}" type="number" step="{{ currency_input.amount_step }}" min="{{ currency_input.positive_amount_min }}" inputmode="{{ currency_input.inputmode }}" value="{{ confirm_amount_value if _anchor_form else pending_proposal.amount_value }}" aria-label="确认金额（可按对方申报全额或改填部分）"{% if _anchor_form %} aria-invalid="true" aria-describedby="proposal-confirm-amount-error"{% endif %}>
+      <span class="product-amount-meta">{{ debt.currency_code }} · 可按对方申报全额或改填部分</span>
+    </div>
+    <div class="product-form-actions">
+      <button class="product-button product-button--primary" type="submit">确认到账</button>
+    </div>
+  </form>
+  <form class="product-form-actions" method="post" action="/web/debts/{{ debt.public_id }}/repayment-proposals/{{ pending_proposal.public_id }}/reject">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+    <input type="hidden" name="idempotency_key" value="{{ action_keys.proposal_reject }}">
+    <button class="product-button product-button--quiet" type="submit">没收到</button>
+  </form>
+  {% endif %}
+  {% if viewer_is_debtor %}
+  <form class="product-form-actions" method="post" action="/web/debts/{{ debt.public_id }}/repayment-proposals/{{ pending_proposal.public_id }}/withdraw">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+    <input type="hidden" name="idempotency_key" value="{{ action_keys.proposal_withdraw }}">
+    <button class="product-button product-button--quiet" type="submit">撤回我的还款确认</button>
+  </form>
+  {% endif %}
+  {% endif %}
+</section>
+{% endif %}
+
 {# 作废整笔欠款的可见性由 void_form 自己裁决 (终态下仍可能要核对原提交), 与下面
    动作区的闸门无关: 动作区存在时并入同一组, 否则单独呈现。 #}
 {% set _show_actions = can_write and debt_open and action_keys and (not debt.is_member or viewer_is_debtor == false) %}
@@ -236,56 +286,6 @@
 {% endif %}
 {% if not debt.is_member and repayment_void_recovery %}
 {% with void_form = repayment_void_recovery %}{% include '_debt_void_form.html' %}{% endwith %}
-{% endif %}
-
-{% if can_write and debt.is_member and debt_open and action_keys and (pending_proposal or action_form.kind in ['proposal_reject', 'proposal_withdraw'] or confirm_amount_error) %}
-<section class="product-section" aria-labelledby="debt-proposal-actions-title">
-  <h2 class="product-panel-title" id="debt-proposal-actions-title">还款确认</h2>
-  {# 稳定锚: create/reject/withdraw 的失败不依赖对应表单仍存在 (例如在途
-     proposal 已有时 create 表单正当隐藏, 409 仍须在此可见)。 #}
-  {% if action_form.kind == 'proposal_reject' %}
-  <div id="debt-action-error-proposal_reject" class="product-feedback product-feedback--danger" role="alert">{{ action_form.error }}</div>
-  {% endif %}
-  {% if action_form.kind == 'proposal_withdraw' %}
-  <div id="debt-action-error-proposal_withdraw" class="product-feedback product-feedback--danger" role="alert">{{ action_form.error }}</div>
-  {% endif %}
-  {% if pending_proposal %}
-  {% if viewer_is_debtor == false %}
-  <form class="product-form" method="post" action="/web/debts/{{ debt.public_id }}/repayment-proposals/{{ pending_proposal.public_id }}/confirm">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-    <input type="hidden" name="idempotency_key" value="{{ action_keys.proposal_confirm }}">
-    <input type="hidden" name="expected_row_version" value="{{ expected_row_version }}">
-    {% if _anchor_form %}
-    {# 三路互斥之「表单锚」: 金额校验 422 锚定到在途 proposal 的确认输入。 #}
-    <div id="proposal-confirm-amount-error" class="product-feedback product-feedback--danger" role="alert" data-proposal-public-id="{{ confirm_error_proposal_id }}">{{ confirm_amount_error }}</div>
-    {% endif %}
-    <div class="product-surface">
-      <label class="product-amount-label" for="debt-confirm-amount">确认金额</label>
-      <input id="debt-confirm-amount" class="product-amount" name="{{ proposal_confirm_amount_field }}" type="number" step="{{ currency_input.amount_step }}" min="{{ currency_input.positive_amount_min }}" inputmode="{{ currency_input.inputmode }}" value="{{ confirm_amount_value if _anchor_form else pending_proposal.amount_value }}" aria-label="确认金额（可按对方申报全额或改填部分）"{% if _anchor_form %} aria-invalid="true" aria-describedby="proposal-confirm-amount-error"{% endif %}>
-      <span class="product-amount-meta">{{ debt.currency_code }} · 可按对方申报全额或改填部分</span>
-    </div>
-    <div class="product-form-actions">
-      <button class="product-button product-button--primary" type="submit">确认到账</button>
-    </div>
-  </form>
-  <form class="product-form-actions" method="post" action="/web/debts/{{ debt.public_id }}/repayment-proposals/{{ pending_proposal.public_id }}/reject">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-    <input type="hidden" name="idempotency_key" value="{{ action_keys.proposal_reject }}">
-    <button class="product-button product-button--quiet" type="submit">没收到</button>
-  </form>
-  {% endif %}
-  {% if viewer_is_debtor %}
-  <form class="product-form-actions" method="post" action="/web/debts/{{ debt.public_id }}/repayment-proposals/{{ pending_proposal.public_id }}/withdraw">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-    <input type="hidden" name="idempotency_key" value="{{ action_keys.proposal_withdraw }}">
-    <button class="product-button product-button--quiet" type="submit">撤回我的还款确认</button>
-  </form>
-  {% endif %}
-  {% endif %}
-</section>
 {% endif %}
 
 {% if can_change_member_kind %}

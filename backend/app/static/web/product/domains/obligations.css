@@ -2,112 +2,12 @@
 
 body[data-domain="obligations"] .content { max-inline-size: var(--layout-page-narrow-max); }
 
-.dh-amt {
-    color: var(--text-default);
-    font-family: var(--font-numeric);
-    font-size: var(--type-headline-size);
-    font-variant-numeric: tabular-nums;
-    font-weight: var(--type-headline-weight);
-    overflow-wrap: anywhere;
-}
-
-.dh-amt--hero {
-    font-size: clamp(var(--type-title-size), 13cqi, var(--type-display-size));
-    line-height: var(--type-display-line);
-}
-
-.debt-summary-card { container-type: inline-size; }
-.debt-summary-card > .product-status { justify-self: start; }
-
-.debt-history {
-    display: grid;
-    gap: var(--space-4);
-    margin-block-start: var(--space-5);
-}
-
-.debt-history-row {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-start;
-    gap: var(--space-4);
-    padding-block-end: var(--space-3);
-    border-block-end: 1px solid var(--border-card);
-}
-
-.debt-history-row:last-child {
-    padding-block-end: 0;
-    border-block-end: 0;
-}
-
-.debt-history-main {
-    display: grid;
-    flex: 1 1 24ch;
-    min-inline-size: 0;
-    gap: var(--space-1);
-}
-
-.debt-history-date {
-    color: var(--text-meta);
-    font-size: var(--type-caption-size);
-}
-
-.debt-history-more {
-    padding-block-start: var(--space-3);
-    border-block-start: 1px solid var(--border-card);
-}
-
-.debt-history-more summary {
-    color: var(--brand-primary-strong);
-    cursor: pointer;
-}
-
 /* 失败兜底的 attempted 静态记录行: 在 danger/feedback 块内降一档, 仅作记录。 */
 .debt-attempted {
     display: block;
     margin-block-start: var(--space-2);
     font-size: var(--type-caption-size);
     opacity: .85;
-}
-
-/* ===== 详情：成员往来卡 ===== */
-
-.debt-summary-card {
-    display: grid;
-    gap: var(--space-3);
-}
-
-/* 成员「看看账」折叠明细。 */
-.debt-look-rows {
-    display: grid;
-    gap: var(--space-2);
-    margin-block-start: var(--space-3);
-}
-
-.debt-look-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: baseline;
-    gap: var(--space-4);
-    color: var(--text-meta);
-    font-size: var(--type-caption-size);
-}
-
-.split-settlement-fields {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--space-4);
-    align-items: start;
-}
-
-/* ===== C3b 拆账邀请（收件箱 + 已发出） ===== */
-
-/* 反馈条内恢复导航链接 (收件箱 receipt 的「查看这笔记录」): 与
-   transactions.css 既有规则同名同值 —— 该模式现被两个 domain 消费,
-   后续应由 base 侧上移到 components.css, 此处先保证本域不悬空。 */
-.product-feedback-link {
-    color: inherit;
-    font-weight: var(--type-subtitle-weight);
-    text-underline-offset: var(--space-1);
 }
 
 /* ===== 家庭成员与邀请 ===== */
@@ -257,9 +157,6 @@ body[data-domain="obligations"] .content { max-inline-size: var(--layout-page-na
 /* ===== 窄屏 ===== */
 
 @media (max-width: 48rem) {
-    .split-settlement-fields {
-        grid-template-columns: 1fr;
-    }
 
     .family-invite-form,
     .family-member,

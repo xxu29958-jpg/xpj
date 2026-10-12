@@ -40,7 +40,7 @@
     <input type="hidden" name="{{ name }}" value="{{ repayment['values'].get(name, '') }}"{% if name not in repayment['values'] %} disabled{% endif %}>
     {% endfor %}
     {% if repayment.error %}<div id="{{ error_id }}" class="product-feedback product-feedback--danger" role="alert">{{ repayment.error }}</div>{% endif %}
-    <p class="product-page-summary" data-repayment-status role="status" hidden></p>
+    <p data-repayment-status role="status" hidden></p>
     <div class="product-surface">
         <label class="product-amount-label" id="{{ field_id }}-amount-label" for="{{ field_id }}-amount">本次还款</label>
         <input id="{{ field_id }}-amount" class="product-amount" name="amount_major" type="text"

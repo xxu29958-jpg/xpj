@@ -80,7 +80,8 @@ p {
 /* 表单是一列: 提示、字段、预览、动作依次排开, 间距由这一处决定。 */
 .product-form { display: grid; gap: var(--space-5); min-width: 0; }
 .product-form > :is(.product-feedback, .product-form-actions, p) { margin-block: 0; }
-/* 原提交结果未知或被拦下时, 状态句升格为提示块; 填写中保持安静的一行。 */
+/* 原提交的状态句: 填写中是安静的一行; 结果未知或被拦下时升格为提示块。 */
+[data-repayment-status] { margin: 0; color: var(--text-muted); }
 :is([data-repayment-state="submitted"], [data-repayment-state="blocked"]) [data-repayment-status] {
     margin: 0;
     padding: var(--space-4) var(--space-5);
@@ -414,6 +415,13 @@ button[disabled] {
 .product-feedback--error {
     background: var(--state-danger-bg);
     color: var(--state-danger-fg);
+}
+
+/* 反馈条内的导航链接 (如「查看这笔记录」「查看回收站」): 继承语义色, 下划线可辨。 */
+.product-feedback-link {
+    color: inherit;
+    font-weight: var(--type-subtitle-weight);
+    text-underline-offset: var(--space-1);
 }
 
 /* --danger 与 --error 同语义 (旧命名); 422 role=alert 反馈条统一危险色,
@@ -1060,6 +1068,8 @@ details.product-surface { display: block; }
 .product-surface--apricot { background: var(--surface-apricot); }
 .product-surface--lilac { background: var(--surface-lilac); }
 .product-surface > .product-status { justify-self: start; }
+.product-surface > :is(p, h2, h3) { margin: 0; }
+.product-surface > .product-button { justify-self: start; }
 /* 直接在承载面里填写的金额: 与读数同一字号, 只留一条下划线。 */
 input.product-amount { width: 100%; padding: 0 0 var(--space-2); border: 0; border-block-end: 1px solid var(--border-card); border-radius: 0; background: transparent; }
 input.product-amount:focus { outline: 0; border-block-end-color: var(--brand-primary); box-shadow: 0 1px 0 var(--brand-primary); }
@@ -1146,6 +1156,7 @@ html:has(.product-workspace > .product-task-actions) { scroll-padding-block-end:
 .product-history-item { display: grid; justify-items: start; gap: var(--space-1); min-width: 0; padding-block: var(--space-4); }
 .product-history-item + .product-history-item { border-block-start: 1px solid var(--border-card); }
 .product-history-item > div { justify-self: stretch; }
+.product-history-item > strong,
 .product-history-item > .product-entry-heading > strong { font-size: var(--type-subtitle-size); font-weight: var(--type-title-weight); }
 .product-history-item > span:not(.product-status, .hint) { color: var(--text-meta); font-size: var(--type-body-size); line-height: var(--type-body-line); overflow-wrap: anywhere; }
 .product-history-item > :is(.product-status, .product-button, details) { margin-block-start: var(--space-2); }

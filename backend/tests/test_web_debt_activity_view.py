@@ -176,7 +176,7 @@ def test_actual_detail_renderer_reads_requested_page_and_has_one_history(monkeyp
     assert "申报 ¥100.00 · 实际确认 ¥40.00" in html
     assert "误记了同一笔转账" in html
     assert "activity_page=3" in html and "activity_page=1" in html
-    assert "debt-history-more" not in html
+    assert html.count('class="product-history"') == 1  # one paged list, no collapsed remainder
     assert "/repayment-voids" not in html
 
 
