@@ -74,7 +74,7 @@ def test_occurrence_does_not_present_current_plan_as_the_unknown_original_defini
     assert "当前预计" in body and "当前预留" in body
     assert '/web/recurring?ledger_id=owner&amp;month=2026-05' in body
     if recorded:
-        assert "本期首次关联所据定义" in body and "原日元定义" in body and "JPY 1200" in body
+        assert "本期首次关联所据定义" in body and "原日元定义" in body and "JPY 1,200" in body
         assert "不代表该账务月生效" in body and "记录保存时间" in body
         assert 'datetime="2026-09-27T00:00:00Z"' in body
     else:

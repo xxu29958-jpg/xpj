@@ -52,7 +52,7 @@ def test_web_recurring_create_page_journey(web_client: TestClient) -> None:
     creating = web_client.get(href)
     assert 'action="/web/recurring/create"' in creating.text
     assert re.search(r'name="idempotency_key" value="[^"]+"', creating.text)
-    assert 'class="recurring-list"' not in creating.text
+    assert 'aria-label="我的固定支出"' not in creating.text
 
     assert create_via_web(web_client, merchant="房租", amount="6800", date_str="2026-09-06").status_code == 303
 
@@ -64,7 +64,7 @@ def test_web_recurring_create_page_journey(web_client: TestClient) -> None:
     # hero 汇总 active 正式项: 每月合计 + 下一笔到期。
     hero = hero_block(page.text)
     assert hero, "active items exist — hero must render"
-    assert "6800.00" in hero
+    assert "6,800.00" in hero
     assert "2026-09-06" in hero
     assert "房租" in hero
 
@@ -244,8 +244,8 @@ def test_web_recurring_hero_sums_active_items_only_and_ignores_filter(
         page = web_client.get(f"/web/recurring?ledger_id=owner{suffix}")
         hero = hero_block(page.text)
         assert hero, f"hero must not drift with filter {suffix!r}"
-        assert "6000.00" in hero
-        assert "6100.00" not in hero
+        assert "6,000.00" in hero
+        assert "6,100.00" not in hero
         assert "2026-09-05" in hero
         assert "2026-09-01" not in hero
 

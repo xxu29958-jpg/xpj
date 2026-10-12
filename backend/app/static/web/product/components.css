@@ -81,6 +81,7 @@ p {
 /* 表单是一列: 提示、字段、预览、动作依次排开, 间距由这一处决定。 */
 .product-form { display: grid; gap: var(--space-5); min-width: 0; }
 .product-form > :is(.product-feedback, .product-form-actions, p) { margin-block: 0; }
+.product-form > .product-button { justify-self: start; }
 /* 原提交的状态句: 填写中是安静的一行; 结果未知或被拦下时升格为提示块。 */
 [data-repayment-status] { margin: 0; color: var(--text-muted); }
 :is([data-repayment-state="submitted"], [data-repayment-state="blocked"]) [data-repayment-status] {
@@ -1056,6 +1057,7 @@ input.product-amount:read-only { border-block-end-color: transparent; box-shadow
     margin: 0;
     color: var(--text-meta);
     font-size: var(--type-body-size);
+    font-weight: var(--type-body-weight);
     line-height: var(--type-body-line);
     overflow-wrap: anywhere;
 }
@@ -1281,6 +1283,7 @@ details[open]:has(> summary.product-entry) { padding-block-end: var(--space-5); 
 .fact-reconcile strong { min-width: 0; max-width: 100%; color: var(--text-default); font-family: var(--font-numeric); font-size: var(--type-subtitle-size); }
 .product-entry-copy > span { color: var(--text-meta); font-size: var(--type-body-size); line-height: var(--type-body-line); }
 .product-entry-copy > .product-status { justify-self: start; }
+:is(ul, ol).product-entry-list { margin: 0; padding: 0; list-style: none; }
 .product-entry-list > :not(:last-child) { border-block-end: 1px solid var(--border-card); }
 /* 一句说明: 小图标、一行结论、一行解释。不是行, 不可点, 不带分隔线。 */
 :where(.product-note) { margin: 0; }

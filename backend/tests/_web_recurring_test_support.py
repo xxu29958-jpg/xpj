@@ -28,7 +28,7 @@ def open_recurring_form(client: TestClient, listing, *, public_id: str = ""):
     href = next(unescape(href) for href in re.findall(r'<a[^>]*href="([^"]+)"', listing.text) if entry in href)
     page = client.get(href)
     assert page.status_code == 200, page.text
-    assert 'class="recurring-list"' not in page.text
+    assert 'aria-label="我的固定支出"' not in page.text
     return page
 
 
@@ -193,5 +193,5 @@ def extract_hidden_token(html: str, *, action: str) -> str:
 
 
 def hero_block(html: str) -> str:
-    match = re.search(r'<section class="recurring-metrics recurring-metrics--duo".*?</section>', html, re.DOTALL)
+    match = re.search(r'<section[^>]+aria-label="固定支出概览".*?</section>', html, re.DOTALL)
     return match.group(0) if match else ""

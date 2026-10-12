@@ -154,38 +154,6 @@ body:has(.budget-editor[open]) .budget-layout { display: block; }
     margin-block-end: var(--space-5);
 }
 
-.recurring-metrics {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    margin-block-end: var(--space-6);
-    border-block: 1px solid var(--border-card);
-}
-
-.recurring-metric {
-    display: grid;
-    gap: var(--space-2);
-    padding: var(--space-5);
-    border-inline-end: 1px solid var(--border-card);
-}
-
-.recurring-metric:last-child {
-    border-inline-end: 0;
-}
-
-.recurring-metric > span,
-.recurring-metric > small {
-    color: var(--text-meta);
-    font-size: var(--type-caption-size);
-}
-
-.recurring-metric > strong {
-    color: var(--text-default);
-    font-family: var(--font-numeric);
-    font-size: var(--type-headline-size);
-    font-variant-numeric: tabular-nums;
-    font-weight: var(--type-headline-weight);
-}
-
 
 .budget-form {
     display: grid;
@@ -232,9 +200,6 @@ body:has(.budget-editor[open]) .budget-layout { display: block; }
         flex-direction: column;
     }
 
-    .recurring-metrics {
-        grid-template-columns: minmax(0, 1fr);
-    }
 
     .plan-breakdown > span {
         padding-block-start: var(--space-3);
@@ -243,14 +208,7 @@ body:has(.budget-editor[open]) .budget-layout { display: block; }
         border-inline-start: 0;
     }
 
-    .recurring-metric {
-        border-block-end: 1px solid var(--border-card);
-        border-inline-end: 0;
-    }
 
-    .recurring-metric:last-child {
-        border-block-end: 0;
-    }
 }
 
 .plan-goal-list {
@@ -441,22 +399,9 @@ body:has(.budget-editor[open]) .budget-layout { display: block; }
 }
 
 /* 过滤条: goals 的「显示已归档」GET 表单与 recurring 的状态 segments 共用。 */
-.plan-filter {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-3);
-    margin-block-end: var(--space-5);
-}
 
 
 /* 反馈条内的行动链接 (409 引导等): 继承状态色, 只加重字重。 */
-.plan-feedback-link {
-    color: inherit;
-    font-weight: var(--type-subtitle-weight);
-    text-underline-offset: var(--space-1);
-}
 
 /* detail.css 的 product-inline-form 基座只在三级页挂载; 计划域自留一份
    同语义基座 (inline 行内动作表单)。 */
@@ -479,7 +424,6 @@ body:has(.budget-editor[open]) .budget-layout { display: block; }
     font-size: var(--type-caption-size);
 }
 
-.plan-goal.is-archived,
 .plan-goal.is-receding {
     opacity: .72;
 }
@@ -488,125 +432,8 @@ body:has(.budget-editor[open]) .budget-layout { display: block; }
 
 /* ── 固定支出 ────────────────────────────────────────────────────────────── */
 /* hero 只有两格真实事实, 不留空第三列。 */
-.recurring-metrics--duo {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-}
 
-.recurring-metric > strong small {
-    margin-inline-end: var(--space-1);
-    color: var(--text-muted);
-    font-size: var(--type-caption-size);
-    font-weight: var(--type-meta-weight);
-}
 
-.recurring-list {
-    display: grid;
-    margin: 0;
-    padding: 0;
-    list-style: none;
-}
-
-.recurring-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto;
-    align-items: center;
-    gap: var(--space-3) var(--space-6);
-    padding-block: var(--space-4);
-    border-block-end: 1px solid var(--border-card);
-}
-
-.recurring-row:first-child {
-    padding-block-start: 0;
-}
-
-.recurring-row:last-child {
-    padding-block-end: 0;
-    border-block-end: 0;
-}
-
-.recurring-row.is-archived {
-    opacity: .72;
-}
-
-.recurring-row-main {
-    display: grid;
-    min-width: 0;
-    gap: var(--space-2);
-}
-
-.recurring-row-title {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--space-2);
-}
-
-.recurring-row-merchant {
-    color: var(--text-default);
-    font-weight: var(--type-subtitle-weight);
-    /* 超长连写商户名 (无空格/连字符) 可断行：flex 项 min-content 不再撑破行网格。 */
-    overflow-wrap: anywhere;
-}
-
-.recurring-row-meta {
-    color: var(--text-meta);
-    font-size: var(--type-caption-size);
-}
-
-.recurring-row-values {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: start;
-    justify-content: space-between;
-    gap: var(--space-3) var(--space-6);
-}
-
-.recurring-row-amount,
-.recurring-row-next {
-    display: grid;
-    justify-items: end;
-    gap: var(--space-1);
-    text-align: end;
-}
-
-.recurring-row-amount strong {
-    color: var(--text-default);
-    font-family: var(--font-numeric);
-    font-size: var(--type-subtitle-size);
-    font-variant-numeric: tabular-nums;
-    font-weight: var(--type-title-weight);
-    white-space: nowrap;
-}
-
-.recurring-row-amount strong small {
-    color: var(--text-muted);
-    font-size: var(--type-caption-size);
-    font-weight: var(--type-meta-weight);
-}
-
-.recurring-row-next strong {
-    color: var(--text-default);
-    font-size: var(--type-caption-size);
-    font-weight: var(--type-subtitle-weight);
-    white-space: nowrap;
-}
-
-.recurring-row-amount > span,
-.recurring-row-next > span {
-    color: var(--text-meta);
-    font-size: var(--type-caption-size);
-    white-space: nowrap;
-}
-
-.recurring-row-actions {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: flex-end;
-    gap: var(--space-2);
-}
-
-.recurring-editor .budget-actions,
 .goal-page > .budget-actions,
 .goal-editor .budget-actions,
 .income-editor .budget-actions {
@@ -780,26 +607,5 @@ body:has(.budget-editor[open]) .budget-layout { display: block; }
         margin-block-end: var(--space-3);
     }
 
-    .recurring-metrics--duo {
-        grid-template-columns: minmax(0, 1fr);
-    }
 
-    .recurring-row {
-        grid-template-columns: minmax(0, 1fr);
-        align-items: start;
-    }
-
-    .recurring-row-main {
-        grid-column: 1 / -1;
-    }
-
-    .recurring-row-amount {
-        justify-items: start;
-        text-align: start;
-    }
-
-    .recurring-row-actions {
-        grid-column: 1 / -1;
-        justify-content: flex-start;
-    }
 }

@@ -1,8 +1,8 @@
 {% if command_draft %}
 {% set command_scope = command_draft_scope %}
-<section class="product-panel product-panel--padded" aria-label="核对本次付款关联">
-  <h2>{{ '保留的原提交' if (retry and command_result != 'prepared') or command_draft.original_only else '核对这次关联' }}</h2>
-  <form method="post" action="/web/recurring/{{ item.public_id }}/occurrence"
+<section class="product-surface product-surface--plain" aria-label="核对本次付款关联">
+  <h2 class="product-panel-title">{{ '保留的原提交' if (retry and command_result != 'prepared') or command_draft.original_only else '核对这次关联' }}</h2>
+  <form class="product-form" method="post" action="/web/recurring/{{ item.public_id }}/occurrence"
     data-occurrence-plan-id="{{ command_draft.task_id }}"
     data-occurrence-can-write="{{ 'true' if can_write else 'false' }}"
     data-occurrence-archived="{{ 'true' if item.status == 'archived' else 'false' }}"
@@ -17,11 +17,12 @@
     <p data-occurrence-summary>{{ command_draft.series_label }} · {{ command_draft.month }} · {{ command_draft.payment_label }}</p>
     <p class="hint">关联只确认本期付款依据，不会重复记账或修改原付款。解除只改变关联，不会撤销账单。</p>
     {% if command_binding_required %}
-    <button class="product-button" type="submit" name="review_latest" value="true">核对原身份和当前状态</button>
+    <div class="product-form-actions"><button class="product-button" type="submit" name="review_latest" value="true">核对原身份和当前状态</button></div>
     {% else %}
-    <button class="product-button product-button--primary" type="submit" data-occurrence-submit{% if not can_write or command_draft.original_only %} disabled{% endif %}>{{ '重试原提交' if retry and command_result != 'prepared' else '解除本期付款关联' if command_draft.action == 'clear' else '用这笔付款确认本期已付' }}</button>
+    <div class="product-form-actions"><button class="product-button product-button--primary" type="submit" data-occurrence-submit{% if not can_write or command_draft.original_only %} disabled{% endif %}>{{ '重试原提交' if retry and command_result != 'prepared' else '解除本期付款关联' if command_draft.action == 'clear' else '用这笔付款确认本期已付' }}</button>
+</div>
     {% endif %}
-    {{ drafts.controls('occurrence', '付款关联', command_scope) }}
+    <div class="product-form-actions">{{ drafts.controls('occurrence', '付款关联', command_scope) }}</div>
   </form>
 </section>
 {% endif %}
