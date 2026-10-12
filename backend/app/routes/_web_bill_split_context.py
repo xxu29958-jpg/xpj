@@ -9,12 +9,14 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.money_contract import projection_sum_to_int, projection_values_sum_to_int
+from app.routes._web_expense_return_context import flow_href
 from app.routes._web_relationship_links import accepted_split_debt_links
 from app.routes._web_session_common import resolve_web_actor_account_id
 from app.services import bill_split_service as bsplit
 from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.currency_common import minor_amount_label, minor_amount_value
 from app.services.invitation_members import list_members
+from app.services.ledger_service import list_ledgers_for_account, list_writer_ledger_ids_for_account
 from app.services.spending_contract_service import accounting_zone
 from app.services.time_service import ensure_utc, now_utc
 
@@ -46,6 +48,31 @@ def invitation_facts(inv) -> dict:
             if value is not None
         ],
     }
+
+
+def inbox_rows(db: Session, account_id: int, invitations: list, *, status: str) -> tuple[list[dict], dict[str, str]]:
+    """The inbox and original-acceptance task share receiver-authorized presentation."""
+    writer_ids = list_writer_ledger_ids_for_account(db, account_id=account_id)
+    names = {summary.ledger_id: summary.name for summary in list_ledgers_for_account(db, account_id=account_id)}
+    presented_at = now_utc()
+    rows = []
+    for inv in invitations:
+        sender_name, sender_context = bsplit.receiver_sender_presentation(inv.sender_display_name, names.get(inv.sender_ledger_id, ""))
+        received = bsplit.to_received_bill_reference(inv, receiver_account_id=account_id, visible_ledger_names=names)
+        rows.append({
+            **invitation_facts(inv), "public_id": inv.public_id, "status": inv.status,
+            "amount_cents": str(inv.amount_cents), "home_currency_code": inv.home_currency_code,
+            "sender_display_name": sender_name, "sender_context": sender_context,
+            "merchant": inv.merchant_snapshot or "", "expires_at": _fmt_local(inv.expires_at),
+            "is_expired": inv.status == "invited" and ensure_utc(inv.expires_at) <= presented_at,
+            "accept_choices": [{"ledger_id": ledger, "name": names.get(ledger, "账本")} for ledger in writer_ids
+                               if ledger != inv.sender_ledger_id],
+            "received_href": flow_href(f"/web/expenses/{received['expense_id']}/edit", ledger_id=received["ledger_id"],
+                return_to="bill_splits_inbox", return_filter=status) if received else "",
+            "received_ledger_name": received["ledger_name"] if received else "",
+            "draft_ref": str(uuid4()),
+        })
+    return rows, names
 
 
 def _remaining_split_capacity(

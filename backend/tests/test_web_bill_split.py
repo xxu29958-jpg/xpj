@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import timedelta
 from urllib.parse import parse_qs, urlparse
 from uuid import uuid4
@@ -19,6 +20,8 @@ from app.services.expense_accounting_time_service import refresh_legacy_expense_
 from app.services.ledger_calendar_service import adopt_ledger_calendar
 from app.services.spending_contract_service import accounting_zone
 from app.services.time_service import ensure_utc, now_utc
+from tests._local_web_identity_support import _connect_local_session, installed_web_setup
+from tests._web_native_form_support import hidden_post_forms
 
 
 @pytest.fixture()
@@ -258,6 +261,74 @@ def test_web_split_accept_redirects_to_canonical_fact_receipt(
     assert '/web/bill-splits/inbox?ledger_id=owner&amp;status=all' in history_fact.text
 
 
+@pytest.fixture
+def installed_split_browser():
+    yield from installed_web_setup()
+
+
+@pytest.mark.real_db
+@pytest.mark.currency_binding_unbound
+def test_bound_acceptance_recovers_original_target_after_receipt_loss_and_rejects_rebinding(installed_split_browser):
+    installed = installed_split_browser
+    _connect_local_session(installed)
+    browser = installed.browser
+    browser.base_url = browser.base_url.copy_with(scheme="https")
+    headers = {"Origin": str(browser.base_url).rstrip("/"), "Accept": "application/json"}
+    sender_id, sender_ledger = _seed_receiver("accept_sender", "家人甲")
+    expense_id = _seed_expense_in(sender_ledger, amount_cents=3000)
+    with SessionLocal() as db:
+        target = Ledger(ledger_id="accept_travel", name="出差账本", owner_account_id=installed.installation_account_id)
+        db.add(target)
+        db.flush()
+        adopt_ledger_calendar(db, ledger_id=target.ledger_id, timezone_name="Asia/Shanghai", actor_account_id=installed.installation_account_id)
+        db.add(LedgerMember(ledger_id=target.ledger_id, account_id=installed.installation_account_id, role="owner"))
+        db.commit()
+        invitation = bsplit.create_invitation(db, sender_account_id=sender_id, sender_ledger_id=sender_ledger,
+            expense_id=expense_id, receiver_account_id=installed.installation_account_id, amount_cents=1200,
+            idempotency_key=str(uuid4()), expected_row_version=1)
+        public_id = invitation.public_id
+    action = f"/web/bill-splits/{public_id}/accept"
+    fields = hidden_post_forms(browser.get("/web/bill-splits/inbox").text)[action]
+    scope = json.loads(fields["draft_scope"])
+    fields.update(target_ledger_id="accept_travel", target_ledger_name="出差账本")
+    changed_scope = {**scope, "deviceId": "replacement-browser"}
+    refused = browser.post(action, data={**fields, "draft_scope": json.dumps(changed_scope)}, headers=headers)
+    assert refused.status_code == 409 and refused.json()["error"] == "session_binding_changed", refused.text
+    native = browser.post(action, data={**fields, "draft_scope": json.dumps(changed_scope)}, headers={"Origin": headers["Origin"]})
+    assert native.status_code == 409 and "出差账本" in native.text
+    assert hidden_post_forms(native.text)[action]["target_ledger_id"] == "accept_travel"
+    bad_target = {**fields, "target_ledger_id": sender_ledger, "target_ledger_name": "原选择"}
+    rejected = browser.post(action, data=bad_target, headers=headers)
+    assert rejected.status_code == 403 and rejected.json()["draft_result"] == "rejected", rejected.text
+    review = browser.post(action, data={**bad_target, "review_latest": "true"}, headers={"Origin": headers["Origin"]})
+    assert review.status_code == 200 and 'data-splitaccept-native-result="prepared"' in review.text
+    assert hidden_post_forms(review.text)[action]["target_ledger_id"] == sender_ledger
+    with SessionLocal() as db:
+        assert db.query(Expense).filter_by(split_origin_invitation_id=public_id).count() == 0
+    with SessionLocal() as db:
+        db.query(LedgerMember).filter_by(ledger_id=scope["ledgerId"], account_id=installed.installation_account_id).one().role = "viewer"
+        db.commit()
+    accepted = browser.post(action, data=fields, headers=headers)
+    assert accepted.status_code == 200, accepted.text
+    original = accepted.json()
+    assert original["ack"] == {"scope": scope, "clientRef": public_id}
+    assert original["receipt"] == {"public_id": public_id, "status": "accepted", "target_ledger_id": "accept_travel",
+        "amount_cents": 1200, "home_currency_code": "CNY"}
+    assert action not in browser.get("/web/bill-splits/inbox").text
+    task = browser.get(action, params={"original_only": "true"})
+    assert task.status_code == 200 and 'data-splitaccept-original-only="true"' in task.text
+    with SessionLocal() as db:
+        db.query(LedgerMember).filter_by(ledger_id="accept_travel", account_id=installed.installation_account_id).one().role = "viewer"
+        db.commit()
+    replay = browser.post(action, data=fields, headers=headers)
+    assert replay.status_code == 200 and replay.json() == original, replay.text
+    changed = browser.post(action, data={**fields, "target_ledger_id": scope["ledgerId"]}, headers=headers)
+    assert changed.status_code == 409 and changed.json()["error"] == "state_conflict", changed.text
+    with SessionLocal() as db:
+        facts = db.query(Expense).filter_by(split_origin_invitation_id=public_id).all()
+        assert len(facts) == 1 and facts[0].tenant_id == "accept_travel" and facts[0].amount_cents == 1200
+
+
 def test_web_split_receipt_does_not_leak_another_receivers_acceptance(
     web_client: TestClient,
 ) -> None:
@@ -296,6 +367,9 @@ def test_web_split_receipt_does_not_leak_another_receivers_acceptance(
     )
     assert page.status_code == 200
     assert f"/web/expenses/{received_expense_id}/edit" not in page.text
+    recovery = web_client.get(f"/web/bill-splits/{public_id}/accept?ledger_id=owner&original_only=true")
+    assert recovery.status_code == 403
+    assert "receiver_private_receipt" not in recovery.text
 
 
 def test_web_split_invite_duplicate_pending_flashes_message(

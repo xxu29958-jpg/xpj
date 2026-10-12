@@ -85,6 +85,7 @@ class _DesktopSessionRequest:
 
     def __init__(self, auth, *, method: str = "POST") -> None:
         self.method = method
+        self.headers = {}
         self.state = type(
             "_State",
             (),
@@ -260,15 +261,15 @@ def test_web_bill_split_accept_threads_session_account_and_device(identity, monk
 
     def fake_accept(_db, **kwargs):
         captured.update(kwargs)
-        return SimpleNamespace(public_id="split-device-attribution"), object()
+        return SimpleNamespace(public_id="split-device-attribution", status="accepted", amount_cents=1200,
+            home_currency_code="CNY"), object()
 
     monkeypatch.setattr(web_bill_split.bsplit, "accept_invitation", fake_accept)
     with SessionLocal() as db:
         response = web_bill_split.web_split_accept(
             "split-device-attribution",
             request,
-            target_ledger_id="owner",
-            ledger_id="owner",
+            form=web_bill_split.SplitAcceptanceForm(target_ledger_id="owner", ledger_id="owner"),
             _local=None,
             db=db,
         )

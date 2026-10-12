@@ -29,7 +29,7 @@
       const item = document.createElement("li"), link = document.createElement("a");
       link.className = "product-button product-button--quiet product-button--small";
       link.href = href(record);
-      link.textContent = (record.values[definition.idField || "public_id"] ? "修改" : definition.creationLabel || "新建") + " · " +
+      link.textContent = (record.values[definition.idField || "public_id"] ? definition.editLabel || "修改" : definition.creationLabel || "新建") + " · " +
         (record.values[definition.titleField || (definition.family === "goal" ? "name" : "label")] || "未命名" + definition.label) + " · " +
         (!stores.create.matches(record.scope, scope) ? "原浏览器身份，待核对" : record.phase === "editing" ? "未提交" :
           record.serverResult === "rejected" ? "已拒绝，待核对" : "结果待核对");

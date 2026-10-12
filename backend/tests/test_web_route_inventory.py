@@ -221,6 +221,7 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("POST", "/web/expenses/{expense_id}/split-invite"): "writer-only",
     ("GET", "/web/bill-splits/inbox"): "local-only-rendering",
     ("GET", "/web/bill-splits/sent"): "local-only-rendering",
+    ("GET", "/web/bill-splits/{public_id}/accept"): "local-only-rendering",
     # accept / reject 不写 selected_ledger（accept 写 target_ledger
     # 在 service 层 _load_writer_member 校验；reject 不写任何 ledger）
     ("POST", "/web/bill-splits/{public_id}/accept"): "local-only-rendering",

@@ -1,0 +1,35 @@
+{% set values = accept_values|default({}) %}
+{% set editable = live and row.accept_choices %}
+<form method="post" action="/web/bill-splits/{{ row.public_id }}/accept" class="debt-create-form"
+  {% if splitaccept_draft_scope %}data-splitaccept-draft-scope="{{ splitaccept_draft_scope|tojson|forceescape }}"
+  data-splitaccept-plan-id="{{ row.public_id }}" data-splitaccept-archived="{{ 'false' if editable else 'true' }}"
+  data-splitaccept-native-result="{{ splitaccept_native_result or '' }}"
+  data-splitaccept-original-only="{{ 'true' if splitaccept_original_only else 'false' }}"{% endif %}>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="ledger_id" value="{{ values.ledger_id or selected_ledger_id }}">
+  <input type="hidden" name="public_id" value="{{ row.public_id }}">
+  <input type="hidden" name="draft_ref" value="{{ values.draft_ref or row.draft_ref }}">
+  <input type="hidden" name="draft_scope" value="{{ (values.draft_scope or (splitaccept_draft_scope|tojson if splitaccept_draft_scope else ''))|forceescape }}">
+  <input type="hidden" name="target_ledger_name" value="{{ values.target_ledger_name or '' }}">
+  <input type="hidden" name="title" value="{{ row.sender_display_name }} · {{ row.share_label }}">
+  <input type="hidden" name="amount_cents" value="{{ row.amount_cents }}">
+  <input type="hidden" name="home_currency_code" value="{{ row.home_currency_code }}">
+  <p class="hint" role="status" hidden data-splitaccept-draft-status></p>
+  <div class="product-field">
+    <label for="bsplit-target-{{ row.public_id }}">记入哪个账本</label>
+    <select class="product-input" id="bsplit-target-{{ row.public_id }}" name="target_ledger_id" required{% if not editable %} disabled{% endif %}>
+      {% if values.target_ledger_id and values.target_ledger_id not in row.accept_choices|map(attribute='ledger_id')|list %}
+      <option value="{{ values.target_ledger_id }}" selected>{{ values.target_ledger_name or '原选择账本（当前不可写）' }}</option>
+      {% endif %}
+      {% for c in row.accept_choices %}<option value="{{ c.ledger_id }}"{% if values.target_ledger_id == c.ledger_id %} selected{% endif %}>{{ c.name }}</option>{% endfor %}
+    </select>
+    <p class="hint" hidden data-splitaccept-target-note></p>
+  </div>
+  <p class="hint">接受后在所选账本记入你的份额。只展示这次邀请已共享的信息。</p>
+  <p class="hint" hidden data-splitaccept-review-note>先核对当前邀请与目标账本；继续修改不会自动接受。</p>
+  <div class="product-form-actions">
+    <button type="submit" class="product-button product-button--primary" data-splitaccept-submit{% if not editable %} hidden disabled{% endif %}>接受并记账</button>
+    <button type="submit" name="review_latest" value="true" formnovalidate hidden class="product-button product-button--quiet" data-splitaccept-review>核对后继续修改</button>
+    <button type="button" hidden class="product-button product-button--quiet" data-splitaccept-discard>放弃本地原稿</button>
+  </div>
+</form>

@@ -2,19 +2,40 @@
 {% set page_title = '拆账收件箱' %}
 {% set product_body_domain = 'obligations' %}
 {% set all_history = split_inbox_status == 'all' %}
+{% if accept_task %}
+{% set page_surface = 'tertiary' %}
+{% set task_return_href = '/web/bill-splits/inbox?ledger_id=' ~ selected_ledger_id|urlencode %}
+{% set task_return_label = '拆账收件箱' %}
+{% endif %}
 {% set status_labels = {'invited':'待处理', 'accepted':'已接受', 'rejected':'已拒绝', 'cancelled':'已撤回', 'expired':'已过期'} %}
 {% block title %}拆账收件箱 · 往来 · 小票夹{% endblock %}
+{% block page_scripts %}
+{% if splitaccept_draft_scope %}
+<script defer src="/static/web/manual-drafts.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/plan-entry.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/split-acceptance-entry.js?v={{ asset_version }}"></script>
+{% endif %}
+{% endblock %}
 {% block page_header %}
 <header class="product-page-header"><div class="product-page-heading">
-  <h1 class="page-title">{{ '收到的拆账与结果' if all_history else ('一起分担这笔消费' if bill_split_rows|length == 1 else '拆账收件箱') }}</h1>
-  <p class="product-page-summary">先核对邀请份额，再选择记入哪个账本。</p>
+  <h1 class="page-title">{{ '核对这份接受任务' if accept_task else ('收到的拆账与结果' if all_history else ('一起分担这笔消费' if bill_split_rows|length == 1 else '拆账收件箱')) }}</h1>
+  <p class="product-page-summary">{{ '保留最初选择，核实原提交的接受结果。' if accept_task else '先核对邀请份额，再选择记入哪个账本。' }}</p>
 </div></header>
 {% endblock %}
 {% block content %}
+{% if not accept_task %}
 <nav class="product-segments" aria-label="拆账收件范围">
   <a{% if not all_history %} class="active" aria-current="page"{% endif %} href="/web/bill-splits/inbox?ledger_id={{ selected_ledger_id|urlencode }}">待处理</a>
   <a{% if all_history %} class="active" aria-current="page"{% endif %} href="/web/bill-splits/inbox?ledger_id={{ selected_ledger_id|urlencode }}&amp;status=all">全部记录</a>
 </nav>
+{% endif %}
+{% if splitaccept_draft_scope %}
+<details class="debt-section"{% if not accept_task %} open{% endif %} hidden data-splitaccept-draft-shelf data-draft-scope="{{ splitaccept_draft_scope|tojson|forceescape }}">
+  <summary>保留的接受任务</summary>
+  <p class="hint">此浏览器保留的接受任务；未提交或结果待核对。</p>
+  <ul data-splitaccept-draft-list></ul>
+</details>
+{% endif %}
 {% if receipt %}
 <div class="product-feedback product-feedback--success" role="status">
   已接受，{{ receipt.amount_label }} 已记入 {{ receipt.ledger_name }}。
@@ -37,17 +58,7 @@
   {% if live %}
     <p class="hint">请在 {{ row.expires_at }} 前处理</p>
     {% if row.accept_choices %}
-    <form method="post" action="/web/bill-splits/{{ row.public_id }}/accept" class="product-form-grid">
-      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-      <div class="product-field">
-        <label for="bsplit-target-{{ row.public_id }}">记入哪个账本</label>
-        <select class="product-input" id="bsplit-target-{{ row.public_id }}" name="target_ledger_id" required>
-          {% for c in row.accept_choices %}<option value="{{ c.ledger_id }}">{{ c.name }}</option>{% endfor %}
-        </select>
-      </div>
-      <p class="hint">接受后在所选账本记入你的份额。只展示这次邀请已共享的信息。</p>
-      <div class="product-form-actions"><button type="submit" class="product-button product-button--primary">接受并记账</button></div>
-    </form>
+    {% include '_split_acceptance_form.html' %}
     {% else %}<p class="hint">你没有可写入的其他账本，暂时不能接受这份邀请；仍可以拒绝。</p>{% endif %}
     <form method="post" action="/web/bill-splits/{{ row.public_id }}/reject" class="product-form-actions">
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
@@ -59,9 +70,10 @@
     <div class="debt-history" aria-label="邀请处理时间">{% for event in row.events %}<div class="debt-history-row"><div class="debt-history-main"><span>{{ event.label }}</span><span class="debt-history-date">{{ event.time }}</span></div></div>{% endfor %}</div>
     {% if row.is_expired or row.status == 'expired' %}<p class="hint">已于 {{ row.expires_at }} 过期</p>{% else %}<p class="hint">原定截止 {{ row.expires_at }}</p>{% endif %}
   {% endif %}
+  {% if accept_task and (not live or not row.accept_choices) %}{% include '_split_acceptance_form.html' %}{% endif %}
 </section>
 {% else %}
 <div class="product-state"><div class="product-state-title">{{ '还没有收到拆账邀请' if all_history else '没有待处理的拆账邀请' }}</div><div class="product-state-body">家人从一笔已确认账单「找家人分摊」发起邀请后，会出现在这里。</div></div>
 {% endfor %}
-{% if all_history %}<p class="hint">最多显示最近的 50 份邀请与处理结果；待处理邀请可单独查看。</p>{% endif %}
+{% if all_history and not accept_task %}<p class="hint">最多显示最近的 50 份邀请与处理结果；待处理邀请可单独查看。</p>{% endif %}
 {% endblock %}

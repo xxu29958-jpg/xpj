@@ -7923,24 +7923,6 @@
         "title": "Body_web_set_recurring_occurrence_web_recurring__public_id__occurrence_post",
         "type": "object"
       },
-      "Body_web_split_accept_web_bill_splits__public_id__accept_post": {
-        "properties": {
-          "ledger_id": {
-            "default": "",
-            "title": "Ledger Id",
-            "type": "string"
-          },
-          "target_ledger_id": {
-            "title": "Target Ledger Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "target_ledger_id"
-        ],
-        "title": "Body_web_split_accept_web_bill_splits__public_id__accept_post",
-        "type": "object"
-      },
       "Body_web_split_cancel_web_bill_splits__public_id__cancel_post": {
         "properties": {
           "ledger_id": {
@@ -25601,6 +25583,54 @@
           "latest_upload_at"
         ],
         "title": "ServerSettingsResponse",
+        "type": "object"
+      },
+      "SplitAcceptanceForm": {
+        "properties": {
+          "csrf_token": {
+            "default": "",
+            "title": "Csrf Token",
+            "type": "string"
+          },
+          "draft_ref": {
+            "default": "",
+            "title": "Draft Ref",
+            "type": "string"
+          },
+          "draft_scope": {
+            "default": "",
+            "title": "Draft Scope",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "public_id": {
+            "default": "",
+            "title": "Public Id",
+            "type": "string"
+          },
+          "review_latest": {
+            "default": false,
+            "title": "Review Latest",
+            "type": "boolean"
+          },
+          "target_ledger_id": {
+            "title": "Target Ledger Id",
+            "type": "string"
+          },
+          "target_ledger_name": {
+            "default": "",
+            "title": "Target Ledger Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_ledger_id"
+        ],
+        "title": "SplitAcceptanceForm",
         "type": "object"
       },
       "StatusResponse": {
@@ -51194,6 +51224,72 @@
       }
     },
     "/web/bill-splits/{public_id}/accept": {
+      "get": {
+        "operationId": "web_split_acceptance_task_web_bill_splits__public_id__accept_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ledger Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "original_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Original Only",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Split Acceptance Task",
+        "tags": [
+          "web"
+        ]
+      },
       "post": {
         "operationId": "web_split_accept_web_bill_splits__public_id__accept_post",
         "parameters": [
@@ -51211,7 +51307,7 @@
           "content": {
             "application/x-www-form-urlencoded": {
               "schema": {
-                "$ref": "#/components/schemas/Body_web_split_accept_web_bill_splits__public_id__accept_post"
+                "$ref": "#/components/schemas/SplitAcceptanceForm"
               }
             }
           },
