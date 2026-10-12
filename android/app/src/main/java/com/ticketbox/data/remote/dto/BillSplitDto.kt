@@ -97,7 +97,6 @@ data class BillSplitInboxDto(
     val senderDisplayName: String,
     @param:Json(name = "received_bill")
     val receivedBill: BillSplitReceivedBillDto? = null,
-    @param:Json(name = "accepted_target_ledger_id") val acceptedTargetLedgerId: String? = null,
     @param:Json(name = "original_currency_code") val originalCurrencyCode: String? = null,
     @param:Json(name = "original_amount_minor") val originalAmountMinor: Long? = null,
     @param:Json(name = "accounting_time_snapshot") val accountingTimeSnapshot: ExpenseAccountingTimeDto? = null,

@@ -4,7 +4,7 @@ import com.squareup.moshi.JsonAdapter
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.JsonDataException
 import com.ticketbox.data.local.PendingMutationStatus
-import com.ticketbox.data.remote.dto.BillSplitInboxDto
+import com.ticketbox.data.remote.dto.BillSplitAcceptanceDto
 import com.ticketbox.domain.model.BillSplitInbox
 import com.ticketbox.domain.model.CurrencyCode
 import java.io.IOException
@@ -29,7 +29,7 @@ data class PendingBillSplitAcceptance(val row: OutboxRow, val payload: BillSplit
 
 data class BillSplitAcceptanceObservation(val access: LedgerAccessContext?, val submissions: List<PendingBillSplitAcceptance> = emptyList())
 
-internal fun BillSplitInboxDto.accepts(original: BillSplitAcceptPayload): Boolean = publicId == original.publicId &&
+internal fun BillSplitAcceptanceDto.accepts(original: BillSplitAcceptPayload): Boolean = publicId == original.publicId &&
     status == "accepted" && acceptedTargetLedgerId == original.targetLedgerId &&
     amountCents == original.amountCents && homeCurrencyCode == original.homeCurrencyCode &&
     (receivedBill == null || receivedBill.ledgerId == original.targetLedgerId && receivedBill.expenseId > 0)

@@ -79,6 +79,7 @@ class OpenApiContractGateTest {
         Pairing(BillSplitAcceptRequestDto::class, "BillSplitAcceptRequest"),
         Pairing(BillSplitSentDto::class, "BillSplitSentResponse"),
         Pairing(BillSplitInboxDto::class, "BillSplitInboxResponse"),
+        Pairing(BillSplitAcceptanceDto::class, "BillSplitAcceptanceResponse"),
         Pairing(BillSplitReceivedBillDto::class, "BillSplitReceivedBillResponse"),
         Pairing(BillSplitSentListResponseDto::class, "BillSplitSentListResponse"),
         Pairing(BillSplitInboxListResponseDto::class, "BillSplitInboxListResponse"),

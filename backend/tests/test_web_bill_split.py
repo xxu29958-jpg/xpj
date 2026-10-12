@@ -303,7 +303,7 @@ def test_bound_acceptance_recovers_original_target_after_receipt_loss_and_reject
     assert rejected.status_code == 403 and rejected.json()["draft_result"] == "rejected", rejected.text
     review = browser.post(action, data={**bad_target, "review_latest": "true"}, headers={"Origin": headers["Origin"]})
     assert review.status_code == 200 and 'data-splitaccept-native-result="prepared"' in review.text
-    assert hidden_post_forms(review.text)[action]["target_ledger_id"] == sender_ledger
+    assert f'<option value="{sender_ledger}" selected>原选择</option>' in review.text
     with SessionLocal() as db:
         assert db.query(Expense).filter_by(split_origin_invitation_id=public_id).count() == 0
     with SessionLocal() as db:

@@ -237,7 +237,7 @@ internal class CorrectionConnectedNetwork {
     var splitSent = BillSplitSentListResponseDto(emptyList())
     var splitLedgers: com.ticketbox.data.remote.dto.LedgerListResponseDto? = null
     val splitAcceptCalls = CopyOnWriteArrayList<Pair<String, String>>()
-    val splitAcceptResults = mutableMapOf<String, com.ticketbox.data.remote.dto.BillSplitInboxDto>()
+    val splitAcceptResults = mutableMapOf<String, com.ticketbox.data.remote.dto.BillSplitAcceptanceDto>()
     var loseSplitAcceptResponse = false
     var splitReceiptTargetOverride: String? = null
     val ledgerSwitchRequests = CopyOnWriteArrayList<String>()
@@ -370,13 +370,19 @@ internal class CorrectionConnectedNetwork {
                 ledger = requireNotNull(splitLedgers).ledgers.single { it.ledgerId == ledgerId },
                 accountName = session.identity.accountName, deviceName = session.identity.deviceName)
         }
-        override suspend fun acceptBillSplitInvitation(publicId: String, request: com.ticketbox.data.remote.dto.BillSplitAcceptRequestDto): com.ticketbox.data.remote.dto.BillSplitInboxDto {
+        override suspend fun acceptBillSplitInvitation(publicId: String, request: com.ticketbox.data.remote.dto.BillSplitAcceptRequestDto): com.ticketbox.data.remote.dto.BillSplitAcceptanceDto {
             splitAcceptCalls += publicId to request.targetLedgerId
             val accepted = splitAcceptResults.getOrPut(publicId) {
                 val target = requireNotNull(splitLedgers).ledgers.single { it.ledgerId == request.targetLedgerId }
                 current = current.copy(id = 84L, merchant = "已接受的分摊")
-                splitInbox.items.single { it.publicId == publicId }.copy(status = "accepted", acceptedTargetLedgerId = target.ledgerId,
-                    receivedBill = com.ticketbox.data.remote.dto.BillSplitReceivedBillDto(current.id, target.ledgerId, target.name))
+                val invited = splitInbox.items.single { it.publicId == publicId }
+                com.ticketbox.data.remote.dto.BillSplitAcceptanceDto(publicId, "accepted", invited.amountCents,
+                    invited.homeCurrencyCode, invited.merchantSnapshot, invited.categorySuggestion, invited.expenseTimeSnapshot,
+                    invited.expiresAt, invited.createdAt, invited.acceptedAt, invited.rejectedAt, invited.cancelledAt, invited.expiredAt,
+                    invited.senderAccountId, invited.senderDisplayName,
+                    receivedBill = com.ticketbox.data.remote.dto.BillSplitReceivedBillDto(current.id, target.ledgerId, target.name),
+                    acceptedTargetLedgerId = target.ledgerId, originalCurrencyCode = invited.originalCurrencyCode,
+                    originalAmountMinor = invited.originalAmountMinor, accountingTimeSnapshot = invited.accountingTimeSnapshot)
             }
             check(accepted.acceptedTargetLedgerId == request.targetLedgerId)
             // The account's latest-50 list may no longer include this original task.

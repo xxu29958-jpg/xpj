@@ -28,7 +28,7 @@ interface BillSplitApi {
     suspend fun acceptBillSplitInvitation(
         @Path("publicId") publicId: String,
         @Body request: com.ticketbox.data.remote.dto.BillSplitAcceptRequestDto,
-    ): com.ticketbox.data.remote.dto.BillSplitInboxDto
+    ): com.ticketbox.data.remote.dto.BillSplitAcceptanceDto
 
     @POST("api/bill-splits/{publicId}/reject")
     suspend fun rejectBillSplitInvitation(

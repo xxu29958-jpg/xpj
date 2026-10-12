@@ -30,7 +30,10 @@ def agreement_view(agreement, *, selected_id: str) -> dict:
                        "href": f"/web/debts/{debt.public_id}?{urlencode({'ledger_id': selected_id})}"}
                       for label, debt in (("原付款往来", agreement.original_debt), ("返还往来", agreement.return_debt))
                       if debt is not None]
-    result["preview_label"] = settlement_label(agreement.preview.default_settlement_net_amount_cents, currency)
+    preview_amount = agreement.preview.default_settlement_net_amount_cents
+    result["preview_direction_label"] = "待返还参考" if preview_amount < 0 else "待付款参考" if preview_amount > 0 else "无需结算参考"
+    result["preview_amount_label"] = _home_amount_label(abs(preview_amount), currency)
+    result["preview_share_label"] = _home_amount_label(agreement.preview.new_share_amount_cents, currency)
     reference = agreement.preview.cash_based_settlement_net_amount_cents
     result["reference_label"] = settlement_label(reference, currency) if reference is not None else ""
     result["pending_repayments"] = [{"href": f"/web/debts/{public_id}?{urlencode({'ledger_id': selected_id})}#debt-proposal-actions-title",

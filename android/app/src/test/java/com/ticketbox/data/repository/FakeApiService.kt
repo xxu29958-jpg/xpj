@@ -455,7 +455,25 @@ internal class FakeApiService(
     override suspend fun acceptBillSplitInvitation(
         publicId: String,
         request: com.ticketbox.data.remote.dto.BillSplitAcceptRequestDto,
-    ): com.ticketbox.data.remote.dto.BillSplitInboxDto = stubBillSplitInbox()
+    ): com.ticketbox.data.remote.dto.BillSplitAcceptanceDto =
+        com.ticketbox.data.remote.dto.BillSplitAcceptanceDto(
+            publicId = publicId,
+            status = "accepted",
+            amountCents = 2500,
+            homeCurrencyCode = "CNY",
+            merchantSnapshot = null,
+            categorySuggestion = null,
+            expenseTimeSnapshot = null,
+            expiresAt = "2026-06-23T00:00:00Z",
+            createdAt = "2026-05-24T00:00:00Z",
+            acceptedAt = null,
+            rejectedAt = null,
+            cancelledAt = null,
+            expiredAt = null,
+            senderAccountId = 1,
+            acceptedTargetLedgerId = request.targetLedgerId,
+            senderDisplayName = "Sender",
+        )
     override suspend fun rejectBillSplitInvitation(publicId: String): com.ticketbox.data.remote.dto.BillSplitInboxDto = stubBillSplitInbox()
     override suspend fun cancelBillSplitInvitation(publicId: String): com.ticketbox.data.remote.dto.BillSplitSentDto = stubBillSplitSent()
 

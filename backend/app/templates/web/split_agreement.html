@@ -1,18 +1,29 @@
 {% extends "base.html" %}
 {% set product_body_domain = 'obligations' %}
+{% set page_surface = 'tertiary' %}
+{% set task_return_href = '/web/debts/' ~ change.public_id ~ '?ledger_id=' ~ selected_ledger_id|urlencode %}
+{% set task_return_label = '往来详情' %}
 {% block title %}拆账新约定 · 小票夹{% endblock %}
 {% block page_scripts %}
 <script defer src="/static/web/manual-drafts.js?v={{ asset_version }}"></script>
 <script defer src="/static/web/split-settlement-input.js?v={{ asset_version }}"></script>
 <script defer src="/static/web/repayment-entry.js?v={{ asset_version }}"></script>
 {% endblock %}
-{% block content %}
-<div data-repayment-container>
-<header class="product-page-header"><div>
-  <a class="product-link" href="/web/debts/{{ change.public_id }}?ledger_id={{ selected_ledger_id }}">返回往来详情</a>
-  <h1 class="page-title">拆账新约定</h1>
-  <p class="product-page-summary">先核对已经发生的钱，再共同决定新的承担和待结算金额。</p>
+{% block page_header %}
+<header class="product-page-header"><div class="product-page-heading">
+  <h1 class="page-title">{{ '这次约定操作已完成' if change.ack else '重新约定份额' if change['values'].command == 'create' else change.submit_label }}</h1>
+  <p class="product-page-summary">已经发生的付款与返还保留；新约定由双方共同确认。</p>
 </div></header>
+{% endblock %}
+{% block page_footer %}
+<footer class="content product-task-footer" data-page-level="tertiary">
+  <button class="product-button product-button--primary" type="submit" form="split-change-form" name="repayment_submit" data-repayment-submit{% if not change.can_create and not change.result %} disabled{% endif %}{% if change.ack %} hidden{% endif %}>{{ change.submit_label }}</button>
+  {% if change.replacement %}<button class="product-button product-button--quiet" type="button" form="split-change-form" name="repayment_replace" data-repayment-replace hidden>核对当前事实后重新拟定</button>{% endif %}
+  <a class="product-button product-button--{{ 'primary' if change.ack else 'quiet' }}" href="{{ task_return_href }}">{{ '返回往来详情' if change.ack else '返回，保留输入' }}</a>
+</footer>
+{% endblock %}
+{% block content %}
+<div class="debt-create-form" data-repayment-container>
 {% if change.ack %}
 <div class="product-feedback" role="status" data-repayment-ack="{{ change.ack | tojson | forceescape }}">这次约定操作已完成。<span data-repayment-ack-status></span></div>
 {% endif %}
@@ -42,9 +53,9 @@
   {% for pending in agreement.pending_repayments %}<a class="product-button product-button--quiet" href="{{ pending.href }}">{{ pending.label }}</a>{% endfor %}
 </section>
 {% endif %}
-<section class="product-panel product-panel--padded" data-repayment-panel{% if not change.can_create and not change.result %} hidden{% endif %}>
+<section data-repayment-panel{% if not change.can_create and not change.result %} hidden{% endif %}>
   <h2 class="product-panel-title" data-split-command-title>{{ change.submit_label }}</h2>
-  <form method="post" action="{{ change.action }}" class="debt-action-form"
+  <form id="split-change-form" method="post" action="{{ change.action }}" class="debt-create-form"
         data-repayment-kind="split-change" data-repayment-scope="{{ change.scope | tojson | forceescape }}"
         data-repayment-result="{{ change.result }}" data-repayment-target="{{ change.public_id }}"
         data-repayment-can-create="{{ 'true' if change.can_create else 'false' }}"
@@ -63,12 +74,21 @@
     <div class="product-field"><label for="split-share">新的约定份额（{{ change['values'].home_currency_code }}）</label>
       <input id="split-share" class="product-input" name="new_share_amount_major" value="{{ change['values'].new_share_amount_major }}" inputmode="decimal" required{% if change['values'].command != 'create' %} readonly{% endif %}>
     </div>
-    <button class="product-button product-button--quiet" type="submit" formnovalidate formaction="/web/debts/{{ change.public_id }}/split-agreement/preview" data-repayment-preview{% if change['values'].command != 'create' %} hidden{% endif %}>按新份额预览结算</button>
-    {% if agreement %}<p>结算参考：{{ agreement.preview_label }}</p>
-    {% if agreement.facts.preview.requires_explicit_settlement %}
+    <div class="product-field"><label for="split-reason">为什么改约定</label>
+      <textarea id="split-reason" class="product-input" name="reason" rows="2" maxlength="500" required{% if change['values'].command != 'create' %} readonly{% endif %}>{{ change['values'].reason }}</textarea>
+    </div>
+    <button class="product-button product-button--quiet" type="submit" formnovalidate formaction="/web/debts/{{ change.public_id }}/split-agreement/preview#split-preview" data-repayment-preview{% if change['values'].command != 'create' %} hidden{% endif %}>按新份额预览结算</button>
+    {% if agreement and change.result == 'preview' %}
+    <section id="split-preview" class="product-panel product-panel--padded obligation-summary-item obligation-summary-item--payable" aria-label="结算参考" tabindex="-1">
+      <span>{{ agreement.preview_direction_label }} · {{ agreement.facts.home_currency_code }}</span>
+      <strong>{{ agreement.preview_amount_label }}</strong>
+      <p class="hint">按预览份额 {{ agreement.preview_share_label }} 核算。修改输入后请重新预览；此处没有记录新的付款。</p>
+    </section>
+    {% endif %}
+    {% if agreement and agreement.facts.preview.requires_explicit_settlement %}
     <p class="product-feedback">已有免除或另行结算约定。建议保留当前待结算，请明确填写双方本次要接受的结果；不会自动撤回以前的免除。</p>
     {% if agreement.reference_label %}<p class="hint">仅按实际付返款计算的参考：{{ agreement.reference_label }}。此参考不是追讨或返款命令。</p>{% endif %}
-    {% endif %}{% endif %}
+    {% endif %}
     <div class="product-field" data-split-settlement-raw><label for="split-settlement">本次最终待结算（{{ change['values'].home_currency_code }}）</label>
       <input id="split-settlement" class="product-input" name="settlement_net_amount_major" value="{{ change['values'].settlement_net_amount_major }}" inputmode="decimal" required{% if change['values'].command != 'create' %} readonly{% endif %}>
       <p class="hint">正数＝原承担方还需付；负数＝原垫付方需要返还；0＝两边无待结算。不是本次新增付款或退款金额。</p>
@@ -84,14 +104,8 @@
         <p id="split-settlement-help" class="hint">填 0 表示无需结算；此处仅约定结果，不会记录实际付款。</p>
       </div>
     </div>
-    <div class="product-field"><label for="split-reason">为什么改约定</label>
-      <textarea id="split-reason" class="product-input" name="reason" maxlength="500" required{% if change['values'].command != 'create' %} readonly{% endif %}>{{ change['values'].reason }}</textarea>
-    </div>
     <p data-repayment-status class="product-page-summary" role="status" hidden></p>
-    <div class="product-form-actions">
-      <button class="product-button product-button--primary" type="submit" data-repayment-submit{% if not change.can_create and not change.result %} disabled{% endif %}>{{ change.submit_label }}</button>
-      {% if change.replacement %}<button class="product-button product-button--quiet" type="button" data-repayment-replace hidden>核对当前事实后重新拟定</button>{% endif %}
-    </div>
+    <p class="hint">这里只发送约定。双方接受后更新待结算；实际付款完成后，再登记付款。</p>
     <noscript><p class="hint">未启用浏览器草稿保存；请保留本页。重复提交本页沿用原编号，不会重复生成约定。</p></noscript>
   </form>
 </section>

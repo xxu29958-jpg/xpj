@@ -4,7 +4,7 @@ import com.squareup.moshi.JsonAdapter
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.BillSplitAcceptRequestDto
-import com.ticketbox.data.remote.dto.BillSplitInboxDto
+import com.ticketbox.data.remote.dto.BillSplitAcceptanceDto
 import java.io.IOException
 import retrofit2.HttpException
 
@@ -12,7 +12,7 @@ import retrofit2.HttpException
 class AcceptBillSplitDispatcher(
     private val apiProvider: (OutboxRow) -> ApiService,
     private val payloadAdapter: JsonAdapter<BillSplitAcceptPayload>,
-    private val receiptAdapter: JsonAdapter<BillSplitInboxDto>,
+    private val receiptAdapter: JsonAdapter<BillSplitAcceptanceDto>,
 ) : OutboxMutationDispatcher {
     override val type = PendingMutationType.AcceptBillSplitInvitation
     private val errors = NetworkErrorHandler(serverUrlProvider = { null }, context = "Accept split")

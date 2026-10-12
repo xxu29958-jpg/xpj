@@ -116,7 +116,7 @@ private class InvitationDebtApi : ApiService by FakeApiService(mutableListOf(), 
             sourceType = "bill_split", homeCurrencyCode = "JPY", originalCurrencyCode = "JPY", originalAmountMinor = 1200,
             createdAt = "2026-09-27T01:00:00Z", updatedAt = "2026-09-27T01:00:00Z", rowVersion = 1)) else emptyList(), "JPY")
     }
-    override suspend fun acceptBillSplitInvitation(publicId: String, request: BillSplitAcceptRequestDto): com.ticketbox.data.remote.dto.BillSplitInboxDto {
+    override suspend fun acceptBillSplitInvitation(publicId: String, request: BillSplitAcceptRequestDto): com.ticketbox.data.remote.dto.BillSplitAcceptanceDto {
         this.request = request
         acceptCalls++
         if (reject) throw HttpException(Response.error<Any>(409, """{"error":"invitation_not_acceptable"}""".toResponseBody()))
