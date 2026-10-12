@@ -1148,6 +1148,8 @@ html:has(.product-workspace > .product-task-actions) { scroll-padding-block-end:
     .product-task-actions--page { position: static; padding-block: 0; border-block-start: 0; }
     /* 宽屏: 根页与目录页的主动作回到页头右侧, 与标题同一行; 列表不再把它挤到最底下。 */
     main.content:has(> .product-task-actions--page:not(.inbox-review-start), > .product-flow > .product-task-actions--page) { position: relative; }
+    /* 页头给右上角的主动作留出位置, 长摘要不会钻到按钮下面。 */
+    main.content:has(> .product-task-actions--page:not(.inbox-review-start), > .product-flow > .product-task-actions--page) > .product-page-header { padding-inline-end: 14rem; }
     main.content > .product-task-actions--page:not(.inbox-review-start),
     main.content > .product-flow > .product-task-actions--page {
         position: absolute;
