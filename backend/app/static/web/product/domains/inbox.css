@@ -240,7 +240,7 @@
 .inbox-capture-cover .inbox-capture-label { display: flex; width: fit-content; min-height: var(--target-min); align-items: center; gap: var(--space-3); margin-top: var(--space-4); padding: var(--space-3) var(--space-6); border-radius: var(--radius-pill); background: var(--text-default); color: var(--surface-app); font-size: var(--type-body-size); font-weight: var(--type-title-weight); white-space: nowrap; }
 .inbox-capture-content { padding: 0 var(--space-7) var(--space-7); }
 .inbox-capture-content > a { display: inline-flex; align-items: center; min-height: var(--target-min); }
-.inbox-capture-cover > .inbox-capture-back { display: none; }
+.inbox-capture-back { display: none; }
 body:has(:is(.inbox-capture-panel, .inbox-empty-capture)[open]) .product-app { display: block; }
 body:has(:is(.inbox-capture-panel, .inbox-empty-capture)[open]) .sidebar,
 body:has(:is(.inbox-capture-panel, .inbox-empty-capture)[open]) .mobile-chrome,

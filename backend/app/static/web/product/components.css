@@ -521,6 +521,8 @@ button[disabled] {
 }
 .product-state > .product-button,
 .product-state > .cluster { margin-block-start: var(--space-3); }
+/* 带插画的整页空态 (空收件箱) 自己铺满版面, 不要起头线。 */
+.product-state:has(> .product-state-figure) { padding: 0; border: 0; }
 
 .product-state-title {
     color: var(--text-default);
