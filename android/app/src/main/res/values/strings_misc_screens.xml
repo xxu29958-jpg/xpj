@@ -98,6 +98,8 @@
     <string name="bill_split_created">发出邀请</string>
     <string name="bill_split_event_time">%1$s · %2$s</string>
     <string name="bill_split_deadline">截止 %1$s</string>
+    <string name="bill_split_original_deadline">原定截止 %1$s</string>
+    <string name="bill_split_expiry_recorded">记录为过期</string>
 
     <!-- BindServerScreen：绑定私人账本 -->
     <string name="bind_server_header_title">连接私人账本</string>

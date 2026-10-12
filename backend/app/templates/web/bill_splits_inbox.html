@@ -56,8 +56,8 @@
   {% else %}
     <p><span class="product-status{% if row.status == 'accepted' %} product-status--success{% endif %}">{{ '已过期' if row.is_expired else status_labels.get(row.status, row.status) }}</span></p>
     {% if row.received_href %}<a class="product-entry" href="{{ row.received_href }}"><span class="product-entry-copy"><strong>查看这笔记录</strong><span>已记入 {{ row.received_ledger_name }}</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></a>{% endif %}
-    <dl class="debt-look-rows">{% for event in row.events %}<div class="debt-look-row"><dt>{{ event.label }}</dt><dd>{{ event.time }}</dd></div>{% endfor %}</dl>
-    {% if row.is_expired %}<p class="hint">已于 {{ row.expires_at }} 过期，这份邀请无需处理。</p>{% endif %}
+    <div class="debt-history" aria-label="邀请处理时间">{% for event in row.events %}<div class="debt-history-row"><div class="debt-history-main"><span>{{ event.label }}</span><span class="debt-history-date">{{ event.time }}</span></div></div>{% endfor %}</div>
+    {% if row.is_expired or row.status == 'expired' %}<p class="hint">已于 {{ row.expires_at }} 过期</p>{% else %}<p class="hint">原定截止 {{ row.expires_at }}</p>{% endif %}
   {% endif %}
 </section>
 {% else %}

@@ -42,7 +42,7 @@ def invitation_facts(inv) -> dict:
         "events": [
             {"label": label, "time": _fmt_local(value)}
             for label, value in (("发出邀请", inv.created_at), ("已接受", inv.accepted_at),
-                ("已拒绝", inv.rejected_at), ("已撤回", inv.cancelled_at), ("已过期", inv.expired_at))
+                ("已拒绝", inv.rejected_at), ("已撤回", inv.cancelled_at), ("记录为过期", inv.expired_at))
             if value is not None
         ],
     }

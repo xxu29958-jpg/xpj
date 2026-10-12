@@ -5,8 +5,10 @@ import com.ticketbox.data.repository.LedgerAccessContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.lifecycle.ViewModelStore
@@ -56,6 +58,7 @@ class BillSplitAmountConsumerTest {
     }
 
     private fun assertFrozenAmounts(surface: String) {
+        compose.onAllNodesWithText("原定截止", substring = true).assertCountEquals(3)
         listOf("¥1,200", "$12.00", "1200 VND").forEach {
             compose.onNodeWithText(it).performScrollTo().assertIsDisplayed()
         }

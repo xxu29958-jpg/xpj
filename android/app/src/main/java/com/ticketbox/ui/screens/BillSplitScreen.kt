@@ -259,10 +259,9 @@ private fun InboxRow(
         BillSplitSourceEvidence(row.originalAmountMinor, row.originalCurrencyCode,
             row.accountingTimeSnapshot, row.expenseTimeSnapshot)
         BillSplitTimeline(row.createdAt, row.acceptedAt, row.rejectedAt, row.cancelledAt, row.expiredAt)
-        if (row.status == BillSplitStatusValues.INVITED) {
-            Text(stringResource(R.string.bill_split_deadline, displayDateTime(row.expiresAt)),
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+        Text(stringResource(if (row.status == BillSplitStatusValues.INVITED) R.string.bill_split_deadline
+            else R.string.bill_split_original_deadline, displayDateTime(row.expiresAt)),
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         row.receivedBill?.let { received ->
             Text(stringResource(R.string.bill_split_received_ledger, received.ledgerName),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -364,6 +363,9 @@ private fun SentRow(
         BillSplitSourceEvidence(row.originalAmountMinor, row.originalCurrencyCode,
             row.accountingTimeSnapshot, row.expenseTimeSnapshot)
         BillSplitTimeline(row.createdAt, row.acceptedAt, row.rejectedAt, row.cancelledAt, row.expiredAt)
+        Text(stringResource(if (presented == BillSplitStatusValues.INVITED) R.string.bill_split_deadline
+            else R.string.bill_split_original_deadline, displayDateTime(row.expiresAt)),
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         val statusLabel = billSplitStatusLabel(presented)
         val warnColor = LocalStateTokens.current.warn.fg
         Text(
@@ -434,7 +436,7 @@ private fun BillSplitSourceEvidence(amount: Long?, currency: String?, time: Expe
 private fun BillSplitTimeline(created: String, accepted: String?, rejected: String?, cancelled: String?, expired: String?) {
     listOf(R.string.bill_split_created to created, R.string.bill_split_status_accepted to accepted,
         R.string.bill_split_status_rejected to rejected, R.string.bill_split_status_cancelled to cancelled,
-        R.string.bill_split_status_expired to expired).forEach { (label, time) ->
+        R.string.bill_split_expiry_recorded to expired).forEach { (label, time) ->
         if (time != null) Text(stringResource(R.string.bill_split_event_time, stringResource(label), displayDateTime(time)),
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
