@@ -1082,6 +1082,8 @@ details.product-surface { display: block; }
 .product-surface > .product-button { justify-self: start; }
 /* 直接在承载面里填写的金额: 与读数同一字号, 只留一条下划线。 */
 input.product-amount { width: 100%; padding: 0 0 var(--space-2); border: 0; border-block-end: 1px solid var(--border-card); border-radius: 0; background: transparent; }
+/* 示例金额只是提示, 不能看起来像已经填好的数。 */
+input.product-amount::placeholder { color: var(--text-meta); font-weight: var(--type-body-weight); opacity: .45; }
 input.product-amount:focus { outline: 0; border-block-end-color: var(--brand-primary); box-shadow: 0 1px 0 var(--brand-primary); }
 input.product-amount:read-only { border-block-end-color: transparent; box-shadow: none; }
 .product-amount-label,

@@ -244,7 +244,7 @@
    净贡献 (含退款/拒付/冲销, 与列表日合计同一投影), 原始账单来源是 root-only
    入账渠道。 #}
 {% if filter not in ['missing_category', 'missing_accounting_date'] and not _has_search %}
-<details class="ledger-read-overview"><summary>本月概况</summary>
+<details class="product-disclosure ledger-read-overview"><summary>本月概况</summary>
 <p class="product-page-summary">{{ selected_month }} · 共 {{ month_total_count }} 笔 · 合计 {% if month_total_amount_yuan is not none %}{{ home_currency_symbol }}{{ month_total_amount_yuan|grouped }}{% elif ledger_undated_expense_count|default(0) %}待核对账务日期{% else %}待补齐换算信息{% endif %}</p>
 {% if expenses %}<p>本页按日合计</p><dl class="ledger-read-day-totals">{% for day, amount in page_day_totals.items() %}<dt>{{ day or '账务日期待核对' }}</dt><dd>{{ home_amount_label(amount) }}</dd>{% endfor %}</dl>{% endif %}
 <section class="month-overview" aria-label="本月概况">
