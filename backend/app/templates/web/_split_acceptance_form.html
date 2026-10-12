@@ -1,6 +1,6 @@
 {% set values = accept_values|default({}) %}
 {% set editable = live and row.accept_choices %}
-<form method="post" action="/web/bill-splits/{{ row.public_id }}/accept" class="debt-create-form"
+<form id="split-accept-form" method="post" action="/web/bill-splits/{{ row.public_id }}/accept" class="debt-create-form"
   {% if splitaccept_draft_scope %}data-splitaccept-draft-scope="{{ splitaccept_draft_scope|tojson|forceescape }}"
   data-splitaccept-plan-id="{{ row.public_id }}" data-splitaccept-archived="{{ 'false' if editable else 'true' }}"
   data-splitaccept-native-result="{{ splitaccept_native_result or '' }}"
@@ -28,7 +28,6 @@
   <p class="hint">接受后在所选账本记入你的份额。只展示这次邀请已共享的信息。</p>
   <p class="hint" hidden data-splitaccept-review-note>先核对当前邀请与目标账本；继续修改不会自动接受。</p>
   <div class="product-form-actions">
-    <button type="submit" class="product-button product-button--primary" data-splitaccept-submit{% if not editable %} hidden disabled{% endif %}>接受并记账</button>
     <button type="submit" name="review_latest" value="true" formnovalidate hidden class="product-button product-button--quiet" data-splitaccept-review>核对后继续修改</button>
     <button type="button" hidden class="product-button product-button--quiet" data-splitaccept-discard>放弃本地原稿</button>
   </div>

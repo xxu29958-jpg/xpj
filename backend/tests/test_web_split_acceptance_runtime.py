@@ -29,7 +29,7 @@ def invitation_page(path, query):
     return _browser.ENV.get_template("bill_splits_inbox.html").render(bill_split_rows=[row] if focused or not accepted else [],
         split_inbox_status="invited", splitaccept_draft_scope=scope, csrf_token="synthetic", can_write=False,
         selected_ledger_id=SCOPE["ledgerId"], asset_version="acceptance-test", accept_task=focused,
-        splitaccept_original_only=focused, receipt=None, flash_message="", flash_type="")
+        splitaccept_original_only=query.get("original_only") == ["true"], receipt=None, flash_message="", flash_type="")
 
 
 class AcceptanceHandler(_browser.RecoveryHandler):

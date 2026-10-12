@@ -69,9 +69,12 @@ class RelationshipJourney:
         self.expect("invitation_status", "invited")
         self.connect(self.receiver, self.identity.receiver_account)
         invitation = self.facts()["invitation_id"]
+        self.receiver.get_by_role("link", name="核对这份邀请", exact=True).click()
         accept = self.receiver.locator(f'form[action="/web/bill-splits/{invitation}/accept"]')
         assert accept.locator('[name="target_ledger_id"]').input_value() == self.identity.receiver_ledger
-        accept.get_by_role("button", name="接受并记账", exact=True).click()
+        submit = self.receiver.locator('[form="split-accept-form"][data-splitaccept-submit]')
+        assert submit.evaluate("button => button.form === document.getElementById('split-accept-form')")
+        submit.click()
         self.expect("invitation_status", "accepted")
         self.expect("received_amount", 4000)
         assert self.facts()["expenses"] == 2 and self.facts()["original_principal"] == 4000

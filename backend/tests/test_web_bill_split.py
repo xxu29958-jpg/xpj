@@ -289,7 +289,10 @@ def test_bound_acceptance_recovers_original_target_after_receipt_loss_and_reject
             idempotency_key=str(uuid4()), expected_row_version=1)
         public_id = invitation.public_id
     action = f"/web/bill-splits/{public_id}/accept"
-    fields = hidden_post_forms(browser.get("/web/bill-splits/inbox").text)[action]
+    inbox = browser.get("/web/bill-splits/inbox")
+    assert f'href="{action}?ledger_id=' in inbox.text
+    assert action not in hidden_post_forms(inbox.text)
+    fields = hidden_post_forms(browser.get(action).text)[action]
     scope = json.loads(fields["draft_scope"])
     fields.update(target_ledger_id="accept_travel", target_ledger_name="出差账本")
     changed_scope = {**scope, "deviceId": "replacement-browser"}
@@ -444,9 +447,13 @@ def test_web_inbox_target_shows_ledger_name_and_local_time(
             idempotency_key=str(uuid4()), expected_row_version=1,
         )
         snapshot_expires = inv.expires_at
+        invitation_id = inv.public_id
         owner_ledger_name = db.query(Ledger).filter(Ledger.ledger_id == "owner").one().name
 
     response = web_client.get("/web/bill-splits/inbox?ledger_id=owner")
+    assert response.status_code == 200
+    assert f'href="/web/bill-splits/{invitation_id}/accept?ledger_id=owner"' in response.text
+    response = web_client.get(f"/web/bill-splits/{invitation_id}/accept?ledger_id=owner")
     assert response.status_code == 200
     html = response.text
     assert 'name="target_ledger_id"' in html
