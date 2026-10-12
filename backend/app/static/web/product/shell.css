@@ -545,20 +545,19 @@ details[open] > .chrome-trigger {
     flex: 0 0 auto;
     align-items: center;
     overflow: hidden;
-    border: 1px solid var(--border-input);
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-pill);
     background: var(--surface-card);
 }
 
 .month-picker a {
     display: grid;
-    width: var(--space-9);
-    height: var(--space-9);
+    width: var(--target-min);
+    height: var(--target-min);
     flex: 0 0 auto;
     place-items: center;
     background: transparent;
     color: var(--text-meta);
-    font-size: var(--type-body-size);
+    font-size: var(--type-title-size);
     text-decoration: none;
     transition:
         background var(--motion-fast) var(--ease-standard),
@@ -571,13 +570,13 @@ details[open] > .chrome-trigger {
 }
 
 .month-picker .label {
-    min-width: calc(var(--space-12) + var(--space-4));
-    padding-inline: var(--space-3);
-    border-inline: 1px solid var(--border-card);
-    font-family: var(--font-numeric);
-    font-size: var(--type-caption-size);
+    min-width: calc(var(--space-12) + var(--space-6));
+    padding-inline: var(--space-2);
+    color: var(--text-default);
+    font-size: var(--type-body-size);
     font-variant-numeric: tabular-nums;
-    line-height: var(--type-caption-line);
+    font-weight: var(--type-subtitle-weight);
+    line-height: var(--type-body-line);
     text-align: center;
     white-space: nowrap;
 }
@@ -835,8 +834,8 @@ details[open] > .chrome-trigger {
         inset-block-start: 0;
         z-index: var(--z-sticky);
         display: block;
-        border-block-end: 1px solid var(--border-card);
-        background: var(--surface-nav);
+        /* 顶栏与正文同一张纸: 不再用色带和发丝线把页面切成后台式的 chrome。 */
+        background: var(--surface-app);
     }
 
     /* topbar 降级为带内静态行: 品牌/域名/账本/外观/账户随行排列;
@@ -852,10 +851,15 @@ details[open] > .chrome-trigger {
         backdrop-filter: none;
     }
 
+    /* 月份是页面内容的范围, 不是 chrome: 换行后贴着页头左对齐, 保持胶囊自身宽度。 */
     .product-topbar > .month-picker {
         order: 1;
+        margin-inline: var(--space-3) auto;
+    }
+    .product-topbar:has(> .month-picker)::after {
+        order: 1;
         flex-basis: 100%;
-        justify-content: center;
+        content: "";
     }
 
     /* 顶栏「收票」锚点必须把真实 file command 完整放到 sticky chrome 下方。 */
@@ -893,7 +897,7 @@ details[open] > .chrome-trigger {
         grid-template-columns: repeat(5, minmax(0, 1fr));
         padding-block-end: env(safe-area-inset-bottom);
         border-block-start: 1px solid var(--border-card);
-        background: var(--surface-nav);
+        background: var(--surface-app);
     }
 
     .mobile-primary-nav .nav-item {
@@ -1229,6 +1233,46 @@ html[data-user-bg] body::before {
     color: var(--state-danger-fg);
     font-size: var(--type-caption-size);
     line-height: var(--type-caption-line);
+}
+
+/* v0.6 导航: 根页 = 五域底栏 + 账本顶栏; 其余页面在窄屏是「返回 + 账户」的
+   任务框架, 不再重复域内页签与底栏 (从根页的页签进入, 用返回回到根页)。 */
+.topbar-back,
+.task-account-icon { display: none; }
+@media (max-width: 64rem) {
+    body[data-page-level="secondary"] { --mobile-nav-block-size: 0px; }
+    body[data-page-level="secondary"] .product-topbar { padding-inline: var(--space-6) var(--space-7); }
+    body[data-page-level="secondary"] .topbar-back {
+        display: inline-flex;
+        min-height: var(--target-min);
+        align-items: center;
+        gap: var(--space-3);
+        margin-inline-end: auto;
+        padding-inline-end: var(--space-3);
+        color: var(--text-default);
+        font-size: var(--type-subtitle-size);
+        font-weight: var(--type-title-weight);
+        text-decoration: none;
+    }
+    body[data-page-level="secondary"] :is(.topbar-brand, .topbar-context, .topbar-create, .topbar-spacer),
+    body[data-page-level="secondary"] :is(.mobile-plan-nav, .mobile-primary-nav) { display: none; }
+    body[data-page-level="secondary"] .ledger-switcher-trigger {
+        display: grid;
+        width: var(--target-min);
+        height: var(--target-min);
+        place-items: center;
+        border-radius: 50%;
+        background: var(--state-success-bg);
+        color: var(--brand-primary-strong);
+    }
+    body[data-page-level="secondary"] .ledger-switcher-trigger :is(.ledger-name, .role-badge, .ledger-avatar) { display: none; }
+    body[data-page-level="secondary"] .ledger-switcher-trigger > .task-account-icon { display: block; }
+    /* 任务框架里月份紧跟返回之后、账户之前, 不另起一行。 */
+    body[data-page-level="secondary"] .product-topbar > .month-picker { order: 0; margin-inline: 0 var(--space-3); }
+    body[data-page-level="secondary"] .product-topbar:has(> .month-picker)::after { content: none; }
+    body[data-page-level="secondary"] .ledger-switcher-wrap { order: 1; }
+    body[data-page-level="secondary"] main.content[data-page-level="secondary"] { padding-block-end: calc(env(safe-area-inset-bottom) + var(--space-9)); }
+    body[data-page-level="secondary"] .product-page-heading > .product-eyebrow { display: none; }
 }
 
 /* Selected compact ledger header shared by inbox completion and read-only ledger. */

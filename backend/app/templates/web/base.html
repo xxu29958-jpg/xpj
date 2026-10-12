@@ -59,6 +59,13 @@
   'workspace': '工作区'
 }.get(_domain, '工作区') %}
 {% set _has_domain_subnav = _domain != 'workspace' %}
+{% set _domain_root_href = {
+  'inbox': '/web/pending',
+  'transactions': '/web/confirmed',
+  'obligations': '/web/debts',
+  'plans': '/web/budgets',
+  'insights': '/web/overview'
+}.get(_domain, '/web/pending') %}
 
 {# 页级归属标志 (K3 响应式收件片提升到 base 单一计算): 桌面 _sidebar_nav.html
    与移动 _mobile_nav.html 两个 consumer 共用同一组事实, 不各自推导。 #}
@@ -216,7 +223,9 @@
       {% elif _is_expense_detail %}
       <a class="product-button product-button--quiet" href="{{ edit_return_href }}" data-review-stage="primary"><svg width="20" height="20" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-left"/></svg> {{ edit_return_label or ('收件箱' if _inbox_task else '流水') }}</a>
       <a class="product-button product-button--quiet" href="#review" data-review-stage="details" hidden><svg width="20" height="20" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-left"/></svg> {{ '当前记录' if expense_review_inspection else '核对小票' }}</a>
-      <span class="topbar-spacer"></span><span class="product-eyebrow" data-review-stage="primary">{{ '当前记录' if expense_review_inspection and expense.status != 'confirmed' else '核对小票' if expense.status == 'pending' else '账单详情' }}</span>
+      <span class="topbar-spacer"></span>
+      {# 待核对时页面标题已是「核对这张小票」, 顶栏不再重复一遍。 #}
+      {% if expense_review_inspection or expense.status != 'pending' %}<span class="product-eyebrow" data-review-stage="primary">{{ '当前记录' if expense_review_inspection and expense.status != 'confirmed' else '账单详情' }}</span>{% endif %}
       {% elif _page_level == 'tertiary' and _domain == 'inbox' %}
       <a class="product-button product-button--quiet" href="{{ current_href }}"><svg width="20" height="20" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-left"/></svg> 返回账单</a>
       <span class="topbar-spacer"></span><span class="product-eyebrow">识别小票</span>
@@ -224,6 +233,11 @@
       {# K3 响应式收件片: ≤64rem 品牌身份并入 topbar (sidebar 整栏隐藏,
          chrome 收进 mobile-chrome 单带); 桌面由 CSS 隐藏, sidebar .brand
          仍是身份 owner。 #}
+      {# v0.6 导航: 非根页在窄屏用「返回所属域」替代品牌位与五域底栏 (shell.css
+         按 data-page-level 裁决); 宽屏侧栏承担导航, 此链接不显示。 #}
+      {% if _page_level == 'secondary' %}
+      <a class="topbar-back" href="{{ _domain_root_href }}{{ q }}"><svg width="22" height="22" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-left"/></svg><span>{{ _domain_label if _domain != 'workspace' else '返回' }}</span></a>
+      {% endif %}
       <span class="topbar-brand">
         {% include "_brand_mark.html" %}
         <span class="topbar-brand-name">小票夹</span>
