@@ -221,6 +221,7 @@
   }
   function showPhase() {
     panel.hidden = false;
+    submit.hidden = false;
     if (retained) panel.open = true;
     const canEdit = commandControls(phase === "editing");
     const canReplace = replacement && phase === "blocked" && currentRef === nativeRef;
@@ -348,7 +349,7 @@
   }
   function openSubmission() {
     const items = renderShelf(), selection = selectSubmission(items);
-    if (!selection.ref) { panel.hidden = true; return false; }
+    if (!selection.ref) { panel.hidden = true; submit.hidden = true; return false; }
     if (!uuid.test(selection.ref)) {
       blocked("原提交编号无法读取，内容未被覆盖。请保留本页核对。");
       return false;
@@ -377,7 +378,7 @@
       if (turn !== epoch) return;
       if (voidCommand) {
         const selection = selectSubmission(records());
-        if (!selection.ref) { panel.hidden = true; return; }
+        if (!selection.ref) { panel.hidden = true; submit.hidden = true; return; }
         const record = drafts.read(selection.ref);
         const repaymentTarget = (record ? record.values : nativeValues).repayment_public_id;
         leaseKey = "ticketbox:" + namespace + "-lease:v1:" + JSON.stringify([...axes.map(axis => scope[axis]), target, repaymentTarget]);

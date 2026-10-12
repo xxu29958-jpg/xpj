@@ -227,7 +227,12 @@
     <string name="split_agreement_direction_pay">原承担方付款</string>
     <string name="split_agreement_direction_return">原垫付方返还</string>
     <string name="split_agreement_settlement_help">填 0 表示无需结算；此处仅约定结果，不会记录实际付款。</string>
-    <string name="split_agreement_reason_input">原因</string>
+    <string name="split_agreement_reason_input">为什么改约定</string>
+    <string name="split_agreement_editor_title">重新约定份额</string>
+    <string name="split_agreement_continue_draft">继续填写新约定</string>
+    <string name="split_agreement_preview_reference">结算参考 · %1$s</string>
+    <string name="split_agreement_preview_basis">按新份额 %1$s 预览；已付和已返记录保持不变。</string>
+    <string name="split_agreement_task_help">这里只发送约定。双方接受后更新待结算；实际付款完成后，再登记付款。</string>
     <string name="split_agreement_propose">提出新约定</string>
     <string name="split_agreement_replace">提出替代约定</string>
     <string name="split_agreement_submit_replacement">提交替代约定</string>

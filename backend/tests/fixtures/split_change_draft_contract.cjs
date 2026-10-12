@@ -77,10 +77,16 @@ const cases = {
   },
   async pending_retained_draft() {
     const env = environment(), page = env.page({...options, canCreate:false});
+    const empty = environment().page({...options, canCreate:false});
+    empty.start(); await tick();
+    assert.equal(empty.panel.hidden, true);
+    assert.equal(empty.submit.hidden, true, 'Without an authorized or retained task, the external action stays hidden');
+    empty.window.fire('pagehide'); await tick();
     page.store.save(scope, original, 'editing', values); page.start(); await tick();
     assert.equal(page.fields.reason.value, values.reason);
     assert.equal(page.fields.reason.readOnly, false);
     assert.equal(page.submit.disabled, true, 'editing does not authorize a new command while a proposal is pending');
+    assert.equal(page.submit.hidden, false, 'The retained task still exposes its disabled action for review');
     assert.equal(page.form.fire('submit').defaultPrevented, true);
     assert.equal(page.preview.disabled, false);
     assert.equal(page.form.fire('submit', {submitter:page.preview}).defaultPrevented, false);

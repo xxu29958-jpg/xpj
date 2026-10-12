@@ -11,13 +11,13 @@
 {% endblock %}
 {% block page_header %}
 <header class="product-page-header"><div class="product-page-heading">
-  <h1 class="page-title">{{ '这次约定操作已完成' if change.ack else '重新约定份额' if change['values'].command == 'create' else change.submit_label }}</h1>
+  <h1 class="page-title">{{ '这次约定操作已完成' if change.ack else '拆账约定与结算' if not change.can_draft and not change.result else '重新约定份额' if change['values'].command == 'create' else change.submit_label }}</h1>
   <p class="product-page-summary">已经发生的付款与返还保留；新约定由双方共同确认。</p>
 </div></header>
 {% endblock %}
 {% block page_footer %}
 <footer class="content product-task-footer" data-page-level="tertiary">
-  <button class="product-button product-button--primary" type="submit" form="split-change-form" name="repayment_submit" data-repayment-submit{% if not change.can_create and not change.result %} disabled{% endif %}{% if change.ack %} hidden{% endif %}>{{ change.submit_label }}</button>
+  <button class="product-button product-button--primary" type="submit" form="split-change-form" name="repayment_submit" data-repayment-submit{% if not change.can_create and not change.result %} disabled{% endif %}{% if change.ack or (not change.can_create and not change.result) %} hidden{% endif %}>{{ change.submit_label }}</button>
   {% if change.replacement %}<button class="product-button product-button--quiet" type="button" form="split-change-form" name="repayment_replace" data-repayment-replace hidden>核对当前事实后重新拟定</button>{% endif %}
   <a class="product-button product-button--{{ 'primary' if change.ack else 'quiet' }}" href="{{ task_return_href }}">{{ '返回往来详情' if change.ack else '返回，保留输入' }}</a>
 </footer>

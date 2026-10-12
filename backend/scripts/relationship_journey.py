@@ -150,7 +150,9 @@ class RelationshipJourney:
         self.goto(f"/web/debts/{public_id}/split-agreement?command={command}", receiver=receiver)
         page = self.receiver if receiver else self.page
         form = page.locator('[data-repayment-kind="split-change"]')
-        form.locator("[data-repayment-submit]").wait_for(state="visible")
+        submit = page.locator('[form="split-change-form"][data-repayment-submit]')
+        submit.wait_for(state="visible")
+        assert submit.evaluate("button => button.form === document.getElementById('split-change-form')")
         return form
 
     def propose_web(self, share, settlement, reason, *, receiver=False, returned=False):
@@ -175,7 +177,7 @@ class RelationshipJourney:
     def submit_web(self, form, *, receiver=False):
         page = self.receiver if receiver else self.page
         client_ref = form.locator('[name="idempotency_key"]').input_value()
-        form.locator("[data-repayment-submit]").click()
+        page.locator('[form="split-change-form"][data-repayment-submit]').click()
         receipt = page.locator("[data-repayment-ack]")
         receipt.wait_for()
         assert json.loads(receipt.get_attribute("data-repayment-ack"))["clientRef"] == client_ref

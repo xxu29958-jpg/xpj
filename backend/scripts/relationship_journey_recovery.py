@@ -66,8 +66,8 @@ class RelationshipRecovery:
         native.click("原垫付方返还")
         native.reveal_any(SETTLEMENT)
         native.fill("4.00", label=SETTLEMENT)
-        native.reveal_any("原因")
-        native.fill("native-reopen-12", label="原因")
+        native.reveal_any("为什么改约定", toward_start=True)
+        native.fill("native-reopen-12", label="为什么改约定")
         native.reveal_any("预览新份额的结算", toward_start=True)
         native.click("预览新份额的结算")
         j.native_confirmation()
@@ -105,7 +105,7 @@ class RelationshipRecovery:
 
         page.route("**" + path, lose_reply)
         with page.expect_event("requestfailed", predicate=lambda request: request.url.endswith(path)):
-            form.locator("[data-repayment-submit]").click()
+            page.locator('[form="split-change-form"][data-repayment-submit]').click()
         j.expect("agreed_share", 1200)
         assert delivered == [True]
         page.unroute("**" + path, lose_reply)
@@ -127,7 +127,7 @@ class RelationshipRecovery:
         self.native_original()
         self.lost_acceptance_reply()
         assert len(j.facts()["changes"]) == 2 and j.facts()["settlement"] == -400
-        stale.locator("[data-repayment-submit]").click()
+        j.receiver.locator('[form="split-change-form"][data-repayment-submit]').click()
         replacement = j.receiver.locator("[data-repayment-replace]")
         replacement.wait_for(state="visible")
         blocked = j.receiver.locator('[data-repayment-kind="split-change"]')
