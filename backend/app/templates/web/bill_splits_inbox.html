@@ -40,7 +40,7 @@
 </nav>
 {% endif %}
 {% if splitaccept_draft_scope %}
-<details class="debt-section"{% if not accept_task %} open{% endif %} hidden data-splitaccept-draft-shelf data-draft-scope="{{ splitaccept_draft_scope|tojson|forceescape }}">
+<details class="product-section"{% if not accept_task %} open{% endif %} hidden data-splitaccept-draft-shelf data-draft-scope="{{ splitaccept_draft_scope|tojson|forceescape }}">
   <summary>保留的接受任务</summary>
   <p class="hint">此浏览器保留的接受任务；未提交或结果待核对。</p>
   <ul data-splitaccept-draft-list></ul>
@@ -56,8 +56,8 @@
 {% if flash_message %}<div class="product-feedback{% if flash_type == 'error' %} product-feedback--error{% endif %}" role="{{ 'alert' if flash_type == 'error' else 'status' }}">{{ flash_message }}</div>{% endif %}
 {% for row in bill_split_rows %}
 {% set live = row.status == 'invited' and not row.is_expired %}
-<section class="debt-section" aria-label="{{ row.sender_display_name }} 请你分摊 {{ row.share_label }}">
-  <h2 class="debt-section-title">收到 {{ row.sender_display_name }} 的拆账邀请</h2>
+<section class="product-section" aria-label="{{ row.sender_display_name }} 请你分摊 {{ row.share_label }}">
+  <h2 class="product-panel-title">收到 {{ row.sender_display_name }} 的拆账邀请</h2>
   {% if row.sender_context %}<p class="hint">{{ row.sender_context }}</p>{% endif %}
   <div class="product-panel product-panel--padded product-panel--apricot debt-summary-card">
     <span class="product-eyebrow">邀请你分担</span>

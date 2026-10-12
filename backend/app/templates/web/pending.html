@@ -289,7 +289,7 @@
   {% endfor %}
 </section>
 {% if expenses %}
-<div class="inbox-review-start"><a class="product-button product-button--primary" href="/web/expenses/{{ expenses[0].id }}/edit{{ _q }}&return_to=pending&return_filter={{ filter }}" data-inbox-review-start>开始核对 <span data-filtered-count>{{ expenses|length }}</span> 张 <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-right"/></svg></a></div>
+<div class="product-task-actions product-task-actions--page inbox-review-start"><a class="product-button product-button--primary" href="/web/expenses/{{ expenses[0].id }}/edit{{ _q }}&return_to=pending&return_filter={{ filter }}" data-inbox-review-start>开始核对 <span data-filtered-count>{{ expenses|length }}</span> 张 <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-right"/></svg></a></div>
 {% endif %}
 {% if pending_count %}{% include "_recent_recognition_tasks.html" %}{% endif %}
 

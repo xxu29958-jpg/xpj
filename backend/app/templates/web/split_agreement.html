@@ -79,9 +79,9 @@
     </div>
     <button class="product-button product-button--quiet" type="submit" formnovalidate formaction="/web/debts/{{ change.public_id }}/split-agreement/preview#split-preview" data-repayment-preview{% if change['values'].command != 'create' %} hidden{% endif %}>按新份额预览结算</button>
     {% if agreement and change.result == 'preview' %}
-    <section id="split-preview" class="product-panel product-panel--padded obligation-summary-item obligation-summary-item--payable" aria-label="结算参考" tabindex="-1">
-      <span>{{ agreement.preview_direction_label }} · {{ agreement.facts.home_currency_code }}</span>
-      <strong>{{ agreement.preview_amount_label }}</strong>
+    <section id="split-preview" class="product-surface product-surface--apricot" aria-label="结算参考" tabindex="-1">
+      <p class="product-amount-label">{{ agreement.preview_direction_label }} · {{ agreement.facts.home_currency_code }}</p>
+      <p class="product-amount">{{ agreement.preview_amount_label }}</p>
       <p class="hint">按预览份额 {{ agreement.preview_share_label }} 核算。修改输入后请重新预览；此处没有记录新的付款。</p>
     </section>
     {% endif %}

@@ -108,7 +108,7 @@ def test_web_debts_lists_external_i_owe_open(web_client: TestClient, *, identity
     assert "未结清" in resp.text  # open status label
     assert "本金" in resp.text
     assert "500.00" in resp.text  # home-currency principal footnote
-    assert 'class="debt-num">¥500.00</strong>' in resp.text
+    assert 'class="product-entry-amount">¥500.00</strong>' in resp.text
 
 
 def test_web_debts_renders_owed_to_me_direction(web_client: TestClient, *, identity) -> None:
@@ -136,7 +136,7 @@ def test_web_debts_renders_cleared_status_and_zero_remaining(
     assert resp.status_code == 200
     assert "已结清" in resp.text  # cleared status label
     assert "product-status--success" in resp.text  # cleared → success tone class rendered
-    assert 'class="debt-num">¥0.00</strong>' in resp.text
+    assert 'class="product-entry-amount">¥0.00</strong>' in resp.text
     assert "本金 " in resp.text  # principal footnote still shown
 
 
@@ -192,7 +192,7 @@ def test_web_debts_lists_member_debt_communal(web_client: TestClient) -> None:
     resp = web_client.get("/web/debts")
     assert resp.status_code == 200
     assert '<strong>家人</strong>' in resp.text
-    assert 'class="debt-num">¥120.00</strong>' in resp.text
+    assert 'class="product-entry-amount">¥120.00</strong>' in resp.text
     assert 'id="debt-section-member">家人</h2>' in resp.text  # 家人 section header
     # Communal relational headline (viewer=owner=debtor, open, ratio 0).
     assert "我欠家人" in resp.text

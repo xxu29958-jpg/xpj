@@ -1,13 +1,13 @@
 {% macro debt_row(debt, selected_ledger_id) %}
 {% set tone = {'ok': 'product-status--success', 'danger': 'product-status--danger', 'warn': 'product-status--warning', 'info': 'product-status--info'} %}
-<a class="product-entry debt-row{% if debt.recede %} is-receded{% endif %}"
+<a class="product-entry{% if debt.recede %} is-receded{% endif %}"
    href="/web/debts/{{ debt.public_id }}?ledger_id={{ selected_ledger_id|urlencode }}"
    aria-label="{{ debt.direction_sentence }}，{{ debt.status_label }}，剩余 {{ debt.currency_code }} {{ debt.remaining_label }}，本金 {{ debt.principal_label }}">
   <span class="product-entry-icon{% if not debt.is_member %} product-entry-icon--lilac{% endif %}" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#user-round"/></svg></span>
   <span class="product-entry-copy">
-    <span class="debt-row-heading"><strong>{{ debt.name }}</strong><strong class="debt-num">{{ debt.remaining_label }}</strong></span>
-    <span>{{ debt.direction_sentence }} · {{ debt.currency_code }}</span>
-    <span>本金 {{ debt.principal_label }} <span class="product-status{% if debt.status_tone %} {{ tone[debt.status_tone] }}{% endif %}">{{ debt.status_label }}</span></span>
+    <span class="product-entry-heading"><strong>{{ debt.name }}</strong><strong class="product-entry-amount">{{ debt.remaining_label }}</strong></span>
+    {# 普通未结状态由金额与所在分区表达; 只有需要留意的状态 (已结清、待确认、作废等) 才出状态胶囊。完整状态始终在 aria-label 里。 #}
+    <span>{{ debt.direction_sentence }} · {{ debt.currency_code }} · 本金 {{ debt.principal_label }}{% if debt.status_tone %} <span class="product-status {{ tone[debt.status_tone] }}">{{ debt.status_label }}</span>{% endif %}</span>
     {% if debt.recede and debt.member_headline %}<span>{{ debt.member_headline }}</span>{% endif %}
   </span>
   <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
@@ -16,14 +16,19 @@
 
 {% macro debt_totals_summary(totals) %}
 {% if totals %}
-<div class="obligation-summary" aria-label="未结往来，按方向和币种分别汇总">
-  {% for total in totals %}
-  <section class="product-panel product-panel--padded obligation-summary-item{% if total.direction == 'i_owe' %} obligation-summary-item--payable{% endif %}">
-    <span>{{ total.label }} · {{ total.currency_code }}</span>
-    <strong>{{ total.amount_label }}</strong>
-    <span>{{ total.count }} 笔未结往来</span>
-  </section>
-  {% endfor %}
-</div>
+{# 一张金额承载面: 第一项是主读数, 其余方向与币种在同一张面里分行列出, 不合成一个总额。 #}
+{% set lead = totals[0] %}
+<section class="product-surface{% if lead.direction == 'i_owe' %} product-surface--apricot{% endif %}" aria-label="未结往来，按方向和币种分别汇总">
+  <p class="product-amount-label">{{ lead.label }} · {{ lead.currency_code }}</p>
+  <p class="product-amount">{{ lead.amount_label }}</p>
+  <p class="product-amount-meta">{{ lead.count }} 笔未结往来</p>
+  {% if totals[1:] %}
+  <dl class="product-surface-rows">
+    {% for total in totals[1:] %}
+    <div><dt>{{ total.label }} · {{ total.currency_code }} · {{ total.count }} 笔</dt><dd>{{ total.amount_label }}</dd></div>
+    {% endfor %}
+  </dl>
+  {% endif %}
+</section>
 {% endif %}
 {% endmacro %}

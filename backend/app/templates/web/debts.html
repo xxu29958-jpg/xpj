@@ -2,6 +2,8 @@
 {% from "partials/debt_rows.html" import debt_row, debt_totals_summary %}
 {% set page_title = '往来' %}
 {% set product_body_domain = 'obligations' %}
+{# 本页自带更具体的只读说明, 不再叠加外壳的通用只读提示。 #}
+{% set page_readonly_notice = true %}
 {% block title %}往来 · 小票夹{% endblock %}
 {% block page_scripts %}
 {% if debtcreation_draft_scope %}
@@ -33,16 +35,16 @@
 {{ debt_totals_summary(debt_totals) }}
 {% for rows, title, section_id in [(member_debts, '家人', 'member'), (external_debts, '朋友与其它', 'external')] %}
 {% if rows %}
-<section class="debt-section" aria-labelledby="debt-section-{{ section_id }}">
-  <h2 class="debt-section-title" id="debt-section-{{ section_id }}">{{ title }}</h2>
-  <div class="debt-list">
+<section class="product-section" aria-labelledby="debt-section-{{ section_id }}">
+  <h2 class="product-panel-title" id="debt-section-{{ section_id }}">{{ title }}</h2>
+  <div class="product-entry-list">
     {% for debt in rows %}{{ debt_row(debt, selected_ledger_id) }}{% endfor %}
   </div>
 </section>
 {% endif %}
 {% endfor %}
 {% if can_write %}
-<div class="product-form-actions"><a class="product-button product-button--primary" href="/web/debts/new?ledger_id={{ selected_ledger_id|urlencode }}">记一笔往来 <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-right"/></svg></a></div>
+<div class="product-task-actions product-task-actions--page"><a class="product-button product-button--primary" href="/web/debts/new?ledger_id={{ selected_ledger_id|urlencode }}">记一笔往来 <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-right"/></svg></a></div>
 {% endif %}
 {% else %}
 <div class="product-state">

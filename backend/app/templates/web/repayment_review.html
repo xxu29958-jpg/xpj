@@ -25,7 +25,7 @@
 </header>
 {% if read_error %}<p class="product-feedback" role="status">{{ read_error }}</p>{% endif %}
 {% if row %}
-<section class="debt-section" aria-label="原采集与处理记录">
+<section class="product-section" aria-label="原采集与处理记录">
   <span class="product-eyebrow">{{ row.source_label }} · 采集于 {{ row.captured_label }}</span>
   <p>{{ row.merchant or '还款通知' }} · 原金额 <strong>{{ row.currency_code }} {{ row.amount_label }}</strong> · {{ row.status_label }}</p>
   {% if row.conversion_pending %}<p class="hint">确认时按核对后的还款日期换算为 {{ row.home_currency_code }}；未更改日期时沿用原采集时间。</p>{% endif %}
@@ -35,7 +35,7 @@
 </section>
 {% endif %}
 {% if not can_write %}<p class="product-feedback">当前角色只可查看；原输入保留，处理需要写权限。</p>{% endif %}
-<div class="debt-section debt-repayment-task">
+<div class="product-section debt-repayment-task">
   {% if review.ack %}<p class="product-feedback" role="status" data-repayment-ack="{{ review.ack | tojson | forceescape }}">{{ '原确认已接受，已记入一笔还款。' if review.ack.status == 'confirmed' else '原忽略已完成，没有新增还款。' }}<span data-repayment-ack-status></span></p>{% endif %}
   {% if review.ack and review.ack.status == 'confirmed' %}<section class="debt-repayment-amount" aria-label="原提交">
     <span>原提交金额 · {{ review.ack['values']['original_currency'] }}</span>
@@ -96,7 +96,7 @@
       </div>
     </form>
   </section>
-  <details class="product-panel product-panel--padded debt-section" data-repayment-shelf hidden><summary>此浏览器保留的原处理</summary><ul data-repayment-list></ul></details>
+  <details class="product-panel product-panel--padded product-section" data-repayment-shelf hidden><summary>此浏览器保留的原处理</summary><ul data-repayment-list></ul></details>
 </div>
 </div>
 {% endblock %}

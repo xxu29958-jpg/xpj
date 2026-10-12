@@ -293,7 +293,7 @@
       {% block page_header %}{% endblock %}
       {# Primary headings precede the existing domain navigation in reading order. #}
       {% if _page_level != 'tertiary' %}{% include "_mobile_nav.html" %}{% endif %}
-      {% if _role == 'viewer' and not _readonly_transactions %}
+      {% if _role == 'viewer' and not _readonly_transactions and not page_readonly_notice|default(false) %}
       <div class="readonly-callout" role="status">
         {% if _path.startswith('/web/settings') %}当前账本为<strong>只读角色</strong>。你仍可管理自己的设备。{% else %}当前为<strong>只读角色</strong>。查看与分析保持可用，写入动作已隐藏或禁用。{% endif %}
       </div>

@@ -1239,7 +1239,7 @@ html[data-user-bg] body::before {
 .topbar-back,
 .task-account-icon { display: none; }
 @media (max-width: 64rem) {
-    body[data-page-level="secondary"] { --mobile-nav-block-size: 0px; }
+    body:not([data-page-level="primary"]) { --mobile-nav-block-size: 0px; }
     body[data-page-level="secondary"] .product-topbar { padding-inline: var(--space-6) var(--space-7); }
     body[data-page-level="secondary"] .topbar-back {
         display: inline-flex;

@@ -86,22 +86,22 @@
 <div class="debt-facts">
   <a class="product-entry" href="#debt-activity">
     <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#receipt-text"/></svg></span>
-    <span class="product-entry-copy"><span class="debt-row-heading"><strong>本笔原本金</strong><strong class="debt-num">{{ debt.principal_label }}</strong></span><span>{{ debt.principal_date_label }}</span></span>
+    <span class="product-entry-copy"><span class="product-entry-heading"><strong>本笔原本金</strong><strong class="product-entry-amount">{{ debt.principal_label }}</strong></span><span>{{ debt.principal_date_label }}</span></span>
     <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
   </a>
   <a class="product-entry" href="#debt-activity">
     <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#check"/></svg></span>
-    <span class="product-entry-copy"><span class="debt-row-heading"><strong>本笔已付款</strong><strong class="debt-num">{{ debt.paid_label }}</strong></span><span>只含已确认的还款</span></span>
+    <span class="product-entry-copy"><span class="product-entry-heading"><strong>本笔已付款</strong><strong class="product-entry-amount">{{ debt.paid_label }}</strong></span><span>只含已确认的还款</span></span>
     <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
   </a>
   <a class="product-entry" href="#debt-activity">
     <span class="product-entry-icon product-entry-icon--apricot" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#heart-handshake"/></svg></span>
-    <span class="product-entry-copy"><span class="debt-row-heading"><strong>本笔已免除</strong><strong class="debt-num">{{ debt.forgiven_label }}</strong></span><span>不计作已付款</span></span>
+    <span class="product-entry-copy"><span class="product-entry-heading"><strong>本笔已免除</strong><strong class="product-entry-amount">{{ debt.forgiven_label }}</strong></span><span>不计作已付款</span></span>
     <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
   </a>
   <a class="product-entry" href="#debt-activity">
     <span class="product-entry-icon product-entry-icon--lilac" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#sliders-horizontal"/></svg></span>
-    <span class="product-entry-copy"><span class="debt-row-heading"><strong>本笔调整净额</strong><strong class="debt-num">{{ debt.adjustment_label }}</strong></span><span>正数增加、负数减少未结金额</span></span>
+    <span class="product-entry-copy"><span class="product-entry-heading"><strong>本笔调整净额</strong><strong class="product-entry-amount">{{ debt.adjustment_label }}</strong></span><span>正数增加、负数减少未结金额</span></span>
     <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
   </a>
   <a class="product-entry" href="#debt-activity">

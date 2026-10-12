@@ -1024,6 +1024,11 @@ fieldset.product-field { border: 0; padding: 0; margin: 0; }
 }
 details.product-surface { display: block; }
 .product-surface--plain { background: var(--surface-card); }
+/* 承载面内的次级数字: 与主读数同一事实的其它口径 (另一方向、另一币种、已用/可用), 分行列出, 不合成一个总额。 */
+.product-surface-rows { display: grid; margin: var(--space-3) 0 0; padding-block-start: var(--space-3); border-block-start: 1px solid var(--border-card); }
+.product-surface-rows > div { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--space-1) var(--space-4); min-height: var(--space-8); }
+.product-surface-rows dt { color: var(--text-meta); font-size: var(--type-body-size); }
+.product-surface-rows dd { margin: 0; color: var(--text-default); font-family: var(--font-numeric); font-size: var(--type-subtitle-size); font-variant-numeric: tabular-nums; font-weight: var(--type-title-weight); overflow-wrap: anywhere; }
 .product-surface--apricot { background: var(--surface-apricot); }
 .product-surface--lilac { background: var(--surface-lilac); }
 .product-amount-label,
@@ -1070,10 +1075,19 @@ details.product-surface { display: block; }
     color: var(--brand-primary);
 }
 .product-task-actions > button.product-button--danger { color: var(--state-danger-fg); }
+/* 根页的主动作: 宽屏留在正文流里、按钮保持自身宽度; 窄屏吸在五域底栏之上。 */
+.product-task-actions--page { position: static; padding-block: 0; border-block-start: 0; }
+.product-task-actions--page > .product-button--primary { flex: 0 0 auto; }
 @media (max-width: 64rem) {
     /* 窄屏: 动作条出血到屏幕两侧, 内容仍与正文边距对齐。 */
     .product-task-actions { margin-inline: calc(var(--space-7) * -1); padding-inline: var(--space-7); }
+    .product-task-actions--page { position: sticky; inset-block-end: calc(var(--mobile-nav-block-size) + env(safe-area-inset-bottom)); padding-block: var(--space-4) var(--space-3); border-block-start: 1px solid var(--border-card); }
+    .product-task-actions--page > .product-button--primary { flex: 1 0 100%; }
 }
+
+/* 页内分区: 一个标题带一组内容; 分区之间用留白分组, 不加卡片相框。 */
+.product-section { min-width: 0; margin-block-start: var(--space-8); }
+.product-section > .product-panel-title { margin: 0 0 var(--space-3); }
 
 .text-warning {
     color: var(--state-warn-fg);
@@ -1180,6 +1194,8 @@ details[open] > .product-entry > svg { transform: rotate(90deg); }
 .product-entry:hover { color: var(--brand-primary-strong); }
 .product-entry--static { grid-template-columns: var(--space-9) minmax(0, 1fr); border-bottom: 1px solid var(--border-card); cursor: default; }
 .product-entry--static:hover { color: var(--text-default); }
+/* 已了结的记录退后一步, 仍可读可进入; 不用红色表达。 */
+.product-entry.is-receded { opacity: .62; }
 .product-entry-icon {
     display: grid;
     place-items: center;
@@ -1209,6 +1225,8 @@ details[open] > .product-entry > svg { transform: rotate(90deg); }
 .expense-lines-editor input:disabled,
 .expense-lines-editor select:disabled { color: var(--text-muted); background: var(--surface-sunken); }
 .product-entry-heading > strong { flex: 1 1 8ch; overflow-wrap: anywhere; }
+/* 行金额贴右, 不随名称一起伸展。 */
+.product-entry-heading > .product-entry-amount { flex: 0 1 auto; text-align: end; }
 .product-entry-amount { min-width: 0; max-width: 100%; margin-inline-start: auto; overflow-wrap: anywhere; font-family: var(--font-numeric); font-size: var(--type-subtitle-size); font-weight: var(--type-title-weight); color: var(--text-default); }
 .fact-reconcile { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--space-2) var(--space-4); margin-block: var(--space-4); padding-block: var(--space-3); border-bottom: 1px solid var(--border-card); color: var(--text-meta); font-size: var(--type-body-size); overflow-wrap: anywhere; }
 .fact-reconcile strong { min-width: 0; max-width: 100%; color: var(--text-default); font-family: var(--font-numeric); font-size: var(--type-subtitle-size); }

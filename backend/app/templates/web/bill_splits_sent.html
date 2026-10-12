@@ -14,7 +14,7 @@
 {% for row in bill_split_rows %}
 {% set live = row.status == 'invited' and not row.is_expired %}
 {% set status_label = '已过期' if row.is_expired else status_labels.get(row.status, row.status) %}
-<section class="debt-section" aria-label="请 {{ row.receiver_display_name }} 分摊 {{ row.share_label }}，{{ status_label }}">
+<section class="product-section" aria-label="请 {{ row.receiver_display_name }} 分摊 {{ row.share_label }}，{{ status_label }}">
   <div class="product-entry product-entry--static">
     <span class="product-entry-icon product-entry-icon--apricot" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#user-round"/></svg></span>
     <div class="product-entry-copy">

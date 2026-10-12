@@ -2,43 +2,6 @@
 
 body[data-domain="obligations"] .content { max-inline-size: var(--layout-page-narrow-max); }
 
-.obligation-summary {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, calc(var(--space-12) * 5)), 1fr));
-    gap: var(--space-4);
-    margin-block-end: var(--space-6);
-}
-
-.obligation-summary-item {
-    display: grid;
-    gap: var(--space-4);
-    container-type: inline-size;
-    background: var(--brand-primary-bg);
-    box-shadow: none;
-}
-
-.obligation-summary-item--payable { background: var(--surface-apricot); }
-.obligation-summary-item strong {
-    color: var(--text-default);
-    font-family: var(--font-numeric);
-    font-size: clamp(var(--type-title-size), 13cqi, var(--type-display-size));
-    font-weight: var(--type-display-weight);
-    line-height: var(--type-display-line);
-    font-variant-numeric: tabular-nums;
-    overflow-wrap: anywhere;
-}
-.obligation-summary-item > span { color: var(--text-meta); }
-.debt-section { margin-block-start: var(--space-8); }
-.debt-section-title {
-    margin: 0 0 var(--space-4);
-    color: var(--text-default);
-    font-size: var(--type-title-size);
-    font-weight: var(--type-title-weight);
-}
-.debt-row + .debt-row { border-block-start: 1px solid var(--border-card); }
-.debt-row-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--space-2) var(--space-4); }
-.debt-row-heading strong { color: var(--text-default); }
-.debt-row .product-entry-copy > span:last-child { font-size: var(--type-caption-size); }
 .dh-amt {
     color: var(--text-default);
     font-family: var(--font-numeric);
@@ -46,10 +9,6 @@ body[data-domain="obligations"] .content { max-inline-size: var(--layout-page-na
     font-variant-numeric: tabular-nums;
     font-weight: var(--type-headline-weight);
     overflow-wrap: anywhere;
-}
-
-.is-receded {
-    opacity: .62;
 }
 
 .debt-installment-progress,
@@ -136,7 +95,6 @@ body[data-domain="obligations"] .content { max-inline-size: var(--layout-page-na
     border-block-end: 0;
 }
 
-.debt-num,
 .debt-history-amt {
     font-family: var(--font-numeric);
     font-variant-numeric: tabular-nums;

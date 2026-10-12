@@ -29,7 +29,7 @@
 </div>
 {% else %}
 {{ debt_totals_summary(debt_totals) }}
-<div class="debt-list">
+<div class="product-entry-list product-section">
   {% for debt in rows %}{{ debt_row(debt, selected_ledger_id) }}{% endfor %}
 </div>
 {% endif %}
