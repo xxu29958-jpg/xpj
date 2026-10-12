@@ -77,8 +77,7 @@ tr:last-child td { border-bottom: none; }
 tr:hover td { background: var(--surface-sunken); }
 /* 数字列等宽数字，避免不同行金额/计数对不齐。 */
 td.num,
-th.num,
-.num-cell {
+th.num {
     font-variant-numeric: tabular-nums;
     text-align: right;
     white-space: nowrap;
@@ -110,43 +109,9 @@ tr[aria-selected="true"] td:first-child {
     min-width: 760px;
 }
 
-.text-break {
-    overflow-wrap: anywhere;
-    word-break: break-word;
-}
 
-.ledger-title {
-    display: inline-block;
-    max-width: 100%;
-    vertical-align: bottom;
-}
 /* 已迁出到 components/badges.css (v0.10.1 拆分). */
 
-.member-role-form,
-.member-actions,
-.invite-form-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-}
-
-.member-role-form {
-    display: inline-flex;
-    margin-left: 8px;
-}
-
-.one-time-secret {
-    background: var(--surface-card);
-    border: 1px solid var(--state-success-border);
-    padding: 10px 12px;
-    border-radius: 4px;
-    font-size: 14px;
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-    word-break: break-word;
-    user-select: all;
-}
 
 /* 已迁出到 components/buttons.css (v0.10.1 拆分). */
 
@@ -190,14 +155,6 @@ tr[aria-selected="true"] td:first-child {
 .meta { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
 
 form.inline { display: inline; }
-.rename-form { display: flex; gap: 6px; align-items: center; }
-.rename-input {
-    border: 1px solid var(--border-input);
-    border-radius: 4px;
-    padding: 4px 8px;
-    font-size: 12px;
-    width: 160px;
-}
 
 .quick-links {
     display: flex;
@@ -248,67 +205,16 @@ form.inline { display: inline; }
 .kv-val { font-size: 13px; color: var(--text-default); min-width: 0; overflow-wrap: anywhere; }
 
 /* ── settings secondary nav ────────────────────────────────────────────── */
-.settings-shell { display: flex; gap: 16px; align-items: flex-start; }
-.settings-side {
-    flex: 0 0 200px;
-    background: var(--surface-card);
-    border: 1px solid var(--border-card);
-    border-radius: 8px;
-    padding: 8px;
-    position: sticky;
-    top: 12px;
-}
-.settings-side a {
-    display: block;
-    padding: 8px 12px;
-    border-radius: 6px;
-    color: var(--text-default);
-    text-decoration: none;
-    font-size: 13px;
-}
-.settings-side a:hover { background: var(--state-neutral-bg); }
 /* active 与主导航同一配对 (旧 surface-nav 浅底 + 白字在 paper 下不可读,
    security 360 实测当前项隐形)。 */
-.settings-side a.active {
-    background: var(--surface-sunken);
-    color: var(--text-default);
-    font-weight: 600;
-    box-shadow: inset 2px 0 0 var(--brand-primary);
-}
-.settings-main { flex: 1; min-width: 0; }
-.settings-main h2 { margin-top: 0; }
 @media (max-width: 720px) {
     /* 列向时必须 stretch: flex-start 会让 settings-main 收缩成内容宽,
        720px min-width 表格把整页顶宽 (security/api 360 实测 784/954px)。 */
-    .settings-shell { flex-direction: column; align-items: stretch; }
-    .settings-side { width: 100%; flex: initial; position: static; }
     .kv-grid { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* ── route inspector ───────────────────────────────────────────────────── */
-.route-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.route-table th, .route-table td {
-    text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--state-neutral-border);
-}
-.route-table th { font-weight: 600; color: var(--text-muted); }
-.route-table code {
-    font-family: ui-monospace, Consolas, monospace;
-    background: var(--surface-sunken); padding: 2px 6px; border-radius: 4px;
-}
-.route-method {
-    display: inline-block; font-family: monospace; font-size: 11px;
-    padding: 2px 6px; border-radius: 4px; margin-right: 4px;
-    background: var(--state-neutral-bg); color: var(--state-neutral-fg);
-}
-.route-method-GET    { background: var(--state-success-bg); color: var(--state-success-fg); }
-.route-method-POST   { background: var(--state-info-bg); color: var(--state-info-fg); }
-.route-method-DELETE { background: var(--state-danger-bg); color: var(--state-danger-fg); }
-.route-method-MOUNT  { background: var(--state-neutral-bg); color: var(--state-neutral-fg); }
 
-.surface-pill {
-    display: inline-block; padding: 2px 8px; font-size: 11px;
-    border-radius: 999px; margin-bottom: 6px;
-}
 .surface-owner    { background: var(--state-warn-bg); color: var(--state-warn-fg); }
 .surface-admin    { background: var(--state-danger-bg); color: var(--state-danger-fg); }
 .surface-upload   { background: var(--state-info-bg); color: var(--state-info-fg); }
@@ -355,34 +261,7 @@ form.inline { display: inline; }
     0%   { background-position: -160px 0; }
     100% { background-position: 160px 0; }
 }
-.skeleton {
-    background: linear-gradient(
-        90deg,
-        var(--skeleton-base-bg) 0%,
-        var(--skeleton-shine-bg) 50%,
-        var(--skeleton-base-bg) 100%
-    );
-    background-size: 320px 100%;
-    background-repeat: no-repeat;
-    border-radius: 4px;
-    animation: skeleton-shimmer var(--motion-shimmer) var(--ease-linear) infinite;
-    color: transparent;
-    user-select: none;
-}
-.skeleton-line {
-    display: block;
-    height: 12px;
-    width: 100%;
-    margin: 6px 0;
-}
-.skeleton-block {
-    display: block;
-    height: 96px;
-    width: 100%;
-}
-@media (prefers-reduced-motion: reduce) {
-    .skeleton { animation: none; }
-}
+
 
 /* ───── v0.10 Owner sidebar layout ──────────────────────────────
  * 替代旧的扁平 .nav 横向导航; sidebar 分两组 (运维 / 治理).

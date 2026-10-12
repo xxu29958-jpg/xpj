@@ -251,6 +251,7 @@
 .workspace-guidance { display: flex; gap: 12px; margin-top: 32px; font-size: 14px; }
 .workspace-guidance > .workspace-icon { flex: 0 0 20px; color: var(--brand-primary); }
 .workspace-guidance p { margin: 8px 0; color: var(--text-muted); }
+.workspace-guidance a { color: var(--brand-primary); text-underline-offset: 2px; }
 .workspace-row-actions { display: flex; flex-wrap: wrap; gap: 8px 18px; }
 .workspace-row-actions a { min-height: 44px; display: inline-flex; align-items: center; }
 .workspace-ledger-filter { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin-bottom: 22px; }
