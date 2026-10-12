@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% set product_body_domain = 'obligations' %}
 {% set page_title = '还款采集' %}
+{% set page_readonly_notice = true %}
 {% set pending = rows|selectattr('is_pending')|list %}
 {% set processed = rows|rejectattr('is_pending')|list %}
 {% block title %}还款采集 · 小票夹{% endblock %}
@@ -32,14 +33,11 @@
      aria-label="{{ '核对并处理' if can_write else '查看原采集' }}：{{ r.source_label }}，{{ r.currency_code }} {{ r.amount_label }}">
     <span class="product-entry-icon product-entry-icon--apricot" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#smartphone"/></svg></span>
     <span class="product-entry-copy">
-      <span class="product-entry-heading"><strong>{{ r.source_label }}</strong><span class="product-status">{{ r.status_label }}</span></span>
-      {% if r.merchant %}<span>{{ r.merchant }}</span>{% endif %}
-      <span>采集于 {{ r.captured_label }} · {{ r.currency_code }}</span>
-      <strong class="product-entry-amount">{{ r.amount_label }}</strong>
+      <span class="product-entry-heading"><strong>{{ r.merchant or r.source_label }}</strong><strong class="product-entry-amount">{{ r.amount_label }}</strong></span>
+      <span>{{ r.source_label }} · 采集于 {{ r.captured_label }} · {{ r.currency_code }}</span>
       {% if r.provenance %}<span>{{ r.provenance }}</span>{% endif %}
       {% if r.conversion_pending %}<span>原币金额；确认时按还款日期换算 {{ r.home_currency_code }}</span>{% endif %}
-      <span>{{ '核对并处理' if can_write else '查看原采集' }}</span>
-      {% if not can_write %}<span>等待有写权限的成员处理</span>{% endif %}
+      <span>{{ r.status_label }} · {{ '核对并处理' if can_write else '等待有写权限的成员处理' }}</span>
     </span>
     <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
   </a>
@@ -65,9 +63,9 @@
       <article class="product-entry product-entry--static">
         <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#{{ 'check' if r.linked_line else 'archive' }}"/></svg></span>
         <div class="product-entry-copy">
-          <span class="product-entry-heading"><strong>{{ r.merchant or r.source_label }}</strong><span class="product-status{% if r.status_tone == 'ok' %} product-status--success{% endif %}">{{ r.status_label }}</span></span>
-          <span>{{ r.source_label }} · 采集于 {{ r.captured_label }}</span>
-          <span>原金额 {{ r.currency_code }} <strong class="product-entry-amount">{{ r.amount_label }}</strong></span>
+          <span class="product-entry-heading"><strong>{{ r.merchant or r.source_label }}</strong><strong class="product-entry-amount">{{ r.amount_label }}</strong></span>
+          <span>{{ r.source_label }} · 采集于 {{ r.captured_label }} · 原金额 {{ r.currency_code }}</span>
+          <span class="product-status{% if r.status_tone == 'ok' %} product-status--success{% endif %}">{{ r.status_label }}</span>
           {% if r.resolved_label %}<span>处理于 {{ r.resolved_label }}</span>{% endif %}
           {% if r.linked_line %}<a href="/web/debts/{{ r.committed_debt_public_id }}?ledger_id={{ selected_ledger_id|urlencode }}">{{ r.linked_line }}</a>{% endif %}
           <a href="/web/repayment-drafts/{{ r.public_id }}?ledger_id={{ selected_ledger_id|urlencode }}">查看原采集与处理记录</a>
@@ -77,13 +75,14 @@
     </div>
   </details>
 </section>
-<div class="product-entry product-entry--static product-section">
-  <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#info"/></svg></span>
-  <span class="product-entry-copy"><strong>通知不会自动记账</strong><span>请确认对应欠款、方向和金额。忽略通知不会撤销已生效的还款。</span></span>
-</div>
+<p class="product-note product-section">
+  <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#info"/></svg>
+  <strong>通知不会自动记账</strong>
+  <span>请确认对应欠款、方向和金额。忽略通知不会撤销已生效的还款。</span>
+</p>
 {% if pending|length == 1 %}
-<div class="product-form-actions">
-  <a class="product-button product-button--primary" href="/web/repayment-drafts/{{ pending[0].public_id }}?ledger_id={{ selected_ledger_id|urlencode }}">{{ '核对这笔还款' if can_write else '查看原采集' }}</a>
+<div class="product-task-actions product-task-actions--page">
+  <a class="product-button product-button--primary" href="/web/repayment-drafts/{{ pending[0].public_id }}?ledger_id={{ selected_ledger_id|urlencode }}">{{ '核对这笔还款' if can_write else '查看原采集' }} <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-right"/></svg></a>
 </div>
 {% endif %}
 {% endblock %}

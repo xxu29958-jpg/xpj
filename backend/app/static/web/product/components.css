@@ -127,7 +127,8 @@ p {
 
 .filter-tab,
 .product-segments a,
-.product-segments button {
+.product-segments button,
+.product-segments label {
     display: inline-flex;
     min-height: var(--target-min);
     flex: 0 0 auto;
@@ -155,12 +156,18 @@ p {
 .filter-tab.is-active,
 .product-segments [aria-current="page"],
 .product-segments [aria-current="location"],
-.product-segments [aria-selected="true"] {
+.product-segments [aria-selected="true"],
+.product-segments label:has(input:checked) {
     background: var(--brand-primary-bg);
     box-shadow: none;
     color: var(--text-default);
     font-weight: var(--type-subtitle-weight);
 }
+
+/* 单选胶囊: 真实 radio 铺满整个胶囊, 选中态只靠 :checked。 */
+.product-segments label { position: relative; }
+.product-segments label > input { position: absolute; inset: 0; width: 100%; height: 100%; min-height: 0; margin: 0; opacity: 0; cursor: pointer; }
+.product-segments label:has(input:focus-visible) { outline: var(--space-1) solid var(--brand-focus-ring); outline-offset: var(--space-1); }
 
 .count,
 .num,
@@ -518,12 +525,17 @@ button[disabled] {
 .dt-form-row,
 .product-field {
     display: grid;
+    /* 同一行里别的字段带说明而变高时, 输入框不跟着被拉高。 */
+    align-content: start;
     min-width: 0;
     gap: var(--space-2);
 }
+fieldset.product-field { margin: 0; padding: 0; border: 0; }
+.product-field > legend { margin-block-end: var(--space-2); padding: 0; }
 
 .dt-form-row > label,
 .product-field > label,
+.product-field > legend,
 .product-field > span:first-child {
     color: var(--text-meta);
     font-size: var(--type-body-size);
@@ -1283,7 +1295,14 @@ details[open]:has(> summary.product-entry) { padding-block-end: var(--space-5); 
 .fact-reconcile { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--space-2) var(--space-4); margin-block: var(--space-4); padding-block: var(--space-3); border-bottom: 1px solid var(--border-card); color: var(--text-meta); font-size: var(--type-body-size); overflow-wrap: anywhere; }
 .fact-reconcile strong { min-width: 0; max-width: 100%; color: var(--text-default); font-family: var(--font-numeric); font-size: var(--type-subtitle-size); }
 .product-entry-copy > span { color: var(--text-meta); font-size: var(--type-body-size); line-height: var(--type-body-line); }
+.product-entry-copy > .product-status { justify-self: start; }
 .product-entry-list > :not(:last-child) { border-block-end: 1px solid var(--border-card); }
+/* 一句说明: 小图标、一行结论、一行解释。不是行, 不可点, 不带分隔线。 */
+:where(.product-note) { margin: 0; }
+.product-note { display: grid; grid-template-columns: var(--space-6) minmax(0, 1fr); gap: var(--space-1) var(--space-3); color: var(--text-meta); font-size: var(--type-body-size); line-height: var(--type-body-line); }
+.product-note > svg { grid-row: span 2; width: var(--space-6); height: var(--space-6); color: var(--brand-primary); }
+.product-note > strong { color: var(--text-default); font-weight: var(--type-title-weight); }
+.product-note > span { grid-column: 2; }
 .product-entry--actions { display: flex; flex-wrap: wrap; }
 .product-entry--actions > .product-entry-copy { flex: 1 1 12ch; }
 .product-entry-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-inline-start: auto; }

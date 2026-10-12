@@ -20,7 +20,7 @@
 {% block content %}
 {% include '_debt_repayment_form.html' %}
 {% if not repayment_form.ack %}<p class="product-page-summary">欠款详情暂时无法读取。原提交仍可保留；请继续核实原来这一笔，避免重复记录。</p>{% endif %}
-<details class="product-panel product-panel--padded"><summary>其他原操作</summary>
+<details class="product-disclosure product-section"><summary>其他原操作</summary>
 {% with repayment_form=other_repayment_form, repayment_task=false %}{% include '_debt_repayment_form.html' %}{% endwith %}
 {% for void_form in void_recovery_forms %}{% include '_debt_void_form.html' %}{% endfor %}
 {% include '_debt_kind_form.html' %}

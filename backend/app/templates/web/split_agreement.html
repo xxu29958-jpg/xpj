@@ -23,7 +23,7 @@
 </div>
 {% endblock %}
 {% block content %}
-<div class="debt-create-form" data-repayment-container>
+<div class="product-form" data-repayment-container>
 {% if change.ack %}
 <div class="product-feedback" role="status" data-repayment-ack="{{ change.ack | tojson | forceescape }}">这次约定操作已完成。<span data-repayment-ack-status></span></div>
 {% endif %}
@@ -55,7 +55,7 @@
 {% endif %}
 <section data-repayment-panel{% if not change.can_create and not change.result %} hidden{% endif %}>
   <h2 class="product-panel-title" data-split-command-title>{{ change.submit_label }}</h2>
-  <form id="split-change-form" method="post" action="{{ change.action }}" class="debt-create-form"
+  <form id="split-change-form" method="post" action="{{ change.action }}" class="product-form"
         data-repayment-kind="split-change" data-repayment-scope="{{ change.scope | tojson | forceescape }}"
         data-repayment-result="{{ change.result }}" data-repayment-target="{{ change.public_id }}"
         data-repayment-can-create="{{ 'true' if change.can_create else 'false' }}"

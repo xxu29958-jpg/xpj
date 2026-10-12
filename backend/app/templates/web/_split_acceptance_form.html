@@ -1,6 +1,6 @@
 {% set values = accept_values|default({}) %}
 {% set editable = live and row.accept_choices %}
-<form id="split-accept-form" method="post" action="/web/bill-splits/{{ row.public_id }}/accept" class="debt-create-form"
+<form id="split-accept-form" method="post" action="/web/bill-splits/{{ row.public_id }}/accept" class="product-form"
   {% if splitaccept_draft_scope %}data-splitaccept-draft-scope="{{ splitaccept_draft_scope|tojson|forceescape }}"
   data-splitaccept-plan-id="{{ row.public_id }}" data-splitaccept-archived="{{ 'false' if editable else 'true' }}"
   data-splitaccept-native-result="{{ splitaccept_native_result or '' }}"

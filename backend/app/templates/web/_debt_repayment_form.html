@@ -63,7 +63,7 @@
       {% endif %}
     </div>
     {% include '_debt_balance_preview.html' %}
-    {% if member_repayment %}<p class="product-page-summary">提交后等待对方确认；申报不会直接改变未结金额。</p>{% endif %}
+    {% if member_repayment %}<p class="product-note"><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#info"/></svg><strong>提交后等待对方确认</strong><span>申报不会直接改变未结金额。</span></p>{% endif %}
     {% if repayment_task|default(false) %}<a class="product-entry" href="{{ task_return_href }}"><span class="product-entry-icon product-entry-icon--apricot" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#users"/></svg></span><span class="product-entry-copy"><strong>查看对应欠款</strong><span>原输入和原提交仍会保留</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></a>
     {% else %}<div class="product-form-actions">{{ repayment_actions(repayment) }}</div>{% endif %}
   </form>

@@ -28,16 +28,16 @@
 {% block content %}
 <section>
   {% if accepted_creation %}
-  <div class="product-feedback" data-debtcreation-accepted="{{ {'scope': debtcreation_draft_scope, 'clientRef': idempotency_key, 'receipt': accepted_creation}|tojson|forceescape }}">
-    <p><strong>{{ values.counterparty_label }} · {{ values.currency_code }} {{ values.amount_major }}</strong></p>
-    <p>发生日期 {{ values.event_time }} · {{ selected_ledger_name }}</p>
-    <p role="status">这笔往来已保存。查看详情不会重复创建。</p>
+  <div class="product-surface" data-debtcreation-accepted="{{ {'scope': debtcreation_draft_scope, 'clientRef': idempotency_key, 'receipt': accepted_creation}|tojson|forceescape }}">
+    <span class="product-amount-label">{{ values.counterparty_label }} · {{ values.currency_code }}</span>
+    <strong class="product-amount">{{ values.amount_major }}</strong>
+    <span class="product-amount-meta">发生日期 {{ values.event_time }} · {{ selected_ledger_name }}</span>
+    <p class="product-amount-meta" role="status">这笔往来已保存。查看详情不会重复创建。</p>
   </div>
-  <a class="product-button product-button--quiet" href="/web/debts/new?ledger_id={{ selected_ledger_id|urlencode }}&amp;new_debtcreation=1">再记一笔</a>
   {% else %}
-  {% if form_error %}<div class="product-feedback product-feedback--danger debt-action-error" role="alert">{{ form_error }}</div>{% endif %}
+  {% if form_error %}<div class="product-feedback product-feedback--danger" role="alert">{{ form_error }}</div>{% endif %}
   {% if not can_write %}<p class="product-feedback" role="status">当前为只读，可以核对原输入；恢复编辑权限后继续。</p>{% endif %}
-  <form id="debt-creation" class="debt-create-form" method="post" action="/web/debts"
+  <form id="debt-creation" class="product-form" method="post" action="/web/debts"
     {% if debtcreation_draft_scope %}data-debtcreation-draft-scope="{{ debtcreation_draft_scope|tojson|forceescape }}"
     data-debtcreation-can-write="{{ 'true' if can_write else 'false' }}"
     data-debtcreation-native-result="{{ debtcreation_native_result or '' }}"{% endif %}>
@@ -52,14 +52,11 @@
     <button type="submit" hidden tabindex="-1" aria-hidden="true"></button>
     <p class="hint" role="status" hidden data-debtcreation-draft-status></p>
     {% include '_fact_rate_recovery.html' %}
-    <fieldset class="debt-choice-group">
+    <fieldset class="product-field">
       <legend>谁欠谁</legend>
-      <div class="debt-choice-row debt-choice-row--direction">
+      <div class="product-segments">
         {% for option in direction_options %}
-        <label class="debt-choice">
-          <input type="radio" name="direction" value="{{ option.value }}"{% if values.direction == option.value or (not values.direction and loop.first) %} checked{% endif %}>
-          <span class="debt-choice-title">{{ option.label }}</span>
-        </label>
+        <label><input type="radio" name="direction" value="{{ option.value }}"{% if values.direction == option.value or (not values.direction and loop.first) %} checked{% endif %}>{{ option.label }}</label>
         {% endfor %}
       </div>
     </fieldset>
@@ -122,7 +119,7 @@
     </div>
     {% if debtcreation_draft_scope %}
     <details>
-      <summary class="product-entry"><span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#list-filter"/></svg></span><span class="product-entry-copy"><strong>保留的往来</strong><span>继续此浏览器中的原稿</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></summary>
+      <summary class="product-entry"><span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#history"/></svg></span><span class="product-entry-copy"><strong>保留的往来</strong><span>继续此浏览器中的原稿</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></summary>
       {% include '_debt_creation_drafts.html' %}
     </details>
     {% endif %}
@@ -135,6 +132,7 @@
 <div class="product-task-actions">
   {% if accepted_creation %}
   <a class="product-button product-button--primary" href="{{ creation_destination }}">查看这笔往来</a>
+  <a class="product-button product-button--quiet" href="/web/debts/new?ledger_id={{ selected_ledger_id|urlencode }}&amp;new_debtcreation=1">再记一笔</a>
   {% else %}
   <button class="product-button product-button--primary" type="submit" form="debt-creation" data-debtcreation-submit{% if not can_write %} disabled{% endif %}>记下这笔欠款</button>
   {% endif %}

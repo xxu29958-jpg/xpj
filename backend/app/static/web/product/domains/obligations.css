@@ -11,7 +11,6 @@ body[data-domain="obligations"] .content { max-inline-size: var(--layout-page-na
     overflow-wrap: anywhere;
 }
 
-
 .dh-amt--hero {
     font-size: clamp(var(--type-title-size), 13cqi, var(--type-display-size));
     line-height: var(--type-display-line);
@@ -19,30 +18,6 @@ body[data-domain="obligations"] .content { max-inline-size: var(--layout-page-na
 
 .debt-summary-card { container-type: inline-size; }
 .debt-summary-card > .product-status { justify-self: start; }
-.debt-repayment-task .product-form-grid { grid-template-columns: minmax(0, 1fr); gap: var(--space-6); }
-.debt-repayment-amount {
-    container-type: inline-size;
-    padding: var(--space-5);
-    border-radius: var(--radius-lg);
-    background: var(--brand-primary-bg);
-}
-.debt-repayment-amount .product-input,
-.debt-repayment-amount output {
-    width: 100%;
-    font-family: var(--font-numeric);
-    font-size: clamp(var(--type-body-size), 13cqi, var(--type-display-size));
-    font-weight: var(--type-display-weight);
-    line-height: var(--type-display-line);
-    overflow-wrap: anywhere;
-}
-.debt-repayment-amount .product-input {
-    padding-inline: 0;
-    border: 0;
-    border-block-end: 1px solid var(--border-card);
-    border-radius: 0;
-    background: transparent;
-    color: var(--text-default);
-}
 
 .debt-history {
     display: grid;
@@ -64,14 +39,12 @@ body[data-domain="obligations"] .content { max-inline-size: var(--layout-page-na
     border-block-end: 0;
 }
 
-
 .debt-history-main {
     display: grid;
     flex: 1 1 24ch;
     min-inline-size: 0;
     gap: var(--space-1);
 }
-
 
 .debt-history-date {
     color: var(--text-meta);
@@ -88,9 +61,6 @@ body[data-domain="obligations"] .content { max-inline-size: var(--layout-page-na
     cursor: pointer;
 }
 
-
-/* ===== C3a 往来核心：列表 / 新建 / 详情的产品化表达 ===== */
-
 /* 失败兜底的 attempted 静态记录行: 在 danger/feedback 块内降一档, 仅作记录。 */
 .debt-attempted {
     display: block;
@@ -99,15 +69,12 @@ body[data-domain="obligations"] .content { max-inline-size: var(--layout-page-na
     opacity: .85;
 }
 
-
-/* 列表行状态徽章簇。 */
 /* ===== 详情：成员往来卡 ===== */
 
 .debt-summary-card {
     display: grid;
     gap: var(--space-3);
 }
-
 
 /* 成员「看看账」折叠明细。 */
 .debt-look-rows {
@@ -125,99 +92,11 @@ body[data-domain="obligations"] .content { max-inline-size: var(--layout-page-na
     font-size: var(--type-caption-size);
 }
 
-/* 外部债务的进度用中性色：商业语义不借家人往来的品牌色。 */
-
-/* 成员 proposal 的状态句：安静陈述，不是操作按钮。 */
-
-
-/* ===== 详情：动作区 ===== */
-
-
-.debt-create-form {
-    display: grid;
-    gap: var(--space-4);
-}
-
-.debt-create-form {
-    gap: var(--space-6);
-}
-
 .split-settlement-fields {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: var(--space-4);
     align-items: start;
-}
-
-
-/* 低频 / 危险动作收进 native disclosure，发丝分隔。 */
-
-
-/* 表单原位错误：紧凑条，role=alert 由模板承担。 */
-.debt-action-error {
-    margin: 0 0 var(--space-3);
-    padding: var(--space-2) var(--space-3);
-}
-
-/* 待确认 proposal 的内联确认 / 拒绝。 */
-
-
-/* ===== 详情：还款事实 ===== */
-
-
-/* ===== 新建：方向 / 偿还方式选择卡 ===== */
-
-.debt-choice-group {
-    display: grid;
-    gap: var(--space-3);
-    margin: 0;
-    padding: 0;
-    border: 0;
-}
-
-.debt-choice-group > legend {
-    padding: 0;
-    color: var(--text-default);
-    font-weight: var(--type-subtitle-weight);
-}
-
-.debt-choice-row {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--space-3);
-}
-
-.debt-choice {
-    position: relative;
-    display: grid;
-    gap: var(--space-1);
-    padding: var(--space-4);
-    border: 1px solid var(--border-card);
-    border-radius: var(--radius-sm);
-    background: var(--surface-card);
-    cursor: pointer;
-}
-
-.debt-choice input {
-    position: absolute;
-    inset: 0;
-    margin: 0;
-    opacity: 0;
-    cursor: pointer;
-}
-
-.debt-choice:has(input:checked) {
-    border-color: var(--brand-primary);
-    background: var(--brand-primary-bg);
-}
-
-.debt-choice:has(input:focus-visible) {
-    outline: var(--space-1) solid var(--brand-focus-ring);
-    outline-offset: var(--space-1);
-}
-
-.debt-choice-title {
-    font-weight: var(--type-subtitle-weight);
 }
 
 /* ===== C3b 拆账邀请（收件箱 + 已发出） ===== */
@@ -400,7 +279,6 @@ body[data-domain="obligations"] .content { max-inline-size: var(--layout-page-na
     .family-member-actions select {
         flex: 1;
     }
-
 
 }
 
