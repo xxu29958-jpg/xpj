@@ -137,7 +137,11 @@
       return {...(definition.read ? definition.read(form) : Object.fromEntries(names.map(name => [name, field(name)?.value || ""]))),
         amount_placeholder: amount?.placeholder || "", amount_inputmode: amount?.inputMode || ""};
     }
-    function notice(message) { if (!disposed) { status.hidden = false; status.textContent = message; } }
+    function notice(message, idle) {
+      if (disposed) return;
+      status.hidden = false; status.textContent = message;
+      if (idle) status.dataset.draftIdle = "true"; else delete status.dataset.draftIdle;
+    }
     function fieldsEditable() {
       return editsAllowed && !blocked && phase === "editing" && (held || onlineOnly);
     }
@@ -390,7 +394,7 @@
         notice("服务器已拒绝这次原提交，原输入仍保留。核对当前记录后，可保留输入继续修改。"); return;
       }
       notice(record ? phase === "editing" ? "已恢复原" + taskLabel + "，可继续之前的输入。" :
-        "原提交结果尚未确认。核实会沿用原内容和编号。" : "输入会保留在此浏览器，尚未提交。");
+        "原提交结果尚未确认。核实会沿用原内容和编号。" : "输入会保留在此浏览器，尚未提交。", !record);
     }
     function selectDraft(records, nativeResult) {
       let wanted = window.location.hash.startsWith(anchor) ? window.location.hash.slice(anchor.length) : "";

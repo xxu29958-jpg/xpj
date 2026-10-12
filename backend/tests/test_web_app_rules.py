@@ -36,8 +36,8 @@ def _rule_id_for_keyword(page_html: str, keyword: str) -> int:
     marker = f"<code>{keyword}</code>"
     marker_at = page_html.find(marker)
     assert marker_at >= 0, page_html[:1000]
-    row_start = page_html.rfind("<tr", 0, marker_at)
-    row_end = page_html.find("</tr>", marker_at)
+    row_start = page_html.rfind("<li", 0, marker_at)
+    row_end = page_html.find("</li>", marker_at)
     assert row_start >= 0 and row_end >= 0, page_html[:1000]
     row_html = page_html[row_start:row_end]
     id_match = re.search(r'/web/rules/(\d+)/toggle', row_html)

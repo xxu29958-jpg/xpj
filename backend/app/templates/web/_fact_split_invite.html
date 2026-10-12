@@ -42,46 +42,36 @@
   {% endif %}
 
   {% if split_invite.sent_rows %}
-  <table class="product-table split-invite-sent">
-    <thead>
-      <tr>
-        <th>已发给</th>
-        <th class="amount">金额</th>
-        <th>状态</th>
-        <th>到期</th>
-        <th><span class="sr-only">操作</span></th>
-      </tr>
-    </thead>
-    <tbody>
+  {# 已发出的邀请: 一行一份 (对象与金额、到期、状态、下一步); 窄屏不挤成表格。 #}
+  <ul class="product-entry-list" aria-label="已发出的拆账邀请">
     {% for row in split_invite.sent_rows %}
-      <tr>
-        <td>{{ row.receiver_display_name or '—' }}</td>
-        <td class="amount">{{ row.amount_label }}</td>
-        <td>
-          {% if row.status == 'invited' %}<span class="product-status product-status--info">待处理</span>
-          {% elif row.status == 'accepted' %}<span class="product-status product-status--success">已接受</span>
-          {% elif row.status == 'rejected' %}<span class="product-status">已拒绝</span>
-          {% elif row.status == 'cancelled' %}<span class="product-status">已撤回</span>
-          {% else %}<span class="product-status">已过期</span>{% endif %}
-        </td>
-        <td class="num">{{ row.expires_at or '—' }}</td>
-        <td>
-          {% if row.debt_href %}<a href="{{ row.debt_href }}">查看这笔往来</a>{% endif %}
-          {% if row.is_cancellable %}
-          <form method="post" action="/web/bill-splits/{{ row.public_id }}/cancel" class="inline-form">
-            <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-            <input type="hidden" name="return_expense_id" value="{{ expense.id }}">
-            {% for name, value in edit_return_fields.items() %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
-            <button type="submit" class="product-button product-button--quiet product-button--small" data-confirm="撤回这份拆账邀请？">撤回</button>
-          </form>
-          {% else %}
-          <span class="meta">—</span>
-          {% endif %}
-        </td>
-      </tr>
+    <li class="product-entry product-entry--static product-entry--actions">
+      <span class="product-entry-icon product-entry-icon--apricot" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#user-round"/></svg></span>
+      <div class="product-entry-copy">
+        <div class="product-entry-heading"><strong>{{ row.receiver_display_name or '—' }}</strong><strong class="product-entry-amount">{{ row.amount_label }}</strong></div>
+        <span>已发给 · 到期 {{ row.expires_at or '—' }}</span>
+        {% if row.status == 'invited' %}<span class="product-status product-status--info">待处理</span>
+        {% elif row.status == 'accepted' %}<span class="product-status product-status--success">已接受</span>
+        {% elif row.status == 'rejected' %}<span class="product-status">已拒绝</span>
+        {% elif row.status == 'cancelled' %}<span class="product-status">已撤回</span>
+        {% else %}<span class="product-status">已过期</span>{% endif %}
+      </div>
+      {% if row.debt_href or row.is_cancellable %}
+      <div class="product-entry-actions">
+        {% if row.debt_href %}<a class="product-button product-button--small" href="{{ row.debt_href }}">查看这笔往来</a>{% endif %}
+        {% if row.is_cancellable %}
+        <form method="post" action="/web/bill-splits/{{ row.public_id }}/cancel" class="product-inline-form">
+          <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+          <input type="hidden" name="return_expense_id" value="{{ expense.id }}">
+          {% for name, value in edit_return_fields.items() %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
+          <button type="submit" class="product-button product-button--quiet product-button--small" data-confirm="撤回这份拆账邀请？">撤回</button>
+        </form>
+        {% endif %}
+      </div>
+      {% endif %}
+    </li>
     {% endfor %}
-    </tbody>
-  </table>
+  </ul>
   {% endif %}
 </section>
 {% endif %}

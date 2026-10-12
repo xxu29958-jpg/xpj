@@ -1,6 +1,10 @@
 {% extends "base.html" %}
 {% set page_title = '规则' %}
 {% set product_body_domain = 'transactions' %}
+{% set page_surface = 'tertiary' %}
+{% set task_return_href = '/web/library' ~ q %}
+{% set task_return_label = '资料库' %}
+{% set page_readonly_notice = true %}
 {% block title %}规则 · 资料库 · 小票夹{% endblock %}
 
 {# C5c-1 增量 2: 规则 section 迁为资料库 product 三级页。
@@ -10,12 +14,6 @@
    can_write 分支原样保留; 影响统计复用 transactions.css 的 import-metrics 事实条。 #}
 {% block page_scripts %}{% include 'partials/rule_draft_scripts.html' %}{% endblock %}
 {% block content %}
-<nav class="library-breadcrumb" aria-label="面包屑">
-  <a class="library-breadcrumb-parent" href="/web/library{{ q }}">资料库</a>
-  <span class="library-breadcrumb-sep" aria-hidden="true">/</span>
-  <span class="library-breadcrumb-current" aria-current="page">规则</span>
-</nav>
-
 <header class="product-page-header">
   <div class="product-page-heading">
     <h1 class="page-title">规则</h1>
@@ -41,12 +39,9 @@
 {% endif %}
 
 {% include 'partials/rule_draft_shelf.html' %}
-{% if can_write %}<a class="product-button product-button--primary" href="/web/rules{{ q }}&amp;view=new">添加规则 <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-right"/></svg></a>{% endif %}
-<div class="library-panels">
-  <section class="product-panel product-panel--padded">
-    <div class="product-panel-header">
-      <div class="product-panel-title">预览匹配</div>
-    </div>
+<details class="product-disclosure"{% if preview or preview_error or preview_keyword %} open{% endif %}>
+  <summary>试一个关键词会匹配哪些账单</summary>
+  <section class="product-form" aria-label="预览匹配">
     <form method="get" action="/web/rules" class="product-form-grid">
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
       <label class="product-field">
@@ -85,7 +80,7 @@
     {% endif %}
     {% endif %}
   </section>
-</div>
+</details>
 
 <nav class="fact-entries library-section" aria-label="规则应用">
 <a class="product-entry" href="/web/rules{{ q }}&amp;apply_preview=1"><span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#search"/></svg></span><span class="product-entry-copy"><strong>预览待确认账单</strong><span>先看影响，再决定是否更新分类。</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></a>
@@ -93,79 +88,58 @@
 <a class="product-entry" href="/web/rules{{ q }}&amp;view=history"><span class="product-entry-icon product-entry-icon--lilac" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#history"/></svg></span><span class="product-entry-copy"><strong>规则应用记录</strong><span>查看各次应用，以及首次回退的实际结果。</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></a>
 </nav>
 
-<section class="product-panel product-panel--padded library-section">
-  <div class="product-panel-header">
-    <div class="product-panel-title">当前规则（{{ rules|length }} 条）</div>
-    <span class="meta">应用前请先预览影响。</span>
-  </div>
+<section class="product-section" aria-label="当前规则">
+  <div class="product-entry-heading"><h2 class="product-panel-title">当前规则（{{ rules|length }} 条）</h2><span class="hint">应用前请先预览影响。</span></div>
   {% if rule_toggle_error and rule_toggle_rule_id not in (rules | map(attribute='id') | list) %}
   {# 被提交行已不在列表 (他端已删除) 时, 422 文案仍须锚身份可见。 #}
   <div class="product-feedback product-feedback--danger" role="alert" data-rule-key="{{ rule_toggle_rule_id }}">{{ rule_toggle_error }}{% if rule_toggle_recycle %} 请先恢复分类，再重新启用这条规则；也可以删除本规则。<a class="product-feedback-link" href="/web/recycle-bin{{ q }}">查看回收站</a>{% endif %}</div>
   {% endif %}
   {% if rules %}
-  <div class="product-table-wrap library-table-flush">
-    <table class="product-table">
-      <thead>
-        <tr>
-          <th>优先级</th>
-          <th>关键词</th>
-          <th>分类</th>
-          <th>条件</th>
-          <th>状态</th>
-          <th>操作</th>
-        </tr>
-      </thead>
-      <tbody>
+  {# 一条规则一行: 关键词 → 分类, 优先级与条件, 状态用文字; 编辑、启停、删除是行内动作。 #}
+  <ul class="product-entry-list">
       {% for r in rules %}
         {# 启用被拒 422 (目标分类已入回收站): 行内锚定, fresh rv 取自行本身,
            用户恢复分类后可直接重试; toggle 无草稿。 #}
         {% set _toggle_error = rule_toggle_error and rule_toggle_rule_id == r.id %}
-        <tr{% if _toggle_error %} aria-invalid="true" aria-describedby="rule-toggle-error"{% endif %}>
-          <td class="num">{{ r.priority }}</td>
-          <td><code>{{ r.keyword }}</code></td>
-          <td><span class="product-status product-status--info">{{ r.category }}</span></td>
-          <td>
-            {% set conditions = [] %}
-            {% if r.amount_min_cents is not none %}{% set _ = conditions.append('≥ ' ~ rule_amount_label(r.amount_min_cents, r.home_currency_code)) %}{% endif %}
-            {% if r.amount_max_cents is not none %}{% set _ = conditions.append('≤ ' ~ rule_amount_label(r.amount_max_cents, r.home_currency_code)) %}{% endif %}
-            {% if r.source_contains %}{% set _ = conditions.append('来源含「' ~ r.source_contains ~ '」') %}{% endif %}
-            {% if r.tag_contains %}{% set _ = conditions.append('标签「' ~ r.tag_contains ~ '」') %}{% endif %}
-            {{ conditions|join(' · ') if conditions else '—' }}
-          </td>
-          <td>
+        {% set conditions = [] %}
+        {% if r.amount_min_cents is not none %}{% set _ = conditions.append('≥ ' ~ rule_amount_label(r.amount_min_cents, r.home_currency_code)) %}{% endif %}
+        {% if r.amount_max_cents is not none %}{% set _ = conditions.append('≤ ' ~ rule_amount_label(r.amount_max_cents, r.home_currency_code)) %}{% endif %}
+        {% if r.source_contains %}{% set _ = conditions.append('来源含「' ~ r.source_contains ~ '」') %}{% endif %}
+        {% if r.tag_contains %}{% set _ = conditions.append('标签「' ~ r.tag_contains ~ '」') %}{% endif %}
+        <li class="product-entry product-entry--static product-entry--actions{% if not r.enabled %} is-receded{% endif %}"{% if _toggle_error %} aria-invalid="true" aria-describedby="rule-toggle-error"{% endif %}>
+          <span class="product-entry-icon{% if not r.enabled %} product-entry-icon--lilac{% endif %}" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#wand-sparkles"/></svg></span>
+          <div class="product-entry-copy">
+            <div class="product-entry-heading"><strong><code>{{ r.keyword }}</code></strong><span class="product-status product-status--info">{{ r.category }}</span></div>
+            <span>优先级 {{ r.priority }}{% if conditions %} · {{ conditions|join(' · ') }}{% endif %}</span>
             {% if r.enabled %}<span class="product-status product-status--success">启用</span>
             {% else %}<span class="product-status">停用</span>{% endif %}
-          </td>
-          <td>
-            {% if can_write %}
-            {% if _toggle_error %}
-            <div id="rule-toggle-error" class="product-feedback product-feedback--danger library-row-error" role="alert">{{ rule_toggle_error }}{% if rule_toggle_recycle %} 请先恢复分类，再重新启用这条规则；也可以删除本规则。<a class="product-feedback-link" href="/web/recycle-bin{{ q }}">查看回收站</a>{% endif %}</div>
+            {% if can_write and _toggle_error %}
+            <div id="rule-toggle-error" class="product-feedback product-feedback--danger" role="alert">{{ rule_toggle_error }}{% if rule_toggle_recycle %} 请先恢复分类，再重新启用这条规则；也可以删除本规则。<a class="product-feedback-link" href="/web/recycle-bin{{ q }}">查看回收站</a>{% endif %}</div>
             {% endif %}
-            <div class="library-ops">
+          </div>
+          <div class="product-entry-actions">
+            {% if can_write %}
               <a href="/web/rules/{{ r.id }}/edit{{ q }}" class="product-button product-button--small">编辑</a>
-              <form method="post" action="/web/rules/{{ r.id }}/toggle">
+              <form method="post" action="/web/rules/{{ r.id }}/toggle" class="product-inline-form">
                 <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
                 <input type="hidden" name="expected_row_version" value="{{ r.row_version }}">
                 <input type="hidden" name="enabled" value="{{ 'false' if r.enabled else 'true' }}">
                 <input type="hidden" name="idempotency_key" value="{{ new_rule_key() }}">
-                <button type="submit" class="product-button product-button--small">
+                <button type="submit" class="product-button product-button--quiet product-button--small">
                   {% if r.enabled %}停用{% else %}启用{% endif %}
                 </button>
               </form>
-              <form method="post" action="/web/rules/{{ r.id }}/delete"
+              <form method="post" action="/web/rules/{{ r.id }}/delete" class="product-inline-form"
                     data-confirm="删除规则「{{ r.keyword }}」？">
                 <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
                 <input type="hidden" name="expected_row_version" value="{{ r.row_version }}">
-                <button type="submit" class="product-button product-button--small product-button--danger">删除</button>
+                <button type="submit" class="product-button product-button--quiet product-button--small">删除</button>
               </form>
-            </div>
             {% else %}<span class="readonly-inline">只读</span>{% endif %}
-          </td>
-        </tr>
+          </div>
+        </li>
       {% endfor %}
-      </tbody>
-    </table>
-  </div>
+  </ul>
   {% else %}
   <div class="product-state">
     <div class="product-state-title">还没有自定义规则</div>
@@ -173,4 +147,5 @@
   </div>
   {% endif %}
 </section>
+{% if can_write %}<div class="product-task-actions product-task-actions--page"><a class="product-button product-button--primary" href="/web/rules{{ q }}&amp;view=new">添加规则 <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-right"/></svg></a></div>{% endif %}
 {% endblock %}

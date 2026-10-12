@@ -500,49 +500,12 @@
    五个 canonical section (/web/categories|merchants|tags|rules|recycle-bin)
    共用; 只补 product 组件未覆盖的版面规则, 不重述组件本身。 */
 
-.library-breadcrumb {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    margin-block-end: var(--space-3);
-    font-size: var(--type-caption-size);
-}
-
-.library-breadcrumb-parent {
-    display: inline-flex;
-    min-height: var(--space-8);
-    align-items: center;
-    border-radius: var(--radius-xs);
-    color: var(--brand-primary-strong);
-    font-weight: var(--type-subtitle-weight);
-    text-decoration: none;
-}
-
-.library-breadcrumb-parent:hover {
-    text-decoration: underline;
-}
-
-.library-breadcrumb-sep {
-    color: var(--text-faint);
-}
-
-.library-breadcrumb-current {
-    color: var(--text-default);
-    font-weight: var(--type-subtitle-weight);
-}
 
 .library-section {
     margin-block-end: var(--space-6);
 }
 
 /* 双栏面板组 (新增表单 + 边界说明), 窄屏单列。 */
-.library-panels {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    align-items: start;
-    gap: var(--space-5);
-    margin-block-end: var(--space-6);
-}
 
 /* 面板内表格去掉第二重边框, 由 product-panel 提供外框。 */
 .library-table-flush {
@@ -553,22 +516,7 @@
 
 /* 表格行内的操作簇: 表单与控件收紧为内容宽, 覆盖全局输入 100% 宽规则
    (特异性需高于 components.css 的 input:not(...)×3 全局规则)。 */
-.library-ops,
-.library-ops form {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--space-2);
-}
 
-.library-ops input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]),
-.library-ops select {
-    width: auto;
-    min-width: calc(var(--space-12) + var(--space-6));
-    min-height: var(--space-8);
-    padding: var(--space-1) var(--space-3);
-    font-size: var(--type-caption-size);
-}
 
 /* 分类 section 的月份筛选: 标签 + 查询按钮同行右对齐。 */
 .library-month-form {
@@ -593,7 +541,6 @@
 
 
 @media (max-width: 56rem) {
-    .library-panels,
     .library-field-pair {
         grid-template-columns: minmax(0, 1fr);
     }
@@ -601,10 +548,6 @@
 
 /* 422 行内错误 (C5c-1 增量 3): 锚在被提交行内的反馈条收紧外边距,
    保持表格行内可读而不漂成页顶泛提示。 */
-.library-row-error {
-    margin: 0 0 var(--space-2);
-    padding: var(--space-2) var(--space-3);
-}
 
 /* 窄屏商家目录: 行重构为纵向节奏, 操作簇整行可见 (390px 实测操作列被横向
    滚动整体推出首屏, 重命名/合并不可达); 表头视觉隐藏但留在无障碍树。 */
@@ -1112,12 +1055,22 @@
 
 .manual-expense-options > summary,
 .manual-draft-shelf > summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
     padding-block: var(--space-4);
     cursor: pointer;
     font-size: var(--type-body-size);
-    font-weight: 500;
-    min-block-size: 2.75rem;
+    font-weight: var(--type-subtitle-weight);
+    min-block-size: var(--target-min);
+    list-style: none;
 }
+.manual-expense-options > summary::-webkit-details-marker,
+.manual-draft-shelf > summary::-webkit-details-marker { display: none; }
+.manual-expense-options > summary::after,
+.manual-draft-shelf > summary::after { content: "›"; margin-inline-start: auto; color: var(--text-meta); }
+.manual-expense-options[open] > summary::after,
+.manual-draft-shelf[open] > summary::after { rotate: 90deg; }
 
 .manual-expense-options > summary span,
 .manual-draft-shelf li > span,

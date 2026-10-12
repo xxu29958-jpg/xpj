@@ -355,6 +355,8 @@ body:has(:is(.inbox-capture-panel, .inbox-empty-capture)[open]) .content { max-w
 .duplicate-decision { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; }
 .duplicate-decision-form { display: grid; gap: var(--space-3); min-inline-size: 0; }
 .duplicate-decision-form > .hint { margin: 0; }
+/* 三个决定各有一份原稿状态; 都只是「尚未提交」时这句话只说一次。 */
+.duplicate-decision-form ~ .duplicate-decision-form [data-draft-idle] { display: none; }
 .duplicate-decision > p { flex-basis: 100%; margin: var(--space-3) 0 0; }
 @media (max-width: 56rem) {
     .duplicate-compare { grid-template-columns: minmax(0, 1fr); gap: var(--space-6); }
