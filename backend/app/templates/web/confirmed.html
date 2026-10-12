@@ -77,7 +77,7 @@
 {% endif %}
 {% if filter not in ['missing_category', 'missing_accounting_date'] and not _has_search %}
 <div class="ledger-summary">
-  <div><p class="product-page-summary">本月净支出 · {{ home_currency_code }}</p><p class="confirmed-hero-amount"><span class="sr-only">{{ month }} 合计 </span>{% if month_total_amount_yuan is not none %}{{ home_currency_symbol }}{{ month_total_amount_yuan }}{% elif ledger_undated_expense_count|default(0) %}待核对账务日期{% else %}待补齐换算信息{% endif %}</p></div>
+  <div><p class="product-page-summary">本月净支出 · {{ home_currency_code }}</p><p class="confirmed-hero-amount"><span class="sr-only">{{ month }} 合计 </span>{% if month_total_amount_yuan is not none %}{{ home_currency_symbol }}{{ month_total_amount_yuan|grouped }}{% elif ledger_undated_expense_count|default(0) %}待核对账务日期{% else %}待补齐换算信息{% endif %}</p></div>
 {% endif %}
 {% if can_write %}
 <div class="ledger-view-actions">
@@ -143,7 +143,7 @@
       {% set _items = _groups[d] %}
       {# 服务端按同一目标币种投影本页贡献；原事实的符号与币种不在模板重算。 #}
   <div class="lday{% if filter in ['missing_category', 'missing_accounting_date'] %} ledger-read-day-visible{% endif %}">
-    <span class="lday-d">{% if d %}{{ d[5:7] }} 月 {{ d.split('-')[2] }} 日{% else %}账务日期待核对{% endif %}</span>
+    <span class="lday-d">{% if d %}{{ d[5:7]|int }}月{{ d[8:10]|int }}日{% else %}账务日期待核对{% endif %}</span>
     <span class="lday-n">{{ _items | length }} 笔</span>
     <span class="lday-s">本页 {{ home_amount_label(page_day_totals[d]) }}</span>
   </div>
@@ -244,7 +244,7 @@
    入账渠道。 #}
 {% if filter not in ['missing_category', 'missing_accounting_date'] and not _has_search %}
 <details class="ledger-read-overview"><summary>本月概况</summary>
-<p class="product-page-summary">{{ selected_month }} · 共 {{ month_total_count }} 笔 · 合计 {% if month_total_amount_yuan is not none %}{{ home_currency_symbol }}{{ month_total_amount_yuan }}{% elif ledger_undated_expense_count|default(0) %}待核对账务日期{% else %}待补齐换算信息{% endif %}</p>
+<p class="product-page-summary">{{ selected_month }} · 共 {{ month_total_count }} 笔 · 合计 {% if month_total_amount_yuan is not none %}{{ home_currency_symbol }}{{ month_total_amount_yuan|grouped }}{% elif ledger_undated_expense_count|default(0) %}待核对账务日期{% else %}待补齐换算信息{% endif %}</p>
 {% if expenses %}<p>本页按日合计</p><dl class="ledger-read-day-totals">{% for day, amount in page_day_totals.items() %}<dt>{{ day or '账务日期待核对' }}</dt><dd>{{ home_amount_label(amount) }}</dd>{% endfor %}</dl>{% endif %}
 <section class="month-overview" aria-label="本月概况">
   <div class="product-panel product-panel--padded">

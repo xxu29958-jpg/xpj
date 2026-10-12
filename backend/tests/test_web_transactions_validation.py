@@ -85,9 +85,9 @@ def test_adopted_confirmation_day_does_not_invent_a_purchase_clock(
 
     assert response.status_code == 200, response.text
     assert "Confirmed Time Fallback" in response.text
-    assert "08 月 04 日" in response.text
+    assert "8月4日" in response.text
     assert ">09:30<" not in response.text
-    assert "07 月 01 日" not in response.text
+    assert "7月1日" not in response.text
 
 
 def test_tag_persistence_boundary_rejects_casefold_storage_overflow() -> None:

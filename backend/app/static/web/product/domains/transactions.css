@@ -255,9 +255,10 @@
     margin-block-start: var(--space-6);
 }
 
-.ledger-summary { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: var(--space-5); margin-block: var(--space-7) var(--space-8); }
+/* 06 月度合计: 一张安静的白卡承载本页唯一的大金额; 视图动作是卡内次级动作。 */
+.ledger-summary { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: var(--space-3) var(--space-5); margin-block: var(--space-5) var(--space-7); padding: var(--space-6) var(--space-7); border-radius: var(--radius-xl); background: var(--surface-card); }
 .ledger-summary .confirmed-hero-amount { margin-top: var(--space-2); }
-.ledger-summary .ledger-view-actions { margin: 0; }
+.ledger-summary .ledger-view-actions { margin: 0 calc(var(--space-5) * -1) calc(var(--space-3) * -1); }
 .ledger-stream.product-panel { box-shadow: none; border-radius: var(--radius-xl); padding: var(--space-5) var(--space-7); }
 .ledger-stream-heading { display: none; }
 .ledger-stream-footer { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: var(--space-3); padding-top: var(--space-5); color: var(--text-meta); font-size: var(--type-caption-size); }
@@ -284,7 +285,24 @@
     .ledger-stream:has(.has-check) .timeline-row:not(.has-check) { padding-inline-start: calc(var(--target-min) + var(--space-4)); }
     .bulk-selection-ready:not(.bulk-selecting) .timeline-row:not(.has-check) { padding-inline-start: 0; }
 }
+/* 06 列表形态 (未到表格宽度): 按账务日期分组阅读, 日期与日合计在组头, 行内不再重复日期。
+   跨月的待补分类/待核对日期视图保留行内完整日期。 */
+@media (max-width: 79.99rem) {
+    .lday { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; min-height: var(--target-min); margin-block-start: var(--space-5); padding-inline: 0; }
+    .lday-d { font-size: var(--type-title-size); font-weight: var(--type-title-weight); line-height: var(--type-title-line); }
+    .lday-n { display: none; }
+    .lday-s { color: var(--brand-primary); font-size: var(--type-body-size); }
+    .lday:not(.ledger-read-day-visible) ~ .timeline-row .lrow-meta > .num,
+    .lday:not(.ledger-read-day-visible) ~ .timeline-row .lrow-meta > .num + .sep { display: none; }
+    .timeline-row.lrow:has(+ .lday) { border-block-end: 0; }
+}
 @media (max-width: 64rem) {
+    /* 根页只留一排筛选: 搜索/资料库/导入导出已在「筛选」与账户面板内可达。 */
+    body[data-page="transactions"][data-page-level="primary"] .mobile-plan-nav { display: none; }
+    /* 窄屏的记账入口是顶栏「+」; 页头不再重复主按钮。 */
+    body[data-page="transactions"][data-page-level="primary"] .product-page-header > .product-page-actions { display: none; }
+    .ledger-read-tools { margin-bottom: var(--space-4); }
+    .ledger-search-form { margin-block-end: var(--space-3); }
     .ledger-stream.product-panel { padding: 0; background: transparent; border-radius: 0; }
     .timeline-row.lrow { gap: var(--space-3); }
     .timeline-row.lrow > .timeline-row-detail { gap: var(--space-3); }
@@ -1358,6 +1376,7 @@
 .saved-view-editor .product-form-grid { grid-template-columns: minmax(0, 1fr); }
 .saved-view-editor form { display: grid; gap: var(--space-5); }
 .saved-view-actions { padding-block-end: var(--space-3); }
+.saved-view-actions > summary.product-button--quiet { min-height: var(--target-min); border-radius: var(--radius-pill); background: var(--surface-card); color: var(--text-muted); }
 
 .import-task > .product-page-header { margin-block-end: var(--space-3); }
 .import-task > .import-schema { margin-block-start: 0; }
