@@ -272,6 +272,10 @@
       border-top: 1px solid var(--line);
       color: var(--muted);
     }
+    .technical summary, .cold-copy-guide summary, .connectivity-details > summary { display: flex; align-items: center; gap: 8px; list-style: none; }
+    .technical summary::-webkit-details-marker, .cold-copy-guide summary::-webkit-details-marker, .connectivity-details > summary::-webkit-details-marker { display: none; }
+    .technical summary::after, .cold-copy-guide summary::after, .connectivity-details > summary::after { content: "›"; color: var(--muted); }
+    .technical[open] > summary::after, .cold-copy-guide[open] > summary::after, .connectivity-details[open] > summary::after { rotate: 90deg; }
     .technical summary { min-height: 44px; padding: 12px 2px; cursor: pointer; font-weight: 500; color: var(--muted); }
     .cold-copy-guide { margin-top: 16px; font-size: var(--type-caption-size); }
     .cold-copy-guide summary { min-height: 44px; padding: 10px 0; cursor: pointer; color: var(--ink); }
