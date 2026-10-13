@@ -119,7 +119,7 @@ private fun LedgerInlineFilters(
             // 记一笔整行。禁止把宽度竞争转嫁成月份或箭头的挤压。
             LedgerMonthStepper(
                 state = LedgerMonthStepperState(
-                    label = compactLedgerMonthLabel(state.monthFilter).takeIf { state.monthFilter.isNotBlank() }
+                    label = displayMonthLabel(state.monthFilter).takeIf { state.monthFilter.isNotBlank() }
                         ?: stringResource(R.string.ledger_inline_month_all),
                     previousMonth = previousMonth,
                     nextMonth = nextMonth,
@@ -161,7 +161,7 @@ private fun LedgerInlineFilters(
             ) {
                 LedgerMonthStepper(
                     state = LedgerMonthStepperState(
-                        label = compactLedgerMonthLabel(state.monthFilter).takeIf { state.monthFilter.isNotBlank() }
+                        label = displayMonthLabel(state.monthFilter).takeIf { state.monthFilter.isNotBlank() }
                             ?: stringResource(R.string.ledger_inline_month_all),
                         previousMonth = previousMonth,
                         nextMonth = nextMonth,
@@ -213,16 +213,6 @@ private fun LedgerRecordButton(
         onClick = onClick,
         modifier = modifier,
     )
-}
-
-@Composable
-private fun compactLedgerMonthLabel(monthFilter: String): String {
-    val parts = monthFilter.split("-")
-    return if (parts.size == 2 && parts[0].length == 4 && parts[1].length == 2) {
-        "${parts[0]}.${parts[1]}"
-    } else {
-        displayMonthLabel(monthFilter)
-    }
 }
 
 @Composable

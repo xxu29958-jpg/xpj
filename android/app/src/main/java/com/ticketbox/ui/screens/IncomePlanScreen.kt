@@ -330,7 +330,7 @@ private fun IncomeTotalSummary(state: IncomePlanUiState) {
         ) {
             Column(Modifier.padding(AppSpacing.screenHorizontal), verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
                 Text(
-                    stringResource(R.string.income_plan_month_expected, state.forecastMonth.orEmpty()),
+                    stringResource(R.string.income_plan_month_expected, displayMonthLabel(state.forecastMonth.orEmpty())),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

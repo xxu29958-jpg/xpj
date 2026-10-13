@@ -22,6 +22,7 @@ import com.ticketbox.ui.components.AppAdaptiveMetricGridCompactMinWidth
 import com.ticketbox.ui.components.AppAmountText
 import com.ticketbox.ui.components.AppErrorState
 import com.ticketbox.ui.components.SkeletonBlock
+import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppRadius
@@ -65,7 +66,6 @@ internal fun BudgetSummarySection(
     ) {
         com.ticketbox.ui.components.AccountingDateNotice(budget?.undatedExpenseCount)
         if (configuredBudget == null) {
-            BudgetSummaryStatus(null)
             BudgetSummaryPlaceholder(loading)
             return@BudgetOpenSection
         }
@@ -73,7 +73,7 @@ internal fun BudgetSummarySection(
             modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(AppSpacing.screenHorizontal), verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap)) {
                 BudgetSummaryHero(budget = configuredBudget, currencyDisplay = currencyDisplay)
-                Text(stringResource(R.string.budget_header_subtitle, configuredBudget.month) + " · " + (configuredBudget.homeCurrencyCode ?: "UNKNOWN"),
+                Text(stringResource(R.string.budget_header_subtitle, displayMonthLabel(configuredBudget.month)) + " · " + (configuredBudget.homeCurrencyCode ?: "UNKNOWN"),
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
@@ -128,7 +128,7 @@ internal fun BudgetSummaryHero(
 }
 
 @Composable
-private fun BudgetSummaryStatus(budget: BudgetMonthly?) {
+private fun BudgetSummaryStatus(budget: BudgetMonthly) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -140,12 +140,10 @@ private fun BudgetSummaryStatus(budget: BudgetMonthly?) {
             fontWeight = AppTextHierarchy.heading.weight,
         )
         Text(
-            text = if (budget?.spentPercent != null) {
+            text = if (budget.spentPercent != null) {
                 stringResource(R.string.budget_summary_percent, budget.spentPercent)
-            } else if (budget?.configured == true) {
-                stringResource(R.string.stats_budget_progress_unavailable_status)
             } else {
-                stringResource(R.string.budget_summary_unconfigured)
+                stringResource(R.string.stats_budget_progress_unavailable_status)
             },
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelLarge,

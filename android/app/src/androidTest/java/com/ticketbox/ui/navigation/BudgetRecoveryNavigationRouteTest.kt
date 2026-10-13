@@ -228,8 +228,11 @@ class BudgetRecoveryNavigationRouteTest {
         assertEquals(MainProductDestination.Secondary(ProductSecondaryPage.Budget), harness.shell.activeDestination)
         assertEquals(MAIN_ROUTE, outer.currentBackStackEntry?.destination?.route)
         // Cached and fresh reads have distinct headers but the same task-month selector.
-        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(originalMonth))
-        compose.onNodeWithText(originalMonth).assertIsDisplayed()
+        val monthLabel = YearMonth.parse(originalMonth).let {
+            context.getString(R.string.components_month_label, it.year.toString(), it.monthValue.toString())
+        }
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(monthLabel))
+        compose.onNodeWithText(monthLabel).assertIsDisplayed()
     }
 
     private fun show() {

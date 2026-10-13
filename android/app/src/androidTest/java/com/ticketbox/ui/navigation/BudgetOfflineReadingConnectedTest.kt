@@ -47,6 +47,7 @@ import com.ticketbox.ui.saveConsumerArtPreview
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import java.net.ConnectException
+import java.time.YearMonth
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.runBlocking
 import okhttp3.ResponseBody.Companion.toResponseBody
@@ -150,8 +151,11 @@ class BudgetOfflineReadingConnectedTest {
     }
 
     private fun verifyCachedBudgetPresentation(month: String) {
+        val basis = YearMonth.parse(month).let {
+            "JPY · " + context.getString(R.string.components_month_label, it.year.toString(), it.monthValue.toString())
+        }
         compose.onNodeWithText("¥789").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("JPY · $month").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(basis).performScrollTo().assertIsDisplayed()
         val details = context.getString(R.string.budget_cached_details_show)
         compose.onNodeWithText(details).performScrollTo().performClick()
         compose.onNodeWithText(context.getString(R.string.budget_summary_metric_spent)).performScrollTo().assertIsDisplayed()
@@ -168,7 +172,7 @@ class BudgetOfflineReadingConnectedTest {
         compose.onNode(hasScrollToIndexAction()).performScrollToIndex(0)
         compose.onNodeWithText(context.getString(R.string.budget_history_title)).performScrollTo().assertIsDisplayed()
         preview("budget-cached-midnight-large")
-        compose.onNodeWithText("JPY · $month").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(basis).performScrollTo().assertIsDisplayed()
         preview("budget-cached-midnight-amount")
         compose.runOnIdle { skin.value = AppSkin.Paper; scale.value = 1f }
     }

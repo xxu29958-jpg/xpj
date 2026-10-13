@@ -46,6 +46,7 @@ import com.ticketbox.data.repository.SaveMonthlyBudgetDispatcher
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.ui.saveConsumerArtPreview
 import com.ticketbox.ui.theme.TicketboxTheme
+import java.time.YearMonth
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -141,7 +142,7 @@ class BudgetFirstUseRouteTest {
         saveConsumerArtPreview("budget-header-large-font", requireNotNull(
             InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
         val headings = listOf(text(R.string.budget_editor_title),
-            context.getString(R.string.budget_header_subtitle, transport.reads.first()))
+            context.getString(R.string.budget_header_subtitle, monthLabel(transport.reads.first())))
         for (heading in headings) {
             val layouts = mutableListOf<TextLayoutResult>()
             compose.onNodeWithText(heading, useUnmergedTree = true)
@@ -211,6 +212,9 @@ class BudgetFirstUseRouteTest {
         compose.onNodeWithText(text(R.string.budget_editor_total_label)).performScrollTo()
     }
 
+    private fun monthLabel(month: String) = YearMonth.parse(month).let {
+        context.getString(R.string.components_month_label, it.year.toString(), it.monthValue.toString())
+    }
     private fun text(id: Int) = context.getString(id)
 }
 

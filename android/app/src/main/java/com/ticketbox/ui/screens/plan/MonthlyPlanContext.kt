@@ -15,6 +15,7 @@ import com.ticketbox.R
 import com.ticketbox.data.remote.dto.BudgetAdviceInputsDto
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.components.AppAmountText
+import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppAmountRole
@@ -62,7 +63,7 @@ internal fun BudgetAdviceDataScope(inputs: BudgetAdviceInputsDto) {
     val scope = inputs.dataScope
     if (scope == null) Text(stringResource(R.string.advice_scope_unknown), style = MaterialTheme.typography.bodySmall)
     else Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
-        Text(stringResource(R.string.advice_scope_current, inputs.month, displayTime(scope.readAt)),
+        Text(stringResource(R.string.advice_scope_current, displayMonthLabel(inputs.month), displayTime(scope.readAt)),
             style = MaterialTheme.typography.bodySmall)
         Text(stringResource(R.string.advice_scope_history, scope.historyFromMonth, scope.historyToMonth, scope.historyCategoryCount),
             style = MaterialTheme.typography.bodySmall)

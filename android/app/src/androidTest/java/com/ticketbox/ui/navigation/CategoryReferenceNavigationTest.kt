@@ -32,6 +32,7 @@ import com.ticketbox.data.remote.dto.GoalListResponseDto
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.AppThemeMode
 import com.ticketbox.domain.model.CurrencyCode
+import java.time.YearMonth
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.After
@@ -179,7 +180,7 @@ class CategoryReferenceNavigationTest {
             assertEquals(referenceId, navigation.currentBackStackEntry?.arguments?.getString("month"))
         }
         assertEquals(listOf(referenceId), budgetReads.distinct())
-        compose.onNodeWithText(context.getString(R.string.budget_header_subtitle, referenceId)).assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.budget_header_subtitle, monthLabel(referenceId))).assertIsDisplayed()
         val previousReads = reads
         blocked = false
         compose.onNodeWithContentDescription("返回分类")
@@ -293,6 +294,10 @@ class CategoryReferenceNavigationTest {
 
     private fun rule(id: Long, keyword: String) = CategoryRuleDto(id, keyword, "烘焙", true, 10,
         createdAt = "2026-09-01T00:00:00Z", updatedAt = "2026-09-01T00:00:00Z", rowVersion = 1, homeCurrencyCode = "CNY")
+
+    private fun monthLabel(month: String) = YearMonth.parse(month).let {
+        context.getString(R.string.components_month_label, it.year.toString(), it.monthValue.toString())
+    }
 
     private fun waitForText(text: String) = compose.waitUntil(5_000) {
         compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()

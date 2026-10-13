@@ -3,6 +3,7 @@ package com.ticketbox.ui.screens
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -23,6 +24,7 @@ import com.ticketbox.ui.screens.budget.BudgetReadSource
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.components.AppPageRole
+import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppSecondaryPageHeader
 import com.ticketbox.ui.components.AppSecondaryPageSlots
 import com.ticketbox.ui.components.AppScrollableContent
@@ -31,6 +33,7 @@ import com.ticketbox.ui.components.AppScrollableContentLayout
 import com.ticketbox.ui.components.AppScrollableRefreshState
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.StatusPill
+import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppAdaptiveContentWidth
@@ -108,7 +111,7 @@ private fun BudgetScreenContent(
         item {
             if (state.fromCache && !editorOpen) BudgetCachedHeader(backText ?: stringResource(R.string.budget_back_to_stats), onBack, onHistory)
             else AppSecondaryPageHeader(title = stringResource(if (editorOpen) R.string.budget_editor_title else R.string.budget_header_title),
-                subtitle = stringResource(R.string.budget_header_subtitle, state.month),
+                subtitle = stringResource(R.string.budget_header_subtitle, displayMonthLabel(state.month)),
                 backText = if (editorOpen) stringResource(R.string.budget_editor_back) else backText ?: stringResource(R.string.budget_back_to_stats), onBack = back,
                 slots = AppSecondaryPageSlots(actions = { BudgetPageActions(decision, onHistory) }))
         }
@@ -119,7 +122,7 @@ private fun BudgetScreenContent(
 private fun LazyListScope.budgetPageContent(state: BudgetUiState, actions: BudgetScreenActions,
     decision: BudgetPageDecision, editorOpen: Boolean, onEdit: () -> Unit) {
     val currencyDisplay = CurrencyDisplay.forRecord(state.budget?.homeCurrencyCode ?: "UNKNOWN")
-    if (!state.fromCache) item { MonthSwitcher(state.month, actions.onPreviousMonth, actions.onNextMonth) }
+    if (!state.fromCache) item { MonthSwitcher(displayMonthLabel(state.month), actions.onPreviousMonth, actions.onNextMonth) }
     state.message?.let { message ->
         item { AppStatusBanner(message = message, tone = state.messageTone) }
     }
@@ -137,7 +140,7 @@ private fun LazyListScope.budgetPageContent(state: BudgetUiState, actions: Budge
     if (state.saves.isNotEmpty()) {
         item { BudgetPendingSaves(state.saves, state.canModify, actions.onRecoverSave) }
     }
-    if (state.fromCache) item { MonthSwitcher(state.month, actions.onPreviousMonth, actions.onNextMonth) }
+    if (state.fromCache) item { MonthSwitcher(displayMonthLabel(state.month), actions.onPreviousMonth, actions.onNextMonth) }
     if (editorOpen) item {
         BudgetEditorSection(
             state = state,
@@ -146,12 +149,23 @@ private fun LazyListScope.budgetPageContent(state: BudgetUiState, actions: Budge
     }
     if (!editorOpen) {
         budgetExecutionSections(decision, currencyDisplay)
-        if (state.canModify) item {
-            TextButton(onClick = onEdit, modifier = Modifier.testTag("budget_edit_open")) {
-                Text(stringResource(R.string.budget_editor_open))
-            }
-        }
+        if (state.canModify) item { BudgetEditEntry(firstUse = decision.status == BudgetPageStatus.NotEnabled, onEdit = onEdit) }
         item { com.ticketbox.ui.screens.budget.BudgetArchiveAction(state, actions.onArchive) }
+    }
+}
+
+@Composable
+private fun BudgetEditEntry(firstUse: Boolean, onEdit: () -> Unit) {
+    if (firstUse) {
+        AppPrimaryButton(
+            text = stringResource(R.string.budget_editor_open_first),
+            modifier = Modifier.fillMaxWidth().testTag("budget_edit_open"),
+            onClick = onEdit,
+        )
+    } else {
+        TextButton(onClick = onEdit, modifier = Modifier.testTag("budget_edit_open")) {
+            Text(stringResource(R.string.budget_editor_open))
+        }
     }
 }
 

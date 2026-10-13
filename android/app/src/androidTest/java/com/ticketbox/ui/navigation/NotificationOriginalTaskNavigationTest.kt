@@ -30,6 +30,7 @@ import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.notification.NotificationDestination
 import com.ticketbox.notification.NotificationTask
 import com.ticketbox.ui.theme.TicketboxTheme
+import java.time.YearMonth
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -122,8 +123,12 @@ class NotificationOriginalTaskNavigationTest {
     }
 
     private fun waitForMonth(month: String) {
-        waitForText(context.getString(R.string.budget_header_subtitle, month))
+        waitForText(context.getString(R.string.budget_header_subtitle, monthLabel(month)))
         compose.waitUntil(5_000) { transport.budgetReads.contains(month) }
+    }
+
+    private fun monthLabel(month: String) = YearMonth.parse(month).let {
+        context.getString(R.string.components_month_label, it.year.toString(), it.monthValue.toString())
     }
 
     private fun waitForText(text: String) {

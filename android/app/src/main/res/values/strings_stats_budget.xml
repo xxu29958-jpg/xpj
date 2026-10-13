@@ -778,7 +778,6 @@
     <string name="budget_summary_title">本月预算</string>
     <string name="budget_summary_status_label">执行进度</string>
     <string name="budget_summary_percent">%1$d%%</string>
-    <string name="budget_summary_unconfigured">未启用</string>
     <!-- 加载失败错误态（区别于 loading——失败时不能停留在读取占位）。 -->
     <string name="budget_summary_error_title">预算没能打开</string>
     <string name="budget_summary_error_body">可能是网络不稳定或电脑端没在运行，重试一下或稍后再来。</string>
@@ -789,7 +788,7 @@
     <string name="budget_summary_metric_flex">灵活可花</string>
     <string name="budget_summary_metric_fixed">固定支出</string>
     <string name="budget_summary_metric_excluded">剔除</string>
-    <string name="budget_summary_unconfigured_body">尚未启用月度预算。填写下方总预算后，会显示剩余额度、超支和分类执行。</string>
+    <string name="budget_summary_unconfigured_body">这个月还没有定额度。定好总预算后，这里会显示剩余额度、超支和分类执行。</string>
     <string name="budget_status_badge_loading">读取中</string>
     <string name="budget_status_badge_error">待刷新</string>
     <string name="budget_status_badge_not_enabled">未启用</string>
@@ -800,6 +799,7 @@
          只读提示复用 common_readonly_ledger、保存中复用 common_saving（strings.xml 已有同值）。 -->
     <string name="budget_editor_title">给这个月定个额度</string>
     <string name="budget_editor_open">调整本月预算</string>
+    <string name="budget_editor_open_first">设置本月预算</string>
     <string name="budget_editor_back">返回预算</string>
     <string name="budget_editor_save">保存预算</string>
     <string name="budget_editor_total_label">月度总预算</string>
