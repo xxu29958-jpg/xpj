@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+from scripts.planning_appearance_journey_native import theme_mode
 from scripts.planning_journey_android import wait_for
 from scripts.planning_notification_reminders import NotificationReminders
 from scripts.planning_notification_source import SystemPaymentSources, notification_control
@@ -205,13 +206,13 @@ class NotificationJourney:
                     paid = next(item["amount"] for item in self.facts()["payments"] if item["id"] == capture["repayment"])
                     assert f"{paid // 100}.{paid % 100:02}" in fact.inner_text(), "The original link did not display its actual accepted repayment"
                     self.capture(f"linked-repayment-{capture['original']}-{width}-{theme}")
-        for theme, label, description in (("paper", "晨纸", "浅色纸面 · 深绿点缀"), ("midnight", "玄夜", "柔和深色 · 浅绿点缀")):
+        for theme, description in (("paper", "浅色纸面 · 深绿点缀"), ("midnight", "柔和深色 · 浅绿点缀")):
             self.native.plan_home()
             self.native.click("打开账户与设置")
             self.native.click("通知与外观")
             self.native.click("外观与主题")
-            self.native.reveal_any(description)
-            self.native.click_within(description, label)
+            self.native.click(description)
+            wait_for(lambda theme=theme: theme_mode(self.native) == theme, "The native theme choice was not persisted")
             self.native.plan_home()
             self.native.click("打开账户与设置")
             self.native.click("通知与外观")
