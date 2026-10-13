@@ -180,10 +180,13 @@ fun parseAmountCentsForDisplay(input: String, display: CurrencyDisplay): Long? =
         if (display.unknownCode != null) CurrencyCode.JPY else display.homeCurrency,
     )
 
+// One spelling for a date with a clock time, wherever the app shows one.
+private const val DATE_TIME_PATTERN = "yyyy年M月d日 HH:mm"
+
 fun displayTime(value: String?): String {
     if (value.isNullOrBlank()) return "未填写时间"
     val localZone = ZoneId.systemDefault()
-    val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(localZone)
+    val formatter = DateTimeFormatter.ofPattern(DATE_TIME_PATTERN).withZone(localZone)
     return runCatching { formatter.format(Instant.parse(value)) }
         .recoverCatching { formatter.format(OffsetDateTime.parse(value).toInstant()) }
         .getOrElse { value.replace("T", " ").removeSuffix("Z") }
@@ -217,7 +220,7 @@ fun accountingTimeDateText(evidence: ExpenseAccountingTime?, legacyInstant: Stri
 
 fun displayDateTime(value: String?): String {
     if (value.isNullOrBlank()) return "未设置"
-    val formatter = DateTimeFormatter.ofPattern("yyyy年M月d日 HH:mm")
+    val formatter = DateTimeFormatter.ofPattern(DATE_TIME_PATTERN)
     return parseLocalDateTime(value)
         ?.format(formatter)
         ?: value.replace("T", " ").removeSuffix("Z")

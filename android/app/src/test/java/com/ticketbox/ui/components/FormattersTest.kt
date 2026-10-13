@@ -296,8 +296,10 @@ class FormattersTest {
     fun displaysIsoTimeWithoutLeakingRawSeparatorInNormalCase() {
         val rendered = displayTime("2026-05-03T04:20:00Z")
 
-        assertTrue(rendered.contains("2026-05-03"))
+        // Month and year hold in any device zone; the day and hour depend on it.
+        assertTrue(rendered.contains("2026年5月"))
         assertTrue(rendered.contains(":"))
+        assertTrue(!rendered.contains("T"))
     }
 
     @Test
