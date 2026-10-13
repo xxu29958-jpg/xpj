@@ -12,6 +12,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -19,8 +20,6 @@ import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.GoalProgressState
-import com.ticketbox.ui.components.AppAdaptiveContentActionRow
-import com.ticketbox.ui.components.AppAdaptiveContentActionStyle
 import com.ticketbox.ui.components.AppAmountText
 import com.ticketbox.ui.components.StatusPill
 import com.ticketbox.ui.components.displayMonthLabel
@@ -79,12 +78,16 @@ internal fun SpendingGoalSummaryCard(goal: Goal) {
         Surface(shape = RoundedCornerShape(AppRadius.hero), color = LocalThemeVisuals.current.surfaceApricot,
             modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(AppSpacing.screenHorizontal), verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
-                AppAdaptiveContentActionRow(
-                    style = AppAdaptiveContentActionStyle(compactAction = true),
-                    content = { Text(stringResource(if (goal.isOverLimit) R.string.spending_goal_over_label else R.string.spending_goal_remaining_label),
-                        style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant) },
-                    action = { StatusPill(text = goal.statusText(), tone = goal.stateTone()) },
-                )
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+                    itemVerticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(stringResource(if (goal.isOverLimit) R.string.spending_goal_over_label else R.string.spending_goal_remaining_label),
+                        style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    StatusPill(text = goal.statusText(), tone = goal.stateTone())
+                }
                 AppAmountText(
                     text = spendingGoalAmountText(goal.remainingAmountCents?.let { kotlin.math.abs(it) }, goal.homeCurrencyCode),
                     role = AppAmountRole.Hero,
