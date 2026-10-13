@@ -3,9 +3,12 @@ package com.ticketbox.ui.screens.ledger
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.CurrencyDisplay
@@ -23,9 +26,18 @@ internal fun LedgerAmounts(
     modifier: Modifier = Modifier,
     endAligned: Boolean = false,
 ) {
-    val lines = if (amounts.isEmpty()) listOf(stringResource(R.string.ledger_total_empty)) else amounts.map { (code, amount) ->
-        ledgerRecordedAmountText(code, amount)
+    if (amounts.isEmpty()) {
+        // Nothing recorded is not an amount: a quiet line rather than the amount type.
+        Text(
+            text = stringResource(R.string.ledger_total_empty),
+            modifier = modifier.fillMaxWidth(),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.titleMedium,
+            textAlign = if (endAligned) TextAlign.End else TextAlign.Start,
+        )
+        return
     }
+    val lines = amounts.map { (code, amount) -> ledgerRecordedAmountText(code, amount) }
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
         lines.forEach { text ->
             if (endAligned) AppEndAlignedAmountText(text = text, role = role, modifier = Modifier.fillMaxWidth())
