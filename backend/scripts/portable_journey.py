@@ -111,7 +111,8 @@ class PortableJourney:
     def appearances(self):
         for theme in ("paper", "midnight"):
             self.page.set_viewport_size({"width": 1280, "height": 960})
-            self.page.goto(self.public_url + f"/web/import?ledger_id={LEDGER}")
+            # The focused import task has no global appearance controls.
+            self.page.goto(self.public_url + f"/web/confirmed?ledger_id={LEDGER}")
             self.page.locator("#appearance > summary").click()
             self.page.locator(f'#appearance [data-theme-mode="{theme}"]').click()
             self.page.wait_for_function("theme => document.documentElement.dataset.theme === theme", arg=theme)

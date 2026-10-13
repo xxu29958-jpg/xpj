@@ -209,6 +209,8 @@
     .insight-grid { display: flex; flex-wrap: wrap; }
     .insight-grid > * { flex: 1 1 16rem; min-width: 0; }
     .insight-grid > .product-panel { padding: var(--space-6); border-radius: var(--radius-xl); background: var(--surface-card); }
+    .insight-grid > .insight-brief:not([data-overview-card="pending"]),
+    .insight-grid > [data-overview-card="goals"] { align-self: flex-start; }
     .insight-grid > [data-overview-card="monthly_spend"],
     .insight-grid > [data-overview-card="pending"],
     .insight-grid > [data-overview-card="budget"],
