@@ -130,6 +130,7 @@ class NotificationReminders:
         self.native.plan_home()
         self.native.click("固定支出", stable=True)
         self.native.reveal_any(SERIES)
+        self.native.click("更多操作：" + SERIES)
         self.native.click("查看本期")
         self.native.reveal_any(displayed_reminder, exact=True)
         self.native.reveal_any("履约月份")

@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -18,11 +19,13 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso
+import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.R
 import com.ticketbox.data.remote.buildApiService
 import com.ticketbox.data.repository.RecurringItemPatch
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.ui.theme.TicketboxTheme
+import com.ticketbox.ui.saveConsumerArtPreview
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -89,6 +92,13 @@ class RecurringDefinitionHistoryConnectedTest {
         compose.onNode(hasSetTextAction() and hasText("当前固定支出")).performTextReplacement("尚未保存的原名称")
         compose.onNode(hasSetTextAction() and hasText("2400")).performTextReplacement("1250")
         Espresso.closeSoftKeyboard()
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        automation.waitForIdle(300, 3_000)
+        saveConsumerArtPreview("recurring-editor-original", requireNotNull(automation.takeScreenshot()))
+        compose.onNodeWithText("2026年10月9日").performScrollTo().assertIsDisplayed()
+        saveConsumerArtPreview("recurring-editor-date", requireNotNull(automation.takeScreenshot()))
+        compose.onNodeWithText(context.getString(R.string.recurring_form_date_change)).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.recurring_form_date_clear)).performScrollTo().assertIsDisplayed()
         val repository = harness.screenFactory.recurringRepository
         runBlocking {
             val access = requireNotNull(repository.observeActiveLedgerAccess().first())
@@ -98,7 +108,7 @@ class RecurringDefinitionHistoryConnectedTest {
         }
         val original = harness.fixture.stored().single()
         failHistoryOnce = true
-        openHistory()
+        openHistory(fromEditor = true)
         waitForText(context.getString(R.string.common_retry))
         compose.onNodeWithText(context.getString(R.string.common_retry)).performClick()
         waitForText("上一次安排")
@@ -114,7 +124,8 @@ class RecurringDefinitionHistoryConnectedTest {
     private fun mount() {
         compose.setContent {
             if (mounted.value) CompositionLocalProvider(LocalViewModelStoreOwner provides harness.models) {
-                TicketboxTheme(skin = AppSkin.Paper) {
+                TicketboxTheme(skin = if (InstrumentationRegistry.getArguments().getString("captureSkin") == "midnight")
+                    AppSkin.Midnight else AppSkin.Paper) {
                     NavHost(rememberNavController(), startDestination = ProductSecondaryPage.Recurring.route) {
                         composable(ProductSecondaryPage.Recurring.route) { RecurringRoute(harness.screenFactory, {}) }
                     }
@@ -124,7 +135,8 @@ class RecurringDefinitionHistoryConnectedTest {
         waitForText("当前固定支出")
     }
 
-    private fun openHistory() {
+    private fun openHistory(fromEditor: Boolean = false) {
+        if (!fromEditor) compose.onNodeWithTag("recurring-actions-history-recurring").performScrollTo().performClick()
         compose.onNodeWithText("定义历史").performScrollTo().performClick()
         compose.waitUntil(10_000) { historyRequests().isNotEmpty() }
     }

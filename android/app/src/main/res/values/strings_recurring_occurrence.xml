@@ -43,6 +43,7 @@
     <string name="occurrence_keep">继续保留</string>
     <string name="occurrence_record_payment">没有对应账单，记一笔付款</string>
     <string name="occurrence_pick_explanation">选择一张已确认账单，明确确认本期已完整付款。一张账单只能关联一个期次；暂不支持分次或拆分履约。</string>
+    <string name="occurrence_pick_title">可能对应的付款</string>
     <string name="occurrence_payment_month">付款账期 · 留空查看全部缓存</string>
     <string name="occurrence_search">查找商家或备注</string>
     <string name="occurrence_filters_show">%1$s · 筛选付款</string>

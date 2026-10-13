@@ -10,10 +10,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.outlined.ReceiptLong
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -37,6 +37,10 @@ import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppBusyGuardedSheet
 import com.ticketbox.ui.components.AppListRow
+import com.ticketbox.ui.components.AppTextInput
+import com.ticketbox.ui.components.AppTextInputActions
+import com.ticketbox.ui.components.AppTextInputState
+import com.ticketbox.ui.components.SettingsEntryIcon
 import com.ticketbox.ui.components.displayCalendarDay
 import com.ticketbox.ui.components.AppSheetScaffold
 import com.ticketbox.ui.design.AppSpacing
@@ -194,8 +198,8 @@ private fun OccurrenceRecordPayment(
 @Composable
 private fun OccurrencePeriodControls(state: RecurringOccurrenceUiState, actions: OccurrenceSheetActions) {
     var period by rememberSaveable(state.item?.publicId, state.occurrence?.period) { mutableStateOf(state.occurrence?.period.orEmpty()) }
-    OutlinedTextField(value = period, onValueChange = { period = it }, label = { Text(stringResource(R.string.occurrence_period)) },
-        singleLine = true, modifier = Modifier.fillMaxWidth().testTag("occurrence-period"))
+    AppTextInput(state = AppTextInputState(label = stringResource(R.string.occurrence_period), value = period),
+        actions = AppTextInputActions(onValueChange = { period = it }), modifier = Modifier.fillMaxWidth().testTag("occurrence-period"))
     FlowRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
         TextButton(onClick = { actions.onPeriod(period) }, enabled = !state.loading && !state.saving) { Text(stringResource(R.string.occurrence_show_period)) }
         TextButton(onClick = actions.onRefresh, enabled = !state.loading && !state.saving) { Text(stringResource(R.string.occurrence_refresh)) }
@@ -261,18 +265,17 @@ private fun OccurrencePaymentPicker(
     var filtersExpanded by rememberSaveable(state.item?.publicId, state.occurrence?.period) { mutableStateOf(false) }
     val payments = occurrencePaymentChoices(state.payments, month, query, preferredExpenseId)
     HorizontalDivider()
-    Text(stringResource(R.string.occurrence_pick_explanation), style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text(stringResource(R.string.occurrence_pick_title), style = MaterialTheme.typography.titleMedium)
     val scope = listOf(month.ifBlank { stringResource(R.string.occurrence_all_payment_months) }, query)
         .filter { it.isNotBlank() }.joinToString(" · ")
     TextButton(onClick = { filtersExpanded = !filtersExpanded }, modifier = Modifier.testTag("occurrence-payment-filter-toggle")) {
         Text(stringResource(if (filtersExpanded) R.string.occurrence_filters_hide else R.string.occurrence_filters_show, scope))
     }
     if (filtersExpanded) {
-        OutlinedTextField(value = month, onValueChange = { month = it }, singleLine = true,
-            label = { Text(stringResource(R.string.occurrence_payment_month)) }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = query, onValueChange = { query = it }, singleLine = true,
-            label = { Text(stringResource(R.string.occurrence_search)) }, modifier = Modifier.fillMaxWidth())
+        AppTextInput(state = AppTextInputState(label = stringResource(R.string.occurrence_payment_month), value = month),
+            actions = AppTextInputActions(onValueChange = { month = it }), modifier = Modifier.fillMaxWidth())
+        AppTextInput(state = AppTextInputState(label = stringResource(R.string.occurrence_search), value = query),
+            actions = AppTextInputActions(onValueChange = { query = it }), modifier = Modifier.fillMaxWidth())
     }
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     if (payments.isEmpty()) Text(stringResource(R.string.occurrence_no_payments), style = MaterialTheme.typography.bodyMedium, color = muted)
@@ -280,6 +283,7 @@ private fun OccurrencePaymentPicker(
     payments.take(20).forEachIndexed { index, payment ->
         OccurrencePaymentRow(payment, showDivider = index < minOf(payments.size, 20) - 1) { choose(payment) }
     }
+    Text(stringResource(R.string.occurrence_pick_explanation), style = MaterialTheme.typography.bodySmall, color = muted)
 }
 
 /** One confirmed bill offered as this period's payment: who, how much, and the day it was booked. */
@@ -289,6 +293,7 @@ private fun OccurrencePaymentRow(payment: ConfirmedStreamItem.ExpenseRow, showDi
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     AppListRow(modifier = Modifier.fillMaxWidth().testTag("occurrence-payment-" + payment.root.id), onClick = onChoose,
         showDivider = showDivider) {
+        SettingsEntryIcon(Icons.Outlined.ReceiptLong, modifier = Modifier.padding(end = AppSpacing.compactGap))
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
             FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {

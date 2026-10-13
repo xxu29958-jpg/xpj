@@ -3,7 +3,7 @@ package com.ticketbox.ui.screens.recurring
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -20,7 +20,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
@@ -29,6 +28,7 @@ import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.AppAmountInput
+import com.ticketbox.ui.components.AppAdaptiveContentActionRow
 import com.ticketbox.ui.components.AppAmountInputActions
 import com.ticketbox.ui.components.AppAmountInputState
 import com.ticketbox.ui.components.AppFormFieldGroup
@@ -350,12 +350,8 @@ private fun RecurringDateField(
     onClear: () -> Unit,
 ) {
     AppFormFieldGroup(label = stringResource(R.string.recurring_form_date_label)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
+        AppAdaptiveContentActionRow(content = {
+            Column {
                 Text(
                     text = dateIso?.let { recurringDisplayDate(it) }
                         ?: stringResource(R.string.recurring_form_date_none),
@@ -373,18 +369,25 @@ private fun RecurringDateField(
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
-            if (dateIso != null) {
-                TextButton(enabled = enabled, onClick = onClear) {
-                    Text(stringResource(R.string.recurring_form_date_clear))
+        }, action = { modifier ->
+            FlowRow(
+                modifier = modifier,
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+            ) {
+                if (dateIso != null) {
+                    TextButton(enabled = enabled, onClick = onClear) {
+                        Text(stringResource(R.string.recurring_form_date_clear))
+                    }
                 }
+                AppSecondaryButton(
+                    text = stringResource(
+                        if (dateIso == null) R.string.recurring_form_date_pick else R.string.recurring_form_date_change,
+                    ),
+                    enabled = enabled,
+                    onClick = onPick,
+                )
             }
-            AppSecondaryButton(
-                text = stringResource(
-                    if (dateIso == null) R.string.recurring_form_date_pick else R.string.recurring_form_date_change,
-                ),
-                enabled = enabled,
-                onClick = onPick,
-            )
-        }
+        })
     }
 }

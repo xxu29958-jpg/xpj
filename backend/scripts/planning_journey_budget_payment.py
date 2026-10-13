@@ -45,6 +45,7 @@ def native_link(j, payment_date):
     native = j.native
     native.restart()
     j.open_native("series")
+    native.click("更多操作：" + SERIES)
     native.click("查看本期")
     native.reveal_any("本期尚未履约")
     native.reveal_any("筛选付款")
@@ -88,6 +89,7 @@ def reverse_payment(j, path, payment_date):
     j.capture("occurrence-needs-review-after-reversal")
     j.native.restart()
     j.open_native("series")
+    j.native.click("更多操作：" + SERIES)
     j.native.click("查看本期")
     j.native.reveal_any("原付款需要重新核对")
     j.native.reveal_any("原账单已冲销，暂不能作为本期付款依据。")

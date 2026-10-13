@@ -34,6 +34,8 @@ def share_original(journey):
     uri = "content://media/external/images/media/" + wait_for(media_id, "The actual shared image did not enter MediaStore")
     native.adb("shell", "am", "start", "-a", "android.intent.action.SEND", "-t", "image/png", "-d", uri,
         "--eu", "android.intent.extra.STREAM", uri, "--grant-read-uri-permission", "-n", "com.ticketbox/.MainActivity")
+    native.reveal_any("上传 1 张小票")
+    native.click("上传 1 张小票")
     native.reveal_any("停止余下上传")
     native.reveal_any("notification-shared-original.png")
     native.capture("notification-shared-original-offline")

@@ -115,7 +115,6 @@ class BudgetJourney:
                 (self.evidence / "series-read-retry-reasons.json").write_text(
                     json.dumps(observed, ensure_ascii=False), encoding="utf-8")
                 raise AssertionError("The actual fixed-expense consumer failed its current read; see the retained diagnostic")
-            self.native.click_counted_tab("活跃")
 
     def login(self):
         page = self.page
@@ -187,6 +186,7 @@ class BudgetJourney:
         self.native.capture("arrangement-history-" + suffix)
         self.native.back()
         self.open_native("series")
+        self.native.click("更多操作：" + SERIES)
         self.native.click("定义历史")
         if offline:
             self.native.reveal_any("本机保留")
