@@ -2,7 +2,7 @@
     <string name="dashboard_save">保存首页布局</string>
     <string name="dashboard_customize">自定义总览</string>
     <string name="dashboard_editor_title">首页按你的习惯来</string>
-    <string name="dashboard_editor_description">选择显示什么，也能调整顺序。保存后用于当前账本的 Android 总览。</string>
+    <string name="dashboard_editor_description">选择显示什么，也能调整顺序。保存后用于当前账本在手机上的总览。</string>
     <string name="dashboard_order">顺序 %1$d</string>
     <string name="dashboard_order_purpose">顺序 %1$d · %2$s</string>
     <string name="dashboard_order_action">调整%1$s的顺序，当前第%2$d项</string>

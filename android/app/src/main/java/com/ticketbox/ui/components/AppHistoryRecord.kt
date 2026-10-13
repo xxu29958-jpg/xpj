@@ -45,11 +45,14 @@ fun AppHistoryRecord(
     }
 }
 
-/** Values come from adjacent saved revisions, never the current editor or current ledger currency. */
+/**
+ * Values come from adjacent saved revisions, never the current editor or current ledger currency.
+ * A value this revision left alone is shown once; a before/after pair always means it changed.
+ */
 @Composable
 fun AppHistoryComparison(label: String, before: String?, after: String, amount: Boolean = true) {
     Text(label, style = MaterialTheme.typography.titleSmall)
-    if (before == null) {
+    if (before == null || before == after) {
         if (amount) AppAmountText(after) else Text(after, style = MaterialTheme.typography.titleMedium)
     } else {
         AppValueComparison(stringResource(R.string.plan_history_before), before,

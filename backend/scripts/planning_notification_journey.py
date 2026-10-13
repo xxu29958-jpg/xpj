@@ -215,7 +215,7 @@ class NotificationJourney:
             self.native.click("通知与提醒")
             self.native.capture("notification-preferences-" + theme)
             self.native.domain_home("往来")
-            self.native.click("还款复核")
+            self.native.click("还款采集")
             self.native.click("已处理 2")
             self.native.reveal_any("花呗")
             self.native.capture("notification-native-history-" + theme)
