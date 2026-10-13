@@ -199,7 +199,7 @@ class AppTaskContinuationTest {
         openSourceAction(R.string.tag_management_card_action_rename)
         compose.onNode(hasSetTextAction() and hasText(source.name)).performTextReplacement("九月出差")
         clickText(context.getString(R.string.tag_management_rename_dialog_confirm))
-        waitForText(context.getString(R.string.tag_management_reload_button))
+        waitForText(context.getString(R.string.common_retry))
         compose.onNodeWithText(context.getString(R.string.tag_management_renamed, "九月出差")).assertIsDisplayed()
         compose.onNodeWithText(context.getString(R.string.tag_management_rename_dialog_title)).assertDoesNotExist()
         compose.onNodeWithText(source.name).assertDoesNotExist()
@@ -207,7 +207,7 @@ class AppTaskContinuationTest {
             .assertCountEquals(0)
 
         rejectReadAfterRename = false
-        clickText(context.getString(R.string.tag_management_reload_button))
+        clickText(context.getString(R.string.common_retry))
         waitForText("九月出差")
         compose.onNodeWithText("九月出差").assertIsDisplayed()
         assertEquals(listOf(TagRenameRequest(3, "九月出差")), renames)

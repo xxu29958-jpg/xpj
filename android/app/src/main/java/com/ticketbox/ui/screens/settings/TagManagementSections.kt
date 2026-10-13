@@ -29,9 +29,8 @@ import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
 import com.ticketbox.domain.model.ManagedTag
-import com.ticketbox.domain.model.MessageTone
-import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.AppAdaptiveContentActionRow
+import com.ticketbox.ui.components.AppErrorState
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppListRow
 import com.ticketbox.ui.components.SettingsEntryIcon
@@ -123,6 +122,14 @@ internal fun TagListSection(
     onReload: () -> Unit,
 ) {
     Column {
+        if (state.bodyState == TagManagementBodyState.LoadFailed) {
+            AppErrorState(
+                title = stringResource(R.string.tag_management_error_title),
+                body = stringResource(R.string.tag_management_error_body),
+                onRetry = onReload,
+            )
+            return@Column
+        }
         if (state.bodyState != TagManagementBodyState.Content) {
             SettingsListStateSlot(
                 loading = state.bodyState == TagManagementBodyState.Loading,
@@ -134,20 +141,7 @@ internal fun TagListSection(
                     emptyTitle = stringResource(R.string.tag_management_summary_empty),
                     emptyBody = stringResource(R.string.tag_management_list_empty),
                 ),
-                message = if (state.bodyState == TagManagementBodyState.LoadFailed) {
-                    SettingsStateSlotMessage(
-                        text = UiText.res(R.string.tag_management_load_failed),
-                        tone = MessageTone.Danger,
-                    )
-                } else {
-                    null
-                },
             )
-            if (state.bodyState == TagManagementBodyState.LoadFailed) {
-                TextButton(enabled = !state.busy, onClick = onReload) {
-                    Text(stringResource(R.string.tag_management_reload_button))
-                }
-            }
             return@Column
         }
         val visible = state.tags.filter { !state.unusedOnly || it.usageCount == 0 }
