@@ -11,6 +11,7 @@ from urllib.parse import urlencode
 
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 
+from app.routes._web_bulk_snapshot import parse_bulk_snapshot
 from app.routes.web_common import _web_redirect, _with_ledger
 from app.services.pending_review_bulk_service import SKIP_REASON_STALE, BulkResult
 
@@ -25,6 +26,22 @@ REMOVAL_ACTIONS = frozenset({"reject", "confirm_ready"})
 
 def pending_redirect(selected_id: str, *, filter: str, msg: str) -> RedirectResponse:
     return _web_redirect("/web/pending", selected_id, filter=filter or "all", msg=msg)
+
+
+def pending_bulk_continuation_context(
+    views: list[dict], remaining: list[str], *, category: str, merchant: str,
+) -> dict:
+    """Read the original redirect snapshot within the already authorized queue."""
+    selection = parse_bulk_snapshot([], [], remaining)
+    originals = selection[1] if selection else {}
+    pending_ids = {view["id"] for view in views}
+    versions = {key: version for key, version in originals.items() if key in pending_ids}
+    return {
+        "bulk_versions": versions,
+        "bulk_unavailable": len(originals) - len(versions),
+        "bulk_category": category,
+        "bulk_merchant": merchant,
+    }
 
 
 def pending_bulk_result_url(
@@ -103,6 +120,8 @@ def bulk_fragment_json(
     selected_id: str,
     filter: str,
     expected_by_id: dict[int, int] | None = None,
+    category: str = "",
+    merchant: str = "",
 ) -> JSONResponse:
     message = format_bulk_message(action, result)
     body = {
@@ -116,6 +135,8 @@ def bulk_fragment_json(
             msg=message,
             result=result,
             expected_by_id=expected_by_id,
+            category=category,
+            merchant=merchant,
         ),
     }
     if action == "reject":

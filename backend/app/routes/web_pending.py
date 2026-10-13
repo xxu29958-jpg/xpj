@@ -27,6 +27,7 @@ from app.routes._web_pending_bulk_response import (
     bulk_invalid_snapshot,
     bulk_no_selection,
     format_bulk_message,
+    pending_bulk_continuation_context,
     pending_bulk_result_redirect,
     pending_redirect,
 )
@@ -127,9 +128,8 @@ def web_pending(
     if filter_key not in PENDING_FILTERS:
         filter_key = "all"
 
-    selection = parse_bulk_snapshot([], [], remaining)
-    remaining_versions = selection[1] if selection else {}
-    items = [it for it in raw_items if matches_pending_filter(it, filter_key) or it["id"] in remaining_versions]
+    bulk_context = pending_bulk_continuation_context(raw_items, remaining, category=bulk_category, merchant=bulk_merchant)
+    items = [it for it in raw_items if matches_pending_filter(it, filter_key) or it["id"] in bulk_context["bulk_versions"]]
     filter_counts = {key: sum(matches_pending_filter(it, key) for it in raw_items) for key in PENDING_FILTERS}
     pending_total = len(raw_items)
     suspected_total = filter_counts["duplicate"]
@@ -142,10 +142,7 @@ def web_pending(
         sidebar_counts=(pending_total, suspected_total),
     )
     ctx["expenses"] = items
-    ctx["bulk_versions"] = {it["id"]: remaining_versions[it["id"]] for it in items if it["id"] in remaining_versions}
-    ctx["bulk_category"] = bulk_category
-    ctx["bulk_merchant"] = bulk_merchant
-    ctx["bulk_unavailable"] = len(remaining_versions) - len(ctx["bulk_versions"])
+    ctx.update(bulk_context)
     ctx["upload_intent"] = attachment_form_context(db, request, action="/web/pending/upload", ledger_id=selected_id)
     ctx["pending_count"] = pending_total
     ctx["inbox_is_empty"] = pending_total == 0
@@ -372,6 +369,8 @@ def _bulk_review_response(
             selected_id=selected_id,
             filter=filter_key,
             expected_by_id=expected_by_id,
+            category=category,
+            merchant=merchant,
         )
     message = format_bulk_message(action, result)
     return pending_bulk_result_redirect(

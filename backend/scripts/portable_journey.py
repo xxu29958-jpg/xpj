@@ -57,7 +57,7 @@ class PortableJourney:
 
     def web_download(self, page, name, *, archived):
         assert page.locator(f'input[name="ledger_id"][value="{LEDGER}"]').is_checked()
-        assert ("已归档" in page.locator(".auth-ledger-list").inner_text()) == archived
+        assert ("已归档" in page.get_by_role("group", name="选择账本", exact=True).inner_text()) == archived
         self.capture(page, name)
         with page.expect_download(timeout=120000) as downloading:
             page.get_by_role("button", name="下载所选账本（ZIP）", exact=True).click()

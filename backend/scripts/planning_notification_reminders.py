@@ -90,6 +90,7 @@ class NotificationReminders:
             self.set_channel(channel, False)
         self.native.plan_home()
         self.native.click("打开账户与设置")
+        self.native.click("通知与外观")
         self.native.click("通知与提醒")
         for label in ("固定支出提醒", "预算超支提醒", "备份超龄提醒"):
             self.native.set_switch(label, True)

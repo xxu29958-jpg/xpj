@@ -172,13 +172,13 @@ class NotificationJourney:
             self.page.expect_event("domcontentloaded"),
             self.page.expect_event("requestfailed", predicate=lambda request: request.url.endswith(action)),
         ):
-            form.locator('[data-repayment-submit]').click()
+            self.page.locator('[form="repayment-review-form"][data-repayment-submit]').click()
         wait_for(lambda: len(self.facts()["payments"]) == 2, "Web review did not reach the shared repayment owner")
         self.goto("/web/repayment-drafts/" + pending["id"])
         wait_for(lambda: form.locator('[name="idempotency_key"]').input_value() == key, "The unresolved original disappeared after response loss")
         assert form.locator('select[name="target_with_expected_row_version"]').input_value() == choice
         assert form.locator('[name="original_amount"]').input_value() == "70.00"
-        form.locator('[data-repayment-submit]').click()
+        self.page.locator('[form="repayment-review-form"][data-repayment-submit]').click()
         self.page.locator('[data-repayment-ack]').wait_for()
         assert sorted(item["amount"] for item in self.facts()["payments"]) == [7000, 9000]
         self.capture("original-receipt")
