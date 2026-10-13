@@ -945,24 +945,9 @@
     font-weight: var(--type-subtitle-weight);
 }
 
-.fact-offsets .offset-void {
-    padding-block: var(--space-3);
-    border-block-start: 1px solid var(--border-card);
-}
-
 .fact-offsets .offset-void > summary:focus-visible {
     outline: var(--space-1) solid var(--brand-focus-ring);
     outline-offset: var(--space-1);
-}
-
-.fact-offsets .offset-void {
-    padding-block: var(--space-2);
-    border-block-start: 0;
-}
-
-.fact-offsets .offset-void > summary {
-    color: var(--text-faint);
-    cursor: pointer;
 }
 
 .offset-form,
