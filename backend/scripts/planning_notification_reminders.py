@@ -108,7 +108,8 @@ class NotificationReminders:
     def original_taps(self):
         from scripts.planning_notification_context import share_original, shared_original_result
 
-        self.j.tap_notification("本月预算超了", expected="月度总预算")
+        self.j.tap_notification("本月预算超了", expected="调整本月预算")
+        self.native.click("调整本月预算")
         self.native.fill("321.09", label="月度总预算")
         self.native.capture("notification-budget-original-input")
         self.j.tap_notification("备份记录太久没更新", expected="备份")
