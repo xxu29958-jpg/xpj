@@ -64,10 +64,13 @@ fun SettingsRootScreen(
     onBack: (() -> Unit)? = null,
     navigationActions: SettingsRootNavigationActions,
 ) {
+    // The root is the settings page itself: its back control leaves settings, so it reads "返回".
+    val title = stringResource(R.string.settings_root_page_title)
+    val subtitle = stringResource(R.string.settings_root_page_subtitle)
+    val backLabel = stringResource(R.string.settings_root_back)
     SettingsPageFrame(
-        title = stringResource(R.string.settings_root_page_title),
-        subtitle = stringResource(R.string.settings_root_page_subtitle),
         onBack = onBack,
+        heading = { SettingsPageHeading(title, subtitle, onBack, backLabel) },
         status = { AppStatusBanner(message = state.message, tone = state.messageTone) },
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap)) {
