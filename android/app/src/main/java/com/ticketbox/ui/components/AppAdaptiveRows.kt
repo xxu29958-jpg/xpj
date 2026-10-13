@@ -38,6 +38,9 @@ data class AppAdaptiveContentActionStyle(
     val wideActionWeight: Float? = null,
     val verticalAlignment: Alignment.Vertical = Alignment.CenterVertically,
     val compactAction: Boolean = false,
+    // The trailing slot is an amount, not a control: it stays beside the content down to the
+    // amount-row breakpoint, so list rows keep a right-aligned amount column on phones.
+    val amountTrailing: Boolean = false,
 )
 
 object AppAdaptiveAmountRowDefaults {
@@ -100,6 +103,7 @@ fun AppAdaptiveContentActionStateRow(
                 maxWidth = maxWidth,
                 fontScale = LocalDensity.current.fontScale,
                 compactAction = style.compactAction,
+                amountTrailing = style.amountTrailing,
             )
         ) {
             AppAdaptiveContentActionMode.Stacked -> {
@@ -131,11 +135,12 @@ internal fun resolveAppAdaptiveContentActionMode(
     maxWidth: Dp,
     fontScale: Float = 1f,
     compactAction: Boolean = false,
+    amountTrailing: Boolean = false,
 ): AppAdaptiveContentActionMode {
-    val inlineMinWidth = if (compactAction) {
-        AppAdaptiveBreakpoints.pairedActionInlineMinWidth
-    } else {
-        AppAdaptiveBreakpoints.contentActionInlineMinWidth
+    val inlineMinWidth = when {
+        amountTrailing -> AppAdaptiveBreakpoints.amountRowInlineMinWidth
+        compactAction -> AppAdaptiveBreakpoints.pairedActionInlineMinWidth
+        else -> AppAdaptiveBreakpoints.contentActionInlineMinWidth
     }
     return if (maxWidth / fontScale.coerceAtLeast(1f) < inlineMinWidth) {
         AppAdaptiveContentActionMode.Stacked

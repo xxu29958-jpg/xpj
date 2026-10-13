@@ -34,6 +34,24 @@ class AppAdaptiveRowsTest {
     }
 
     @Test
+    fun amountTrailingRowsStayInlineOnPhoneWidths() {
+        assertEquals(
+            AppAdaptiveContentActionMode.Inline,
+            resolveAppAdaptiveContentActionMode(
+                maxWidth = AppAdaptiveBreakpoints.contentActionInlineMinWidth - 1.dp,
+                amountTrailing = true,
+            ),
+        )
+        assertEquals(
+            AppAdaptiveContentActionMode.Stacked,
+            resolveAppAdaptiveContentActionMode(
+                maxWidth = AppAdaptiveBreakpoints.amountRowInlineMinWidth - 1.dp,
+                amountTrailing = true,
+            ),
+        )
+    }
+
+    @Test
     fun editActionsStackThreeActionsBelowInlineBreakpoint() {
         assertEquals(
             AppAdaptiveEditActionMode.Stacked,

@@ -248,7 +248,10 @@ internal fun LedgerExpenseCard(
     ) {
         AppAdaptiveContentActionStateRow(
             modifier = Modifier.padding(horizontal = AppSpacing.cardPaddingTight, vertical = AppSpacing.contentGap),
-            style = AppAdaptiveContentActionStyle(wideActionWeight = AppAdaptiveAmountRowDefaults.trailingWeight),
+            style = AppAdaptiveContentActionStyle(
+                wideActionWeight = AppAdaptiveAmountRowDefaults.trailingWeight,
+                amountTrailing = true,
+            ),
             content = {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -355,6 +358,7 @@ internal fun LedgerExpenseListRow(
     ) {
         AppAdaptiveContentActionStateRow(
             modifier = Modifier.padding(horizontal = AppSpacing.miniGap, vertical = rowMetrics.rowPadding),
+            style = AppAdaptiveContentActionStyle(amountTrailing = true),
             content = {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -415,7 +419,10 @@ internal fun LedgerExpenseTableRow(
     ) {
         AppAdaptiveContentActionStateRow(
             modifier = Modifier.padding(horizontal = AppSpacing.cardPaddingTight, vertical = AppSpacing.contentGap),
-            style = AppAdaptiveContentActionStyle(wideActionWeight = AppAdaptiveAmountRowDefaults.trailingWeight),
+            style = AppAdaptiveContentActionStyle(
+                wideActionWeight = AppAdaptiveAmountRowDefaults.trailingWeight,
+                amountTrailing = true,
+            ),
             content = {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
