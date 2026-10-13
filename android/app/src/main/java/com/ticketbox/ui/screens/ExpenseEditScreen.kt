@@ -505,8 +505,10 @@ fun ExpenseEditScreen(
         )
         SettingsDetailRow(
             title = stringResource(R.string.calendar_input_title),
+            // The zone is part of the reading only when the time was recorded somewhere else.
             subtitle = listOfNotNull(timeForm.date, timeForm.time.takeIf { timeForm.precision == "instant" },
-                timeForm.sourceZone.takeIf { timeForm.precision == "instant" }).joinToString(" · "),
+                timeForm.sourceZone.takeIf { timeForm.precision == "instant" && it != java.time.ZoneId.systemDefault().id },
+            ).joinToString(" · "),
             icon = R.drawable.ic_lucide_calendar_check,
             modifier = Modifier.testTag("expense-edit-time-section"),
         ) { com.ticketbox.ui.screens.expense.ExpenseTimeEditor(timeForm, setTimeForm, !readOnly) }
