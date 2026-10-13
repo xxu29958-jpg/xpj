@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
@@ -49,7 +50,10 @@ internal fun SearchResultCard(result: GlobalSearchResultUi, onClick: () -> Unit)
             Text(stringResource(R.string.global_search_result_meta, expense.category, sourceLabel,
                 com.ticketbox.ui.components.expenseClockLabel(expense).asString()),
                 color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+                itemVerticalAlignment = Alignment.CenterVertically,
+            ) {
                 SearchKindBadge(result.kind)
                 Text(stringResource(R.string.global_search_result_matched, result.matchedField.asString()),
                     color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)

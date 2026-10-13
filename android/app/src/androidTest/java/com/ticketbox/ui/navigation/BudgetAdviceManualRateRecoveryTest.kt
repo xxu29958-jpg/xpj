@@ -60,7 +60,7 @@ class BudgetAdviceManualRateRecoveryTest {
         fixture.advice = com.ticketbox.data.remote.dto.BudgetAdviceDto("按本月计划收入与已确认支出提供参考。", listOf(suggestion), null)
         show()
         waitForText(context.getString(R.string.advice_rate_add))
-        compose.onNodeWithText("‹").performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.budget_month_previous)).performScrollTo().performClick()
         compose.waitUntil(5_000) { fixture.inputReads.lastOrNull()?.first == fixture.originalMonth }
         compose.onNodeWithText(context.getString(R.string.advice_rate_add)).performScrollTo().assertIsDisplayed()
         compose.waitForIdle()

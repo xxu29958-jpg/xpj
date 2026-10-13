@@ -29,6 +29,7 @@ import com.ticketbox.ui.components.*
 import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalThemeVisuals
+import com.ticketbox.ui.screens.budget.MonthSwitcher
 import com.ticketbox.viewmodel.BudgetAdviceUiState
 
 internal data class BudgetAdviceActions(val onGenerate: () -> Unit, val onRefreshInputs: () -> Unit,
@@ -45,11 +46,8 @@ internal data class BudgetAdviceActions(val onGenerate: () -> Unit, val onRefres
 
 @Composable
 internal fun BudgetAdviceInputsContent(state: BudgetAdviceUiState, actions: BudgetAdviceActions, onOpenBudget: (() -> Unit)? = null) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        TextButton(onClick = { actions.onShiftMonth(-1) }, enabled = !state.rateBusy) { Text("‹") }
-        Text(displayMonthLabel(state.month), style = MaterialTheme.typography.titleMedium)
-        TextButton(onClick = { actions.onShiftMonth(1) }, enabled = !state.rateBusy) { Text("›") }
-    }
+    MonthSwitcher(displayMonthLabel(state.month), onPreviousMonth = { actions.onShiftMonth(-1) },
+        onNextMonth = { actions.onShiftMonth(1) }, enabled = !state.rateBusy)
     BudgetAdviceIncome(state)
     state.inputs?.let { MonthlyPlanBudget(it, onOpenBudget) }
     MonthlyArrangementContent(state, actions)
