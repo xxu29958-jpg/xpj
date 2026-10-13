@@ -93,7 +93,9 @@ EXEMPT_FILES = (
 # Visual-ledger migration retires four remaining inline divider alphas.
 # Compact appearance choices retire nine literals from the old preview cards.
 # The shared chart palette retires two locally tinted category colors.
-BASELINE = 65
+# The inbox category mark uses its container token as-is (the override made
+# the already-translucent midnight token opaque): one literal fewer.
+BASELINE = 64
 
 # ``.copy(alpha = <number>)`` — number is a decimal/int float literal (optional
 # trailing ``f``). Identifier args (AppAlpha.heavy / resolvedAlpha) are NOT

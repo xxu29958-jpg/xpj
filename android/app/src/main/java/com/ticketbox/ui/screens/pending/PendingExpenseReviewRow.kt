@@ -391,7 +391,7 @@ private fun PendingCategoryMark(category: String, size: DpSize) {
         modifier = Modifier
             .size(size)
             .clip(RoundedCornerShape(AppRadius.small))
-            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.74f))
+            .background(MaterialTheme.colorScheme.primaryContainer)
             .padding(top = AppSpacing.contentGap),
         color = MaterialTheme.colorScheme.primary,
         style = MaterialTheme.typography.titleSmall,
