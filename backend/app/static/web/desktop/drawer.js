@@ -361,7 +361,7 @@
       container.querySelectorAll('form input[type="hidden"][name="expense_snapshot"]').forEach(function (node) {
         node.value = snapshot;
       });
-      if (typeof app.refreshBulkBar === "function") app.refreshBulkBar();
+      app.refreshBulkBar?.({id: expenseId, rowVersion: version});
     }
 
     // 焦点合同下不再有第二套「选中」态标记：drawer 打开时只标
@@ -387,7 +387,7 @@
       const container = currentRow.closest(".exp-row");
       if (container) { container.remove(); decrementCounts(); }
       currentRow = null;
-      app.refreshBulkBar?.();
+      app.refreshBulkBar?.({id: activeExpenseId});
       return next;
     }
 

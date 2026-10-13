@@ -111,7 +111,8 @@ def web_saved_view_open(request: Request, public_id: str, ledger_id: str = "",
                                               public_id=public_id)
     except AppError as exc:
         return _render_views(request, db, options=options, selected=selected,
-            error=_error_message(exc), status_code=exc.status_code,
+            error="" if exc.error == "saved_view_tag_repair_required" else _error_message(exc),
+            status_code=exc.status_code,
             editing_public_id=public_id if exc.error == "saved_view_tag_repair_required" else "")
     return RedirectResponse("/web/confirmed?" + urlencode(query), status_code=303)
 

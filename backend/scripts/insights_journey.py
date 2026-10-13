@@ -103,7 +103,9 @@ class InsightsJourney:
         assert not native.has("TaggedRide"), "Category drill discarded the selected category"
         wait_for(lambda: native.has("13.00"), "The drill kept an older ledger snapshot than its source report")
         native.click("TaggedMeal")
-        native.click("更正这笔账单")
+        native.reveal_any("更正这笔账单")
+        native.capture("insights-before-correction")
+        native.click("更正这笔账单", stable=True)
         native.fill("DrillAmount", label="更正原因（必填）")
         native.reveal_any("13.00")
         native.fill("15.00", previous="13.00")

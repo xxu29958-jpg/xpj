@@ -105,6 +105,10 @@
     assert(state.stage === "unknown" && form().dataset.expensereviewDraftPhase === "submitted", "lost save became a new editable task");
     state.stage = "replay"; save();
     document.querySelector('.exp-row[data-expense-id="42"] .row-check').click();
+    const bulkReturn = new URL(location.href);
+    bulkReturn.searchParams.append("remaining", "42:4");
+    bulkReturn.searchParams.append("remaining", "43:4");
+    history.replaceState(null, "", bulkReturn);
     form().requestSubmit(form().querySelector("[data-expensereview-submit]"));
     await wait(() => form()?.elements.idempotency_key.value !== state.command && form()?.dataset.expensereviewDraftPhase && !primary()?.disabled);
     assert(!localStorage.getItem(prefix + state.ref), "accepted save left its original unresolved");
@@ -114,6 +118,8 @@
     assert(document.querySelector('.exp-row[data-expense-id="42"] .row-check').checked, "save cleared the selected row");
     assert(document.querySelector('.exp-row[data-expense-id="42"] [name="expense_snapshot"][type="hidden"]').value === "42:5", "quick confirm has stale OCC");
     assert(document.querySelector('#bulk-form [name="expected_row_version"]').value === "5", "bulk has stale OCC");
+    assert(JSON.stringify(new URL(location.href).searchParams.getAll("remaining")) === JSON.stringify(["42:5", "43:4"]),
+      "accepted save did not update only its own bulk return snapshot");
     state.positions.push(document.querySelector("#drawer [data-review-position]").textContent);
     state.stage = "first-confirm"; save();
     form().requestSubmit(primary());
@@ -126,6 +132,7 @@
     form().requestSubmit(primary());
     await wait(() => document.querySelector("#drawer [data-expense-confirmation]"));
     const receipt = document.querySelector("#drawer [data-expense-confirmation]");
+    assert(!new URL(location.href).searchParams.has("remaining"), "accepted confirmations remained selected after reload");
     assert(receipt.querySelector("[data-confirmation-next]").hidden, "last receipt offers missing next row");
     assert(receipt.querySelector("[data-confirmation-finish]").href.includes("filter=ready"), "receipt lost original filter");
     window.__expenseReviewResult = {...state, last_receipt: receipt.textContent.includes("第二张商家"),

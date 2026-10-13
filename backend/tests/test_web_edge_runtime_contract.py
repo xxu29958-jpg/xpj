@@ -553,6 +553,10 @@ def test_bulk_async_feedback_has_announcement_semantics_in_real_edge(
     assert "已确认 1 条流水。" in success["message"]
     assert success["undoLabel"] == "撤销刚才的批量操作"
     assert success["undoButtonLabel"] == "撤销刚才处理的 1 条流水"
+    assert probe["remaining"] == {
+        "ids": ["2"], "versions": ["12"], "checked": True,
+        "count": "1", "locationHash": "#remaining-2-12",
+    }
 
     failure = probe["failure"]
     assert failure["role"] == "alert"

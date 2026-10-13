@@ -50,7 +50,7 @@
   <h2 class="product-panel-title" data-import-root-title>对应的原消费</h2>
   <a class="product-entry" href="{{ root_edit_href }}">
     <span class="product-entry-icon product-entry-icon--apricot" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#receipt-text"/></svg></span>
-    <span class="product-entry-copy"><span class="product-entry-heading"><strong>{{ root.merchant or '未填写商家' }}</strong><span class="product-entry-amount">{{ root.original_currency_code }} {{ root.original_amount_value }}</span></span><span>{{ root.expense_time }} · {{ root.category }}</span><span{% if root.status != 'pending' %} class="sr-only"{% endif %}>{{ '复核并确认原单，完成后返回' if root.status == 'pending' else '查看原单与退款记录' }}</span></span>
+    <span class="product-entry-copy"><span class="product-entry-heading"><strong>{{ root.merchant or '未填写商家' }}</strong><span class="product-entry-amount">{{ root.original_currency_code }} {{ root.original_amount_value }}</span></span><span>账务日期 {{ root.accounting_date or '待核对' }} · {{ root.category }}</span><span{% if root.status != 'pending' %} class="sr-only"{% endif %}>{{ '复核并确认原单，完成后返回' if root.status == 'pending' else '查看原单与退款记录' }}</span></span>
     <span class="product-entry-chevron" aria-hidden="true">›</span>
   </a>
   {% if root.fx_meta %}<p class="meta">原消费：{{ root.fx_meta }}</p>{% endif %}
@@ -79,7 +79,7 @@
   {% for candidate in candidates %}
     <div class="product-entry product-entry--static">
       <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#receipt-text"/></svg></span>
-      <span class="product-entry-copy"><span class="product-entry-heading"><strong>{{ candidate.merchant or '未填写商家' }}</strong><span class="product-entry-amount">{{ candidate.original_currency_code }} {{ candidate.original_amount_value }}</span></span><span>{{ candidate.category }} · {{ candidate.expense_time }} · {{ '待确认' if candidate.status == 'pending' else '已确认' }}</span>{% if candidate.fx_meta %}<span>{{ candidate.fx_meta }}</span>{% endif %}
+      <span class="product-entry-copy"><span class="product-entry-heading"><strong>{{ candidate.merchant or '未填写商家' }}</strong><span class="product-entry-amount">{{ candidate.original_currency_code }} {{ candidate.original_amount_value }}</span></span><span>{{ candidate.category }} · 账务日期 {{ candidate.accounting_date or '待核对' }} · {{ '待确认' if candidate.status == 'pending' else '已确认' }}</span>{% if candidate.fx_meta %}<span>{{ candidate.fx_meta }}</span>{% endif %}
       {% if can_write %}<button type="submit" form="import-event-form" name="review_latest" value="{{ candidate.id }}" data-import-select formnovalidate class="product-button product-button--quiet">选择此原单</button>{% endif %}</span>
     </div>
   {% else %}<p class="product-state">没有找到原单。可以补充上传原消费，再回此任务继续。</p>{% endfor %}
@@ -128,6 +128,10 @@
 <form id="import-root-search" method="get" action="{{ review_path }}"></form>
 <details class="import-schema"><summary>文件原值与关联依据</summary>
   <dl class="product-form-grid">
+    {% if root %}
+    <div><dt>所选原单账务日期</dt><dd>{{ root.accounting_date or '待核对' }}{% if root.accounting_date_assumed %}（按初始账本日历推定）{% endif %}</dd></div>
+    <div><dt>所选原单已知发生时刻</dt><dd>{{ root.expense_time or '未提供' }}</dd></div>
+    {% endif %}
     <div><dt>原币金额{% if row.entry_kind == 'expense' %}（消费总额）{% endif %}</dt><dd>{{ row.original_currency_code or '币种未提供' }} {{ row_amount_label(row.original_amount_minor, row.original_currency_code) if row.original_currency_code and row.original_amount_minor is not none else '金额未提供' }}</dd></div>
     <div><dt>本位币金额</dt><dd>{{ row.home_currency_code or '币种未提供' }} {{ row_amount_label(row.amount_cents, row.home_currency_code) if row.home_currency_code and row.amount_cents is not none else '金额未提供' }}</dd></div>
     <div><dt>流水影响</dt><dd>{% if row.offset_kind == 'reversal' %}冲销事件（本行金额为 0，原消费是否生效由事实状态决定）{% elif row.stream_amount_cents is not none and row.home_currency_code %}{{ row_amount_label(row.stream_amount_cents, row.home_currency_code) }}{% else %}未提供{% endif %}</dd></div>

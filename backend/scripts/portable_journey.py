@@ -70,6 +70,7 @@ class PortableJourney:
     def native_entry(self):
         self.native.plan_home()
         self.native.click("打开账户与设置")
+        self.native.click("数据与隐私")
         self.native.click("数据与导出")
         self.native.reveal_any("便携下载核对账本")
         self.native.reveal_any("下载并保存完整数据包")

@@ -854,7 +854,7 @@ body.product-shell .file-picker > input.file-picker-input:focus-visible {
 
 .bulk-bar .product-button {
     min-height: var(--target-min);
-    white-space: nowrap;
+    white-space: normal;
 }
 
 .bulk-selection-status {
@@ -903,6 +903,16 @@ body.product-shell .file-picker > input.file-picker-input:focus-visible {
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: end;
     gap: var(--space-3);
+}
+
+/* A narrow selection editor grows in the document, so large text never
+   covers the records that the user is trying to review. */
+@media (max-width: 30rem) {
+    .bulk-bar:has(.bulk-editor[open]) { position: static; }
+    .bulk-editor[open] { flex-basis: 100%; min-width: 0; }
+    .bulk-editor-fields { position: static; inline-size: 100%; max-block-size: none; margin-block-start: var(--space-3); box-shadow: none; }
+    .bulk-group { grid-template-columns: minmax(0, 1fr); }
+    .bulk-group .product-button { justify-self: start; }
 }
 
 /* no-JS fail-open (收件域收口片冻结): 未增强时批量条原生可见、表单可原生
