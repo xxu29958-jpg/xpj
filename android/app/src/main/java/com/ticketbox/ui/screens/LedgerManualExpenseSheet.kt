@@ -16,6 +16,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.ui.screens.expense.toSavedJson
 import com.ticketbox.R
@@ -40,6 +41,7 @@ import com.ticketbox.ui.screens.expense.ExpenseCurrencyFields
 import com.ticketbox.ui.screens.expense.ExpenseCurrencyFieldOptions
 import com.ticketbox.ui.screens.expense.ExpenseEditTextField
 import com.ticketbox.ui.screens.expense.ExpenseEditTextFieldState
+import com.ticketbox.ui.screens.expense.summary
 
 data class ManualExpenseSheetState(
     val categories: List<String>,
@@ -223,7 +225,13 @@ fun ManualExpenseSheet(
                 onValueChange = { note = it },
                 modifier = Modifier.fillMaxWidth(),
             )
-            com.ticketbox.ui.screens.expense.ExpenseTimeEditor(timeForm, setTimeForm, fieldsEnabled)
+            // Most entries are for now: the date stays one row until someone needs to change it.
+            com.ticketbox.ui.screens.settings.SettingsDetailRow(
+                title = stringResource(R.string.calendar_input_title),
+                subtitle = timeForm.summary(),
+                icon = R.drawable.ic_lucide_calendar_check,
+                modifier = Modifier.testTag("manual-expense-time-section"),
+            ) { com.ticketbox.ui.screens.expense.ExpenseTimeEditor(timeForm, setTimeForm, fieldsEnabled, showTitle = false) }
         }
     }
 }
