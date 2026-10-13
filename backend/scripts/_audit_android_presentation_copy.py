@@ -193,7 +193,6 @@ ALLOWLIST: dict[str, str] = {
     "android/app/src/main/java/com/ticketbox/ui/components/Formatters.kt :: 未填写时间": "static formatter: blank-time fallback display",
     "android/app/src/main/java/com/ticketbox/ui/components/Formatters.kt :: 未设置": "static formatter: blank-date fallback display",
     "android/app/src/main/java/com/ticketbox/ui/components/Formatters.kt :: yyyy年M月d日": "static formatter: date pattern",
-    "android/app/src/main/java/com/ticketbox/ui/components/Formatters.kt :: yyyy年M月d日 HH:mm": "static formatter: date-time pattern",
     "android/app/src/main/java/com/ticketbox/ui/screens/LedgerGrouping.kt :: M月d日 E": "static formatter: date-group pattern",
     "android/app/src/main/java/com/ticketbox/ui/screens/recurring/RecurringUiModels.kt :: yyyy年M月d日": "static formatter: fixed-expense date pattern",
     "android/app/src/main/java/com/ticketbox/viewmodel/ExpenseEditViewModelItemsEditor.kt :: 未命名": "static fallback-default item name value",

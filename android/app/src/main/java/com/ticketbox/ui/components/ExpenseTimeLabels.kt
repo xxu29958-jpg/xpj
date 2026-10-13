@@ -15,7 +15,7 @@ fun expenseKnownInstant(expense: Expense): String? = when (expense.accountingTim
 }
 
 fun expenseTimeLabel(expense: Expense): UiText =
-    (expenseAccountingDayLabel(expense) ?: expenseKnownInstant(expense)?.let(::displayDateTime))?.let(UiText::raw)
+    (expenseAccountingDayLabel(expense)?.let(::displayCalendarDay) ?: expenseKnownInstant(expense)?.let(::displayDateTime))?.let(UiText::raw)
         ?: UiText.res(R.string.calendar_date_pending)
 
 fun expenseClockLabel(expense: Expense): UiText = when {

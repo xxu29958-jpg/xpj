@@ -293,6 +293,12 @@ class FormattersTest {
     }
 
     @Test
+    fun calendarDayIsSpelledLikeOtherDatesAndLeftAloneWhenItIsNotADay() {
+        assertEquals("2026年5月3日", displayCalendarDay("2026-05-03"))
+        assertEquals("待核对", displayCalendarDay("待核对"))
+    }
+
+    @Test
     fun displaysIsoTimeWithoutLeakingRawSeparatorInNormalCase() {
         val rendered = displayTime("2026-05-03T04:20:00Z")
 
