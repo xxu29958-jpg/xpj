@@ -156,6 +156,9 @@ class PlanningAndroid:
         expected = str(checked).lower()
         if matches[0].attrib.get("checked") != expected:
             self.tap(matches[0])
+            # An operation banner can move the switch below the visible area.
+            # Read the same control again after exposing its updated position.
+            self.reveal_any(label)
         wait_for(lambda: bool(found := locate()) and found[0].attrib.get("checked") == expected,
             f"The actual native switch did not change: {label}")
 

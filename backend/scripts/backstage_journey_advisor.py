@@ -49,6 +49,7 @@ def _roles(j):
             page.locator('[name="pairing_code"]').fill(_member_code(j.ledger_id, role))
             page.locator('form[action="/web/auth/login"] button[type="submit"]').click()
             page.wait_for_url("**/web/budget-advise*")
+            page.locator("#arrangement-advice > summary").click()
             assert page.get_by_role("button", name="获取智能建议", exact=True).count() == 0
             j.capture("ai-" + role + "-read-only-advice", page=page)
             page.goto(f"{base}/web/pending?ledger_id={j.ledger_id}")
@@ -61,12 +62,15 @@ def _roles(j):
 def advisor_consumers(j):
     before = j.facts()
     j.goto("/web/budget-advise")
+    j.page.locator("#arrangement-advice > summary").click()
     assert j.page.get_by_role("button", name="获取智能建议", exact=True).count() == 0
     assert "暂不可用" in j.page.inner_text("main") and not j.advisor.inputs
     _consent(j, True)
     j.goto("/web/budget-advise")
+    j.page.locator("#arrangement-advice > summary").click()
     form = j.page.locator('form[method="post"][action="/web/budget-advise"]')
     form.get_by_role("button", name="获取智能建议", exact=True).click()
+    j.page.locator("#tb-confirm-modal[open]").get_by_role("button", name="确认", exact=True).click()
     j.page.get_by_text("合成协议样例：仅供人工核对", exact=True).wait_for()
     assert len(j.advisor.inputs) == 1
     j.capture("ai-web-reference")
@@ -77,6 +81,7 @@ def advisor_consumers(j):
         "home_currency_code", "arrangement_currency_code", "idempotency_key", "expected_row_version")}
     j.advisor.fail_next = True
     form.get_by_role("button", name="获取智能建议", exact=True).click()
+    j.page.locator("#tb-confirm-modal[open]").get_by_role("button", name="确认", exact=True).click()
     wait_for(lambda: len(_audit(j.ledger_id)["rows"]) == 2, "The failed provider call was not audited")
     assert not _audit(j.ledger_id)["rows"][-1]["success"]
     assert all(form.locator(f'[name="{name}"]').input_value() == value for name, value in original.items())
@@ -88,11 +93,13 @@ def advisor_consumers(j):
     j.native.click("本月储蓄与备用金", stable=True)
     j.native.reveal_any("生成预算建议")
     j.native.click("生成预算建议")
+    j.native.click("允许并生成本次建议")
     wait_for(lambda: j.native.has("合成协议样例：仅供人工核对"), "The native consumer did not receive the advisor result", 90)
     j.native.capture("backstage-ai-native-reference")
     _roles(j)
     _consent(j, False)
     j.goto("/web/budget-advise")
+    j.page.locator("#arrangement-advice > summary").click()
     assert j.page.get_by_role("button", name="获取智能建议", exact=True).count() == 0
     audit = _audit(j.ledger_id)
     assert [row["success"] for row in audit["rows"]] == [True, False, True]

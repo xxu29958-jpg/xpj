@@ -162,6 +162,8 @@ def native_appearance(j, path, image_digest):
     assert saved_background(native) != original
     images = private_images(native)
     assert len(images) == 1 and list(images.values()) == [image_digest], "The private image changed at import"
+    native.reveal_any("更多外观设置")
+    native.click("更多外观设置")
     native.reveal_any("自定义图片", toward_start=True)
     native.capture("appearance-custom-applied")
     applied = read_domains(native, images)

@@ -188,6 +188,9 @@ class SplitAgreementDraftConnectedTest {
             returnForgivenAmountCents = 0, originalDebtRowVersion = 7, returnDebtRowVersion = 8,
             reason = "对方的新提议", createdAt = original.createdAt, expiresAt = "2027-01-01T00:00:00Z")
         compose.onNodeWithText(context.getString(R.string.split_agreement_refresh)).performScrollTo().performClick()
+        compose.waitUntil(10_000) {
+            model.value?.state?.value?.agreement?.pendingProposal?.publicId == "replacement-predecessor"
+        }
         compose.onNodeWithText(context.getString(R.string.split_agreement_replace)).performScrollTo().performClick()
         compose.onNodeWithText("原往来尚未发出").performScrollTo().assertIsDisplayed()
         closeEditor()
