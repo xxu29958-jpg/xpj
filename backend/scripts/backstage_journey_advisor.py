@@ -48,7 +48,7 @@ def _roles(j):
             page.goto(base + "/web/auth/login?next=/web/budget-advise")
             page.locator('[name="pairing_code"]').fill(_member_code(j.ledger_id, role))
             page.locator('form[action="/web/auth/login"] button[type="submit"]').click()
-            page.wait_for_url("**/web/budget-advise*")
+            page.wait_for_url(f"{base}/web/budget-advise*")
             page.locator("#arrangement-advice > summary").click()
             assert page.get_by_role("button", name="获取智能建议", exact=True).count() == 0
             j.capture("ai-" + role + "-read-only-advice", page=page)

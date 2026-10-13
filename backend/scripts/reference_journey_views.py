@@ -14,7 +14,7 @@ def connect(page, j, role):
     page.goto(public_url + "/web/auth/login?next=/web/tags")
     page.locator('[name="pairing_code"]').fill(_member_code(j.fixture.ledger_id, role))
     page.locator('form[action="/web/auth/login"] button[type="submit"]').click()
-    page.wait_for_url("**/web/tags*")
+    page.wait_for_url(f"{public_url}/web/tags*")
     return public_url
 
 

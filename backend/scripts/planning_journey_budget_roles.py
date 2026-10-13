@@ -13,7 +13,7 @@ def connect(j, page, role):
     page.goto(base + "/web/auth/login?next=/web/budgets")
     page.locator('[name="pairing_code"]').fill(code)
     page.locator('form[action="/web/auth/login"] button[type="submit"]').click()
-    page.wait_for_url("**/web/budgets*")
+    page.wait_for_url(f"{base}/web/budgets*")
     return base
 
 

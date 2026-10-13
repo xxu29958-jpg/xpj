@@ -36,7 +36,7 @@ class PortableJourney:
         page.goto(self.public_url + "/web/auth/login?next=/web/expenses/new")
         page.locator('[name="pairing_code"]').fill(pairing_code(self.account))
         page.locator('form[action="/web/auth/login"] button[type="submit"]').click()
-        page.wait_for_url("**/web/expenses/new*")
+        page.wait_for_url(f"{self.public_url}/web/expenses/new*")
         form = page.locator('form[action="/web/expenses/new"]')
         form.locator('[name="amount_major"]').fill("100.00")
         if not form.locator('[name="merchant"]').is_visible():
