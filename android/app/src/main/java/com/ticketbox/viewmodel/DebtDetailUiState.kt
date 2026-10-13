@@ -17,6 +17,8 @@ import com.ticketbox.domain.model.UiText
  */
 data class DebtDetailUiState(
     val binding: LogicalSessionBinding? = null,
+    /** Route identity remains available while the canonical read is unavailable. */
+    val requestedPublicId: String? = null,
     val isLoading: Boolean = false,
     val fetchedAt: String? = null,
     val fromCache: Boolean = false,
@@ -28,6 +30,9 @@ data class DebtDetailUiState(
     val repaymentToVoid: DebtRepayment? = null,
     val amountInput: String = "",
     val reasonInput: String = "",
+    val paymentTime: com.ticketbox.ui.screens.expense.ExpenseTimeForm? = null,
+    val repaymentKey: String? = null,
+    val hasRepaymentDraft: Boolean = false,
     // Adjustment is a signed delta, but the decimal keyboard exposes no minus key, so the amount
     // field is a positive magnitude and this toggle carries the sign (true = raise `remaining`).
     val adjustmentIncrease: Boolean = true,
@@ -46,6 +51,9 @@ data class DebtDetailUiState(
         get() = canModify && debt != null && !isSubmitting && writeSnapshotLoaded &&
             pendingWrites.none { it.isUnresolved } && locallyAcceptedWriteId == null &&
             writeRefreshAfterVersion == null && writeRefreshAtVersion == null
+
+    val canSubmitAction: Boolean
+        get() = canWriteActions && (activeAction != DebtAction.Repayment || debt?.isOpen == true && debt.isDirectWritable)
 
     /** Only an explicit review can replace an unsubmitted form's original same-currency target. */
     val canReviewAction: Boolean

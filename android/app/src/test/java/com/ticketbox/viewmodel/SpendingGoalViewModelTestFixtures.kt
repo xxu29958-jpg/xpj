@@ -190,8 +190,8 @@ internal class RecordingGoalEdits : com.ticketbox.data.repository.GoalEditAction
         return result
     }
     override fun observeEdits(binding: com.ticketbox.data.repository.LogicalSessionBinding, publicId: String) = rows
-    override suspend fun save(binding: com.ticketbox.data.repository.LogicalSessionBinding, goal: Goal, update: GoalUpdate): Result<Long> {
-        saves += update
+    override suspend fun save(binding: com.ticketbox.data.repository.LogicalSessionBinding, goal: Goal, update: com.ticketbox.domain.model.GoalEditInput): Result<Long> {
+        saves += update as GoalUpdate
         saveGate?.invoke()
         return saveResult
     }

@@ -24,6 +24,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.components.AppAmountText
+import com.ticketbox.ui.components.AppAdaptiveMetricGrid
 import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppAmountRole
@@ -57,8 +58,6 @@ internal fun ReportsTrendFlowChart(points: List<ReportTrendChartPoint>) {
         modifier = Modifier.fillMaxWidth().semantics { contentDescription = trendA11y },
         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
     ) {
-        ReportsTrendChartSummary(summary = summary)
-        ReportsTrendFactStrip(summary = summary)
         if (summary.shouldUseDominanceBreakdown) {
             ReportsTrendDominanceBreakdown(summary = summary)
         } else {
@@ -67,6 +66,14 @@ internal fun ReportsTrendFlowChart(points: List<ReportTrendChartPoint>) {
                 contentDescription = trendA11y,
             )
         }
+    }
+}
+
+@Composable
+internal fun ReportsTrendDetails(summary: ReportsTrendEvidence) {
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+        ReportsTrendChartSummary(summary)
+        ReportsTrendFactStrip(summary)
     }
 }
 
@@ -125,25 +132,22 @@ private fun ReportsTrendChartSummary(
 
 @Composable
 private fun ReportsTrendFactStrip(summary: ReportsTrendEvidence) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-    ) {
-        ReportsTrendFact(
+    AppAdaptiveMetricGrid(itemCount = 3) { index, metricModifier ->
+        if (index == 0) ReportsTrendFact(
             label = stringResource(R.string.stats_reports_chart_active_days),
             value = stringResource(R.string.stats_reports_chart_active_days_value, summary.positiveBucketCount),
-            modifier = Modifier.weight(1f),
+            modifier = metricModifier,
         )
-        ReportsTrendFact(
+        else if (index == 1) ReportsTrendFact(
             label = stringResource(R.string.stats_reports_chart_peak_share_label),
             value = stringResource(R.string.stats_reports_chart_peak_share_value, summary.peakSharePercent),
-            modifier = Modifier.weight(1f),
+            modifier = metricModifier,
         )
-        ReportsTrendFact(
+        else ReportsTrendFact(
             label = stringResource(R.string.stats_reports_chart_other_average_label),
             value = formatDisplayAmount(summary.otherAverageAmountCents, LocalCurrencyDisplay.current),
             isAmount = true,
-            modifier = Modifier.weight(1f),
+            modifier = metricModifier,
         )
     }
 }
@@ -163,8 +167,6 @@ private fun ReportsTrendFact(
             text = label,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelSmall,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
         )
         if (isAmount) {
             AppAmountText(
@@ -177,8 +179,6 @@ private fun ReportsTrendFact(
                 color = MaterialTheme.colorScheme.onSurface,
                 style = MaterialTheme.typography.bodyMedium.tabularNum(),
                 fontWeight = AppTextHierarchy.body.weight,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
             )
         }
     }

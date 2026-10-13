@@ -23,11 +23,13 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
+from app.schemas._accounting_time import AccountingTimeInput, AccountingTimeSnapshot
 from app.schemas._money import (
     NonNegativeMoneyAggregate,
     NonZeroSignedMoneyMinor,
     PositiveCanonicalDecimalInput,
     PositiveMoneyMinor,
+    SignedMoneyAggregate,
 )
 from app.services.time_service import to_iso
 
@@ -79,6 +81,7 @@ class DebtCreateRequest(BaseModel):
     original_currency: str | None = Field(default=None, min_length=3, max_length=3)
     original_amount: PositiveCanonicalDecimalInput | None = None
     event_time: datetime | None = None
+    time_input: AccountingTimeInput | None = None
     source_type: str = "manual"
     # 8e-6e: optional repayment-rhythm classification (external debt). Defaulted (not
     # `required`) so an older client that omits it still creates an `unspecified` Debt —
@@ -95,6 +98,13 @@ class DebtCreateRequest(BaseModel):
     installment_period_months: int | None = Field(default=None, gt=0, le=120)
 
 
+class RepaymentCalendarResponse(BaseModel):
+    """A participant may use the rule without learning the other ledger's identity."""
+
+    revision: int
+    timezone_name: str
+
+
 class DebtResponse(BaseModel):
     public_id: str
     # ADR-0049 §5.2: optional so a cross-ledger participant view can redact it.
@@ -104,6 +114,7 @@ class DebtResponse(BaseModel):
     # ledger, the response is the Debt shell only and ``ledger_id`` is ``None`` —
     # the counterparty's ledger id is a private internal. Same-ledger reads keep it.
     ledger_id: str | None = None
+    repayment_calendar: RepaymentCalendarResponse | None = None
     direction: str
     counterparty_type: str
     counterparty_account_id: int | None = None
@@ -114,15 +125,19 @@ class DebtResponse(BaseModel):
     # use the exact-JSON aggregate envelope rather than the command envelope.
     remaining_amount_cents: NonNegativeMoneyAggregate
     paid_amount_cents: NonNegativeMoneyAggregate
+    # Old saved receipts may lack these projections; missing does not mean zero.
+    adjustment_amount_cents: SignedMoneyAggregate | None = None
+    forgiven_amount_cents: NonNegativeMoneyAggregate | None = None
     status: str
     source_type: str
     source_id: str | None = None
+    accounting_time: AccountingTimeSnapshot | None = None
     # 8e-6e repayment-rhythm classification. Defaulted (not `required`) so the Android
     # DebtDto can adopt it later without the contract gate's reverse check reddening now;
     # always populated at-rest (the column is NOT NULL).
     debt_kind: DebtKind = "unspecified"
     # §B 完整 installment: the stored schedule (NULL for non-installment) + the DERIVED deterministic
-    # payoff date (建账 + count×period months). The payoff date replaces the suppressed velocity
+    # payoff date (本金发生日期 + count×period months). The payoff date replaces the suppressed velocity
     # projection for an all-installment goal; None when no schedule is set. All defaulted (the
     # Android DebtDto adopts them later without reddening the contract gate's reverse check).
     installment_count: int | None = None
@@ -221,6 +236,7 @@ class RepaymentCreateRequest(BaseModel):
     original_currency: str | None = Field(default=None, min_length=3, max_length=3)
     original_amount: PositiveCanonicalDecimalInput | None = None
     paid_at: datetime | None = None
+    time_input: AccountingTimeInput | None = None
     expected_row_version: int
 
 
@@ -316,6 +332,7 @@ class MemberRepaymentProposalCreateRequest(BaseModel):
     original_currency_code: str | None = Field(default=None, min_length=3, max_length=3)
     original_amount: PositiveCanonicalDecimalInput | None = None
     paid_at: datetime | None = None
+    time_input: AccountingTimeInput | None = None
     note: str | None = Field(default=None, max_length=500)
     expires_at: datetime | None = None
     supersedes_proposal_public_id: str | None = Field(default=None, min_length=1, max_length=36)
@@ -366,7 +383,8 @@ class MemberRepaymentProposalResponse(BaseModel):
     home_currency_code: str
     original_currency_code: str | None = None
     original_amount_minor: PositiveMoneyMinor | None = None
-    paid_at: datetime
+    paid_at: datetime | None = None
+    accounting_time: AccountingTimeSnapshot | None = None
     note: str | None = None
     expires_at: datetime
     created_at: datetime
@@ -412,7 +430,8 @@ class RepaymentFactResponse(BaseModel):
     exchange_rate_to_cny: Decimal | None = None
     exchange_rate_date: datetime | None = None
     exchange_rate_source: str | None = None
-    paid_at: datetime
+    paid_at: datetime | None = None
+    accounting_time: AccountingTimeSnapshot | None = None
     created_at: datetime
     status: Literal["active", "voided"]
     void_fact: RepaymentVoidFactResponse | None = None

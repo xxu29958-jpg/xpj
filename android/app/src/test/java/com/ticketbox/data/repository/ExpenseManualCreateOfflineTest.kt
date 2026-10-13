@@ -84,6 +84,8 @@ internal class ExpenseManualCreateOfflineTest : ExpensePendingRepositoryOutboxTe
             recurringPaymentCreateAdapter = com.ticketbox.OutboxAdapterGraph().recurringPaymentCreateAdapter,
             correctionAdapter = com.ticketbox.OutboxAdapterGraph().correctionAdapter,
             billSplitReceiptAdapter = com.ticketbox.OutboxAdapterGraph().billSplitReceiptAdapter,
+        billSplitAcceptAdapter = com.ticketbox.OutboxAdapterGraph().billSplitAcceptAdapter,
+        billSplitAcceptedAdapter = com.ticketbox.OutboxAdapterGraph().billSplitAcceptedAdapter,
             billSplitCreateAdapter = com.ticketbox.OutboxAdapterGraph().billSplitCreateAdapter,
             legacyCorrectionAdapter = com.ticketbox.OutboxAdapterGraph().legacyCorrectionAdapter,
         ),

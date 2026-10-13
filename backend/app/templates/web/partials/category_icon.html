@@ -1,0 +1,6 @@
+{% macro category_icon(category) -%}
+{% set icon = {'居住': 'house', '房租': 'house', '住房': 'house', '餐饮': 'utensils', '交通': 'bus', '购物': 'shopping-bag', '娱乐': 'clapperboard', '医疗': 'briefcase-medical', '教育': 'graduation-cap', '通讯': 'phone', 'AI订阅': 'bot', '数码': 'monitor-smartphone', '游戏': 'gamepad-2', '生活': 'sofa'}.get(category, 'receipt-text') %}
+<span class="product-entry-icon{% if category == '餐饮' %} product-entry-icon--apricot{% elif category == '交通' %} product-entry-icon--lilac{% endif %}" aria-hidden="true">
+  <svg width="24" height="24"><use href="/static/shared/vendor/lucide/icons.svg#{{ icon }}"/></svg>
+</span>
+{%- endmacro %}

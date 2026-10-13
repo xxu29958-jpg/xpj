@@ -110,6 +110,7 @@ def apply_review_bulk(
     merchant: str = "",
     actor_account_id: int | None = None,
     actor_device_id: int | None = None,
+    category_commit: bool = True,
 ) -> BulkResult:
     """Run a bulk-review action and return success/skip counters.
 
@@ -144,6 +145,7 @@ def apply_review_bulk(
         merchant_clean=merchant_clean,
         actor_account_id=actor_account_id,
         actor_device_id=actor_device_id,
+        category_commit=category_commit,
     )
     try:
         for expense_id in unique_expense_ids:
@@ -185,6 +187,7 @@ def _resolve_bulk_action_handler(
     merchant_clean: str,
     actor_account_id: int | None,
     actor_device_id: int | None,
+    category_commit: bool,
 ):
     """Return a ``(db, row, tenant_id, expected_row_version, result)`` callable.
 
@@ -202,6 +205,7 @@ def _resolve_bulk_action_handler(
                 expected_row_version=expected_row_version,
             ),
             result,
+            commit=category_commit,
         )
     if action == "set_merchant":
         return lambda db, row, tenant_id, expected_row_version, result: _apply_metadata_update(
@@ -235,12 +239,18 @@ def _apply_metadata_update(
     tenant_id: str,
     payload: ExpenseUpdateRequest,
     result: BulkResult,
+    *,
+    commit: bool = True,
 ) -> None:
     if row.status != "pending":
         result.bump(SKIP_REASON_NOT_PENDING)
         return
     try:
-        update_expense(db, row.id, tenant_id, payload)
+        if commit:
+            update_expense(db, row.id, tenant_id, payload)
+        else:
+            with db.begin_nested():
+                update_expense(db, row.id, tenant_id, payload, commit=False)
         result.record_success(row.id)
     except AppError as exc:
         _record_action_error(result, exc, fallback="更新失败")

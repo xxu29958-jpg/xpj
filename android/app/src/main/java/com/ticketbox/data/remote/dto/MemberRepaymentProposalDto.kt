@@ -30,7 +30,7 @@ data class MemberRepaymentProposalDto(
     @param:Json(name = "original_amount_minor")
     val originalAmountMinor: Long? = null,
     @param:Json(name = "paid_at")
-    val paidAt: String,
+    val paidAt: String?,
     val note: String? = null,
     @param:Json(name = "expires_at")
     val expiresAt: String,
@@ -42,6 +42,7 @@ data class MemberRepaymentProposalDto(
     val supersedesProposalPublicId: String? = null,
     @param:Json(name = "committed_repayment_public_id")
     val committedRepaymentPublicId: String? = null,
+    @param:Json(name = "accounting_time") val accountingTime: ExpenseAccountingTimeDto? = null,
 )
 
 data class MemberRepaymentProposalListResponseDto(
@@ -66,6 +67,7 @@ data class MemberRepaymentProposalCreateRequestDto(
     val note: String? = null,
     @param:Json(name = "supersedes_proposal_public_id")
     val supersedesProposalPublicId: String? = null,
+    @param:Json(name = "time_input") val timeInput: ExpenseTimeInputDto? = null,
 )
 
 /**

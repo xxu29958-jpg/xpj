@@ -40,7 +40,7 @@
 
     <!-- GlobalSearchScreen：全局搜索 -->
     <string name="global_search_back">返回账本</string>
-    <string name="global_search_header_title">搜索</string>
+    <string name="global_search_header_title">找一笔账</string>
     <string name="global_search_header_subtitle">搜索待确认和已确认账单。</string>
     <string name="global_search_clear_action">清空</string>
     <string name="global_search_field_label">关键词</string>
@@ -76,7 +76,13 @@
     <string name="bill_split_inbox_load_failed_title">拆账收件箱暂时打不开</string>
     <string name="bill_split_inbox_load_failed_body">刷新后再显示收到的邀请；这里不会把失败误当成没有邀请。</string>
     <string name="bill_split_inbox_empty">还没有拆账邀请。家人或其他账号给你发起拆账后，会出现在这里。</string>
-    <string name="bill_split_inbox_accept">接受到 %1$s</string>
+    <string name="bill_split_inbox_accept">接受并记账</string>
+    <string name="bill_split_review_invitation">核对这份邀请</string>
+    <string name="bill_split_invitation_title">一起分担这笔消费</string>
+    <string name="bill_split_invitation_sender">收到%1$s的拆账邀请</string>
+    <string name="bill_split_back_keep_selection">返回，保留选择</string>
+    <string name="bill_split_accept_privacy">接受后在所选账本记入你的份额。只展示这次邀请已共享的信息。</string>
+    <string name="bill_split_inbox_no_target">你没有可写入的接收账本，暂时不能接受这份邀请；仍可以拒绝。</string>
     <string name="bill_split_inbox_reject">拒绝</string>
     <string name="bill_split_sent_loading_title">正在读取已发出邀请</string>
     <string name="bill_split_sent_loading_body">会显示你发出的拆账邀请和处理状态。</string>
@@ -84,17 +90,26 @@
     <string name="bill_split_sent_load_failed_body">刷新后再显示发出的邀请；这里不会把失败误当成没有发出过。</string>
     <string name="bill_split_sent_empty">还没有发出的拆账邀请，在已确认账单详情里可以发起。</string>
     <string name="bill_split_sent_cancel">撤回</string>
-    <string name="bill_split_accept_picker_title">接受到哪个账本？</string>
+    <string name="bill_split_accept_picker_title">记入哪个账本</string>
     <string name="bill_split_status_invited">待处理</string>
     <string name="bill_split_status_accepted">已接受</string>
     <string name="bill_split_status_rejected">已拒绝</string>
     <string name="bill_split_status_cancelled">已撤回</string>
     <string name="bill_split_status_expired">已过期</string>
+    <string name="bill_split_invitation_share">邀请份额 · %1$s</string>
+    <string name="bill_split_source_amount">原消费 %1$s</string>
+    <string name="bill_split_source_amount_unknown">原消费金额未记录</string>
+    <string name="bill_split_source_date">原消费日期 %1$s</string>
+    <string name="bill_split_current_share">当前约定份额 %1$s</string>
+    <string name="bill_split_created">发出邀请</string>
+    <string name="bill_split_event_time">%1$s · %2$s</string>
+    <string name="bill_split_deadline">截止 %1$s</string>
+    <string name="bill_split_original_deadline">原定截止 %1$s</string>
+    <string name="bill_split_expiry_recorded">记录为过期</string>
 
     <!-- BindServerScreen：绑定私人账本 -->
     <string name="bind_server_header_title">连接私人账本</string>
     <string name="bind_server_header_subtitle">使用账本拥有者提供的地址和码。</string>
-    <string name="bind_server_hint_with_url">服务拥有者会提供账本地址和绑定码。</string>
     <string name="bind_server_hint_no_url">服务拥有者已配置账本地址，请输入绑定码。</string>
     <string name="bind_server_field_url_label">账本地址</string>
     <string name="bind_server_field_url_placeholder">向服务拥有者获取</string>
@@ -157,8 +172,10 @@
     <string name="app_currency_switched">已切换为%1$s默认记账币种</string>
 
     <!-- IncomePlanScreen：二级页收口文案（短标签，避免说明书式段落） -->
-    <string name="income_plan_header_subtitle_compact">每月固定与单笔预计</string>
-    <string name="income_plan_add_action_short">添加</string>
+    <string name="income_plan_header_subtitle_compact">计划金额，不代表实际到账或账户余额。</string>
+    <string name="income_plan_add_action_short">添加收入计划</string>
+    <string name="income_plan_continue_creation">继续收入原稿</string>
+    <string name="income_plan_cached_scheduled_caption">按读取时的计划 %1$s</string>
     <string name="income_plan_total_meta">收入计划 %1$d 项</string>
     <string name="income_plan_conversion_pending">待补汇率</string>
     <string name="income_plan_currency_refresh_required">计划已有变化或币种尚未确认，请保留输入，刷新后核对。</string>
@@ -200,4 +217,15 @@
     <string name="bind_server_configured_url">账本地址：%1$s</string>
     <string name="bind_server_continuity_title">中途离开也能继续</string>
     <string name="bind_server_continuity_body">返回此页时保留已填信息。未完成的绑定可以继续，放弃前会请你确认。</string>
+    <string name="bill_split_accept_queued">接受任务已保留，等待同步核实结果。</string>
+    <string name="bill_split_accept_original_target">原选择账本：%1$s</string>
+    <string name="bill_split_accept_selection">记入：%1$s</string>
+    <string name="bill_split_accept_pending">接受结果尚未确认，原选择保持不变。</string>
+    <string name="bill_split_accept_recovery">接受拆账邀请</string>
+    <string name="bill_split_accept_unsupported">原接受任务暂时无法核对，请保留它并更新应用。</string>
+    <string name="bill_split_accept_requires_review">这份邀请当前无法按原选择接受。请核对最新结果；本地任务仍保留。</string>
+    <string name="bill_split_accept_retry">核实原接受结果</string>
+    <string name="bill_split_accept_forget_explanation">只移除此设备保留的接受任务，不会撤销已发出的请求或已完成的记账。请先核对邀请的最新结果。</string>
+    <string name="bill_split_accept_unsubmitted">未提交的接受选择</string>
+    <string name="bill_split_accept_remove_selection">移除这项选择</string>
 </resources>

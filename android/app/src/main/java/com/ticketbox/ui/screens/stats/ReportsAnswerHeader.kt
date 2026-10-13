@@ -8,11 +8,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
 import com.ticketbox.ui.components.AppAmountText
-import com.ticketbox.ui.components.AppAdaptiveAmountRowStyle
-import com.ticketbox.ui.components.AppAdaptiveEditAmountRow
 import com.ticketbox.ui.components.AppAdaptiveMetricGrid
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.components.formatDisplayAmount
@@ -21,6 +18,7 @@ import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.tabularNum
+import androidx.compose.ui.platform.testTag
 import kotlin.math.abs
 
 @Composable
@@ -28,44 +26,33 @@ internal fun ReportsAnswerHeader(
     model: ReportsAnswerModel,
     modifier: Modifier = Modifier,
 ) {
-    Column(
-        modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-    ) {
-        ReportsAnswerTotal(model)
-        ReportsAnswerMetrics(model)
-    }
-}
-
-@Composable
-private fun ReportsAnswerTotal(model: ReportsAnswerModel) {
     val currencyDisplay = LocalCurrencyDisplay.current
-    AppAdaptiveEditAmountRow(
-        amount = model.totalAmountCents?.let { formatDisplayAmount(it, currencyDisplay) }
-            ?: stringResource(R.string.reports_amount_unavailable),
-        style = AppAdaptiveAmountRowStyle(role = AppAmountRole.Medium),
-    ) {
+    StatsInsightSurface(modifier = modifier) {
         Column(
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
         ) {
             Text(
                 text = stringResource(R.string.stats_reports_answer_title),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = AppTextHierarchy.heading.weight,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            AppAmountText(
+                text = model.totalAmountCents?.let { formatDisplayAmount(it, currencyDisplay) }
+                    ?: stringResource(R.string.reports_amount_unavailable),
+                modifier = Modifier.fillMaxWidth().testTag("reports-total"),
+                role = AppAmountRole.Hero,
             )
             Text(
                 text = stringResource(R.string.stats_reports_answer_subtitle, displayMonthLabel(model.month), model.count),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
             )
         }
     }
 }
 
 @Composable
-private fun ReportsAnswerMetrics(model: ReportsAnswerModel) {
+internal fun ReportsAnswerMetrics(model: ReportsAnswerModel) {
     AppAdaptiveMetricGrid(itemCount = if (model.hasYearOverYearComparison) 3 else 2) { index, metricModifier ->
         if (index == 0 && model.hasPreviousMonthComparison) {
             ReportsAnswerMetric(
@@ -113,8 +100,6 @@ private fun ReportsAnswerMetric(
             text = label,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelSmall,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
         )
         AppAmountText(
             text = value,
@@ -130,12 +115,7 @@ private fun ReportsAnswerMetric(
 }
 
 @Composable
-private fun monthDeltaValue(model: ReportsAnswerModel): String =
-    if (model.previousTotalAmountCents?.let { it <= 0L } == true && model.monthDeltaAmountCents?.let { it > 0L } == true) {
-        stringResource(R.string.stats_reports_answer_no_previous)
-    } else {
-        signedDeltaValue(model.monthDeltaAmountCents)
-    }
+private fun monthDeltaValue(model: ReportsAnswerModel): String = signedDeltaValue(model.monthDeltaAmountCents)
 
 @Composable
 private fun monthDeltaCaption(model: ReportsAnswerModel): String =
@@ -162,6 +142,7 @@ private fun signedDeltaValue(deltaAmountCents: Long?): String {
 
 @Composable
 private fun peakCaption(evidence: ReportsTrendEvidence): String =
-    evidence.peak?.takeIf { it.amountCents > 0L }?.let {
+    if (evidence.mode == ReportsTrendMode.Signed) stringResource(R.string.reports_signed_share_unavailable)
+    else evidence.peak?.takeIf { it.amountCents > 0L }?.let {
         stringResource(R.string.stats_reports_answer_peak_caption, it.label, evidence.peakSharePercent)
     } ?: stringResource(R.string.stats_reports_answer_no_trend)

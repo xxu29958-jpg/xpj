@@ -20,6 +20,7 @@ from app.schemas._expense import (
     ExpenseResponse,
     ExpenseSplitRequest,
 )
+from app.schemas._expense_offset import ExpenseOffsetRevisionResponse
 from app.services.time_service import to_iso
 from app.tag_text import validate_tags_fit_storage
 
@@ -111,8 +112,10 @@ class ExpenseCorrectionResponse(BaseModel):
 
 
 class ExpenseRevisionListResponse(BaseModel):
-    items: list[ExpenseRevisionResponse]
+    items: list[ExpenseRevisionResponse | ExpenseOffsetRevisionResponse]
     page: int
     page_size: int
     total: int
     snapshot_revision: int
+    # Present only for the opt-in full timeline; both anchors travel together.
+    offset_snapshot_id: int | None = None

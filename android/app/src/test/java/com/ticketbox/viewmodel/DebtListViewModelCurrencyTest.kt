@@ -226,11 +226,8 @@ class DebtListViewModelCurrencyTest {
     }
 
     @Test
-    fun reloadClearsStaleLedgerDraftAndBlocksSubmitUntilResolved() = runTest(dispatcher) {
-        // PR#255 R5 P2 + 测试钉：JPY 账本已输 "1200" 的草稿切账本时不得随 rebind 静默
-        // 重解释（落 CNY 账本即 120000 minor，100×）—— reload() 同步清掉草稿；新账本
-        // 响应未回期间 homeCurrencyResolved=false，submitDraft 被拒（旧草稿永不可达
-        // 创建路径）。
+    fun bindingChangeIsolatesOriginalCurrencyAndBlocksSubmitUntilResolved() = runTest(dispatcher) {
+        // A different binding receives its own draft; returning must restore the original JPY input.
         val gate = CompletableDeferred<Unit>()
         val repo = FakeDebtActions(
             listResult = Result.success(listOf(sampleDebt("jpy-debt").copy(homeCurrencyCode = "JPY"))),
@@ -243,10 +240,11 @@ class DebtListViewModelCurrencyTest {
         viewModel.updateDraftCounterparty("小王")
         viewModel.updateDraftAmount("1200")
 
-        // 账本切换：reload 的拉取 stall 在 listDebts（响应未回）。
+        val originalAccess = requireNotNull(repo.creation.currentAccess())
+        val originalDraft = viewModel.state.value.addDraft
         repo.listResult = Result.success(listOf(sampleDebt("cny-debt").copy(homeCurrencyCode = "CNY")))
         repo.listGate = gate
-        viewModel.reload()
+        repo.creation.access.value = originalAccess.copy(binding = originalAccess.binding.copy(ledgerId = "next", bindingRevision = "next"))
         runCurrent()
 
         // 草稿已同步清空、币种回到未确认，提交被 VM 防线拦下。
@@ -265,6 +263,11 @@ class DebtListViewModelCurrencyTest {
         advanceUntilIdle()
         assertEquals(true, viewModel.state.value.homeCurrencyResolved)
         assertEquals(CurrencyCode.CNY, viewModel.state.value.addDraft.homeCurrency)
+        repo.listGate = null
+        repo.listResult = Result.success(listOf(sampleDebt("jpy-debt").copy(homeCurrencyCode = "JPY")))
+        repo.creation.access.value = originalAccess
+        advanceUntilIdle()
+        assertEquals(originalDraft, viewModel.state.value.addDraft)
     }
 
     @Test

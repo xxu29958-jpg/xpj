@@ -72,7 +72,7 @@ def _goal_view(goal) -> dict:
         "month": goal.month,
         "category": goal.category or "总支出",
         "home_currency_code": currency_code,
-        "target_yuan": _amount_yuan(goal.target_amount_cents, currency_code) if currency_code else "币种待确认",
+        "target_yuan": _amount_yuan(goal.target_amount_cents, currency_code) if currency_code else _goal_history_money(goal.target_amount_cents, None),
         "spent_yuan": _amount_yuan(goal.spent_amount_cents, currency_code) if currency_code else "",
         "remaining_yuan": _amount_yuan(goal.remaining_amount_cents, currency_code) if currency_code else "",
         "progress_percent": goal.progress_percent,
@@ -99,6 +99,7 @@ def _render_goals(
     draft_result: str = "",
 ) -> HTMLResponse:
     timezone_name = get_settings().ocr_default_timezone
+    creating = values is not None or request.query_params.get("new_goal") == "1"
     goals = list_goals(
         db,
         tenant_id=selected_id,
@@ -111,13 +112,14 @@ def _render_goals(
         db=db,
         options=options,
         selected_ledger_id=selected_id,
-        show_month_picker=True,
+        show_month_picker=not creating,
         selected_month=month,
     )
     ctx.update(
         {
             "month": month,
             "include_archived": include_archived,
+            "goal_creating": creating,
             "goals": [_goal_view(goal) for goal in goals],
             "message": message,
             "error": error,
@@ -126,6 +128,7 @@ def _render_goals(
     values = values if values is not None else {
         "name": "", "category": "", "target_amount_yuan": "", "month": month,
         "home_currency_code": ctx["home_currency_code"], "idempotency_key": str(uuid4()),
+        "return_include_archived": "true" if include_archived else "false",
     }
     try:
         form_currency = currency_input_metadata(values.get("home_currency_code"))
@@ -172,6 +175,7 @@ def web_goals_create(
     home_currency_code: str = Form(default=""),
     idempotency_key: str = Form(default=""),
     draft_scope: str = Form(default=""), review_new: bool = Form(default=False),
+    return_include_archived: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> Response:
@@ -181,7 +185,7 @@ def web_goals_create(
     target_month = (month or "").strip() or current_ledger_month(db, ledger_id=selected_id)
     values = {"name": name, "month": month, "target_amount_yuan": target_amount_yuan,
         "category": category, "home_currency_code": home_currency_code, "idempotency_key": idempotency_key,
-        "draft_scope": draft_scope}
+        "draft_scope": draft_scope, "return_include_archived": return_include_archived}
     retained = preserve_original_ledger_form(request, db, options=options, selected=selected_id,
         fields={**values, "ledger_id": ledger_id}, task="添加支出目标")
     if retained is not None:
@@ -196,7 +200,7 @@ def web_goals_create(
         if review_new:
             values.update(idempotency_key=str(uuid4()), month=target_month)
             return _render_goals(request=request, db=db, options=options, selected_id=selected_id,
-                month=target_month, include_archived=False, values=values, draft_result="prepared")
+                month=target_month, include_archived=return_include_archived == "true", values=values, draft_result="prepared")
         presentation_currency = normalize_currency_code(home_currency_code)
         payload = GoalCreateRequest(
             name=name,
@@ -213,7 +217,9 @@ def web_goals_create(
             actor_account_id=resolve_web_actor_account_id(db, request, selected_id))
     except (AppError, ValidationError) as exc:
         return _create_refusal(request, db, options, selected_id, target_month, values, exc)
-    redirect = _web_redirect("/web/goals", selected_id, month=receipt.month, msg="目标已保存。")
+    redirect = _web_redirect("/web/goals", selected_id, month=receipt.month,
+        include_archived="true" if return_include_archived == "true" else "false", msg="目标已保存。")
+    redirect.headers["location"] += f"#goal-{receipt.public_id}"
     return draft_ack_response(request, draft_scope=draft_scope, idempotency_key=idempotency_key,
         receipt=receipt.model_dump(mode="json"), next_href=redirect.headers["location"]) or redirect
 
@@ -226,7 +232,8 @@ def _create_refusal(request, db, options, selected_id, month, values, exc):
         return JSONResponse({"error": exc.error if isinstance(exc, AppError) else "invalid_request",
             "message": message, "draft_result": "blocked"}, status_code=status, headers={"Cache-Control": "no-store"})
     return _render_goals(request=request, db=db, options=options, selected_id=selected_id,
-        month=month, include_archived=False, values=values, error=message, status_code=status, draft_result="blocked")
+        month=month, include_archived=values.get("return_include_archived") == "true", values=values,
+        error=message, status_code=status, draft_result="blocked")
 
 
 @router.post("/{public_id}/archive")

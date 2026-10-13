@@ -48,6 +48,21 @@ internal class PendingViewModelShareUploadTest : PendingViewModelReviewTestBase(
     }
 
     @Test
+    fun completedOriginalsRemainDiscoverableWithoutBecomingRetryableUploads() = review {
+        val fake = FakeReviewActions()
+        fake.uploadIntents.publish(observedUpload(1, PendingMutationStatus.Done), observedUpload(2, PendingMutationStatus.Done))
+        val vm = pendingViewModel(fake)
+        advanceUntilIdle()
+        assertEquals(listOf(1L, 2L), vm.uiState.value.upload.originals.map { it.expenseId })
+        assertFalse(vm.uiState.value.canRetryUpload)
+        assertFalse(vm.uiState.value.canStopUpload)
+        vm.retryCapacityUpload()
+        advanceUntilIdle()
+        assertTrue(fake.uploadIntents.recoveries.isEmpty())
+        assertTrue(fake.uploadIntents.accepted.isEmpty())
+    }
+
+    @Test
     fun reopenedCapacityGroupSurvivesFailedListReadAndRetriesOnlyTheOriginalGroup() = review {
         val fake = FakeReviewActions().apply { fetchPendingResponder = { Result.failure(IllegalStateException()) } }
         val original = listOf(observedUpload(1, PendingMutationStatus.Done),
@@ -59,7 +74,8 @@ internal class PendingViewModelShareUploadTest : PendingViewModelReviewTestBase(
         assertTrue(vm.uiState.value.canRetryUpload)
         assertTrue(vm.uiState.value.canStopUpload)
         assertEquals(
-            listOf(PendingUploadOriginalUi(2, "2.jpg"), PendingUploadOriginalUi(3, "3.jpg")),
+            listOf(PendingUploadOriginalUi(1, "1.jpg", PendingMutationStatus.Done, 1),
+                PendingUploadOriginalUi(2, "2.jpg", PendingMutationStatus.Failed), PendingUploadOriginalUi(3, "3.jpg")),
             vm.uiState.value.upload.originals,
         )
         assertEquals(UiText.res(R.string.pending_msg_upload_capacity_full), vm.uiState.value.uploadMessage)

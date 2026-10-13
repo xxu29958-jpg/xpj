@@ -17,7 +17,7 @@ import com.ticketbox.data.repository.testApiServiceProvider
 import com.ticketbox.data.repository.testServerSessionBinding
 import com.ticketbox.data.repository.boundSettingsStore
 
-internal fun outboxStatusHarness(onEnqueued: () -> Unit = {}): OutboxStatusHarness {
+internal fun outboxStatusHarness(onEnqueued: () -> Unit = {}, onRuleRefresh: suspend () -> Result<Unit> = { Result.success(Unit) }): OutboxStatusHarness {
     val tokenStore = TestSessionFixture().apply { saveToken("session-token") }
     val api = FakeApiServiceFactory(FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0))
     val binding = testServerSessionBinding(apiClient = api, settingsStore = boundSettingsStore(), tokenStore = tokenStore)
@@ -36,15 +36,16 @@ internal fun outboxStatusHarness(onEnqueued: () -> Unit = {}): OutboxStatusHarne
         debtWrites = DebtWriteRepository(testApiServiceProvider(api, tokenStore), outbox,
             OutboxAdapterGraph()),
         goalEdits = com.ticketbox.data.repository.GoalEditRepository(testApiServiceProvider(api, tokenStore), outbox,
-            OutboxAdapterGraph().goalUpdateAdapter, OutboxAdapterGraph().goalReceiptAdapter, OutboxAdapterGraph().goalCreateAdapter),
+            OutboxAdapterGraph().goalUpdateAdapter, OutboxAdapterGraph().goalReceiptAdapter, OutboxAdapterGraph().goalCreateAdapter, OutboxAdapterGraph().goalDebtEditAdapter),
         budgetSaves = com.ticketbox.data.repository.testBudgetRepository(testApiServiceProvider(api, tokenStore), outbox),
         recurringItems = com.ticketbox.data.repository.RecurringRepository(recurringProvider, outbox,
-            OutboxAdapterGraph().recurringCreateAdapter, OutboxAdapterGraph().recurringUpdateAdapter,
+            OutboxAdapterGraph(),
             queryReader = com.ticketbox.data.repository.RecurringQueryReader(recurringProvider, recurringCache,
                 com.ticketbox.data.repository.testSnapshotCoordinator(recurringProvider, outbox, recurringCache))),
-        rules = com.ticketbox.data.repository.RuleRepository(binding, offlineMutations = OutboxAdapterGraph().let { adapters ->
+        rules = com.ticketbox.data.repository.RuleRepository(binding, onConfirmedChanged = onRuleRefresh, offlineMutations = OutboxAdapterGraph().let { adapters ->
             com.ticketbox.data.repository.CategoryRuleOfflineMutationWiring(outbox, adapters.categoryRuleUpdateAdapter,
-                adapters.categoryRuleDeleteAdapter, adapters.categoryRuleSubmissionAdapter, adapters.categoryRuleReceiptAdapter)
+                adapters.categoryRuleDeleteAdapter, adapters.categoryRuleSubmissionAdapter, adapters.categoryRuleReceiptAdapter,
+                adapters.ruleApplicationAdapter, adapters.ruleApplicationReceiptAdapter)
         }),
     )
 }

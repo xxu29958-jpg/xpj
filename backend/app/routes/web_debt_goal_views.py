@@ -10,6 +10,7 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 from app.money_contract import projection_values_sum_to_int
+from app.routes._web_draft_binding import browser_draft_scope
 from app.routes.web_common import (
     _base_ctx,
     _home_amount_label,
@@ -50,7 +51,6 @@ _THREE_STATE_TONE = {"ahead": "ok", "on_track": "", "at_risk": "amber"}
 _PLAN_HEADLINE_MEMBER_START = "这几笔，和家人一起慢慢清"
 _PLAN_HEADLINE_MEMBER_DONE = "这几笔，和家人都两清啦"
 _PLAN_ALL_VOIDED = "关联的欠款都已作废"
-_GOAL_INTRO = "跟踪关联欠款的清偿，全部还清即达成目标。"
 _GOAL_EMPTY_TITLE = "还没有还债目标"
 _GOAL_EMPTY_BODY = "把一笔或多笔欠款关联到目标后，这里会显示它们的清偿进度。"
 _GOAL_LINKS_TITLE = "关联欠款"
@@ -199,6 +199,7 @@ def _goal_link_row(link: object) -> dict:
     is_member = link.counterparty_type == "member"
     is_voided = link.status == "voided"
     row: dict = {
+        "public_id": link.debt_public_id,
         "name": _debt_name(link),
         "is_member": is_member,
         "recede": is_voided,
@@ -250,8 +251,6 @@ def _debt_goal_view(goal: GoalResponse) -> dict:
         "composition": composition,
         "target_date_value": (evaluation.target_date.isoformat() if evaluation.target_date is not None else ""),
         "idempotency_keys": {
-            "links": str(uuid4()),
-            "target_date": str(uuid4()),
             "acknowledge": str(uuid4()),
             "remove_voided": str(uuid4()),
             "archive": str(uuid4()),
@@ -324,14 +323,6 @@ def _debt_choice_view(debt: object) -> dict:
     }
 
 
-def _default_create_values() -> dict:
-    return {
-        "name": "",
-        "selected_debt_ids": [],
-        "idempotency_key": str(uuid4()),
-    }
-
-
 def _render_debt_goals(
     request: Request,
     db: Session,
@@ -340,9 +331,6 @@ def _render_debt_goals(
     selected_id: str,
     message: str | None = None,
     error: str | None = None,
-    create_values: dict | None = None,
-    link_values: dict[str, list[str]] | None = None,
-    target_values: dict[str, str] | None = None,
     status_code: int = 200,
 ) -> HTMLResponse:
     account_id = _web_viewer_account_id(request, db, selected_id)
@@ -358,20 +346,6 @@ def _render_debt_goals(
         include_archived=True,
     )
     goal_views = [_debt_goal_view(goal) for goal in goals]
-    link_overrides = link_values or {}
-    date_overrides = target_values or {}
-    for goal in goal_views:
-        selected = set(link_overrides.get(goal["public_id"], goal["linked_debt_ids"]))
-        goal["link_choices"] = [
-            {
-                **choice,
-                "selected": choice["public_id"] in selected,
-            }
-            for choice in choices
-            if choice["status"] == "open" or choice["public_id"] in goal["linked_debt_ids"]
-        ]
-        if goal["public_id"] in date_overrides:
-            goal["target_date_value"] = date_overrides[goal["public_id"]]
     ctx = _base_ctx(
         request,
         db=db,
@@ -380,11 +354,10 @@ def _render_debt_goals(
         page_title="还债目标",
         sidebar_counts=_sidebar_counts(db, selected_id),
     )
-    ctx["intro"] = _GOAL_INTRO
     ctx["goals_active"] = [goal for goal in goal_views if not goal["is_archived"]]
     ctx["goals_archived"] = [goal for goal in goal_views if goal["is_archived"]]
     ctx["create_candidates"] = [choice for choice in choices if choice["status"] == "open"]
-    ctx["create_values"] = create_values or _default_create_values()
+    ctx["debtgoal_draft_scope"] = browser_draft_scope(db, request)
     ctx["message"] = message
     ctx["error"] = error
     ctx["empty_title"] = _GOAL_EMPTY_TITLE

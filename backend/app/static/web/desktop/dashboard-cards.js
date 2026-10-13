@@ -9,11 +9,21 @@
   function init() {
     var list = document.getElementById("dashboard-cards-list");
     if (!list) return;
+    function showOrder(row) {
+      var position = row.querySelector("[data-card-position]");
+      if (position.value !== "" && position.validity.valid) {
+        row.querySelector("[data-card-order]").textContent = Number(position.value) + 1;
+      }
+    }
+    list.addEventListener("input", function (event) {
+      if (event.target.matches("[data-card-position]")) showOrder(event.target.closest("[data-reorder-key]"));
+    });
     list.addEventListener("drag-reorder-change", function () {
       var rows = list.querySelectorAll("[data-reorder-key]");
       rows.forEach(function (row, idx) {
         var posInput = row.querySelector("[data-card-position]");
         if (posInput) posInput.value = idx;
+        showOrder(row);
       });
     });
   }

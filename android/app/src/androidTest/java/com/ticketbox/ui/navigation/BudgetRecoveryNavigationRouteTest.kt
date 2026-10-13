@@ -121,7 +121,7 @@ class BudgetRecoveryNavigationRouteTest {
         val action = context.getString(R.string.arrangement_open_month)
         waitForText(action)
         compose.onNodeWithText(action).performScrollTo().performClick()
-        waitForText(context.getString(R.string.arrangement_title))
+        waitForText(context.getString(R.string.budget_advice_page_title))
         compose.waitUntil(5_000) { transport.arrangementReads.lastOrNull() == originalMonth }
         waitForText(summary)
         compose.onNodeWithText(summary).performScrollTo().assertIsDisplayed()
@@ -137,6 +137,18 @@ class BudgetRecoveryNavigationRouteTest {
             harness.fixture.stored().single())
         assertEquals(draft, runBlocking { repository.arrangementDraft(binding, originalMonth) })
         assertEquals(originalMonth, transport.arrangementReads.last())
+        transport.budgetConfigured = true
+        val budgetReadsBefore = transport.budgetReads.size
+        compose.onNodeWithText(context.getString(R.string.arrangement_budget_open)).performScrollTo().performClick()
+        assertBudgetMonth(budgetReadsBefore)
+        transport.budgetRevision = 4
+        androidx.test.espresso.Espresso.pressBack()
+        waitForText(context.getString(R.string.budget_advice_page_title))
+        waitForText(context.getString(R.string.arrangement_budget_version, 4))
+        compose.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag("arrangement_savings")), useUnmergedTree = true)
+            .performScrollTo().assertTextEquals("8000")
+        assertEquals(draft, runBlocking { repository.arrangementDraft(binding, originalMonth) })
+        assertEquals(original, harness.fixture.stored().single())
         if (!readOnly) {
             review.performScrollTo().performClick()
             waitForText(context.getString(R.string.arrangement_reviewed))
@@ -216,8 +228,11 @@ class BudgetRecoveryNavigationRouteTest {
         assertEquals(MainProductDestination.Secondary(ProductSecondaryPage.Budget), harness.shell.activeDestination)
         assertEquals(MAIN_ROUTE, outer.currentBackStackEntry?.destination?.route)
         // Cached and fresh reads have distinct headers but the same task-month selector.
-        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(originalMonth))
-        compose.onNodeWithText(originalMonth).assertIsDisplayed()
+        val monthLabel = YearMonth.parse(originalMonth).let {
+            context.getString(R.string.components_month_label, it.year.toString(), it.monthValue.toString())
+        }
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(monthLabel))
+        compose.onNodeWithText(monthLabel).assertIsDisplayed()
     }
 
     private fun show() {
@@ -246,6 +261,7 @@ internal class BudgetNavigationTransport(private val currentMonth: String, priva
     var backupReads = 0
     val budgetReads = CopyOnWriteArrayList<String>()
     val arrangementReads = CopyOnWriteArrayList<String>()
+    var budgetRevision = 1L
 
     fun wrap(delegate: ApiService): ApiService = object : ApiService by delegate {
         override suspend fun privateStatus(): com.ticketbox.data.remote.dto.StatusPrivateDto {
@@ -261,7 +277,11 @@ internal class BudgetNavigationTransport(private val currentMonth: String, priva
 
         override suspend fun budgetAdviceInputs(month: String, timezone: String?, homeCurrencyCode: String?) =
             BudgetAdviceInputsDto(month, homeCurrencyCode ?: "JPY",
-                DiscretionaryResponseDto(10000, 1000, 2000, 4000, 600, 2400, 0), emptyList())
+                DiscretionaryResponseDto(10000, 1000, 2000, 4000, 600, 2400, 0), emptyList(),
+                budgetDefinition = if (!budgetConfigured) null else com.ticketbox.data.remote.dto.BudgetPlanDefinitionDto(
+                    "CNY", 10000, 0, 0, emptyList(), budgetRevision, "2026-10-11T04:00:00Z"),
+                dataScope = com.ticketbox.data.remote.dto.BudgetAdviceDataScopeDto("2026-10-11T04:00:00Z",
+                    YearMonth.parse(month).minusMonths(6).toString(), YearMonth.parse(month).minusMonths(1).toString(), 0))
 
         override suspend fun months(timezone: String?) = MonthsDto(listOf(currentMonth, originalMonth))
 

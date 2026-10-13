@@ -250,7 +250,7 @@ def test_confirmed_search_and_reports_use_zero_fraction_home_amounts(
         )
         assert confirmed.status_code == 200, confirmed.text
         assert (
-            f'<span class="sr-only">{month} 合计 </span>¥1234'
+            f'<span class="sr-only">{month} 合计 </span>¥1,234'
             in confirmed.text
         )
         assert f"{month} · 共 1 笔 ·" in confirmed.text
@@ -269,8 +269,9 @@ def test_confirmed_search_and_reports_use_zero_fraction_home_amounts(
         )
         assert reports.status_code == 200, reports.text
         report_text = _RenderedText(reports.text).text
-        assert "六月均值 ¥206 " in report_text
-        assert "本月支出 ¥1234 " in report_text
+        assert "六个月平均 ¥206" in report_text
+        year, month_number = month.split("-")
+        assert f"本月净支出 · {year}年{int(month_number)}月 ¥1,234" in report_text
         assert "¥12.34" not in report_text
         assert '"amount_yuan": 1234' in reports.text
     finally:

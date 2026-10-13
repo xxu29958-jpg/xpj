@@ -5,6 +5,7 @@ import com.ticketbox.data.remote.dto.ExpenseCorrectionRequestDto
 import com.ticketbox.data.remote.dto.ExpenseManualCreateRequestDto
 import com.ticketbox.data.remote.dto.ExpenseTimeInputDto
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
+import com.ticketbox.data.remote.dto.MemberRepaymentProposalCreateRequestDto
 import kotlinx.coroutines.runBlocking
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Protocol
@@ -19,7 +20,7 @@ import kotlin.test.assertTrue
 
 class ApiClientAccountingTimeCompatibilityTest {
     @Test fun onlyCommandsWithNewTimeMeaningRequireTheDeclaredCapability() = runBlocking {
-        for (version in listOf(null, 1, 2)) for (kind in listOf("create", "patch", "correction")) {
+        for (version in listOf(null, 1, 2)) for (kind in listOf("create", "patch", "correction", "repayment-proposal")) {
             for (withTime in listOf(false, true)) for (preVersioned in listOf(false, true)) {
                 verifyCommand(version, kind, withTime, preVersioned)
             }
@@ -65,11 +66,13 @@ class ApiClientAccountingTimeCompatibilityTest {
                 tags = null, valueScore = null, regretScore = null, timeInput = time), "original-key")
             "correction" -> api.correctExpense("9", ExpenseCorrectionRequestDto(7, "Original",
                 timeInput = time?.let(CorrectionOptionalTimeInput::changed) ?: CorrectionOptionalTimeInput.unchanged()), "original-key")
+            "repayment-proposal" -> api.createRepaymentProposal("original-debt",
+                MemberRepaymentProposalCreateRequestDto(123, note = "Original", timeInput = time), "original-key")
         }
     }
 
     private fun runtimeJson(version: Int?): String {
-        val capability = version?.let { "\"accounting_time_input_version\":$it," }.orEmpty()
+        val capability = version?.let { "\"accounting_time_input_version\":$it,\"repayment_time_input_version\":$it," }.orEmpty()
         return """{"api_version":"$CURRENT_TICKETBOX_API_VERSION","write_compatibility":"compatible",
             "capabilities":{$capability"currency":{"request_binding":"1:1:CNY"}}}"""
     }

@@ -34,6 +34,7 @@ internal class LaunchActionState {
     private var actions by mutableStateOf<List<LaunchAction>>(emptyList(), referentialEqualityPolicy())
     private var acceptingId by mutableStateOf<String?>(null)
     private var retryId by mutableStateOf<String?>(null)
+    private var approvedId by mutableStateOf<String?>(null)
     var uploadAttempt by mutableStateOf(0)
         private set
 
@@ -41,6 +42,7 @@ internal class LaunchActionState {
     val pendingUpload: LaunchAction.UploadSharedImages? get() = pending as? LaunchAction.UploadSharedImages
     val acceptingUpload: Boolean get() = acceptingId != null
     val awaitingUploadRetry: Boolean get() = retryId != null && retryId == pendingUpload?.selection?.batchId
+    val uploadApproved: Boolean get() = approvedId != null && approvedId == pendingUpload?.selection?.batchId
 
     fun post(action: LaunchAction) {
         if (action is LaunchAction.UploadSharedImages) {
@@ -67,6 +69,7 @@ internal class LaunchActionState {
         if (index < 0) return null
         actions = actions.filterIndexed { position, _ -> position != index }
         if (accepted is LaunchAction.UploadSharedImages && retryId == accepted.selection.batchId) retryId = null
+        if (accepted is LaunchAction.UploadSharedImages && approvedId == accepted.selection.batchId) approvedId = null
         return accepted
     }
 
@@ -80,7 +83,7 @@ internal class LaunchActionState {
 
     fun beginUpload(action: LaunchAction.UploadSharedImages, binding: LogicalSessionBinding): Boolean {
         val current = pendingUpload ?: return false
-        if (current.selection.batchId != action.selection.batchId || acceptingUpload || awaitingUploadRetry) return false
+        if (current.selection.batchId != action.selection.batchId || acceptingUpload || awaitingUploadRetry || !uploadApproved) return false
         val originalBinding = current.selection.freezeBinding(binding)
         action.selection.freezeBinding(originalBinding)
         acceptingId = current.selection.batchId
@@ -90,6 +93,7 @@ internal class LaunchActionState {
     fun finishUpload(action: LaunchAction.UploadSharedImages, accepted: Boolean) {
         if (acceptingId != action.selection.batchId) return
         acceptingId = null
+        approvedId = null
         if (accepted) consume(action) else retryId = action.selection.batchId
     }
 
@@ -97,7 +101,20 @@ internal class LaunchActionState {
         val count = pendingUpload?.selection?.uris?.size ?: return
         if (acceptingUpload || count !in 1..MAX_UPLOAD_BATCH_ITEMS) return
         retryId = null
+        approvedId = pendingUpload?.selection?.batchId
         uploadAttempt++
+    }
+
+    /** Before any acceptance attempt, removing a picture creates a new immutable selection. */
+    fun removeUploadImage(position: Int) {
+        val action = pendingUpload ?: return
+        if (acceptingUpload || action.selection.expectedBinding != null || position !in action.selection.uris.indices) return
+        val remaining = action.selection.uris.filterIndexed { index, _ -> index != position }
+        val replacement = remaining.takeIf { it.isNotEmpty() }?.let {
+            LaunchAction.UploadSharedImages(LaunchIntentRequest.ShareImages(java.util.UUID.randomUUID().toString(), it, action.selection.timezone))
+        }
+        consume(action)
+        if (replacement != null) actions = listOf(replacement) + actions
     }
 
     fun cancelUploadSelection() {

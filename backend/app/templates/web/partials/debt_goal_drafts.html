@@ -1,0 +1,6 @@
+{% if debtgoal_draft_scope %}
+<div data-debtgoal-draft-shelf data-draft-scope="{{ debtgoal_draft_scope|tojson|forceescape }}" hidden>
+  <p class="meta">此浏览器保留的还债目标任务</p>
+  <ul data-debtgoal-draft-list></ul>
+</div>
+{% endif %}

@@ -41,7 +41,9 @@ class ReferenceJourney:
     def native_row_action(self, label, action):
         # Compose exposes these list labels as siblings in one panel, not row
         # ancestors. Match the live touch bounds of the button beside the label.
+        scrolls = 0
         def locate():
+            nonlocal scrolls
             root = self.native.tree()
             parents = {child: parent for parent in root.iter() for child in parent}
             labels = [node for node in root.iter("node") if node.get("text") == label]
@@ -57,21 +59,45 @@ class ReferenceJourney:
                     _, y1, right, y2 = self.native.bounds(text)
                     if right <= left and top <= (y1 + y2) // 2 <= bottom:
                         matches.append(button)
+            if not matches:
+                scrolls = self._reveal_row_menu(root, labels, scrolls)
             return matches if len(matches) == 1 else None
         button = wait_for(locate, f"The visible {action} beside {label} cannot be identified")[0]
         self.native.tap(button)
 
+    def _reveal_row_menu(self, root, labels, scrolls):
+        if len(labels) != 1 or scrolls >= 2:
+            return scrolls
+        scrollable = [node for node in root.iter("node") if node.get("scrollable") == "true"]
+        if not scrollable:
+            return scrolls
+        _, top, _, bottom = self.native.bounds(max(scrollable, key=lambda node: self.native.bounds(node)[3]))
+        if self.native.bounds(labels[0])[1] <= top + (bottom - top) * 3 // 4:
+            return scrolls
+        # The label's first pixels can be visible while its adjacent menu is still below the viewport.
+        self.native.scroll_viewport(list(root.iter("node")), toward_start=False)
+        return scrolls + 1
+
     def tag(self, name):
         return next(row for row in self.facts()["tags"] if row["name"] == name)
+
+    def tag_editor(self, public_id, action):
+        self.goto("/web/tags")
+        row = self.page.locator(f'#tag-{public_id}')
+        row.locator("summary").click()
+        row.locator(f'a[href*="action={action}"]').click()
+        return self.form(f"/web/tags/{public_id}/{action}")
 
     def rule(self, identity):
         return next(row for row in self.facts()["rules"] if row["id"] == identity)
 
     def batch(self, expense_ids, field, value):
         self.goto("/web/confirmed")
+        self.page.get_by_role("button", name="选择", exact=True).click()
         for identity in expense_ids:
             self.page.locator(f'.row-check[data-id="{identity}"]').check()
         form = self.page.locator("#bulk-form")
+        form.get_by_text("批量更正", exact=True).click()
         form.locator('[name="reason"]').fill("资料库联动核对")
         form.locator(f'[name="{field}"]').fill(value)
         form.locator(f'button[name="action"][value="set_{field}"]').click()
@@ -84,6 +110,8 @@ class ReferenceJourney:
         page.locator(f'input[name="ledger_id"][value="{self.fixture.ledger_id}"]').check()
         self.form("/web/auth/local").locator('button[type="submit"]').click()
         page.wait_for_url("**/web/expenses/new*")
+        self.native.bind(self.fixture.pairing_code, self.port)
+        prepared = self.prepare_references()
         for index, (amount, category) in enumerate((("12.34", "其他"), ("25.00", "其他"), ("7.50", "Library")), 1):
             self.goto("/web/expenses/new")
             form = self.form("/web/expenses/new")
@@ -97,20 +125,48 @@ class ReferenceJourney:
         records = self.facts()["expenses"]
         self.batch([row["id"] for row in records[:2]], "tags", "Trip")
         self.batch([records[2]["id"]], "tags", "Monthly")
+        assert self.tag("Trip")["id"] == prepared["tags"], "First use replaced the prepared tag identity"
+        assert next(row["id"] for row in self.facts()["categories"] if row["name"] == "Library") == prepared["categories"]
         self.goto("/web/confirmed?tag=Trip")
         page.get_by_text("保存当前视图", exact=True).click()
         form = self.form("/web/saved-views")
         form.locator('[name="name"]').fill("TripView")
-        form.get_by_role("button", name="保存视图", exact=True).click()
+        form.get_by_role("button", name="保存这组查询", exact=True).click()
         self.expect(lambda state: len(state["views"]) == 1, "The actual saved view was not retained")
         assert self.facts()["views"][0]["tag_id"] == self.tag("Trip")["id"]
-        self.native.bind(self.fixture.pairing_code, self.port)
+
+    def prepare_references(self):
+        prepared = {}
+        for kind, collection, label, name in (("tag", "tags", "标签", "Trip"),
+                                              ("category", "categories", "分类", "Library")):
+            if kind == "category":
+                self.native_open(label)
+                self.native.click(f"添加{label}")
+                self.native.fill(name, label=f"{label}名称")
+                self.native.click(f"添加{label}", bottom=True)
+                wait_for(lambda name=name: self.native.has(f"已确认添加「{name}」。"), "The native creation did not confirm its receipt")
+                self.native.capture("reference-prepared-category-before-first-use")
+                self.goto(f"/web/{collection}")
+                assert name in self.page.inner_text("main"), "Web did not observe the native-created category"
+            else:
+                self.goto(f"/web/{collection}")
+                self.page.get_by_role("link", name=f"添加{label}", exact=True).click()
+                form = self.form(f"/web/reference/{kind}/create")
+                form.get_by_role("textbox", name=f"{label}名称", exact=True).fill(name)
+                form.get_by_role("button", name=f"添加{label}", exact=True).click()
+                self.page.wait_for_url(f"**/web/{collection}?*")
+            self.expect(lambda state, name=name, collection=collection: any(row["name"] == name for row in state[collection]),
+                "Independent reference creation did not commit")
+            assert not self.facts()["expenses"], "Preparing reference choices created a financial fact"
+            prepared[collection] = next(row["id"] for row in self.facts()[collection] if row["name"] == name)
+            self.capture(f"prepared-{kind}-before-first-use")
+        return prepared
 
     def tag_edits(self):
         native, page = self.native, self.page
         original = self.tag("Trip")
-        self.goto("/web/tags")
-        stale = self.form(f'/web/tags/{original["id"]}/rename')
+        stale = self.tag_editor(original["id"], "rename")
+        original_version = stale.locator('[name="expected_row_version"]').input_value()
         stale.locator('[name="name"]').fill("WebDraft")
         self.native_open("标签")
         native.reveal_any("Trip")
@@ -132,17 +188,21 @@ class ReferenceJourney:
         native.click("保存")
         self.expect(lambda state: any(row["id"] == original["id"] and row["name"] == "TripNew" for row in state["tags"]),
                     "The original native rename could not continue")
-        stale.get_by_role("button", name="重命名", exact=True).click()
+        stale.locator('[data-tag-submit]').click()
+        wait_for(lambda: stale.get_attribute("data-tag-draft-phase") == "blocked", "The stale original was not refused")
         assert self.form(f'/web/tags/{original["id"]}/rename').locator('[name="name"]').input_value() == "WebDraft"
+        page.reload()
+        wait_for(lambda: stale.get_attribute("data-tag-draft-phase") == "blocked", "Reload did not resume the rejected rename")
+        assert stale.locator('[name="name"]').input_value() == "WebDraft"
+        assert stale.locator('[name="expected_row_version"]').input_value() == original_version
         assert self.tag("TripNew")["id"] == original["id"], "A stale Web editor overwrote the native result"
         self.capture("tag-stale-web-input")
         view = self.facts()["views"][0]
         self.goto(f'/web/saved-views/{view["id"]}/open')
         assert page.locator('.row-check').count() == 2 and "TripNew" in page.inner_text("main")
 
-        self.goto("/web/tags")
         merge_action = f'/web/tags/{original["id"]}/merge'
-        merge = self.form(merge_action)
+        merge = self.tag_editor(original["id"], "merge")
         target = self.tag("Monthly")
         original_target = f'{target["id"]}:{target["row_version"]}'
         original_version = merge.locator('[name="expected_row_version"]').input_value()
@@ -153,20 +213,31 @@ class ReferenceJourney:
         native.click("保存")
         self.expect(lambda state: any(row["id"] == target["id"] and row["name"] == "MonthlyNew" for row in state["tags"]),
                     "The native target rename did not establish the real Web merge conflict")
-        self.confirm(merge)
+        merge.locator('[data-tag-submit]').click()
+        wait_for(lambda: merge.get_attribute("data-tag-draft-phase") == "blocked", "The stale merge was not refused")
+        page.reload()
+        wait_for(lambda: merge.get_attribute("data-tag-draft-phase") == "blocked", "Reload did not resume the rejected merge")
         self.capture("tag-merge-conflict-original-choice")
         retained = self.form(merge_action)
         assert retained.locator('[name="target"]').input_value() == original_target, "The rejected Web merge lost its chosen target"
         assert retained.locator('[name="expected_row_version"]').input_value() == original_version
         assert not self.tag("TripNew")["deleted"], "The stale merge committed instead of refusing"
         refreshed_target = self.tag("MonthlyNew")
-        retained.locator('[name="target"]').select_option(f'{target["id"]}:{refreshed_target["row_version"]}')
-        self.confirm(retained)
+        before_review = self.facts()
+        with page.expect_navigation(wait_until="domcontentloaded"):
+            retained.locator('[data-tag-review]').click()
+        wait_for(lambda: retained.get_attribute("data-tag-draft-phase") == "editing", "Explicit review did not prepare the original merge")
+        assert self.facts() == before_review, "Review must not mutate reference or expense facts"
+        assert retained.locator('[name="target"]').input_value() == f'{target["id"]}:{refreshed_target["row_version"]}'
+        retained.locator('[data-tag-submit]').click()
         self.expect(lambda state: any(row["id"] == original["id"] and row["deleted"] for row in state["tags"]),
-                    "The explicitly reselected Web merge did not commit")
+                    "The explicitly reviewed Web merge did not commit")
         self.goto("/web/saved-views")
-        assert "原标签已被删除或合并" in page.inner_text("main")
+        assert "原标签待修复" in page.inner_text("main")
         assert page.locator(f'a[href*="/web/saved-views/{view["id"]}/open"]').count() == 0
+        page.locator(f'a.product-entry[href*="edit={view["id"]}"]').click()
+        assert "原标签已被删除或合并" in page.inner_text("main")
+        assert self.facts()["views"][0] == view, "Opening the repair task changed the saved query"
         self.capture("missing-tag-view-requires-repair")
         records = self.facts()["expenses"]
         self.batch([records[0]["id"]], "tags", "Later")
@@ -190,6 +261,7 @@ class ReferenceJourney:
 
     def run(self):
         from scripts.reference_journey_merchants import organize_merchants
+        from scripts.reference_journey_queries import saved_queries
         from scripts.reference_journey_rules import organize_rules
         from scripts.reference_journey_views import qualify_consumers
 
@@ -197,6 +269,7 @@ class ReferenceJourney:
         self.tag_edits()
         organize_merchants(self)
         organize_rules(self)
+        saved_queries(self)
         qualify_consumers(self)
         result = self.facts()
         assert [row["amount"] for row in result["expenses"]] == [1234, 2500, 750]

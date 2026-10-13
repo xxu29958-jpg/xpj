@@ -30,7 +30,7 @@ def _repayment_view(fact, home: str) -> dict:
     return {
         "public_id": fact.public_id,
         "amount_label": _home_amount_label(fact.amount_cents, home),
-        "date_text": _day_label(fact.paid_at),
+        "date_text": _payment_day_label(fact),
         "original_label": (
             minor_amount_label(fact.original_amount_minor, fact.original_currency_code)
             if fact.original_currency_code and fact.original_amount_minor is not None else ""
@@ -51,7 +51,7 @@ def _proposal_view(event: DebtActivityResponse) -> dict:
         return {}
     view = _resolved_proposal_row(proposal)
     view.update({
-        "paid_at": _day_label(proposal.paid_at),
+        "paid_at": _payment_day_label(proposal),
         "confirmed_amount_label": (
             _home_amount_label(proposal.confirmed_amount_cents, proposal.home_currency_code)
             if event.kind == "proposal_resolved" and proposal.confirmed_amount_cents is not None else ""
@@ -62,6 +62,17 @@ def _proposal_view(event: DebtActivityResponse) -> dict:
         ),
     })
     return view
+
+
+def _payment_day_label(payment) -> str:
+    evidence = payment.accounting_time
+    if evidence is None:
+        return _day_label(payment.paid_at)
+    day = evidence.user_local_date or evidence.accounting_date
+    label = day.isoformat() if day else "日期未记录"
+    if evidence.accounting_date is not None and evidence.accounting_date != day:
+        label += f" · 账务归属 {evidence.accounting_date.isoformat()}"
+    return label
 
 
 def _split_view(event: DebtActivityResponse, home: str) -> dict:

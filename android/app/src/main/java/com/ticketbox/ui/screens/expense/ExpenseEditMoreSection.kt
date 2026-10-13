@@ -1,5 +1,6 @@
 package com.ticketbox.ui.screens.expense
 
+import com.ticketbox.ui.screens.settings.SettingsEntryRowOptions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
@@ -14,10 +15,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
-import com.ticketbox.ui.components.AppAdaptiveContentActionRow
 import com.ticketbox.ui.components.AppCompactChips
 import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.screens.settings.SettingsEntryRow
 
 internal const val TAG_TAGS_FIELD = "expense-edit-tags-field"
 internal const val TAG_VALUE_SCORE_FIELD = "expense-edit-value-score-field"
@@ -81,6 +82,7 @@ internal data class ExpenseEditMoreSectionActions(
 internal fun ExpenseEditMoreSection(
     state: ExpenseEditMoreSectionState,
     actions: ExpenseEditMoreSectionActions,
+    noteContent: @Composable () -> Unit,
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -92,6 +94,7 @@ internal fun ExpenseEditMoreSection(
         )
 
         if (state.moreExpanded) {
+            noteContent()
             ExpenseEditMoreExpandedFields(
                 state = MoreExpandedState(
                     tags = state.tags,
@@ -126,30 +129,13 @@ private fun ExpenseEditMoreHeader(
     moreExpanded: Boolean,
     onToggleMore: () -> Unit,
 ) {
-    AppAdaptiveContentActionRow(
-        modifier = Modifier.fillMaxWidth(),
-        content = {
-            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
-                Text(stringResource(R.string.expense_edit_more_title), style = MaterialTheme.typography.titleSmall)
-                Text(
-                    text = stringResource(R.string.expense_edit_more_subtitle),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-        },
-        action = { actionModifier ->
-            AppSecondaryButton(
-                text = if (moreExpanded) {
-                    stringResource(R.string.expense_edit_more_collapse_button)
-                } else {
-                    stringResource(R.string.expense_edit_more_expand_button)
-                },
-                modifier = actionModifier,
-                onClick = onToggleMore,
-            )
-        },
-    )
+    SettingsEntryRow(
+            title = stringResource(R.string.expense_edit_more_title),
+            subtitle = stringResource(R.string.expense_edit_more_subtitle),
+            icon = R.drawable.ic_lucide_tag,
+            onClick = onToggleMore,
+            options = SettingsEntryRowOptions(expanded = moreExpanded, modifier = Modifier.testTag("expense-edit-more-row")),
+        )
 }
 
 @Composable

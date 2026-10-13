@@ -13,11 +13,14 @@ from sqlalchemy.orm import Session
 from starlette.responses import Response
 
 from app.database import get_db
+from app.error_reporting import report_http_error, retain_handled_error
 from app.errors import AppError
 from app.routes import _web_debt_write
+from app.routes._web_accounting_time import accounting_time_form_fields, parse_web_accounting_time
 from app.routes._web_debt_kind import submit_kind
 from app.routes._web_debt_money import parse_web_debt_major_minor
 from app.routes._web_debt_repayment import (
+    REPAYMENT_TIME_FIELDS,
     render_repayment_recovery,
     require_repayment_binding,
 )
@@ -116,45 +119,53 @@ def _actor_account_id(request: Request, db: Session, ledger_id: str) -> int:
     return account_id
 
 
-def _repayment_error(exc: Exception, *, attempted: bool) -> dict:
+def _repayment_error(exc: Exception, *, attempted: bool, message_for: Callable[[AppError], str] = _error_message) -> dict:
     """Classify whether the original command can be corrected or only recovered."""
     status, code, message = 422, "", "还款信息不完整，请检查后重试。"
     if isinstance(exc, AppError):
-        status, code, message = exc.status_code, exc.error, _error_message(exc)
+        status, code = exc.status_code, exc.error
+        message = message_for(exc) if status < 500 else _error_message(exc)
     elif isinstance(exc, SQLAlchemyError):
         status, message = 503, "还款结果暂未确认，请继续核实原提交。"
     result = "blocked"
     if status >= 500 or code == "idempotency_key_in_progress":
         result = "submitted"
-    elif code in {"debt_overpay_rejected", "debt_amount_invalid"} or not attempted and status == 422:
+    elif code in {"debt_overpay_rejected", "debt_amount_invalid", "repayment_proposal_amount_invalid"} or not attempted and status == 422:
         result = "rejected"
     return {"status_code": status, "error": message, "result": result, "rejected": code == "state_conflict"}
 
 
 def _repayment_outcome(
-    request, db, *, options, selected_id, public_id, values=None,
+    request: Request, db: Session, *, options, selected_id, public_id, values=None,
     error="", result="", status_code=200, ack=None,
-    rejected=False,
-):
+    rejected=False, kind="repayment",
+) -> Response:
     try:
         return _render_debt_detail(
             request, db, options=options, selected_id=selected_id, public_id=public_id,
-            action_kind="repayment" if values is not None else None,
+            action_kind=kind if values is not None or ack is not None else None,
             action_error=error, action_draft=values, status_code=status_code,
             repayment_ack=ack, repayment_result=result,
             repayment_rejected=rejected,
         )
-    except (AppError, SQLAlchemyError):
+    except (AppError, SQLAlchemyError) as exc:
         db.rollback()
+        if status_code >= 500:
+            if getattr(request.state, "reporting_error", None) is None:
+                retain_handled_error(request, exc)
+        elif isinstance(exc, SQLAlchemyError) or exc.status_code >= 500:
+            # An accepted command keeps its receipt and HTTP status even when
+            # the independent detail read fails; report that read through the same sink.
+            report_http_error(request, status_code, error=exc)
         return render_repayment_recovery(
             request, db, options=options, selected_id=selected_id, public_id=public_id,
-            values=values, error=error, result=result, status_code=status_code, ack=ack,
+            values=values, error=error, result=result, status_code=status_code, ack=ack, kind=kind,
         )
 
 
 @router.get("/{public_id}/repayments", include_in_schema=False)
 def web_repayment_return(public_id: str, ledger_id: str = "", _local: None = LocalOnly):
-    return _web_redirect(f"/web/debts/{public_id}", ledger_id)
+    return _web_redirect(f"/web/debts/{public_id}", ledger_id, task="repayment")
 
 
 @router.post("/{public_id}/repayments")
@@ -168,6 +179,7 @@ def web_record_repayment(
     amount_major: str = Form(default=""),
     paid_at: str = Form(default=""),
     paid_at_timezone: str = Form(default=""),
+    time_fields: dict[str, str] | None = Depends(accounting_time_form_fields),
     expected_row_version: str = Form(default=""),
     idempotency_key: str = Form(default=""),
     csrf_token: str = Form(default=""),
@@ -183,6 +195,8 @@ def web_record_repayment(
         "paid_at_timezone": paid_at_timezone or _web_debt_write.accounting_zone().key,
         "expected_row_version": expected_row_version, "idempotency_key": idempotency_key,
     }
+    time_fields = {name: value for name, value in (time_fields or {}).items() if name in REPAYMENT_TIME_FIELDS}
+    values.update(time_fields)
     attempted = False
     try:
         require_repayment_binding(request, db, values=values, public_id=public_id)
@@ -197,9 +211,15 @@ def web_record_repayment(
         # existing record denomination and date interpretation in the return form.
         values["home_currency_code"] = debt.home_currency_code
         values["debt_public_id"] = public_id
+        time_input = parse_web_accounting_time(None, {
+            **time_fields, "user_local_date": paid_at, "source_timezone": values["paid_at_timezone"],
+        } if time_fields else None)
         payload = RepaymentCreateRequest(
             amount_cents=parse_web_debt_major_minor(amount_major, currency_code=debt.home_currency_code, allow_negative=False),
-            paid_at=_parse_paid_at(paid_at, values["paid_at_timezone"]), expected_row_version=expected,
+            expected_row_version=expected,
+            **({"time_input": time_input} if time_input is not None else {
+                "paid_at": _parse_paid_at(paid_at, values["paid_at_timezone"]),
+            }),
         )
         attempted = True
         receipt = record_repayment_idempotently(
@@ -208,6 +228,7 @@ def web_record_repayment(
         )
     except (AppError, ValidationError, SQLAlchemyError) as exc:
         db.rollback()
+        retain_handled_error(request, exc)
         return _repayment_outcome(
             request, db, options=options, selected_id=selected_id, public_id=public_id,
             values=values, **_repayment_error(exc, attempted=attempted),

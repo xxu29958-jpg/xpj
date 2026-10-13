@@ -38,6 +38,12 @@
   try {
     let loading = loaded();
     frame.src = spec.open; document.body.append(frame); await loading;
+    if (spec.kind === 'create') {
+      if (form()) throw Error('reading the goal list also opened a creation form');
+      const entry = frame.contentDocument.querySelector('a[href*="new_goal=1"]');
+      if (!entry) throw Error('the goal list has no creation entry');
+      loading = loaded(); entry.click(); await loading;
+    }
     const deadline = performance.now() + 2000;
     while (field('name').readOnly && performance.now() < deadline) await pause(25);
     if (field('name').readOnly) throw Error('original goal cannot be edited');
@@ -46,6 +52,15 @@
       field(name).dispatchEvent(new frame.contentWindow.Event('input', {bubbles: true}));
     }
     await pause(100); result.before = snapshot();
+    if (spec.kind === 'create') {
+      // The older v1 record has all original financial fields, but no archive-navigation field.
+      const key = 'ticketbox:goal-create-draft:v1:' + result.before.fields.idempotency_key;
+      const original = JSON.parse(localStorage.getItem(key));
+      delete original.values.return_include_archived;
+      localStorage.setItem(key, JSON.stringify(original));
+      result.before.fields.return_include_archived = '';
+      result.legacyNavigationMissing = true;
+    }
     stage = 'reload without losing original goal';
     loading = loaded(); frame.contentWindow.location.reload(); await loading;
     result.after = await restored();
@@ -55,6 +70,12 @@
     stage = 'close and reopen from current month';
     frame.remove(); frame = document.createElement('iframe');
     loading = loaded(); frame.src = spec.reopen; document.body.append(frame); await loading;
+    if (spec.kind === 'create') {
+      await until(() => frame.contentDocument.querySelector('[data-goal-draft-list] a'));
+      const original = frame.contentDocument.querySelector('[data-goal-draft-list] a');
+      result.shelfHref = original.href;
+      loading = loaded(); original.click(); await loading;
+    }
     result.reopened = await restored();
     stage = 'publish the original with an unknown receipt';
     form().requestSubmit(submit());
@@ -62,8 +83,14 @@
     result.unknown = snapshot();
     result.frozen = field('name').readOnly && field('target_amount_yuan').readOnly;
     stage = 'reopen unresolved original after later goal changes';
-    loading = loaded(); frame.contentWindow.location.reload(); await loading;
-    await until(() => form().dataset.goalDraftPhase === 'blocked' && !submit().disabled);
+    loading = loaded();
+    if (spec.kind === 'create') {
+      const legacy = new URL(frame.contentWindow.location.href);
+      legacy.searchParams.delete('new_goal');
+      frame.src = legacy.href;
+    } else frame.contentWindow.location.reload();
+    await loading;
+    await until(() => form()?.dataset.goalDraftPhase === 'blocked' && !submit().disabled);
     result.unresolved = snapshot();
     result.archived = form().dataset.goalArchived === 'true';
     stage = 'accept same original then return to the original task';

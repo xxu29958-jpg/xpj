@@ -142,7 +142,7 @@ def _receipt_record(result: dict[str, object]) -> dict[str, object]:
     node = _receipt_business_body(source,
         redact_task=result.get("response_body_redaction_reason") == "personal_task_scope")
     is_original_command = (node.get("operation") in {
-        "verify_original", "replenish_original", "retry_original_cleanup", "cancel_original_cleanup"
+        "attach_original", "verify_original", "replenish_original", "retry_original_cleanup", "cancel_original_cleanup"
     } and node.get("sha256") is not None)
     expense_id = node.get("id", node.get("expense_id"))
     if "image_path" in node:

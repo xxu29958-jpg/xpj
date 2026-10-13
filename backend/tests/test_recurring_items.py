@@ -45,12 +45,16 @@ def test_recurring_candidate_confirmation_service_creates_item_directly() -> Non
             tenant_id="owner",
             payload=payload,
             timezone_name="UTC",
+            idempotency_key=str(uuid4()),
         )
-        assert item.tenant_id == "owner"
+        assert item.ledger_id == "owner"
         assert item.merchant_key == "chatgpt plus"
         assert item.baseline_amount_cents == 20000
         assert item.occurrence_count == 3
         assert item.next_expected_date.isoformat() == "2026-06-05"
+        stored = db.scalar(select(RecurringItem).where(RecurringItem.public_id == item.public_id))
+        assert stored.tenant_id == "owner" and stored.source == "candidate"
+        assert stored.last_seen_at == last_seen and stored.occurrence_count == 3
 
 
 def test_candidate_confirmation_rejects_normalized_merchant_key_overflow(
@@ -69,7 +73,7 @@ def test_candidate_confirmation_rejects_normalized_merchant_key_overflow(
 
     rejected = client.post(
         "/api/recurring/from-candidate?timezone=UTC",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"home_currency_code": "CNY",
             "merchant": expanding_merchant,
             "amount_cents": 20000,
@@ -113,11 +117,12 @@ def _confirm_candidate(
     identity,
     merchant: str = "ChatGPT Plus",
     amount_cents: int = 20000,
+    key: str | None = None,
 ) -> dict:
     last_seen = _seed_monthly_candidate(merchant=merchant, amount_cents=amount_cents)
     response = client.post(
         "/api/recurring/from-candidate?timezone=UTC",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": key or str(uuid4())},
         json={"home_currency_code": "CNY",
             "merchant": merchant,
             "amount_cents": amount_cents,
@@ -147,7 +152,11 @@ def _assert_permission_denied(response, *, label: str) -> None:
 
 
 def test_recurring_candidate_confirm_creates_item_and_is_idempotent(client: TestClient, *, identity) -> None:
-    item = _confirm_candidate(client, identity=identity)
+    missing_key = client.post("/api/recurring/from-candidate?timezone=UTC", headers=identity.app_headers,
+        json={"home_currency_code": "CNY", "merchant": "ChatGPT Plus", "amount_cents": 20000})
+    assert missing_key.status_code == 422 and missing_key.json()["error"] == "idempotency_key_required"
+    key = str(uuid4())
+    item = _confirm_candidate(client, identity=identity, key=key)
 
     assert item["ledger_id"] == "owner"
     assert item["merchant"] == "ChatGPT Plus"
@@ -163,7 +172,7 @@ def test_recurring_candidate_confirm_creates_item_and_is_idempotent(client: Test
 
     again = client.post(
         "/api/recurring/from-candidate?timezone=UTC",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": key},
         json={"home_currency_code": "CNY",
             "merchant": "ChatGPT Plus",
             "amount_cents": 20000,
@@ -173,11 +182,32 @@ def test_recurring_candidate_confirm_creates_item_and_is_idempotent(client: Test
         },
     )
     assert again.status_code == 200, again.json()
-    assert again.json()["public_id"] == item["public_id"]
+    assert again.json() == item
 
     listed = client.get("/api/recurring/items", headers=identity.app_headers)
     assert listed.status_code == 200, listed.json()
     assert [entry["public_id"] for entry in listed.json()["items"]] == [item["public_id"]]
+
+
+    changed = client.patch(f'/api/recurring/items/{item["public_id"]}',
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"home_currency_code": "CNY", "expected_row_version": item["row_version"],
+            "baseline_amount_cents": 27000, "next_expected_date": "2026-12-19"})
+    assert changed.status_code == 200, changed.text
+    archived = client.post(f'/api/recurring/items/{item["public_id"]}/archive', headers=identity.app_headers)
+    assert archived.status_code == 200, archived.text
+    history_before = client.get(f'/api/recurring/items/{item["public_id"]}/history', headers=identity.app_headers).json()
+    original = {"home_currency_code": "CNY", "merchant": "ChatGPT Plus", "amount_cents": 20000}
+    replay = client.post("/api/recurring/from-candidate?timezone=UTC",
+        headers={**identity.app_headers, "Idempotency-Key": key}, json=original)
+    assert replay.status_code == 200 and replay.json() == item
+    mismatch = client.post("/api/recurring/from-candidate?timezone=UTC",
+        headers={**identity.app_headers, "Idempotency-Key": key}, json={**original, "next_expected_date": None})
+    assert mismatch.status_code == 422 and mismatch.json()["error"] == "idempotency_key_reused"
+    current = client.get(f'/api/recurring/items/{item["public_id"]}', headers=identity.app_headers).json()
+    assert current["status"] == "archived" and current["baseline_amount_cents"] == 27000
+    assert current["next_expected_date"] == "2026-12-19"
+    assert client.get(f'/api/recurring/items/{item["public_id"]}/history', headers=identity.app_headers).json() == history_before
 
 
 def test_recurring_candidate_confirm_uses_server_observation_not_client_provenance(
@@ -189,7 +219,7 @@ def test_recurring_candidate_confirm_uses_server_observation_not_client_provenan
 
     response = client.post(
         "/api/recurring/from-candidate?timezone=UTC",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"home_currency_code": "CNY",
             "merchant": "ChatGPT Plus",
             "amount_cents": 20_000,
@@ -207,7 +237,14 @@ def test_recurring_candidate_confirm_uses_server_observation_not_client_provenan
     assert body["confidence"] == "high"
 
 
-def test_recurring_candidate_next_expected_uses_local_expense_date(client: TestClient, *, identity) -> None:
+@pytest.mark.parametrize(("date_input", "expected_date"), [
+    ({}, "2026-06-01"),
+    ({"next_expected_date": None}, None),
+    ({"next_expected_date": "2026-10-12"}, "2026-10-12"),
+])
+def test_recurring_candidate_reminder_respects_explicit_choice_before_observed_default(
+    client: TestClient, *, identity, date_input: dict, expected_date: str | None,
+) -> None:
     merchant = "Boundary Billing"
     amount_cents = 9900
     last_seen = datetime(2026, 4, 30, 16, 30, tzinfo=UTC)
@@ -226,7 +263,7 @@ def test_recurring_candidate_next_expected_uses_local_expense_date(client: TestC
 
     response = client.post(
         "/api/recurring/from-candidate?timezone=Asia/Shanghai",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"home_currency_code": "CNY",
             "merchant": merchant,
             "amount_cents": amount_cents,
@@ -234,12 +271,20 @@ def test_recurring_candidate_next_expected_uses_local_expense_date(client: TestC
             "last_seen_at": last_seen.isoformat().replace("+00:00", "Z"),
             "confidence": "high",
             "frequency": "monthly",
+            **date_input,
         },
     )
 
     assert response.status_code == 200, response.json()
     assert response.json()["last_seen_at"] == "2026-04-30T16:30:00Z"
-    assert response.json()["next_expected_date"] == "2026-06-01"
+    assert response.json()["next_expected_date"] == expected_date
+    assert response.json()["next_due_date"] == expected_date
+    public_id = response.json()["public_id"]
+    persisted = client.get(f"/api/recurring/items/{public_id}", headers=identity.app_headers)
+    assert persisted.status_code == 200 and persisted.json()["next_expected_date"] == expected_date
+    history = client.get(f"/api/recurring/items/{public_id}/history", headers=identity.app_headers)
+    assert history.status_code == 200, history.text
+    assert history.json()["items"][0]["snapshot"]["next_expected_date"] == expected_date
 
 
 def test_recurring_item_state_transitions(client: TestClient, *, identity) -> None:
@@ -302,7 +347,7 @@ def test_confirm_candidate_never_resurrects_archived_item(client: TestClient, *,
     last_seen = _seed_monthly_candidate(merchant="ChatGPT Plus", amount_cents=20000)
     response = client.post(
         "/api/recurring/from-candidate?timezone=UTC",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"home_currency_code": "CNY",
             "merchant": "ChatGPT Plus",
             "amount_cents": 20000,
@@ -354,7 +399,7 @@ def test_confirm_candidate_never_overwrites_manual_commitment(client: TestClient
     last_seen = _seed_monthly_candidate(merchant="ChatGPT Plus", amount_cents=20_000)
     confirmation = client.post(
         "/api/recurring/from-candidate?timezone=UTC",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"home_currency_code": "CNY",
             "merchant": "ChatGPT Plus",
             "amount_cents": 20_000,
@@ -420,7 +465,7 @@ def test_viewer_cannot_mutate_recurring_items(client: TestClient, *, identity) -
 
     create_response = client.post(
         "/api/recurring/from-candidate?timezone=UTC",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"home_currency_code": "CNY",
             "merchant": "ChatGPT Plus",
             "amount_cents": 20000,
@@ -589,7 +634,7 @@ def test_reversed_payment_cannot_support_a_candidate_until_its_reversal_is_voide
     payload = {key: candidate[key] for key in (
         "merchant", "home_currency_code", "amount_cents", "occurrence_count", "last_seen_at", "confidence",
     )}
-    stale = client.post("/api/recurring/from-candidate?timezone=UTC", headers=identity.app_headers, json=payload)
+    stale = client.post("/api/recurring/from-candidate?timezone=UTC", headers={**identity.app_headers, "Idempotency-Key": str(uuid4())}, json=payload)
     assert stale.status_code == 404, stale.text
     assert stale.json()["error"] == "recurring_candidate_not_found"
     listed = client.get("/api/recurring/items", headers=identity.app_headers)
@@ -607,7 +652,7 @@ def test_reversed_payment_cannot_support_a_candidate_until_its_reversal_is_voide
     candidates = client.get("/api/insights/recurring-candidates?timezone=UTC", headers=identity.app_headers)
     assert candidates.status_code == 200, candidates.text
     assert candidates.json()["items"] == [candidate]
-    accepted = client.post("/api/recurring/from-candidate?timezone=UTC", headers=identity.app_headers, json=payload)
+    accepted = client.post("/api/recurring/from-candidate?timezone=UTC", headers={**identity.app_headers, "Idempotency-Key": str(uuid4())}, json=payload)
     assert accepted.status_code == 200, accepted.text
     assert accepted.json()["occurrence_count"] == 2
     assert accepted.json()["baseline_amount_cents"] == 20000

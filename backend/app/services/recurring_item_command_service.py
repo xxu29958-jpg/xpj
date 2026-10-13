@@ -81,7 +81,7 @@ def _get_item(db: Session, *, tenant_id: str, public_id: str) -> RecurringItem:
     return item
 
 
-def _replayed_receipt(outcome: IdempotencyOutcome) -> RecurringItemResponse | None:
+def replay_recurring_receipt(outcome: IdempotencyOutcome) -> RecurringItemResponse | None:
     if outcome.kind is IdempotencyOutcomeKind.IN_PROGRESS:
         raise AppError("idempotency_key_in_progress", status_code=409)
     if outcome.kind is IdempotencyOutcomeKind.FINGERPRINT_MISMATCH:
@@ -127,7 +127,7 @@ def _claim_create_intent(
     )
 
 
-def _publish_receipt(db: Session, claim: ApiIdempotencyKey, item: RecurringItem) -> RecurringItemResponse:
+def publish_recurring_receipt(db: Session, claim: ApiIdempotencyKey, item: RecurringItem) -> RecurringItemResponse:
     dates = next_due_dates(db, tenant_id=item.tenant_id, items=[item])
     response = recurring_item_response(item, next_due_date=dates[item.id])
     mark_idempotency_succeeded(db, claim, resource_type="recurring_item", resource_id=item.public_id,
@@ -209,7 +209,7 @@ def create_manual_recurring_item(
         baseline_amount_cents=baseline_amount_cents,
         next_expected_date=next_expected_date,
     )
-    replayed = _replayed_receipt(outcome)
+    replayed = replay_recurring_receipt(outcome)
     if replayed is not None:
         return replayed
     item = _new_manual_item(
@@ -223,7 +223,7 @@ def create_manual_recurring_item(
     resolve_write_capability(db)
     _insert_manual_item(db, tenant_id=tenant_id, item=item)
     record_recurring_item_revision(db, item, change_kind="create", actor_account_id=actor_account_id)
-    return _publish_receipt(db, outcome.row, item)
+    return publish_recurring_receipt(db, outcome.row, item)
 
 
 def _merchant_updates(
@@ -493,7 +493,7 @@ def update_recurring_item(
             body=body, expected_row_version=expected_row_version),
         target_type="recurring_item",
     )
-    replayed = _replayed_receipt(claim)
+    replayed = replay_recurring_receipt(claim)
     if replayed is not None:
         return replayed
     item = _apply_recurring_item_update(
@@ -510,4 +510,4 @@ def update_recurring_item(
         next_expected_date_provided=next_expected_date_provided,
         actor_account_id=actor_account_id,
     )
-    return _publish_receipt(db, claim.row, item)
+    return publish_recurring_receipt(db, claim.row, item)

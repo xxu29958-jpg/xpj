@@ -24,19 +24,22 @@ class CreateDebtDispatcher(
             ?: return DispatchResult.Failure("debt_create_payload_unsupported", definitelyRejected = true)
         return try {
             val created = apiProvider(row).createDebt(payload.toCreateRequest(), key)
-            if (created.homeCurrencyCode != payload.homeCurrencyCode || created.ledgerId != row.ledgerId || created.publicId.isBlank()) {
+            if (!payload.acceptsReceipt(created, row.ledgerId)) {
+                logNetworkWarning("operation=Debt create receipt unverified")
                 DispatchResult.Failure("debt_create_response_unverified")
             } else DispatchResult.Success()
         } catch (error: CancellationException) {
             throw error
         } catch (error: HttpException) {
             classifyHttpError(error)
-        } catch (_: IOException) {
+        } catch (error: IOException) {
+            logNetworkWarning("operation=Debt create connection interrupted", error)
             DispatchResult.RetryableFailure("debt_create_connection_interrupted")
         } catch (_: RepositoryException) {
             DispatchResult.Failure("debt_create_binding_changed", definitelyRejected = true)
-        } catch (_: Exception) {
+        } catch (error: Exception) {
             // The request may already have committed. Retain the same intent for explicit recovery.
+            logNetworkWarning("operation=Debt create response unverified", error)
             DispatchResult.Failure("debt_create_response_unverified")
         }
     }

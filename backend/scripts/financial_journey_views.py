@@ -38,7 +38,7 @@ def _original(j, *, expected_net):
     assert download.failure() is None
     assert hashlib.sha256(target.read_bytes()).hexdigest() == j.original_digest, (
         "The authenticated original no longer matches its recorded bytes")
-    j.page.get_by_role("button", name="打开实际原图", exact=True).click()
+    # The current original page reads the authenticated image on entry.
     image = j.page.locator("[data-original-reviewed-image]")
     wait_for(lambda: image.is_visible() and image.evaluate("image => image.complete && image.naturalWidth > 0"),
         "The authenticated original did not render its actual image bytes")
@@ -60,7 +60,8 @@ def consumers(j, *, expected_net):
     assert "WebFinal" in j.page.inner_text("main")
     j.capture(f"ledger-net-{expected_net}")
     j.goto("/web/data-quality")
-    assert j.page.get_by_role("heading", name="数据体检", exact=True).is_visible()
+    assert j.page.get_by_role("heading", name="让记录再完整一点", exact=True).is_visible()
+    j.page.locator(".quality-details > summary").click()
     for label in ("待确认总数", "未分类", "已确认无图"):
         metric = j.page.locator(".quality-metric").filter(has=j.page.get_by_text(label, exact=True))
         assert metric.locator(".quality-metric-value").inner_text() == "0", label
@@ -88,7 +89,7 @@ def appearances(j):
     expense_id = j.facts()["id"]
     for theme in ("paper", "midnight"):
         page.set_viewport_size({"width": 1280, "height": 960})
-        j.goto(f"/web/expenses/{expense_id}/edit")
+        j.goto("/web/confirmed")
         page.locator("#appearance > summary").click()
         page.locator(f'#appearance [data-theme-mode="{theme}"]').click()
         wait_for(lambda theme=theme: page.locator("html").get_attribute("data-theme") == theme,
@@ -102,8 +103,9 @@ def appearances(j):
                 j.capture(f"{suffix}-{width}-{theme}")
         native.plan_home()
         native.click("打开账户与设置")
+        native.click("通知与外观")
         native.click("外观与主题")
-        native.click("浅色纸面 · 深绿点缀" if theme == "paper" else "柔和深色 · 浅绿点缀")
+        native.click("晨纸" if theme == "paper" else "玄夜")
         j.native_open()
         native.capture("financial-fact-" + theme)
         native.reveal_any("查看已送达的更正（2）", toward_start=True)
@@ -113,8 +115,10 @@ def appearances(j):
         native.capture("financial-original-submissions-" + theme)
         native.reveal_any("收起已送达的更正（2）", toward_start=True)
         native.click("收起已送达的更正（2）")
+        native.click("完整历史")
         native.reveal_any("WebDraft")
         native.capture("financial-history-" + theme)
+        native.back()
         native.reveal_any("更正这笔账单", toward_start=True)
         native.click("更正这笔账单")
         wait_for(lambda: native.has("更正原因（必填）"), "The themed correction editor did not open")

@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
+import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.ui.components.AppAdaptiveSupportingPane
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.design.AppSpacing
@@ -43,18 +44,35 @@ internal data class PendingReviewSheetHostState(
     val bulkTotal: Int,
     val reviewRemaining: Int,
     val statusMessage: String?,
+    val readOnly: Boolean = false,
+    val thumbnails: Map<Long, ProtectedImage> = emptyMap(),
+    val inputValues: com.ticketbox.viewmodel.PendingReviewValues = com.ticketbox.viewmodel.PendingReviewValues(),
+    val inputReady: Boolean = true,
+    val inputWriting: Boolean = false,
+    val inputNeedsReview: Boolean = false,
+    val inputError: String? = null,
+    val inputSaved: Boolean = false,
 )
 
 data class PendingReviewSheetHostActions(
-    val onSaveQuickCategory: (Long, String) -> Unit,
-    val onSaveQuickMerchant: (Long, String) -> Unit,
-    val onSaveAmountDraft: (Long, Long) -> Unit,
-    val onSaveAmountAndConfirm: (Long, Long) -> Unit,
+    val onSaveQuickCategory: (Expense, String) -> Unit,
+    val onSaveQuickMerchant: (Expense, String) -> Unit,
+    val onSaveAmountDraft: (Expense, Long) -> Unit,
+    val onSaveAmountAndConfirm: (Expense, Long) -> Unit,
     val onSkipReviewField: () -> Unit,
     val onKeepBoth: (Expense) -> Unit,
     val onIgnoreCurrent: (Expense) -> Unit,
     val onConfirmReady: () -> Unit,
     val onDismiss: () -> Unit,
+    val onOpenExpense: (Long) -> Unit = {},
+    val onCompareOriginals: (List<Long>) -> Unit = {},
+    val onRetryDuplicateReference: () -> Unit = {},
+    val onDuplicateDecisionChange: (Boolean) -> Unit = {},
+    val onReviewInputChange: (com.ticketbox.viewmodel.PendingReviewValues) -> Unit,
+    val onRetryReviewInput: () -> Unit = {},
+    val onReviewCurrentBasis: () -> Unit = {},
+    val onResumeReviewInput: (com.ticketbox.viewmodel.PendingReviewTask) -> Unit = {},
+    val onDiscardReviewInput: () -> Unit = {},
 )
 
 /**
@@ -158,10 +176,13 @@ private fun PendingReviewSheetContent(
 ) {
     // Quick-fix sheets share the same review chrome and saving-state rule.
     fun chromeFor(expenseId: Long) = ReviewSheetChrome(
-        saving = expenseId in state.actionInProgressIds,
+        saving = expenseId in state.actionInProgressIds || !state.inputReady || state.inputNeedsReview || state.readOnly,
         remaining = state.reviewRemaining,
         statusMessage = state.statusMessage,
         onSkip = actions.onSkipReviewField,
+        input = state.inputValues,
+        onInputChange = actions.onReviewInputChange,
+        inputStatus = { PendingReviewInputStatus(state, actions) },
     )
     when (sheet) {
         is PendingSheet.None -> Unit
@@ -169,26 +190,25 @@ private fun PendingReviewSheetContent(
             expense = sheet.expense,
             options = state.categoryOptions,
             chrome = chromeFor(sheet.expense.id),
-            onSave = { value -> actions.onSaveQuickCategory(sheet.expense.id, value) },
+            onSave = { value -> actions.onSaveQuickCategory(sheet.expense, value) },
             onDismiss = actions.onDismiss,
         )
         is PendingSheet.QuickMerchant -> QuickMerchantSheetContent(
             expense = sheet.expense,
             chrome = chromeFor(sheet.expense.id),
-            onSave = { value -> actions.onSaveQuickMerchant(sheet.expense.id, value) },
+            onSave = { value -> actions.onSaveQuickMerchant(sheet.expense, value) },
             onDismiss = actions.onDismiss,
         )
         is PendingSheet.MissingAmount -> MissingAmountSheetContent(
             expense = sheet.expense,
             chrome = chromeFor(sheet.expense.id),
-            onSaveDraft = { cents -> actions.onSaveAmountDraft(sheet.expense.id, cents) },
-            onSaveAndConfirm = { cents -> actions.onSaveAmountAndConfirm(sheet.expense.id, cents) },
+            onSaveDraft = { cents -> actions.onSaveAmountDraft(sheet.expense, cents) },
+            onSaveAndConfirm = { cents -> actions.onSaveAmountAndConfirm(sheet.expense, cents) },
         )
         is PendingSheet.Duplicate -> DuplicateConfirmSheetContent(
-            expense = sheet.expense,
-            inProgress = sheet.expense.id in state.actionInProgressIds,
-            onKeepBoth = { actions.onKeepBoth(sheet.expense) },
-            onIgnoreCurrent = { actions.onIgnoreCurrent(sheet.expense) },
+            sheet = sheet,
+            state = state,
+            actions = actions,
         )
         is PendingSheet.BulkConfirm -> BulkConfirmSheetContent(
             state = BulkConfirmSheetState(

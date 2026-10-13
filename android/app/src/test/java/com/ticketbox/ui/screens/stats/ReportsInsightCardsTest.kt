@@ -32,7 +32,7 @@ class ReportsInsightCardsTest {
     }
 
     @Test
-    fun trendChartPointsKeepServerOrderAndClampInvalidValues() {
+    fun trendChartPointsKeepServerOrderAndSignedFinancialAmounts() {
         val points = reportTrendChartPoints(
             listOf(
                 ReportTrendPoint(
@@ -53,7 +53,7 @@ class ReportsInsightCardsTest {
         assertEquals(
             listOf(
                 ReportTrendChartPoint(x = 0, label = "05-01", amountCents = 1_250L, count = 1),
-                ReportTrendChartPoint(x = 1, label = "05-02", amountCents = 0L, count = 0),
+                ReportTrendChartPoint(x = 1, label = "05-02", amountCents = -300L, count = 0),
             ),
             points,
         )
@@ -67,8 +67,7 @@ class ReportsInsightCardsTest {
     }
 
     @Test
-    fun comparisonChartRowsClampNegativesAndDropBothZeroRows() {
-        // 轴3 三柱:负值钳零(图不画负柱);三月皆零的行剔除(画不出对比还占 x 位)。
+    fun comparisonRowsRetainRefundsAndKnownZeroHistory() {
         val rows = categoryComparisonChartRows(
             listOf(
                 comparisonRow(
@@ -111,9 +110,10 @@ class ReportsInsightCardsTest {
         assertEquals(
             listOf(
                 CategoryComparisonChartRow("餐饮", 1_200L, 900L, 1_000L, hasPrevious = true, hasYearOverYear = true),
+                CategoryComparisonChartRow("退款", -500L, 0L, 0L, hasPrevious = false, hasYearOverYear = false),
                 CategoryComparisonChartRow("交通", 0L, 800L, 0L, hasPrevious = true, hasYearOverYear = false),
                 CategoryComparisonChartRow("日用品", 0L, 0L, 600L, hasPrevious = false, hasYearOverYear = true),
-                CategoryComparisonChartRow("零元历史", 500L, 0L, 0L, hasPrevious = false, hasYearOverYear = false),
+                CategoryComparisonChartRow("零元历史", 500L, 0L, 0L, hasPrevious = true, hasYearOverYear = true),
             ),
             rows,
         )

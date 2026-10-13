@@ -1,11 +1,11 @@
 package com.ticketbox.ui.components
 
+import androidx.compose.ui.res.vectorResource
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.Text
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -72,8 +72,8 @@ fun ScanQrButton(label: String, enabled: Boolean, onResult: (String) -> Unit, ic
             .setBeepEnabled(false).setBarcodeImageEnabled(false).setOrientationLocked(false))
     }
     if (iconOnly) IconButton(enabled = enabled, onClick = launchScanner) {
-        Icon(Icons.Default.QrCodeScanner, contentDescription = label)
-    } else AppSecondaryButton(text = label, leadingIcon = Icons.Default.QrCodeScanner, enabled = enabled,
+        Icon(ImageVector.vectorResource(R.drawable.ic_lucide_scan_line), contentDescription = label)
+    } else AppSecondaryButton(text = label, leadingIcon = ImageVector.vectorResource(R.drawable.ic_lucide_scan_line), enabled = enabled,
         modifier = Modifier.fillMaxWidth(), onClick = launchScanner)
     if (cameraUnavailable && iconOnly) AlertDialog(
         onDismissRequest = { cameraUnavailable = false },

@@ -25,8 +25,10 @@ def _open_retry(web_client, identity):
     page = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner&return_to=pending")
     assert page.status_code == 200, page.text
     forms = hidden_post_forms(page.text)
-    assert action in forms, "原单完整页必须提供真实原生识别重试表单"
-    fields = forms[action]
+    assert f'href="{action}?' in page.text, "原单完整页必须提供真实识别重试入口"
+    task = web_client.get(action + "?ledger_id=owner&return_to=pending")
+    assert task.status_code == 200, task.text
+    fields = hidden_post_forms(task.text)[action]
     assert fields["ledger_id"] == "owner" and fields["csrf_token"]
     assert fields["return_to"] == "pending"
     assert fields["idempotency_key"] and fields["expected_row_version"]
@@ -66,7 +68,7 @@ def _post_different_ledger_with_session(web_client, identity, expense_id, action
     session = mint_session(web_client, identity=identity)
     with public_client() as browser:
         browser.cookies.set(SESSION_COOKIE_NAME, session, path="/")
-        page = browser.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
+        page = browser.get(action + "?ledger_id=owner")
         assert page.status_code == 200, page.text
         csrf = hidden_post_forms(page.text)[action]["csrf_token"]
         fields = {**fields, "ledger_id": "tester_1", "csrf_token": csrf}

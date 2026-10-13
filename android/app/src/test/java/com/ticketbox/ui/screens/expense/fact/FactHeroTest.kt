@@ -1,107 +1,59 @@
 package com.ticketbox.ui.screens.expense.fact
 
 import com.ticketbox.domain.model.Expense
+import com.ticketbox.domain.model.ExpenseSourceValues
 import com.ticketbox.domain.model.ExpenseFactBundle
 import com.ticketbox.domain.model.ExpenseFinancialSummary
 import com.ticketbox.domain.model.ExpenseLineageStatus
 import com.ticketbox.domain.model.ExpenseRelationshipImpacts
-import com.ticketbox.domain.model.ExpenseSourceValues
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
+import org.junit.Assert.*
+import org.junit.Test
 
-/**
- * W2-B 详情金额呈现合同（与 Codex 共同冻结，三点一组）：
- * 1. 有已知 bundle 且 lineage 非 Confirmed → hero 稳定展示 server-owned 净额；
- *    query 刷新中/失败不摘已知投影（新鲜度由段内 stale/failed 文案表达）。
- *    command eligibility 的 Loaded 纪律不借用给展示。
- * 2. 净额 hero 伴生行 = 原始口径金额（· 已退回），original 币种 display。
- * 3. 普通外币账单（无净额但有原币金额且原币≠home）→ hero 下保留原币伴生行，
- *    原币事实不得从详情消失；客户端不做换算。
- */
 class FactHeroTest {
-
-    @Test
-    fun knownActiveLineageKeepsNetHero() {
-        assertTrue(factHeroShowsNet(bundleOf(ExpenseLineageStatus.PartiallyRefunded)))
-        assertTrue(factHeroShowsNet(bundleOf(ExpenseLineageStatus.FullyRefunded)))
-        assertTrue(factHeroShowsNet(bundleOf(ExpenseLineageStatus.Reversed)))
+    @Test fun refundsAndReversalsNeverReplaceTheOriginalSpend() {
+        for (status in listOf(ExpenseLineageStatus.PartiallyRefunded, ExpenseLineageStatus.FullyRefunded, ExpenseLineageStatus.Reversed)) {
+            val labels = factAmountLabels(expense(), bundleOf(status))
+            assertEquals("¥268.00", labels.original)
+            assertEquals("¥98.00", labels.refunded)
+            assertEquals("¥170.00", labels.net)
+        }
     }
 
-    @Test
-    fun confirmedOrUnknownBundleKeepsOriginalHero() {
-        assertFalse(factHeroShowsNet(bundleOf(ExpenseLineageStatus.Confirmed)))
-        assertFalse(factHeroShowsNet(null))
+    @Test fun foreignOriginalAndFrozenHomeAmountsRemainSeparate() {
+        val root = expense().copy(originalAmountMinor = 1000L, originalCurrencyCodeRaw = "USD", homeCurrencyCode = "CNY")
+        val bundle = bundleOf(ExpenseLineageStatus.PartiallyRefunded).let {
+            it.copy(root = root, financialSummary = it.financialSummary.copy(grossOriginalMinor = 1000L, activeRefundedOriginalMinor = 200L))
+        }
+        val labels = factAmountLabels(root, bundle)
+        assertTrue(labels.original.endsWith("10.00"))
+        assertEquals("USD", labels.currencyCode)
+        assertEquals("¥268.00", labels.homeGross)
+        assertTrue(requireNotNull(labels.refunded).endsWith("2.00"))
+        assertEquals("¥170.00", labels.net)
     }
 
-    @Test
-    fun foreignCurrencyBillKeepsOriginalCaption() {
-        val usdBill = expense().copy(
-            originalAmountMinor = 1000L,
-            originalCurrencyCodeRaw = "USD",
-            homeCurrencyCode = "CNY",
-        )
-        assertTrue(factHeroShowsOriginal(usdBill, showsNet = false))
+    @Test fun unknownRefundStatusDoesNotInventZeroOrNet() {
+        val labels = factAmountLabels(expense(), null)
+        assertEquals("¥268.00", labels.original)
+        assertNull(labels.refunded)
+        assertNull(labels.net)
     }
 
-    @Test
-    fun homeCurrencyBillHasNoRedundantCaption() {
-        val cnyBill = expense().copy(originalAmountMinor = 26800L)
-        assertFalse(factHeroShowsOriginal(cnyBill, showsNet = false))
+    @Test fun unknownRecordedCurrencyRemainsVisible() {
+        val labels = factAmountLabels(expense().copy(originalAmountMinor = 123L, originalCurrencyCodeRaw = "XTS"), null)
+        assertEquals("XTS", labels.currencyCode)
+        assertTrue(labels.original.contains("XTS"))
+        assertEquals("¥268.00", labels.homeGross)
     }
 
-    @Test
-    fun missingOriginalAmountHasNoCaption() {
-        assertFalse(factHeroShowsOriginal(expense(), showsNet = false))
-    }
-
-    @Test
-    fun unknownBundleLabelsGrossAmount() {
-        assertEquals(FactHeroCaption.Gross, factHeroCaptionKind(expense(), bundle = null))
-    }
-
-    @Test
-    fun unknownBundleForeignBillLabelsGrossAndOriginal() {
-        val usdBill = expense().copy(
-            originalAmountMinor = 1000L,
-            originalCurrencyCodeRaw = "USD",
-            homeCurrencyCode = "CNY",
-        )
-        assertEquals(FactHeroCaption.GrossOriginal, factHeroCaptionKind(usdBill, bundle = null))
-    }
-
-    @Test
-    fun knownConfirmedBundleKeepsCleanHero() {
-        assertEquals(
-            FactHeroCaption.None,
-            factHeroCaptionKind(expense(), bundleOf(ExpenseLineageStatus.Confirmed)),
-        )
-        val usdBill = expense().copy(
-            originalAmountMinor = 1000L,
-            originalCurrencyCodeRaw = "USD",
-            homeCurrencyCode = "CNY",
-        )
-        assertEquals(
-            FactHeroCaption.Original,
-            factHeroCaptionKind(usdBill, bundleOf(ExpenseLineageStatus.Confirmed)),
-        )
-    }
-
-    @Test
-    fun activeLineageAlwaysNetCaption() {
-        assertEquals(
-            FactHeroCaption.Net,
-            factHeroCaptionKind(expense(), bundleOf(ExpenseLineageStatus.PartiallyRefunded)),
-        )
-    }
-
-    @Test
-    fun oldRefundSnapshotCannotLabelNewRootAsNet() {
-        val oldRefund = bundleOf(ExpenseLineageStatus.PartiallyRefunded)
-        val corrected = expense().copy(rowVersion = 2L, amountCents = 30000L)
-        assertEquals(FactHeroCaption.Gross, factHeroCaptionKind(corrected, oldRefund))
-        assertEquals(FactHeroCaption.Gross, factHeroCaptionKind(expense().copy(id = 2L), oldRefund))
+    @Test fun staleOrOtherRootCannotSupplyCurrentFinancialSummary() {
+        val old = bundleOf(ExpenseLineageStatus.PartiallyRefunded)
+        for (root in listOf(expense().copy(rowVersion = 2L, amountCents = 30000L), expense().copy(id = 2L))) {
+            val labels = factAmountLabels(root, old)
+            assertNull(labels.refunded)
+            assertNull(labels.net)
+        }
+        assertEquals("¥300.00", factAmountLabels(expense().copy(rowVersion = 2L, amountCents = 30000L), old).original)
     }
 
     private fun expense(): Expense = Expense(

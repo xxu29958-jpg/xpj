@@ -42,8 +42,12 @@ def fx_consumers(j):
     j.goto(f'/web/expenses/{original["id"]}/edit')
     form = j.page.locator(f'form[action="/web/expenses/{original["id"]}/save"]')
     version = form.locator('[name="expected_row_version"]').input_value()
-    form.locator('[name="amount_yuan"]').fill("29.00")
-    form.locator('[name="note"]').fill("换算完成前的原输入")
+    for name, value in (("amount_yuan", "29.00"), ("note", "换算完成前的原输入")):
+        field = form.locator(f'[name="{name}"]')
+        for disclosure in field.locator("xpath=ancestor::details").all():
+            if disclosure.get_attribute("open") is None:
+                disclosure.locator(":scope > summary").click()
+        field.fill(value)
     j.native.fill("27.00", previous=r"23\.45")
     j.advisor.fx_available = True
     j.native.reveal_any("重新换算")

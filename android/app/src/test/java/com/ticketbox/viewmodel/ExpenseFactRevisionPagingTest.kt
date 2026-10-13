@@ -15,6 +15,32 @@ import kotlinx.coroutines.test.runCurrent
 @OptIn(ExperimentalCoroutinesApi::class)
 internal class ExpenseFactRevisionPagingTest : ExpenseFactViewModelTestBase() {
     @Test
+    fun `mixed history retries both frozen anchors and appends the original confirmation`() = edit { fake ->
+        var failed = false
+        val refund = revision(1).copy(publicId = "refund-1", offsetPublicId = "offset-1", changeKind = "created")
+        fake.revisionsResult = { page, pageSize ->
+            if (page == 2 && !failed) {
+                failed = true
+                Result.failure(IllegalStateException("offline"))
+            } else Result.success(ExpenseRevisionPage(
+                if (page == 1) (1..50).map { refund.copy(publicId = "refund-$it") } else listOf(revision(1)),
+                page, pageSize, 51, 1, offsetSnapshotId = 250))
+        }
+        val model = viewModel(fake)
+        model.loadOlderExpenseRevisions()
+        advanceUntilIdle()
+        assertTrue(model.uiState.value.revisionsOlderLoadFailed)
+        assertEquals(50, model.uiState.value.revisions.size)
+        model.loadOlderExpenseRevisions()
+        advanceUntilIdle()
+        assertEquals("confirmed", model.uiState.value.revisions.last().changeKind)
+        assertEquals(51, model.uiState.value.revisions.size)
+        assertNull(model.uiState.value.revisionsNextPage)
+        assertEquals(listOf(null, 1L, 1L), fake.revisionSnapshots)
+        assertEquals(listOf(null, 250L, 250L), fake.offsetRevisionSnapshots)
+    }
+
+    @Test
     fun `loading an older page appends until the earliest revision is reachable`() = edit { fake ->
         fake.revisionsResult = { page, pageSize ->
             Result.success(revisionPage(page = page, pageSize = pageSize, total = 51))
@@ -52,7 +78,7 @@ internal class ExpenseFactRevisionPagingTest : ExpenseFactViewModelTestBase() {
         }
 
         val viewModel = viewModel(fake)
-        assertEquals(120L, viewModel.uiState.value.revisionsSnapshotRevision)
+        assertEquals(120L, viewModel.uiState.value.revisionsSnapshot?.revision)
 
         viewModel.loadOlderExpenseRevisions()
         advanceUntilIdle()
@@ -71,7 +97,7 @@ internal class ExpenseFactRevisionPagingTest : ExpenseFactViewModelTestBase() {
         advanceUntilIdle()
 
         state = viewModel.uiState.value
-        assertEquals(121L, state.revisionsSnapshotRevision)
+        assertEquals(121L, state.revisionsSnapshot?.revision)
         assertEquals(50, state.revisions.size)
         assertEquals(2, state.revisionsNextPage)
 

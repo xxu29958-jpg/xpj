@@ -32,9 +32,7 @@ internal fun QuickMerchantSheetContent(
     onDismiss: () -> Unit,
 ) {
     val saving = chrome.saving
-    var value by remember(expense.id) {
-        mutableStateOf(pendingMerchantPresentation(expense).primaryText.orEmpty())
-    }
+    val value = chrome.input.value ?: pendingMerchantPresentation(expense).primaryText.orEmpty()
     val cleaned = value.trim()
     val noiseLike = cleaned.isNotEmpty() && !isUsablePendingMerchantText(cleaned)
     // 保存守卫与 QuickCategory 同型（PR #230 round 9）：噪音文本（时间/日期串、
@@ -57,7 +55,7 @@ internal fun QuickMerchantSheetContent(
                     onClick = { onSave(cleaned) },
                 ),
                 secondary = AppSheetAction(
-                    text = stringResource(R.string.common_cancel),
+                    text = stringResource(R.string.expense_fact_input_close),
                     enabled = !saving,
                     onClick = onDismiss,
                 ),
@@ -73,7 +71,7 @@ internal fun QuickMerchantSheetContent(
                 isError = (value.isNotEmpty() && cleaned.isEmpty()) || noiseLike,
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None),
             ),
-            actions = AppTextInputActions(onValueChange = { value = it.take(40) }),
+            actions = AppTextInputActions(onValueChange = { chrome.onInputChange(chrome.input.copy(value = it.take(40))) }),
             modifier = Modifier.fillMaxWidth(),
             focusRequester = focusRequester,
             decorations = AppTextInputDecorations(

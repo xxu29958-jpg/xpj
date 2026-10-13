@@ -13,38 +13,13 @@
 <header class="product-page-header">
   <div class="product-page-heading">
     <span class="product-eyebrow">我的账户</span>
-    <h1 class="page-title">设置与设备</h1>
-    <p class="product-page-summary">{{ principal.account_name }} · 管理自己的连接设备，找到家庭和数据设置。</p>
+    <h1 class="page-title">我的设备</h1>
+    <p class="product-page-summary">管理自己的连接设备，在另一台设备继续记账。</p>
   </div>
 </header>
 
 {% if error %}<div class="product-feedback product-feedback--danger" role="alert">{{ error }}</div>{% endif %}
 {% if message and not error %}<div class="product-feedback product-feedback--success" role="status">{{ message }}</div>{% endif %}
-
-<nav class="settings-links" aria-label="账户设置">
-  {% if request.state.web_session_platform != 'desktop' %}
-  <a class="product-button" href="/web/auth/ledgers?next=/web/settings">切换账本</a>
-  <a class="product-button" href="/web/auth/join">加入家庭账本</a>
-  {% endif %}
-  {% if can_pair_devices %}<a class="product-button" href="/web/family{{ q }}">家庭成员</a>{% endif %}
-  <a class="product-button" href="/web/exports">带走账本数据</a>
-  {% if request.state.web_session_platform != 'desktop' %}
-  <form method="post" action="/web/auth/logout">{{ csrf_field|safe }}<button class="product-button" type="submit">退出当前浏览器</button></form>
-  {% endif %}
-</nav>
-
-<section class="product-panel product-panel--padded settings-panel" aria-labelledby="settings-account-title">
-  <h2 class="product-panel-title" id="settings-account-title">账号名称</h2>
-  <p class="product-panel-subtitle">家人会在成员列表中看到这个名称。当前名称：{{ account_profile.display_name }}。更名不会改变账号身份、账本归属或设备连接。</p>
-  <form method="post" action="/web/settings/account/name" class="settings-device-rename">
-    {{ csrf_field|safe }}<input type="hidden" name="expected_name" value="{{ account_profile.display_name }}">
-    <label class="product-field"><span>我的显示名称</span>
-      <input class="product-input" name="display_name" maxlength="120" required autocomplete="nickname"
-             value="{{ account_name_draft if account_name_draft is not none else account_profile.display_name }}">
-    </label>
-    <button class="product-button" type="submit">保存账号名称</button>
-  </form>
-</section>
 
 {% if pairing %}
 <section class="product-panel product-panel--padded settings-panel" aria-labelledby="settings-code-title" data-settings-code-result>
@@ -66,29 +41,27 @@
 </section>
 {% endif %}
 
-<section class="product-panel product-panel--padded settings-panel settings-device-panel" aria-labelledby="settings-devices-title">
+<section class="settings-panel settings-device-panel" aria-labelledby="settings-devices-title">
   <div class="product-panel-header">
     <div>
-      <h2 class="product-panel-title" id="settings-devices-title">我的设备</h2>
-      <p class="product-panel-subtitle">只列出 {{ principal.account_name }} 的设备。停用会使该设备在所有账本的登录和上传链接失效，未提交的离线内容仍留在原设备上。</p>
+      <h2 class="product-panel-title" id="settings-devices-title">{{ principal.account_name }} 的设备</h2>
+      <p class="product-panel-subtitle">只列出你的设备，家人的设备由各自管理。</p>
     </div>
-    <a class="product-button" href="/web/settings">刷新列表</a>
+    <a class="product-button product-button--quiet" href="/web/settings" aria-label="刷新列表"><svg width="20" height="20" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#refresh-cw"/></svg></a>
   </div>
   <div class="settings-device-list">
   {% for item in devices %}
     {% set device = item.summary %}
     <article class="settings-device" data-device-id="{{ device.public_id }}">
-      <div class="settings-device-heading">
-        <div>
-          <h3>{{ device.device_name }}</h3>
-          <p class="hint">{{ platforms.get(device.platform, device.platform) }} · 最近活动：{{ moment(device.last_seen_at) }}</p>
-        </div>
-        {% if item.is_current %}<span class="product-status product-status--success">当前设备</span>
-        {% elif device.revoked_at %}<span class="product-status">已停用 · {{ moment(device.revoked_at) }}</span>
-        {% else %}<span class="product-status product-status--info">已连接</span>{% endif %}
-      </div>
       <details class="settings-device-actions"{% if device_form.public_id == device.public_id %} open{% endif %}>
-        <summary>管理 {{ device.device_name }}</summary>
+        <summary class="product-entry" aria-label="管理 {{ device.device_name }}">
+          <span class="product-entry-icon{% if device.revoked_at %} product-entry-icon--apricot{% elif device.platform != 'android' %} product-entry-icon--lilac{% endif %}" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#{{ 'smartphone' if device.platform == 'android' else 'monitor' }}"/></svg></span>
+          <span class="product-entry-copy"><strong>{{ device.device_name }}</strong>
+            <span>{{ platforms.get(device.platform, device.platform) }} · {% if item.is_current %}当前设备{% elif device.revoked_at %}已停用 · {{ moment(device.revoked_at) }}{% else %}已连接{% endif %}</span>
+          </span>
+          <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
+        </summary>
+        <p class="hint">最近活动：{{ moment(device.last_seen_at) }}</p>
         <form method="post" action="/web/settings/devices/{{ device.public_id }}/rename" class="settings-device-rename">
           {{ csrf_field|safe }}
           <label class="product-field"><span>设备名称</span>
@@ -109,7 +82,7 @@
           {% if not device.revoked_at %}
           <form method="post" action="/web/settings/devices/{{ device.public_id }}/revoke" class="settings-device-command">
             {{ csrf_field|safe }}
-            <label><input type="checkbox" name="confirmed" value="yes" required> 确认停用这台设备在所有账本的登录和上传链接。</label>
+            <label><input type="checkbox" name="confirmed" value="yes" required> 确认停用这台设备在所有账本的登录和上传链接。未提交的离线内容仍留在原设备上。</label>
             <button class="product-button" type="submit">停用设备</button>
           </form>
           {% else %}
@@ -128,8 +101,13 @@
   </div>
 </section>
 
-<section class="product-panel product-panel--padded settings-panel" aria-labelledby="settings-add-title">
-  <h2 class="product-panel-title" id="settings-add-title">连接我的另一台设备</h2>
+<section class="settings-panel" aria-label="连接与退出">
+  <details class="settings-device-actions">
+    <summary class="product-entry">
+      <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#plus"/></svg></span>
+      <span class="product-entry-copy"><strong>连接新设备</strong><span>在另一台设备继续记账</span></span>
+      <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
+    </summary>
   {% if can_pair_devices %}
   <p class="product-panel-subtitle">为「{{ selected_ledger_name }}」生成 15 分钟内有效的连接码。适用于新手机或浏览器；已有离线内容的旧设备请使用上面的“重新连接”。</p>
   <form method="post" action="/web/settings/devices/pairing-codes">
@@ -139,5 +117,62 @@
   <p class="product-panel-subtitle">当前没有选中可访问的账本。你仍可管理自己的设备；选择有效账本后才能生成连接码。</p>
   <a class="product-button" href="{{ '/' if request.state.web_session_platform == 'desktop' else '/web/auth/ledgers?next=/web/settings' }}">选择账本</a>
   {% endif %}
+  </details>
+  {% if request.state.web_session_platform != 'desktop' %}
+  <form method="post" action="/web/auth/logout" class="settings-exit">
+    {{ csrf_field|safe }}
+    <button class="product-entry" type="submit">
+      <span class="product-entry-icon product-entry-icon--apricot" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#arrow-right"/></svg></span>
+      <span class="product-entry-copy"><strong>退出当前浏览器</strong><span>只退出当前会话</span></span>
+      <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
+    </button>
+  </form>
+  {% endif %}
+</section>
+
+<section class="settings-panel" aria-labelledby="settings-account-title">
+  <h2 class="product-panel-title" id="settings-account-title">账户与家庭</h2>
+  <details class="settings-account-name"{% if account_name_draft is not none %} open{% endif %}>
+    <summary class="product-entry">
+      <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#user-round"/></svg></span>
+      <span class="product-entry-copy"><strong>账号名称</strong><span>{{ account_profile.display_name }}</span></span>
+      <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
+    </summary>
+    <p class="product-panel-subtitle">家人会在成员列表中看到这个名称。更名不会改变账号身份、账本归属或设备连接。</p>
+    <form method="post" action="/web/settings/account/name" class="settings-device-rename">
+      {{ csrf_field|safe }}<input type="hidden" name="expected_name" value="{{ account_profile.display_name }}">
+      <label class="product-field"><span>我的显示名称</span>
+        <input class="product-input" name="display_name" maxlength="120" required autocomplete="nickname"
+               value="{{ account_name_draft if account_name_draft is not none else account_profile.display_name }}">
+      </label>
+      <button class="product-button" type="submit">保存账号名称</button>
+    </form>
+  </details>
+  <nav class="settings-account-links" aria-label="账户设置">
+    {% if request.state.web_session_platform != 'desktop' %}
+    <a class="product-entry" href="/web/auth/ledgers?next=/web/settings">
+      <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#book-open"/></svg></span>
+      <span class="product-entry-copy"><strong>切换账本</strong><span>{{ selected_ledger_name or '选择可访问的账本' }}</span></span>
+      <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
+    </a>
+    <a class="product-entry" href="/web/auth/join">
+      <span class="product-entry-icon product-entry-icon--apricot" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#users"/></svg></span>
+      <span class="product-entry-copy"><strong>加入家庭账本</strong><span>接受家人发来的邀请</span></span>
+      <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
+    </a>
+    {% endif %}
+    {% if can_pair_devices %}
+    <a class="product-entry" href="/web/family{{ q }}">
+      <span class="product-entry-icon product-entry-icon--apricot" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#users"/></svg></span>
+      <span class="product-entry-copy"><strong>家庭成员</strong><span>查看成员与账本权限</span></span>
+      <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
+    </a>
+    {% endif %}
+    <a class="product-entry" href="/web/exports">
+      <span class="product-entry-icon product-entry-icon--lilac" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#download"/></svg></span>
+      <span class="product-entry-copy"><strong>带走账本数据</strong><span>导出记录与原件</span></span>
+      <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
+    </a>
+  </nav>
 </section>
 {% endblock %}

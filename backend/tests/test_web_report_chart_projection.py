@@ -21,6 +21,7 @@ const history = [{month:'2026-04', amount_cents:1200, budget_cents:1500},
   {month:'2026-05', amount_cents:null, budget_cents:null}];
 const attrs = {'data-home-currency':'JPY','data-home-currency-symbol':'¥','data-home-currency-minor-digits':'0'};
 const charts = {};
+const instances = {};
 const elements = {};
 const creations = {};
 const observers = [];
@@ -28,21 +29,21 @@ let themeColor = '#123456';
 let exportClick;
 let exported;
 ['reports-trend-chart','reports-merchant-chart','reports-category-chart','chart-trend'].forEach(id => {
-  elements[id] = {id, getAttribute: () => JSON.stringify(history), closest: () => ({classList:{add(){}}})};
+  elements[id] = {id, clientWidth:480, getAttribute: () => JSON.stringify(history), closest: selector => selector === '.reports-panel' ? {classList:{add(){}}} : null};
 });
 elements['reports-overview-data'] = {textContent:JSON.stringify(report)};
 elements['reports-export-png'] = {addEventListener:(_event, listener) => {exportClick = listener;}};
 elements['reports-export-dialog'] = {showModal(){}};
 elements['reports-export-image'] = {};
-const document = {readyState:'complete', documentElement:{getAttribute:name => attrs[name]},
+const document = {readyState:'complete', addEventListener(){}, documentElement:{getAttribute:name => attrs[name]},
   getElementById:id => elements[id] || null};
-const echarts = {init:el => {
+const echarts = {getInstanceByDom:el => instances[el.id], init:el => {
   creations[el.id] = (creations[el.id] || 0) + 1;
-  return {setOption:option => {charts[el.id] = option;}, resize(){}, getDom:() => el,
+  return instances[el.id] = {setOption:option => {charts[el.id] = option;}, resize(){}, getDom:() => el,
     getDataURL:options => {exported = options; return 'data:image/png;base64,preview';}};
 }};
-const window = {echarts, getComputedStyle:() => ({getPropertyValue:name =>
-  name === '--text-faint' ? '#111111' : themeColor}), addEventListener(){}};
+const window = {echarts, location:{hash:''}, matchMedia:() => ({matches:false}), getComputedStyle:() => ({getPropertyValue:name =>
+  name === '--type-caption-size' ? '13px' : name === '--text-faint' ? '#111111' : themeColor}), addEventListener(){}};
 const context = {window, document, echarts, Intl, Number, BigInt, String, Math, URLSearchParams,
   getComputedStyle:window.getComputedStyle, ResizeObserver:class {observe(){}},
   MutationObserver:class {constructor(callback){observers.push(callback);} observe(){}}};

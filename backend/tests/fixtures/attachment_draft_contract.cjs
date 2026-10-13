@@ -22,6 +22,10 @@ const values={action:'https://local/web/expenses/7/original/replenish?'+query,
 (async()=>{
   const file={name:'original.png',bytes:Buffer.from('original file')};
   await api.retain(scope,ref,values,file);
+  assert.equal((await api.readSource(scope,ref)).file,file);
+  assert.equal(api.store.read(ref).phase,'editing','preview must not submit the selected original');
+  await assert.rejects(api.readSource({...scope,deviceId:'changed'},ref));
+  assert.equal(await api.discardEditing({...scope,deviceId:'changed'},ref),false);
   const originalSet=storage.setItem;
   storage.setItem=()=>{throw Error('quota');};
   await assert.rejects(api.retain(scope,ref,values,{name:'replacement.png',hash:'e'.repeat(64)}));
@@ -30,6 +34,8 @@ const values={action:'https://local/web/expenses/7/original/replenish?'+query,
   assert.equal(files.size,1,'same-hash failure must retain the previous valid blob');
   storage.setItem=originalSet;
   const first=await api.submitted(scope,ref);
+  assert.equal(await api.discardEditing(scope,ref),false,'a submitted file with an unknown reply cannot be removed as a selection');
+  assert.equal(files.size,1);
   assert.equal(first.file,file);
   assert.equal(first.record.values.action,values.action);
   await assert.rejects(api.retain(scope,ref,values,{name:'different.png'}));
@@ -64,5 +70,10 @@ const values={action:'https://local/web/expenses/7/original/replenish?'+query,
   await assert.rejects(api.acknowledge({scope,clientRef:ref}));
   assert.equal(api.store.read(ref),null);
   await assert.rejects(api.submitted(scope,ref));
+  window.TicketboxDraftFiles.remove=originalRemove;
+  await api.retain(scope,ref,values,file);
+  assert.equal(await api.discardEditing(scope,ref),true);
+  assert.equal(api.store.read(ref),null);
+  assert.equal(files.size,0,'removing an unsent selection deletes its retained bytes');
   console.log('attachment intent: original bytes/key/OCC, 5-axis fence, blocked retry, ACK cleanup failure passed');
 })().catch(error=>{console.error(error);process.exitCode=1;});

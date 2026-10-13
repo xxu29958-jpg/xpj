@@ -9,6 +9,7 @@ const target = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
 const repaymentId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
 const names = ['debt_public_id','ledger_id','origin_binding','home_currency_code',
   'expected_row_version','amount_major','paid_at','paid_at_timezone'];
+const timeNames = ['time_precision', 'calendar_revision'];
 const values = {debt_public_id:target, ledger_id:'ledger', origin_binding:JSON.stringify(scope),
   home_currency_code:'USD', expected_row_version:'4', amount_major:'0012.3400',
   paid_at:'2026-07-19', paid_at_timezone:'America/Los_Angeles'};
@@ -19,10 +20,10 @@ function element(initial = {}) {
   const handlers = {};
   return Object.assign({hidden:false, disabled:false, readOnly:false, value:'', textContent:'',
     dataset:{}, children:[], tagName:'INPUT',
-    addEventListener(name, fn) { handlers[name] = fn; },
+    addEventListener(name, fn) { (handlers[name] ||= []).push(fn); },
     fire(name, extra = {}) {
       const event = {defaultPrevented:false, preventDefault() { this.defaultPrevented = true; }, ...extra};
-      if (handlers[name]) handlers[name](event);
+      for (const handler of handlers[name] || []) handler(event);
       return event;
     },
     append(...items) { this.children.push(...items); },
@@ -64,7 +65,12 @@ function environment() {
     fields.csrf_token = element({name:'csrf_token', value:'never-persist-credential'});
     const status = element({hidden:true}), submit = element(), panel = element({hidden:options.canCreate === false});
     const replace = options.replacement ? element({hidden:true}) : null, label = element();
+    const amountOutput = fields.amount_major ? element({tagName:'OUTPUT', hidden:true}) : null;
+    const currency = amountOutput ? element({textContent:shown.home_currency_code}) : null;
     const preview = options.splitChange ? element() : null;
+    const balanceAfter = element();
+    const balance = options.balance ? element({hidden:true, dataset:options.balance,
+      querySelector:() => balanceAfter}) : null;
     const settlement = {raw:element(), controls:element({hidden:true}), direction:element(), amount:element()};
     const finishRejected = options.rejected || ["debt-void", "repayment-void"].includes(options.kind) ? element() : null;
     const finishReview = options.result === "accepted-review" ? element() : null;
@@ -77,38 +83,116 @@ function environment() {
       voidRejected:options.rejected ? "true" : "false", repaymentResult:result, repaymentCanCreate:options.canCreate === false ? 'false' : 'true',
       repaymentCanRecover:options.canRecover === false ? 'false' : 'true',
       repaymentTarget:target, repaymentReplacement:options.replacement ? JSON.stringify(options.replacement) : ''},
-      elements:{namedItem:name => fields[name]},
-      querySelector:selector => ({'[data-repayment-submit]':submit, '[data-repayment-status]':status,
+      elements:{namedItem:name => name === 'repayment_submit' ? submit : name === 'repayment_replace' ? replace : fields[name]},
+      querySelector:selector => ({'[data-repayment-submit]':amountOutput ? null : submit, '[data-repayment-status]':status,
+        '[data-repayment-original-amount]':amountOutput, '[data-repayment-currency]':currency,
         '[data-void-finish-rejected]':finishRejected, '[data-void-finish-review]':finishReview, '[data-repayment-replace]':replace, '[data-repayment-preview]':preview,
         '[data-split-settlement-raw]':settlement.raw, '[data-split-settlement-controls]':settlement.controls,
         '[data-split-settlement-direction]':settlement.direction, '[data-split-settlement-amount]':settlement.amount,
+        '[data-debt-balance-preview]':balance,
         'label[for="debt-repay-amount"]':label})[selector] || null});
     const selectors = {'[data-repayment-scope]':form, '[data-repayment-panel]':panel,
       '[data-repayment-shelf]':shelf, '[data-repayment-list]':list,
       '[data-repayment-ack]':ack, '[data-repayment-ack-status]':ackStatus};
-    const document = {querySelectorAll:() => [form], querySelector:selector => selectors[selector] || null, createElement:() => element()};
+    const document = {querySelectorAll:selector => selector === '[data-proposal-balance-preview]' ? [] : [form],
+      querySelector:selector => selectors[selector] || null, createElement:() => element()};
     const window = element({localStorage:storage, navigator:{locks},
       location:{hash, pathname:'/web/debts/' + target, search:'?ledger_id=ledger'}});
     window.history = {replaceState(_state, _title, url) {
       const hash = String(url).indexOf('#'); window.location.hash = hash < 0 ? '' : String(url).slice(hash);
     }};
     vm.runInNewContext(fs.readFileSync(process.argv[2], 'utf8'), {window});
-    const store = window.TicketboxDraftStore.createStore({prefix:draftPrefix, fields:fieldNames,
+    const optionalFields = options.optionalFields || timeNames;
+    const store = window.TicketboxDraftStore.createStore({prefix:draftPrefix,
+      fields:fieldNames.filter(name => !optionalFields.includes(name)), optionalFields:fieldNames.filter(name => optionalFields.includes(name)),
       validRef:/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i});
     const start = () => {
       if (options.splitChange) vm.runInNewContext(fs.readFileSync(require('node:path').join(
         require('node:path').dirname(process.argv[3]), 'split-settlement-input.js'), 'utf8'), {window});
+      vm.runInNewContext(fs.readFileSync(require('node:path').join(require('node:path').dirname(process.argv[3]),
+        'desktop/core.js'), 'utf8'), {window, document});
       vm.runInNewContext(fs.readFileSync(process.argv[3], 'utf8'), {window, document});
     };
     windows.push(window);
     return {window, form, fields, status, submit, panel, shelf, list, ackStatus, store, start, replace, label, preview, finishReview, finishRejected,
-      document, settlement, snapshot:() => Object.fromEntries(fieldNames.map(name => [name, fields[name].value]))};
+      document, settlement, balance, balanceAfter, currency, amountOutput,
+      snapshot:() => Object.fromEntries(fieldNames.map(name => [name, fields[name].value]))};
   }
   return {entries, faults, requests, occupied, page,
     storageEvent() { windows.forEach(window => window.fire('storage')); }};
 }
 
 const cases = {
+  async date_precision() {
+    for (const kind of ['repayment', 'member-repayment']) {
+    const member = kind === 'member-repayment';
+    const baseValues = member ? {...Object.fromEntries(Object.entries(values).filter(([name]) => name !== 'expected_row_version')),
+      note:'  原留言  '} : values;
+    const dateValues = {...baseValues, time_precision:'date_only', calendar_revision:'3'};
+    const config = {kind, fieldNames:[...Object.keys(baseValues), ...timeNames], draftPrefix:'ticketbox:' + kind + '-draft:v1:'};
+    const receipt = member ? {proposalPublicId:repaymentId} : {repaymentPublicId:repaymentId};
+    for (const saved of [baseValues, dateValues]) {
+      const env = environment();
+      const first = env.page(config);
+      first.store.save(scope, original, 'submitted', saved);
+      const restored = env.page({...config, canCreate:false,
+        values:{time_precision:'date_only', calendar_revision:'8'}, hash:'#' + kind + '-' + original});
+      restored.start(); await tick();
+      assert.equal(restored.fields.paid_at.value, saved.paid_at);
+      assert.equal(restored.fields.paid_at_timezone.value, saved.paid_at_timezone);
+      assert.equal(restored.fields.time_precision.disabled, !Object.hasOwn(saved, 'time_precision'));
+      assert.equal(restored.fields.calendar_revision.disabled, !Object.hasOwn(saved, 'calendar_revision'));
+      assert.equal(restored.form.fire('submit').defaultPrevented, false);
+      assert.deepEqual(JSON.parse(JSON.stringify(restored.store.read(original).values)), saved);
+      restored.window.fire('pagehide'); await tick();
+      const wrong = env.page({...config,
+        values:dateValues, ack:{scope, clientRef:original, ...receipt,
+          values:{...saved, calendar_revision:'8'}}});
+      wrong.start(); await tick();
+      assert.ok(wrong.store.read(original), 'A different calendar cannot acknowledge the original intent');
+      assert.match(wrong.ackStatus.textContent, /原提交尚未收起/);
+      wrong.window.fire('pagehide'); await tick();
+      const accepted = env.page({...config,
+        values:dateValues, ack:{scope, clientRef:original, ...receipt, values:saved}});
+      accepted.start(); await tick();
+      assert.equal(accepted.store.read(original), null);
+    }
+    }
+  },
+  async balance_preview() {
+    const snapshot = {balanceMinor:'90000', balanceDigits:'2', balanceCurrency:'CNY', balanceSymbol:'¥', balanceVersion:'99'};
+    const env = environment(), page = env.page({values:{home_currency_code:'CNY'}, balance:snapshot});
+    page.start(); await tick();
+    for (const raw of ['300', '300.00', '300.000']) {
+      page.fields.amount_major.value = raw; page.form.fire('input');
+      assert.equal(page.balance.hidden, false);
+      assert.equal(page.balanceAfter.textContent, '¥600.00');
+      assert.equal(page.store.read(fresh).values.amount_major, raw, 'preview must not normalize the retained command');
+    }
+    for (const raw of ['300.001', '900.01', '0', '-1', 'not-money']) {
+      page.fields.amount_major.value = raw; page.form.fire('input');
+      assert.equal(page.balance.hidden, true, 'invalid or overpay input has no misleading after balance');
+    }
+    page.fields.amount_major.value = '300.00'; page.form.fire('input');
+    assert.equal(page.form.fire('submit').defaultPrevented, false);
+    assert.equal(page.balance.hidden, true, 'unknown submission is not a projected success');
+    assert.equal(page.store.read(fresh).phase, 'submitted');
+    page.window.fire('pagehide'); await tick();
+    const restored = env.page({balance:{...snapshot, balanceVersion:'100'}});
+    restored.start(); await tick();
+    assert.equal(restored.snapshot().home_currency_code, 'CNY');
+    assert.equal(restored.snapshot().expected_row_version, '99');
+    assert.equal(restored.balance.hidden, true, 'fresh balance cannot be attached to another original revision');
+    assert.equal(restored.panel.open, true, 'the original command opens its actual editor');
+
+    const yen = environment().page({balance:{...snapshot, balanceMinor:'900', balanceDigits:'0', balanceCurrency:'JPY'}});
+    yen.start(); await tick(); yen.fields.amount_major.value='300.0'; yen.form.fire('input');
+    assert.equal(yen.balanceAfter.textContent, '¥600');
+    yen.fields.amount_major.value='300.1'; yen.form.fire('input'); assert.equal(yen.balance.hidden,true);
+    const large = environment().page({values:{home_currency_code:'CNY'}, balance:{...snapshot, balanceMinor:'9007199254740991'}});
+    large.start(); await tick(); large.fields.amount_major.value='90071992547409.90'; large.form.fire('input');
+    assert.equal(large.balanceAfter.textContent, '¥0.01', 'minor units never round through a floating-point amount');
+  },
   async continuity() {
     const env = environment(), page = env.page({canCreate:false, ref:''});
     page.store.save(scope, original, 'submitted', values);
@@ -117,7 +201,10 @@ const cases = {
     assert.equal(page.fields.idempotency_key.value, original);
     assert.deepEqual(page.snapshot(), values);
     assert.equal(page.fields.amount_major.readOnly, true);
-    assert.match(page.label.textContent, /USD/, 'restored amount must identify its original currency');
+    assert.equal(page.currency.textContent, 'USD', 'restored amount must identify its original currency');
+    assert.equal(page.amountOutput.textContent, values.amount_major, 'readable original never rounds or normalizes the retained amount');
+    assert.equal(page.amountOutput.hidden, false);
+    assert.equal(page.fields.amount_major.hidden, true);
     page.window.fire('hashchange'); await tick();
     assert.equal(page.submit.disabled, false, 'reopening a fragment releases its own lease before reacquiring');
     page.fields.amount_major.value = '900';

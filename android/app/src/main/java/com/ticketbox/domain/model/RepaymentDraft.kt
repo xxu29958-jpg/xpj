@@ -79,6 +79,7 @@ data class RepaymentDraft(
     val resolvedAt: String?,
     val originalCurrencyCode: String = homeCurrencyCode,
     val originalAmountMinor: Long = requireNotNull(amountCents),
+    val accountingTime: ExpenseAccountingTime? = null,
 ) {
     val isPending: Boolean get() = status == RepaymentDraftStatuses.PENDING
 }

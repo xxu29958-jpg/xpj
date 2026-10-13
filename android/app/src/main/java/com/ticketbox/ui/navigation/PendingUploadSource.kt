@@ -6,6 +6,7 @@ import android.net.Uri
 import android.util.Log
 import com.ticketbox.upload.PreparedUploadImage
 import com.ticketbox.upload.prepareScreenshotUpload
+import com.ticketbox.ui.screens.pending.PendingUploadSelectionUiState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -33,6 +34,27 @@ internal fun cancelPendingUploadSelection(context: Context, state: LaunchActionS
     val selection = state.pendingUpload?.selection ?: return
     state.cancelUploadSelection()
     releaseUploadSourceGrants(context, state, selection)
+}
+
+internal fun removePendingUploadImage(context: Context, state: LaunchActionState, position: Int) {
+    val original = state.pendingUpload?.selection ?: return
+    state.removeUploadImage(position)
+    releaseUploadSourceGrants(context, state, original)
+}
+
+/** Selection presentation reads the same handoff owner that retains the URI grants. */
+internal fun pendingUploadSelectionUi(context: Context, state: LaunchActionState): PendingUploadSelectionUiState {
+    val original = state.pendingUpload?.selection
+    return PendingUploadSelectionUiState(
+        pendingCount = original?.uris?.size ?: 0,
+        accepting = state.acceptingUpload,
+        onRetry = state::retryUpload,
+        onStop = { cancelPendingUploadSelection(context, state) },
+        selectionId = original?.batchId,
+        imageRefs = original?.uris.orEmpty(),
+        attempted = original?.expectedBinding != null,
+        onRemove = { removePendingUploadImage(context, state, it) },
+    )
 }
 
 /** Another queued selection may still need the same URI; never release its read capability. */

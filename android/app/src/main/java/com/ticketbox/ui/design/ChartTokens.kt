@@ -32,10 +32,10 @@ fun chartTokensForSkin(skin: AppSkin): ChartTokens {
     return when (skin) {
         AppSkin.Paper -> ChartTokens(
             series = listOf(
-                Color(0xFF14504A),
-                Color(0xFF26322D),
-                Color(0xFFA9783E),
-                Color(0xFFB65E47),
+                Color(0xFF487D5B),
+                Color(0xFFBB9878),
+                Color(0xFFA598C2),
+                Color(0xFFDEB985),
                 Color(0xFF55747A),
                 Color(0xFF7F8F68),
                 Color(0xFF756A8A),
@@ -63,9 +63,9 @@ fun chartTokensForSkin(skin: AppSkin): ChartTokens {
         AppSkin.Midnight -> ChartTokens(
             series = listOf(
                 Color(0xFF70BFA5),
-                Color(0xFFB7C4BD),
-                Color(0xFFE3B36C),
-                Color(0xFFE0836F),
+                Color(0xFFBB9878),
+                Color(0xFFA598C2),
+                Color(0xFFDEB985),
                 Color(0xFF8DB8C0),
                 Color(0xFFA7B98C),
                 Color(0xFFB19DB8),

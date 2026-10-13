@@ -11,6 +11,7 @@ import com.ticketbox.data.remote.dto.RecurringHistoryPageDto
 import com.ticketbox.data.remote.dto.RecurringItemListResponseDto
 import com.ticketbox.data.remote.dto.RecurringOccurrenceDto
 import com.ticketbox.domain.model.RecurringItem
+import java.time.Clock
 import java.time.Instant
 import java.time.YearMonth
 import java.util.TimeZone
@@ -27,17 +28,19 @@ internal class RecurringQueryReader(
     apiProvider: ApiServiceProvider,
     private val dao: ExpenseDao,
     private val coordinator: LocalLedgerSessionCoordinator,
+    private val clock: Clock = Clock.systemUTC(),
 ) {
     private val guard = LedgerRequestGuard(apiProvider)
     private val errors = NetworkErrorHandler({ apiProvider.currentSession()?.serverUrl }, "Recurring")
     private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
-    private val itemsAdapter = moshi.adapter(RecurringItemListResponseDto::class.java)
-    private val historyAdapter = moshi.adapter(RecurringHistoryPageDto::class.java)
-    private val occurrenceAdapter = moshi.adapter(RecurringOccurrenceDto::class.java)
+    private val itemsAdapter by lazy { moshi.adapter(RecurringItemListResponseDto::class.java) }
+    private val historyAdapter by lazy { moshi.adapter(RecurringHistoryPageDto::class.java) }
+    private val occurrenceAdapter by lazy { moshi.adapter(RecurringOccurrenceDto::class.java) }
     private val mutex = Mutex()
     private val publishedReads = mutableMapOf<String, Long>()
     private val localInvalidation = AtomicLong()
     private val retiredBindings = ConcurrentHashMap.newKeySet<String>()
+    private val queryCache by lazy { RecurringQueryCache(dao, occurrenceAdapter, publishedReads, retiredBindings) }
     private data class DispatchReadProtection(val binding: LogicalSessionBinding, val token: String, val hadUnresolved: Boolean, val bound: BoundLedgerRequest)
     private val dispatchProtections = ConcurrentHashMap<Long, DispatchReadProtection>()
 
@@ -237,7 +240,7 @@ internal class RecurringQueryReader(
         val publicationPending = dao.recurringOutboxReadBarrier(query.bindingKey)?.responseJson
         requireInactiveDirect(barrier)
         requireInactiveDirect(publicationPending)
-        val key = "${query.bindingKey}|${query.kind}|${query.month}|${query.tag}|${query.timezone}"
+        val key = query.readKey()
         val wire = try {
             bound.call { fetch(it) }
         } catch (error: HttpException) {
@@ -252,7 +255,7 @@ internal class RecurringQueryReader(
                     check(barrier == null && dao.recurringDirectBarrier(query.bindingKey) == null) {
                         "原固定支出操作结果尚需联网核对，请重新读取。"
                     }
-                    val saved = cachedQuery(query, epoch) ?: throw error
+                    val saved = queryCache.read(query, epoch) ?: throw error
                     val value = requireNotNull(adapter.fromJson(saved.responseJson))
                     validate(value)
                     check(localInvalidation.get() == generation) { "固定支出已接受修改，请重新读取。" }
@@ -270,11 +273,13 @@ internal class RecurringQueryReader(
                     "固定支出已接受修改，请重新读取。"
                 }
                 val settled = requireBarrierUnchanged(dao, binding, barrier, publicationPending, epoch)
-                val fetchedAt = Instant.now().toString()
+                val fetchedAt = clock.instant().toString()
                 // Independent overview and definition consumers may read together. Their ViewModels
                 // own request replacement; only shared cache publication is ordered here.
                 if (cacheAllowed && (settled || publicationPending != null) && ticket.sequence > (publishedReads[key] ?: 0L)) {
-                    publishSnapshot(dao, retiredBindings, query.copy(responseJson = adapter.toJson(wire), fetchedAt = fetchedAt), epoch, barrier to publicationPending)
+                    val snapshot = query.copy(responseJson = adapter.toJson(wire), fetchedAt = fetchedAt)
+                    if (query.kind == "recurring_occurrence") queryCache.publishOccurrence(snapshot, epoch, ticket.sequence, barrier to publicationPending)
+                    else publishSnapshot(dao, retiredBindings, snapshot, epoch, barrier to publicationPending)
                     publishedReads[key] = ticket.sequence
                 }
                 ReadSnapshot(wire, fetchedAt, fromCache = false)
@@ -282,27 +287,62 @@ internal class RecurringQueryReader(
         }
     }
 
-    private suspend fun cachedQuery(query: StatsProjectionCacheEntity, epoch: Long): StatsProjectionCacheEntity? {
+}
+
+/** Both query names address one occurrence; this policy shares the reader's existing ordering and retirement. */
+private class RecurringQueryCache(
+    private val dao: ExpenseDao,
+    private val adapter: JsonAdapter<RecurringOccurrenceDto>,
+    private val publishedReads: MutableMap<String, Long>,
+    private val retiredBindings: MutableSet<String>,
+) {
+    suspend fun publishOccurrence(snapshot: StatsProjectionCacheEntity, epoch: Long, sequence: Long, barriers: Pair<String?, String?>) {
+        if (barriers.first != null || barriers.second != null) return
+        try {
+            if (snapshot.bindingKey in retiredBindings) {
+                dao.clearRecurringSnapshots(snapshot.bindingKey)
+                retiredBindings.remove(snapshot.bindingKey)
+            }
+            val value = requireNotNull(adapter.fromJson(snapshot.responseJson))
+            val period = snapshot.copy(month = value.period)
+            val key = period.readKey()
+            val previousSequence = publishedReads[key] ?: 0L
+            val previous = read(period, epoch)
+            val selected = previous?.takeIf {
+                !value.preferredTo(requireNotNull(adapter.fromJson(it.responseJson)), sequence > previousSequence)
+            } ?: snapshot
+            val current = dao.recurringSnapshotIfCurrent(snapshot.copy(month = "current"), epoch)
+            val namesCurrentPeriod = snapshot.month == "current" ||
+                current?.let { adapter.fromJson(it.responseJson)?.period == value.period } == true
+            dao.saveRecurringSnapshotIfCurrent(selected.copy(month = value.period), epoch, if (namesCurrentPeriod) "current" else null)
+            publishedReads[key] = maxOf(sequence, previousSequence)
+        } catch (_: SQLiteException) {
+            // Cache alias lookup/publication cannot turn the authorized GET into a failed read.
+        }
+    }
+
+    suspend fun read(query: StatsProjectionCacheEntity, epoch: Long): StatsProjectionCacheEntity? {
         val exact = dao.recurringSnapshotIfCurrent(query, epoch)
         if (query.kind != "recurring_occurrence" || query.month == "current") return exact
         val current = dao.recurringSnapshotIfCurrent(query.copy(month = "current"), epoch) ?: return exact
-        val currentValue = requireNotNull(occurrenceAdapter.fromJson(current.responseJson))
+        val currentValue = requireNotNull(adapter.fromJson(current.responseJson))
         if (currentValue.period != query.month) return exact
         currentValue.validateOccurrence(query.tag, query.month)
         if (exact == null) return current
-        val exactValue = requireNotNull(occurrenceAdapter.fromJson(exact.responseJson))
+        val exactValue = requireNotNull(adapter.fromJson(exact.responseJson))
         exactValue.validateOccurrence(query.tag, query.month)
-        // Both definition and payment versions must advance together; receipt time cannot undo either.
-        val currentDominates = currentValue.seriesRowVersion >= exactValue.seriesRowVersion && currentValue.rowVersion >= exactValue.rowVersion
-        val exactDominates = exactValue.seriesRowVersion >= currentValue.seriesRowVersion && exactValue.rowVersion >= currentValue.rowVersion
-        check(currentDominates || exactDominates) { "本期读取版本不一致，请联网重新读取。" }
-        return when {
-            !currentDominates -> exact
-            !exactDominates -> current
-            Instant.parse(current.fetchedAt) > Instant.parse(exact.fetchedAt) -> current
-            else -> exact
-        }
+        return if (currentValue.preferredTo(exactValue, Instant.parse(current.fetchedAt) > Instant.parse(exact.fetchedAt))) current else exact
     }
+}
+
+private fun StatsProjectionCacheEntity.readKey() = "$bindingKey|$kind|$month|$tag|$timezone"
+
+private fun RecurringOccurrenceDto.preferredTo(other: RecurringOccurrenceDto, preferOnTie: Boolean): Boolean {
+    // Neither a later request nor receipt time can undo a definition or payment version.
+    val dominates = seriesRowVersion >= other.seriesRowVersion && rowVersion >= other.rowVersion
+    val otherDominates = other.seriesRowVersion >= seriesRowVersion && other.rowVersion >= rowVersion
+    check(dominates || otherDominates) { "本期读取版本不一致，请联网重新读取。" }
+    return dominates && (!otherDominates || preferOnTie)
 }
 
 private fun originalRecurringBinding(guard: LedgerRequestGuard, row: OutboxRow): LogicalSessionBinding {

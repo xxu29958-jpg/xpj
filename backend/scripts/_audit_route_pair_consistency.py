@@ -95,11 +95,11 @@ WEB_ONLY_ROUTES: dict[str, str] = {
     "POST /web/duplicates/{expense_id}/reject-original": (
         "web-only atomic keep-current/reject-original decision; API exposes separate primitives"
     ),
+    "POST /web/duplicates/{expense_id}/decision": (
+        "native form explicitly reviews current records and preserves the local draft reference; renders only, no domain mutation"
+    ),
     "POST /web/auth/local": "installed loopback browser enrollment ceremony — no public API surface",
     "POST /web/auth/logout": "browser session teardown — web session is web-only",
-    "POST /web/saved-views": "Library saved-query creation; Web is the current query-management consumer",
-    "POST /web/saved-views/{public_id}/rename": "Library saved-query editing; no current API consumer",
-    "POST /web/saved-views/{public_id}/delete": "Library saved-query deletion; no current API consumer",
 }
 
 

@@ -60,9 +60,9 @@ class ConfirmExpenseDispatcher(
         return try {
             // ADR-0042: replay carries the row's original intent-time key, so a
             // committed-but-unseen first attempt is deduped server-side (HIT →
-            // canonical row) instead of false-409ing on the stale row_version.
+            // original receipt) instead of false-409ing on the stale row_version.
             val confirmed = apiProvider(row).confirmExpense(expenseRef, request, idempotencyKey)
-            publishAcceptedExpense(confirmed.id, confirmed.rowVersion) { publishExpense(row.ledgerId, confirmed) }
+            publishConfirmation(row, confirmed)
         } catch (e: HttpException) {
             mapOutboxHttpException(e)
         } catch (e: IOException) {
@@ -70,7 +70,17 @@ class ConfirmExpenseDispatcher(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            DispatchResult.Failure(e.message ?: "POST confirm expense threw")
+            logNetworkWarning("operation=ConfirmExpense outbox replay failed", e)
+            DispatchResult.Failure("确认结果暂时无法核实，请稍后重试。原提交仍保留。")
         }
+    }
+
+    private suspend fun publishConfirmation(row: OutboxRow, confirmed: ExpenseDto): DispatchResult {
+        val receipt = confirmed.confirmationReceipt
+        if (receipt == null || receipt.id != confirmed.id || !validExpenseConfirmationReceipt(row, receipt)) {
+            return DispatchResult.Failure(EXPENSE_CONFIRMATION_ORIGINAL_REQUIRES_REVIEW)
+        }
+        return publishAcceptedExpense(confirmed.id, confirmed.rowVersion) { publishExpense(row.ledgerId, confirmed) }
+            .copy(receiptJson = expenseAcceptanceReceiptJson(receipt))
     }
 }

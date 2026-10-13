@@ -7,110 +7,85 @@ import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseItemsResponseDto
+import com.ticketbox.data.remote.dto.ExpenseSplitReplaceRequestDto
+import com.ticketbox.data.remote.dto.ExpenseSplitsResponseDto
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import kotlinx.coroutines.test.runTest
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.ResponseBody.Companion.toResponseBody
+import retrofit2.HttpException
+import retrofit2.Response
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/**
- * ADR-0041 P1 (review): an offline items-replace / acknowledge-mismatch replay
- * bumps the PARENT expense's ``row_version``. The items/ack wrapper response
- * now carries that fresh ``row_version`` directly, so the dispatchers read it
- * off the 2xx body (no second GET) and return it as
- * [DispatchResult.Success]'s ``newRowVersion`` so [OutboxDrainEngine] can
- * cascade the fresh token onto a chained same-target PENDING row (e.g.
- * items→confirm), preventing a spurious 409 on the follow-up.
- *
- * These pin that the dispatchers surface the PARENT's row_version (distinct
- * from the outbox row's own, now-stale, token). The engine's cascade of a
- * non-null Success is already covered by
- * [OutboxDrainEngineTest.successCascadesNewTokenToSameTargetPendingRows].
- */
+/** The first receipt may advance our own chain, never past an unseen peer edit. */
 class ItemsCascadeDispatcherTest {
     private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
+    private val itemsAdapter = moshi.adapter(ExpenseItemReplaceRequestDto::class.java)
+    private val splitsAdapter = moshi.adapter(ExpenseSplitReplaceRequestDto::class.java)
+    private val ackAdapter = moshi.adapter(ExpenseStateTokenRequest::class.java)
 
-    private val parentRowVersion = 99L
+    @Test
+    fun acceptedSubtaskReplayLeavesTheNextOriginalIntentInConflictWithThePeer() = runTest {
+        for (type in listOf(PendingMutationType.ReplaceItems, PendingMutationType.ReplaceSplits,
+            PendingMutationType.AcknowledgeItemsMismatch)) {
+            val api = AcceptedSubtaskApi()
+            val dao = FakePendingMutationDao()
+            val outbox = testOutboxRepository(dao)
+            val engine = OutboxDrainEngine(outbox, listOf(
+                ReplaceItemsDispatcher({ api }, itemsAdapter), ReplaceSplitsDispatcher({ api }, splitsAdapter),
+                AcknowledgeItemsMismatchDispatcher({ api }, ackAdapter),
+            ))
+            val payload = when (type) {
+                PendingMutationType.ReplaceItems -> itemsAdapter.toJson(ExpenseItemReplaceRequestDto(0, emptyList()))
+                PendingMutationType.ReplaceSplits -> splitsAdapter.toJson(ExpenseSplitReplaceRequestDto(0, emptyList()))
+                else -> ackAdapter.toJson(ExpenseStateTokenRequest(0))
+            }
+            val originalId = outbox.enqueue(type, "expense:42", payload, 1, "original-key")
+            val followingPayload = itemsAdapter.toJson(ExpenseItemReplaceRequestDto(0, emptyList()))
+            val followingId = outbox.enqueue(PendingMutationType.ReplaceItems, "expense:42", followingPayload, 1, "following-key")
 
-    /**
-     * Delegate-backed fake whose items / acknowledge-mismatch responses report
-     * a parent ``row_version`` distinct from the outbox row's stale token (1L),
-     * so a passing assertion proves the dispatcher reads ``row_version`` off
-     * the response body rather than echoing the row's own token.
-     */
-    private fun apiWithParentRowVersion(): ApiService {
-        val delegate = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0)
-        return object : ApiService by delegate {
-            override suspend fun replaceExpenseItems(
-                id: String,
-                request: ExpenseItemReplaceRequestDto,
-                idempotencyKey: String?,
-            ): ExpenseItemsResponseDto = itemsResponseWithParentRowVersion(id)
+            val result = engine.drainOnce()
 
-            override suspend fun acknowledgeExpenseItemsMismatch(
-                id: String,
-                request: ExpenseStateTokenRequest,
-                idempotencyKey: String?,
-            ): ExpenseItemsResponseDto = itemsResponseWithParentRowVersion(id)
+            assertEquals(1, result.done)
+            assertEquals(1, result.conflicts)
+            assertEquals(PendingMutationStatus.Done.wireValue, dao.rows.getValue(originalId).status)
+            val following = dao.rows.getValue(followingId)
+            assertEquals(PendingMutationStatus.Conflict.wireValue, following.status)
+            assertEquals(2L, following.expectedRowVersion)
+            assertEquals("following-key", following.idempotencyKey)
+            assertEquals(followingPayload, following.payload)
+            assertEquals(3L, api.currentPeerVersion)
         }
     }
 
-    private fun itemsResponseWithParentRowVersion(id: String): ExpenseItemsResponseDto =
-        ExpenseItemsResponseDto(
-            expenseId = id.toLongOrNull() ?: 0L,
-            rowVersion = parentRowVersion,
-            parentAmountCents = 0L,
-            itemsTotalAmountCents = 0L,
-            mismatchCents = 0L,
-            items = emptyList(),
-        )
+    /** Server accepted version 2, lost its reply, then a peer wrote version 3. */
+    private class AcceptedSubtaskApi : ApiService by FakeApiService(mutableListOf(), 0) {
+        var currentPeerVersion = 3L
+            private set
+        private fun originalItems() = ExpenseItemsResponseDto(expenseId = 42, rowVersion = 2,
+            parentAmountCents = 1500, itemsTotalAmountCents = 500, mismatchCents = 1000, items = emptyList())
 
-    private fun row(type: PendingMutationType, payloadJson: String): OutboxRow = OutboxRow(
-        id = 1L,
-        serverUrl = "https://api.example.com",
-        ledgerId = "owner",
-        type = type,
-        targetId = "expense:42",
-        payloadJson = payloadJson,
-        expectedRowVersion = 1L, // stale — distinct from the parent's 99L
-        status = PendingMutationStatus.InFlight,
-        retryCount = 1,
-        lastError = null,
-        createdAt = "2026-05-20T12:00:00.000Z",
-        attemptedAt = "2026-05-20T12:00:00.000Z",
-        completedAt = null,
-        // ADR-0042: AcknowledgeItemsMismatch now requires a key (the dispatcher
-        // fails a keyless row). ReplaceItems ignores it. Supply one so both
-        // cascade tests exercise the success path.
-        idempotencyKey = "key-cascade",
-    )
+        override suspend fun replaceExpenseItems(id: String, request: ExpenseItemReplaceRequestDto,
+            idempotencyKey: String?): ExpenseItemsResponseDto {
+            if (idempotencyKey == "original-key") return originalItems()
+            if (request.expectedRowVersion != currentPeerVersion) throw HttpException(Response.error<Any>(409,
+                """{"error":"state_conflict","message":"账单已被其它端修改"}""".toResponseBody("application/json".toMediaType())))
+            currentPeerVersion += 1
+            return originalItems().copy(rowVersion = currentPeerVersion)
+        }
 
-    @Test
-    fun `replaceItems dispatch surfaces parent row_version for cascade`() = runTest {
-        val api = apiWithParentRowVersion()
-        val payload = moshi.adapter(ExpenseItemReplaceRequestDto::class.java)
-            .toJson(ExpenseItemReplaceRequestDto(expectedRowVersion = 0L, items = emptyList()))
-        val dispatcher = ReplaceItemsDispatcher(
-            apiProvider = { api },
-            payloadAdapter = moshi.adapter(ExpenseItemReplaceRequestDto::class.java),
-        )
+        override suspend fun replaceExpenseSplits(id: String, request: ExpenseSplitReplaceRequestDto,
+            idempotencyKey: String?): ExpenseSplitsResponseDto {
+            assertEquals("original-key", idempotencyKey)
+            return ExpenseSplitsResponseDto(expenseId = 42, rowVersion = 2,
+                parentAmountCents = 1500, splitsTotalAmountCents = 500, mismatchCents = 1000, splits = emptyList())
+        }
 
-        val result = dispatcher.dispatch(row(PendingMutationType.ReplaceItems, payload))
-
-        assertEquals(DispatchResult.Success(newRowVersion = parentRowVersion), result)
-    }
-
-    @Test
-    fun `acknowledgeMismatch dispatch surfaces parent row_version for cascade`() = runTest {
-        val api = apiWithParentRowVersion()
-        val payload = moshi.adapter(ExpenseStateTokenRequest::class.java)
-            .toJson(ExpenseStateTokenRequest(expectedRowVersion = 0L))
-        val dispatcher = AcknowledgeItemsMismatchDispatcher(
-            apiProvider = { api },
-            payloadAdapter = moshi.adapter(ExpenseStateTokenRequest::class.java),
-        )
-
-        val result = dispatcher.dispatch(row(PendingMutationType.AcknowledgeItemsMismatch, payload))
-
-        assertEquals(DispatchResult.Success(newRowVersion = parentRowVersion), result)
+        override suspend fun acknowledgeExpenseItemsMismatch(id: String, request: ExpenseStateTokenRequest,
+            idempotencyKey: String?): ExpenseItemsResponseDto {
+            assertEquals("original-key", idempotencyKey)
+            return originalItems().copy(itemsSumStatus = "mismatch_acknowledged")
+        }
     }
 }

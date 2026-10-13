@@ -2,16 +2,14 @@ package com.ticketbox.ui.screens.expense
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.ProtectedImage
@@ -21,23 +19,19 @@ import com.ticketbox.ui.components.AppAsyncImagePresentation
 import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.design.AppSpacing
 
-// 小票缩略图 / 大图尺寸：沿用原 EditDraftPreviewCard 的口径（竖向票据 3:4 缩略、420dp 大图）。
-private val EvidenceThumbnailSize = DpSize(width = 104.dp, height = 136.dp)
+// 核对预览随可用宽度裁切；展开原图保留既有 420dp 阅读高度。
 private val EvidenceLargeImageHeight = 420.dp
 
 internal data class ExpenseEditEvidenceState(
     val previewImage: ProtectedImage?,
     val fullImage: ProtectedImage?,
     val imageLoading: Boolean,
-    val ocrRunning: Boolean,
-    val readOnly: Boolean,
     val showLargeImage: Boolean,
     val originalTaskAvailable: Boolean = false,
 )
 
 internal data class ExpenseEditEvidenceActions(
     val onToggleLargeImage: () -> Unit,
-    val onRetryOcr: () -> Unit,
 )
 
 /**
@@ -54,34 +48,25 @@ internal fun ExpenseEditEvidenceSection(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
     ) {
-        Text(
-            text = stringResource(R.string.expense_edit_evidence_title),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.labelLarge,
+        Box(modifier = Modifier.fillMaxWidth()) {
+        AppAsyncImage(
+            image = state.previewImage,
+            presentation = AppAsyncImagePresentation(
+                placeholder = if (state.imageLoading) {
+                    stringResource(R.string.expense_edit_preview_image_loading)
+                } else {
+                    stringResource(R.string.expense_edit_preview_image_saved)
+                },
+                contentDescription = stringResource(R.string.components_async_image_content_description),
+                contentScale = ContentScale.Crop,
+            ),
+            layout = AppAsyncImageLayout(displayAspectRatio = 2f),
         )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            AppAsyncImage(
-                image = state.previewImage,
-                presentation = AppAsyncImagePresentation(
-                    placeholder = if (state.imageLoading) {
-                        stringResource(R.string.expense_edit_preview_image_loading)
-                    } else {
-                        stringResource(R.string.expense_edit_preview_image_saved)
-                    },
-                    contentDescription = stringResource(R.string.components_async_image_content_description),
-                    contentScale = ContentScale.Crop,
-                ),
-                layout = AppAsyncImageLayout(compact = true, compactSize = EvidenceThumbnailSize),
-            )
-            ExpenseEvidenceActions(
-                state = state,
-                actions = actions,
-                modifier = Modifier.weight(1f),
-            )
+        ExpenseEvidenceActions(
+            state = state,
+            actions = actions,
+            modifier = Modifier.align(Alignment.TopEnd).padding(AppSpacing.smallGap),
+        )
         }
         if (state.showLargeImage) {
             ExpenseEvidenceLargeImage(state)
@@ -95,11 +80,8 @@ private fun ExpenseEvidenceActions(
     actions: ExpenseEditEvidenceActions,
     modifier: Modifier = Modifier,
 ) {
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
-    ) {
         if (!state.originalTaskAvailable) AppSecondaryButton(
+            modifier = modifier,
             text = when {
                 state.imageLoading -> stringResource(R.string.expense_edit_preview_image_button_loading)
                 state.showLargeImage -> stringResource(R.string.expense_edit_preview_image_button_collapse)
@@ -108,18 +90,6 @@ private fun ExpenseEvidenceActions(
             enabled = !state.imageLoading,
             onClick = actions.onToggleLargeImage,
         )
-        if (!state.readOnly) {
-            AppSecondaryButton(
-                text = if (state.ocrRunning) {
-                    stringResource(R.string.expense_edit_preview_recognize_running_button)
-                } else {
-                    stringResource(R.string.expense_edit_preview_recognize_retry_button)
-                },
-                enabled = !state.ocrRunning,
-                onClick = actions.onRetryOcr,
-            )
-        }
-    }
 }
 
 @Composable

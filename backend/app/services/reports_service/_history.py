@@ -1,6 +1,8 @@
 """Projected history charts and links to the largest recorded expense facts."""
 
+import csv
 from datetime import timedelta
+from io import StringIO
 
 from app.ledger_scope import ledger_scoped_select
 from app.models import Expense
@@ -23,6 +25,28 @@ from app.services.reports_service._time import _month_labels_ending_at, _resolve
 from app.services.spending_contract_service import calendar_month_bounds
 from app.services.spending_projection_service import entry_gaps, read_spending_period
 from app.services.time_service import now_utc
+
+
+def export_six_month_summary_csv(db, *, anchor_month, tenant_id, timezone_name=None, currency_code=None) -> str:
+    """Publish the same six monthly projections as the browser's readable history."""
+    rows = six_month_summary(db, anchor_month=anchor_month, tenant_id=tenant_id,
+                             timezone_name=timezone_name, currency_code=currency_code)
+    output = StringIO()
+    writer = csv.writer(output, lineterminator="\n")
+    writer.writerow(["section", "month", "home_currency_code", "net_spending_minor", "net_spending_major",
+                     "budget_minor", "budget_major", "count", "undated_expense_count"])
+    for row in rows:
+        writer.writerow(["monthly_history", row["month"], row["home_currency_code"], row["amount_cents"],
+                         row["amount_major_text"], row["budget_cents"], row["budget_major_text"],
+                         row["count"], row["undated_expense_count"]])
+    writer.writerow([])
+    writer.writerow(["section", "month", "source_currency_code", "home_currency_code", "rate_date"])
+    for row in rows:
+        for kind in ("missing_rates", "reference_rates"):
+            for rate in row[kind]:
+                writer.writerow([kind, row["month"], rate.source_currency_code or "", rate.home_currency_code,
+                                 rate.rate_date.isoformat() if rate.rate_date is not None else ""])
+    return output.getvalue()
 
 
 def _history_row(db, *, tenant_id, month, period, entries, home, zone, today, rate_cache, undated) -> dict:

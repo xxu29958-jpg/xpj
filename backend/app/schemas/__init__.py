@@ -42,6 +42,7 @@ from app.schemas._background_task import (
     BackgroundTaskStatus,
 )
 from app.schemas._bill_split import (
+    BillSplitAcceptanceResponse,
     BillSplitAcceptRequest,
     BillSplitInboxListResponse,
     BillSplitInboxResponse,
@@ -123,10 +124,12 @@ from app.schemas._exchange import (
     ExchangeRateResponse,
 )
 from app.schemas._expense import (
+    CategoryPreferenceInspectionResponse,
     CategoryPreferenceListResponse,
     CategoryPreferenceResponse,
     CategoryPreferenceTokenRequest,
     ExpenseAcknowledgeItemsMismatchRequest,
+    ExpenseConfirmationReceipt,
     ExpenseConfirmRequest,
     ExpenseItemReplaceRequest,
     ExpenseItemRequest,
@@ -336,6 +339,7 @@ __all__ = [
     "BillSplitAcceptRequest",
     "BillSplitInboxListResponse",
     "BillSplitInboxResponse",
+    "BillSplitAcceptanceResponse",
     "BillSplitInviteRequest",
     "BillSplitSentListResponse",
     "BillSplitSentResponse",
@@ -361,6 +365,7 @@ __all__ = [
     "CategoriesResponse",
     "CategoryRuleCreateRequest",
     "CategoryRuleDeleteRequest",
+    "CategoryPreferenceInspectionResponse",
     "CategoryPreferenceListResponse",
     "CategoryPreferenceResponse",
     "CategoryPreferenceTokenRequest",
@@ -406,6 +411,7 @@ __all__ = [
     "ExchangeRateRequest",
     "ExchangeRateResponse",
     "ExpenseConfirmRequest",
+    "ExpenseConfirmationReceipt",
     "ExpenseCorrectionRequest",
     "ExpenseCorrectionResponse",
     "ExpenseFactBundleResponse",

@@ -15,11 +15,15 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso.closeSoftKeyboard
+import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.repository.LedgerRequestGuard
@@ -27,6 +31,7 @@ import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.design.LocalCurrencyDisplay
+import com.ticketbox.ui.saveConsumerArtPreview
 import com.ticketbox.ui.theme.TicketboxTheme
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -50,10 +55,16 @@ class BudgetAdviceManualRateRecoveryTest {
     }
 
     @Test fun savingAMissingRateFromTheRouteOnlyRecalculatesUntilExplicitGeneration() {
+        val suggestion = com.ticketbox.data.remote.dto.BudgetSuggestionDto("餐饮与家庭日常采购的长分类名称", 123456789L,
+            "结合近期分类汇总提供参考，可以查看依据后自行调整；建议不会自动改动预算或已确认支出。")
+        fixture.advice = com.ticketbox.data.remote.dto.BudgetAdviceDto("按本月计划收入与已确认支出提供参考。", listOf(suggestion), null)
         show()
         waitForText(context.getString(R.string.advice_rate_add))
-        compose.onNodeWithText("‹").performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.budget_month_previous)).performScrollTo().performClick()
         compose.waitUntil(5_000) { fixture.inputReads.lastOrNull()?.first == fixture.originalMonth }
+        compose.onNodeWithText(context.getString(R.string.advice_rate_add)).performScrollTo().assertIsDisplayed()
+        compose.waitForIdle()
+        saveConsumerArtPreview("rate-gap-origin", requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
         compose.onNodeWithText(context.getString(R.string.advice_rate_add)).performScrollTo().performClick()
         compose.waitUntil(5_000) { compose.onAllNodes(hasTestTag("advice_rate_value"), useUnmergedTree = true)
             .fetchSemanticsNodes().isNotEmpty() }
@@ -62,7 +73,9 @@ class BudgetAdviceManualRateRecoveryTest {
         rateInput.assertTextEquals("20")
         closeSoftKeyboard()
         compose.waitForIdle()
-        compose.onNodeWithTag("advice_rate_save").performScrollTo().assertIsDisplayed().assertIsEnabled().performClick()
+        compose.onNodeWithTag("advice_rate_save").performScrollTo().assertIsDisplayed().assertIsEnabled()
+        saveConsumerArtPreview("rate-original-editor", requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        compose.onNodeWithTag("advice_rate_save").performClick()
         val row = fixture.awaitSavedRow(compose)
         val intent = requireNotNull(fixture.adapters.manualRateAdapter.fromJson(row.payload))
         assertEquals(fixture.originalMonth, intent.month)
@@ -73,12 +86,38 @@ class BudgetAdviceManualRateRecoveryTest {
         assertEquals(1, runBlocking { fixture.drain().done })
         compose.waitUntil(5_000) { fixture.inputReads.size > readsBefore }
         waitForText(context.getString(R.string.budget_advice_generate))
+        compose.onNodeWithText(context.getString(R.string.arrangement_budget_title)).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.arrangement_budget_currency, "JPY")).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.arrangement_budget_version, 3)).performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.arrangement_budget_excluded, "其他")).performScrollTo().assertIsDisplayed()
+        compose.waitForIdle()
+        saveConsumerArtPreview("arrangement-budget-definition", compose.onRoot().captureToImage().asAndroidBitmap())
+        val originalMonth = java.time.YearMonth.parse(fixture.originalMonth)
+        compose.onNodeWithText(context.getString(R.string.advice_scope_history,
+            originalMonth.minusMonths(6).toString(), originalMonth.minusMonths(1).toString(), 2)).performScrollTo().assertIsDisplayed()
+        compose.waitForIdle()
+        saveConsumerArtPreview("arrangement-advice-scope", compose.onRoot().captureToImage().asAndroidBitmap())
         assertTrue(fixture.adviceCalls.isEmpty())
         assertEquals(fixture.originalMonth to "JPY", fixture.inputReads.last())
         compose.onNodeWithText(context.getString(R.string.budget_advice_generate)).performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.budget_advice_consent_title)).assertIsDisplayed()
+        assertTrue(fixture.adviceCalls.isEmpty())
+        InstrumentationRegistry.getInstrumentation().uiAutomation.waitForIdle(300, 5_000)
+        saveConsumerArtPreview("arrangement-consent", requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        compose.onNodeWithText(context.getString(R.string.common_cancel)).performClick()
+        assertTrue(fixture.adviceCalls.isEmpty())
+        compose.onNodeWithText(context.getString(R.string.budget_advice_generate)).performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.budget_advice_consent_confirm)).performClick()
         compose.waitUntil(5_000) { fixture.adviceCalls.size == 1 }
         assertEquals(fixture.originalMonth, fixture.adviceCalls.single().month)
         assertEquals("JPY", fixture.adviceCalls.single().homeCurrencyCode)
+        waitForText(requireNotNull(suggestion.category))
+        InstrumentationRegistry.getInstrumentation().uiAutomation.waitForIdle(300, 5_000)
+        compose.onNodeWithText(suggestion.category).performScrollTo().assertIsDisplayed()
+        saveConsumerArtPreview("arrangement-suggestion-heading", requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        compose.onNodeWithText(suggestion.rationale).performScrollTo().assertIsDisplayed()
+        saveConsumerArtPreview("arrangement-suggestion", requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        assertTrue(fixture.arrangementWrites.isEmpty())
     }
 
     @Test fun originalRouteReopensRoomAndReplaysOriginalReceiptWithoutOverwritingLaterCanonicalRate() {
@@ -154,10 +193,11 @@ class BudgetAdviceManualRateRecoveryTest {
 
     private fun show(originalSubmissionId: Long? = null) {
         val factory = fixture.screenFactory
-        compose.setContent { if (mounted.value) TicketboxTheme(skin = AppSkin.Default) {
+        compose.setContent { if (mounted.value) TicketboxTheme(skin =
+            if (InstrumentationRegistry.getArguments().getString("captureSkin") == "midnight") AppSkin.Midnight else AppSkin.Default) {
             CompositionLocalProvider(LocalViewModelStoreOwner provides models,
                 LocalCurrencyDisplay provides CurrencyDisplay(CurrencyCode.CNY)) {
-                BudgetAdviceRoute(factory, onBack = {}, originalSubmissionId = originalSubmissionId)
+                BudgetAdviceRoute(factory, onBack = {}, context = BudgetAdviceRouteContext(originalSubmissionId = originalSubmissionId))
             }
         } }
     }

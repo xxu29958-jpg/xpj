@@ -19,6 +19,10 @@ fun ExpenseTimeInput.toRequest(): ExpenseTimeInputDto = ExpenseTimeInputDto(
     precision, calendarRevision, userLocalDate, instantUtc, sourceTimezone, sourceUtcOffsetSeconds, accountingDate,
 )
 
+internal fun ExpenseTimeInputDto.toDomain(): ExpenseTimeInput = ExpenseTimeInput(
+    precision, calendarRevision, userLocalDate, instantUtc, sourceTimezone, sourceUtcOffsetSeconds, accountingDate,
+)
+
 internal fun ExpenseTimeInput.toCapturedTime(): ExpenseAccountingTime = ExpenseAccountingTime(
     precision, instantUtc, userLocalDate, sourceTimezone, sourceUtcOffsetSeconds, accountingDate, calendarRevision,
 )

@@ -11,21 +11,10 @@ import kotlinx.coroutines.CancellationException
 import retrofit2.HttpException
 
 /**
- * ADR-0042 Slice E-1 dispatcher: replays a queued ``PUT /api/expenses/{id}/splits``.
- *
- * Body-carrying, same shape as [ReplaceItemsDispatcher]: the payload is the
- * Moshi-serialised [ExpenseSplitReplaceRequestDto] minus the token (the row's
- * ``expectedRowVersion`` is the single source of truth and is copied back over
- * the payload before dispatch, so a KeepMine token refresh doesn't require
- * re-serialising the whole split list).
- *
- * The replace bumps the parent expense's ``row_version`` server-side, and the
- * splits response (ExpenseSplitsResponse) carries that fresh ``row_version`` on
- * the wrapper, so the dispatcher returns it directly as
- * [DispatchResult.Success]'s ``newRowVersion`` — the response is
- * self-describing, no second GET. The drain then cascades it onto a chained
- * same-target PENDING row (e.g. offline splits→confirm) so the follow-up
- * doesn't replay with a stale token and false-409 (ADR-0041 P1).
+ * Replays the original key and input, using the Outbox row's OCC token.
+ * The response is the first accepted subtask snapshot. Its parent version may
+ * advance our queued successor, but must never include a later peer's version.
+ * GET owns current state; an unverifiable old receipt stays available for review.
  */
 class ReplaceSplitsDispatcher(
     private val apiProvider: (OutboxRow) -> ApiService,

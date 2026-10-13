@@ -1,7 +1,7 @@
 package com.ticketbox.ui.screens.plan
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -20,9 +20,12 @@ import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppErrorState
+import com.ticketbox.ui.components.AppAdaptiveContentActionRow
+import com.ticketbox.ui.components.AppAdaptiveContentActionStyle
 import com.ticketbox.ui.components.AppFloatingActionBar
 import com.ticketbox.ui.components.AppLoadingState
 import com.ticketbox.ui.components.AppPageRole
+import com.ticketbox.ui.components.AppButtonIcons
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.AppSecondaryPageChrome
@@ -39,16 +42,18 @@ import com.ticketbox.viewmodel.SpendingGoalDetailViewModel
 internal fun SpendingGoalDetailScreen(
     viewModel: SpendingGoalDetailViewModel,
     onBack: () -> Unit,
+    onOpenRecycleBin: () -> Unit,
     backText: Int = R.string.spending_goal_detail_back,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val goal = state.goal
-    val navigateBack = if (state.isEditing) viewModel::cancelEdit else onBack
+    val navigateBack = { if (state.isEditing) viewModel.cancelEdit(discard = false) else onBack() }
+    BackHandler(onBack = navigateBack)
     AppSecondaryScrollableContent(
         chrome = AppSecondaryPageChrome(
             role = AppPageRole.Stats,
-            title = goal?.name ?: stringResource(R.string.spending_goal_detail_title),
-            subtitle = goal?.let {
+            title = if (state.isEditing) stringResource(R.string.spending_goal_edit_title) else goal?.name ?: stringResource(R.string.spending_goal_detail_title),
+            subtitle = if (state.isEditing) stringResource(R.string.spending_goal_edit_intro) else goal?.let {
                 stringResource(
                     R.string.spending_goal_detail_subtitle,
                     displayMonthLabel(it.month),
@@ -70,7 +75,7 @@ internal fun SpendingGoalDetailScreen(
         ),
         slots = AppSecondaryPageSlots(
             status = { SpendingGoalDetailStatus(state, viewModel) },
-            bottomBar = if (goal != null && state.canModify && !goal.isArchived) {
+            bottomBar = if (state.canOpenEditor) {
                 { SpendingGoalDetailFooter(state = state, viewModel = viewModel) }
             } else {
                 null
@@ -81,6 +86,7 @@ internal fun SpendingGoalDetailScreen(
             SpendingGoalDetailBody(
                 state = state,
                 viewModel = viewModel,
+                onOpenRecycleBin = onOpenRecycleBin,
             )
         }
         if (goal != null) item {
@@ -110,13 +116,16 @@ private fun SpendingGoalDetailStatus(state: SpendingGoalDetailUiState, viewModel
                 announceUpdates = false,
             )
         }
+        if (state.hasRetainedEdit && !state.isEditing) {
+            AppStatusBanner(message = UiText.res(R.string.spending_goal_edit_retained), tone = MessageTone.Info)
+        }
         state.message?.let {
             AppStatusBanner(message = it, tone = state.messageTone)
         }
         state.formError?.let {
             AppStatusBanner(message = it, tone = MessageTone.Danger)
         }
-        if (state.goal != null) state.loadError?.let {
+        if (state.goal != null || state.isEditing) state.loadError?.let {
             AppStatusBanner(message = it, tone = MessageTone.Danger)
             TextButton(onClick = { viewModel.load() }) { Text(stringResource(R.string.common_retry)) }
         }
@@ -128,8 +137,10 @@ private fun SpendingGoalDetailStatus(state: SpendingGoalDetailUiState, viewModel
 private fun SpendingGoalDetailBody(
     state: SpendingGoalDetailUiState,
     viewModel: SpendingGoalDetailViewModel,
+    onOpenRecycleBin: () -> Unit,
 ) {
     when {
+        state.isEditing && state.hasRetainedEdit -> SpendingGoalEditContent(state = state, viewModel = viewModel)
         state.isLoading && state.goal == null -> AppLoadingState(
             title = stringResource(R.string.spending_goal_detail_loading_title),
             body = stringResource(R.string.spending_goal_detail_loading_body),
@@ -146,11 +157,11 @@ private fun SpendingGoalDetailBody(
             body = stringResource(R.string.spending_goal_detail_load_failed),
             onRetry = { viewModel.load() },
         )
-        state.isEditing -> SpendingGoalEditContent(state = state, viewModel = viewModel)
         else -> SpendingGoalViewContent(
             goal = state.goal,
-            canModify = state.canModify && !state.hasPendingEdit,
+            canModify = state.canModifyGoal && !state.hasPendingEdit,
             onArchive = { viewModel.showArchiveConfirmation(true) },
+            onOpenRecycleBin = onOpenRecycleBin,
         )
     }
 }
@@ -162,36 +173,36 @@ private fun SpendingGoalDetailFooter(
 ) {
     AppFloatingActionBar {
         if (state.isEditing) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-            ) {
+            AppAdaptiveContentActionRow(
+                style = AppAdaptiveContentActionStyle(wideActionWeight = 1f),
+                content = {
                 AppSecondaryButton(
                     text = stringResource(R.string.spending_goal_edit_cancel),
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.fillMaxWidth(),
                     enabled = !state.isSaving,
                     leadingIcon = Icons.Filled.Close,
-                    onClick = viewModel::cancelEdit,
-                )
+                    onClick = { viewModel.cancelEdit() },
+                ) },
+                action = { actionModifier ->
                 AppPrimaryButton(
                     text = if (state.isSaving) {
                         stringResource(R.string.spending_goal_edit_saving)
                     } else {
                         stringResource(R.string.spending_goal_edit_save)
                     },
-                    icon = Icons.Filled.Check,
-                    modifier = Modifier.weight(1f),
+                    icons = AppButtonIcons(leading = Icons.Filled.Check),
+                    modifier = actionModifier,
                     enabled = state.canSave,
                     onClick = viewModel::save,
-                )
-            }
+                ) },
+            )
         } else {
             AppPrimaryButton(
                 text = stringResource(R.string.spending_goal_edit_action),
-                icon = Icons.Filled.Edit,
+                icons = AppButtonIcons(leading = Icons.Filled.Edit),
                 modifier = Modifier.fillMaxWidth(),
                 // 编辑和保存都使用这个目标自身已确认的币种。
-                enabled = state.goalCurrency != null && !state.hasPendingEdit && !state.isSaving,
+                enabled = (state.hasRetainedEdit || state.goalCurrency != null) && !state.hasPendingEdit && !state.isSaving,
                 onClick = viewModel::beginEdit,
             )
         }

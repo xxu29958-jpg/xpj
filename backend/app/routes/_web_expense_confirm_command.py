@@ -8,13 +8,14 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.fx_constants import FX_SOURCE_MANUAL, FX_STATUS_READY
-from app.routes._web_expense_edit_command import prepare_web_expense_form
+from app.routes._web_expense_edit_command import expense_edit_form_values, prepare_web_expense_form
 from app.routes._web_expense_edit_form import WebExpenseEditForm
 from app.routes._web_expense_form import web_form_error_status
 from app.routes._web_session_common import parse_form_row_version_token
-from app.schemas import ExpenseUpdateRequest
-from app.services.expense_review_command_service import confirm_expense_submission
+from app.schemas import ExpenseResponse, ExpenseUpdateRequest
+from app.services.expense_review_command_service import confirm_expense_submission, read_expense_confirmation_receipt
 from app.services.expense_service import get_expense
+from app.services.idempotency import fingerprint_request
 from app.services.time_service import ensure_utc
 
 _ROTATE_IDEMPOTENCY_ERRORS = frozenset(
@@ -46,6 +47,8 @@ class WebExpenseConfirmOutcome:
     form_values: dict[str, str] | None = None
     field_errors: dict[str, str] | None = None
     conflict: bool = False
+    receipt: ExpenseResponse | None = None
+    error_code: str = ""
 
 
 def _manual_fx_submission_needs_preview(
@@ -108,6 +111,7 @@ def prepare_web_expense_confirmation(
         tags=form.tags,
         expense_time=form.expense_time,
         time_fields=form.time_fields,
+        score_fields=form.score_fields,
     )
     if payload is None:
         return WebExpenseConfirmPreparation(
@@ -148,6 +152,10 @@ def _confirmation_intent_body(
     }
 
 
+def confirmation_form_values(form: WebExpenseEditForm) -> dict[str, str] | None:
+    return expense_edit_form_values(form) if form.save_before_confirm else None
+
+
 def confirm_web_expense(
     db: Session,
     *,
@@ -157,21 +165,21 @@ def confirm_web_expense(
     actor_account_id: int | None = None,
     actor_device_id: int | None = None,
 ) -> WebExpenseConfirmOutcome:
-    prepared = prepare_web_expense_confirmation(
-        db,
-        expense_id=expense_id,
-        selected_ledger_id=selected_ledger_id,
-        form=form,
-    )
-    if prepared.error is not None or prepared.expected_row_version is None:
-        return WebExpenseConfirmOutcome(
-            error=prepared.error or "页面已过期，请刷新后重新确认。",
-            error_status=prepared.error_status,
-            form_values=prepared.form_values,
-            field_errors=prepared.field_errors,
-        )
+    form_values = confirmation_form_values(form)
     try:
-        confirm_expense_submission(
+        version = parse_form_row_version_token(form.expected_row_version)
+        if form.idempotency_key and version is not None:
+            original = read_expense_confirmation_receipt(db, tenant_id=selected_ledger_id, expense_id=expense_id,
+                idempotency_key=form.idempotency_key, request_fingerprint=fingerprint_request(operation="confirm_expense",
+                    target_id=str(expense_id), body=_confirmation_intent_body(form_values), expected_row_version=version))
+            if original is not None:
+                return WebExpenseConfirmOutcome(receipt=original)
+        prepared = prepare_web_expense_confirmation(db, expense_id=expense_id, selected_ledger_id=selected_ledger_id, form=form)
+        if prepared.error is not None or prepared.expected_row_version is None:
+            return WebExpenseConfirmOutcome(error=prepared.error or "页面已过期，请刷新后重新确认。",
+                error_code="invalid_request", error_status=prepared.error_status,
+                form_values=prepared.form_values, field_errors=prepared.field_errors)
+        receipt = confirm_expense_submission(
             db,
             expense_id=expense_id,
             tenant_id=selected_ledger_id,
@@ -184,7 +192,6 @@ def confirm_web_expense(
             actor_device_id=actor_device_id,
         )
     except AppError as exc:
-        form_values = prepared.form_values
         if form_values and exc.error in _ROTATE_IDEMPOTENCY_ERRORS:
             form_values = {**form_values, "idempotency_key": ""}
         return WebExpenseConfirmOutcome(
@@ -194,8 +201,8 @@ def confirm_web_expense(
                 else exc.message
             ),
             error_status=web_form_error_status(exc),
+            error_code=exc.error,
             form_values=form_values,
-            field_errors=prepared.field_errors,
             conflict=exc.error == "state_conflict",
         )
-    return WebExpenseConfirmOutcome()
+    return WebExpenseConfirmOutcome(receipt=receipt)

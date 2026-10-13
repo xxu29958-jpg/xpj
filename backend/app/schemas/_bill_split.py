@@ -31,6 +31,7 @@ from app.services.time_service import to_iso
 __all__ = [
     "BillSplitAcceptRequest",
     "BillSplitInboxResponse",
+    "BillSplitAcceptanceResponse",
     "BillSplitInboxListResponse",
     "BillSplitInviteRequest",
     "BillSplitSentResponse",
@@ -160,6 +161,12 @@ class BillSplitInboxResponse(_BillSplitCommon):
     sender_account_id: int
     sender_display_name: str
     received_bill: BillSplitReceivedBillResponse | None = None
+
+
+class BillSplitAcceptanceResponse(BillSplitInboxResponse):
+    """Original command acknowledgement, even if the accepted fact is no longer readable."""
+
+    accepted_target_ledger_id: str
 
 
 class BillSplitSentListResponse(BaseModel):

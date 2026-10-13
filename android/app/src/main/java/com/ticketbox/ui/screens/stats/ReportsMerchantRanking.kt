@@ -15,7 +15,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
 import com.ticketbox.domain.model.ReportMerchantRanking
 import com.ticketbox.domain.model.ReportRankingMetric
@@ -54,6 +53,7 @@ internal fun MerchantRankingBlock(
                 row = row,
                 rankingMetric = rankingMetric,
                 maxValue = maxValue,
+                showBars = rankingMetric == ReportRankingMetric.Count || visibleRows.none { (it.amountCents ?: 0L) < 0L },
             )
         }
     }
@@ -100,10 +100,11 @@ private fun MerchantRankingRow(
     row: ReportMerchantRanking,
     rankingMetric: ReportRankingMetric,
     maxValue: Long,
+    showBars: Boolean,
 ) {
     val currencyDisplay = LocalCurrencyDisplay.current
     val value = merchantRankingBarValue(row, rankingMetric)
-    val progress = value?.let { if (maxValue > 0L) (it.toFloat() / maxValue.toFloat()).coerceIn(0f, 1f) else 0f }
+    val progress = value?.takeIf { showBars && it >= 0L }?.let { if (maxValue > 0L) (it.toFloat() / maxValue.toFloat()).coerceIn(0f, 1f) else 0f }
     val primaryText = when (rankingMetric) {
         ReportRankingMetric.Count -> stringResource(R.string.stats_reports_bar_count, row.count)
         ReportRankingMetric.Amount -> row.amountCents?.let { formatDisplayAmount(it, currencyDisplay) } ?: stringResource(R.string.reports_amount_unavailable)
@@ -127,8 +128,6 @@ private fun MerchantRankingRow(
             text = supportingText,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelSmall.tabularNum(),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
         )
     }
 }
@@ -151,8 +150,6 @@ private fun MerchantRankingTopLine(
                 text = label,
                 modifier = Modifier.fillMaxWidth(),
                 style = MaterialTheme.typography.bodyMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
             )
         }
     } else {
@@ -165,8 +162,6 @@ private fun MerchantRankingTopLine(
                 text = label,
                 modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.bodyMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
             )
             Text(
                 text = primaryText,
@@ -202,7 +197,7 @@ private fun MerchantRankingBar(progress: Float) {
 internal fun merchantRankingBarValue(row: ReportMerchantRanking, rankingMetric: ReportRankingMetric): Long? =
     when (rankingMetric) {
         ReportRankingMetric.Count -> row.count.coerceAtLeast(0).toLong()
-        ReportRankingMetric.Amount -> row.amountCents?.coerceAtLeast(0L)
+        ReportRankingMetric.Amount -> row.amountCents
     }
 
 internal fun merchantRankingMaxValue(rows: List<ReportMerchantRanking>, rankingMetric: ReportRankingMetric): Long =
@@ -218,12 +213,12 @@ internal fun merchantRankingVisibleRows(
             ReportRankingMetric.Count -> compareByDescending<ReportMerchantRanking> {
                 it.count.coerceAtLeast(0)
             }.thenByDescending {
-                it.amountCents?.coerceAtLeast(0L)
+                it.amountCents
             }.thenBy {
                 it.merchant
             }
             ReportRankingMetric.Amount -> compareByDescending<ReportMerchantRanking> {
-                it.amountCents?.coerceAtLeast(0L)
+                it.amountCents
             }.thenByDescending {
                 it.count.coerceAtLeast(0)
             }.thenBy {

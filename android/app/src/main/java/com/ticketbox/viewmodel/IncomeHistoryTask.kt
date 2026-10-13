@@ -63,8 +63,9 @@ internal class IncomeHistoryTask(
                 val page = read.value
                 state.copy(items = if (before == null) page.items else state.items + page.items,
                     nextBeforeVersion = page.nextBeforeVersion, loading = false,
-                    fetchedAt = if (state.fromCache) state.fetchedAt else read.fetchedAt,
-                    fromCache = state.fromCache || read.fromCache)
+                    fetchedAt = if (before == null) read.fetchedAt else listOfNotNull(state.fetchedAt, read.fetchedAt)
+                        .minByOrNull { java.time.Instant.parse(it) },
+                    fromCache = read.fromCache || (before != null && state.fromCache))
             }, onFailure = { error ->
                 if (error.isReadAccessDenied()) IncomeHistoryState() else state.copy(loading = false,
                     error = error.toUiText(R.string.income_history_failed))

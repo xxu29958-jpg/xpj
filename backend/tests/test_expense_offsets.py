@@ -2,8 +2,14 @@
 
 from __future__ import annotations
 
+import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import event
 
+from app.database import SessionLocal
+from app.models import ExpenseOffsetRevision
+from app.services.expense_offset_service import expense_fact_bundle
+from app.services.expense_service import get_expense
 from tests.expense_correction_support import idem, manual_confirmed
 from tests.test_bill_split import _seed_receiver, _split_headers
 from tests.test_bill_split_security_regressions import _bearer_for_account_ledger
@@ -77,6 +83,57 @@ def test_refund_keeps_original_fact_and_publishes_net_bundle(
     )
     assert reread.status_code == 200, reread.text
     assert reread.json() == body
+
+
+@pytest.mark.real_db
+@pytest.mark.parametrize("commit_boundary", ["before_history_read", "after_history_read"])
+def test_fact_bundle_keeps_one_financial_state_during_offset_commits(
+    client: TestClient, identity, commit_boundary,
+) -> None:
+    """Independent committed writers cannot splice new history into old amounts/OCC."""
+    expense = manual_confirmed(client, identity, amount_cents=1280)
+    path = f"/api/expenses/{expense['id']}/offsets"
+    current = client.get(f"/api/expenses/{expense['id']}/fact-bundle", headers=identity.app_headers).json()
+    for change in ("created", "correction", "void"):
+        if change == "created":
+            target = path
+            payload = {"kind": "refund", "original_amount_minor": 300, "accounting_date": "2026-09-05",
+                "reason": "并发退款", "expected_row_version": current["root"]["row_version"]}
+        else:
+            offset = current["active_offsets"][0]
+            target = path + f"/{offset['public_id']}/" + ("corrections" if change == "correction" else "voids")
+            payload = {"expected_row_version": offset["row_version"]}
+            if change == "correction":
+                payload.update(original_amount_minor=200, accounting_date="2026-09-05", category="购物",
+                    offset_reason="并发更正金额", correction_reason="更正退款")
+            else:
+                payload["void_reason"] = "撤销误录退款"
+        accepted = []
+
+        def commit_during_read(state, accepted=accepted, target=target, payload=payload):
+            if accepted or not any(mapper.class_ is ExpenseOffsetRevision for mapper in state.all_mappers):
+                return state.invoke_statement()
+            result = state.invoke_statement().freeze() if commit_boundary == "after_history_read" else None
+            response = client.post(target, headers=idem(identity.app_headers), json=payload)
+            assert response.status_code == 201, response.text
+            accepted.append(response.json())
+            return result() if result is not None else state.invoke_statement()
+
+        with SessionLocal() as reader:
+            # Actual routes resolve the root first; retain that object to exercise the identity map.
+            resolved = get_expense(reader, expense["id"], "owner")
+            event.listen(reader, "do_orm_execute", commit_during_read, retval=True)
+            observed = expense_fact_bundle(reader, tenant_id="owner", expense_id=resolved.id).model_dump(mode="json")
+        assert len(accepted) == 1, "The independent writer did not commit during the fact read"
+        expected = accepted[0] if commit_boundary == "before_history_read" else current
+        assert observed == expected
+        current = client.get(f"/api/expenses/{expense['id']}/fact-bundle", headers=identity.app_headers).json()
+        assert current == accepted[0]
+        assert current["root"]["amount_cents"] == 1280
+        assert current["recent_history"][0]["change_kind"] == change
+    assert current["active_offsets"] == []
+    assert current["financial_summary"]["lineage_home_net_cents"] == 1280
+    assert [item["change_kind"] for item in current["recent_history"]] == ["void", "correction", "created"]
 
 
 def test_fact_bundle_read_resolves_the_same_device_local_ref(

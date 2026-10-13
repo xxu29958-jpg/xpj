@@ -13,8 +13,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.time.Instant
-import java.time.ZoneOffset
 
 /**
  * ADR-0049 §6 (slice 7) debt_repayment goal screen state + actions.
@@ -22,16 +20,15 @@ import java.time.ZoneOffset
  * Reuses the goal repository ([ReportsActions]) — a debt_repayment goal is a goal
  * (same table / DTO). The screen is a list → detail flow inside one overlay; the
  * detail surfaces the §6/F13 integrity review with its two exits:
- *  - remove the debt-voided link(s) via [removeVoidedDebts] (link-replace → new version)
+ *  - association edits use DebtGoalEditViewModel and the original Room command
  *  - keep it for audit via [acknowledge] (clears needs_review for the current version)
  *
- * This slice is view + integrity-review only; creating a debt goal (which needs a
- * Debt picker) lands with the broader debt-management UI in a later slice.
  */
 data class DebtGoalUiState(
     val isLoading: Boolean = false,
     val canModify: Boolean = true,
     val goals: List<Goal> = emptyList(),
+    val includeArchived: Boolean = false,
     /** Non-null = the detail page for this goal is open; null = the list. */
     val selectedGoal: Goal? = null,
     val isSubmitting: Boolean = false,
@@ -81,6 +78,11 @@ class DebtGoalViewModel(
 
     init {
         viewModelScope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+            writes.observeActiveLedgerAccess().collect { access ->
+                _state.update { it.copy(canModify = access != null && repository.canModifyLedger()) }
+            }
+        }
+        viewModelScope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
             repository.readAccessDenials.collect { denial ->
                 if (denial.binding != adjustmentBinding || writes.currentAccess()?.binding != denial.binding) return@collect
                 loadGeneration += 1
@@ -124,7 +126,8 @@ class DebtGoalViewModel(
         latestRefreshGeneration = gen
         _state.update { it.copy(isLoading = true, error = null) }
         viewModelScope.launch {
-            val result = repository.debtGoals(expectedBinding = binding, timezone = timezone)
+            val result = repository.debtGoals(includeArchived = _state.value.includeArchived,
+                expectedBinding = binding, timezone = timezone)
             // Drop a load superseded by a newer load or a committed mutation.
             if (gen != loadGeneration || binding != writes.currentAccess()?.binding) {
                 // Clear our loading flag unless a newer refresh now owns it (else a
@@ -201,21 +204,10 @@ class DebtGoalViewModel(
         _state.update { it.copy(selectedGoal = null, selectedFetchedAt = null, selectedFromCache = false, error = null) }
     }
 
-    /** §6/F13 exit (a): drop the debt-voided link(s) → a new goal version. */
-    fun removeVoidedDebts() {
-        val goal = _state.value.selectedGoal ?: return
-        val evaluation = goal.debtRepayment ?: return
-        val keep = evaluation.nonVoidedDebtPublicIds
-        if (keep.isEmpty()) {
-            // A debt goal must keep ≥1 link; every link voided has no clean replacement.
-            _state.update { it.copy(error = UiText.res(R.string.debt_goal_remove_voided_needs_one)) }
-            return
-        }
-        _state.update { it.copy(isSubmitting = true, error = null) }
-        viewModelScope.launch {
-            val result = repository.replaceDebtLinks(goal.publicId, goal.rowVersion, keep)
-            applyMutation(result, R.string.debt_goal_links_updated)
-        }
+    fun setIncludeArchived(include: Boolean) {
+        if (_state.value.includeArchived == include) return
+        _state.update { it.copy(includeArchived = include) }
+        refresh()
     }
 
     /** §6/F13 exit (b): acknowledge ("keep for audit") → clears needs_review. */
@@ -229,32 +221,13 @@ class DebtGoalViewModel(
     }
 
     /**
-     * ADR-0049 §7.0 / 8e-6c: set ([epochMillis] non-null, the Material3 picker's UTC millis) or
-     * clear ([epochMillis] = null) the open debt goal's payoff deadline. Reuses [applyMutation]
-     * (same OCC fold-after shape as the integrity exits) so it never un-achieves the goal — the
-     * server bumps row_version only. Only reachable from the pure-external KPI block (the UI gates
-     * the affordance on composition == External), so a member/mixed plan can never set a deadline.
-     */
-    fun setTargetDate(epochMillis: Long?) {
-        val goal = _state.value.selectedGoal ?: return
-        _state.update { it.copy(isSubmitting = true, error = null) }
-        viewModelScope.launch {
-            val targetDate = epochMillis?.let(::epochMillisToIsoDate)
-            val result = repository.setDebtGoalTargetDate(goal.publicId, goal.rowVersion, targetDate)
-            applyMutation(result, R.string.debt_goal_target_date_updated)
-        }
-    }
-
-    /**
-     * Archive the open goal. The only clean exit when a not-yet-achieved goal's whole
-     * link set is voided (§6/F13): "remove voided" has no non-voided replacement and
-     * acknowledge is achieved-only, so without a Debt picker (a later slice) archiving
-     * is how the user clears the dead-end review.
+     * Explicitly archive the open goal, including an all-voided link set. The separate
+     * association task also lets the user choose valid replacement debts.
      */
     fun archiveSelected() {
         val goal = _state.value.selectedGoal ?: return
         val binding = adjustmentBinding ?: return
-        if (!_state.value.canModify || writes.currentAccess()?.binding != binding) return
+        if (!_state.value.canModify || _state.value.isSubmitting || goal.isArchived || writes.currentAccess()?.binding != binding) return
         _state.update { it.copy(isSubmitting = true, error = null) }
         viewModelScope.launch {
             val result = repository.archiveGoal(goal.publicId, binding)
@@ -268,7 +241,8 @@ class DebtGoalViewModel(
                         it.copy(
                             isSubmitting = false,
                             selectedGoal = null,
-                            goals = it.goals.filterNot { listed -> listed.publicId == archived.publicId && listed.rowVersion <= archived.rowVersion },
+                            goals = if (it.includeArchived) it.goals.replaceGoal(archived) else
+                                it.goals.filterNot { listed -> listed.publicId == archived.publicId && listed.rowVersion <= archived.rowVersion },
                             fetchedAt = null, fromCache = false, selectedFetchedAt = null, selectedFromCache = false,
                             flashMessage = UiText.res(R.string.debt_goal_archived),
                             error = null,
@@ -305,7 +279,7 @@ class DebtGoalViewModel(
                         error = null,
                     )
                 }
-                // removeVoidedDebts that completes the (new-version) plan is a user-caused,
+                // A committed mutation that completes a plan is a user-caused,
                 // witnessed completion → celebrate (the external/mixed flash may overwrite the
                 // generic mutation flash; the member case emits the overlay signal instead).
                 celebrationController.onGoalApplied(old = previous, new = updated)?.let { flash ->
@@ -372,11 +346,3 @@ internal class DebtGoalCelebrationController {
 
 private fun List<Goal>.replaceGoal(updated: Goal): List<Goal> =
     map { if (it.publicId == updated.publicId) updated else it }
-
-/**
- * Material3 date-picker UTC epoch-millis → ISO `yyyy-MM-dd` (the wire shape the backend deadline
- * expects). UTC throughout (the picker reports the selected day as UTC-midnight millis) so the
- * calendar day never drifts across a timezone boundary.
- */
-private fun epochMillisToIsoDate(epochMillis: Long): String =
-    Instant.ofEpochMilli(epochMillis).atZone(ZoneOffset.UTC).toLocalDate().toString()

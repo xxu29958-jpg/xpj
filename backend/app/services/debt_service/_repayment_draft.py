@@ -61,6 +61,7 @@ from app.services.debt_service._repayment_draft_match import (
     list_repayment_match_candidates,
     suggest_debt_for_draft,
 )
+from app.services.debt_service._repayment_time import capture_repayment_time
 from app.services.exchange_rate_service import amount_major_to_minor
 from app.services.time_service import ensure_utc, now_utc
 
@@ -153,6 +154,7 @@ def repayment_draft_response(
         merchant_label=draft.merchant_label,
         captured_at=draft.captured_at,
         status=draft.status,
+        accounting_time=draft.accounting_time_snapshot,
         suggested_debt_public_id=suggested_debt_public_id,
         committed_debt_public_id=draft.committed_debt_public_id,
         committed_repayment_public_id=draft.committed_repayment_public_id,
@@ -227,6 +229,7 @@ def create_repayment_draft(
     if existing is not None:
         return existing
 
+    payment_time = capture_repayment_time(db, ledger_id=tenant_id, captured_at=payload.captured_at or captured_at)
     draft = RepaymentDraft(
         tenant_id=tenant_id,
         created_by_account_id=actor_account_id,
@@ -237,6 +240,7 @@ def create_repayment_draft(
         original_amount_minor=original_amount,
         merchant_label=_clean_optional_text(payload.merchant_label),
         captured_at=captured_at,
+        accounting_time_snapshot=payment_time.model_dump(mode="json"),
         draft_idempotency_key=idempotency_key,
         status="pending",
         created_at=now,

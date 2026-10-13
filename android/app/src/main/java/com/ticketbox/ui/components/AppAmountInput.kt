@@ -1,13 +1,13 @@
 package com.ticketbox.ui.components
 
+import androidx.compose.ui.res.vectorResource
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -24,6 +24,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.ui.design.AppAlpha
+import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppSpacing
 
 @Immutable
@@ -52,9 +53,13 @@ fun AppAmountInput(
     actions: AppAmountInputActions,
     modifier: Modifier = Modifier,
     focusRequester: FocusRequester? = null,
-    supportingText: (@Composable () -> Unit)? = null,
+    decorations: AppTextInputDecorations = AppTextInputDecorations(),
 ) {
     val currencyTrailing = state.currency.trailingLabel()
+    val hero = decorations.amountRole == AppAmountRole.Hero
+    val currencyAction: (@Composable () -> Unit)? = actions.onCurrencyClick?.let { onCurrencyClick ->
+        { AppAmountInputCurrencyTrailing(text = currencyTrailing, enabled = state.enabled, onClick = onCurrencyClick) }
+    }
     AppTextInput(
         state = AppTextInputState(
             label = state.label,
@@ -64,6 +69,8 @@ fun AppAmountInput(
             trailingLabel = currencyTrailing.takeIf { actions.onCurrencyClick == null },
             enabled = state.enabled,
             isError = state.isError,
+            singleLine = !hero,
+            maxLines = if (hero) Int.MAX_VALUE else 3,
             emphasis = AppTextInputEmphasis.Amount,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
         ),
@@ -73,17 +80,10 @@ fun AppAmountInput(
         ),
         modifier = modifier,
         focusRequester = focusRequester,
-        decorations = AppTextInputDecorations(
-            trailingContent = actions.onCurrencyClick?.let { onCurrencyClick ->
-                {
-                    AppAmountInputCurrencyTrailing(
-                        text = currencyTrailing,
-                        enabled = state.enabled,
-                        onClick = onCurrencyClick,
-                    )
-                }
-            },
-            supportingText = supportingText,
+        decorations = decorations.copy(
+            trailingContent = if (hero) decorations.trailingContent else currencyAction ?: decorations.trailingContent,
+            headerTrailingContent = if (hero) currencyAction ?: decorations.headerTrailingContent
+                else decorations.headerTrailingContent,
         ),
     )
 }
@@ -122,7 +122,7 @@ private fun AppAmountInputCurrencyTrailing(
             maxLines = 1,
         )
         Icon(
-            imageVector = Icons.Filled.ExpandMore,
+            imageVector = ImageVector.vectorResource(R.drawable.ic_lucide_chevron_down),
             contentDescription = null,
             tint = contentColor,
             modifier = Modifier.size(AppSpacing.compactGap),

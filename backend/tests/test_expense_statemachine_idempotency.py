@@ -9,9 +9,9 @@ before its OCC claim, mirroring Slice B's PATCH. Two flavours of op:
   now-stale ``expected_row_version`` and false-409. The key is what makes the
   replay re-serialise canonical state instead (the meaningful fix, exercised on
   ``mark_not_duplicate`` below).
-* ``confirm`` retains its existing terminal no-op. Reject/Undo instead retain
-  the original successful response: another key must still honor the reviewed
-  row version so it cannot claim or undo a later rejection.
+* ``confirm`` retains its existing terminal no-op and a separate first financial
+  receipt. Reject/Undo retain the original successful response: another key
+  must still honor the reviewed row version so it cannot claim or undo a later rejection.
 
 The per-op claim plumbing is the SAME shared ``claim_idempotent_request``
 helper Slice B's unit tests already cover; these route tests pin the wiring +
@@ -240,3 +240,21 @@ def test_confirm_proceed_records_key_even_on_terminal_noop(
             select(ApiIdempotencyKey).where(ApiIdempotencyKey.idempotency_key == key)
         ).scalar_one()
     assert row.status == IDEMPOTENCY_STATUS_SUCCEEDED
+    receipt = resp.json()["confirmation_receipt"]
+    assert receipt["amount_cents"] == 1234
+    assert row.response_body["amount_cents"] == 1234
+
+    changed = client.post(f"/api/expenses/{expense_id}/corrections",
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"expected_row_version": resp.json()["row_version"], "reason": "核对后更正原金额",
+            "amount_cents": 9900, "merchant": "后来更正的商家"})
+    assert changed.status_code == 201, changed.text
+    replay = client.post(f"/api/expenses/{expense_id}/confirm",
+        headers={**identity.app_headers, "Idempotency-Key": key}, json={"expected_row_version": v_now})
+    assert replay.status_code == 200, replay.text
+    assert replay.json()["confirmation_receipt"] == receipt
+    assert (replay.json()["amount_cents"], replay.json()["merchant"], replay.json()["row_version"]) == (
+        9900, "后来更正的商家", changed.json()["expense"]["row_version"])
+    history = client.get(f"/api/expenses/{expense_id}/revisions", headers=identity.app_headers)
+    assert history.status_code == 200, history.text
+    assert [item["change_kind"] for item in history.json()["items"]] == ["correction", "confirmed"]

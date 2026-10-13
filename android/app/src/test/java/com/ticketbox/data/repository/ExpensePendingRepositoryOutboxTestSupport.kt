@@ -136,6 +136,8 @@ internal abstract class ExpensePendingRepositoryOutboxTestBase {
             recognizeTextAdapter = moshi().adapter(ExpenseRecognizeTextRequestDto::class.java),
             correctionAdapter = com.ticketbox.OutboxAdapterGraph().correctionAdapter,
             billSplitReceiptAdapter = com.ticketbox.OutboxAdapterGraph().billSplitReceiptAdapter,
+        billSplitAcceptAdapter = com.ticketbox.OutboxAdapterGraph().billSplitAcceptAdapter,
+        billSplitAcceptedAdapter = com.ticketbox.OutboxAdapterGraph().billSplitAcceptedAdapter,
             billSplitCreateAdapter = com.ticketbox.OutboxAdapterGraph().billSplitCreateAdapter,
             legacyCorrectionAdapter = com.ticketbox.OutboxAdapterGraph().legacyCorrectionAdapter,
             manualCreateAdapter = com.ticketbox.OutboxAdapterGraph().manualCreateAdapter,
@@ -172,6 +174,19 @@ internal abstract class ExpensePendingRepositoryOutboxTestBase {
             confirmedAt = null,
             rejectedAt = null,
         )
+
+    protected fun confirmationResponse(expense: ExpenseDto = successExpenseDto().copy(status = "confirmed",
+        originalAmountMinor = 12345L, confirmedAt = "2026-05-20T13:00:00Z")): ExpenseDto = expense.copy(
+        confirmationReceipt = com.ticketbox.data.remote.dto.ExpenseConfirmationReceiptDto(
+            id = expense.id, publicId = requireNotNull(expense.publicId), rowVersion = expense.rowVersion,
+            factRevision = expense.factRevision, status = expense.status, amountCents = requireNotNull(expense.amountCents),
+            homeCurrency = requireNotNull(expense.homeCurrency), originalCurrencyCode = requireNotNull(expense.originalCurrencyCode),
+            originalAmountMinor = requireNotNull(expense.originalAmountMinor), exchangeRateToCny = expense.exchangeRateToCny,
+            exchangeRateDate = expense.exchangeRateDate, exchangeRateSource = expense.exchangeRateSource,
+            merchant = expense.merchant, category = expense.category, accountingTime = expense.accountingTime,
+            confirmedAt = expense.confirmedAt,
+        ),
+    )
 
     protected fun mismatchKnownItems(): ExpenseItems = ExpenseItems(
         expenseId = 42L,
@@ -220,6 +235,8 @@ internal abstract class ExpensePendingRepositoryOutboxTestBase {
             replaceItemsAdapter = moshi().adapter(ExpenseItemReplaceRequestDto::class.java),
             correctionAdapter = com.ticketbox.OutboxAdapterGraph().correctionAdapter,
             billSplitReceiptAdapter = com.ticketbox.OutboxAdapterGraph().billSplitReceiptAdapter,
+        billSplitAcceptAdapter = com.ticketbox.OutboxAdapterGraph().billSplitAcceptAdapter,
+        billSplitAcceptedAdapter = com.ticketbox.OutboxAdapterGraph().billSplitAcceptedAdapter,
             billSplitCreateAdapter = com.ticketbox.OutboxAdapterGraph().billSplitCreateAdapter,
             legacyCorrectionAdapter = com.ticketbox.OutboxAdapterGraph().legacyCorrectionAdapter,
             manualCreateAdapter = com.ticketbox.OutboxAdapterGraph().manualCreateAdapter,

@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
+import com.ticketbox.ui.components.AppButtonIcons
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.SkeletonBlock
 import com.ticketbox.ui.design.AppSpacing
@@ -66,7 +67,7 @@ internal fun FactLoadFailedSection(
         )
         AppPrimaryButton(
             text = stringResource(R.string.expense_fact_retry),
-            icon = androidx.compose.material.icons.Icons.Filled.Refresh,
+            icons = AppButtonIcons(leading = androidx.compose.material.icons.Icons.Filled.Refresh),
             onClick = onRetry,
         )
     }

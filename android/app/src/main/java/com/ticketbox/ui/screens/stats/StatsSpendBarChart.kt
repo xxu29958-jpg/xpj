@@ -171,8 +171,8 @@ internal fun StatsSparseSpendRows(
 ) {
     val rows = remember(points) {
         points
-            .map { StatsSpendDistributionRow(label = it.label, amountCents = it.amountCents.coerceAtLeast(0L)) }
-            .filter { it.amountCents > 0L }
+            .map { StatsSpendDistributionRow(label = it.label, amountCents = it.amountCents) }
+            .filter { it.amountCents != 0L }
     }
     if (rows.isEmpty()) {
         return

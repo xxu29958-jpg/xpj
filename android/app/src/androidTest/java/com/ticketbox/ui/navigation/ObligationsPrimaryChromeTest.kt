@@ -9,6 +9,7 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.theme.TicketboxTheme
+import com.ticketbox.viewmodel.DebtListUiState
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -44,11 +45,7 @@ class ObligationsPrimaryChromeTest {
         onAddDebt: () -> Unit = {},
         onRetry: () -> Unit = {},
     ) = RelationsComposerHandles(
-        canModify = canModify,
-        isParsingBill = false,
-        flashMessage = null,
-        error = error,
-        pendingCreations = emptyList(),
+        state = DebtListUiState(canModify = canModify, error = error),
         actions = RelationsComposerActions(
             onRetry = onRetry,
             onAddDebt = onAddDebt,

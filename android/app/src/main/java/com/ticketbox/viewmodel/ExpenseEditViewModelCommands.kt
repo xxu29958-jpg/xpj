@@ -39,8 +39,10 @@ internal fun ExpenseEditViewModel.submitExpenseCommand(
     viewModelScope.launch {
         submit(captured, expense).onSuccess { accepted ->
             if (repository.captureDeferredLedgerBinding() != captured) return@onSuccess
+            savedState["expense_command_binding"] = com.ticketbox.data.repository.logicalBindingAdapter.toJson(captured)
+            savedState["expense_command_ids"] = accepted.rowIds.toLongArray()
             _uiState.update { it.copy(expense = accepted.expense, saving = false, ocrRunning = false,
-                commandRowIds = accepted.rowIds, commandsCompleted = false, done = false,
+                commandRowIds = accepted.rowIds, commandsCompleted = false, done = false, confirmationReceipt = null,
                 doneAdviceInputsChanged = false, message = UiText.res(R.string.expense_command_accepted),
                 messageTone = MessageTone.Info) }
             reconcileExpenseCommands()
@@ -68,7 +70,7 @@ internal fun ExpenseEditViewModel.observeExpenseCommands() {
         repository.observeExpenseCommands().collect { observation ->
             commandObservation = observation
             if (observation.access?.binding != fxBinding) {
-                _uiState.update { it.copy(readOnly = true, saving = false, ocrRunning = false,
+                _uiState.update { it.copy(readOnly = true, saving = false, ocrRunning = false, done = false, confirmationReceipt = null,
                     message = UiText.res(R.string.expense_fx_binding_changed), messageTone = MessageTone.Danger) }
             } else {
                 _uiState.update { it.copy(readOnly = observation.access?.canModify != true) }
@@ -91,9 +93,11 @@ private fun ExpenseEditViewModel.applyExpenseCommandProgress(
     ids: List<Long>,
 ) {
     val progress = expenseCommandProgress(originals, ids)
+    val receipt = originals.singleOrNull { it.row.type == PendingMutationType.ConfirmExpense }?.confirmationReceipt
     _uiState.update {
         it.copy(
             commandsCompleted = progress.complete,
+            confirmationReceipt = receipt.takeIf { progress.complete },
             done = it.done || progress.leavesEditor,
             doneAdviceInputsChanged = it.doneAdviceInputsChanged || progress.confirmed,
             message = UiText.res(progress.message),

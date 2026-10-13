@@ -65,6 +65,7 @@ internal fun RecurringRoute(
                 onConfirmCandidate = recurringViewModel::confirmCandidate,
             ),
             onBack = onBack,
+            onOpenSyncStatus = expenseNavigation.onOpenSyncStatus,
         ),
     )
     RecurringOccurrenceHost(

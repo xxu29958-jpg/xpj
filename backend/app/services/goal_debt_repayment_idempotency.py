@@ -19,13 +19,14 @@ from app.services.goal_debt_repayment_commands import (
     set_debt_goal_target_date,
 )
 from app.services.goal_debt_repayment_core import (
-    _canonical_debt_goal_response,
     _debt_goal_response,
     _evaluate_and_maybe_latch,
     _require_debt_repayment_goal,
 )
 from app.services.idempotency import (
-    claim_idempotent_request,
+    IdempotencyOutcomeKind,
+    claim_idempotency_key,
+    fingerprint_request,
     mark_idempotency_succeeded,
 )
 from app.services.optimistic_concurrency import claim_row_with_token
@@ -49,17 +50,29 @@ def _mutation_claim(
     body: dict[str, object],
     expected_row_version: int,
     idempotency_key: str | None,
-) -> ApiIdempotencyKey | None:
-    return claim_idempotent_request(
+) -> ApiIdempotencyKey | GoalResponse:
+    if not idempotency_key:
+        raise AppError("idempotency_key_required", status_code=422)
+    outcome = claim_idempotency_key(
         db,
         idempotency_key=idempotency_key,
         tenant_id=tenant_id,
         operation=operation,
         target_id=public_id,
         target_type=_GOAL_TARGET_TYPE,
-        body=body,
-        expected_row_version=expected_row_version,
+        request_fingerprint=fingerprint_request(operation=operation, target_id=public_id,
+            body=body, expected_row_version=expected_row_version),
     )
+    if outcome.kind is IdempotencyOutcomeKind.HIT:
+        if not outcome.row.response_body:
+            raise AppError("goal_original_requires_review",
+                "原操作已被接受，但缺少原回执。请核对当前目标，勿重复提交。", status_code=409)
+        return GoalResponse.model_validate(outcome.row.response_body)
+    if outcome.kind is IdempotencyOutcomeKind.IN_PROGRESS:
+        raise AppError("idempotency_key_in_progress", status_code=409)
+    if outcome.kind is IdempotencyOutcomeKind.FINGERPRINT_MISMATCH:
+        raise AppError("idempotency_key_reused", status_code=422)
+    return outcome.row
 
 
 def _finish_goal_mutation(
@@ -82,20 +95,17 @@ def _finish_goal_mutation(
         goal,
         persist=persist_achievement,
     )
+    db.flush()
+    response = _debt_goal_response(goal, evaluation)
     mark_idempotency_succeeded(
         db,
         claim,
         resource_type=_GOAL_TARGET_TYPE,
         resource_id=public_id,
+        response_body=response.model_dump(mode="json"),
     )
     db.commit()
-    db.expire_all()
-    current = _require_debt_repayment_goal(
-        db,
-        tenant_id=tenant_id,
-        public_id=public_id,
-    )
-    return _debt_goal_response(current, evaluation)
+    return response
 
 
 def replace_debt_repayment_goal_links_idempotently(
@@ -115,12 +125,8 @@ def replace_debt_repayment_goal_links_idempotently(
         expected_row_version=payload.expected_row_version,
         idempotency_key=idempotency_key,
     )
-    if claim is None:
-        return _canonical_debt_goal_response(
-            db,
-            tenant_id=tenant_id,
-            public_id=public_id,
-        )
+    if isinstance(claim, GoalResponse):
+        return claim
     replace_debt_repayment_goal_links(
         db,
         tenant_id=tenant_id,
@@ -154,12 +160,8 @@ def acknowledge_integrity_review_idempotently(
         expected_row_version=payload.expected_row_version,
         idempotency_key=idempotency_key,
     )
-    if claim is None:
-        return _canonical_debt_goal_response(
-            db,
-            tenant_id=tenant_id,
-            public_id=public_id,
-        )
+    if isinstance(claim, GoalResponse):
+        return claim
     acknowledge_integrity_review(
         db,
         tenant_id=tenant_id,
@@ -194,12 +196,8 @@ def remove_voided_debt_goal_links_idempotently(
         expected_row_version=expected_row_version,
         idempotency_key=idempotency_key,
     )
-    if claim is None:
-        return _canonical_debt_goal_response(
-            db,
-            tenant_id=tenant_id,
-            public_id=public_id,
-        )
+    if isinstance(claim, GoalResponse):
+        return claim
     resolve_write_capability(db)
     goal = _require_debt_repayment_goal(
         db,
@@ -256,12 +254,8 @@ def set_debt_goal_target_date_idempotently(
         expected_row_version=payload.expected_row_version,
         idempotency_key=idempotency_key,
     )
-    if claim is None:
-        return _canonical_debt_goal_response(
-            db,
-            tenant_id=tenant_id,
-            public_id=public_id,
-        )
+    if isinstance(claim, GoalResponse):
+        return claim
     set_debt_goal_target_date(
         db,
         tenant_id=tenant_id,
@@ -296,12 +290,8 @@ def archive_debt_repayment_goal_idempotently(
         expected_row_version=expected_row_version,
         idempotency_key=idempotency_key,
     )
-    if claim is None:
-        return _canonical_debt_goal_response(
-            db,
-            tenant_id=tenant_id,
-            public_id=public_id,
-        )
+    if isinstance(claim, GoalResponse):
+        return claim
     resolve_write_capability(db)
     goal = _require_debt_repayment_goal(
         db,
@@ -358,12 +348,8 @@ def restore_debt_repayment_goal_idempotently(
         expected_row_version=expected_row_version,
         idempotency_key=idempotency_key,
     )
-    if claim is None:
-        return _canonical_debt_goal_response(
-            db,
-            tenant_id=tenant_id,
-            public_id=public_id,
-        )
+    if isinstance(claim, GoalResponse):
+        return claim
     resolve_write_capability(db)
     goal = _require_debt_repayment_goal(
         db,
@@ -371,17 +357,12 @@ def restore_debt_repayment_goal_idempotently(
         public_id=public_id,
     )
     if goal.status != "archived":
-        mark_idempotency_succeeded(
+        return _finish_goal_mutation(
             db,
-            claim,
-            resource_type=_GOAL_TARGET_TYPE,
-            resource_id=public_id,
-        )
-        db.commit()
-        return _canonical_debt_goal_response(
-            db,
+            claim=claim,
             tenant_id=tenant_id,
             public_id=public_id,
+            persist_achievement=False,
         )
     now = now_utc()
     rowcount = claim_row_with_token(

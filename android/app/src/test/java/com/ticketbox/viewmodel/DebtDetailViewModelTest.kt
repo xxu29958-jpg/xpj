@@ -182,7 +182,8 @@ class DebtDetailViewModelTest {
     fun submitRepaymentAcceptsExactTrailingZeroAmount() = runTest(dispatcher) {
         // C07：1.230 精确等于 123 minor；超精度拒绝由共享 formatter 契约测试钉住。
         val repo = FakeDebtDetailActions(
-            getResult = Result.success(sampleDebt("d1", rowVersion = 1L, remaining = 50_000L)),
+            getResult = Result.success(sampleDebt("d1", rowVersion = 1L, remaining = 50_000L).copy(
+                repaymentCalendar = com.ticketbox.domain.model.DebtRepaymentCalendar(1, "Asia/Shanghai"))),
         )
         val writes = FakeDebtWriteActions()
         val viewModel = DebtDetailViewModel(repo, writes)
@@ -203,7 +204,8 @@ class DebtDetailViewModelTest {
         // 成 120000）。home 币种注入路径 —— 解析口径来自 record 而非全局默认。
         val repo = FakeDebtDetailActions(
             getResult = Result.success(
-                sampleDebt("d1", rowVersion = 1L, remaining = 50_000L).copy(homeCurrencyCode = "JPY"),
+                sampleDebt("d1", rowVersion = 1L, remaining = 50_000L).copy(homeCurrencyCode = "JPY",
+                    repaymentCalendar = com.ticketbox.domain.model.DebtRepaymentCalendar(1, "Asia/Shanghai")),
             ),
         )
         val writes = FakeDebtWriteActions()
@@ -225,7 +227,8 @@ class DebtDetailViewModelTest {
         // 显示（"¥50,000"，不是 ¥500.00）；用户按显示填 500 → 提交 500 minor（不是 50000）。
         val repo = FakeDebtDetailActions(
             getResult = Result.success(
-                sampleDebt("d1", rowVersion = 1L, remaining = 50_000L).copy(homeCurrencyCode = "JPY"),
+                sampleDebt("d1", rowVersion = 1L, remaining = 50_000L).copy(homeCurrencyCode = "JPY",
+                    repaymentCalendar = com.ticketbox.domain.model.DebtRepaymentCalendar(1, "Asia/Shanghai")),
             ),
         )
         val writes = FakeDebtWriteActions()
@@ -750,7 +753,8 @@ class DebtDetailViewModelTest {
 
 private class FakeDebtDetailActions(
     private val canModify: Boolean = true,
-    var getResult: Result<Debt> = Result.success(sampleDebt("d1")),
+    var getResult: Result<Debt> = Result.success(sampleDebt("d1").copy(
+        repaymentCalendar = com.ticketbox.domain.model.DebtRepaymentCalendar(1, "Asia/Shanghai"))),
 ) : DebtActions {
     val getCalls = mutableListOf<String>()
 

@@ -116,7 +116,7 @@ def _assert_web_posts_denied(
     requests: list[tuple[str, str, dict[str, object]]],
 ) -> None:
     for label, path, data in requests:
-        response = web_client.post(path, data=data, follow_redirects=False)
+        response = web_client.post(path, data=data, headers={"Accept": "application/json"}, follow_redirects=False)
         _assert_permission_denied(response, label=label)
 
 

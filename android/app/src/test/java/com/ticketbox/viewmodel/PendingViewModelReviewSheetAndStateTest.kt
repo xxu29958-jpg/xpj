@@ -40,7 +40,7 @@ internal class PendingViewModelReviewSheetAndStateTest : PendingViewModelReviewT
         assertTrue(vm.uiState.value.readOnly)
         assertFalse(vm.acceptUploads(UploadBatchRequest(UPLOAD_TEST_BATCH, listOf("blocked"), uploadTestBinding(), "Asia/Shanghai") { error("viewer must not prepare") }))
         vm.openQuickCategory(target)
-        vm.saveQuickCategory(target.id, "交通")
+        vm.saveQuickCategory(target, "交通")
         vm.confirm(target)
         vm.reject(target)
         vm.markNotDuplicate(target)
@@ -66,6 +66,7 @@ internal class PendingViewModelReviewSheetAndStateTest : PendingViewModelReviewT
         vm.openQuickCategory(target)
         assertEquals(PendingSheet.QuickCategory(target), vm.uiState.value.activeSheet)
         vm.closeSheet()
+        advanceUntilIdle()
         assertEquals(PendingSheet.None, vm.uiState.value.activeSheet)
 
         vm.openBulkConfirm()
@@ -73,13 +74,91 @@ internal class PendingViewModelReviewSheetAndStateTest : PendingViewModelReviewT
     }
 
     @Test
-    fun reconcileActiveSheetUsesLatestExpenseSnapshot() = review {
+    fun reconcileActiveSheetPreservesTheReviewedExpenseSnapshot() = review {
         val stale = expense(id = 60L, category = "其他")
         val latest = stale.copy(category = "交通", updatedAt = "2025-01-01T00:01:00Z")
 
         val reconciled = reconcileActiveSheet(PendingSheet.QuickCategory(stale), listOf(latest))
 
-        assertEquals(PendingSheet.QuickCategory(latest), reconciled)
+        assertEquals(PendingSheet.QuickCategory(stale), reconciled)
+    }
+
+    @Test
+    fun duplicateReviewKeepsTheComparedPairAndCommandBasisAcrossRefresh() = review {
+        val compared = expense(id = 60L).copy(duplicateOfId = 20L, duplicateStatus = "suspected")
+        val changed = compared.copy(duplicateOfId = 30L, rowVersion = 2L)
+
+        val opened = PendingSheet.Duplicate(compared, keepBothConfirmed = true)
+        val reconciled = reconcileActiveSheet(opened, listOf(changed))
+
+        assertEquals(opened, reconciled)
+    }
+
+    @Test
+    fun viewerCanOpenDuplicateComparisonWithoutAdmittingACommand() = review {
+        val compared = expense(id = 60L).copy(duplicateOfId = 20L, duplicateStatus = "suspected")
+        val fake = FakeReviewActions(pending = listOf(compared), canModifyLedger = false)
+        val reference = expense(id = 20L, amountCents = 2345L, merchant = "Reference").copy(status = "confirmed")
+        fake.expenseResponder = { id, binding ->
+            assertEquals(20L, id)
+            assertEquals(fake.uploadIntents.currentUploadBinding(), binding)
+            Result.success(reference)
+        }
+        val vm = pendingViewModel(fake)
+        advanceUntilIdle()
+
+        vm.openDuplicateAction(compared)
+        advanceUntilIdle()
+
+        assertTrue(vm.uiState.value.activeSheet is PendingSheet.Duplicate)
+        assertEquals(reference, (vm.uiState.value.activeSheet as PendingSheet.Duplicate).reference)
+        assertTrue(vm.uiState.value.readOnly)
+        assertTrue(fake.admissions.isEmpty())
+    }
+
+    @Test
+    fun offlineComparisonLabelsItsCacheAndAccessDenialDoesNotExposeThatCache() = review {
+        val compared = expense(id = 60L).copy(duplicateOfId = 20L)
+        val reference = expense(id = 20L).copy(status = "confirmed")
+        val fake = FakeReviewActions(pending = listOf(compared))
+        fake.cachedConfirmed = listOf(reference)
+        fake.expenseResponder = { _, _ -> Result.failure(java.io.IOException("offline")) }
+        val vm = pendingViewModel(fake)
+        advanceUntilIdle()
+        vm.openDuplicateAction(compared)
+        advanceUntilIdle()
+        val cached = vm.uiState.value.activeSheet as PendingSheet.Duplicate
+        assertEquals(reference, cached.reference)
+        assertEquals(UiText.res(R.string.pending_duplicate_reference_cached), cached.referenceMessage)
+
+        fake.expenseResponder = { _, _ -> Result.failure(com.ticketbox.data.repository.RepositoryException("revoked", httpStatusCode = 403)) }
+        vm.loadDuplicateReference()
+        advanceUntilIdle()
+        val denied = vm.uiState.value.activeSheet as PendingSheet.Duplicate
+        assertEquals(null, denied.reference)
+        assertFalse(denied.referenceLoading)
+        assertTrue(denied.referenceMessage != null)
+        assertTrue(fake.admissions.isEmpty())
+    }
+
+    @Test
+    fun delayedComparisonCannotReturnAnOldLedgerIntoTheNewSheet() = review {
+        val ledgers = MutableStateFlow<String?>("owner")
+        val compared = expense(id = 60L).copy(duplicateOfId = 20L)
+        val response = CompletableDeferred<Result<Expense>>()
+        val fake = FakeReviewActions(pending = listOf(compared), activeLedgerFlow = ledgers)
+        fake.expenseResponder = { _, _ -> response.await() }
+        val vm = pendingViewModel(fake)
+        advanceUntilIdle()
+        vm.openDuplicateAction(compared)
+        advanceUntilIdle()
+        fake.pending = listOf(compared.copy(merchant = "New ledger"))
+        ledgers.value = "family"
+        advanceUntilIdle()
+        response.complete(Result.success(expense(id = 20L, merchant = "Old ledger private bill")))
+        advanceUntilIdle()
+        assertEquals(PendingSheet.None, vm.uiState.value.activeSheet)
+        assertEquals("New ledger", vm.uiState.value.items.single().merchant)
     }
 
     @Test
@@ -92,7 +171,7 @@ internal class PendingViewModelReviewSheetAndStateTest : PendingViewModelReviewT
     }
 
     @Test
-    fun reducerRefreshKeepsOnlyActiveThumbnailsAndUpdatesOpenSheet() = review {
+    fun reducerRefreshUpdatesTheListWithoutRebasingOpenInput() = review {
         val stale = expense(id = 70L, category = "其他")
         val latest = stale.copy(category = "交通", updatedAt = "2025-01-01T00:01:00Z")
         val activeImage = image("active")
@@ -109,7 +188,7 @@ internal class PendingViewModelReviewSheetAndStateTest : PendingViewModelReviewT
         assertEquals(listOf(latest), next.items)
         assertTrue(next.thumbnails[latest.id] === activeImage)
         assertFalse(next.thumbnails.containsKey(99L))
-        assertEquals(PendingSheet.QuickCategory(latest), next.activeSheet)
+        assertEquals(PendingSheet.QuickCategory(stale), next.activeSheet)
         assertFalse(next.loading)
     }
 
@@ -172,7 +251,7 @@ internal class PendingViewModelReviewSheetAndStateTest : PendingViewModelReviewT
     }
 
     @Test
-    fun reducerUpdatedReplacesItemAndRefreshesOpenSheetSnapshot() = review {
+    fun reducerUpdatedReplacesTheListItemAndPreservesOpenInputBasis() = review {
         val stale = expense(id = 74L, merchant = "旧商家")
         val updated = stale.copy(merchant = "新商家", updatedAt = "2025-01-01T00:02:00Z")
         val state = PendingUiState(
@@ -190,7 +269,7 @@ internal class PendingViewModelReviewSheetAndStateTest : PendingViewModelReviewT
 
         assertEquals(listOf(updated), next.items)
         assertTrue(next.actionInProgressIds.isEmpty())
-        assertEquals(PendingSheet.QuickMerchant(updated), next.activeSheet)
+        assertEquals(PendingSheet.QuickMerchant(stale), next.activeSheet)
         assertEquals(UiText.res(R.string.pending_review_merchant_updated), next.message)
     }
 

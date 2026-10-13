@@ -1,13 +1,14 @@
 {# 更正标量字段卡：字段行由更正专属 partial _expense_scalar_fields.html 承载
    （correction_mode 只影响金额 step 与时间帮助文案：更正里留空 = 清空现有时间）。 #}
 {% set correction_mode = true %}
-<div class="product-panel product-panel--padded">
+<details data-correction-fields {% if not fact_scalar_comparisons | selectattr('changed') | list or field_errors %}open{% endif %}>
+  <summary class="product-entry"><span class="product-entry-icon"><svg><use href="/static/shared/vendor/lucide/icons.svg#receipt-text"/></svg></span><span class="product-entry-copy"><strong>账单字段</strong><span>金额、商家、分类与日期</span></span><svg><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></summary>
   <div class="product-panel-header">
     <div>
-      <h2 class="product-panel-title">账单字段</h2>
       <div class="product-panel-subtitle">只改需要改的；没动的字段不会写进变更记录。</div>
     </div>
   </div>
+  <button type="button" class="product-button product-button--quiet" data-correction-show-preview hidden>查看本次修改</button>
   <div class="correction-fields">
     <div class="product-field">
       <label for="correct-currency">币种</label>
@@ -23,4 +24,4 @@
     {% include "_expense_scalar_fields.html" %}
   </div>
   {% if expense.is_split_received %}<div class="meta correction-frozen-note">来自家庭拆账的金额、商家和消费时间按协定冻结；分类、标签和备注仍可更正。</div>{% endif %}
-</div>
+</details>

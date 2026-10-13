@@ -11,7 +11,7 @@ import kotlin.test.assertEquals
 
 class ReportsRecentWindowTrendTest {
     @Test
-    fun recentWindowTrendUsesServerDayBucketsAndClampsInvalidAmounts() {
+    fun recentWindowTrendUsesServerDayBucketsAndPreservesSignedAmounts() {
         val trend = reportsRecentWindowTrend(
             overview(
                 granularity = ReportGranularity.Day,
@@ -25,7 +25,7 @@ class ReportsRecentWindowTrendTest {
         assertEquals(
             listOf(
                 DailySpend(date = "2026-05-01", label = "5/1", amountCents = 1_250L),
-                DailySpend(date = "2026-05-02", label = "05-02", amountCents = 0L),
+                DailySpend(date = "2026-05-02", label = "05-02", amountCents = -300L),
             ),
             trend,
         )

@@ -21,6 +21,8 @@ import com.ticketbox.viewmodel.SpendingGoalsViewModel
 import com.ticketbox.viewmodel.createSpendingGoalViewModelFactory
 import com.ticketbox.viewmodel.spendingGoalDetailViewModelFactory
 import com.ticketbox.viewmodel.spendingGoalsViewModelFactory
+import com.ticketbox.viewmodel.SpendingGoalEditDraftStore
+import com.ticketbox.viewmodel.spendingGoalEditDraftStoreFactory
 
 private const val SpendingGoalsViewModelKey = "spending-goals"
 private const val SpendingGoalDetailViewModelKey = "spending-goal-detail"
@@ -51,8 +53,13 @@ internal data class SpendingGoalRouteContext(
 internal fun SpendingGoalsRoute(
     screenFactory: MainScreenFactory,
     onBack: () -> Unit,
+    onOpenRecycleBin: () -> Unit,
     context: SpendingGoalRouteContext,
 ) {
+    val editDrafts: SpendingGoalEditDraftStore = viewModel(
+        viewModelStoreOwner = context.creationOwner, key = "spending-goal-edit-drafts",
+        factory = spendingGoalEditDraftStoreFactory(),
+    )
     SpendingGoalRouteContent(
         models = SpendingGoalRouteModels(
             list = viewModel(
@@ -62,7 +69,7 @@ internal fun SpendingGoalsRoute(
             ),
             detail = viewModel(
                 key = SpendingGoalDetailViewModelKey,
-                factory = spendingGoalDetailViewModelFactory(screenFactory.reportsRepository, screenFactory.goalEditRepository),
+                factory = spendingGoalDetailViewModelFactory(screenFactory.reportsRepository, screenFactory.goalEditRepository, editDrafts),
             ),
             create = viewModel(
                 viewModelStoreOwner = context.creationOwner,
@@ -71,6 +78,7 @@ internal fun SpendingGoalsRoute(
             ),
         ),
         onBack = onBack,
+        onOpenRecycleBin = onOpenRecycleBin,
         context = context,
     )
 }
@@ -79,6 +87,7 @@ internal fun SpendingGoalsRoute(
 private fun SpendingGoalRouteContent(
     models: SpendingGoalRouteModels,
     onBack: () -> Unit,
+    onOpenRecycleBin: () -> Unit,
     context: SpendingGoalRouteContext,
 ) {
     var page by rememberSaveable(context.originalCreationId, context.originalGoalPublicId) { mutableStateOf(when {
@@ -95,15 +104,13 @@ private fun SpendingGoalRouteContent(
         if (context.returnToCaller) onBack() else page = SpendingGoalPage.List
     }
 
-    LaunchedEffect(context.financialDataRevision) {
-        if (context.financialDataRevision > 0) models.list.refresh()
-    }
     LaunchedEffect(page, detailPublicId, context.financialDataRevision, detailState.isEditing) {
         if (page == SpendingGoalPage.Detail && !detailState.isEditing) {
             detailPublicId?.let(models.detail::load)
         }
     }
-    SpendingGoalDetailResultEffect(detailState, models, closeDetail)
+    SpendingGoalDetailResultEffect(detailState, models, closeDetail,
+        page == SpendingGoalPage.List, context.financialDataRevision)
 
     when (page) {
         SpendingGoalPage.List -> SpendingGoalsScreen(
@@ -137,19 +144,26 @@ private fun SpendingGoalRouteContent(
             viewModel = models.detail,
             backText = context.backText,
             onBack = closeDetail,
+            onOpenRecycleBin = onOpenRecycleBin,
         )
     }
 }
 
 @Composable
-private fun SpendingGoalDetailResultEffect(state: SpendingGoalDetailUiState, models: SpendingGoalRouteModels, onArchived: () -> Unit) {
+private fun SpendingGoalDetailResultEffect(
+    state: SpendingGoalDetailUiState,
+    models: SpendingGoalRouteModels,
+    onArchived: () -> Unit,
+    listVisible: Boolean,
+    financialDataRevision: Int,
+) {
+    LaunchedEffect(listVisible, financialDataRevision, state.mutationRevision) {
+        if (listVisible && (financialDataRevision > 0 || state.mutationRevision > 0)) models.list.refresh()
+    }
     LaunchedEffect(state.mutationRevision, state.archiveCompleted) {
-        if (state.mutationRevision > 0) {
-            if (state.archiveCompleted) {
-                models.detail.acceptedArchive?.let { (binding, archived) -> models.list.acceptArchived(binding, archived) }
-                onArchived()
-            }
-            models.list.refresh()
+        if (state.mutationRevision > 0 && state.archiveCompleted) {
+            models.detail.acceptedArchive?.let { (binding, archived) -> models.list.acceptArchived(binding, archived) }
+            onArchived()
         }
     }
 }

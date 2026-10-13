@@ -4,6 +4,9 @@ import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.DebtDto
 import com.ticketbox.data.remote.dto.DebtForgiveCreateRequestDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalConfirmRequestDto
+import com.ticketbox.data.remote.dto.MemberRepaymentProposalCreateRequestDto
+import com.ticketbox.data.remote.dto.RepaymentCalendarDto
+import com.ticketbox.data.remote.dto.ExpenseAccountingTimeDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalListResponseDto
 import com.ticketbox.data.remote.dto.RepaymentFactDto
@@ -19,12 +22,16 @@ internal class MemberSettlementConnectedNetwork {
         remainingAmountCents = 1200, paidAmountCents = 0, status = "open", sourceType = "bill_split",
         sourceId = "split-original", homeCurrencyCode = "JPY", viewerIsDebtor = false,
         createdAt = "2026-09-08T00:00:00Z", updatedAt = "2026-09-08T00:00:00Z", rowVersion = 1,
+        repaymentCalendar = RepaymentCalendarDto(3, "Asia/Shanghai"),
     )
     var proposal = MemberRepaymentProposalDto(
         publicId = "proposal-original", debtPublicId = current.publicId, status = "pending", proposedAmountCents = 750,
         homeCurrencyCode = "JPY", paidAt = current.createdAt, expiresAt = "2026-10-08T00:00:00Z", createdAt = current.createdAt,
     )
     val confirms = mutableListOf<Pair<MemberRepaymentProposalConfirmRequestDto, String>>()
+    val proposes = mutableListOf<Pair<MemberRepaymentProposalCreateRequestDto, String>>()
+    val acceptedProposals = mutableMapOf<String, MemberRepaymentProposalDto>()
+    var hasProposal = true
     val accepted = mutableMapOf<String, DebtDto>()
     var failReads = false
     var failProposalReads = false
@@ -40,7 +47,24 @@ internal class MemberSettlementConnectedNetwork {
         override suspend fun repaymentProposals(publicId: String): MemberRepaymentProposalListResponseDto {
             check(publicId == current.publicId)
             if (failReads || failProposalReads) throw IOException("Synthetic unavailable proposal read")
-            return MemberRepaymentProposalListResponseDto(listOf(proposal))
+            return MemberRepaymentProposalListResponseDto(if (hasProposal) listOf(proposal) else emptyList())
+        }
+
+        override suspend fun createRepaymentProposal(publicId: String, request: MemberRepaymentProposalCreateRequestDto,
+            idempotencyKey: String?): MemberRepaymentProposalDto {
+            check(publicId == current.publicId)
+            val key = requireNotNull(idempotencyKey)
+            proposes += request to key
+            val result = acceptedProposals.getOrPut(key) {
+                val time = requireNotNull(request.timeInput)
+                check(time.precision == "date_only" && time.instantUtc == null)
+                proposal.copy(proposedAmountCents = request.proposedAmountCents, note = request.note, paidAt = null,
+                    accountingTime = ExpenseAccountingTimeDto(time.precision, userLocalDate = time.userLocalDate,
+                        accountingDate = time.accountingDate, sourceTimezone = time.sourceTimezone, calendarRevision = time.calendarRevision))
+                    .also { proposal = it; hasProposal = true }
+            }
+            if (loseFirstResponse) { loseFirstResponse = false; failReads = true; throw IOException("Synthetic lost acknowledgement") }
+            return result
         }
 
         override suspend fun confirmRepaymentProposal(publicId: String, proposalPublicId: String,
@@ -68,12 +92,12 @@ internal class MemberSettlementConnectedNetwork {
                 kind = "repayment", publicId = payment.publicId, recordedAt = payment.createdAt,
                 actorIsYou = true, repayment = payment,
             ) }
-            val proposalEvents = listOfNotNull(
+            val proposalEvents = if (hasProposal) listOfNotNull(
                 com.ticketbox.data.remote.dto.DebtActivityDto("proposal_created", proposal.publicId, proposal.createdAt,
                     actorIsYou = false, proposal = proposal),
                 proposal.resolvedAt?.let { com.ticketbox.data.remote.dto.DebtActivityDto("proposal_resolved", proposal.publicId, it,
                     actorIsYou = true, proposal = proposal) },
-            )
+            ) else emptyList()
             return com.ticketbox.data.remote.dto.DebtActivityListDto(publicId, history.homeCurrencyCode,
                 events + proposalEvents, history.page, history.pageSize, events.size + proposalEvents.size)
         }

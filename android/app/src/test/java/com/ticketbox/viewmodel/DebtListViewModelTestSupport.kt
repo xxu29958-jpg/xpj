@@ -98,6 +98,7 @@ internal class FakeDebtCreationActions(
     )
     val pendingCreations = MutableStateFlow(DebtCreationQueueSnapshot(access.value?.binding))
     val createDrafts = mutableListOf<DebtDraft>()
+    val creationKeys = mutableListOf<String>()
     var createGate: CompletableDeferred<Unit>? = null
 
     override fun currentAccess(): LedgerAccessContext? = access.value
@@ -110,8 +111,10 @@ internal class FakeDebtCreationActions(
         expectedBinding: LogicalSessionBinding,
         draft: DebtDraft,
         homeCurrency: CurrencyCode,
+        creationKey: String,
     ): Result<DebtCreationReceipt> {
         createDrafts += draft
+        creationKeys += creationKey
         val captured = createResult
         val receiptId = createDrafts.size.toLong()
         createGate?.await()

@@ -9,6 +9,7 @@ import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.DebtAdjustmentCreateRequestDto
 import com.ticketbox.data.remote.dto.DebtDto
+import com.ticketbox.data.remote.dto.RepaymentCalendarDto
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtCounterpartyTypes
 import com.ticketbox.domain.model.DebtDirections
@@ -563,4 +564,5 @@ private fun adjustmentDebtDto() = DebtDto(
     counterpartyLabel = "房东", principalAmountCents = 50_000L, remainingAmountCents = 50_000L,
     paidAmountCents = 0L, status = "open", sourceType = DebtSourceTypes.MANUAL, homeCurrencyCode = "CNY",
     createdAt = "2026-09-06T00:00:00Z", updatedAt = "2026-09-06T00:00:00Z", rowVersion = 2L,
+    repaymentCalendar = RepaymentCalendarDto(1, "UTC"),
 )

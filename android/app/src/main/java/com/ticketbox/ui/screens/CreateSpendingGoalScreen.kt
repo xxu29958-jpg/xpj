@@ -26,6 +26,7 @@ import com.ticketbox.ui.components.AppAmountInputActions
 import com.ticketbox.ui.components.AppAmountInputState
 import com.ticketbox.ui.components.AppFloatingActionBar
 import com.ticketbox.ui.components.AppPageRole
+import com.ticketbox.ui.components.AppButtonIcons
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppSecondaryPageChrome
 import com.ticketbox.ui.components.AppSecondaryPageSlots
@@ -211,7 +212,7 @@ private fun CreateSpendingGoalFooter(
             } else {
                 stringResource(R.string.spending_goal_create_save)
             },
-            icon = Icons.Filled.Check,
+            icons = AppButtonIcons(leading = Icons.Filled.Check),
             modifier = Modifier.fillMaxWidth(),
             enabled = canSubmit,
             onClick = onSubmit,

@@ -26,8 +26,6 @@ from app.schemas import (
     StatusResponse,
 )
 from app.services.classify_service import (
-    apply_rules_to_confirmed,
-    apply_rules_to_pending,
     delete_rule,
     get_rule_for_tenant,
     list_rule_applications,
@@ -37,13 +35,13 @@ from app.services.classify_service import (
     preview_rule_for_pending,
     rollback_rule_application,
     undo_delete_rule,
-    validate_rule_application_preview,
 )
 from app.services.idempotency import (
     claim_idempotent_request,
     mark_idempotency_succeeded,
 )
 from app.services.permission_service import require_write_expense
+from app.services.rule_application_service import apply_rules_idempotently, rule_application_change_counts
 from app.services.rule_command_service import create_rule_idempotently, update_rule_idempotently
 from app.tenants import AuthContext
 
@@ -158,6 +156,7 @@ def post_rule_preview(
 @router.post("/apply-pending", response_model=RuleApplyPendingResponse)
 def post_rule_apply_pending(
     payload: RuleApplyPendingRequest | None = None,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     auth: AuthContext = Depends(get_current_writer_context),
     max_scan: int = Query(default=500, ge=1, le=1000),
     db: Session = Depends(get_db),
@@ -169,29 +168,9 @@ def post_rule_apply_pending(
             "请先预览待确认账单影响范围，再确认应用。",
             status_code=409,
         )
-    current_preview = validate_rule_application_preview(
-        db,
-        tenant_id=auth.tenant_id,
-        status="pending",
-        preview_token=payload.preview_token if payload else None,
-        max_scan=max_scan,
-    )
-    pending_scanned, changed_count, scan_limit_reached = apply_rules_to_pending(
-        db,
-        tenant_id=auth.tenant_id,
-        preview_token=payload.preview_token,
-        actor_account_id=auth.account_id,
-        actor_device_id=auth.device_id,
-        max_scan=max_scan,
-    )
-    return RuleApplyPendingResponse(
-        pending_scanned=pending_scanned,
-        changed_count=changed_count,
-        unavailable_count=current_preview["unavailable_count"],
-        missing_currency_codes=current_preview["missing_currency_codes"],
-        scan_limit_reached=scan_limit_reached,
-        scan_limit=max_scan,
-    )
+    return apply_rules_idempotently(db, tenant_id=auth.tenant_id, status="pending",
+        preview_token=payload.preview_token, idempotency_key=idempotency_key, max_scan=max_scan,
+        actor_account_id=auth.account_id, actor_device_id=auth.device_id)
 
 
 @router.get("/applications", response_model=RuleApplicationListResponse)
@@ -201,7 +180,12 @@ def get_rule_applications(
     db: Session = Depends(get_db),
 ) -> RuleApplicationListResponse:
     batches = list_rule_applications(db, tenant_id=auth.tenant_id, limit=limit)
-    return RuleApplicationListResponse(items=[RuleApplicationBatchResponse.model_validate(batch) for batch in batches])
+    outcomes = rule_application_change_counts(db, tenant_id=auth.tenant_id, batch_ids=[batch.id for batch in batches])
+    return RuleApplicationListResponse(items=[RuleApplicationBatchResponse(
+        public_id=batch.public_id, status=batch.status, pending_scanned=batch.pending_scanned,
+        changed_count=batch.changed_count, change_counts=outcomes.get(batch.id, {}),
+        created_at=batch.created_at, rolled_back_at=batch.rolled_back_at,
+    ) for batch in batches])
 
 
 @router.post(
@@ -261,6 +245,9 @@ def post_rule_apply_pending_preview(
 @router.post("/apply-confirmed", response_model=RuleApplyConfirmedResponse)
 def post_rule_apply_confirmed(
     payload: RuleApplyConfirmedRequest | None = None,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key",
+        description="Required when confirm=true; previews do not create a command.",
+        json_schema_extra={"x-ticketbox-runtime-required": False}),
     limit: int = Query(default=20, ge=1, le=50),
     max_scan: int = Query(default=500, ge=1, le=1000),
     auth: AuthContext = Depends(get_current_app_context),
@@ -291,29 +278,6 @@ def post_rule_apply_confirmed(
         )
 
     require_write_expense(auth)
-    if not payload.preview_token:
-        raise AppError("preview_required", "请先预览历史账单影响范围，再确认应用。", status_code=409)
-    current_preview = validate_rule_application_preview(
-        db,
-        tenant_id=auth.tenant_id,
-        status="confirmed",
-        preview_token=payload.preview_token,
-        max_scan=max_scan,
-    )
-    confirmed_scanned, changed_count, scan_limit_reached = apply_rules_to_confirmed(
-        db,
-        tenant_id=auth.tenant_id,
-        preview_token=payload.preview_token,
-        actor_account_id=auth.account_id,
-        actor_device_id=auth.device_id,
-        max_scan=max_scan,
-    )
-    return RuleApplyConfirmedResponse(
-        dry_run=False,
-        confirmed_scanned=confirmed_scanned,
-        changed_count=changed_count,
-        unavailable_count=current_preview["unavailable_count"],
-        missing_currency_codes=current_preview["missing_currency_codes"],
-        scan_limit_reached=scan_limit_reached,
-        scan_limit=max_scan,
-    )
+    return apply_rules_idempotently(db, tenant_id=auth.tenant_id, status="confirmed",
+        preview_token=payload.preview_token, idempotency_key=idempotency_key, max_scan=max_scan,
+        actor_account_id=auth.account_id, actor_device_id=auth.device_id)

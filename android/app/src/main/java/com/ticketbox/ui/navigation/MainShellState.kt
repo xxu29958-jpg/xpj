@@ -1,12 +1,7 @@
 package com.ticketbox.ui.navigation
 
 import androidx.annotation.StringRes
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.EventNote
-import androidx.compose.material.icons.automirrored.filled.ReceiptLong
-import androidx.compose.material.icons.filled.Inbox
-import androidx.compose.material.icons.filled.Insights
-import androidx.compose.material.icons.filled.People
+import androidx.annotation.DrawableRes
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -15,6 +10,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.vectorResource
 import androidx.navigation.NavHostController
 import com.ticketbox.R
 import com.ticketbox.ui.appearance.background.SurfaceRole
@@ -43,18 +39,18 @@ internal enum class PrimaryDomain(
     val key: String,
     val route: String,
     @param:StringRes val labelRes: Int,
-    val icon: ImageVector,
+    @param:DrawableRes val iconRes: Int,
 ) {
-    Inbox("inbox", "product/inbox", R.string.nav_domain_inbox, Icons.Default.Inbox),
+    Inbox("inbox", "product/inbox", R.string.nav_domain_inbox, R.drawable.ic_lucide_inbox),
     Transactions(
         "transactions",
         "product/transactions",
         R.string.nav_domain_transactions,
-        Icons.AutoMirrored.Filled.ReceiptLong,
+        R.drawable.ic_lucide_receipt_text,
     ),
-    Obligations("obligations", "product/obligations", R.string.nav_domain_obligations, Icons.Default.People),
-    Plans("plans", "product/plans", R.string.nav_domain_plans, Icons.AutoMirrored.Filled.EventNote),
-    Insights("insights", "product/insights", R.string.nav_domain_insights, Icons.Default.Insights),
+    Obligations("obligations", "product/obligations", R.string.nav_domain_obligations, R.drawable.ic_lucide_users),
+    Plans("plans", "product/plans", R.string.nav_domain_plans, R.drawable.ic_lucide_calendar_check),
+    Insights("insights", "product/insights", R.string.nav_domain_insights, R.drawable.ic_lucide_chart_no_axes_combined),
 }
 
 internal enum class ProductSecondaryPage(val route: String) {
@@ -67,6 +63,8 @@ internal enum class ProductSecondaryPage(val route: String) {
     BillSplits("product/obligations/splits"),
     // 流水域：全局搜索。
     GlobalSearch("product/transactions/search"),
+    AccountingDates("product/transactions/accounting-dates"),
+    SavedQueries("product/transactions/saved-queries"),
     // 流水域：分类、商家、标签与规则的资料库。
     TransactionsLibrary(TRANSACTIONS_LIBRARY_ROUTE),
     // 洞察域：当前账本的数据质量体检（218-B1 暂不挂路由，入口重定向到带筛选的 Inbox）。
@@ -282,6 +280,8 @@ internal val ProductSecondaryPage.surfaceRole: SurfaceRole
     get() = when (this) {
         ProductSecondaryPage.BillSplits,
         ProductSecondaryPage.GlobalSearch,
+        ProductSecondaryPage.AccountingDates,
+        ProductSecondaryPage.SavedQueries,
         ProductSecondaryPage.TransactionsLibrary,
         ProductSecondaryPage.DebtGoals,
         ProductSecondaryPage.AllDebts,
@@ -314,7 +314,7 @@ internal fun mainProductDestination(route: String?): MainProductDestination? =
 internal fun PrimaryDomain.toPrimaryNavItem(): AppPrimaryNavItem = AppPrimaryNavItem(
     key = key,
     label = stringResource(labelRes),
-    icon = icon,
+    icon = ImageVector.vectorResource(iconRes),
 )
 
 internal fun NavHostController.openExpense(expenseId: Long) {

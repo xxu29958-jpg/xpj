@@ -2,13 +2,23 @@
 
 from __future__ import annotations
 
+from typing import Annotated, Literal
+
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from starlette.responses import Response
 
 from app.database import get_db
 from app.errors import AppError
-from app.routes._web_bill_split_context import _cents_to_yuan, _fmt_local
+from app.routes._web_bill_split_context import _cents_to_yuan, _fmt_local, inbox_rows, invitation_facts
+from app.routes._web_draft_binding import (
+    browser_draft_scope,
+    draft_ack_response,
+    draft_error_response,
+    require_draft_binding,
+)
 from app.routes._web_expense_return_context import (
     ExpenseReturnContext,
     edit_context_params,
@@ -29,6 +39,7 @@ from app.routes.web_common import (
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
     _web_redirect,
+    preserve_original_ledger_form,
     templates,
 )
 from app.services import bill_split_service as bsplit
@@ -36,10 +47,7 @@ from app.services.currency_binding_service import require_runtime_home_currency_
 from app.services.currency_common import (
     currency_symbol,
     major_amount_to_minor,
-)
-from app.services.ledger_service import (
-    list_ledgers_for_account,
-    list_writer_ledger_ids_for_account,
+    minor_amount_label,
 )
 from app.services.time_service import ensure_utc, now_utc
 
@@ -98,6 +106,7 @@ def _clean_flash_type(value: str | None) -> str:
 def web_bill_split_inbox(
     request: Request,
     ledger_id: str | None = None,
+    status: Literal["invited", "all"] = "invited",
     msg: str | None = None,
     flash_type: str = "",
     accepted: str | None = None,
@@ -108,48 +117,9 @@ def web_bill_split_inbox(
     selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
     account_id = resolve_web_actor_account_id(db, request, selected_id)
 
-    invitations = bsplit.list_inbox(db, receiver_account_id=account_id, status="invited")
+    invitations = bsplit.list_inbox(db, receiver_account_id=account_id, status=None if status == "all" else "invited")
 
-    # Two bounded queries (no N+1 over invitations): the writer-ledger id list
-    # for the accept-target filter, and a {id: name} map so the dropdown shows
-    # the ledger NAME, not the internal ledger_id (ENGINEERING_RULES §3: UI
-    # never surfaces ids).
-    writer_ledger_ids = list_writer_ledger_ids_for_account(db, account_id=account_id)
-    ledger_names = {summary.ledger_id: summary.name for summary in list_ledgers_for_account(db, account_id=account_id)}
-    presented_at = now_utc()
-    rows = []
-    for inv in invitations:
-        is_expired = ensure_utc(inv.expires_at) <= presented_at if inv.status == "invited" else False
-        sender_name, sender_context = bsplit.receiver_sender_presentation(
-            inv.sender_display_name,
-            ledger_names.get(inv.sender_ledger_id, ""),
-        )
-        choices: list[dict] = []
-        if inv.status == "invited" and not is_expired:
-            for ledger_id_choice in writer_ledger_ids:
-                if ledger_id_choice == inv.sender_ledger_id:
-                    continue
-                choices.append(
-                    {
-                        "ledger_id": ledger_id_choice,
-                        "name": ledger_names.get(ledger_id_choice, ledger_id_choice),
-                    }
-                )
-        rows.append(
-            {
-                "public_id": inv.public_id,
-                "status": inv.status,
-                "amount_yuan": _cents_to_yuan(inv.amount_cents, inv.home_currency_code),
-                "sender_display_name": sender_name,
-                "sender_context": sender_context,
-                "merchant": inv.merchant_snapshot or "",
-                "category": inv.category_suggestion or "",
-                "expense_time": _fmt_local(inv.expense_time_snapshot),
-                "expires_at": _fmt_local(inv.expires_at),
-                "is_expired": is_expired,
-                "accept_choices": choices,
-            }
-        )
+    rows, ledger_names = inbox_rows(db, account_id, invitations, status=status)
 
     ctx = _base_ctx(
         request,
@@ -159,6 +129,8 @@ def web_bill_split_inbox(
         page_title="拆账收件箱",
     )
     ctx["bill_split_rows"] = rows
+    ctx["splitaccept_draft_scope"] = browser_draft_scope(db, request)
+    ctx["split_inbox_status"] = status
     ctx["flash_message"] = msg or ""
     ctx["flash_type"] = _clean_flash_type(flash_type)
     ctx["receipt"] = _accepted_receipt(
@@ -191,6 +163,7 @@ def web_bill_split_sent(
         is_expired = inv.status == "invited" and ensure_utc(inv.expires_at) <= presented_at
         rows.append(
             {
+                **invitation_facts(inv),
                 "public_id": inv.public_id,
                 "status": inv.status,
                 "amount_yuan": _cents_to_yuan(inv.amount_cents, inv.home_currency_code),
@@ -201,6 +174,10 @@ def web_bill_split_sent(
                 "is_expired": is_expired,
                 "is_cancellable": inv.status == "invited" and not is_expired,
                 "debt_href": debt_links.get(inv.public_id, ""),
+                "current_share_label": (
+                    f"{inv.home_currency_code} "
+                    f"{minor_amount_label(inv.current_agreed_share_amount_cents, inv.home_currency_code)}"
+                ) if inv.current_agreed_share_amount_cents != inv.amount_cents else "",
                 "source_href": flow_href(
                     f"/web/expenses/{inv.sender_expense_id}/edit",
                     ledger_id=selected_id,
@@ -302,45 +279,84 @@ def _invite_error_response(
         status_code=exc.status_code)
 
 
-@router.post(
-    "/bill-splits/{public_id}/accept",
-    response_class=HTMLResponse,
-)
-def web_split_accept(
-    public_id: str,
-    request: Request,
-    target_ledger_id: str = Form(),
-    ledger_id: str = Form(default=""),
-    _local: None = LocalOnly,
-    db: Session = Depends(get_db),
-) -> HTMLResponse:
+class SplitAcceptanceForm(BaseModel):
+    ledger_id: str = ""
+    target_ledger_id: str
+    target_ledger_name: str = ""
+    public_id: str = ""
+    draft_scope: str = ""
+    draft_ref: str = ""
+    review_latest: bool = False
+    csrf_token: str = ""
+
+
+def _acceptance_page(request, db, *, options, selected_id, public_id, values=None, error=None, result="", original_only=False):
+    account_id = resolve_web_actor_account_id(db, request, selected_id)
+    invitation = bsplit.get_invitation(db, public_id)
+    if invitation.receiver_account_id != account_id:
+        raise AppError("invitation_not_yours", status_code=403)
+    rows, _ = inbox_rows(db, account_id, [invitation], status="all")
+    ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id, page_title="接受拆账邀请")
+    ctx.update(bill_split_rows=rows, split_inbox_status="all", accept_task=True,
+        splitaccept_draft_scope=browser_draft_scope(db, request), accept_values=values or {},
+        splitaccept_native_result=result, splitaccept_original_only=original_only,
+        flash_message=error.message if error else "", flash_type="error" if error else "", receipt=None)
+    return templates.TemplateResponse(request=request, name="bill_splits_inbox.html", context=ctx,
+        status_code=error.status_code if error else 200, headers={"Cache-Control": "no-store"})
+
+
+@router.get("/bill-splits/{public_id}/accept", response_class=HTMLResponse)
+def web_split_acceptance_task(public_id: str, request: Request, ledger_id: str | None = None,
+                              original_only: bool = False, _local: None = LocalOnly,
+                              db: Session = Depends(get_db)) -> HTMLResponse:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
-    account_id, device_id = resolve_web_actor(db, request, selected_id)
-    # TOCTOU is routine here (sender cancels / a peer accepts while the inbox
-    # page is open) — flash the conflict instead of a bare-JSON page.
+    selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
+    return _acceptance_page(request, db, options=options, selected_id=selected_id, public_id=public_id,
+        original_only=original_only)
+
+
+@router.post("/bill-splits/{public_id}/accept", response_class=HTMLResponse)
+def web_split_accept(public_id: str, request: Request, form: Annotated[SplitAcceptanceForm, Form()],
+                     _local: None = LocalOnly, db: Session = Depends(get_db)) -> Response:
+    options = _list_ledger_options(db)
+    selected_id = _resolve_selected_ledger_id(db, form.ledger_id or None, options, request=request)
+    values = form.model_dump(exclude={"csrf_token", "review_latest"})
     try:
+        if form.draft_scope or "application/json" in request.headers.get("accept", ""):
+            require_draft_binding(db, request, ledger_id=selected_id, draft_scope=form.draft_scope, require_session=False,
+                original_ledger_id=form.ledger_id)
+        if retained := preserve_original_ledger_form(request, db, options=options, selected=selected_id,
+                fields=values, task="接受原拆账邀请"):
+            return retained
+        account_id, device_id = resolve_web_actor(db, request, selected_id)
+        if form.public_id and form.public_id != public_id:
+            raise AppError("state_conflict", "原邀请已变化，请从保留的接受任务重新打开。", status_code=409)
+        if form.review_latest:
+            return _acceptance_page(request, db, options=options, selected_id=selected_id, public_id=public_id,
+                values=values, result="prepared")
         invitation, _received = bsplit.accept_invitation(
-            db,
-            public_id=public_id,
-            accepting_account_id=account_id,
-            target_ledger_id=target_ledger_id,
-            accepting_device_id=device_id,
-        )
-        return _web_redirect(
-            "/web/bill-splits/inbox",
-            selected_id,
-            accepted=invitation.public_id,
-            flash_type="success",
-        )
+            db, public_id=public_id, accepting_account_id=account_id,
+            target_ledger_id=form.target_ledger_id, accepting_device_id=device_id)
     except AppError as exc:
-        msg = exc.message
-    return _web_redirect(
-        "/web/bill-splits/inbox",
-        selected_id,
-        msg=msg,
-        flash_type="error",
-    )
+        db.rollback()
+        # These owner refusals are resolved after the accepted/same-target replay;
+        # they prove this target did not acquire a second received expense.
+        result = "rejected" if exc.error in {"ledger_forbidden", "ledger_archived", "invitation_expired",
+            "invitation_not_acceptable", "state_conflict"} else "blocked"
+        if response := draft_error_response(request, exc, refusal_result=result):
+            return response
+        if exc.error in {"session_binding_changed", "invalid_token", "invitation_not_yours", "invitation_not_found"}:
+            return preserve_original_ledger_form(request, db, options=options, selected=selected_id,
+                fields=values, task="接受原拆账邀请", error=exc)
+        return _acceptance_page(request, db, options=options, selected_id=selected_id, public_id=public_id,
+            values=values, error=exc, result=result)
+    destination = _web_redirect("/web/bill-splits/inbox", selected_id, accepted=invitation.public_id, flash_type="success")
+    if response := draft_ack_response(request, draft_scope=form.draft_scope, idempotency_key=public_id,
+            receipt={"public_id": public_id, "status": invitation.status, "target_ledger_id": form.target_ledger_id,
+                "amount_cents": invitation.amount_cents, "home_currency_code": invitation.home_currency_code},
+            next_href=destination.headers["location"]):
+        return response
+    return destination
 
 
 @router.post(

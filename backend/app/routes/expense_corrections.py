@@ -25,6 +25,7 @@ from app.services.expense_correction_service import (
     complete_correction_command,
     correction_idempotency_body,
 )
+from app.services.expense_fact_history import list_expense_fact_history
 from app.services.expense_offset_lifecycle_service import (
     correct_expense_offset,
     void_expense_offset,
@@ -71,10 +72,17 @@ def get_expense_revision_history(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
     snapshot_revision: int | None = Query(default=None, ge=0),
+    include_offsets: bool = False,
+    offset_snapshot_id: int | None = Query(default=None, ge=0),
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> ExpenseRevisionListResponse:
     expense = get_expense(db, expense_id, auth.tenant_id)
+    if include_offsets:
+        return list_expense_fact_history(
+            db, tenant_id=auth.tenant_id, expense_id=expense_id, page=page, page_size=page_size,
+            snapshot_revision=snapshot_revision, offset_snapshot_id=offset_snapshot_id,
+        )
     return list_expense_revisions(
         db,
         tenant_id=auth.tenant_id,

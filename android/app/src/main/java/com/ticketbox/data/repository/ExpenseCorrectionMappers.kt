@@ -26,6 +26,7 @@ fun ExpenseRevisionDto.toDomain(): ExpenseRevision = ExpenseRevision(
     actorAccountName = actorAccountName,
     actorDeviceName = actorDeviceName,
     createdAt = createdAt,
+    offsetPublicId = offsetPublicId,
 )
 
 fun ExpenseRevisionPageDto.toDomain(): ExpenseRevisionPage = ExpenseRevisionPage(
@@ -34,6 +35,7 @@ fun ExpenseRevisionPageDto.toDomain(): ExpenseRevisionPage = ExpenseRevisionPage
     pageSize = pageSize,
     total = total,
     snapshotRevision = snapshotRevision,
+    offsetSnapshotId = requireNotNull(offsetSnapshotId),
 )
 
 fun ExpenseCorrectionDraft.toRequest(expectedRowVersion: Long): ExpenseCorrectionRequestDto {

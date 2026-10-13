@@ -36,14 +36,29 @@ internal fun CategoryRuleSubmissionSummary(pending: PendingCategoryRuleSubmissio
             PendingMutationType.DeleteCategoryRule -> R.string.sync_status_mutation_delete_category_rule
             else -> R.string.sync_status_mutation_update_category_rule
         }))
-        Text(request?.keyword ?: stringResource(R.string.category_rule_submission_unknown))
+        Text(pending.originalInput?.get("keyword") ?: request?.keyword ?: stringResource(R.string.category_rule_submission_unknown))
         request?.let { CategoryRuleOriginalConditions(it) }
         TextButton(onClick = { details = !details }) { Text(stringResource(R.string.category_rule_submission_details)) }
         if (details) {
+            pending.originalInput?.let { original ->
+                Text(stringResource(R.string.category_rule_submission_original_input))
+                CategoryRuleOriginalInput(original)
+            }
             Text(stringResource(R.string.category_rule_submission_key, pending.row.idempotencyKey.orEmpty()))
             Text(stringResource(R.string.category_rule_submission_version, pending.row.expectedRowVersion))
         }
     }
+}
+
+@Composable
+private fun CategoryRuleOriginalInput(original: Map<String, String>) {
+    val labels = mapOf("keyword" to R.string.category_rule_editor_keyword_label, "category" to R.string.category_rule_editor_category_label,
+        "priority" to R.string.category_rule_editor_priority_label, "amount_min" to R.string.category_rule_amount_min,
+        "amount_max" to R.string.category_rule_amount_max, "home_currency_code" to R.string.category_rule_currency_choose,
+        "source_contains" to R.string.category_rule_definition_source, "tag_contains" to R.string.category_rule_definition_tag)
+    labels.forEach { (field, label) -> original[field]?.takeIf { it.isNotEmpty() }?.let {
+        Text(stringResource(R.string.category_rule_submission_original_field, stringResource(label), it))
+    } }
 }
 
 @Composable

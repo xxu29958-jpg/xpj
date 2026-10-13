@@ -135,6 +135,8 @@ data class ExpenseDto(
     val rejectedAt: String?,
     @param:Json(name = "accounting_time")
     val accountingTime: ExpenseAccountingTimeDto? = null,
+    @param:Json(name = "confirmation_receipt")
+    val confirmationReceipt: ExpenseConfirmationReceiptDto? = null,
 )
 
 @JsonClass(generateAdapter = true)

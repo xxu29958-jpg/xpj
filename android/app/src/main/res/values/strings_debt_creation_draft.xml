@@ -1,0 +1,12 @@
+<resources>
+    <string name="debt_creation_subtitle">只记录约定，不新增消费。</string>
+    <string name="debt_creation_details_expand">分期与说明 · 展开</string>
+    <string name="debt_creation_details_collapse">分期与说明 · 收起</string>
+    <string name="debt_creation_i_owe">我欠对方</string>
+    <string name="debt_creation_owed_to_me">对方欠我</string>
+    <string name="debt_creation_keep_exit">暂存退出</string>
+    <string name="debt_creation_discard_original">放弃这份原稿</string>
+    <string name="debt_creation_check_local">核实本机保存</string>
+    <string name="debt_creation_local_unverified">尚未确认本机保存结果。原输入已保留，请先核实这次原提交。</string>
+    <string name="debt_creation_readonly_original">当前只读，原输入仍保留；恢复编辑权限后可继续。</string>
+</resources>

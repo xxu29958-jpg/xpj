@@ -33,6 +33,60 @@ class SyncStatusScreenConfirmTest {
     val composeRule = createComposeRule()
 
     @Test
+    fun unverifiableExpenseOperationsKeepTheOriginalAndOfferFactReviewInsteadOfRetry() {
+        var opened: Long? = null
+        val original = outboxRow(PendingMutationStatus.Failed, "expense_confirmation_original_requires_review")
+            .copy(type = PendingMutationType.ConfirmExpense)
+        val state = mutableStateOf(OutboxStatusUiState(bindingReady = true,
+            status = OutboxStatus(0, emptyList(), listOf(original))))
+        val skin = if (androidx.test.platform.app.InstrumentationRegistry.getArguments().getString("previewSkin") == "midnight")
+            AppSkin.Midnight else AppSkin.Paper
+        composeRule.setContent { TicketboxTheme(skin = skin) {
+            SyncStatusScreenContent(state.value, SyncStatusActions(onRefreshAcceptedResult = {}, onRepairCorrectionRate = { _, _ -> }, onOpenRateSubmission = {}, onOpenIncomeSubmission = {}, onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {},
+            onOpenExpense = { opened = it }, onKeepMine = { error("Accepted confirmation cannot be rebased") }, onDropMine = {},
+            onRetry = { error("Unverifiable operation cannot be resubmitted") }, onDropFailed = {}, onClearQuarantined = {},
+        ), {}, onOpenInbox = {}) } }
+        val context = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext
+        composeRule.onNodeWithText("同步失败").assertDoesNotExist()
+        composeRule.onNodeWithText(context.getString(syncStatusMutationLabelResources.getValue(original.type)))
+            .performScrollTo().performClick()
+        composeRule.onNodeWithText("重试").assertDoesNotExist()
+        composeRule.onNodeWithText(context.getString(com.ticketbox.R.string.sync_status_expense_original_requires_review))
+            .performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(com.ticketbox.R.string.expense_offset_review_current))
+            .performScrollTo().performClick()
+        composeRule.runOnIdle { assertEquals(7L, opened) }
+        for (type in listOf(PendingMutationType.ReplaceItems, PendingMutationType.ReplaceSplits,
+            PendingMutationType.AcknowledgeItemsMismatch)) {
+            val subtask = original.copy(id = original.id + type.ordinal + 1L, type = type,
+                lastError = "expense_subtask_original_requires_review")
+            composeRule.runOnIdle {
+                opened = null
+                state.value = state.value.copy(status = OutboxStatus(0, emptyList(), listOf(subtask)))
+            }
+            composeRule.onNodeWithText("同步失败").assertDoesNotExist()
+            composeRule.onNodeWithText(context.getString(syncStatusMutationLabelResources.getValue(type)))
+                .performScrollTo().performClick()
+            composeRule.onNodeWithText("重试").assertDoesNotExist()
+            composeRule.onNodeWithText(context.getString(com.ticketbox.R.string.sync_status_expense_original_requires_review))
+                .performScrollTo().assertIsDisplayed()
+            com.ticketbox.ui.saveConsumerArtPreview("subtask-${type.wireValue}", requireNotNull(
+                androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+            composeRule.onNodeWithText(context.getString(com.ticketbox.R.string.expense_offset_review_current))
+                .performScrollTo().performClick()
+            composeRule.runOnIdle {
+                assertEquals(7L, opened)
+                assertEquals(subtask, state.value.status.failed.single())
+            }
+            composeRule.onNodeWithText(context.getString(com.ticketbox.R.string.sync_status_accepted_stop))
+                .performScrollTo().performClick()
+            composeRule.onNodeWithText(context.getString(com.ticketbox.R.string.sync_status_accepted_stop_body)).assertIsDisplayed()
+            composeRule.onNodeWithText("取消").performClick()
+            composeRule.runOnIdle { assertEquals(subtask, state.value.status.failed.single()) }
+        }
+    }
+
+    @Test
     fun offsetConflictOpensTheCurrentFactWithoutOfferingAnOverwrite() {
         var opened: Long? = null
         val original = outboxRow(PendingMutationStatus.Conflict, "state_conflict")

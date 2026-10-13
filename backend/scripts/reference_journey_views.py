@@ -23,9 +23,12 @@ def roles(j):
     with closing(j.page.context.browser.new_context()) as context:
         member = context.new_page()
         connect(member, j, "member")
+        row = member.locator(f'#tag-{original["id"]}')
+        row.locator("summary").click()
+        row.locator('a[href*="action=rename"]').click()
         form = member.locator(f'form[action="/web/tags/{original["id"]}/rename"]')
         form.locator('[name="name"]').fill("TripFinal")
-        form.get_by_role("button", name="重命名", exact=True).click()
+        form.locator('[data-tag-submit]').click()
         j.expect(lambda state: any(row["name"] == "TripFinal" and row["id"] == original["id"] for row in state["tags"]),
                  "The real member edit did not reach the shared tag")
         member.screenshot(path=j.evidence / "web-reference-member-rename.png", full_page=True)
@@ -58,7 +61,7 @@ def appearances(j):
     page, native = j.page, j.native
     for theme in ("paper", "midnight"):
         page.set_viewport_size({"width": 1280, "height": 960})
-        j.goto("/web/tags")
+        j.goto("/web/confirmed")
         page.locator("#appearance > summary").click()
         page.locator(f'#appearance [data-theme-mode="{theme}"]').click()
         page.wait_for_function("theme => document.documentElement.dataset.theme === theme", arg=theme)
@@ -71,13 +74,40 @@ def appearances(j):
                 j.capture(f"{path}-{width}-{theme}")
         native.plan_home()
         native.click("打开账户与设置")
+        native.click("通知与外观")
         native.click("外观与主题")
-        native.click("浅色纸面 · 深绿点缀" if theme == "paper" else "柔和深色 · 浅绿点缀")
+        native.click("晨纸" if theme == "paper" else "玄夜")
         for label, value, name in (("标签", "TripFinal", "tags"), ("商家", "RefPay", "merchants"),
-                                    ("自动规则", "RefShop", "rules"), ("分类", "Library", "categories")):
+                                    ("分类规则", "RefShop", "rules"), ("分类", "Library", "categories")):
             j.native_open(label)
+            if label == "商家":
+                native.click("RefShop")
             native.reveal_any(value, max_scrolls=16)
             native.capture(f"reference-{name}-{theme}")
+
+
+def _ledger_directory(native):
+    native.plan_home()
+    native.click("打开账户与设置")
+    native.click("账本和家庭成员")
+    native.click("账本")
+
+
+def _is_current_ledger(root, name):
+    rows = [[child.attrib.get("text", "") for child in node.iter("node")]
+            for node in root.iter("node") if node.attrib.get("clickable") == "true"]
+    named = [row for row in rows if name in row]
+    return len(named) == 1 and "当前" in named[0] and "切换" not in named[0]
+
+
+def _verify_current_ledger(native, name):
+    # A different ledger has its own navigation. Inspect the persisted current
+    # row after re-entering settings, not a message in the previous ledger's UI.
+    _ledger_directory(native)
+    native.reveal_any(name)
+    wait_for(lambda: _is_current_ledger(native.tree(), name),
+             f"The actual ledger directory did not mark {name} as current")
+    native.capture(f"reference-current-ledger-{name}")
 
 
 def identities(j):
@@ -87,16 +117,14 @@ def identities(j):
     from app.models import Ledger
 
     native = j.native
-    native.plan_home()
-    native.click("打开账户与设置")
-    native.click("账本")
-    native.reveal_any("账本名称")
-    native.fill("LibraryOther", label="账本名称")
-    native.click("新建账本", bottom=True)
+    _ledger_directory(native)
+    native.reveal_any("新账本名称")
+    native.fill("LibraryOther", label="新账本名称")
+    native.click("创建账本", bottom=True)
     native.reveal_any("已新建账本")
     native.click_within("LibraryOther", "切换")
-    native.reveal_any("已切换到「LibraryOther」")
-    for label, forbidden in (("标签", "TripFinal"), ("商家", "RefShop"), ("自动规则", "RefShop")):
+    _verify_current_ledger(native, "LibraryOther")
+    for label, forbidden in (("标签", "TripFinal"), ("商家", "RefShop"), ("分类规则", "RefShop")):
         j.native_open(label)
         assert not native.has(forbidden), "The new ledger exposed the previous ledger's reference data"
         native.capture(f"reference-other-ledger-{label}")
@@ -105,13 +133,12 @@ def identities(j):
         assert other is not None and other.ledger_id != j.fixture.ledger_id
         other_facts = facts(other.ledger_id)
         assert all(not value for value in other_facts.values()), "Switching copied reference or financial facts into another ledger"
-    native.plan_home()
-    native.click("打开账户与设置")
-    native.click("账本")
+    _ledger_directory(native)
     native.click_within(j.fixture.ledger_name, "切换")
-    native.reveal_any(f"已切换到「{j.fixture.ledger_name}」")
+    _verify_current_ledger(native, j.fixture.ledger_name)
     native.plan_home()
     native.click("打开账户与设置")
+    native.click("数据与隐私")
     native.click("安全与隐私")
     native.click("退出账本")
     native.click("确定退出")

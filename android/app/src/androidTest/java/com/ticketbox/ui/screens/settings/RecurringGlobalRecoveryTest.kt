@@ -34,8 +34,10 @@ class RecurringGlobalRecoveryTest {
 
     @Test
     fun originalYenAmountDoesNotUseTheCurrentCnyDefault() {
-        show(original())
+        show(original().copy(kind = RecurringPendingKind.CANDIDATE, targetId = "recurring_candidate:original-key"))
         compose.onNodeWithText("JPY ¥1,200").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.sync_status_failed_offline_prefix,
+            context.getString(R.string.sync_status_mutation_confirm_recurring_candidate))).assertIsDisplayed()
         compose.onNodeWithText("¥12.00", substring = true).assertDoesNotExist()
         compose.onNodeWithText(context.getString(R.string.sync_status_failed_button_retry)).assertExists()
     }
@@ -53,7 +55,8 @@ class RecurringGlobalRecoveryTest {
     private fun show(original: RecurringPendingIntent, onOpenRecurring: () -> Unit = {}) {
         val binding = LogicalSessionBinding("https://example.test", "owner", "owner", "session", "binding")
         val row = OutboxRow(id = 43, serverUrl = binding.serverUrl, ledgerId = binding.ledgerId, ownerKey = binding.ownerKey,
-            type = PendingMutationType.CreateRecurringItem, targetId = original.targetId, payloadJson = "{}",
+            type = if (original.kind == RecurringPendingKind.CANDIDATE) PendingMutationType.ConfirmRecurringCandidate
+                else PendingMutationType.CreateRecurringItem, targetId = original.targetId, payloadJson = "{}",
             expectedRowVersion = 0, status = PendingMutationStatus.Failed, retryCount = 10, lastError = null,
             createdAt = "2026-09-09T00:00:00Z", attemptedAt = null, completedAt = null, idempotencyKey = original.idempotencyKey)
         val state = OutboxStatusUiState(binding = binding, bindingReady = true,

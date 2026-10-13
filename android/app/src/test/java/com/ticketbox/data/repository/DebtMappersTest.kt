@@ -59,6 +59,8 @@ class DebtMappersTest {
         // ADR-0049 §3.7 (slice 8e-3): is_forgiven defaults absent → false; the true case (a forgiven
         // cleared Debt) is exercised end-to-end in DebtRepositoryTest.forgive…ReturnsForgivenFoldAfterDebt.
         assertFalse(debt.isForgiven)
+        assertNull(debt.adjustmentAmountCents)
+        assertNull(debt.forgivenAmountCents)
         // 8e-6e: debt_kind defaults absent → unspecified (DebtResponse defaults it, not required).
         assertEquals(DebtKinds.UNSPECIFIED, debt.debtKind)
     }

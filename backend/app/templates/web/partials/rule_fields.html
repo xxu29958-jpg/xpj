@@ -1,34 +1,40 @@
 <input type="hidden" name="home_currency_code" value="{{ rule_draft.get('home_currency_code', '') }}">
 <input type="hidden" name="idempotency_key" value="{{ rule_draft.get('idempotency_key', '') }}">
 <label class="product-field">
-  <span>关键词</span>
-  <input type="text" name="keyword" required placeholder="如：星巴克" value="{{ rule_draft.get('keyword', '') }}">
+  <span>商家关键词</span>
+  <input type="text" name="keyword"{% if definition_frozen or not can_write %} readonly{% endif %} required placeholder="如：星巴克" value="{{ rule_draft.get('keyword', '') }}">
 </label>
 <label class="product-field">
-  <span>分类</span>
-  <input type="text" name="category" required placeholder="如：餐饮" value="{{ rule_draft.get('category', '') }}">
+  <span>推荐分类</span>
+  <input type="text" name="category"{% if definition_frozen or not can_write %} readonly{% endif %} required placeholder="如：餐饮" value="{{ rule_draft.get('category', '') }}">
 </label>
 <label class="product-field">
   <span>优先级（越小越优先）</span>
-  <input type="number" name="priority" value="{{ rule_draft.get('priority', '100') }}" min="0" max="9999">
+  <input type="text" inputmode="numeric" name="priority"{% if definition_frozen or not can_write %} readonly{% endif %} value="{{ rule_draft.get('priority', '100') }}">
 </label>
+<details{% if rule_draft.get('amount_min_yuan') or rule_draft.get('amount_max_yuan') %} open{% endif %}>
+<summary class="product-entry"><span class="product-entry-icon product-entry-icon--lilac" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#sliders-horizontal"/></svg></span><span class="product-entry-copy"><strong>金额范围</strong><span>可选</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-down"/></svg></summary>
 <div class="library-field-pair">
   <label class="product-field">
-    <span>金额下限（{{ rule_draft.get('home_currency_code') or '币种待确认' }}，可选）</span>
-    <input type="text" name="amount_min_yuan" inputmode="{{ rule_currency_input.inputmode or 'decimal' }}" placeholder="可不填" value="{{ rule_draft.get('amount_min_yuan', '') }}">
+    <span>金额下限（<span data-rule-currency>{{ rule_draft.get('home_currency_code') or '币种待确认' }}</span>，可选）</span>
+    <input type="text" name="amount_min_yuan"{% if definition_frozen or not can_write %} readonly{% endif %} inputmode="{{ rule_currency_input.inputmode or 'decimal' }}" placeholder="可不填" value="{{ rule_draft.get('amount_min_yuan', '') }}">
   </label>
   <label class="product-field">
-    <span>金额上限（{{ rule_draft.get('home_currency_code') or '币种待确认' }}，可选）</span>
-    <input type="text" name="amount_max_yuan" inputmode="{{ rule_currency_input.inputmode or 'decimal' }}" placeholder="可不填" value="{{ rule_draft.get('amount_max_yuan', '') }}">
+    <span>金额上限（<span data-rule-currency>{{ rule_draft.get('home_currency_code') or '币种待确认' }}</span>，可选）</span>
+    <input type="text" name="amount_max_yuan"{% if definition_frozen or not can_write %} readonly{% endif %} inputmode="{{ rule_currency_input.inputmode or 'decimal' }}" placeholder="可不填" value="{{ rule_draft.get('amount_max_yuan', '') }}">
   </label>
 </div>
-{% if rule_currency_input %}<p class="meta">金额条件使用 {{ rule_currency_input.currency_code }}，{{ rule_currency_input.amount_input_hint }}。以后更改默认币种不会改变这条规则。</p>
-{% else %}<p class="meta">金额币种尚未确认。无金额条件的规则仍可保存。</p>{% endif %}
+<p class="meta">金额按这份原稿的币种提交，不会随默认币种改贴。无金额条件时可留空。</p>
+</details>
+<details{% if rule_draft.get('source_contains') or rule_draft.get('tag_contains') %} open{% endif %}>
+<summary class="product-entry"><span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#tag"/></svg></span><span class="product-entry-copy"><strong>来源与标签条件</strong><span>可选</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-down"/></svg></summary>
 <label class="product-field">
   <span>来源包含（可选）</span>
-  <input type="text" name="source_contains" placeholder="如：微信 / 手动记账" value="{{ rule_draft.get('source_contains', '') }}">
+  <input type="text" name="source_contains"{% if definition_frozen or not can_write %} readonly{% endif %} placeholder="如：微信 / 手动记账" value="{{ rule_draft.get('source_contains', '') }}">
 </label>
 <label class="product-field">
   <span>标签等于（可选）</span>
-  <input type="text" name="tag_contains" placeholder="如：真香" value="{{ rule_draft.get('tag_contains', '') }}">
+  <input type="text" name="tag_contains"{% if definition_frozen or not can_write %} readonly{% endif %} placeholder="如：真香" value="{{ rule_draft.get('tag_contains', '') }}">
 </label>
+
+</details>

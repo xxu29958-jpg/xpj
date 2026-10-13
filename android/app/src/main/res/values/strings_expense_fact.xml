@@ -4,6 +4,17 @@
 <resources>
     <!-- Fact page -->
     <string name="expense_fact_title">账单详情</string>
+    <string name="expense_fact_original_spend">原消费</string>
+    <string name="expense_fact_home_gross">入账金额 %1$s</string>
+    <string name="expense_fact_lines_entry">商品与拆账</string>
+    <string name="expense_fact_lines_entry_hint">查看明细和份额</string>
+    <string name="expense_fact_offsets_entry_hint">查看记录或登记退回</string>
+    <string name="expense_fact_notes_entry">标签与备注</string>
+    <string name="expense_fact_history_heading">这笔账的来龙去脉</string>
+    <string name="expense_fact_history_entry">完整历史</string>
+    <string name="expense_fact_history_subtitle">%1$s · 原消费 %2$s</string>
+    <string name="expense_fact_recent_changes">最近变更</string>
+    <string name="expense_fact_history_preserved">原记录始终保留。更正和退回分别记录，不覆盖之前发生的事。</string>
     <string name="expense_fact_status_confirmed">已确认</string>
     <string name="expense_fact_revision_badge">第 %1$d 版</string>
     <string name="expense_fact_hero_original_caption">原始 %1$s</string>
@@ -82,7 +93,11 @@
     <string name="expense_correction_sheet_subtitle">更正会保留修改记录：保存后，原值与新值都会显示在变更记录里。</string>
     <string name="expense_correction_reason_label">更正原因（必填）</string>
     <string name="expense_correction_reason_placeholder">例如：小票金额看错了 / 商家识别错了</string>
-    <string name="expense_correction_reason_helper">这句话会显示在变更记录里，帮助家人（和以后的你）理解为什么改。</string>
+    <string name="expense_correction_reason_helper">原因会随修改记录保留。</string>
+    <string name="expense_correction_fields_title">账单字段</string>
+    <string name="expense_correction_fields_hint">金额、商家、分类与日期</string>
+    <string name="expense_correction_preview">查看本次修改</string>
+    <string name="expense_correction_collection_hint">查看与调整，随本次更正保存</string>
     <string name="expense_correction_reason_required">请说明这次更正的原因。</string>
     <string name="expense_correction_snapshot_changed">账单状态已有变化，草稿还在。请先核对当前账单，再重新发起更正。</string>
     <string name="expense_correction_collections_not_current">明细或拆账尚待核对；请刷新账单后再修改这些内容。</string>
@@ -150,11 +165,18 @@
     <string name="expense_offset_pending_sync">待同步</string>
 
     <!-- 登记 sheet（refund/chargeback 同一入口分段切换；reversal 无金额） -->
-    <string name="expense_offset_sheet_title_refund">登记退款</string>
+    <string name="expense_offset_sheet_title_refund">登记退回</string>
     <string name="expense_offset_sheet_subtitle_refund">原账单保留不变，这里追加一条退回记录。</string>
     <string name="expense_offset_sheet_title_reversal">冲销这笔账单</string>
     <string name="expense_offset_sheet_subtitle_reversal">冲销表示这笔账从一开始就不该算。</string>
-    <string name="expense_offset_reversal_explainer">不需要填写金额：整笔按原记录冲掉，原账单和这条冲销都会保留在记录里。</string>
+    <string name="expense_offset_reversal_explainer">原账单和历史记录都会保留，不产生一笔退回款。</string>
+    <string name="expense_offset_reversal_impact">冲销后不再计入支出</string>
+    <string name="expense_offset_reversal_review">我已核对原件与关联记录</string>
+    <string name="expense_offset_subject">%1$s · 原消费 %2$s</string>
+    <string name="expense_offset_preview_net">登记后，这笔净支出 · %1$s（预览）</string>
+    <string name="expense_offset_preview_original">登记后，原币净额 · %1$s（预览）</string>
+    <string name="expense_offset_preview_basis">当前可退 %1$s − 本次 %2$s</string>
+    <string name="expense_offset_preview_fx">本位币净额需采用退回日期的汇率，保存后查看。</string>
     <string name="expense_offset_amount_label">退回金额（%1$s）</string>
     <string name="expense_offset_amount_invalid">请填写大于 0 的有效金额。</string>
     <string name="expense_offset_remaining_hint">当前可退约 %1$s，最终以保存结果为准。</string>
@@ -168,7 +190,7 @@
     <string name="expense_offset_reason_placeholder_chargeback">例如：银行确认这笔拒付</string>
     <string name="expense_offset_reason_placeholder_reversal">例如：重复录入，这笔不该算</string>
     <string name="expense_offset_reason_required">请说明原因，这会显示在记录里。</string>
-    <string name="expense_offset_submit_refund">登记退款</string>
+    <string name="expense_offset_submit_refund">确认登记退回</string>
     <string name="expense_offset_submit_reversal">确认冲销</string>
     <string name="expense_offset_saving">保存中…</string>
     <string name="expense_offset_queued">原操作已保存，将自动提交；可在同步页面查看结果或继续处理。</string>

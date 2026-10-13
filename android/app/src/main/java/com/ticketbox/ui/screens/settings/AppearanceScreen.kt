@@ -2,11 +2,6 @@ package com.ticketbox.ui.screens.settings
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Image
-import androidx.compose.material.icons.outlined.Crop
-import androidx.compose.material.icons.outlined.PhotoLibrary
-import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
@@ -106,7 +101,7 @@ private fun AppearanceDetails(state: AppearanceScreenState, actions: AppearanceS
     SettingsDetailRow(
         title = stringResource(R.string.appearance_more_title),
         subtitle = stringResource(R.string.appearance_more_hint),
-        icon = Icons.Outlined.Tune,
+        icon = R.drawable.ic_lucide_sliders_horizontal,
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap)) {
             Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
@@ -138,18 +133,18 @@ private fun AppearanceBackgroundEntries(
     SettingsEntryRow(
         title = stringResource(R.string.appearance_background_open_gallery),
         subtitle = stringResource(R.string.appearance_background_gallery_hint),
-        icon = Icons.Outlined.Image, onClick = if (available) actions.onOpenGallery else null,
+        icon = R.drawable.ic_lucide_image, onClick = if (available) actions.onOpenGallery else null,
     )
     SettingsEntryRow(
         title = stringResource(R.string.appearance_background_pick_image),
         subtitle = stringResource(R.string.appearance_background_album_hint),
-        icon = Icons.Outlined.PhotoLibrary, onClick = if (available) actions.onPickCustomImage else null,
+        icon = R.drawable.ic_lucide_images, onClick = if (available) actions.onPickCustomImage else null,
     )
     SettingsEntryRow(
         title = stringResource(R.string.appearance_background_edit_composition),
         subtitle = stringResource(if (hasBackground) R.string.appearance_background_composition_hint
             else R.string.appearance_background_choose_first),
-        icon = Icons.Outlined.Crop,
+        icon = R.drawable.ic_lucide_crop,
         onClick = if (available && hasBackground) {
             { actions.onEditBackground(appearance.backgroundSettings) }
         } else null,

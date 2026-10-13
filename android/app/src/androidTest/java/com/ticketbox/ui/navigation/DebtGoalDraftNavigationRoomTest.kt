@@ -5,16 +5,27 @@ import android.os.Bundle
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.isDialog
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.SemanticsMatcher
 import com.ticketbox.ui.assertEditableTextEquals
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasScrollToIndexAction
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.text.AnnotatedString
 import androidx.lifecycle.Lifecycle
@@ -34,6 +45,20 @@ import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.DebtListResponseDto
 import com.ticketbox.data.remote.dto.GoalListResponseDto
 import com.ticketbox.data.remote.dto.GoalCreateRequestDto
+import com.ticketbox.data.remote.dto.GoalDto
+import com.ticketbox.data.remote.dto.DebtRepaymentEvaluationDto
+import com.ticketbox.data.remote.dto.DebtGoalLinkViewDto
+import com.ticketbox.data.remote.dto.DebtGoalLinksReplaceRequestDto
+import com.ticketbox.data.repository.OutboxDrainEngine
+import com.ticketbox.data.repository.DebtGoalEditDispatcher
+import com.ticketbox.OutboxAdapterGraph
+import com.ticketbox.viewmodel.DebtGoalEditViewModel
+import com.ticketbox.viewmodel.debtGoalEditViewModelFactory
+import androidx.test.platform.app.InstrumentationRegistry
+import java.io.IOException
+import okhttp3.ResponseBody.Companion.toResponseBody
+import retrofit2.HttpException
+import retrofit2.Response
 import com.ticketbox.data.repository.DebtAdjustmentConnectedNetwork
 import com.ticketbox.data.repository.GoalEditActions
 import com.ticketbox.data.repository.LogicalSessionBinding
@@ -45,6 +70,10 @@ import com.ticketbox.domain.model.AppThemeMode
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.ui.screens.CreateDebtGoalScreen
+import com.ticketbox.ui.screens.DebtGoalEditScreen
+import com.ticketbox.viewmodel.DebtGoalEditKind
+import com.ticketbox.data.local.PendingMutationType
+import com.ticketbox.data.remote.dto.DebtGoalTargetDateRequestDto
 import com.ticketbox.viewmodel.CreateDebtGoalViewModel
 import com.ticketbox.viewmodel.createDebtGoalViewModelFactory
 import kotlinx.coroutines.runBlocking
@@ -61,18 +90,87 @@ import org.junit.Test
 class DebtGoalDraftNavigationRoomTest {
     @get:Rule val compose = createComposeRule()
     private val context = ApplicationProvider.getApplicationContext<Context>()
+    private val skin = if (InstrumentationRegistry.getArguments().getString("captureSkin") == "midnight") AppSkin.Midnight else AppSkin.Paper
     private val originalDebt = DebtAdjustmentConnectedNetwork().current.copy(ledgerId = "correction-ledger")
     private var debtAvailable = true
+    private var showGoal = false
+    private val archiveRequests = mutableListOf<String>()
+    private val restores = mutableListOf<com.ticketbox.data.remote.dto.RecycleBinRestoreRequestDto>()
+    private val anotherDebt = originalDebt.copy(publicId = "other-debt", counterpartyLabel = "另一笔欠款")
+    private var loseDateReply = false
+    private val dateRequests = mutableListOf<Pair<String?, DebtGoalTargetDateRequestDto>>()
+    private val dateReceipts = mutableMapOf<String, GoalDto>()
+    private var loseLinkReply = false
+    private var denyGoalRead = false
+    private val linkRequests = mutableListOf<Pair<String?, DebtGoalLinksReplaceRequestDto>>()
+    private val linkReceipts = mutableMapOf<String, GoalDto>()
+    private lateinit var linksApi: ApiService
+    private var existingGoal = GoalDto("debt-goal", "correction-ledger", "年底还清", "debt_repayment", "unbounded", null,
+        null, null, null, null, null, "unavailable", "active", "2026-10-01T00:00:00Z", "2026-10-01T00:00:00Z", 4, null,
+        debtRepayment = DebtRepaymentEvaluationDto(1, "in_progress", false, linkedDebts = listOf(
+            DebtGoalLinkViewDto(originalDebt.publicId, "open", "i_owe", "external", "家人甲", 90000, 90000, "CNY")),
+            voidedDebtPublicIds = emptyList()))
     private val harness = FactEntryNavigationHarness(context) { delegate ->
         object : ApiService by delegate {
             override suspend fun goals(month: String?, includeArchived: Boolean, goalType: String?, timezone: String?) =
-                GoalListResponseDto(emptyList())
+                GoalListResponseDto(if (showGoal && (includeArchived || existingGoal.status != "archived")) listOf(existingGoal) else emptyList())
+            override suspend fun archiveGoal(publicId: String, timezone: String?): GoalDto {
+                archiveRequests += publicId
+                return existingGoal.copy(status = "archived", rowVersion = existingGoal.rowVersion + 1,
+                    archivedAt = "2026-10-11T00:00:00Z").also { existingGoal = it }
+            }
+            override suspend fun recycleBin() = com.ticketbox.data.remote.dto.RecycleBinListResponseDto(
+                if (existingGoal.status == "archived") listOf(com.ticketbox.data.remote.dto.RecycleBinItemDto(
+                    "goal", "还债目标", existingGoal.publicId, existingGoal.name, "关联欠款仍保留",
+                    existingGoal.archivedAt, "长期保留", existingGoal.rowVersion.toInt())) else emptyList(), 0)
+            override suspend fun restoreRecycleBinItem(request: com.ticketbox.data.remote.dto.RecycleBinRestoreRequestDto):
+                com.ticketbox.data.remote.dto.RecycleBinRestoreResponseDto {
+                restores += request
+                check(request.resourceId == existingGoal.publicId && request.expectedRowVersion?.toLong() == existingGoal.rowVersion)
+                existingGoal = existingGoal.copy(status = "active", rowVersion = existingGoal.rowVersion + 1, archivedAt = null)
+                return com.ticketbox.data.remote.dto.RecycleBinRestoreResponseDto("还债目标已恢复。")
+            }
+            override suspend fun goal(publicId: String, timezone: String?): GoalDto {
+                if (denyGoalRead) throw HttpException(Response.error<Any>(403, "{}".toResponseBody()))
+                return existingGoal
+            }
             override suspend fun debts(lens: String?) = DebtListResponseDto(
-                if (debtAvailable) listOf(originalDebt) else emptyList(), "CNY")
-        }
+                if (debtAvailable) if (showGoal) listOf(originalDebt, anotherDebt) else listOf(originalDebt) else emptyList(), "CNY")
+            override suspend fun setGoalTargetDate(publicId: String, request: DebtGoalTargetDateRequestDto,
+                idempotencyKey: String?, timezone: String?): GoalDto {
+                dateRequests += idempotencyKey to request
+                val receipt = dateReceipts.getOrPut(requireNotNull(idempotencyKey)) {
+                    check(publicId == existingGoal.publicId)
+                    if (request.expectedRowVersion != existingGoal.rowVersion) throw HttpException(Response.error<Any>(409,
+                        """{"error":"state_conflict","message":"目标已更新"}""".toResponseBody()))
+                    existingGoal.copy(rowVersion = request.expectedRowVersion + 1,
+                        debtRepayment = existingGoal.debtRepayment?.copy(targetDate = request.targetDate)).also { existingGoal = it }
+                }
+                if (loseDateReply) throw IOException("Reply lost after the target date was committed")
+                return receipt
+            }
+            override suspend fun replaceGoalDebtLinks(publicId: String, request: DebtGoalLinksReplaceRequestDto,
+                idempotencyKey: String?, timezone: String?): GoalDto {
+                linkRequests += idempotencyKey to request
+                val receipt = linkReceipts.getOrPut(requireNotNull(idempotencyKey)) {
+                    check(publicId == existingGoal.publicId)
+                    if (request.expectedRowVersion != existingGoal.rowVersion) throw HttpException(Response.error<Any>(409,
+                        """{"error":"state_conflict","message":"目标已更新"}""".toResponseBody()))
+                    existingGoal.copy(rowVersion = request.expectedRowVersion + 1,
+                        debtRepayment = existingGoal.debtRepayment?.copy(linkedDebts = request.debtPublicIds.map { id ->
+                            val debt = listOf(originalDebt, anotherDebt).single { it.publicId == id }
+                            DebtGoalLinkViewDto(id, debt.status, debt.direction, debt.counterpartyType, debt.counterpartyLabel,
+                                debt.principalAmountCents, debt.remainingAmountCents, debt.homeCurrencyCode)
+                        })).also { existingGoal = it }
+                }
+                if (loseLinkReply) throw IOException("Reply lost after the association was committed")
+                return receipt
+            }
+        }.also { linksApi = it }
     }
     private val mounted = mutableStateOf(true)
     private val draftModel = mutableStateOf<CreateDebtGoalViewModel?>(null)
+    private val linksModel = mutableStateOf<DebtGoalEditViewModel?>(null)
     private var draftOwner: IncomeDraftStateOwner? = null
     private lateinit var outer: NavHostController
     private lateinit var inner: NavHostController
@@ -82,6 +180,395 @@ class DebtGoalDraftNavigationRoomTest {
             compose.runOnIdle { mounted.value = false; draftOwner?.viewModelStore?.clear(); harness.models.viewModelStore.clear() }
             compose.waitForIdle()
         } finally { harness.close() }
+    }
+
+    @Test fun archiveAndRestoreReturnToTheSameGoalWithoutChangingItsDebts() {
+        showGoal = true
+        existingGoal = existingGoal.copy(debtRepayment = existingGoal.debtRepayment?.copy(targetDate = "2026-12-31"))
+        val originalLinks = existingGoal.debtRepayment
+        showRoutes()
+        enterGoals()
+        scrollTo("年底还清")
+        capture("debt-goal-list")
+        compose.onNodeWithText("年底还清").performClick()
+        scrollTo("归档目标")
+        compose.onNodeWithText("归档目标").performClick()
+        capture("debt-goal-archive-confirmation", dialog = true)
+        compose.onNodeWithText(context.getString(R.string.common_cancel)).performClick()
+        assertTrue(archiveRequests.isEmpty())
+        harness.fixture.role("viewer")
+        compose.waitUntil(10_000) { !goalOwner().state.value.canModify }
+        compose.onNodeWithText("归档目标").assertDoesNotExist()
+        harness.fixture.role("member")
+        compose.waitUntil(10_000) { goalOwner().state.value.canModify }
+        scrollTo("归档目标")
+        compose.onNodeWithText("归档目标").performClick()
+        compose.onNodeWithText("确认归档").performClick()
+        compose.waitUntil(10_000) { goalOwner().state.value.selectedGoal == null && !goalOwner().state.value.isLoading }
+        assertEquals(listOf(existingGoal.publicId), archiveRequests)
+        assertTrue(goalOwner().state.value.goals.isEmpty())
+        scrollTo("查看已归档目标")
+        compose.onNodeWithText("查看已归档目标").performClick()
+        compose.waitUntil(10_000) { goalOwner().state.value.goals.any { it.isArchived } }
+        scrollTo("年底还清")
+        capture("debt-goal-archived-list")
+        compose.onNodeWithText("年底还清").performClick()
+        scrollTo("查看回收站")
+        capture("debt-goal-archived-detail")
+        compose.onNodeWithText(context.getString(R.string.debt_goal_links_action)).assertDoesNotExist()
+        compose.onNodeWithText("查看回收站").performClick()
+        compose.onNodeWithContentDescription("恢复 年底还清").performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.common_cancel)).performClick()
+        assertTrue(restores.isEmpty())
+        androidx.test.espresso.Espresso.pressBack()
+        scrollTo("查看回收站")
+        compose.onNodeWithText("查看回收站").performClick()
+        compose.onNodeWithContentDescription("恢复 年底还清").performScrollTo().performClick()
+        val confirmations = compose.onAllNodesWithText(context.getString(R.string.recycle_bin_restore_dialog_confirm))
+        confirmations[confirmations.fetchSemanticsNodes().lastIndex].performClick()
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("还债目标已恢复。").fetchSemanticsNodes().isNotEmpty() }
+        assertEquals(listOf(existingGoal.publicId), restores.map { it.resourceId })
+        assertEquals(listOf(5), restores.map { it.expectedRowVersion })
+        androidx.test.espresso.Espresso.pressBack()
+        compose.waitUntil(10_000) { goalOwner().state.value.selectedGoal?.isArchived == false }
+        scrollTo(context.getString(R.string.debt_goal_links_action))
+        capture("debt-goal-restored-detail")
+        androidx.test.espresso.Espresso.pressBack()
+        scrollTo("年底还清")
+        capture("debt-goal-restored-list")
+        assertEquals(6L, goalOwner().state.value.goals.single().rowVersion)
+        assertEquals(originalLinks, existingGoal.debtRepayment)
+        assertTrue(harness.fixture.stored().isEmpty())
+    }
+
+    private fun scrollTo(text: String) {
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(text))
+    }
+
+    private fun goalOwner(): com.ticketbox.viewmodel.DebtGoalViewModel = compose.runOnIdle {
+        ViewModelProvider(requireNotNull(inner.getBackStackEntry(ProductSecondaryPage.DebtGoals.route)),
+            com.ticketbox.viewmodel.debtGoalViewModelFactory(harness.screenFactory.reportsRepository,
+                harness.screenFactory.debtWriteRepository))[DebtGoalViewModelKey, com.ticketbox.viewmodel.DebtGoalViewModel::class.java]
+    }
+
+    @Test fun dateTaskReopensTheOriginalClearCommandFromSyncAfterLostReply() {
+        showGoal = true
+        existingGoal = existingGoal.copy(debtRepayment = existingGoal.debtRepayment?.copy(targetDate = "2026-12-31"))
+        showRoutes()
+        enterGoals()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(existingGoal.name))
+        compose.onNodeWithText(existingGoal.name).performClick()
+        compose.onNodeWithText(context.getString(R.string.debt_goal_edit_target_date)).performScrollTo().performClick()
+        val owner = linksOwner(DebtGoalEditKind.TargetDate)
+        compose.waitUntil(10_000) { owner.state.value.canSave }
+        capture("debt-goal-date")
+        compose.onNodeWithText("2026-12-31").performScrollTo().performClick()
+        capture("debt-goal-date-picker", dialog = true)
+        compose.onNodeWithText(context.getString(R.string.common_cancel)).performClick()
+        assertEquals("2026-12-31", owner.state.value.targetDate)
+        compose.onNodeWithText("2026-12-31").performScrollTo().performClick()
+        val dateInput = hasSetTextAction() and hasAnyAncestor(isDialog())
+        if (compose.onAllNodes(dateInput).fetchSemanticsNodes().isNotEmpty()) {
+            compose.onNode(dateInput).performTextReplacement("12302026")
+            closeSoftKeyboard()
+        } else compose.onNode(hasText("December 30", substring = true) and hasAnyAncestor(isDialog())).performClick()
+        compose.onNodeWithText(context.getString(R.string.common_confirm)).performClick()
+        assertEquals("2026-12-30", owner.state.value.targetDate)
+        assertTrue(dateRequests.isEmpty())
+        compose.onNodeWithText(context.getString(R.string.debt_goal_target_date_clear)).performScrollTo().performClick()
+        assertEquals(null, owner.state.value.targetDate)
+        androidx.test.espresso.Espresso.pressBack()
+        compose.runOnIdle { assertTrue(inner.popBackStack()) }
+        enterGoals()
+        compose.onNodeWithText(context.getString(R.string.debt_goal_date_continue)).performScrollTo().performClick()
+        assertSame(owner, linksOwner(DebtGoalEditKind.TargetDate))
+        compose.waitUntil(10_000) { owner.state.value.canSave }
+        assertEquals(null, owner.state.value.targetDate)
+        harness.fixture.role("viewer")
+        compose.waitUntil(10_000) { !owner.state.value.canModify }
+        compose.onNodeWithText(context.getString(R.string.debt_goal_date_save)).assertIsNotEnabled()
+        capture("debt-goal-date-readonly")
+        harness.fixture.role("member")
+        compose.waitUntil(10_000) { owner.state.value.canSave }
+        compose.onNodeWithText(context.getString(R.string.debt_goal_date_save)).performClick()
+        compose.waitUntil(10_000) { owner.state.value.pending != null && !owner.state.value.isSaving }
+        assertTrue(dateRequests.isEmpty())
+        val original = runBlocking { harness.fixture.stored().single() }
+        assertEquals("4", original["expectedRowVersion"])
+        loseDateReply = true
+        assertEquals(1, runBlocking { linkEngine(PendingMutationType.SetGoalTargetDate).drainOnce().failures })
+        compose.waitUntil(10_000) { owner.state.value.pending?.canRetry == true }
+        val stored = runBlocking { harness.fixture.stored().single() }
+        existingGoal = existingGoal.copy(rowVersion = 6, debtRepayment = existingGoal.debtRepayment?.copy(targetDate = "2029-12-31"))
+        compose.runOnIdle { mounted.value = false }
+        compose.waitForIdle()
+        harness.reopen()
+        compose.runOnIdle { mounted.value = true }
+        compose.waitForIdle()
+        compose.runOnIdle { inner.navigate(ProductSecondaryPage.ObligationSync.route) }
+        compose.waitUntil(10_000) { compose.onAllNodesWithText(context.getString(R.string.goal_submission_open))
+            .fetchSemanticsNodes().isNotEmpty() }
+        capture("debt-goal-date-sync")
+        compose.onNodeWithText(context.getString(R.string.goal_submission_open)).performScrollTo().performClick()
+        val reopened = linksOwner(DebtGoalEditKind.TargetDate)
+        compose.waitUntil(10_000) { reopened.state.value.pending?.canRetry == true }
+        assertNotSame(owner, reopened)
+        assertEquals(null, reopened.state.value.pending?.debtEdit?.dateRequest?.targetDate)
+        assertEquals(stored, runBlocking { harness.fixture.stored().single() })
+        capture("debt-goal-date-original")
+        loseDateReply = false
+        compose.onNodeWithText(context.getString(R.string.spending_goal_submission_retry)).performScrollTo().performClick()
+        compose.waitUntil(10_000) { reopened.state.value.pending?.canRetry == false && !reopened.state.value.isSaving }
+        assertEquals(1, runBlocking { linkEngine(PendingMutationType.SetGoalTargetDate).drainOnce().done })
+        compose.waitUntil(10_000) { reopened.state.value.pending?.confirmed != null && reopened.state.value.canSave }
+        assertEquals(5L, reopened.state.value.pending?.confirmed?.rowVersion)
+        assertEquals(null, reopened.state.value.pending?.confirmed?.debtRepayment?.targetDate)
+        assertEquals(1, reopened.state.value.pending?.confirmed?.debtRepayment?.goalVersion)
+        assertEquals(6L, reopened.state.value.goal?.rowVersion)
+        assertEquals(listOf(original["idempotencyKey"], original["idempotencyKey"]), dateRequests.map { it.first })
+        assertEquals(listOf(4L, 4L), dateRequests.map { it.second.expectedRowVersion })
+        assertEquals(listOf(null, null), dateRequests.map { it.second.targetDate })
+        val done = runBlocking { harness.fixture.stored().single() }
+        for (field in listOf("payload", "expectedRowVersion", "idempotencyKey", "ledgerId", "ownerKey", "serverUrl")) {
+            assertEquals(field, original[field], done[field])
+        }
+        capture("debt-goal-date-confirmed")
+    }
+
+    @Test fun restoredDateDraftSurvivesDeniedReadsAndConflictReviewWaitsForExplicitSave() {
+        showGoal = true
+        existingGoal = existingGoal.copy(debtRepayment = existingGoal.debtRepayment?.copy(targetDate = "2026-12-31"))
+        installLinks(null, DebtGoalEditKind.TargetDate)
+        compose.setContent { if (mounted.value) TicketboxTheme(skin = skin) {
+            linksModel.value?.let { DebtGoalEditScreen(it, existingGoal.publicId, {}) }
+        } }
+        val original = requireNotNull(linksModel.value)
+        compose.waitUntil(10_000) { original.state.value.canSave }
+        compose.onNodeWithText(context.getString(R.string.debt_goal_target_date_clear)).performScrollTo().performClick()
+        val snapshot = compose.runOnIdle { requireNotNull(draftOwner).save() }
+        compose.runOnIdle { draftOwner?.viewModelStore?.clear(); linksModel.value = null }
+        existingGoal = existingGoal.copy(rowVersion = 5)
+        installLinks(snapshot, DebtGoalEditKind.TargetDate)
+        val restored = requireNotNull(linksModel.value)
+        compose.waitUntil(10_000) { restored.state.value.canSave }
+        assertNotSame(original, restored)
+        assertEquals(null, restored.state.value.targetDate)
+        denyGoalRead = true
+        compose.runOnIdle { restored.refresh() }
+        compose.waitUntil(10_000) { !restored.state.value.isLoading }
+        assertTrue(restored.state.value.goal == null && restored.state.value.hasDraft)
+        assertEquals(null, restored.state.value.targetDate)
+        compose.onNodeWithText(context.getString(R.string.debt_goal_date_save)).assertIsNotEnabled()
+        capture("debt-goal-date-withdrawn")
+        denyGoalRead = false
+        compose.runOnIdle { restored.refresh() }
+        compose.waitUntil(10_000) { restored.state.value.canSave }
+        compose.onNodeWithText(context.getString(R.string.debt_goal_date_save)).performClick()
+        compose.waitUntil(10_000) { restored.state.value.pending != null && !restored.state.value.isSaving }
+        val rejected = runBlocking { harness.fixture.stored().single() }
+        assertEquals("4", rejected["expectedRowVersion"])
+        runBlocking { linkEngine(PendingMutationType.SetGoalTargetDate).drainOnce() }
+        compose.waitUntil(10_000) { restored.state.value.pending?.canReviewDebtEdit == true }
+        capture("debt-goal-date-conflict")
+        val review = context.getString(R.string.debt_goal_links_review)
+        compose.onNodeWithText(review).performScrollTo().performClick()
+        compose.onAllNodesWithText(review).onLast().performClick()
+        compose.waitUntil(10_000) { restored.state.value.canSave && restored.state.value.pending == null }
+        assertTrue(restored.state.value.hasDraft && restored.state.value.targetDate == null)
+        assertTrue(runBlocking { harness.fixture.stored().isEmpty() })
+        assertEquals(1, dateRequests.size)
+        assertTrue(dateReceipts.isEmpty())
+        capture("debt-goal-date-reviewed")
+        compose.onNodeWithText(context.getString(R.string.debt_goal_date_save)).performClick()
+        compose.waitUntil(10_000) { restored.state.value.pending != null && !restored.state.value.isSaving }
+        val replacement = runBlocking { harness.fixture.stored().single() }
+        assertEquals("5", replacement["expectedRowVersion"])
+        assertNotEquals(rejected["idempotencyKey"], replacement["idempotencyKey"])
+        assertEquals(1, runBlocking { linkEngine(PendingMutationType.SetGoalTargetDate).drainOnce().done })
+        compose.waitUntil(10_000) { restored.state.value.pending?.confirmed != null }
+        assertEquals(6L, restored.state.value.pending?.confirmed?.rowVersion)
+        assertEquals(null, restored.state.value.pending?.confirmed?.debtRepayment?.targetDate)
+        assertEquals(1, dateReceipts.size)
+        capture("debt-goal-date-review-confirmed")
+    }
+
+    @Test fun associationTaskRetainsSelectionAndReopensTheSameRoomCommandFromSyncAfterLostReply() {
+        if (InstrumentationRegistry.getArguments().getString("captureLong") == "true") {
+            existingGoal = existingGoal.copy(name = "年底还清家人垫付的旅行费用与朋友借款，继续保留每一笔原始偿还记录")
+        }
+        showGoal = true
+        showRoutes()
+        enterGoals()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(existingGoal.name))
+        capture("debt-goal-list")
+        compose.onNodeWithText(existingGoal.name).performClick()
+        scrollTo("家人甲")
+        capture("debt-goal-detail")
+        scrollTo("调整关联")
+        compose.onNodeWithText("调整关联").performClick()
+        compose.onNodeWithText("这个目标关联哪些欠款").assertIsDisplayed()
+        val owner = linksOwner()
+        compose.waitUntil(10_000) { owner.state.value.canSave }
+        capture("debt-goal-links")
+        scrollTo("另一笔欠款")
+        compose.onNodeWithText("另一笔欠款").performClick()
+        val selection = owner.state.value.selectedLabels
+        assertEquals(setOf(originalDebt.publicId, anotherDebt.publicId), selection.keys)
+        androidx.test.espresso.Espresso.pressBack()
+        compose.runOnIdle { assertTrue(inner.popBackStack()) }
+        enterGoals()
+        scrollTo(context.getString(R.string.debt_goal_links_continue))
+        compose.onNodeWithText(context.getString(R.string.debt_goal_links_continue)).performClick()
+        assertSame(owner, linksOwner())
+        compose.waitUntil(10_000) { owner.state.value.canSave }
+        assertEquals(selection, owner.state.value.selectedLabels)
+        harness.fixture.role("viewer")
+        compose.waitUntil(10_000) { !owner.state.value.canModify }
+        compose.onNodeWithText(context.getString(R.string.debt_goal_links_save)).assertIsNotEnabled()
+        assertEquals(selection, owner.state.value.selectedLabels)
+        assertTrue(runBlocking { harness.fixture.stored().isEmpty() })
+        capture("debt-goal-links-readonly")
+        harness.fixture.role("member")
+        compose.waitUntil(10_000) { owner.state.value.canSave }
+        compose.onNodeWithText(context.getString(R.string.debt_goal_links_save)).performClick()
+        compose.waitUntil(10_000) { owner.state.value.pending != null && !owner.state.value.isSaving }
+        assertTrue(linkRequests.isEmpty())
+        val original = runBlocking { harness.fixture.stored().single() }
+        assertEquals("4", original["expectedRowVersion"])
+        capture("debt-goal-links-pending")
+        loseLinkReply = true
+        assertEquals(1, runBlocking { linkEngine().drainOnce().failures })
+        compose.waitUntil(10_000) { owner.state.value.pending?.canRetry == true }
+        val stored = runBlocking { harness.fixture.stored().single() }
+        existingGoal = existingGoal.copy(rowVersion = 6, name = "另一个端后来更新的名称")
+        compose.runOnIdle { mounted.value = false }
+        compose.waitForIdle()
+        harness.reopen()
+        compose.runOnIdle { mounted.value = true }
+        compose.waitForIdle()
+        compose.runOnIdle { inner.navigate(ProductSecondaryPage.ObligationSync.route) }
+        compose.waitUntil(10_000) { compose.onAllNodesWithText(context.getString(R.string.goal_submission_open))
+            .fetchSemanticsNodes().isNotEmpty() }
+        capture("debt-goal-links-sync")
+        compose.onNodeWithText(context.getString(R.string.goal_submission_open)).performScrollTo().performClick()
+        val reopened = linksOwner()
+        compose.waitUntil(10_000) { reopened.state.value.pending?.canRetry == true }
+        assertNotSame(owner, reopened)
+        assertEquals(selection, reopened.state.value.selectedLabels)
+        assertEquals(stored, runBlocking { harness.fixture.stored().single() })
+        capture("debt-goal-links-original")
+        loseLinkReply = false
+        compose.onNodeWithText(context.getString(R.string.spending_goal_submission_retry)).performScrollTo().performClick()
+        compose.waitUntil(10_000) { reopened.state.value.pending?.canRetry == false && !reopened.state.value.isSaving }
+        assertEquals(1, runBlocking { linkEngine().drainOnce().done })
+        compose.waitUntil(10_000) { reopened.state.value.pending?.confirmed != null && reopened.state.value.canSave }
+        assertEquals(5L, reopened.state.value.pending?.confirmed?.rowVersion)
+        assertEquals(6L, reopened.state.value.goal?.rowVersion)
+        assertEquals(listOf(original["idempotencyKey"], original["idempotencyKey"]), linkRequests.map { it.first })
+        assertEquals(listOf(4L, 4L), linkRequests.map { it.second.expectedRowVersion })
+        assertEquals(listOf(selection.keys.toList(), selection.keys.toList()), linkRequests.map { it.second.debtPublicIds })
+        val done = runBlocking { harness.fixture.stored().single() }
+        for (field in listOf("payload", "expectedRowVersion", "idempotencyKey", "ledgerId", "ownerKey", "serverUrl")) {
+            assertEquals(field, original[field], done[field])
+        }
+        capture("debt-goal-links-confirmed")
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("另一笔欠款"))
+        compose.onNodeWithText("另一笔欠款").performClick()
+        capture("debt-goal-links-continue-edit")
+        assertEquals(setOf(originalDebt.publicId), reopened.state.value.selectedLabels.keys)
+        assertEquals(5L, reopened.state.value.pending?.confirmed?.rowVersion)
+        assertEquals(2, linkRequests.size)
+    }
+
+    @Test fun restoredSelectionSurvivesReadRevocationAndConflictReviewWaitsForExplicitSave() {
+        showGoal = true
+        installLinks(null)
+        compose.setContent { if (mounted.value) TicketboxTheme(skin = skin) {
+            linksModel.value?.let { DebtGoalEditScreen(it, existingGoal.publicId, {}) }
+        } }
+        val original = requireNotNull(linksModel.value)
+        compose.waitUntil(10_000) { original.state.value.canSave }
+        compose.onNodeWithText(requireNotNull(originalDebt.counterpartyLabel)).performScrollTo().performClick()
+        compose.onNodeWithText("另一笔欠款").performScrollTo().performClick()
+        val selected = original.state.value.selectedLabels
+        val snapshot = compose.runOnIdle { requireNotNull(draftOwner).save() }
+        compose.runOnIdle { draftOwner?.viewModelStore?.clear(); linksModel.value = null }
+        existingGoal = existingGoal.copy(rowVersion = 5, name = "另一个端更新的目标")
+        installLinks(snapshot)
+        val restored = requireNotNull(linksModel.value)
+        compose.waitUntil(10_000) { restored.state.value.canSave }
+        assertNotSame(original, restored)
+        assertEquals(selected, restored.state.value.selectedLabels)
+        denyGoalRead = true
+        compose.runOnIdle { restored.refresh() }
+        compose.waitUntil(10_000) { !restored.state.value.isLoading }
+        assertTrue(restored.state.value.goal == null && restored.state.value.candidates.isEmpty())
+        assertEquals(selected, restored.state.value.selectedLabels)
+        compose.onNodeWithText(context.getString(R.string.debt_goal_links_save)).assertIsNotEnabled()
+        capture("debt-goal-links-withdrawn")
+        denyGoalRead = false
+        compose.runOnIdle { restored.refresh() }
+        compose.waitUntil(10_000) { restored.state.value.canSave }
+        compose.onNodeWithText(context.getString(R.string.debt_goal_links_save)).performClick()
+        compose.waitUntil(10_000) { restored.state.value.pending != null && !restored.state.value.isSaving }
+        val rejected = runBlocking { harness.fixture.stored().single() }
+        assertEquals("4", rejected["expectedRowVersion"])
+        runBlocking { linkEngine().drainOnce() }
+        compose.waitUntil(10_000) { restored.state.value.pending?.row?.status == com.ticketbox.data.local.PendingMutationStatus.Conflict }
+        capture("debt-goal-links-conflict")
+        val review = context.getString(R.string.debt_goal_links_review)
+        compose.onNodeWithText(review).performScrollTo().performClick()
+        compose.onAllNodesWithText(review).onLast().performClick()
+        compose.waitUntil(10_000) { restored.state.value.canSave && restored.state.value.pending == null }
+        assertEquals(selected, restored.state.value.selectedLabels)
+        assertTrue(runBlocking { harness.fixture.stored().isEmpty() })
+        assertEquals(1, linkRequests.size)
+        assertTrue(linkReceipts.isEmpty())
+        capture("debt-goal-links-reviewed")
+        compose.onNodeWithText(context.getString(R.string.debt_goal_links_save)).performClick()
+        compose.waitUntil(10_000) { restored.state.value.pending != null && !restored.state.value.isSaving }
+        val replacement = runBlocking { harness.fixture.stored().single() }
+        assertEquals("5", replacement["expectedRowVersion"])
+        assertNotEquals(rejected["idempotencyKey"], replacement["idempotencyKey"])
+        assertEquals(1, runBlocking { linkEngine().drainOnce().done })
+        compose.waitUntil(10_000) { restored.state.value.pending?.confirmed != null }
+        assertEquals(6L, restored.state.value.pending?.confirmed?.rowVersion)
+        assertEquals(selected.keys.toList(), linkRequests.last().second.debtPublicIds)
+        assertEquals(1, linkReceipts.size)
+        capture("debt-goal-links-review-confirmed")
+    }
+
+    private fun installLinks(saved: Bundle?, kind: DebtGoalEditKind = DebtGoalEditKind.Links) = compose.runOnIdle {
+        val owner = IncomeDraftStateOwner(saved).also { draftOwner = it }
+        val extras = MutableCreationExtras().apply {
+            set(SAVED_STATE_REGISTRY_OWNER_KEY, owner)
+            set(VIEW_MODEL_STORE_OWNER_KEY, owner)
+        }
+        linksModel.value = ViewModelProvider(owner.viewModelStore, debtGoalEditViewModelFactory(
+            harness.screenFactory.reportsRepository, harness.screenFactory.goalEditRepository,
+            harness.screenFactory.debtRepository, kind), extras)[
+                if (kind == DebtGoalEditKind.Links) "debt-goal-links" else "debt-goal-date", DebtGoalEditViewModel::class.java]
+    }
+
+    private fun linksOwner(kind: DebtGoalEditKind = DebtGoalEditKind.Links): DebtGoalEditViewModel = compose.runOnIdle {
+        ViewModelProvider(outer.getBackStackEntry(MAIN_ROUTE), debtGoalEditViewModelFactory(
+            harness.screenFactory.reportsRepository, harness.screenFactory.goalEditRepository, harness.screenFactory.debtRepository, kind))[
+            if (kind == DebtGoalEditKind.Links) "debt-goal-links" else "debt-goal-date", DebtGoalEditViewModel::class.java]
+    }
+
+    private fun linkEngine(type: PendingMutationType = PendingMutationType.ReplaceGoalDebtLinks): OutboxDrainEngine {
+        val adapters = OutboxAdapterGraph()
+        return OutboxDrainEngine(harness.fixture.outbox, listOf(DebtGoalEditDispatcher({ linksApi },
+            adapters.goalDebtEditAdapter, adapters.goalReceiptAdapter, type,
+            onAccepted = harness.fixture.graph.reportsRepository::invalidateGoalReadsAfterDelivery)), now = harness.fixture.clock::millis,
+            maxAttempts = 1)
+    }
+
+    private fun capture(name: String, dialog: Boolean = false) {
+        compose.waitForIdle()
+        val node = if (dialog) compose.onNode(isDialog()) else compose.onRoot()
+        com.ticketbox.ui.saveConsumerArtPreview(name,
+            node.captureToImage().asAndroidBitmap())
     }
 
     @Test fun actualPopAndReentryKeepRawNameAndUnavailableSelectionUntilTheUserResolvesThem() {
@@ -222,7 +709,7 @@ class DebtGoalDraftNavigationRoomTest {
     private fun showRoutes() {
         compose.setContent {
             if (mounted.value) CompositionLocalProvider(LocalViewModelStoreOwner provides harness.models) {
-                TicketboxTheme(skin = AppSkin.Paper) {
+                TicketboxTheme(skin = skin) {
                     outer = rememberNavController()
                     NavHost(outer, startDestination = MAIN_ROUTE) {
                         composable(MAIN_ROUTE) {
@@ -230,6 +717,12 @@ class DebtGoalDraftNavigationRoomTest {
                             NavHost(inner, startDestination = PrimaryDomain.Plans.route) {
                                 composable(PrimaryDomain.Plans.route) { }
                                 addObligationRoutes(MainProductRouteDependencies(
+                                    MainNavigationRuntime(outer, harness.shell, harness.screenFactory), inner,
+                                    MainWorkspaceControls(SettingsPreferenceControls(AppSkin.Paper, AppThemeMode.System,
+                                        CurrencyCode.CNY, onThemeModeChange = {}, onCurrencyChange = {}),
+                                        onBindingCleared = { error("Navigation preserves the identity") }),
+                                ))
+                                addTransactionRoutes(MainProductRouteDependencies(
                                     MainNavigationRuntime(outer, harness.shell, harness.screenFactory), inner,
                                     MainWorkspaceControls(SettingsPreferenceControls(AppSkin.Paper, AppThemeMode.System,
                                         CurrencyCode.CNY, onThemeModeChange = {}, onCurrencyChange = {}),

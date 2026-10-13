@@ -13,6 +13,7 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
@@ -29,6 +30,7 @@ import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.notification.NotificationDestination
 import com.ticketbox.notification.NotificationTask
 import com.ticketbox.ui.theme.TicketboxTheme
+import java.time.YearMonth
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -64,6 +66,10 @@ class NotificationOriginalTaskNavigationTest {
         }
         waitForMonth("2026-08")
         assertEquals(listOf("2026-07", "2026-08"), transport.budgetReads.toList())
+        val editorBack = context.getString(R.string.budget_editor_back)
+        // The month header is visible while its remote budget is still loading.
+        compose.waitUntil(5_000) { compose.onAllNodesWithContentDescription(editorBack).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithContentDescription(editorBack).performScrollTo().performClick()
         compose.onNodeWithContentDescription(context.getString(R.string.budget_back_to_stats)).performClick()
         waitForMonth("2026-07")
         compose.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag("budget_total_amount")))
@@ -117,8 +123,12 @@ class NotificationOriginalTaskNavigationTest {
     }
 
     private fun waitForMonth(month: String) {
-        waitForText(context.getString(R.string.budget_header_subtitle, month))
+        waitForText(context.getString(R.string.budget_header_subtitle, monthLabel(month)))
         compose.waitUntil(5_000) { transport.budgetReads.contains(month) }
+    }
+
+    private fun monthLabel(month: String) = YearMonth.parse(month).let {
+        context.getString(R.string.components_month_label, it.year.toString(), it.monthValue.toString())
     }
 
     private fun waitForText(text: String) {

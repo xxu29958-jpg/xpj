@@ -1,11 +1,21 @@
 package com.ticketbox.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.vectorResource
 import com.ticketbox.R
 import com.ticketbox.domain.model.Debt
+import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.DebtDirections
 import com.ticketbox.domain.model.DebtRepayment
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
@@ -15,12 +25,17 @@ import com.ticketbox.ui.components.AppContentStatePresentation
 import com.ticketbox.ui.components.AppContentStateSpec
 import com.ticketbox.ui.components.AppContentStateSlot
 import com.ticketbox.ui.components.AppErrorState
+import com.ticketbox.ui.components.AppFloatingActionBar
+import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppSecondaryPageChrome
+import com.ticketbox.ui.components.AppSecondaryPageSlots
 import com.ticketbox.ui.components.AppSecondaryRefreshState
 import com.ticketbox.ui.components.AppSecondaryScrollableContent
 import com.ticketbox.ui.components.AppStatusBanner
+import com.ticketbox.ui.components.SettingsEntryIcon
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.viewmodel.DebtAction
 import com.ticketbox.viewmodel.DebtDetailUiState
 import com.ticketbox.viewmodel.DebtActivityUiState
@@ -64,7 +79,20 @@ internal fun DebtDetailContent(
         isLoading = state.isLoading,
         error = state.error,
     )
-    val readableProposalState = if (debt?.isMember == true) panels.proposalState else MemberProposalUiState()
+    val readableProposalState = if (debt?.isMember == true || debt == null) panels.proposalState else MemberProposalUiState()
+    if (readableProposalState.originalAttempt != null) {
+        MemberOriginalSubmission(state, readableProposalState, panels.proposalViewModel, callbacks)
+        return
+    }
+    val originalRepayment = state.pendingWrites.filterNot { it.isTerminal }.singleOrNull()?.takeIf { it.repayment != null }
+    var originalRepaymentFocused by rememberSaveable(originalRepayment?.row?.id) { mutableStateOf(true) }
+    if (originalRepayment != null && originalRepaymentFocused) {
+        DebtRepaymentOriginalSubmission(state, originalRepayment, callbacks, onOpenDebt = {
+            originalRepaymentFocused = false
+            callbacks.onRefresh()
+        })
+        return
+    }
     AppSecondaryScrollableContent(
         chrome = AppSecondaryPageChrome(
             role = AppPageRole.Stats,
@@ -82,6 +110,10 @@ internal fun DebtDetailContent(
             ),
             onRefresh = callbacks.onRefresh,
         ),
+        slots = AppSecondaryPageSlots(bottomBar = debtDetailPrimaryAction(state, panels, callbacks), headingPrefix = {
+            if (debt != null) SettingsEntryIcon(ImageVector.vectorResource(R.drawable.ic_lucide_users),
+                background = LocalThemeVisuals.current.surfaceApricot, prominent = true)
+        }),
     ) {
         debtDetailStatusItems(
             state = state,
@@ -89,10 +121,7 @@ internal fun DebtDetailContent(
             bodyState = bodyState,
         )
         if (state.pendingWrites.isNotEmpty()) item {
-            DebtPendingWrites(state.pendingWrites.filter {
-                it.isVoid || it.kind != null || it.row.status != com.ticketbox.data.local.PendingMutationStatus.Done ||
-                    (state.debt?.rowVersion ?: 0) <= (it.row.expectedRowVersion ?: Long.MAX_VALUE)
-            }, state.canModify, callbacks.onRecoverDebtWrite)
+            DebtPendingWrites(state, originalRepayment, { originalRepaymentFocused = true }, callbacks.onRecoverDebtWrite)
         }
         debtDetailBodyItems(
             state = state,
@@ -101,6 +130,24 @@ internal fun DebtDetailContent(
             callbacks = callbacks,
         )
     }
+}
+
+private fun debtDetailPrimaryAction(state: DebtDetailUiState, panels: DebtDetailPanels,
+    callbacks: DebtDetailScreenCallbacks): (@Composable () -> Unit)? {
+    if (state.hasRepaymentDraft) return {
+        AppFloatingActionBar {
+            AppPrimaryButton(text = stringResource(R.string.debt_proposal_resume_draft),
+                onClick = { callbacks.onOpenAction(DebtAction.Repayment) }, modifier = Modifier.fillMaxWidth())
+        }
+    }
+    val debt = state.debt ?: return null
+    val action: (@Composable () -> Unit)? = if (debt.isMember) {
+        memberProposalPrimaryAction(debt, panels.proposalState, panels.proposalViewModel)
+    } else if (debt.isOpen && state.canWriteActions && CurrencyCode.fromStorageKeyOrNull(debt.homeCurrencyCode) != null) {
+        { AppPrimaryButton(text = stringResource(R.string.debt_action_repayment_title),
+            onClick = { callbacks.onOpenAction(DebtAction.Repayment) }, modifier = Modifier.fillMaxWidth()) }
+    } else null
+    return action?.let { content -> { AppFloatingActionBar { content() } } }
 }
 
 private fun LazyListScope.debtDetailBodyItems(
@@ -149,16 +196,26 @@ private fun LazyListScope.debtDetailBodyItems(
 }
 
 @Composable
-private fun debtDetailTitle(debt: Debt?): String =
-    debt?.counterpartyLabel?.takeIf { it.isNotBlank() }
-        ?: debt?.let { stringResource(debtCounterpartyFallbackRes(it.counterpartyType)) }
-        ?: stringResource(R.string.debt_detail_title)
+internal fun debtDetailTitle(debt: Debt?): String {
+    if (debt == null) return stringResource(R.string.debt_detail_title)
+    val name = debt.counterpartyLabel?.takeIf { it.isNotBlank() }
+        ?: stringResource(debtCounterpartyFallbackRes(debt.counterpartyType))
+    val direction = if (debt.isMember) when (debt.viewerIsDebtor) {
+        true -> DebtDirections.I_OWE
+        false -> DebtDirections.OWED_TO_ME
+        null -> null
+    } else debt.direction
+    return stringResource(when (direction) {
+        DebtDirections.I_OWE -> R.string.debt_detail_title_i_owe
+        DebtDirections.OWED_TO_ME -> R.string.debt_detail_title_owed_to_me
+        else -> R.string.debt_detail_title_third_party
+    }, name)
+}
 
 @Composable
 private fun debtDetailSubtitle(debt: Debt?): String? = debt?.let { loaded ->
-    val directionRes =
-        if (loaded.isMember) memberDebtDirectionRes(loaded.viewerIsDebtor) else debtDirectionLabelRes(loaded.direction)
-    stringResource(directionRes)
+    stringResource(if (loaded.isMember) R.string.debt_detail_member_currency
+        else R.string.debt_detail_external_currency, loaded.homeCurrencyCode)
 }
 
 private fun LazyListScope.debtDetailStatusItems(
@@ -208,7 +265,7 @@ private fun LazyListScope.debtDetailMemberItems(
     proposalState: MemberProposalUiState,
     proposalViewModel: MemberRepaymentProposalViewModel,
 ) {
-    item { MemberSharedThingCard(debt = debt) }
+    item { DebtSummaryCard(debt = debt) }
     item {
         MemberProposalSection(
             debt = debt,

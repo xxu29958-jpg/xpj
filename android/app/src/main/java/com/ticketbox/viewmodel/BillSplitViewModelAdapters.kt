@@ -34,9 +34,12 @@ private class ExpenseRepositoryBillSplitActions(
 
     override suspend fun acceptBillSplitInvitation(
         binding: LogicalSessionBinding,
-        publicId: String,
-        targetLedgerId: String,
-    ): Result<BillSplitInbox> = repository.acceptBillSplitInvitation(binding, publicId, targetLedgerId)
+        original: com.ticketbox.data.repository.BillSplitAcceptPayload,
+    ): Result<Long> = repository.acceptBillSplitInvitation(binding, original)
+
+    override fun observeAcceptances(): Flow<com.ticketbox.data.repository.BillSplitAcceptanceObservation> = repository.observeBillSplitAcceptances()
+    override suspend fun recoverAcceptance(binding: LogicalSessionBinding, id: Long, drop: Boolean): Result<Unit> =
+        repository.recoverBillSplitAcceptance(binding, id, drop)
 
     override suspend fun rejectBillSplitInvitation(binding: LogicalSessionBinding, publicId: String): Result<BillSplitInbox> =
         repository.rejectBillSplitInvitation(binding, publicId)

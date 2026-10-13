@@ -63,6 +63,11 @@ data class ExpenseTimeForm(
     )
 
     companion object {
+        fun dateOnly(date: String, calendarRevision: Long?, calendarZone: String): ExpenseTimeForm = ExpenseTimeForm(
+            precision = "date_only", date = date, time = "", sourceZone = calendarZone,
+            offsetSeconds = null, originalInstant = null, calendarRevision = calendarRevision, calendarZone = calendarZone,
+        )
+
         fun initial(instant: String?, evidence: ExpenseAccountingTime?, rule: LedgerCalendarDto?, zone: ZoneId): ExpenseTimeForm {
             val source = evidence?.sourceTimezone?.let(ZoneId::of) ?: zone
             val known = evidence?.instantUtc ?: instant

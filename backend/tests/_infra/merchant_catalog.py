@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -20,7 +21,7 @@ def create_catalog(
 ) -> dict:
     response = client.post(
         "/api/merchants/catalog",
-        headers=headers,
+        headers={**headers, "Idempotency-Key": str(uuid4())},
         json={"display_name": display_name, "status": status},
     )
     assert response.status_code == 201, response.text

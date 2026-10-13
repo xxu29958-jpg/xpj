@@ -3,6 +3,7 @@
 import html
 import json
 import re
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
@@ -12,7 +13,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.database import SessionLocal
 from app.errors import AppError
 from app.middleware.csrf import CSRF_COOKIE_NAME
-from app.models import Debt, Repayment
+from app.models import Debt, Repayment, RepaymentDraft
 from app.routes import _web_repayment_review as review
 from app.routes.web_auth import SESSION_COOKIE_NAME
 from app.schemas import RepaymentDraftCreateRequest
@@ -39,9 +40,11 @@ def test_installed_capture_review_retains_binding_money_and_version_through_lost
     with SessionLocal() as db:
         draft = create_repayment_draft(db, tenant_id=installed_web.shared_ledger_id,
             actor_account_id=installed_web.installation_account_id,
-            payload=RepaymentDraftCreateRequest(source="alipay", original_currency="CNY", original_amount="100.00"))
+            payload=RepaymentDraftCreateRequest(source="alipay", original_currency="CNY", original_amount="100.00",
+                captured_at=datetime(2026, 9, 2, tzinfo=UTC)))
         db.commit()
         public_id = draft.public_id
+        captured_time = draft.accounting_time_snapshot.copy()
         debt = db.scalar(select(Debt).where(Debt.public_id == debt_id))
         version = debt.row_version
     url = f"/web/repayment-drafts/{public_id}?ledger_id={installed_web.shared_ledger_id}"
@@ -52,7 +55,9 @@ def test_installed_capture_review_retains_binding_money_and_version_through_lost
     assert page.status_code == 200, page.text
     headers = {"Cookie": f"{cookie}; {CSRF_COOKIE_NAME}={page.cookies.get(CSRF_COOKIE_NAME)}",
         "Origin": "http://127.0.0.1:8000"}
-    original = {**_form(page.text, action), "original_amount": "90.00", "target_with_expected_row_version": f"{debt_id}:{version}"}
+    original = {**_form(page.text, action), "original_amount": "90.00", "payment_date": "2026-08-31",
+        "target_with_expected_row_version": f"{debt_id}:{version}"}
+    assert original["calendar_revision"]
     scope = _installed_scope(installed_web, token)
     assert json.loads(original["origin_binding"]) == scope
     for axis in scope:
@@ -92,11 +97,18 @@ def test_installed_capture_review_retains_binding_money_and_version_through_lost
         ack = json.loads(html.unescape(marker[1]))
         assert ack["clientRef"] == original["idempotency_key"] and ack["scope"] == scope
         assert ack["resultPublicId"] == public_id and ack["status"] == "confirmed"
+        assert ack["values"]["payment_date"] == "2026-08-31"
         with SessionLocal() as db:
             facts = list(db.scalars(select(Repayment)))
             assert len(facts) == 1
             assert facts[0].amount_cents == 9000 and facts[0].idempotency_key == original["idempotency_key"]
             assert facts[0].actor_account_id == installed_web.installation_account_id
+            assert facts[0].paid_at is None
+            assert facts[0].accounting_time_snapshot["user_local_date"] == "2026-08-31"
+            assert facts[0].accounting_time_snapshot["calendar_revision"] == int(original["calendar_revision"])
+            capture = db.scalar(select(RepaymentDraft).where(RepaymentDraft.public_id == public_id))
+            assert capture.accounting_time_snapshot == captured_time
+            assert capture.captured_at == datetime(2026, 9, 2, tzinfo=UTC)
             assert ack["repaymentPublicId"] == facts[0].public_id
             assert receipt_id is None or receipt_id == facts[0].public_id
             receipt_id = facts[0].public_id
@@ -104,7 +116,8 @@ def test_installed_capture_review_retains_binding_money_and_version_through_lost
     history = installed_web.browser.get(url, headers=headers)
     assert history.status_code == 200 and "¥100.00" in history.text and "已记账" in history.text
     assert f"/web/debts/{debt_id}?ledger_id={installed_web.shared_ledger_id}" in history.text
-    reused = installed_web.browser.post(action, data={**original, "original_amount": "95.00"}, headers=headers)
-    assert reused.status_code == 422 and "不能认定本次处理成功" in reused.text
-    assert "data-repayment-ack=" not in reused.text
-    assert _form(reused.text, action)["idempotency_key"] == original["idempotency_key"]
+    for change in ({"payment_date": "2026-09-01"}, {"original_amount": "95.00"}):
+        reused = installed_web.browser.post(action, data={**original, **change}, headers=headers)
+        assert reused.status_code == 422 and "不能认定本次处理成功" in reused.text
+        assert "data-repayment-ack=" not in reused.text
+        assert _form(reused.text, action)["idempotency_key"] == original["idempotency_key"]

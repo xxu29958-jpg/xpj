@@ -8,10 +8,18 @@
   });
   function validateAction(scope, ref, values) {
     const url = new URL(values.action, window.location.href);
-    const allowed = /^\/web\/(pending\/upload|expenses\/[1-9]\d*\/original\/(verify|replenish|cleanup\/(retry|cancel)))$/;
+    const allowed = /^\/web\/(pending\/upload|expenses\/[1-9]\d*\/original\/(attach|verify|replenish|cleanup\/(retry|cancel)))$/;
     if (url.origin !== window.location.origin || !allowed.test(url.pathname) ||
         url.searchParams.get("idempotency_key") !== ref || url.searchParams.get("ledger_id") !== scope.ledgerId ||
         !store.matches(JSON.parse(url.searchParams.get("draft_scope")), scope)) throw Error("invalid_attachment_target");
+  }
+  function taskPage(action) {
+    const url = new URL(action, window.location.href);
+    const path = url.pathname === "/web/pending/upload" ? "/web/pending" :
+      url.pathname.replace(/\/original\/(attach|verify|replenish|cleanup\/(retry|cancel))$/, "/original");
+    const query = new URLSearchParams({ledger_id: url.searchParams.get("ledger_id")});
+    url.searchParams.forEach((value, name) => { if (name.startsWith("return_")) query.set(name, value); });
+    return path + "?" + query;
   }
   async function retain(scope, ref, values, file) {
     validateAction(scope, ref, values);
@@ -29,12 +37,16 @@
       throw error;
     }
   }
-  async function submitted(scope, ref) {
+  async function readSource(scope, ref) {
     const record = store.read(ref);
     if (!record || !store.matches(record.scope, scope)) throw Error("draft_binding_changed");
     validateAction(scope, ref, record.values);
     const file = record.values.file_sha256 ? await window.TicketboxDraftFiles.get(
       store.key(ref), scope, record.values, store.matches) : null;
+    return {record, file};
+  }
+  async function submitted(scope, ref) {
+    const {record, file} = await readSource(scope, ref);
     return {record: store.save(scope, ref, "submitted", record.values), file};
   }
   async function acknowledge(ack) {
@@ -49,5 +61,12 @@
     await window.TicketboxDraftFiles.remove(store.key(proof.clientRef));
     return store.discardRejected(proof);
   }
-  window.TicketboxAttachmentDrafts = {store, retain, submitted, acknowledge, discardRejected};
+  async function discardEditing(scope, clientRef) {
+    const record = store.read(clientRef);
+    if (!record) return true;
+    if (record.phase !== "editing" || !store.matches(record.scope, scope)) return false;
+    await window.TicketboxDraftFiles.remove(store.key(clientRef));
+    return store.discardLocal({scope, clientRef, values: record.values, decision: "discard-local"});
+  }
+  window.TicketboxAttachmentDrafts = {store, taskPage, retain, readSource, submitted, acknowledge, discardRejected, discardEditing};
 })(window);

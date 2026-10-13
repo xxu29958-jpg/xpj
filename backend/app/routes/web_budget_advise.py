@@ -27,6 +27,7 @@ from app.services.currency_binding_service import require_runtime_home_currency_
 from app.services.currency_common import (
     currency_input_metadata,
     major_amount_to_minor,
+    minor_amount_label,
     minor_amount_value,
     normalize_currency_code,
     supported_currency_codes,
@@ -253,6 +254,10 @@ def _projection_context(projection, *, form_error=None) -> dict:
         values.update(savings_yuan=None, reserved_yuan=None, discretionary_yuan=None, shortfall_yuan=None)
     metadata = currency_input_metadata(home)
     return {**values, "home_currency_code": home, "home_currency_symbol": metadata["currency_symbol"], "currency_input": metadata,
+        "budget_definition": projection.budget_definition, "data_scope": projection.data_scope,
+        "plan_amount": lambda value, code: minor_amount_label(value, code) if code else "原币种待确认",
+        "planned_total_yuan": minor_amount_value(projection.planned_total_cents, home)
+            if projection.planned_total_cents is not None and not form_error else None,
         "missing_rates": projection.missing_rates, "reference_rates": projection.reference_rates,
         "undated_expense_count": projection.undated_expense_count, "has_shortfall": (projection.breakdown.shortfall_cents or 0) > 0 and not form_error}
 

@@ -1,31 +1,21 @@
 package com.ticketbox.ui.screens.expense
 
-import androidx.compose.foundation.clickable
+import com.ticketbox.ui.screens.settings.SettingsEntryRowOptions
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
 import com.ticketbox.R
 import com.ticketbox.ui.components.AppCompactChips
 import com.ticketbox.ui.components.AppSheetAction
@@ -36,7 +26,6 @@ import com.ticketbox.ui.components.AppTextInputActions
 import com.ticketbox.ui.components.AppTextInputDecorations
 import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.AppTextHierarchy
 
 internal const val TAG_CATEGORY_ROW = "expense-edit-category-row"
 
@@ -63,54 +52,13 @@ internal fun ExpenseEditCategorySelector(
     state: ExpenseEditCategorySelectorState,
     actions: ExpenseEditCategorySelectorActions,
 ) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
-    ) {
-        Text(
-            text = stringResource(R.string.expense_edit_category_field_label),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = AppTextHierarchy.body.weight,
+    com.ticketbox.ui.screens.settings.SettingsEntryRow(
+            title = stringResource(R.string.expense_edit_category_field_label),
+            subtitle = state.category.ifBlank { stringResource(R.string.expense_edit_category_uncategorized) },
+            icon = R.drawable.ic_lucide_shopping_bag,
+            onClick = actions.onOpenSheet.takeIf { state.enabled },
+            options = SettingsEntryRowOptions(modifier = Modifier.testTag(TAG_CATEGORY_ROW)),
         )
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .testTag(TAG_CATEGORY_ROW)
-                .clickable(
-                    enabled = state.enabled,
-                    onClickLabel = stringResource(R.string.expense_edit_category_sheet_title),
-                    role = Role.Button,
-                    onClick = actions.onOpenSheet,
-                )
-                .defaultMinSize(minHeight = AppSpacing.controlMinHeight),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            val hasCategory = state.category.isNotBlank()
-            Text(
-                text = if (hasCategory) {
-                    state.category
-                } else {
-                    stringResource(R.string.expense_edit_category_uncategorized)
-                },
-                modifier = Modifier.weight(1f),
-                color = if (hasCategory) {
-                    MaterialTheme.colorScheme.onSurface
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
-                style = MaterialTheme.typography.bodyLarge,
-            )
-            if (state.enabled) {
-                Icon(
-                    imageVector = Icons.Filled.ExpandMore,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-    }
     if (state.sheetOpen) {
         ExpenseEditCategorySheet(state = state, actions = actions)
     }

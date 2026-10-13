@@ -28,4 +28,5 @@
     <string name="calendar_legacy_basis_label">历史规则归属</string>
     <string name="calendar_undated_notice">有 %1$d 笔账单的账务日期待核对；涉及这些账单的期间金额和进度暂不可评估。</string>
     <string name="calendar_review_dates">核对账务日期</string>
+    <string name="calendar_review_back">返回上一页</string>
 </resources>

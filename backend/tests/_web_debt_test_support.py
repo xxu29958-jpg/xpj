@@ -21,6 +21,7 @@ def stub_debt(**overrides: object) -> SimpleNamespace:
         "viewer_is_debtor": None,
         "is_forgiven": False,
         "row_version": 1,
+        "repayment_calendar": None,
         "source_type": "manual",
         # Non-installment defaults keep the schedule card absent unless a test
         # explicitly supplies the installment contract.

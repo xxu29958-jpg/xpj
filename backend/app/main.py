@@ -66,6 +66,7 @@ from app.routes import (
     repayment_drafts,
     reports,
     rules,
+    saved_views,
     settings,
     stats,
     tags,
@@ -83,6 +84,7 @@ from app.routes import (
     web_data_quality,
     web_debt_actions,
     web_debt_create,
+    web_debt_goal_entry,
     web_debt_goals,
     web_debt_proposal_actions,
     web_debts,
@@ -109,6 +111,7 @@ from app.routes import (
     web_receivables,
     web_recurring,
     web_recycle_bin,
+    web_reference_create,
     web_repayment_drafts,
     web_reports,
     web_rule_edit,
@@ -369,6 +372,7 @@ app.include_router(debt_split_changes.router)
 app.include_router(repayment_drafts.router)
 app.include_router(dashboard.router)
 app.include_router(rules.router)
+app.include_router(saved_views.router)
 app.include_router(settings.router)
 app.include_router(currency_system.router)
 app.include_router(stats.router)
@@ -426,6 +430,7 @@ app.include_router(web_debt_actions.router)
 app.include_router(web_debt_proposal_actions.router)
 app.include_router(web_split_agreement.router)
 app.include_router(web_debt_goals.router)
+app.include_router(web_debt_goal_entry.router)
 app.include_router(web_repayment_drafts.router)
 app.include_router(web_recycle_bin.router)
 app.include_router(web_receivables.router)
@@ -436,6 +441,7 @@ app.include_router(web_import_events.router)
 app.include_router(web_recurring.router)
 app.include_router(web_merchants.router)
 app.include_router(web_tags.router)
+app.include_router(web_reference_create.router)
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
 

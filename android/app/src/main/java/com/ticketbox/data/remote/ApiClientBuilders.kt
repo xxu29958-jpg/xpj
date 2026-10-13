@@ -28,7 +28,7 @@ private const val GET_IO_RETRY_DELAY_MS = 350L
 internal const val LEDGER_ID_HEADER = "X-Ticketbox-Ledger-ID"
 internal const val TICKETBOX_API_VERSION_HEADER = "Ticketbox-Api-Version"
 internal const val TICKETBOX_CURRENCY_BINDING_HEADER = "Ticketbox-Currency-Binding"
-internal const val CURRENT_TICKETBOX_API_VERSION = "2026-09-13"
+internal const val CURRENT_TICKETBOX_API_VERSION = "2026-10-11"
 internal const val UPLOAD_ORIGINAL_RECEIPT_VERSION = 1
 internal const val DEBT_ACTIVITY_READ_VERSION = 1
 internal fun buildApiHttpClient(

@@ -1,10 +1,22 @@
 {% extends "base.html" %}
 {% set page_title = '家庭' %}
 {% set product_body_domain = 'obligations' %}
+{% set page_readonly_notice = true %}
+{# 邀请是一个专注任务: 同一路由用 ?invite=1 进入; 生成失败时 POST 原页重渲染也停在这里。
+   生成成功后回到成员目录, 邀请明文只在那里显示一次。 #}
+{% set invite_task = can_manage_family and not invitation_token and (request.query_params.get('invite') == '1' or request.url.path.endswith('/family/invitations')) %}
+{% if invite_task %}
+{% set page_surface = 'tertiary' %}
+{% set task_return_href = '/web/family?ledger_id=' ~ selected_ledger_id|urlencode %}
+{% set task_return_label = '家庭' %}
+{% endif %}
 {% block title %}家庭 · 往来 · 小票夹{% endblock %}
 
 {% macro role_label(role) -%}
   {{ {'owner': '拥有者', 'member': '成员', 'viewer': '只读'}.get(role, role) }}
+{%- endmacro %}
+{% macro role_scope(role) -%}
+  {{ {'owner': '管理这本账', 'member': '可以记账', 'viewer': '只能查看'}.get(role, '') }}
 {%- endmacro %}
 
 {% block page_styles %}
@@ -16,147 +28,140 @@
 <script defer src="/static/web/family.js?v={{ asset_version }}"></script>
 {% endblock %}
 
-{% block content %}
+{% block page_header %}
 <header class="product-page-header">
   <div class="product-page-heading">
-    <span class="product-eyebrow">往来 / 家庭</span>
+    {% if invite_task %}
+    <h1 class="page-title">邀请家人一起记账</h1>
+    <p class="product-page-summary">先选权限，再生成邀请。</p>
+    {% else %}
     <h1 class="page-title">家庭成员</h1>
     <p class="product-page-summary">一起记这本账的人都在这里。拥有者可以邀请家人，并决定谁能记账、谁只查看。</p>
+    {% endif %}
   </div>
 </header>
+{% endblock %}
 
+{% block page_actions %}
+{% if invite_task %}
+<div class="product-task-actions">
+  <button class="product-button product-button--primary" type="submit" form="family-invite-form">生成邀请 <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-right"/></svg></button>
+  <a class="product-button product-button--quiet" href="{{ task_return_href }}">返回家庭成员</a>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block content %}
 {% if error %}
 <div class="product-feedback product-feedback--danger" role="alert">{{ error }}</div>
 {% endif %}
 
+{% if invite_task %}
+<form id="family-invite-form" method="post" action="/web/family/invitations?ledger_id={{ selected_ledger_id }}" class="product-form">
+  {{ csrf_field|safe }}
+  <label class="product-field">
+    <span>对方可以做什么</span>
+    <select class="product-input" name="role">
+      <option value="member"{% if submitted_role == 'member' %} selected{% endif %}>成员 · 可以记账</option>
+      <option value="viewer"{% if submitted_role == 'viewer' %} selected{% endif %}>只读 · 只能查看</option>
+    </select>
+  </label>
+  <label class="product-field">
+    <span>称呼或备注</span>
+    <input class="product-input" type="text" name="note" maxlength="80" value="{{ submitted_note }}" placeholder="例如：妈妈">
+  </label>
+  <label class="product-field">
+    <span>有效天数</span>
+    <input class="product-input" type="number" name="ttl_days" min="1" max="30" value="{{ submitted_ttl_days }}" required>
+    <span class="hint">邀请最长 30 天有效。</span>
+  </label>
+  <p class="product-note">
+    <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#info"/></svg>
+    <strong>对方加入前也会看到权限</strong>
+    <span>家庭邀请和设备连接是两个不同入口；不要把设备绑定码发给对方。</span>
+  </p>
+</form>
+{% else %}
+
 {% if not can_manage_family %}
 <div class="product-feedback" role="status">当前角色可以查看家庭成员；邀请和权限由账本拥有者管理。</div>
 {% if submitted_ledger_name is not none %}<p>未保存的账本名称：{{ submitted_ledger_name }}</p>{% endif %}
-{% else %}
-<section class="product-panel product-panel--padded" aria-labelledby="ledger-name-title">
-  <h2 class="product-panel-title" id="ledger-name-title">账本名称</h2>
-  <p class="product-panel-subtitle">当前名称：{{ ledger_name }}。更名会同步到家人的账本列表。</p>
-  <form method="post" action="/web/family/name?ledger_id={{ selected_ledger_id }}" class="product-form-grid">
-    {{ csrf_field|safe }}
-    <input type="hidden" name="expected_name" value="{{ ledger_name }}">
-    <label class="product-field"><span>名称</span>
-      <input class="product-input" name="name" maxlength="60" required value="{{ submitted_ledger_name if submitted_ledger_name is not none else ledger_name }}">
-    </label>
-    <div class="family-form-action"><button class="product-button product-button--primary" type="submit">保存名称</button></div>
-  </form>
-</section>
 {% endif %}
 
 {% if invitation_token %}
-<section class="product-panel product-panel--padded family-invite-reveal" aria-labelledby="family-invite-token-title">
-  <div class="product-panel-header">
-    <div>
-      <h2 class="product-panel-title" id="family-invite-token-title">邀请已生成</h2>
-      <p class="product-panel-subtitle">这份邀请仅显示一次。现在复制并私下发给家人，不要把设备绑定码发给对方。</p>
-    </div>
-    <span class="product-status product-status--success">待分享</span>
-  </div>
+<section class="product-surface" aria-labelledby="family-invite-token-title">
+  <h2 class="product-panel-title" id="family-invite-token-title">邀请已生成</h2>
+  <p class="product-amount-meta">这份邀请仅显示一次。现在复制并私下发给家人，不要把设备绑定码发给对方。</p>
+  <span class="product-status product-status--success">待分享</span>
   <label class="product-field family-token-field">
     <span>{{ '邀请链接' if invitation_url else '邀请码' }}</span>
     <textarea class="product-input" rows="2" readonly data-family-invite-value>{{ invitation_url or invitation_token }}</textarea>
   </label>
-  <div class="family-invite-handoff">
+  <div class="product-form-actions">
     <button class="product-button product-button--primary" type="button" data-family-copy-button>复制邀请{{ '链接' if invitation_url else '码' }}</button>
     <span class="hint" data-family-copy-status aria-live="polite">也可以长按或全选上面的邀请手动复制。</span>
   </div>
   {% if invitation_url %}
   <div hidden data-qr-output data-qr-source="[data-family-invite-value]" data-qr-label="加入家庭账本二维码"></div>
-  <p class="hint">家人可用手机相机扫码，或在小票夹「加入家庭账本」中扫一扫，核对账本和权限后确认加入。</p>
+  <p class="product-amount-meta">家人可用手机相机扫码，或在小票夹「加入家庭账本」中扫一扫，核对账本和权限后确认加入。</p>
   {% else %}
-  <p class="hint">尚未配置可分享地址。让家人在浏览器打开加入页并粘贴这段邀请码。</p>
+  <p class="product-amount-meta">尚未配置可分享地址。让家人在浏览器打开加入页并粘贴这段邀请码。</p>
   {% endif %}
 </section>
 {% endif %}
 
-{% if can_manage_family %}
-<section class="product-panel product-panel--padded" aria-labelledby="family-invite-title">
-  <div class="product-panel-header">
-    <div>
-      <h2 class="product-panel-title" id="family-invite-title">邀请家人</h2>
-      <p class="product-panel-subtitle">“成员”可以记账，“只读”只能查看。邀请最长 30 天有效。</p>
-    </div>
-  </div>
-  <form method="post" action="/web/family/invitations?ledger_id={{ selected_ledger_id }}" class="product-form-grid family-invite-form">
-    {{ csrf_field|safe }}
-    <label class="product-field">
-      <span>权限</span>
-      <select class="product-input" name="role">
-        <option value="member"{% if submitted_role == 'member' %} selected{% endif %}>成员 · 可以记账</option>
-        <option value="viewer"{% if submitted_role == 'viewer' %} selected{% endif %}>只读 · 只能查看</option>
-      </select>
-    </label>
-    <label class="product-field">
-      <span>称呼或备注</span>
-      <input class="product-input" type="text" name="note" maxlength="80" value="{{ submitted_note }}" placeholder="例如：妈妈">
-    </label>
-    <label class="product-field">
-      <span>有效天数</span>
-      <input class="product-input" type="number" name="ttl_days" min="1" max="30" value="{{ submitted_ttl_days }}" required>
-    </label>
-    <div class="family-form-action">
-      <button class="product-button product-button--primary" type="submit">生成邀请</button>
-    </div>
-  </form>
-</section>
-{% endif %}
-
-<section class="product-panel product-panel--padded" aria-labelledby="family-members-title">
-  <div class="product-panel-header">
-    <div>
-      <h2 class="product-panel-title" id="family-members-title">这本账的成员</h2>
-      <p class="product-panel-subtitle">{{ members | length }} 人，包括已停用成员。</p>
-    </div>
-  </div>
-  <div class="family-member-list">
+<section class="product-section" aria-labelledby="family-members-title">
+  <h2 class="product-panel-title" id="family-members-title">这本账的成员</h2>
+  <p class="hint">{{ members | length }} 人，包括已停用成员。</p>
+  <div class="product-entry-list">
   {% for member in members %}
-    <article class="family-member{% if member.disabled_at %} is-disabled{% endif %}">
-      <div class="family-member-identity">
-        <strong>{{ member.account_name }}</strong>
-        <span>{{ '本人' if member.is_self else '家庭成员' }} · 加入于 {{ member.created_label }}</span>
-      </div>
-      <div class="family-member-state">
-        <span class="product-status{% if member.role == 'owner' %} product-status--success{% elif member.role == 'viewer' %} product-status--info{% endif %}">{{ role_label(member.role) }}</span>
-        {% if member.disabled_at %}
-        <span class="product-status">已停用</span>
-        <span class="family-state-meta">停用于 {{ member.disabled_label }}</span>
-        {% endif %}
-      </div>
-      {% if can_manage_family and not member.disabled_at and member.role != 'owner' and not member.is_self %}
-      <div class="family-member-actions">
-        <form method="post" action="/web/family/members/{{ member.member_id }}/role?ledger_id={{ selected_ledger_id }}" class="product-inline-form">
+    {% set tone = '' if member.role == 'owner' else (' product-entry-icon--lilac' if member.role == 'viewer' else ' product-entry-icon--apricot') %}
+    {% if can_manage_family and not member.disabled_at and member.role != 'owner' and not member.is_self %}
+    <details>
+      <summary class="product-entry" aria-label="管理 {{ member.account_name }}：{{ role_label(member.role) }}">
+        <span class="product-entry-icon{{ tone }}" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#user-round"/></svg></span>
+        <span class="product-entry-copy"><strong>{{ member.account_name }}</strong><span>{{ role_label(member.role) }} · {{ role_scope(member.role) }}</span><span>加入于 {{ member.created_label }}</span></span>
+        <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
+      </summary>
+      <div class="product-form">
+        <form method="post" action="/web/family/members/{{ member.member_id }}/role?ledger_id={{ selected_ledger_id }}" class="product-form">
           {{ csrf_field|safe }}
-          <label class="sr-only" for="family-role-{{ member.member_id }}">调整 {{ member.account_name }} 的权限</label>
-          <select class="product-input" id="family-role-{{ member.member_id }}" name="role">
-            <option value="member"{% if member.role == 'member' %} selected{% endif %}>成员</option>
-            <option value="viewer"{% if member.role == 'viewer' %} selected{% endif %}>只读</option>
-          </select>
-          <button class="product-button" type="submit">保存权限</button>
-        </form>
-        <details class="family-member-more">
-          <summary>更多</summary>
-          <div class="family-member-more-body">
-            <form method="post" action="/web/family/members/{{ member.member_id }}/disable?ledger_id={{ selected_ledger_id }}" data-confirm="停用 {{ member.account_name }}？对方将立刻失去这本账的访问权限。">
-              {{ csrf_field|safe }}
-              <button class="product-button" type="submit">停用成员</button>
-            </form>
-            <form method="post" action="/web/family/members/{{ member.member_id }}/transfer-owner?ledger_id={{ selected_ledger_id }}" data-confirm="把这本账转让给 {{ member.account_name }}？你将变为普通成员。">
-              {{ csrf_field|safe }}
-              <label class="family-transfer-confirm">
-                <input type="checkbox" name="confirmed" value="yes" required>
-                <span>我确认转让后自己不再是拥有者</span>
-              </label>
-              <button class="product-button" type="submit">转让拥有者</button>
-            </form>
+          <div class="product-field">
+            <label for="family-role-{{ member.member_id }}">调整 {{ member.account_name }} 的权限</label>
+            <select class="product-input" id="family-role-{{ member.member_id }}" name="role">
+              <option value="member"{% if member.role == 'member' %} selected{% endif %}>成员</option>
+              <option value="viewer"{% if member.role == 'viewer' %} selected{% endif %}>只读</option>
+            </select>
           </div>
-        </details>
+          <div class="product-form-actions"><button class="product-button" type="submit">保存权限</button></div>
+        </form>
+        {# 高影响操作各自成组, 各自再确认一次。 #}
+        <form method="post" action="/web/family/members/{{ member.member_id }}/disable?ledger_id={{ selected_ledger_id }}" class="product-form" data-confirm="停用 {{ member.account_name }}？对方将立刻失去这本账的访问权限。">
+          {{ csrf_field|safe }}
+          <p class="hint">停用后对方立刻失去这本账的访问权限。</p>
+          <div class="product-form-actions"><button class="product-button product-button--danger" type="submit">停用成员</button></div>
+        </form>
+        <form method="post" action="/web/family/members/{{ member.member_id }}/transfer-owner?ledger_id={{ selected_ledger_id }}" class="product-form" data-confirm="把这本账转让给 {{ member.account_name }}？你将变为普通成员。">
+          {{ csrf_field|safe }}
+          <label class="family-transfer-confirm">
+            <input type="checkbox" name="confirmed" value="yes" required>
+            <span>我确认转让后自己不再是拥有者</span>
+          </label>
+          <div class="product-form-actions"><button class="product-button product-button--danger" type="submit">转让拥有者</button></div>
+        </form>
       </div>
-      {% endif %}
+    </details>
+    {% else %}
+    <article class="product-entry product-entry--static{% if member.disabled_at %} is-receded{% endif %}">
+      <span class="product-entry-icon{{ tone }}" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#user-round"/></svg></span>
+      <div class="product-entry-copy">
+        <strong>{{ member.account_name }}</strong>
+        <span>{{ role_label(member.role) }} · {{ role_scope(member.role) }}</span>
+        <span>{{ '本人' if member.is_self else '家庭成员' }} · 加入于 {{ member.created_label }}</span>
+        {% if member.disabled_at %}<span class="product-status">已停用</span><span>停用于 {{ member.disabled_label }}</span>{% endif %}
+      </div>
     </article>
+    {% endif %}
   {% else %}
     <div class="product-state">
       <div class="product-state-title">还没有成员</div>
@@ -167,69 +172,94 @@
 </section>
 
 {% if can_manage_family %}
-<details class="product-panel product-panel--padded family-disclosure"{% if invitations %} open{% endif %}>
-  <summary>已发邀请 · {{ invitations | length }}</summary>
-  <div class="family-invitation-list">
-  {% for invitation in invitations %}
-    <article class="family-invitation">
-      <div>
-        <strong>{{ invitation.note or '未填写称呼' }}</strong>
-        <p>{{ role_label(invitation.role) }} · {{ invitation.created_label }} 发出 · {{ invitation.expires_label }} 到期</p>
-      </div>
-      {% if invitation.state == 'used' %}
-      <div class="family-invitation-state">
-        <span class="product-status product-status--success">已接受</span>
-        <span class="family-state-meta">{{ invitation.used_by_account_name or '家庭成员' }} · {{ invitation.used_label }}</span>
-      </div>
-      {% elif invitation.state == 'revoked' %}
-      <div class="family-invitation-state">
-        <span class="product-status">已撤销</span>
-        <span class="family-state-meta">{{ invitation.revoked_label }}</span>
-      </div>
-      {% elif invitation.state == 'expired' %}
-      <span class="product-status">已过期</span>
+<section class="product-section" aria-labelledby="family-manage-title">
+  <h2 class="product-panel-title" id="family-manage-title">账本管理</h2>
+  <div class="product-entry-list">
+    {% set waiting = invitations | rejectattr('state', 'in', ['used', 'revoked', 'expired']) | list %}
+    <details>
+      <summary class="product-entry">
+        <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#link"/></svg></span>
+        <span class="product-entry-copy"><strong>已发邀请 · {{ invitations | length }}</strong><span>{{ waiting | length ~ ' 份待接受，可以在这里撤销' if waiting else '没有待接受的邀请' }}</span></span>
+        <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
+      </summary>
+      <ol class="product-history">
+      {% for invitation in invitations %}
+        <li class="product-history-item">
+          <div class="product-entry-heading">
+            <strong>{{ invitation.note or '未填写称呼' }}</strong>
+            {% if invitation.state == 'used' %}<span class="product-status product-status--success">已接受</span>
+            {% elif invitation.state == 'revoked' %}<span class="product-status">已撤销</span>
+            {% elif invitation.state == 'expired' %}<span class="product-status">已过期</span>
+            {% else %}<span class="product-status product-status--info">待接受</span>{% endif %}
+          </div>
+          <span>{{ role_label(invitation.role) }} · {{ invitation.created_label }} 发出 · {{ invitation.expires_label }} 到期</span>
+          {% if invitation.state == 'used' %}<span>{{ invitation.used_by_account_name or '家庭成员' }} · {{ invitation.used_label }}</span>
+          {% elif invitation.state == 'revoked' %}<span>{{ invitation.revoked_label }}</span>
+          {% elif invitation.state != 'expired' %}
+          <form method="post" action="/web/family/invitations/{{ invitation.public_id }}/revoke?ledger_id={{ selected_ledger_id }}" data-confirm="撤销给 {{ invitation.note or '这位家人' }} 的邀请？原邀请明文会立即失效。">
+            {{ csrf_field|safe }}
+            <button class="product-button" type="submit">撤销邀请</button>
+          </form>
+          {% endif %}
+        </li>
       {% else %}
-      <div class="family-invitation-action">
-        <span class="product-status product-status--info">待接受</span>
-        <form method="post" action="/web/family/invitations/{{ invitation.public_id }}/revoke?ledger_id={{ selected_ledger_id }}" data-confirm="撤销给 {{ invitation.note or '这位家人' }} 的邀请？原邀请明文会立即失效。">
-          {{ csrf_field|safe }}
-          <button class="product-button" type="submit">撤销邀请</button>
-        </form>
-      </div>
-      {% endif %}
-    </article>
-  {% else %}
-    <div class="product-state"><div class="product-state-body">还没有邀请记录。</div></div>
-  {% endfor %}
-  </div>
-</details>
+        <li class="product-history-item"><span>还没有邀请记录。</span></li>
+      {% endfor %}
+      </ol>
+    </details>
 
-<details class="product-panel product-panel--padded family-disclosure">
-  <summary>账本管理记录 · 最近 {{ audit_logs | length }} 条</summary>
-  <ol class="family-audit-list">
-  {% for item in audit_logs %}
-    <li>
-      <span>{{ item.created_label }}</span>
-      <strong>{{ {
-        'invitation_created': '创建邀请',
-        'invitation_accepted': '接受邀请',
-        'invitation_revoked': '撤销邀请',
-        'member_role_changed': '调整角色',
-        'member_disabled': '停用成员',
-        'owner_transferred': '转让拥有者',
-        'ledger_renamed': '修改账本名称'
-      }.get(item.action, item.action) }}</strong>
-      <span>
-        {{ item.actor_account_name or '系统' }}{% if item.target_account_name %} → {{ item.target_account_name }}{% endif %}
-        {% if item.previous_role or item.new_role %} · {{ role_label(item.previous_role) if item.previous_role else '—' }} → {{ role_label(item.new_role) if item.new_role else '—' }}{% endif %}
-      </span>
-      {% if item.action == 'ledger_renamed' %}<span>{{ item.detail }}</span>{% endif %}
-      <span class="product-status{% if item.result == 'success' %} product-status--success{% endif %}">{{ '成功' if item.result == 'success' else item.result }}</span>
-    </li>
-  {% else %}
-    <li><span>还没有成员操作记录。</span></li>
-  {% endfor %}
-  </ol>
-</details>
+    <details{% if submitted_ledger_name is not none %} open{% endif %}>
+      <summary class="product-entry">
+        <span class="product-entry-icon product-entry-icon--lilac" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#pencil"/></svg></span>
+        <span class="product-entry-copy"><strong>账本名称</strong><span>当前名称：{{ ledger_name }}</span></span>
+        <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
+      </summary>
+      <form method="post" action="/web/family/name?ledger_id={{ selected_ledger_id }}" class="product-form">
+        {{ csrf_field|safe }}
+        <input type="hidden" name="expected_name" value="{{ ledger_name }}">
+        <label class="product-field"><span>名称</span>
+          <input class="product-input" name="name" maxlength="60" required value="{{ submitted_ledger_name if submitted_ledger_name is not none else ledger_name }}">
+          <span class="hint">更名会同步到家人的账本列表。</span>
+        </label>
+        <div class="product-form-actions"><button class="product-button product-button--primary" type="submit">保存名称</button></div>
+      </form>
+    </details>
+
+    <details>
+      <summary class="product-entry">
+        <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#history"/></svg></span>
+        <span class="product-entry-copy"><strong>账本管理记录</strong><span>最近 {{ audit_logs | length }} 条</span></span>
+        <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
+      </summary>
+      <ol class="product-history">
+      {% for item in audit_logs %}
+        <li class="product-history-item">
+          <div class="product-entry-heading">
+            <strong>{{ {
+              'invitation_created': '创建邀请',
+              'invitation_accepted': '接受邀请',
+              'invitation_revoked': '撤销邀请',
+              'member_role_changed': '调整角色',
+              'member_disabled': '停用成员',
+              'owner_transferred': '转让拥有者',
+              'ledger_renamed': '修改账本名称'
+            }.get(item.action, item.action) }}</strong>
+            <span class="product-status{% if item.result == 'success' %} product-status--success{% endif %}">{{ '成功' if item.result == 'success' else item.result }}</span>
+          </div>
+          <span>{{ item.created_label }} · {{ item.actor_account_name or '系统' }}{% if item.target_account_name %} → {{ item.target_account_name }}{% endif %}{% if item.previous_role or item.new_role %} · {{ role_label(item.previous_role) if item.previous_role else '—' }} → {{ role_label(item.new_role) if item.new_role else '—' }}{% endif %}</span>
+          {% if item.action == 'ledger_renamed' %}<span>{{ item.detail }}</span>{% endif %}
+        </li>
+      {% else %}
+        <li class="product-history-item"><span>还没有成员操作记录。</span></li>
+      {% endfor %}
+      </ol>
+    </details>
+  </div>
+</section>
+
+<div class="product-task-actions product-task-actions--page">
+  <a class="product-button product-button--primary" href="/web/family?ledger_id={{ selected_ledger_id|urlencode }}&amp;invite=1">邀请家人 <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-right"/></svg></a>
+</div>
+{% endif %}
 {% endif %}
 {% endblock %}

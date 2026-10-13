@@ -30,35 +30,28 @@ p {
 
 .product-page-heading {
     display: grid;
+    min-width: 0;
     gap: var(--space-2);
 }
 
 /* W1 Warm Ledger: 中文层级靠字重/字号/灰度, 不用拉丁大写追踪 ——
    letterspacing 用在中文上是后台味本体, 从中文 eyebrow 退役。 */
-.product-eyebrow,
-.dt-eyebrow {
+.product-eyebrow {
     color: var(--brand-primary-strong);
     font-size: var(--type-caption-size);
     font-weight: var(--type-subtitle-weight);
 }
 
-.page-title,
-.lh-title {
+.page-title {
     margin: 0;
     color: var(--text-default);
     font-size: var(--type-hero-size);
     font-weight: var(--type-hero-weight);
     letter-spacing: -.035em;
     line-height: var(--type-hero-line);
+    overflow-wrap: anywhere;
 }
 
-.page-title--compact {
-    font-size: var(--type-headline-size);
-    line-height: var(--type-headline-line);
-}
-
-.page-sub,
-.page-hint,
 .product-page-summary {
     max-width: 72ch;
     margin: 0;
@@ -67,15 +60,13 @@ p {
     line-height: var(--type-body-line);
 }
 
-.product-page-summary a,
-.page-sub a,
-.page-hint a {
+.product-page-summary a {
     color: var(--brand-primary-strong);
     text-underline-offset: var(--space-1);
 }
 
 .product-page-actions,
-.dt-actions,
+.product-form-actions,
 .actions {
     display: flex;
     flex-wrap: wrap;
@@ -84,9 +75,39 @@ p {
     gap: var(--space-3);
 }
 
+.product-form-actions { justify-content: flex-start; margin-block-start: var(--space-5); }
+.product-form-actions > p { flex: 1 0 100%; margin: 0; }
+
+/* 行内动作表单: 一个按钮就是一次提交, 与同行的链接并排。 */
+.product-inline-form { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 0; }
+
+/* 表单是一列: 提示、字段、预览、动作依次排开, 间距由这一处决定。 */
+.product-form { display: grid; gap: var(--space-5); min-width: 0; }
+.product-form > :is(.product-feedback, .product-form-actions, p) { margin-block: 0; }
+.product-form > .product-button { justify-self: start; }
+/* 原提交的状态句: 填写中是安静的一行; 结果未知或被拦下时升格为提示块。 */
+[data-repayment-status] { margin: 0; color: var(--text-muted); }
+:is([data-repayment-state="submitted"], [data-repayment-state="blocked"]) [data-repayment-status] {
+    margin: 0;
+    padding: var(--space-4) var(--space-5);
+    border-radius: var(--radius-md);
+    background: var(--state-warn-bg);
+    color: var(--state-warn-fg);
+}
+/* 一句可点开的文字: 行内的低频动作, 或需要再确认一次的动作。
+   没有任何类名的 details/summary 也按这一种呈现, 不再露出浏览器默认三角。 */
+.product-disclosure > summary,
+main details:not([class]) > summary:not([class]) { display: inline-flex; align-items: center; min-height: var(--target-min); color: var(--brand-primary-strong); font-weight: var(--type-subtitle-weight); cursor: pointer; }
+/* 可展开的文字后面带一个小箭头, 展开后转向; 不靠粗体猜它能不能点。 */
+.product-disclosure > summary::after,
+main details:not([class]) > summary:not([class])::after { content: "›"; margin-inline-start: var(--space-2); color: var(--text-meta); font-weight: var(--type-body-weight); }
+.product-disclosure[open] > summary::after,
+main details:not([class])[open] > summary:not([class])::after { rotate: 90deg; }
+.product-disclosure--danger > summary { color: var(--state-danger-fg); }
+.product-disclosure[open] > summary { margin-block-end: var(--space-2); }
+
 /* W1: commandbar 去卡片相框 — 筛选条是内容区的一段节奏, 不是被框住的表单。 */
-.product-commandbar,
-.toolbar {
+.product-commandbar {
     display: flex;
     min-height: var(--space-10);
     align-items: center;
@@ -94,82 +115,104 @@ p {
     margin-block-end: var(--space-5);
 }
 
-.spacer,
 .grow {
     flex: 1;
 }
 
-/* W1: segmented tonal strip — 一个圆角色面容器, active 段实心浮起;
-   窄屏横滚不折行 (六枚筛选在 360 不再折成两行描边 pill)。 */
-.seg,
+/* Shared filter chips: selected tint carries state, without a second frame.
+   Long sets retain the existing horizontal scrolling on narrow screens. */
 .product-segments {
     display: flex;
     min-width: 0;
     max-width: 100%;
     flex-wrap: nowrap;
-    gap: var(--space-1);
-    padding: var(--space-1);
+    gap: var(--space-3);
+    padding: 0;
     overflow-x: auto;
     border-radius: var(--radius-pill);
-    background: var(--surface-sunken);
+    background: transparent;
     scrollbar-width: none;
 }
 
-.seg::-webkit-scrollbar,
 .product-segments::-webkit-scrollbar {
     display: none;
 }
 
-.seg a,
-.seg button,
 .filter-tab,
 .product-segments a,
-.product-segments button {
+.product-segments button,
+.product-segments label {
     display: inline-flex;
-    min-height: var(--space-9);
+    min-height: var(--target-min);
     flex: 0 0 auto;
     align-items: center;
     gap: var(--space-2);
-    padding: var(--space-2) var(--space-4);
+    padding: var(--space-3) var(--space-5);
     border: 0;
     border-radius: var(--radius-pill);
-    background: transparent;
+    background: var(--surface-card);
     color: var(--text-muted);
     cursor: pointer;
     text-decoration: none;
     white-space: nowrap;
 }
 
-.seg a:hover,
-.seg button:hover,
+.filter-tab { list-style: none; }
+.filter-tab::-webkit-details-marker { display: none; }
+
 .filter-tab:hover,
 .product-segments a:hover,
 .product-segments button:hover {
     color: var(--text-default);
 }
 
-.seg .is-active,
-.seg .active,
 .filter-tab.is-active,
 .product-segments [aria-current="page"],
-.product-segments [aria-selected="true"] {
-    background: var(--surface-card);
-    box-shadow: var(--shadow-card);
+.product-segments [aria-current="location"],
+.product-segments [aria-selected="true"],
+.product-segments label:has(input:checked) {
+    background: var(--brand-primary-bg);
+    box-shadow: none;
     color: var(--text-default);
     font-weight: var(--type-subtitle-weight);
 }
 
+/* 勾选行: 一行一个可勾选的对象, 名称一行、说明一行; 真实 checkbox, 整行可点。 */
+.product-choice-set { display: grid; min-inline-size: 0; margin: 0; padding: 0; border: 0; }
+.product-choice-set > legend { margin-block-end: var(--space-2); padding: 0; color: var(--text-meta); font-size: var(--type-body-size); }
+.product-choice-set > .hint { margin-block: 0; }
+.product-choice {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: var(--space-1) var(--space-4);
+    min-block-size: calc(var(--target-min) + var(--space-5));
+    padding-block: var(--space-3);
+    cursor: pointer;
+}
+.product-choice + .product-choice { border-block-start: 1px solid var(--border-card); }
+.product-choice > input { grid-row: span 2; width: var(--space-6); height: var(--space-6); margin: 0; accent-color: var(--brand-primary); }
+.product-choice-name { color: var(--text-default); font-weight: var(--type-title-weight); }
+.product-choice-meta { grid-column: 2; overflow-wrap: anywhere; color: var(--text-meta); font-size: var(--type-body-size); line-height: var(--type-body-line); }
+
+/* 多选时胶囊换行排列, 不做横向滚动。 */
+.product-segments--wrap { flex-wrap: wrap; overflow: visible; }
+/* 选择胶囊: 真实 radio / checkbox 铺满整个胶囊, 选中态只靠 :checked。 */
+.product-segments label { position: relative; }
+.product-segments label > input { position: absolute; inset: 0; width: 100%; height: 100%; min-height: 0; margin: 0; opacity: 0; cursor: pointer; }
+.product-segments label:has(input:focus-visible) { outline: var(--space-1) solid var(--brand-focus-ring); outline-offset: var(--space-1); }
+
 .count,
 .num,
-.amount,
-.trend-num,
-.kpi-value {
+.amount {
+    min-width: 0;
+    overflow-wrap: anywhere;
     font-family: var(--font-numeric);
     font-variant-numeric: tabular-nums;
 }
 
-/* W1 Warm Ledger: 按钮三级制 — 默认 tonal 色面 (无描边), primary 实心强调,
-   danger tonal 危险色面, quiet 纯文本。描边白底按钮从 product 语言退役。 */
+/* Shared action hierarchy: evergreen submission, soft secondary actions and
+   quiet text actions. Control geometry is shared with inputs and other clients. */
 .dt-btn,
 .product-button,
 button.dt-btn,
@@ -181,7 +224,7 @@ a.dt-btn {
     gap: var(--space-2);
     padding: var(--space-2) var(--space-5);
     border: 0;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-lg);
     background: var(--surface-sunken);
     color: var(--text-default);
     cursor: pointer;
@@ -194,6 +237,12 @@ a.dt-btn {
         transform var(--motion-fast) var(--ease-standard);
 }
 
+.product-button > svg {
+    flex: 0 0 var(--space-5);
+    width: var(--space-5);
+    height: var(--space-5);
+}
+
 .dt-btn:hover,
 .product-button:hover {
     background: var(--border-card);
@@ -204,10 +253,14 @@ a.dt-btn {
     transform: translateY(var(--space-1));
 }
 
+.product-button--selected { background: var(--brand-primary-bg); color: var(--brand-primary-strong); }
+
 .dt-btn.primary,
 .product-button--primary {
+    min-height: calc(var(--target-min) + var(--space-3));
     background: var(--brand-primary);
     color: var(--text-on-primary);
+    font-weight: var(--type-title-weight);
 }
 
 .dt-btn.primary:hover,
@@ -238,14 +291,9 @@ a.dt-btn {
     color: var(--text-default);
 }
 
-.dt-btn--sm {
-    min-height: var(--space-8);
-    padding: var(--space-1) var(--space-3);
-    font-size: var(--type-caption-size);
-}
 
 .product-button--small {
-    min-height: var(--space-8);
+    min-height: var(--target-min);
     padding: var(--space-1) var(--space-3);
     font-size: var(--type-caption-size);
 }
@@ -258,7 +306,6 @@ button[disabled] {
 }
 
 /* W1: 面板/卡片实色 + 暖阴影分层, 不描边。 */
-.dt-card,
 .product-panel {
     border: 0;
     border-radius: var(--radius-card);
@@ -266,9 +313,6 @@ button[disabled] {
     box-shadow: var(--shadow-card);
 }
 
-.dt-card {
-    padding: var(--space-6);
-}
 
 .product-panel--padded {
     padding: var(--space-6);
@@ -281,10 +325,16 @@ button[disabled] {
 }
 
 .money-context > summary {
+    display: flex;
+    align-items: center;
     min-height: var(--target-min);
     padding-block: var(--space-3);
     cursor: pointer;
+    list-style: none;
 }
+.money-context > summary::-webkit-details-marker { display: none; }
+.money-context > summary::after { content: "›"; margin-inline-start: auto; color: var(--text-meta); }
+.money-context[open] > summary::after { rotate: 90deg; }
 
 .money-context-body {
     padding-block-end: var(--space-4);
@@ -298,12 +348,7 @@ button[disabled] {
     color: var(--text-default);
 }
 
-.dt-card--static:hover {
-    transform: none;
-}
 
-.card-head,
-.card-header,
 .product-panel-header {
     display: flex;
     align-items: flex-start;
@@ -312,7 +357,6 @@ button[disabled] {
     margin-block-end: var(--space-5);
 }
 
-.card-title,
 .product-panel-title {
     color: var(--text-default);
     font-size: var(--type-title-size);
@@ -320,7 +364,6 @@ button[disabled] {
     line-height: var(--type-title-line);
 }
 
-.card-sub,
 .product-panel-subtitle,
 .hint,
 .meta,
@@ -330,15 +373,9 @@ button[disabled] {
     line-height: var(--type-caption-line);
 }
 
-.card-sub--gap {
-    margin-block-start: var(--space-1);
-}
 
 /* W1: 状态/chip 是色面标签 — 12% 状态色底 + 同色深字, 无描边。 */
-.dt-pill,
-.product-status,
-.dt-tag,
-.exp-cat {
+.product-status {
     display: inline-flex;
     min-height: var(--space-7);
     align-items: center;
@@ -357,25 +394,21 @@ button[disabled] {
     white-space: nowrap;
 }
 
-.dt-pill.ok,
 .product-status--success {
     background: var(--state-success-bg);
     color: var(--state-success-fg);
 }
 
-.dt-pill.warn,
 .product-status--warning {
     background: var(--state-warn-bg);
     color: var(--state-warn-fg);
 }
 
-.dt-pill.danger,
 .product-status--danger {
     background: var(--state-danger-bg);
     color: var(--state-danger-fg);
 }
 
-.dt-pill.info,
 .product-status--info {
     background: var(--state-info-bg);
     color: var(--state-info-fg);
@@ -387,11 +420,13 @@ button[disabled] {
     gap: var(--space-2);
 }
 
+.pill-row > .product-button { border-radius: var(--radius-pill); }
+
 /* W1: 反馈带 tonal — 状态色面承担语气, 不再描边。 */
 .dt-alert,
-.callout-info,
 .product-feedback {
     display: flex;
+    flex-wrap: wrap;
     align-items: flex-start;
     justify-content: space-between;
     gap: var(--space-4);
@@ -420,6 +455,13 @@ button[disabled] {
     color: var(--state-danger-fg);
 }
 
+/* 反馈条内的导航链接 (如「查看这笔记录」「查看回收站」): 继承语义色, 下划线可辨。 */
+.product-feedback-link {
+    color: inherit;
+    font-weight: var(--type-subtitle-weight);
+    text-underline-offset: var(--space-1);
+}
+
 /* --danger 与 --error 同语义 (旧命名); 422 role=alert 反馈条统一危险色,
    此前仅旧 pages/repayment_drafts.css 定义, product 栈页缺该变体。 */
 .product-feedback--danger {
@@ -428,14 +470,17 @@ button[disabled] {
 }
 
 .undo-banner-action {
-    display: flex;
-    flex: 0 0 auto;
+    display: grid;
+    gap: var(--space-3);
+    flex: 0 1 auto;
+    min-inline-size: 0;
+    max-inline-size: 100%;
 }
 
 /* ADR-0038 undo banner: 5s auto-dismiss。product 新栈页不载旧 alert.css
    (断旧栈), 契约动画移植至此 (与旧规则同名同帧内容, 双栈同效);
    行在服务端 5 分钟保留窗内仍可恢复, 横幅只是 UI 提示。 */
-.undo-banner {
+.undo-banner:not(:has([data-expenseundo-plan-id])) {
     overflow: hidden;
     animation: undo-banner-dismiss 5s forwards;
 }
@@ -463,24 +508,27 @@ button[disabled] {
 }
 
 /* W1: 空态是编辑式引导区, 不是虚线工程占位框。 */
+/* 空态与说明态: 开放排版, 不是一块灰色的卡。一条细线起头, 标题说清现在是什么情况,
+   说明给出下一步; 需要插画的页面用 .product-state-figure。 */
 .product-state,
-.empty-cell,
-.dt-card--empty,
-.empty-state {
+.empty-cell {
     display: grid;
-    min-height: calc(var(--space-12) * 2);
-    align-content: center;
+    align-content: start;
     justify-items: start;
-    gap: var(--space-3);
-    padding: var(--space-8);
+    gap: var(--space-2);
+    padding-block: var(--space-5);
+    padding-inline-start: var(--space-5);
     border: 0;
-    border-radius: var(--radius-card);
-    background: var(--surface-sunken);
+    border-inline-start: var(--space-1) solid var(--brand-primary-bg);
+    border-radius: 0;
+    background: transparent;
     color: var(--text-muted);
 }
+.product-state > .product-button,
+.product-state > .cluster { margin-block-start: var(--space-3); }
+/* 带插画的整页空态 (空收件箱) 自己铺满版面, 不要起头线。 */
+.product-state:has(> .product-state-figure) { padding: 0; border: 0; }
 
-.empty-headline,
-.empty-state-title,
 .product-state-title {
     color: var(--text-default);
     font-size: var(--type-title-size);
@@ -498,54 +546,54 @@ button[disabled] {
     height: auto;
 }
 
-.empty-body,
-.empty-state-hint,
 .product-state-body {
     max-width: 64ch;
     color: var(--text-muted);
 }
 
-.empty-state-cta,
 .product-state-action {
     font-weight: var(--type-subtitle-weight);
     text-underline-offset: var(--space-1);
 }
 
-.empty-state-cta:not(.product-button),
 .product-state-action:not(.product-button) {
     color: var(--brand-primary-strong);
 }
 
-.dt-form-grid,
 .product-form-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: var(--space-5);
 }
 
-.dt-form-row,
 .product-field {
     display: grid;
+    /* 同一行里别的字段带说明而变高时, 输入框不跟着被拉高。 */
+    align-content: start;
+    min-width: 0;
     gap: var(--space-2);
 }
+fieldset:is(.product-field, .product-form) { min-inline-size: 0; margin: 0; padding: 0; border: 0; }
+.product-field > legend { margin-block-end: var(--space-2); padding: 0; }
 
-.dt-form-row > label,
-.product-field > label {
-    color: var(--text-default);
-    font-size: var(--type-caption-size);
-    font-weight: var(--type-subtitle-weight);
+.product-field > label,
+.product-field > legend,
+.product-field > span:first-child {
+    color: var(--text-meta);
+    font-size: var(--type-body-size);
+    font-weight: var(--type-body-weight);
 }
 
-.dt-input,
 .product-input,
-input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]),
+input:where(:not([type="hidden"]):not([type="checkbox"]):not([type="radio"])),
 select,
 textarea {
     width: 100%;
+    min-width: 0;
     min-height: var(--space-10);
     padding: var(--space-3) var(--space-4);
     border: 1px solid var(--border-input);
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-input);
     background: var(--surface-card);
     color: var(--text-default);
 }
@@ -561,7 +609,7 @@ progress {
     border: 0;
     border-radius: var(--radius-pill);
     background: var(--surface-sunken);
-    accent-color: var(--brand-primary);
+    accent-color: var(--progress-fill, var(--brand-primary));
 }
 
 progress::-webkit-progress-bar {
@@ -571,30 +619,29 @@ progress::-webkit-progress-bar {
 
 progress::-webkit-progress-value {
     border-radius: var(--radius-pill);
-    background: var(--brand-primary);
+    background: var(--progress-fill, var(--brand-primary));
 }
 
 progress::-moz-progress-bar {
     border-radius: var(--radius-pill);
-    background: var(--brand-primary);
+    background: var(--progress-fill, var(--brand-primary));
 }
 
 textarea {
-    min-height: calc(var(--space-12) * 2);
     resize: vertical;
 }
 
-.dt-input:hover,
+textarea:not([rows]) { min-height: calc(var(--space-12) * 2); }
+
 .product-input:hover,
-input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):hover,
+input:where(:not([type="hidden"]):not([type="checkbox"]):not([type="radio"])):hover,
 select:hover,
 textarea:hover {
     border-color: var(--control-border-hover);
 }
 
-.dt-input:focus,
 .product-input:focus,
-input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):focus,
+input:where(:not([type="hidden"]):not([type="checkbox"]):not([type="radio"])):focus,
 select:focus,
 textarea:focus {
     border-color: var(--control-border-active);
@@ -602,7 +649,6 @@ textarea:focus {
     outline-offset: 0;
 }
 
-.dt-table-wrap,
 .product-table-wrap {
     max-width: 100%;
     overflow-x: auto;
@@ -612,7 +658,6 @@ textarea:focus {
     box-shadow: var(--shadow-card);
 }
 
-.dt-table,
 .product-table {
     width: 100%;
     border-collapse: collapse;
@@ -620,7 +665,6 @@ textarea:focus {
 }
 
 /* W1: 中文表头去全大写追踪 (同 eyebrow 退役理由), 保留发丝分隔。 */
-.dt-table th,
 .product-table th {
     padding: var(--space-3) var(--space-4);
     border-block-end: 1px solid var(--border-card);
@@ -630,41 +674,33 @@ textarea:focus {
     text-align: start;
 }
 
-.dt-table td,
 .product-table td {
     padding: var(--space-4);
     border-block-end: 1px solid var(--border-card);
     vertical-align: middle;
 }
 
-.dt-table tbody tr:last-child td,
 .product-table tbody tr:last-child td {
     border-block-end: 0;
 }
 
-.dt-table tbody tr:hover,
 .product-table tbody tr:hover {
     background: var(--surface-sunken);
 }
 
-.dt-table-wrap .dt-table,
 .product-table-wrap .product-table {
     min-width: calc(var(--space-12) * 8);
 }
 
-.dt-table input,
-.dt-table select,
 .product-table input,
 .product-table select {
     min-width: calc(var(--space-12) * 2);
 }
 
-.dt-table .amount,
 .product-table .amount {
     text-align: end;
 }
 
-.pager-row,
 .product-pagination {
     display: flex;
     align-items: center;
@@ -748,6 +784,12 @@ textarea:focus {
     color: var(--text-muted);
     font-size: var(--type-caption-size);
 }
+
+.file-picker--featured { grid-template-columns: minmax(0, 1fr) var(--space-12); align-items: center; padding: var(--space-6); border-radius: var(--radius-xl); background: var(--brand-primary-bg); gap: var(--space-3); }
+.file-picker--featured > strong { color: var(--text-default); font-size: var(--type-title-size); line-height: var(--type-title-line); }
+.file-picker--featured > span { grid-column: 1; font-size: var(--type-body-size); line-height: var(--type-body-line); }
+.file-picker--featured > input { grid-column: 1 / -1; }
+.file-picker--featured > img { grid-column: 2; grid-row: 1 / 3; width: 100%; height: auto; }
 
 body.product-shell .file-picker > input.file-picker-input {
     width: 100%;
@@ -912,35 +954,6 @@ body.product-shell .file-picker > input.file-picker-input:focus-visible {
     transform: translateX(0);
 }
 
-[data-body-stack="product"] .drawer-head {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: var(--space-4);
-    margin-block-end: var(--space-5);
-}
-
-.inline-form,
-.dt-inline-form {
-    display: inline-flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--space-2);
-}
-
-.form-inline,
-.form--gap {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: end;
-    gap: var(--space-3);
-}
-
-.form-inline label,
-.dt-form-grid label {
-    display: grid;
-    gap: var(--space-2);
-}
 
 .text-muted {
     color: var(--text-muted);
@@ -950,8 +963,7 @@ body.product-shell .file-picker > input.file-picker-input:focus-visible {
     color: var(--text-meta);
 }
 
-.text-danger,
-.text-over {
+.text-danger {
     color: var(--state-danger-fg);
 }
 
@@ -979,12 +991,26 @@ body.product-shell .file-picker > input.file-picker-input:focus-visible {
 .product-progress {
     width: 100%;
     height: var(--space-3);
-    accent-color: var(--brand-primary);
 }
 
 .product-progress.is-complete {
-    accent-color: var(--state-success-fg);
+    --progress-fill: var(--state-success-fg);
 }
+
+.product-progress.is-over {
+    --progress-fill: var(--state-danger-fg);
+}
+
+/* 进度行: 名称与读数一行, 下面一条进度; 超出时用文字说明, 不只靠颜色。 */
+.product-meter { display: grid; gap: var(--space-3); min-width: 0; }
+.product-meter > .product-entry-heading > span { color: var(--text-meta); }
+.product-meter > .product-status { justify-self: start; }
+.product-meter > :is(p, .hint) { margin: 0; }
+.product-meter-list { display: grid; gap: var(--space-6); min-width: 0; }
+/* 并列的进度行按顺序取分类色; 超出仍是危险色。 */
+.product-meter-list > :nth-child(4n + 2) > .product-progress:not(.is-over) { --progress-fill: var(--chart-series-3); }
+.product-meter-list > :nth-child(4n + 3) > .product-progress:not(.is-over) { --progress-fill: var(--chart-series-2); }
+.product-meter-list > :nth-child(4n + 4) > .product-progress:not(.is-over) { --progress-fill: var(--chart-series-5); }
 
 .product-check {
     display: inline-flex;
@@ -994,15 +1020,193 @@ body.product-shell .file-picker > input.file-picker-input:focus-visible {
     font-size: var(--type-body-size);
 }
 
-.product-check input {
+.product-check input:where(:not(.checkbox)) {
     width: var(--space-5);
     height: var(--space-5);
     accent-color: var(--brand-primary);
 }
+fieldset.product-field { border: 0; padding: 0; margin: 0; }
+.product-field > label.product-check { min-height: var(--target-min); font-size: var(--type-body-size); font-weight: normal; }
 
-.text-warning {
-    color: var(--state-warn-fg);
+/* Before/after facts share the same type, spacing and emphasis as editable entry rows. */
+/* 前后对照: 当前 → 这次之后 (或 修改前 → 修改后)。两个数字同一字号, 后者落在金额面上;
+   中间可以放一个箭头图标。 */
+.product-comparison {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    gap: var(--space-3) var(--space-4);
 }
+.product-comparison > div {
+    display: grid;
+    flex: 1 1 12ch;
+    align-content: center;
+    gap: var(--space-1);
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+.product-comparison > svg { flex: none; align-self: center; width: var(--space-5); height: var(--space-5); color: var(--text-meta); }
+.product-comparison span { color: var(--text-meta); font-size: var(--type-caption-size); }
+.product-comparison :is(strong, output) {
+    color: var(--text-default);
+    font-family: var(--font-numeric);
+    font-size: var(--type-title-size);
+    font-variant-numeric: tabular-nums;
+    font-weight: var(--type-title-weight);
+}
+.product-comparison-proposed { padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: var(--brand-primary-bg); }
+.product-panel--highlight { background: var(--brand-primary-bg); }
+.product-panel--apricot { background: var(--surface-apricot); }
+
+/* ── v0.6 共享原语 ───────────────────────────────────────────────────────────
+   各域页面只组合这些原语; 域样式文件只保留该页真正独有的布局。 */
+
+/* 金额承载面: 每屏至多一处强调。读数随承载面宽度收放 (cqi), 长金额换行而不截断或缩写;
+   币种符号与数字同档。色面只换底色, 不改内容顺序。 */
+.product-surface {
+    display: grid;
+    gap: var(--space-2);
+    min-width: 0;
+    padding: var(--space-6) var(--space-7);
+    border-radius: var(--radius-xl);
+    background: var(--brand-primary-bg);
+    container-type: inline-size;
+}
+details.product-surface { display: block; }
+.product-surface--plain { background: var(--surface-card); }
+/* 承载面内的次级数字: 与主读数同一事实的其它口径 (另一方向、另一币种、已用/可用), 分行列出, 不合成一个总额。 */
+.product-surface-rows { display: grid; margin: var(--space-3) 0 0; padding-block-start: var(--space-3); border-block-start: 1px solid var(--border-card); }
+.product-surface-rows > div { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--space-1) var(--space-4); min-height: var(--space-8); }
+.product-surface-rows dt { color: var(--text-meta); font-size: var(--type-body-size); }
+.product-surface-rows dd { margin: 0; color: var(--text-default); font-family: var(--font-numeric); font-size: var(--type-subtitle-size); font-variant-numeric: tabular-nums; font-weight: var(--type-title-weight); overflow-wrap: anywhere; }
+.product-surface--apricot { background: var(--surface-apricot); }
+/* 建议与观察 (尚未生效) 用紫色面, 与已生效的常青面区分。 */
+.product-surface--lilac { background: var(--surface-lilac); }
+.product-surface > .product-status { justify-self: start; }
+.product-surface > :is(p, h2, h3) { margin: 0; }
+.product-surface > .product-button { justify-self: start; }
+/* 直接在承载面里填写的金额: 与读数同一字号, 只留一条下划线。 */
+input.product-amount { width: 100%; padding: 0 0 var(--space-2); border: 0; border-block-end: 1px solid var(--border-card); border-radius: 0; background: transparent; }
+/* 示例金额只是提示, 不能看起来像已经填好的数。 */
+input.product-amount::placeholder { color: var(--text-meta); font-weight: var(--type-body-weight); opacity: .45; }
+input.product-amount:focus { outline: 0; border-block-end-color: var(--brand-primary); box-shadow: 0 1px 0 var(--brand-primary); }
+input.product-amount:read-only { border-block-end-color: transparent; box-shadow: none; }
+.product-amount-label,
+.product-amount-meta {
+    margin: 0;
+    color: var(--text-meta);
+    font-size: var(--type-body-size);
+    font-weight: var(--type-body-weight);
+    line-height: var(--type-body-line);
+    overflow-wrap: anywhere;
+}
+.product-amount {
+    min-width: 0;
+    margin: 0;
+    color: var(--text-default);
+    font-family: var(--font-numeric);
+    font-size: clamp(var(--type-headline-size), 13cqi, var(--type-display-size));
+    font-variant-numeric: tabular-nums;
+    font-weight: var(--type-title-weight);
+    letter-spacing: -.02em;
+    line-height: var(--type-display-line);
+    overflow-wrap: anywhere;
+}
+
+/* 吸底动作条: 主提交留在表单内, 吸在所在滚动容器的底部; 其余动作是文字动作,
+   常青色只留给这一个主提交。危险动作只换文字颜色, 不抢层级。 */
+.product-task-actions {
+    position: sticky;
+    inset-block-end: 0;
+    z-index: var(--z-sticky);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0 var(--space-3);
+    margin-block-start: var(--space-5);
+    padding-block: var(--space-4) max(var(--space-3), env(safe-area-inset-bottom));
+    border-block-start: 1px solid var(--border-card);
+    background: var(--surface-app);
+}
+.product-task-actions > .product-button--primary { order: -1; flex: 1 0 100%; }
+.product-task-actions > :is(button, a):not(.product-button--primary) {
+    flex: 1 1 auto;
+    min-height: var(--target-min);
+    background: transparent;
+    color: var(--brand-primary);
+}
+.product-task-actions > button.product-button--danger { color: var(--state-danger-fg); }
+.product-task-actions > p { flex: 1 0 100%; margin: 0 0 var(--space-3); }
+/* 页面级动作条有两种位置。
+   任务页: 动作条是工作区的直接子节点, 排在正文之后——工作区至少一屏高, 正文短时
+   它落在屏底, 正文长时吸底; 文档本身仍是滚动容器。
+   根页 (--page): 留在正文里, 窄屏吸在五域底栏之上, 宽屏回到正文流。
+   宽屏上两者的主动作都保持自身宽度。 */
+.product-workspace:has(> .product-task-actions) { display: flex; flex-direction: column; min-block-size: 100dvh; }
+.product-workspace:has(> .product-task-actions) > main.content { flex: 1 0 auto; }
+.product-workspace > .product-task-actions { width: min(100%, var(--layout-page-narrow-max)); margin: 0 auto; padding-inline: var(--space-7); }
+html:has(.product-workspace > .product-task-actions) { scroll-padding-block-end: calc(var(--target-min) + var(--space-10)); }
+@media (max-width: 64rem) {
+    /* 窄屏: 正文里的动作条出血到屏幕两侧, 内容仍与正文边距对齐。 */
+    .product-task-actions { margin-inline: calc(var(--space-7) * -1); padding-inline: var(--space-7); }
+    .product-task-actions--page { inset-block-end: calc(var(--mobile-nav-block-size) + env(safe-area-inset-bottom)); padding-block-end: var(--space-4); }
+}
+@media (width > 64rem) {
+    :is(.product-workspace > .product-task-actions, .product-task-actions--page) > .product-button--primary { flex: 0 0 auto; min-inline-size: 16rem; }
+    :is(.product-workspace > .product-task-actions, .product-task-actions--page) > :is(button, a):not(.product-button--primary) { flex: 0 0 auto; }
+    .product-task-actions--page { position: static; padding-block: 0; border-block-start: 0; }
+    /* 宽屏: 根页与目录页的主动作回到页头右侧, 与标题同一行; 列表不再把它挤到最底下。 */
+    main.content:has(> .product-task-actions--page:not(.inbox-review-start), > .product-flow > .product-task-actions--page) { position: relative; }
+    /* 页头给右上角的主动作留出位置, 长摘要不会钻到按钮下面。 */
+    main.content:has(> .product-task-actions--page:not(.inbox-review-start), > .product-flow > .product-task-actions--page) > .product-page-header { padding-inline-end: 14rem; }
+    main.content > .product-task-actions--page:not(.inbox-review-start),
+    main.content > .product-flow > .product-task-actions--page {
+        position: absolute;
+        inset-block: var(--space-6) auto;
+        inset-inline: auto var(--space-7);
+        width: auto;
+        margin: 0;
+        background: transparent;
+    }
+    main.content > .product-task-actions--page:not(.inbox-review-start) > .product-button--primary,
+    main.content > .product-flow > .product-task-actions--page > .product-button--primary { min-inline-size: 0; }
+    /* 整页表单里的吸底提交也保持自身宽度 (抽屉与分栏里的仍占满一栏)。 */
+    .product-form > .product-task-actions > .product-button--primary { flex: 0 0 auto; min-inline-size: 16rem; }
+    /* 宽屏: 发丝线与正文左右对齐, 不伸进页边距。 */
+    .product-workspace > .product-task-actions { width: calc(min(100%, var(--layout-page-narrow-max)) - var(--space-7) * 2); padding-inline: 0; }
+}
+
+/* 正文节奏: 一列内容块, 间距由这一处决定。 */
+.product-flow { display: grid; gap: var(--space-6); min-width: 0; }
+.product-flow > :is(h2, h3, p) { margin: 0; }
+
+/* 页内分区: 一个标题带一组内容; 分区之间用留白分组, 不加卡片相框。 */
+.product-section { min-width: 0; margin-block-start: var(--space-8); }
+.product-section > .product-panel-title { margin: 0 0 var(--space-3); }
+
+/* 历史记录: 每条先是「发生了什么 + 金额」, 下面逐行是时间与经过; 条目之间发丝分隔。 */
+.product-history { display: grid; margin: 0; padding: 0; list-style: none; }
+.product-history-item { display: grid; justify-items: start; gap: var(--space-1); min-width: 0; padding-block: var(--space-4); }
+.product-history-item + .product-history-item { border-block-start: 1px solid var(--border-card); }
+.product-history-item > :is(div, details[open]) { justify-self: stretch; }
+.product-history-item > strong,
+.product-history-item > .product-entry-heading > strong { font-size: var(--type-subtitle-size); font-weight: var(--type-title-weight); }
+.product-history-item > span:not(.product-status, .hint) { color: var(--text-meta); font-size: var(--type-body-size); line-height: var(--type-body-line); overflow-wrap: anywhere; }
+.product-history-item > :is(.product-status, .product-button, details) { margin-block-start: var(--space-2); }
+.product-entry-amount.is-voided { color: var(--text-meta); text-decoration: line-through; }
+.product-history-item > :is(p, h2, h3) { margin: 0; }
+.product-history-item > .product-comparison { margin-block: var(--space-2); }
+
+
+/* Selection mode is enhanced by the existing bulk-bar owner. Native
+   checkboxes and forms remain available when scripts are unavailable. */
+.bulk-selection-ready:not(.bulk-selecting) .exp-row-selector,
+.bulk-selection-ready:not(.bulk-selecting) .exp-head,
+.bulk-selection-ready:not(.bulk-selecting) .lrow-sel,
+.bulk-selection-ready:not(.bulk-selecting) .confirmed-batch-head,
+.bulk-selection-ready .exp-flags { display: none; }
+.bulk-selection-ready:not(.bulk-selecting) .exp-row,
+.bulk-selection-ready:not(.bulk-selecting) .timeline-row.lrow.has-check { grid-template-columns: minmax(0, 1fr); }
 
 /* ── 编辑 core-fields 共享组件 (drawer / 完整整理页共用 _expense_core_fields.html) ──
    展示层唯一 owner: 字段排版、错误挂载、OCC 冲突对比条。值/选项/hidden
@@ -1013,10 +1217,198 @@ body.product-shell .file-picker > input.file-picker-input:focus-visible {
     gap: var(--space-5);
 }
 
-.product-field > span:first-child {
+.product-drawer-field-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(var(--space-12), calc(var(--space-12) * 1.5));
+    gap: var(--space-4);
+}
+
+.product-drawer-input-prefix {
+    position: relative;
+    display: grid;
+    align-items: center;
+}
+
+.product-drawer-input-prefix > span {
+    position: absolute;
+    z-index: 1;
+    inset-inline-start: var(--space-4);
+    color: var(--text-meta);
+    pointer-events: none;
+}
+
+.expense-core-fields .product-drawer-input-prefix > input.product-input {
+    padding-inline-start: var(--space-8);
+}
+
+.expense-manual-fx {
+    display: grid;
+    gap: var(--space-4);
+    padding: var(--space-4);
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius-card);
+    background: var(--surface-sunken);
+}
+
+.expense-manual-fx-copy {
+    display: grid;
+    gap: var(--space-1);
     color: var(--text-default);
+}
+
+.expense-manual-fx-copy > span {
+    color: var(--text-meta);
     font-size: var(--type-caption-size);
-    font-weight: var(--type-subtitle-weight);
+}
+
+.expense-manual-fx-equation {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr) max-content;
+    gap: var(--space-3);
+    align-items: center;
+}
+
+.expense-manual-fx-status {
+    margin: 0;
+}
+
+/* One entry row for editable receipt fields and account/device directories.
+   Links, native disclosures and form buttons retain their own behavior. */
+.product-entry {
+    display: grid;
+    grid-template-columns: var(--space-9) minmax(0, 1fr) var(--space-5);
+    width: 100%;
+    align-items: center;
+    gap: var(--space-4);
+    min-height: calc(var(--target-min) + var(--space-5));
+    padding: var(--space-3) 0;
+    border: 0;
+    background: transparent;
+    font: inherit;
+    text-align: start;
+    list-style: none;
+    cursor: pointer;
+    color: var(--text-default);
+    text-decoration: none;
+}
+.product-button::-webkit-details-marker,
+.product-entry::-webkit-details-marker,
+.review-amount-field > summary::-webkit-details-marker { display: none; }
+.product-entry > svg { width: var(--space-5); height: var(--space-5); color: var(--text-meta); }
+details[open] > .product-entry > svg { transform: rotate(90deg); }
+details[open]:has(> summary.product-entry) { padding-block-end: var(--space-5); }
+.product-entry--danger .product-entry-copy > strong { color: var(--state-danger-fg); }
+.product-entry:hover { color: var(--brand-primary-strong); }
+.product-entry--static { grid-template-columns: var(--space-9) minmax(0, 1fr); border-bottom: 1px solid var(--border-card); cursor: default; }
+.product-entry--static:hover { color: var(--text-default); }
+/* 已了结的记录退后一步, 仍可读可进入; 不用红色表达。 */
+:is(.product-entry, .product-surface).is-receded { opacity: .62; }
+.product-entry-icon {
+    display: grid;
+    place-items: center;
+    width: var(--space-9);
+    height: var(--space-9);
+    border-radius: var(--radius-lg);
+    background: var(--brand-primary-bg);
+    color: var(--text-default);
+}
+.product-entry-icon > svg { width: var(--space-7); height: var(--space-7); }
+.product-entry-icon--receipt { position: relative; height: auto; aspect-ratio: 3 / 4; overflow: hidden; border-radius: var(--radius-sm); background: var(--surface-sunken); }
+.product-entry-icon--receipt > img { position: absolute; width: 100%; height: 100%; object-fit: contain; }
+.product-entry-icon--receipt.is-loaded > svg { visibility: hidden; }
+.product-entry-icon--apricot { background: var(--surface-apricot); }
+.product-entry-icon--lilac { background: var(--surface-lilac); }
+.product-entry-icon--hero {
+    width: var(--space-12);
+    height: var(--space-12);
+    margin-block-end: var(--space-4);
+    border-radius: var(--radius-xl);
+}
+.product-entry-copy { display: grid; gap: var(--space-1); min-width: 0; overflow-wrap: anywhere; }
+.product-entry-copy strong { font-size: var(--type-subtitle-size); font-weight: var(--type-title-weight); }
+.product-entry-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--space-2) var(--space-4); }
+.product-entry-copy > .product-entry-heading { color: var(--text-default); }
+.expense-line-fields { padding-block: var(--space-4) var(--space-5); }
+.expense-lines-editor input:disabled,
+.expense-lines-editor select:disabled { color: var(--text-muted); background: var(--surface-sunken); }
+.product-entry-heading > :is(strong, h2, h3) { flex: 1 1 8ch; margin: 0; overflow-wrap: anywhere; }
+/* 行金额贴右, 不随名称一起伸展。 */
+.product-entry-heading > .product-entry-amount { flex: 0 1 auto; text-align: end; }
+.product-entry-amount { min-width: 0; max-width: 100%; margin-inline-start: auto; overflow-wrap: anywhere; font-family: var(--font-numeric); font-size: var(--type-subtitle-size); font-weight: var(--type-title-weight); color: var(--text-default); }
+.fact-reconcile { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--space-2) var(--space-4); margin-block: var(--space-4); padding-block: var(--space-3); border-bottom: 1px solid var(--border-card); color: var(--text-meta); font-size: var(--type-body-size); overflow-wrap: anywhere; }
+.fact-reconcile strong { min-width: 0; max-width: 100%; color: var(--text-default); font-family: var(--font-numeric); font-size: var(--type-subtitle-size); }
+.product-entry-copy > span { color: var(--text-meta); font-size: var(--type-body-size); line-height: var(--type-body-line); }
+.product-entry-copy > .product-status { justify-self: start; }
+:is(ul, ol).product-entry-list { margin: 0; padding: 0; list-style: none; }
+.product-entry-list > :not(:last-child) { border-block-end: 1px solid var(--border-card); }
+/* 一句说明: 小图标、一行结论、一行解释。不是行, 不可点, 不带分隔线。 */
+:where(.product-note) { margin: 0; }
+.product-note { display: grid; grid-template-columns: var(--space-6) minmax(0, 1fr); gap: var(--space-1) var(--space-3); color: var(--text-meta); font-size: var(--type-body-size); line-height: var(--type-body-line); }
+.product-note > svg { grid-row: span 2; width: var(--space-6); height: var(--space-6); color: var(--brand-primary); }
+.product-note > strong { color: var(--text-default); font-weight: var(--type-title-weight); }
+.product-note > span { grid-column: 2; }
+.product-entry--actions { display: flex; flex-wrap: wrap; }
+.product-entry--actions > .product-entry-copy { flex: 1 1 12ch; }
+.product-entry-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-inline-start: auto; }
+/* 行内「更多」: 低频、会改变状态的动作 (暂停、归档、删除) 收进一个小菜单, 行上只留常用动作。
+   原生 details, 无脚本可用; 菜单里的表单与链接照常提交。 */
+.product-more { position: relative; }
+.product-more > summary { display: inline-flex; align-items: center; justify-content: center; min-width: var(--target-min); min-height: var(--target-min); border-radius: var(--radius-lg); color: var(--text-muted); cursor: pointer; list-style: none; }
+.product-more > summary::-webkit-details-marker { display: none; }
+.product-more > summary > svg { width: var(--space-6); height: var(--space-6); }
+.product-more > summary:hover,
+.product-more[open] > summary { background: var(--surface-sunken); color: var(--text-default); }
+.product-more-menu { position: absolute; inset-block-start: calc(100% + var(--space-1)); inset-inline-end: 0; z-index: calc(var(--z-sticky) + 1); display: grid; gap: var(--space-1); min-inline-size: 9rem; padding: var(--space-2); border-radius: var(--radius-lg); background: var(--surface-card); box-shadow: var(--shadow-raised); }
+.product-more-menu :is(a, button).product-button { justify-content: flex-start; width: 100%; }
+.product-more-menu > form { display: grid; }
+
+/* Native details stay open without JS; the existing drawer enhancement reads
+   the real inputs and folds populated fields, without copying form state. */
+.expense-core-fields--compact { gap: 0; }
+.review-edit-field,
+.review-date-fields,
+.review-note-fields,
+.review-subtask { min-width: 0; border-bottom: 1px solid var(--border-card); }
+.review-edit-field > .product-field { margin: 0 0 var(--space-5) calc(var(--space-9) + var(--space-4)); }
+.review-date-fields fieldset { border: 0; padding: var(--space-4) 0; min-width: 0; }
+.review-note-fields > .product-field { margin-block: var(--space-4); }
+.review-subtask-link { border-bottom: 1px solid var(--border-card); }
+.review-subtask > summary { display: flex; align-items: center; justify-content: space-between; gap: var(--space-5); min-height: calc(var(--target-min) + var(--space-5)); cursor: pointer; font-size: var(--type-subtitle-size); }
+.review-subtask > summary > span { color: var(--text-meta); font-size: var(--type-body-size); overflow-wrap: anywhere; }
+.review-subtask > section { padding-block: var(--space-5); }
+.review-subtask .product-panel-header { display: none; }
+.review-amount-field { margin-bottom: var(--space-4); }
+.review-amount-field > summary { display: grid; gap: var(--space-3); min-height: var(--target-min); cursor: pointer; list-style: none; color: var(--text-meta); font-size: var(--type-body-size); }
+.review-amount-value:not([hidden]) { display: flex; flex-wrap: wrap; align-items: baseline; min-width: 0; color: var(--text-default); }
+.review-amount-value > svg { flex: none; align-self: center; width: var(--space-5); height: var(--space-5); margin-inline-start: var(--space-3); color: var(--text-meta); }
+.review-amount-field .product-drawer-field-row { grid-template-columns: minmax(0, 1fr); margin-top: var(--space-3); }
+.review-amount-field .product-drawer-field-row > label:last-child { display: none; }
+/* 行标题已经说明字段; 展开后的输入不再重复一遍可见标签 (读屏仍读到)。 */
+.review-amount-field .product-field > span:first-child,
+.review-edit-field > .product-field > span:first-child {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+/* 展开即编辑: 数值由输入框承载, 大号读数与输入框不同时出现。 */
+.review-amount-field[open] > summary .review-amount-value { display: none; }
+.review-amount-field .product-drawer-input-prefix > span { color: var(--text-default); font-family: var(--font-numeric); font-size: var(--type-title-size); font-weight: var(--type-title-weight); }
+.review-amount-field .product-drawer-input-prefix > input.product-input {
+    min-height: calc(var(--target-min) + var(--space-4));
+    padding-inline-start: var(--space-9);
+    border-color: transparent;
+    background: var(--surface-card);
+    font-family: var(--font-numeric);
+    font-size: var(--type-headline-size);
+    font-weight: var(--type-title-weight);
+}
+.review-amount-field .product-drawer-input-prefix > input.product-input::placeholder { color: var(--text-faint); font-weight: var(--type-body-weight); }
+@media (max-width: 48rem) {
+    .product-drawer-field-row,
+    .expense-manual-fx-equation { grid-template-columns: minmax(0, 1fr); }
 }
 
 .error-text {
@@ -1109,18 +1501,15 @@ body.product-shell .file-picker > input.file-picker-input:focus-visible {
     }
 
     .product-page-actions,
-    .dt-actions,
     .actions {
         justify-content: flex-start;
     }
 
-    .product-commandbar,
-    .toolbar {
+    .product-commandbar {
         align-items: stretch;
         flex-direction: column;
     }
 
-    .dt-form-grid,
     .product-form-grid {
         grid-template-columns: minmax(0, 1fr);
     }
@@ -1128,17 +1517,22 @@ body.product-shell .file-picker > input.file-picker-input:focus-visible {
 }
 
 @media (max-width: 40rem) {
-    .dt-card {
-        padding: var(--space-5);
-    }
+    .product-form-actions > .product-button--primary { width: 100%; }
+
 
     .product-state,
-    .empty-cell,
-    .dt-card--empty,
-    .empty-state {
+    .empty-cell {
         padding: var(--space-6);
     }
 }
+
+/* First-result receipts shared by inbox confirmation and manual entry. */
+.expense-confirmation { display: flex; flex-direction: column; gap: var(--space-6); width: min(100%, 44rem); margin-inline: auto; min-height: calc(100dvh - var(--space-12) * 3); }
+.expense-confirmation-heading { display: flex; flex-direction: column; align-items: center; gap: var(--space-5); padding-block: var(--space-8) var(--space-3); text-align: center; }
+.expense-confirmation-mark { display: grid; place-items: center; width: calc(var(--space-10) * 2); aspect-ratio: 1; border-radius: 50%; background: var(--brand-primary-bg); color: var(--brand-primary); }
+.expense-confirmation h1 { margin: 0; font-size: var(--type-hero-size); line-height: var(--type-hero-line); }
+.expense-confirmation p { margin: 0; color: var(--text-muted); }
+.expense-confirmation-actions { display: grid; gap: var(--space-3); margin-top: auto; padding-block: var(--space-5); }
 
 /* K3: coarse 触达地板 (width 管密度, pointer 管目标尺寸)。 */
 @media (pointer: coarse) {
@@ -1147,4 +1541,66 @@ body.product-shell .file-picker > input.file-picker-input:focus-visible {
     .product-segments button {
         min-height: var(--target-min);
     }
+}
+
+.score-fields { display: grid; gap: var(--space-5); }
+
+/* 评价 radiogroup：原生语义 + pill 视觉（radio 透明覆盖，:checked/:focus-visible
+   驱动 pill 态；键盘方向键与读屏走原生 input）。 */
+.score-row {
+    border: 0;
+    margin: 0;
+    padding: 0;
+}
+
+.score-row legend {
+    padding: 0;
+    font-size: var(--type-caption-size);
+    color: var(--text-muted);
+}
+
+.score-seg {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+}
+
+.score-seg-option {
+    position: relative;
+    cursor: pointer;
+}
+
+.score-seg-option input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    margin: 0;
+}
+
+.score-seg-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: var(--target-min);
+    min-height: var(--target-min);
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border-input);
+    border-radius: var(--radius-pill);
+    background: var(--surface-card);
+    color: var(--text-muted);
+    font-size: var(--type-body-size);
+    transition: background var(--motion-fast) var(--ease-standard),
+        color var(--motion-fast) var(--ease-standard),
+        border-color var(--motion-fast) var(--ease-standard);
+}
+
+.score-seg-option input:checked + .score-seg-pill {
+    background: var(--brand-primary);
+    border-color: var(--brand-primary);
+    color: var(--text-on-primary);
+}
+
+.score-seg-option input:focus-visible + .score-seg-pill {
+    outline: var(--space-1) solid var(--brand-focus-ring);
+    outline-offset: var(--space-1);
 }

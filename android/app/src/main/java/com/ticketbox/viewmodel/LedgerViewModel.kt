@@ -193,6 +193,7 @@ class LedgerViewModel(
     private val debts: DebtActions,
     private val onDataChanged: () -> Unit = {},
     private val calendars: LedgerCalendarReader? = null,
+    initialDataQualityFilter: LedgerDataQualityFilter? = null,
 ) : ViewModel() {
     /** Fired only when a ledger write changes the budget advisor's
      *  confirmed-expense inputs: manual create, and batch applies that move
@@ -203,10 +204,12 @@ class LedgerViewModel(
         LedgerUiState(
             readOnly = !repository.canModifyLedger(),
             lastSyncAt = repository.lastConfirmedSyncAt(),
+            monthFilter = if (initialDataQualityFilter == null) YearMonth.now().toString() else "",
+            dataQualityFilter = initialDataQualityFilter,
         ),
     )
     val uiState: StateFlow<LedgerUiState> = _uiState.asStateFlow()
-    private var monthSelected = false
+    private var monthSelected = initialDataQualityFilter != null
     private var resolvingMonth = calendars != null
     private var allConfirmed: List<ConfirmedStreamItem> = emptyList()
     private var inFlightSyncKey: LedgerSyncKey? = null

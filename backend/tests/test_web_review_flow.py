@@ -25,9 +25,12 @@ loopback gate — so these posts go through without a token, same as the sibling
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 from fastapi.testclient import TestClient
 
 from tests._infra.assets import PNG_BYTES
+from tests._web_native_form_support import hidden_post_forms
 
 
 def _create_pending(client: TestClient, *, identity) -> int:
@@ -262,11 +265,11 @@ def test_web_reject_fragment_success_returns_marker(
     advances). The no-JS path keeps its 撤销 banner — covered separately in
     test_web_expense_undo."""
     expense_id = _create_pending(web_client, identity=identity)
+    page = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner&fragment=1")
+    fields = hidden_post_forms(page.text)[f"/web/expenses/{expense_id}/save"]
     resp = web_client.post(
         f"/web/expenses/{expense_id}/reject",
-        data={"ledger_id": "owner", "expected_row_version": _fresh_token(
-            web_client, expense_id, identity=identity
-        ), "fragment": "1"},
+        data={**fields, "fragment": "1"},
         follow_redirects=False,
     )
     assert resp.status_code == 200, resp.text
@@ -282,7 +285,7 @@ def test_web_reject_fragment_missing_expense_returns_readable_html(
 ) -> None:
     resp = web_client.post(
         "/web/expenses/999999/reject",
-        data={"ledger_id": "owner", "expected_row_version": "1", "fragment": "1"},
+        data={"ledger_id": "owner", "expected_row_version": "1", "reject_idempotency_key": str(uuid4()), "fragment": "1"},
         follow_redirects=False,
     )
     assert resp.status_code == 404, resp.text
@@ -301,7 +304,7 @@ def test_web_drawer_fragment_renders_return_to_pending_hidden(
     page by design)."""
     expense_id = _create_pending(web_client, identity=identity)
     drawer = web_client.get(
-        f"/web/expenses/{expense_id}/edit?ledger_id=owner&fragment=1"
+        f"/web/expenses/{expense_id}/edit?ledger_id=owner&return_to=pending&fragment=1"
     )
     assert drawer.status_code == 200
     assert 'name="return_to"' in drawer.text

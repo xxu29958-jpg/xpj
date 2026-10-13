@@ -1,28 +1,41 @@
 {% extends "base.html" %}
 {% from '_history_time.html' import saved_time %}
+{% from '_plan_history.html' import scope, comparison, boundary with context %}
 {% set page_title = '安排修改记录' %}
 {% set product_body_domain = 'plans' %}
+{% set page_surface = 'tertiary' %}
+{% set task_return_href %}/web/budget-advise?ledger_id={{ selected_ledger_id|urlencode }}&amp;month={{ history.month|urlencode }}{% endset %}
+{% set task_return_label = '返回本月安排' %}
 {% block title %}安排修改记录 · 小票夹{% endblock %}
 {% block content %}
 <header class="product-page-header">
   <div class="product-page-heading">
-    <span class="product-eyebrow">计划 / {{ history.month }}</span>
     <h1 class="page-title">安排修改记录</h1>
     <p class="product-page-summary">每次保存时希望留出的金额。它们是计划，不代表实际存入或账户余额。</p>
   </div>
-  <a class="product-button" href="/web/budget-advise?ledger_id={{ selected_ledger_id|urlencode }}&month={{ history.month|urlencode }}">返回本月安排</a>
 </header>
-<section class="product-panel product-panel--padded">
-{% if history.items %}
-  <div class="product-table-wrap"><table class="product-table">
-    <thead><tr><th scope="col">保存时间</th><th scope="col">版本</th><th scope="col">原币种</th><th scope="col">计划储蓄</th><th scope="col">备用金</th></tr></thead>
-    <tbody>{% for item in history.items %}<tr>
-      <td>{{ saved_time(item.recorded_at) }}</td><td>{{ item.row_version }}</td><td>{{ item.home_currency_code }}</td>
-      <td class="amount">{{ arrangement_amount(item.savings_target_cents, item.home_currency_code) }}</td>
-      <td class="amount">{{ arrangement_amount(item.reserved_buffer_cents, item.home_currency_code) }}</td>
-    </tr>{% endfor %}</tbody>
-  </table></div>
-  {% if history.next_before_version %}<a class="product-button" href="/web/budget-advise/history?ledger_id={{ selected_ledger_id|urlencode }}&month={{ history.month|urlencode }}&before_version={{ history.next_before_version }}">更早的记录</a>{% endif %}
-{% else %}<p class="product-state-body">这个月还没有保存过安排。</p>{% endif %}
-</section>
+<div class="product-flow">
+{{ scope(history.items, history.next_before_version) }}
+<ol class="product-history">
+{% for item in history.items %}
+{% set prior = loop.nextitem if loop.nextitem is defined and loop.nextitem.row_version == item.row_version - 1 else none %}
+<li class="product-history-item" aria-label="保存安排 · 版本 {{ item.row_version }}">
+  <div class="product-entry-heading"><h2 class="product-panel-title">保存本月安排</h2><span class="product-status">版本 {{ item.row_version }}</span></div>
+  <span>{{ saved_time(item.recorded_at) }}</span>
+  {{ comparison('计划储蓄', prior.home_currency_code ~ ' ' ~ arrangement_amount(prior.savings_target_cents, prior.home_currency_code) if prior else none, item.home_currency_code ~ ' ' ~ arrangement_amount(item.savings_target_cents, item.home_currency_code)) }}
+  {{ boundary(item, prior, loop.last) }}
+  <details class="product-disclosure"><summary>查看当时定义</summary>
+  {{ comparison('备用金', prior.home_currency_code ~ ' ' ~ arrangement_amount(prior.reserved_buffer_cents, prior.home_currency_code) if prior else none, item.home_currency_code ~ ' ' ~ arrangement_amount(item.reserved_buffer_cents, item.home_currency_code)) }}
+  <dl class="product-surface-rows">
+    <div><dt>原币种</dt><dd>{{ item.home_currency_code }}</dd></div>
+  </dl>
+  </details>
+</li>
+{% else %}<li class="product-history-item"><span>这个月还没有保存过安排。</span></li>{% endfor %}
+</ol>
+<nav class="product-pagination" aria-label="安排修改记录分页">
+  {% if history.next_before_version %}<a class="product-button product-button--quiet" href="/web/budget-advise/history?ledger_id={{ selected_ledger_id|urlencode }}&amp;month={{ history.month|urlencode }}&amp;before_version={{ history.next_before_version }}">更早的记录</a>{% endif %}
+  {% if before_version %}<a class="product-button product-button--quiet" href="/web/budget-advise/history?ledger_id={{ selected_ledger_id|urlencode }}&amp;month={{ history.month|urlencode }}">最近的记录</a>{% endif %}
+</nav>
+</div>
 {% endblock %}

@@ -69,9 +69,12 @@ class RelationshipJourney:
         self.expect("invitation_status", "invited")
         self.connect(self.receiver, self.identity.receiver_account)
         invitation = self.facts()["invitation_id"]
+        self.receiver.get_by_role("link", name="核对这份邀请", exact=True).click()
         accept = self.receiver.locator(f'form[action="/web/bill-splits/{invitation}/accept"]')
         assert accept.locator('[name="target_ledger_id"]').input_value() == self.identity.receiver_ledger
-        accept.get_by_role("button", name="接受并记账", exact=True).click()
+        submit = self.receiver.locator('[form="split-accept-form"][data-splitaccept-submit]')
+        assert submit.evaluate("button => button.form === document.getElementById('split-accept-form')")
+        submit.click()
         self.expect("invitation_status", "accepted")
         self.expect("received_amount", 4000)
         assert self.facts()["expenses"] == 2 and self.facts()["original_principal"] == 4000
@@ -117,8 +120,8 @@ class RelationshipJourney:
         self.open_native()
         self.native.reveal_any("提交还款确认")
         self.native.click("提交还款确认")
-        self.native.fill("30.00", label="金额")
-        self.native.click("保存")
+        self.native.fill("30.00", label="本次还款")
+        self.native.click("提交还款确认")
         original = self.facts()["original_id"]
         wait_for(lambda: original in self.facts()["pending_repayments"], "Native repayment declaration was not retained")
         self.goto(f"/web/debts/{original}")
@@ -130,12 +133,14 @@ class RelationshipJourney:
         self.expect("original_forgiven", 1000)
         self.expect("original_remaining", 0)
         self.goto(f"/web/expenses/{self.facts()['source_id']}/edit")
+        self.page.get_by_text("退款与冲销", exact=True).click()
+        self.page.get_by_role("link", name="登记退款或拒付", exact=True).click()
         panel = self.page.locator("#offset-create-money")
-        panel.locator("summary").click()
         panel.locator('[name="original_amount"]').fill("60.00")
         panel.locator('[name="accounting_date"]').fill(date.today().isoformat())
         panel.locator('[name="reason"]').fill("商家部分退款，双方另行核对承担")
-        panel.get_by_role("button", name="登记", exact=True).click()
+        panel.get_by_role("button", name="确认登记退回", exact=True).click()
+        self.page.locator("#fact-overview").wait_for(state="visible")
         self.expect("offsets", 1)
         self.expect("source_refund", 6000)
         self.expect("agreed_share", 4000)
@@ -148,7 +153,9 @@ class RelationshipJourney:
         self.goto(f"/web/debts/{public_id}/split-agreement?command={command}", receiver=receiver)
         page = self.receiver if receiver else self.page
         form = page.locator('[data-repayment-kind="split-change"]')
-        form.locator("[data-repayment-submit]").wait_for(state="visible")
+        submit = page.locator('[form="split-change-form"][data-repayment-submit]')
+        submit.wait_for(state="visible")
+        assert submit.evaluate("button => button.form === document.getElementById('split-change-form')")
         return form
 
     def propose_web(self, share, settlement, reason, *, receiver=False, returned=False):
@@ -173,7 +180,7 @@ class RelationshipJourney:
     def submit_web(self, form, *, receiver=False):
         page = self.receiver if receiver else self.page
         client_ref = form.locator('[name="idempotency_key"]').input_value()
-        form.locator("[data-repayment-submit]").click()
+        page.locator('[form="split-change-form"][data-repayment-submit]').click()
         receipt = page.locator("[data-repayment-ack]")
         receipt.wait_for()
         assert json.loads(receipt.get_attribute("data-repayment-ack"))["clientRef"] == client_ref
@@ -183,18 +190,17 @@ class RelationshipJourney:
             arg=client_ref)
 
     def settle_return(self):
+        from scripts.relationship_journey_recovery import RelationshipRecovery
+
         returned = self.facts()["return_id"]
         self.goto("/web/debts")
         assert self.page.locator(f'a[href*="/web/debts/{returned}"]').count() > 0, "The sender cannot discover the cross-ledger return payable"
-        self.goto(f"/web/debts/{returned}")
-        self.page.locator('[name="amount_major"]').fill("2.00")
-        self.page.get_by_role("button", name="提交还款确认", exact=True).click()
-        wait_for(lambda: returned in self.facts()["pending_repayments"], "The return declaration was not retained")
+        RelationshipRecovery(self).declare_return(returned)
         self.native.restart()
         self.open_native(returned=True)
         self.native.reveal_any("收到啦，谢谢～")
         self.native.click("收到啦，谢谢～")
-        self.native.click("保存")
+        self.native.click("确认这笔到账")
         self.expect("return_paid", 200)
         self.native.reveal_any("拆账约定与结算", toward_start=True)
         self.native.reveal_any("算了，不用还了")

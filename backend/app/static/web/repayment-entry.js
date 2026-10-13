@@ -3,17 +3,69 @@
   "use strict";
   const repaymentNames = ["debt_public_id", "ledger_id", "origin_binding", "home_currency_code",
     "expected_row_version", "amount_major", "paid_at", "paid_at_timezone"];
+  const repaymentTimeNames = ["time_precision", "calendar_revision"];
+  const captureTimeNames = ["payment_date", "calendar_revision"];
   const voidNames = ["debt_public_id", "ledger_id", "origin_binding", "expected_row_version", "reason", "repayment_public_id"];
   const kindNames = ["debt_public_id", "ledger_id", "origin_binding", "expected_row_version", "debt_kind"];
   const fieldNames = {repayment:repaymentNames, "debt-void":voidNames, "repayment-void":voidNames,
+    "member-repayment":[...repaymentNames.filter(name => name !== "expected_row_version"), "note"],
     "repayment-review":["draft_public_id", "ledger_id", "origin_binding", "review_action", "target_with_expected_row_version", "original_currency", "original_amount"],
     "debt-kind":kindNames, "split-change":["debt_public_id", "ledger_id", "origin_binding", "home_currency_code", "command",
       "proposal_public_id", "expected_row_version", "expected_return_row_version", "new_share_amount_major",
       "settlement_net_amount_major", "reason", "supersedes_proposal_public_id"]};
   const voidLabels = ["确认作废", "继续核实原作废"];
-  const submitLabels = {repayment:["记一笔还款", "继续核实这笔还款"],
+  const submitLabels = {repayment:["记录这次还款", "核实原还款"],
+    "member-repayment":["提交还款确认", "核实原还款"],
     "debt-void":voidLabels, "repayment-void":voidLabels,
     "debt-kind":["保存偿还方式", "继续核实原更正"], "repayment-review":["确认处理", "核实原处理"]};
+  function bindBalancePreview(form) {
+    const panel = form.querySelector("[data-debt-balance-preview]");
+    if (!panel) return null;
+    const input = form.elements.namedItem("amount_major");
+    const output = panel.querySelector("[data-balance-after]");
+    const digits = Number(panel.dataset.balanceDigits);
+    function update() {
+      panel.hidden = true;
+      const currency = form.elements.namedItem("home_currency_code");
+      const version = form.elements.namedItem("expected_row_version");
+      if (input.readOnly || currency && currency.value !== panel.dataset.balanceCurrency ||
+          version && version.value !== panel.dataset.balanceVersion) return;
+      // This estimates only exact positive input. It never normalizes a command,
+      // clamps an overpayment, or represents an unknown submission as accepted.
+      const after = window.TicketboxWeb.remainingMoneyPreview(input.value, panel.dataset.balanceMinor, digits);
+      if (after === null) return;
+      output.textContent = panel.dataset.balanceSymbol + after;
+      panel.hidden = false;
+    }
+    form.addEventListener("input", update);
+    update();
+    return update;
+  }
+  function originalAmountPresentation(form) {
+    const output = form.querySelector("[data-repayment-original-amount]");
+    if (!output) return null;
+    const input = form.elements.namedItem("amount_major") || form.elements.namedItem("original_amount");
+    const currency = form.querySelector("[data-repayment-currency]");
+    const currencyInput = form.elements.namedItem("home_currency_code") || form.elements.namedItem("original_currency");
+    const initialCurrency = currencyInput.value;
+    const initialLabel = currency?.textContent;
+    return function () {
+      output.textContent = input.value || "未填金额";
+      output.hidden = !input.readOnly;
+      input.hidden = input.readOnly;
+      const originalCurrency = currencyInput.value;
+      if (currency) currency.textContent = originalCurrency === initialCurrency ? initialLabel : originalCurrency;
+    };
+  }
+  function captureTargetPresentation(form) {
+    const output = form.querySelector("[data-repayment-target-description]");
+    if (!output) return null;
+    const target = form.elements.namedItem("target_with_expected_row_version");
+    return function () {
+      output.hidden = !target.value;
+      output.textContent = target.selectedOptions[0]?.textContent || "";
+    };
+  }
   function initialize(form, settlementField) {
   const surface = form.closest("[data-repayment-container]");
   if (!surface) return;
@@ -24,6 +76,9 @@
   const targetField = captureReview ? "draft_public_id" : "debt_public_id";
   const typedCorrection = voidCommand || kindCorrection || captureReview;
   const namespace = Object.hasOwn(fieldNames, form.dataset.repaymentKind) ? form.dataset.repaymentKind : "repayment";
+  const memberRepayment = namespace === "member-repayment";
+  const repaymentTime = namespace === "repayment" || memberRepayment;
+  const timeNames = captureReview ? captureTimeNames : repaymentTime ? repaymentTimeNames : [];
   const names = fieldNames[namespace];
   const kindLabels = {one_off:"一次结清", revolving:"循环往来", installment:"分期偿还", unspecified:"暂不指定"};
   const commandLabels = {create:"发送新约定", accept:"接受这份约定", reject:"拒绝这份约定", withdraw:"撤回我的约定"};
@@ -32,11 +87,17 @@
   const panel = surface.querySelector("[data-repayment-panel]");
   const shelf = surface.querySelector("[data-repayment-shelf]");
   const status = form.querySelector("[data-repayment-status]");
-  const submit = form.querySelector("[data-repayment-submit]");
-  const replace = form.querySelector("[data-repayment-replace]");
+  const entryLabel = surface.querySelector("[data-repayment-entry-label]");
+  const heading = surface.querySelector("[data-repayment-heading]");
+  const submit = form.querySelector("[data-repayment-submit]") || form.elements.namedItem("repayment_submit");
+  const replace = form.querySelector("[data-repayment-replace]") || form.elements.namedItem("repayment_replace");
   const preview = form.querySelector("[data-repayment-preview]");
+  const updateBalancePreview = bindBalancePreview(form);
+  const updateOriginalAmount = originalAmountPresentation(form);
+  const updateCaptureTarget = captureTargetPresentation(form);
   const settlementExplicit = form.elements.namedItem("settlement_explicit");
-  const optionalNames = splitChange ? ["settlement_explicit", "settlement_suggestion"] : [];
+  const optionalNames = splitChange ? ["settlement_explicit", "settlement_suggestion"] :
+    timeNames;
   const hints = optionalNames.map(name => form.elements.namedItem(name)).filter(Boolean);
   const finishReview = form.querySelector("[data-void-finish-review]");
   const finishRejected = form.querySelector("[data-void-finish-rejected]");
@@ -62,11 +123,14 @@
 
   function values() {
     const result = Object.fromEntries(controls.map(control => [control.name, control.value]));
-    hints.forEach(control => { if (control.value !== "") result[control.name] = control.value; });
+    hints.forEach(control => {
+      if (timeNames.length ? !control.disabled : control.value !== "") result[control.name] = control.value;
+    });
     return result;
   }
   function sameValues(left, right) {
-    return names.every(name => typeof left[name] === "string" && left[name] === right[name]);
+    return names.every(name => typeof left[name] === "string" && left[name] === right[name]) &&
+      timeNames.every(name => left[name] === right[name]);
   }
   function bound(saved) {
     return saved[targetField] === target && saved.ledger_id === scope.ledgerId &&
@@ -76,8 +140,14 @@
     status.hidden = false;
     status.textContent = captureReview ? message.replaceAll("还款", "采集处理").replaceAll("欠款", "原采集") : kindCorrection ? message.replaceAll("还款", "偿还方式更正").replaceAll("金额、日期", "选择、版本") : voidCommand ? message.replaceAll("还款", "作废提交").replaceAll("金额、日期", "对象、原因") : splitChange ? message.replaceAll("还款", "约定操作") : message;
     form.dataset.repaymentState = state;
+    if (entryLabel) entryLabel.textContent = state === "editing" ? (memberRepayment ? "记一次还款" : "记一笔还款") : "核对原还款";
+    if (heading) heading.textContent = state === "editing" ? "确认这次还款" : "这笔还款记上了吗";
+    updateOriginalAmount?.();
+    updateBalancePreview?.();
+    updateCaptureTarget?.();
   }
   function lockInputs(locked) {
+    if (captureReview) hints.forEach(control => { control.readOnly = locked; });
     controls.forEach(control => {
       control.readOnly = locked;
       const original = selectOriginals.get(control);
@@ -88,6 +158,8 @@
       }
     });
     settlementField?.sync();
+    updateOriginalAmount?.();
+    updateBalancePreview?.();
   }
   function showValues(saved) {
     controls.forEach(control => {
@@ -99,7 +171,16 @@
       }
       control.value = value;
     });
-    hints.forEach(control => { control.value = saved[control.name] ?? ""; });
+    hints.forEach(control => {
+      if (captureReview && control.name === "payment_date") {
+        control.type = "date";
+        control.value = saved[control.name] ?? "";
+        if (control.value !== (saved[control.name] ?? "")) control.type = "text";
+      }
+      control.value = saved[control.name] ?? "";
+      // Old unresolved submissions must not acquire the new page's date evidence.
+      if (timeNames.length) control.disabled = !Object.hasOwn(saved, control.name);
+    });
     settlementField?.sync();
     if (splitChange) {
       if (!commandLabels[saved.command]) throw Error("invalid_original_command");
@@ -112,8 +193,10 @@
       if (originalCommand) originalCommand.hidden = saved.command === "create";
       if (preview) preview.hidden = saved.command !== "create";
     }
-    const label = form.querySelector('label[for="debt-repay-amount"]');
-    if (label) label.textContent = "本次还款（" + (saved.home_currency_code || "原币种") + "）";
+    const label = form.querySelector(memberRepayment ? 'label[for="debt-proposal-amount"]' : 'label[for="debt-repay-amount"]');
+    if (label) label.textContent = "本次还款";
+    updateOriginalAmount?.();
+    updateBalancePreview?.();
   }
   function blocked(message, state = "blocked") {
     phase = "blocked";
@@ -121,6 +204,7 @@
     submit.disabled = true;
     if (replace) replace.hidden = true;
     notice(message, state);
+    panel.open = true;
   }
   function commandControls(editing) {
     if (!splitChange) {
@@ -137,7 +221,8 @@
   }
   function showPhase() {
     panel.hidden = false;
-    if (typedCorrection && retained) panel.open = true;
+    submit.hidden = false;
+    if (retained) panel.open = true;
     const canEdit = commandControls(phase === "editing");
     const canReplace = replacement && phase === "blocked" && currentRef === nativeRef;
     submit.disabled = phase === "editing" ? !canEdit : !canRecover || !!canReplace || !!finishReview || knownRejected;
@@ -168,7 +253,8 @@
     return items;
   }
   function describeOriginal(saved) {
-    if (captureReview) return [saved.review_action === "dismiss" ? "忽略通知" : "记为还款", saved.original_currency, saved.original_amount || "未填金额"];
+    if (captureReview) return [saved.review_action === "dismiss" ? "忽略通知" : "记为还款", saved.original_currency,
+      saved.original_amount || "未填金额", saved.payment_date || "沿用采集时间"];
     if (kindCorrection) return [kindLabels[saved.debt_kind] || saved.debt_kind];
     if (voidCommand) return [saved.home_currency_code, saved.reason || "未填原因", saved.repayment_public_id || saved.debt_public_id];
     if (splitChange) return [saved.home_currency_code, commandLabels[saved.command], saved.new_share_amount_major];
@@ -201,9 +287,10 @@
     }
     const debt = parent(values(), namespace);
     if (!debt) return false;
-    return ["repayment", "debt-void", "repayment-void", "debt-kind", "repayment-review"].some(kind => {
+    return ["repayment", "member-repayment", "debt-void", "repayment-void", "debt-kind", "repayment-review"].some(kind => {
       const store = window.TicketboxDraftStore.createStore({prefix:"ticketbox:" + kind + "-draft:v1:",
-        fields:fieldNames[kind], validRef:uuid});
+        fields:fieldNames[kind], optionalFields:kind === "repayment-review" ? captureTimeNames :
+          ["repayment", "member-repayment"].includes(kind) ? repaymentTimeNames : [], validRef:uuid});
       return store.list(scope).some(record => parent(record.values, kind) === debt &&
         (kind !== namespace || record.clientRef !== currentRef) && record.phase !== "editing");
     });
@@ -262,7 +349,7 @@
   }
   function openSubmission() {
     const items = renderShelf(), selection = selectSubmission(items);
-    if (!selection.ref) { panel.hidden = true; return false; }
+    if (!selection.ref) { panel.hidden = true; submit.hidden = true; return false; }
     if (!uuid.test(selection.ref)) {
       blocked("原提交编号无法读取，内容未被覆盖。请保留本页核对。");
       return false;
@@ -291,7 +378,7 @@
       if (turn !== epoch) return;
       if (voidCommand) {
         const selection = selectSubmission(records());
-        if (!selection.ref) { panel.hidden = true; return; }
+        if (!selection.ref) { panel.hidden = true; submit.hidden = true; return; }
         const record = drafts.read(selection.ref);
         const repaymentTarget = (record ? record.values : nativeValues).repayment_public_id;
         leaseKey = "ticketbox:" + namespace + "-lease:v1:" + JSON.stringify([...axes.map(axis => scope[axis]), target, repaymentTarget]);
@@ -325,7 +412,8 @@
     const ackStatus = surface.querySelector("[data-repayment-ack-status]");
     try {
       const ack = JSON.parse(marker.getAttribute("data-repayment-ack"));
-      if (!uuid.test(ack.clientRef) || !uuid.test(splitChange || typedCorrection ? ack.resultPublicId : ack.repaymentPublicId) ||
+      const resultId = memberRepayment ? ack.proposalPublicId : splitChange || typedCorrection ? ack.resultPublicId : ack.repaymentPublicId;
+      if (!uuid.test(ack.clientRef) || !uuid.test(resultId) ||
           !acknowledgesCommand(ack) ||
           !drafts.matches(ack.scope, scope) || !bound(ack.values)) throw Error("ack_mismatch");
       if (voidCommand) leaseKey = "ticketbox:" + namespace + "-lease:v1:" +
@@ -376,6 +464,10 @@
   form.addEventListener("submit", function (event) {
     const previewing = preview && event.submitter === preview;
     if (!held || posting || (previewing ? preview.disabled : submit.disabled)) { event.preventDefault(); return; }
+    // Native constraints exclude readonly originals; only editable incomplete dates can match.
+    if (form.querySelector('[name="payment_date"]:invalid')) {
+      event.preventDefault(); notice("请填写完整有效的还款日期，或清空以沿用原采集时间。", "editing"); return;
+    }
     try {
       if (previewing) {
         if (phase !== "editing") throw Error("original_is_submitted");
@@ -469,4 +561,23 @@
     const settlementField = window.TicketboxSplitSettlement ? window.TicketboxSplitSettlement(form) : null;
     initialize(form, settlementField);
   });
+  const entry = document.querySelector("[data-repayment-task-kind]");
+  if (entry) {
+    const kind = entry.dataset.repaymentTaskKind;
+    try {
+      const scope = JSON.parse(entry.dataset.repaymentTaskScope);
+      const drafts = window.TicketboxDraftStore.createStore({prefix:"ticketbox:" + kind + "-draft:v1:",
+        fields:fieldNames[kind], optionalFields:repaymentTimeNames, validRef:/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i});
+      const retained = drafts.list(scope).filter(record => record.values.debt_public_id === entry.dataset.repaymentTaskTarget);
+      const original = retained.find(record => record.phase !== "editing") || retained[0];
+      if (original) {
+        entry.closest(".product-task-actions").hidden = false;
+        entry.firstChild.textContent = original.phase === "editing" ? "继续填写原还款 " : "核对原还款 ";
+        entry.hash = kind + "-" + original.clientRef;
+      }
+    } catch (_) {
+      entry.closest(".product-task-actions").hidden = false;
+      entry.firstChild.textContent = "查看还款任务 ";
+    }
+  }
 })(window, document);

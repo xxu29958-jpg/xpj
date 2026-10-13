@@ -49,6 +49,10 @@ def test_upload_receipt_key_is_optional_without_weakening_outbox_command_headers
     upload_key = key_headers.pop(("/api/app/upload-screenshot", "post"))
     assert upload_key["required"] is False
     assert "x-ticketbox-runtime-required" not in upload_key["schema"]
+    confirmed_apply = key_headers.pop(("/api/rules/apply-confirmed", "post"))
+    assert confirmed_apply["required"] is False
+    assert "x-ticketbox-runtime-required" not in confirmed_apply["schema"]
+    assert "Required when confirm=true" in confirmed_apply["description"]
     assert key_headers
     assert all(parameter["required"] for parameter in key_headers.values())
 

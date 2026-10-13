@@ -1,35 +1,91 @@
 {% extends "base.html" %}
+{% from 'partials/import_counts.html' import summary %}
 {% set page_title = '导入导出' %}
 {% set product_body_domain = 'transactions' %}
-{% block title %}导入 / 导出 · 小票夹{% endblock %}
-
-{# C4 旧栈收官: 导入/导出 hub 迁 product 流水域, 消费 transactions.css 既有
-   import-export-* 词汇 (导入主面板 + 导出辅面板, ≤56rem 收单列)。流程语义前置:
-   上传只生成预览批次, 确认后分批导入且只进「待确认」队列; 列规格收进原生
-   <details> 参考 (无 JS 可开合); 文件选择保留原生 input —— 关 JS 也显示已选
-   文件名 (真实反例: import-selected-file-360), 不造 JS 增强。 #}
+{% set page_surface = 'tertiary' %}
+{% set mode = view_mode|default('') %}
+{% set task_return_href = ('/web/import' if mode else '/web/confirmed') ~ q %}
+{% set task_return_label = '导入与导出' if mode else '流水' %}
+{% block title %}导入与导出 · 小票夹{% endblock %}
 {% block content %}
+<div class="import-task stack">
 <header class="product-page-header">
   <div class="product-page-heading">
-    <span class="product-eyebrow">流水 / 导入导出</span>
-    <h1 class="page-title page-title--compact">导入 / 导出</h1>
-    <p class="product-page-summary">带走当前账本已保存的数据与可用原件，或用 CSV 导入、分析和核对流水。</p>
+    <h1 class="page-title">{{ '导出分析数据' if mode == 'export' else '带走完整账本' if mode == 'portable' else '导入账单文件' }}</h1>
+    <p class="product-page-summary">{{ '用熟悉的表格，继续看这笔账。' if mode == 'export' else '记录和原件，一起妥善保存。' if mode == 'portable' else '先预览，再决定导入哪些记录。' }}</p>
   </div>
 </header>
-
-{% if flash_message %}
-<div class="product-feedback product-feedback--{{ 'error' if flash_type == 'error' else 'success' }}"
-     role="{{ 'alert' if flash_type == 'error' else 'status' }}">{{ flash_message }}</div>
-{% endif %}
-
-<div class="import-export-workspace">
-  <section class="product-panel product-panel--padded import-export-panel import-export-panel--primary" aria-label="导入 CSV">
-    <div class="product-panel-header">
-      <div>
-        <h2 class="product-panel-title">导入 CSV</h2>
-        <p class="product-panel-subtitle">上传后先生成预览批次。新消费进入「待确认」；退款、拒付和冲销在批次中逐条复核，已有事件关联原记录。</p>
+{% if flash_message %}<div class="product-feedback product-feedback--{{ 'error' if flash_type == 'error' else 'success' }}" role="{{ 'alert' if flash_type == 'error' else 'status' }}">{{ flash_message }}</div>{% endif %}
+{% if mode == 'export' %}
+<section class="stack" aria-label="导出 CSV">
+    <form method="get" action="/web/export.csv" class="stack">
+      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+      <div class="product-field">
+        <label for="export-month">月份（可选）</label>
+        <input type="month" id="export-month" name="month">
       </div>
-    </div>
+      <div class="product-field">
+        <label for="export-category">分类（可选）</label>
+        <input type="text" id="export-category" name="category" list="export-categories" placeholder="全部分类">
+        <datalist id="export-categories">
+          {% for category in export_categories %}<option value="{{ category }}">{% endfor %}
+        </datalist>
+      </div>
+      <div class="product-field">
+        <label for="export-tag">标签（可选）</label>
+        <input type="text" id="export-tag" name="tag" list="export-tags" placeholder="全部标签">
+        <datalist id="export-tags">
+          {% for tag in export_tags %}<option value="{{ tag }}">{% endfor %}
+        </datalist>
+      </div>
+      <div class="product-entry product-entry--static">
+        <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#book-open"/></svg></span>
+        <span class="product-entry-copy"><strong>{{ selected_ledger_name }}</strong><span>{{ home_currency_code }} · 已确认账单及退回、冲销记录</span></span>
+      </div>
+      <p class="meta">按当前筛选导出记录数据（UTF-8 含 BOM，可用 Excel 打开）。原件图片请使用完整数据包。</p>
+      <div class="product-field">
+        <button type="submit" class="product-button product-button--primary">下载 CSV</button>
+      </div>
+    </form>
+</section>
+{% elif mode == 'portable' %}
+<section class="stack" aria-label="带走账本数据">
+  <div class="product-panel product-panel--padded product-panel--highlight import-export-cover">
+    <div><h2 class="product-panel-title">你的记录，随时带走</h2><p>{{ selected_ledger_name }} · 当前有权访问的内容</p></div>
+    <img src="/static/web/product/art/receipt-clip.png" alt="" width="1280" height="1280">
+  </div>
+  <div>
+  {% for title, hint, icon, tone in [
+    ('结构化记录', '各状态账单、历史、计划和关联关系', 'database', ''),
+    ('可用原件', '附件文件与逐条状态清单', 'files', 'apricot'),
+    ('缺失原件', '清单中明确标注，业务记录仍可带走', 'file-question', 'lilac')
+  ] %}
+  <div class="product-entry product-entry--static">
+    <span class="product-entry-icon{% if tone %} product-entry-icon--{{ tone }}{% endif %}" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#{{ icon }}"/></svg></span>
+    <span class="product-entry-copy"><strong>{{ title }}</strong><span>{{ hint }}</span></span>
+  </div>
+  {% endfor %}
+  </div>
+  <p class="product-feedback">未发送的操作不在数据包里。请先查看各端尚未提交的记录。</p>
+
+<div class="stack">  {% if portable_export_available %}
+  <a class="product-button product-button--primary" href="/web/export/portable{{ q }}">下载账本数据包（ZIP）</a>
+  <a class="product-button" href="/web/exports">选择其他账本或已归档账本</a>
+  {% else %}
+  <p class="import-export-note">下载完整数据包需要确认当前浏览器身份；现有 CSV 导出仍可使用。</p>
+  <a class="product-button" href="/web/auth/local?next={{ ('/web/import' ~ q) | urlencode }}">确认本机浏览器身份后继续</a>
+  {% endif %}
+</div>
+  <details class="import-schema"><summary>数据范围与保存说明</summary><div class="import-schema-body">
+  <p>账号、成员与关联关系按本次授权保存快照；你的收件箱和跨账本往来另行标明范围，不带走对方账本的私有记录。只读成员也可以下载。</p>
+  <p>缺失、损坏、已清理和历史未核验的原件，会在包内逐条说明；缩略图不能补足原件。可用业务记录仍可带走。</p>
+  <p>手机或浏览器中尚未提交的离线草稿不在包内，请继续各端原任务。服务端已接受、客户端尚未收到回执的结果属于已保存数据。</p>
+  <p>ZIP 中含敏感财务资料，请保存在你控制的位置。可直接阅读包内说明与记录；这不是安装恢复包，也不能通过上方 CSV 表单还原安装。</p>
+
+</div></details>
+</section>
+{% else %}
+<section aria-label="导入 CSV">
     {% if can_write %}
     <form method="post" action="/web/import/preview" enctype="multipart/form-data" class="product-form-grid import-upload-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -61,104 +117,26 @@
     {% else %}
     <p class="text-meta">只读角色无法导入。</p>
     {% endif %}
-  </section>
-
-  <section class="product-panel product-panel--padded import-export-panel" aria-label="导出 CSV">
-    <div class="product-panel-header">
-      <div>
-        <h2 class="product-panel-title">导出 CSV</h2>
-        <p class="product-panel-subtitle">下载当前账本的已确认账单（UTF-8 含 BOM，可直接用 Excel 打开）。</p>
-      </div>
-    </div>
-    <form method="get" action="/web/export.csv" class="product-form-grid export-filter-form">
-      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-      <div class="product-field">
-        <label for="export-month">月份（可选）</label>
-        <input type="month" id="export-month" name="month">
-      </div>
-      <div class="product-field">
-        <label for="export-category">分类（可选）</label>
-        <input type="text" id="export-category" name="category" list="export-categories" placeholder="全部分类">
-        <datalist id="export-categories">
-          {% for category in export_categories %}<option value="{{ category }}">{% endfor %}
-        </datalist>
-      </div>
-      <div class="product-field">
-        <label for="export-tag">标签（可选）</label>
-        <input type="text" id="export-tag" name="tag" list="export-tags" placeholder="全部标签">
-        <datalist id="export-tags">
-          {% for tag in export_tags %}<option value="{{ tag }}">{% endfor %}
-        </datalist>
-      </div>
-      <div class="product-field export-submit-field">
-        <button type="submit" class="product-button product-button--primary">下载 CSV</button>
-      </div>
-    </form>
-  </section>
-</div>
-
-<section class="product-panel product-panel--padded import-export-panel" aria-label="带走账本数据">
-  <div class="product-panel-header">
-    <div>
-      <h2 class="product-panel-title">带走账本数据</h2>
-      <p class="product-panel-subtitle">下载「{{ selected_ledger_name }}」服务端已保存的各状态记录、历史、计划、关联关系与可用原件，不受上方 CSV 筛选条件影响。</p>
-    </div>
-  </div>
-  <p>账号、成员与关联关系按本次授权保存快照；你的收件箱和跨账本往来另行标明范围，不带走对方账本的私有记录。只读成员也可以下载。</p>
-  <p>缺失、损坏、已清理和历史未核验的原件，会在包内逐条说明；缩略图不能补足原件。可用业务记录仍可带走。</p>
-  <p>手机或浏览器中尚未提交的离线草稿不在包内，请继续各端原任务。服务端已接受、客户端尚未收到回执的结果属于已保存数据。</p>
-  <p>ZIP 中含敏感财务资料，请保存在你控制的位置。可直接阅读包内说明与记录；这不是安装恢复包，也不能通过上方 CSV 表单还原安装。</p>
-  {% if portable_export_available %}
-  <a class="product-button product-button--primary" href="/web/export/portable{{ q }}">下载账本数据包（ZIP）</a>
-  <a class="product-button" href="/web/exports">选择其他账本或已归档账本</a>
-  {% else %}
-  <p class="import-export-note">下载完整数据包需要确认当前浏览器身份；现有 CSV 导出仍可使用。</p>
-  <a class="product-button" href="/web/auth/local?next={{ ('/web/import' ~ q) | urlencode }}">确认本机浏览器身份后继续</a>
-  {% endif %}
 </section>
-
-<section class="product-panel product-panel--padded import-batch-rows" aria-label="导入记录">
-  <div class="product-panel-header">
-    <div>
-      <h2 class="product-panel-title">导入记录</h2>
-      <p class="product-panel-subtitle">离开后可在这里继续原批次，或查看已导入的结果与错误行。重新上传会创建新批次。</p>
-    </div>
+<nav aria-label="其他数据任务">
+  <a class="product-entry" href="/web/import{{ q }}&amp;task=export"><span class="product-entry-icon product-entry-icon--lilac" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#file-spreadsheet"/></svg></span><span class="product-entry-copy"><strong>导出分析数据</strong><span>按月份、分类和标签下载 CSV</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></a>
+  <a class="product-entry" href="/web/import{{ q }}&amp;task=portable"><span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#archive"/></svg></span><span class="product-entry-copy"><strong>带走完整账本</strong><span>记录、历史与可用原件，一起保存</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></a>
+</nav>
+<section aria-label="导入记录" class="stack">
+  <h2 class="product-panel-title">继续之前的导入</h2>
+  <p class="meta">离开后可在这里继续原批次，查看结果与错误行；重新上传会创建新批次。</p>
+  {% for progress in batch_page.items %}
+  {% set batch = progress.batch %}
+  {% set status_label, status_tone = progress.display_status %}
+  <div data-import-batch="{{ batch.public_id }}">
+    <a class="product-entry" href="/web/import/{{ batch.public_id }}{{ q }}">
+      <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#file-spreadsheet"/></svg></span>
+      <span class="product-entry-copy"><strong>{{ batch.file_name }}</strong><span>{{ batch_created_labels[batch.id] }} · {{ status_label }}</span><span>{{ summary(progress.row_counts) }}</span></span>
+      <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
+    </a>
+    {% if progress.row_counts.error_rows > 0 %}<a class="product-button product-button--quiet" href="/web/import/{{ batch.public_id }}/errors.csv{{ q }}">下载错误行</a>{% endif %}
   </div>
-  <div class="product-table-wrap">
-    <table class="product-table">
-      <thead>
-        <tr>
-          <th scope="col">文件 / 上传时间</th>
-          <th scope="col">结果</th>
-          <th scope="col">剩余可导入</th>
-          <th scope="col">新增 / 已有 / 待复核</th>
-          <th scope="col">错误行</th>
-          <th scope="col">操作</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for progress in batch_page.items %}
-        {% set batch = progress.batch %}
-        {% set status_label, status_tone = progress.display_status %}
-        <tr>
-          <td>{{ batch.file_name }}<div class="text-meta">{{ batch_created_labels[batch.id] }}</div></td>
-          <td><span class="product-status {{ status_tone }}">{{ status_label }}</span></td>
-          <td>{{ progress.row_counts.remaining_valid_rows }}</td>
-          <td>消费草稿 {{ progress.row_counts.inserted_count }} · 事件入账 {{ progress.row_counts.confirmed_offset_rows }}<div class="text-meta">已有 {{ progress.row_counts.matched_rows }} · 待复核 {{ progress.row_counts.review_rows }}</div></td>
-          <td>{{ progress.row_counts.error_rows }}</td>
-          <td>
-            <a class="product-button product-button--quiet" href="/web/import/{{ batch.public_id }}{{ q }}">{{ '继续处理' if can_write and (progress.row_counts.remaining_valid_rows > 0 or progress.row_counts.review_rows > 0) else '查看结果' }}</a>
-            {% if progress.row_counts.error_rows > 0 %}
-            <a href="/web/import/{{ batch.public_id }}/errors.csv{{ q }}">下载错误行</a>
-            {% endif %}
-          </td>
-        </tr>
-        {% else %}
-        <tr><td colspan="6" class="text-meta">当前账本还没有导入记录。</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+  {% else %}<p class="meta">当前账本还没有导入记录。</p>{% endfor %}
   <div class="product-pagination">
     {% if batch_page.page > 1 %}
     <a class="product-button product-button--quiet" href="/web/import{{ q }}&page={{ batch_page.page - 1 }}&page_size={{ batch_page.page_size }}">上一页</a>
@@ -169,4 +147,6 @@
     {% endif %}
   </div>
 </section>
+{% endif %}
+</div>
 {% endblock %}

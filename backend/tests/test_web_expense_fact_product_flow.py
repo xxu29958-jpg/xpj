@@ -27,7 +27,7 @@ def test_confirmed_fact_direct_entry_returns_to_confirmed_stream(
 
     assert page.status_code == 200, page.text
     match = re.search(
-        r'<a\b[^>]*href="([^"]+)"[^>]*>\s*返回已确认流水\s*</a>',
+        r'<a\b[^>]*href="([^"]+)"[^>]*>(?:\s|<[^>]*>)*返回已确认流水\s*</a>',
         page.text,
     )
     assert match is not None

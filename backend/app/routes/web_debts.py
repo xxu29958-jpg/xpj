@@ -8,6 +8,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.error_reporting import retain_handled_error
 from app.errors import AppError
 from app.routes._web_debt_activity import debt_activity_context
 from app.routes._web_debt_write import (
@@ -17,6 +18,7 @@ from app.routes._web_debt_write import (
     _debt_write_gate,
     _proposal_section,
 )
+from app.routes._web_draft_binding import browser_draft_scope
 from app.routes.web_common import (
     LocalOnly,
     _amount_segments,
@@ -24,7 +26,6 @@ from app.routes.web_common import (
     _currency_input_view,
     _home_amount_label,
     _list_ledger_options,
-    _require_selected_ledger_write,
     _resolve_selected_ledger_id,
     _sidebar_counts,
     templates,
@@ -36,6 +37,10 @@ from app.routes.web_debt_presenters import (
     _member_headline,
     _member_progress_note,
     _proposal_feedback_context,
+    debt_direction_sentence,
+    debt_remaining_totals,
+    debt_view_direction,
+    principal_date_label,
 )
 from app.services.debt_service import (
     get_participant_debt_response,
@@ -103,6 +108,13 @@ def _debt_view(debt) -> dict:
         "name": _debt_name(debt),
         "is_member": is_member,
         "status": debt.status,
+        "direction_sentence": debt_direction_sentence(debt, _debt_name(debt)),
+        "currency_code": debt.home_currency_code,
+        "principal_label": _home_amount_label(debt.principal_amount_cents, debt.home_currency_code),
+        "recede": debt.status != "open",
+        "member_headline": None,
+        "show_progress": False,
+        "direction_label": None,
     }
     if is_member:
         ratio = _communal_ratio(debt.paid_amount_cents, debt.principal_amount_cents)
@@ -119,6 +131,8 @@ def _debt_view(debt) -> dict:
                 "progress_note": _member_progress_note(ratio),
                 "member_status_label": member_status_label,
                 "member_status_tone": member_status_tone,
+                "status_label": member_status_label,
+                "status_tone": member_status_tone,
                 # 作废/已结清的家人行视觉沉降 (淡出、永不红 — 红线② + 「办完可追溯」P1·已决)。
                 "recede": debt.status != "open",
             }
@@ -126,7 +140,7 @@ def _debt_view(debt) -> dict:
     else:
         view.update(
             {
-                "direction_label": _DIRECTION_LABELS.get(debt.direction, "应付"),
+                "direction_label": _DIRECTION_LABELS.get(debt_view_direction(debt), "成员往来"),
                 "status_label": _STATUS_LABELS.get(debt.status, "未结清"),
                 "status_tone": _STATUS_TONE.get(debt.status, ""),
                 # remaining_label: full string for the row's aria-label (the visible hero is the
@@ -153,7 +167,7 @@ _STATUS_RANK = {"open": 0, "cleared": 1, "voided": 2}
 def _split_debt_views(items) -> tuple[list[dict], list[dict]]:
     """把债务列表分成 (家人, 外部) 两组，各组 active-first 排序 (1A 软分组)。
 
-    家人在前 (section header 非 tab，单滚动列表)；禁列表级聚合记分牌 (无 per-person/终身总额)。
+    家人在前，组内保留原排序；方向/币种摘要不改变事实列表。
     """
     views = [_debt_view(debt) for debt in items]
     members = sorted(
@@ -179,6 +193,8 @@ def _detail_view(debt) -> dict:
         debt.counterparty_type, _COUNTERPARTY_FALLBACK["external"]
     )
     status = debt.status
+    adjustment = getattr(debt, "adjustment_amount_cents", None)
+    forgiven = getattr(debt, "forgiven_amount_cents", None)
     view = {
         "public_id": debt.public_id,
         "name": name,
@@ -189,8 +205,17 @@ def _detail_view(debt) -> dict:
         # External keeps the editorial split hero; member detail uses one quiet exact
         # remaining label inside "看看账" rather than inventing another fold.
         "principal_label": _home_amount_label(debt.principal_amount_cents, home),
+        "principal_date_label": principal_date_label(debt),
         "paid_label": _home_amount_label(debt.paid_amount_cents, home),
+        "adjustment_label": (
+            ("+" if adjustment > 0 else "") + _home_amount_label(adjustment, home)
+            if adjustment is not None else "未记录"
+        ),
+        "forgiven_label": _home_amount_label(forgiven, home) if forgiven is not None else "未记录",
         "remaining_label": _home_amount_label(debt.remaining_amount_cents, home),
+        "remaining_minor": str(debt.remaining_amount_cents),
+        "direction_sentence": debt_direction_sentence(debt, name),
+        "currency_code": home,
     }
     if use_member:
         viewer_is_debtor = debt.viewer_is_debtor
@@ -216,7 +241,7 @@ def _detail_view(debt) -> dict:
         # rendered businesslike (--text-default fill, not the communal success green).
         view.update(
             {
-                "direction_subtitle": _DIRECTION_LABELS.get(debt.direction, "应付"),
+                "direction_subtitle": _DIRECTION_LABELS.get(debt_view_direction(debt), "成员往来"),
                 "kind_label": _DEBT_KIND_DETAIL_LABELS.get(debt.debt_kind, "暂不指定"),
                 "status_label": _STATUS_LABELS.get(status, "未结清"),
                 "status_tone": _STATUS_TONE.get(status, ""),
@@ -270,6 +295,8 @@ def web_debts(
     ctx["can_write"] = _debt_write_gate(options, selected_id)
     ctx["member_debts"] = member_debts
     ctx["external_debts"] = external_debts
+    ctx["debt_totals"] = debt_remaining_totals(items)
+    ctx["debtcreation_draft_scope"] = browser_draft_scope(db, request)
     return templates.TemplateResponse(request=request, name="debts.html", context=ctx)
 
 
@@ -293,7 +320,6 @@ def web_debt_new(
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
-    _require_selected_ledger_write(options, selected_id)
     return templates.TemplateResponse(
         request=request,
         name="debt_new.html",
@@ -431,20 +457,29 @@ def _render_debt_detail(
         kind=action_kind, values=action_draft, error=action_error, result=kind_result, ack=kind_ack, rejected=kind_rejected)
     from app.routes._web_debt_repayment import repayment_context
 
+    repayment_outcome = {"values": action_draft, "error": action_error, "result": repayment_result, "ack": repayment_ack}
+    external_write = ctx["can_write"] and not ctx["debt"]["is_member"]
+    member_write = ctx["can_write"] and ctx["debt"]["is_member"] and ctx["viewer_is_debtor"] is True
     ctx["repayment_form"] = repayment_context(
         request, db, selected_id=selected_id, public_id=public_id,
         currency_code=debt.home_currency_code, expected_row_version=str(debt.row_version),
-        can_create=ctx["can_write"] and debt.status == "open" and not ctx["debt"]["is_member"],
-        can_recover=ctx["can_write"] and not ctx["debt"]["is_member"],
-        values=action_draft if action_kind == "repayment" else None,
-        error=action_error if action_kind == "repayment" else "",
-        result=repayment_result, ack=repayment_ack, rejected=repayment_rejected,
+        calendar=debt.repayment_calendar,
+        can_create=external_write and debt.status == "open", can_recover=external_write,
+        rejected=repayment_rejected, **(repayment_outcome if action_kind == "repayment" else {}),
+    )
+    ctx["proposal_form"] = repayment_context(
+        request, db, selected_id=selected_id, public_id=public_id, member_proposal=True,
+        currency_code=debt.home_currency_code, calendar=debt.repayment_calendar,
+        can_create=member_write and debt.status == "open" and not ctx["pending_proposal"],
+        can_recover=member_write, **(repayment_outcome if action_kind == "proposal_create" else {}),
     )
     if action_kind == "repayment":
         # The retained form owns external repayment feedback, including unknown
         # post-commit outcomes. The old terminal fallback's "not saved" claim
         # cannot describe those commands. Member debts retain their static guard.
         ctx["action_form"]["fallback"] = ctx["debt"]["is_member"]
+    elif action_kind == "proposal_create":
+        ctx["action_form"]["fallback"] = not ctx["debt"]["is_member"]
     ctx["activity"] = debt_activity_context(
         request, db,
         selected_id=selected_id,
@@ -463,9 +498,15 @@ def _render_debt_detail(
         request, db, debt=debt, selected_id=selected_id, account_id=account_id,
     )
     reconcile_member_detail(ctx["debt"], ctx["split_agreement"])
+    task = {"repayment": "repayment", "proposal_create": "member-repayment"}.get(
+        action_kind, request.query_params.get("task", ""),
+    )
+    ctx["repayment_task_form"] = {
+        "repayment": ctx["repayment_form"], "member-repayment": ctx["proposal_form"],
+    }.get(task)
     return templates.TemplateResponse(
         request=request,
-        name="debt_detail.html",
+        name="debt_repayment_entry.html" if ctx["repayment_task_form"] else "debt_detail.html",
         context=ctx,
         status_code=status_code,
     )
@@ -493,7 +534,9 @@ def web_debt_detail(
             raise
         from app.routes._web_debt_repayment import render_repayment_recovery
 
+        retain_handled_error(request, exc)
         db.rollback()
         return render_repayment_recovery(
             request, db, options=options, selected_id=selected_id, public_id=public_id,
+            kind="proposal_create" if request.query_params.get("task") == "member-repayment" else "repayment",
         )

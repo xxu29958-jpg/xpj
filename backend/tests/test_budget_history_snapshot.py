@@ -51,8 +51,8 @@ def test_existing_readable_exclusions_remain_readable_when_capturing_history(raw
 
 
 def test_recorded_money_never_uses_the_current_ledger_currency_or_guesses_unknown_units():
-    assert _history_money(1200, "JPY") == "¥1,200"
-    assert _history_money(1200, "USD") == "$12.00"
+    assert _history_money(1200, "JPY") == "JPY ¥1,200"
+    assert _history_money(1200, "USD") == "USD $12.00"
     assert _history_money(1200, None) == "1200 最小单位（原币种未记录）"
 
 

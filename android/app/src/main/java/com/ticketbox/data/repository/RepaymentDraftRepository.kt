@@ -17,8 +17,9 @@ class RepaymentDraftRepository internal constructor(
     private val queryReader: DebtQueryReader,
 ) : RepaymentDraftActions {
     private val ledgerRequestGuard = LedgerRequestGuard(apiProvider)
-    private val listingAdapter = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
-        .adapter(RepaymentDraftListResponseDto::class.java)
+    private val listingAdapter by lazy {
+        Moshi.Builder().add(KotlinJsonAdapterFactory()).build().adapter(RepaymentDraftListResponseDto::class.java)
+    }
     private val errorHandler = NetworkErrorHandler(
         serverUrlProvider = { apiProvider.currentSession()?.serverUrl },
         context = "RepaymentDraft",

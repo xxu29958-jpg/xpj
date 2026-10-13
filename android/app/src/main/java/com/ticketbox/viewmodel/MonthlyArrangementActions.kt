@@ -158,6 +158,8 @@ fun BudgetAdviceViewModel.reviewArrangement(pending: PendingMonthlyArrangement) 
         _state.update { it.copy(month = original.month, arrangementRead = verified, arrangementDraft = draft, trialRequest = null,
             inputs = null, result = null, loadState = BudgetAdviceLoadState.Idle,
             arrangementHistory = emptyList(), arrangementHistoryLoaded = false,
+            arrangementHistoryNext = null, arrangementHistoryCached = false,
+            arrangementHistoryFetchedAt = null, arrangementHistoryReceiptVersions = emptySet(),
             arrangementMessage = UiText.res(R.string.arrangement_reviewed)) }
         arrangementDraftWrites.withLock { repository.storeArrangementDraft(binding, original.month, draft) }
         refreshInputs()

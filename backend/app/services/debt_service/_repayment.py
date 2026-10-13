@@ -26,12 +26,14 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.models import Debt, Repayment
 from app.schemas import RepaymentCreateRequest
+from app.schemas._accounting_time import AccountingTimeSnapshot
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.debt_service._guards import guard_direct_fact_writable
 from app.services.debt_service._money import (
     freeze_home_amount,
     validate_home_amount_command,
 )
+from app.services.debt_service._repayment_time import resolve_repayment_time
 from app.services.debt_service._serialize import lock_and_fold
 from app.services.time_service import now_utc
 
@@ -72,6 +74,7 @@ def record_repayment(
     payload: RepaymentCreateRequest,
     idempotency_key: str,
     commit: bool = False,
+    captured_time: AccountingTimeSnapshot | None = None,
 ) -> RecordedRepayment:
     """Record one committed repayment and return the fold-updated parent Debt.
 
@@ -84,17 +87,24 @@ def record_repayment(
         original_amount=payload.original_amount,
     )
     resolve_write_capability(db)
-    paid_at = payload.paid_at or now_utc()
 
     def _mutate(debt: Debt, remaining_before: int) -> Repayment:
         # §5.2 / §3.5 adverse-interest guard: slice 2 only records committed
         # repayments directly for external/manual Debt (owner-side bookkeeping).
         # Member-Debt repayment stays behind the slice-3 confirmation flow.
         guard_direct_fact_writable(debt)
+        payment_time = captured_time or resolve_repayment_time(
+            db, ledger_id=debt.tenant_id, time_input=payload.time_input, paid_at=payload.paid_at,
+        )
+        paid_at = payment_time.instant_utc if payment_time is not None else (payload.paid_at or now_utc())
+        rate_date = (payment_time.user_local_date or payment_time.accounting_date) if payment_time else None
+        if payment_time and rate_date is None and paid_at is None and payload.original_currency is not None:
+            raise AppError("accounting_date_required", "原还款日期未知，请先核对日期再换算金额。", status_code=422)
         money = freeze_home_amount(
             db, tenant_id=tenant_id, home_currency_code=debt.home_currency_code,
             amount_cents=payload.amount_cents, original_currency=payload.original_currency,
             original_amount=payload.original_amount, event_time=paid_at, amount_error="debt_amount_invalid",
+            event_date=rate_date,
         )
         # Repayments inherit the currency of this locked parent.
         money.pop("home_currency_code")
@@ -107,6 +117,7 @@ def record_repayment(
             debt_id=debt.id,
             amount_cents=amount_cents,
             paid_at=paid_at,
+            accounting_time_snapshot=payment_time.model_dump(mode="json") if payment_time else None,
             actor_account_id=actor_account_id,
             proposal_id=None,
             idempotency_key=idempotency_key,

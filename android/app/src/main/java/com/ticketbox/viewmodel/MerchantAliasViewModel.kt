@@ -6,12 +6,12 @@ import com.ticketbox.R
 import com.ticketbox.data.repository.DeleteOutcome
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.MerchantAliasSaveOutcome
+import com.ticketbox.data.repository.MerchantDraftKind
 import com.ticketbox.data.repository.MerchantRepository
+import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.domain.model.MerchantAlias
 import com.ticketbox.domain.model.MerchantCatalog
-import com.ticketbox.domain.model.MerchantCatalogAliasPolicy
-import com.ticketbox.domain.model.MerchantCatalogMergeResult
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.ledgerRoleCanModify
@@ -36,9 +36,10 @@ data class MerchantAliasUiState(
     val mergeSuggestion: MerchantCatalogMergeSuggestion? = null,
     val changedRevision: Int = 0,
     val editorCompletion: MerchantEditorCompletion? = null,
+    val drafts: MerchantDraftState = MerchantDraftState(),
 )
 
-enum class MerchantEditorKind { CreateCatalog, CreateAlias, RenameCatalog, MergeCatalog, DeleteCatalog, DeleteAlias }
+enum class MerchantEditorKind { CreateCatalog, CreateAlias, RenameCatalog, MergeCatalog, VisibilityCatalog, DeleteCatalog, DeleteAlias }
 
 /** Identifies only the editor whose command was accepted; other unsent forms stay intact. */
 data class MerchantEditorCompletion(val kind: MerchantEditorKind, val publicId: String, val revision: Int)
@@ -53,10 +54,34 @@ class MerchantAliasViewModel(
     private val merchantRepository: MerchantRepository,
     private val repository: ExpenseRepository,
 ) : ViewModel() {
+    private val originalBinding = merchantRepository.captureBinding()
     private val _uiState = MutableStateFlow(MerchantAliasUiState())
     val uiState: StateFlow<MerchantAliasUiState> = _uiState.asStateFlow()
 
+    val drafts = MerchantDraftController(merchantRepository, viewModelScope,
+        onFailure = { draft, error ->
+            if (draft.kind == MerchantDraftKind.Rename) handleCatalogRenameFailure(error, requireNotNull(draft.source))
+        },
+        onCatalogRead = { catalog -> _uiState.update { it.copy(merchantCatalog = catalog.sortedMerchantCatalog()) } },
+    ) { draft ->
+        val kind = when (draft.kind) {
+            MerchantDraftKind.Catalog -> MerchantEditorKind.CreateCatalog
+            MerchantDraftKind.Alias -> MerchantEditorKind.CreateAlias
+            MerchantDraftKind.Rename -> MerchantEditorKind.RenameCatalog
+            MerchantDraftKind.Merge -> MerchantEditorKind.MergeCatalog
+            MerchantDraftKind.Visibility -> MerchantEditorKind.VisibilityCatalog
+            MerchantDraftKind.Delete -> MerchantEditorKind.DeleteCatalog
+        }
+        _uiState.update { state -> state.copy(changedRevision = state.changedRevision + 1,
+            message = UiText.res(if (draft.kind.isCreation) R.string.merchant_creation_confirmed else R.string.merchant_command_confirmed),
+            messageTone = MessageTone.Success,
+            editorCompletion = MerchantEditorCompletion(kind, requireNotNull(draft.acceptedId), state.changedRevision + 1)) }
+        loadMerchantCatalog(clearMessage = false, expectedBinding = draft.binding)
+        loadMerchantAliases(clearMessage = false)
+    }
+
     init {
+        viewModelScope.launch { drafts.state.collect { drafts -> _uiState.update { it.copy(drafts = drafts) } } }
         loadMerchantCatalog(clearMessage = false)
         loadMerchantAliases(clearMessage = false)
     }
@@ -65,12 +90,12 @@ class MerchantAliasViewModel(
         return ledgerRoleCanModify(repository.currentLedgerRole())
     }
 
-    private fun loadMerchantCatalog(clearMessage: Boolean = true) {
+    private fun loadMerchantCatalog(clearMessage: Boolean = true, expectedBinding: LogicalSessionBinding? = originalBinding) {
         viewModelScope.launch {
             if (clearMessage) {
                 _uiState.update { it.copy(message = null, messageTone = MessageTone.Neutral) }
             }
-            merchantRepository.merchantCatalog(includeHidden = true)
+            merchantRepository.merchantCatalog(includeHidden = true, expectedBinding = expectedBinding)
                 .onSuccess { catalog -> _uiState.update { it.copy(merchantCatalog = catalog.sortedMerchantCatalog()) } }
                 .onFailure { error ->
                     _uiState.update {
@@ -103,8 +128,9 @@ class MerchantAliasViewModel(
                 .onFailure { error ->
                     _uiState.update {
                         it.copy(
-                            message = error.toUiText(R.string.merchant_alias_load_failed),
-                            messageTone = MessageTone.Danger,
+                            message = if (!clearMessage && it.messageTone == MessageTone.Success) it.message
+                                else error.toUiText(R.string.merchant_alias_load_failed),
+                            messageTone = if (!clearMessage && it.messageTone == MessageTone.Success) it.messageTone else MessageTone.Danger,
                             merchantAliases = emptyList(),
                             aliasesLoadFailed = true,
                             busy = if (clearMessage) false else it.busy,
@@ -115,122 +141,12 @@ class MerchantAliasViewModel(
     }
 
     fun createMerchantCatalog(displayName: String) {
-        if (_uiState.value.busy) return
         if (!canModifyCurrentLedger()) {
-            _uiState.update {
-                it.copy(
-                    busy = false,
-                    message = UiText.res(R.string.common_readonly_ledger),
-                    messageTone = MessageTone.Danger,
-                )
-            }
+            _uiState.update { it.copy(message = UiText.res(R.string.common_readonly_ledger), messageTone = MessageTone.Danger) }
             return
         }
-        viewModelScope.launch {
-            _uiState.update { it.copy(busy = true, message = null, messageTone = MessageTone.Neutral) }
-            merchantRepository.createMerchantCatalog(displayName = displayName)
-                .onSuccess { created ->
-                    _uiState.update { state ->
-                        state.copy(
-                            merchantCatalog = (state.merchantCatalog + created).sortedMerchantCatalog(),
-                            busy = false,
-                            message = UiText.res(R.string.merchant_catalog_added),
-                            messageTone = MessageTone.Success,
-                            changedRevision = state.changedRevision + 1,
-                            editorCompletion = MerchantEditorCompletion(
-                                MerchantEditorKind.CreateCatalog, created.publicId, state.changedRevision + 1,
-                            ),
-                        )
-                    }
-                }
-                .onFailure { error ->
-                    _uiState.update {
-                        it.copy(
-                            busy = false,
-                            message = error.toUiText(R.string.merchant_catalog_add_failed),
-                            messageTone = MessageTone.Danger,
-                        )
-                    }
-                }
-        }
-    }
-
-    fun toggleMerchantCatalog(item: MerchantCatalog) {
-        if (_uiState.value.busy || item.isMerged) return
-        if (!canModifyCurrentLedger()) {
-            _uiState.update {
-                it.copy(message = UiText.res(R.string.common_readonly_ledger), messageTone = MessageTone.Danger)
-            }
-            return
-        }
-        viewModelScope.launch {
-            _uiState.update { it.copy(busy = true, message = null, messageTone = MessageTone.Neutral) }
-            val nextStatus = if (item.isActive) "hidden" else "active"
-            merchantRepository.updateMerchantCatalog(
-                publicId = item.publicId,
-                expectedRowVersion = item.rowVersion,
-                status = nextStatus,
-            )
-                .onSuccess { updated ->
-                    _uiState.update { state ->
-                        state.copy(
-                            merchantCatalog = state.merchantCatalog
-                                .map { if (it.publicId == updated.publicId) updated else it }
-                                .sortedMerchantCatalog(),
-                            busy = false,
-                            message = if (updated.isActive) {
-                                UiText.res(R.string.merchant_catalog_visible)
-                            } else {
-                                UiText.res(R.string.merchant_catalog_hidden)
-                            },
-                            messageTone = MessageTone.Success,
-                            changedRevision = state.changedRevision + 1,
-                        )
-                    }
-                }
-                .onFailure { error ->
-                    _uiState.update { it.copy(busy = false, message = catalogErrorMessage(error), messageTone = MessageTone.Danger) }
-                }
-        }
-    }
-
-    fun renameMerchantCatalog(item: MerchantCatalog, displayName: String) {
-        if (_uiState.value.busy || item.isMerged) return
-        val cleanName = displayName.trim()
-        if (cleanName == item.displayName) return
-        if (!canModifyCurrentLedger()) {
-            _uiState.update {
-                it.copy(message = UiText.res(R.string.common_readonly_ledger), messageTone = MessageTone.Danger)
-            }
-            return
-        }
-        viewModelScope.launch {
-            _uiState.update {
-                it.copy(busy = true, message = null, messageTone = MessageTone.Neutral, mergeSuggestion = null)
-            }
-            merchantRepository.updateMerchantCatalog(
-                publicId = item.publicId,
-                expectedRowVersion = item.rowVersion,
-                displayName = cleanName,
-            )
-                .onSuccess { updated ->
-                    _uiState.update { state ->
-                        state.copy(
-                            merchantCatalog = state.merchantCatalog
-                                .map { if (it.publicId == updated.publicId) updated else it }
-                                .sortedMerchantCatalog(),
-                            busy = false,
-                            message = UiText.res(R.string.merchant_catalog_renamed, updated.displayName),
-                            messageTone = MessageTone.Success,
-                            changedRevision = state.changedRevision + 1,
-                            editorCompletion = MerchantEditorCompletion(
-                                MerchantEditorKind.RenameCatalog, item.publicId, state.changedRevision + 1,
-                            ),
-                        )
-                    }
-                }
-                .onFailure { error -> handleCatalogRenameFailure(error, source = item) }
-        }
+        drafts.edit(MerchantDraftKind.Catalog, displayName)
+        drafts.submit(MerchantDraftKind.Catalog)
     }
 
     private fun handleCatalogRenameFailure(error: Throwable, source: MerchantCatalog) {
@@ -259,157 +175,13 @@ class MerchantAliasViewModel(
         _uiState.update { it.copy(message = null, messageTone = MessageTone.Neutral) }
     }
 
-    fun mergeMerchantCatalog(
-        source: MerchantCatalog,
-        target: MerchantCatalog,
-        aliasPolicy: MerchantCatalogAliasPolicy,
-    ) {
-        if (_uiState.value.busy || source.publicId == target.publicId || source.isMerged || !target.isActive) return
-        if (!canModifyCurrentLedger()) {
-            _uiState.update {
-                it.copy(message = UiText.res(R.string.common_readonly_ledger), messageTone = MessageTone.Danger)
-            }
-            return
-        }
-        viewModelScope.launch {
-            _uiState.update {
-                it.copy(busy = true, message = null, messageTone = MessageTone.Neutral, mergeSuggestion = null)
-            }
-            merchantRepository.mergeMerchantCatalog(
-                sourcePublicId = source.publicId,
-                sourceRowVersion = source.rowVersion,
-                targetPublicId = target.publicId,
-                targetRowVersion = target.rowVersion,
-                aliasPolicy = aliasPolicy,
-            )
-                .onSuccess { result -> finishCatalogMerge(source, target, result, aliasPolicy) }
-                .onFailure { error ->
-                    _uiState.update {
-                        it.copy(busy = false, message = catalogErrorMessage(error), messageTone = MessageTone.Danger)
-                    }
-                }
-        }
-    }
-
-    private suspend fun finishCatalogMerge(
-        source: MerchantCatalog,
-        target: MerchantCatalog,
-        result: MerchantCatalogMergeResult,
-        aliasPolicy: MerchantCatalogAliasPolicy,
-    ) {
-        val refreshedAliases = if (result.createdAliasPublicId != null) {
-            merchantRepository.merchantAliases()
-        } else {
-            null
-        }
-        _uiState.update { state ->
-            state.copy(
-                merchantCatalog = state.merchantCatalog
-                    .map { item ->
-                        when (item.publicId) {
-                            result.source.publicId -> result.source
-                            result.target.publicId -> result.target
-                            else -> item
-                        }
-                    }
-                    .sortedMerchantCatalog(),
-                merchantAliases = refreshedAliases?.getOrDefault(emptyList())?.sortedMerchantAliases()
-                    ?: state.merchantAliases,
-                aliasesLoadFailed = refreshedAliases?.isFailure ?: state.aliasesLoadFailed,
-                busy = false,
-                message = if (aliasPolicy == MerchantCatalogAliasPolicy.CreateSourceAlias) {
-                    UiText.res(R.string.merchant_catalog_merged_with_alias, source.displayName, target.displayName)
-                } else {
-                    UiText.res(R.string.merchant_catalog_merged, source.displayName, target.displayName)
-                },
-                messageTone = MessageTone.Success,
-                changedRevision = state.changedRevision + 1,
-                editorCompletion = MerchantEditorCompletion(
-                    MerchantEditorKind.MergeCatalog, source.publicId, state.changedRevision + 1,
-                ),
-            )
-        }
-    }
-
-    fun deleteMerchantCatalog(item: MerchantCatalog) {
-        if (_uiState.value.busy || item.isMerged) return
-        if (!canModifyCurrentLedger()) {
-            _uiState.update {
-                it.copy(message = UiText.res(R.string.common_readonly_ledger), messageTone = MessageTone.Danger)
-            }
-            return
-        }
-        viewModelScope.launch {
-            _uiState.update { it.copy(busy = true, message = null, messageTone = MessageTone.Neutral) }
-            merchantRepository.deleteMerchantCatalog(
-                publicId = item.publicId,
-                expectedRowVersion = item.rowVersion,
-            )
-                .onSuccess {
-                    _uiState.update { state ->
-                        state.copy(
-                            merchantCatalog = state.merchantCatalog.filterNot { it.publicId == item.publicId },
-                            busy = false,
-                            message = UiText.res(R.string.merchant_catalog_deleted),
-                            messageTone = MessageTone.Success,
-                            changedRevision = state.changedRevision + 1,
-                            editorCompletion = MerchantEditorCompletion(
-                                MerchantEditorKind.DeleteCatalog, item.publicId, state.changedRevision + 1,
-                            ),
-                        )
-                    }
-                }
-                .onFailure { error ->
-                    _uiState.update {
-                        it.copy(
-                            message = catalogErrorMessage(error, R.string.merchant_catalog_delete_failed),
-                            busy = false,
-                            messageTone = MessageTone.Danger,
-                        )
-                    }
-                }
-        }
-    }
-
     fun createMerchantAlias(canonicalMerchant: String, alias: String) {
-        if (_uiState.value.busy) return
         if (!canModifyCurrentLedger()) {
-            _uiState.update {
-                it.copy(
-                    busy = false,
-                    message = UiText.res(R.string.common_readonly_ledger),
-                    messageTone = MessageTone.Danger,
-                )
-            }
+            _uiState.update { it.copy(message = UiText.res(R.string.common_readonly_ledger), messageTone = MessageTone.Danger) }
             return
         }
-        viewModelScope.launch {
-            _uiState.update { it.copy(busy = true, message = null, messageTone = MessageTone.Neutral) }
-            merchantRepository.createMerchantAlias(canonicalMerchant = canonicalMerchant, alias = alias)
-                .onSuccess { created ->
-                    _uiState.update { state ->
-                        state.copy(
-                            merchantAliases = (state.merchantAliases + created).sortedMerchantAliases(),
-                            busy = false,
-                            message = UiText.res(R.string.merchant_alias_added),
-                            messageTone = MessageTone.Success,
-                            changedRevision = state.changedRevision + 1,
-                            editorCompletion = MerchantEditorCompletion(
-                                MerchantEditorKind.CreateAlias, created.publicId, state.changedRevision + 1,
-                            ),
-                        )
-                    }
-                }
-                .onFailure { error ->
-                    _uiState.update {
-                        it.copy(
-                            busy = false,
-                            message = error.toUiText(R.string.merchant_alias_add_failed),
-                            messageTone = MessageTone.Danger,
-                        )
-                    }
-                }
-        }
+        drafts.edit(MerchantDraftKind.Alias, "", canonicalMerchant, alias)
+        drafts.submit(MerchantDraftKind.Alias)
     }
 
     fun toggleMerchantAlias(alias: MerchantAlias) {

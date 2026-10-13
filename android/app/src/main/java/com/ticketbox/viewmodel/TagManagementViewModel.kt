@@ -1,6 +1,7 @@
 package com.ticketbox.viewmodel
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.RepositoryException
@@ -27,24 +28,16 @@ data class TagManagementUiState(
     val message: UiText? = null,
     val messageTone: MessageTone = MessageTone.Neutral,
     val undoable: TagUndoHandle? = null,
-    // 契约 5: a rename that collided with an existing live tag — the screen opens
-    // the merge dialog preselected on [MergeSuggestion.target] (still user-
-    // confirmed, NOT a silent merge). Null unless a conflict just resolved to a
-    // live tag in the current list.
-    val mergeSuggestion: MergeSuggestion? = null,
+    val editor: TagEditorDraft? = null,
+    val canModify: Boolean = false,
+    val bindingChanged: Boolean = false,
+    val showOriginalDraft: Boolean = false,
     // P4 stale-refresh: monotonically bumped after each successful tag mutation
     // (rename/delete/merge/undo). The screen observes it and tells the stats tab to
     // re-pull its tag list so a deleted/renamed tag stops lingering in the filter
     // chips (the stats VM persists across the settings round-trip and otherwise
     // only loads tags on init / ledger switch).
     val tagsChangedRevision: Int = 0,
-)
-
-/** A rename key-collision steered into a (user-confirmed) merge: rename [source]
- *  collided with the live [target]; offer to merge source → target instead. */
-data class MergeSuggestion(
-    val source: ManagedTag,
-    val target: ManagedTag,
 )
 
 /**
@@ -60,16 +53,45 @@ data class TagUndoHandle(
 
 class TagManagementViewModel(
     private val tagRepository: TagActions,
+    savedStateHandle: SavedStateHandle = SavedStateHandle(),
 ) : ViewModel() {
-    private val _uiState = MutableStateFlow(TagManagementUiState())
+    private val drafts = TagManagementDraftStore(savedStateHandle)
+    private val restored = drafts.read()
+    private val binding = restored?.binding ?: tagRepository.captureBinding()
+    private val _uiState = MutableStateFlow(TagManagementUiState(editor = restored?.editor))
     val uiState: StateFlow<TagManagementUiState> = _uiState.asStateFlow()
 
     init {
+        binding?.let { drafts.write(it, restored?.editor) }
+        viewModelScope.launch {
+            tagRepository.observeLedgerAccess().collect { access ->
+                val returnedToOriginal = _uiState.value.bindingChanged && access?.binding == binding
+                val sameOwner = access?.binding?.let {
+                    it.ownerKey == binding?.ownerKey && it.ledgerId == binding.ledgerId && it.serverUrl == binding.serverUrl
+                } == true
+                _uiState.update {
+                    it.copy(
+                        canModify = access?.binding == binding && access?.canModify == true,
+                        bindingChanged = access?.binding != binding,
+                        showOriginalDraft = sameOwner,
+                        tags = if (sameOwner) it.tags else emptyList(),
+                    )
+                }
+                if (returnedToOriginal) loadTags()
+            }
+        }
         loadTags()
+    }
+
+    fun editDraft(editor: TagEditorDraft?) {
+        if (_uiState.value.busy) return
+        binding?.let { drafts.write(it, editor) }
+        _uiState.update { it.copy(editor = editor, message = null, messageTone = MessageTone.Neutral) }
     }
 
     fun loadTags() {
         if (_uiState.value.loading || _uiState.value.busy) return
+        val originalBinding = binding ?: return
         viewModelScope.launch {
             _uiState.update {
                 it.copy(
@@ -79,7 +101,7 @@ class TagManagementViewModel(
                     messageTone = MessageTone.Neutral,
                 )
             }
-            tagRepository.tags()
+            tagRepository.tags(originalBinding)
                 .onSuccess { tags ->
                     _uiState.update {
                         it.copy(
@@ -103,10 +125,10 @@ class TagManagementViewModel(
         }
     }
 
-    fun renameTag(tag: ManagedTag, newName: String) {
+    fun renameTag(tag: ManagedTag, newName: String, requireOrphan: Boolean = false) {
         if (_uiState.value.busy) return
         if (newName.trim() == tag.name) return
-        if (!tagRepository.canModifyLedger()) {
+        if (!canModifyOriginal()) {
             _uiState.update {
                 it.copy(message = UiText.res(R.string.common_readonly_ledger), messageTone = MessageTone.Danger)
             }
@@ -114,7 +136,7 @@ class TagManagementViewModel(
         }
         viewModelScope.launch {
             _uiState.update { it.copy(busy = true, message = null, messageTone = MessageTone.Neutral) }
-            tagRepository.renameTag(tag.publicId, tag.rowVersion, newName)
+            tagRepository.renameTag(requireNotNull(binding), tag, newName, requireOrphan)
                 .onSuccess { finishWithReload(message = UiText.res(R.string.tag_management_renamed, newName.trim())) }
                 .onFailure { error -> handleRenameFailure(error, source = tag, attemptedName = newName) }
         }
@@ -142,12 +164,15 @@ class TagManagementViewModel(
                 }
             }
             if (target != null) {
+                val editor = TagEditorDraft(TagEditorAction.Merge, source,
+                    requireOrphan = _uiState.value.editor?.requireOrphan ?: false, name = attemptedName, target = target)
+                binding?.let { drafts.write(it, editor) }
                 _uiState.update {
                     it.copy(
                         busy = false,
                         message = UiText.res(R.string.tag_management_rename_conflict_merge_prompt, target.name),
                         messageTone = MessageTone.Info,
-                        mergeSuggestion = MergeSuggestion(source, target),
+                        editor = editor,
                     )
                 }
                 return
@@ -158,18 +183,9 @@ class TagManagementViewModel(
         failWith(error)
     }
 
-    /** The screen consumed the merge suggestion (opened the dialog). */
-    fun consumeMergeSuggestion() {
-        _uiState.update { it.copy(mergeSuggestion = null) }
-    }
-
-    fun dismissMessage() {
-        _uiState.update { it.copy(message = null, messageTone = MessageTone.Neutral) }
-    }
-
-    fun deleteTag(tag: ManagedTag) {
+    fun deleteTag(tag: ManagedTag, requireOrphan: Boolean = false) {
         if (_uiState.value.busy) return
-        if (!tagRepository.canModifyLedger()) {
+        if (!canModifyOriginal()) {
             _uiState.update {
                 it.copy(message = UiText.res(R.string.common_readonly_ledger), messageTone = MessageTone.Danger)
             }
@@ -177,7 +193,7 @@ class TagManagementViewModel(
         }
         viewModelScope.launch {
             _uiState.update { it.copy(busy = true, message = null, messageTone = MessageTone.Neutral) }
-            tagRepository.deleteTag(tag.publicId, tag.rowVersion)
+            tagRepository.deleteTag(requireNotNull(binding), tag, requireOrphan)
                 .onSuccess { result ->
                     finishWithReload(
                         message = UiText.res(R.string.tag_management_deleted, tag.name),
@@ -188,10 +204,10 @@ class TagManagementViewModel(
         }
     }
 
-    fun mergeTags(source: ManagedTag, target: ManagedTag) {
+    fun mergeTags(source: ManagedTag, target: ManagedTag, requireOrphan: Boolean = false) {
         if (_uiState.value.busy) return
         if (source.publicId == target.publicId) return
-        if (!tagRepository.canModifyLedger()) {
+        if (!canModifyOriginal()) {
             _uiState.update {
                 it.copy(message = UiText.res(R.string.common_readonly_ledger), messageTone = MessageTone.Danger)
             }
@@ -199,7 +215,7 @@ class TagManagementViewModel(
         }
         viewModelScope.launch {
             _uiState.update { it.copy(busy = true, message = null, messageTone = MessageTone.Neutral) }
-            tagRepository.mergeTags(source.publicId, source.rowVersion, target.publicId, target.rowVersion)
+            tagRepository.mergeTags(requireNotNull(binding), source, target, requireOrphan)
                 .onSuccess { result ->
                     finishWithReload(
                         message = UiText.res(R.string.tag_management_merged, source.name, target.name),
@@ -217,12 +233,13 @@ class TagManagementViewModel(
         // handle so the banner survives the in-flight op.
         if (_uiState.value.busy) return
         val handle = _uiState.value.undoable ?: return
+        if (!canModifyOriginal()) return
         // Consume the affordance synchronously so a rapid second tap early-returns
         // above — the undo token is single-use; a double-fire would make the loser's
         // 404 overwrite the winner's success message.
         _uiState.update { it.copy(undoable = null, busy = true, message = null, messageTone = MessageTone.Neutral) }
         viewModelScope.launch {
-            tagRepository.undoTagMutation(handle.mutationPublicId, handle.rowVersion)
+            tagRepository.undoTagMutation(requireNotNull(binding), handle.mutationPublicId, handle.rowVersion)
                 .onSuccess { result ->
                     val msg = if (result.skipped > 0) {
                         UiText.res(R.string.tag_management_undo_partial, result.applied, result.skipped)
@@ -255,7 +272,9 @@ class TagManagementViewModel(
         undoable: TagUndoHandle? = null,
         tone: MessageTone = MessageTone.Success,
     ) {
-        val refreshed = tagRepository.tags()
+        binding?.let { drafts.write(it, null) }
+        _uiState.update { it.copy(editor = null) }
+        val refreshed = tagRepository.tags(requireNotNull(binding))
         _uiState.update {
             it.copy(
                 // The accepted mutation invalidates the old list, including its
@@ -278,6 +297,9 @@ class TagManagementViewModel(
             it.copy(busy = false, message = tagErrorMessage(error), messageTone = tagErrorTone(error))
         }
     }
+
+    private fun canModifyOriginal(): Boolean =
+        binding != null && tagRepository.captureBinding() == binding && tagRepository.canModifyLedger()
 }
 
 /** state_conflict has no entry in the shared error map (it's surface-agnostic);

@@ -12,6 +12,7 @@ import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
@@ -29,8 +30,9 @@ import com.ticketbox.ui.screens.expense.ItemsEditorSheetState
 import com.ticketbox.ui.screens.ledger.LedgerBulkEditSheet
 import com.ticketbox.ui.screens.ledger.LedgerBulkEditSheetActions
 import com.ticketbox.ui.screens.ledger.LedgerBulkEditSheetState
-import com.ticketbox.ui.screens.pending.sheets.QuickMerchantSheetContent
-import com.ticketbox.ui.screens.pending.sheets.ReviewSheetChrome
+import com.ticketbox.ui.screens.pending.PendingReviewSheetHost
+import com.ticketbox.ui.screens.pending.PendingReviewSheetHostState
+import com.ticketbox.ui.screens.pending.PendingReviewSheetHostActions
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.EditableItem
 import org.junit.Assert.assertEquals
@@ -48,40 +50,44 @@ class SheetKeyboardTaskTest {
     @Test fun merchantRetryKeepsItsInputAndOriginalSaveCommandAboveTheKeyboard() {
         val sent = mutableListOf<String>()
         var saving by mutableStateOf(false)
+        var originalInput by mutableStateOf(com.ticketbox.viewmodel.PendingReviewValues())
         val failure = "刚才没有保存，请保留原输入再试。"
         compose.setContent {
             TicketboxTheme(skin = AppSkin.Midnight) {
-                ModalBottomSheet(onDismissRequest = {},
-                    sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-                    QuickMerchantSheetContent(
-                        expense = pendingExpense(),
-                        chrome = ReviewSheetChrome(saving, 31, failure, onSkip = {}),
-                        onSave = { sent += it; saving = true },
-                        onDismiss = {},
-                    )
-                }
+                PendingReviewSheetHost(
+                    state = PendingReviewSheetHostState(com.ticketbox.viewmodel.PendingSheet.QuickMerchant(pendingExpense()),
+                        emptyList(), if (saving) setOf(1L) else emptySet(), 0, 0, 0, false, 0, 0, 31, failure,
+                        inputValues = originalInput, inputSaved = originalInput.value != null),
+                    actions = PendingReviewSheetHostActions(onSaveQuickCategory = { _, _ -> },
+                        onSaveQuickMerchant = { _, value -> sent += value; saving = true },
+                        onSaveAmountDraft = { _, _ -> }, onSaveAmountAndConfirm = { _, _ -> },
+                        onSkipReviewField = {}, onKeepBoth = {}, onIgnoreCurrent = {}, onConfirmReady = {},
+                        onDismiss = {}, onReviewInputChange = { originalInput = it }),
+                )
             }
         }
         compose.onNode(hasSetTextAction()).performTouchInput { click() }
             .performTextReplacement("  小满便利店  ")
         val save = text(R.string.pending_quick_merchant_save_button)
         keyboard.assertActionAboveKeyboard(compose, save, "quick-merchant-keyboard-retry")
+        compose.onNode(hasSetTextAction()).assertIsDisplayed()
         compose.onNodeWithText(failure).assertIsDisplayed()
         compose.onNodeWithText(save).performTouchInput { click() }
         compose.runOnIdle { assertEquals(listOf("小满便利店"), sent) }
         compose.onNodeWithText("  小满便利店  ").assertIsNotEnabled()
-        compose.onNodeWithText(text(R.string.common_cancel)).assertIsNotEnabled()
+        compose.onNodeWithText(text(R.string.expense_fact_input_close)).assertIsNotEnabled()
     }
 
     @Test fun nestedItemEditingKeepsSaveVisibleAndPreservesUntouchedRows() {
         val original = List(8) { index -> EditableItem(name = "项目${index + 1}", amountText = "1.00",
             rawText = "原始明细${index + 1}", baselineAmountCents = 100L, sourcePublicId = "item-$index") }
         var drafts by mutableStateOf(original)
+        var saving by mutableStateOf(false)
         val saved = mutableListOf<List<EditableItem>>()
         compose.setContent {
             TicketboxTheme(skin = AppSkin.Paper) {
                 ItemsEditorSheet(
-                    state = ItemsEditorSheetState(drafts, 800L, saving = false),
+                    state = ItemsEditorSheetState(drafts, 800L, saving = saving),
                     actions = ItemsEditorSheetActions(
                         onUpdate = { index, name, amount, kind -> drafts = drafts.mapIndexed { position, item ->
                             if (position == index) item.copy(name = name ?: item.name,
@@ -89,12 +95,13 @@ class SheetKeyboardTaskTest {
                         } },
                         onAddRow = { error("The save action must not add an item") },
                         onRemoveRow = { error("The save action must not remove an item") },
-                        onSave = { saved += drafts.toList() },
+                        onSave = { saved += drafts.toList(); saving = true },
                         onDismiss = {},
                     ),
                 )
             }
         }
+        compose.onNodeWithText("项目1").performScrollTo().performTouchInput { click() }
         compose.onAllNodes(hasSetTextAction())[0].performScrollTo().performTouchInput { click() }
             .performTextReplacement("修正品名")
         val save = text(R.string.expense_edit_items_save_button)
@@ -103,6 +110,8 @@ class SheetKeyboardTaskTest {
         compose.runOnIdle { assertEquals(listOf(original.toMutableList().apply {
             this[0] = this[0].copy(name = "修正品名")
         }.toList()), saved) }
+        compose.onNodeWithText(text(R.string.expense_edit_items_saving_button)).assertIsNotEnabled()
+        compose.onNodeWithTag("expense-item-amount-0").assertIsNotEnabled()
     }
 
     @Test fun bulkCategoryAndTagCommandsKeepTheirReasonAndReplacementConfirmation() {

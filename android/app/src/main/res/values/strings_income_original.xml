@@ -3,6 +3,7 @@
     <string name="income_plan_creation_recovery_required">无法确认原收入提交是否已保存。请先核对收入计划和原提交记录；当前输入已保留。</string>
     <string name="income_plan_creation_check_original">核对原提交</string>
     <string name="income_plan_creation_discard">放弃草稿</string>
+    <string name="income_plan_draft_continuation_hint">返回后可继续原稿；放弃草稿会清除输入。</string>
     <string name="income_plan_creation_discard_confirm">确认放弃</string>
     <string name="income_plan_creation_discard_explanation">这会移除当前草稿，不会撤销已保存的收入。若此前保存结果不明，请先核对收入计划和原提交记录，避免重复创建。</string>
     <string name="income_plan_submission_saved">原收入提交已保存在本机，可在下方查看同步结果。</string>

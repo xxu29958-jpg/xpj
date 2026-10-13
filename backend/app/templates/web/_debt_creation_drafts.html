@@ -1,0 +1,7 @@
+{% if debtcreation_draft_scope %}
+<section class="product-section" hidden data-debtcreation-draft-shelf data-draft-scope="{{ debtcreation_draft_scope|tojson|forceescape }}">
+  <p class="hint">此浏览器保留的往来；未提交或结果待核对。</p>
+  <ul data-debtcreation-draft-list></ul>
+  <a class="product-button product-button--quiet product-button--small" href="/web/debts/new?ledger_id={{ selected_ledger_id|urlencode }}&amp;new_debtcreation=1">另记一笔</a>
+</section>
+{% endif %}

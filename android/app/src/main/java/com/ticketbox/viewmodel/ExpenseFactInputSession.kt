@@ -16,7 +16,7 @@ import kotlinx.coroutines.withContext
 /** Ordered local writes finish across navigation; no network or command dispatch runs in this lifetime. */
 internal class ExpenseFactInputSession(
     val binding: LogicalSessionBinding,
-    private val expenseId: Long,
+    val expenseId: Long,
     private val repository: ExpenseFactInputActions,
     private val scope: CoroutineScope,
     originals: List<ExpenseFactOriginalInput>,

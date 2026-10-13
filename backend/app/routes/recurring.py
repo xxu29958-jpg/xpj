@@ -125,17 +125,18 @@ def post_recurring_item(
 def post_recurring_from_candidate(
     payload: RecurringCandidateConfirmRequest,
     timezone: str | None = Query(default=None),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     auth: AuthContext = Depends(get_current_protocol_writer_context),
     db: Session = Depends(get_db),
 ) -> RecurringItemResponse:
-    item = confirm_recurring_candidate(
+    return confirm_recurring_candidate(
         db,
         tenant_id=auth.tenant_id,
         payload=payload,
+        idempotency_key=idempotency_key,
         timezone_name=timezone,
         actor_account_id=auth.account_id,
     )
-    return _response(db, item)
 
 
 @router.get("/items/{public_id}", response_model=RecurringItemResponse)

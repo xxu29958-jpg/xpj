@@ -48,6 +48,14 @@ class SpendingGoalsViewModelTest {
         assertEquals(listOf("spending"), viewModel.state.value.goals.map { it.publicId })
         assertFalse(viewModel.state.value.canModify)
         assertFalse(viewModel.state.value.isLoading)
+        viewModel.setIncludeArchived(true)
+        advanceUntilIdle()
+        assertEquals(SpendingGoalListCall("2026-07", true), actions.goalsCalls.last())
+        assertEquals(listOf("spending", "archived"), viewModel.state.value.goals.map { it.publicId })
+        assertFalse(viewModel.state.value.canModify)
+        viewModel.setIncludeArchived(false)
+        advanceUntilIdle()
+        assertEquals(listOf("spending"), viewModel.state.value.goals.map { it.publicId })
     }
 
     @Test
@@ -56,11 +64,14 @@ class SpendingGoalsViewModelTest {
         val viewModel = SpendingGoalsViewModel(actions, RecordingGoalEdits().apply { access.value = access.value!!.copy(canModify = actions.canModifyLedger()) }, initialMonth = "2026-07")
         advanceUntilIdle()
 
+        viewModel.setIncludeArchived(true)
+        advanceUntilIdle()
         viewModel.nextMonth()
         advanceUntilIdle()
 
         assertEquals("2026-08", viewModel.state.value.month)
         assertEquals("2026-08", actions.goalsCalls.last().month)
+        assertEquals(true, actions.goalsCalls.last().includeArchived)
     }
 
     @Test
@@ -104,5 +115,10 @@ class SpendingGoalsViewModelTest {
         assertNull(list.state.value.fetchedAt)
         assertNotNull(list.state.value.loadError)
         assertEquals(listOf(original.publicId), reports.archiveCalls)
+        reports.goalsResult = Result.success(listOf(original, other))
+        list.setIncludeArchived(true)
+        advanceUntilIdle()
+        list.acceptArchived(accepted.first, accepted.second)
+        assertEquals(listOf(accepted.second, other), list.state.value.goals)
     }
 }

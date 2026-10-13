@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+from html import unescape
 from uuid import uuid4
 
 import pytest
@@ -32,9 +34,12 @@ def _goal(client: TestClient, identity, *, home_currency_code: str = "CNY", amou
     return response.json()
 
 
-def _editor(client: TestClient, public_id: str) -> tuple[str, dict[str, str]]:
+def _editor(client: TestClient, public_id: str, *, include_archived: bool = False) -> tuple[str, dict[str, str]]:
     action = f"/web/goals/{public_id}/edit"
-    response = client.get(action, params={"ledger_id": "owner", "month": "2026-05"})
+    listing = client.get("/web/goals", params={"ledger_id": "owner", "month": "2026-05", "include_archived": include_archived})
+    assert listing.status_code == 200, listing.text
+    href = next(unescape(href) for href in re.findall(r'<a[^>]*href="([^"]+)"', listing.text) if href.startswith(action + "?"))
+    response = client.get(href)
     assert response.status_code == 200, response.text
     fields = hidden_post_forms(response.text)[action]
     assert fields["idempotency_key"]
@@ -44,13 +49,14 @@ def _editor(client: TestClient, public_id: str) -> tuple[str, dict[str, str]]:
 
 def test_real_editor_replays_original_key_without_a_second_goal_revision(web_client, identity):
     goal = _goal(web_client, identity)
-    page = web_client.get("/web/goals?ledger_id=owner&month=2026-05")
-    assert f'/web/goals/{goal["public_id"]}/edit?' in page.text
-    action, fields = _editor(web_client, goal["public_id"])
+    action, fields = _editor(web_client, goal["public_id"], include_archived=True)
+    assert fields["return_month"] == "2026-05" and fields["return_include_archived"] == "true"
     fields.update(name="调整后的目标", month="2026-06", target_amount_yuan="350.25", category="")
     first = web_client.post(action, data=fields, follow_redirects=False)
     assert first.status_code == 303, first.text
     assert "month=2026-06" in first.headers["location"]
+    assert "include_archived=true" in first.headers["location"]
+    assert first.headers["location"].endswith(f'#goal-{goal["public_id"]}')
     replay = web_client.post(action, data=fields, follow_redirects=False)
     assert replay.status_code == 303, replay.text
     canonical = web_client.get(f'/api/goals/{goal["public_id"]}', headers=identity.app_headers).json()

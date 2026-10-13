@@ -37,7 +37,7 @@ def _apply_pending_rules(client: TestClient, *, identity, max_scan: int = 500):
     token = preview.json()["preview_token"]
     return client.post(
         f"/api/rules/apply-pending?max_scan={max_scan}",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"confirm": True, "preview_token": token},
     )
 
@@ -154,7 +154,7 @@ def test_apply_pending_preview_token_tracks_latest_ocr_fact(
     _record_ocr_fact(expense_id, "AfterPreview 38.00")
     applied = client.post(
         "/api/rules/apply-pending?max_scan=10",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"confirm": True, "preview_token": preview.json()["preview_token"]},
     )
 

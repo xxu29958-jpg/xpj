@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -20,58 +19,49 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
+import com.ticketbox.data.repository.MerchantDraft
+import com.ticketbox.data.repository.MerchantDraftKind
+import com.ticketbox.ui.asString
 import com.ticketbox.domain.model.MerchantCatalog
 import com.ticketbox.domain.model.MerchantCatalogAliasPolicy
-import com.ticketbox.domain.model.MessageTone
-import com.ticketbox.domain.model.UiText
-import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 
-internal data class MerchantCatalogDialogHostActions(
-    val onRename: (MerchantCatalog, String) -> Unit,
-    val onMerge: (MerchantCatalog, MerchantCatalog, MerchantCatalogAliasPolicy) -> Unit,
-    val onDismissSuggestion: () -> Unit,
-)
-
 internal class MerchantCatalogDialogController {
-    var renamingCatalog by mutableStateOf<MerchantCatalog?>(null)
+    var kind by mutableStateOf<MerchantDraftKind?>(null)
         private set
-    var mergingCatalog by mutableStateOf<MerchantCatalog?>(null)
+    var sourceId by mutableStateOf<String?>(null)
         private set
-    var preselectedMergeTarget by mutableStateOf<MerchantCatalog?>(null)
-        private set
+    private var returnToRename: String? = null
 
-    fun openRename(item: MerchantCatalog) {
-        renamingCatalog = item
+    fun open(next: MerchantDraftKind, id: String) {
+        returnToRename = null
+        kind = next
+        sourceId = id
     }
 
-    fun openMerge(item: MerchantCatalog) {
-        preselectedMergeTarget = null
-        mergingCatalog = item
+    fun openSuggestedMerge(id: String) {
+        returnToRename = sourceId.takeIf { kind == MerchantDraftKind.Rename && it == id }
+        kind = MerchantDraftKind.Merge
+        sourceId = id
     }
 
-    fun openSuggestedMerge(source: MerchantCatalog, target: MerchantCatalog) {
-        renamingCatalog = null
-        preselectedMergeTarget = target
-        mergingCatalog = source
+    fun close() {
+        sourceId = returnToRename
+        kind = returnToRename?.let { MerchantDraftKind.Rename }
+        returnToRename = null
     }
 
-    fun closeRename() {
-        renamingCatalog = null
-    }
-
-    fun closeMerge() {
-        mergingCatalog = null
-        preselectedMergeTarget = null
+    fun complete(completed: MerchantDraftKind, id: String) {
+        if (kind != completed || sourceId != id) return
+        returnToRename = null
+        close()
     }
 }
 
@@ -79,193 +69,127 @@ internal class MerchantCatalogDialogController {
 internal fun MerchantCatalogDialogHost(
     controller: MerchantCatalogDialogController,
     state: MerchantAliasesScreenState,
-    actions: MerchantCatalogDialogHostActions,
+    actions: MerchantAliasesScreenActions,
 ) {
     LaunchedEffect(state.mergeSuggestion) {
-        state.mergeSuggestion?.let { suggestion ->
-            controller.openSuggestedMerge(suggestion.source, suggestion.target)
-            actions.onDismissSuggestion()
+        state.mergeSuggestion?.let {
+            actions.catalog.onSuggestMerge(it.source, it.target)
+            controller.openSuggestedMerge(it.source.publicId)
+            actions.mergeSuggestion.onDismiss()
         }
     }
-
-    controller.renamingCatalog?.let { item ->
-        RenameMerchantCatalogDialog(
-            catalog = item,
-            state = state,
-            onConfirm = { newName ->
-                actions.onRename(item, newName)
-            },
-            onDismiss = controller::closeRename,
-        )
-    }
-
-    controller.mergingCatalog?.let { source ->
-        val freshTarget = controller.preselectedMergeTarget
-        val mergeTargets = state.catalog
-            .filter { it.publicId != source.publicId && it.isActive }
-            .map { if (freshTarget != null && it.publicId == freshTarget.publicId) freshTarget else it }
-        MergeMerchantCatalogDialog(
-            state = MerchantCatalogMergeDialogState(
-                source = source,
-                targets = mergeTargets,
-                initialTarget = freshTarget?.takeIf { it.isActive },
-                busy = state.busy,
-                message = state.message,
-                messageTone = state.messageTone,
-            ),
-            actions = MerchantCatalogMergeDialogActions(
-                onConfirm = { target, aliasPolicy ->
-                    actions.onMerge(source, target, aliasPolicy)
-                },
-                onDismiss = controller::closeMerge,
-            ),
-        )
-    }
-}
-
-@Composable
-private fun RenameMerchantCatalogDialog(
-    catalog: MerchantCatalog,
-    state: MerchantAliasesScreenState,
-    onConfirm: (String) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    var name by remember(catalog.publicId) { mutableStateOf(catalog.displayName) }
+    val kind = controller.kind ?: return
+    val draft = state.drafts.draft(kind, controller.sourceId) ?: return
     AlertDialog(
-        onDismissRequest = { if (!state.busy) onDismiss() },
-        title = { Text(stringResource(R.string.merchant_catalog_rename_dialog_title)) },
+        onDismissRequest = { if (!state.busy) controller.close() },
+        title = { Text(stringResource(merchantCommandTitle(kind))) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-                SettingsDialogTextInput(
-                    state = SettingsTextInputState(
-                        label = stringResource(R.string.merchant_catalog_rename_dialog_label),
-                        value = name,
-                        enabled = !state.busy,
-                    ),
-                    onValueChange = { name = it },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                AppStatusBanner(message = state.message, tone = state.messageTone)
+            Column(modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+                MerchantCatalogCommandInputs(draft, state, actions.catalog)
+                MerchantCatalogCommandFeedback(draft, state, actions)
             }
         },
         confirmButton = {
-            TextButton(
-                enabled = !state.busy && name.trim().isNotBlank() && name.trim() != catalog.displayName,
-                onClick = { onConfirm(name) },
-            ) {
-                Text(stringResource(R.string.merchant_catalog_rename_dialog_confirm))
+            TextButton(enabled = !state.busy && state.drafts.canSubmit(draft),
+                onClick = { actions.catalog.onSubmit(kind, controller.sourceId) }) {
+                Text(stringResource(if (draft.phase == "unconfirmed") R.string.merchant_command_verify else merchantCommandConfirm(draft)))
             }
         },
         dismissButton = {
-            TextButton(enabled = !state.busy, onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
+            TextButton(enabled = !state.busy, onClick = controller::close) { Text(stringResource(R.string.common_cancel)) }
         },
     )
 }
 
-private data class MerchantCatalogMergeDialogState(
-    val source: MerchantCatalog,
-    val targets: List<MerchantCatalog>,
-    val initialTarget: MerchantCatalog?,
-    val busy: Boolean,
-    val message: UiText?,
-    val messageTone: MessageTone,
-)
-
-private data class MerchantCatalogMergeDialogActions(
-    val onConfirm: (MerchantCatalog, MerchantCatalogAliasPolicy) -> Unit,
-    val onDismiss: () -> Unit,
-)
-
 @Composable
-private fun MergeMerchantCatalogDialog(
-    state: MerchantCatalogMergeDialogState,
-    actions: MerchantCatalogMergeDialogActions,
-) {
-    var selectedTarget by remember(state.source.publicId) { mutableStateOf(state.initialTarget) }
-    var aliasPolicy by remember(state.source.publicId) { mutableStateOf<MerchantCatalogAliasPolicy?>(null) }
-    AlertDialog(
-        onDismissRequest = { if (!state.busy) actions.onDismiss() },
-        title = { Text(stringResource(R.string.merchant_catalog_merge_dialog_title)) },
-        text = {
-            MergeMerchantCatalogDialogContent(
-                state = MerchantCatalogMergeContentState(
-                    source = state.source,
-                    targets = state.targets,
-                    selectedTarget = selectedTarget,
-                    aliasPolicy = aliasPolicy,
-                    busy = state.busy,
-                    message = state.message,
-                    messageTone = state.messageTone,
-                ),
-                actions = MerchantCatalogMergeContentActions(
-                    onSelectTarget = { selectedTarget = it },
-                    onSelectAliasPolicy = { aliasPolicy = it },
-                ),
-            )
-        },
-        confirmButton = {
-            TextButton(
-                enabled = !state.busy && selectedTarget != null && aliasPolicy != null,
-                onClick = {
-                    val target = selectedTarget ?: return@TextButton
-                    val policy = aliasPolicy ?: return@TextButton
-                    actions.onConfirm(target, policy)
-                },
-            ) {
-                Text(stringResource(R.string.merchant_catalog_merge_dialog_confirm))
-            }
-        },
-        dismissButton = {
-            TextButton(enabled = !state.busy, onClick = actions.onDismiss) { Text(stringResource(R.string.common_cancel)) }
-        },
-    )
+private fun MerchantCatalogCommandInputs(draft: MerchantDraft, state: MerchantAliasesScreenState, actions: MerchantAliasesCatalogActions) {
+    val source = requireNotNull(draft.source)
+    val editable = state.drafts.canEdit(draft) && !state.busy
+    when (draft.kind) {
+        MerchantDraftKind.Rename -> {
+            Text(stringResource(if (draft.sourceUnavailable || !draft.reviewed) R.string.merchant_rename_original_name else R.string.merchant_rename_current_name,
+                source.displayName))
+            SettingsDialogTextInput(SettingsTextInputState(label = stringResource(R.string.merchant_catalog_rename_dialog_label),
+                value = draft.displayName, enabled = state.drafts.ready, readOnly = !editable),
+                onValueChange = { actions.onChange(draft.copy(displayName = it)) }, modifier = Modifier.fillMaxWidth())
+        }
+        MerchantDraftKind.Merge -> {
+            Text(stringResource(R.string.merchant_catalog_merge_dialog_text, source.displayName))
+            draft.target?.let { Text(stringResource(R.string.merchant_merge_selected_target, it.displayName)) }
+            MerchantCatalogMergeTargetList(state.catalog, draft, editable) { actions.onChange(draft.copy(target = it)) }
+            MerchantCatalogAliasPolicySection(draft.aliasPolicy, editable) { actions.onChange(draft.copy(aliasPolicy = it)) }
+        }
+        MerchantDraftKind.Delete -> Text(stringResource(R.string.merchant_catalog_delete_dialog_text, source.displayName))
+        MerchantDraftKind.Visibility -> Text(stringResource(if (draft.nextStatus == "hidden") R.string.merchant_command_hide_text
+            else R.string.merchant_command_show_text, source.displayName))
+        else -> Unit
+    }
 }
 
-private data class MerchantCatalogMergeContentState(
-    val source: MerchantCatalog,
-    val targets: List<MerchantCatalog>,
-    val selectedTarget: MerchantCatalog?,
-    val aliasPolicy: MerchantCatalogAliasPolicy?,
-    val busy: Boolean,
-    val message: UiText?,
-    val messageTone: MessageTone,
-)
-
-private data class MerchantCatalogMergeContentActions(
-    val onSelectTarget: (MerchantCatalog) -> Unit,
-    val onSelectAliasPolicy: (MerchantCatalogAliasPolicy) -> Unit,
-)
+@Composable
+private fun MerchantCatalogCommandFeedback(draft: MerchantDraft, state: MerchantAliasesScreenState, actions: MerchantAliasesScreenActions) {
+    val changed = draft.binding != state.drafts.binding
+    Text(state.drafts.error?.asString() ?: merchantCommandNotice(draft, changed), color = MaterialTheme.colorScheme.onSurfaceVariant)
+    draft.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+    if (draft.phase == "accepted" && state.drafts.error != null) TextButton(
+        enabled = !changed && !state.busy, onClick = { actions.creation.onAccepted(draft.kind, draft.key) },
+    ) { Text(stringResource(R.string.merchant_creation_acknowledge)) }
+    if (draft.phase != "accepted" || changed) TextButton(enabled = state.drafts.canReview(draft) && !state.busy,
+        onClick = { actions.catalog.onReview(draft.kind, draft.source?.publicId) }) {
+        Text(stringResource(if (changed) R.string.merchant_creation_review_identity else if (draft.kind == MerchantDraftKind.Merge)
+            R.string.merchant_merge_review else if (draft.kind == MerchantDraftKind.Rename) R.string.merchant_rename_review
+            else R.string.merchant_command_review))
+    }
+}
 
 @Composable
-private fun MergeMerchantCatalogDialogContent(
-    state: MerchantCatalogMergeContentState,
-    actions: MerchantCatalogMergeContentActions,
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(max = 360.dp)
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-    ) {
-        Text(
-            text = stringResource(R.string.merchant_catalog_merge_dialog_text, state.source.displayName),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        MerchantCatalogMergeTargetList(state.targets, state.selectedTarget, !state.busy, actions.onSelectTarget)
-        MerchantCatalogAliasPolicySection(state.aliasPolicy, !state.busy, actions.onSelectAliasPolicy)
-        AppStatusBanner(message = state.message, tone = state.messageTone)
+private fun merchantCommandNotice(draft: MerchantDraft, changed: Boolean): String = when {
+        changed -> stringResource(R.string.merchant_creation_identity_changed)
+        draft.sourceUnavailable -> stringResource(when (draft.kind) {
+            MerchantDraftKind.Merge -> R.string.merchant_merge_source_unavailable
+            MerchantDraftKind.Rename -> R.string.merchant_rename_unavailable
+            else -> R.string.merchant_command_source_unavailable
+        })
+        draft.targetUnavailable -> stringResource(R.string.merchant_merge_target_unavailable)
+        draft.phase == "unconfirmed" -> stringResource(R.string.merchant_command_unconfirmed)
+        draft.phase == "rejected" -> stringResource(R.string.merchant_command_rejected)
+        draft.phase == "accepted" -> stringResource(R.string.merchant_command_returning)
+        draft.reviewed -> merchantReviewedNotice(draft)
+        else -> stringResource(R.string.merchant_command_editing)
     }
+
+@Composable
+private fun merchantReviewedNotice(draft: MerchantDraft): String = if (draft.kind == MerchantDraftKind.Merge && draft.target != null)
+    stringResource(R.string.merchant_merge_reviewed, requireNotNull(draft.source).displayName, draft.target.displayName)
+    else stringResource(R.string.merchant_rename_reviewed)
+
+internal fun merchantCommandTitle(kind: MerchantDraftKind): Int = when (kind) {
+    MerchantDraftKind.Rename -> R.string.merchant_catalog_rename_dialog_title
+    MerchantDraftKind.Merge -> R.string.merchant_catalog_merge_dialog_title
+    MerchantDraftKind.Delete -> R.string.merchant_catalog_delete_dialog_title
+    else -> R.string.merchant_command_visibility
+}
+
+private fun merchantCommandConfirm(draft: MerchantDraft): Int = when (draft.kind) {
+    MerchantDraftKind.Rename -> R.string.merchant_catalog_rename_dialog_confirm
+    MerchantDraftKind.Merge -> R.string.merchant_catalog_merge_dialog_confirm
+    MerchantDraftKind.Delete -> R.string.merchant_catalog_delete_dialog_confirm
+    else -> if (draft.nextStatus == "hidden") R.string.merchant_catalog_card_action_hide else R.string.merchant_catalog_card_action_show
 }
 
 @Composable
 private fun MerchantCatalogMergeTargetList(
-    targets: List<MerchantCatalog>,
-    selectedTarget: MerchantCatalog?,
+    catalog: List<MerchantCatalog>,
+    draft: MerchantDraft,
     enabled: Boolean,
     onSelectTarget: (MerchantCatalog) -> Unit,
 ) {
+    // Frozen commands show their original selected target above, independently of today's directory choices.
+    if (draft.phase != "editing") return
+    val selectedTarget = draft.target
+    val targets = catalog.filter { it.publicId != draft.source?.publicId && it.isActive && it.deletedAt == null }
+        .map { if (it.publicId == selectedTarget?.publicId) requireNotNull(selectedTarget) else it }
     if (targets.isEmpty()) {
         Text(
             text = stringResource(R.string.merchant_catalog_merge_dialog_no_targets),
@@ -336,8 +260,7 @@ private fun MerchantCatalogMergeTargetRow(
             } else {
                 target.displayName
             },
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
         )
     }
 }
@@ -358,6 +281,6 @@ private fun MerchantCatalogAliasPolicyRow(
     ) {
         RadioButton(selected = selected, enabled = enabled, onClick = onSelect)
         Spacer(Modifier.width(AppSpacing.smallGap))
-        Text(text = label, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(text = label, modifier = Modifier.weight(1f))
     }
 }

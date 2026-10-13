@@ -21,7 +21,7 @@ def original_receipt_references_query(receipt_query: Select, *, tenant_id: str) 
     receipt = receipt_query.order_by(None).subquery("accepted_original_receipts")
     body = case((receipt.c.resource_type == "expense_offset", receipt.c.response_body["root"]),
         else_=receipt.c.response_body)
-    original_operations = ("verify_original", "replenish_original",
+    original_operations = ("attach_original", "verify_original", "replenish_original",
         "retry_original_cleanup", "cancel_original_cleanup")
     original_command = and_(receipt.c.resource_type == "expense",
         body["operation"].as_string().in_(original_operations),

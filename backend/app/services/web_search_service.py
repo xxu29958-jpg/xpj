@@ -5,14 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from urllib.parse import urlencode
 
-from sqlalchemy import Select, exists, func, or_, select
+from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
-from app.models import CategoryRule, Expense, Goal, OcrFact
+from app.models import CategoryRule, Expense, Goal
+from app.services.expense_search_query import matches_expense_search, matches_text
 from app.services.spending_contract_service import (
     accounting_datetime_label,
-    category_search_terms,
-    merchant_search_terms,
     stat_time,
 )
 from app.services.web_stats_service import source_label
@@ -74,61 +73,6 @@ def _clean_query(query: str) -> str:
     return (query or "").strip()[:MAX_QUERY_LENGTH]
 
 
-def _like_pattern(term: str) -> str:
-    escaped = term.lower().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-    return f"%{escaped}%"
-
-
-def _matches_text(term: str, *columns) -> object:
-    return _matches_any_text([term], *columns)
-
-
-def _matches_any_text(terms: list[str], *columns) -> object:
-    patterns = [_like_pattern(term) for term in terms if term]
-    if not patterns:
-        patterns = [_like_pattern("")]
-    predicates = []
-    for column in columns:
-        lowered = func.lower(func.coalesce(column, ""))
-        predicates.extend(lowered.like(pattern, escape="\\") for pattern in patterns)
-    return or_(*predicates)
-
-
-def _merchant_search_terms(db: Session, tenant_id: str, term: str) -> list[str]:
-    return merchant_search_terms(db, tenant_id=tenant_id, term=term)
-
-
-def _matches_expense_search(db: Session, tenant_id: str, term: str) -> object:
-    merchant_terms = _merchant_search_terms(db, tenant_id, term)
-    category_terms = category_search_terms(term)
-    # v1.2 OCR single-source migration (step 4): the raw_text needle
-    # is now searched against ``ocr_facts.raw_text`` via an EXISTS
-    # subquery. Matching ANY fact (not just the latest) is intentional
-    # — users looking up an expense by OCR'd text may remember earlier
-    # snapshots. The subquery is tenant-scoped (defence-in-depth even
-    # though Expense.tenant_id already constrains the outer row) and
-    # uses the existing ``ix_ocr_facts_lookup`` index.
-    pattern = _like_pattern(term)
-    ocr_fact_match = exists().where(
-        OcrFact.tenant_id == Expense.tenant_id,
-        OcrFact.expense_id == Expense.id,
-        func.lower(func.coalesce(OcrFact.raw_text, "")).like(
-            pattern, escape="\\"
-        ),
-    )
-    return or_(
-        _matches_any_text(merchant_terms, Expense.merchant),
-        _matches_any_text(category_terms, Expense.category),
-        _matches_text(
-            term,
-            Expense.note,
-            Expense.source,
-            Expense.tags,
-        ),
-        ocr_fact_match,
-    )
-
-
 def _limited(statement: Select[tuple], limit: int) -> Select[tuple]:
     return statement.limit(limit)
 
@@ -153,7 +97,7 @@ def _search_expenses(
         select(Expense)
         .where(Expense.tenant_id == tenant_id)
         .where(Expense.status == status)
-        .where(_matches_expense_search(db, tenant_id, term))
+        .where(matches_expense_search(db, tenant_id, term))
         .order_by(Expense.created_at.desc(), Expense.id.desc())
     )
     rows = db.scalars(_limited(statement, limit)).all()
@@ -194,7 +138,7 @@ def _search_rules(db: Session, tenant_id: str, term: str, limit: int) -> list[We
         select(CategoryRule)
         .where(CategoryRule.tenant_id == tenant_id)
         .where(
-            _matches_text(
+            matches_text(
                 term,
                 CategoryRule.keyword,
                 CategoryRule.category,
@@ -220,7 +164,7 @@ def _search_goals(db: Session, tenant_id: str, term: str, limit: int) -> list[We
     statement = (
         select(Goal)
         .where(Goal.tenant_id == tenant_id)
-        .where(_matches_text(term, Goal.name, Goal.category, Goal.month, Goal.status))
+        .where(matches_text(term, Goal.name, Goal.category, Goal.month, Goal.status))
         .order_by(Goal.month.desc(), Goal.status.asc(), Goal.created_at.desc())
     )
     return [

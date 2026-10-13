@@ -12,7 +12,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material3.Button
+import com.ticketbox.ui.components.AppPrimaryButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -76,12 +76,11 @@ internal fun EmptyStatsCard(
         )
         StatsSkeletonPlaceholder()
         onRefresh?.let {
-            Button(
+            AppPrimaryButton(
+                text = stringResource(R.string.stats_empty_card_refresh),
                 modifier = Modifier.fillMaxWidth(),
                 onClick = it,
-            ) {
-                Text(stringResource(R.string.stats_empty_card_refresh))
-            }
+            )
         }
     }
 }

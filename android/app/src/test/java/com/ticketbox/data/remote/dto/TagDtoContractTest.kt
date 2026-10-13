@@ -37,22 +37,25 @@ class TagDtoContractTest {
     @Test
     fun mutationRequestsSerializeWithOccTokensAndNoIdempotencyKey() {
         // 契约 7: every mutate body carries expected_row_version; no client key.
-        assertEquals(
-            """{"expected_row_version":2,"name":"餐饮"}""",
-            moshi.adapter(TagRenameRequest::class.java)
-                .toJson(TagRenameRequest(expectedRowVersion = 2L, name = "餐饮")),
-        )
-        assertEquals(
-            """{"expected_row_version":2}""",
-            moshi.adapter(TagDeleteRequest::class.java)
-                .toJson(TagDeleteRequest(expectedRowVersion = 2L)),
-        )
-        assertEquals(
-            """{"expected_row_version":2,"target_public_id":"tag-2","target_row_version":5}""",
-            moshi.adapter(TagMergeRequest::class.java).toJson(
-                TagMergeRequest(expectedRowVersion = 2L, targetPublicId = "tag-2", targetRowVersion = 5L),
-            ),
-        )
+        for (requireOrphan in listOf(false, true)) {
+            assertEquals(
+                """{"expected_row_version":2,"name":"餐饮","require_orphan":$requireOrphan}""",
+                moshi.adapter(TagRenameRequest::class.java)
+                    .toJson(TagRenameRequest(expectedRowVersion = 2L, name = "餐饮", requireOrphan = requireOrphan)),
+            )
+            assertEquals(
+                """{"expected_row_version":2,"require_orphan":$requireOrphan}""",
+                moshi.adapter(TagDeleteRequest::class.java)
+                    .toJson(TagDeleteRequest(expectedRowVersion = 2L, requireOrphan = requireOrphan)),
+            )
+            assertEquals(
+                """{"expected_row_version":2,"target_public_id":"tag-2","target_row_version":5,"require_orphan":$requireOrphan}""",
+                moshi.adapter(TagMergeRequest::class.java).toJson(
+                    TagMergeRequest(expectedRowVersion = 2L, targetPublicId = "tag-2", targetRowVersion = 5L,
+                        requireOrphan = requireOrphan),
+                ),
+            )
+        }
         assertEquals(
             """{"expected_row_version":7}""",
             moshi.adapter(TagUndoRequest::class.java)

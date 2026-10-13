@@ -29,7 +29,7 @@ fun ExpenseFactViewModel.loadExpenseRevisions() {
                 revisionsRefreshFailed = false,
             )
         }
-        repository.fetchExpenseRevisions(expenseId, page = 1, pageSize = REVISION_PAGE_SIZE, snapshotRevision = null,
+        repository.fetchExpenseRevisions(expenseId, page = 1, pageSize = REVISION_PAGE_SIZE, snapshot = null,
             expectedBinding = binding)
             .onSuccess { snapshot ->
                 val page = snapshot.value
@@ -41,7 +41,7 @@ fun ExpenseFactViewModel.loadExpenseRevisions() {
                         revisionsLoading = false,
                         revisionsLoadState = ExpenseDetailDataLoadState.Loaded,
                         revisionsNextPage = page.nextPageOrNull(),
-                        revisionsSnapshotRevision = page.snapshotRevision,
+                        revisionsSnapshot = com.ticketbox.domain.model.ExpenseHistorySnapshot(page.snapshotRevision, page.offsetSnapshotId),
                         revisionsOlderLoading = false,
                         revisionsOlderLoadFailed = false,
                         revisionsRefreshFailed = false,
@@ -61,7 +61,7 @@ fun ExpenseFactViewModel.loadOlderExpenseRevisions() {
     val nextPage = current.revisionsNextPage ?: return
     if (current.revisionsLoading || current.revisionsOlderLoading) return
     // 锚与 nextPage 同生同灭：只在首读/显式刷新成功后一起换新。
-    val snapshot = current.revisionsSnapshotRevision
+    val snapshot = current.revisionsSnapshot
     val generation = revisionLoadGeneration
     viewModelScope.launch {
         val state = _uiState.value
@@ -83,7 +83,7 @@ fun ExpenseFactViewModel.loadOlderExpenseRevisions() {
             expenseId,
             page = nextPage,
             pageSize = REVISION_PAGE_SIZE,
-            snapshotRevision = snapshot,
+            snapshot = snapshot,
             expectedBinding = binding,
         )
             .onSuccess { snapshotRead ->
@@ -120,7 +120,7 @@ private fun ExpenseFactViewModel.publishRevisionFailure(generation: Long, error:
                 revisionsLoadState = ExpenseDetailDataLoadState.Loaded, revisionsOlderLoading = false,
                 revisionsOlderLoadFailed = false, revisionsRefreshFailed = true)
             else -> state.copy(revisionsLoading = false, revisionsLoadState = ExpenseDetailDataLoadState.Failed,
-                revisions = emptyList(), revisionsTotal = 0, revisionsNextPage = null, revisionsSnapshotRevision = null,
+                revisions = emptyList(), revisionsTotal = 0, revisionsNextPage = null, revisionsSnapshot = null,
                 revisionsCachedAt = null, revisionsOlderLoading = false, revisionsOlderLoadFailed = false, revisionsRefreshFailed = false)
         }
     }

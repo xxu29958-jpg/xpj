@@ -36,18 +36,20 @@ def test_accepted_result_survives_response_loss_and_reentry(client: TestClient, 
         expected = {"expense_id": invitation.received_expense_id,
                     "ledger_id": "receiver_result", "ledger_name": "Receiver result 的账本"}
     assert accepted.get("received_bill") == expected
+    assert accepted["accepted_target_ledger_id"] == "receiver_result"
 
     replay = client.post(f"/api/bill-splits/{public_id}/accept", headers=headers,
                          json={"target_ledger_id": "receiver_result"})
     assert replay.status_code == 200, replay.json()
     assert replay.json()["received_bill"] == expected
+    assert replay.json()["accepted_target_ledger_id"] == "receiver_result"
     inbox = client.get("/api/bill-splits/inbox", headers=headers)
     assert inbox.status_code == 200, inbox.json()
     row = next(item for item in inbox.json()["items"] if item["public_id"] == public_id)
     assert row["received_bill"] == expected
     assert "sender_expense_id" not in row and "sender_ledger_id" not in row
     sent = client.get("/api/bill-splits/sent", headers=identity.app_headers).json()["items"]
-    assert all("received_bill" not in item and "receiver_ledger_id" not in item for item in sent)
+    assert all("received_bill" not in item and "receiver_ledger_id" not in item and "accepted_target_ledger_id" not in item for item in sent)
     with SessionLocal() as db:
         received = db.scalars(select(Expense).where(Expense.tenant_id == "receiver_result")).all()
         assert [expense.id for expense in received] == [expected["expense_id"]]
@@ -74,3 +76,7 @@ def test_result_reference_obeys_current_target_access(client: TestClient, *, ide
         assert row.get("received_bill", {}).get("ledger_id") == "receiver_result"
     else:
         assert row.get("received_bill") is None
+    replay = client.post(f"/api/bill-splits/{public_id}/accept", headers=headers, json={"target_ledger_id": "receiver_result"})
+    assert replay.status_code == 200, replay.text
+    assert replay.json()["accepted_target_ledger_id"] == "receiver_result"
+    assert replay.json()["received_bill"] == row.get("received_bill")

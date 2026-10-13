@@ -222,15 +222,17 @@ class RecurringViewModel(
             }
             return
         }
-        mutate(
-            action = { binding -> repository.confirmCandidate(binding, candidate) },
-            onSuccessState = { state, item ->
-                state.copy(
-                    items = state.items.withRecurringItem(item),
-                    candidates = state.candidates.filterNot { it == candidate },
-                )
-            },
-        )
+        val pending = _uiState.value.pendingIntents.any {
+            it.kind == com.ticketbox.data.repository.RecurringPendingKind.CANDIDATE &&
+                it.state != com.ticketbox.data.repository.RecurringPendingState.DONE &&
+                it.merchant == candidate.merchant && it.baselineAmountCents == candidate.amountCents &&
+                it.homeCurrencyCode == candidate.homeCurrencyCode
+        }
+        if (pending) {
+            _uiState.update { it.copy(message = UiText.res(R.string.recurring_candidate_pending), messageTone = MessageTone.Info) }
+            return
+        }
+        saveManual(RecurringManualSaveCommand.Adopt(candidate))
     }
 
     fun pause(publicId: String, expectedRowVersion: Long) {
@@ -270,6 +272,7 @@ class RecurringViewModel(
                 )
             }
             val result = when (command) {
+                is RecurringManualSaveCommand.Adopt -> repository.confirmCandidate(binding, command.candidate)
                 is RecurringManualSaveCommand.Create ->
                     repository.createAllowingOffline(binding, command.draft)
                 is RecurringManualSaveCommand.Edit ->

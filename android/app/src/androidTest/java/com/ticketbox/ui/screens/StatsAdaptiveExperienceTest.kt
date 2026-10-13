@@ -9,6 +9,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.DeviceConfigurationOverride
 import androidx.compose.ui.test.ForcedSize
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasClickAction
@@ -21,20 +22,25 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.R
+import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.saveConsumerArtPreview
 import com.ticketbox.domain.model.DashboardCard
 import com.ticketbox.ui.screens.stats.DashboardLayoutActions
+import com.ticketbox.ui.screens.stats.DashboardLayoutEditorContent
 import com.ticketbox.ui.screens.stats.OverviewModuleActions
 import com.ticketbox.ui.screens.stats.OverviewModulesState
 import com.ticketbox.ui.screens.stats.OverviewInteractionActions
 import com.ticketbox.viewmodel.DashboardLayoutUiState
 import com.ticketbox.viewmodel.RecurringUiState
 import com.ticketbox.domain.model.AppSkin
+import com.ticketbox.domain.model.CategoryStats
 import com.ticketbox.domain.model.MonthlyStats
 import com.ticketbox.ui.components.AppAdaptivePaneStructures
 import com.ticketbox.ui.components.LocalAppAdaptivePaneDirective
@@ -162,11 +168,18 @@ class StatsAdaptiveExperienceTest {
     fun compactControlsKeepRetainedTagsMonthFailureAndTabSelectionUsable() {
         var selectedMonth: String? = null
         var selectedTag: String? = null
+        val skin = mutableStateOf(AppSkin.Paper)
+        val populated = readableStats.copy(
+            stats = MonthlyStats(homeCurrencyCode = "CNY", month = "2026-09", totalAmountCents = 246000, count = 4,
+                byCategory = listOf(CategoryStats("居住", 114000, 1), CategoryStats("餐饮", 60000, 1),
+                    CategoryStats("购物", 48000, 1), CategoryStats("交通", 24000, 1))),
+            tagsLoadState = StatsFilterOptionsLoadState.Failed,
+        )
         composeRule.setContent {
             DeviceConfigurationOverride(DeviceConfigurationOverride.ForcedSize(DpSize(360.dp, 900.dp))) {
-                TicketboxTheme(skin = AppSkin.Default) {
+                TicketboxTheme(skin = skin.value) {
                     StatsScreen(
-                        state = readableStats.copy(tagsLoadState = StatsFilterOptionsLoadState.Failed),
+                        state = populated,
                         overview = overview,
                         actions = actions(onMonthChange = { selectedMonth = it }, onTagChange = { selectedTag = it }),
                     )
@@ -186,10 +199,69 @@ class StatsAdaptiveExperienceTest {
             .performClick().assertIsSelected()
         composeRule.onNode(hasText(context.getString(R.string.stats_tab_category)) and hasClickAction())
             .performClick().assertIsSelected()
+        for (theme in listOf(AppSkin.Paper, AppSkin.Midnight)) {
+            composeRule.runOnIdle { skin.value = theme }
+            saveConsumerArtPreview("category-palette-${theme.name}", composeRule.onRoot().captureToImage().asAndroidBitmap())
+        }
     }
 
     private val monthLabel: String
         get() = context.getString(R.string.components_month_label, "2026", "9")
+
+    @Test
+    fun compactLayoutEditorKeepsVisibilityOrderAndDraftWhileResizing() {
+        val editorCards = requireNotNull(overview.layout.cards) + listOf(
+            DashboardCard("budget", "预算", true, 3), DashboardCard("goals", "目标", true, 4),
+            DashboardCard("recurring", "固定支出", true, 5), DashboardCard("pending", "待整理小票", true, 6),
+        )
+        val layout = mutableStateOf(overview.layout.copy(draft = editorCards))
+        val viewport = mutableStateOf(393.dp)
+        val skin = mutableStateOf(AppSkin.Paper)
+        val scale = mutableStateOf(1f)
+        var saved: List<DashboardCard>? = null
+        val layoutActions = DashboardLayoutActions({}, {},
+            onVisible = { key, visible -> layout.value = layout.value.copy(draft = layout.value.draft?.map {
+                if (it.key == key) it.copy(visible = visible) else it
+            }) },
+            onMove = { key, direction -> layout.value = layout.value.copy(draft = requireNotNull(layout.value.draft).toMutableList().apply {
+                val index = indexOfFirst { it.key == key }; add(index + direction, removeAt(index))
+            }) },
+            onSave = { saved = layout.value.draft }, onCancel = {}, onReset = {},
+        )
+        composeRule.setContent {
+            DeviceConfigurationOverride(DeviceConfigurationOverride.ForcedSize(DpSize(viewport.value, 900.dp))) {
+                CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, scale.value)) {
+                    TicketboxTheme(skin = skin.value) {
+                        DashboardLayoutEditorContent(layout.value, actions = layoutActions)
+                    }
+                }
+            }
+        }
+        saveConsumerArtPreview("dashboard-editor-paper", composeRule.onRoot().captureToImage().asAndroidBitmap())
+        composeRule.onNodeWithContentDescription(context.getString(R.string.dashboard_visibility, "趋势报表")).performClick()
+        composeRule.onNodeWithContentDescription(context.getString(R.string.dashboard_order_action, "趋势报表", 2)).performClick()
+        composeRule.onNodeWithContentDescription(context.getString(R.string.dashboard_move_up, "趋势报表")).performClick()
+        composeRule.runOnIdle { viewport.value = 768.dp }
+        composeRule.onNodeWithText(context.getString(R.string.dashboard_save)).performClick()
+        composeRule.runOnIdle {
+            assertEquals(listOf("reports", "monthly_spend", "recent_uploads", "budget", "goals", "recurring", "pending"), saved?.map { it.key })
+            assertEquals(false, saved?.first()?.visible)
+        }
+        composeRule.runOnIdle {
+            viewport.value = 320.dp; scale.value = 2f; skin.value = AppSkin.Midnight
+            layout.value = layout.value.copy(saving = true)
+        }
+        composeRule.onNodeWithText(context.getString(R.string.common_saving)).assertIsDisplayed().assertIsNotEnabled()
+        composeRule.runOnIdle {
+            layout.value = layout.value.copy(saving = false, message = UiText.Res(R.string.dashboard_save_failed))
+        }
+        composeRule.onNodeWithText(context.getString(R.string.dashboard_save)).assertIsDisplayed()
+        saveConsumerArtPreview("dashboard-editor-midnight-large", composeRule.onRoot().captureToImage().asAndroidBitmap())
+        composeRule.onNodeWithContentDescription(context.getString(R.string.dashboard_visibility, "待整理小票"))
+            .performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.dashboard_reset_save)).performScrollTo().assertIsDisplayed()
+        saveConsumerArtPreview("dashboard-editor-midnight-large-last", composeRule.onRoot().captureToImage().asAndroidBitmap())
+    }
 
     private fun actions(
         onMonthChange: (String) -> Unit = {},
@@ -209,9 +281,9 @@ class StatsAdaptiveExperienceTest {
     private companion object {
         val overview = OverviewModulesState(
             layout = DashboardLayoutUiState(cards = listOf(
-                DashboardCard("monthly_spend", "本月支出", true, 0),
+                DashboardCard("monthly_spend", "月度净支出", true, 0),
                 DashboardCard("reports", "趋势报表", true, 1),
-                DashboardCard("recent_uploads", "最近上传", true, 2),
+                DashboardCard("recent_uploads", "最近新增", true, 2),
             ), canModify = true),
             recurring = RecurringUiState(),
         )

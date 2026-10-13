@@ -61,12 +61,14 @@ data class RepositoryViewModelRepositories(
 fun repositoryViewModelFactory(
     repositories: RepositoryViewModelRepositories,
     onExpenseDataChanged: () -> Unit = {},
+    initialLedgerFilter: LedgerDataQualityFilter? = null,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         val repository = repositories.repository
         return when (modelClass) {
             PendingViewModel::class.java -> PendingViewModel(
                 repository = repository,
+                expenseReader = repository,
                 uploadIntents = repositories.uploads,
                 enrichmentTaskReader = repository.pendingEnrichmentTasks,
                 onDataChanged = onExpenseDataChanged,
@@ -76,6 +78,7 @@ fun repositoryViewModelFactory(
                 checkNotNull(repositories.debtRepository) { "LedgerViewModel requires DebtActions for R13-6 capability" },
                 onDataChanged = onExpenseDataChanged,
                 calendars = repositories.calendars,
+                initialDataQualityFilter = initialLedgerFilter,
             )
             GlobalSearchViewModel::class.java -> GlobalSearchViewModel(repository)
             MonthlyStatsViewModel::class.java -> MonthlyStatsViewModel(repository, calendars = repositories.calendars)
@@ -178,6 +181,8 @@ fun debtViewModelFactory(
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         return DebtListViewModel(repository, creation, writes, lens) as T
     }
+    override fun <T : ViewModel> create(modelClass: Class<T>, extras: CreationExtras): T =
+        modelClass.cast(DebtListViewModel(repository, creation, writes, lens, extras.createSavedStateHandle())) as T
 }
 
 @Suppress("UNCHECKED_CAST")
@@ -188,6 +193,8 @@ fun debtDetailViewModelFactory(
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         return DebtDetailViewModel(repository, writes) as T
     }
+    override fun <T : ViewModel> create(modelClass: Class<T>, extras: CreationExtras): T =
+        modelClass.cast(DebtDetailViewModel(repository, writes, extras.createSavedStateHandle())) as T
 }
 
 @Suppress("UNCHECKED_CAST")
@@ -218,6 +225,8 @@ fun memberRepaymentProposalViewModelFactory(
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         return MemberRepaymentProposalViewModel(repository) as T
     }
+    override fun <T : ViewModel> create(modelClass: Class<T>, extras: CreationExtras): T =
+        modelClass.cast(MemberRepaymentProposalViewModel(repository, extras.createSavedStateHandle())) as T
 }
 
 @Suppress("UNCHECKED_CAST")
@@ -299,6 +308,8 @@ fun tagManagementViewModelFactory(
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         return TagManagementViewModel(tagRepository) as T
     }
+    override fun <T : ViewModel> create(modelClass: Class<T>, extras: CreationExtras): T =
+        TagManagementViewModel(tagRepository, extras.createSavedStateHandle()) as T
 }
 
 @Suppress("UNCHECKED_CAST")
@@ -320,6 +331,8 @@ fun expenseEditViewModelFactory(
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         return ExpenseEditViewModel(expenseId, repository, originalBinding) as T
     }
+    override fun <T : ViewModel> create(modelClass: Class<T>, extras: CreationExtras): T =
+        requireNotNull(modelClass.cast(ExpenseEditViewModel(expenseId, repository, originalBinding, extras.createSavedStateHandle())))
 }
 
 /**
@@ -396,8 +409,8 @@ fun billSplitViewModelFactory(
     expenseRepository: ExpenseRepository,
     ledgerRepository: LedgerRepository,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
-    override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return BillSplitViewModel(expenseRepository, ledgerRepository) as T
+    override fun <T : ViewModel> create(modelClass: Class<T>, extras: CreationExtras): T {
+        return BillSplitViewModel(expenseRepository, ledgerRepository, extras.createSavedStateHandle()) as T
     }
 }
 

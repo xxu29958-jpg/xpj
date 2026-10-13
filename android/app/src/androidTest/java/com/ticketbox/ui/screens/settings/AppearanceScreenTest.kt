@@ -7,6 +7,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
@@ -61,7 +62,8 @@ class AppearanceScreenTest {
         }
         compose.onNodeWithText("本月净支出 · 示例").assertIsDisplayed()
         capture("appearance-paper")
-        compose.onNodeWithText("调整构图").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithText("调整构图").performScrollTo().assertHasNoClickAction()
+        compose.runOnIdle { assertEquals(null, edited) }
         compose.onNodeWithText("背景图库").performScrollTo().performClick()
         compose.onNodeWithText("从相册选择").performScrollTo().performClick()
         compose.runOnIdle {

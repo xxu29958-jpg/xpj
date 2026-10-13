@@ -81,9 +81,14 @@ class BudgetJourney:
         target.goto(f"{self.base_url}{path}{join}ledger_id={self.ledger_id}&month={self.month}")
 
     def form(self, action, *, page=None):
-        form = (page or self.page).locator(f'form[method="post"][action="{action}"]')
+        target = page or self.page
+        form = target.locator(f'form[method="post"][action="{action}"]')
+        if action == "/web/recurring/create" and not form.count():
+            target.get_by_role("link", name="添加固定支出", exact=True).click()
+        elif action.startswith("/web/recurring/") and action.endswith("/edit") and not form.count():
+            target.locator("#item-" + action.split("/")[-2]).get_by_role("link", name="编辑", exact=True).click()
         if not form.is_visible():
-            form.locator("xpath=ancestor::details").locator("summary").click()
+            form.locator("xpath=ancestor::details[1]/summary").click()
         return form
 
     def capture(self, name, *, page=None):
@@ -95,7 +100,7 @@ class BudgetJourney:
         self.native.plan_home()
         self.native.click(CARDS[kind], stable=True)
         if kind == "arrangement":
-            wait_for(lambda: self.native.has("月度安排与试算"), "The actual monthly arrangement page did not open")
+            wait_for(lambda: self.native.has("给本月做个安排"), "The actual monthly arrangement page did not open")
         if kind == "series":
             wait_for(lambda: self.native.has("固定支出暂时打不开") or any(
                 re.fullmatch(r"活跃 \d+", node.attrib.get("text", "")) for node in self.native.tree().iter("node")),
@@ -124,7 +129,8 @@ class BudgetJourney:
         self.login()
         form = self.form("/web/budgets/save")
         form.locator('[name="total_amount_yuan"]').fill("10000.00")
-        form.locator("[data-budget-submit]").click()
+        with self.page.expect_navigation(url=re.compile(r"/web/budgets\?[^#]*$"), wait_until="domcontentloaded"):
+            form.locator("[data-budget-submit]").click()
         self.expect_fact("budget_amount", 1000000)
         self.goto(PAGES["arrangement"])
         form = self.form("/web/budget-advise")
@@ -133,20 +139,24 @@ class BudgetJourney:
         form.get_by_role("button", name="试算，不保存", exact=True).click()
         self.page.wait_for_load_state("networkidle")
         assert self.facts()["arrangement_revisions"] == 0, "Trial wrote a saved arrangement"
-        form.locator("[data-arrangement-submit]").click()
+        with self.page.expect_navigation(url=re.compile(r"/web/budget-advise\?[^#]*$"), wait_until="domcontentloaded"):
+            form.locator("[data-arrangement-submit]").click()
         self.expect_fact("savings", 100000)
         self.goto(PAGES["series"])
         form = self.form("/web/recurring/create")
         form.locator('[name="merchant"]').fill(SERIES)
         form.locator('[name="baseline_amount_yuan"]').fill("1200.00")
         form.locator('[name="next_expected_date"]').fill(self.month + "-15")
-        form.locator("[data-recurring-submit]").click()
+        with self.page.expect_navigation(url=re.compile(r"/web/recurring\?[^#]*$"), wait_until="domcontentloaded"):
+            form.locator("[data-recurring-submit]").click()
         self.expect_fact("series_amount", 120000)
         assert self.facts()["expenses"] == 0, "Planning created a payment"
         self.native.bind(self.fixture.pairing_code, self.port)
 
     def native_edits(self):
         self.open_native("budget")
+        self.native.reveal_any("调整本月预算")
+        self.native.click("调整本月预算")
         self.native.reveal_any("月度总预算")
         self.native.fill("11000.00", previous=r"10,?000(?:\.00)?")
         self.native.click("保存预算")
@@ -162,6 +172,7 @@ class BudgetJourney:
     def history(self, *, offline=False):
         suffix = "offline-restart" if offline else "online"
         self.open_native("budget")
+        self.native.reveal_any("预算修改记录", toward_start=True)
         self.native.click("预算修改记录")
         if offline:
             self.native.reveal_any("本机保留")
@@ -171,13 +182,14 @@ class BudgetJourney:
         self.open_native("arrangement")
         self.native.click("查看修改历史")
         if offline:
-            self.native.reveal_any("离线缓存")
-        self.native.reveal_any("v1")
+            self.native.reveal_any("本机保留的历史与已确认保存回执")
+        self.native.reveal_any("保存本月安排 · 版本 1")
         self.native.capture("arrangement-history-" + suffix)
+        self.native.back()
         self.open_native("series")
         self.native.click("定义历史")
         if offline:
-            self.native.reveal_any("离线保存")
+            self.native.reveal_any("本机保留")
         self.native.reveal_any("1,200", "1200")
         self.native.capture("series-history-" + suffix)
         self.native.back()
@@ -199,6 +211,7 @@ class BudgetJourney:
                     self.capture(f"{kind}-{width}-{theme}")
         self.native.plan_home()
         self.native.click("打开账户与设置")
+        self.native.click("通知与外观")
         self.native.click("外观与主题")
         self.native.click("玄夜")
         for kind, values in (("budget", ("11,500", "11500")), ("arrangement", ("1,150", "1150")),

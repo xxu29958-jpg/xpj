@@ -1,5 +1,6 @@
 package com.ticketbox.ui.screens.budget
 
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -9,26 +10,22 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.domain.model.BudgetRevision
-import com.ticketbox.domain.model.CurrencyDisplay
-import com.ticketbox.ui.components.AppBusyGuardedSheet
-import com.ticketbox.ui.components.AppHistoryRecord
-import com.ticketbox.ui.components.AppSheetScaffold
-import com.ticketbox.ui.components.formatDisplayAmount
-import com.ticketbox.ui.components.displayDateTime
-import com.ticketbox.ui.design.tabularNum
+import com.ticketbox.ui.components.*
 import com.ticketbox.viewmodel.BudgetHistoryState
 
 @Composable
 fun BudgetHistorySheet(state: BudgetHistoryState, onRetry: () -> Unit, onMore: () -> Unit, onDismiss: () -> Unit) {
     AppBusyGuardedSheet(isSubmitting = false, onDismiss = onDismiss, skipPartiallyExpanded = true) {
-        AppSheetScaffold(title = stringResource(R.string.budget_history_title), subtitle = state.month,
-            modifier = Modifier.testTag("budget-history")) {
-            Text(stringResource(R.string.budget_history_explanation))
-            state.fetchedAt?.let { readAt ->
-                Text(stringResource(if (state.fromCache) R.string.budget_history_cached else R.string.budget_history_read_at,
-                    displayDateTime(readAt)), modifier = Modifier.testTag("budget-history-read-source"))
+        AppSheetScaffold(title = stringResource(R.string.budget_history_title), subtitle = displayMonthLabel(state.month),
+            modifier = Modifier.fillMaxHeight().testTag("budget-history")) {
+            AppHistoryScope(state.items.map { it.rowVersion }, state.nextBeforeVersion != null, state.fromCache, state.fetchedAt,
+                readSourceModifier = Modifier.testTag("budget-history-read-source"))
+            state.items.forEachIndexed { index, entry ->
+                val previous = state.items.getOrNull(index + 1)?.takeIf {
+                    it.rowVersion == entry.rowVersion - 1 && entry.changeKind !in listOf("baseline", "create")
+                }
+                BudgetHistoryEntry(entry, previous)
             }
-            state.items.forEach { entry -> BudgetHistoryEntry(entry) }
             if (state.loading) Text(stringResource(R.string.budget_history_loading))
             if (state.failed) {
                 Text(stringResource(R.string.budget_history_failed))
@@ -41,35 +38,49 @@ fun BudgetHistorySheet(state: BudgetHistoryState, onRetry: () -> Unit, onMore: (
                     Text(stringResource(R.string.budget_history_more))
                 }
             }
+            Text(stringResource(R.string.budget_history_explanation), style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
 
 @Composable
-private fun BudgetHistoryEntry(entry: BudgetRevision) {
+private fun BudgetHistoryEntry(entry: BudgetRevision, previous: BudgetRevision?) {
     val snapshot = entry.snapshot
-    AppHistoryRecord(title = stringResource(historyTitle(entry.changeKind)), recordedAt = displayDateTime(entry.recordedAt)) {
-        Text(stringResource(R.string.budget_history_total, historyAmount(snapshot.totalAmountCents, snapshot.homeCurrencyCode)),
-            style = MaterialTheme.typography.titleMedium.tabularNum())
-        snapshot.homeCurrencyCode?.let { Text(it, style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        if (entry.changeKind == "baseline") Text(stringResource(R.string.budget_history_baseline_note))
-        if (snapshot.archived) Text(stringResource(R.string.budget_history_archived))
-        Text(stringResource(R.string.budget_history_rollover, historyAmount(snapshot.rolloverAmountCents, snapshot.homeCurrencyCode)))
-        Text(stringResource(R.string.budget_history_reserved, historyAmount(snapshot.nonMonthlyAmountCents, snapshot.homeCurrencyCode)))
-        Text(stringResource(R.string.budget_history_excluded, snapshot.excludedCategories.joinToString("、")
-            .ifEmpty { stringResource(R.string.budget_history_none) }))
-        if (snapshot.categoryBudgets.isEmpty()) Text(stringResource(R.string.budget_history_no_categories))
-        snapshot.categoryBudgets.forEach {
-            Text(stringResource(R.string.budget_history_category, it.category, historyAmount(it.amountCents, snapshot.homeCurrencyCode)))
+    val before = previous?.snapshot
+    AppHistoryRecord(title = stringResource(R.string.goal_history_version, entry.rowVersion, stringResource(historyTitle(entry.changeKind))),
+        recordedAt = displayDateTime(entry.recordedAt), summary = {
+            AppHistoryComparison(stringResource(R.string.budget_editor_total_label),
+                before?.let { historyRecordedAmount(it.totalAmountCents, it.homeCurrencyCode) },
+                historyRecordedAmount(snapshot.totalAmountCents, snapshot.homeCurrencyCode))
+            AppHistoryBoundary(entry.changeKind, previous == null)
+        }) {
+        AppHistoryField(stringResource(R.string.plan_history_status), before?.let { budgetHistoryStatus(it.archived) },
+            budgetHistoryStatus(snapshot.archived))
+        AppHistoryField(stringResource(R.string.budget_editor_rollover_label),
+            before?.let { historyRecordedAmount(it.rolloverAmountCents, it.homeCurrencyCode) },
+            historyRecordedAmount(snapshot.rolloverAmountCents, snapshot.homeCurrencyCode))
+        AppHistoryField(stringResource(R.string.budget_editor_non_monthly_label),
+            before?.let { historyRecordedAmount(it.nonMonthlyAmountCents, it.homeCurrencyCode) },
+            historyRecordedAmount(snapshot.nonMonthlyAmountCents, snapshot.homeCurrencyCode))
+        val none = stringResource(R.string.budget_history_none)
+        AppHistoryField(stringResource(R.string.plan_history_excluded), before?.excludedCategories?.joinToString("、")?.ifEmpty { none },
+            snapshot.excludedCategories.joinToString("、").ifEmpty { none })
+        val categories = (snapshot.categoryBudgets.map { it.category } + before?.categoryBudgets.orEmpty().map { it.category }).distinct()
+        if (categories.isEmpty()) Text(stringResource(R.string.budget_history_no_categories))
+        categories.forEach { category ->
+            val oldAmount = before?.categoryBudgets?.firstOrNull { it.category == category }?.amountCents
+            val amount = snapshot.categoryBudgets.firstOrNull { it.category == category }?.amountCents
+            val notSet = stringResource(R.string.plan_history_not_set)
+            AppHistoryField(category, before?.let { oldAmount?.let { historyRecordedAmount(it, before.homeCurrencyCode) } ?: notSet },
+                amount?.let { historyRecordedAmount(it, snapshot.homeCurrencyCode) } ?: notSet)
         }
     }
 }
 
 @Composable
-private fun historyAmount(amount: Long, currency: String?): String =
-    if (currency == null) stringResource(R.string.budget_history_unknown_money, amount.toString())
-    else formatDisplayAmount(amount, CurrencyDisplay.forRecord(currency))
+private fun budgetHistoryStatus(archived: Boolean): String =
+    stringResource(if (archived) R.string.budget_history_archived else R.string.goal_history_active)
 
 private fun historyTitle(kind: String): Int = when (kind) {
     "baseline" -> R.string.budget_history_baseline

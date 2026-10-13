@@ -1,13 +1,9 @@
 package com.ticketbox.ui.navigation
 
+import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ReceiptLong
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Inbox
-import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -21,6 +17,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.vectorResource
 import com.ticketbox.R
 import com.ticketbox.ui.design.AppSpacing
 
@@ -39,7 +36,7 @@ internal fun MainQuickActionsButton(
             modifier = modifier.size(AppSpacing.controlMinHeight),
         ) {
             Icon(
-                imageVector = target.icon,
+                imageVector = ImageVector.vectorResource(target.iconRes),
                 contentDescription = stringResource(R.string.shortcut_review_long_label),
             )
         }
@@ -53,7 +50,7 @@ internal fun MainQuickActionsButton(
             modifier = Modifier.size(AppSpacing.controlMinHeight),
         ) {
             Icon(
-                imageVector = Icons.Default.Add,
+                imageVector = ImageVector.vectorResource(R.drawable.ic_lucide_plus),
                 contentDescription = stringResource(R.string.navigation_quick_actions),
             )
         }
@@ -66,7 +63,7 @@ internal fun MainQuickActionsButton(
                     text = { Text(stringResource(target.labelRes)) },
                     leadingIcon = {
                         Icon(
-                            imageVector = target.icon,
+                            imageVector = ImageVector.vectorResource(target.iconRes),
                             contentDescription = null,
                         )
                     },
@@ -90,9 +87,9 @@ private val ShortcutTarget.labelRes: Int
         ShortcutTarget.ReviewPending -> R.string.shortcut_review_short_label
     }
 
-private val ShortcutTarget.icon: ImageVector
-    get() = when (this) {
-        ShortcutTarget.UploadReceipt -> Icons.Default.PhotoLibrary
-        ShortcutTarget.ManualEntry -> Icons.AutoMirrored.Filled.ReceiptLong
-        ShortcutTarget.ReviewPending -> Icons.Default.Inbox
+private val ShortcutTarget.iconRes: Int
+    @DrawableRes get() = when (this) {
+        ShortcutTarget.UploadReceipt -> R.drawable.ic_lucide_images
+        ShortcutTarget.ManualEntry -> R.drawable.ic_lucide_receipt_text
+        ShortcutTarget.ReviewPending -> R.drawable.ic_lucide_inbox
     }

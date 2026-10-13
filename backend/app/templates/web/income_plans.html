@@ -1,75 +1,53 @@
 {% extends "base.html" %}
-{% set page_title = '收入计划' %}
+{% from '_month_label.html' import month_label %}
+{% from "_income_source_types.html" import source_type_labels %}
+{% set page_title = '添加收入计划' if income_creating else '收入计划' %}
 {% set product_body_domain = 'plans' %}
-{% block title %}收入计划 · 小票夹{% endblock %}
+{% set list_href = '/web/income-plans?ledger_id=' ~ (selected_ledger_id|urlencode) %}
+{% if income_creating %}
+{% set page_surface = 'tertiary' %}
+{% set task_return_href = list_href %}
+{% set task_return_label = '收入计划' %}
+{% endif %}
+{% block title %}{{ page_title }} · 小票夹{% endblock %}
 {% block page_scripts %}
 {% if income_draft_scope %}
 <script defer src="/static/web/manual-drafts.js?v={{ asset_version }}"></script>
 <script defer src="/static/web/plan-entry.js?v={{ asset_version }}"></script>
 {% endif %}
 {% endblock %}
-
-{# C2 收入计划迁入 product 正文栈:
-   - 新上旧下: 整月预测与按计划截至今日汇总 → 在用列表 → 添加表单收进右侧窄列
-     (income-workspace--list-first), 已归档沉底; 只读角色单列只读列表;
-   - source_type 在列表渲染为与创建表单一致的中文类型名, 不向用户暴露
-     salary/bonus 等协议枚举;
-   - 三个表单 (create/archive/restore) 均带 csrf + ledger_id hidden
-     (archive/restore 路由已声明接收), OCC expected_row_version 不变。 #}
-{% from "_income_source_types.html" import source_type_labels %}
 {% block content %}
 <header class="product-page-header">
   <div class="product-page-heading">
-    <span class="product-eyebrow">计划 / 收入</span>
-    <h1 class="page-title">收入计划</h1>
-    <p class="product-page-summary">计划工资、奖金和接单收入，用于估算月度预算。</p>
+    <h1 class="page-title">{{ '添加收入计划' if income_creating else '预计会收到的钱' }}</h1>
+    <p class="product-page-summary">{{ '记下工资、奖金或接单收入。真正稳定的收入再设为每月固定。' if income_creating else '计划金额，不代表实际到账或账户余额。' }}</p>
   </div>
-  {% if can_write %}<a class="product-button product-button--primary" href="#add-income">添加收入计划</a>{% endif %}
 </header>
-
-<div class="plan-flow">
-<p class="product-page-summary">每月计划从 {{ intent_month }} 生效，单次计划使用所选预计月份。归档或恢复保留更早月份的计划。</p>
 {% if message %}<div class="product-feedback" role="status">{{ message }}</div>{% endif %}
 {% if error %}<div class="product-feedback product-feedback--danger" role="alert">{{ error }}</div>{% endif %}
-{% if not can_write %}
-<div class="product-feedback" role="status">只读角色可以查看收入计划，但不能添加或修改。{% if income_draft_scope %}已保留的收入草稿可在恢复编辑权限后继续。{% endif %}</div>
-{% endif %}
-
-<section class="product-panel product-panel--padded" aria-label="本月预计收入">
-  <div class="plan-income-hero">
-    <div>
-      <span class="product-eyebrow">本月预计收入</span>
-      <span class="plan-income-value">{% if total_yuan is not none %}<small>{{ home_currency_symbol }}</small>{{ total_yuan }}{% else %}待补汇率{% endif %}</span>
-    </div>
-    <p>按收入计划估算，不代表实际到账或账户余额。按计划截至今日：{% if scheduled_yuan is not none %}{{ home_currency_symbol }}{{ scheduled_yuan }}{% else %}待补汇率{% endif %}。</p>
-    {% if missing_currency_codes %}<p role="status">{{ missing_currency_codes|join('、') }} 金额缺少兑换为 {{ home_currency_code }} 的汇率，补齐后显示完整合计。每项计划仍保留原币种。</p>{% endif %}
-    {% include 'partials/reference_rates.html' %}
-  </div>
-</section>
-
 {% macro income_rows(plans, action) %}
 {% if plans %}
-<div class="plan-goal-list">
+<div class="product-entry-list">
   {% for plan in plans %}
-  <div id="income-{{ plan.public_id }}" class="plan-goal{% if action == 'restore' %} is-archived{% endif %}">
-    <div class="plan-goal-header">
-      <div>
-        <strong>{{ plan.label }}</strong>
-        <span class="pill-row"><span class="product-status">{{ source_type_labels.get(plan.source_type, plan.source_type) }}</span></span>
-      </div>
-      <span class="plan-goal-amount">{{ plan.home_currency_code or '' }} {{ minor_label(plan) }}</span>
-    </div>
-    <div class="plan-row-meta">
-      <span>
+  <article id="income-{{ plan.public_id }}" class="product-entry product-entry--static product-entry--actions{% if action == 'restore' %} is-receded{% endif %}">
+    <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#calendar-plus"/></svg></span>
+    <div class="product-entry-copy">
+      <div class="product-entry-heading"><strong>{{ plan.label }}</strong><strong class="product-entry-amount">{{ plan.home_currency_code or '' }} {{ minor_label(plan)|grouped }}</strong></div>
+      <span>{{ source_type_labels.get(plan.source_type, plan.source_type) }} ·
         {% if action == 'archive' %}
           {% if plan.frequency == 'one_time' %}单次预计 · {{ income_month_label(plan.income_month) }} · {{ plan.pay_day }} 号{% else %}每月预计 · {{ plan.pay_day }} 号{% endif %}
         {% else %}
           已归档 · 恢复后回到在用列表
         {% endif %}
       </span>
+    </div>
+    <div class="product-entry-actions">
+      {% if can_write and action == 'archive' %}<a class="product-button product-button--small" href="/web/income-plans/{{ plan.public_id }}/edit?ledger_id={{ selected_ledger_id }}&intent_month={{ intent_month }}">编辑计划</a>{% endif %}
       <a class="product-button product-button--quiet product-button--small" href="/web/income-plans/{{ plan.public_id }}/history?ledger_id={{ selected_ledger_id|urlencode }}">修改记录</a>
       {% if can_write %}
-      {% if action == 'archive' %}<a class="product-button product-button--quiet product-button--small" href="/web/income-plans/{{ plan.public_id }}/edit?ledger_id={{ selected_ledger_id }}&intent_month={{ intent_month }}">编辑计划</a>{% endif %}
+      <details class="product-more">
+          <summary aria-label="更多操作：{{ plan.label }}"><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#ellipsis"/></svg></summary>
+          <div class="product-more-menu">
       <form method="post" action="/web/income-plans/{{ plan.public_id }}/{{ action }}" class="product-inline-form">
         {{ csrf_field|safe }}
         <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
@@ -80,35 +58,17 @@
         <input type="hidden" name="expected_row_version" value="{{ plan.row_version }}">
         <button class="product-button product-button--quiet product-button--small" type="submit">{{ '归档' if action == 'archive' else '恢复' }}</button>
       </form>
+      </div>
+      </details>
       {% endif %}
     </div>
-  </div>
+  </article>
   {% endfor %}
 </div>
 {% endif %}
 {% endmacro %}
-
-{% if can_write %}
-<div class="income-workspace income-workspace--list-first">
-  <section class="product-panel product-panel--padded" aria-label="在用收入计划">
-    <div class="product-panel-header">
-      <h2 class="product-panel-title">在用</h2>
-      <p class="product-panel-subtitle">{{ plans_active|length }} 条</p>
-    </div>
-    {{ income_rows(plans_active, 'archive') }}
-    {% if not plans_active %}
-    <div class="product-state">
-      <div class="product-state-title">还没有收入计划</div>
-      <div class="product-state-body">添加预计收入后，月度预算会结合已有花销重新估算。</div>
-    </div>
-    {% endif %}
-  </section>
-
-  <section class="product-panel product-panel--padded" id="add-income" aria-label="添加收入计划">
-    <div class="product-panel-header">
-      <h2 class="product-panel-title">添加收入计划</h2>
-      <p class="product-panel-subtitle">真正稳定的收入再设为每月固定。</p>
-    </div>
+{% if income_creating %}
+  <section id="add-income" aria-label="添加收入计划">
     {% set draft = income_form_draft or {} %}
     {% if income_form_error %}<div id="income-create-error" class="product-feedback product-feedback--danger" role="alert">{{ income_form_error }}</div>{% endif %}
     {% if income_draft_scope %}
@@ -117,15 +77,16 @@
       <ul data-income-draft-list></ul>
     </div>
     {% endif %}
-    <form method="post" action="/web/income-plans/create" class="budget-form"{% if income_form_error %} aria-describedby="income-create-error"{% endif %}
-      {% if income_draft_scope %}data-income-draft-scope="{{ income_draft_scope | tojson | forceescape }}" data-income-native-result="{{ income_draft_result | default('') }}"{% endif %}>
+    <form method="post" action="/web/income-plans/create" class="product-form income-form"{% if income_form_error %} aria-describedby="income-create-error"{% endif %}
+      {% if income_draft_scope %}data-income-draft-scope="{{ income_draft_scope | tojson | forceescape }}" data-income-native-result="{{ income_draft_result | default('') }}" data-income-can-write="{{ 'true' if can_write else 'false' }}"{% endif %}>
       {{ csrf_field|safe }}
       {% if income_draft_scope %}<input type="hidden" name="draft_scope" value="{{ draft.get('draft_scope', income_draft_scope | tojson) | forceescape }}">{% endif %}
       <input type="hidden" name="home_currency_code" value="{{ draft.get('home_currency_code', '') }}">
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
       <input type="hidden" name="intent_month" value="{{ draft.get('intent_month', '') }}">
       <input type="hidden" name="idempotency_key" value="{{ draft.get('idempotency_key', '') }}">
-      <p class="meta" data-income-intent>本次每月计划从 {{ draft.get('intent_month') or '待确认月份' }} 生效。失败重试保留原月份和金额。</p>
+      <p class="hint" data-income-intent>本次每月计划从 {{ draft.get('intent_month') or '待确认月份' }} 生效。失败重试保留原月份和金额。</p>
+      <fieldset class="product-form"{% if not can_write %} disabled{% endif %}>
       <div class="product-field">
         <label for="income-create-label">名称</label>
         <input id="income-create-label" class="product-input" type="text" name="label" maxlength="64" required placeholder="例如：我的工资" value="{{ draft.get('label', '') }}">
@@ -147,8 +108,9 @@
           <option value="monthly" {% if draft.get('frequency') == 'monthly' %}selected{% endif %}>每月固定</option>
         </select>
       </div>
-      <fieldset class="income-month-fields">
+      <fieldset class="product-field" data-income-one-time>
         <legend>预计月份（单次计划填写）</legend>
+        <div class="product-form-grid">
         {% if draft.get('income_month') %}
         <label class="product-field">原预计月份<input type="text" name="income_month" value="{{ draft.income_month }}" placeholder="例如：2026-09"></label>
         {% else %}
@@ -171,6 +133,7 @@
           </select>
         </div>
         {% endif %}
+        </div>
       </fieldset>
       <div class="product-field">
         <label for="income-create-amount" data-income-amount-label>预计金额（{{ draft.get('home_currency_code') or '币种待确认' }}）</label>
@@ -180,52 +143,62 @@
         <label for="income-create-payday">预计收入日（1-31，短月取月末）</label>
         <input id="income-create-payday" class="product-input" type="text" name="pay_day" inputmode="numeric" required value="{{ draft.get('pay_day', '10') }}">
       </div>
-      <div class="budget-actions">
+      </fieldset>
+      {# 主提交先于原稿控件: 回车隐式提交的仍是添加。 #}
+      <div class="product-task-actions">
         {% if not income_form_currency or not draft.get('intent_month') %}
         <p class="meta">原币种或生效月份尚未确认。输入已保留，请核对后再创建。</p>
-        <a class="product-button" href="/web/income-plans?ledger_id={{ selected_ledger_id }}" target="_blank" rel="noopener">另页准备新计划</a>
+        <a class="product-button" href="/web/income-plans?ledger_id={{ selected_ledger_id }}&new_income=1" target="_blank" rel="noopener">另页准备新计划</a>
         {% elif income_form_review %}
         <p class="meta">这份表单需要重新核对。请先核对已有计划，再保留输入准备新计划；这一步不会保存。</p>
-        <button class="product-button" type="submit" name="review_new" value="true">已核对，准备新计划</button>
+        <button class="product-button" type="submit"{% if not can_write %} disabled{% endif %} name="review_new" value="true">已核对，准备新计划</button>
         {% else %}
-        <button class="product-button product-button--primary" type="submit">添加</button>
+        <button class="product-button product-button--primary" type="submit"{% if not can_write %} disabled{% endif %}>添加收入计划</button>
         {% endif %}
       </div>
       {% if income_draft_scope %}
+      <div class="product-form-actions">
       <p class="product-feedback" data-income-draft-status role="status" aria-live="polite" hidden></p>
       <p class="meta" data-income-review-note hidden>请先核对已有收入计划。准备新计划会保留输入，原提交仍留在此浏览器供核对。</p>
-      <button class="product-button product-button--quiet" type="submit" name="review_new" value="true" data-income-review hidden>已核对，保留输入准备新计划</button>
+      <button class="product-button product-button--quiet" type="submit"{% if not can_write %} disabled{% endif %} name="review_new" value="true" data-income-review hidden>已核对，保留输入准备新计划</button>
       <button class="product-button product-button--quiet" type="button" data-income-discard hidden>放弃此浏览器的原稿</button>
       <a class="product-button product-button--quiet" href="/web/income-plans?ledger_id={{ selected_ledger_id }}&new_income=1#add-income">另建收入计划</a>
+      </div>
       {% endif %}
     </form>
   </section>
-</div>
 {% else %}
-<section class="product-panel product-panel--padded" aria-label="在用收入计划">
-  <div class="product-panel-header">
-    <h2 class="product-panel-title">在用</h2>
-    <p class="product-panel-subtitle">{{ plans_active|length }} 条</p>
-  </div>
+<section class="product-surface" aria-label="本月预计收入">
+  <span class="product-amount-label">本月预计 · {{ home_currency_code }}</span>
+  <strong class="product-amount">{% if total_yuan is not none %}{{ home_currency_symbol }}{{ total_yuan|grouped }}{% else %}待补汇率{% endif %}</strong>
+  <span class="product-amount-meta">{{ month_label(intent_month) }}</span>
+</section>
+<p class="hint">按计划截至今日：{% if scheduled_yuan is not none %}{{ home_currency_symbol }}{{ scheduled_yuan|grouped }}{% else %}待补汇率{% endif %}。每月计划从 {{ month_label(intent_month) }} 生效，单次计划使用所选预计月份。</p>
+{% if missing_currency_codes %}<p class="product-feedback" role="status">{{ missing_currency_codes|join('、') }} 金额缺少兑换为 {{ home_currency_code }} 的汇率，补齐后显示完整合计。每项计划仍保留原币种。</p>{% endif %}
+{% include 'partials/reference_rates.html' %}
+{% if income_draft_scope %}
+<section data-income-draft-shelf data-draft-scope="{{ income_draft_scope | tojson | forceescape }}" hidden>
+  <p class="product-panel-title">继续此浏览器的原稿</p>
+  <ul data-income-draft-list></ul>
+</section>
+{% endif %}
+<section class="product-section" aria-label="在用收入计划">
+  <div class="product-entry-heading"><h2 class="product-panel-title">在用</h2><span class="hint">{{ plans_active|length }} 条</span></div>
   {{ income_rows(plans_active, 'archive') }}
   {% if not plans_active %}
   <div class="product-state">
     <div class="product-state-title">还没有收入计划</div>
-    <div class="product-state-body">这个账本还没有收入计划。</div>
+    <div class="product-state-body">添加预计收入后，月度预算会结合已有花销重新估算。</div>
   </div>
   {% endif %}
 </section>
-{% endif %}
-
 {% if plans_archived %}
-<section class="product-panel product-panel--padded" aria-label="已归档收入计划">
-  <div class="product-panel-header">
-    <h2 class="product-panel-title">已归档</h2>
-    <p class="product-panel-subtitle">{{ plans_archived|length }} 条 · 恢复后回到在用列表。</p>
-  </div>
+<section class="product-section" aria-label="已归档收入计划">
+  <div class="product-entry-heading"><h2 class="product-panel-title">已归档</h2><span class="hint">{{ plans_archived|length }} 条</span></div>
+  <p class="hint">归档保留原计划与修改记录；恢复后回到在用列表，不改变更早月份的计划。</p>
   {{ income_rows(plans_archived, 'restore') }}
 </section>
 {% endif %}
-</div>
-
+{% if can_write %}<div class="product-task-actions product-task-actions--page"><a class="product-button product-button--primary" href="{{ list_href }}&new_income=1">添加收入计划 <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-right"/></svg></a></div>{% endif %}
+{% endif %}
 {% endblock %}

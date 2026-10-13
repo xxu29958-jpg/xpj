@@ -5,8 +5,8 @@ from email.parser import BytesParser
 from urllib.parse import parse_qsl, urlsplit
 
 from scripts.financial_journey_facts import facts
+from scripts.financial_journey_original import native_first_original
 from scripts.planning_journey_android import wait_for
-from scripts.portable_journey_facts import attach_fixture_original
 
 
 def _submitted_fields(request):
@@ -56,7 +56,8 @@ class FinancialJourney:
             # Keep the stale list used to exercise peer-change review. Refunds
             # later share this merchant and require the original amount anchor.
             self.native.click(state["merchant"])
-        wait_for(lambda: self.native.has("账单详情"), "The native fact did not open")
+        wait_for(lambda: self.native.has("原消费") and self.native.has(state["merchant"]),
+            "The original fact and its money summary did not open")
 
     def correction(self):
         state = self.facts()
@@ -72,8 +73,11 @@ class FinancialJourney:
         for name, value in values.items():
             form.locator(f'[name="{name}"]').fill(value)
         if split:
-            form.locator('[name="split_member_id"]').first.locator("xpath=ancestor::details").locator("summary").click()
-            form.locator('[name="split_member_id"]').first.select_option(index=1)
+            member = form.locator('[name="split_member_id"]').first
+            for disclosure in member.locator("xpath=ancestor::details").all():
+                if disclosure.get_attribute("open") is None:
+                    disclosure.locator(":scope > summary").click()
+            member.select_option(index=1)
             form.locator('[name="split_amount_yuan"]').first.fill("6.00")
             form.locator('[name="split_note"]').first.fill("SplitKeep")
         form.locator("[data-correction-submit]").click()
@@ -95,9 +99,9 @@ class FinancialJourney:
         form.locator('[name="category"]').fill("餐饮")
         form.get_by_role("button", name="记下这笔支出", exact=True).click()
         self.expect(lambda state: len(state["expenses"]) == 1, "The real manual expense did not commit")
-        self.original_digest = attach_fixture_original(self.facts()["id"], ledger_id=self.fixture.ledger_id)
         self.native.bind(self.fixture.pairing_code, self.port)
         self.native_open()
+        self.original_digest = native_first_original(self)
 
     def native_retained_correction(self):
         native = self.native
@@ -207,6 +211,7 @@ class FinancialJourney:
         wait_for(lambda: native.has("WebFinal"), "Updating the native ledger did not read the peer correction")
         native.capture("financial-ledger-after-explicit-peer-refresh")
         self.native_open()
+        native.click("退回与冲销")
         native.click("登记退款")
         native.reveal_any("生效日期")
         native.capture("financial-refund-default-day")
@@ -221,12 +226,14 @@ class FinancialJourney:
         try:
             native.restart()
             self.native_open()
+            native.click("完整历史")
             native.reveal_any("显示上次读取的历史")
             native.capture("financial-history-cold-offline")
-            native.reveal_any("继续登记退款", toward_start=True)
-            native.click("继续登记退款")
+            native.back()
+            native.reveal_any("继续登记退回", toward_start=True)
+            native.click("继续登记退回")
             assert native.has("NativeRefund") and native.has("3.00"), "The cold refund draft lost its raw fields"
-            native.click("登记退款", bottom=True)
+            native.click("确认登记退回", bottom=True)
             wait_for(lambda: native.has("原操作已保存") or native.has("待同步"), "The offline refund was not retained")
             assert self.facts()["offsets"] == [], "An offline intent was presented as a committed refund"
             native.capture("financial-refund-offline-submission")
@@ -243,21 +250,23 @@ class FinancialJourney:
         state = self.facts()
         offset = state["offsets"][0]
         self.goto(f'/web/expenses/{state["id"]}/edit')
+        self.page.locator("details.fact-disclosure > summary").filter(has_text="退款与冲销").click()
         suffix = f'/offsets/{offset["public_id"]}/voids'
         form = self.form(f'/web/expenses/{state["id"]}{suffix}')
-        form.locator("xpath=ancestor::details").locator("summary").click()
+        form.locator("xpath=ancestor::details[1]").locator(":scope > summary").click()
         form.locator('[name="void_reason"]').fill("RefundRecalled")
         self.lost_reply(form, "[data-offset-submit]", suffix, "void")
         assert self.facts()["net"] == 1725 and self.facts()["offsets"][0]["status"] == "voided"
-        self.page.locator("#offset-create-reversal > summary").click()
+        self.page.get_by_role("link", name="冲销这笔账单", exact=True).click()
         reversal = self.page.locator(f'form[data-offset-plan-id="{state["id"]}:reversal"]')
         reversal.locator('[name="reason"]').fill("DuplicateFact")
+        reversal.locator("[data-command-review]").check()
         self.lost_reply(reversal, "[data-offset-submit]", "/offsets", "reversal")
         state = self.facts()
         assert state["net"] == 0 and len(state["offsets"]) == 2
         reversal_id = state["offsets"][1]["public_id"]
         form = self.form(f'/web/expenses/{state["id"]}/offsets/{reversal_id}/voids')
-        form.locator("xpath=ancestor::details").locator("summary").click()
+        form.locator("xpath=ancestor::details[1]").locator(":scope > summary").click()
         form.locator('[name="void_reason"]').fill("KeepFact")
         form.locator("[data-offset-submit]").click()
         self.expect(lambda value: value["net"] == 1725, "Voiding the reversal did not restore the original contribution")
@@ -280,5 +289,5 @@ class FinancialJourney:
         appearances(self)
         result = self.facts()
         assert result["image_hash"] == original and result["original_attached"]
-        result.update(original_sha256=self.original_digest, verified_leg="Actual Web/native financial corrections, original-input cold reopen, cross-client review, accepted reply loss, offline Room/Outbox refund, offset void/reversal, immutable history, restart and query consumers")
+        result.update(original_sha256=self.original_digest, verified_leg="Actual native first-original selection and process restart with changed provider, original-file/key receipt, Web/native financial corrections, original-input cold reopen, cross-client review, accepted reply loss, offline Room/Outbox refund, offset void/reversal, immutable history, restart and query consumers")
         return result

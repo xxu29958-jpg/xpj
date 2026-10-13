@@ -17,6 +17,9 @@ import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.OutboxStatus
 import com.ticketbox.data.repository.PendingCategoryRuleSubmission
+import com.ticketbox.data.repository.PendingRuleApplication
+import com.ticketbox.data.repository.RuleApplicationPayload
+import com.ticketbox.data.remote.dto.RuleApplyConfirmedResponseDto
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.CurrencyDisplay
@@ -32,6 +35,29 @@ class CategoryRuleGlobalRecoveryTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
     private var opened: Long? = null
     private var dropped: OutboxRow? = null
+    private var refreshed: OutboxRow? = null
+
+    @Test fun staleApplicationOpensItsOriginalAndStoppingRequiresExplicitConfirmation() {
+        showApplication(accepted = false)
+        compose.onNodeWithText(context.getString(R.string.rule_application_stale)).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.sync_status_failed_button_retry)).assertDoesNotExist()
+        compose.onNodeWithText(context.getString(R.string.rule_application_open)).performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(44L, opened) }
+        compose.onNodeWithText(context.getString(R.string.sync_status_failed_button_drop)).performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.rule_application_stop_body)).assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.common_cancel)).performClick()
+        compose.runOnIdle { assertEquals(null, dropped) }
+    }
+
+    @Test fun acceptedApplicationWithReadonlyAccessOffersOnlyReadRefresh() {
+        showApplication(accepted = true)
+        compose.onNodeWithText(context.getString(R.string.rule_application_original)).performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.rule_application_receipt, 1)).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.rule_application_refresh_action)).performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(44L, refreshed?.id) }
+        compose.onNodeWithText(context.getString(R.string.sync_status_failed_button_retry)).assertDoesNotExist()
+        compose.onNodeWithText(context.getString(R.string.rule_application_stop)).assertDoesNotExist()
+    }
 
     @Test fun originalYenCreateOpensItsExactSubmissionAndStopRequiresConfirmation() {
         show(create = true)
@@ -67,9 +93,29 @@ class CategoryRuleGlobalRecoveryTest {
         val state = OutboxStatusUiState(binding = binding, bindingReady = true,
             correctionObservation = ExpenseCorrectionObservation(LedgerAccessContext(binding, true), emptyList()),
             status = OutboxStatus(0, emptyList(), listOf(row)), categoryRules = mapOf(row.id to pending))
+        showState(state)
+    }
+
+    private fun showApplication(accepted: Boolean) {
+        val binding = LogicalSessionBinding("https://example.test", "owner", "owner", "session", "binding")
+        val row = OutboxRow(44, binding.serverUrl, binding.ledgerId, binding.ownerKey,
+            PendingMutationType.ApplyConfirmedRules, "rule_application:confirmed", "{}", 0,
+            if (accepted) PendingMutationStatus.Done else PendingMutationStatus.Failed, 1,
+            if (accepted) "rule_application_read_refresh_required" else "preview_stale", "2026-10-08T00:00:00Z",
+            null, null, "original-application-key", receiptJson = if (accepted) "{}" else null)
+        val pending = PendingRuleApplication(row, RuleApplicationPayload(previewToken = "original-preview", maxScan = 500,
+            scanned = 9, expectedChanges = 1), if (accepted) RuleApplyConfirmedResponseDto(false, 9, 1,
+            commandKey = row.idempotencyKey, applicationPublicId = "original-batch", scanLimit = 500) else null)
+        showState(OutboxStatusUiState(binding = binding, bindingReady = true,
+            correctionObservation = ExpenseCorrectionObservation(LedgerAccessContext(binding, !accepted), emptyList()),
+            status = OutboxStatus(0, emptyList(), if (accepted) emptyList() else listOf(row),
+                refreshRequired = if (accepted) listOf(row) else emptyList()), ruleApplications = mapOf(row.id to pending)))
+    }
+
+    private fun showState(state: OutboxStatusUiState) {
         compose.setContent { TicketboxTheme(skin = AppSkin.Default) {
             CompositionLocalProvider(LocalCurrencyDisplay provides CurrencyDisplay(CurrencyCode.CNY)) {
-                SyncStatusScreenContent(state, SyncStatusActions(onRefreshAcceptedResult = {}, onRepairCorrectionRate = { _, _ -> }, onOpenRateSubmission = {}, onOpenIncomeSubmission = {}, onOpenRuleSubmission = { opened = it },
+                SyncStatusScreenContent(state, SyncStatusActions(onRefreshAcceptedResult = { refreshed = it }, onRepairCorrectionRate = { _, _ -> }, onOpenRateSubmission = {}, onOpenIncomeSubmission = {}, onOpenRuleSubmission = { opened = it },
                     onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {},
                     onOpenExpense = {}, onKeepMine = { error("Unexpected token rebase") }, onDropMine = { dropped = it },
                     onRetry = { error("Unexpected retry") }, onDropFailed = { dropped = it }, onClearQuarantined = {}), {}, {})

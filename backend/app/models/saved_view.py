@@ -31,6 +31,8 @@ class SavedView(Base):
     month_mode: Mapped[str] = mapped_column(String(8), nullable=False)
     month: Mapped[str | None] = mapped_column(String(7), nullable=True)
     filter: Mapped[str] = mapped_column(String(32), nullable=False, default="")
+    query_text: Mapped[str] = mapped_column(String(80), nullable=False, default="", server_default="")
+    category: Mapped[str] = mapped_column(String(64), nullable=False, default="", server_default="")
     tag_public_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     home_currency_code: Mapped[str] = mapped_column(String(3), nullable=False)
     created_by_account_id: Mapped[int] = mapped_column(Integer, ForeignKey("accounts.id"), nullable=False)

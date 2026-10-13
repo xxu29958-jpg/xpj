@@ -14,6 +14,7 @@ import com.ticketbox.viewmodel.loadExpenseRevisions
 import com.ticketbox.viewmodel.consumeOpenRepaymentDraftPublicId
 import com.ticketbox.viewmodel.expenseFactViewModelFactory
 import com.ticketbox.viewmodel.leaveFactPage
+import com.ticketbox.viewmodel.canLeaveOriginalSelection
 
 internal data class ExpenseFactNavigation(val onOpenRepaymentDrafts: (String) -> Unit,
     val onRepairRate: com.ticketbox.ui.screens.expense.fact.CorrectionRateAction)
@@ -49,16 +50,18 @@ internal fun ExpenseFactRoute(
         }
     }
 
-    FactRepaymentDraftOpenEffect(factState, factViewModel, related.onOpenRepaymentDrafts)
-
-    val leave = { factViewModel.leaveFactPage { onExit(factViewModel.consumeDoneAdviceInputsChanged()) } }
+    val original = originalAttachmentViewModel(expenseId, screenFactory)
+    FactRepaymentDraftOpenEffect(factState, factViewModel) {
+        if (original?.canLeaveOriginalSelection() != false) related.onOpenRepaymentDrafts(it)
+    }
+    val leave = { if (original?.canLeaveOriginalSelection() != false) factViewModel.leaveFactPage { onExit(factViewModel.consumeDoneAdviceInputsChanged()) } }
     androidx.activity.compose.BackHandler { leave() }
 
     ExpenseFactScreen(
         state = factState,
         viewModel = factViewModel,
         originalContent = { OriginalAttachmentRoute(expenseId, screenFactory, factViewModel::refreshOriginalFact) },
-        onRepairCorrectionRate = related.onRepairRate,
+        onRepairCorrectionRate = { binding, missing -> if (original?.canLeaveOriginalSelection() != false) related.onRepairRate(binding, missing) },
         onBack = leave,
     )
 }

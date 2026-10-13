@@ -1,6 +1,7 @@
 package com.ticketbox.viewmodel
 
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.SavedStateHandle
 import com.ticketbox.data.repository.RepositoryException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -31,7 +32,8 @@ class GoalReadPresentationTest {
             goalResult = Result.success(original)).apply { fromCache = true }
         val edits = RecordingGoalEdits()
         val list = SpendingGoalsViewModel(reports, edits, "2026-07")
-        val detail = SpendingGoalDetailViewModel(reports, edits)
+        val drafts = SpendingGoalEditDraftStore(SavedStateHandle())
+        val detail = SpendingGoalDetailViewModel(reports, edits, drafts)
         try {
             detail.load(original.publicId)
             advanceUntilIdle()
@@ -40,6 +42,8 @@ class GoalReadPresentationTest {
             assertEquals(reports.fetchedAt, list.state.value.fetchedAt)
             assertEquals(reports.fetchedAt, detail.state.value.fetchedAt)
             assertTrue(detail.state.value.fromCache)
+            detail.beginEdit()
+            detail.cancelEdit(discard = false)
             reports.goalsResult = Result.failure(RepositoryException("Forbidden", httpStatusCode = 403))
             reports.goalResult = Result.failure(RepositoryException("Unauthorized", httpStatusCode = 401))
             list.refresh()
@@ -49,6 +53,9 @@ class GoalReadPresentationTest {
             assertNull(list.state.value.fetchedAt)
             assertNull(detail.state.value.goal)
             assertNull(detail.state.value.fetchedAt)
+            assertNull(detail.state.value.editOriginal)
+            assertEquals("", detail.state.value.name)
+            assertNull(drafts.read(requireNotNull(edits.currentAccess()).binding, original.publicId))
             assertTrue(edits.saves.isEmpty())
         } finally {
             list.viewModelScope.cancel()

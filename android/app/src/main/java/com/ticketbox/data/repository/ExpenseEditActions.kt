@@ -25,15 +25,18 @@ interface ExpenseEditActions : ExpenseRootReadActions {
     fun observeExpenseCommands(): kotlinx.coroutines.flow.Flow<ExpenseCommandObservation>
     suspend fun saveExpenseAllowingOffline(
         expectedBinding: LogicalSessionBinding, id: Long, draft: ExpenseDraft, baseline: Expense,
+        originalInput: com.ticketbox.data.repository.ExpenseFactOriginalInput? = null,
     ): Result<ExpenseCommandAcceptance>
     suspend fun saveAndConfirmExpense(
         expectedBinding: LogicalSessionBinding, expense: Expense, draft: ExpenseDraft,
+        originalInput: com.ticketbox.data.repository.ExpenseFactOriginalInput? = null,
     ): Result<ExpenseCommandAcceptance>
     suspend fun confirmExpenseAllowingOffline(
         expectedBinding: LogicalSessionBinding, expense: Expense,
     ): Result<ExpenseCommandAcceptance>
     suspend fun rejectExpenseAllowingOffline(
         expectedBinding: LogicalSessionBinding, expense: Expense,
+        originalInput: com.ticketbox.data.repository.ExpenseFactOriginalInput? = null,
     ): Result<ExpenseCommandAcceptance>
     suspend fun retryOcrAllowingOffline(
         expectedBinding: LogicalSessionBinding, expense: Expense,
@@ -43,6 +46,7 @@ interface ExpenseEditActions : ExpenseRootReadActions {
     ): Result<ExpenseCommandAcceptance>
     suspend fun markNotDuplicateAllowingOffline(
         expectedBinding: LogicalSessionBinding, expense: Expense,
+        originalInput: com.ticketbox.data.repository.ExpenseFactOriginalInput? = null,
     ): Result<ExpenseCommandAcceptance>
     suspend fun fetchExpenseItems(id: Long): Result<ExpenseItems>
     suspend fun acknowledgeItemsMismatchAllowingOffline(

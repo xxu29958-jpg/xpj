@@ -13,6 +13,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
@@ -97,8 +98,13 @@ private fun LedgerManualSheetHost(
         actions.onManualCreateSettled()
     }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val draftState = rememberSaveableStateHolder()
     ModalBottomSheet(onDismissRequest = dismissManualSheet, sheetState = sheetState) {
-        PreparedManualExpenseSheet(state, actions, dismissManualSheet)
+        // The dialog has its own window registry. Keep its draft with this ledger task
+        // while the App temporarily replaces the business content with an authentication gate.
+        draftState.SaveableStateProvider("manual-entry") {
+            PreparedManualExpenseSheet(state, actions, dismissManualSheet)
+        }
     }
 }
 

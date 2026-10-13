@@ -1,5 +1,8 @@
 package com.ticketbox.ui.screens
 
+import com.ticketbox.viewmodel.reviewExpense
+import com.ticketbox.viewmodel.reviewInputKey
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.lazy.items
@@ -7,8 +10,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.activity.compose.BackHandler
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -19,7 +20,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
-import com.ticketbox.data.repository.MAX_UPLOAD_BATCH_ITEMS
 import com.ticketbox.domain.model.DuplicateStatusValues
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.components.AppDataAuthorityStrip
@@ -57,7 +57,7 @@ import com.ticketbox.ui.screens.pending.PendingExpenseReviewActions
 import com.ticketbox.ui.screens.pending.PendingExpenseReviewItem
 import com.ticketbox.ui.screens.pending.PendingExpenseReviewRow
 import com.ticketbox.ui.screens.pending.PendingMessageCard
-import com.ticketbox.ui.screens.pending.PendingMessageCardAction
+import com.ticketbox.ui.screens.pending.PendingCaptureSheet
 import com.ticketbox.ui.screens.pending.PendingListBodyState
 import com.ticketbox.ui.screens.pending.PendingQueueCounts
 import com.ticketbox.ui.screens.pending.PendingQueueEvidence
@@ -77,7 +77,7 @@ import com.ticketbox.ui.screens.pending.PendingScreenChromeActions
 import com.ticketbox.ui.screens.pending.PendingToolsSheet
 import com.ticketbox.ui.screens.pending.PendingTop
 import com.ticketbox.ui.screens.pending.PendingTopState
-import com.ticketbox.ui.screens.pending.UploadProgressCard
+import com.ticketbox.ui.screens.settings.SettingsEntryRow
 import com.ticketbox.ui.screens.pending.applyNeedsReviewFilter
 import com.ticketbox.domain.model.PendingPrimaryReviewAction
 import com.ticketbox.domain.model.pendingPrimaryReviewAction
@@ -85,7 +85,6 @@ import com.ticketbox.domain.model.pendingMerchantPresentation
 import com.ticketbox.domain.model.pendingNeedsCategory
 import com.ticketbox.ui.screens.pending.pendingListBodyState
 import com.ticketbox.viewmodel.PendingUiState
-import com.ticketbox.viewmodel.PendingUploadOriginalUi
 
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
@@ -98,6 +97,10 @@ fun PendingScreen(
 ) {
     var showUploadGuide by remember { mutableStateOf(false) }
     var showPendingTools by rememberSaveable { mutableStateOf(false) }
+    var showCapture by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(chromeActions.uploadSelection.selectionId) {
+        if (chromeActions.uploadSelection.pendingCount > 0) showCapture = true
+    }
     var displayMode by rememberSaveable { mutableStateOf(PendingDisplayMode.Compact) }
     var needsReviewFilter by rememberSaveable { mutableStateOf(NeedsReviewFilter.All) }
     val blockingRefresh = state.showPageRefresh
@@ -128,12 +131,7 @@ fun PendingScreen(
         hasRows = state.items.isNotEmpty(),
         loadState = state.listLoadState,
     )
-    val showUploadRetry = state.canRetryUpload
-    val uploadRetryActionLabel = stringResource(R.string.pending_upload_retry_action)
-    val messageCardText = listOfNotNull(
-        state.uploadMessage?.asString(), pendingUploadOriginalSummary(state.upload.originals), state.message?.asString(),
-    )
-        .distinct().takeIf { it.isNotEmpty() }?.joinToString("\n\n")
+    val messageCardText = state.message?.asString()
     val haptics = rememberAppHaptics()
     val adaptivePolicy = LocalAppAdaptiveLayoutPolicy.current
     val uploadEntrySlot = pendingUploadEntrySlot(
@@ -170,6 +168,10 @@ fun PendingScreen(
     )
 
     fun resolvePrimaryAction(expense: Expense) {
+        if (readOnly && expense.duplicateStatus == DuplicateStatusValues.SUSPECTED) {
+            reviewActions.duplicate.onOpenDuplicate(expense)
+            return
+        }
         when (pendingPrimaryReviewAction(expense)) {
             PendingPrimaryReviewAction.MissingAmount -> reviewActions.quickFix.onMissingAmount(expense)
             PendingPrimaryReviewAction.DuplicateReview -> reviewActions.duplicate.onOpenDuplicate(expense)
@@ -224,6 +226,8 @@ fun PendingScreen(
         }
     }
 
+    if (showCapture) PendingCaptureSheet(state, chromeActions, itemActions.onEdit, onDismiss = { showCapture = false })
+
     val reviewSheetState = PendingReviewSheetHostState(
         sheet = state.activeSheet,
         categoryOptions = state.categoryOptions,
@@ -236,6 +240,15 @@ fun PendingScreen(
         bulkTotal = state.bulkConfirm.total,
         reviewRemaining = state.reviewRemaining,
         statusMessage = state.message?.asString(),
+        readOnly = state.readOnly,
+        thumbnails = state.thumbnails,
+        inputValues = state.reviewInputValues,
+        inputReady = state.reviewInputReady,
+        inputWriting = state.reviewInputWriting,
+        inputNeedsReview = state.reviewInputNeedsReview,
+        inputError = state.reviewInputError?.asString(),
+        inputSaved = state.reviewTasks.any { it.expense.id == state.activeSheet.reviewExpense()?.id &&
+            it.original.formKey == state.activeSheet.reviewInputKey() },
     )
     // expanded 下复核由 supporting pane 常驻承接，其余宽度维持现有 modal sheet；
     // 两种形态互斥，复用同一份 state/actions，不新造 review owner。
@@ -315,63 +328,33 @@ fun PendingScreen(
             item { PendingClearCelebration(visible = showCelebration) }
         }
 
+        if (state.reviewTasks.isNotEmpty() || state.reviewInputError != null) item(key = "pending-original-inputs") {
+            com.ticketbox.ui.screens.pending.PendingReviewTasks(state.reviewTasks,
+                state.reviewInputError?.asString(), sheetActions.onRetryReviewInput, sheetActions.onResumeReviewInput)
+        }
         state.undoableExpense?.let { undoable ->
             item(key = "undo-${undoable.id}") {
                 PendingUndoRejectBanner(expense = undoable, onUndo = reviewActions.queue.onUndoReject)
             }
         }
 
-        if (chromeActions.uploadSelection.pendingCount > 0) {
+        if (chromeActions.uploadSelection.pendingCount > 0 || state.upload.originals.isNotEmpty() || state.uploading) {
             item {
-                val selection = chromeActions.uploadSelection
-                PendingMessageCard(
-                    message = if (selection.pendingCount > MAX_UPLOAD_BATCH_ITEMS) {
-                        stringResource(R.string.pending_upload_selection_too_many, MAX_UPLOAD_BATCH_ITEMS)
-                    } else stringResource(
-                        if (selection.accepting) R.string.pending_upload_selection_saving
-                        else R.string.pending_upload_selection_waiting,
-                        selection.pendingCount,
-                    ),
-                    action = if (selection.canRetry && !readOnly) {
-                        PendingMessageCardAction(
-                            label = stringResource(R.string.pending_upload_selection_retry),
-                            enabled = !state.uploadActionInProgress,
-                            onClick = selection.onRetry,
-                        )
-                    } else null,
+                SettingsEntryRow(
+                    title = stringResource(R.string.pending_capture_open),
+                    subtitle = if (chromeActions.uploadSelection.pendingCount > 0)
+                        stringResource(R.string.pending_capture_selected, chromeActions.uploadSelection.pendingCount)
+                    else stringResource(R.string.pending_capture_received, state.upload.originals.count { it.expenseId != null }, state.upload.originals.size),
+                    icon = R.drawable.ic_lucide_image_plus,
+                    onClick = { showCapture = true },
                 )
-                TextButton(onClick = selection.onStop, enabled = !selection.accepting) {
-                    Text(stringResource(R.string.pending_upload_selection_stop))
-                }
             }
         }
 
         messageCardText
-            ?.takeIf { state.uploadMessage != null || bodyState != PendingListBodyState.LoadFailed }
+            ?.takeIf { bodyState != PendingListBodyState.LoadFailed }
             ?.let { message ->
-            item {
-                PendingMessageCard(
-                    message = message,
-                    action = if (showUploadRetry) {
-                        PendingMessageCardAction(
-                            label = uploadRetryActionLabel,
-                            enabled = !state.uploadActionInProgress,
-                            onClick = chromeActions.onRetryCapacityUpload,
-                        )
-                    } else {
-                        null
-                    },
-                )
-                if (state.canStopUpload) {
-                    TextButton(onClick = chromeActions.onDiscardCapacityUpload) {
-                        Text(stringResource(R.string.pending_upload_stop_action))
-                    }
-                }
-            }
-        }
-
-        if (state.uploading) {
-            item { UploadProgressCard() }
+            item { PendingMessageCard(message = message) }
         }
 
         if (state.enrichment.activeCount > 0 || state.enrichment.feedback != null) {
@@ -409,7 +392,7 @@ fun PendingScreen(
                 }
             }
 
-            bodyState == PendingListBodyState.Empty -> {
+            bodyState == PendingListBodyState.Empty && !state.uploading && chromeActions.uploadSelection.pendingCount == 0 -> {
                 item {
                     EmptyPendingState(
                         state = EmptyPendingStateModel(
@@ -503,21 +486,6 @@ private data class PendingTriagePaneActions(
     val onOpenDataQuality: () -> Unit,
     val onOpenBulkConfirm: () -> Unit,
 )
-
-@Composable
-private fun pendingUploadOriginalSummary(originals: List<PendingUploadOriginalUi>): String? {
-    if (originals.isEmpty()) return null
-    val labels = originals.take(3).map { original ->
-        stringResource(
-            R.string.pending_upload_original,
-            original.position,
-            original.fileName ?: stringResource(R.string.pending_upload_original_unknown),
-        )
-    }
-    val remaining = originals.size - labels.size
-    val more = if (remaining > 0) listOf(stringResource(R.string.pending_upload_original_more, remaining)) else emptyList()
-    return (labels + more).joinToString("\n")
-}
 
 @Composable
 private fun PendingTriagePane(

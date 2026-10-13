@@ -117,7 +117,7 @@ class ReportRateRecoveryConnectedTest {
         compose.setContent { if (mounted.value) TicketboxTheme(skin = AppSkin.Default) {
             CompositionLocalProvider(LocalViewModelStoreOwner provides models,
                 LocalCurrencyDisplay provides CurrencyDisplay(CurrencyCode.CNY)) {
-                BudgetAdviceRoute(factory, onBack = {}, reportContext = report)
+                BudgetAdviceRoute(factory, onBack = {}, context = BudgetAdviceRouteContext(report = report))
             }
         } }
     }

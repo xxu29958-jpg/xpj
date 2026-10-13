@@ -75,7 +75,7 @@ class PendingRejectUndoRoomTest {
         current = fixture.network.current.copy(status = "pending", confirmedAt = null, rejectedAt = null)
         val repository = fixture.reopen().expenseRepository
         lateinit var vm: PendingViewModel
-        compose.runOnIdle { vm = PendingViewModel(repository, fixture.uploadIntents); pending = vm }
+        compose.runOnIdle { vm = PendingViewModel(repository, fixture.uploadIntents, expenseReader = repository); pending = vm }
         compose.setContent { TicketboxTheme(skin = AppSkin.Paper) {
             val state by vm.uiState.collectAsState()
             state.undoableExpense?.let { PendingUndoRejectBanner(expense = it, onUndo = vm::undoReject) }

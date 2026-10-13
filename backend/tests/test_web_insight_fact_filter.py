@@ -25,7 +25,7 @@ pytestmark = pytest.mark.real_db
 def _anchors(body: str) -> list[dict[str, str]]:
     return [
         {name: unescape(value) for name, value in re.findall(r'([\w-]+)="([^"]*)"', tag)}
-        for tag in re.findall(r"<a\b[^>]*>", body)
+        for tag in re.findall(r'<a\b[^>]*\shref="[^"]*"[^>]*>', body)
     ]
 
 
@@ -267,6 +267,12 @@ def test_reports_fact_correction_keeps_original_month_through_422_409_and_succes
     current = web_client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers).json()
     prepared = web_client.post(action, data={**data, "review_latest": "true"}, follow_redirects=False)
     assert prepared.status_code == 200, prepared.text
+    unresolved = _hidden_form(prepared.text, action)
+    assert unresolved["expected_row_version"] == data["expected_row_version"]
+    assert unresolved["idempotency_key"] == data["idempotency_key"]
+    prepared = web_client.post(action, data={**data, **unresolved, "review_latest": "true",
+        "review_merchant_choice": "keep"}, follow_redirects=False)
+    assert prepared.status_code == 200, prepared.text
     reviewed = _hidden_form(prepared.text, action)
     assert {key: reviewed[key] for key in origin} == origin
     assert reviewed["expected_row_version"] == str(current["row_version"])
@@ -283,7 +289,7 @@ def test_reports_fact_correction_keeps_original_month_through_422_409_and_succes
     stored = web_client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers)
     assert stored.status_code == 200, stored.text
     assert stored.json()["merchant"] == "月报更正后的商家"
-    return_anchor = re.search(r'<a\b[^>]*href="([^"]+)"[^>]*>\s*返回原月份月报\s*</a>', result.text)
+    return_anchor = re.search(r'<a\b[^>]*href="([^"]+)"[^>]*>(?:\s|<[^>]+>)*返回原月份月报\s*</a>', result.text)
     assert return_anchor is not None
     return_link = unescape(return_anchor.group(1))
     _assert_query(return_link, "/web/reports", ledger_id="owner", **report_task)

@@ -128,7 +128,7 @@ internal class ExpenseFactConcurrentReadTest(private val query: String) : Expens
         }
 
         override suspend fun expenseFactBundle(id: String): ExpenseFactBundleDto = bundle(version())
-        override suspend fun expenseRevisions(id: Long, page: Int, pageSize: Int, snapshotRevision: Long?):
+        override suspend fun expenseRevisions(id: Long, page: Int, pageSize: Int, snapshotRevision: Long?, offsetSnapshotId: Long?):
             ExpenseRevisionPageDto = history(version())
     }
 }
@@ -145,4 +145,4 @@ private fun bundle(version: Int): ExpenseFactBundleDto {
 private fun history(version: Int) = ExpenseRevisionPageDto((version downTo 1).map {
     ExpenseRevisionDto("revision-$it", it.toLong(), "corrected", "核对 $it", listOf("note"),
         after = mapOf("note" to "历史 $it"), createdAt = "2026-10-01T00:00:00Z")
-}, 1, 50, version, version.toLong())
+}, 1, 50, version, version.toLong(), offsetSnapshotId = 0)

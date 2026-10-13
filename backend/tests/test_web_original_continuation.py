@@ -159,7 +159,8 @@ def test_original_page_does_not_adopt_health_digest_as_user_review(monkeypatch) 
     monkeypatch.setattr(web_originals, "templates", templates)
     monkeypatch.setattr(web_originals, "_base_ctx", lambda request, **_: {"request": request, "can_write": True,
                                                                       "selected_ledger_id": "owner"})
-    monkeypatch.setattr(web_originals, "get_expense", lambda *_a: SimpleNamespace(merchant="original merchant"))
+    monkeypatch.setattr(web_originals, "get_expense", lambda *_a: SimpleNamespace(merchant="original merchant",
+        home_currency_code="CNY", original_currency_code="CNY", amount_cents=12860))
     monkeypatch.setattr(web_originals, "inspect_expense_original", lambda *_a, **_k: OriginalHealthResponse(
         expense_id=17, public_id="bill", row_version=7, state="unverified", observed_sha256="d" * 64,
         checked_at=datetime.now(UTC)))

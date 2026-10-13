@@ -2,6 +2,9 @@ package com.ticketbox.ui.screens.budget
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Surface
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -19,8 +22,11 @@ import com.ticketbox.ui.components.AppAdaptiveMetricGridCompactMinWidth
 import com.ticketbox.ui.components.AppAmountText
 import com.ticketbox.ui.components.AppErrorState
 import com.ticketbox.ui.components.SkeletonBlock
+import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppAmountRole
+import com.ticketbox.ui.design.AppRadius
+import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalStateTokens
@@ -60,14 +66,17 @@ internal fun BudgetSummarySection(
     ) {
         com.ticketbox.ui.components.AccountingDateNotice(budget?.undatedExpenseCount)
         if (configuredBudget == null) {
-            BudgetSummaryStatus(null)
             BudgetSummaryPlaceholder(loading)
             return@BudgetOpenSection
         }
-        BudgetSummaryHero(
-            budget = configuredBudget,
-            currencyDisplay = currencyDisplay,
-        )
+        Surface(shape = RoundedCornerShape(AppRadius.hero), color = LocalThemeVisuals.current.brandPrimaryBg,
+            modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(AppSpacing.screenHorizontal), verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap)) {
+                BudgetSummaryHero(budget = configuredBudget, currencyDisplay = currencyDisplay)
+                Text(stringResource(R.string.budget_header_subtitle, displayMonthLabel(configuredBudget.month)) + " · " + (configuredBudget.homeCurrencyCode ?: "UNKNOWN"),
+                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
         BudgetSummaryDetails(configuredBudget, currencyDisplay)
     }
 }
@@ -119,7 +128,7 @@ internal fun BudgetSummaryHero(
 }
 
 @Composable
-private fun BudgetSummaryStatus(budget: BudgetMonthly?) {
+private fun BudgetSummaryStatus(budget: BudgetMonthly) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -131,12 +140,10 @@ private fun BudgetSummaryStatus(budget: BudgetMonthly?) {
             fontWeight = AppTextHierarchy.heading.weight,
         )
         Text(
-            text = if (budget?.spentPercent != null) {
+            text = if (budget.spentPercent != null) {
                 stringResource(R.string.budget_summary_percent, budget.spentPercent)
-            } else if (budget?.configured == true) {
-                stringResource(R.string.stats_budget_progress_unavailable_status)
             } else {
-                stringResource(R.string.budget_summary_unconfigured)
+                stringResource(R.string.stats_budget_progress_unavailable_status)
             },
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelLarge,
@@ -178,18 +185,16 @@ private fun BudgetMetricRows(
     budget: BudgetMonthly,
     currencyDisplay: CurrencyDisplay,
 ) {
+    // A figure the server did not provide is left out rather than shown as an amount to fill in.
     val metrics = listOf(
-        stringResource(R.string.budget_summary_metric_total) to
-            formatDisplayAmount(budget.availableAmountCents, currencyDisplay),
-        stringResource(R.string.budget_summary_metric_spent) to
-            formatDisplayAmount(budget.spentAmountCents, currencyDisplay),
-        stringResource(R.string.budget_summary_metric_flex) to
-            formatDisplayAmount(budget.flexBudgetCents, currencyDisplay),
-        stringResource(R.string.budget_summary_metric_fixed) to
-            formatDisplayAmount(budget.fixedAmountCents, currencyDisplay),
-        stringResource(R.string.budget_summary_metric_excluded) to
-            formatDisplayAmount(budget.excludedAmountCents, currencyDisplay),
-    )
+        R.string.budget_summary_metric_total to budget.availableAmountCents,
+        R.string.budget_summary_metric_spent to budget.spentAmountCents,
+        R.string.budget_summary_metric_flex to budget.flexBudgetCents,
+        R.string.budget_summary_metric_fixed to budget.fixedAmountCents,
+        R.string.budget_summary_metric_excluded to budget.excludedAmountCents,
+    ).mapNotNull { (label, amount) ->
+        amount?.let { stringResource(label) to formatDisplayAmount(it, currencyDisplay) }
+    }
     AppAdaptiveMetricGrid(
         itemCount = metrics.size,
         twoColumnMinWidth = AppAdaptiveMetricGridCompactMinWidth,

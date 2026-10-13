@@ -171,7 +171,7 @@ private fun ErrorDto.toConflictDetails(): RepositoryConflictDetails =
         categoryReferences = categoryReferences.mapNotNull(CategoryReferenceDto::toDomain),
     )
 
-private fun CategoryReferenceDto.toDomain(): CategoryReference? {
+internal fun CategoryReferenceDto.toDomain(): CategoryReference? {
     val target = id?.takeIf { it.isNotBlank() } ?: return null
     val title = label?.takeIf { it.isNotBlank() } ?: return null
     val type = when (kind) {

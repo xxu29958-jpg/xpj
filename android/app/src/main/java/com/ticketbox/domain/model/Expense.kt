@@ -431,6 +431,7 @@ data class RuleApplicationBatch(
     val changedCount: Int,
     val createdAt: String,
     val rolledBackAt: String?,
+    val changeCounts: Map<String, Int>? = null,
 ) {
     val isRolledBack: Boolean = status == "rolled_back" || rolledBackAt != null
 }
@@ -466,6 +467,8 @@ data class RuleApplyConfirmedResult(
     val previewToken: String?,
     val unavailableCount: Int = 0,
     val missingCurrencyCodes: List<String> = emptyList(),
+    val commandKey: String? = null,
+    val applicationPublicId: String? = null,
 )
 
 class ProtectedImage(

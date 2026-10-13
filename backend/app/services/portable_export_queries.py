@@ -84,7 +84,7 @@ _LEDGER_RECORDS = (
         "updated_at row_version deleted_at"),
     (m.CategoryPreference, "id public_id tenant_id name key kind created_at updated_at row_version deleted_at"),
     (m.Tag, "id public_id tenant_id name key created_at updated_at row_version deleted_at"),
-    (m.SavedView, "id public_id tenant_id name name_key month_mode month filter tag_public_id "
+    (m.SavedView, "id public_id tenant_id name name_key month_mode month filter query_text category tag_public_id "
         "home_currency_code created_by_account_id created_at updated_at row_version"),
     (m.TagMutationUndoGroup, "id mutation_public_id tenant_id op source_tag_public_id source_tag_name "
         "target_tag_public_id target_tag_name created_at consumed_at"),
@@ -108,18 +108,18 @@ _LEDGER_RECORDS = (
     (m.Debt, "id public_id tenant_id owner_account_id created_by_account_id direction counterparty_type "
         "counterparty_account_id counterparty_label note principal_amount_cents home_currency_code original_currency_code "
         "original_amount_minor exchange_rate_to_cny exchange_rate_date exchange_rate_source status debt_kind "
-        "installment_count installment_period_months source_type source_id created_at updated_at row_version"),
+        "installment_count installment_period_months source_type source_id accounting_time_snapshot created_at updated_at row_version"),
 )
 
 _DEBT_CHILDREN = (
     (m.Repayment, "id public_id debt_id amount_cents original_currency_code original_amount_minor exchange_rate_to_cny "
-        "exchange_rate_date exchange_rate_source paid_at actor_account_id proposal_id idempotency_key created_at"),
+        "exchange_rate_date exchange_rate_source paid_at accounting_time_snapshot actor_account_id proposal_id idempotency_key created_at"),
     (m.DebtAdjustment, "id public_id debt_id amount_cents reason actor_account_id idempotency_key created_at"),
     (m.DebtVoid, "id public_id debt_id reason actor_account_id idempotency_key created_at"),
     (m.DebtForgiveness, "id public_id debt_id amount_cents actor_account_id idempotency_key created_at"),
     (m.MemberRepaymentProposal, "id public_id debt_id debtor_account_id creditor_account_id proposed_by_account_id "
         "proposed_amount_cents home_currency_code original_currency_code original_amount_minor exchange_rate_to_cny "
-        "exchange_rate_date exchange_rate_source paid_at note status confirmed_amount_cents committed_repayment_id "
+        "exchange_rate_date exchange_rate_source paid_at accounting_time_snapshot note status confirmed_amount_cents committed_repayment_id "
         "supersedes_proposal_id idempotency_key created_at expires_at resolved_at resolved_by_account_id"),
 )
 
@@ -171,7 +171,7 @@ def _ledger_relationships(auth: AuthContext) -> tuple[tuple[str, Select], ...]:
             m.DebtGoalLink.goal_id.in_(select(m.Goal.id).where(m.Goal.tenant_id == auth.ledger_id)))),
         ("repayment_drafts", _record(m.RepaymentDraft, "id public_id tenant_id created_by_account_id source "
             "amount_cents home_currency_code original_currency_code original_amount_minor "
-            "merchant_label captured_at draft_idempotency_key status "
+            "merchant_label captured_at accounting_time_snapshot draft_idempotency_key status "
             "committed_debt_public_id committed_repayment_public_id resolved_at resolved_by_account_id created_at",
             _owned_drafts(auth))),
     )
@@ -209,11 +209,11 @@ def _participant_queries(auth: AuthContext) -> tuple[tuple[str, Select], ...]:
     debts = _record(debt, "public_id direction counterparty_type counterparty_account_id note principal_amount_cents "
         "home_currency_code original_currency_code original_amount_minor exchange_rate_to_cny exchange_rate_date "
         "exchange_rate_source status debt_kind installment_count installment_period_months source_type source_id "
-        "created_at updated_at row_version", participant).add_columns(owner_name.label("counterparty_label"))
+        "accounting_time_snapshot created_at updated_at row_version", participant).add_columns(owner_name.label("counterparty_label"))
     repayment = m.Repayment
     debt_public_id = select(debt.public_id).where(debt.id == repayment.debt_id).scalar_subquery()
     repayments = _record(repayment, "public_id amount_cents original_currency_code original_amount_minor "
-        "exchange_rate_to_cny exchange_rate_date exchange_rate_source paid_at created_at",
+        "exchange_rate_to_cny exchange_rate_date exchange_rate_source paid_at accounting_time_snapshot created_at",
         repayment.debt_id.in_(ids)).add_columns(debt_public_id.label("debt_public_id"))
     voids = _record(m.RepaymentVoid, "public_id reason created_at", m.RepaymentVoid.repayment_id.in_(
         select(repayment.id).where(repayment.debt_id.in_(ids)))).add_columns(select(repayment.public_id).where(
@@ -221,7 +221,7 @@ def _participant_queries(auth: AuthContext) -> tuple[tuple[str, Select], ...]:
     proposal = m.MemberRepaymentProposal
     previous = proposal.__table__.alias("previous_proposal")
     proposals = _record(proposal, "public_id status proposed_amount_cents confirmed_amount_cents home_currency_code "
-        "original_currency_code original_amount_minor paid_at note expires_at created_at resolved_at",
+        "original_currency_code original_amount_minor paid_at accounting_time_snapshot note expires_at created_at resolved_at",
         proposal.debt_id.in_(ids)).add_columns(
             select(debt.public_id).where(debt.id == proposal.debt_id).scalar_subquery().label("debt_public_id"),
             select(previous.c.public_id).where(previous.c.id == proposal.supersedes_proposal_id)
@@ -300,8 +300,8 @@ def _accepted_operations(auth: AuthContext) -> Select:
     # Every listed resource kind is a ledger-shared business result. Private
     # resource results require the same actor predicates as their read owner.
     shared = receipt.resource_type.in_(("expense", "expense_batch", "expense_offset", "monthly_budget", "monthly_arrangement", "goal",
-        "income_plan", "recurring_item", "recurring_occurrence", "category_rule", "exchange_rate",
-        "ledger_calendar_revision", "upload_receipt", "merchant_alias", "saved_view"))
+        "income_plan", "recurring_item", "recurring_occurrence", "category_rule", "rule_application_batch", "exchange_rate",
+        "ledger_calendar_revision", "upload_receipt", "merchant_catalog", "merchant_alias", "saved_view"))
     debt_relationships = _authorized_debt_receipts(auth)
     drafts = and_(receipt.resource_type == "repayment_draft", receipt.resource_id.in_(
         select(m.RepaymentDraft.public_id).where(_owned_drafts(auth))))

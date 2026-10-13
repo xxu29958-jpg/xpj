@@ -36,11 +36,14 @@ class SaveMonthlyBudgetDispatcher(
                 val refreshRequired = try {
                     onAccepted(row, requireNotNull(receipt.rowVersion))
                     false
-                } catch (_: Exception) {
+                } catch (error: Exception) {
                     // Verified acceptance is final; only local projection repair remains.
+                    if (error !is CancellationException && error !is RepositoryException) {
+                        logNetworkWarning("operation=SaveMonthlyBudget accepted read failed", error)
+                    }
                     true
                 }
-                DispatchResult.Success(receiptJson = receiptJson, budgetReadRefreshRequired = refreshRequired)
+                DispatchResult.Success(receiptJson = receiptJson, acceptedReadRefreshRequired = refreshRequired)
             }
         } catch (error: HttpException) {
             // A month without a budget returns an unconfigured response, never 404.
@@ -50,7 +53,10 @@ class SaveMonthlyBudgetDispatcher(
             }
         } catch (_: IOException) { DispatchResult.RetryableFailure("连接中断，保留原预算提交等待重试。")
         } catch (error: CancellationException) { throw error
-        } catch (_: Exception) { DispatchResult.Failure(BUDGET_SAVE_UNVERIFIED) }
+        } catch (error: Exception) {
+            logNetworkWarning("operation=SaveMonthlyBudget unexpected replay failure", error)
+            DispatchResult.Failure(BUDGET_SAVE_UNVERIFIED)
+        }
     }
 }
 

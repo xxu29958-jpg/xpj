@@ -342,9 +342,8 @@ internal data class ReportsRecentWindowSummaryData(
 }
 
 internal fun summarizeReportsRecentWindow(trend: List<DailySpend>): ReportsRecentWindowSummaryData? {
-    val normalized = trend
-        .takeLast(ReportsRecentWindowLayout.RecentWindowDays)
-        .map { it.copy(amountCents = it.amountCents.coerceAtLeast(0L)) }
+    val normalized = trend.takeLast(ReportsRecentWindowLayout.RecentWindowDays)
+    if (normalized.any { it.amountCents < 0L }) return null
     val total = normalized.sumOf { it.amountCents }
     if (total <= 0L) return null
     val peakIndex = normalized.indices.maxByOrNull { normalized[it].amountCents } ?: return null

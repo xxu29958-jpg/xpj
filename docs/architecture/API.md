@@ -48,7 +48,7 @@ https://api.我的域名.com
 - **乐观并发（OCC）**：所有写操作携带 `expected_row_version`（整数 `row_version`，ADR-0041 起取代旧的 `expected_updated_at` 时间戳 token；`updated_at` 仅用于展示/排序）。服务端做原子 `UPDATE … WHERE row_version = expected`，不匹配返回 `409 state_conflict`，客户端刷新拿到最新 `row_version` 后再重试。批量端点用 `expected_row_version_by_id`（`{id: row_version}`）。
 - **请求幂等键（Idempotency-Key，ADR-0042）**：经 Android 离线 outbox 重放的写路由必须带 `Idempotency-Key` 请求头（intent 发生时生成的 UUID v4，直发与重放共用同一值），让"提交成功但响应丢失"后的重放安全地返回规范结果而不是因 stale token 误报 409。该幂等键先于 OCC claim 认领（§4.4）。覆盖的路由（非"仅 PATCH"）：
   - `PATCH /api/expenses/{id}`、`POST /api/expenses/{id}/confirm`、`POST /api/expenses/{id}/reject`、`POST /api/expenses/{id}/mark-not-duplicate`、`POST /api/expenses/{id}/ocr/retry`、`POST /api/expenses/{id}/recognize-text`、`POST /api/expenses/{id}/items/acknowledge-mismatch`、`PUT /api/expenses/{id}/items`、`PUT /api/expenses/{id}/splits`
-  - `PATCH /api/rules/categories/{id}`、`DELETE /api/rules/categories/{id}`、`PATCH /api/merchants/aliases/{public_id}`、`DELETE /api/merchants/aliases/{public_id}`、`PATCH /api/merchants/catalog/{public_id}`、`DELETE /api/merchants/catalog/{public_id}`
+  - `PATCH /api/rules/categories/{id}`、`DELETE /api/rules/categories/{id}`、`PATCH /api/merchants/aliases/{public_id}`、`DELETE /api/merchants/aliases/{public_id}`、`PATCH /api/merchants/catalog/{public_id}`、`DELETE /api/merchants/catalog/{public_id}`、`POST /api/merchants/catalog/{source_public_id}/merge`
   - 缺头 → `422 idempotency_key_required`；同 key 并发在途 → `409 idempotency_key_in_progress`；同 key 用于内容不同的请求（fingerprint 不符）→ `422 idempotency_key_reused`。
   - 注：OpenAPI snapshot 把这些路由的 `Idempotency-Key` header 标记为 `required: true`（契约要求），但 handler 仍声明为可选 header，以便缺失时返回上述结构化 `{error, message}` 而非 FastAPI 默认校验错误体。`POST /api/expenses/confirmed/batch-update` 是 online-only 原子批处理，不进入 Android Outbox，但每次用户提交仍必须携带 intent-unique UUID；同一网络重试复用该 key，后续相同内容的新意图使用新 key。
 
@@ -170,7 +170,7 @@ Authorization: Bearer <admin_token>
 | `/api/merchants/catalog` | POST | `backend/app/routes/merchants.py` | `createMerchantCatalog(request)` | `MerchantCatalogCreateRequest` / `MerchantCatalogCreateRequest` | `MerchantCatalogResponse` / `MerchantCatalogDto` | Session Token，owner/member 写权限 | `backend/tests/test_merchant_catalog.py`, `OpenApiContractGateTest` | 创建商家目录项；不改写历史账单商家事实 |
 | `/api/merchants/catalog/{public_id}` | PATCH | `backend/app/routes/merchants.py` | `updateMerchantCatalog(publicId,request,idempotencyKey)` | `MerchantCatalogUpdateRequest`（`expected_row_version`） | `MerchantCatalogResponse` / `MerchantCatalogDto` | Session Token，owner/member 写权限 | `backend/tests/test_merchant_catalog.py`, `OpenApiContractGateTest` | 更新显示名或 `active/hidden` 状态；key-changing rename 若仍被启用别名或 active/paused 固定支出引用则 `409 state_conflict`；stale → `409 state_conflict` |
 | `/api/merchants/catalog/{public_id}` | DELETE | `backend/app/routes/merchants.py` | `deleteMerchantCatalog(publicId,request,idempotencyKey)` | `MerchantCatalogDeleteRequest`（`expected_row_version`） | `MerchantCatalogResponse` / `MerchantCatalogDto` | Session Token，owner/member 写权限 | `backend/tests/test_merchant_catalog.py`, `backend/tests/test_recycle_bin.py`, `OpenApiContractGateTest` | 软删商家目录项；启用别名/active 或 paused 固定支出阻止删除，历史账单不阻止 |
-| `/api/merchants/catalog/{source_public_id}/merge` | POST | `backend/app/routes/merchants.py` | 无 | `MerchantCatalogMergeRequest` | `MerchantCatalogMergeResponse` | Session Token，owner/member 写权限 | `backend/tests/test_merchant_catalog.py`, `backend/tests/test_route_security_matrix.py` | ADR-0054 合并商家目录；双 row-version token；显式 `alias_policy`；不改写历史账单，不进入回收站 |
+| `/api/merchants/catalog/{source_public_id}/merge` | POST | `backend/app/routes/merchants.py` | `mergeMerchantCatalog(sourcePublicId,request,idempotencyKey)` | `MerchantCatalogMergeRequest` | `MerchantCatalogMergeResponse` / `MerchantCatalogMergeDto` | Session Token，owner/member 写权限 | `backend/tests/test_merchant_catalog_merge.py`, `backend/tests/test_merchant_catalog_receipts.py`, `backend/tests/test_route_security_matrix.py` | 双 row-version token、原 `Idempotency-Key` 与显式 `alias_policy`；不改写历史账单，不进入回收站 |
 | `/api/expenses/tags` | GET | `backend/app/routes/expenses.py` | 无 | 无 | `TagsResponse` | Session Token | `backend/tests/test_tags.py` | v0.7 标签列表 |
 | `/api/expenses/months` | GET | `backend/app/routes/expenses.py` | `months(timezone)` | query `timezone` | `MonthsDto` | Session Token | `backend/tests/test_stats_filters.py` | gray/internal |
 | `/api/expenses/export.csv` | GET | `backend/app/routes/expenses.py` | `exportCsv(month,category,timezone)` | query `month/category/tag/timezone` | streaming `text/csv` | Session Token | `backend/tests/test_stats_filters.py`, `backend/tests/test_tags.py`, smoke | gray/internal 导出 |
@@ -203,8 +203,8 @@ Authorization: Bearer <admin_token>
 | `/api/rules/categories/{id}` | PATCH | `backend/app/routes/rules.py` | `updateCategoryRule(id,request)` | `CategoryRuleRequest` | `CategoryRuleDto` | Session Token，owner/member 写权限 | `backend/tests/test_alpha3_engine.py` | v0.7 条件规则字段 |
 | `/api/rules/categories/{id}` | DELETE | `backend/app/routes/rules.py` | `deleteCategoryRule(id)` | path `id` | `StatusDto` | Session Token | `backend/tests/test_expenses.py`, `AuthDtoContractTest` | internal/高级入口 |
 | `/api/rules/apply-pending/preview` | POST | `backend/app/routes/rules.py` | 无 | query `limit/max_scan` | `RuleApplyPendingPreviewResponse` | Session Token | `backend/tests/test_alpha3_engine.py` | dry-run；默认最多扫描 500 条可自动填充账单 |
-| `/api/rules/apply-pending` | POST | `backend/app/routes/rules.py` | 无 | query `max_scan` | `RuleApplyPendingResponse` | Session Token，owner/member 写权限 | `backend/tests/test_alpha3_engine.py`, `backend/tests/test_viewer_write_guards.py` | 只改待确认账单的默认分类 |
-| `/api/rules/apply-confirmed` | POST | `backend/app/routes/rules.py` | `applyConfirmedRules(request)` | `RuleApplyConfirmedRequest`；query `limit/max_scan` | `RuleApplyConfirmedResponse` | Session Token；`confirm=true` 需 owner/member 写权限 | `backend/tests/test_alpha3_engine.py`, `ExpenseRepositoryBindingTest` | dry-run 默认；确认必须带 `preview_token` |
+| `/api/rules/apply-pending` | POST | `backend/app/routes/rules.py` | 无 | `RuleApplyPendingRequest`；query `max_scan`；header `Idempotency-Key` | `RuleApplyPendingResponse` | Session Token，owner/member 写权限 | `backend/tests/test_rule_application_commands.py`, `backend/tests/test_viewer_write_guards.py` | 只改待确认账单的默认分类；原 key 返回首次结果 |
+| `/api/rules/apply-confirmed` | POST | `backend/app/routes/rules.py` | `applyConfirmedRules(request, idempotencyKey)` | `RuleApplyConfirmedRequest`；query `limit/max_scan`；确认时 header `Idempotency-Key` | `RuleApplyConfirmedResponse` | Session Token；`confirm=true` 需 owner/member 写权限 | `backend/tests/test_rule_application_commands.py`, `RuleApplicationCommandTest` | dry-run 默认；确认必须带 `preview_token` 和原 key |
 | `/api/tags` | GET | `backend/app/routes/tags.py` | `listManagedTags()` | 无 | `TagManagementListDto`（每项含 `usage_count` + `row_version`） | Session Token；viewer 可读 | `backend/tests/test_tag_management.py`, `TagDtoContractTest` | ADR-0043 标签管理列表（online-only，无 Idempotency-Key） |
 | `/api/tags/{public_id}/rename` | POST | `backend/app/routes/tags.py` | `renameTag(publicId,request)` | `TagRenameRequest`（`expected_row_version` + `name`） | `TagDetailDto` | Session Token，owner/member 写权限 | `backend/tests/test_tag_management.py` | ADR-0043 重命名；撞 key→409 `tag_conflict`，错误信封顶层回带 `conflict_tag_public_id`/`conflict_tag_row_version`（契约 5） |
 | `/api/tags/{public_id}/delete` | POST | `backend/app/routes/tags.py` | `deleteTag(publicId,request)` | `TagDeleteRequest`（`expected_row_version`） | `TagMutationDto`（`mutation_public_id` + source undo token） | Session Token，owner/member 写权限 | `backend/tests/test_tag_management.py`, `backend/tests/test_tag_undo.py` | ADR-0043 软删 + 同事务 undo 快照（契约 1） |
@@ -952,7 +952,9 @@ Content-Type: application/json
 
 ### PATCH /api/merchants/catalog/{public_id}
 
-用 `expected_row_version` 更新 `display_name` 或 `status=active|hidden`。`merged` 状态保留给后续合并切片，本接口暂不接受。若 `display_name` 归一后改变 `merchant_key` 且目标 key 已被同账本目录行占用，返回 `409 state_conflict`，顶层带 `conflict_merchant_*` 字段，客户端可引导用户改走 merge。若原 key 仍被启用的商家别名作为 canonical target，或仍被 active/paused 固定支出配置引用，返回 `409 state_conflict`；历史账单事实不阻止重命名，也不会被改写。stale token 返回 `409 state_conflict`；跨账本或已软删项返回 `404 not_found`。
+以下 PATCH、DELETE 与 merge 命令均要求原 `Idempotency-Key`。Web 与 Android 保存原输入、对象 ID、OCC 和 key；响应丢失后的核实重用全部原请求。首次事实与回执在同一事务提交，回执命中先于当前对象与 OCC 检查；后来改名、隐藏或恢复不改变首次回执，也不会被重放覆盖。鉴权、账本及写权限仍先执行；同 key 改内容或 actor 返回 `422 idempotency_key_reused`，缺少可核对的首次快照返回 `409 merchant_catalog_original_requires_review`。这些命令在线提交，Android 原稿保存在既有 Room 输入表，不进入财务 Outbox。
+
+用 `expected_row_version` 更新 `display_name` 或 `status=active|hidden`。`merged` 由合并命令产生，本接口不接受。若 `display_name` 归一后改变 `merchant_key` 且目标 key 已被同账本目录行占用，返回 `409 state_conflict`，顶层带 `conflict_merchant_*` 字段，客户端可引导用户改走 merge。若原 key 仍被启用的商家别名作为 canonical target，或仍被 active/paused 固定支出配置引用，返回 `409 state_conflict`；历史账单事实不阻止重命名，也不会被改写。新命令的 stale token 返回 `409 state_conflict`；跨账本或已软删项返回 `404 not_found`。
 
 ### DELETE /api/merchants/catalog/{public_id}
 
@@ -981,7 +983,7 @@ Content-Type: application/json
 - 若 source key 仍被 enabled alias canonical target、active/paused 固定支出，或已有同 key alias 行占用，返回 `409 state_conflict`；alias-key 冲突会在顶层带 `conflict_alias_*` 字段。
 - `rewrite_historical_expenses=true` 返回 `422 invalid_request`。历史 `Expense.merchant` 事实不改写。
 - 成功后 source 变为 `status=merged` 且 `merged_into_public_id=target_public_id`；merged source 不进入 `/api/recycle-bin`。
-- 第一版是 online-only API；不声明 `Idempotency-Key`，也不进入 Android persistent outbox。
+- 携带原 `Idempotency-Key`，在线提交；重放返回首次 source/target/created_alias_public_id 快照，不重新合并，也不以目标当前状态替代原回执。
 
 ### GET /api/expenses/tags
 
@@ -1576,6 +1578,14 @@ Authorization: Bearer <session_token>
 
 ## 分类规则
 
+Web 新建与编辑共用专注的规则定义页，沿既有 DraftStore/PlanEntry 保存原文字、金额币种、原规则/OCC、浏览器身份与返回分类。浏览器原任务编号与命令 key 分开：未知结果冻结原输入并只核实原提交；明确拒绝后的核对只读取当前规则，保留输入，再准备新 key。匹配原身份、key 与规则版本的首次回执才收起原任务；当前规则后来修改或删除时仍可核实首次回执，不以旧回执替换当前列表事实。只读者可查看原输入，写请求仍校验角色、CSRF、账本与完整浏览器绑定。
+
+Android 原生将未提交的规则定义保存在独立的 Room 输入表中，保留原文字、金额币种、规则版本、任务 key 与完整身份绑定；来源和标签条件可新增、修改或清空。离开或重开资料库不会把这些输入当成查询缓存丢弃。只读角色仍可查看原输入；同一身份重新登录后须明确核对绑定才可继续编辑或提交。
+
+提交沿既有规则 Outbox。原输入的精确消费与 Outbox 插入在同一笔 Room 事务中完成；后来改写的输入不会被旧提交收起。Outbox 的可选 `originalInput` 保留提交时的原文字，只用于本地回看，不是新增 HTTP 字段，也不替代原命令 payload、OCC 或首次回执。加入队列只表示待同步，规则定义保存与对已有账单的预览、明确应用仍是不同动作。
+
+新原生定义使用规则 Outbox payload v2：清空来源或标签时，PATCH 明确发送对应空字符串，由现有服务归一化为空条件。历史 v1 提交保持原有的缺省字段序列化，避免用同一 key 重放时改变原请求意图；旧币种与金额边界语义不变。
+
 ### GET /api/rules/categories
 
 请求头：
@@ -1679,7 +1689,7 @@ Idempotency-Key: <uuid-v4>
 }
 ```
 
-响应包含 `preview_token`。真正写入已确认历史账单时必须带回同一个 token：
+响应包含 `preview_token`。真正写入已确认历史账单时必须带回同一个 token，并携带本次提交的 `Idempotency-Key`：
 
 ```json
 {
@@ -1688,7 +1698,9 @@ Idempotency-Key: <uuid-v4>
 }
 ```
 
-如果规则、别名或候选账单在预览后发生变化，确认写入返回：
+应用与首次回执在同一数据库事务内提交。回执包含 `command_key` 和 `application_public_id`；没有改写时仍保留回执，批次 ID 为 `null`。接受后丢回复，重放原 key、token 和 `max_scan` 返回首次结果，不再依据今天的候选重算或覆盖后来事实；同 key 异意图返回 `422 idempotency_key_reused`。当前账本权限仍在读取回执前执行。`limit` 仅控制预览样本，不改变命令身份。
+
+尚未接受的提交中，如果规则、别名或候选账单在预览后发生变化，确认写入返回：
 
 ```json
 {
@@ -1697,15 +1709,15 @@ Idempotency-Key: <uuid-v4>
 }
 ```
 
-`apply-pending` 与 `apply-confirmed` 默认只扫描前 500 条仍可自动填充分类的账单，最大 1000。响应中的 `scan_limit_reached=true` 表示还有剩余候选账单，需要再次预览并应用。
+`apply-pending` 使用同样的原 key、预览与首次回执规则。两条应用路径默认只扫描前 500 条仍可自动填充分类的账单，最大 1000。响应中的 `scan_limit_reached=true` 表示还有剩余候选账单，需要明确重新预览并准备新的提交。原回执随既有可移植出口的 `accepted_operations` 保留。
 
 ### GET /api/rules/applications
 
-返回最近规则应用批次，用于审计和回滚入口。
+返回最近规则应用批次，用于审计和回退入口。`changed_count` 是原应用改写数量；`change_counts` 从保留的批次明细按状态聚合，例如 `{"rolled_back": 2, "skipped": 1}`，表示首次回退恢复 2 笔、跳过 1 笔，不代表账单当前分类。Web、Android 和 Owner 使用同一批次明细来源。
 
 ### POST /api/rules/applications/{public_id}/rollback
 
-回滚指定批次中尚未被用户手动改写的账单分类。已改变到其他分类的账单会跳过。
+回退指定批次中仍符合原变更的账单分类；后来修改过的账单会跳过，即使当前分类仍相同。同一批次的回退由批次行锁串行处理。首次处理完成后，重复请求返回原批次状态、恢复／跳过数量及首次时间，不改写后来事实或重算回退结果。重试仍须满足当前账本和写权限。
 
 ## 回收站
 

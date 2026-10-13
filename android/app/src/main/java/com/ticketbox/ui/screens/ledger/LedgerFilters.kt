@@ -21,8 +21,8 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import com.ticketbox.ui.components.AppButtonIcons
+import com.ticketbox.ui.components.AppPrimaryButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -119,7 +119,7 @@ private fun LedgerInlineFilters(
             // 记一笔整行。禁止把宽度竞争转嫁成月份或箭头的挤压。
             LedgerMonthStepper(
                 state = LedgerMonthStepperState(
-                    label = compactLedgerMonthLabel(state.monthFilter).takeIf { state.monthFilter.isNotBlank() }
+                    label = displayMonthLabel(state.monthFilter).takeIf { state.monthFilter.isNotBlank() }
                         ?: stringResource(R.string.ledger_inline_month_all),
                     previousMonth = previousMonth,
                     nextMonth = nextMonth,
@@ -161,7 +161,7 @@ private fun LedgerInlineFilters(
             ) {
                 LedgerMonthStepper(
                     state = LedgerMonthStepperState(
-                        label = compactLedgerMonthLabel(state.monthFilter).takeIf { state.monthFilter.isNotBlank() }
+                        label = displayMonthLabel(state.monthFilter).takeIf { state.monthFilter.isNotBlank() }
                             ?: stringResource(R.string.ledger_inline_month_all),
                         previousMonth = previousMonth,
                         nextMonth = nextMonth,
@@ -207,38 +207,12 @@ private fun LedgerRecordButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Button(
+    AppPrimaryButton(
+        text = stringResource(R.string.ledger_header_add_button),
+        icons = AppButtonIcons(leading = Icons.Filled.Add),
         onClick = onClick,
-        modifier = modifier.heightIn(min = AppSpacing.controlMinHeight),
-        shape = RoundedCornerShape(AppRadius.extraSmall),
-        contentPadding = PaddingValues(horizontal = AppSpacing.smallGap),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = MaterialTheme.colorScheme.primary,
-            contentColor = MaterialTheme.colorScheme.onPrimary,
-        ),
-    ) {
-        Icon(
-            imageVector = Icons.Filled.Add,
-            contentDescription = null,
-            modifier = Modifier.size(LedgerFilterLayout.CompactIconSize),
-        )
-        Text(
-            text = stringResource(R.string.ledger_header_add_button),
-            modifier = Modifier.padding(start = AppSpacing.miniGap),
-            style = MaterialTheme.typography.labelLarge,
-            maxLines = 1,
-        )
-    }
-}
-
-@Composable
-private fun compactLedgerMonthLabel(monthFilter: String): String {
-    val parts = monthFilter.split("-")
-    return if (parts.size == 2 && parts[0].length == 4 && parts[1].length == 2) {
-        "${parts[0]}.${parts[1]}"
-    } else {
-        displayMonthLabel(monthFilter)
-    }
+        modifier = modifier,
+    )
 }
 
 @Composable

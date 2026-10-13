@@ -27,9 +27,9 @@ internal class GoalQueryReader(
     private val guard = LedgerRequestGuard(apiProvider)
     private val errors = NetworkErrorHandler({ apiProvider.currentSession()?.serverUrl }, "Goals")
     private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
-    private val goalsAdapter = moshi.adapter<List<GoalDto>>(Types.newParameterizedType(List::class.java, GoalDto::class.java))
-    private val bindingAdapter = moshi.adapter(LogicalSessionBinding::class.java)
-    private val historyAdapter = moshi.adapter(GoalHistoryResponseDto::class.java)
+    private val goalsAdapter by lazy { moshi.adapter<List<GoalDto>>(Types.newParameterizedType(List::class.java, GoalDto::class.java)) }
+    private val bindingAdapter by lazy { moshi.adapter(LogicalSessionBinding::class.java) }
+    private val historyAdapter by lazy { moshi.adapter(GoalHistoryResponseDto::class.java) }
     private val mutex = Mutex()
     private val latestRequests = mutableMapOf<String, Long>()
     private val latestDetails = mutableMapOf<String, Long>()

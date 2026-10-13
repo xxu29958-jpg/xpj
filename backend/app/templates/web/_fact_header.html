@@ -2,14 +2,14 @@
    先回答「哪笔钱、在哪、何时、属于什么」；次级字段在 _fact_summary_card。
    契约：expense（含 fact_revision/source_label/amount_label/fx_meta/is_duplicate）。
    商家缺省回退「未填写商家」，不拿 DB id 当页面身份。 #}
+{% from 'partials/category_icon.html' import category_icon %}
 <header class="product-page-header fact-header">
   <div class="product-page-heading">
-    <span class="product-eyebrow">流水 / 账单详情</span>
+    {{ category_icon(expense.category) }}
     <h1 class="page-title">{{ expense.merchant or '未填写商家' }}</h1>
     <div class="fact-keymeta">
       <span>账务日期 {{ expense.accounting_date or '待核对' }}</span>
       {% if expense.accounting_date_assumed %}<span>历史日期按初始账本日历推定，可更正</span>{% endif %}
-      <span>发生时刻 {{ expense.expense_time or '未记录' }}</span>
       <span class="fact-keymeta-sep" aria-hidden="true">·</span>
       <span>{{ expense.category }}</span>
       {% if expense.value_score or expense.regret_score %}
@@ -17,19 +17,6 @@
       <span>值回 {{ expense.value_score ~ '/5' if expense.value_score else '—' }} · 后悔 {{ expense.regret_score ~ '/5' if expense.regret_score else '—' }}</span>
       {% endif %}
     </div>
-    <div class="fact-statusline">
-      <span class="product-status product-status--success">已确认</span>
-      {% if expense.is_duplicate %}<span class="product-status product-status--warning">疑似重复</span>{% endif %}
-      <span class="meta">{{ expense.source_label }}</span>
-      {% if expense.fact_revision and expense.fact_revision > 1 %}
-      {# fact_revision 是 revision/OCC 计数，不朗读数字；只作布尔信号指到
-         承载脉络的变更记录。 #}
-      <a class="meta fact-history-link" href="#fact-timeline">有更正记录，查看变更</a>
-      {% endif %}
-    </div>
-  </div>
-  <div class="fact-hero">
-    <div class="fact-amount">{{ expense.amount_label }}</div>
-    {% if expense.fx_meta %}<div class="meta">{{ expense.fx_meta }}</div>{% endif %}
+    {% if expense.is_duplicate %}<span class="product-status product-status--warning">疑似重复</span>{% endif %}
   </div>
 </header>

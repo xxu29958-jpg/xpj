@@ -1,12 +1,11 @@
 {# 月份选择器（confirmed / reports / stats 页面使用） #}
 {# 上下文：selected_month (YYYY-MM)，由 route handler 注入 #}
-{% set _months_zh = ['一月','二月','三月','四月','五月','六月','七月','八月','九月','十月','十一月','十二月'] %}
 {% set _m = selected_month or '' %}
 {% if _m and '-' in _m %}
   {% set _parts = _m.split('-') %}
   {% set _y = _parts[0] | int %}
   {% set _mo = _parts[1] | int %}
-  {% set _label = _y ~ ' 年 ' ~ _months_zh[_mo - 1] %}
+  {% set _label = _y ~ '年' ~ _mo ~ '月' %}
   {% set _prev_mo = _mo - 1 %}
   {% set _prev_y = _y %}
   {% if _prev_mo < 1 %}{% set _prev_mo = 12 %}{% set _prev_y = _y - 1 %}{% endif %}

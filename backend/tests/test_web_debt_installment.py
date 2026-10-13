@@ -31,6 +31,9 @@ def _create_installment_debt(
     count: int,
     period_months: int | None = None,
 ) -> dict:
+    headers = negotiated_headers(web_client, {**identity.app_headers, "Idempotency-Key": str(uuid4())})
+    calendar = web_client.get("/api/ledgers/owner/calendar", headers=headers)
+    assert calendar.status_code == 200, calendar.text
     body: dict[str, object] = {
         "home_currency_code": "CNY", "direction": "i_owe",
         "counterparty_type": "external",
@@ -38,11 +41,12 @@ def _create_installment_debt(
         "principal_amount_cents": principal_cents,
         "debt_kind": "installment",
         "installment_count": count,
+        "time_input": {"precision": "date_only", "calendar_revision": calendar.json()["revision"],
+            "user_local_date": "2026-03-10"},
     }
     if period_months is not None:
         body["installment_period_months"] = period_months
-    headers = {**identity.app_headers, "Idempotency-Key": str(uuid4())}
-    resp = web_client.post("/api/debts", headers=negotiated_headers(web_client, headers), json=body)
+    resp = web_client.post("/api/debts", headers=headers, json=body)
     assert resp.status_code == 201, resp.text
     return resp.json()
 
@@ -70,12 +74,13 @@ def test_web_debt_detail_installment_renders_schedule_card(web_client: TestClien
     resp = web_client.get(f"/web/debts/{debt['public_id']}")
     assert resp.status_code == 200
     body = resp.text
-    assert "debt-installment-card" in body
+    assert 'aria-label="分期计划"' in body
     assert "分期计划" in body
     assert "共 12 期 · 每月一期" in body
     # 0 repayments → neutral 0/12 progress; the card NEVER claims 已还清 (that is status-gated).
     assert "已还 0 / 12 期" in body
     assert "按分期合约，预计" in body  # contractual payoff (mirrors web _payoff_line + Android)
+    assert "2027 年 3 月" in body  # Original occurrence + 12 periods, independent of record creation time.
     assert "每期约" in body and "估算不含手续费" in body  # interest-free per-period estimate
 
 

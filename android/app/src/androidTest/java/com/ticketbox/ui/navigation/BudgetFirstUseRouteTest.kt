@@ -16,7 +16,9 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
@@ -44,6 +46,7 @@ import com.ticketbox.data.repository.SaveMonthlyBudgetDispatcher
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.ui.saveConsumerArtPreview
 import com.ticketbox.ui.theme.TicketboxTheme
+import java.time.YearMonth
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -67,9 +70,10 @@ class BudgetFirstUseRouteTest {
         harness.close()
     }
 
-    @Test fun totalAlonePublishesOriginalYenBudgetAndShowsAdvancedFieldsAfterAcceptance() {
+    @Test fun totalAlonePublishesOriginalYenBudgetAndReturnsToItsExecution() {
         show()
-        compose.onNodeWithText(text(R.string.budget_editor_category_section_title)).assertDoesNotExist()
+        compose.onNodeWithText(text(R.string.budget_editor_category_section_title)).assertExists()
+        compose.onNodeWithTag("budget_optional_fields").assertDoesNotExist()
         input("budget_total_amount", "1200")
         save()
         compose.waitUntil(5_000) { runBlocking { harness.fixture.pendingDao.allRows().size == 1 } }
@@ -92,8 +96,14 @@ class BudgetFirstUseRouteTest {
         assertEquals(original.idempotencyKey, transport.writes.single().second)
         assertEquals(intent.request, transport.writes.single().first)
         compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasTestTag("budget_total_amount"))
-        compose.waitUntil(5_000) { compose.onAllNodes(hasTestTag("budget_optional_fields"))
-            .fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithContentDescription(text(R.string.budget_editor_back)).performScrollTo().performClick()
+        compose.onNodeWithText(text(R.string.budget_header_title)).assertIsDisplayed()
+        saveConsumerArtPreview("budget-execution-paper", requireNotNull(
+            InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasTestTag("budget_edit_open"))
+        compose.onNodeWithTag("budget_edit_open").performClick()
+        compose.onNodeWithTag("budget_optional_fields").assertDoesNotExist()
+        openOptional()
         compose.onNodeWithTag("budget_optional_fields").performScrollTo().assertIsDisplayed()
         assertEquals(PendingMutationStatus.Done.wireValue, runBlocking { harness.fixture.pendingDao.allRows().single().status })
     }
@@ -102,7 +112,7 @@ class BudgetFirstUseRouteTest {
         show()
         openOptional()
         shiftMonth(R.string.budget_month_next)
-        compose.onNodeWithText(text(R.string.budget_editor_category_section_title)).assertDoesNotExist()
+        compose.onNodeWithTag("budget_optional_fields").assertDoesNotExist()
         openOptional()
         input("budget_total_amount", "1200")
         input("budget_category_name", "餐饮")
@@ -114,14 +124,14 @@ class BudgetFirstUseRouteTest {
         assertTrue(runBlocking { harness.fixture.pendingDao.allRows().isEmpty() })
 
         shiftMonth(R.string.budget_month_next)
-        compose.onNodeWithText(text(R.string.budget_editor_category_section_title)).assertDoesNotExist()
+        compose.onNodeWithTag("budget_optional_fields").assertDoesNotExist()
         shiftMonth(R.string.budget_month_previous)
         field("budget_category_name").performScrollTo().assertTextEquals("餐饮")
         transport.ledgerId = "another-ledger"
         compose.runOnIdle { harness.fixture.switchLedger() }
         compose.waitUntil(5_000) { transport.readLedgers.lastOrNull() == "another-ledger" }
         compose.onNodeWithText(text(R.string.budget_editor_total_label)).performScrollTo()
-        compose.onNodeWithText(text(R.string.budget_editor_category_section_title)).assertDoesNotExist()
+        compose.onNodeWithTag("budget_optional_fields").assertDoesNotExist()
         assertTrue(runBlocking { harness.fixture.pendingDao.allRows().isEmpty() })
         assertTrue(transport.writes.isEmpty())
     }
@@ -131,8 +141,8 @@ class BudgetFirstUseRouteTest {
         compose.onNode(hasScrollToIndexAction()).performScrollToIndex(0)
         saveConsumerArtPreview("budget-header-large-font", requireNotNull(
             InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
-        val headings = listOf(text(R.string.budget_header_title),
-            context.getString(R.string.budget_header_subtitle, transport.reads.first()))
+        val headings = listOf(text(R.string.budget_editor_title),
+            context.getString(R.string.budget_header_subtitle, monthLabel(transport.reads.first())))
         for (heading in headings) {
             val layouts = mutableListOf<TextLayoutResult>()
             compose.onNodeWithText(heading, useUnmergedTree = true)
@@ -147,12 +157,15 @@ class BudgetFirstUseRouteTest {
             })
         }
         compose.onNodeWithText(text(R.string.budget_history_title)).performScrollTo().performTouchInput { click() }
-        compose.waitUntil(5_000) { transport.historyCursors.size == 1 }
-        compose.onNodeWithText(text(R.string.budget_history_edit)).assertIsDisplayed()
+        val modified = context.getString(R.string.goal_history_version, 2, text(R.string.budget_history_edit))
+        compose.waitUntil(5_000) { compose.onAllNodesWithText(modified).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText(modified).performScrollTo().assertIsDisplayed()
         compose.onNodeWithText(text(R.string.budget_history_more)).performScrollTo().performClick()
-        compose.waitUntil(5_000) { transport.historyCursors.size == 2 }
-        compose.onNodeWithText(text(R.string.budget_history_create)).performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("餐饮 · ¥300").performScrollTo().assertIsDisplayed()
+        val created = context.getString(R.string.goal_history_version, 1, text(R.string.budget_history_create))
+        compose.waitUntil(5_000) { compose.onAllNodesWithText(created).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText(created).performScrollTo().assertIsDisplayed()
+        compose.onAllNodesWithText(text(R.string.plan_history_expand))[1].performScrollTo().performClick()
+        compose.onNodeWithText("餐饮 · JPY ¥300").performScrollTo().assertIsDisplayed()
         compose.waitForIdle()
         val bitmap = requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot())
         saveConsumerArtPreview("budget-history-jpy", bitmap)
@@ -199,6 +212,9 @@ class BudgetFirstUseRouteTest {
         compose.onNodeWithText(text(R.string.budget_editor_total_label)).performScrollTo()
     }
 
+    private fun monthLabel(month: String) = YearMonth.parse(month).let {
+        context.getString(R.string.components_month_label, it.year.toString(), it.monthValue.toString())
+    }
     private fun text(id: Int) = context.getString(id)
 }
 

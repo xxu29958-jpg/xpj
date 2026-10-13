@@ -32,7 +32,7 @@ class ReportsRecentWindowSummaryTest {
     }
 
     @Test
-    fun recentWindowSummaryClampsNegativeAmountsAndReturnsNullWhenEmpty() {
+    fun recentWindowDoesNotProduceSpendingSharesFromSignedNetAmounts() {
         val summary = summarizeReportsRecentWindow(
             listOf(
                 spend("6/24", -100L),
@@ -42,14 +42,7 @@ class ReportsRecentWindowSummaryTest {
             ),
         )
 
-        requireNotNull(summary)
-        assertEquals(900L, summary.totalAmountCents)
-        assertEquals(0L, summary.previousThreeAmountCents)
-        assertEquals(1, summary.previousThreeDayCount)
-        assertEquals(false, summary.hasPreviousThreeWindowEvidence)
-        assertEquals(900L, summary.recentThreeAmountCents)
-        assertEquals(1, summary.activeDayCount)
-        assertEquals(true, summary.shouldUseSparseRows)
+        assertNull(summary)
         assertNull(summarizeReportsRecentWindow(listOf(spend("6/24", -100L), spend("6/25", 0L))))
     }
 

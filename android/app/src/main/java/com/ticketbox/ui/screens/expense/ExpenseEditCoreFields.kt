@@ -93,9 +93,11 @@ internal fun ExpenseCurrencyFields(
                 onFocusChanged = { options.onAmountFocusChanged(it.isFocused) },
             ),
             focusRequester = amountFocus,
-            supportingText = options.supportingText?.takeIf { it.isNotBlank() }?.let { text ->
-                { AmountSupportingText(text) }
-            },
+            decorations = AppTextInputDecorations(
+                supportingText = options.supportingText?.takeIf { it.isNotBlank() }?.let { text ->
+                    { AmountSupportingText(text) }
+                },
+            ),
         )
         ExpenseCurrencySelector(
             currency = currency,

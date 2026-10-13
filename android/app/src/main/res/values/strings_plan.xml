@@ -32,12 +32,14 @@
     <string name="plan_income_empty">还没有收入安排</string>
     <string name="plan_income_summary">%3$s · %1$d 项有效 · 预计 %2$s</string>
     <!-- W2-C：入口行动词统一为 chevron（旧 设置/调整/查看/管理/打开/读取中 动词族退役）。 -->
-    <string name="budget_advice_page_title">月度安排与试算</string>
+    <string name="budget_advice_page_title">给本月做个安排</string>
     <string name="budget_advice_page_subtitle">%1$s · 储蓄目标、备用金与可支配金额</string>
     <string name="budget_advice_back_to_plan">返回计划</string>
-    <string name="budget_advice_start_title">生成本月建议</string>
+    <string name="budget_advice_start_title">给你一个参考</string>
+    <string name="budget_advice_consent_title">允许发送本次汇总信息生成建议？</string>
+    <string name="budget_advice_consent_confirm">允许并生成本次建议</string>
     <string name="budget_advice_start_body">根据收入计划、固定支出和已入账消费的汇总结构，给出可逐项审阅的分类额度建议。建议不会自动修改预算。</string>
-    <string name="budget_advice_privacy_note">仅发送汇总结构：收支与分类合计，以及每项收入计划的类型、金额和预计日期；不发送商家名称或家庭成员明细。</string>
+    <string name="budget_advice_privacy_note">仅发送收支与分类合计、泛化收入计划、固定支出摘要和本次储蓄与备用金金额；不发送商户名、姓名、备注或票据图片。建议不会自动保存。</string>
     <string name="budget_advice_generate">生成预算建议</string>
     <string name="budget_advice_loading_title">正在整理本月收支结构</string>
     <string name="budget_advice_loading_body">建议生成完成前，你可以离开此页，现有预算不会发生变化。</string>
@@ -66,6 +68,10 @@
     <string name="spending_goals_empty_title">这个月还没有消费目标</string>
     <string name="spending_goals_empty_body">可以给整月总支出或某个分类设一个上限。</string>
     <string name="spending_goals_create_action">添加消费目标</string>
+    <string name="spending_goals_archived_show">查看已归档目标</string>
+    <string name="spending_goals_archived_hide">收起已归档目标</string>
+    <string name="spending_goals_archived_title">已归档目标</string>
+    <string name="spending_goals_archived_empty">这个月没有已归档的消费目标。</string>
     <string name="spending_goal_row_context">%1$s · %2$s</string>
     <string name="spending_goal_scope_all">全部支出</string>
     <string name="spending_goal_spent_label">已花</string>
@@ -92,8 +98,10 @@
     <string name="spending_goal_month_label">目标月份</string>
     <string name="spending_goal_scope_label">跟踪范围</string>
     <string name="spending_goal_edit_action">编辑目标</string>
-    <string name="spending_goal_edit_section">调整目标</string>
-    <string name="spending_goal_edit_cancel">取消</string>
+    <string name="spending_goal_edit_title">调整消费目标</string>
+    <string name="spending_goal_edit_intro">不会改变已经记录的消费。返回会保留输入，放弃草稿才会清除。</string>
+    <string name="spending_goal_edit_retained">有未保存的调整，点“编辑目标”可继续填写。</string>
+    <string name="spending_goal_edit_cancel">放弃草稿</string>
     <string name="spending_goal_edit_save">保存调整</string>
     <string name="spending_goal_edit_saving">保存中</string>
     <string name="spending_goal_edit_validation">请填写目标名称和大于 0 的支出上限。</string>
@@ -111,7 +119,7 @@
     <string name="spending_goal_submission_month">目标月份：%1$s</string>
     <string name="spending_goal_submission_retry">重试原提交</string>
     <string name="spending_goal_submission_drop">撤下本地修改</string>
-    <string name="spending_goal_submission_pending">修改已保存在本机，等待同步；下方仍是已确认的进度。</string>
+    <string name="spending_goal_submission_pending">修改已保存在本机，等待同步；目标尚未确认更新。</string>
     <string name="spending_goal_submission_in_flight">正在确认原提交，可以离开后再回来查看。</string>
     <string name="spending_goal_submission_conflict">目标已在别处修改。请刷新核对，撤下本地修改后重新编辑。</string>
     <string name="spending_goal_submission_uncertain">暂未确认修改结果，可以重试同一份原提交。</string>

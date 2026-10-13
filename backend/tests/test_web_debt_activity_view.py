@@ -118,7 +118,6 @@ def representative_response(monkeypatch):
     from starlette.requests import Request
 
     import app.middleware.csrf as csrf
-    import app.routes._web_debt_repayment as repayment
     import app.routes.web_debts as route
     import app.services.debt_service as service
     from app.schemas._debts import RepaymentVoidFactResponse
@@ -158,7 +157,6 @@ def representative_response(monkeypatch):
         "asset_version": "relationship-preview", "sidebar_counts": {}, "csrf_token": "example",
     }
     monkeypatch.setattr(route, "_load_debt_detail_state", lambda *_a, **_kw: (context, debt, 3, []))
-    monkeypatch.setattr(repayment, "repayment_context", lambda *_a, **_kw: {})
     calls = []
     def list_activity(db, **kwargs):
         calls.append(kwargs)
@@ -178,7 +176,7 @@ def test_actual_detail_renderer_reads_requested_page_and_has_one_history(monkeyp
     assert "申报 ¥100.00 · 实际确认 ¥40.00" in html
     assert "误记了同一笔转账" in html
     assert "activity_page=3" in html and "activity_page=1" in html
-    assert "debt-history-more" not in html
+    assert html.count('class="product-history"') == 1  # one paged list, no collapsed remainder
     assert "/repayment-voids" not in html
 
 

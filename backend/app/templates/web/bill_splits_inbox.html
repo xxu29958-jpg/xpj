@@ -1,30 +1,51 @@
 {% extends "base.html" %}
 {% set page_title = '拆账收件箱' %}
 {% set product_body_domain = 'obligations' %}
+{% set all_history = split_inbox_status == 'all' %}
+{% if accept_task %}
+{% set page_surface = 'tertiary' %}
+{% set task_return_href = '/web/bill-splits/inbox?ledger_id=' ~ selected_ledger_id|urlencode %}
+{% set task_return_label = '拆账收件箱' %}
+{% endif %}
+{% set status_labels = {'invited':'待处理', 'accepted':'已接受', 'rejected':'已拒绝', 'cancelled':'已撤回', 'expired':'已过期'} %}
 {% block title %}拆账收件箱 · 往来 · 小票夹{% endblock %}
-
-{# C3b 拆账邀请收件箱 (product 正文栈):
-   - 工作队列语义: 只列待处理; 接受/拒绝后行消失, 接受结果由 receipt band
-     当场交代 (receipt 由 route 从 canonical invitation 重新授权水合, 模板
-     不从 query 重建任何事实);
-   - 行层级: 谁发的 → 请我摊多少 → 哪笔账 (商家/时间) → 绝对截止 → 动作;
-   - TTL 强语义: expires_at 已过即静态「已过期」, 无动作; accept 撞上过期
-     由服务端 410 + error tone 诚实反馈;
-   - 旧 bsplit-table/dt-pill/inline-form 失权, 视觉唯一 owner =
-     product/domains/obligations.css。
-   契约 (route/presenter 提供): bill_split_rows[public_id/sender_display_name/sender_context/
-   amount_yuan/merchant/expense_time/expires_at/is_expired/accept_choices],
-   receipt(amount_label/ledger_name/fact_href)|None, flash_message/flash_type,
-   home_currency_symbol, selected_ledger_id。 #}
+{% block page_scripts %}
+{% if splitaccept_draft_scope %}
+<script defer src="/static/web/manual-drafts.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/plan-entry.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/split-acceptance-entry.js?v={{ asset_version }}"></script>
+{% endif %}
+{% endblock %}
+{% block page_header %}
+<header class="product-page-header"><div class="product-page-heading">
+  <h1 class="page-title">{{ ('核对这份接受任务' if splitaccept_original_only else '一起分担这笔消费') if accept_task else ('收到的拆账与结果' if all_history else '拆账收件箱') }}</h1>
+  <p class="product-page-summary">{{ '保留最初选择，核实原提交的接受结果。' if accept_task and splitaccept_original_only else '先核对邀请份额，再选择记入哪个账本。' }}</p>
+</div></header>
+{% endblock %}
+{% block page_actions %}
+{% if accept_task %}
+<div class="product-task-actions">
+  {% for row in bill_split_rows %}
+  <button type="submit" form="split-accept-form" name="splitaccept_submit" class="product-button product-button--primary" data-splitaccept-submit{% if row.status != 'invited' or row.is_expired or not row.accept_choices %} hidden disabled{% endif %}>接受并记账</button>
+  {% endfor %}
+  <a class="product-button product-button--quiet" href="{{ task_return_href }}">返回，保留选择</a>
+</div>
+{% endif %}
+{% endblock %}
 {% block content %}
-<header class="product-page-header">
-  <div class="product-page-heading">
-    <span class="product-eyebrow">往来 / 拆账</span>
-    <h1 class="page-title">拆账收件箱</h1>
-    <p class="product-page-summary">家人向你发起的拆账邀请会出现在这里。接受后在你选择的账本生成一笔独立的已确认账单，不影响对方账本。</p>
-  </div>
-</header>
-
+{% if not accept_task %}
+<nav class="product-segments" aria-label="拆账收件范围">
+  <a{% if not all_history %} class="active" aria-current="page"{% endif %} href="/web/bill-splits/inbox?ledger_id={{ selected_ledger_id|urlencode }}">待处理</a>
+  <a{% if all_history %} class="active" aria-current="page"{% endif %} href="/web/bill-splits/inbox?ledger_id={{ selected_ledger_id|urlencode }}&amp;status=all">全部记录</a>
+</nav>
+{% endif %}
+{% if splitaccept_draft_scope %}
+<details class="product-disclosure product-section"{% if not accept_task %} open{% endif %} hidden data-splitaccept-draft-shelf data-draft-scope="{{ splitaccept_draft_scope|tojson|forceescape }}">
+  <summary>保留的接受任务</summary>
+  <p class="hint">此浏览器保留的接受任务；未提交或结果待核对。</p>
+  <ul data-splitaccept-draft-list></ul>
+</details>
+{% endif %}
 {% if receipt %}
 <div class="product-feedback product-feedback--success" role="status">
   已接受，{{ receipt.amount_label }} 已记入 {{ receipt.ledger_name }}。
@@ -32,67 +53,38 @@
   {% if receipt.debt_href %}<a class="product-feedback-link" href="{{ receipt.debt_href }}">查看这笔往来</a>{% endif %}
 </div>
 {% endif %}
-{% if flash_message %}
-<div class="product-feedback{% if flash_type == 'error' %} product-feedback--error{% endif %}" role="{% if flash_type == 'error' %}alert{% else %}status{% endif %}">{{ flash_message }}</div>
-{% endif %}
-
-{% if not bill_split_rows %}
-<div class="product-state">
-  <div class="product-state-title">没有待处理的拆账邀请</div>
-  <div class="product-state-body">家人从一笔已确认账单「找家人分摊」发起邀请后，会出现在这里。</div>
-</div>
+{% if flash_message %}<div class="product-feedback{% if flash_type == 'error' %} product-feedback--error{% endif %}" role="{{ 'alert' if flash_type == 'error' else 'status' }}">{{ flash_message }}</div>{% endif %}
+{% for row in bill_split_rows %}
+{% set live = row.status == 'invited' and not row.is_expired %}
+<section class="product-section" aria-label="{{ row.sender_display_name }} 请你分摊 {{ row.share_label }}">
+  <h2 class="product-panel-title">收到 {{ row.sender_display_name }} 的拆账邀请</h2>
+  {% if row.sender_context %}<p class="hint">{{ row.sender_context }}</p>{% endif %}
+  <div class="product-surface product-surface--apricot">
+    <span class="product-amount-label">邀请你分担</span>
+    <strong class="product-amount" data-split-share>{{ row.share_label }}</strong>
+    <span class="product-amount-meta">原消费 {{ row.source_amount_label }} · {{ row.merchant or '一笔账单' }}</span>
+    <span class="product-amount-meta">{{ row.source_date_label }}</span>
+  </div>
+  {% if live %}
+    <p class="hint">请在 {{ row.expires_at }} 前处理</p>
+    {% if accept_task and row.accept_choices %}
+    {% include '_split_acceptance_form.html' %}
+    {% elif accept_task %}<p class="hint">你没有可写入的其他账本，暂时不能接受这份邀请；仍可以拒绝。</p>{% endif %}
+    <form method="post" action="/web/bill-splits/{{ row.public_id }}/reject" class="product-form-actions">
+      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+      {% if not accept_task %}<a class="product-button product-button--primary" data-splitaccept-open href="/web/bill-splits/{{ row.public_id }}/accept?ledger_id={{ selected_ledger_id|urlencode }}">核对这份邀请 <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-right"/></svg></a>{% endif %}
+      <button type="submit" class="product-button product-button--quiet">拒绝</button>
+    </form>
+  {% else %}
+    <p><span class="product-status{% if row.status == 'accepted' %} product-status--success{% endif %}">{{ '已过期' if row.is_expired else status_labels.get(row.status, row.status) }}</span></p>
+    {% if row.received_href %}<a class="product-entry" href="{{ row.received_href }}"><span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#receipt-text"/></svg></span><span class="product-entry-copy"><strong>查看这笔记录</strong><span>已记入 {{ row.received_ledger_name }}</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></a>{% endif %}
+    <ol class="product-history" aria-label="邀请处理时间">{% for event in row.events %}<li class="product-history-item"><strong>{{ event.label }}</strong><span>{{ event.time }}</span></li>{% endfor %}</ol>
+    {% if row.is_expired or row.status == 'expired' %}<p class="hint">已于 {{ row.expires_at }} 过期</p>{% else %}<p class="hint">原定截止 {{ row.expires_at }}</p>{% endif %}
+  {% endif %}
+  {% if accept_task and (not live or not row.accept_choices) %}{% include '_split_acceptance_form.html' %}{% endif %}
+</section>
 {% else %}
-<div class="bsplit-list">
-  {% for row in bill_split_rows %}
-  {% set row_expired = row.is_expired %}
-  <article class="bsplit-row" aria-label="{{ row.sender_display_name }} 请你分摊 {{ home_currency_symbol }}{{ row.amount_yuan }}">
-    <div class="bsplit-row-main">
-      <div class="bsplit-party">
-        <span class="bsplit-sender">{{ row.sender_display_name }}</span>
-        <span class="bsplit-amount">{{ home_currency_symbol }}{{ row.amount_yuan }}</span>
-      </div>
-      <div class="bsplit-meta">{% if row.sender_context %}{{ row.sender_context }} · {% endif %}{{ row.merchant or '一笔账单' }}{% if row.expense_time %} · {{ row.expense_time }}{% endif %}</div>
-      {% if row_expired %}
-      <div class="bsplit-deadline">截止时间 {{ row.expires_at }} 已过</div>
-      {% else %}
-      <div class="bsplit-deadline">请在 {{ row.expires_at }} 前处理</div>
-      {% endif %}
-    </div>
-    <div class="bsplit-row-side">
-      {% if row_expired %}
-      <span class="product-status product-status--warning">已过期</span>
-      <div class="bsplit-note">这份邀请已失效，无需处理。</div>
-      {% else %}
-      <span class="product-status">待处理</span>
-      <div class="bsplit-actions">
-        {% if row.accept_choices | length == 1 %}
-        <form method="post" action="/web/bill-splits/{{ row.public_id }}/accept" class="bsplit-accept">
-          <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-          <input type="hidden" name="target_ledger_id" value="{{ row.accept_choices[0].ledger_id }}">
-          <span class="bsplit-target">将记入：{{ row.accept_choices[0].name }}</span>
-          <button type="submit" class="product-button product-button--primary">接受并记账</button>
-        </form>
-        {% elif row.accept_choices %}
-        <form method="post" action="/web/bill-splits/{{ row.public_id }}/accept" class="bsplit-accept">
-          <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-          <label class="bsplit-target" for="bsplit-target-{{ row.public_id }}">记入账本</label>
-          <select id="bsplit-target-{{ row.public_id }}" name="target_ledger_id" required>
-            {% for c in row.accept_choices %}<option value="{{ c.ledger_id }}">{{ c.name }}</option>{% endfor %}
-          </select>
-          <button type="submit" class="product-button product-button--primary">接受并记账</button>
-        </form>
-        {% else %}
-        <p class="bsplit-note">你没有可写入的其他账本，暂时不能接受这份邀请；仍可以拒绝。</p>
-        {% endif %}
-        <form method="post" action="/web/bill-splits/{{ row.public_id }}/reject" class="bsplit-reject">
-          <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-          <button type="submit" class="product-button product-button--quiet">拒绝</button>
-        </form>
-      </div>
-      {% endif %}
-    </div>
-  </article>
-  {% endfor %}
-</div>
-{% endif %}
+<div class="product-state"><div class="product-state-title">{{ '还没有收到拆账邀请' if all_history else '没有待处理的拆账邀请' }}</div><div class="product-state-body">家人从一笔已确认账单「找家人分摊」发起邀请后，会出现在这里。</div></div>
+{% endfor %}
+{% if all_history and not accept_task %}<p class="hint">最多显示最近的 50 份邀请与处理结果；待处理邀请可单独查看。</p>{% endif %}
 {% endblock %}

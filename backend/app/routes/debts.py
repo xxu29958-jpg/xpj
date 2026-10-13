@@ -43,7 +43,12 @@ from typing import Literal
 from fastapi import APIRouter, Depends, Header, Query
 from sqlalchemy.orm import Session
 
-from app.auth import get_current_app_context, get_current_protocol_writer_context, get_current_writer_context
+from app.auth import (
+    get_current_app_context,
+    get_current_protocol_reader_context,
+    get_current_protocol_writer_context,
+    get_current_writer_context,
+)
 from app.database import get_db
 from app.schemas import (
     DebtActivityListResponse,
@@ -140,7 +145,7 @@ def get_debt_activity(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=100),
     focus_repayment: str | None = Query(default=None, min_length=1, max_length=36),
-    auth: AuthContext = Depends(get_current_app_context),
+    auth: AuthContext = Depends(get_current_protocol_reader_context),
     db: Session = Depends(get_db),
 ) -> DebtActivityListResponse:
     return list_debt_activity(
@@ -157,7 +162,7 @@ def get_repayment_facts(
     public_id: str,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=100),
-    auth: AuthContext = Depends(get_current_app_context),
+    auth: AuthContext = Depends(get_current_protocol_reader_context),
     db: Session = Depends(get_db),
 ) -> RepaymentFactListResponse:
     """Return canonical repayment + repayment-void facts for one visible Debt
@@ -197,7 +202,7 @@ def post_repayment(
     public_id: str,
     payload: RepaymentCreateRequest,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-    auth: AuthContext = Depends(get_current_writer_context),
+    auth: AuthContext = Depends(get_current_protocol_writer_context),
     db: Session = Depends(get_db),
 ) -> RepaymentCreateResponse:
     return record_repayment_idempotently(
@@ -312,7 +317,7 @@ def post_repayment_proposal(
     public_id: str,
     payload: MemberRepaymentProposalCreateRequest,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-    auth: AuthContext = Depends(get_current_writer_context),
+    auth: AuthContext = Depends(get_current_protocol_writer_context),
     db: Session = Depends(get_db),
 ) -> MemberRepaymentProposalResponse:
     return create_repayment_proposal_idempotently(
@@ -335,7 +340,7 @@ def post_repayment_proposal_withdraw(
     proposal_public_id: str,
     payload: MemberRepaymentProposalWithdrawRequest,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-    auth: AuthContext = Depends(get_current_writer_context),
+    auth: AuthContext = Depends(get_current_protocol_writer_context),
     db: Session = Depends(get_db),
 ) -> MemberRepaymentProposalResponse:
     return withdraw_repayment_proposal_idempotently(
@@ -359,7 +364,7 @@ def post_repayment_proposal_confirm(
     proposal_public_id: str,
     payload: MemberRepaymentProposalConfirmRequest,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-    auth: AuthContext = Depends(get_current_writer_context),
+    auth: AuthContext = Depends(get_current_protocol_writer_context),
     db: Session = Depends(get_db),
 ) -> DebtResponse:
     return confirm_repayment_proposal_idempotently(
@@ -383,7 +388,7 @@ def post_repayment_proposal_reject(
     proposal_public_id: str,
     payload: MemberRepaymentProposalRejectRequest,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-    auth: AuthContext = Depends(get_current_writer_context),
+    auth: AuthContext = Depends(get_current_protocol_writer_context),
     db: Session = Depends(get_db),
 ) -> MemberRepaymentProposalResponse:
     return reject_repayment_proposal_idempotently(
@@ -403,7 +408,7 @@ def post_repayment_proposal_reject(
 )
 def get_repayment_proposals(
     public_id: str,
-    auth: AuthContext = Depends(get_current_app_context),
+    auth: AuthContext = Depends(get_current_protocol_reader_context),
     db: Session = Depends(get_db),
 ) -> MemberRepaymentProposalListResponse:
     # §5.2 participant-scoped: the cross-ledger creditor must see the pending

@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.models import ApiIdempotencyKey, Expense, LedgerAuditLog
 from app.schemas._original_attachment import (
+    OriginalAttachmentRequest,
     OriginalCleanupRequest,
     OriginalCommandReceipt,
     OriginalOperation,
@@ -21,7 +22,7 @@ from app.services.attachment_cleanup_service import read_cleanup_request, settle
 from app.services.attachment_publication_lock import retain_publication
 from app.services.currency_binding_service import authorize_currency_metadata_write
 from app.services.expense_query import get_expense
-from app.services.file_service import delete_relative_upload, save_original_replenishment_bytes
+from app.services.file_service import delete_relative_upload, save_original_replenishment_bytes, save_upload_bytes
 from app.services.idempotency import (
     IdempotencyOutcomeKind,
     claim_idempotency_key,
@@ -88,6 +89,44 @@ def _record_original_command(db: Session, claim: _OriginalClaim, *, auth: AuthCo
     mark_idempotency_succeeded(db, claim.record, resource_type="expense", resource_id=str(expense.id),
         response_body=response.model_dump(mode="json"))
     return response
+
+
+def attach_original(db: Session, *, expense_id: int, auth: AuthContext,
+                    payload: OriginalAttachmentRequest, data: bytes,
+                    filename: str | None, content_type: str | None,
+                    idempotency_key: str) -> OriginalCommandReceipt:
+    """Associate admitted evidence once; the bill's financial facts stay intact."""
+    saved = None
+    commit_attempted = False
+    try:
+        claim = _claim_original_command(db, expense_id=expense_id, auth=auth, operation="attach_original",
+            expected_row_version=payload.expected_row_version, idempotency_key=idempotency_key,
+            body={"upload_sha256": hashlib.sha256(data).hexdigest(), "filename": filename, "content_type": content_type})
+        if isinstance(claim, OriginalCommandReceipt):
+            return claim
+        expense = claim.expense
+        if any((expense.image_path, expense.image_hash, expense.image_deleted_at, expense.attachment_cleanup_request,
+                expense.thumbnail_path, expense.thumbnail_deleted_at)):
+            raise AppError("original_already_associated", status_code=409)
+        saved = save_upload_bytes(data, tenant_id=auth.tenant_id, filename=filename, content_type=content_type,
+            before_publish=lambda reference: retain_publication(db, reference))
+        expense.image_path, expense.image_hash = saved.relative_path, saved.image_hash
+        expense.image_perceptual_hash = saved.image_perceptual_hash
+        expense.image_replenished_at = now_utc()
+        receipt = _record_original_command(db, claim, auth=auth, operation="attach_original",
+            action="original_attached", detail={"sha256": saved.image_hash, "basis": "first_association"})
+        commit_attempted = True
+        db.commit()
+        return receipt
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        if saved is not None and not commit_attempted:
+            try:
+                delete_relative_upload(saved.relative_path)
+            except OSError as exc:
+                logger.warning("Original staging compensation failed (%s)", type(exc).__name__)
 
 
 def verify_original(db: Session, *, expense_id: int, auth: AuthContext,

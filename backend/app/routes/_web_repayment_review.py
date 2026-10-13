@@ -11,7 +11,9 @@ from pydantic import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.error_reporting import retain_handled_error
 from app.errors import AppError
+from app.routes._web_accounting_time import parse_web_accounting_time
 from app.routes._web_debt_money import parse_web_debt_major_minor
 from app.routes._web_debt_repayment import require_repayment_binding
 from app.routes._web_debt_write import _day_label, _debt_write_gate, repayment_scope
@@ -32,6 +34,7 @@ from app.services.debt_service import (
     list_repayment_draft_audit_for_account,
 )
 from app.services.debt_service._repayment_draft import REPAYMENT_DRAFT_SOURCE_LABELS, get_repayment_draft_response
+from app.services.debt_service._repayment_time import repayment_calendar
 from app.services.repayment_draft_command_service import confirm_repayment_draft_idempotently
 
 _STATUS_LABELS = {"pending": "待复核", "confirmed": "已记账", "dismissed": "已忽略"}
@@ -56,11 +59,12 @@ REVIEW_FIELDS = (
     "draft_public_id", "ledger_id", "origin_binding", "review_action",
     "target_with_expected_row_version", "original_currency", "original_amount",
 )
+REVIEW_TIME_FIELDS = ("payment_date", "calendar_revision")
 
 
-def _initial_review_values(scope, selected_id, public_id, row, can_create):
+def _initial_review_values(scope, selected_id, public_id, row, can_create, calendar=None, values=None):
     suggested = next((item for item in row.target_debts if item.public_id == row.suggested_debt_public_id), None) if row else None
-    return {
+    initial = {
         "draft_public_id": public_id, "ledger_id": selected_id,
         "origin_binding": json.dumps(scope, ensure_ascii=False, sort_keys=True),
         "review_action": "confirm",
@@ -68,33 +72,41 @@ def _initial_review_values(scope, selected_id, public_id, row, can_create):
         "original_currency": row.original_currency_code if row else "",
         "original_amount": _minor_amount_value(row.original_amount_minor, row.original_currency_code) if row else "",
         "idempotency_key": str(uuid4()) if can_create else "",
+        "payment_date": "", "calendar_revision": str(calendar.revision) if calendar else "",
     }
+    if values is not None:
+        initial.update(values)
+        for name in REVIEW_TIME_FIELDS:
+            if name not in values:
+                initial.pop(name, None)
+    return initial
 
 
 def render_review(request: Request, db: Session, *, options, selected_id: str, public_id: str, account_id: int,
                   values: dict[str, str] | None = None, error: str = "", result: str = "",
                   rejected: bool = False, ack: dict | None = None, status_code: int = 200) -> HTMLResponse:
     scope = repayment_scope(request, db)
-    row, read_error = None, ""
+    row, read_error, calendar = None, "", None
     try:
         rows = list_repayment_draft_audit_for_account(
             db, account_id=account_id, tenant_id=selected_id, public_id=public_id)
         row = rows[0] if rows else None
+        if row and row.status == "pending":
+            calendar = repayment_calendar(db, ledger_id=selected_id)
         if row is None:
             read_error = "原采集不在当前账号和账本中。请回到原身份查看。"
             if not ack and not error:
                 status_code = 404
-    except (AppError, SQLAlchemyError):
+    except (AppError, SQLAlchemyError) as exc:
+        retain_handled_error(request, exc)
         db.rollback()
         read_error = "当前采集暂时无法读取。浏览器保留的原输入仍可在下方核对。"
         if not ack and not error:
             status_code = 503
     can_recover = _debt_write_gate(options, selected_id)
-    can_create = bool(row and row.status == "pending" and can_recover)
+    can_create = calendar is not None and can_recover and not ack
     view = _audit_row_view(row) if row else None
-    initial = _initial_review_values(scope, selected_id, public_id, row, can_create)
-    if values is not None:
-        initial.update(values)
+    initial = _initial_review_values(scope, selected_id, public_id, row, can_create, calendar, values)
     ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id, page_title="核对还款采集")
     ctx.update(row=view, read_error=read_error, currencies=supported_currency_codes(), review={
         "public_id": public_id, "scope": scope, "values": initial,
@@ -111,12 +123,16 @@ def review_confirmation(values, captured):
         raise AppError("invalid_request", "请选择欠款并核对它的当前版本。", status_code=422)
     code = normalize_currency_code(values["original_currency"])
     minor = parse_web_debt_major_minor(values["original_amount"].strip(), currency_code=code, allow_negative=False)
+    reviewed_time = {"time_input": parse_web_accounting_time(None, {
+        "time_precision": "date_only", "user_local_date": values["payment_date"],
+        "calendar_revision": values.get("calendar_revision", ""),
+    })} if values.get("payment_date") else {}
     if code == captured.original_currency_code and minor == captured.original_amount_minor:
         # An unchanged Expense bridge can already have frozen home money. Omitting
         # the override preserves that fact; reviewing different money is explicit.
-        return RepaymentDraftConfirmRequest(target_debt_public_id=target, expected_row_version=expected)
+        return RepaymentDraftConfirmRequest(target_debt_public_id=target, expected_row_version=expected, **reviewed_time)
     return RepaymentDraftConfirmRequest(target_debt_public_id=target, expected_row_version=expected,
-        original_currency=code, original_amount=_minor_amount_value(minor, code))
+        original_currency=code, original_amount=_minor_amount_value(minor, code), **reviewed_time)
 
 
 def _review_error(exc):
@@ -150,11 +166,12 @@ def submit_review(request: Request, db: Session, *, options, selected_id: str, p
         else:
             raise AppError("invalid_request", "请选择记为还款或忽略通知。", status_code=422)
     except (AppError, ValidationError, SQLAlchemyError) as exc:
+        retain_handled_error(request, exc)
         db.rollback()
         return render_review(request, db, options=options, selected_id=selected_id, public_id=public_id,
             account_id=account_id, values=values, **_review_error(exc))
     ack = {"scope": scope, "clientRef": values["idempotency_key"], "resultPublicId": receipt.public_id,
-        "values": {name: values[name] for name in REVIEW_FIELDS},
+        "values": {name: values[name] for name in (*REVIEW_FIELDS, *REVIEW_TIME_FIELDS) if name in values},
         "repaymentPublicId": receipt.committed_repayment_public_id, "status": receipt.status}
     return render_review(request, db, options=options, selected_id=selected_id, public_id=public_id, account_id=account_id, ack=ack)
 
@@ -189,12 +206,12 @@ def _audit_row_view(
         "amount_label": _home_amount_label(
             row.original_amount_minor if row.original_amount_minor is not None else row.amount_cents,
             row.original_currency_code or row.home_currency_code),
+        "currency_code": row.original_currency_code or row.home_currency_code,
         "conversion_pending": row.status == "pending" and row.amount_cents is None,
         "home_currency_code": row.home_currency_code,
         "captured_label": _day_label(row.captured_at),
         "status_label": _STATUS_LABELS.get(row.status, _STATUS_LABELS["pending"]),
         "status_tone": _STATUS_TONE.get(row.status, ""),
-        "recede": row.status == "dismissed",
         "is_pending": row.status == "pending",
         "committed_debt_public_id": row.committed_debt_public_id,
         "resolved_label": _day_label(row.resolved_at),

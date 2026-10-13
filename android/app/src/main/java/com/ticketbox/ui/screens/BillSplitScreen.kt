@@ -1,13 +1,12 @@
 package com.ticketbox.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -15,16 +14,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
@@ -36,11 +32,11 @@ import com.ticketbox.domain.model.BillSplitInbox
 import com.ticketbox.domain.model.BillSplitSent
 import com.ticketbox.domain.model.BillSplitStatusValues
 import com.ticketbox.domain.model.CurrencyDisplay
+import com.ticketbox.domain.model.ExpenseAccountingTime
 import com.ticketbox.domain.model.isInviteLocallyExpired
 import com.ticketbox.domain.model.presentedStatus
-import com.ticketbox.ui.components.AppAdaptiveEditActionLayout
-import com.ticketbox.ui.components.AppAdaptiveEditActionMode
 import com.ticketbox.ui.components.AppAdaptiveContentActionRow
+import com.ticketbox.ui.components.AppAdaptiveContentActionStyle
 import com.ticketbox.ui.components.AppAdaptiveTrailingActionRow
 import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.AppErrorState
@@ -55,11 +51,13 @@ import com.ticketbox.ui.components.AppSecondaryScrollableContent
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.ui.components.accountingTimeDateText
+import com.ticketbox.ui.components.displayDateTime
 import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.ui.design.LocalThemeVisuals
-import com.ticketbox.viewmodel.BillSplitTargetLedger
+import com.ticketbox.ui.asString
 import com.ticketbox.viewmodel.BillSplitViewModel
 
 data class BillSplitNavigation(
@@ -68,6 +66,7 @@ data class BillSplitNavigation(
     val error: UiText? = null,
 )
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun BillSplitScreen(
     viewModel: BillSplitViewModel,
@@ -76,8 +75,11 @@ fun BillSplitScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var selectedTab by rememberSaveable { mutableStateOf(0) }
-    val hasReadableData = state.inbox.isNotEmpty() || state.sent.isNotEmpty()
+    val hasReadableData = state.inboxEntryCount > 0 || state.sent.isNotEmpty()
     val bodyStates = billSplitScreenBodyStates(state = state, selectedTab = selectedTab)
+    val acceptance = BillSplitAcceptanceControls(state.selectedTargets, state.acceptances.mapNotNull { it.payload?.publicId }.toSet(),
+        state.candidateTargetLedgers, select = { id, target -> state.access?.binding?.let { viewModel.selectTarget(it, id, target) } },
+        accept = { id, target -> state.access?.binding?.let { viewModel.accept(it, id, target) } })
 
     LaunchedEffect(state.access?.binding) {
         viewModel.refresh()
@@ -102,12 +104,7 @@ fun BillSplitScreen(
         ),
     ) {
         item {
-            BillSplitTabRow(
-                selectedTab = selectedTab,
-                onSelect = { selectedTab = it },
-                inboxCount = state.inbox.size,
-                sentCount = state.sent.size,
-            )
+            BillSplitTabs(state.inboxEntryCount, state.sent.size, selectedTab) { selectedTab = it }
         }
         state.message?.takeIf { bodyStates.selected != ReadableListBodyState.LoadFailed }?.let {
             item {
@@ -115,14 +112,16 @@ fun BillSplitScreen(
             }
         }
         navigation.error?.let { item { AppStatusBanner(message = it, tone = MessageTone.Danger) } }
+        if (selectedTab == 0) billSplitAcceptanceTasks(state, viewModel, navigation, acceptance)
         item {
             if (selectedTab == 0) {
                 InboxCard(
-                    inbox = state.inbox,
+                    inbox = state.inbox.filterNot { row -> row.status != BillSplitStatusValues.ACCEPTED &&
+                        state.acceptances.any { it.delivered && it.payload?.publicId == row.publicId } },
                     chrome = BillSplitListChrome(bodyStates.inbox, viewModel::refresh, state.access, navigation, !state.loading && !navigation.busy),
-                    onAccept = { id, target -> state.access?.binding?.let { viewModel.accept(it, id, target) } },
+                    acceptance = acceptance,
+                    showEmpty = state.inboxEntryCount == 0,
                     onReject = { id -> state.access?.binding?.let { viewModel.reject(it, id) } },
-                    candidates = state.candidateTargetLedgers,
                 )
             } else {
                 SentCard(
@@ -135,24 +134,15 @@ fun BillSplitScreen(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun BillSplitTabRow(
-    selectedTab: Int,
-    onSelect: (Int) -> Unit,
-    inboxCount: Int,
-    sentCount: Int,
-) {
-    Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        AppFilterChip(
-            selected = selectedTab == 0,
-            onClick = { onSelect(0) },
-            label = stringResource(R.string.bill_split_tab_inbox, inboxCount),
-        )
-        AppFilterChip(
-            selected = selectedTab == 1,
-            onClick = { onSelect(1) },
-            label = stringResource(R.string.bill_split_tab_sent, sentCount),
-        )
+private fun BillSplitTabs(inboxCount: Int, sentCount: Int, selected: Int, select: (Int) -> Unit) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+        AppFilterChip(selected = selected == 0, onClick = { select(0) },
+            label = stringResource(R.string.bill_split_tab_inbox, inboxCount))
+        AppFilterChip(selected = selected == 1, onClick = { select(1) },
+            label = stringResource(R.string.bill_split_tab_sent, sentCount))
     }
 }
 
@@ -168,9 +158,9 @@ private data class BillSplitListChrome(
 private fun InboxCard(
     inbox: List<BillSplitInbox>,
     chrome: BillSplitListChrome,
-    onAccept: (String, String) -> Unit,
+    acceptance: BillSplitAcceptanceControls,
+    showEmpty: Boolean,
     onReject: (String) -> Unit,
-    candidates: List<BillSplitTargetLedger>,
 ) {
     when (chrome.bodyState) {
         ReadableListBodyState.Loading -> BillSplitLoadingState(
@@ -184,7 +174,7 @@ private fun InboxCard(
             onRetry = chrome.onRetry,
         )
         ReadableListBodyState.Empty,
-        ReadableListBodyState.Content -> AppPaperCard {
+        ReadableListBodyState.Content -> if (inbox.isNotEmpty() || showEmpty) AppPaperCard {
             AppListStateContent(
                 modifier = Modifier.padding(AppSpacing.cardPaddingSmall),
                 state = AppListStateSpec(
@@ -199,9 +189,8 @@ private fun InboxCard(
                     }
                     InboxRow(
                         row = row,
-                        onAccept = onAccept,
+                        acceptance = acceptance,
                         onReject = onReject,
-                        candidates = candidates,
                         chrome = chrome,
                     )
                 }
@@ -251,18 +240,29 @@ private fun SentCard(
 @Composable
 private fun InboxRow(
     row: BillSplitInbox,
-    onAccept: (String, String) -> Unit,
+    acceptance: BillSplitAcceptanceControls,
     onReject: (String) -> Unit,
-    candidates: List<BillSplitTargetLedger>,
     chrome: BillSplitListChrome,
 ) {
     // Between expires_at and the server sweep the row is still status=invited;
     // derive 已过期 locally (like /web's inbox is_expired) so the buttons hide
     // instead of inviting a tap that can only 410.
     val locallyExpired = row.isInviteLocallyExpired()
+    val statusLabel = billSplitStatusLabel(if (locallyExpired) BillSplitStatusValues.EXPIRED else row.status)
+    val warnColor = LocalStateTokens.current.warn.fg
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
         BillSplitPartyAmountRow(name = row.senderDisplayName, amountCents = row.amountCents, currencyCode = row.homeCurrencyCode)
-        InboxMetaLine(row = row, locallyExpired = locallyExpired)
+        Text(text = buildAnnotatedString {
+            append("${row.merchantSnapshot ?: "—"} · ${row.categorySuggestion ?: "—"} · ")
+            if (locallyExpired) withStyle(SpanStyle(color = warnColor)) { append(statusLabel) }
+            else append(statusLabel)
+        }, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+        BillSplitSourceEvidence(row.originalAmountMinor, row.originalCurrencyCode,
+            row.accountingTimeSnapshot, row.expenseTimeSnapshot)
+        BillSplitTimeline(row.createdAt, row.acceptedAt, row.rejectedAt, row.cancelledAt, row.expiredAt)
+        Text(stringResource(if (row.status == BillSplitStatusValues.INVITED) R.string.bill_split_deadline
+            else R.string.bill_split_original_deadline, displayDateTime(row.expiresAt)),
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         row.receivedBill?.let { received ->
             Text(stringResource(R.string.bill_split_received_ledger, received.ledgerName),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -272,8 +272,7 @@ private fun InboxRow(
         if (row.status == BillSplitStatusValues.INVITED && !locallyExpired) {
             BillSplitInboxActions(
                 row = row,
-                candidates = candidates,
-                onAccept = onAccept,
+                acceptance = acceptance,
                 onReject = onReject,
                 enabled = chrome.actionsEnabled,
             )
@@ -282,90 +281,15 @@ private fun InboxRow(
 }
 
 @Composable
-private fun BillSplitInboxActions(
-    row: BillSplitInbox,
-    candidates: List<BillSplitTargetLedger>,
-    onAccept: (String, String) -> Unit,
-    onReject: (String) -> Unit,
-    enabled: Boolean,
-) {
-    val hasAcceptAction = candidates.isNotEmpty()
-    val actionCount = if (hasAcceptAction) 2 else 1
-    val acceptAction: @Composable (Modifier) -> Unit = { actionModifier ->
-        // Audit P3 #3: show the ledger NAME (the button used to print the internal ledger_id),
-        // and let a multi-ledger member PICK the target instead of hard-wiring the first writable one.
-        when {
-            candidates.isEmpty() -> Unit
-            candidates.size == 1 -> AppSecondaryButton(
-                text = stringResource(R.string.bill_split_inbox_accept, candidates.single().name),
-                modifier = actionModifier,
-                enabled = enabled,
-                onClick = { onAccept(row.publicId, candidates.single().ledgerId) },
-            )
-            else -> AcceptTargetPicker(
-                modifier = actionModifier,
-                enabled = enabled,
-                publicId = row.publicId,
-                candidates = candidates,
-                onAccept = onAccept,
-            )
-        }
+private fun BillSplitInboxActions(row: BillSplitInbox, acceptance: BillSplitAcceptanceControls,
+                                  onReject: (String) -> Unit, enabled: Boolean) {
+    if (row.publicId in acceptance.pendingIds) return
+    var reviewing by rememberSaveable(row.publicId) { mutableStateOf(false) }
+    AppSecondaryButton(text = stringResource(R.string.bill_split_review_invitation), enabled = enabled,
+        onClick = { reviewing = true })
+    if (reviewing) {
+        BillSplitInvitationSheet(row, acceptance, enabled, onReject) { reviewing = false }
     }
-    AppAdaptiveEditActionLayout(
-        actionCount = actionCount,
-        compact = false,
-        stackTwoActionsOnNarrow = hasAcceptAction,
-    ) { mode ->
-        when (mode) {
-            AppAdaptiveEditActionMode.Stacked -> Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
-            ) {
-                acceptAction(Modifier.fillMaxWidth())
-                AppSecondaryButton(
-                    text = stringResource(R.string.bill_split_inbox_reject),
-                    enabled = enabled,
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = { onReject(row.publicId) },
-                )
-            }
-            AppAdaptiveEditActionMode.Compact,
-            AppAdaptiveEditActionMode.Inline -> Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap, Alignment.End),
-            ) {
-                acceptAction(Modifier)
-                AppSecondaryButton(
-                    text = stringResource(R.string.bill_split_inbox_reject),
-                    enabled = enabled,
-                    onClick = { onReject(row.publicId) },
-                )
-            }
-        }
-    }
-}
-
-/** Meta line `商家 · 分类 · 状态`. A locally-expired invited row shows the
- *  已过期 label in the warn state tone (mirrors /web's warn pill); every other
- *  row keeps the plain server-status rendering. */
-@Composable
-private fun InboxMetaLine(row: BillSplitInbox, locallyExpired: Boolean) {
-    val statusLabel = billSplitStatusLabel(
-        if (locallyExpired) BillSplitStatusValues.EXPIRED else row.status,
-    )
-    val warnColor = LocalStateTokens.current.warn.fg
-    Text(
-        text = buildAnnotatedString {
-            append("${row.merchantSnapshot ?: "—"} · ${row.categorySuggestion ?: "—"} · ")
-            if (locallyExpired) {
-                withStyle(SpanStyle(color = warnColor)) { append(statusLabel) }
-            } else {
-                append(statusLabel)
-            }
-        },
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        style = MaterialTheme.typography.bodySmall,
-    )
 }
 
 @Composable
@@ -379,6 +303,17 @@ private fun SentRow(
     val presented = row.presentedStatus()
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
         BillSplitPartyAmountRow(name = row.receiverDisplayNameSnapshot ?: "—", amountCents = row.amountCents, currencyCode = row.homeCurrencyCode)
+        if (row.currentAgreedShareAmountCents != row.amountCents) {
+            Text(stringResource(R.string.bill_split_current_share, "${row.homeCurrencyCode} " +
+                formatDisplayAmount(row.currentAgreedShareAmountCents, CurrencyDisplay.forRecord(row.homeCurrencyCode))),
+                style = MaterialTheme.typography.bodyMedium)
+        }
+        BillSplitSourceEvidence(row.originalAmountMinor, row.originalCurrencyCode,
+            row.accountingTimeSnapshot, row.expenseTimeSnapshot)
+        BillSplitTimeline(row.createdAt, row.acceptedAt, row.rejectedAt, row.cancelledAt, row.expiredAt)
+        Text(stringResource(if (presented == BillSplitStatusValues.INVITED) R.string.bill_split_deadline
+            else R.string.bill_split_original_deadline, displayDateTime(row.expiresAt)),
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         val statusLabel = billSplitStatusLabel(presented)
         val warnColor = LocalStateTokens.current.warn.fg
         Text(
@@ -414,15 +349,15 @@ private fun BillSplitPartyAmountRow(
     amountCents: Long,
     currencyCode: String,
 ) {
+    Text(stringResource(R.string.bill_split_invitation_share, currencyCode),
+        style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     AppAdaptiveContentActionRow(
         modifier = Modifier.fillMaxWidth(),
-        wideActionWeight = BillSplitAmountWideWeight,
+        style = AppAdaptiveContentActionStyle(wideActionWeight = BillSplitAmountWideWeight, amountTrailing = true),
         content = {
             Text(
                 text = name,
                 fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
             )
         },
         action = { actionModifier ->
@@ -436,32 +371,22 @@ private fun BillSplitPartyAmountRow(
 }
 
 @Composable
-private fun AcceptTargetPicker(
-    modifier: Modifier = Modifier,
-    enabled: Boolean,
-    publicId: String,
-    candidates: List<BillSplitTargetLedger>,
-    onAccept: (String, String) -> Unit,
-) {
-    var expanded by remember { mutableStateOf(false) }
-    Box(modifier = modifier) {
-        AppSecondaryButton(
-            text = stringResource(R.string.bill_split_accept_picker_title),
-            modifier = Modifier.fillMaxWidth(),
-            enabled = enabled,
-            onClick = { expanded = true },
-        )
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            candidates.forEach { candidate ->
-                DropdownMenuItem(
-                    text = { Text(candidate.name) },
-                    onClick = {
-                        expanded = false
-                        onAccept(publicId, candidate.ledgerId)
-                    },
-                )
-            }
-        }
+internal fun BillSplitSourceEvidence(amount: Long?, currency: String?, time: ExpenseAccountingTime?, legacyTime: String?) {
+    val label = if (amount != null && currency != null) stringResource(R.string.bill_split_source_amount,
+        "$currency ${formatDisplayAmount(amount, CurrencyDisplay.forRecord(currency))}")
+        else stringResource(R.string.bill_split_source_amount_unknown)
+    Text(label, style = MaterialTheme.typography.bodyMedium)
+    Text(stringResource(R.string.bill_split_source_date, accountingTimeDateText(time, legacyTime).asString()),
+        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+}
+
+@Composable
+private fun BillSplitTimeline(created: String, accepted: String?, rejected: String?, cancelled: String?, expired: String?) {
+    listOf(R.string.bill_split_created to created, R.string.bill_split_status_accepted to accepted,
+        R.string.bill_split_status_rejected to rejected, R.string.bill_split_status_cancelled to cancelled,
+        R.string.bill_split_expiry_recorded to expired).forEach { (label, time) ->
+        if (time != null) Text(stringResource(R.string.bill_split_event_time, stringResource(label), displayDateTime(time)),
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

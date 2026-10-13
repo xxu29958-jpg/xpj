@@ -9,7 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Sync
-import androidx.compose.material3.Button
+import com.ticketbox.ui.components.AppPrimaryButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -292,21 +292,19 @@ private fun LedgerToolsFooter(
                     )
                 },
                 trailing = { actionModifier ->
-                    Button(
+                    AppPrimaryButton(
+                        text = stringResource(R.string.ledger_tools_done),
                         modifier = actionModifier,
                         onClick = onDismiss,
-                    ) {
-                        Text(stringResource(R.string.ledger_tools_done))
-                    }
+                    )
                 },
             )
         } else {
-            Button(
+            AppPrimaryButton(
+                text = stringResource(R.string.ledger_tools_done),
                 modifier = Modifier.fillMaxWidth(),
                 onClick = onDismiss,
-            ) {
-                Text(stringResource(R.string.ledger_tools_done))
-            }
+            )
         }
         if (showNoExport) {
             Text(

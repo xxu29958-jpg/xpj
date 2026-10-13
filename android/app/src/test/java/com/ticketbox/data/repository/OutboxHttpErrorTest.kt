@@ -26,6 +26,8 @@ class OutboxHttpErrorTest {
             classify("""{ "error": "state_conflict", "message": "原内容已变化。" }"""))
         assertTrue(classify("""{ "error": "idempotency_key_in_progress", "message": "等待结果。" }""")
             is DispatchResult.RetryableFailure)
+        assertEquals(DispatchResult.Failure(EXPENSE_SUBTASK_ORIGINAL_REQUIRES_REVIEW),
+            classify("""{ "error": "expense_subtask_original_requires_review", "message": "核对原分项操作。" }"""))
     }
 
     private fun classify(body: String) = mapOutboxHttpException(HttpException(

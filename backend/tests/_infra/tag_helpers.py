@@ -23,6 +23,7 @@ def manual_expense(
     *,
     tags: str,
     merchant: str = "商家",
+    category: str = "餐饮",
     expense_time: str = "2026-05-02T00:00:00Z",
 ) -> dict:
     response = client.post(
@@ -32,7 +33,7 @@ def manual_expense(
             "client_ref": str(uuid4()),
             "home_currency_code": "CNY", "amount_cents": 1000,
             "merchant": merchant,
-            "category": "餐饮",
+            "category": category,
             "expense_time": expense_time,
             "tags": tags,
         },

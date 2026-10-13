@@ -37,19 +37,21 @@ def draft_refusal_result(exc: AppError) -> str:
     return "rejected" if exc.error in {"state_conflict", "budget_currency_conflict", "invalid_request",
         "amount_invalid", "recurring_merchant_required", "exchange_rate_pending",
         "expense_refund_exceeds_remaining", "expense_refund_exists", "expense_reversal_active",
-        "expense_offset_not_active", "calendar_revision_conflict", "accounting_time_invalid"} else "blocked"
+        "expense_offset_not_active", "calendar_revision_conflict", "accounting_time_invalid",
+        "debt_amount_invalid", "debt_direction_invalid", "debt_counterparty_invalid", "debt_installment_invalid"} else "blocked"
 
 
-def draft_error_response(request: Request, exc: AppError) -> JSONResponse | None:
+def draft_error_response(request: Request, exc: AppError, *, refusal_result: str | None = None) -> JSONResponse | None:
     if "application/json" not in request.headers.get("accept", ""):
         return None
     return JSONResponse({"error": exc.error, "message": exc.message,
-        "draft_result": draft_refusal_result(exc)}, status_code=exc.status_code,
+        "draft_result": refusal_result or draft_refusal_result(exc)}, status_code=exc.status_code,
         headers={"Cache-Control": "no-store"})
 
 
 def require_draft_binding(db: Session, request: Request, *, ledger_id: str,
-                          draft_scope: str, require_session: bool = True) -> AuthContext | None:
+                          draft_scope: str, require_session: bool = True,
+                          original_ledger_id: str | None = None) -> AuthContext | None:
     auth = getattr(request.state, "web_session_auth", None)
     if auth is None:
         if require_session or draft_scope:
@@ -59,7 +61,8 @@ def require_draft_binding(db: Session, request: Request, *, ledger_id: str,
         captured = json.loads(draft_scope)
     except (ValueError, TypeError) as exc:
         raise AppError("session_binding_changed", "原任务身份无法确认，请保留输入并重新打开原账本。", status_code=409) from exc
-    if ledger_id != auth.ledger_id or captured != manual_expense_draft_presenter.manual_draft_scope(db, auth):
+    if (ledger_id != auth.ledger_id or captured != manual_expense_draft_presenter.manual_draft_scope(db, auth)
+        or (original_ledger_id is not None and original_ledger_id != ledger_id)):
         raise AppError("session_binding_changed", "身份或账本已切换；原草稿仍保留，请切回后继续。", status_code=409)
     return auth
 

@@ -4,11 +4,22 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from fastapi import Form, Request
+
 from app.errors import AppError
 from app.money_carrier import parse_canonical_major_decimal
 from app.services.currency_common import currency_input_metadata, major_amount_to_minor
 from app.services.spending_contract_service import accounting_timezone_key
 from app.services.time_service import ensure_utc_assuming_local
+
+
+async def expense_score_form_fields(
+    request: Request, value_score: str | None = Form(default=None), regret_score: str | None = Form(default=None),
+) -> dict[str, str]:
+    """Keep omission distinct from an explicitly cleared native radio group."""
+    submitted = await request.form()
+    return {name: value or "" for name, value in (("value_score", value_score), ("regret_score", regret_score))
+        if name in submitted}
 
 
 def web_form_error_status(exc: AppError) -> int:
@@ -79,3 +90,25 @@ def parse_expense_time_local(raw: str | None) -> tuple[datetime | None, str | No
     except ValueError:
         return None, "请填写正确的时间。"
     return ensure_utc_assuming_local(parsed, accounting_timezone_key()), None
+
+
+def score_change(
+    raw: str | None,
+    current: int | None,
+    *,
+    present: bool,
+) -> tuple[bool, int | None, str | None]:
+    """Parse one optional score while preserving absent/value/clear semantics."""
+
+    if not present:
+        return False, None, None
+    cleaned = (raw or "").strip()
+    if not cleaned:
+        return current is not None, None, None
+    try:
+        candidate = int(cleaned)
+    except ValueError:
+        return False, None, "评分只能选择 1 到 5，或清空评分。"
+    if candidate not in range(1, 6):
+        return False, None, "评分只能选择 1 到 5，或清空评分。"
+    return candidate != current, candidate, None

@@ -26,7 +26,7 @@ class DebtListLensTest {
         val repository = FakeDebtActions()
         val viewModel = DebtListViewModel(repository, repository.creation, repository.writes, DebtListLens.Payables)
         advanceUntilIdle()
-        viewModel.reload()
+        viewModel.refresh()
         advanceUntilIdle()
         viewModel.refresh()
         advanceUntilIdle()

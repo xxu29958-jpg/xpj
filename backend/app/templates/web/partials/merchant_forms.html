@@ -1,0 +1,43 @@
+{% macro scope(version=none) %}
+{{ csrf_field|safe }}<input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+{% if version is not none %}<input type="hidden" name="expected_row_version" value="{{ version }}">{% endif %}
+{% endmacro %}
+{% macro creation_binding(kind, values) %}
+{{ csrf_field|safe }}
+{% for field in ['ledger_id', 'search', 'status', 'merchant', 'draft_scope', 'idempotency_key'] %}<input type="hidden" name="{{ field }}" value="{{ values[field] }}">{% endfor %}
+{% endmacro %}
+{% macro creation_attributes(kind) %}
+data-merchant-create="{{ kind }}"{% if merchant_draft_scope %} data-{{ kind }}creation-draft-scope="{{ merchant_draft_scope|tojson|forceescape }}" data-{{ kind }}creation-can-write="{{ 'true' if can_write else 'false' }}" data-{{ kind }}creation-native-result="{{ creation_result if creation_kind == kind else '' }}"{% endif %}
+{% endmacro %}
+{% macro creation_controls(kind, label) %}
+{% set result = creation_result if creation_kind == kind else '' %}
+<button type="submit" class="product-button product-button--primary" data-{{ kind }}creation-submit{% if not can_write %} disabled{% endif %}>{{ '核实原添加' if result in ['blocked', 'rejected'] else '添加' ~ label }}</button>
+<p class="product-feedback" data-{{ kind }}creation-draft-status role="status" aria-live="polite" hidden></p>
+<p class="meta" data-{{ kind }}creation-review-note{% if result != 'rejected' %} hidden{% endif %}>原添加已被拒绝。可保留输入继续修改，再次确认后添加。</p>
+<button type="submit" name="review_new" value="true" class="product-button product-button--quiet" data-{{ kind }}creation-review formnovalidate{% if result != 'rejected' or not can_write %} hidden{% endif %}>保留输入，继续修改</button>
+{% if merchant_draft_scope %}<button type="button" class="product-button product-button--quiet" data-{{ kind }}creation-discard hidden>放弃此浏览器的原稿</button>{% endif %}
+{% endmacro %}
+{% macro catalog_create() %}
+{% if catalog_create_error %}<div id="merchant-create-error" class="product-feedback product-feedback--danger" role="alert">{{ catalog_create_error }}{% if catalog_create_recycle %} <a href="/web/recycle-bin{{ q }}">查看回收站</a>{% endif %}</div>{% endif %}
+<form method="post" action="/web/merchants/catalog/create" class="stack" {{ creation_attributes('catalog') }}>
+{{ creation_binding('catalog', catalog_form) }}<label class="product-field"><span>商家名称</span><input type="text" name="display_name" value="{{ catalog_form.display_name }}" required maxlength="255" placeholder="如：街角小馆"{% if creation_kind == 'catalog' and creation_result in ['blocked', 'rejected'] or not can_write %} readonly{% endif %}{% if catalog_create_error %} aria-invalid="true" aria-describedby="merchant-create-error"{% endif %}></label>
+{{ creation_controls('catalog', '商家') }}</form>
+{% endmacro %}
+{% macro alias_create(merchant=none) %}
+{% if alias_create_error %}<div id="alias-create-error" class="product-feedback product-feedback--danger" role="alert">{{ alias_create_error }}</div>{% endif %}
+<form method="post" action="/web/merchants/aliases/create" class="stack" {{ creation_attributes('alias') }}>
+{{ creation_binding('alias', alias_form) }}<label class="product-field"><span>标准商家</span><input type="text" name="canonical_merchant" value="{{ alias_form.canonical_merchant if creation_kind == 'alias' else merchant.display_name if merchant else '' }}" required maxlength="255"{% if creation_kind == 'alias' and creation_result in ['blocked', 'rejected'] or not can_write %} readonly{% endif %}{% if alias_create_error %} aria-invalid="true" aria-describedby="alias-create-error"{% endif %}></label>
+<label class="product-field"><span>别名</span><input type="text" name="alias" value="{{ alias_form.alias }}" required maxlength="255" placeholder="例如收款记录中的店名"{% if creation_kind == 'alias' and creation_result in ['blocked', 'rejected'] or not can_write %} readonly{% endif %}{% if alias_create_error %} aria-invalid="true" aria-describedby="alias-create-error"{% endif %}></label>
+<p class="meta">一个别名只对应一个标准商家。可以独立添加，不必先创建商家目录。</p>{{ creation_controls('alias', '别名') }}</form>
+{% endmacro %}
+{% macro alias_list(items) %}
+<section class="product-entry-list" aria-label="商家别名">
+{% for item in items %}<div data-alias-key="{{ item.public_id }}">
+<div class="product-entry product-entry--static"><span class="product-entry-icon product-entry-icon--apricot" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#tag"/></svg></span><span class="product-entry-copy"><strong>{{ item.alias }}</strong><span>{{ item.canonical_merchant }} · {{ '启用' if item.enabled else '停用' }}</span></span></div>
+{% if can_write %}<div class="pill-row">
+<form method="post" action="/web/merchants/aliases/{{ item.public_id }}/toggle">{{ scope(item.row_version) }}<button type="submit" class="product-button product-button--quiet">{{ '停用' if item.enabled else '启用' }}</button></form>
+<form method="post" action="/web/merchants/aliases/{{ item.public_id }}/delete" data-confirm="删除商家别名「{{ item.alias }}」？">{{ scope(item.row_version) }}<button type="submit" class="product-button product-button--danger">删除</button></form>
+</div>{% endif %}</div>
+{% else %}<div class="product-state"><h2 class="product-state-title">还没有商家别名</h2><p class="product-state-body">添加这家店的其它写法，帮助后续规则匹配。</p></div>{% endfor %}
+</section>
+{% endmacro %}

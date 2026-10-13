@@ -18,7 +18,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import com.ticketbox.ui.components.AppOutlinedButton
+import com.ticketbox.ui.components.AppOutlinedButtonOptions
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -38,7 +39,7 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.AccountDevice
 import com.ticketbox.domain.model.DevicePairingCode
 import com.ticketbox.ui.components.AppStatusBanner
-import com.ticketbox.ui.components.displayTime
+import com.ticketbox.ui.components.displayDateTime
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.MyDevicesUiState
@@ -187,31 +188,26 @@ private fun DeviceRow(
     busy: Boolean,
     actions: DeviceRowActions,
 ) {
-    Column(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = AppSpacing.miniGap),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        DeviceTitleRow(
-            device = device,
-            busy = busy,
-            actions = actions,
-        )
-        DeviceActivityText(device = device)
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+        ) {
+            DeviceTitleRow(device = device)
+            DeviceActivityText(device = device)
+        }
+        DeviceActionsMenu(device = device, busy = busy, actions = actions)
     }
 }
 
 @Composable
-private fun DeviceTitleRow(
-    device: AccountDevice,
-    busy: Boolean,
-    actions: DeviceRowActions,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
+private fun DeviceTitleRow(device: AccountDevice) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
             text = device.deviceName,
             style = MaterialTheme.typography.titleSmall,
@@ -222,7 +218,7 @@ private fun DeviceTitleRow(
             },
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f, fill = false),
         )
         if (device.isCurrent) {
             Spacer(Modifier.width(AppSpacing.miniGap + AppSpacing.tinyGap))
@@ -232,7 +228,6 @@ private fun DeviceTitleRow(
                 color = MaterialTheme.colorScheme.primary,
             )
         }
-        DeviceActionsMenu(device = device, busy = busy, actions = actions)
     }
 }
 
@@ -247,7 +242,7 @@ private fun DeviceActivityText(device: AccountDevice) {
     val lastSeen = if (device.lastSeenAt.isNullOrBlank()) {
         stringResource(R.string.my_devices_last_active_empty)
     } else {
-        displayTime(device.lastSeenAt)
+        displayDateTime(device.lastSeenAt)
     }
     Text(
         text = stringResource(R.string.my_devices_row_platform_last_seen, platformLabel, lastSeen),
@@ -258,7 +253,7 @@ private fun DeviceActivityText(device: AccountDevice) {
         val revokedAt = if (device.revokedAt.isNullOrBlank()) {
             stringResource(R.string.my_devices_revoked_time_empty)
         } else {
-            displayTime(device.revokedAt)
+            displayDateTime(device.revokedAt)
         }
         Text(
             text = stringResource(R.string.my_devices_row_revoked_at, revokedAt),
@@ -351,9 +346,9 @@ private fun AddDeviceSection(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )
-            OutlinedButton(
+            AppOutlinedButton(
                 onClick = onCreate,
-                enabled = !creating,
+                options = AppOutlinedButtonOptions(enabled = !creating),
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(

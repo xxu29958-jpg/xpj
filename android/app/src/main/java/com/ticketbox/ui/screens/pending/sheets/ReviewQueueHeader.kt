@@ -10,6 +10,7 @@ import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.components.AppAdaptiveContentActionRow
+import com.ticketbox.ui.components.AppAdaptiveContentActionStyle
 import com.ticketbox.ui.components.AppSheetAction
 import com.ticketbox.ui.components.AppSheetActionFeedback
 import com.ticketbox.ui.components.AppSheetActionFeedbackState
@@ -30,6 +31,9 @@ internal data class ReviewSheetChrome(
     val statusMessage: String?,
     val statusTone: MessageTone = MessageTone.Danger,
     val onSkip: () -> Unit,
+    val input: com.ticketbox.viewmodel.PendingReviewValues,
+    val onInputChange: (com.ticketbox.viewmodel.PendingReviewValues) -> Unit,
+    val inputStatus: @Composable () -> Unit = {},
 )
 
 /**
@@ -45,6 +49,7 @@ internal fun ReviewQueueHeader(
     if (chrome.remaining <= 0) return
     AppAdaptiveContentActionRow(
         modifier = modifier.fillMaxWidth(),
+        style = AppAdaptiveContentActionStyle(compactAction = true),
         content = {
             Text(
                 text = stringResource(R.string.pending_review_queue_remaining, chrome.remaining),

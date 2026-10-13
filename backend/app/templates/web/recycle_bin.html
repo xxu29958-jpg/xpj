@@ -1,130 +1,75 @@
 {% extends "base.html" %}
 {% set page_title = '回收站' %}
 {% set product_body_domain = 'transactions' %}
+{% set page_surface = 'tertiary' %}
+{% set task_return_href = '/web/library' ~ q %}
+{% set task_return_label = '资料库' %}
 {% block title %}回收站 · 资料库 · 小票夹{% endblock %}
-
-{# C4 旧栈收官: 页面级 pages/recycle-bin.css 的活样式 (工作台面板 / 页头 hero
-   计数 / ≤720px 行重构与 422 锚) 归并进 product 流水域 transactions.css, 旧
-   文件物理退役; 面包屑换用资料库共用 library-breadcrumb 词汇, 产品表格回到
-   共享 .product-table 组件 (W1 中文表头口径), product-feedback--success /
-   product-state-action 复用 components.css 既有件。 #}
 {% block content %}
-{# C5c-1: 面包屑父级从纯文本「流水」改为可点击的 /web/library 资料库 hub。 #}
-<nav class="library-breadcrumb" aria-label="面包屑">
-  <a class="library-breadcrumb-parent" href="/web/library{{ q }}">资料库</a>
-  <span class="library-breadcrumb-sep" aria-hidden="true">/</span>
-  <span class="library-breadcrumb-current" aria-current="page">回收站</span>
-</nav>
-
+<div class="library-workspace stack">
 <header class="product-page-header">
   <div class="product-page-heading">
-    <h1 class="page-title page-title--compact">回收站</h1>
-    <p class="product-page-summary">
-      已归档的预算、收入计划、固定支出和目标长期保留；已删除的自定义分类、规则、商家目录、别名和标签仅在保留期内可恢复。
-    </p>
-  </div>
-  <div class="rb-header-stats">
-    <span class="rb-header-count">{{ recycle_bin.items|length }}</span>
-    <span class="rb-header-caption">
-      待恢复项目{% if recycle_bin.short_window_count %} · 其中 {{ recycle_bin.short_window_count }} 项限期保留{% endif %}
-    </span>
+    <h1 class="page-title">回收站</h1>
+    <p class="product-page-summary">找回之前移除的记录。</p>
   </div>
 </header>
-
-{% if message %}
-<div class="product-feedback product-feedback--success" role="status">{{ message }}</div>
-{% endif %}
-{% if error %}
-<div class="product-feedback product-feedback--danger" role="alert">{{ error }}</div>
-{% endif %}
+{% if message %}<div class="product-feedback product-feedback--success" role="status">{{ message }}</div>{% endif %}
+{% if error %}<div class="product-feedback product-feedback--danger" role="alert">{{ error }}</div>{% endif %}
 {% if restore_error_orphan %}
-{# C5b-2 无锚兜底 (照 debt_detail P2 裸块范式)：被提交行已不在列表 (已恢复/超窗/他账本构造直 POST)
-   时，422 错误文案仍须可见 —— 渲染在列表顶端，data-restore-key 仍带被提交行身份。 #}
 <div id="recycle-restore-error" class="product-feedback product-feedback--danger" role="alert" data-restore-key="{{ restore_error_key }}" data-restore-orphan="true">{{ restore_error }}</div>
 {% endif %}
-{% if not can_write %}
-<div class="product-feedback" role="status">只读角色可以查看回收站，但不能恢复项目。</div>
-{% endif %}
-
-{% if recycle_bin.items %}
-<section class="rb-panel" aria-label="可恢复项目">
-  <div class="rb-panel-header">
-    <div class="rb-panel-title">可恢复项目（{{ recycle_bin.items|length }} 项）</div>
-    <div class="rb-panel-subtitle">
-      {% if recycle_bin.short_window_count %}
-      其中 {{ recycle_bin.short_window_count }} 项限期保留，逾期不可恢复
-      {% else %}
-      当前没有限期保留项目
+{% if not can_write %}<div class="product-feedback" role="status">只读角色可以查看回收站，但不能恢复项目。</div>{% endif %}
+<nav class="pill-row" aria-label="回收站对象类型">
+  {% for value, label in [('all', '全部'), ('reference', '资料'), ('plans', '计划')] %}
+  <a class="product-button{% if recycle_group == value %} product-button--selected{% else %} product-button--quiet{% endif %}" href="/web/recycle-bin{{ q }}&amp;group={{ value }}"{% if recycle_group == value %} aria-current="page"{% endif %}>{{ label }}</a>
+  {% endfor %}
+</nav>
+{% if visible_items %}
+<section aria-label="可恢复项目">
+  {% for row in visible_items %}
+  {% set row_key = row.kind ~ ':' ~ row.resource_id %}
+  {% set row_error = restore_error and restore_error_key == row_key %}
+  {% set icon = {'monthly_budget':'calendar-check', 'income_plan':'book-open', 'recurring_item':'refresh-cw', 'goal':'target', 'category_preference':'shapes', 'merchant_catalog':'store', 'merchant_alias':'store', 'category_rule':'wand-sparkles', 'tag_mutation':'tag'}.get(row.kind, 'archive') %}
+  <section data-restore-key="{{ row_key }}"{% if row_error %} aria-invalid="true" aria-describedby="recycle-restore-error"{% endif %}>
+    <div class="product-entry product-entry--static product-entry--actions">
+      <span class="product-entry-icon{% if row.kind in ['goal', 'category_preference'] %} product-entry-icon--apricot{% elif row.kind == 'tag_mutation' %} product-entry-icon--lilac{% endif %}" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#{{ icon }}"/></svg></span>
+      <div class="product-entry-copy">
+        <strong>{{ row.title }}</strong>
+        <span>{{ row.detail }}</span>
+        <small class="meta">{{ row.kind_label }} · {{ '已归档' if row.kind in plan_kinds else '已移除' }} · {{ row.retention_label }}</small>
+      </div>
+      {% if can_write %}
+      <form method="post" action="/web/recycle-bin/restore" class="product-entry-actions" data-confirm="恢复「{{ row.title }}」？">
+        {{ csrf_field|safe }}
+        <input type="hidden" name="group" value="{{ recycle_group }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+        <input type="hidden" name="kind" value="{{ row.kind }}">
+        <input type="hidden" name="resource_id" value="{{ row.resource_id }}">
+        {% if row.restore_intent_month %}<input type="hidden" name="intent_month" value="{{ row.restore_intent_month }}">{% endif %}
+        <input type="hidden" name="expected_row_version" value="{{ row.expected_row_version or '' }}">
+        <button class="product-button product-button--quiet" type="submit" aria-label="恢复 {{ row.title }}">恢复 <svg width="18" height="18" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></button>
+      </form>
       {% endif %}
     </div>
-  </div>
-  <div class="rb-table-wrap">
-    <table class="product-table">
-      <thead>
-        <tr>
-          {# ≤720px 表头不 display:none (屏幕阅读器会丢列关联)，改为 .rb-sr-only
-             视觉隐藏但留在无障碍树；桌面端 span 为普通内联、视觉零变化。 #}
-          <th><span class="rb-sr-only">类型</span></th>
-          <th><span class="rb-sr-only">项目</span></th>
-          <th><span class="rb-sr-only">保留状态</span></th>
-          <th><span class="rb-sr-only">操作</span></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in recycle_bin.items %}
-        {# C5b-2：data-restore-key 是被提交行的身份锚 (kind:resource_id，不是位置索引)；
-           restore 422 原地重渲染时错误行带 aria-invalid/aria-describedby 双锚。 #}
-        {% set _row_key = row.kind ~ ':' ~ row.resource_id %}
-        {% set _row_error = restore_error and restore_error_key == _row_key %}
-        <tr data-restore-key="{{ _row_key }}"{% if _row_error %} aria-invalid="true" aria-describedby="recycle-restore-error"{% endif %}>
-          <td class="rb-kind-cell">{{ row.kind_label }}</td>
-          <td class="rb-item-cell">
-            <strong class="rb-item-title">{{ row.title }}</strong>
-            <div class="rb-item-detail">{{ row.detail }}</div>
-          </td>
-          <td class="rb-status-cell">
-            {% if row.retention_label != '长期保留' %}
-            <span class="product-status product-status--warning">{{ row.retention_label }}</span>
-            {% else %}
-            <span class="product-status product-status--success">{{ row.retention_label }}</span>
-            {% endif %}
-          </td>
-          <td class="rb-action-cell">
-            {% if can_write %}
-              {% if _row_error %}
-              {# 422 原地重渲染：错误锚定到被提交的这一行 (role=alert + 行上 aria 双锚)，不漂成顶部泛提示。 #}
-              <div id="recycle-restore-error" class="product-feedback product-feedback--danger rb-row-error" role="alert" data-restore-key="{{ _row_key }}">{{ restore_error }}</div>
-              {% endif %}
-              <form method="post" action="/web/recycle-bin/restore" class="rb-restore-form" data-confirm="恢复「{{ row.title }}」？">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-                <input type="hidden" name="kind" value="{{ row.kind }}">
-                <input type="hidden" name="resource_id" value="{{ row.resource_id }}">
-                {% if row.restore_intent_month %}<input type="hidden" name="intent_month" value="{{ row.restore_intent_month }}">{% endif %}
-                <input type="hidden" name="expected_row_version" value="{{ row.expected_row_version or '' }}">
-                <button class="product-button" type="submit">恢复</button>
-              </form>
-            {% else %}
-            <span class="rb-readonly">只读</span>
-            {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+    {% if row_error %}<div id="recycle-restore-error" class="product-feedback product-feedback--danger" role="alert" data-restore-key="{{ row_key }}">{{ restore_error }}</div>{% endif %}
+  </section>
+  {% endfor %}
 </section>
 {% else %}
-<div class="product-state">
-  <div class="product-state-title">回收站是空的</div>
-  <div class="product-state-body">
-    已归档的预算、收入计划、固定支出和目标，以及保留期内已删除的自定义分类、规则、商家目录、别名和标签会出现在这里。
-  </div>
-  <div class="rb-state-links">
-    <a class="product-state-action" href="/web/categories{{ q }}">去整理分类</a>
-    <a class="product-state-action" href="/web/merchants{{ q }}">整理商家</a>
-    <a class="product-state-action" href="/web/tags{{ q }}">整理标签</a>
-  </div>
-</div>
+<section class="product-state">
+  <h2 class="product-state-title">{{ '回收站是空的' if recycle_group == 'all' else '这里没有可恢复的' ~ ('资料' if recycle_group == 'reference' else '计划') }}</h2>
+  <p class="product-state-body">已归档的计划和保留期内移除的资料会出现在这里。</p>
+  <a class="product-state-action" href="/web/library{{ q }}">返回资料库</a>
+</section>
 {% endif %}
+<div class="product-entry product-entry--static">
+  <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#info"/></svg></span>
+  <span class="product-entry-copy"><strong>恢复前会检查当前状态</strong><span>有冲突时，原记录会保留，请核对后再恢复。</span></span>
+</div>
+<details>
+  <summary class="product-entry"><span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#history"/></svg></span><span class="product-entry-copy"><strong>查看保留期限</strong><span>当前账本共 {{ recycle_bin.items|length }} 项{% if recycle_bin.short_window_count %} · {{ recycle_bin.short_window_count }} 项限期保留{% endif %}</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></summary>
+  <p class="meta">已归档的预算、收入计划、固定支出和目标长期保留。移除的分类、规则、商家目录、别名和标签按各自标注的期限保留，逾期不可恢复。隐藏的商家仍可在商家目录中显示。</p>
+</details>
+</div>
 {% endblock %}

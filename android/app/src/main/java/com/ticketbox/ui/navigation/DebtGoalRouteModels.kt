@@ -17,9 +17,9 @@ import com.ticketbox.viewmodel.memberRepaymentProposalViewModelFactory
 internal data class DebtGoalRouteViewModels(
     val debtGoal: DebtGoalViewModel,
     val createGoal: CreateDebtGoalViewModel,
-    val linkedDetail: DebtDetailViewModel,
-    val linkedProposal: MemberRepaymentProposalViewModel,
-    val linkedRepaymentHistory: DebtActivityViewModel,
+    val links: com.ticketbox.viewmodel.DebtGoalEditViewModel,
+    val date: com.ticketbox.viewmodel.DebtGoalEditViewModel,
+    val linked: DebtDetailHostModels,
 )
 
 @Composable
@@ -38,18 +38,24 @@ internal fun rememberDebtGoalRouteViewModels(screenFactory: MainScreenFactory, c
                 screenFactory.debtWriteRepository,
             ),
         ),
-        linkedDetail = viewModel(
+        links = viewModel(viewModelStoreOwner = creationOwner, key = "debt-goal-links",
+            factory = com.ticketbox.viewmodel.debtGoalEditViewModelFactory(screenFactory.reportsRepository,
+                screenFactory.goalEditRepository, screenFactory.debtRepository)),
+        date = viewModel(viewModelStoreOwner = creationOwner, key = "debt-goal-date",
+            factory = com.ticketbox.viewmodel.debtGoalEditViewModelFactory(screenFactory.reportsRepository,
+                screenFactory.goalEditRepository, screenFactory.debtRepository, com.ticketbox.viewmodel.DebtGoalEditKind.TargetDate)),
+        linked = DebtDetailHostModels(detail = viewModel(
             key = DebtGoalLinkedDetailViewModelKey,
             factory = debtDetailViewModelFactory(screenFactory.debtRepository, screenFactory.debtWriteRepository),
         ),
-        linkedProposal = viewModel(
+        proposal = viewModel(
             key = DebtGoalLinkedProposalViewModelKey,
             factory = memberRepaymentProposalViewModelFactory(screenFactory.debtRepository.proposals),
         ),
-        linkedRepaymentHistory = viewModel(
+        history = viewModel(
             key = DebtGoalLinkedRepaymentHistoryViewModelKey,
             factory = debtActivityViewModelFactory(screenFactory.debtActivityRepository),
-        ),
+        )),
     )
 
 internal data class DebtDetailHostModels(

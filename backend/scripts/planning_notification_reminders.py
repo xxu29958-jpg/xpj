@@ -44,9 +44,8 @@ class NotificationReminders:
         form.locator('[data-budget-submit]').click()
         wait_for(lambda: self.facts()["budget"] == 1000, "The actual Web budget was not accepted")
         self.j.goto("/web/recurring")
+        page.get_by_role("link", name="添加固定支出", exact=True).click()
         form = page.locator('form[action="/web/recurring/create"]')
-        if not form.is_visible():
-            form.locator("xpath=ancestor::details").locator("summary").click()
         form.locator('[name="merchant"]').fill(SERIES)
         form.locator('[name="baseline_amount_yuan"]').fill("20.00")
         self.expected_date = self.native.adb("shell", "date", "+%F").strip()

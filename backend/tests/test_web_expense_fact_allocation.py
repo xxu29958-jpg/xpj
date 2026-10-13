@@ -83,7 +83,7 @@ def test_amount_correction_rejects_overallocation_in_split_fold_and_timeline_sho
     )
     assert rejected.status_code == 422, rejected.text
     assert "家庭拆账总额不能超过账单金额" in rejected.text
-    assert '<details class="dt-card correction-fold" open>' in rejected.text
+    assert '<details class="correction-fold" open>' in rejected.text
     assert 'value="12.34"' in rejected.text
 
     partial = web_client.post(

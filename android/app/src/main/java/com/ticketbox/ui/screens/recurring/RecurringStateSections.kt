@@ -3,13 +3,11 @@ package com.ticketbox.ui.screens.recurring
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -19,8 +17,11 @@ import com.ticketbox.data.repository.RecurringPendingIntent
 import com.ticketbox.data.repository.RecurringPendingState
 import com.ticketbox.domain.model.RecurringItem
 import com.ticketbox.ui.components.AppSecondaryButton
+import com.ticketbox.ui.components.AppAdaptiveAmountRowStyle
+import com.ticketbox.ui.components.AppAdaptiveEditAmountRow
 import com.ticketbox.ui.components.AppSectionGroup
 import com.ticketbox.ui.design.AppAlpha
+import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalStateTokens
@@ -35,6 +36,7 @@ import com.ticketbox.ui.design.LocalStateTokens
 internal fun RecurringPendingSection(
     intents: List<RecurringPendingIntent>,
     items: List<RecurringItem>,
+    onOpenSyncStatus: (() -> Unit)? = null,
 ) {
     AppSectionGroup(
         contentPadding = PaddingValues(vertical = AppSpacing.contentGap),
@@ -51,6 +53,10 @@ internal fun RecurringPendingSection(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )
+        }
+        onOpenSyncStatus?.let { open ->
+            AppSecondaryButton(text = stringResource(R.string.recurring_pending_manage),
+                onClick = open, modifier = Modifier.fillMaxWidth())
         }
         intents.forEachIndexed { index, intent ->
             if (index > 0) {
@@ -69,13 +75,8 @@ private fun RecurringPendingRow(
     model: RecurringPendingRowModel,
     intentState: RecurringPendingState,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
+    val content = @Composable {
         Column(
-            modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
         ) {
             RecurringPendingRowTexts(
@@ -83,14 +84,16 @@ private fun RecurringPendingRow(
                 intentState = intentState,
             )
         }
-        model.amountCents?.let {
-            Text(
-                text = recurringRecordedAmountText(it, model.homeCurrencyCode),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 1,
-            )
-        }
+    }
+    val amount = model.amountCents
+    if (amount == null) {
+        content()
+    } else {
+        AppAdaptiveEditAmountRow(
+            amount = recurringRecordedAmountText(amount, model.homeCurrencyCode),
+            style = AppAdaptiveAmountRowStyle(role = AppAmountRole.Compact),
+            content = content,
+        )
     }
 }
 
@@ -107,8 +110,6 @@ private fun RecurringPendingRowTexts(
     Text(
         text = model.title ?: stringResource(model.titleFallbackRes),
         style = MaterialTheme.typography.bodyMedium,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
     )
     Text(
         text = stringResource(

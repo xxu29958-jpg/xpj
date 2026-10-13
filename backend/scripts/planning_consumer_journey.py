@@ -118,6 +118,7 @@ def _journey(page, native: PlanningAndroid, fixture, evidence: Path):
     page.locator(f'input[name="ledger_id"][value="{fixture.ledger_id}"]').check()
     page.locator('form[action="/web/auth/local"] button[type="submit"]').click()
     page.wait_for_url("**/web/income-plans*")
+    page.get_by_role("link", name="添加收入计划", exact=True).click()
     income_form = _form(page, "/web/income-plans/create")
     income_form.locator('[name="label"]').fill("联动工资")
     income_form.locator('[name="amount_yuan"]').fill("5000.00")
@@ -126,6 +127,7 @@ def _journey(page, native: PlanningAndroid, fixture, evidence: Path):
     wait_for(lambda: _facts(fixture.ledger_id)["income_amount"] == 500000, "Web income was not committed")
 
     page.goto(f"{BASE_URL}/web/goals?month={month}")
+    page.get_by_role("link", name="新建消费目标", exact=True).click()
     goal_form = _form(page, "/web/goals/create")
     goal_form.locator('[name="name"]').fill("联动消费提醒")
     goal_form.locator('[name="target_amount_yuan"]').fill("2000.00")

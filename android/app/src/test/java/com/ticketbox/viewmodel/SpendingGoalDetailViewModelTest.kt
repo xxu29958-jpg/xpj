@@ -1,6 +1,7 @@
 package com.ticketbox.viewmodel
 
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.SavedStateHandle
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.repository.OutboxRow
@@ -32,8 +33,8 @@ class SpendingGoalDetailViewModelTest {
     private val models = mutableListOf<SpendingGoalDetailViewModel>()
     @BeforeTest fun setup() { Dispatchers.setMain(dispatcher) }
     @AfterTest fun close() { models.forEach { it.viewModelScope.cancel() }; Dispatchers.resetMain() }
-    private fun model(reports: RecordingSpendingGoalActions, edits: RecordingGoalEdits) =
-        SpendingGoalDetailViewModel(reports, edits).also { models += it; it.load("goal-1") }
+    private fun model(reports: RecordingSpendingGoalActions, edits: RecordingGoalEdits, saved: SavedStateHandle = SavedStateHandle()) =
+        SpendingGoalDetailViewModel(reports, edits, SpendingGoalEditDraftStore(saved)).also { models += it; it.load("goal-1") }
 
     @Test fun savePublishesOnceAndKeepsCanonicalProgress() = runTest(dispatcher) {
         val reports = RecordingSpendingGoalActions()
@@ -60,17 +61,45 @@ class SpendingGoalDetailViewModelTest {
         val reports = RecordingSpendingGoalActions().apply {
             goalResult = Result.success(spendingGoal().copy(homeCurrencyCode = "JPY"))
         }
-        val vm = model(reports, edits)
+        val saved = SavedStateHandle()
+        val vm = model(reports, edits, saved)
         advanceUntilIdle()
         vm.beginEdit()
         assertEquals("20000", vm.state.value.targetAmountInput)
-        vm.updateField(SpendingGoalEditField.Amount, "1200")
+        vm.updateField(SpendingGoalEditField.Amount, "001200")
+        vm.updateField(SpendingGoalEditField.Name, "  原旅行  ")
+        vm.updateField(SpendingGoalEditField.Category, "交通")
+        vm.shiftMonth(1)
         vm.load("goal-1")
-        assertEquals("1200", vm.state.value.targetAmountInput)
-        vm.save()
+        assertEquals("001200", vm.state.value.targetAmountInput)
+        vm.cancelEdit(discard = false)
+        vm.viewModelScope.cancel()
+        reports.goalResult = Result.success(spendingGoal(rowVersion = 2).copy(name = "后来调整", targetAmountCents = 99999,
+            homeCurrencyCode = "JPY"))
+        val recreated = model(reports, edits, SavedStateHandle(saved.keys().associateWith { saved.get<Any?>(it) }))
         advanceUntilIdle()
+        assertEquals("后来调整", recreated.state.value.goal?.name)
+        assertTrue(recreated.state.value.formDirty)
+        recreated.beginEdit()
+        assertEquals("  原旅行  ", recreated.state.value.name)
+        assertEquals("2026-08", recreated.state.value.month)
+        assertEquals("交通", recreated.state.value.category)
+        assertEquals("001200", recreated.state.value.targetAmountInput)
+        assertEquals(1L, recreated.state.value.editOriginal?.rowVersion)
+        assertFalse(recreated.state.value.canSave)
+        assertNotNull(recreated.state.value.formError)
+        recreated.save()
+        assertTrue(edits.saves.isEmpty())
+        recreated.updateField(SpendingGoalEditField.Amount, "1200")
+        assertTrue(recreated.state.value.canSave)
+        recreated.save()
+        advanceUntilIdle()
+        assertEquals(1, edits.saves.size, recreated.state.value.toString())
         assertEquals(1200, edits.saves.single().targetAmountCents)
         assertEquals("JPY", edits.saves.single().homeCurrencyCode)
+        assertEquals(1L, edits.saves.single().expectedRowVersion)
+        assertEquals(2L, recreated.state.value.goal?.rowVersion)
+        assertFalse(recreated.state.value.hasRetainedEdit)
     }
 
     @Test fun unknownCurrencyIsRecoverableAndNeverEnablesWriting() = runTest(dispatcher) {
@@ -136,10 +165,28 @@ class SpendingGoalDetailViewModelTest {
         advanceUntilIdle()
         gate.complete(Unit); advanceUntilIdle()
         assertEquals("新会话目标", vm.state.value.goal?.name)
+        val originalAccess = edits.access.value!!
+        vm.beginEdit()
+        vm.updateField(SpendingGoalEditField.Name, "原会话输入")
+        edits.access.value = originalAccess.copy(binding = originalAccess.binding.copy(bindingRevision = "binding-3"))
+        advanceUntilIdle()
+        assertFalse(vm.state.value.hasRetainedEdit)
+        assertFalse(vm.state.value.isEditing)
+        edits.access.value = originalAccess.copy(canModify = false)
+        advanceUntilIdle()
+        vm.beginEdit()
+        assertEquals("原会话输入", vm.state.value.name)
         edits.access.value = edits.access.value!!.copy(canModify = false)
         advanceUntilIdle(); vm.beginEdit(); vm.save()
         assertFalse(vm.state.value.canModify)
         assertTrue(edits.saves.isEmpty())
+        edits.access.value = originalAccess
+        advanceUntilIdle()
+        assertEquals("原会话输入", vm.state.value.name)
+        vm.cancelEdit()
+        assertFalse(vm.state.value.hasRetainedEdit)
+        vm.beginEdit()
+        assertEquals("新会话目标", vm.state.value.name)
     }
 
     @Test fun invalidFormAndArchivedGoalNeverPublish() = runTest(dispatcher) {

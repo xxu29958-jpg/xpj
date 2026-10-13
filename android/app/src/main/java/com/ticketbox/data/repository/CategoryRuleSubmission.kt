@@ -15,8 +15,9 @@ data class CategoryRuleSubmissionPayload(
     val version: Int = 1,
     val expectedRowVersion: Long,
     val request: CategoryRuleRequest,
+    val originalInput: Map<String, String>? = null,
 ) {
-    fun supports(row: OutboxRow): Boolean = version == 1 && expectedRowVersion == row.expectedRowVersion &&
+    fun supports(row: OutboxRow): Boolean = supportsFormat() && expectedRowVersion == row.expectedRowVersion &&
         !row.idempotencyKey.isNullOrBlank() && (request.isCompleteRule() ||
             row.type == PendingMutationType.DeleteCategoryRule && !request.keyword.isNullOrBlank() && !request.category.isNullOrBlank()) && when (row.type) {
             PendingMutationType.CreateCategoryRule -> expectedRowVersion == 0L && row.targetId == "category_rule_create:${row.idempotencyKey}"
@@ -24,9 +25,19 @@ data class CategoryRuleSubmissionPayload(
             else -> false
         }
 
+    private fun supportsFormat(): Boolean = when (version) {
+        1 -> true
+        2 -> originalInput != null
+        else -> false
+    }
+
+    // V1 retains its original omission semantics for stable-key replay. V2 definitions can explicitly
+    // clear text conditions; the existing server normalizes present empty strings to null.
     fun updateRequest(): CategoryRuleUpdateRequest = CategoryRuleUpdateRequest(
         expectedRowVersion, request.keyword, request.category, request.enabled, request.priority,
-        request.amountMinCents, request.amountMaxCents, request.sourceContains, request.tagContains, request.homeCurrencyCode,
+        request.amountMinCents, request.amountMaxCents,
+        if (version == 2) request.sourceContains.orEmpty() else request.sourceContains,
+        if (version == 2) request.tagContains.orEmpty() else request.tagContains, request.homeCurrencyCode,
     )
 
     fun acceptsReceipt(row: OutboxRow, receipt: CategoryRuleDto): Boolean = supports(row) &&
@@ -39,6 +50,7 @@ data class PendingCategoryRuleSubmission(
     val request: CategoryRuleRequest?,
     val confirmed: CategoryRule?,
     val supported: Boolean,
+    val originalInput: Map<String, String>? = null,
 ) {
     val ruleId: Long? get() = row.ruleId() ?: confirmed?.id
     val isDone: Boolean get() = row.status == PendingMutationStatus.Done
@@ -62,7 +74,7 @@ internal fun describeCategoryRuleSubmission(
     }
     val receipt = row.receiptJson?.let { runCatching { receiptAdapter.fromJson(it) }.getOrNull() }
     val confirmed = receipt?.takeIf { payload?.acceptsReceipt(row, it) == true }?.toDomain()
-    return PendingCategoryRuleSubmission(row, request, confirmed, payload?.supports(row) == true)
+    return PendingCategoryRuleSubmission(row, request, confirmed, payload?.supports(row) == true, payload?.originalInput)
 }
 
 internal fun OutboxRow.ruleId(): Long? = targetId.takeIf { it.startsWith("category_rule:") }

@@ -38,7 +38,8 @@ def _seed(records, model, **values):
 
 
 @pytest.mark.parametrize("upload_actor", [7, 8])
-def test_upload_and_original_command_receipts_use_the_matching_current_original(records, upload_actor):
+@pytest.mark.parametrize("operation", ["verify_original", "attach_original"])
+def test_upload_and_original_command_receipts_use_the_matching_current_original(records, upload_actor, operation):
     digest = "a" * 64
     _seed(records, m.Expense, id=1, public_id="bill", tenant_id="selected",
         image_path="current.png", image_hash=digest)
@@ -47,7 +48,7 @@ def test_upload_and_original_command_receipts_use_the_matching_current_original(
     receipts = (
         (1, "upload_receipt", "bill", {"id": 1, "public_id": "bill",
             "enrichment_task_public_id": "task", "image_hash": digest}),
-        (2, "expense", "1", {"operation": "verify_original", "expense_id": 1,
+        (2, "expense", "1", {"operation": operation, "expense_id": 1,
             "public_id": "bill", "sha256": digest}),
     )
     for id_, resource_type, resource_id, body in receipts:
@@ -60,10 +61,11 @@ def test_upload_and_original_command_receipts_use_the_matching_current_original(
         for row in rows] == [(1, 1, "current.png", digest), (2, 1, "current.png", digest)]
 
 
-def test_receipt_digest_mismatch_never_borrows_the_current_original(records):
+@pytest.mark.parametrize("operation", ["replenish_original", "attach_original"])
+def test_receipt_digest_mismatch_never_borrows_the_current_original(records, operation):
     _seed(records, m.Expense, id=1, public_id="bill", tenant_id="selected",
         image_path="current.png", image_hash="b" * 64)
-    body = {"operation": "replenish_original", "expense_id": 1,
+    body = {"operation": operation, "expense_id": 1,
         "public_id": "bill", "sha256": "a" * 64}
     _seed(records, m.ApiIdempotencyKey, id=1, tenant_id="selected", status="succeeded",
         resource_type="expense", resource_id="1", response_body=json.dumps(body))
@@ -77,6 +79,8 @@ def test_receipt_digest_mismatch_never_borrows_the_current_original(records):
 @pytest.mark.parametrize(("resource_type", "body", "expense_id"), [
     ("upload_receipt", {"id": 1, "public_id": "bill", "image_hash": "a" * 64}, 1),
     ("expense", {"operation": "verify_original", "expense_id": 1,
+        "public_id": "bill", "sha256": "a" * 64}, 1),
+    ("expense", {"operation": "attach_original", "expense_id": 1,
         "public_id": "bill", "sha256": "a" * 64}, 1),
 ])
 def test_accepted_producer_receipt_points_to_its_original_index_row(resource_type, body, expense_id):

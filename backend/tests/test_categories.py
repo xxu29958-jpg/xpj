@@ -19,11 +19,14 @@ import pytest
 from api_contract_helpers import web_save_expense
 from fastapi.testclient import TestClient
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.database import SessionLocal
 from app.main import app
-from app.models import Budget, BudgetCategory, CategoryRule, Expense, Goal, Ledger
+from app.models import ApiIdempotencyKey, Budget, BudgetCategory, CategoryRule, Expense, Goal, Ledger
 from app.routes.web_app import _require_local as _web_require_local
+from app.schemas import ExpenseUpdateRequest
+from app.services import pending_review_bulk_service
 from app.services.category_preference_service import ensure_category_preference_for_name
 from app.services.category_service import (
     list_category_summary,
@@ -139,20 +142,24 @@ def test_web_categories_renders_with_navigation(web_client: TestClient) -> None:
     resp = web_client.get("/web/categories?ledger_id=owner")
     assert resp.status_code == 200
     # Canonical section lives under the real Reference Library hub.
-    assert '<h1 class="page-title page-title--compact">分类</h1>' in resp.text
-    assert 'href="/web/library?ledger_id=owner">资料库</a>' in resp.text
+    assert '<h1 class="page-title">分类</h1>' in resp.text
+    assert 'data-page-level="tertiary"' in resp.text
+    assert any(href == "/web/library?ledger_id=owner" and "资料库" in label
+        for href, label in re.findall(r'<a[^>]*href="([^"]+)"[^>]*>(.*?)</a>', resp.text, re.S))
     assert 'href="/web/rules?ledger_id=owner"' in resp.text
     assert 'aria-label="选择分类月份"' in resp.text
 
 
 def test_web_categories_counts_pending_uncategorized(web_client: TestClient, *, identity) -> None:
-    # Two pending rows still in the default "其他" bucket.
+    # A missing category is distinct from the user's valid choice of 其他.
+    missing = _create_pending(web_client, identity=identity)
     _create_pending(web_client, identity=identity)
-    _create_pending(web_client, identity=identity)
+    with SessionLocal() as db:
+        db.get(Expense, missing).category = ""
+        db.commit()
     resp = web_client.get("/web/categories?ledger_id=owner")
     assert resp.status_code == 200
-    # Both pending rows should land under the uncategorized chip.
-    assert "未分类" in resp.text
+    assert "1 条待确认还未分类" in resp.text
     # A direct entry to the cleanup workflow is rendered.
     assert "/web/categories/uncategorized?ledger_id=owner" in resp.text
 
@@ -359,6 +366,11 @@ def test_delete_category_preference_rejects_active_rule_reference(
         client, identity=identity, category="咖啡", client_ref="cat-pref-rule"
     )
     preference = _category_preference(client, identity=identity, name="咖啡")
+    preview_path = f"/api/expenses/categories/preferences/{preference['public_id']}"
+    assert client.get(preview_path).status_code == 401
+    before_reference = client.get(preview_path, headers=identity.app_headers)
+    assert before_reference.status_code == 200, before_reference.text
+    assert before_reference.json() == {"category": preference, "references": []}
     with SessionLocal() as db:
         now = now_utc()
         ensure_category_preference_for_name(db, tenant_id="owner", name="咖啡")
@@ -393,6 +405,14 @@ def test_delete_category_preference_rejects_active_rule_reference(
         ])
         db.commit()
         rule_id = rule.id
+
+    preview = client.get(preview_path, headers=identity.app_headers)
+    assert preview.status_code == 200, preview.text
+    assert preview.json()["category"] == preference
+    assert preview.json()["references"] == [
+        {"kind": "rule", "id": str(rule_id), "label": "规则「coffee」"},
+    ]
+    assert client.get(preview_path, headers=identity.gray_app_headers).status_code == 404
 
     deleted = client.post(
         f"/api/expenses/categories/preferences/{preference['public_id']}/delete",
@@ -429,12 +449,17 @@ def test_category_rejection_identifies_the_saved_plan_without_changing_it(client
         read_url = "/api/budgets/monthly?month=2026-10"
 
     original = client.get(read_url, headers=identity.app_headers).json()
+    preview = client.get(f"/api/expenses/categories/preferences/{preference['public_id']}", headers=identity.app_headers)
+    assert preview.status_code == 200, preview.text
+    assert [(item["kind"], item["id"]) for item in preview.json()["references"]] == [(kind, identifier)]
+    assert _category_preference(client, identity=identity, name="咖啡") == preference
     rejected = client.post(f"/api/expenses/categories/preferences/{preference['public_id']}/delete",
         headers=identity.app_headers, json={"expected_row_version": preference["row_version"]})
     assert rejected.status_code == 409, rejected.text
     references = rejected.json().get("category_references", [])
     assert [(item["kind"], item["id"]) for item in references] == [(kind, identifier)]
     assert "十月咖啡安排" in references[0]["label"] if kind == "goal" else "2026-10" in references[0]["label"]
+    assert preview.json()["references"] == references
     assert client.get(read_url, headers=identity.app_headers).json() == original
     assert _category_preference(client, identity=identity, name="咖啡") == preference
 
@@ -471,28 +496,45 @@ def test_web_uncategorized_lists_only_uncategorized(web_client: TestClient, *, i
         web_client, eid_food, identity=identity,
         amount_yuan="12.34", merchant="星巴克", category="餐饮",
     )
+    dashboard = web_client.get("/web/categories?ledger_id=owner")
+    assert "1 条待确认使用「其他」分类" in dashboard.text
+    assert "filter=including_other" in dashboard.text
+    eid_missing = _create_pending(web_client, identity=identity)
+    with SessionLocal() as db:
+        db.get(Expense, eid_missing).category = "未分類"
+        db.commit()
     resp = web_client.get("/web/categories/uncategorized?ledger_id=owner")
     assert resp.status_code == 200
-    ids = set(re.findall(r'name="expense_ids" value="(\d+)"', resp.text))
-    assert str(eid_other) in ids
+    ids = set(re.findall(r'name="expense_snapshot" value="(\d+):', resp.text))
+    assert str(eid_missing) in ids
+    assert str(eid_other) not in ids
     assert str(eid_food) not in ids
+    including_other = web_client.get("/web/categories/uncategorized?ledger_id=owner&filter=including_other")
+    assert f'name="expense_snapshot" value="{eid_other}:' in including_other.text
 
 
 def test_web_uncategorized_bulk_set_category(web_client: TestClient, *, identity) -> None:
     eid = _create_pending(web_client, identity=identity)
+    original = web_client.get("/web/categories/uncategorized?ledger_id=owner&filter=including_other")
+    snapshot = re.search(rf'name="expense_snapshot" value="({eid}:\d+)"', original.text)[1]
     resp = web_client.post(
         "/web/categories/uncategorized/bulk-set",
         data={
             "ledger_id": "owner",
-            "expense_ids": [str(eid)],
+            "expense_snapshot": [snapshot],
+            "idempotency_key": re.search(r'name="idempotency_key" value="([^"]+)"', original.text)[1],
             "category": "餐饮",
         },
         follow_redirects=False,
     )
-    assert resp.status_code == 303
+    assert resp.status_code == 200, resp.text
+    assert 'aria-label="继续逐笔核对"' in resp.text
+    with SessionLocal() as db:
+        row = db.get(Expense, eid)
+        assert row.status == "pending" and row.category == "餐饮"
     follow = web_client.get("/web/categories/uncategorized?ledger_id=owner")
     assert follow.status_code == 200
-    ids = set(re.findall(r'name="expense_ids" value="(\d+)"', follow.text))
+    ids = set(re.findall(r'name="expense_snapshot" value="(\d+):', follow.text))
     # Row flipped out of the uncategorized bucket.
     assert str(eid) not in ids
 
@@ -503,9 +545,48 @@ def test_web_uncategorized_bulk_requires_selection(web_client: TestClient) -> No
         data={"ledger_id": "owner", "category": "餐饮"},
         follow_redirects=False,
     )
-    assert resp.status_code == 303
-    loc = resp.headers.get("location", "")
-    assert "/web/categories/uncategorized" in loc and "msg=" in loc
+    assert resp.status_code == 422
+    assert "请勾选要修改的账单。" in resp.text
+
+
+def test_category_batch_rolls_back_real_writes_and_replays_its_first_result(web_client, identity, monkeypatch):
+    identities = [_create_pending(web_client, identity=identity) for _ in range(2)]
+    with SessionLocal() as db:
+        before = {identity: (db.get(Expense, identity).category, db.get(Expense, identity).row_version) for identity in identities}
+    command = str(uuid4())
+    fields = {"ledger_id": "owner", "category": "购物", "idempotency_key": command,
+        "expense_snapshot": [f"{identity}:{before[identity][1]}" for identity in identities]}
+    update = pending_review_bulk_service.update_expense
+
+    def interrupted(db, expense_id, *args, **kwargs):
+        if expense_id == identities[1]:
+            raise SQLAlchemyError("controlled second-row storage interruption")
+        return update(db, expense_id, *args, **kwargs)
+
+    with monkeypatch.context() as fault:
+        fault.setattr(pending_review_bulk_service, "update_expense", interrupted)
+        rejected = web_client.post("/web/categories/uncategorized/bulk-set", data=fields)
+        assert rejected.status_code == 503, rejected.text
+    with SessionLocal() as db:
+        assert {identity: (db.get(Expense, identity).category, db.get(Expense, identity).row_version)
+            for identity in identities} == before
+        assert db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.idempotency_key == command)) is None
+    accepted = web_client.post("/web/categories/uncategorized/bulk-set", data=fields)
+    assert accepted.status_code == 200 and "已更新 2 条" in accepted.text, accepted.text
+    with SessionLocal() as db:
+        first = db.get(Expense, identities[0])
+        update(db, first.id, "owner", ExpenseUpdateRequest(category="医疗", expected_row_version=first.row_version))
+        peer_version = first.row_version
+    replay = web_client.post("/web/categories/uncategorized/bulk-set", data=fields)
+    assert replay.status_code == 200 and "已更新 2 条" in replay.text, replay.text
+    changed_intent = web_client.post("/web/categories/uncategorized/bulk-set", data={**fields, "category": "交通"})
+    assert changed_intent.status_code == 422, changed_intent.text
+    with SessionLocal() as db:
+        assert (db.get(Expense, identities[0]).category, db.get(Expense, identities[0]).row_version) == ("医疗", peer_version)
+        assert db.get(Expense, identities[1]).category == "购物"
+        assert all(db.get(Expense, identity).status == "pending" for identity in identities)
+        receipt = db.scalars(select(ApiIdempotencyKey).where(ApiIdempotencyKey.idempotency_key == command)).one()
+        assert receipt.response_body["result"]["success_ids"] == identities
 
 
 # ── Loopback gate + secret-leak guard ─────────────────────────────────────
@@ -529,10 +610,7 @@ def test_web_categories_no_secret_leak(web_client: TestClient, *, identity) -> N
 
 
 def test_web_uncategorized_includes_dirty_tokens(web_client: TestClient, *, identity) -> None:
-    """218-B3 round 9: the cleanup workflow triages the shared dirty tokens
-    (未分類 / none / null, case-insensitive) in addition to the historic
-    blank / 其他 / 未分类 set — uploads keep landing in the backlog via the
-    其他 default, while real categories stay out."""
+    """Legacy missing tokens use the same caliber as the inbox and data quality."""
     with SessionLocal() as db:
         token_none = Expense(
             tenant_id="owner", amount_cents=100, merchant="商家甲", category="none",
@@ -552,7 +630,7 @@ def test_web_uncategorized_includes_dirty_tokens(web_client: TestClient, *, iden
 
     resp = web_client.get("/web/categories/uncategorized?ledger_id=owner")
     assert resp.status_code == 200
-    ids = set(re.findall(r'name="expense_ids" value="(\d+)"', resp.text))
+    ids = set(re.findall(r'name="expense_snapshot" value="(\d+):', resp.text))
     assert str(none_id) in ids
     assert str(trad_id) in ids
     assert str(cat_id) not in ids

@@ -25,6 +25,7 @@ from app.services.expense_query import (  # noqa: F401 — re-exported
     resolve_expense_for_mutation,
 )
 from app.services.expense_response_service import expenses_to_responses
+from app.services.expense_search_query import matches_expense_search
 from app.services.spending_contract_service import (
     confirmed_stream_query,
 )
@@ -146,6 +147,7 @@ def list_confirmed(
     timezone_name: str | None = None,
     missing_category: bool = False,
     missing_accounting_date: bool = False,
+    query_text: str = "",
 ) -> tuple[list[ConfirmedExpenseStreamItem], int]:
     page = max(page, 1)
     page_size = min(max(page_size, 1), 200)
@@ -166,6 +168,10 @@ def list_confirmed(
             stream.c.entry_kind == "expense",
             uncategorized_expense_category_predicate(stream.c.category),
         ).subquery("uncategorized_confirmed")
+    if query_text.strip():
+        matching_roots = ledger_scoped_select(Expense, tenant_id).with_only_columns(Expense.id).where(
+            matches_expense_search(db, tenant_id, query_text.strip()))
+        stream = select(stream).where(stream.c.root_expense_id.in_(matching_roots)).subquery("searched_confirmed")
     total = int(db.scalar(select(func.count()).select_from(stream)) or 0)
     locators = list(
         db.execute(

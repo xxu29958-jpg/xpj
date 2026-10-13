@@ -7,6 +7,17 @@ import kotlin.test.assertNull
 
 class BudgetProgressStatusTest {
     @Test
+    fun undefinedAndNegativeExecutionDoesNotDrawNormalProgress() {
+        val budget = budgetMonthly(configured = true, totalAmountCents = 100_000L)
+        for (unavailable in listOf(budget.copy(totalAmountCents = 0L),
+            budget.copy(spentAmountCents = null), budget.copy(spentAmountCents = -100L))) {
+            assertEquals(null, unavailable.spentProgress)
+            assertEquals(null, unavailable.spentPercent)
+        }
+        assertEquals(null, BudgetCategoryBudget("餐饮", 0L, 100L, -100L, 100L).spentProgress)
+        assertEquals(null, BudgetCategoryBudget("餐饮", 100L, -1L, 101L, 0L).spentProgress)
+    }
+    @Test
     fun unconfiguredBudgetDoesNotProduceProgress() {
         val budget = budgetMonthly(
             configured = false,

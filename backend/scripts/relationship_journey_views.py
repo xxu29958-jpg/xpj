@@ -23,12 +23,12 @@ def native_current_share(native, expected):
 def goal_entry(j, *, create=False):
     if create:
         j.goto("/web/debt-goals", receiver=True)
-        j.receiver.get_by_text("新建还债目标", exact=True).click()
+        j.receiver.get_by_role("link", name="新建还债目标", exact=True).click()
         form = j.receiver.locator('form[action="/web/debt-goals/create"]')
         form.locator('[name="name"]').fill("跟踪这笔原始往来")
         form.locator(f'[name="debt_public_ids"][value="{j.facts()["original_id"]}"]').check()
         form.get_by_role("button", name="创建目标", exact=True).click()
-        j.receiver.locator('.plan-debt-goal[aria-label="还债目标：跟踪这笔原始往来"]').wait_for()
+        j.receiver.get_by_role("region", name="还债目标：跟踪这笔原始往来", exact=True).wait_for()
     native = j.native
     native.plan_home()
     native.click("还债目标")
@@ -46,7 +46,7 @@ def web_history(j, public_id, name):
     for _ in range(4):
         history = j.page.locator("#debt-activity")
         history.wait_for(state="visible")
-        rows.extend(history.locator(".debt-history-row").evaluate_all(
+        rows.extend(history.locator(".product-history-item").evaluate_all(
             "rows => rows.map(row => ({id:row.id,text:row.innerText}))"))
         pages += 1
         j.capture(f"{name}-history-page-{pages}")
@@ -111,7 +111,7 @@ def role_boundaries(j):
                 reader.goto(f"{j.public_url}/web/debts/{public_id}/split-agreement?ledger_id={j.identity.receiver_ledger}")
                 assert "新约定仅由双方本人提出和处理" in reader.inner_text("main")
                 assert not reader.locator("[data-repayment-submit]").is_visible()
-                assert reader.get_by_role("heading", level=1).inner_text() == "拆账新约定"
+                assert reader.get_by_role("heading", level=1).inner_text() == "拆账约定与结算"
                 reader.screenshot(path=j.evidence / f"web-relationship-{role}-{public_id}.png", full_page=True)
 
 
@@ -123,7 +123,7 @@ def appearances(j):
         page = j.receiver if receiver else j.page
         for theme in ("paper", "midnight"):
             page.set_viewport_size({"width": 1280, "height": 960})
-            j.goto(f"/web/debts/{current['original_id']}", receiver=receiver)
+            j.goto("/web/debts", receiver=receiver)
             page.locator("#appearance > summary").click()
             page.locator(f'#appearance [data-theme-mode="{theme}"]').click()
             page.wait_for_function("theme => document.documentElement.dataset.theme === theme", arg=theme)

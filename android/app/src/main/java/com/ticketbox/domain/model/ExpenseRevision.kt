@@ -1,5 +1,8 @@
 package com.ticketbox.domain.model
 
+/** Both immutable journals belong to one paged read. */
+data class ExpenseHistorySnapshot(val revision: Long, val offsetId: Long)
+
 data class ExpenseRevision(
     val publicId: String,
     val revisionNumber: Long,
@@ -11,6 +14,7 @@ data class ExpenseRevision(
     val actorAccountName: String?,
     val actorDeviceName: String?,
     val createdAt: String,
+    val offsetPublicId: String? = null,
 )
 
 data class ExpenseRevisionPage(
@@ -20,6 +24,7 @@ data class ExpenseRevisionPage(
     val total: Int,
     /** 服务端快照锚：本页 items/total 都属于 revision_number <= 该值的前缀。 */
     val snapshotRevision: Long,
+    val offsetSnapshotId: Long = 0,
 )
 
 /** One explicit correction intent. Null means the field is unchanged. */

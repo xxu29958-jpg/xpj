@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -12,6 +13,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.lifecycle.viewModelScope
 import androidx.test.core.app.ApplicationProvider
 import com.ticketbox.R
@@ -89,7 +91,7 @@ class SpendingGoalHistoryRoomConnectedTest {
         openHistory()
         waitForText("修改后的计划")
         compose.onNodeWithText("修改后的计划").assertExists()
-        compose.onNodeWithText("已读取的历史", substring = true).assertExists()
+        compose.onNodeWithText("本机保留的已读记录", substring = true).assertExists()
         compose.onNodeWithText("更早的记录").performScrollTo().performClick()
         compose.waitUntil(10_000) { historyRequests().any { it.queryParameter("before_version") == "9" } }
         compose.onNodeWithText("修改后的计划").assertExists()
@@ -110,8 +112,8 @@ class SpendingGoalHistoryRoomConnectedTest {
         compose.onNodeWithText("创建时的计划").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("计划定义", substring = true).assertExists()
         compose.onNodeWithText("旧版已有计划").assertDoesNotExist()
-        compose.onAllNodes(hasText("JPY") and hasAnyAncestor(isDialog())).assertCountEquals(4)
-        compose.onAllNodes(hasText("¥1,200") and hasAnyAncestor(isDialog())).assertCountEquals(4)
+        // Four saved amounts and the three adjacent before-values retain the same original yen units.
+        compose.onAllNodes(hasText("JPY ¥1,200") and hasAnyAncestor(isDialog())).assertCountEquals(7)
         com.ticketbox.ui.saveConsumerArtPreview("goal-history-original-yen", requireNotNull(
             androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
         assertEquals(listOf(null, "3"), historyRequests().map { it.queryParameter("before_version") })
@@ -186,7 +188,7 @@ class SpendingGoalHistoryRoomConnectedTest {
     private fun mount() {
         installModel()
         compose.setContent { current.value?.let { model ->
-            TicketboxTheme(skin = AppSkin.Paper) { SpendingGoalDetailScreen(model, {}) }
+            TicketboxTheme(skin = AppSkin.Paper) { SpendingGoalDetailScreen(model, {}, onOpenRecycleBin = {}) }
         } }
         compose.waitUntil(10_000) { current.value?.state?.value?.goal != null }
     }
@@ -200,7 +202,8 @@ class SpendingGoalHistoryRoomConnectedTest {
     }
 
     private fun openHistory() {
-        compose.onNodeWithText("定义历史").performScrollTo().performClick()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("定义历史"))
+        compose.onNodeWithText("定义历史").assertIsDisplayed().performClick()
         compose.waitUntil(10_000) { historyRequests().isNotEmpty() }
     }
 

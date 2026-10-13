@@ -10,6 +10,8 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.JsonAdapter
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
@@ -29,9 +31,9 @@ internal class ExpenseStatsRepositoryActions(
     private val ledgerActions: LedgerActions,
 ) : StatsActions {
     private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
-    private val monthlyAdapter = moshi.adapter(MonthlyStatsDto::class.java)
-    private val lifestyleAdapter = moshi.adapter(LifestyleStatsDto::class.java)
-    private val bindingAdapter = moshi.adapter(LogicalSessionBinding::class.java)
+    private val monthlyAdapter by lazy { moshi.adapter(MonthlyStatsDto::class.java) }
+    private val lifestyleAdapter by lazy { moshi.adapter(LifestyleStatsDto::class.java) }
+    private val bindingAdapter by lazy { moshi.adapter(LogicalSessionBinding::class.java) }
     private val cacheMutex = Mutex()
     private val latestReads = mutableMapOf<StatsProjectionKind, Any>()
 
@@ -50,15 +52,17 @@ internal class ExpenseStatsRepositoryActions(
 
     override suspend fun tags(): Result<List<String>> = ledgerActions.tags()
 
-    override suspend fun monthlyStats(query: StatsQuery): Result<ReadSnapshot<MonthlyStats>> =
+    override suspend fun monthlyStats(query: StatsQuery): Result<ReadSnapshot<MonthlyStats>> = withContext(Dispatchers.IO) {
         read(query, StatsProjectionKind.Monthly, monthlyAdapter, MonthlyStatsDto::toDomain) { api ->
             api.monthlyStats(query.month, query.tag.ifBlank { null }, query.timezone, query.homeCurrencyCode)
         }
+    }
 
-    override suspend fun lifestyleStats(query: StatsQuery): Result<ReadSnapshot<LifestyleStats>> =
+    override suspend fun lifestyleStats(query: StatsQuery): Result<ReadSnapshot<LifestyleStats>> = withContext(Dispatchers.IO) {
         read(query.copy(tag = ""), StatsProjectionKind.Lifestyle, lifestyleAdapter, LifestyleStatsDto::toDomain) { api ->
             api.lifestyleStats(query.month, query.timezone, query.homeCurrencyCode)
         }
+    }
 
     private suspend fun <W : StatsProjectionDto, D> read(
         query: StatsQuery,

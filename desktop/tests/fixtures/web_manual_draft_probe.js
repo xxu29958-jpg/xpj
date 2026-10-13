@@ -25,7 +25,7 @@
     input.dispatchEvent(new frame.contentWindow.Event('input', {bubbles:true}));
   }
   try {
-    const first = await frameAt('/form', 'editing');
+    const first = await frameAt('/web/expenses/new', 'editing');
     check(!first.contentDocument.querySelector('details').open, 'progressive disclosure');
     fill(first, 'amount_major', '28.50');
     fill(first, 'currency_code', 'EUR');
@@ -41,11 +41,11 @@
     check(form(first).elements.note.value === '合成备注', 'reload note');
     check(form(first).elements.client_ref.value === ref, 'reload identity');
     result.reload = true;
-    const duplicate = await frameAt('/form#manual-' + ref, 'locked');
+    const duplicate = await frameAt('/web/expenses/new#manual-' + ref, 'locked');
     check(form(duplicate).querySelector('fieldset').disabled, 'second editor disabled');
     check(drafts.read(ref).values.amount_major === '28.50', 'second tab unchanged');
     duplicate.remove();
-    const fresh = await frameAt('/form', 'editing');
+    const fresh = await frameAt('/web/expenses/new', 'editing');
     check(form(fresh).elements.client_ref.value !== ref, 'independent fresh identity');
     fresh.remove();
     result.lock = true;
@@ -54,7 +54,7 @@
     await until(() => first.contentWindow.location.pathname === '/submit', 'unknown native response');
     check(drafts.read(ref).phase === 'submitted', 'submission not acknowledged');
     first.remove();
-    const retry = await frameAt('/form#manual-' + ref, 'submitted');
+    const retry = await frameAt('/web/expenses/new#manual-' + ref, 'submitted');
     check(form(retry).elements.amount_major.readOnly, 'submitted input immutable');
     check(form(retry).elements.currency_code.disabled, 'submitted currency immutable');
     check(form(retry).elements.client_ref.value === ref, 'retry identity');
@@ -64,29 +64,29 @@
     result.ack = true;
     retry.remove();
     // Re-enrollment can expose a readable original, but never a rebound writer.
-    const old = await frameAt('/form', 'editing');
+    const old = await frameAt('/web/expenses/new', 'editing');
     fill(old, 'amount_major', '41');
     const oldRef = form(old).elements.client_ref.value;
     old.remove();
-    const replacement = await frameAt('/form?deviceId=replacement#manual-' + oldRef, 'blocked');
+    const replacement = await frameAt('/web/expenses/new?deviceId=replacement#manual-' + oldRef, 'blocked');
     check(form(replacement).elements.amount_major.value === '41', 'old values readable');
     check(form(replacement).querySelector('[data-manual-submit]').disabled, 'old device refused');
     check(drafts.read(oldRef).scope.deviceId === 'device', 'original binding retained');
     replacement.remove();
     for (const axis of ['datasetId', 'clientGeneration', 'accountId', 'ledgerId']) {
-      const changed = await frameAt('/form?' + axis + '=changed#manual-' + oldRef, 'blocked');
+      const changed = await frameAt('/web/expenses/new?' + axis + '=changed#manual-' + oldRef, 'blocked');
       check(form(changed).elements.amount_major.value === '', 'no foreign restore:' + axis);
       check(drafts.read(oldRef).values.amount_major === '41', 'foreign record preserved');
       changed.remove();
     }
     result.quarantine = true;
     for (const unavailable of ['noStorage', 'noLocks']) {
-      const fallback = await frameAt('/form?' + unavailable + '=1', 'unavailable');
+      const fallback = await frameAt('/web/expenses/new?' + unavailable + '=1', 'unavailable');
       check(!form(fallback).querySelector('fieldset').disabled, 'native fields stay usable');
       check(!form(fallback).querySelector('[data-manual-submit]').disabled, 'native command stays usable');
       fallback.remove();
     }
-    const quota = await frameAt('/form', 'editing');
+    const quota = await frameAt('/web/expenses/new', 'editing');
     fill(quota, 'amount_major', '12');
     const quotaRef = form(quota).elements.client_ref.value;
     Object.defineProperty(quota.contentWindow.Storage.prototype, 'setItem', {value() {throw Error('quota');}});

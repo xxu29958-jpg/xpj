@@ -1,0 +1,21 @@
+<section class="stack" aria-label="当前记录与这次修改" data-correction-comparisons>
+{% for row in fact_scalar_comparisons %}
+  <div class="product-panel product-panel--padded stack-tight" data-correction-comparison
+    data-kind="{{ row.key }}" data-fields='{{ row.fields | tojson }}' data-current='{{ row.current_values | tojson }}'
+    {% if not row.conflict and (not row.changed or row.current_values == row.input_values) %}hidden{% endif %}>
+    <h2 class="product-panel-title">{{ row.label }}</h2>
+    <div class="product-comparison">
+      <div><span>当前记录</span><strong>{{ row.current_text }}</strong></div>
+      <div class="product-comparison-proposed"><span>这次修改</span><strong data-correction-proposed>{{ row.input_text }}</strong></div>
+    </div>
+    {% if row.conflict and fact_review and not fact_review_ready %}
+    <fieldset class="product-field">
+      <legend class="sr-only">选择{{ row.label }}的内容</legend>
+      {% set selected = (fact_review_choices or {}).get(row.key) %}
+      <label class="product-check"><input type="radio" name="review_{{ row.key }}_choice" value="current" {% if selected == 'current' %}checked{% endif %}>使用当前{{ row.label }}</label>
+      <label class="product-check"><input type="radio" name="review_{{ row.key }}_choice" value="keep" {% if selected == 'keep' %}checked{% endif %}>改为我的选择，沿用本次更正原因</label>
+    </fieldset>
+    {% endif %}
+  </div>
+{% endfor %}
+</section>

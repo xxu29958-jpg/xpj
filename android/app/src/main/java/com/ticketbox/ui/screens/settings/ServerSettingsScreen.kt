@@ -12,7 +12,8 @@ import androidx.compose.material.icons.outlined.Inventory2
 import androidx.compose.material.icons.outlined.VpnKey
 import androidx.compose.material.icons.outlined.Wifi
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import com.ticketbox.ui.components.AppOutlinedButton
+import com.ticketbox.ui.components.AppOutlinedButtonOptions
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -136,7 +137,8 @@ private fun ConnectionIdentityDetails(state: ServerSettingsScreenState, actions:
         ),
         actions = AccountStatusCardActions(onCheckConnection = actions.onRunDiagnostics, onSync = actions.onSync),
     )
-    if (state.showAdvancedTools) OutlinedButton(enabled = !settings.busy, onClick = actions.onRefreshServerSettings) {
+    if (state.showAdvancedTools) AppOutlinedButton(options = AppOutlinedButtonOptions(enabled = !settings.busy),
+        onClick = actions.onRefreshServerSettings) {
         Text(stringResource(R.string.settings_server_button_refresh_settings))
     }
 }
@@ -161,7 +163,8 @@ private fun BackupRecordSection(state: SettingsUiState, onRefresh: () -> Unit) {
             Text(stringResource(R.string.settings_backup_next_step), style = MaterialTheme.typography.bodyMedium)
             Text(stringResource(R.string.settings_backup_record_scope), style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
-            OutlinedButton(onClick = onRefresh, enabled = !state.busy && !state.backupLoading) {
+            AppOutlinedButton(onClick = onRefresh,
+                options = AppOutlinedButtonOptions(enabled = !state.busy && !state.backupLoading)) {
                 Text(stringResource(R.string.settings_backup_refresh))
             }
         }

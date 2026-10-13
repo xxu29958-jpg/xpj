@@ -85,9 +85,9 @@ def test_adopted_confirmation_day_does_not_invent_a_purchase_clock(
 
     assert response.status_code == 200, response.text
     assert "Confirmed Time Fallback" in response.text
-    assert "08 月 04 日" in response.text
+    assert "8月4日" in response.text
     assert ">09:30<" not in response.text
-    assert "07 月 01 日" not in response.text
+    assert "7月1日" not in response.text
 
 
 def test_tag_persistence_boundary_rejects_casefold_storage_overflow() -> None:
@@ -452,6 +452,11 @@ def test_search_edit_save_returns_to_validated_search_context(
         follow_redirects=False,
     )
     assert confirmed.status_code == 303, confirmed.text
-    assert confirmed.headers["location"] == (
-        "/web/search?ledger_id=owner&q=Return+Search"
-    )
+    receipt = web_client.get(confirmed.headers["location"])
+    assert receipt.status_code == 200 and "这张，记好了" in receipt.text
+    finish = re.search(r'<a\b[^>]*href="([^"]+)"[^>]*data-confirmation-finish', receipt.text)
+    assert finish is not None, receipt.text
+    return_href = unescape(finish.group(1))
+    assert return_href == "/web/search?ledger_id=owner&q=Return+Search"
+    returned = web_client.get(return_href)
+    assert returned.status_code == 200 and "Return Search Cafe" in returned.text

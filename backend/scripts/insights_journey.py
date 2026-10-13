@@ -188,6 +188,7 @@ class InsightsJourney:
         query = {"month": state["month"], "home_currency_code": "CNY", "granularity": "week",
             "ranking_metric": "count", "merchant_category": "餐饮"}
         self.goto("/web/reports?" + urlencode(query))
+        page.locator("#report-ranking > summary").click()
         path = f'/web/expenses/{state["expenses"][0]["id"]}'
         page.locator(f'a[href^="{path}/edit?"]').first.click()
         page.locator(f'a[href^="{path}/correct?"]').first.click()
@@ -200,9 +201,13 @@ class InsightsJourney:
         page.get_by_role("link", name="返回原月份月报", exact=True).click()
         returned = parse_qs(urlsplit(page.url).query)
         assert all(returned.get(key) == [value] for key, value in query.items()), returned
+        page.locator("#report-ranking > summary").click()
         assert "ReviewedMeal" in page.inner_text("main"), "The returned report did not reread the corrected fact"
         self.capture("returned-original-report-scope")
         for theme in ("paper", "midnight"):
+            for section in ("report-month-detail", "report-ranking"):
+                if not page.locator(f"#{section}").evaluate("element => element.open"):
+                    page.locator(f"#{section} > summary").click()
             page.set_viewport_size({"width": 1440, "height": 960})
             page.locator("#appearance > summary").click()
             page.locator(f'#appearance [data-theme-mode="{theme}"]').click()

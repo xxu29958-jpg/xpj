@@ -92,7 +92,7 @@ class CategoryRuleCommandTest {
     }
 }
 
-internal class CategoryRuleCommandFixture {
+internal class CategoryRuleCommandFixture(private val refreshConfirmed: suspend () -> Unit = {}) {
     val session = TestSessionFixture().apply { saveToken("synthetic-rule-session") }
     val adapters = OutboxAdapterGraph()
     val dao = FakePendingMutationDao()
@@ -129,8 +129,10 @@ internal class CategoryRuleCommandFixture {
         override fun create(baseUrl: String, tokenProvider: () -> String?) = api
     }
     val repository = RuleRepository(testServerSessionBinding(factory, FakeTicketboxSettingsStore(), session),
+        onConfirmedChanged = { runCatching { refreshConfirmed() } },
         offlineMutations = CategoryRuleOfflineMutationWiring(outbox, adapters.categoryRuleUpdateAdapter,
-            adapters.categoryRuleDeleteAdapter, adapters.categoryRuleSubmissionAdapter, adapters.categoryRuleReceiptAdapter))
+            adapters.categoryRuleDeleteAdapter, adapters.categoryRuleSubmissionAdapter, adapters.categoryRuleReceiptAdapter,
+            adapters.ruleApplicationAdapter, adapters.ruleApplicationReceiptAdapter))
     val binding = repository.currentAccess()!!.binding
     suspend fun pending(id: Long) = repository.observeSubmissions(binding).first().single { it.row.id == id }
     fun dispatcher(type: PendingMutationType) = CategoryRuleDispatcher(type, { api },

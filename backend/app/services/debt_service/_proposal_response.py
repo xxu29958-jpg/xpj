@@ -47,6 +47,7 @@ def proposal_responses(
             original_currency_code=proposal.original_currency_code,
             original_amount_minor=proposal.original_amount_minor,
             paid_at=proposal.paid_at,
+            accounting_time=proposal.accounting_time_snapshot,
             note=proposal.note,
             expires_at=proposal.expires_at,
             created_at=proposal.created_at,

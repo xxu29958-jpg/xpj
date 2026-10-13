@@ -58,7 +58,7 @@ internal fun observeBoundOutboxStatus(
         ),
         dao.observeQuarantinedCount(binding.owner?.storageKey),
         dao.observeActiveByTypes(binding.ownerStorageKey, binding.ledgerId,
-            (EXPENSE_REFRESH_TYPES + PendingMutationType.SaveMonthlyBudget).map { it.wireValue },
+            (EXPENSE_REFRESH_TYPES + setOf(PendingMutationType.SaveMonthlyBudget, PendingMutationType.ApplyConfirmedRules)).map { it.wireValue },
             listOf(PendingMutationStatus.Done.wireValue)),
     ) { queueDepth, conflicts, failed, quarantinedCount, completed ->
         OutboxStatus(
@@ -67,7 +67,9 @@ internal fun observeBoundOutboxStatus(
             conflicts = conflicts.map { it.toDomain() },
             failed = failed.map { it.toDomain() },
             quarantinedCount = quarantinedCount,
-            refreshRequired = completed.map { it.toDomain() }.filter { it.requiresExpenseRefresh() || it.requiresBudgetReadRefresh() },
+            refreshRequired = completed.map { it.toDomain() }.filter {
+                it.requiresExpenseRefresh() || it.requiresBudgetReadRefresh() || it.requiresRuleApplicationRefresh()
+            },
         )
     }.combine(writeBlock) { status, block -> status.copy(writeBlock = block) }
 }

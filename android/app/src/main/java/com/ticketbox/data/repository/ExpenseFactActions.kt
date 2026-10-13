@@ -30,7 +30,7 @@ interface ExpenseFactReadActions : ExpenseRootReadActions {
         page: Int = 1,
         pageSize: Int = 50,
         /** null = 进入新服务端快照；翻页必须回传已保存的锚。 */
-        snapshotRevision: Long? = null,
+        snapshot: com.ticketbox.domain.model.ExpenseHistorySnapshot? = null,
         expectedBinding: LogicalSessionBinding? = null,
     ): Result<ReadSnapshot<ExpenseRevisionPage>>
     suspend fun fetchExpenseFactBundle(id: Long, expectedBinding: LogicalSessionBinding? = null): Result<ReadSnapshot<ExpenseFactBundle>>

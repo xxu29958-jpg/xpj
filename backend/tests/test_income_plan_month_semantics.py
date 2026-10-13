@@ -6,6 +6,8 @@ from types import SimpleNamespace
 
 from jinja2 import ChoiceLoader, DictLoader, Environment, FileSystemLoader
 
+from app.routes.web_common import _grouped_amount
+
 
 def test_income_page_does_not_turn_a_due_plan_into_received_money() -> None:
     templates = Path(__file__).resolve().parents[1] / "app" / "templates" / "web"
@@ -16,6 +18,7 @@ def test_income_page_does_not_turn_a_due_plan_into_received_money() -> None:
         ]),
         autoescape=True,
     )
+    environment.filters["grouped"] = _grouped_amount
     plan = SimpleNamespace(
         public_id="synthetic-income-plan", label="尚未收到的计划", source_type="salary",
         frequency="monthly", pay_day=1, amount_cents=100_00, row_version=1,

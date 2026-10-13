@@ -14,7 +14,6 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ApplicationProvider
-import androidx.test.espresso.Espresso.closeSoftKeyboard
 import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.CurrencyCode
@@ -43,7 +42,7 @@ class ManualExpenseDefaultChangeTest {
                         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
                         ManualExpenseSheet(
                             state = ManualExpenseSheetState(emptyList(), saving = false, initialCurrency = defaultCurrency.value),
-                            actions = ManualExpenseSheetActions(onCreate = { submitted += it }, onDismiss = {}),
+                            actions = ManualExpenseSheetActions(onCreate = { submitted += it; visible.value = false }, onDismiss = {}),
                         )
                     }
                 }
@@ -60,11 +59,11 @@ class ManualExpenseDefaultChangeTest {
         assertEquals(1200L, original.originalAmountMinor)
         assertEquals(CurrencyCode.CNY, original.ledgerHomeCurrency)
 
-        // Finish the first task's OS input session before disposing its dialog.
-        // A pending hide from that dialog must not dismiss the next task's keyboard.
-        closeSoftKeyboard()
-        compose.runOnIdle { visible.value = false }
+        // Removing the dialog also posts an OS input-session hide. Settle that
+        // removal before opening the next task; settling only before disposal
+        // can let the old window's hide overtake the new keyboard's show.
         compose.waitForIdle()
+        keyboard.dismissAndWait(compose)
         compose.runOnIdle { visible.value = true }
         enterAmount()
         save("manual-next-jpy-keyboard")
@@ -75,6 +74,10 @@ class ManualExpenseDefaultChangeTest {
         assertEquals(CurrencyCode.JPY, next.originalCurrencyCode)
         assertEquals(12L, next.originalAmountMinor)
         assertEquals(CurrencyCode.JPY, next.ledgerHomeCurrency)
+        // The real LedgerScreen closes after successful creation. Finish that
+        // same exit before the rule tears down the host and restores IME settings.
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_sheet_title)).assertDoesNotExist()
+        keyboard.dismissAndWait(compose)
     }
 
     private fun enterAmount() {

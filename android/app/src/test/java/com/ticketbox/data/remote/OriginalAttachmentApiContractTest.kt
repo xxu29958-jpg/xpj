@@ -117,7 +117,11 @@ class OriginalAttachmentApiContractTest {
         bodies.drop(2).forEach { assertTrue(it.contains("\"request_id\":\"$REQUEST_ID\"")) }
     }
 
-    @Test fun replenishmentKeepsRawBytesAndRequiredOccInQuery() = runBlocking {
+    @Test fun binaryOriginalCommandsKeepRawBytesKeyAndRequiredOccInQuery() = runBlocking {
+        for (operation in listOf("attach", "replenish")) binaryOriginalCommand(operation)
+    }
+
+    private suspend fun binaryOriginalCommand(operation: String) {
         val original = byteArrayOf(0, 1, 2, 127, -128, -1)
         var observed: Request? = null
         val api = api { request ->
@@ -127,17 +131,19 @@ class OriginalAttachmentApiContractTest {
             val part = body.parts.single()
             assertEquals("form-data; name=\"file\"; filename=\"admitted.png\"", part.headers?.get("Content-Disposition"))
             assertContentEquals(original, Buffer().also(part.body::writeTo).readByteArray())
-            receiptJson("replenish_original")
+            receiptJson("${operation}_original")
         }
         val part = MultipartBody.Part.createFormData("file", "admitted.png", original.toRequestBody("image/png".toMediaType()))
-        val result = api.replenishOriginal(7, part, 11, DIGEST, "same-replenishment-key")
-        assertEquals("replenish_original", result.operation)
+        val key = "same-$operation-key"
+        val result = if (operation == "attach") api.attachOriginal(7, part, 11, key)
+            else api.replenishOriginal(7, part, 11, DIGEST, key)
+        assertEquals("${operation}_original", result.operation)
         val request = requireNotNull(observed)
         assertEquals("POST", request.method)
-        assertEquals("/api/expenses/7/original/replenish", request.url.encodedPath)
+        assertEquals("/api/expenses/7/original/$operation", request.url.encodedPath)
         assertEquals("11", request.url.queryParameter("expected_row_version"))
-        assertEquals(DIGEST, request.url.queryParameter("expected_sha256"))
-        assertEquals("same-replenishment-key", request.header("Idempotency-Key"))
+        assertEquals(if (operation == "attach") null else DIGEST, request.url.queryParameter("expected_sha256"))
+        assertEquals(key, request.header("Idempotency-Key"))
     }
 
     private fun api(respond: (Request) -> String): ApiService {

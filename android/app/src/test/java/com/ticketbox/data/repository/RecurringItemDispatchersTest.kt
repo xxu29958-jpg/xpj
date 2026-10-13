@@ -6,6 +6,7 @@ import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.RecurringItemCreateRequestDto
+import com.ticketbox.data.remote.dto.RecurringCandidateConfirmRequestDto
 import com.ticketbox.data.remote.dto.RecurringItemDto
 import com.ticketbox.data.remote.dto.RecurringItemUpdateRequestDto
 import com.ticketbox.data.remote.dto.addRecurringWireAdapters
@@ -58,6 +59,9 @@ class RecurringItemDispatchersTest {
         var updateKey: String? = null
         var updateRequest: RecurringItemUpdateRequestDto? = null
 
+        override suspend fun confirmRecurringCandidate(request: RecurringCandidateConfirmRequestDto,
+            timezone: String?, idempotencyKey: String): RecurringItemDto = createResult.getOrThrow()
+
         override suspend fun createRecurringItem(
             request: RecurringItemCreateRequestDto,
             idempotencyKey: String,
@@ -104,6 +108,24 @@ class RecurringItemDispatchersTest {
         ),
         expectedRowVersion = 7,
     )
+
+    @Test
+    fun `candidate receipt cannot replace the original with another current definition`() = runTest {
+        val adapter = moshi.adapter(RecurringCandidatePayload::class.java)
+        val payload = RecurringCandidatePayload(RecurringCandidateConfirmRequestDto(
+            merchant = "房租", amountCents = 350000, homeCurrencyCode = "CNY"), "UTC")
+        val row = createRow().copy(type = PendingMutationType.ConfirmRecurringCandidate,
+            targetId = "recurring_candidate:create-key", payloadJson = adapter.toJson(payload))
+        val first = itemDto().copy(source = "candidate")
+        for (receipt in listOf(first.copy(rowVersion = 2, status = "paused"), first.copy(ledgerId = "other"),
+            first.copy(source = "manual"), first.copy(baselineAmountCents = 370000))) {
+            val result = ConfirmRecurringCandidateDispatcher({ Stub(Result.success(receipt)) }, adapter).dispatch(row)
+            assertEquals(DispatchResult.Failure(RECURRING_RECEIPT_UNVERIFIED), result)
+        }
+        val refused = ConfirmRecurringCandidateDispatcher({ Stub(Result.failure(httpException(404,
+            """{"error":"recurring_candidate_not_found"}"""))) }, adapter).dispatch(row)
+        assertTrue(refused is DispatchResult.Failure && refused.definitelyRejected)
+    }
 
     @Test
     fun `create replay keeps original intent key`() = runTest {

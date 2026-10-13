@@ -74,7 +74,7 @@ class DebtBillPreparationBindingTest {
         viewModel = DebtListViewModel(repo, repo.creation, repo.writes)
         advanceUntilIdle()
         val old = requireNotNull(viewModel.markBillParsePreparing())
-        viewModel.reload()
+        viewModel.discardDraft()
         advanceUntilIdle()
         val next = requireNotNull(viewModel.markBillParsePreparing())
 
@@ -97,7 +97,7 @@ class DebtBillPreparationBindingTest {
         viewModel.parseDebtBillImage(attempt, PreparedUploadImage("old.jpg", "image/jpeg", byteArrayOf(1), 1L))
         runCurrent()
         assertEquals(listOf("old.jpg"), repo.parseBillCalls)
-        viewModel.reload()
+        viewModel.refresh()
         advanceUntilIdle()
         viewModel.updateDraftCounterparty("New draft")
         viewModel.updateDraftAmount("88.00")

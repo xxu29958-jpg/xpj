@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="rule_application_original">原规则应用</string>
+    <string name="rule_application_open">查看原应用</string>
+    <string name="rule_application_queued">原应用已保存在此设备，结果待核实。</string>
+    <string name="rule_application_original_counts">原预览扫描 %1$d 笔已确认账单，预计改写 %2$d 笔。</string>
+    <string name="rule_application_receipt">首次结果：改写 %1$d 笔。这是原应用结果，不代表当前分类。</string>
+    <string name="rule_application_verified">已核实原应用：改写 %1$d 笔分类。</string>
+    <string name="rule_application_conflicts">原应用中，另有 %1$d 笔因账单已变化而未改写。</string>
+    <string name="rule_application_refresh">应用已成功，流水尚未刷新。刷新只读取最新结果。</string>
+    <string name="rule_application_refresh_action">刷新流水</string>
+    <string name="rule_application_stale">原预览已过期，这次提交没有应用。停止这份原任务后，重新预览影响并确认。</string>
+    <string name="rule_application_unverified">原结果尚未核对，原任务仍保留。请核实原请求或查看应用记录。</string>
+    <string name="rule_application_stop">停止原应用任务</string>
+    <string name="rule_application_stop_body">只停止此设备继续提交，不撤销服务器可能已接受的应用。请先查看应用记录；重新应用前需要重新预览。</string>
+    <string name="rule_application_retry">核实原应用</string>
+</resources>

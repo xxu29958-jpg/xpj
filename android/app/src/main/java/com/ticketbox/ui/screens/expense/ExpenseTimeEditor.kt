@@ -123,7 +123,7 @@ private fun TimeTextField(label: String, value: String, enabled: Boolean, onChan
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ExpenseTimeDatePicker(date: String, onDate: (String) -> Unit, dismiss: () -> Unit) {
+internal fun ExpenseTimeDatePicker(date: String, onDate: (String) -> Unit, dismiss: () -> Unit) {
     val selected = runCatching { LocalDate.parse(date).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli() }.getOrNull()
     val state = rememberDatePickerState(initialSelectedDateMillis = selected)
     DatePickerDialog(onDismissRequest = dismiss, confirmButton = {

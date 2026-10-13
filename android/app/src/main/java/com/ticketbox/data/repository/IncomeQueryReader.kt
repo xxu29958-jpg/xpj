@@ -12,6 +12,8 @@ import com.ticketbox.data.remote.dto.IncomePlanListResponseDto
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import retrofit2.HttpException
 
 private class IncomeQueryReplaced : IllegalStateException("已有更新的收入读取，请重试。")
@@ -27,21 +29,23 @@ internal class IncomeQueryReader(
     internal val guard = LedgerRequestGuard(apiProvider)
     internal val errors = NetworkErrorHandler({ apiProvider.currentSession()?.serverUrl }, "IncomePlan")
     private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
-    private val listingAdapter = moshi.adapter(IncomePlanListResponseDto::class.java)
-    private val historyAdapter = moshi.adapter(IncomeHistoryResponseDto::class.java)
+    private val listingAdapter by lazy { moshi.adapter(IncomePlanListResponseDto::class.java) }
+    private val historyAdapter by lazy { moshi.adapter(IncomeHistoryResponseDto::class.java) }
     private val latest = ConcurrentHashMap<String, IncomePublishedRead>()
     internal val dispatches = ConcurrentHashMap<Long, IncomeWriteProtection>()
     val accessDenials = coordinator.snapshotAccessDenials.filterNotNull()
 
-    suspend fun listing(binding: LogicalSessionBinding, status: String): Result<ReadSnapshot<IncomePlanListResponseDto>> =
+    suspend fun listing(binding: LogicalSessionBinding, status: String): Result<ReadSnapshot<IncomePlanListResponseDto>> = withContext(Dispatchers.IO) {
         read(binding, IncomeReadQuery("income_list", status), listingAdapter, { it.validateIncomeListing(status) }) { api -> api.listIncomePlans(status) }
+    }
 
-    suspend fun history(binding: LogicalSessionBinding, publicId: String, before: Long?): Result<ReadSnapshot<IncomeHistoryResponseDto>> =
+    suspend fun history(binding: LogicalSessionBinding, publicId: String, before: Long?): Result<ReadSnapshot<IncomeHistoryResponseDto>> = withContext(Dispatchers.IO) {
         read(binding, IncomeReadQuery("income_history", "$publicId:20:$before"), historyAdapter,
             { it.validateIncomeHistory(binding, publicId, before) }) { api ->
             require(publicId.isNotBlank() && (before == null || before > 0)) { "收入历史范围不正确。" }
             api.incomePlanHistory(publicId, 20, before)
         }
+    }
 
     private suspend fun <T> read(binding: LogicalSessionBinding, query: IncomeReadQuery, adapter: JsonAdapter<T>,
         validate: (T) -> Unit, fetch: suspend (ApiService) -> T): Result<ReadSnapshot<T>> {

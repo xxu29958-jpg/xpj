@@ -19,6 +19,7 @@ from app.database import get_db
 from app.errors import AppError
 from app.routes._web_attachment_intent import attachment_form_context
 from app.routes._web_bulk_snapshot import parse_bulk_snapshot
+from app.routes._web_expense_undo import undo_command_key
 from app.routes._web_pending_bulk_response import (
     REMOVAL_ACTIONS,
     bulk_error_json,
@@ -109,16 +110,17 @@ def _matches_filter(view: dict, filter_key: str) -> bool:
     return True
 
 
-def _resolve_single_undo(db: Session, *, selected_id: str, undo: str | None) -> tuple[int | None, int | None]:
+def _resolve_single_undo(db: Session, *, selected_id: str, undo: str | None, undo_version: str | None) -> tuple[int | None, int | None]:
     # ADR-0038/0041: a stale or cross-ledger query param only disables the
     # affordance. The POST route remains the source of truth.
-    if not undo or not undo.isdigit():
+    original_version = parse_form_row_version_token(undo_version or "")
+    if not undo or not undo.isdigit() or original_version is None:
         return None, None
     candidate = int(undo)
     row_version = fetch_expense_row_version_in_status(
         db, expense_id=candidate, tenant_id=selected_id, status="rejected"
     )
-    if row_version is None:
+    if row_version != original_version:
         return None, None
     return candidate, row_version
 
@@ -154,6 +156,7 @@ def web_pending(
     msg: str | None = None,
     watch: str | None = None,
     undo: str | None = None,
+    undo_version: str | None = None,
     undo_id: list[int] = Query(default=[]),
     undo_rv: list[str] = Query(default=[]),
     flash_type: str | None = None,
@@ -201,20 +204,13 @@ def web_pending(
             flash_type=ctx["flash_type"],
         )
     )
-    # ADR-0038 undo: just-rejected expense_id; pending.html renders a 5s 撤销
-    # banner that POSTs to /web/expenses/{undo_expense_id}/undo. ``undo`` is a
-    # plain int string from the redirect query — invalid values just disable the
-    # banner (no error surface, since this is a soft affordance not a contract).
-    # Ownership check: the row must actually be in ``rejected`` state under the
-    # currently-selected ledger before we expose the undo affordance. A stale
-    # ``?undo=N`` in the URL (cross-ledger via the ledger selector, or a
-    # bookmark replay) won't render a misleading "可撤销" banner — the route
-    # itself is the source of truth (atomic UPDATE WHERE tenant_id, status), but
-    # the page also stops lying.
-    undo_expense_id, undo_expected_row_version = _resolve_single_undo(db, selected_id=selected_id, undo=undo)
+    # The banner remains tied to the first rejection's receipt version. A
+    # refresh/bookmark must never acquire a later rejection of the same bill.
+    undo_expense_id, undo_expected_row_version = _resolve_single_undo(db, selected_id=selected_id,
+        undo=undo, undo_version=undo_version)
     ctx["undo_expense_id"] = undo_expense_id
     ctx["undo_expected_row_version"] = undo_expected_row_version
-    ctx["undo_idempotency_key"] = str(uuid4()) if undo_expense_id is not None else ""
+    ctx["undo_idempotency_key"] = undo_command_key(request.query_params.get("undo_key")) if undo_expense_id is not None else ""
     ctx["undo_items"] = _resolve_batch_undo_items(db, selected_id=selected_id, undo_ids=undo_id, undo_tokens=undo_rv)
     ctx["needs_amount_count"] = filter_counts["missing_amount"]
     ctx["missing_fx_count"] = filter_counts["missing_fx"]

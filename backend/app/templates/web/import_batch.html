@@ -1,85 +1,58 @@
 {% extends "base.html" %}
+{% from 'partials/import_counts.html' import entries %}
 {% set page_title = '导入批次' %}
 {% set product_body_domain = 'transactions' %}
+{% set page_surface = 'tertiary' %}
+{% set task_return_href = '/web/import' ~ q %}
+{% set task_return_label = '导入与导出' %}
+{% set completed = progress.row_counts.applied_rows + progress.row_counts.matched_rows %}
+{% set batch_href = '/web/import/' ~ batch.public_id ~ q %}
 {% block title %}CSV 导入批次 · 小票夹{% endblock %}
-
-{# C4 旧栈收官: 批次详情迁 product 流水域 (tertiary import-detail 仍挂 detail.css)。
-   统计行消费 transactions.css 既有 import-metrics 词汇 + 本片 --pair 窄屏两列成对
-   变体; 旧「批次状态」卡并入「下一步」操作区, 按态呈现主行动 (导入下一批 /
-   下载错误行 / 查看待确认); apply 表单补现有 csrf_token (无 JS 原生 POST 不再 403)。
-   时间戳走路由 created_label/updated_label (spending_contract_service 口径)。
-   kpi-strip 随本页迁移零消费者, pages/reports.css 整文件退役。 #}
 {% block content %}
 {% set _status_label, _status_tone = progress.display_status %}
 {% set _row_label = {'valid': '可导入', 'applying': '处理中', 'applied': '新消费草稿', 'matched': '已有记录', 'review': '待复核', 'conflict': '内容冲突', 'insert_failed': '写入失败'} %}
 {% set _row_tone = {'valid': '', 'applying': 'product-status--warning', 'applied': 'product-status--success', 'matched': 'product-status--success', 'review': 'product-status--warning', 'insert_failed': 'product-status--danger'} %}
+<div class="import-task stack">
 <header class="product-page-header">
   <div class="product-page-heading">
-    <span class="product-eyebrow">流水 / 导入 / 批次</span>
-    <h1 class="page-title page-title--compact">CSV 导入批次</h1>
-    <p class="product-page-summary">{{ batch.file_name }} · 创建 {{ created_label }} · 最近更新 {{ updated_label }}</p>
-  </div>
-  <div class="import-batch-head-side">
-    <span class="product-status {{ _status_tone }}">{{ _status_label }}</span>
-    <a href="/web/import{{ q }}" class="product-button product-button--quiet">返回导入</a>
+    <h1 class="page-title">{{ '继续这次导入' if completed else '导入账单文件' }}</h1>
+    <p class="product-page-summary">{{ batch.file_name }} · 已处理 {{ completed }} / {{ batch.total_rows }} 行</p>
   </div>
 </header>
-
-{% if flash_message %}
-<div class="product-feedback product-feedback--{{ 'error' if flash_type == 'error' else 'success' }}"
-     role="{{ 'alert' if flash_type == 'error' else 'status' }}">{{ flash_message }}</div>
+{% if flash_message %}<div class="product-feedback product-feedback--{{ 'error' if flash_type == 'error' else 'success' }}" role="{{ 'alert' if flash_type == 'error' else 'status' }}">{{ flash_message }}</div>{% endif %}
+{% if batch.last_error %}<div class="product-feedback product-feedback--error" role="alert">{{ batch.last_error }}</div>{% endif %}
+<section aria-label="当前批次" class="stack-tight">
+  <div class="product-entry-heading"><strong>{{ '当前批次' if completed else '预览结果' }}</strong><span class="meta">{{ _status_label }}</span></div>
+  <progress class="product-progress" value="{{ completed }}" max="{{ batch.total_rows or 1 }}" aria-label="已处理行数">{{ completed }} / {{ batch.total_rows }}</progress>
+</section>
+<section aria-label="批次概况">
+  {{ entries(progress.row_counts, batch_href, '/web/pending' ~ q) }}
+  {% if batch.total_rows == 0 %}<p class="product-state">文件中没有数据行。</p>{% endif %}
+</section>
+<p class="meta">已处理的行不会重复导入。离开后，仍可回到这次批次继续；消费草稿核对完成后才计入流水。</p>
+<section class="stack" aria-label="下一步">
+{% if can_write and progress.row_counts.remaining_valid_rows > 0 %}
+<form method="post" action="/web/import/{{ batch.public_id }}/apply" class="stack">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+  <details><summary>分批处理设置</summary><div class="product-field">
+    <label for="import-batch-size">每次导入</label>
+    <input type="number" id="import-batch-size" name="batch_size" value="500" min="1" max="1000">
+  </div></details>
+  <button type="submit" class="product-button product-button--primary">{{ '导入下一批' if completed else '开始导入可以处理的记录' }}</button>
+</form>
+{% elif can_write and progress.row_counts.review_rows > 0 %}
+<a class="product-button product-button--primary" href="{{ next_review_href|default(batch_href ~ '&status=review#batch-rows', true) }}">复核下一条</a>
+{% elif progress.row_counts.inserted_count > 0 %}
+<a class="product-button product-button--primary" href="/web/pending{{ q }}">查看待确认</a>
+{% elif progress.row_counts.error_rows > 0 %}
+<a class="product-button product-button--primary" href="/web/import/{{ batch.public_id }}/errors.csv{{ q }}">下载需要修正的行</a>
 {% endif %}
-
-<section class="import-metrics import-metrics--pair" aria-label="批次概况">
-  <div class="import-metric is-primary"><span>总行数</span><strong>{{ batch.total_rows }}</strong></div>
-  <div class="import-metric is-success"><span>剩余可导入</span><strong>{{ progress.row_counts.remaining_valid_rows }}</strong></div>
-  <div class="import-metric is-warning"><span>错误行</span><strong>{{ progress.row_counts.error_rows }}</strong></div>
-  <div class="import-metric"><span>新增消费草稿</span><strong>{{ progress.row_counts.inserted_count }}</strong></div>
-  <div class="import-metric"><span>已有记录</span><strong>{{ progress.row_counts.matched_rows }}</strong></div>
-  <div class="import-metric is-warning"><span>待复核事件</span><strong>{{ progress.row_counts.review_rows }}</strong></div>
-  <div class="import-metric"><span>已登记退款 / 冲销</span><strong>{{ progress.row_counts.confirmed_offset_rows }}</strong></div>
 </section>
-
-<section class="product-panel product-panel--padded" aria-label="下一步">
-  <div class="product-panel-header">
-    <h2 class="product-panel-title">下一步</h2>
-  </div>
-  {# 剩余行取真实 valid/applying；已经导入与错误下载分别保留原结果入口。 #}
-  {% if can_write and progress.row_counts.remaining_valid_rows > 0 %}
-  <form method="post" action="/web/import/{{ batch.public_id }}/apply" class="product-form-grid import-apply-form">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-    <div class="product-field">
-      <label for="import-batch-size">每次导入</label>
-      <input type="number" id="import-batch-size" name="batch_size" value="500" min="1" max="1000">
-    </div>
-    <button type="submit" class="product-button product-button--primary">导入下一批</button>
-  </form>
-  <p class="import-export-note">新消费先进入「待确认」。已有事件关联原记录；退款、拒付和冲销需在本批次逐条复核后入账。</p>
-  {% elif not can_write %}
-  <p class="text-meta">只读角色只能查看导入批次。</p>
-  {% endif %}
-  {% if progress.row_counts.inserted_count > 0 %}
-  <div class="import-batch-done">
-    <a href="/web/pending{{ q }}" class="product-button product-button--primary">查看待确认</a>
-    <p class="text-meta">本批次新增 {{ progress.row_counts.inserted_count }} 条消费草稿，可前往「待确认」复核，或从下面各行查看当前原单。</p>
-  </div>
-  {% elif progress.row_counts.remaining_valid_rows == 0 and progress.row_counts.review_rows == 0 %}
-  <p class="text-meta">本批次没有进入待确认队列的账单，也没有可继续导入的行。</p>
-  {% endif %}
-  {% if progress.row_counts.review_rows > 0 %}
-  <p><a class="product-button product-button--primary" href="/web/import/{{ batch.public_id }}{{ q }}&status=review">复核 {{ progress.row_counts.review_rows }} 条事件</a></p>
-  <p class="text-meta">选择下面的「复核事件」继续；需要补原单或确认原单时，完成后返回本批次。</p>
-  {% endif %}
-  {% if progress.row_counts.error_rows > 0 %}
-  <p class="import-export-note"><a href="/web/import/{{ batch.public_id }}/errors.csv{{ q }}">下载错误行 CSV</a>，修正后重新上传即可。</p>
-  {% endif %}
-  {% if batch.last_error %}
-  <div class="product-feedback product-feedback--danger" role="alert">{{ batch.last_error }}</div>
-  {% endif %}
-</section>
-
-<section class="product-panel product-panel--padded import-batch-rows" aria-label="行预览">
+{% if not can_write %}<p class="product-feedback" role="status">只读角色只能查看导入批次。</p>{% endif %}
+<details class="import-schema import-batch-rows" id="batch-rows"{% if status %} open{% endif %}>
+  <summary>查看各行内容与处理结果</summary>
+  <div class="stack">
   <div class="product-panel-header">
     <h2 class="product-panel-title">行预览</h2>
     <form method="get" action="/web/import/{{ batch.public_id }}" class="import-batch-filter">
@@ -168,5 +141,7 @@
     <a class="product-button product-button--quiet" href="/web/import/{{ batch.public_id }}?ledger_id={{ selected_ledger_id }}&page={{ next_page }}&page_size={{ page_size }}{% if status %}&status={{ status }}{% endif %}">下一页</a>
     {% endif %}
   </div>
-</section>
+</div>
+</details>
+</div>
 {% endblock %}

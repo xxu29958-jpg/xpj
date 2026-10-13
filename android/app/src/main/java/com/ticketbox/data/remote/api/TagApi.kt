@@ -10,13 +10,20 @@ import com.ticketbox.data.remote.dto.TagUndoDto
 import com.ticketbox.data.remote.dto.TagUndoRequest
 import retrofit2.http.Body
 import retrofit2.http.GET
+import retrofit2.http.Header
+import com.ticketbox.data.remote.dto.ReferenceCreateRequestDto
+import com.ticketbox.data.remote.dto.ReferenceCreatedDto
 import retrofit2.http.POST
 import retrofit2.http.Path
 
 interface TagApi {
-    // ADR-0043 slice C — tag management (online-only mutate surface, 契约 7):
-    // every mutation carries expected_row_version in its body; NONE declares an
-    // Idempotency-Key header (declaring it would route through the replay path).
+    // Creation replays a stable receipt; edits below keep their online OCC protocol.
+    @POST("api/tags")
+    suspend fun createTag(
+        @Header("Idempotency-Key") key: String,
+        @Body request: ReferenceCreateRequestDto,
+    ): ReferenceCreatedDto
+
     @GET("api/tags")
     suspend fun listManagedTags(): TagManagementListDto
 

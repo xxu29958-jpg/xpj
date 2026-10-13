@@ -16,6 +16,7 @@ import com.ticketbox.ui.components.AppAdaptiveAmountRowStyle
 import com.ticketbox.ui.components.AppAdaptiveEditAmountRow
 import com.ticketbox.ui.components.AppSheetAction
 import com.ticketbox.ui.components.AppSheetActionFeedback
+import com.ticketbox.ui.components.AppSheetActionFeedbackState
 import com.ticketbox.ui.components.AppSheetScaffold
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
@@ -26,6 +27,8 @@ internal data class ExpenseEditSheetActionState(
     val primaryEnabled: Boolean,
     val savingText: String,
     val primaryText: String,
+    val feedback: AppSheetActionFeedbackState = AppSheetActionFeedbackState(),
+    val secondaryText: String? = null,
 )
 
 internal data class ExpenseEditSheetActionHandlers(
@@ -65,13 +68,14 @@ internal fun ExpenseEditSheetActions(
     handlers: ExpenseEditSheetActionHandlers,
 ) {
     AppSheetActionFeedback(
+        state = state.feedback,
         primary = AppSheetAction(
             text = if (state.saving) state.savingText else state.primaryText,
             enabled = state.primaryEnabled && !state.saving,
             onClick = handlers.onSubmit,
         ),
         secondary = AppSheetAction(
-            text = stringResource(R.string.common_cancel),
+            text = state.secondaryText ?: stringResource(R.string.common_cancel),
             enabled = !state.saving,
             onClick = handlers.onDismiss,
         ),

@@ -182,7 +182,7 @@ def test_apply_rechecks_conversion_token_and_never_applies_unknown_fallback(monk
     monkeypatch.setattr(_apply, "_try_apply_rule_category", lambda *a, **k: pytest.fail("unknown FX must not mutate category"))
     db = SimpleNamespace()
     result = _apply.apply_rules_to_pending(db, tenant_id="owner", preview_token=original["preview_token"])
-    assert result == (1, 0, False)
+    assert result == (1, 0, False, None)
     monkeypatch.setattr(rule_matching, "project_recorded_amount", lambda *a, **k: 2000)
     with pytest.raises(AppError) as error:
         _apply.apply_rules_to_pending(db, tenant_id="owner", preview_token=original["preview_token"])

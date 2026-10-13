@@ -1,11 +1,14 @@
 package com.ticketbox.domain.model
 
+import com.squareup.moshi.JsonClass
+
 /**
  * ADR-0043 slice C — a managed tag with its expense usage count. Distinct from
  * the raw `Expense.tags` delimited string and the autocomplete name list; this
  * is the governance view (rename / delete / merge). `usageCount == 0` is an
  * orphan tag (safe to delete). `rowVersion` is the OCC token.
  */
+@JsonClass(generateAdapter = true)
 data class ManagedTag(
     val publicId: String,
     val name: String,

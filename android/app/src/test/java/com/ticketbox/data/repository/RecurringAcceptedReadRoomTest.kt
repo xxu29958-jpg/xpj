@@ -171,8 +171,7 @@ class RecurringAcceptedReadRoomTest {
             outbox.onRecurringDispatchFinished = reader::finishDispatch
             outbox.onRecurringAccepted = reader::invalidateAccepted
             val adapters = OutboxAdapterGraph()
-            val repository = RecurringRepository(fixture.provider, outbox, adapters.recurringCreateAdapter,
-                adapters.recurringUpdateAdapter, queryReader = reader)
+            val repository = RecurringRepository(fixture.provider, outbox, adapters, queryReader = reader)
             val baseline = repository.items(fixture.binding, includeArchived = true).getOrThrow().value.single()
             repository.updateAllowingOffline(fixture.binding, baseline, RecurringItemPatch(merchant = "已接受的原修改", homeCurrencyCode = "JPY")).getOrThrow()
             val original = db.pendingMutationDao().allRows().single()
@@ -312,8 +311,7 @@ class RecurringAcceptedReadRoomTest {
             outbox.onRecurringDispatchFinished = reader::finishDispatch
             outbox.onRecurringAccepted = reader::invalidateAccepted
             val adapters = OutboxAdapterGraph()
-            val repository = RecurringRepository(fixture.provider, outbox, adapters.recurringCreateAdapter,
-                adapters.recurringUpdateAdapter, queryReader = reader)
+            val repository = RecurringRepository(fixture.provider, outbox, adapters, queryReader = reader)
             val guard = LedgerRequestGuard(fixture.provider)
             val engine = OutboxDrainEngine(outbox, listOf(UpdateRecurringItemDispatcher({ row ->
                 guard.bind(expectedLedgerId = row.ledgerId).serviceFor(requireNotNull(row.bindingOrNull()))
@@ -392,8 +390,7 @@ class RecurringAcceptedReadRoomTest {
             val baseline = reader.items(fixture.binding, null, true, null).getOrThrow()
             val outbox = testOutboxRepository(db.pendingMutationDao(), bindingProvider = { fixture.provider.currentSession().toOutboxBinding() })
             val adapters = OutboxAdapterGraph()
-            val repository = RecurringRepository(fixture.provider, outbox, adapters.recurringCreateAdapter,
-                adapters.recurringUpdateAdapter, queryReader = reader)
+            val repository = RecurringRepository(fixture.provider, outbox, adapters, queryReader = reader)
             val pending = async(Dispatchers.IO) { repository.pause(fixture.binding, baseline.value.single().publicId, baseline.value.single().rowVersion) }
             started.await()
             val key = logicalBindingAdapter.toJson(fixture.binding)

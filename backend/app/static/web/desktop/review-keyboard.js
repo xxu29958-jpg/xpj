@@ -55,8 +55,6 @@
       // Ctrl/⌘+Enter confirms from anywhere in the open drawer (including an
       // edited field — the only deliberately global chord).
       if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-        // Pasted receipt text belongs to its own recognition command.
-        if (e.target?.closest?.("[data-text-recognition]")) return;
         if (app.drawerApi?.isOpen() && app.drawerApi.submitConfirm()) {
           e.preventDefault();
         }
@@ -69,8 +67,7 @@
       if (NAV_KEYS.indexOf(e.key) === -1) return;
       // 精确作用域：真实焦点必须在可用的行链接上。
       const active = document.activeElement;
-      if (!active || !active.matches || !active.matches(ROW_SELECTOR)) return;
-      if (active.getAttribute("aria-disabled") === "true") return;
+      if (!active?.matches(ROW_SELECTOR + ':not([aria-disabled="true"])')) return;
       e.preventDefault();
       moveFrom(active, e.key);
     });

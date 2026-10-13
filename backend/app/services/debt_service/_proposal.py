@@ -22,7 +22,7 @@ reject only mutate the proposal row's own lifecycle and never enter the fold.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
@@ -62,6 +62,7 @@ from app.services.debt_service._query import (
     get_participant_debt_response,
     resolve_debt_for_participant,
 )
+from app.services.debt_service._repayment_time import resolve_repayment_time
 from app.services.debt_service._serialize import lock_and_fold, lock_debt_for_intent
 from app.services.time_service import now_utc
 
@@ -153,7 +154,8 @@ def _freeze_proposal_money(
     tenant_id: str,
     home_currency_code: str,
     payload: MemberRepaymentProposalCreateRequest,
-    paid_at: datetime,
+    paid_at: datetime | None,
+    payment_date: date | None,
 ) -> dict:
     """Freeze the home ``proposed_amount_cents`` + original-currency provenance.
 
@@ -181,11 +183,10 @@ def _freeze_proposal_money(
         amount_cents=payload.proposed_amount_cents,
         original_currency=payload.original_currency_code,
         original_amount=payload.original_amount,
-        # Freeze at the SAME paid_at the proposal row stores (payload.paid_at or
-        # now_utc()), not the raw payload value — otherwise a paid_at-omitted
-        # foreign proposal could freeze on a different FX date than it records,
-        # diverging the home cents from the stored payment instant at a date edge.
+        # Rich input freezes FX on its original user day, independently of the
+        # selected accounting period. Legacy commands keep their paid_at basis.
         event_time=paid_at,
+        event_date=payment_date,
         amount_error="repayment_proposal_amount_invalid",
     )
 
@@ -289,10 +290,14 @@ def create_repayment_proposal(
     debt = _lock_creatable_member_debt(db, tenant_id=tenant_id, actor_account_id=actor_account_id, public_id=public_id)
     _, creditor_account_id = proposal_debtor_creditor(debt)
 
-    paid_at = payload.paid_at or now_utc()
     resolve_write_capability(db)
+    payment_time = resolve_repayment_time(
+        db, ledger_id=debt.tenant_id, time_input=payload.time_input, paid_at=payload.paid_at,
+    )
+    paid_at = payment_time.instant_utc if payment_time is not None else (payload.paid_at or now_utc())
     money = _freeze_proposal_money(
         db, tenant_id=tenant_id, home_currency_code=debt.home_currency_code, payload=payload, paid_at=paid_at,
+        payment_date=(payment_time.user_local_date or payment_time.accounting_date) if payment_time else None,
     )
     proposed_amount_cents = money.pop("amount_cents")
 
@@ -314,6 +319,7 @@ def create_repayment_proposal(
         proposed_amount_cents=proposed_amount_cents,
         paid_at=paid_at,
         note=(payload.note or "").strip() or None,
+        accounting_time_snapshot=payment_time.model_dump(mode="json") if payment_time else None,
         status="pending",
         created_at=now,
         expires_at=payload.expires_at or (now + PROPOSAL_TTL),
@@ -421,6 +427,7 @@ def _commit_confirmation(
         exchange_rate_date=proposal.exchange_rate_date if is_full else None,
         exchange_rate_source=proposal.exchange_rate_source if is_full else None,
         paid_at=proposal.paid_at,
+        accounting_time_snapshot=proposal.accounting_time_snapshot,
         actor_account_id=actor_account_id,
         proposal_id=proposal.id,
         idempotency_key=idempotency_key,

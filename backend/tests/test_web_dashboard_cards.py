@@ -77,7 +77,7 @@ def test_web_dashboard_cards_back_link_targets_overview(web_client: TestClient) 
 def test_web_dashboard_uses_saved_card_layout_and_reset(web_client: TestClient) -> None:
     settings = web_client.get("/web/dashboard/cards?ledger_id=owner")
     assert settings.status_code == 200
-    assert "仪表盘卡片" in settings.text
+    assert "首页按你的习惯来" in settings.text
     assert 'name="card_key" value="pending"' in settings.text
 
     custom_order = [
@@ -147,7 +147,7 @@ def test_web_dashboard_cards_viewer_can_read_but_not_save(web_client: TestClient
     page = web_client.get("/web/dashboard/cards?ledger_id=owner")
     assert page.status_code == 200
     assert "只读角色" in page.text
-    assert "保存卡片</button>" not in page.text
+    assert "保存首页布局</button>" not in page.text
 
     denied = web_client.post(
         "/web/dashboard/cards/save",

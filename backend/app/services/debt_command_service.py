@@ -93,7 +93,8 @@ def _legacy_create_receipt(
         or not row.resource_id
     ):
         return None
-    result = get_debt_response(db, tenant_id=tenant_id, public_id=row.resource_id)
+    result = DebtResponse.model_validate(row.response_body) if row.response_body is not None else \
+        get_debt_response(db, tenant_id=tenant_id, public_id=row.resource_id)
     return result if result.home_currency_code == normalize_currency_code(payload.home_currency_code) else None
 
 
@@ -132,6 +133,10 @@ def create_debt_idempotently(
         target_id=idempotency_key,
     )
     if outcome.kind is IdempotencyOutcomeKind.HIT:
+        if outcome.row.response_body is not None:
+            return DebtResponse.model_validate(outcome.row.response_body)
+        # N-1 accepted commands lack a first-result snapshot. Keep their original
+        # record lookup usable; never freeze its later balance as a first receipt.
         return get_debt_response(
             db,
             tenant_id=tenant_id,
@@ -156,15 +161,16 @@ def create_debt_idempotently(
         payload=payload,
         commit=False,
     )
+    result = get_debt_response(db, tenant_id=tenant_id, public_id=debt.public_id)
     mark_idempotency_succeeded(
         db,
         outcome.row,
         resource_type=_DEBT_TARGET_TYPE,
         resource_id=debt.public_id,
+        response_body=result.model_dump(mode="json"),
     )
     db.commit()
-    db.expire_all()
-    return get_debt_response(db, tenant_id=tenant_id, public_id=debt.public_id)
+    return result
 
 
 def _repayment_response(

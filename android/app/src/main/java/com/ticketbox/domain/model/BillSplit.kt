@@ -41,6 +41,9 @@ data class BillSplitSent(
     val receiverDisplayNameSnapshot: String?,
     val senderExpenseId: Long,
     val currentAgreedShareAmountCents: Long = amountCents,
+    val originalCurrencyCode: String? = null,
+    val originalAmountMinor: Long? = null,
+    val accountingTimeSnapshot: ExpenseAccountingTime? = null,
 )
 
 data class BillSplitInbox(
@@ -60,6 +63,9 @@ data class BillSplitInbox(
     val senderAccountId: Long,
     val senderDisplayName: String,
     val receivedBill: BillSplitReceivedBill? = null,
+    val originalCurrencyCode: String? = null,
+    val originalAmountMinor: Long? = null,
+    val accountingTimeSnapshot: ExpenseAccountingTime? = null,
 )
 
 /** The receiver's own canonical fact, exposed only while its ledger is readable. */

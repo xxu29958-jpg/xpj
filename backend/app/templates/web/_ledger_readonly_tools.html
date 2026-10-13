@@ -1,16 +1,19 @@
+{# Shared browsing controls. Only the role explanation depends on write access. #}
+{% if not can_write %}
 <div class="ledger-read-notice" role="status">
   <svg width="22" height="22" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#info"/></svg>
   <div><strong>你可以查看这本账</strong><p>如需修改，请联系拥有者。</p></div>
 </div>
+{% endif %}
 <div class="ledger-read-tools">
   {% if filter not in ['missing_category', 'missing_accounting_date'] %}
   <details class="ledger-read-month">
-    <summary>{{ selected_month[:4] }}年{{ selected_month[5:]|int }}月</summary>
+    <summary class="filter-tab is-active">{{ selected_month[:4] }}年{{ selected_month[5:]|int }}月</summary>
     {% include '_month_picker.html' %}
   </details>
   {% endif %}
   <details class="ledger-read-filters">
-    <summary>筛选</summary>
+    <summary class="filter-tab">筛选</summary>
     <div class="ledger-read-filter-body">
       <form method="get" action="/web/confirmed">
         <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
@@ -25,7 +28,7 @@
       <nav aria-label="流水浏览工具">
         <a href="/web/saved-views?ledger_id={{ selected_ledger_id|urlencode }}">保存的视图</a>
         <a href="/web/library?ledger_id={{ selected_ledger_id|urlencode }}">资料库</a>
-        <a href="/web/import?ledger_id={{ selected_ledger_id|urlencode }}">导出账本</a>
+        <a href="/web/import?ledger_id={{ selected_ledger_id|urlencode }}">{% if can_write %}导入与导出{% else %}导出账本{% endif %}</a>
       </nav>
       {% if not missing_rates and not (money_incomplete is defined and money_incomplete) %}
       {% include 'partials/budget_fx_gaps.html' %}

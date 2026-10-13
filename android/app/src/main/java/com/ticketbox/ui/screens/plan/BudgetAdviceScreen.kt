@@ -2,16 +2,20 @@ package com.ticketbox.ui.screens.plan
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -21,10 +25,14 @@ import com.ticketbox.domain.model.BudgetSuggestion
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppContentCard
+import com.ticketbox.ui.components.AppAdaptiveContentActionRow
+import com.ticketbox.ui.components.AppAdaptiveContentActionStyle
+import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.AppDataAuthorityStrip
 import com.ticketbox.ui.components.AppErrorState
 import com.ticketbox.ui.components.AppLoadingState
 import com.ticketbox.ui.components.AppPageRole
+import com.ticketbox.ui.components.AppButtonIcons
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.AppSecondaryPageChrome
@@ -34,6 +42,7 @@ import com.ticketbox.ui.components.DataAuthorityTone
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.viewmodel.BudgetAdviceLoadState
 import com.ticketbox.viewmodel.BudgetAdviceUiState
 import kotlin.math.roundToInt
@@ -44,6 +53,7 @@ internal fun BudgetAdviceScreen(
     actions: BudgetAdviceActions,
     onBack: () -> Unit,
     correctionContinuation: Boolean = false,
+    onOpenBudget: (() -> Unit)? = null,
 ) {
     AppSecondaryScrollableColumn(
         chrome = AppSecondaryPageChrome(
@@ -68,14 +78,29 @@ internal fun BudgetAdviceScreen(
             ManualRateContent(state, actions)
             return@AppSecondaryScrollableColumn
         }
-        BudgetAdviceInputsContent(state, actions)
-        if (state.inputsLoading || state.inputs?.readyForAdvice != true ||
-            (state.arrangementDraft?.edited == true && state.trialRequest == null)) return@AppSecondaryScrollableColumn
-        BudgetAdviceBody(
-            state = state,
-            onRequestAdvice = actions.onGenerate,
-        )
+        BudgetAdviceInputsContent(state, actions, onOpenBudget)
+        if (!state.inputsLoading && state.inputs?.readyForAdvice == true &&
+            (state.arrangementDraft?.edited != true || state.trialRequest != null)) {
+            BudgetAdviceRequest(state, actions.onGenerate)
+        }
+        BudgetAdviceReferenceContent(state, actions)
     }
+}
+
+@Composable
+private fun BudgetAdviceRequest(state: BudgetAdviceUiState, onGenerate: () -> Unit) {
+    var confirming by remember(state.binding, state.month, state.inputs) { mutableStateOf(false) }
+    (state.result?.inputs ?: state.inputs)?.let { BudgetAdviceDataScope(it) }
+    BudgetAdviceBody(state, onRequestAdvice = { confirming = true })
+    if (confirming && state.canRequest) AlertDialog(
+        onDismissRequest = { confirming = false },
+        title = { Text(stringResource(R.string.budget_advice_consent_title)) },
+        text = { Text(stringResource(R.string.budget_advice_privacy_note)) },
+        confirmButton = { TextButton(onClick = { confirming = false; onGenerate() }) {
+            Text(stringResource(R.string.budget_advice_consent_confirm))
+        } },
+        dismissButton = { TextButton(onClick = { confirming = false }) { Text(stringResource(R.string.common_cancel)) } },
+    )
 }
 
 private val BudgetAdviceUiState.authorityTone: DataAuthorityTone?
@@ -142,7 +167,7 @@ private fun BudgetAdviceStartCard(onRequestAdvice: () -> Unit) {
         )
         AppPrimaryButton(
             text = stringResource(R.string.budget_advice_generate),
-            icon = Icons.Filled.Tune,
+            icons = AppButtonIcons(leading = Icons.Filled.Tune),
             modifier = Modifier.fillMaxWidth(),
             onClick = onRequestAdvice,
         )
@@ -283,25 +308,23 @@ private fun BudgetSuggestionRow(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+        AppAdaptiveContentActionRow(
+            style = AppAdaptiveContentActionStyle(compactAction = true),
+            content = {
             Text(
                 text = suggestion.category?.takeIf(String::isNotBlank)
                     ?: stringResource(R.string.budget_advice_overall_category),
-                modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
             )
-            Text(
+            },
+            action = { modifier -> AppEndAlignedAmountText(
                 text = formatDisplayAmount(suggestion.suggestedAmountCents, currencyDisplay),
+                modifier = modifier,
+                role = AppAmountRole.Compact,
                 color = MaterialTheme.colorScheme.primary,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-            )
-        }
+            ) },
+        )
         Text(
             text = suggestion.rationale,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

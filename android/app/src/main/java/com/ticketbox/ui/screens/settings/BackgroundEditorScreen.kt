@@ -45,7 +45,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
@@ -60,6 +59,7 @@ import com.ticketbox.ui.appearance.background.BackgroundPreviewStage
 import com.ticketbox.ui.appearance.background.BackgroundTransformGeometry
 import com.ticketbox.ui.appearance.background.SurfaceRole
 import com.ticketbox.ui.appearance.background.rememberBackgroundImage
+import com.ticketbox.ui.components.AppButtonIcons
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppAlpha
@@ -244,7 +244,7 @@ private fun BackgroundEditorHeading(
         }
         Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
             Text(stringResource(R.string.background_editor_page_title),
-                style = AppTextHierarchy.hero.asTextStyle().copy(fontSize = 32.sp, lineHeight = 38.sp))
+                style = AppTextHierarchy.hero.asTextStyle())
             Text(stringResource(R.string.background_editor_intro), style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -328,7 +328,7 @@ private fun BackgroundEditorCompositionPanel(
                 onTransformChange = { actions.onDraftChange(editor.settings.copy(transform = it)) },
             )
             AppPrimaryButton(text = stringResource(R.string.background_editor_composition_done),
-                icon = Icons.Filled.Check, modifier = Modifier.fillMaxWidth(), enabled = !editor.saving, onClick = onDone)
+                icons = AppButtonIcons(leading = Icons.Filled.Check), modifier = Modifier.fillMaxWidth(), enabled = !editor.saving, onClick = onDone)
         }
     }
 }
@@ -350,7 +350,7 @@ private fun BackgroundEditorFooter(
                     R.string.background_editor_apply_button
                 },
             ),
-            icon = Icons.Filled.Check,
+            icons = AppButtonIcons(leading = Icons.Filled.Check),
             modifier = Modifier.weight(1f),
             enabled = !saving,
             onClick = actions.onApply,

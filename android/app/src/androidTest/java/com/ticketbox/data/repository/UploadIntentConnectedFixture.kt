@@ -4,10 +4,12 @@ import android.content.ContentValues
 import android.content.Context
 import android.content.ContextWrapper
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.MediaStore
 import androidx.annotation.RequiresApi
 import androidx.room.Room
+import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.RepositoryGraph
 import com.ticketbox.RepositoryGraphDependencies
@@ -74,8 +76,9 @@ internal class UploadIntentConnectedFixture(private val context: Context) : Clos
 
     fun createSources(): List<String> {
         listOf("a.png", "b.png", "c.png").forEachIndexed { index, name ->
-            val bitmap = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888)
-            bitmap.eraseColor(0xff112233.toInt() + index)
+            val visualOriginal = InstrumentationRegistry.getArguments().getString("captureOriginalPath")
+            val bitmap = visualOriginal?.let(BitmapFactory::decodeFile)
+                ?: Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888).apply { eraseColor(0xff112233.toInt() + index) }
             val bytes = ByteArrayOutputStream().use { output ->
                 check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output))
                 output.toByteArray()
@@ -142,7 +145,7 @@ internal class UploadIntentConnectedFixture(private val context: Context) : Clos
             onEnqueued = { scope.launch { engine.drainOnce() } },
             onRowsDeleted = { uploadIntents.collectOrphans() })
         uploadIntents = UploadIntentRepository(provider, outbox, files,
-            adapters.uploadPayloadAdapter, adapters.uploadReceiptAdapter, settings)
+            adapters, settings, db.expenseDao())
         val guard = LedgerRequestGuard(provider)
         engine = OutboxDrainEngine(outbox, listOf(UploadScreenshotDispatcher(
             { row -> guard.bind(expectedLedgerId = row.ledgerId).serviceFor(requireNotNull(row.bindingOrNull())) },

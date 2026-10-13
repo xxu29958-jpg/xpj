@@ -18,8 +18,8 @@ class AmountTextStylesTest {
     fun heroRoleAppliesTabularFiguresAndHeroDimensions() {
         val style = TextStyle().asAmount(AppAmountRole.Hero)
         assertEquals("tnum", style.fontFeatureSettings)
-        assertEquals(34.sp, style.fontSize)
-        assertEquals(38.sp, style.lineHeight)
+        assertEquals(42.sp, style.fontSize)
+        assertEquals(47.sp, style.lineHeight)
         assertEquals(0.sp, style.letterSpacing)
         assertEquals(FontWeight.SemiBold, style.fontWeight)
     }
@@ -38,8 +38,8 @@ class AmountTextStylesTest {
     fun compactRoleAppliesTabularFiguresAndBodyDimensions() {
         val style = TextStyle().asAmount(AppAmountRole.Compact)
         assertEquals("tnum", style.fontFeatureSettings)
-        assertEquals(15.sp, style.fontSize)
-        assertEquals(20.sp, style.lineHeight)
+        assertEquals(16.sp, style.fontSize)
+        assertEquals(22.sp, style.lineHeight)
         assertEquals(0.sp, style.letterSpacing)
         assertEquals(FontWeight.Medium, style.fontWeight)
     }

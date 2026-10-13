@@ -10,6 +10,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
+import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.viewmodel.BudgetUiState
 
 @Composable
@@ -25,7 +26,7 @@ internal fun BudgetArchiveAction(state: BudgetUiState, onArchive: (Long) -> Unit
     version?.let { originalVersion ->
         AlertDialog(onDismissRequest = { version = null },
             title = { Text(stringResource(R.string.budget_archive_title)) },
-            text = { Text(stringResource(R.string.budget_archive_body, state.month)) },
+            text = { Text(stringResource(R.string.budget_archive_body, displayMonthLabel(state.month))) },
             confirmButton = { TextButton(enabled = enabled, onClick = { version = null; onArchive(originalVersion) }) {
                 Text(stringResource(R.string.budget_archive_confirm))
             } },

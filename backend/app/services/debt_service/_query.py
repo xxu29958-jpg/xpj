@@ -19,17 +19,17 @@ from app.services.currency_binding_service import (
     runtime_home_currency_code,
 )
 from app.services.debt_service._fold import (
+    DebtBalance,
     _materialize_total,
-    compute_paid,
-    compute_remaining,
+    compute_balance,
     derive_status,
-    has_forgiveness,
 )
 from app.services.debt_service._guards import proposal_debtor_creditor
 from app.services.debt_service._installment import (
     installment_paid_count,
     installment_payoff_date,
 )
+from app.services.debt_service._repayment_time import repayment_calendar
 
 
 def participant_can_access(debt: Debt, *, ledger_id: str, account_id: int | None) -> tuple[bool, bool]:
@@ -133,6 +133,7 @@ def get_participant_debt_response(db: Session, *, public_id: str, ledger_id: str
     )
     labels = _member_counterparty_labels(db, [debt], account_id)
     response = _debt_response_with_fold(db, debt, account_id, labels)
+    response.repayment_calendar = repayment_calendar(db, ledger_id=debt.tenant_id)
     return response if is_ledger_member else response.model_copy(update={"ledger_id": None})
 
 
@@ -187,13 +188,14 @@ def get_debt(db: Session, *, tenant_id: str, public_id: str) -> Debt:
     return debt
 
 
-def debt_response(debt: Debt, *, remaining: int, paid: int, is_forgiven: bool = False) -> DebtResponse:
+def debt_response(debt: Debt, *, balance: DebtBalance) -> DebtResponse:
     # §B: gate ALL schedule fields on debt_kind. ``set_debt_kind`` leaves the columns populated when
     # reclassifying AWAY from installment, so reading them raw would expose stale installment metadata
     # on a now-revolving/one_off debt. Gating the whole shape (count + period + the already-gated
     # payoff date) keeps a non-installment response clean — matching the schema's "None for
     # non-installment" contract.
     is_installment = debt.debt_kind == "installment"
+    status = derive_status(debt, balance.remaining)
     return DebtResponse(
         public_id=debt.public_id,
         ledger_id=debt.tenant_id,
@@ -205,11 +207,14 @@ def debt_response(debt: Debt, *, remaining: int, paid: int, is_forgiven: bool = 
         principal_amount_cents=_materialize_total(
             debt.principal_amount_cents, label="debt_response.principal", for_write=False
         ),
-        remaining_amount_cents=remaining,
-        paid_amount_cents=paid,
-        status=derive_status(debt, remaining),
+        remaining_amount_cents=balance.remaining,
+        paid_amount_cents=balance.paid,
+        adjustment_amount_cents=balance.adjustment,
+        forgiven_amount_cents=balance.forgiven,
+        status=status,
         source_type=debt.source_type,
         source_id=debt.source_id,
+        accounting_time=debt.accounting_time_snapshot,
         debt_kind=debt.debt_kind,
         # §B: the stored schedule + the derived deterministic payoff date, all None for non-installment.
         installment_count=debt.installment_count if is_installment else None,
@@ -217,7 +222,7 @@ def debt_response(debt: Debt, *, remaining: int, paid: int, is_forgiven: bool = 
         installment_payoff_date=installment_payoff_date(debt),
         # §B: 已还期数 — DERIVED from the already-folded ``paid`` (no extra query). Gated by the
         # function itself; the explicit ``is_installment`` mirrors the sibling fields' gate style.
-        installment_paid_count=installment_paid_count(debt, paid=paid) if is_installment else None,
+        installment_paid_count=installment_paid_count(debt, paid=balance.paid) if is_installment else None,
         home_currency_code=debt.home_currency_code,
         original_currency_code=debt.original_currency_code,
         original_amount_minor=debt.original_amount_minor,
@@ -227,7 +232,7 @@ def debt_response(debt: Debt, *, remaining: int, paid: int, is_forgiven: bool = 
         created_at=debt.created_at,
         updated_at=debt.updated_at,
         row_version=debt.row_version,
-        is_forgiven=is_forgiven,
+        is_forgiven=status == "cleared" and balance.forgiven > 0,
     )
 
 
@@ -237,14 +242,7 @@ def _debt_response_with_fold(
     viewer_account_id: int | None = None,
     counterparty_labels: dict[str, str | None] | None = None,
 ) -> DebtResponse:
-    remaining = compute_remaining(db, debt)
-    paid = compute_paid(db, debt)
-    # §3.7 / §4: a forgiven Debt is a CLEARED Debt that carries a DebtForgiveness fact —
-    # distinct from a repayment-cleared one. Only check the fact when the fold says cleared
-    # (open/voided are never "forgiven"), so a stray forgiveness on a later-reopened Debt
-    # does not mislabel it.
-    is_forgiven = derive_status(debt, remaining) == "cleared" and has_forgiveness(db, debt.id)
-    response = debt_response(debt, remaining=remaining, paid=paid, is_forgiven=is_forgiven)
+    response = debt_response(debt, balance=compute_balance(db, debt))
     return response.model_copy(update={
         "viewer_is_debtor": _viewer_is_debtor(debt, viewer_account_id),
         "counterparty_label": (counterparty_labels or {}).get(debt.public_id, debt.counterparty_label),
@@ -253,7 +251,9 @@ def _debt_response_with_fold(
 
 def get_debt_response(db: Session, *, tenant_id: str, public_id: str) -> DebtResponse:
     debt = get_debt(db, tenant_id=tenant_id, public_id=public_id)
-    return _debt_response_with_fold(db, debt)
+    response = _debt_response_with_fold(db, debt)
+    response.repayment_calendar = repayment_calendar(db, ledger_id=debt.tenant_id)
+    return response
 
 
 def list_debts(db: Session, *, tenant_id: str, viewer_account_id: int | None = None) -> DebtListResponse:

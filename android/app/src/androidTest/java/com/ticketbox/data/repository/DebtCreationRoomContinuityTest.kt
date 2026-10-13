@@ -59,7 +59,7 @@ class DebtCreationRoomContinuityTest {
         val graph = repositoryGraph(firstDatabase, session)
 
         val result = graph.debtCreationRepository.createDebt(
-            requireNotNull(graph.debtCreationRepository.currentAccess()).binding, draft(), CurrencyCode.CNY,
+            requireNotNull(graph.debtCreationRepository.currentAccess()).binding, draft(), CurrencyCode.CNY, "original-debt",
         )
 
         val stored = storedRows(firstDatabase)
@@ -73,6 +73,14 @@ class DebtCreationRoomContinuityTest {
         assertTrue(requireNotNull(original["idempotencyKey"]).isNotBlank())
 
         val restartedDatabase = reopenDatabase()
+        assertEquals(stored, storedRows(restartedDatabase))
+        val reentered = repositoryGraph(restartedDatabase, session).debtCreationRepository
+        val replay = reentered.createDebt(requireNotNull(reentered.currentAccess()).binding,
+            draft(), CurrencyCode.CNY, "original-debt").getOrThrow()
+        assertEquals(result.getOrThrow(), replay)
+        assertEquals(stored, storedRows(restartedDatabase))
+        assertTrue(reentered.createDebt(requireNotNull(reentered.currentAccess()).binding,
+            draft().copy(principalAmountCents = 99L), CurrencyCode.CNY, "original-debt").isFailure)
         assertEquals(stored, storedRows(restartedDatabase))
         val restartedOutbox = outbox(restartedDatabase, session)
         val resumed = restartedOutbox.dequeueNextRunnable().single()
@@ -91,6 +99,8 @@ class DebtCreationRoomContinuityTest {
         assertEquals(2, network.calls.size)
         assertEquals(network.calls.first(), network.calls.last())
         assertEquals(original["idempotencyKey"], network.calls.last().second)
+        assertEquals("2026-01-31", network.calls.last().first.timeInput?.userLocalDate)
+        assertEquals(3L, network.calls.last().first.timeInput?.calendarRevision)
         assertEquals(1, network.facts.size)
         val completed = repositoryGraph(retryDatabase, session).debtCreationRepository
             .observePendingCreations().first { it.completedIntentIds.isNotEmpty() }
@@ -104,7 +114,7 @@ class DebtCreationRoomContinuityTest {
         val graph = repositoryGraph(currentDatabase, sessionRecord("viewer"))
 
         val result = graph.debtCreationRepository.createDebt(
-            requireNotNull(graph.debtCreationRepository.currentAccess()).binding, draft(), CurrencyCode.CNY,
+            requireNotNull(graph.debtCreationRepository.currentAccess()).binding, draft(), CurrencyCode.CNY, "viewer-original-debt",
         )
 
         assertTrue(result.isFailure)
@@ -172,6 +182,7 @@ class DebtCreationRoomContinuityTest {
         counterpartyLabel = "小王",
         principalAmountCents = 12_345L,
         note = "出差垫付车费",
+        timeInput = com.ticketbox.data.remote.dto.ExpenseTimeInputDto("date_only", 3L, "2026-01-31"),
     )
 
     private fun sessionRecord(role: String) = LocalSessionRecord(
@@ -211,6 +222,8 @@ private class RoomDebtCreateApiProbe {
                     status = "open", sourceType = request.sourceType, homeCurrencyCode = "CNY",
                     createdAt = "2026-09-06T00:00:00Z", updatedAt = "2026-09-06T00:00:00Z", rowVersion = 1,
                     note = request.note,
+                    accountingTime = request.timeInput?.let { com.ticketbox.data.remote.dto.ExpenseAccountingTimeDto(
+                        precision = it.precision, userLocalDate = it.userLocalDate, calendarRevision = it.calendarRevision) },
                 )
             }
             if (loseResponse) throw IOException("Synthetic lost response after acceptance")

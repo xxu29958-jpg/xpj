@@ -6,7 +6,9 @@ communal/neutral 文案。HTML adapter 与 JSON API 复用同一 command/idempot
 
 from __future__ import annotations
 
+import re
 from datetime import timedelta
+from html import unescape
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -26,6 +28,7 @@ from app.routes._web_debt_write import (
 )
 from app.services.debt_service import get_participant_debt_response
 from app.services.time_service import now_utc
+from tests._web_native_form_support import hidden_post_forms, open_repayment_task
 
 # Uses the shared ``web_client`` fixture (conftest.py) which bypasses the /web loopback
 # gate; the loopback web viewer resolves to the ledger owner account.
@@ -176,10 +179,10 @@ def test_web_debtor_can_create_replay_and_withdraw_proposal(
     web_client: TestClient,
 ) -> None:
     public_id, debt_id, _owner_id, _member_id = _seed_member_debt_for_proposals(direction="i_owe")
-    create_form = _proposal_form(
-        amount_major="35.50",
-        note="刚刚转给你啦",
-    )
+    detail = web_client.get(f"/web/debts/{public_id}?ledger_id=owner")
+    task = open_repayment_task(web_client, detail)
+    create_form = {**hidden_post_forms(task.text)[f"/web/debts/{public_id}/repayment-proposals"],
+        "amount_major": "35.50", "note": "刚刚转给你啦"}
 
     created = web_client.post(
         f"/web/debts/{public_id}/repayment-proposals",
@@ -192,7 +195,7 @@ def test_web_debtor_can_create_replay_and_withdraw_proposal(
 
     assert created.status_code == 200
     assert replay.status_code == 200
-    assert "已经发给 TA 啦" in created.text
+    assert "这次还款申报已记录" in created.text
     with SessionLocal() as db:
         proposals = db.scalars(select(MemberRepaymentProposal).where(MemberRepaymentProposal.debt_id == debt_id)).all()
         assert len(proposals) == 1
@@ -202,14 +205,18 @@ def test_web_debtor_can_create_replay_and_withdraw_proposal(
         assert proposal.note == "刚刚转给你啦"
         proposal_public_id = proposal.public_id
 
-    assert f"/web/debts/{public_id}/repayment-proposals/{proposal_public_id}/withdraw" in created.text
+    return_link = re.search(r'href="([^"]+)"[^>]*>返回往来详情</a>', created.text)
+    assert return_link is not None
+    detail = web_client.get(unescape(return_link[1]))
+    assert f"/web/debts/{public_id}/repayment-proposals/{proposal_public_id}/withdraw" in detail.text
     withdrawn = web_client.post(
         f"/web/debts/{public_id}/repayment-proposals/{proposal_public_id}/withdraw",
         data=_proposal_form(),
     )
     assert withdrawn.status_code == 200
     assert "已经撤回啦" in withdrawn.text
-    assert f'action="/web/debts/{public_id}/repayment-proposals"' in withdrawn.text
+    fresh = open_repayment_task(web_client, withdrawn)
+    assert f'action="/web/debts/{public_id}/repayment-proposals"' in fresh.text
     with SessionLocal() as db:
         proposal = db.scalar(
             select(MemberRepaymentProposal).where(MemberRepaymentProposal.public_id == proposal_public_id)
@@ -366,7 +373,7 @@ def test_web_debt_detail_resolved_history_is_sunk_and_neutral(web_client: TestCl
     assert "对上" in resp.text  # confirmed date prefix
     # An optional note renders in the history row (the {% if row.note %} path).
     assert "微信转的" in resp.text
-    assert "debt-history-note" in resp.text
+    assert "<span>微信转的</span>" in resp.text
     assert "在对账" in resp.text  # rejected reads 在对账, NOT failure
     assert "已拒绝" not in resp.text
     assert "失败" not in resp.text
@@ -393,7 +400,7 @@ def test_web_debt_detail_resolved_history_uses_complete_activity(web_client: Tes
     assert "共 11 条" in resp.text
     assert resp.text.count("处理还款申报</strong>") == 5
     assert resp.text.count("申报还款</strong>") == 5
-    assert '<details class="debt-history-more">' not in resp.text
+    assert resp.text.count('class="product-history"') == 1  # one paged list, no collapsed remainder
 
 
 def test_web_debt_detail_member_no_proposals_renders_debtor_action(web_client: TestClient) -> None:
@@ -403,8 +410,9 @@ def test_web_debt_detail_member_no_proposals_renders_debtor_action(web_client: T
     assert resp.status_code == 200
     assert "建立往来" in resp.text
     assert "处理还款申报" not in resp.text
-    assert f'action="/web/debts/{public_id}/repayment-proposals"' in resp.text
-    assert "提交还款确认" in resp.text
+    task = open_repayment_task(web_client, resp)
+    assert f'action="/web/debts/{public_id}/repayment-proposals"' in task.text
+    assert "提交还款确认" in task.text
 
 
 def test_web_debt_detail_external_has_no_proposal_section(web_client: TestClient) -> None:
@@ -415,7 +423,7 @@ def test_web_debt_detail_external_has_no_proposal_section(web_client: TestClient
     resp = web_client.get(f"/web/debts/{public_id}")
     assert resp.status_code == 200
     assert "往来历史" in resp.text
-    assert "debt-proposal-status" not in resp.text
+    assert 'aria-label="还款确认状态"' not in resp.text
     assert "在对账" in resp.text  # anomalous retained facts stay traceable; no new write permission
     assert 'aria-labelledby="debt-proposal-actions-title"' not in resp.text
 

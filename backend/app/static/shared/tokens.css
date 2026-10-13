@@ -19,33 +19,39 @@
 
 :root,
 :root[data-theme="paper"] {
+    color-scheme: light;
     /* Low-chroma OKLCH neutrals (hue 155, chroma 0.002–0.014), exported as sRGB
        for Android and the shipped ECharts color parser, which rejects OKLCH.
        Light surfaces span L=0.946–0.997; text spans L=0.235–0.660. */
-    --surface-app: #f5f9f6;
+    --surface-app: #fafbf7;
     --surface-card: #fdfefd;
     --surface-raised: #fdfefd;
-    --surface-nav: #f8fbf9;
+    --surface-nav: #f0f3eb;
     --surface-sunken: #e9efeb;
+    --surface-apricot: #f8e6d6;
+    --surface-lilac: #eee8f8;
+    --surface-sand: #f1eddb;
+    --font-product: "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Ticketbox Sans", sans-serif;
+    --font-numeric: "Ticketbox Figures", "Ticketbox Sans", sans-serif;
     /* 自定义背景遮罩（全局背景批）：用户照片亮度不可预知，同一固定层上叠
        --surface-app 基调 veil 保正文可读；reader/render owner 是
        appearance-bootstrap.js TicketboxBackground，消费点 shell.css /
        auth-login.css / currency-adoption.css 的 body::before。
        全黑／全白合法图片下也须保住 meta 正文的 4.5:1，图片仍保留透明可见层。 */
-    --surface-user-veil: linear-gradient(rgba(245, 249, 246, 0.92), rgba(245, 249, 246, 0.92));
+    --surface-user-veil: linear-gradient(rgba(250, 251, 247, 0.94), rgba(250, 251, 247, 0.94));
 
     /* Text — 暖墨四级, meta 级在暖纸/卡上保 ≥4.5:1, 最重 SemiBold 即止 */
-    --text-default: #1a201c;
+    --text-default: #23362d;
     --text-muted: #49504c;
-    --text-meta: #606762;
+    --text-meta: #5f6c60;
     --text-faint: #8f9490;
     --text-on-primary: #fdfefd;
 
     /* Brand — 深常青印泥, 只用于主 CTA、选中态与焦点 */
-    --brand-primary: #14504a;
+    --brand-primary: #246653;
     --brand-primary-strong: #0d3d38;
     --brand-accent: #7fae9f;
-    --brand-primary-bg: #e3eeea;
+    --brand-primary-bg: #e9f0dc;
     --brand-focus-ring: rgba(20, 80, 74, 0.42);
     /* 票夹 coral — 品牌右侧夹的专用色: 只做票据「夹」形 / 当期聚焦标记,
        不承载状态语义 (状态留在 state/goal 族), 镜像 Android ThemeVisuals.clipCoral */
@@ -65,17 +71,17 @@
     --control-border-hover: rgba(20, 80, 74, 0.46);
     --control-border-active: rgba(20, 80, 74, 0.64);
     --control-press-bg: rgba(20, 80, 74, 0.10);
-    --radius-card: 14px;
-    --radius-input: 10px;
+    --radius-card: 20px;
+    --radius-input: 14px;
     --radius-pill: 999px;
     --shadow-card: 0 1px 3px rgba(26, 32, 28, .05), 0 6px 18px rgba(26, 32, 28, .03);
     --shadow-raised: 0 2px 6px rgba(26, 32, 28, .06), 0 16px 40px rgba(26, 32, 28, .10);
 
     /* Chart — 8 色调色板 */
-    --chart-series-1: #14504a;
-    --chart-series-2: #26322d;
-    --chart-series-3: #a9783e;
-    --chart-series-4: #b65e47;
+    --chart-series-1: #487d5b;
+    --chart-series-2: #bb9878;
+    --chart-series-3: #a598c2;
+    --chart-series-4: #deb985;
     --chart-series-5: #55747a;
     --chart-series-6: #7f8f68;
     --chart-series-7: #756a8a;
@@ -151,19 +157,23 @@
 
 
 :root[data-theme="midnight"] {
+    color-scheme: dark;
     /* After-hours use: quiet graphite, with distinct solid reading surfaces. */
-    --surface-app: #111512;
+    --surface-app: #16201c;
     --surface-card: #1b1f1c;
     --surface-raised: #252b26;
     --surface-nav: #161917;
     --surface-sunken: #212623;
+    --surface-apricot: #45372b;
+    --surface-lilac: #383247;
+    --surface-sand: #3c3b2c;
     /* 自定义背景遮罩：同 paper 的阅读下限，使用深色基调。 */
-    --surface-user-veil: linear-gradient(rgba(17, 21, 18, 0.92), rgba(17, 21, 18, 0.92));
+    --surface-user-veil: linear-gradient(rgba(22, 32, 28, 0.94), rgba(22, 32, 28, 0.94));
 
     /* Text */
-    --text-default: #e9edea;
+    --text-default: #eff4ed;
     --text-muted: #afb6b1;
-    --text-meta: #909893;
+    --text-meta: #a9b2ab;
     --text-faint: #5c625e;
     --text-on-primary: #0e1a17;
 
@@ -189,16 +199,16 @@
     --control-border-hover: rgba(105, 191, 164, 0.46);
     --control-border-active: rgba(105, 191, 164, 0.68);
     --control-press-bg: rgba(105, 191, 164, 0.12);
-    --radius-card: 10px;
-    --radius-input: 10px;
+    --radius-card: 20px;
+    --radius-input: 14px;
     --radius-pill: 999px;
     --shadow-card: 0 1px 3px rgba(0,0,0,.40);
     --shadow-raised: 0 6px 24px rgba(0,0,0,.45);
 
     --chart-series-1: #70bfa5;
-    --chart-series-2: #b7c4bd;
-    --chart-series-3: #e3b36c;
-    --chart-series-4: #e0836f;
+    --chart-series-2: #bb9878;
+    --chart-series-3: #a598c2;
+    --chart-series-4: #deb985;
     /* 5-8 跨色相重排，避免多分类环图的相邻系列混在一起。 */
     --chart-series-5: #8db8c0;
     --chart-series-6: #a7b98c;
@@ -270,27 +280,26 @@
  * ─────────────────────────────────────────────────────────────────────────── */
 :root {
     /* ── Typography scale ─────────────────────────────────────────────────
-     * 字体族保留在各端局部定义（web/_base.css 的 --font-zh/--font-num/--font-serif、
-     * owner.css 的 system stack、Android Material3 FontFamily）,shared 层只统一
-     * 字号/行高/字重的语义阶梯。
+     * Web / Owner 的字体族使用上方 --font-product / --font-numeric，
+     * Android 使用系统中文字体；这里统一字号/行高/字重的语义阶梯。
      *
-     *  display  34/1.12/600  —— 焦点金额(每屏 ≤1 处),对齐 Android AppTypography.amountLarge
-     *  hero     28/1.15/700  —— 页面主标题,每屏 1 处
+     *  display  42/1.12/600  —— 焦点金额(每屏 ≤1 处),对齐 Android AppTypography.amountLarge
+     *  hero     30/1.15/700  —— 页面主标题,每屏 1 处
      *  headline 22/1.25/700  —— 区块大标题、h1
      *  title    18/1.30/600  —— 卡片/section 标题,对齐 AppTextHierarchy.heading
-     *  subtitle 15/1.40/500  —— 列表项首行、强调正文,对齐 AppTextHierarchy.body
-     *  body     14/1.55/400  —— 默认正文(@import 后 body { font-size } 应消费此值)
-     *  caption  12/1.40/400  —— 辅助文字(meta/时间/标签),对齐 AppTextHierarchy.caption
-     *  meta     10/1.30/500  —— uppercase eyebrow 文字,letter-spacing 0.18em
+     *  subtitle 16/1.40/500  —— 列表项首行、强调正文,对齐 AppTextHierarchy.body
+     *  body     16/1.55/400  —— 默认正文(@import 后 body { font-size } 应消费此值)
+     *  caption  13/1.40/400  —— 辅助文字(meta/时间/标签),对齐 AppTextHierarchy.caption
+     *  meta     12/1.30/500  —— uppercase eyebrow 文字,letter-spacing 0.18em
      */
-    --type-display-size: 34px;   --type-display-line: 1.12; --type-display-weight: 600;
-    --type-hero-size: 28px;      --type-hero-line: 1.15;    --type-hero-weight: 700;
+    --type-display-size: 42px;   --type-display-line: 1.12; --type-display-weight: 600;
+    --type-hero-size: 30px;      --type-hero-line: 1.15;    --type-hero-weight: 700;
     --type-headline-size: 22px;  --type-headline-line: 1.25; --type-headline-weight: 700;
     --type-title-size: 18px;     --type-title-line: 1.30;   --type-title-weight: 600;
-    --type-subtitle-size: 15px;  --type-subtitle-line: 1.40; --type-subtitle-weight: 500;
-    --type-body-size: 14px;      --type-body-line: 1.55;    --type-body-weight: 400;
-    --type-caption-size: 12px;   --type-caption-line: 1.40; --type-caption-weight: 400;
-    --type-meta-size: 10px;      --type-meta-line: 1.30;    --type-meta-weight: 500;
+    --type-subtitle-size: 16px;  --type-subtitle-line: 1.40; --type-subtitle-weight: 500;
+    --type-body-size: 16px;      --type-body-line: 1.55;    --type-body-weight: 400;
+    --type-caption-size: 13px;   --type-caption-line: 1.40; --type-caption-weight: 400;
+    --type-meta-size: 12px;      --type-meta-line: 1.30;    --type-meta-weight: 500;
     --type-meta-tracking: 0.18em;
     --type-tabular-features: "tnum", "ss01";
 
@@ -348,9 +357,9 @@
     /* ── Layout fixed ──────────────────────────────────────────────────────
      * /web 桌面 shell 关键固定值,提到 shared 让 /owner 等也能复用 z-index 计算。
      */
-    --layout-sidebar-w: 224px;
-    --layout-topbar-h:  60px;
-    --layout-page-max:  1180px;
+    --layout-sidebar-w: 200px;
+    --layout-topbar-h:  var(--target-min);
+    --layout-page-max:  1440px;
     --layout-page-narrow-max: 960px;
 
     /* 触达目标地板 (2026-09 响应式收件片): 宽度断点管布局密度,

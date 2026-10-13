@@ -7,6 +7,7 @@ from unittest.mock import Mock
 import pytest
 
 from app.errors import AppError
+from app.middleware.logging import SanitizedLoggingMiddleware
 from app.routes._web_accounting_time import parse_web_accounting_time, time_form_projection, time_form_values
 
 
@@ -59,6 +60,160 @@ def test_projection_keeps_subseconds_and_fold_in_a_browser_representable_control
 
 def test_old_form_without_time_evidence_remains_absent():
     assert parse_web_accounting_time("2026-11-01T01:30", None) is None
+
+
+@pytest.mark.parametrize("revision", [None, "3", "", "原始错误版本"])
+def test_repayment_native_form_preserves_date_precision_and_original_revision(monkeypatch, caplog, revision):
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    from fastapi.testclient import TestClient
+
+    from app.routes import web_debt_actions as command
+
+    db = Mock()
+    app = FastAPI()
+    app.add_middleware(SanitizedLoggingMiddleware)
+    app.include_router(command.router)
+    app.dependency_overrides[command.get_db] = lambda: db
+    app.dependency_overrides[command.LocalOnly.dependency] = lambda: None
+    monkeypatch.setattr(command, "_list_ledger_options", lambda *_: [])
+    monkeypatch.setattr(command, "_resolve_selected_ledger_id", lambda *_a, **_kw: "original-ledger")
+    monkeypatch.setattr(command, "_require_selected_ledger_write", lambda *_: None)
+    monkeypatch.setattr(command, "_actor_account_id", lambda *_: 13)
+    monkeypatch.setattr(command, "get_debt_response", lambda *_a, **_kw: SimpleNamespace(
+        home_currency_code="JPY", row_version=9,
+        repayment_calendar=SimpleNamespace(revision=8, timezone_name="Asia/Tokyo")))
+    submit = Mock(side_effect=AppError("dependency_unavailable", status_code=503))
+    monkeypatch.setattr(command, "record_repayment_idempotently", submit)
+    monkeypatch.setattr(command, "_repayment_outcome", lambda *_a, **kw: JSONResponse(
+        {"values": kw["values"], "result": kw["result"]}, status_code=kw["status_code"]))
+    original = {"ledger_id": "original-ledger", "debt_public_id": "original-debt", "origin_binding": "{}",
+        "home_currency_code": "JPY", "amount_major": "12", "paid_at": "2026-09-01",
+        "paid_at_timezone": "Pacific/Honolulu", "expected_row_version": "7", "idempotency_key": "original-key"}
+    if revision is not None:
+        original.update(time_precision="date_only", calendar_revision=revision)
+    with TestClient(app) as client:
+        response = client.post("/web/debts/original-debt/repayments", data=original)
+    assert response.json()["values"] == original
+    if revision in ("", "原始错误版本"):
+        assert response.status_code == 422
+        submit.assert_not_called()
+        assert not [record for record in caplog.records if record.name == "ticketbox.http"]
+        return
+    assert response.status_code == 503 and response.json()["result"] == "submitted"
+    reports = [record for record in caplog.records if record.name == "ticketbox.http"]
+    assert len(reports) == 1 and reports[0].exc_info and reports[0].exc_info[1] is submit.side_effect
+    assert response.headers["X-Request-Id"] in reports[0].getMessage()
+    submitted = submit.call_args.kwargs
+    assert submitted["idempotency_key"] == "original-key"
+    assert submitted["payload"].expected_row_version == 7
+    assert submitted["payload"].amount_cents == 12
+    if revision is None:
+        assert submitted["payload"].time_input is None
+        assert submitted["payload"].paid_at.isoformat() == "2026-09-01T00:00:00-10:00"
+    else:
+        assert submitted["payload"].paid_at is None
+        evidence = submitted["payload"].time_input
+        assert evidence.precision == "date_only" and evidence.instant_utc is None
+        assert evidence.user_local_date.isoformat() == "2026-09-01"
+        assert evidence.calendar_revision == 3
+
+
+@pytest.mark.parametrize("revision", [None, "3", "", "原始错误版本"])
+def test_member_repayment_retains_original_date_and_submission(monkeypatch, caplog, revision):
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    from fastapi.testclient import TestClient
+
+    from app.routes import web_debt_proposal_actions as command
+
+    db = Mock()
+    app = FastAPI()
+    app.add_middleware(SanitizedLoggingMiddleware)
+    app.include_router(command.router)
+    app.dependency_overrides[command.get_db] = lambda: db
+    app.dependency_overrides[command.LocalOnly.dependency] = lambda: None
+    monkeypatch.setattr(command, "_list_ledger_options", lambda *_: [])
+    monkeypatch.setattr(command, "_resolve_selected_ledger_id", lambda *_a, **_kw: "original-ledger")
+    monkeypatch.setattr(command, "_require_selected_ledger_write", lambda *_: None)
+    monkeypatch.setattr(command, "_actor_account_id", lambda *_: 13)
+    monkeypatch.setattr(command, "get_participant_debt_response", lambda *_a, **_kw: SimpleNamespace(
+        home_currency_code="JPY", repayment_calendar=SimpleNamespace(revision=8, timezone_name="Asia/Tokyo")))
+    submit = Mock(side_effect=AppError("dependency_unavailable", status_code=503))
+    monkeypatch.setattr(command, "create_repayment_proposal_idempotently", submit)
+    monkeypatch.setattr(command, "_render_action_error", lambda *_a, **kw: JSONResponse(
+        {"values": kw["draft"], "result": ""}, status_code=kw["status_code"]))
+    monkeypatch.setattr(command, "_repayment_outcome", lambda *_a, **kw: JSONResponse(
+        {"values": kw["values"], "result": kw["result"]}, status_code=kw["status_code"]), raising=False)
+    original = {"ledger_id": "original-ledger", "debt_public_id": "original-debt", "origin_binding": "{}",
+        "home_currency_code": "JPY", "amount_major": "12", "note": "  原留言  ", "paid_at": "2026-09-01",
+        "paid_at_timezone": "Pacific/Honolulu", "idempotency_key": "original-key"}
+    if revision is not None:
+        original.update(time_precision="date_only", calendar_revision=revision)
+    with TestClient(app) as client:
+        response = client.post("/web/debts/original-debt/repayment-proposals", data=original)
+    assert response.json()["values"] == original
+    if revision in ("", "原始错误版本"):
+        assert response.status_code == 422
+        submit.assert_not_called()
+        assert not [record for record in caplog.records if record.name == "ticketbox.http"]
+        return
+    assert response.status_code == 503 and response.json()["result"] == "submitted"
+    reports = [record for record in caplog.records if record.name == "ticketbox.http"]
+    assert len(reports) == 1 and reports[0].exc_info and reports[0].exc_info[1] is submit.side_effect
+    assert response.headers["X-Request-Id"] in reports[0].getMessage()
+    submitted = submit.call_args.kwargs
+    assert submitted["idempotency_key"] == "original-key"
+    payload = submitted["payload"]
+    assert payload.proposed_amount_cents == 12 and payload.note == "原留言"
+    assert payload.paid_at is None
+    if revision is None:
+        assert payload.time_input is None
+    else:
+        evidence = payload.time_input
+        assert evidence.precision == "date_only" and evidence.instant_utc is None
+        assert evidence.user_local_date.isoformat() == "2026-09-01"
+        assert evidence.calendar_revision == 3 and evidence.source_timezone == "Pacific/Honolulu"
+
+
+@pytest.mark.parametrize("status,broken_sink", [(200, False), (503, False), (200, True)])
+def test_repayment_detail_failure_keeps_original_receipt_and_reporting_owner(monkeypatch, caplog, status, broken_sink):
+    import logging
+
+    from fastapi import FastAPI, Request
+    from fastapi.responses import JSONResponse
+    from fastapi.testclient import TestClient
+
+    from app.error_reporting import retain_handled_error
+    from app.routes import web_debt_actions as outcomes
+
+    app = FastAPI()
+    app.add_middleware(SanitizedLoggingMiddleware)
+    read_failure = AppError("dependency_unavailable", status_code=503)
+    command_failure = AppError("original_reply_lost", status_code=503)
+    ack = {"clientRef": "original-key", "proposalPublicId": "original-receipt"} if status == 200 else None
+    original = None if ack else {"paid_at": "2026-09-01", "idempotency_key": "original-key"}
+    monkeypatch.setattr(outcomes, "_render_debt_detail", Mock(side_effect=read_failure))
+    monkeypatch.setattr(outcomes, "render_repayment_recovery", lambda *_a, **kw: JSONResponse(
+        {"ack": kw["ack"], "values": kw["values"]}, status_code=kw["status_code"]))
+    if broken_sink:
+        monkeypatch.setattr(logging.getLogger("ticketbox.http"), "error", Mock(side_effect=OSError("log sink unavailable")))
+
+    @app.get("/repayment-result")
+    def result(request: Request):
+        if status == 503:
+            retain_handled_error(request, command_failure)
+        return outcomes._repayment_outcome(request, Mock(), options=[], selected_id="original-ledger",
+            public_id="original-debt", values=original, ack=ack, kind="proposal_create", status_code=status)
+
+    with TestClient(app) as client:
+        response = client.get("/repayment-result")
+    assert response.status_code == status and response.json() == {"ack": ack, "values": original}
+    if not broken_sink:
+        reports = [record for record in caplog.records if record.name == "ticketbox.http"]
+        assert len(reports) == 1 and reports[0].exc_info
+        assert reports[0].exc_info[1] is (command_failure if status == 503 else read_failure)
+        assert response.headers["X-Request-Id"] in reports[0].getMessage()
 
 
 def test_offset_only_evidence_does_not_invent_iana_zone():
@@ -118,6 +273,7 @@ def test_merchant_edit_after_calendar_change_keeps_unknown_time_evidence(monkeyp
     monkeypatch.setattr(command, "get_expense", lambda *_: expense)
     submit = Mock(return_value=SimpleNamespace(row_version=8))
     monkeypatch.setattr(command, "edit_expense_submission", submit)
+    monkeypatch.setattr(command, "expense_edit_was_accepted", lambda *args, **kwargs: False)
 
     result = command.apply_web_expense_form(db, expense_id=1, selected_ledger_id="owner",
         initiator_account_id=13, initiator_device_id=17, form=WebExpenseEditForm(

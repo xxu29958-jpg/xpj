@@ -23,6 +23,7 @@ from app.routes.web_rule_forms import parse_rule_amount
 from app.services.budget_advisor_service import _providers as providers_module
 from app.services.time_service import now_utc
 from tests._infra.currency import activate_test_currency_authority
+from tests._web_native_form_support import open_creation_form
 from tests._web_rule_form_support import submit_rule_form
 
 
@@ -181,11 +182,11 @@ def test_budget_advise_render_follows_zero_decimal_home(jpy_env, web_client: Tes
     )
     assert page.status_code == 200, page.text
     assert re.search(
-        r"<small>\s*储蓄目标\s*</small>\s*<strong>\s*−\s*¥1200\s*</strong>",
+        r"<dt>\s*储蓄目标\s*</dt>\s*<dd>\s*−\s*¥1,200\s*</dd>",
         page.text,
     )
     assert not re.search(
-        r"<small>\s*储蓄目标\s*</small>\s*<strong>\s*−\s*¥12\.00\s*</strong>",
+        r"<dt>\s*储蓄目标\s*</dt>\s*<dd>\s*−\s*¥12\.00\s*</dd>",
         page.text,
     )
     rendered_text = re.sub(r"<[^>]+>", "", page.text)
@@ -208,7 +209,7 @@ def test_budget_advise_suggestion_table_follows_zero_decimal_home(
         data={"ledger_id": "owner", "month": "2026-05", "home_currency_code": "JPY", "run_advise": "true"},
     )
     assert page.status_code == 200, page.text
-    assert "¥1200" in page.text
+    assert "¥1,200" in page.text
     assert "¥12.00" not in page.text
 
 
@@ -235,7 +236,7 @@ def test_render_lanes_still_work_on_cny_default(web_client: TestClient, *, ident
     )
     assert advise.status_code == 200, advise.text
     assert re.search(
-        r"<small>\s*储蓄目标\s*</small>\s*<strong>\s*−\s*¥12\.00\s*</strong>",
+        r"<dt>\s*储蓄目标\s*</dt>\s*<dd>\s*−\s*¥12\.00\s*</dd>",
         advise.text,
     )
     assert re.search(
@@ -282,22 +283,29 @@ def test_zero_fraction_no_js_forms_and_dashboard_share_input_contract(
 
     budgets = web_client.get("/web/budgets?ledger_id=owner&month=2026-05")
     assert budgets.status_code == 200, budgets.text
-    assert "月度总预算（JPY · ¥，仅支持整数）" in re.sub(r"<[^>]+>", "", budgets.text)
+    total_field = re.search(r'<div class="product-surface product-surface--plain budget-total-field">(.*?)</div>', budgets.text, re.S)
+    assert total_field is not None
+    field_text = re.sub(r"<[^>]+>", "", total_field.group(1))
+    assert "总预算 · JPY" in field_text
+    assert "¥ · 仅支持整数" in field_text
+    assert 'aria-describedby="budget-total-amount-hint"' in total_field.group(1)
+    assert 'id="budget-total-amount-hint"' in total_field.group(1)
     assert 'name="total_amount_yuan" value="1200" min="0" step="1"' in budgets.text
     assert "预算（元）" not in budgets.text
     assert 'class="dt-pill danger">超支 ¥0' not in budgets.text
 
     goals = web_client.get("/web/goals?ledger_id=owner&month=2026-05")
     assert goals.status_code == 200, goals.text
+    goals = open_creation_form(web_client, goals, "new_goal")
     assert 'name="home_currency_code" value="JPY"' in goals.text
     assert 'name="target_amount_yuan" value="" inputmode="numeric"' in goals.text
     assert "目标金额（JPY，仅支持整数）" in goals.text
 
-    rules = web_client.get("/web/rules?ledger_id=owner")
+    rules = web_client.get("/web/rules?ledger_id=owner&view=new")
     assert rules.status_code == 200, rules.text
     assert 'type="text" name="amount_min_yuan" inputmode="numeric"' in rules.text
     assert 'name="home_currency_code" value="JPY"' in rules.text
-    assert "金额下限（JPY，可选）" in rules.text
+    assert "金额下限（JPY，可选）" in re.sub(r"<[^>]+>", "", rules.text)
 
 
 @pytest.mark.currency_binding_unbound

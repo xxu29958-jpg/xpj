@@ -35,6 +35,42 @@ class CategoryRuleGlobalRecoveryViewModelTest {
     @BeforeTest fun setup() = Dispatchers.setMain(dispatcher)
     @AfterTest fun tearDown() = Dispatchers.resetMain()
 
+    @Test fun globalApplicationRecoveryKeepsOriginalKeyThenOnlyRefreshesAcceptedRead() = runTest(dispatcher) {
+        var failRead = true
+        var reads = 0
+        val harness = outboxStatusHarness(onRuleRefresh = {
+            reads += 1
+            if (failRead) Result.failure(java.io.IOException("Synthetic read failure")) else Result.success(Unit)
+        })
+        val adapters = OutboxAdapterGraph()
+        val payload = adapters.ruleApplicationAdapter.toJson(com.ticketbox.data.repository.RuleApplicationPayload(
+            previewToken = "original-preview", maxScan = 500, scanned = 9, expectedChanges = 1))
+        val id = harness.outbox.enqueue(PendingMutationType.ApplyConfirmedRules, "rule_application:confirmed", payload, 0, "original-application-key")
+        harness.outbox.markFailed(id, "client_upgrade_required")
+        val original = harness.outbox.observeStatus().first().failed.single()
+        val vm = harness.createGlobalViewModel()
+        val api = com.ticketbox.data.repository.FakeApiService(mutableListOf(), 0)
+        try {
+            val ready = vm.uiState.first { it.ruleApplications.containsKey(id) }
+            assertTrue(ready.offersRetry(original))
+            vm.retry(original)
+            val retried = harness.outbox.observeActiveByTypes(categoryRuleSubmissionTypes)
+                .first { it.singleOrNull()?.status == PendingMutationStatus.Pending }.single()
+            assertEquals(original.payloadJson, retried.payloadJson)
+            assertEquals(original.idempotencyKey, retried.idempotencyKey)
+            val writer = com.ticketbox.data.repository.ApplyConfirmedRulesDispatcher({ api }, adapters.ruleApplicationAdapter,
+                adapters.ruleApplicationReceiptAdapter) { harness.rules.refreshAcceptedApplication(it).getOrThrow() }
+            com.ticketbox.data.repository.OutboxDrainEngine(harness.outbox, listOf(writer)).drainOnce()
+            val accepted = vm.uiState.first { it.ruleApplications[id]?.needsRefresh == true }.ruleApplications.getValue(id)
+            assertFalse(accepted.canRetry)
+            failRead = false
+            vm.refreshAcceptedResult(accepted.row)
+            vm.uiState.first { it.status.refreshRequired.isEmpty() && it.busyRowId == null }
+            assertEquals(2, reads)
+            assertEquals(1, api.applyConfirmedRequests.size)
+        } finally { vm.viewModelScope.coroutineContext.job.cancelAndJoin() }
+    }
+
     @Test fun aRuleOriginalWithoutAnOwnerDescriptionCannotUseGenericRetry() {
         val binding = LogicalSessionBinding("https://example.test", "owner", "owner", "session", "binding")
         for (type in categoryRuleSubmissionTypes) {

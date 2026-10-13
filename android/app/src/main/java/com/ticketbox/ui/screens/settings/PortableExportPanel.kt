@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import com.ticketbox.R
+import com.ticketbox.ui.components.AppButtonIcons
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppSpacing
@@ -80,7 +81,7 @@ internal fun PortableExportPanel(
 private fun PortableSaveControls(state: PortableExportUiState, onSave: () -> Unit, onCancel: () -> Unit) {
     when (state.stage) {
         PortableExportStage.Idle -> AppPrimaryButton(text = stringResource(R.string.portable_export_save),
-            icon = Icons.Filled.FileDownload, modifier = Modifier.fillMaxWidth(),
+            icons = AppButtonIcons(leading = Icons.Filled.FileDownload), modifier = Modifier.fillMaxWidth(),
             enabled = !state.loading && state.selectedLedgerId != null, onClick = onSave)
         PortableExportStage.ChoosingLocation -> Text(stringResource(R.string.portable_export_choosing))
         PortableExportStage.Downloading -> {

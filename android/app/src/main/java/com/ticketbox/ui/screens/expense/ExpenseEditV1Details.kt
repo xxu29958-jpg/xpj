@@ -1,5 +1,6 @@
 package com.ticketbox.ui.screens.expense
 
+import com.ticketbox.ui.screens.settings.SettingsEntryRowOptions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -567,72 +568,27 @@ internal fun ExpenseDetailReconcileStatus.label(): String = stringResource(
 
 @Composable
 private fun ExpenseItemRow(item: ExpenseItem, currencyDisplay: CurrencyDisplay) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
-    ) {
-        AppAdaptiveEditAmountRow(
-            amount = formatDisplayAmount(item.amountCents, currencyDisplay),
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
-                Text(
-                    text = item.name,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                itemSubtitle(item)?.let {
-                    Text(
-                        text = it,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodySmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-        }
-        item.unitPriceCents?.let {
-            ExpenseEditReconciliationRows(
-                rows = listOf(
-                    ExpenseEditReconciliationLine(
-                        label = stringResource(R.string.expense_edit_item_subtitle_unit_price),
-                        value = formatDisplayAmount(it, currencyDisplay),
-                    ),
-                ),
-            )
-        }
+    val unitPrice = item.unitPriceCents?.let {
+        "${stringResource(R.string.expense_edit_item_subtitle_unit_price)} ${formatDisplayAmount(it, currencyDisplay)}"
     }
+    com.ticketbox.ui.screens.settings.SettingsEntryRow(
+            title = item.name,
+            subtitle = listOfNotNull(itemSubtitle(item), unitPrice).joinToString(" · "),
+            icon = R.drawable.ic_lucide_shopping_bag,
+            onClick = null,
+            options = SettingsEntryRowOptions(amount = formatDisplayAmount(item.amountCents, currencyDisplay)),
+        )
 }
 
 @Composable
 private fun ExpenseSplitRow(split: ExpenseSplit, currencyDisplay: CurrencyDisplay) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
-    ) {
-        AppAdaptiveEditAmountRow(
-            amount = formatDisplayAmount(split.amountCents, currencyDisplay),
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
-                Text(
-                    text = split.accountName,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = splitSubtitle(split),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-    }
+    com.ticketbox.ui.screens.settings.SettingsEntryRow(
+            title = split.accountName,
+            subtitle = splitSubtitle(split),
+            icon = R.drawable.ic_lucide_user_round,
+            onClick = null,
+            options = SettingsEntryRowOptions(amount = formatDisplayAmount(split.amountCents, currencyDisplay)),
+        )
 }
 
 internal data class DetailStateCopy(

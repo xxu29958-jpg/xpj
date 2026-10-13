@@ -2,14 +2,14 @@ package com.ticketbox.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Button
+import com.ticketbox.ui.components.AppAction
+import com.ticketbox.ui.components.AppActionRow
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -18,7 +18,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -182,7 +181,7 @@ private fun RepaymentDraftCard(
 ) {
     AppPaperCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.fillMaxWidth().padding(AppSpacing.cardPadding)) {
-            Text(stringResource(R.string.repayment_draft_original_money), style = MaterialTheme.typography.labelMedium,
+            Text(stringResource(R.string.repayment_draft_original_money_currency, draft.originalCurrencyCode), style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             AppAdaptiveEditAmountRow(
                 amount = formatDisplayAmount(draft.originalAmountMinor, CurrencyDisplay.forRecord(draft.originalCurrencyCode)),
@@ -234,14 +233,13 @@ private fun RepaymentDraftCard(
 
 @Composable
 private fun RepaymentDraftCardActions(action: DraftRowAction, callbacks: RepaymentDraftCardCallbacks) {
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap, Alignment.End)) {
-        TextButton(onClick = callbacks.onDismiss, enabled = action == DraftRowAction.Idle) {
-            Text(stringResource(R.string.repayment_draft_dismiss))
-        }
-        Button(onClick = callbacks.onOpenPicker, enabled = action != DraftRowAction.Busy) {
-            Text(stringResource(R.string.repayment_review_open))
-        }
-    }
+    AppActionRow(
+        primary = AppAction(text = stringResource(R.string.repayment_review_open),
+            onClick = callbacks.onOpenPicker, enabled = action != DraftRowAction.Busy),
+        secondary = AppAction(text = stringResource(R.string.repayment_draft_dismiss),
+            onClick = callbacks.onDismiss, enabled = action == DraftRowAction.Idle),
+        showDivider = false,
+    )
 }
 
 @Composable

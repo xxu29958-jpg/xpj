@@ -20,7 +20,6 @@ from app.routes.web_common import (
     _list_ledger_options,
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
-    _web_redirect,
     _with_ledger,
     category_return_url,
     parse_form_row_version_token,
@@ -54,7 +53,7 @@ def _render_editor(
     request: Request, db: Session, options, selected_id: str, goal,
     *, values: dict[str, str] | None = None, error: str | None = None,
     conflict: bool = False, status_code: int = 200,
-    return_category: str = "", return_month: str = "",
+    return_category: str = "", return_month: str = "", return_include_archived: str = "",
     draft_result: str = "",
 ) -> HTMLResponse:
     ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id)
@@ -65,7 +64,8 @@ def _render_editor(
         "expected_row_version": str(goal.row_version),
     }
     values = values if values is not None else {**current, "idempotency_key": str(uuid4()),
-        "return_category": return_category, "return_month": return_month}
+        "return_category": return_category, "return_month": return_month,
+        "return_include_archived": return_include_archived}
     try:
         form_currency = currency_input_metadata(values.get("home_currency_code"))
     except AppError:
@@ -78,8 +78,12 @@ def _render_editor(
         goal_draft_scope=manual_draft_scope(db, request.state.web_session_auth)
             if getattr(request.state, "web_session_auth", None) is not None else None,
         category_return_url=category_return_url(selected_id, values.get("return_category", ""), values.get("return_month", "")),
+        goal_return_url=_with_ledger("/web/goals", selected_id,
+            month=values.get("return_month") or current["month"],
+            include_archived="true" if values.get("return_include_archived") == "true" else "false") + f"#goal-{goal.public_id}",
         current_edit_url=_with_ledger(f"/web/goals/{goal.public_id}/edit", selected_id,
-            return_category=values.get("return_category", ""), return_month=values.get("return_month", "")),
+            return_category=values.get("return_category", ""), return_month=values.get("return_month", ""),
+            return_include_archived=values.get("return_include_archived", "")),
     )
     return templates.TemplateResponse(
         request=request, name="goal_edit.html", context=ctx, status_code=status_code,
@@ -89,12 +93,12 @@ def _render_editor(
 @router.get("/{public_id}/edit", response_class=HTMLResponse)
 def web_goal_edit(
     request: Request, public_id: str, ledger_id: str = "",
-    return_category: str = "", return_month: str = "",
+    return_category: str = "", return_month: str = "", return_include_archived: str = "",
     _local: None = LocalOnly, db: Session = Depends(get_db),
 ) -> HTMLResponse:
     options, selected_id, goal = _edit_scope(request, db, ledger_id, public_id)
     return _render_editor(request, db, options, selected_id, goal,
-        return_category=return_category, return_month=return_month)
+        return_category=return_category, return_month=return_month, return_include_archived=return_include_archived)
 
 
 @router.post("/{public_id}/edit", response_class=HTMLResponse)
@@ -107,6 +111,7 @@ def web_goal_save(
     idempotency_key: str = Form(default=""), review_latest: bool = Form(default=False),
     draft_scope: str = Form(default=""),
     return_category: str = Form(""), return_month: str = Form(""),
+    return_include_archived: str = Form(""),
     _local: None = LocalOnly, db: Session = Depends(get_db),
 ) -> Response:
     options = _list_ledger_options(db)
@@ -118,7 +123,7 @@ def web_goal_save(
         "home_currency_code": home_currency_code,
         "draft_scope": draft_scope,
         "review_latest": "true" if review_latest else "",
-        "return_category": return_category, "return_month": return_month,
+        "return_category": return_category, "return_month": return_month, "return_include_archived": return_include_archived,
     }
     retained = preserve_original_ledger_form(request, db, options=options, selected=selected_id,
         fields={**values, "ledger_id": ledger_id, "review_latest": review_latest}, task="修改支出目标")
@@ -149,8 +154,9 @@ def web_goal_save(
     except (AppError, ValidationError) as exc:
         return _edit_refusal(request, db, options, selected_id, public_id, values, exc)
     target = category_return_url(selected_id, return_category, return_month, message="目标修改已保存，可以继续整理原分类。")
-    redirect = RedirectResponse(target, status_code=303) if target else _web_redirect(
-        "/web/goals", selected_id, month=result.month, msg="目标修改已保存。")
+    target = target or _with_ledger("/web/goals", selected_id, month=result.month,
+        include_archived="true" if return_include_archived == "true" else "false", msg="目标修改已保存。") + f"#goal-{public_id}"
+    redirect = RedirectResponse(target, status_code=303)
     return draft_ack_response(request, draft_scope=draft_scope, idempotency_key=idempotency_key,
         receipt=result.model_dump(mode="json"), next_href=redirect.headers["location"]) or redirect
 

@@ -95,12 +95,7 @@ private fun LazyListScope.dataQualityPageItems(
         }
         DataQualityBodyState.Content -> state.dataQuality?.let { summary ->
             item {
-                StatsInsightSurface {
-                    PendingOverviewCard(
-                        summary = summary,
-                        onRemediate = onRemediate,
-                    )
-                }
+                PendingOverviewCard(summary = summary, onRemediate = onRemediate)
             }
         }
     }

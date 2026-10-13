@@ -103,7 +103,7 @@ def test_native_income_edit_and_repeated_save_use_the_record_currency(income_bro
 
 def test_native_create_retains_the_form_currency_under_a_different_default(income_browser, identity):
     client = income_browser
-    page = client.get("/web/income-plans?ledger_id=owner")
+    page = client.get("/web/income-plans?ledger_id=owner&new_income=1")
     fields = hidden_post_forms(page.text)["/web/income-plans/create"]
     assert fields["home_currency_code"] == "CNY"
     fields.update(home_currency_code="JPY", label="Captured JPY draft", source_type="salary", frequency="monthly",

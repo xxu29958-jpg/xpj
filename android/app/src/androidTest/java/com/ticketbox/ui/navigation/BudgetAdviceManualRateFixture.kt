@@ -56,9 +56,12 @@ internal class BudgetAdviceManualRateFixture(private val context: Context) : Aut
     val inputReads = CopyOnWriteArrayList<Pair<String, String?>>()
     val writes = CopyOnWriteArrayList<Pair<ExchangeRateRequestDto, String>>()
     val adviceCalls = CopyOnWriteArrayList<BudgetAdviseRequestDto>()
+    var advice: com.ticketbox.data.remote.dto.BudgetAdviceDto? = null
     val arrangementWrites = CopyOnWriteArrayList<Pair<MonthlyArrangementSaveRequest, String>>()
     private val arrangementReceipts = ConcurrentHashMap<String, MonthlyArrangementDto>()
     @Volatile var arrangement: MonthlyArrangementDto? = null
+    var historyReadGate: kotlinx.coroutines.CompletableDeferred<Unit>? = null
+    var historyUnavailable = false
     private val receipts = ConcurrentHashMap<String, ExchangeRateDto>()
     @Volatile var latest: ExchangeRateDto? = null
     @Volatile var loseAck = false
@@ -88,6 +91,16 @@ internal class BudgetAdviceManualRateFixture(private val context: Context) : Aut
                 .copy(arrangementCurrencyCode = arrangement["arrangement_currency_code"] ?: arrangement.getValue("home_currency_code"))
         override suspend fun monthlyArrangement(month: String) = MonthlyArrangementResponseDto(
             session.value.identity.ledgerId, month, arrangement?.takeIf { it.month == month })
+        override suspend fun monthlyArrangementHistory(month: String, beforeVersion: Long?, limit: Int): com.ticketbox.data.remote.dto.MonthlyArrangementHistoryDto {
+            historyReadGate?.await()
+            if (historyUnavailable) throw java.net.ConnectException("offline")
+            return com.ticketbox.data.remote.dto.MonthlyArrangementHistoryDto(session.value.identity.ledgerId, month,
+                arrangementReceipts.values.filter { it.month == month && (beforeVersion == null || it.rowVersion < beforeVersion) }
+                    .sortedByDescending { it.rowVersion }.take(limit).map {
+                        com.ticketbox.data.remote.dto.MonthlyArrangementHistoryItemDto(it.rowVersion, it.updatedAt,
+                            it.homeCurrencyCode, it.savingsTargetCents, it.reservedBufferCents)
+                    }, null)
+        }
         override suspend fun saveMonthlyArrangement(month: String, request: MonthlyArrangementSaveRequest,
             idempotencyKey: String): MonthlyArrangementDto {
             arrangementWrites += request to idempotencyKey
@@ -115,7 +128,9 @@ internal class BudgetAdviceManualRateFixture(private val context: Context) : Aut
         }
         override suspend fun budgetAdvise(request: BudgetAdviseRequestDto): BudgetAdviseResponseDto {
             adviceCalls += request
-            return BudgetAdviseResponseDto(null, request.homeCurrencyCode, "empty", "ai_advisor_provider_empty", inputs = budgetAdviceInputs(request.month, request.timezone, request.homeCurrencyCode))
+            return BudgetAdviseResponseDto(advice, request.homeCurrencyCode, "controlled",
+                if (advice == null) "ai_advisor_provider_empty" else null,
+                inputs = budgetAdviceInputs(request.month, request.timezone, request.homeCurrencyCode))
         }
     }
     private val provider = ApiServiceProvider(object : ApiServiceFactory {
@@ -136,7 +151,11 @@ internal class BudgetAdviceManualRateFixture(private val context: Context) : Aut
             DiscretionaryResponseDto(10000, 1000, if (missing) null else 2000, savings, buffer,
                 if (missing) null else remaining.coerceAtLeast(0), if (missing) null else (-remaining).coerceAtLeast(0)),
             if (missing) listOf(MissingExchangeRateDto("CNY", "JPY", rateDate)) else emptyList(),
-            savedArrangement = arrangement?.takeIf { it.month == month }, isTrial = trial)
+            savedArrangement = arrangement?.takeIf { it.month == month }, isTrial = trial,
+            budgetDefinition = com.ticketbox.data.remote.dto.BudgetPlanDefinitionDto("JPY", 4000, 100, -50, listOf("其他"), 3, "2026-09-01T04:00:00Z"),
+            plannedTotalCents = if (home == "JPY" && !missing) 4000 + savings + buffer else null,
+            dataScope = com.ticketbox.data.remote.dto.BudgetAdviceDataScopeDto("2026-10-11T04:00:00Z",
+                java.time.YearMonth.parse(month).minusMonths(6).toString(), java.time.YearMonth.parse(month).minusMonths(1).toString(), 2))
     }
 
     fun reopen() {

@@ -545,10 +545,9 @@ class FakePendingMutationDao : PendingMutationDao {
         return 1
     }
 
-    override suspend fun clearBudgetReadRefresh(id: Long, receiptJson: String): Int {
+    override suspend fun clearAcceptedReadRefresh(id: Long, receiptJson: String, expectedError: String): Int {
         val current = rows[id] ?: return 0
-        if (current.status != "done" || current.type != "save_monthly_budget" ||
-            current.lastError != BUDGET_READ_REFRESH_REQUIRED || current.receiptJson != receiptJson) return 0
+        if (current.status != "done" || current.lastError != expectedError || current.receiptJson != receiptJson) return 0
         rows[id] = current.copy(lastError = null)
         refreshObservables()
         return 1

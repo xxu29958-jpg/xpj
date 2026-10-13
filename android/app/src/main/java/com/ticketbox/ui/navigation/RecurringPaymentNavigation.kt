@@ -68,6 +68,7 @@ internal data class RecurringExpenseNavigation(
     val onOpenExpense: (Long) -> Unit,
     val onRecordPayment: (RecurringPaymentTask) -> Unit = {},
     val onOpenSubmission: (String) -> Unit = {},
+    val onOpenSyncStatus: (() -> Unit)? = null,
 )
 
 internal class RecurringPaymentDraftStore(private val state: SavedStateHandle) {

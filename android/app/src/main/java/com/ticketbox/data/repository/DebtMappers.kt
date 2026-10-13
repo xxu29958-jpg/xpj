@@ -37,6 +37,10 @@ fun DebtDto.toDomain(): Debt = Debt(
     viewerIsDebtor = viewerIsDebtor,
     isForgiven = isForgiven,
     note = note,
+    adjustmentAmountCents = adjustmentAmountCents,
+    forgivenAmountCents = forgivenAmountCents,
+    repaymentCalendar = repaymentCalendar?.let { com.ticketbox.domain.model.DebtRepaymentCalendar(it.revision, it.timezoneName) },
+    accountingTime = accountingTime?.toDomain(),
 )
 
 fun DebtBillParseResponseDto.toDomain(): DebtBillSuggestion = DebtBillSuggestion(
@@ -70,6 +74,7 @@ data class DebtDraft(
     val installmentCount: Int? = null,
     val installmentPeriodMonths: Int? = null,
     val note: String? = null,
+    val timeInput: com.ticketbox.data.remote.dto.ExpenseTimeInputDto? = null,
 )
 
 fun DebtDraft.toOutboxRequest(): DebtCreateOutboxRequest = DebtCreateOutboxRequest(
@@ -78,6 +83,7 @@ fun DebtDraft.toOutboxRequest(): DebtCreateOutboxRequest = DebtCreateOutboxReque
     counterpartyType = DebtCounterpartyTypes.EXTERNAL,
     counterpartyLabel = counterpartyLabel.trim(),
     note = note?.trim()?.ifBlank { null },
+    timeInput = timeInput,
     principalAmountCents = principalAmountCents,
     sourceType = DebtSourceTypes.MANUAL,
     debtKind = debtKind,
@@ -107,4 +113,5 @@ fun MemberRepaymentProposalDto.toDomain(): MemberRepaymentProposal = MemberRepay
     resolvedAt = resolvedAt,
     supersedesProposalPublicId = supersedesProposalPublicId,
     committedRepaymentPublicId = committedRepaymentPublicId,
+    accountingTime = accountingTime?.toDomain(),
 )

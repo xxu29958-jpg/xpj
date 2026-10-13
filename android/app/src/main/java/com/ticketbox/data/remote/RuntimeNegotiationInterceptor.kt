@@ -6,6 +6,7 @@ import com.ticketbox.data.remote.dto.ErrorDto
 import com.ticketbox.data.remote.dto.ExpenseCorrectionRequestDto
 import com.ticketbox.data.remote.dto.ExpenseManualCreateRequestDto
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
+import com.ticketbox.data.remote.dto.MemberRepaymentProposalCreateRequestDto
 import com.ticketbox.data.remote.dto.toWriteCompatibility
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.ResponseBody.Companion.toResponseBody
@@ -33,13 +34,13 @@ internal class RuntimeNegotiationInterceptor : Interceptor {
         val incomeForecastRead = request.method == "GET" && request.url.encodedPath == "/api/income-plans"
         val keyedUpload = request.method == "POST" &&
             request.url.encodedPath.endsWith("/api/app/upload-screenshot") && request.header("Idempotency-Key") != null
-        val accountingTimeInput = request.hasAccountingTimeInput()
+        val timeInput = request.requiredTimeInput()
         val originalAttachment = Regex("/api/expenses/[^/]+/original(?:/.*)?$").containsMatchIn(request.url.encodedPath)
         val debtActivityRead = request.isDebtActivityRead()
         // An API date, including one already attached to this request, does not prove receipt replay support.
         if (!request.requiresRuntimeNegotiation(
                 incomeForecastRead,
-                keyedUpload || accountingTimeInput || originalAttachment || debtActivityRead,
+                keyedUpload || timeInput != null || originalAttachment || debtActivityRead,
             )) {
             return chain.proceed(request)
         }
@@ -49,9 +50,10 @@ internal class RuntimeNegotiationInterceptor : Interceptor {
         }
         if (!compatibility.supportsRequiredCapabilities(
                 keyedUpload,
-                accountingTimeInput,
+                timeInput,
                 originalAttachment,
                 debtActivityRead,
+                request.url.encodedPath.endsWith("/original/attach"),
             )) {
             return incompatibleProtocolResponse(request)
         }
@@ -79,7 +81,7 @@ internal class RuntimeNegotiationInterceptor : Interceptor {
     }
 
     private fun Request.requiresRuntimeNegotiation(incomeForecastRead: Boolean, requiresCapabilityEvidence: Boolean): Boolean =
-        requiresCapabilityEvidence || ((incomeForecastRead || isDebtGoalRead() || method in MUTATING_HTTP_METHODS) &&
+        requiresCapabilityEvidence || isRepaymentRead() || ((incomeForecastRead || isDebtGoalRead() || method in MUTATING_HTTP_METHODS) &&
             header("Authorization") != null && !url.encodedPath.startsWith("/api/auth/") &&
             // Label commands authorize their own account or target ledger. The
             // currency handshake for the selected ledger owns no part of them.
@@ -100,25 +102,36 @@ internal class RuntimeNegotiationInterceptor : Interceptor {
     }
 }
 
-private fun RuntimeWriteCompatibility?.supportsRequiredCapabilities(uploadReceipt: Boolean, accountingTime: Boolean,
-    originalAttachment: Boolean, debtActivityRead: Boolean): Boolean =
+private enum class RuntimeTimeInput { Expense, Repayment }
+
+private fun RuntimeWriteCompatibility?.supportsRequiredCapabilities(uploadReceipt: Boolean, timeInput: RuntimeTimeInput?,
+    originalAttachment: Boolean, debtActivityRead: Boolean, firstAttachment: Boolean): Boolean =
     (!uploadReceipt || this?.uploadOriginalReceiptVersion == UPLOAD_ORIGINAL_RECEIPT_VERSION) &&
-        (!accountingTime || this?.supportsAccountingTimeInput == true) &&
+        (when (timeInput) {
+            RuntimeTimeInput.Expense -> this?.supportsAccountingTimeInput == true
+            RuntimeTimeInput.Repayment -> this?.supportsRepaymentTimeInput == true
+            null -> true
+        }) &&
         (!originalAttachment || this?.supportsOriginalAttachment == true) &&
+        (!firstAttachment || this?.originalAttachmentCreateVersion == 1) &&
         (!debtActivityRead || this?.debtActivityReadVersion == DEBT_ACTIVITY_READ_VERSION)
 
 /** Inspect Retrofit's typed command, never consume or regenerate the original HTTP body. */
-private fun Request.hasAccountingTimeInput(): Boolean = tag(Invocation::class.java)?.arguments()?.any { argument ->
+private fun Request.requiredTimeInput(): RuntimeTimeInput? = tag(Invocation::class.java)?.arguments()?.firstNotNullOfOrNull { argument ->
     when (argument) {
-        is ExpenseManualCreateRequestDto -> argument.timeInput != null
-        is ExpenseUpdateRequest -> argument.timeInput != null
-        is ExpenseCorrectionRequestDto -> argument.timeInput.changed
-        else -> false
+        is ExpenseManualCreateRequestDto -> RuntimeTimeInput.Expense.takeIf { argument.timeInput != null }
+        is ExpenseUpdateRequest -> RuntimeTimeInput.Expense.takeIf { argument.timeInput != null }
+        is ExpenseCorrectionRequestDto -> RuntimeTimeInput.Expense.takeIf { argument.timeInput.changed }
+        is MemberRepaymentProposalCreateRequestDto -> RuntimeTimeInput.Repayment.takeIf { argument.timeInput != null }
+        else -> null
     }
-} == true
+}
 
 private fun Request.isDebtActivityRead(): Boolean =
     method == "GET" && Regex("^/api/debts/[^/]+/activity$").matches(url.encodedPath)
+
+private fun Request.isRepaymentRead(): Boolean =
+    method == "GET" && Regex("^/api/debts/[^/]+/(repayments|repayment-proposals)$").matches(url.encodedPath)
 
 /** A writer's first read after clearance latches achievement using the server's currency fence. */
 private fun Request.isDebtGoalRead(): Boolean = method == "GET" &&

@@ -12,7 +12,7 @@
   {% if time_name == 'expense_time' %}<span class="meta">选择“日期和时刻”后，{% if correction_mode %}留空可清除已知时刻{% else %}留空表示不修改时刻{% endif %}；只有日期请选“只有日期”。</span>{% endif %}
   <label for="{{ time_prefix }}-date">原始发生日期（只有日期时填写）</label>
   <input id="{{ time_prefix }}-date" name="user_local_date" type="date" value="{{ time_form.user_local_date }}">
-  <details{% if time_form.offset_options or time_form.accounting_date %} open{% endif %}>
+  <details class="product-disclosure"{% if time_form.offset_options or time_form.accounting_date %} open{% endif %}>
   <summary>发生地区与账务归属{% if time_form.source_timezone %} · {{ time_form.source_timezone }}{% endif %}</summary>
   <label for="{{ time_prefix }}-zone">发生地时区</label>
   <input id="{{ time_prefix }}-zone" name="source_timezone" value="{{ time_form.source_timezone }}" placeholder="例如 Asia/Shanghai">

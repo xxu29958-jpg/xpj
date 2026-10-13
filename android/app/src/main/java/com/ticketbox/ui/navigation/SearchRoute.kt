@@ -13,6 +13,7 @@ import com.ticketbox.viewmodel.GlobalSearchViewModel
 internal fun SearchRoute(
     navController: NavHostController,
     screenFactory: MainScreenFactory,
+    onOpenSavedQuery: (String) -> Unit,
     onBack: (() -> Unit)? = null,
 ) {
     val viewModel: GlobalSearchViewModel = viewModel(factory = screenFactory.repositoryViewModelFactory)
@@ -33,6 +34,8 @@ internal fun SearchRoute(
             // which includes not-yet-synced offline creates (negative local id);
             // they're now editable from the local cache, so open them like any row.
             onOpenExpense = navController::openExpense,
+            onOpenSavedQueries = { onOpenSavedQuery(ProductSecondaryPage.SavedQueries.route) },
+            onSaveQuery = { onOpenSavedQuery(savedQueryCreationRoute(state.query, state.categoryFilter, state.monthFilter)) },
         ),
     )
 }

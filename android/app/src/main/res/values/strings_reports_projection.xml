@@ -1,5 +1,17 @@
 <resources>
     <string name="reports_amount_unavailable">暂不可计算</string>
+    <string name="reports_page_title">这个月的花费</string>
+    <string name="reports_scope">%1$s · %2$s</string>
+    <string name="reports_rankings_title">分类与商家排行</string>
+    <string name="reports_rankings_description">按当前范围查看</string>
+    <string name="reports_comparisons_title">本月比较与近期变化</string>
+    <string name="reports_comparisons_description">上月、去年同月与近期走势</string>
+    <string name="reports_view_data">查看明细数据</string>
+    <string name="reports_data_title">本月的净支出明细</string>
+    <string name="reports_data_description">与趋势图使用同一组数据。</string>
+    <string name="reports_signed_trend">当前范围含负净额，以下保留完整金额；不计算普通支出占比。</string>
+    <string name="reports_signed_share_unavailable">含负净额，不计算普通占比</string>
+    <string name="reports_return_chart">返回趋势</string>
     <string name="reports_projection_incomplete">换算依据尚未齐全，金额、占比和金额排名暂不展示；笔数仍可查看。</string>
     <string name="reports_currency">报告币种：%1$s</string>
     <string name="reports_repair_rates">补齐或纠正汇率</string>

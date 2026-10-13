@@ -25,7 +25,7 @@ from app.services.merchant_alias_service import (
 def _create_alias(client: TestClient, headers: dict[str, str]) -> dict:
     response = client.post(
         "/api/merchants/aliases",
-        headers=headers,
+        headers={**headers, "Idempotency-Key": str(uuid4())},
         json={"canonical_merchant": "星巴克", "alias": "STARBUCKS 国贸店"},
     )
     assert response.status_code == 201, response.text

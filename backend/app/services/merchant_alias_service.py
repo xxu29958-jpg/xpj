@@ -234,7 +234,7 @@ def create_merchant_alias(
         updated_at=now,
     )
     db.add(item)
-    db.commit()
+    db.flush()
     db.refresh(item)
     return item
 

@@ -17,7 +17,6 @@ from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
 from app.errors import AppError
-from app.services.tag_management_service import delete_tag
 from tests._infra.tag_helpers import (
     demote_owner_to_viewer,
     expense_row,
@@ -257,25 +256,48 @@ def test_merge_pair_claim_on_vanished_tag_surfaces_state_conflict(client: TestCl
     assert exc.value.status_code == 409
 
 
-def test_delete_tag_require_orphan_rejects_a_relinked_tag(client: TestClient, *, identity) -> None:
-    """ADR-0043 review (owner-cleanup TOCTOU): delete_tag(require_orphan=True)
-    soft-deletes atomically only while NOT EXISTS(expense_tags). A tag that gained
-    a link after the caller's orphan-check (re-tagging doesn't bump row_version,
-    so the OCC token can't catch it) is rejected, not clobbered. Service-level —
-    the route pre-check would skip first; this pins the atomic backstop."""
+@pytest.mark.parametrize("action", ["rename", "delete", "merge"])
+def test_unused_tag_api_preserves_later_references_until_the_source_is_unused_again(
+    client: TestClient, identity, action: str,
+) -> None:
+    """The Android cleanup condition reaches the same atomic owner as Web cleanup.
+
+    Reusing a live tag does not bump its OCC token, so checking the version alone
+    would let an old unused preview rewrite a new bill.
+    """
     h = identity.app_headers
-    manual_expense(client, h, tags="工作", merchant="A")  # 工作 has a live link
-    tag = tag_index(client, h)["工作"]
-    with SessionLocal() as db, pytest.raises(AppError) as exc:
-        delete_tag(
-            db,
-            tenant_id="owner",
-            public_id=tag["public_id"],
-            expected_row_version=tag["row_version"],
-            require_orphan=True,
-        )
-    assert exc.value.status_code == 409  # still-live + has a link → state_conflict
-    assert "工作" in tag_index(client, h)  # untouched
+    original = manual_expense(client, h, tags="工作, 出差", merchant="原标签")
+    correction = client.post(f"/api/expenses/{original['id']}/corrections",
+        headers={**h, "Idempotency-Key": str(uuid4())},
+        json={"expected_row_version": original["row_version"], "reason": "移除误加标签", "tags": "出差"})
+    assert correction.status_code == 201, correction.text
+    source, target = (tag_index(client, h)[name] for name in ("工作", "出差"))
+    assert source["usage_count"] == 0
+    payload = {"expected_row_version": source["row_version"], "require_orphan": True}
+    if action == "rename":
+        payload["name"] = "办公"
+    elif action == "merge":
+        payload.update(target_public_id=target["public_id"], target_row_version=target["row_version"])
+    accepted = manual_expense(client, h, tags="工作", merchant="随后使用标签的账单")
+    reused = tag_index(client, h)["工作"]
+    assert reused["row_version"] == source["row_version"]
+    response = client.post(f"/api/tags/{source['public_id']}/{action}", headers=h, json=payload)
+    assert response.status_code == 409, response.text
+    assert response.json()["error"] == "state_conflict"
+    assert tag_index(client, h)["工作"] == reused
+    assert tag_index(client, h)["出差"] == target
+    assert expense_row("随后使用标签的账单") == (accepted["id"], accepted["row_version"], "工作")
+    assert tag_links(accepted["id"]) == ["工作"]
+    correction = client.post(f"/api/expenses/{accepted['id']}/corrections",
+        headers={**h, "Idempotency-Key": str(uuid4())},
+        json={"expected_row_version": accepted["row_version"], "reason": "解除新引用", "tags": ""})
+    assert correction.status_code == 201, correction.text
+    retry = client.post(f"/api/tags/{source['public_id']}/{action}", headers=h, json=payload)
+    assert retry.status_code == 200, retry.text
+    current = tag_index(client, h)
+    assert "工作" not in current
+    if action == "rename":
+        assert current["办公"]["public_id"] == source["public_id"]
 
 
 def test_self_merge_rejected(client: TestClient, *, identity) -> None:

@@ -6,7 +6,6 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.MailOutline
 import androidx.compose.material.icons.outlined.MenuBook
-import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -90,8 +89,13 @@ internal fun LedgerDirectoryPage(state: LedgerSwitcherUiState, activeLedgerId: S
         SettingsDataRow(stringResource(R.string.join_family_ledger_page_title),
             stringResource(R.string.ledger_switcher_join_hint), Icons.Outlined.MailOutline,
             SettingsDataAction(""), onClick = if (state.loading) null else actions.onJoin)
-        SettingsEntryRow(stringResource(R.string.ledger_switcher_manage), stringResource(R.string.ledger_switcher_manage_hint),
-            Icons.Outlined.Tune, onClick = { showManagement = !showManagement }, expanded = showManagement)
+        SettingsEntryRow(
+            stringResource(R.string.ledger_switcher_manage),
+            stringResource(R.string.ledger_switcher_manage_hint),
+            R.drawable.ic_lucide_sliders_horizontal,
+            onClick = { showManagement = !showManagement },
+            options = SettingsEntryRowOptions(expanded = showManagement),
+        )
         if (showManagement || state.listLoadState == LedgerListLoadState.Failed) LedgerManagement(state, activeLedgerId, actions)
     }
 }

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="expense_confirmation_title">这张，记好了</string>
+    <string name="expense_confirmation_return">完成并返回</string>
+    <string name="expense_confirmation_view">查看这笔账单</string>
+    <string name="expense_confirmation_current">查看当前账单与原件状态。</string>
+    <string name="expense_confirmation_amount">本次已入账 · %1$s</string>
+    <string name="expense_confirmation_original">原币 · %1$s %2$s</string>
+</resources>

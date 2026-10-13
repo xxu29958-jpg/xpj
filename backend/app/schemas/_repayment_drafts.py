@@ -8,7 +8,7 @@ so the confirm request carries ``expected_row_version``, the §2.1 stale-intent 
 §3.6 fingerprint) or DISMISSES it.
 
 Capture preserves original money. Human confirmation delegates FX freezing to
-the existing repayment fact service using the captured payment time.
+the existing repayment fact service using captured or explicitly reviewed time.
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
+from app.schemas._accounting_time import AccountingTimeInput, AccountingTimeSnapshot
 from app.schemas._money import PositiveCanonicalDecimalInput, PositiveMoneyMinor
 from app.services.time_service import to_iso
 
@@ -68,6 +69,7 @@ class RepaymentDraftConfirmRequest(BaseModel):
     expected_row_version: int
     original_currency: str | None = Field(default=None, min_length=3, max_length=3)
     original_amount: PositiveCanonicalDecimalInput | None = None
+    time_input: AccountingTimeInput | None = None
 
 
 class RepaymentDraftDismissRequest(BaseModel):
@@ -90,6 +92,7 @@ class RepaymentDraftResponse(BaseModel):
     original_amount_minor: PositiveMoneyMinor
     merchant_label: str | None = None
     captured_at: datetime
+    accounting_time: AccountingTimeSnapshot | None = None
     status: str
     # §杠杆③ slice 3b: the inbox's server-suggested target Debt (fuzzy counterparty_label +
     # amount). Ephemeral — recomputed every list, never stored — and populated ONLY for a

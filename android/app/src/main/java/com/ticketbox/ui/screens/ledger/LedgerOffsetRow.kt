@@ -30,6 +30,7 @@ import com.ticketbox.domain.model.StreamOffset
 import com.ticketbox.domain.model.StreamOffsetKind
 import com.ticketbox.ui.components.AppAdaptiveAmountRowDefaults
 import com.ticketbox.ui.components.AppAdaptiveContentActionStateRow
+import com.ticketbox.ui.components.AppAdaptiveContentActionStyle
 import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppAlpha
@@ -105,7 +106,7 @@ internal fun LedgerOffsetRow(
     ) {
         AppAdaptiveContentActionStateRow(
             modifier = Modifier.padding(horizontal = AppSpacing.miniGap, vertical = rowMetrics.rowPadding),
-            verticalAlignment = Alignment.CenterVertically,
+            style = AppAdaptiveContentActionStyle(amountTrailing = true),
             content = {
                 Row(
                     modifier = Modifier.fillMaxWidth(),

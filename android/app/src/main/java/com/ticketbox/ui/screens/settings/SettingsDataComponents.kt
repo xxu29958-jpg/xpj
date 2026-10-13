@@ -38,7 +38,6 @@ import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.SettingsColors
-import com.ticketbox.ui.design.settingsEntrySurface
 
 internal data class SettingsDataAction(val label: String, val confirmed: Boolean? = null)
 
@@ -65,7 +64,7 @@ internal fun SettingsDataRow(
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            SettingsEntryIcon(icon, Modifier.size(40.dp), background = settingsEntrySurface(badge),
+            SettingsEntryIcon(icon, Modifier.size(40.dp), background = badge,
                 shape = RoundedCornerShape(14.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
                 Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = AppTextHierarchy.heading.weight)
@@ -74,7 +73,7 @@ internal fun SettingsDataRow(
             if (action.label.isNotBlank()) Text(action.label, style = MaterialTheme.typography.labelLarge,
                 color = if (action.confirmed == true) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                 modifier = if (action.confirmed != null) Modifier.clip(RoundedCornerShape(10.dp))
-                    .background(settingsEntrySurface(if (action.confirmed) SettingsColors.generalEntry else SettingsColors.connectionEntry))
+                    .background(if (action.confirmed) SettingsColors.generalEntry else SettingsColors.connectionEntry)
                     .padding(horizontal = AppSpacing.smallGap, vertical = AppSpacing.tinyGap) else Modifier)
             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))

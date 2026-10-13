@@ -88,6 +88,8 @@ private class ThumbnailFakeReviewActions(
     private val thumbnails: Map<Long, ProtectedImage> = emptyMap(),
     private val failures: Set<Long> = emptySet(),
 ) : PendingReviewActions {
+    override val originalInputs: ExpenseFactInputActions get() = error("unused")
+
     val thumbnailCalls = mutableListOf<Long>()
 
     override suspend fun fetchPending(): Result<List<Expense>> = Result.success(emptyList())
@@ -111,10 +113,12 @@ private class ThumbnailFakeReviewActions(
 
     override suspend fun saveExpenseAllowingOffline(
         expectedBinding: LogicalSessionBinding, id: Long, draft: ExpenseDraft, baseline: Expense,
+        originalInput: com.ticketbox.data.repository.ExpenseFactOriginalInput?,
     ): Result<ExpenseCommandAcceptance> = Result.failure(IllegalStateException("not exercised"))
 
     override suspend fun saveAndConfirmExpense(
         expectedBinding: LogicalSessionBinding, expense: Expense, draft: ExpenseDraft,
+        originalInput: com.ticketbox.data.repository.ExpenseFactOriginalInput?,
     ): Result<ExpenseCommandAcceptance> = Result.failure(IllegalStateException("not exercised"))
 
     override suspend fun confirmExpenses(
@@ -127,6 +131,7 @@ private class ThumbnailFakeReviewActions(
 
     override suspend fun rejectExpenseAllowingOffline(
         expectedBinding: LogicalSessionBinding, expense: Expense,
+        originalInput: com.ticketbox.data.repository.ExpenseFactOriginalInput?,
     ): Result<ExpenseCommandAcceptance> = Result.failure(IllegalStateException("not exercised"))
 
     override suspend fun undoRejectExpense(
@@ -135,6 +140,7 @@ private class ThumbnailFakeReviewActions(
 
     override suspend fun markNotDuplicateAllowingOffline(
         expectedBinding: LogicalSessionBinding, expense: Expense,
+        originalInput: com.ticketbox.data.repository.ExpenseFactOriginalInput?,
     ): Result<ExpenseCommandAcceptance> = Result.failure(IllegalStateException("not exercised"))
 
     override suspend fun categories(): Result<List<String>> = Result.success(emptyList())

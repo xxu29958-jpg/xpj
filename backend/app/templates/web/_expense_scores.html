@@ -1,0 +1,40 @@
+{# 待确认和更正共用评价（值回票价 / 后悔指数）。原生 radiogroup：1–5 分 + 清空，
+   键盘方向键/读屏原生成立；空值 = 清空评分（absent/clear/value 三态由
+   _web_expense_form.score_change 裁决）；field_errors 行内定位。 #}
+<details {% if field_errors.get('value_score') or field_errors.get('regret_score') %}open{% endif %}>
+  <summary class="product-entry"><span class="product-entry-icon product-entry-icon--lilac"><svg><use href="/static/shared/vendor/lucide/icons.svg#sparkles"/></svg></span><span class="product-entry-copy"><strong>评价</strong><span>值回票价与后悔指数</span></span><svg><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></summary>
+  <div class="score-fields">
+    <fieldset class="product-field score-row"{% if not can_write %} disabled{% endif %}>
+      <legend>值回票价</legend>
+      <div class="score-seg" role="presentation">
+        {% for score in [1, 2, 3, 4, 5] %}
+        <label class="score-seg-option">
+          <input type="radio" name="value_score" value="{{ score }}" {% if expense.value_score and expense.value_score|string == score|string %}checked{% endif %} {% if field_errors.get('value_score') %}aria-invalid="true"{% endif %}>
+          <span class="score-seg-pill">{{ score }}</span>
+        </label>
+        {% endfor %}
+        <label class="score-seg-option score-seg-clear">
+          <input type="radio" name="value_score" value="" {% if not expense.value_score %}checked{% endif %}>
+          <span class="score-seg-pill">清空</span>
+        </label>
+      </div>
+      {% if field_errors.get('value_score') %}<div class="field-error">{{ field_errors.get('value_score') }}</div>{% endif %}
+    </fieldset>
+    <fieldset class="product-field score-row"{% if not can_write %} disabled{% endif %}>
+      <legend>后悔指数</legend>
+      <div class="score-seg" role="presentation">
+        {% for score in [1, 2, 3, 4, 5] %}
+        <label class="score-seg-option">
+          <input type="radio" name="regret_score" value="{{ score }}" {% if expense.regret_score and expense.regret_score|string == score|string %}checked{% endif %} {% if field_errors.get('regret_score') %}aria-invalid="true"{% endif %}>
+          <span class="score-seg-pill">{{ score }}</span>
+        </label>
+        {% endfor %}
+        <label class="score-seg-option score-seg-clear">
+          <input type="radio" name="regret_score" value="" {% if not expense.regret_score %}checked{% endif %}>
+          <span class="score-seg-pill">清空</span>
+        </label>
+      </div>
+      {% if field_errors.get('regret_score') %}<div class="field-error">{{ field_errors.get('regret_score') }}</div>{% endif %}
+    </fieldset>
+  </div>
+</details>

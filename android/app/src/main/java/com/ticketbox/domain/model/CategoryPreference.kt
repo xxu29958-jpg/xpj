@@ -17,3 +17,5 @@ data class CategoryPreference(
 enum class CategoryReferenceKind { Rule, Budget, SpendingGoal }
 
 data class CategoryReference(val kind: CategoryReferenceKind, val id: String, val label: String)
+
+data class CategoryPreferenceInspection(val category: CategoryPreference, val references: List<CategoryReference>)

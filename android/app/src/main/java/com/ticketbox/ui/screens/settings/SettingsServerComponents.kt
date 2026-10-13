@@ -41,12 +41,12 @@ import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
+import com.ticketbox.ui.components.AppPrimaryButton
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import com.ticketbox.ui.components.AppOutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -248,13 +248,12 @@ internal fun AccountStatusCard(
                     enabled = !busy,
                     onClick = checkConnection,
                 )
-                Button(
+                AppPrimaryButton(
+                    text = stringResource(R.string.settings_account_button_update_ledger),
                     modifier = Modifier.weight(1f),
                     enabled = !busy,
                     onClick = sync,
-                ) {
-                    Text(stringResource(R.string.settings_account_button_update_ledger))
-                }
+                )
             }
         }
     }
@@ -367,7 +366,7 @@ internal fun ConnectionDiagnosticsCard(
                     )
                 }
             }
-            OutlinedButton(modifier = Modifier.fillMaxWidth(), onClick = onToggleExpanded) {
+            AppOutlinedButton(modifier = Modifier.fillMaxWidth(), onClick = onToggleExpanded) {
                 Text(
                     stringResource(
                         if (expanded) R.string.settings_account_toggle_collapse

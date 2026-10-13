@@ -40,10 +40,15 @@ def _confirm_visible_root(browser, review, expense_id):
     form["note"] = unescape(note.group(1)) if note else ""
     confirmed = _post(browser, edit, f"/web/expenses/{expense_id}/confirm", form)
     assert confirmed.status_code == 303, confirmed.text
-    target = urlsplit(confirmed.headers["location"])
+    receipt = browser.get(confirmed.headers["location"])
+    assert receipt.status_code == 200 and "这张，记好了" in receipt.text
+    finish = re.search(r'<a\b[^>]*href="([^"]+)"[^>]*data-confirmation-finish', receipt.text)
+    assert finish is not None, receipt.text
+    return_href = unescape(finish.group(1))
+    target = urlsplit(return_href)
     assert target.path == urlsplit(str(review.url)).path
     assert parse_qs(target.query)["expense_id"] == [str(expense_id)]
-    return browser.get(confirmed.headers["location"])
+    return browser.get(return_href)
 
 
 def test_foreign_web_csv_resume_confirm_occ_retry_csrf_and_viewer(web_client, identity):
@@ -61,7 +66,7 @@ def test_foreign_web_csv_resume_confirm_occ_retry_csrf_and_viewer(web_client, id
         review = browser.get(action, params={"ledger_id": "tester_1"})
         assert review.status_code == 200 and "复核并确认原单，完成后返回" in review.text
         resumed = _confirm_visible_root(browser, review, expense_id)
-        assert resumed.status_code == 200 and "确认原单并登记退款" in resumed.text
+        assert resumed.status_code == 200 and "确认关联并登记退款" in resumed.text
         fields = {**hidden_post_forms(resumed.text)[action], "reason": "保留这次退款说明 <核对>"}
         assert fields["expense_id"] == str(expense_id)
         before = _fact_counts("tester_1")
@@ -84,7 +89,7 @@ def test_foreign_web_csv_resume_confirm_occ_retry_csrf_and_viewer(web_client, id
         assert accepted.status_code == 303, accepted.text
         result = browser.get(accepted.headers["location"])
         assert result.status_code == 200 and "此退款已入账" in result.text
-        assert action not in hidden_post_forms(result.text)
+        assert 'data-csvreview-archived="true"' in result.text
         actual = _bundle(web_client, identity.gray_app_headers, expense_id)
         offset, = actual["active_offsets"]
         assert offset["amount_cents"] == source["active_offsets"][0]["amount_cents"]
@@ -94,13 +99,13 @@ def test_foreign_web_csv_resume_confirm_occ_retry_csrf_and_viewer(web_client, id
         assert _fact_counts("tester_1") == after
 
         hub = browser.get("/web/import?ledger_id=tester_1")
-        assert batch in hub.text and "事件入账 1" in hub.text
+        assert batch in hub.text and 'data-import-count="confirmed_offset_rows">1</strong>' in hub.text
         with SessionLocal() as db:
             member = db.scalar(select(LedgerMember).where(LedgerMember.ledger_id == "tester_1").limit(1))
             member.role = "viewer"
             db.commit()
         readonly = browser.get(str(result.url))
-        assert readonly.status_code == 200 and action not in hidden_post_forms(readonly.text)
+        assert readonly.status_code == 200 and 'data-csvreview-can-write="false"' in readonly.text
         assert _post(browser, readonly, action, retry).status_code == 403
         assert _fact_counts("tester_1") == after
 
@@ -121,7 +126,7 @@ def test_orphan_web_refund_selects_pending_root_and_returns_with_that_selection(
         missing = browser.get(action, params={"ledger_id": "tester_1"})
         assert missing.status_code == 200 and "补充上传原单" in missing.text
         other_ledger = browser.get(action, params={"ledger_id": "tester_1", "expense_id": source_root["id"]})
-        assert "确认原单并登记退款" not in other_ledger.text
+        assert 'data-csvreview-ready="false"' in other_ledger.text
 
         root_batch, _ = _preview_native_csv(browser, ledger_id="tester_1",
             csv_text="amount_yuan,merchant,category\n100.00,需要明确选择的原消费,餐饮\n")
@@ -129,9 +134,9 @@ def test_orphan_web_refund_selects_pending_root_and_returns_with_that_selection(
         target_root, = _rows(web_client, identity.gray_app_headers, root_batch)["items"]
         expense_id = target_root["expense_id"]
         search = browser.get(action, params={"ledger_id": "tester_1", "query": "需要明确选择"})
-        assert "选择此原单" in search.text and f'name="expense_id" value="{expense_id}"' in search.text
-        selected = browser.get(action, params={"ledger_id": "tester_1", "expense_id": expense_id})
-        assert "本次选择的原单" in selected.text
+        assert "选择此原单" in search.text and f'name="review_latest" value="{expense_id}"' in search.text
+        selected = _post(browser, search, action, {**hidden_post_forms(search.text)[action], "review_latest": str(expense_id)})
+        assert "对应的原消费" in selected.text
         resumed = _confirm_visible_root(browser, selected, expense_id)
         fields = {**hidden_post_forms(resumed.text)[action], "reason": "核对金额日期，明确关联这笔原消费"}
         assert fields["expense_id"] == str(expense_id)

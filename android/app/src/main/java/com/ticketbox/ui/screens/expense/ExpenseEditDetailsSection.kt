@@ -1,30 +1,18 @@
 package com.ticketbox.ui.screens.expense
 
-import androidx.compose.foundation.clickable
+import com.ticketbox.ui.screens.settings.SettingsEntryRowOptions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.stateDescription
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.ExpenseItems
@@ -130,7 +118,6 @@ internal fun ExpenseEditDetailsSection(
                 onEditItems = actions.onEditItems,
             )
         }
-        ExpenseDetailDivider()
         ExpenseSplitsCollapsibleRow(
             state = state,
             expanded = splitsExpanded,
@@ -149,7 +136,6 @@ internal fun ExpenseEditDetailsSection(
                 onEditSplits = actions.onEditSplits,
             )
         }
-        ExpenseDetailDivider()
     }
 }
 
@@ -173,6 +159,7 @@ private fun ExpenseItemsCollapsibleRow(
     ExpenseDetailCollapsibleRow(
         model = ExpenseDetailCollapsedRowModel(
             title = stringResource(R.string.expense_edit_v1_items_title),
+            icon = R.drawable.ic_lucide_shopping_bag,
             summary = expenseDetailRowSummary(
                 kind = kind,
                 emptyText = stringResource(R.string.expense_edit_v1_items_empty),
@@ -214,6 +201,7 @@ private fun ExpenseSplitsCollapsibleRow(
     ExpenseDetailCollapsibleRow(
         model = ExpenseDetailCollapsedRowModel(
             title = stringResource(R.string.expense_edit_v1_splits_title),
+            icon = R.drawable.ic_lucide_users,
             summary = expenseDetailRowSummary(
                 kind = kind,
                 emptyText = stringResource(R.string.expense_edit_v1_splits_empty),
@@ -239,6 +227,7 @@ private val SPLITS_ATTENTION_STATUSES = setOf(
 
 private data class ExpenseDetailCollapsedRowModel(
     val title: String,
+    val icon: Int,
     val summary: String,
     val pill: String?,
 )
@@ -251,44 +240,15 @@ private fun ExpenseDetailCollapsibleRow(
     testTag: String,
     content: @Composable () -> Unit,
 ) {
-    val stateLabel = stringResource(
-        if (expanded) R.string.expense_edit_details_row_expanded else R.string.expense_edit_details_row_collapsed,
-    )
     Column(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .testTag(testTag)
-                .semantics { stateDescription = stateLabel }
-                .clickable(role = Role.Button, onClick = onToggle)
-                .defaultMinSize(minHeight = AppSpacing.controlMinHeight)
-                .padding(vertical = AppSpacing.miniGap),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
-            ) {
-                Text(text = model.title, style = MaterialTheme.typography.titleSmall)
-                Text(
-                    text = model.summary,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-            model.pill?.let { StatusPill(text = it, active = false) }
-            Icon(
-                imageVector = if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        if (expanded) {
-            Column(modifier = Modifier.padding(top = AppSpacing.smallGap)) {
-                content()
-            }
-        }
+        com.ticketbox.ui.screens.settings.SettingsEntryRow(
+            title = model.title,
+            subtitle = model.summary,
+            icon = model.icon,
+            onClick = onToggle,
+            options = SettingsEntryRowOptions(expanded = expanded, modifier = Modifier.testTag(testTag), supportingContent = { model.pill?.let { StatusPill(text = it, active = false) } }),
+        )
+        if (expanded) Column(modifier = Modifier.padding(top = AppSpacing.smallGap)) { content() }
     }
 }
 

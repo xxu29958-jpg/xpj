@@ -12,6 +12,24 @@
     const checks = Array.from(document.querySelectorAll(".row-check"));
     const clearButton = form.querySelector("[data-bulk-clear]");
     const editor = form.querySelector(".bulk-editor");
+    const selectToggle = document.querySelector("[data-bulk-select]");
+    if (selectToggle) {
+      selectToggle.hidden = false;
+      document.body.classList.add("bulk-selection-ready");
+      // Server-rendered 422 drafts may already carry a selection.
+      const initiallySelecting = checks.some(function (cb) { return cb.checked; });
+      document.body.classList.toggle("bulk-selecting", initiallySelecting);
+      selectToggle.setAttribute("aria-pressed", String(initiallySelecting));
+      selectToggle.textContent = initiallySelecting ? "完成" : "选择";
+      selectToggle.addEventListener("click", function () {
+        const selecting = !document.body.classList.contains("bulk-selecting");
+        if (!selecting) checks.forEach(function (cb) { cb.checked = false; });
+        document.body.classList.toggle("bulk-selecting", selecting);
+        selectToggle.setAttribute("aria-pressed", String(selecting));
+        selectToggle.textContent = selecting ? "完成" : "选择";
+        refresh();
+      });
+    }
 
     if (editor) {
       editor.addEventListener("keydown", function (event) {
@@ -324,6 +342,11 @@
       form.addEventListener("submit", function (e) {
         // Offline-fallback re-entry guard: requestSubmit() re-fires this listener.
         if (form.getAttribute("data-native-fallback") === "1") return;
+        if (app.drawerApi && app.drawerApi.hasUnsavedChanges()) {
+          e.preventDefault();
+          flashBanner("有尚未保存的小票填写。请先保存草稿或完成核对，再批量整理。", "error");
+          return;
+        }
         const submitter = e.submitter || document.activeElement;
         const actionUrl = submitterActionUrl(submitter);
         const kind = removalKind(actionUrl, submitter);

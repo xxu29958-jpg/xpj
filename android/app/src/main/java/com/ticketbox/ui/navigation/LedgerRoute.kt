@@ -4,6 +4,7 @@ import android.content.ActivityNotFoundException
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -17,6 +18,8 @@ import com.ticketbox.ui.screens.LedgerScreen
 import com.ticketbox.ui.screens.LedgerScreenActions
 import com.ticketbox.viewmodel.LedgerExportOutcome
 import com.ticketbox.viewmodel.LedgerViewModel
+import com.ticketbox.viewmodel.LedgerDataQualityFilter
+import com.ticketbox.ui.components.LocalAccountingDateReview
 import kotlinx.coroutines.flow.map
 
 @Composable
@@ -24,11 +27,13 @@ internal fun LedgerRoute(
     navController: NavHostController,
     shellState: MainShellState,
     screenFactory: MainScreenFactory,
+    initialDataQualityFilter: LedgerDataQualityFilter? = null,
+    onBack: (() -> Unit)? = null,
 ) {
     val binding by remember(screenFactory) { screenFactory.repository.observeLedgerAccess().map { it?.binding } }
         .collectAsStateWithLifecycle(initialValue = screenFactory.repository.captureDeferredLedgerBinding())
-    val ledgerFactory = remember(screenFactory, shellState) {
-        screenFactory.repositoryViewModelFactory(shellState::markFinancialDataChanged)
+    val ledgerFactory = remember(screenFactory, shellState, initialDataQualityFilter) {
+        screenFactory.repositoryViewModelFactory(shellState::markFinancialDataChanged, initialDataQualityFilter)
     }
     val ledgerViewModel: LedgerViewModel = viewModel(key = "ledger-$binding", factory = ledgerFactory)
     // Narrow hook (218-B4 review P2-23): manual creates and category batch
@@ -43,7 +48,7 @@ internal fun LedgerRoute(
 
     SyncLedgerAfterExpenseEdit(shellState, ledgerViewModel)
     SyncLedgerVocabulary(shellState, ledgerViewModel)
-    ApplyPendingLedgerDrill(shellState, ledgerViewModel)
+    if (initialDataQualityFilter == null) ApplyPendingLedgerDrill(shellState, ledgerViewModel)
 
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("text/csv"),
@@ -81,15 +86,26 @@ internal fun LedgerRoute(
                 if (shellState.launchAction.pending is LaunchAction.OpenManualEntry) shellState.launchAction.consume()
             },
         ),
-        actions = ledgerScreenActions(ledgerViewModel, navController, shellState),
+        actions = ledgerScreenActions(ledgerViewModel, navController, shellState, onBack),
     ) }
+}
+
+@Composable
+internal fun AccountingDateReviewRoute(
+    navController: NavHostController, shellState: MainShellState, screenFactory: MainScreenFactory, onBack: () -> Unit,
+) {
+    CompositionLocalProvider(LocalAccountingDateReview provides null) {
+        LedgerRoute(navController, shellState, screenFactory, LedgerDataQualityFilter.MissingAccountingDate, onBack)
+    }
 }
 
 private fun ledgerScreenActions(
     ledgerViewModel: LedgerViewModel,
     navController: NavHostController,
     shellState: MainShellState,
+    onBack: (() -> Unit)?,
 ): LedgerScreenActions = LedgerScreenActions(
+    onBack = onBack,
     onMonthChange = ledgerViewModel::setMonthFilter,
     onCategoryChange = ledgerViewModel::setCategoryFilter,
     onTagChange = ledgerViewModel::setTagFilter,

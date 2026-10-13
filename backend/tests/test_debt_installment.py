@@ -1,7 +1,7 @@
 """ADR-0049 §B 完整 installment: contractual schedule + deterministic payoff.
 
 Create stores 期数 × 周期 (paired, installment-kind only); the per-Debt response derives the payoff
-date (建账 + count×period months, accounting-tz, day-clamped); an all-installment goal shows that
+date (original principal day + count×period months, day-clamped); an all-installment goal shows that
 deterministic date — ``max`` across linked debts — instead of the suppressed velocity projection,
 while a mixed / count-less set keeps the §A behavior. Split from test_debt_kind_projection_gate to
 keep each file under the 500-line gate.
@@ -10,15 +10,19 @@ keep each file under the 500-line gate.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
+from app.database import SessionLocal
 from app.models import Debt
+from app.schemas._accounting_time import AccountingTimeInput
 from app.services.debt_service import installment_paid_count, installment_payoff_date
+from app.services.debt_service._principal_time import resolve_principal_time
 from tests._runtime_protocol import negotiated_headers
 from tests.debt_repayment_goal_helpers import (
     _adjust_debt,
-    _backdate_debt_created,
     _clear_debt,
     _create_debt_goal,
     _create_external_debt,
@@ -26,6 +30,17 @@ from tests.debt_repayment_goal_helpers import (
     _insert_forgiveness_fact,
     _repay_debt,
 )
+
+
+def _record_principal_date(public_id: str, instant: datetime) -> None:
+    """Give schedule fixtures actual occurrence evidence, independent of row creation."""
+    local = instant.astimezone(ZoneInfo("Asia/Shanghai"))
+    with SessionLocal.begin() as db:
+        debt = db.scalar(select(Debt).where(Debt.public_id == public_id))
+        value = AccountingTimeInput(precision="instant", calendar_revision=1, user_local_date=local.date(),
+            instant_utc=instant, source_timezone="Asia/Shanghai", source_utc_offset_seconds=28800)
+        debt.accounting_time_snapshot = resolve_principal_time(db, ledger_id=debt.tenant_id,
+            time_input=value, event_time=None).model_dump(mode="json")
 
 
 def _get_debt(client: TestClient, headers: dict, public_id: str) -> dict:
@@ -53,25 +68,25 @@ def test_create_installment_carries_schedule_and_default_period(client: TestClie
     assert debt["debt_kind"] == "installment"
 
 
-def test_installment_payoff_date_is_created_plus_count_periods(client: TestClient, *, identity) -> None:
+def test_installment_payoff_date_uses_original_principal_plus_count_periods(client: TestClient, *, identity) -> None:
     debt = _create_external_debt(
         client, identity.app_headers, debt_kind="installment",
         installment_count=4, installment_period_months=3,
     )
-    # Anchor 建账 to a fixed accounting-tz date (UTC noon → Asia/Shanghai same date): 2026-01-15
+    # Anchor original principal to a fixed source date (UTC noon → Asia/Shanghai same date): 2026-01-15
     # + 4×3 = 12 months = 2027-01-15, deterministic and now-independent.
-    _backdate_debt_created(debt["public_id"], datetime(2026, 1, 15, 4, 0, tzinfo=UTC))
+    _record_principal_date(debt["public_id"], datetime(2026, 1, 15, 4, 0, tzinfo=UTC))
     fetched = _get_debt(client, identity.app_headers, debt["public_id"])
     assert fetched["installment_period_months"] == 3
     assert fetched["installment_payoff_date"] == "2027-01-15"
 
 
 def test_installment_payoff_clamps_month_end(client: TestClient, *, identity) -> None:
-    # 建账 Jan 31 + 1 month must clamp to Feb 28 (2027 non-leap), never overflow into March.
+    # Principal Jan 31 + 1 month must clamp to Feb 28 (2027 non-leap), never overflow into March.
     debt = _create_external_debt(
         client, identity.app_headers, debt_kind="installment", installment_count=1
     )
-    _backdate_debt_created(debt["public_id"], datetime(2027, 1, 31, 4, 0, tzinfo=UTC))
+    _record_principal_date(debt["public_id"], datetime(2027, 1, 31, 4, 0, tzinfo=UTC))
     fetched = _get_debt(client, identity.app_headers, debt["public_id"])
     assert fetched["installment_payoff_date"] == "2027-02-28"
 
@@ -118,7 +133,7 @@ def test_all_installment_goal_shows_deterministic_payoff(client: TestClient, *, 
     debt = _create_external_debt(
         client, identity.app_headers, debt_kind="installment", installment_count=6
     )
-    _backdate_debt_created(debt["public_id"], datetime(2026, 3, 10, 4, 0, tzinfo=UTC))
+    _record_principal_date(debt["public_id"], datetime(2026, 3, 10, 4, 0, tzinfo=UTC))
     goal = _create_debt_goal(
         client, identity.app_headers, name="分期", debt_public_ids=[debt["public_id"]]
     ).json()
@@ -137,8 +152,8 @@ def test_all_installment_goal_payoff_is_latest_across_debts(client: TestClient, 
     late = _create_external_debt(
         client, identity.app_headers, debt_kind="installment", installment_count=12
     )
-    _backdate_debt_created(early["public_id"], datetime(2026, 1, 10, 4, 0, tzinfo=UTC))  # → 2026-04-10
-    _backdate_debt_created(late["public_id"], datetime(2026, 1, 10, 4, 0, tzinfo=UTC))  # → 2027-01-10
+    _record_principal_date(early["public_id"], datetime(2026, 1, 10, 4, 0, tzinfo=UTC))  # → 2026-04-10
+    _record_principal_date(late["public_id"], datetime(2026, 1, 10, 4, 0, tzinfo=UTC))  # → 2027-01-10
     goal = _create_debt_goal(
         client, identity.app_headers, name="两笔分期",
         debt_public_ids=[early["public_id"], late["public_id"]],
@@ -167,7 +182,7 @@ def test_mixed_installment_and_revolving_is_not_deterministic(client: TestClient
     inst = _create_external_debt(
         client, identity.app_headers, debt_kind="installment", installment_count=6
     )
-    _backdate_debt_created(inst["public_id"], datetime(2026, 3, 10, 4, 0, tzinfo=UTC))
+    _record_principal_date(inst["public_id"], datetime(2026, 3, 10, 4, 0, tzinfo=UTC))
     rev = _create_external_debt(client, identity.app_headers, debt_kind="revolving")
     goal = _create_debt_goal(
         client, identity.app_headers, name="混装", debt_public_ids=[inst["public_id"], rev["public_id"]]
@@ -181,7 +196,7 @@ def test_installment_goal_three_state_vs_target(client: TestClient, *, identity)
     debt = _create_external_debt(
         client, identity.app_headers, debt_kind="installment", installment_count=6
     )
-    _backdate_debt_created(debt["public_id"], datetime(2026, 3, 10, 4, 0, tzinfo=UTC))  # payoff 2026-09-10
+    _record_principal_date(debt["public_id"], datetime(2026, 3, 10, 4, 0, tzinfo=UTC))  # payoff 2026-09-10
     goal = _create_debt_goal(
         client, identity.app_headers, name="分期", debt_public_ids=[debt["public_id"]],
         target_date="2026-12-31",
@@ -204,6 +219,7 @@ def test_installment_payoff_date_gated_on_debt_kind() -> None:
         installment_count=6,
         installment_period_months=1,
         created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        accounting_time_snapshot={"precision": "date_only", "user_local_date": "2026-01-01"},
     )
     assert installment_payoff_date(debt) is None
     debt.debt_kind = "installment"
@@ -216,7 +232,7 @@ def test_settled_all_installment_goal_suppresses_payoff(client: TestClient, *, i
     debt = _create_external_debt(
         client, identity.app_headers, debt_kind="installment", installment_count=6
     )
-    _backdate_debt_created(debt["public_id"], datetime(2026, 3, 10, 4, 0, tzinfo=UTC))
+    _record_principal_date(debt["public_id"], datetime(2026, 3, 10, 4, 0, tzinfo=UTC))
     _clear_debt(client, identity.app_headers, debt)  # repay in full → remaining 0
     goal = _create_debt_goal(
         client, identity.app_headers, name="已还清分期", debt_public_ids=[debt["public_id"]]
@@ -231,7 +247,7 @@ def test_installment_payoff_anchors_on_accounting_tz_date(client: TestClient, *,
     )
     # UTC 16:00 = Asia/Shanghai 00:00 the NEXT calendar day → the schedule must anchor on the
     # Shanghai date (2026-01-16), not the UTC date (2026-01-15). Dropping the tz conversion → 2026-02-15.
-    _backdate_debt_created(debt["public_id"], datetime(2026, 1, 15, 16, 0, tzinfo=UTC))
+    _record_principal_date(debt["public_id"], datetime(2026, 1, 15, 16, 0, tzinfo=UTC))
     fetched = _get_debt(client, identity.app_headers, debt["public_id"])
     assert fetched["installment_payoff_date"] == "2026-02-16"
 
@@ -259,8 +275,8 @@ def test_cleared_installment_excluded_from_payoff_max(client: TestClient, *, ide
     cleared_debt = _create_external_debt(
         client, identity.app_headers, debt_kind="installment", installment_count=12
     )
-    _backdate_debt_created(open_debt["public_id"], datetime(2026, 1, 10, 4, 0, tzinfo=UTC))  # → 2026-04-10
-    _backdate_debt_created(cleared_debt["public_id"], datetime(2026, 1, 10, 4, 0, tzinfo=UTC))  # contract → 2027-01-10
+    _record_principal_date(open_debt["public_id"], datetime(2026, 1, 10, 4, 0, tzinfo=UTC))  # → 2026-04-10
+    _record_principal_date(cleared_debt["public_id"], datetime(2026, 1, 10, 4, 0, tzinfo=UTC))  # contract → 2027-01-10
     _clear_debt(client, identity.app_headers, cleared_debt)  # fully repaid → remaining 0
     goal = _create_debt_goal(
         client, identity.app_headers, name="一笔已清分期",

@@ -17,6 +17,7 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -46,6 +47,7 @@ import com.ticketbox.ui.saveConsumerArtPreview
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import java.net.ConnectException
+import java.time.YearMonth
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.runBlocking
 import okhttp3.ResponseBody.Companion.toResponseBody
@@ -126,6 +128,7 @@ class BudgetOfflineReadingConnectedTest {
         assertEquals("Reopening must not manufacture a new fetch time", originalReadTime, readTime())
         assertTrue(sourceText().contains("离线"))
         preview("budget-offline-editor")
+        compose.onNodeWithContentDescription(context.getString(R.string.budget_editor_back)).performScrollTo().performClick()
         verifyCachedBudgetPresentation(month)
 
         compose.runOnIdle { harness.shell.selectPrimaryDomain(PrimaryDomain.Insights.key) }
@@ -148,8 +151,11 @@ class BudgetOfflineReadingConnectedTest {
     }
 
     private fun verifyCachedBudgetPresentation(month: String) {
+        val basis = YearMonth.parse(month).let {
+            "JPY · " + context.getString(R.string.components_month_label, it.year.toString(), it.monthValue.toString())
+        }
         compose.onNodeWithText("¥789").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("JPY · $month").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(basis).performScrollTo().assertIsDisplayed()
         val details = context.getString(R.string.budget_cached_details_show)
         compose.onNodeWithText(details).performScrollTo().performClick()
         compose.onNodeWithText(context.getString(R.string.budget_summary_metric_spent)).performScrollTo().assertIsDisplayed()
@@ -166,7 +172,7 @@ class BudgetOfflineReadingConnectedTest {
         compose.onNode(hasScrollToIndexAction()).performScrollToIndex(0)
         compose.onNodeWithText(context.getString(R.string.budget_history_title)).performScrollTo().assertIsDisplayed()
         preview("budget-cached-midnight-large")
-        compose.onNodeWithText("JPY · $month").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(basis).performScrollTo().assertIsDisplayed()
         preview("budget-cached-midnight-amount")
         compose.runOnIdle { skin.value = AppSkin.Paper; scale.value = 1f }
     }
@@ -184,8 +190,7 @@ class BudgetOfflineReadingConnectedTest {
         val originalTime = readTime("budget-history-read-source")
         assertNotNull(originalTime)
         compose.onNodeWithText(context.getString(R.string.budget_history_more)).performScrollTo().performClick()
-        compose.waitUntil(5_000) { compose.onAllNodes(hasText("餐饮 · ¥50")).fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithText("餐饮 · ¥50").performScrollTo().assertIsDisplayed()
+        showOlderBudgetDefinition()
         val pending = harness.fixture.stored()
         compose.runOnIdle { mounted.value = false; harness.models.viewModelStore.clear() }
         compose.waitForIdle()
@@ -199,11 +204,12 @@ class BudgetOfflineReadingConnectedTest {
         assertEquals(originalTime, readTime("budget-history-read-source"))
         assertTrue(sourceText("budget-history-read-source").contains("本机保留"))
         compose.onNodeWithText(context.getString(R.string.budget_history_more)).performScrollTo().performClick()
-        compose.waitUntil(5_000) { compose.onAllNodes(hasText("餐饮 · ¥50")).fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithText("餐饮 · ¥50").performScrollTo().assertIsDisplayed()
+        showOlderBudgetDefinition()
         compose.onNodeWithTag("budget-history-read-source").performScrollTo().assertIsDisplayed()
-        assertEquals("Every retained revision must identify its original currency", 3,
-            compose.onAllNodes(hasText("JPY") and hasAnyAncestor(hasTestTag("budget-history"))).fetchSemanticsNodes().size)
+        listOf("JPY ¥700", "JPY ¥600", "JPY ¥500").forEach { value ->
+            assertTrue("Every retained revision must identify its original currency and amount: $value",
+                compose.onAllNodes(hasText(value) and hasAnyAncestor(hasTestTag("budget-history"))).fetchSemanticsNodes().isNotEmpty())
+        }
         preview("budget-history-offline-reopened")
         assertEquals(pending, harness.fixture.stored())
     }
@@ -214,6 +220,12 @@ class BudgetOfflineReadingConnectedTest {
         compose.waitUntil(5_000) { compose.onAllNodes(hasTestTag("budget-history-read-source"))
             .fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("budget-history-read-source").performScrollTo().assertIsDisplayed()
+    }
+
+    private fun showOlderBudgetDefinition() {
+        compose.waitUntil(5_000) { compose.onAllNodes(hasText("已载入 3 条 · 第 7 至 5 版")).fetchSemanticsNodes().isNotEmpty() }
+        compose.onAllNodes(hasText("查看当时定义"))[2].performScrollTo().performClick()
+        compose.onNodeWithText("餐饮 · JPY ¥50").performScrollTo().assertIsDisplayed()
     }
 
     private fun showPlans() {

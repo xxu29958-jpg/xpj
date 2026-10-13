@@ -1,9 +1,12 @@
 package com.ticketbox.viewmodel
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.BillSplitActions
+import com.ticketbox.data.repository.BillSplitAcceptPayload
+import com.ticketbox.data.repository.PendingBillSplitAcceptance
 import com.ticketbox.data.repository.BillSplitLedgerActions
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.LedgerAccessContext
@@ -37,29 +40,49 @@ data class BillSplitUiState(
     val message: UiText? = null,
     val messageTone: MessageTone = MessageTone.Neutral,
     val access: LedgerAccessContext? = null,
-)
+    val selectedTargets: Map<String, BillSplitAcceptPayload> = emptyMap(),
+    val acceptances: List<PendingBillSplitAcceptance> = emptyList(),
+) {
+    val inboxEntryCount: Int get() = (inbox.map { it.publicId } + selectedTargets.keys +
+        acceptances.map { it.payload?.publicId ?: it.row.targetId.removePrefix("bill-split:") }).distinct().size
+}
 
 class BillSplitViewModel(
     private val billSplitActions: BillSplitActions,
     private val ledgerActions: BillSplitLedgerActions,
+    savedStateHandle: SavedStateHandle = SavedStateHandle(),
 ) : ViewModel() {
-    constructor(expenseRepository: ExpenseRepository, ledgerRepository: LedgerRepository) : this(
+    constructor(expenseRepository: ExpenseRepository, ledgerRepository: LedgerRepository, state: SavedStateHandle = SavedStateHandle()) : this(
         expenseBillSplitActions(expenseRepository), ledgerBillSplitActions(ledgerRepository),
+        state,
     )
 
-    private val _uiState = MutableStateFlow(initialSplitState(billSplitActions, ledgerActions))
+    private val selections = BillSplitAcceptanceDraftStore(savedStateHandle)
+    private val _uiState = MutableStateFlow(initialSplitState(billSplitActions, ledgerActions).let {
+        it.copy(selectedTargets = it.access?.binding?.let(selections::read).orEmpty())
+    })
     val uiState: StateFlow<BillSplitUiState> = _uiState.asStateFlow()
     private var operation: Job? = null
 
     init {
         viewModelScope.launch { billSplitActions.observeAccess().collect { refreshAccess() } }
+        viewModelScope.launch { billSplitActions.observeAcceptances().collect { observation ->
+            val binding = observation.access?.binding ?: return@collect
+            if (refreshAccess()?.binding != binding) return@collect
+            val previous = _uiState.value.acceptances.filter { it.delivered }.map { it.row.id }.toSet()
+            val delivered = observation.submissions.filter { it.delivered && it.row.id !in previous }
+            observation.submissions.mapNotNull { it.payload?.publicId }.forEach { selections.remove(binding, it) }
+            // The stored command receipt is displayed independently. It must never overwrite a later GET's access result.
+            updateFor(binding) { state -> state.copy(acceptances = observation.submissions, selectedTargets = selections.read(binding)) }
+            if (delivered.isNotEmpty()) launchBound(binding) { load(it, UiText.res(R.string.bill_split_action_accepted)) }
+        } }
     }
 
     private fun refreshAccess(): LedgerAccessContext? {
         val access = billSplitActions.currentAccess()
         if (_uiState.value.access?.binding != access?.binding) {
             operation?.cancel()
-            _uiState.value = BillSplitUiState(access = access)
+            _uiState.value = BillSplitUiState(access = access, selectedTargets = access?.binding?.let(selections::read).orEmpty())
         } else _uiState.update { it.copy(access = access) }
         return access
     }
@@ -105,9 +128,41 @@ class BillSplitViewModel(
         }
     }
 
-    fun accept(expectedBinding: LogicalSessionBinding, publicId: String, targetLedgerId: String) = launchBound(expectedBinding) { binding ->
-        complete(binding, billSplitActions.acceptBillSplitInvitation(binding, publicId, targetLedgerId),
-            UiText.res(R.string.bill_split_action_accepted)) { state, row -> state.copy(inbox = state.inbox.upsertInbox(row)) }
+    fun selectTarget(binding: LogicalSessionBinding, publicId: String, targetLedgerId: String?) {
+        if (refreshAccess()?.binding != binding || _uiState.value.acceptances.any { it.payload?.publicId == publicId }) return
+        if (targetLedgerId == null) {
+            selections.remove(binding, publicId)
+            updateFor(binding) { it.copy(selectedTargets = selections.read(binding)) }
+            return
+        }
+        val target = _uiState.value.candidateTargetLedgers.singleOrNull { it.ledgerId == targetLedgerId } ?: return
+        val row = _uiState.value.inbox.singleOrNull { it.publicId == publicId }
+        val original = _uiState.value.selectedTargets[publicId] ?: row?.let {
+            BillSplitAcceptPayload(publicId = publicId, amountCents = it.amountCents,
+                homeCurrencyCode = it.homeCurrencyCode, senderName = it.senderDisplayName,
+                targetLedgerId = target.ledgerId, targetLedgerName = target.name)
+        } ?: return
+        selections.select(binding, original.copy(targetLedgerId = target.ledgerId, targetLedgerName = target.name))
+        updateFor(binding) { it.copy(selectedTargets = selections.read(binding)) }
+    }
+
+    fun accept(expectedBinding: LogicalSessionBinding, publicId: String, targetLedgerId: String) {
+        if (refreshAccess()?.binding != expectedBinding || _uiState.value.acceptances.any { it.payload?.publicId == publicId }) return
+        if (_uiState.value.selectedTargets[publicId] == null) selectTarget(expectedBinding, publicId, targetLedgerId)
+        val original = _uiState.value.selectedTargets[publicId]?.takeIf { it.targetLedgerId == targetLedgerId } ?: return
+        launchBound(expectedBinding) { binding ->
+            val result = billSplitActions.acceptBillSplitInvitation(binding, original)
+            if (result.isSuccess) selections.remove(binding, publicId)
+            updateFor(binding) { it.copy(loading = false, selectedTargets = selections.read(binding),
+                message = result.exceptionOrNull()?.toUiText(R.string.error_generic) ?: UiText.res(R.string.bill_split_accept_queued),
+                messageTone = if (result.isSuccess) MessageTone.Info else MessageTone.Danger) }
+        }
+    }
+
+    fun recoverAcceptance(binding: LogicalSessionBinding, id: Long, drop: Boolean) = launchBound(binding) {
+        val result = billSplitActions.recoverAcceptance(it, id, drop)
+        updateFor(it) { state -> state.copy(loading = false,
+            message = result.exceptionOrNull()?.toUiText(R.string.error_generic), messageTone = MessageTone.Danger) }
     }
 
     fun reject(expectedBinding: LogicalSessionBinding, publicId: String) = launchBound(expectedBinding) { binding ->

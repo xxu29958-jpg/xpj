@@ -1,6 +1,8 @@
 """v0.4-alpha3 Smart Ledger Engine — Rules preview/apply + Recurring candidates."""
 from __future__ import annotations
 
+from uuid import uuid4
+
 from api_contract_helpers import patch_expense, upload_png
 from fastapi.testclient import TestClient
 
@@ -30,7 +32,7 @@ def _apply_pending_rules(client: TestClient, *, identity, max_scan: int = 500):
     token = preview.json()["preview_token"]
     return client.post(
         f"/api/rules/apply-pending?max_scan={max_scan}",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"confirm": True, "preview_token": token},
     )
 
@@ -53,7 +55,8 @@ def test_alpha3_endpoints_no_secret_leak(client: TestClient, *, identity) -> Non
         if method == "GET":
             response = client.get(path, headers=identity.app_headers)
         else:
-            response = client.post(path, headers=identity.app_headers, json=body)
+            headers = {**identity.app_headers, "Idempotency-Key": str(uuid4())} if body and body.get("confirm") else identity.app_headers
+            response = client.post(path, headers=headers, json=body)
         assert response.status_code == 200
         text = response.text
         assert "token_hash" not in text

@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from app.auth import get_current_app_context, get_current_protocol_writer_context
 from app.database import get_db
 from app.schemas import (
+    BillSplitAcceptanceResponse,
     BillSplitAcceptRequest,
     BillSplitInboxListResponse,
     BillSplitInboxResponse,
@@ -122,7 +123,7 @@ def list_my_sent(
 
 @inbox_router.post(
     "/{public_id}/accept",
-    response_model=BillSplitInboxResponse,
+    response_model=BillSplitAcceptanceResponse,
     summary="Receiver 接受邀请，选目标账本",
 )
 def accept_split_invitation(
@@ -130,7 +131,7 @@ def accept_split_invitation(
     payload: BillSplitAcceptRequest,
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
-) -> BillSplitInboxResponse:
+) -> BillSplitAcceptanceResponse:
     inv, _expense = bsplit.accept_invitation(
         db,
         public_id=public_id,
@@ -138,7 +139,8 @@ def accept_split_invitation(
         target_ledger_id=payload.target_ledger_id,
         accepting_device_id=auth.device_id,
     )
-    return _inbox_responses(db, [inv], auth.account_id)[0]
+    received = _inbox_responses(db, [inv], auth.account_id)[0]
+    return BillSplitAcceptanceResponse(**received.model_dump(), accepted_target_ledger_id=payload.target_ledger_id)
 
 
 @inbox_router.post(

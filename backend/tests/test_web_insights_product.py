@@ -58,8 +58,9 @@ def test_reports_page_keeps_js_hooks_and_nojs_data(web_client: TestClient) -> No
         'id="reports-export-dialog"',
     ):
         assert hook in body
-    # 无 JS 数据诚实: 每个图表面板带 details 数据表。
-    assert body.count('class="report-data-disclosure"') >= 4
+    # 月内图表有原生数据表；半年图的阅读入口无需 JavaScript。
+    assert body.count('class="report-data-disclosure"') >= 3
+    assert "view=data" in body
     # GET 分段控件仍是整页刷新链接。
     assert 'aria-current="page"' in body
 

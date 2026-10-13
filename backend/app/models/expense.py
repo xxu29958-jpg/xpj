@@ -186,6 +186,7 @@ class Expense(Base):
     image_deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     thumbnail_deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     attachment_cleanup_request: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
+    # Explicit first association or same-original replenishment renews retention.
     image_replenished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     items_sum_status: Mapped[str] = mapped_column(
         String(32), default="no_items", server_default="no_items", nullable=False

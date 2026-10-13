@@ -188,6 +188,7 @@ internal fun buildRecurringItemPatch(
 
 @StringRes
 internal fun recurringPendingKindLabelRes(kind: RecurringPendingKind): Int = when (kind) {
+    RecurringPendingKind.CANDIDATE -> R.string.recurring_pending_kind_candidate
     RecurringPendingKind.CREATE -> R.string.recurring_pending_kind_create
     RecurringPendingKind.UPDATE -> R.string.recurring_pending_kind_update
 }

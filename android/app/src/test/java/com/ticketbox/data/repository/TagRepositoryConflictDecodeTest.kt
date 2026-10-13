@@ -4,6 +4,7 @@ import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.TagDetailDto
 import com.ticketbox.data.remote.dto.TagRenameRequest
+import com.ticketbox.domain.model.ManagedTag
 import kotlinx.coroutines.test.runTest
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.Protocol
@@ -37,7 +38,7 @@ class TagRepositoryConflictDecodeTest {
             """"conflict_tag_public_id":"b","conflict_tag_row_version":9}"""
         val repo = buildRepository(RenameConflictApiService(httpException(409, body)))
 
-        val result = repo.renameTag(publicId = "a", expectedRowVersion = 1L, name = "差旅")
+        val result = repo.renameTag(requireNotNull(repo.captureBinding()), ManagedTag("a", "出差", 1, 1), "差旅")
 
         assertTrue(result.isFailure)
         val ex = result.exceptionOrNull() as? RepositoryException
@@ -56,7 +57,8 @@ class TagRepositoryConflictDecodeTest {
             """"details":{"conflict_tag_public_id":"b","conflict_tag_row_version":9}}"""
         val repo = buildRepository(RenameConflictApiService(httpException(409, body)))
 
-        val ex = repo.renameTag("a", 1L, "差旅").exceptionOrNull() as? RepositoryException
+        val ex = repo.renameTag(requireNotNull(repo.captureBinding()), ManagedTag("a", "出差", 1, 1), "差旅")
+            .exceptionOrNull() as? RepositoryException
 
         assertNotNull(ex)
         assertEquals("tag_conflict", ex.errorCode)

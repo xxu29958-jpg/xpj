@@ -17,7 +17,7 @@ from app.errors import AppError
 from app.models import Account, Debt, LedgerMember, Repayment
 from app.services.spending_contract_service import accounting_zone
 from tests._runtime_protocol import negotiated_headers
-from tests._web_native_form_support import hidden_post_forms
+from tests._web_native_form_support import hidden_post_forms, open_repayment_task
 
 
 def test_web_debt_fact_adapters_delegate_to_shared_commands_and_views() -> None:
@@ -116,9 +116,10 @@ def test_web_repayment_replay_is_idempotent(
     assert "/static/web/product/domains/obligations.css" in page.text
     assert "/static/web/pages/debts.css" not in page.text
     assert 'style="' not in page.text
-    assert 'name="amount_major"' in page.text
     assert f'action="/web/debts/{debt["public_id"]}/forgive"' not in page.text
-    assert "本次还款（CNY · ¥，最多两位小数）" in page.text
+    page = open_repayment_task(web_client, page)
+    assert 'name="amount_major"' in page.text
+    assert "CNY · ¥，最多两位小数" in page.text
     assert 'min="0.01"' in page.text
     assert 'step="0.01"' in page.text
     key = str(uuid4())
@@ -264,7 +265,10 @@ def test_web_viewer_hides_and_cannot_post_direct_commands(
     assert page.status_code == 200
     assert f"/web/debts/{debt['public_id']}/repayments" not in page.text
     assert "当前角色可查看欠款事实" in page.text
-    assert web_client.get("/web/debts/new?ledger_id=owner").status_code == 403
+    original_editor = web_client.get("/web/debts/new?ledger_id=owner")
+    assert original_editor.status_code == 200
+    assert "当前为只读，可以核对原输入" in original_editor.text
+    assert 'data-debtcreation-submit disabled' in original_editor.text
 
     original_key = str(uuid4())
     denied = web_client.post(

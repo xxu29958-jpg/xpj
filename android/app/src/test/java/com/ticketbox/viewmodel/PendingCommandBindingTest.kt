@@ -27,7 +27,7 @@ internal class PendingCommandBindingTest : PendingViewModelReviewTestBase() {
         val vm = pendingViewModel(fake)
         advanceUntilIdle()
         vm.openQuickMerchant(a)
-        vm.saveQuickMerchant(a.id, "A merchant")
+        vm.saveQuickMerchant(a, "A merchant")
         runCurrent()
         fake.pending = listOf(b, expense(2L, merchant = null))
         ledger.value = "ledger-b"
@@ -60,7 +60,7 @@ internal class PendingCommandBindingTest : PendingViewModelReviewTestBase() {
         val vm = pendingViewModel(fake)
         advanceUntilIdle()
         vm.openMissingAmount(a)
-        vm.saveAmountAndConfirm(a.id, 4200L)
+        vm.saveAmountAndConfirm(a, 4200L)
         runCurrent()
         fake.pending = listOf(b, expense(2L, amountCents = null))
         ledger.value = "ledger-b"
@@ -99,13 +99,13 @@ internal class PendingCommandBindingTest : PendingViewModelReviewTestBase() {
         val vm = pendingViewModel(fake)
         advanceUntilIdle()
         vm.openQuickMerchant(a)
-        vm.saveQuickMerchant(a.id, "A merchant")
+        vm.saveQuickMerchant(a, "A merchant")
         runCurrent()
         fake.pending = listOf(b)
         ledger.value = "ledger-b"
         runCurrent()
         vm.openQuickMerchant(b)
-        vm.saveQuickMerchant(b.id, "B merchant")
+        vm.saveQuickMerchant(b, "B merchant")
         runCurrent()
         val before = vm.uiState.value
         assertEquals(setOf(1L), before.actionInProgressIds)

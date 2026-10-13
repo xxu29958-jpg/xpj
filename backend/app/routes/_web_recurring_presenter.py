@@ -9,11 +9,10 @@ from __future__ import annotations
 
 import calendar
 from datetime import date, datetime
-from urllib.parse import urlencode
 from uuid import uuid4
 
 from app.errors import AppError
-from app.money_contract import projection_sum_to_int
+from app.money_contract import MoneySign, parse_canonical_money_minor, projection_sum_to_int
 from app.routes.web_common import _amount_yuan, _with_ledger
 from app.services.currency_common import currency_input_metadata, major_amount_to_minor
 from app.services.spending_contract_service import accounting_zone
@@ -133,7 +132,8 @@ def _review_form_draft(draft: dict, *, target: dict | None, prepare_review: bool
     if not compatible:
         return {**draft, "review_required": True, "currency_conflict": True}, None
     if prepare_review and (target is None or target["status"] != "archived"):
-        draft = {**draft, "idempotency_key": uuid4().hex, "review_required": False}
+        draft = {**draft, "prepared_from_key": draft["idempotency_key"],
+            "idempotency_key": uuid4().hex, "review_required": False}
         if target:
             draft["expected_row_version"] = str(target["row_version"])
         return draft, "填写已保留，尚未保存。核对已保存记录后，点击保存提交。"
@@ -147,15 +147,12 @@ def _candidate_amount_cents(candidate: dict) -> int:
     )
 
 
-def candidate_view(candidate: dict, *, ledger_id: str) -> dict:
+def candidate_view(candidate: dict) -> dict:
     currency_code = candidate["home_currency_code"]
     amount_cents = _candidate_amount_cents(candidate)
     merchant = str(candidate.get("merchant") or "")
     raw_seen = candidate.get("last_seen_at")
     last_seen_date = local_date_iso(raw_seen) if isinstance(raw_seen, datetime) else str(raw_seen or "")[:10]
-    # 候选动作 = 进入统一表单的复核模式 (GET)。URL 只带商家定位候选,
-    # 观察事实 (金额/次数/最近/置信度) 由服务端扫描重新给出, 不信客户端。
-    review_href = "/web/recurring?" + urlencode({"ledger_id": ledger_id, "review": merchant}) + "#add"
     return {
         "merchant": merchant,
         "home_currency_code": currency_code,
@@ -164,8 +161,18 @@ def candidate_view(candidate: dict, *, ledger_id: str) -> dict:
         "last_seen_date": last_seen_date,
         "confidence": str(candidate.get("confidence") or ""),
         "reason": str(candidate.get("reason") or ""),
-        "review_href": review_href,
     }
+
+
+def retained_candidate_form(fields: dict) -> dict:
+    """Render the rejected proposal without presenting it as a fresh observation."""
+    try:
+        amount = parse_canonical_money_minor(fields["amount_cents"], sign=MoneySign.POSITIVE,
+            label="web_recurring.amount_cents")
+        amount_yuan = _amount_yuan(amount, fields["home_currency_code"])
+    except AppError:
+        amount_yuan = fields["amount_cents"] + "（最小货币单位）"
+    return {**fields, "amount_yuan": amount_yuan, "retained": True}
 
 
 def candidate_review_prefill(candidate: dict) -> dict:
@@ -176,6 +183,7 @@ def candidate_review_prefill(candidate: dict) -> dict:
     raw_seen = candidate.get("last_seen_at")
     last_seen_date = local_date_iso(raw_seen) if isinstance(raw_seen, datetime) else str(raw_seen or "")[:10]
     return {
+        "idempotency_key": uuid4().hex,
         "merchant": str(candidate.get("merchant") or ""),
         "home_currency_code": currency_code,
         "amount_cents": amount_cents,
@@ -253,8 +261,7 @@ def parse_optional_date(raw: str) -> date | None:
 
 def _edit_guidance(selected_id: str, public_id: str, item_status: str) -> dict:
     return {
-        "href": _with_ledger("/web/recurring", selected_id, status=item_status)
-        + (f"#item-{public_id}" if public_id else ""),
+        "href": _with_ledger("/web/recurring", selected_id, status=item_status, edit=public_id),
         "label": "去编辑现有记录",
     }
 

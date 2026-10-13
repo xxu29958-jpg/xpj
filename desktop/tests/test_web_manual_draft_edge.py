@@ -46,12 +46,13 @@ def _form(query: dict[str, list[str]]) -> bytes:
   <input name="csrf_token" type="hidden" value="synthetic-not-a-credential">
   <fieldset data-manual-edit-fields>
     {inputs}<select name="currency_code"><option>CNY</option><option>EUR</option></select>
-    <details open data-manual-options data-start-expanded="false"><summary hidden>补充资料</summary></details>
+    <details class="manual-expense-options" open data-manual-options data-start-expanded="false"><summary hidden>补充资料</summary></details>
   </fieldset>
+  <a data-manual-result hidden>查看保存结果</a>
   <button type="submit" data-manual-submit>记下这笔支出</button>
   <p hidden data-manual-draft-status></p>
 </form>
-<div hidden data-manual-draft-actions><a href="/form">另记一笔</a></div>
+<div hidden data-manual-draft-actions><a href="/web/expenses/new">另记一笔</a></div>
 <details hidden data-manual-draft-shelf><span data-manual-draft-count></span><ul data-manual-draft-list></ul></details>
 <script>{setup}</script>
 <script src="/manual-drafts.js"></script><script src="/manual-entry.js"></script>
@@ -81,9 +82,10 @@ def test_real_edge_manual_intent_survives_reload_and_unknown_response(tmp_path: 
             if url.path == "/":
                 self.reply(b'<!doctype html><html><head><meta charset="utf-8"></head><body>'
                            b'<script src="/manual-drafts.js"></script><script src="/probe.js"></script></body></html>')
-            elif url.path == "/form":
+            elif url.path == "/web/expenses/new":
                 self.reply(_form(parse_qs(url.query)))
-            elif url.path in {"/manual-drafts.js", "/manual-entry.js", "/manual-draft-ack.js"}:
+            elif url.path in {"/manual-drafts.js", "/manual-entry.js", "/manual-draft-ack.js",
+                              "/manual-draft-files.js", "/attachment-drafts.js", "/manual-original.js"}:
                 self.reply((_WEB / url.path.removeprefix("/")).read_bytes(), content_type="text/javascript")
             elif url.path == "/probe.js":
                 self.reply((Path(__file__).parent / "fixtures/web_manual_draft_probe.js").read_bytes(), content_type="text/javascript")
@@ -99,7 +101,9 @@ def test_real_edge_manual_intent_survives_reload_and_unknown_response(tmp_path: 
                 return
             ack = html.escape(json.dumps({"scope": _SCOPE, "clientRef": form["client_ref"][0]}))
             self.reply((f'<span data-manual-draft-ack="{ack}"></span><p hidden data-manual-draft-ack-status></p>'
-                        '<script src="/manual-drafts.js"></script><script src="/manual-draft-ack.js"></script>').encode())
+                        '<script src="/manual-drafts.js"></script><script data-upload-max-bytes="1048576" src="/manual-draft-files.js"></script>'
+                        '<script src="/attachment-drafts.js"></script><script src="/manual-original.js"></script>'
+                        '<script src="/manual-draft-ack.js"></script>').encode())
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)

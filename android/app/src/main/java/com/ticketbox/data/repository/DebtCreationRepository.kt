@@ -6,7 +6,6 @@ import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.DebtDirections
 import com.ticketbox.domain.model.ledgerRoleCanModify
-import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -23,6 +22,7 @@ interface DebtCreationActions {
         expectedBinding: LogicalSessionBinding,
         draft: DebtDraft,
         homeCurrency: CurrencyCode,
+        creationKey: String,
     ): Result<DebtCreationReceipt>
 }
 
@@ -55,6 +55,7 @@ class DebtCreationRepository(
         expectedBinding: LogicalSessionBinding,
         draft: DebtDraft,
         homeCurrency: CurrencyCode,
+        creationKey: String,
     ): Result<DebtCreationReceipt> {
         return try {
             val bound = guard.bindExact(expectedBinding)
@@ -69,15 +70,15 @@ class DebtCreationRepository(
                 originBindingRevision = expectedBinding.bindingRevision,
                 request = cleanDraft.toOutboxRequest(),
             )
-            val key = UUID.randomUUID().toString()
-            val id = outbox.enqueue(
+            require(creationKey.isNotBlank() && creationKey == creationKey.trim() && creationKey.length <= 64)
+            val id = outbox.enqueueOriginalCreation(
                 boundRequest = bound,
                 intent = PendingMutationIntent(
                     type = PendingMutationType.CreateDebt,
-                    targetId = "$DEBT_CREATE_TARGET_PREFIX$key",
+                    targetId = "$DEBT_CREATE_TARGET_PREFIX$creationKey",
                     payloadJson = payloadAdapter.toJson(payload),
                     expectedRowVersion = 0,
-                    idempotencyKey = key,
+                    idempotencyKey = creationKey,
                 ),
             )
             Result.success(DebtCreationReceipt(id, expectedBinding))
@@ -85,8 +86,9 @@ class DebtCreationRepository(
             throw error
         } catch (error: RepositoryException) {
             Result.failure(error)
-        } catch (_: Exception) {
+        } catch (error: Exception) {
             // Storage/encoding did not acknowledge publication. Keep the form and never report a Debt.
+            logNetworkWarning("operation=Debt create local acceptance unverified", error)
             Result.failure(RepositoryException("未能确认本机保存，请保留表单并检查待同步记录。", "debt_create_local_save_failed"))
         }
     }
@@ -126,5 +128,5 @@ private fun DebtDraft.validatedForCreation(): Result<DebtDraft> = try {
     require(principalAmountCents > 0L) { "金额必须大于 0。" }
     Result.success(copy(counterpartyLabel = cleanLabel))
 } catch (error: IllegalArgumentException) {
-    Result.failure(RepositoryException(error.message ?: "请求参数不正确。"))
+    Result.failure(RepositoryException(error.message ?: "请求参数不正确。", "debt_create_local_input_invalid"))
 }

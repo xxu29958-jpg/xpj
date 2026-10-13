@@ -89,6 +89,7 @@ internal class ExpenseCorrectionConnectedFixture(
     val expenseDao get() = requireNotNull(database).expenseDao()
     val pendingDao get() = requireNotNull(database).pendingMutationDao()
     var failCachePublication = false
+    var originalStorageAvailable = true
     var confirmedCallbacks = 0
     var adviceCallbacks = 0
     var schedules = 0
@@ -104,6 +105,8 @@ internal class ExpenseCorrectionConnectedFixture(
             else -> error("Unexpected settings: $method")
         }
     }) {
+        override fun recentSearches(): List<String> = readSettings.recentSearches()
+        override fun saveRecentSearches(queries: List<String>) = readSettings.saveRecentSearches(queries)
         override fun snapshotReadAccessDenial(bindingKey: String, monthlyBindingKey: String): Int? =
             readSettings.snapshotReadAccessDenial(bindingKey, monthlyBindingKey)
         override fun saveSnapshotReadAccessDenial(bindingKey: String, monthlyBindingKey: String, statusCode: Int?) =
@@ -158,8 +161,8 @@ internal class ExpenseCorrectionConnectedFixture(
             provider, RepositoryGraphOutbox(outbox, adapters)))
         notificationDependencies = NotificationRuntimeDependencies(context, settingsStore, provider,
             graph.recurringRepository, graph.budgetRepository, ledgerCalendarRepository)
-        uploadIntents = UploadIntentRepository(provider, outbox, UploadIntentFileStore(context),
-            adapters.uploadPayloadAdapter, adapters.uploadReceiptAdapter, settingsStore)
+        uploadIntents = UploadIntentRepository(provider, outbox, UploadIntentFileStore(context) { if (originalStorageAvailable) it.usableSpace else 0L },
+            adapters, settingsStore, db.expenseDao())
         graph.expenseRepository.onConfirmedCommitted = { confirmedCallbacks++ }
         return graph
     }
@@ -168,6 +171,10 @@ internal class ExpenseCorrectionConnectedFixture(
         .query("SELECT * FROM pending_mutations ORDER BY id").use { cursor -> buildList {
             while (cursor.moveToNext()) add(cursor.columnNames.mapIndexed { index, column -> column to cursor.getString(index) }.toMap())
         } }
+
+    suspend fun publishExpense(ledgerId: String, expense: ExpenseDto) {
+        requireNotNull(database).expenseDao().applyServerExpense(ledgerId, expense.toEntity(ledgerId))
+    }
 
     fun blockBudgetReadDeletion(block: Boolean) {
         requireNotNull(database).openHelper.writableDatabase.execSQL(if (block)
@@ -195,6 +202,10 @@ internal class ExpenseCorrectionConnectedFixture(
             ConfirmExpenseDispatcher({ network.service }, adapters.expenseStateTokenAdapter, ::publishExpenseSnapshot),
         ), maxAttempts = maxAttempts, now = clock::millis).drainOnce()
 
+    suspend fun drainSplitAcceptance(maxAttempts: Int = 10) = OutboxDrainEngine(outbox,
+        listOf(AcceptBillSplitDispatcher({ network.service }, adapters.billSplitAcceptAdapter, adapters.billSplitAcceptedAdapter)),
+        maxAttempts = maxAttempts, now = clock::millis).drainOnce()
+
     private suspend fun publishExpenseSnapshot(ledgerId: String, expense: ExpenseDto) {
         val accepted = expenseDao.applyServerExpense(ledgerId, expense.toEntity(ledgerId))
         if (accepted && expense.status == "confirmed") {
@@ -208,6 +219,7 @@ internal class ExpenseCorrectionConnectedFixture(
         identity = session.value.identity.copy(ledgerId = "another-ledger")) }
     fun switchAccount() { session.value = session.value.copy(bindingRevision = "another-account-binding",
         identity = session.value.identity.copy(accountPublicId = "40000000-0000-4000-8000-000000000003")) }
+    fun restoreOriginalSession() { session.value = correctionSession() }
     fun switchDevice() { session.value = session.value.copy(bindingRevision = "another-device-binding",
         identity = session.value.identity.copy(devicePublicId = "40000000-0000-4000-8000-000000000004")) }
     fun close() { database?.close(); context.deleteDatabase(name); calendarPreferences.edit().clear().commit(); readSettings.clear() }
@@ -216,6 +228,8 @@ internal class ExpenseCorrectionConnectedFixture(
 /** Response-loss model deduplicates by the actual original key and full request; not a PostgreSQL substitute. */
 internal class CorrectionConnectedNetwork {
     var current = correctionExpense()
+    var financialSummary: ExpenseFinancialSummaryDto? = null
+    var historyOverride: List<ExpenseRevisionDto>? = null
     var diagnosticApiVersion = com.ticketbox.data.remote.CURRENT_TICKETBOX_API_VERSION
     val diagnosticReads = CopyOnWriteArrayList<String>()
     var backgroundTasks = com.ticketbox.data.remote.dto.BackgroundTaskListResponseDto()
@@ -223,6 +237,9 @@ internal class CorrectionConnectedNetwork {
     var splitSent = BillSplitSentListResponseDto(emptyList())
     var splitLedgers: com.ticketbox.data.remote.dto.LedgerListResponseDto? = null
     val splitAcceptCalls = CopyOnWriteArrayList<Pair<String, String>>()
+    val splitAcceptResults = mutableMapOf<String, com.ticketbox.data.remote.dto.BillSplitAcceptanceDto>()
+    var loseSplitAcceptResponse = false
+    var splitReceiptTargetOverride: String? = null
     val ledgerSwitchRequests = CopyOnWriteArrayList<String>()
     var splitMembers = emptyList<com.ticketbox.data.remote.dto.LedgerMemberDto>()
     var confirmedStreamItems: ((ExpenseDto) -> List<ConfirmedExpenseStreamItemDto>)? = null
@@ -240,6 +257,9 @@ internal class CorrectionConnectedNetwork {
     val editCalls = CopyOnWriteArrayList<String>()
     val imageReads = CopyOnWriteArrayList<Long>()
     val originalHealthReads = CopyOnWriteArrayList<Long>()
+    var beforeOriginalHealthResponse: (suspend () -> Unit)? = null
+    var originalImageOverride: ByteArray? = null
+    var originalMissing = false
     val originalImage: ByteArray by lazy {
         val bitmap = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888)
         ByteArrayOutputStream().use { output ->
@@ -292,21 +312,24 @@ internal class CorrectionConnectedNetwork {
             check(!idempotencyKey.isNullOrBlank())
             editCalls += "confirm"
             return current.copy(status = "confirmed", rowVersion = current.rowVersion + 1,
-                confirmedAt = "2026-09-07T00:00:00Z").also { current = it }
+                confirmedAt = "2026-09-07T00:00:00Z").withConfirmationReceipt().also { current = it }
         }
         override suspend fun expenseThumbnail(id: Long): Response<ResponseBody> = Response.error(404,
             """{"error":"not_found","message":"图片不存在。"}""".toResponseBody("application/json".toMediaType()))
         override suspend fun originalHealth(id: Long): com.ticketbox.data.remote.dto.OriginalHealthDto {
             readable()
             originalHealthReads += id
+            beforeOriginalHealthResponse?.invoke()
             return com.ticketbox.data.remote.dto.OriginalHealthDto(expenseId = current.id, publicId = requireNotNull(current.publicId),
-                rowVersion = current.rowVersion, state = if (current.imagePath == null) "none" else "unverified",
+                rowVersion = current.rowVersion, state = if (originalMissing) "missing" else if (current.imagePath == null) "none"
+                    else if (current.imageHash != null) "verified" else "unverified",
+                expectedSha256 = if (originalMissing) "b".repeat(64) else current.imageHash,
                 checkedAt = "2026-09-20T00:00:00Z")
         }
         override suspend fun expenseImage(id: Long): Response<ResponseBody> {
             readable()
             imageReads += id
-            return Response.success(originalImage.toResponseBody("image/png".toMediaType()))
+            return Response.success((originalImageOverride ?: originalImage).toResponseBody("image/png".toMediaType()))
         }
         override suspend fun serverSettings() = ServerSettingsDto(accountName = "家庭成员", ledgerId = "correction-ledger",
             ledgerName = "家庭账本", deviceName = "测试手机", role = "member", status = "ok", storageStatus = "ok",
@@ -347,14 +370,25 @@ internal class CorrectionConnectedNetwork {
                 ledger = requireNotNull(splitLedgers).ledgers.single { it.ledgerId == ledgerId },
                 accountName = session.identity.accountName, deviceName = session.identity.deviceName)
         }
-        override suspend fun acceptBillSplitInvitation(publicId: String, request: com.ticketbox.data.remote.dto.BillSplitAcceptRequestDto): com.ticketbox.data.remote.dto.BillSplitInboxDto {
+        override suspend fun acceptBillSplitInvitation(publicId: String, request: com.ticketbox.data.remote.dto.BillSplitAcceptRequestDto): com.ticketbox.data.remote.dto.BillSplitAcceptanceDto {
             splitAcceptCalls += publicId to request.targetLedgerId
-            val target = requireNotNull(splitLedgers).ledgers.single { it.ledgerId == request.targetLedgerId }
-            current = current.copy(id = 84L, merchant = "已接受的分摊")
-            val accepted = splitInbox.items.single { it.publicId == publicId }.copy(status = "accepted",
-                receivedBill = com.ticketbox.data.remote.dto.BillSplitReceivedBillDto(current.id, target.ledgerId, target.name))
-            splitInbox = com.ticketbox.data.remote.dto.BillSplitInboxListResponseDto(listOf(accepted))
-            return accepted
+            val accepted = splitAcceptResults.getOrPut(publicId) {
+                val target = requireNotNull(splitLedgers).ledgers.single { it.ledgerId == request.targetLedgerId }
+                current = current.copy(id = 84L, merchant = "已接受的分摊")
+                val invited = splitInbox.items.single { it.publicId == publicId }
+                com.ticketbox.data.remote.dto.BillSplitAcceptanceDto(publicId, "accepted", invited.amountCents,
+                    invited.homeCurrencyCode, invited.merchantSnapshot, invited.categorySuggestion, invited.expenseTimeSnapshot,
+                    invited.expiresAt, invited.createdAt, invited.acceptedAt, invited.rejectedAt, invited.cancelledAt, invited.expiredAt,
+                    invited.senderAccountId, invited.senderDisplayName,
+                    receivedBill = com.ticketbox.data.remote.dto.BillSplitReceivedBillDto(current.id, target.ledgerId, target.name),
+                    acceptedTargetLedgerId = target.ledgerId, originalCurrencyCode = invited.originalCurrencyCode,
+                    originalAmountMinor = invited.originalAmountMinor, accountingTimeSnapshot = invited.accountingTimeSnapshot)
+            }
+            check(accepted.acceptedTargetLedgerId == request.targetLedgerId)
+            // The account's latest-50 list may no longer include this original task.
+            splitInbox = com.ticketbox.data.remote.dto.BillSplitInboxListResponseDto(emptyList())
+            if (loseSplitAcceptResponse) throw IOException("Accepted split response lost")
+            return splitReceiptTargetOverride?.let { accepted.copy(acceptedTargetLedgerId = it) } ?: accepted
         }
         override suspend fun expenseItems(id: Long): ExpenseItemsResponseDto {
             readable()
@@ -364,15 +398,17 @@ internal class CorrectionConnectedNetwork {
             readable()
             return ExpenseSplitsResponseDto(id, current.rowVersion, current.amountCents, null, null, emptyList())
         }
-        override suspend fun expenseRevisions(id: Long, page: Int, pageSize: Int, snapshotRevision: Long?): ExpenseRevisionPageDto {
+        override suspend fun expenseRevisions(id: Long, page: Int, pageSize: Int, snapshotRevision: Long?, offsetSnapshotId: Long?): ExpenseRevisionPageDto {
             readable()
-            return ExpenseRevisionPageDto(results.values.map { it.revision }, page, pageSize, results.size, current.factRevision)
+            val rows = historyOverride ?: results.values.map { it.revision }
+            return ExpenseRevisionPageDto(rows, page, pageSize, rows.size, current.factRevision,
+                offsetSnapshotId = if (rows.any { it.offsetPublicId != null }) 1 else 0)
         }
         override suspend fun expenseFactBundle(id: String): ExpenseFactBundleDto {
             check(id == current.id.toString())
             readable()
             val amount = requireNotNull(current.originalAmountMinor)
-            return ExpenseFactBundleDto(current, ExpenseFinancialSummaryDto(amount, amount, amount, 0, amount,
+            return ExpenseFactBundleDto(current, financialSummary ?: ExpenseFinancialSummaryDto(amount, amount, amount, 0, amount,
                 amount, 0, ExpenseLineageStatusDto.Confirmed), emptyList())
         }
         override suspend fun correctExpense(id: String, request: ExpenseCorrectionRequestDto, idempotencyKey: String?): ExpenseCorrectionResponseDto {

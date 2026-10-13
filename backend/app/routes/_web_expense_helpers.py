@@ -6,6 +6,7 @@ route files don't have to import from each other.
 
 from __future__ import annotations
 
+import json
 from uuid import uuid4
 
 from fastapi import Request
@@ -18,6 +19,7 @@ from app.routes._web_accounting_time import (
     time_form_projection,
     time_form_values,
 )
+from app.routes._web_draft_binding import rendered_draft_scope
 from app.routes._web_expense_manual_fx_presenter import project_manual_fx_edit_views
 from app.routes._web_expense_return_context import (
     ExpenseReturnContext,
@@ -58,6 +60,9 @@ def _edit_page_or_flash_redirect(
     conflict: bool = False,
     receipt_item_rows: list[dict] | None = None,
     split_form_rows: list[dict] | None = None,
+    subtask_expected_version: str | None = None,
+    subtask_reviewed: bool = False,
+    subtask_values: dict | None = None,
     return_context: ExpenseReturnContext = ExpenseReturnContext(),
 ) -> Response:
     """Re-render edit.html with ``error_msg`` — or flash-redirect when the row
@@ -94,6 +99,22 @@ def _edit_page_or_flash_redirect(
             **return_context_params(**return_context.as_kwargs()),
         )
     ctx[error_key] = error_msg
+    if subtask_values is not None:
+        kind = subtask_values["kind"]
+        ctx["expense_subtasks"][kind].update(subtask_values)
+        ctx["expense_subtasks"][kind]["scope"] = rendered_draft_scope(db, request, subtask_values["draft_scope"])[0]
+        ctx["expense_subtask"] = "items" if kind == "ack" else kind
+    if subtask_expected_version is not None:
+        kind = "items" if receipt_item_rows is not None else "splits"
+        current_version = ctx["expense"]["row_version"]
+        ctx["expense_subtask"] = kind
+        ctx[kind + "_review"] = {
+            "expected_row_version": current_version if subtask_reviewed else subtask_expected_version,
+            "current_row_version": current_version,
+            "current_rows": ctx["receipt_items" if kind == "items" else "split_rows"]["rows"],
+            "reviewed": subtask_reviewed,
+            "needs_review": not subtask_reviewed and str(current_version) != subtask_expected_version,
+        }
     if receipt_item_rows is not None:
         ctx["receipt_items"]["rows"] = receipt_item_rows
     if split_form_rows is not None:
@@ -130,6 +151,7 @@ def drawer_fragment_error(
     form_values: dict[str, str] | None = None,
     field_errors: dict[str, str] | None = None,
     conflict: bool = False,
+    return_context: ExpenseReturnContext = ExpenseReturnContext(return_to="pending"),
 ) -> Response:
     """批10: re-render ``_edit_drawer.html`` carrying ``error_msg`` for a failed
     fetch-mutation — or the readable empty-cell snippet when the row vanished.
@@ -152,7 +174,7 @@ def drawer_fragment_error(
             form_values=form_values,
             field_errors=field_errors,
             conflict=conflict,
-            return_context=ExpenseReturnContext(return_to="pending"),
+            return_context=return_context,
         )
     except AppError as exc:
         return HTMLResponse(
@@ -200,6 +222,24 @@ def _overlay_submitted_expense_values(
             expense_view["amount_symbol"] = currency_input["currency_symbol"]
 
 
+def _review_submission_context(db: Session, request: Request, form_values: dict | None) -> dict:
+    values = form_values or {}
+    captured = values.get("draft_scope")
+    review_scope, binding_required = rendered_draft_scope(db, request, captured)
+    return {"confirm_idempotency_key": values.get("idempotency_key") or str(uuid4()),
+        "expense_review_scope": review_scope, "expense_review_binding_required": binding_required,
+        "expense_review_scope_value": captured if captured is not None else json.dumps(review_scope) if review_scope else "",
+        "expense_review_ref": values.get("draft_ref") or str(uuid4()),
+        "expense_review_result": values.get("review_result", ""),
+        "expense_review_action": "save" if values.get("command_action") == "save" else "confirm",
+        "expense_review_task": request.query_params.get("confirmation_task") == "1",
+        "reject_idempotency_key": values.get("reject_idempotency_key") or str(uuid4()),
+        "keep_idempotency_key": values.get("keep_idempotency_key") or str(uuid4()),
+        "expense_subtasks": {kind: {"idempotency_key": str(uuid4()), "draft_ref": str(uuid4()),
+            "scope": review_scope, "draft_scope": json.dumps(review_scope) if review_scope else "", "result": ""}
+            for kind in ("items", "splits", "ack")}}
+
+
 def web_edit_context(
     db: Session,
     request: Request,
@@ -233,14 +273,13 @@ def web_edit_context(
     if form_values and not conflict and form_values.get("expected_row_version"):
         expense_view["row_version"] = form_values["expected_row_version"]
     ctx["expense"] = expense_view
+    ctx["expense_review_row_version"] = expense.row_version
+    ctx["expense_review_basis_changed"] = str(expense_view["row_version"]) != str(expense.row_version)
     ctx["expense_fx"] = expense_fx_view(db, expense=expense)
     ctx["fx_revision_changed"] = str(expense_view["row_version"]) != str(expense.row_version)
     ctx["manual_draft_ack"] = manual_draft_ack(db, getattr(request.state, "web_session_auth", None), expense)
     ctx["conflict_current"] = current_expense_view if conflict else None
-    ctx["confirm_idempotency_key"] = (form_values or {}).get("idempotency_key") or str(uuid4())
-    ctx["reject_idempotency_key"] = (form_values or {}).get("reject_idempotency_key") or str(uuid4())
-    ctx["ocr_idempotency_key"] = str(uuid4())
-    ctx["text_ocr_idempotency_key"] = str(uuid4())
+    ctx.update(_review_submission_context(db, request, form_values))
     ctx["error"] = None
     ctx["message"] = request.query_params.get("msg")
     ctx["items_error"] = None
@@ -317,6 +356,7 @@ def _web_item_rows(
     )
     return {
         "rows": rows,
+        "total_yuan": _amount_yuan(response.items_total_amount_cents, currency_code),
         "status": response.items_sum_status,
         "mismatch_cents": response.mismatch_cents,
         "mismatch_yuan": _amount_yuan(response.mismatch_cents, currency_code),
@@ -350,6 +390,7 @@ def confirm_reject_error(
             form_values=form_values,
             field_errors=field_errors,
             conflict=conflict,
+            return_context=return_context,
         )
     return _edit_page_or_flash_redirect(
         db,
@@ -395,6 +436,7 @@ def web_save_response(
                 form_values=form_values,
                 field_errors=field_errors,
                 conflict=conflict,
+                return_context=return_context,
             )
         return _edit_page_or_flash_redirect(
             db,

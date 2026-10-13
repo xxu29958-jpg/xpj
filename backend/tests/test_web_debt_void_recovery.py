@@ -184,17 +184,20 @@ def test_get_read_failure_mounts_all_original_debt_write_recovery_forms(monkeypa
     monkeypatch.setattr(writes, '_require_selected_ledger_write', lambda *_: None)
     monkeypatch.setattr(queries, '_list_ledger_options', lambda *_: [])
     monkeypatch.setattr(queries, '_resolve_selected_ledger_id', lambda *a, **kw: 'my-ledger')
+    fault = AppError('dependency_unavailable', status_code=503)
     def unreadable(*a, **kw):
-        raise AppError('dependency_unavailable', status_code=503)
+        raise fault
     monkeypatch.setattr(queries, '_load_debt_detail_state' if fault_owner == 'detail' else 'debt_activity_context', unreadable)
     response = queries.web_debt_detail(request, public_id='debt-one', ledger_id='my-ledger', db=db, _local=None)
     assert response.status_code == 503
+    assert request.state.reporting_error is fault
     body = response.body.decode()
     assert 'data-repayment-kind="debt-void"' in body, 'GET failure must reopen the actual stored debt void'
     assert 'data-repayment-kind="repayment-void"' in body, 'GET failure must reopen the actual stored repayment void'
     forms = {action.split("?")[0]: fields for action, fields in hidden_post_forms(body).items()}
     original_actions = {'/web/debts/debt-one/repayments', '/web/debts/debt-one/void', '/web/debts/debt-one/repayment-voids'}
-    assert set(forms) == original_actions | {'/web/debts/debt-one/kind'}
+    member_action = '/web/debts/debt-one/repayment-proposals'
+    assert set(forms) == original_actions | {'/web/debts/debt-one/kind', member_action}
     for action in original_actions:
         assert forms[action]['idempotency_key'] == ''
         assert forms[action]['expected_row_version'] == ''
@@ -205,9 +208,13 @@ def test_get_read_failure_mounts_all_original_debt_write_recovery_forms(monkeypa
     assert kind_form['origin_binding'] == forms['/web/debts/debt-one/repayments']['origin_binding']
     assert 'data-repayment-kind="debt-kind"' in body
     assert '<select id="debt-kind-select"' in body and 'name="debt_kind"' in body
-    assert body.count('data-repayment-container') == 4
-    assert body.count('data-repayment-can-create="false"') == 4
-    assert body.count('data-repayment-can-recover="true"') == 4
+    member_form = forms[member_action]
+    assert member_form['idempotency_key'] == '' and 'expected_row_version' not in member_form
+    assert member_form['debt_public_id'] == 'debt-one'
+    assert member_form['origin_binding'] == kind_form['origin_binding']
+    assert body.count('data-repayment-container') == 5
+    assert body.count('data-repayment-can-create="false"') == 5
+    assert body.count('data-repayment-can-recover="true"') == 5
 
 
 @pytest.mark.parametrize("outcome", ["state_conflict", "debt_void_original_requires_review", "dependency_unavailable"])

@@ -58,4 +58,8 @@
     <string name="debt_kind_original_requires_review">原修改已被接受，但旧版本未保存当时结果。请核对当前往来，勿重复修改。</string>
     <string name="debt_kind_review_stop_explanation">只停止本机对原修改的追踪，保留原提交。已经接受的偿还方式修改不会撤销；请核对当前往来。</string>
     <string name="debt_kind_accepted_locally_stopped">原修改已被接受，但旧版本未保存当时结果。本机已停止追踪，原选择仍保留；不会撤销已接受的修改。</string>
+    <string name="debt_repayment_result_title">这笔还款记上了吗</string>
+    <string name="debt_repayment_original_retry_hint">原金额和日期已保留。重试只会继续这一次提交，不会另记一笔还款。</string>
+    <string name="debt_repayment_open_original_debt">查看对应欠款</string>
+    <string name="debt_repayment_resume_original">核对原还款</string>
 </resources>

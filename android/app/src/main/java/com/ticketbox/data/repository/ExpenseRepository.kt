@@ -47,7 +47,6 @@ class ExpenseRepository internal constructor(
     ),
     deviceNameProvider: () -> String = ::defaultAndroidDeviceName,
     offlineMutations: ExpenseOfflineMutationWiring,
-    debtQueryReader: DebtQueryReader = DebtQueryReader(binding.apiProvider, expenseDao, sessionCoordinator),
 ) : ServerBindingRepository,
     PendingReviewActions,
     LedgerActions,
@@ -86,17 +85,19 @@ class ExpenseRepository internal constructor(
     private val bindingRepository = ExpenseBindingRepository(core)
     private val connectionRepository = ExpenseConnectionRepository(core)
     private val pendingRepository = ExpensePendingRepository(core)
+    private val factInputs = pendingRepository.originalInputs
+    override val originalInputs: ExpenseFactInputActions get() = factInputs
     private val ledgerRepository = ExpenseLedgerRepositoryActions(core)
     private val statsRepository = ExpenseStatsRepositoryActions(core, ledgerRepository)
     private val searchRepository = ExpenseSearchRepositoryActions(core, pendingRepository, binding.settingsStore)
     private val detailRepository = ExpenseDetailRepository(core)
     private val factQueryReader = ExpenseFactQueryReader(core)
-    private val factInputs = ExpenseFactInputRepository(core)
     override val factReadAccessDenials: Flow<SnapshotAccessDenial> = core.sessionCoordinator.snapshotAccessDenials.filterNotNull()
     private val correctionRepository = ExpenseCorrectionRepository(core, factInputs, offlineMutations.outbox,
         offlineMutations.correctionAdapter, offlineMutations.legacyCorrectionAdapter)
     private val offsetRepository = ExpenseOffsetRepository(core, correctionRepository, factInputs)
-    private val billSplitRepository = ExpenseBillSplitRepository(core, debtQueryReader)
+    private val billSplitRepository = ExpenseBillSplitRepository(core)
+    private val billSplitAcceptance = BillSplitAcceptanceRepository(core)
     private val backgroundTaskRepository = ExpenseBackgroundTaskRepository(core)
 
     override fun hasActiveSession(): Boolean = bindingRepository.hasActiveSession()
@@ -165,9 +166,10 @@ class ExpenseRepository internal constructor(
         id: Long,
         page: Int,
         pageSize: Int,
-        snapshotRevision: Long?,
+        snapshot: com.ticketbox.domain.model.ExpenseHistorySnapshot?,
         expectedBinding: LogicalSessionBinding?,
-    ): Result<ReadSnapshot<ExpenseRevisionPage>> = factQueryReader.revisions(id, page, pageSize, snapshotRevision, expectedBinding)
+    ): Result<ReadSnapshot<ExpenseRevisionPage>> = factQueryReader.revisions(id, page, pageSize,
+        snapshot, expectedBinding)
 
     override fun observeCorrections(): Flow<ExpenseCorrectionObservation> = correctionRepository.observe()
 
@@ -180,6 +182,7 @@ class ExpenseRepository internal constructor(
         correction: ExpenseCorrectionDraft, originalInput: ExpenseFactOriginalInput?): Result<Long> =
         correctionRepository.submit(expectedBinding, expense, correction, originalInput)
 
+    override suspend fun loadPendingReviewInputs(binding: LogicalSessionBinding) = factInputs.loadPendingReviewInputs(binding)
     override suspend fun loadFactInputs(binding: LogicalSessionBinding, id: Long) = factInputs.loadFactInputs(binding, id)
     override suspend fun saveFactInput(expected: ExpenseFactOriginalInput?, input: ExpenseFactOriginalInput) = factInputs.saveFactInput(expected, input)
     override suspend fun discardFactInput(binding: LogicalSessionBinding, input: ExpenseFactOriginalInput) = factInputs.discardFactInput(binding, input)
@@ -213,11 +216,13 @@ class ExpenseRepository internal constructor(
 
     override suspend fun saveExpenseAllowingOffline(
         expectedBinding: LogicalSessionBinding, id: Long, draft: ExpenseDraft, baseline: Expense,
-    ): Result<ExpenseCommandAcceptance> = pendingRepository.saveExpenseAllowingOffline(expectedBinding, id, draft, baseline)
+        originalInput: com.ticketbox.data.repository.ExpenseFactOriginalInput?,
+    ): Result<ExpenseCommandAcceptance> = pendingRepository.saveExpenseAllowingOffline(expectedBinding, id, draft, baseline, originalInput)
 
     override suspend fun saveAndConfirmExpense(
         expectedBinding: LogicalSessionBinding, expense: Expense, draft: ExpenseDraft,
-    ): Result<ExpenseCommandAcceptance> = pendingRepository.saveAndConfirmExpense(expectedBinding, expense, draft)
+        originalInput: com.ticketbox.data.repository.ExpenseFactOriginalInput?,
+    ): Result<ExpenseCommandAcceptance> = pendingRepository.saveAndConfirmExpense(expectedBinding, expense, draft, originalInput)
 
     override suspend fun confirmExpenses(
         expectedBinding: LogicalSessionBinding, expenses: List<Expense>,
@@ -279,9 +284,13 @@ class ExpenseRepository internal constructor(
 
     suspend fun acceptBillSplitInvitation(
         binding: LogicalSessionBinding,
-        publicId: String,
-        targetLedgerId: String,
-    ): Result<BillSplitInbox> = billSplitRepository.acceptBillSplitInvitation(binding, publicId, targetLedgerId)
+        original: BillSplitAcceptPayload,
+    ): Result<Long> = billSplitAcceptance.acceptBillSplitInvitation(binding, original)
+
+    fun observeBillSplitAcceptances(): Flow<BillSplitAcceptanceObservation> = billSplitAcceptance.observeAcceptances()
+    fun describeBillSplitAcceptance(row: OutboxRow): PendingBillSplitAcceptance? = billSplitAcceptance.describeAcceptance(row)
+    suspend fun recoverBillSplitAcceptance(binding: LogicalSessionBinding, id: Long, drop: Boolean): Result<Unit> =
+        billSplitAcceptance.recoverAcceptance(binding, id, drop)
 
     suspend fun rejectBillSplitInvitation(binding: LogicalSessionBinding, publicId: String): Result<BillSplitInbox> =
         billSplitRepository.rejectBillSplitInvitation(binding, publicId)
@@ -345,7 +354,8 @@ class ExpenseRepository internal constructor(
 
     override suspend fun rejectExpenseAllowingOffline(
         expectedBinding: LogicalSessionBinding, expense: Expense,
-    ): Result<ExpenseCommandAcceptance> = pendingRepository.rejectExpenseAllowingOffline(expectedBinding, expense)
+        originalInput: com.ticketbox.data.repository.ExpenseFactOriginalInput?,
+    ): Result<ExpenseCommandAcceptance> = pendingRepository.rejectExpenseAllowingOffline(expectedBinding, expense, originalInput)
 
     override suspend fun undoRejectExpense(
         expectedBinding: LogicalSessionBinding, expense: Expense,
@@ -353,7 +363,8 @@ class ExpenseRepository internal constructor(
 
     override suspend fun markNotDuplicateAllowingOffline(
         expectedBinding: LogicalSessionBinding, expense: Expense,
-    ): Result<ExpenseCommandAcceptance> = pendingRepository.markNotDuplicateAllowingOffline(expectedBinding, expense)
+        originalInput: com.ticketbox.data.repository.ExpenseFactOriginalInput?,
+    ): Result<ExpenseCommandAcceptance> = pendingRepository.markNotDuplicateAllowingOffline(expectedBinding, expense, originalInput)
 
     override suspend fun retryOcrAllowingOffline(
         expectedBinding: LogicalSessionBinding, expense: Expense,

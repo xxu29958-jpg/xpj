@@ -1,14 +1,37 @@
 {% extends "base.html" %}
 {% set page_title = '复核导入事件' %}
 {% set product_body_domain = 'transactions' %}
+{% set page_surface = 'tertiary' %}
+{% set task_return_href = batch_href %}
+{% set task_return_label = '导入批次' %}
 {% set event_label = {'refund': '退款', 'chargeback': '拒付', 'reversal': '冲销'}.get(row.offset_kind, '支出' if row.entry_kind == 'expense' else '未知事件') %}
 {% set quote_incomplete = row.exchange_rate_to_cny is none or row.exchange_rate_date is none or row.exchange_rate_source is none %}
+{% set recovery_only = row.status not in ['review', 'valid'] or (row.entry_kind == 'offset' and (not root or root.status != 'confirmed')) %}
+{% set headline = '这笔退款退给谁' if row.offset_kind == 'refund' else '核对这笔' ~ event_label %}
+{% if row.status in ['applied', 'matched'] %}{% set headline = '原消费已进入待确认' if row.entry_kind == 'expense' else '这笔' ~ event_label ~ '已处理' %}{% endif %}
+{% set source_amount = row_amount_label(row.original_amount_minor, row.original_currency_code) if row.original_currency_code and row.original_amount_minor is not none else '金额未提供' %}
 {% block title %}复核导入事件 · 小票夹{% endblock %}
 {% block content %}
+<div class="import-task stack" data-import-review>
 <header class="product-page-header">
-  <div class="product-page-heading"><h1>复核{{ event_label }}</h1><p class="product-page-subtitle">第 {{ row.line_number }} 行 · 任务已保存，可随时从导入批次回来继续。</p></div>
-  <div class="product-page-actions"><a href="{{ batch_href }}" class="product-button product-button--quiet">返回原批次</a></div>
+  <div class="product-page-heading"><h1 class="page-title" data-import-review-title data-editing-title="{{ headline }}">{{ headline }}</h1><p class="product-page-summary">来自{{ source_file_name }} · 第 {{ row.line_number }} 行</p></div>
 </header>
+<form id="import-event-form" method="post" action="{{ review_path }}" class="stack"
+  {% if import_draft_scope %}data-csvreview-draft-scope='{{ import_draft_scope | tojson }}'{% endif %}
+  data-csvreview-plan-id="{{ public_id }}:{{ row.line_number }}" data-csvreview-can-write="{{ 'true' if can_write else 'false' }}"
+  data-csvreview-ready="{{ 'false' if recovery_only else 'true' }}" data-csvreview-archived="{{ 'true' if row.status not in ['review', 'valid'] else 'false' }}" data-csvreview-native-result="{{ draft.native_result|default('') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+  <input type="hidden" name="public_id" value="{{ public_id }}">
+  <input type="hidden" name="line_number" value="{{ row.line_number }}">
+  <input type="hidden" name="task_id" value="{{ public_id }}:{{ row.line_number }}">
+  <input type="hidden" name="draft_scope" value="{{ draft.draft_scope }}">
+  <input type="hidden" name="draft_client_ref" value="{{ draft.draft_client_ref }}">
+  <input type="hidden" name="idempotency_key" value="{{ draft.draft_client_ref }}">
+  <input type="hidden" name="expense_id" value="{{ draft.expense_id }}">
+  <input type="hidden" name="expected_row_version" value="{{ draft.expected_row_version }}">
+  <p class="meta" data-csvreview-draft-status role="status" hidden></p>
+
 {% if error %}<div class="product-feedback product-feedback--error" role="alert">{{ error }}</div>{% endif %}
 {% if flash_message %}<div class="product-feedback product-feedback--success" role="status">{{ flash_message }}</div>{% endif %}
 {% if row.status == 'matched' %}
@@ -16,9 +39,94 @@
 {% elif row.status == 'applied' %}
 <div class="product-feedback product-feedback--success" role="status">{% if row.entry_kind == 'offset' %}此{{ event_label }}已入账。{% else %}已创建原消费草稿，请查看当前原单状态。{% endif %}</div>
 {% elif row.error_message %}<div class="product-feedback product-feedback--warning" role="status">{{ row.error_message }}</div>{% endif %}
+<section class="product-panel product-panel--padded product-panel--apricot fact-hero" aria-label="文件中的事件" data-import-source-hero>
+  <p class="meta">文件中的{{ event_label }}{% if row.entry_kind == 'expense' %}（消费总额）{% endif %}</p>
+  {% if row.offset_kind == 'reversal' %}<strong class="fact-amount">冲销原消费</strong>
+  {% else %}<strong class="fact-amount">{{ source_amount }}</strong>{% endif %}
+  <p class="meta">{{ row.original_currency_code or '币种未提供' }} · {{ row.accounting_date or '生效日期未提供' }}</p>
+</section>
+{% if root %}
+<section class="stack-tight" aria-label="当前账本原单">
+  <h2 class="product-panel-title" data-import-root-title>对应的原消费</h2>
+  <a class="product-entry" href="{{ root_edit_href }}">
+    <span class="product-entry-icon product-entry-icon--apricot" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#receipt-text"/></svg></span>
+    <span class="product-entry-copy"><span class="product-entry-heading"><strong>{{ root.merchant or '未填写商家' }}</strong><span class="product-entry-amount">{{ root.original_currency_code }} {{ root.original_amount_value }}</span></span><span>{{ root.expense_time }} · {{ root.category }}</span><span{% if root.status != 'pending' %} class="sr-only"{% endif %}>{{ '复核并确认原单，完成后返回' if root.status == 'pending' else '查看原单与退款记录' }}</span></span>
+    <span class="product-entry-chevron" aria-hidden="true">›</span>
+  </a>
+  {% if root.fx_meta %}<p class="meta">原消费：{{ root.fx_meta }}</p>{% endif %}
+  {% if root.status == 'pending' and row.entry_kind == 'offset' %}<p class="product-feedback product-feedback--warning">请先确认原消费，再回到此任务登记{{ event_label }}。</p>{% endif %}
+</section>
+{% endif %}
+<div class="product-entry product-entry--static" data-import-source-row hidden>
+  <span class="product-entry-icon product-entry-icon--apricot" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#undo-2"/></svg></span>
+  <span class="product-entry-copy"><span class="product-entry-heading"><strong>本次{{ event_label }}</strong><span class="product-entry-amount">{{ '冲销原消费' if row.offset_kind == 'reversal' else source_amount }}</span></span><span>{{ row.original_currency_code or '币种未提供' }} · {{ row.accounting_date or '生效日期未提供' }}</span></span>
+</div>
+{% if row.entry_kind == 'offset' and not row.resolved_expense_id and row.status not in ['applied', 'matched'] %}
+<details data-import-root-picker{% if not root %} open{% endif %}><summary class="product-button product-button--quiet">{{ '更换所选原消费' if root else '在当前账本选择原消费' }}</summary>
+<section class="stack" aria-label="查找原单">
+  <div class="product-panel-header"><h2 class="product-panel-title">在当前账本选择原消费</h2></div>
+  <p class="text-meta">按商家、备注或原单标识查找。先核对金额、币种和时间，再明确选择；来源文件中的数字编号不会自动指向本账本。</p>
+  <div class="product-form-grid">
+    <input form="import-root-search" type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+    <input form="import-root-search" type="hidden" name="reason" value="{{ draft.reason }}">
+    <input form="import-root-search" type="hidden" name="acknowledge_incomplete_lineage" value="{{ draft.acknowledge_incomplete_lineage }}">
+    <input form="import-root-search" type="hidden" name="manual_exchange_rate" value="{{ draft.manual_exchange_rate }}">
+    <input form="import-root-search" type="hidden" name="exchange_rate_date" value="{{ draft.exchange_rate_date }}">
+    <div class="product-field"><label for="root-query">查找原单</label><input form="import-root-search" id="root-query" name="query" value="{{ query }}" maxlength="200"></div>
+    <button form="import-root-search" class="product-button" type="submit">查找</button>
+  </div>
+  <div>
+  {% for candidate in candidates %}
+    <div class="product-entry product-entry--static">
+      <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#receipt-text"/></svg></span>
+      <span class="product-entry-copy"><span class="product-entry-heading"><strong>{{ candidate.merchant or '未填写商家' }}</strong><span class="product-entry-amount">{{ candidate.original_currency_code }} {{ candidate.original_amount_value }}</span></span><span>{{ candidate.category }} · {{ candidate.expense_time }} · {{ '待确认' if candidate.status == 'pending' else '已确认' }}</span>{% if candidate.fx_meta %}<span>{{ candidate.fx_meta }}</span>{% endif %}
+      {% if can_write %}<button type="submit" form="import-event-form" name="review_latest" value="{{ candidate.id }}" data-import-select formnovalidate class="product-button product-button--quiet">选择此原单</button>{% endif %}</span>
+    </div>
+  {% else %}<p class="product-state">没有找到原单。可以补充上传原消费，再回此任务继续。</p>{% endfor %}
+  </div>
+  <div class="product-pagination">
+    {% if page > 1 %}<a href="{{ review_href }}&query={{ query|urlencode }}&page={{ page - 1 }}&expense_id={{ draft.expense_id|urlencode }}&reason={{ draft.reason|urlencode }}&manual_exchange_rate={{ draft.manual_exchange_rate|urlencode }}&exchange_rate_date={{ draft.exchange_rate_date|urlencode }}">上一页</a>{% endif %}
+    <span class="text-meta">第 {{ page }} / {{ total_pages }} 页 · 共 {{ total }} 条</span>
+    {% if page < total_pages %}<a href="{{ review_href }}&query={{ query|urlencode }}&page={{ page + 1 }}&expense_id={{ draft.expense_id|urlencode }}&reason={{ draft.reason|urlencode }}&manual_exchange_rate={{ draft.manual_exchange_rate|urlencode }}&exchange_rate_date={{ draft.exchange_rate_date|urlencode }}">下一页</a>{% endif %}
+  </div>
+  {% if can_write %}<a href="/web/import?ledger_id={{ selected_ledger_id }}" target="_blank" rel="noopener" class="product-button product-button--quiet">补充上传原单（新页面）</a>{% endif %}
+  <a href="{{ review_href }}" class="product-button product-button--quiet">已补充原单，重新读取关联</a>
+</section></details>
+{% endif %}
 
-<section class="product-panel product-panel--padded" aria-label="文件中的事件">
-  <div class="product-panel-header"><h2 class="product-panel-title">文件中的{{ event_label }}</h2></div>
+  <details class="import-review-inputs" data-import-review-inputs open><summary hidden>查看本次填写的信息</summary>
+  <fieldset class="manual-expense-fields stack"{% if not can_write %} disabled{% endif %}>
+    {% if quote_incomplete %}
+    <div class="product-field"><label for="event-manual-rate">本条汇率（1 {{ row.original_currency_code }} 折合 {{ row.home_currency_code }}）</label><input id="event-manual-rate" name="manual_exchange_rate" inputmode="decimal" value="{{ row.exchange_rate_to_cny if row.exchange_rate_to_cny is not none else draft.manual_exchange_rate }}" {% if row.exchange_rate_to_cny is not none %}readonly {% endif %}required></div>
+    <div class="product-field"><label for="event-rate-date">本条汇率日期</label><input id="event-rate-date" type="date" name="exchange_rate_date" value="{{ row.exchange_rate_date or draft.exchange_rate_date }}" {% if row.exchange_rate_date is not none %}readonly {% endif %}required></div>
+    {% endif %}
+    {% if row.entry_kind == 'expense' and row.lineage_status in ['partially_refunded', 'fully_refunded', 'reversed'] %}
+    <div class="product-feedback product-feedback--warning">来源原单包含退回或冲销。如果相关事件尚未补齐，请补充上传；若本次只需带入消费总额草稿，请明确勾选下项并说明原因。相关事件齐全时无需勾选。</div>
+    <label><input type="checkbox" name="acknowledge_incomplete_lineage" value="true" {% if draft.acknowledge_incomplete_lineage == 'true' %}checked{% endif %}>我确认本次仅带入原消费总额草稿，未导入的退款、拒付或冲销不会自动生成。</label>
+    <a href="/web/import?ledger_id={{ selected_ledger_id }}" target="_blank" rel="noopener">补充上传相关事件（新页面）</a>
+    {% endif %}
+    <div class="product-field"><label for="review-reason">关联说明（必填）</label><textarea id="review-reason" name="reason" required maxlength="500" rows="2">{{ draft.reason }}</textarea></div>
+  </fieldset></details>
+  {% if event_net_preview %}
+  <section class="product-panel product-panel--padded product-panel--highlight fact-hero" data-import-net-preview
+    data-root-id="{{ root.id }}" data-root-version="{{ root.row_version }}">
+    <p class="meta">登记后的净支出 · {{ event_net_preview.currency_code }}（预览）</p>
+    <output class="fact-amount">{{ event_net_preview.amount_label }}</output>
+    <p class="meta">不会新增一笔收入或消费</p>
+  </section>
+  {% endif %}
+  {% if row.entry_kind == 'expense' %}<p class="meta">本次创建消费总额草稿，确认后才会计入流水；未导入的退款、拒付或冲销不会自动生成。</p>{% endif %}
+  <div class="offset-form-actions">
+    <button type="submit" class="product-button product-button--primary" data-csvreview-submit{% if not can_write or recovery_only %} hidden{% endif %}>{{ '复核并创建消费草稿' if row.entry_kind == 'expense' else '确认关联并登记' ~ event_label }}</button>
+    <button type="submit" class="product-button product-button--quiet" name="review_latest" value="true" data-csvreview-review formnovalidate{% if not can_write or row.status not in ['review', 'valid'] %} hidden{% endif %}>核对当前原单</button>
+    <button type="button" class="product-button product-button--quiet" data-csvreview-discard hidden>放弃本地原稿</button>
+    <p class="meta" data-csvreview-review-note hidden>核对只准备表单，确认登记才会写入事件。</p>
+    {% if not can_write %}<p class="meta">当前角色只可查看。请由账本成员复核此事件。</p>{% elif recovery_only and row.status in ['review', 'valid'] %}<p class="meta">选择并确认原单后，即可继续登记此事件。</p>{% endif %}
+    {% if import_binding_required %}<p class="product-feedback product-feedback--warning">请先核对当前原单，以当前浏览器身份继续保留这份输入。</p>{% endif %}
+  </div>
+</form>
+<form id="import-root-search" method="get" action="{{ review_path }}"></form>
+<details class="import-schema"><summary>文件原值与关联依据</summary>
   <dl class="product-form-grid">
     <div><dt>原币金额{% if row.entry_kind == 'expense' %}（消费总额）{% endif %}</dt><dd>{{ row.original_currency_code or '币种未提供' }} {{ row_amount_label(row.original_amount_minor, row.original_currency_code) if row.original_currency_code and row.original_amount_minor is not none else '金额未提供' }}</dd></div>
     <div><dt>本位币金额</dt><dd>{{ row.home_currency_code or '币种未提供' }} {{ row_amount_label(row.amount_cents, row.home_currency_code) if row.home_currency_code and row.amount_cents is not none else '金额未提供' }}</dd></div>
@@ -44,86 +152,20 @@
     </table></div>
   </details>
   {% endif %}
-</section>
-
-{% if root %}
-<section class="product-panel product-panel--padded" aria-label="当前账本原单">
-  <div class="product-panel-header"><h2 class="product-panel-title">{% if row.resolved_expense_id %}已关联原单{% else %}本次选择的原单{% endif %}</h2></div>
-  <p>{{ root.merchant or '未填写商家' }} · {{ root.category }} · {{ root.expense_time }}</p>
-  <p>{{ root.original_currency_code }} {{ root.original_amount_value }}{% if root.fx_meta %} · {{ root.fx_meta }}{% endif %}</p>
-  <p class="text-meta">原单 #{{ root.id }} · {% if root.status == 'pending' %}待确认{% elif root.status == 'confirmed' %}已确认{% else %}{{ root.status }}{% endif %} · 当前版本 {{ root.row_version }}</p>
-  <a href="{{ root_edit_href }}" class="product-button">{% if root.status == 'pending' %}复核并确认原单，完成后返回{% else %}查看原单与退款记录{% endif %}</a>
-  {% if root.status == 'pending' and row.entry_kind == 'offset' %}<p class="text-meta">请先确认原消费，再回到此任务登记{{ event_label }}。</p>{% endif %}
-  {% if row.resolved_offset_public_id %}<p class="text-meta">已入账事件：{{ row.resolved_offset_public_id }}</p>{% endif %}
-</section>
-{% endif %}
-
-{% if row.entry_kind == 'offset' and not row.resolved_expense_id and row.status not in ['applied', 'matched'] %}
-<section class="product-panel product-panel--padded" aria-label="查找原单">
-  <div class="product-panel-header"><h2 class="product-panel-title">在当前账本选择原消费</h2></div>
-  <p class="text-meta">按商家、备注或原单标识查找。先核对金额、币种和时间，再明确选择；来源文件中的数字编号不会自动指向本账本。</p>
-  <form method="get" action="{{ review_path }}" class="product-form-grid">
-    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-    <input type="hidden" name="reason" value="{{ draft.reason }}">
-    <input type="hidden" name="acknowledge_incomplete_lineage" value="{{ draft.acknowledge_incomplete_lineage }}">
-    <input type="hidden" name="manual_exchange_rate" value="{{ draft.manual_exchange_rate }}">
-    <input type="hidden" name="exchange_rate_date" value="{{ draft.exchange_rate_date }}">
-    <div class="product-field"><label for="root-query">查找原单</label><input id="root-query" name="query" value="{{ query }}" maxlength="200"></div>
-    <button class="product-button" type="submit">查找</button>
-  </form>
-  <div class="product-table-wrap"><table class="product-table">
-    <thead><tr><th>原消费</th><th>金额 / 汇率</th><th>状态</th><th>操作</th></tr></thead>
-    <tbody>{% for candidate in candidates %}<tr>
-      <td>#{{ candidate.id }} · {{ candidate.merchant }}<br>{{ candidate.category }} · {{ candidate.expense_time }}</td>
-      <td>{{ candidate.original_currency_code }} {{ candidate.original_amount_value }}{% if candidate.fx_meta %}<div class="text-meta">{{ candidate.fx_meta }}</div>{% endif %}</td>
-      <td>{{ '待确认' if candidate.status == 'pending' else '已确认' }}</td>
-      <td><form method="get" action="{{ review_path }}">
-        <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-        <input type="hidden" name="expense_id" value="{{ candidate.id }}">
-        <input type="hidden" name="reason" value="{{ draft.reason }}">
-        <input type="hidden" name="manual_exchange_rate" value="{{ draft.manual_exchange_rate }}">
-        <input type="hidden" name="exchange_rate_date" value="{{ draft.exchange_rate_date }}">
-        <input type="hidden" name="query" value="{{ query }}">
-        <button type="submit" class="product-button product-button--quiet">选择此原单</button>
-      </form></td>
-    </tr>{% else %}<tr><td colspan="4">没有找到原单。可以补充上传原消费，再回此任务继续。</td></tr>{% endfor %}</tbody>
-  </table></div>
-  <div class="product-pagination">
-    {% if page > 1 %}<a href="{{ review_href }}&query={{ query|urlencode }}&page={{ page - 1 }}&expense_id={{ draft.expense_id|urlencode }}&reason={{ draft.reason|urlencode }}&manual_exchange_rate={{ draft.manual_exchange_rate|urlencode }}&exchange_rate_date={{ draft.exchange_rate_date|urlencode }}">上一页</a>{% endif %}
-    <span class="text-meta">第 {{ page }} / {{ total_pages }} 页 · 共 {{ total }} 条</span>
-    {% if page < total_pages %}<a href="{{ review_href }}&query={{ query|urlencode }}&page={{ page + 1 }}&expense_id={{ draft.expense_id|urlencode }}&reason={{ draft.reason|urlencode }}&manual_exchange_rate={{ draft.manual_exchange_rate|urlencode }}&exchange_rate_date={{ draft.exchange_rate_date|urlencode }}">下一页</a>{% endif %}
-  </div>
-  {% if can_write %}<a href="/web/import?ledger_id={{ selected_ledger_id }}" target="_blank" rel="noopener" class="product-button product-button--quiet">补充上传原单（新页面）</a>{% endif %}
-  <a href="{{ review_href }}" class="product-button product-button--quiet">已补充原单，重新读取关联</a>
-</section>
-{% endif %}
-
-{% if can_write and row.status in ['review', 'valid'] %}
-<section class="product-panel product-panel--padded" aria-label="提交复核">
-  <div class="product-panel-header"><h2 class="product-panel-title">确认本次处理</h2></div>
-  <form method="post" action="{{ review_path }}" class="product-form-grid">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-    <input type="hidden" name="expense_id" value="{{ draft.expense_id }}">
-    <input type="hidden" name="expected_row_version" value="{{ draft.expected_row_version }}">
-    {% if quote_incomplete %}
-    <div class="product-field"><label for="event-manual-rate">本条汇率（1 {{ row.original_currency_code }} 折合 {{ row.home_currency_code }}）</label><input id="event-manual-rate" name="manual_exchange_rate" inputmode="decimal" value="{{ row.exchange_rate_to_cny if row.exchange_rate_to_cny is not none else draft.manual_exchange_rate }}" {% if row.exchange_rate_to_cny is not none %}readonly {% endif %}required></div>
-    <div class="product-field"><label for="event-rate-date">本条汇率日期</label><input id="event-rate-date" type="date" name="exchange_rate_date" value="{{ row.exchange_rate_date or draft.exchange_rate_date }}" {% if row.exchange_rate_date is not none %}readonly {% endif %}required></div>
-    {% endif %}
-    {% if row.entry_kind == 'expense' and row.lineage_status in ['partially_refunded', 'fully_refunded', 'reversed'] %}
-    <div class="product-feedback product-feedback--warning">来源原单包含退回或冲销。如果相关事件尚未补齐，请补充上传；若本次只需带入消费总额草稿，请明确勾选下项并说明原因。相关事件齐全时无需勾选。</div>
-    <label><input type="checkbox" name="acknowledge_incomplete_lineage" value="true" {% if draft.acknowledge_incomplete_lineage == 'true' %}checked{% endif %}>我确认本次仅带入原消费总额草稿，未导入的退款、拒付或冲销不会自动生成。</label>
-    <a href="/web/import?ledger_id={{ selected_ledger_id }}" target="_blank" rel="noopener">补充上传相关事件（新页面）</a>
-    {% endif %}
-    <div class="product-field"><label for="review-reason">复核原因</label><textarea id="review-reason" name="reason" required maxlength="500">{{ draft.reason }}</textarea></div>
-    {% if row.entry_kind == 'expense' or (root and root.status == 'confirmed') %}
-    <button type="submit" class="product-button product-button--primary">{% if row.entry_kind == 'expense' %}复核并创建消费草稿{% else %}确认原单并登记{{ event_label }}{% endif %}</button>
-    {% else %}<p class="text-meta">选择并确认原单后，即可继续登记此事件。</p>{% endif %}
-  </form>
-</section>
-{% elif not can_write %}<p class="text-meta">当前角色只可查看。请由账本成员复核此事件。</p>{% endif %}
+  {% if root %}<p class="meta">当前原单 #{{ root.id }} · 版本 {{ root.row_version }} · {{ root.status }}</p>{% endif %}
+  {% if row.resolved_offset_public_id %}<p class="meta">已入账事件：{{ row.resolved_offset_public_id }}</p>{% endif %}
+</details>
 {% if row.status in ['error', 'insert_failed', 'conflict'] %}
-<p class="import-export-note"><a href="/web/import/{{ public_id }}/errors.csv?ledger_id={{ selected_ledger_id }}">下载错误行 CSV</a>，修正后重新上传。原批次中的成功结果会保留。</p>
+<p class="import-export-note"><a href="/web/import/{{ public_id }}/errors.csv?ledger_id={{ selected_ledger_id }}">下载错误行 CSV</a>，核对原文件中的事件及原单标识后重新上传。原批次中的成功结果会保留。</p>
+{% elif row.entry_kind == 'offset' and not root %}
+<p class="import-export-note">无法关联时，可对照上面的文件原值修正原 CSV，<a href="/web/import?ledger_id={{ selected_ledger_id }}">重新上传修正的文件</a>。原批次中的成功结果会保留。</p>
 {% endif %}
+<details class="manual-draft-shelf" data-csvreview-draft-shelf hidden><summary>此浏览器保留的导入复核</summary><ul data-csvreview-draft-list></ul></details>
 <p><a href="{{ batch_href }}">返回原批次，查看其余事件和已完成结果</a></p>
+</div>
+{% endblock %}
+{% block page_scripts %}
+<script defer src="/static/web/manual-drafts.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/plan-entry.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/import-review.js?v={{ asset_version }}"></script>
 {% endblock %}

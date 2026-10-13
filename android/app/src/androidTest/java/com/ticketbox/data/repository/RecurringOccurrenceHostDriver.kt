@@ -12,7 +12,9 @@ import com.ticketbox.ui.navigation.RecurringPaymentRestore
 import com.ticketbox.ui.navigation.RecurringPaymentTask
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.RecurringOccurrenceViewModel
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.job
+import kotlinx.coroutines.runBlocking
 
 /** Shared Host assembly: binding, Outbox graph, Host, rebuild. */
 internal class RecurringOccurrenceHostDriver(
@@ -27,11 +29,18 @@ internal class RecurringOccurrenceHostDriver(
     val openedSubmissions = mutableListOf<String>()
 
     fun close() {
-        compose.runOnIdle { model.value?.viewModelScope?.cancel() }
+        stopModel()
         fixture.close()
     }
 
+    fun stopModel() {
+        val previous = compose.runOnIdle { model.value.also { model.value = null } } ?: return
+        compose.waitForIdle()
+        runBlocking { previous.viewModelScope.coroutineContext.job.cancelAndJoin() }
+    }
+
     fun installModel(open: Boolean = true, savedState: SavedStateHandle = SavedStateHandle()) {
+        stopModel()
         val graph = fixture.reopen()
         this.graph = graph
         compose.runOnIdle {

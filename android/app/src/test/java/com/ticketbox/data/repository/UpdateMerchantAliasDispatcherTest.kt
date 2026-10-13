@@ -127,6 +127,73 @@ class UpdateMerchantAliasDispatcherTest {
         assertTrue(result is DispatchResult.Conflict, "state_conflict must stay Conflict: $result")
     }
 
+    @Test
+    fun `a newer peer version or another object cannot settle the original or rebase its successor`() = runTest {
+        for (receipt in listOf(updatedAliasDto().copy(rowVersion = 3L), updatedAliasDto().copy(publicId = "peer-alias"))) {
+            val dao = FakePendingMutationDao()
+            val outbox = testOutboxRepository(dao = dao)
+            val original = aliasRow("original-key")
+            val firstId = outbox.enqueue(original.type, original.targetId, original.payloadJson, 1L,
+                idempotencyKey = "original-key")
+            val nextId = outbox.enqueue(original.type, original.targetId, original.payloadJson, 1L,
+                idempotencyKey = "following-key")
+            val summary = OutboxDrainEngine(outbox, listOf(dispatcherFor(Stub(Result.success(receipt))))).drainOnce()
+
+            assertEquals(0, summary.done)
+            assertEquals(1, summary.failures)
+            assertEquals(PendingMutationStatus.Failed.wireValue, dao.rows.getValue(firstId).status)
+            assertEquals(PendingMutationStatus.Pending.wireValue, dao.rows.getValue(nextId).status)
+            assertEquals(1L, dao.rows.getValue(nextId).expectedRowVersion)
+            assertEquals(original.payloadJson, dao.rows.getValue(nextId).payload)
+            assertEquals("following-key", dao.rows.getValue(nextId).idempotencyKey)
+        }
+    }
+
+    @Test
+    fun `the accepted version settles the original while a peer edit still conflicts with the successor`() = runTest {
+        val dao = FakePendingMutationDao()
+        val outbox = testOutboxRepository(dao = dao)
+        val original = aliasRow("original-key")
+        val receivedVersions = mutableListOf<Long>()
+        val api = object : ApiService by FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0) {
+            override suspend fun updateMerchantAlias(
+                publicId: String, request: MerchantAliasUpdateRequest, idempotencyKey: String?,
+            ): MerchantAliasDto {
+                receivedVersions += request.expectedRowVersion
+                if (idempotencyKey == "original-key") return updatedAliasDto()
+                if (request.expectedRowVersion != 3L) {
+                    throw httpException(409, """{"error":"state_conflict","message":"他端已修改别名"}""")
+                }
+                error("The peer's version must never authorize this unsent successor")
+            }
+        }
+        val firstId = outbox.enqueue(original.type, original.targetId, original.payloadJson, 1L,
+            idempotencyKey = "original-key")
+        val nextId = outbox.enqueue(original.type, original.targetId, original.payloadJson, 1L,
+            idempotencyKey = "following-key")
+
+        val summary = OutboxDrainEngine(outbox, listOf(dispatcherFor(api))).drainOnce()
+
+        assertEquals(listOf(1L, 2L), receivedVersions)
+        assertEquals(1, summary.done)
+        assertEquals(1, summary.conflicts)
+        assertEquals(PendingMutationStatus.Done.wireValue, dao.rows.getValue(firstId).status)
+        assertEquals(PendingMutationStatus.Conflict.wireValue, dao.rows.getValue(nextId).status)
+        assertEquals("following-key", dao.rows.getValue(nextId).idempotencyKey)
+        assertEquals(original.payloadJson, dao.rows.getValue(nextId).payload)
+    }
+
+    @Test
+    fun `a historical acceptance without its receipt remains unresolved`() = runTest {
+        val response = """{"error":"merchant_alias_original_requires_review","message":"原修改已接受，请核对商家别名"}"""
+        val result = dispatcherFor(Stub(Result.failure(httpException(409, response))))
+            .dispatch(aliasRow("original-key"))
+
+        assertTrue(result is DispatchResult.Failure)
+        assertTrue(result.blocksFollowing)
+        assertEquals(false, result.definitelyRejected)
+    }
+
     private fun httpException(code: Int, body: String): HttpException {
         val raw = Response.Builder()
             .protocol(Protocol.HTTP_1_1)

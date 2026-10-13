@@ -28,11 +28,15 @@ data class TagRenameRequest(
     @param:Json(name = "expected_row_version")
     val expectedRowVersion: Long,
     val name: String,
+    @param:Json(name = "require_orphan")
+    val requireOrphan: Boolean = false,
 )
 
 data class TagDeleteRequest(
     @param:Json(name = "expected_row_version")
     val expectedRowVersion: Long,
+    @param:Json(name = "require_orphan")
+    val requireOrphan: Boolean = false,
 )
 
 /** Merge source A (the `{publicId}` path tag) into target B; both tokens checked. */
@@ -43,6 +47,8 @@ data class TagMergeRequest(
     val targetPublicId: String,
     @param:Json(name = "target_row_version")
     val targetRowVersion: Long,
+    @param:Json(name = "require_orphan")
+    val requireOrphan: Boolean = false,
 )
 
 data class TagUndoRequest(

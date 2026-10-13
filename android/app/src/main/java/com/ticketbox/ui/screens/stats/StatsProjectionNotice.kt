@@ -10,6 +10,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyProjectionGap
+import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.StatsSource
 import com.ticketbox.viewmodel.StatsUiState
@@ -22,7 +23,7 @@ internal fun StatsProjectionNotice(state: StatsUiState, onRepair: (CurrencyProje
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
         Text(stringResource(R.string.stats_projection_currency, stats.homeCurrencyCode), style = MaterialTheme.typography.bodySmall)
         if (state.statsSource == StatsSource.CachedSnapshot) {
-            Text(stringResource(R.string.stats_snapshot_updated, stats.month, com.ticketbox.ui.components.displayDateTime(state.statsFetchedAt)),
+            Text(stringResource(R.string.stats_snapshot_updated, displayMonthLabel(stats.month), com.ticketbox.ui.components.displayDateTime(state.statsFetchedAt)),
                 modifier = Modifier.testTag("stats-cached-snapshot"), style = MaterialTheme.typography.bodySmall)
         }
         if (lifestyle != null && state.lifestyleFromCache) {

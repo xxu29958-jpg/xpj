@@ -68,7 +68,7 @@ internal class FakeCreateGoalEdits(
     override fun describeEdit(row: OutboxRow): PendingGoalEdit? = null
     override suspend fun currency(binding: LogicalSessionBinding) = Result.success(CurrencyCode.CNY)
     override fun observeEdits(binding: LogicalSessionBinding, publicId: String) = MutableStateFlow(emptyList<PendingGoalEdit>())
-    override suspend fun save(binding: LogicalSessionBinding, goal: Goal, update: GoalUpdate): Result<Long> = error("unused")
+    override suspend fun save(binding: LogicalSessionBinding, goal: Goal, update: com.ticketbox.domain.model.GoalEditInput): Result<Long> = error("unused")
     override suspend fun recover(binding: LogicalSessionBinding, pending: PendingGoalEdit, drop: Boolean): Result<Unit> = error("unused")
 }
 

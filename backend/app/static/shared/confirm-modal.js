@@ -39,7 +39,8 @@
     function ask(message) {
         return new Promise(function (resolve) {
             var dlg = ensureModal();
-            dlg.querySelector(".tb-confirm-message").textContent = message || "确认要执行此操作？";
+            var messageEl = dlg.querySelector(".tb-confirm-message");
+            messageEl.textContent = message || "确认要执行此操作？";
             if (typeof dlg.showModal !== "function") {
                 resolve(window.confirm(message));
                 return;
@@ -51,6 +52,7 @@
             dlg.addEventListener("close", done);
             dlg.returnValue = "cancel";
             dlg.showModal();
+            messageEl.scrollTop = 0;
             var okBtn = dlg.querySelector(".tb-confirm-ok");
             if (okBtn) okBtn.focus();
         });

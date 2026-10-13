@@ -19,5 +19,6 @@ internal fun ReviewSheetScaffold(
     ) {
         chrome?.let { ReviewQueueHeader(chrome = it) }
         content()
+        chrome?.inputStatus?.invoke()
     }
 }

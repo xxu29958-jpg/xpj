@@ -12,6 +12,48 @@ class RelationshipRecovery:
     def __init__(self, journey):
         self.j = journey
 
+    def declare_return(self, returned):
+        """The real member form keeps its date and key when a committed reply is lost."""
+        j, page = self.j, self.j.page
+        j.goto(f"/web/debts/{returned}")
+        page.get_by_role("link", name="记一次还款", exact=True).click()
+        path = f"/web/debts/{returned}/repayment-proposals"
+        form = page.locator(f'form[action="{path}"]')
+        form.locator('[name="amount_major"]').fill("2.00")
+        form.locator('[name="paid_at"]').fill("2026-09-01")
+        form.locator('[name="note"]').fill("返还的原日期与留言")
+        original = {key: value for key, value in form_values(form).items() if key != "csrf_token"}
+        assert original["time_precision"] == "date_only" and original["calendar_revision"]
+        page.reload()
+        page.locator('[data-repayment-kind="member-repayment"][data-repayment-state="editing"]').wait_for(state="visible")
+        assert {key: value for key, value in form_values(form).items() if key != "csrf_token"} == original
+        delivered = []
+
+        def lose_reply(route):
+            response = route.fetch(max_redirects=0)
+            assert response.status == 200 and "data-repayment-ack=" in response.text()
+            delivered.append(True)
+            route.abort("connectionclosed")
+
+        page.route("**" + path, lose_reply)
+        try:
+            with page.expect_event("requestfailed", predicate=lambda request: request.url.endswith(path)):
+                page.locator("[data-repayment-submit]").click()
+        finally:
+            page.unroute("**" + path, lose_reply)
+        assert delivered == [True]
+        wait_for(lambda: returned in j.facts()["pending_repayments"], "The return declaration was not retained")
+        j.goto(f"/web/debts/{returned}")
+        page.get_by_role("link", name="核对原还款", exact=True).click()
+        page.locator('[data-repayment-kind="member-repayment"][data-repayment-state="submitted"]').wait_for(state="visible")
+        assert {key: value for key, value in form_values(form).items() if key != "csrf_token"} == original
+        assert j.facts()["return_paid"] == 0, "An unconfirmed member declaration became a repayment fact"
+        j.capture("member-repayment-original-date")
+        page.locator("[data-repayment-submit]").click()
+        page.locator("[data-repayment-ack]").wait_for()
+        page.wait_for_function("ref => localStorage.getItem('ticketbox:member-repayment-draft:v1:' + ref) === null",
+            arg=original["idempotency_key"])
+
     def native_original(self):
         j, native = self.j, self.j.native
         j.open_native(returned=True)
@@ -24,8 +66,8 @@ class RelationshipRecovery:
         native.click("原垫付方返还")
         native.reveal_any(SETTLEMENT)
         native.fill("4.00", label=SETTLEMENT)
-        native.reveal_any("原因")
-        native.fill("native-reopen-12", label="原因")
+        native.reveal_any("为什么改约定", toward_start=True)
+        native.fill("native-reopen-12", label="为什么改约定")
         native.reveal_any("预览新份额的结算", toward_start=True)
         native.click("预览新份额的结算")
         j.native_confirmation()
@@ -63,7 +105,7 @@ class RelationshipRecovery:
 
         page.route("**" + path, lose_reply)
         with page.expect_event("requestfailed", predicate=lambda request: request.url.endswith(path)):
-            form.locator("[data-repayment-submit]").click()
+            page.locator('[form="split-change-form"][data-repayment-submit]').click()
         j.expect("agreed_share", 1200)
         assert delivered == [True]
         page.unroute("**" + path, lose_reply)
@@ -85,7 +127,7 @@ class RelationshipRecovery:
         self.native_original()
         self.lost_acceptance_reply()
         assert len(j.facts()["changes"]) == 2 and j.facts()["settlement"] == -400
-        stale.locator("[data-repayment-submit]").click()
+        j.receiver.locator('[form="split-change-form"][data-repayment-submit]').click()
         replacement = j.receiver.locator("[data-repayment-replace]")
         replacement.wait_for(state="visible")
         blocked = j.receiver.locator('[data-repayment-kind="split-change"]')

@@ -62,7 +62,7 @@ internal fun IncomePlanEditSheetHost(
     }
 }
 
-/** 编辑收入抽屉：共享表单 + 安静 danger 文字级归档 + 保存/取消；成功才由 ack 关闭。 */
+/** 编辑收入抽屉：共享表单 + 安静 danger 文字级归档 + 保存/放弃原稿；成功才由 ack 关闭。 */
 @Composable
 private fun EditIncomePlanSheet(
     state: IncomePlanEditUiState,
@@ -71,6 +71,7 @@ private fun EditIncomePlanSheet(
     val session = state.session ?: return
     AppSheetScaffold(
         title = stringResource(R.string.income_plan_edit_sheet_title),
+        subtitle = stringResource(R.string.income_plan_draft_continuation_hint),
         actions = {
             AppSheetActionRow(
                 primary = AppAction(
@@ -83,7 +84,7 @@ private fun EditIncomePlanSheet(
                     enabled = !state.isSubmitting && state.canModify && !state.succeeded,
                 ),
                 secondary = AppAction(
-                    text = stringResource(R.string.common_cancel),
+                    text = stringResource(R.string.income_plan_creation_discard),
                     onClick = callbacks.onCancel,
                     enabled = !state.isSubmitting,
                 ),

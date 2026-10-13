@@ -163,9 +163,22 @@ def get_current_writer_context(
 
 
 def require_current_api_version(api_version: str | None) -> None:
-    """Reject an unsupported command protocol without claiming any write state."""
+    """Reject an unsupported protocol without claiming any write state."""
     if api_version != CURRENT_API_VERSION:
         raise AppError("client_upgrade_required", status_code=409)
+
+
+def get_current_protocol_reader_context(
+    auth: AuthContext = Depends(get_current_app_context),
+    api_version: str | None = Header(
+        default=None, alias=TICKETBOX_API_VERSION_HEADER,
+        description="Required API contract version from the runtime compatibility handshake.",
+        json_schema_extra={"x-ticketbox-runtime-required": True},
+    ),
+) -> AuthContext:
+    """Negotiate changed response semantics while retaining read-only access."""
+    require_current_api_version(api_version)
+    return auth
 
 
 def get_current_protocol_writer_context(

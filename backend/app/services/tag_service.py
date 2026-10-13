@@ -32,11 +32,8 @@ def normalize_tags(value: str | None) -> str | None:
 def list_tags(db: Session, tenant_id: str) -> list[str]:
     rows = db.execute(
         select(Tag.name)
-        .join(ExpenseTag, ExpenseTag.tag_id == Tag.id)
         .where(Tag.tenant_id == tenant_id)
         .where(Tag.deleted_at.is_(None))  # ADR-0043: never surface soft-deleted tags
-        .where(ExpenseTag.tenant_id == tenant_id)
-        .distinct()
         .order_by(Tag.name.asc())
     )
     return [str(row[0]) for row in rows]

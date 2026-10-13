@@ -41,11 +41,12 @@ class OriginalAttachmentDispatcher(private val apiProvider: (OutboxRow) -> ApiSe
         when (payload.operation) {
             "verify_original" -> api.verifyOriginal(payload.expenseId,
                 OriginalVerificationRequestDto(payload.expectedRowVersion, requireNotNull(payload.sha256)), key)
-            "replenish_original" -> {
+            "attach_original", "replenish_original" -> {
                 val file = requireNotNull(payload.file)
                 val part = MultipartBody.Part.createFormData("file", file.metadata.fileName,
                     readFile(file).toRequestBody(file.metadata.contentType?.toMediaTypeOrNull()))
-                api.replenishOriginal(payload.expenseId, part, payload.expectedRowVersion, requireNotNull(payload.sha256), key)
+                if (payload.operation == "attach_original") api.attachOriginal(payload.expenseId, part, payload.expectedRowVersion, key)
+                else api.replenishOriginal(payload.expenseId, part, payload.expectedRowVersion, requireNotNull(payload.sha256), key)
             }
             "retry_original_cleanup" -> api.retryOriginalCleanup(payload.expenseId,
                 OriginalCleanupRequestDto(payload.expectedRowVersion, requireNotNull(payload.cleanupRequestId)), key)
@@ -74,5 +75,6 @@ class OriginalAttachmentDispatcher(private val apiProvider: (OutboxRow) -> ApiSe
 
 private fun OriginalCommandReceiptDto.matches(payload: OriginalAttachmentPayload): Boolean =
     operation == payload.operation && expenseId == payload.expenseId && publicId == payload.publicId && rowVersion > 0 &&
+        (payload.operation != "attach_original" || sha256.isOriginalDigest()) &&
         (payload.cleanupRequestId == null || cleanupRequestId == payload.cleanupRequestId) &&
         (payload.sha256 == null || sha256 == payload.sha256)

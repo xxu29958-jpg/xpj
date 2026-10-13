@@ -71,7 +71,7 @@ sealed interface DispatchResult {
      * fails; this is a local refresh requirement, never permission to resend.
      */
     data class Success(val newRowVersion: Long? = null, val cacheRefreshVersion: Long? = null, val receiptJson: String? = null,
-        val budgetReadRefreshRequired: Boolean = false) : DispatchResult
+        val acceptedReadRefreshRequired: Boolean = false) : DispatchResult
 
     /**
      * Server returned 409 ``state_conflict``. The row goes to

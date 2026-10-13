@@ -158,7 +158,7 @@ class DebtRepository internal constructor(
                     is MemberSettlementCommand.Propose -> MemberSettlementResult.Proposal(
                         api.createRepaymentProposal(task.debtPublicId, MemberRepaymentProposalCreateRequestDto(
                             proposedAmountCents = command.amountCents, note = command.note,
-                            supersedesProposalPublicId = command.supersedesProposalPublicId), idempotencyKey).toDomain())
+                            supersedesProposalPublicId = command.supersedesProposalPublicId, timeInput = command.timeInput), idempotencyKey).toDomain())
                     is MemberSettlementCommand.Confirm -> MemberSettlementResult.DebtChanged(
                         api.confirmRepaymentProposal(task.debtPublicId, command.proposalPublicId,
                             MemberRepaymentProposalConfirmRequestDto(confirmedAmountCents = command.amountCents, expectedRowVersion = command.expectedRowVersion),

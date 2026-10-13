@@ -12,7 +12,7 @@ from urllib.parse import urlencode
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 
 from app.routes.web_common import _web_redirect, _with_ledger
-from app.services.pending_review_bulk_service import BulkResult
+from app.services.pending_review_bulk_service import SKIP_REASON_STALE, BulkResult
 
 _SUCCESS_VERBS = {
     "reject": "已忽略",
@@ -72,11 +72,11 @@ def pending_bulk_result_redirect(
     )
 
 
-def format_bulk_message(action: str, result: BulkResult) -> str:
+def format_bulk_message(action: str, result: BulkResult, *, stale_hint: str = SKIP_REASON_STALE) -> str:
     parts: list[str] = []
     if result.success_count:
         parts.append(f"{_SUCCESS_VERBS.get(action, '已更新')} {result.success_count} 条")
-    parts.extend(f"跳过 {count} 条：{label}" for label, count in result.skipped_reasons.items())
+    parts.extend(f"跳过 {count} 条：{stale_hint if label == SKIP_REASON_STALE else label}" for label, count in result.skipped_reasons.items())
     return "；".join(parts or ["没有可操作的账单。"]) + "。"
 
 

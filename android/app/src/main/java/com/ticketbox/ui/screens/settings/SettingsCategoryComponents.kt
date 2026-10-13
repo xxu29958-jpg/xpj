@@ -91,7 +91,6 @@ import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppPageScrollableColumn
-import com.ticketbox.ui.components.SettingsEntryCard
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.components.parseAmountCents
@@ -118,7 +117,6 @@ internal fun CategoryRuleCard(
     onDeleteRule: () -> Unit,
 ) {
     val conditionText = categoryRuleConditionText(rule)
-        ?: stringResource(R.string.category_rule_condition_none)
 
     Column(
         modifier = Modifier
@@ -146,13 +144,15 @@ internal fun CategoryRuleCard(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
         )
-        Text(
-            text = conditionText,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodySmall,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
+        if (conditionText != null) {
+            Text(
+                text = conditionText,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 

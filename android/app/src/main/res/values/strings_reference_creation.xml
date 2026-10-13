@@ -1,0 +1,19 @@
+<resources>
+    <string name="reference_label_tag">标签</string>
+    <string name="reference_label_category">分类</string>
+    <string name="reference_add">添加%1$s</string>
+    <string name="reference_continue">继续添加%1$s</string>
+    <string name="reference_name">%1$s名称</string>
+    <string name="reference_create_subtitle">先准备好，记账时直接选用。</string>
+    <string name="reference_create_hint">一次添加一个名称，最多 64 个字符。添加后暂未使用，不会改动历史流水。</string>
+    <string name="reference_created">已确认添加「%1$s」。</string>
+    <string name="reference_unconfirmed">原添加结果尚未确认。核实会沿用原名称和提交编号。</string>
+    <string name="reference_rejected">原添加已被拒绝。保留名称后可修改，再次确认才会添加。</string>
+    <string name="reference_review_rejected">保留名称，继续修改</string>
+    <string name="reference_check_original">核实原添加</string>
+    <string name="reference_later">稍后继续</string>
+    <string name="reference_recycle">找回已删除的对象</string>
+    <string name="reference_identity_changed">登录状态已变化，原输入和提交编号仍保留。请核对当前身份后继续原任务。</string>
+    <string name="reference_review_identity">核对当前身份并继续</string>
+    <string name="reference_readonly">当前角色为只读，原输入仍保留；恢复编辑权限后可继续。</string>
+</resources>

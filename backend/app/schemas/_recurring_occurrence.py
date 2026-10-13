@@ -37,6 +37,7 @@ class RecurringOccurrenceResponse(BaseModel):
     series_row_version: int
     row_version: int
     state: Literal["unfulfilled", "fulfilled", "needs_review"]
+    payment_review_reason: Literal["not_confirmed", "negative_amount", "reversed", "unavailable"] | None = None
     planned_amount_cents: PositiveMoneyMinor
     reserved_amount_cents: NonNegativeMoneyMinor
     expense_public_id: str | None

@@ -78,6 +78,7 @@ def confirm_repayment_draft_idempotently(
         idempotency_key=idempotency_key or "",
         original_currency=payload.original_currency,
         original_amount=payload.original_amount,
+        time_input=payload.time_input,
         commit=False,
     )
     mark_idempotency_succeeded(

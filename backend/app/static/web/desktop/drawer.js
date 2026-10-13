@@ -1,29 +1,5 @@
-/* Pending expense edit drawer.
- *
- * 批10: the drawer is the /web review pipeline. On top of opening the edit
- * fragment, the drawer form's save / 确认 / 标为非重复 submit are upgraded to
- * fetch-mutations (progressive enhancement):
- *   - 确认 success → remove the row, decrement the filter count, auto-open the
- *     next pending row's drawer (= 确认并下一笔).
- *   - save / 标为非重复 success → re-fetch the row fragment (fresh OCC token /
- *     cleared duplicate flag) so the open drawer stays usable.
- *   - any failure → swap the drawer fragment carrying the inline error back in,
- *     so the reviewer never loses their place.
- *   - fetch rejected (offline) → fall through to a native full-page submit
- *     (the hidden return_to=pending field still lands a save back on the queue).
- *
- * 删除草稿 keeps its data-confirm dialog and is intentionally left on the native
- * full-page path: that preserves the ADR-0038 5s 撤销 banner (which the fetch
- * path would silently drop) and avoids forking confirm-modal's dialog.
- *
- * 218-D S4 (移植自产品矿, 适配 main): 补齐矿的模态语义 (aria-hidden 开关 +
- * 焦点圈禁 + 背景 inert 锁)。批选不挂起导航: bulk-bar.js 不再给行挂
- * aria-disabled, 点击与程序化 open 始终可用; 两处 aria-disabled 检查仅作
- * 防御守卫保留。
- * S4-R1: 勾选控件移出行链接 (HTML 禁嵌交互控件), 行结构回到 #218 同构 —
- * 容器 .exp-row 内 选择槽 + a.exp-row-detail 兄弟节点; 抽屉操作的是行链接,
- * 移除/找下一行落到外层容器, 高亮经 is-current 类落在容器 (inbox.css)。
- */
+/* Pending review uses the shared durable task; the drawer owns queue navigation and presentation.
+ * Ignore keeps its confirmation dialog, original command and undo result. FX actions retain their existing owner. */
 (function (window, document) {
   "use strict";
 
@@ -39,7 +15,71 @@
     return "save";
   }
 
+  function preserveReviewOnLeave(hasUnsubmittedInput) {
+    window.addEventListener("beforeunload", function (event) {
+      if (hasUnsubmittedInput()) {
+        event.preventDefault();
+        event.returnValue = "";
+      }
+    });
+  }
+
+  app.preserveReviewForms = function (forms) {
+    let submittingForm = null;
+    forms.forEach(form => {
+      form.addEventListener("input", () => { form.dataset.edited = "true"; });
+      form.addEventListener("submit", event => {
+        submittingForm = form;
+        queueMicrotask(() => { if (event.defaultPrevented) submittingForm = null; });
+      });
+    });
+    preserveReviewOnLeave(() => {
+      const submitted = submittingForm;
+      submittingForm = null;
+      return forms.some(form => form !== submitted && (form.expenseReviewContinuity
+        ? form.expenseReviewContinuity.hasUnretainedInput() : form.dataset.edited));
+    });
+  };
+
+  function bindReviewSubtasks() {
+    const related = document.querySelector("[data-review-subtasks]");
+    if (!related) return;
+    if (related.dataset.reviewError && !window.location.hash) {
+      window.history.replaceState(null, "", "#expense-" + related.dataset.reviewError);
+    }
+    app.preserveReviewForms([...document.querySelectorAll("[data-review-form]")]);
+    let showingRelated = null;
+    function showReviewStage() {
+      const hash = window.location.hash;
+      const target = /^#expense(items|ack)-edit-/.test(hash) ? "#expense-items" :
+        hash.startsWith("#expensesplits-edit-") ? "#expense-splits" : hash;
+      const next = target === "#expense-items" || target === "#expense-splits";
+      document.querySelectorAll("[data-review-stage]").forEach(node => {
+        node.hidden = (node.dataset.reviewStage === "details") !== next;
+      });
+      if (next) related.querySelectorAll(":scope > details").forEach(node => { node.open = true; });
+      related.querySelectorAll(".product-segments a").forEach(link => {
+        if (link.hash === target) link.setAttribute("aria-current", "location");
+        else link.removeAttribute("aria-current");
+      });
+      if (showingRelated !== next && (next || showingRelated !== null)) {
+        document.getElementById(next ? "review-breakdown" : "review").focus({preventScroll: true});
+        window.scrollTo(0, 0);
+      }
+      showingRelated = next;
+    }
+    window.addEventListener("hashchange", showReviewStage);
+    showReviewStage();
+    const notice = related.querySelector('[role="alert"], [data-subtask-review] > strong');
+    if (notice) {
+      notice.tabIndex = -1;
+      notice.focus({preventScroll: true});
+      notice.scrollIntoView({block: "center"});
+    }
+  }
+
   app.initDrawer = function initDrawer() {
+    bindReviewSubtasks();
     const drawer = document.getElementById("drawer");
     const scrim = document.getElementById("drawer-scrim");
     if (!drawer || !scrim) return;
@@ -50,23 +90,62 @@
       'input:not([type="hidden"]):not([disabled]):not([tabindex="-1"]):not([hidden])',
       'select:not([disabled]):not([tabindex="-1"]):not([hidden])',
       'textarea:not([disabled]):not([tabindex="-1"]):not([hidden])',
+      'summary',
       '[contenteditable="true"]:not([tabindex="-1"]):not([hidden])',
       '[tabindex]:not([tabindex="-1"]):not([hidden])'
     ].join(", ");
     let currentRow = null;
     let restoreFocusTo = null;
     let backgroundState = [];
+    const wideReview = window.matchMedia("(min-width: 80rem)");
+    let reviewController = null, continuation = null;
+    let opening = 0;
+    let submitting = false;
+    let activeExpenseId = "";
+    const batchKey = window.location.pathname + window.location.search;
+    const previousBatch = window.history.state?.expenseReviewBatch;
+    const batchIds = previousBatch?.key === batchKey ? previousBatch.ids :
+      [...document.querySelectorAll(".exp-row[data-expense-id]")].map(row => row.dataset.expenseId);
+    window.history.replaceState({...window.history.state, expenseReviewBatch: {key: batchKey, ids: batchIds}}, "");
+
+    function releaseCurrent() {
+      const released = reviewController?.dispose(); reviewController = null;
+      window.clearTimeout(continuation); continuation = null;
+      window.TicketboxExpenseReview?.refreshShelf();
+      return released;
+    }
+    function clearTaskAnchor() {
+      if (window.location.hash.startsWith("#expensereview-edit-")) {
+        const next = new URL(window.location.href); next.hash = "";
+        window.history.replaceState(window.history.state, "", next);
+      }
+    }
+
+    function syncReviewLayout() {
+      const open = drawer.classList.contains("on");
+      drawer.setAttribute("aria-modal", String(!wideReview.matches));
+      if (open && !wideReview.matches) lockBackground();
+      else unlockBackground();
+    }
+    wideReview.addEventListener("change", syncReviewLayout);
+    preserveReviewOnLeave(() => !submitting && (reviewController ? reviewController.hasUnretainedInput() : drawer.querySelector('[data-drawer-form][data-edited="true"]')));
 
     function close() {
+      if (submitting || reviewController?.hasUnretainedInput()) return;
+      opening += 1;
+      releaseCurrent();
+      clearTaskAnchor();
       drawer.classList.remove("on");
       scrim.classList.remove("on");
       drawer.setAttribute("aria-hidden", "true");
       markCurrent(null);
       if (currentRow) currentRow.setAttribute("aria-expanded", "false");
       drawer.innerHTML = "";
+      drawer.inert = false;
       currentRow = null;
       unlockBackground();
       restoreFocus();
+      if (!document.querySelector(".exp-row[data-expense-id]")) window.location.assign(window.location.href);
     }
 
     function rememberFocus(row) {
@@ -92,7 +171,7 @@
     function focusableElements() {
       return Array.from(drawer.querySelectorAll(focusableSelector)).filter(function (element) {
         return (
-          element.getClientRects().length > 0 &&
+          element.checkVisibility() &&
           !element.closest('[aria-hidden="true"], [inert]')
         );
       });
@@ -168,17 +247,24 @@
     }
 
     function bindFragment() {
+      app.bindReviewFields(drawer);
+      drawer.querySelectorAll("[data-review-position]").forEach(function (position) {
+        const index = batchIds.indexOf(activeExpenseId);
+        position.textContent = index < 0 ? "原核对任务" : "第 " + (index + 1) + " / " + batchIds.length + " 张";
+      });
+      const image = drawer.querySelector(".product-drawer-receipt img");
+      if (image) app.bindReceiptControls(drawer, image);
       if (typeof app.initReceiptSkeletons === "function") app.initReceiptSkeletons(drawer);
       drawer.querySelectorAll("[data-drawer-close]").forEach(function (b) {
-        b.addEventListener("click", close);
+        b.onclick = close;
       });
       // K3: 冲突横幅的「放弃修改，载入现值」在抽屉内原地重取 fragment
       // (fresh OCC token + 权威字段值), 不把用户踢出队列。
       drawer.querySelectorAll("[data-drawer-reload]").forEach(function (link) {
-        link.addEventListener("click", function (e) {
+        link.onclick = function (e) {
           e.preventDefault();
           refetchCurrent();
-        });
+        };
       });
       bindDrawerForm();
     }
@@ -186,29 +272,42 @@
     // Fetch the edit fragment for a row and swap it into the open drawer. On a
     // fetch error fall back to the row's full-page edit link (unchanged
     // behaviour for the open action).
-    function openRow(row) {
-      if (!row) return;
+    function openRow(row, resume = false) {
+      if (!row || submitting || reviewController?.hasUnretainedInput()) return;
+      if (row === currentRow && drawer.classList.contains("on")) return;
       // 防御守卫（无当前生产者：批选不再挂 aria-disabled）：行链接被显式
       // 禁用时，程序化入口（review-keyboard 的 drawerApi.open）同样让路。
       if (row.getAttribute("aria-disabled") === "true") return;
       const url = row.getAttribute("data-fragment-url");
       if (!url) return;
       rememberFocus(row);
+      releaseCurrent();
+      if (!resume) clearTaskAnchor();
+      drawer.inert = true;
+      if (currentRow) currentRow.setAttribute("aria-expanded", "false");
       currentRow = row;
+      activeExpenseId = row.closest(".exp-row")?.dataset.expenseId || row.dataset.expenseId;
+      const generation = ++opening;
+      function showFragment(html) {
+        if (generation !== opening) return;
+        if (typeof html === "string") drawer.innerHTML = html;
+        else drawer.replaceChildren(html);
+        drawer.inert = false;
+        drawer.classList.add("on");
+        scrim.classList.add("on");
+        drawer.setAttribute("aria-hidden", "false");
+        syncReviewLayout();
+        markCurrent(row);
+        row.setAttribute("aria-expanded", "true");
+        bindFragment();
+        focusDrawer();
+      }
       fetch(url, { credentials: "same-origin", headers: { "Accept": "text/html" } })
         .then(function (res) { return res.text(); })
-        .then(function (html) {
-          drawer.innerHTML = html;
-          drawer.classList.add("on");
-          scrim.classList.add("on");
-          drawer.setAttribute("aria-hidden", "false");
-          lockBackground();
-          markCurrent(row);
-          row.setAttribute("aria-expanded", "true");
-          bindFragment();
-          focusDrawer();
-        })
+        .then(showFragment)
         .catch(function () {
+          if (generation !== opening) return;
+          close();
           window.location.href = row.getAttribute("href");
         });
     }
@@ -218,15 +317,27 @@
     function refetchCurrent() {
       if (!currentRow) { close(); return; }
       const url = currentRow.getAttribute("data-fragment-url");
-      fetch(url, { credentials: "same-origin", headers: { "Accept": "text/html" } })
+      const generation = opening;
+      return fetch(url, { credentials: "same-origin", headers: { "Accept": "text/html" } })
         .then(function (res) { return res.text(); })
-        .then(function (html) {
+        .then(async function (html) {
+          if (generation !== opening) return;
+          await releaseCurrent();
+          if (generation !== opening) return;
+          clearTaskAnchor();
           drawer.innerHTML = html;
+          const form = drawer.querySelector("[data-drawer-form]");
+          if (form) form.dataset.expensereviewNewDraft = "true";
           bindFragment();
           resyncRowConsumers();
           focusDrawer();
+          return syncSavedRow(generation);
         })
-        .catch(function () { /* leave the drawer as-is; the row is unchanged */ });
+        .catch(function () {
+          if (generation !== opening) return;
+          const form = drawer.querySelector("[data-drawer-form]");
+          if (form) setDrawerBusy(form, false);
+        });
     }
 
     // save/keep 的 refetch 带回新 expected_row_version：同一新 OCC token 必须
@@ -273,10 +384,10 @@
     function removeCurrentRow() {
       if (!currentRow) return null;
       const next = nextRow(currentRow);
-      const container = currentRow.closest(".exp-row") || currentRow;
-      if (container.parentNode) container.parentNode.removeChild(container);
-      decrementCounts();
+      const container = currentRow.closest(".exp-row");
+      if (container) { container.remove(); decrementCounts(); }
       currentRow = null;
+      app.refreshBulkBar?.();
       return next;
     }
 
@@ -285,35 +396,24 @@
     }
 
     function nextRow(row) {
-      const container = row.closest(".exp-row") || row;
-      let el = container.nextElementSibling;
-      while (el && !el.classList.contains("exp-row")) el = el.nextElementSibling;
-      if (el) return rowLink(el);
-      // No following row: fall back to the previous one so the reviewer keeps
-      // moving instead of dead-ending.
-      el = container.previousElementSibling;
-      while (el && !el.classList.contains("exp-row")) el = el.previousElementSibling;
-      return el ? rowLink(el) : null;
+      const rows = [...document.querySelectorAll(".exp-row[data-expense-id]")].filter(container => rowLink(container) !== row);
+      const current = batchIds.indexOf(activeExpenseId);
+      const next = rows.find(container => batchIds.indexOf(container.dataset.expenseId) > current) || rows[0];
+      return next ? rowLink(next) : null;
     }
 
     function decrementCounts() {
       const seen = [];
       const active = document.querySelector(".filter-tab.is-active .count");
       const total = document.querySelector(".filter-tab .count"); // 全部 is first
-      [active, total].forEach(function (node) {
+      [active, total, ...document.querySelectorAll('[data-pending-count], [data-filtered-count], a[href^="/web/pending"] > .nav-badge')].forEach(function (node) {
         if (!node || seen.indexOf(node) !== -1) return;
         seen.push(node);
         const n = parseInt(node.textContent, 10);
         if (!isNaN(n) && n > 0) node.textContent = String(n - 1);
       });
-    }
-
-    function advanceAfterRemoval(next) {
-      if (next) {
-        openRow(next);
-      } else {
-        // 队列耗尽：重取服务端权威页面（空态/计数/焦点），不在 JS 复制文案。
-        window.location.reload();
+      if (!document.querySelector(".exp-row[data-expense-id]")) {
+        document.querySelectorAll(".inbox-review-start, [data-bulk-select]").forEach(node => { node.hidden = true; });
       }
     }
 
@@ -323,25 +423,126 @@
       const form = drawer.querySelector("[data-drawer-form]");
       if (!form || form.getAttribute("data-fetch-bound") === "1") return;
       form.setAttribute("data-fetch-bound", "1");
+      reviewController = window.TicketboxExpenseReview?.mount(form, {embedded: true, onAccepted: showAccepted});
+      form.addEventListener("input", function () { form.dataset.edited = "true"; });
       form.addEventListener("submit", function (e) {
-        // Offline-fallback re-entry guard: requestSubmit() below re-fires this
-        // listener; let the native submit through instead of looping.
-        if (form.getAttribute("data-native-fallback") === "1") return;
+        if (e.defaultPrevented) return;
         const submitter = e.submitter || document.activeElement;
-        // 删除草稿 (data-confirm) stays on the native path: confirm-modal owns
-        // the dialog and the full-page submit preserves the 撤销 banner.
-        if (submitter && submitter.closest && submitter.closest("[data-confirm]")) return;
         const actionUrl =
           (submitter && submitter.getAttribute && submitter.getAttribute("formaction")) ||
           form.getAttribute("action");
         if (!actionUrl) return;
+        // Save/confirm/keep/reject belong to the shared durable task. Without enhancement,
+        // their original native form is submitted exactly once.
+        if (["save", "confirm", "keep", "reject"].includes(actionKind(actionUrl)) || submitter?.name === "review_latest") return;
         e.preventDefault();
         submitDrawer(form, actionUrl);
       });
     }
 
+    async function showAccepted({next, values}) {
+      if (values.command_action === "reject") {
+        await releaseCurrent(); clearTaskAnchor(); window.location.assign(next.href); return;
+      }
+      const generation = opening;
+      const confirmation = !["save", "keep"].includes(values.command_action);
+      const following = confirmation ? removeCurrentRow() : null;
+      const url = new URL(next); url.searchParams.set("fragment", "1");
+      try {
+        const response = await fetch(url, {credentials: "same-origin", headers: {Accept: "text/html"}});
+        if (!response.ok) throw Error("accepted_view_unavailable");
+        const html = await response.text();
+        if (generation !== opening) return;
+        // A recovered save may now belong to a confirmed bill. Its current
+        // read-only detail remains the native consumer, not another edit form.
+        if (!confirmation && !new DOMParser().parseFromString(html, "text/html").querySelector("[data-drawer-form]")) {
+          window.location.assign(next.href); return;
+        }
+        await releaseCurrent();
+        if (generation !== opening) return;
+        clearTaskAnchor();
+        drawer.innerHTML = html; bindFragment(); resyncRowConsumers(); focusDrawer();
+        if (!confirmation) {
+          await refreshReviewRow(generation, values.command_action);
+          return;
+        }
+        const button = drawer.querySelector("[data-confirmation-next]");
+        if (!following || !button) return;
+        button.hidden = false; button.onclick = () => openRow(following);
+        const note = drawer.querySelector("[data-confirmation-next-note]");
+        note.hidden = false; note.textContent = "这张已入账，接着核对下一张。";
+        drawer.querySelector("[data-confirmation-finish]").classList.replace("product-button--primary", "product-button--quiet");
+        continuation = window.setTimeout(() => {
+          if (generation === opening) openRow(following);
+        }, 1500);
+        const receipt = drawer.querySelector("[data-expense-confirmation]");
+        for (const event of ["pointerdown", "keydown"]) receipt.addEventListener(event, () => window.clearTimeout(continuation));
+      } catch (_) {
+        if (generation !== opening) return;
+        releaseCurrent(); clearTaskAnchor();
+        const panel = document.createElement("section"), title = document.createElement("h2"), notice = document.createElement("p"), link = document.createElement("a"), back = document.createElement("button");
+        panel.className = "product-panel product-panel--padded";
+        title.textContent = {keep: "这次非重复决定已保存", save: "这次草稿已保存"}[values.command_action] || "这次确认已入账";
+        notice.textContent = "展示结果暂时未能读取。可重新打开结果，无需再次提交。";
+        link.href = next.href; link.textContent = "重新打开结果"; link.className = "product-button product-button--primary";
+        back.type = "button"; back.textContent = "返回收件箱"; back.className = "product-button product-button--quiet"; back.onclick = close;
+        panel.append(title, notice, link, back); drawer.replaceChildren(panel); focusDrawer();
+      }
+    }
+
+    async function refreshReviewRow(generation, action) {
+      try { await syncSavedRow(generation); }
+      catch (_) {
+        if (generation === opening) {
+          const notice = document.createElement("p"); notice.className = "product-feedback product-feedback--warning";
+          const outcome = {keep: "非重复决定已保存", save: "草稿已保存", fx: "汇率状态已更新"}[action];
+          notice.setAttribute("role", "status");
+          notice.textContent = outcome + "，收件列表暂未刷新。原填写仍保留，返回列表后可重新读取。";
+          drawer.querySelector(".product-drawer-form").prepend(notice);
+        }
+      }
+    }
+
+    async function syncSavedRow(generation) {
+      const row = currentRow;
+      if (!row) return;
+      const response = await fetch(window.location.href, {credentials: "same-origin", headers: {Accept: "text/html"}});
+      if (!response.ok) throw Error("saved_list_unavailable");
+      const page = new DOMParser().parseFromString(await response.text(), "text/html");
+      if (generation !== opening) return;
+      const container = row.closest(".exp-row");
+      if (!container) return;
+      const fresh = page.querySelector('.exp-row[data-expense-id="' + activeExpenseId + '"]');
+      if (!fresh) container.remove();
+      else {
+        row.innerHTML = fresh.querySelector(".exp-row-detail").innerHTML;
+        const check = container.querySelector(".row-check"), latest = fresh.querySelector(".row-check");
+        if (check && latest) { check.value = latest.value; check.dataset.rowVersion = latest.dataset.rowVersion; }
+        container.querySelector(".exp-flags").innerHTML = fresh.querySelector(".exp-flags").innerHTML;
+      }
+      document.querySelectorAll(".filter-tab").forEach(tab => {
+        const freshTab = [...page.querySelectorAll(".filter-tab")].find(item => item.getAttribute("href") === tab.getAttribute("href"));
+        if (freshTab) tab.querySelector(".count").textContent = freshTab.querySelector(".count").textContent;
+      });
+      document.querySelectorAll("[data-filtered-count]").forEach(count => {
+        count.textContent = String(page.querySelectorAll(".exp-row[data-expense-id]").length);
+      });
+      const navSelector = ':is(.nav-primary, .nav-subnav, .mobile-primary-nav, .mobile-plan-nav) > a:is([href^="/web/pending"], [href^="/web/duplicates"])';
+      const freshLinks = [...page.querySelectorAll(navSelector)];
+      document.querySelectorAll(navSelector).forEach(link => {
+        const freshLink = freshLinks.find(item => item.getAttribute("href") === link.getAttribute("href"));
+        if (!freshLink) return;
+        const badge = freshLink.querySelector(":scope > .nav-badge");
+        link.querySelector(":scope > .nav-badge")?.remove();
+        if (badge) link.append(badge.cloneNode(true));
+      });
+      app.refreshBulkBar?.();
+    }
+
     function submitDrawer(form, actionUrl) {
-      const kind = actionKind(actionUrl);
+      if (submitting) return;
+      const generation = opening;
+      submitting = true;
       const body = new FormData(form);
       body.append("fragment", "1"); // server returns a 200 marker / error fragment
       setDrawerBusy(form, true);
@@ -350,46 +551,35 @@
       // present. Same-origin source + token satisfies the /web CSRF gate.
       fetch(actionUrl, { method: "POST", credentials: "same-origin", body: body })
         .then(function (res) {
-          if (res.ok && kind !== "fx") {
-            onMutationOk(kind);
-            return undefined;
-          }
           // FX status/retry returns the original form and OCC with saved-bill
           // status alongside it. Only explicit reload may replace that draft.
           // Errors likewise return the fragment with its inline message.
-          return res.text().then(function (html) {
+          return res.text().then(async function (html) {
+            await releaseCurrent();
             drawer.innerHTML = html;
+            const edited = drawer.querySelector("[data-drawer-form]");
+            if (edited) edited.dataset.edited = "true";
             bindFragment();
             focusDrawer();
+            submitting = false;
+            // The list reads current facts; its version must not replace the retained form's OCC.
+            await refreshReviewRow(generation, "fx");
           });
         })
         .catch(function () {
-          // Offline / network failure → native full-page submit. No fragment
-          // field is on the form itself, so the server redirects normally;
-          // return_to=pending keeps a save on the queue. requestSubmit (not
-          // .submit()) on purpose: it fires the real submit event so csrf.js's
-          // capture listener injects the csrf_token field — the programmatic
-          // .submit() skips the event and the native POST would 403.
-          form.setAttribute("action", actionUrl);
-          form.setAttribute("data-native-fallback", "1");
-          if (typeof form.requestSubmit === "function") {
-            form.requestSubmit();
-          } else {
-            HTMLFormElement.prototype.submit.call(form);
-          }
+          submitting = false;
+          setDrawerBusy(form, false);
+          const notice = document.createElement("p"); notice.className = "product-feedback product-feedback--warning";
+          notice.setAttribute("role", "status");
+          notice.textContent = "暂未收到操作结果，填写仍保留。请核对当前账单后继续。";
+          notice.tabIndex = -1;
+          form.prepend(notice);
+          notice.focus();
         });
     }
 
-    function onMutationOk(kind) {
-      if (kind === "confirm" || kind === "reject") {
-        advanceAfterRemoval(removeCurrentRow());
-      } else {
-        // save / keep: the row stays; refresh the drawer for a fresh token.
-        refetchCurrent();
-      }
-    }
-
     function setDrawerBusy(form, busy) {
+      form.inert = busy;
       form.querySelectorAll("button[type=submit]").forEach(function (b) {
         b.disabled = busy;
       });
@@ -399,13 +589,21 @@
 
     scrim.addEventListener("click", close);
     document.addEventListener("keydown", function (e) {
-      if (!drawer.classList.contains("on") || hasExternalModal()) return;
+      if (e.defaultPrevented || e.isComposing || !drawer.classList.contains("on") || hasExternalModal()) return;
       if (e.key === "Escape") {
         e.preventDefault();
         close();
-      } else if (e.key === "Tab") {
+      } else if (e.key === "Tab" && !wideReview.matches) {
         trapFocus(e);
       }
+    });
+
+    const startReview = document.querySelector("[data-inbox-review-start]");
+    if (startReview) startReview.addEventListener("click", function (event) {
+      const first = document.querySelector(".exp-row-detail[data-fragment-url]");
+      if (!first) return;
+      event.preventDefault();
+      openRow(first);
     });
 
     document.querySelectorAll(".exp-row-detail[data-fragment-url]").forEach(function (row) {
@@ -432,14 +630,23 @@
       close: close,
       isOpen: function () { return drawer.classList.contains("on"); },
       currentRow: function () { return currentRow; },
+      hasUnsavedChanges: function () {
+        return submitting || !!drawer.querySelector('[data-drawer-form][data-edited="true"]') ||
+          !!document.querySelector('[data-expensereview-scope] [data-expensereview-ref]');
+      },
       submitConfirm: function () {
         const form = drawer.querySelector("[data-drawer-form]");
         if (!form) return false;
-        const btn = form.querySelector('button[formaction$="/confirm"]');
+        const btn = form.querySelector('[data-expensereview-submit]') || form.querySelector('button[formaction$="/confirm"]');
         if (!btn || btn.disabled) return false;
         btn.click(); // routes through the form submit → fetch pipeline above
         return true;
       }
     };
+    const resumeRef = window.location.hash.startsWith("#expensereview-edit-") ? window.location.hash.slice("#expensereview-edit-".length) : "";
+    if (resumeRef) {
+      const task = [...document.querySelectorAll("[data-expensereview-ref]")].find(link => link.dataset.expensereviewRef === resumeRef);
+      if (task) openRow(document.querySelector('.exp-row[data-expense-id="' + task.dataset.expenseId + '"] .exp-row-detail') || task, true);
+    }
   };
 })(window, document);

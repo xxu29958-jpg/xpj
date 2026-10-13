@@ -4,15 +4,23 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -20,6 +28,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.ticketbox.domain.model.AppSkin
+import com.ticketbox.ui.saveConsumerArtPreview
 import com.ticketbox.ui.screens.pending.NeedsReviewFilter
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.LedgerDataQualityFilter
@@ -50,6 +59,8 @@ class DataQualityNavigationContractTest {
     private lateinit var shellState: MainShellState
     private lateinit var probe: NavigationProbe
     private lateinit var apiProbe: DataQualityApiProbe
+    private val skin = mutableStateOf(AppSkin.Paper)
+    private val scale = mutableStateOf(1f)
 
     @Test
     fun insightsEntryOpensDataQualityPageWithClickableRemediationRows() {
@@ -68,6 +79,11 @@ class DataQualityNavigationContractTest {
             .assertIsDisplayed()
             .assertHasClickAction()
         composeRule.onNodeWithText(TEXT_PAGE_TITLE).assertIsDisplayed()
+        saveConsumerArtPreview("data-quality-entry-paper", composeRule.onRoot().captureToImage().asAndroidBitmap())
+        composeRule.runOnIdle { skin.value = AppSkin.Midnight; scale.value = 2f }
+        saveConsumerArtPreview("data-quality-entry-midnight-large", composeRule.onRoot().captureToImage().asAndroidBitmap())
+        composeRule.onNodeWithText(TEXT_CONFIRMED_WITHOUT_IMAGE).performScrollTo().assertIsDisplayed().performClick()
+        assertEquals(PrimaryDomain.Transactions.route, currentRoute())
     }
 
     @Test
@@ -266,16 +282,18 @@ class DataQualityNavigationContractTest {
         apiProbe = harness.apiProbe
         probe = NavigationProbe()
         composeRule.setContent {
-            TicketboxTheme(skin = AppSkin.Default) {
-                shellState = remember { MainShellState() }
-                navController = rememberNavController()
-                DataQualityContractScaffold(
-                    shellState = shellState,
-                    navController = navController,
-                    screenFactory = harness.screenFactory,
-                    probe = probe,
-                    useRealInboxRoute = useRealInboxRoute,
-                )
+            CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, scale.value)) {
+                TicketboxTheme(skin = skin.value) {
+                    shellState = remember { MainShellState() }
+                    navController = rememberNavController()
+                    DataQualityContractScaffold(
+                        shellState = shellState,
+                        navController = navController,
+                        screenFactory = harness.screenFactory,
+                        probe = probe,
+                        useRealInboxRoute = useRealInboxRoute,
+                    )
+                }
             }
         }
         composeRule.waitForIdle()
@@ -308,7 +326,7 @@ class DataQualityNavigationContractTest {
     private companion object {
         const val ENTRY_INSIGHTS = "dq-entry-insights"
         const val ENTRY_INBOX = "dq-entry-inbox"
-        const val TEXT_PAGE_TITLE = "数据质量"
+        const val TEXT_PAGE_TITLE = "让记录再完整一点"
         const val TEXT_MISSING_MERCHANT = "缺商家"
         const val TEXT_CONFIRMED_WITHOUT_IMAGE = "已确认无图"
     }

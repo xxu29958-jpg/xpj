@@ -32,6 +32,7 @@ import com.ticketbox.ui.components.AppContentStatePresentation
 import com.ticketbox.ui.components.AppContentStateSpec
 import com.ticketbox.ui.components.AppContentStateSlot
 import com.ticketbox.ui.components.AppEndAlignedAmountText
+import com.ticketbox.ui.components.AppButtonIcons
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppProgressBar
 import com.ticketbox.ui.screens.plan.spendingGoalAmountText
@@ -76,7 +77,7 @@ internal fun GoalsSummaryCard(
             if (bodyKind == GoalsSummaryBodyKind.Empty && onAddGoal != null) {
                 AppPrimaryButton(
                     text = stringResource(R.string.stats_reports_goals_create_action),
-                    icon = Icons.Filled.Add,
+                    icons = AppButtonIcons(leading = Icons.Filled.Add),
                     modifier = Modifier.fillMaxWidth(),
                     onClick = onAddGoal,
                 )

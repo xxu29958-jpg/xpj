@@ -1,87 +1,59 @@
 {% extends "base.html" %}
 {% set product_body_domain = 'insights' %}
 {% block title %}数据体检 — 小票夹{% endblock %}
-{% block content %}
+{% block page_header %}
 <header class="product-page-header">
   <div class="product-page-heading">
-    <span class="product-eyebrow">洞察 · 数据体检</span>
-    <h1 class="page-title">数据体检</h1>
-    <p class="product-page-summary">读取自当前账本「{{ selected_ledger_name }}」。所有数字均为只读统计，刷新本页可重新计算。</p>
+    <h1 class="page-title">让记录再完整一点</h1>
+    <p class="product-page-summary">从原记录补齐信息，再刷新统计。</p>
   </div>
 </header>
-{% if not can_write %}
-<div class="product-feedback product-feedback--warning">只读角色可以查看体检结果；需要修改账单、处理重复项或新增规则时，请联系拥有者或成员。</div>
-{% endif %}
-
-{# 消费级顺序: 下一步待办优先, 完整指标明细在后; 不造综合健康分。 #}
-<section class="product-panel product-panel--padded">
-  <div class="product-panel-header">
-    <div>
-      <div class="product-panel-title">建议操作</div>
-      <div class="product-panel-subtitle">按影响入账的程度排序，逐项处理后账单更完整</div>
-    </div>
-  </div>
-  <div class="quality-actions">
-    <a class="quality-action" href="/web/originals?ledger_id={{ selected_ledger_id }}"><span><strong>检查账单原件</strong><small>按页检查实际文件；缺失或内容不符时回到同一账单处理</small></span><span>检查原件 →</span></a>
-    {% if ledger_undated_expense_count|default(0) %}
-    <a class="quality-action" href="/web/confirmed?ledger_id={{ selected_ledger_id }}&amp;filter=missing_accounting_date">
-      <span><strong>{{ ledger_undated_expense_count }} 笔账务日期待核对</strong><small>金额与原证据保留，尚未归入月份</small></span>
-      <span>{% if can_write %}核对日期{% else %}查看账单{% endif %} →</span>
-    </a>
-    {% endif %}
-    {% if summary.missing_amount > 0 %}
-    <a class="quality-action" href="/web/pending?ledger_id={{ selected_ledger_id }}&amp;filter=missing_amount">
-      <span><strong>{{ summary.missing_amount }} 条缺金额</strong></span>
-      <span>{% if can_write %}去补金额{% else %}查看缺金额{% endif %} →</span>
-    </a>
-    {% endif %}
-    {% if summary.missing_fx > 0 %}
-    <a class="quality-action" href="/web/pending?ledger_id={{ selected_ledger_id }}&amp;filter=missing_fx">
-      <span><strong>{{ summary.missing_fx }} 条待补汇率</strong><small>原币金额已保留，折算后仍需核对</small></span>
-      <span>{% if can_write %}去处理汇率{% else %}查看账单{% endif %} →</span>
-    </a>
-    {% endif %}
-    {% if summary.missing_merchant > 0 %}
-    <a class="quality-action" href="/web/pending?ledger_id={{ selected_ledger_id }}&amp;filter=missing_merchant">
-      <span><strong>{{ summary.missing_merchant }} 条缺商家</strong></span>
-      <span>{% if can_write %}去补商家{% else %}查看缺商家{% endif %} →</span>
-    </a>
-    {% endif %}
-    {% if summary.suspected_duplicates > 0 %}
-    <a class="quality-action" href="/web/pending?ledger_id={{ selected_ledger_id }}&amp;filter=duplicate">
-      <span><strong>{{ summary.suspected_duplicates }} 条疑似重复</strong></span>
-      <span>{% if can_write %}去人工裁决{% else %}查看疑似重复{% endif %} →</span>
-    </a>
-    {% endif %}
-    {% if summary.ready_to_confirm_categorized > 0 %}
-    <a class="quality-action" href="/web/pending?ledger_id={{ selected_ledger_id }}&amp;filter=ready">
-      <span>
-        <strong>{{ summary.ready_to_confirm_categorized }} 条可批量确认</strong>
-        <small>{% if can_write %}需手动勾选，不会自动确认{% else %}只读角色不能确认{% endif %}</small>
-      </span>
-      <span>{% if can_write %}去待确认{% else %}查看可确认项{% endif %} →</span>
-    </a>
-    {% endif %}
-    {% if summary.missing_category_pending > 0 %}
-    <a class="quality-action" href="/web/pending?ledger_id={{ selected_ledger_id }}&amp;filter=missing_category">
-      <span><strong>{{ summary.missing_category_pending }} 条待确认记录未分类</strong></span>
-      <span>{% if can_write %}去补分类{% else %}查看记录{% endif %} →</span>
-    </a>
-    {% endif %}
-    {% if summary.missing_category_confirmed > 0 %}
-    <a class="quality-action" href="/web/confirmed?ledger_id={{ selected_ledger_id }}&amp;filter=missing_category">
-      <span><strong>{{ summary.missing_category_confirmed }} 条已确认账单未分类</strong><small>全部月份</small></span>
-      <span>{% if can_write %}去更正分类{% else %}查看账单{% endif %} →</span>
-    </a>
-    {% endif %}
-    {% if summary.pending_total == 0 and summary.missing_category == 0 and summary.suspected_duplicates == 0 and not ledger_undated_expense_count|default(0) %}
-    <div class="quality-action">
-      <span><strong>数据状态良好。继续保持。</strong></span>
-    </div>
-    {% endif %}
-  </div>
+{% endblock %}
+{% block content %}
+{% macro quality_entry(href, icon, title, detail, tone='') %}
+<a class="product-entry" href="{{ href }}">
+  <span class="product-entry-icon{% if tone %} product-entry-icon--{{ tone }}{% endif %}" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#{{ icon }}"/></svg></span>
+  <span class="product-entry-copy"><strong>{{ title }}</strong><span>{{ detail }}</span></span>
+  <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
+</a>
+{% endmacro %}
+{% set pending_href = '/web/pending?ledger_id=' ~ selected_ledger_id|urlencode %}
+{% set confirmed_href = '/web/confirmed?ledger_id=' ~ selected_ledger_id|urlencode %}
+<section class="quality-actions" aria-label="需要看一眼的信息">
+  {% if summary.missing_fx > 0 %}
+    {{ quality_entry(pending_href ~ '&filter=missing_fx', 'globe', '换算依据', summary.missing_fx ~ ' 条待补汇率，原币金额保留', 'apricot') }}
+  {% endif %}
+  {% if ledger_undated_expense_count|default(0) %}
+    {{ quality_entry(confirmed_href ~ '&filter=missing_accounting_date', 'calendar-check', '账务日期', ledger_undated_expense_count ~ ' 笔已入账记录尚未归入月份', 'lilac') }}
+  {% endif %}
+  {% if summary.missing_amount > 0 %}
+    {{ quality_entry(pending_href ~ '&filter=missing_amount', 'receipt-text', '金额', summary.missing_amount ~ ' 条需要核对金额', 'apricot') }}
+  {% endif %}
+  {% if summary.missing_merchant > 0 %}
+    {{ quality_entry(pending_href ~ '&filter=missing_merchant', 'store', '商家', summary.missing_merchant ~ ' 条需要补上商家') }}
+  {% endif %}
+  {% if summary.missing_category_pending > 0 %}
+    {{ quality_entry(pending_href ~ '&filter=missing_category', 'tag', '待整理小票的分类', summary.missing_category_pending ~ ' 条可以补上分类') }}
+  {% endif %}
+  {% if summary.missing_category_confirmed > 0 %}
+    {{ quality_entry(confirmed_href ~ '&filter=missing_category', 'tag', '已入账的分类', summary.missing_category_confirmed ~ ' 条未分类，含全部月份') }}
+  {% endif %}
+  {% if summary.suspected_duplicates > 0 %}
+    {{ quality_entry(pending_href ~ '&filter=duplicate', 'copy', '疑似重复', summary.suspected_duplicates ~ ' 条等待人工核对', 'lilac') }}
+  {% endif %}
+  {% if summary.ready_to_confirm_categorized > 0 %}
+    {{ quality_entry(pending_href ~ '&filter=ready', 'check', '准备好入账的小票', summary.ready_to_confirm_categorized ~ ' 条可查看，仍需手动勾选确认') }}
+  {% endif %}
+  {% if summary.pending_total == 0 and summary.missing_category == 0 and summary.suspected_duplicates == 0 and not ledger_undated_expense_count|default(0) %}
+    <div class="product-state"><div class="product-state-title">暂时没有待补的信息</div><p class="product-state-body">继续收好每一张小票。</p></div>
+  {% endif %}
 </section>
-
+<p class="quality-guidance">{% if ledger_undated_expense_count|default(0) %}日期待核对的记录仍保留原金额和证据；受影响的按月合计与剩余额度暂不完整。{% endif %}所有处理都回到原记录，修改后刷新本页查看。{% if not can_write %}只读角色可查看；需要修改时请联系拥有者或成员。{% endif %}</p>
+<div class="quality-actions">
+  {{ quality_entry('/web/originals?ledger_id=' ~ selected_ledger_id|urlencode, 'file-text', '检查账单原件', '检查文件是否齐全、内容是否相符', 'sand') }}
+</div>
+<details class="quality-details">
+  <summary class="product-entry"><span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#list"/></svg></span><span class="product-entry-copy"><strong>全部统计</strong><span>当前账本 · {{ generated_at_local }}</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></summary>
 <div class="quality-metrics">
   <div class="quality-metric is-primary">
     <span class="quality-metric-label">待确认总数</span>
@@ -127,5 +99,5 @@
   </div>
 </div>
 
-<p class="text-meta">本页快照生成于 {{ generated_at_local }}。</p>
+</details>
 {% endblock %}

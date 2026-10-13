@@ -14,7 +14,7 @@
   <div class="ledger-avatar ledger-avatar--sm" aria-hidden="true">{{ opt.name[:1] if opt.name else '夹' }}</div>
   <div class="meta">
     <div class="name">{{ opt.name }}{% if opt.is_default %} · 默认{% endif %}</div>
-    <div class="sub">{{ opt.ledger_id }}</div>
+    <div class="sub">{{ '正在使用' if opt.ledger_id == selected_ledger_id else '切换到这本账' }}</div>
   </div>
   <div class="role-badge ledger-role-chip ledger-role-{{ _opt_role }} {{ _opt_role }}">{{ {'owner': '拥有者', 'member': '成员', 'viewer': '只读'}.get(_opt_role, _opt_role|upper) }}</div>
 {% endmacro %}
@@ -23,6 +23,8 @@
   <summary class="chrome-trigger ledger-switcher-trigger" aria-label="账户与账本">
     {% if _compact_ledger_header|default(false) %}<svg class="compact-ledger-icon" width="24" height="24" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#book-open"/></svg>{% endif %}
     <span class="ledger-avatar" aria-hidden="true">{{ _initial }}</span>
+    {# 窄屏任务框架 (非根页) 的账户入口图形; 仅由 shell.css 在该框架下显示。 #}
+    <svg class="task-account-icon" width="24" height="24" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#user-round"/></svg>
     <span class="ledger-name">{{ _name }}<span class="ledger-kind"> · {{ _ledger_kind }}</span></span>
     {% if _compact_ledger_header|default(false) %}<svg class="compact-ledger-icon" width="18" height="18" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-down"/></svg>{% endif %}
     <span class="role-badge ledger-role-chip ledger-role-{{ _role }} {{ _role }}">{{ _role_zh }}</span>

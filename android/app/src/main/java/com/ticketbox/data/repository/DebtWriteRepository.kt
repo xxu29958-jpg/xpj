@@ -7,6 +7,7 @@ import com.ticketbox.data.remote.dto.DebtAdjustmentCreateRequestDto
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtKinds
+import com.ticketbox.domain.model.ExpenseTimeInput
 import com.ticketbox.data.remote.dto.DebtKindSetRequestDto
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import java.util.UUID
@@ -31,7 +32,8 @@ interface DebtWriteActions {
         }
     fun describeWrite(row: OutboxRow): PendingDebtWrite?
     suspend fun save(binding: LogicalSessionBinding, debt: Debt, amountCents: Long, reason: String): Result<Long>
-    suspend fun saveRepayment(binding: LogicalSessionBinding, debt: Debt, amountCents: Long): Result<Long>
+    suspend fun saveRepayment(binding: LogicalSessionBinding, debt: Debt, amountCents: Long,
+        paymentTime: ExpenseTimeInput? = null, idempotencyKey: String? = null): Result<Long>
     suspend fun saveVoid(binding: LogicalSessionBinding, debt: Debt, reason: String): Result<Long>
     suspend fun saveRepaymentVoid(binding: LogicalSessionBinding, debt: Debt, repaymentPublicId: String, reason: String): Result<Long>
     suspend fun saveKind(binding: LogicalSessionBinding, debt: Debt, kind: String): Result<Long>
@@ -107,13 +109,16 @@ class DebtWriteRepository internal constructor(
             publish(binding, debt, type = PendingMutationType.RecordDebtAdjustment, payload = adapters.debtAdjustmentAdapter.toJson(payload))
         }
 
-    override suspend fun saveRepayment(binding: LogicalSessionBinding, debt: Debt, amountCents: Long): Result<Long> =
+    override suspend fun saveRepayment(binding: LogicalSessionBinding, debt: Debt, amountCents: Long,
+        paymentTime: ExpenseTimeInput?, idempotencyKey: String?): Result<Long> =
         errors.safeCall {
             require(amountCents > 0L && amountCents <= debt.remainingAmountCents) { "还款金额必须大于零且不超过当前剩余金额。" }
             val payload = DebtRepaymentPayload(1, DebtWriteSubject(debt.publicId, debt.counterpartyLabel, debt.homeCurrencyCode),
                 binding.sessionGeneration, binding.bindingRevision,
-                RepaymentCreateRequestDto(amountCents, debt.rowVersion, clock.instant().toString()))
-            publish(binding, debt, type = PendingMutationType.RecordDebtRepayment, payload = adapters.debtRepaymentAdapter.toJson(payload))
+                RepaymentCreateRequestDto(amountCents, debt.rowVersion,
+                    paidAt = if (paymentTime == null) clock.instant().toString() else null, timeInput = paymentTime?.toRequest()))
+            publish(binding, debt, type = PendingMutationType.RecordDebtRepayment,
+                payload = adapters.debtRepaymentAdapter.toJson(payload), idempotencyKey = idempotencyKey)
         }
 
     override suspend fun saveVoid(binding: LogicalSessionBinding, debt: Debt, reason: String): Result<Long> = errors.safeCall {
@@ -142,7 +147,8 @@ class DebtWriteRepository internal constructor(
         publish(binding, debt, type = PendingMutationType.SetDebtKind, payload = adapters.debtKindAdapter.toJson(payload))
     }
 
-    private suspend fun publish(binding: LogicalSessionBinding, debt: Debt, type: PendingMutationType, payload: String): Long {
+    private suspend fun publish(binding: LogicalSessionBinding, debt: Debt, type: PendingMutationType, payload: String,
+        idempotencyKey: String? = null): Long {
         val bound = guard.bindExact(binding)
         require(currentAccess()?.canModify == true) { "当前角色为只读，无法修改账本。" }
         require(debt.ledgerId == binding.ledgerId && debt.rowVersion > 0L &&
@@ -153,7 +159,7 @@ class DebtWriteRepository internal constructor(
             CurrencyCode.fromStorageKeyOrNull(debt.homeCurrencyCode) != null) { "当前版本不支持这笔欠款的币种。" }
         return outbox.enqueue(boundRequest = bound, intent = PendingMutationIntent(type = type,
             targetId = debtWriteTarget(debt.publicId), payloadJson = payload, expectedRowVersion = debt.rowVersion,
-            idempotencyKey = UUID.randomUUID().toString()), validateTargetRows = { rows ->
+            idempotencyKey = idempotencyKey ?: UUID.randomUUID().toString()), validateTargetRows = { rows ->
                 if (rows.any { it.status != PendingMutationStatus.Done }) {
                     throw RepositoryException("这笔欠款还有待处理的提交，请先核对原提交。")
                 }

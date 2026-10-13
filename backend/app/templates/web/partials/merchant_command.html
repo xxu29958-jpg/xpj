@@ -1,0 +1,34 @@
+{% set values = command_form %}
+{% set family = 'catalog' ~ command_kind %}
+{% set frozen = command_result in ['blocked', 'rejected'] %}
+{% if command_error %}<div id="merchant-command-error" class="product-feedback product-feedback--danger" role="alert">{{ command_error }} 原输入仍保留。</div>{% endif %}
+{% if command_result == 'prepared' %}<div class="product-feedback" role="status">已核对商家「{{ values.source_name }}」{% if command_kind == 'merge' and values.target_name %}与目标「{{ values.target_name }}」{% endif %}。请确认原输入，再提交。</div>{% endif %}
+{% if command_result == 'prepared' and command_kind == 'merge' and values.target and not command_target_available %}<p class="product-feedback product-feedback--danger">原目标当前不可合并，原选择仍保留。请明确选择另一家商家，再确认合并。</p>{% endif %}
+{% if not command_available %}<p class="product-feedback">原商家当前不可修改。仍可核实已经发出的原提交，原输入不会转移给其它商家。</p>{% endif %}
+<form method="post" action="/web/merchants/catalog/{{ values.merchant }}/{{ command_kind }}" class="stack" data-merchant-command="{{ command_kind }}" data-catalog-key="{{ values.merchant }}"
+{% if merchant_draft_scope %} data-{{ family }}-draft-scope="{{ merchant_draft_scope|tojson|forceescape }}" data-{{ family }}-can-write="{{ 'true' if can_write else 'false' }}" data-{{ family }}-archived="{{ 'false' if command_available else 'true' }}" data-{{ family }}-plan-id="{{ values.merchant }}" data-{{ family }}-native-result="{{ command_result }}"{% endif %}>
+{{ csrf_field|safe }}
+{% for field in ['ledger_id', 'merchant', 'search', 'status', 'source_name', 'target_name', 'expected_row_version', 'draft_scope', 'idempotency_key', 'draft_ref'] %}<input type="hidden" name="{{ field }}" value="{{ values[field] }}">{% endfor %}
+<p class="meta" data-command-source>原商家：{{ values.source_name or '请从保留的原任务核对' }}</p>
+{% if command_kind == 'rename' %}
+<label class="product-field"><span>商家名称</span><input type="text" name="display_name" value="{{ values.display_name }}" required maxlength="255"{% if frozen or not can_write %} readonly{% endif %}{% if command_error %} aria-invalid="true" aria-describedby="merchant-command-error"{% endif %}></label>
+<p class="meta">重命名保留原商家身份，历史账单不会改写。</p>
+{% elif command_kind == 'merge' %}
+<label class="product-field"><span>合并到</span><select name="target" required{% if not can_write %} disabled{% endif %}>
+{% if values.target %}<option value="{{ values.target }}" selected>{{ values.target_name or '原目标，请核对' }}</option>{% else %}<option value="" disabled selected>选择目标商家</option>{% endif %}
+{% if not frozen %}{% for other in catalog if other.public_id != values.merchant and other.status == 'active' and (other.public_id ~ ':' ~ other.row_version) != values.target %}<option value="{{ other.public_id }}:{{ other.row_version }}">{{ other.display_name }}</option>{% endfor %}{% endif %}</select></label>
+<label class="product-field"><span>来源别名处理</span><select name="alias_policy" required{% if not can_write %} disabled{% endif %}>
+{% if not values.alias_policy %}<option value="" disabled selected>选择别名处理方式</option>{% endif %}{% if not frozen or values.alias_policy == 'create_source_alias' %}<option value="create_source_alias"{% if values.alias_policy == 'create_source_alias' %} selected{% endif %}>创建来源别名</option>{% endif %}{% if not frozen or values.alias_policy == 'none' %}<option value="none"{% if values.alias_policy == 'none' %} selected{% endif %}>不创建别名</option>{% endif %}</select></label>
+<p class="meta">合并保留历史账单。创建来源别名后，规则可将原名字匹配到目标商家。</p>
+{% elif command_kind == 'toggle' %}
+<input type="hidden" name="next_status" value="{{ values.next_status }}">
+<p data-command-status>{{ '隐藏商家' if values.next_status == 'hidden' else '显示商家' }}：只影响目录和后续选择，仍保留历史关联。</p>
+{% else %}<p>将原商家移入账本回收站，历史账单不会改写。仍启用的别名和固定支出引用需要先处理。</p>{% endif %}
+<button type="submit" class="product-button {{ 'product-button--danger' if command_kind == 'delete' else 'product-button--primary' }}" data-{{ family }}-submit{% if not can_write or not command_available and not frozen %} disabled{% endif %}>{{ '核实原提交' if frozen else command_label }}</button>
+<p class="product-feedback" data-{{ family }}-draft-status role="status" aria-live="polite" hidden></p>
+<p class="meta" data-{{ family }}-review-note{% if frozen and command_result != 'rejected' %} hidden{% endif %}>核对只读取原商家{% if command_kind == 'merge' %}与原目标{% endif %}的最新资料，保留输入；再次确认才提交。</p>
+<button type="submit" name="review_latest" value="true" formnovalidate class="product-button product-button--quiet" data-{{ family }}-review{% if not can_write or not command_available or frozen and command_result != 'rejected' %} hidden{% endif %}>{{ '核对双方商家' if command_kind == 'merge' else '核对最新商家' }}</button>
+{% if merchant_draft_scope %}<button type="button" class="product-button product-button--quiet" data-{{ family }}-discard hidden>放弃此浏览器的原稿</button>{% endif %}
+</form>
+<a class="product-button product-button--quiet" href="{{ directory_href }}&amp;view=merchant&amp;merchant={{ values.merchant }}">返回商家资料</a>
+{% if command_kind == 'rename' and command_available %}<a class="product-button product-button--quiet" href="{{ directory_href }}&amp;view=merchant&amp;merchant={{ values.merchant }}&amp;command=merge">合并到另一个商家</a>{% endif %}

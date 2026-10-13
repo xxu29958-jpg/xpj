@@ -16,6 +16,21 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class DirectRepaymentIntentTest {
+    @Test fun originalDateOnlyPayloadRemainsReadableWithoutInventingAnInstant() = runTest {
+        val fixture = DirectRepaymentTestFixture()
+        fixture.save().getOrThrow()
+        val original = fixture.pending()
+        val paidAt = requireNotNull(original.repayment).request.paidAt
+        val dateOnly = original.row.payloadJson.replace("\"paid_at\":\"$paidAt\"",
+            """"time_input":{"precision":"date_only","calendar_revision":3,"user_local_date":"2026-09-01","source_timezone":"Pacific/Honolulu","accounting_date":"2026-09-01"}""")
+        assertTrue(dateOnly != original.row.payloadJson)
+        val restored = fixture.repository.describeWrite(original.row.copy(payloadJson = dateOnly))
+        assertNotNull(restored?.repayment)
+        assertEquals(dateOnly, restored.row.payloadJson)
+        assertEquals(original.row.idempotencyKey, restored.row.idempotencyKey)
+        assertTrue(fixture.api.calls.isEmpty())
+    }
+
     @Test fun changedBindingPendingRepaymentCanBeStoppedOfflineBeforeAnyDelivery() = runTest {
         for (axis in listOf("session", "revision")) {
             val fixture = DirectRepaymentTestFixture()
@@ -136,33 +151,39 @@ class DirectRepaymentIntentTest {
     }
 
     @Test fun retryAfterLostResponseKeepsOriginalBindingBodyTimeOccAndKeyAcrossReopen() = runTest {
-        val fixture = DirectRepaymentTestFixture()
-        val id = fixture.save().getOrThrow()
-        val original = fixture.dao.rows.getValue(id)
-        assertEquals(listOf(1), fixture.publishedDepths)
-        assertTrue(fixture.api.calls.isEmpty())
-        assertEquals("2026-09-30T15:59:00Z", fixture.pending().repayment?.request?.paidAt)
-        assertEquals(1, fixture.engine().drainOnce().failures)
-        assertEquals(1, fixture.api.facts.size)
+        val dateOnly = com.ticketbox.domain.model.ExpenseTimeInput("date_only", 3, "2026-09-01",
+            sourceTimezone = "Pacific/Honolulu", accountingDate = "2026-09-01")
+        for (paymentTime in listOf(null, dateOnly)) {
+            val fixture = DirectRepaymentTestFixture()
+            val id = fixture.repository.saveRepayment(fixture.binding, fixture.debt, 10_000,
+                paymentTime = paymentTime, idempotencyKey = "original-repayment").getOrThrow()
+            val original = fixture.dao.rows.getValue(id)
+            assertEquals(listOf(1), fixture.publishedDepths)
+            assertTrue(fixture.api.calls.isEmpty())
+            assertEquals(if (paymentTime == null) "2026-09-30T15:59:00Z" else null, fixture.pending().repayment?.request?.paidAt)
+            assertEquals(paymentTime?.toRequest(), fixture.pending().repayment?.request?.timeInput)
+            assertEquals(1, fixture.engine().drainOnce().failures)
+            assertEquals(1, fixture.api.facts.size)
 
-        val nextDay = Clock.offset(fixture.clock, Duration.ofDays(1))
-        val reopenedOutbox = fixture.newOutbox(nextDay)
-        val reopenedOwner = fixture.newRepository(reopenedOutbox, nextDay)
-        reopenedOwner.recover(fixture.binding, fixture.pending(reopenedOwner), drop = false).getOrThrow()
-        assertEquals(1, fixture.engine(reopenedOutbox, nextDay).drainOnce().done)
+            val nextDay = Clock.offset(fixture.clock, Duration.ofDays(1))
+            val reopenedOutbox = fixture.newOutbox(nextDay)
+            val reopenedOwner = fixture.newRepository(reopenedOutbox, nextDay)
+            reopenedOwner.recover(fixture.binding, fixture.pending(reopenedOwner), drop = false).getOrThrow()
+            assertEquals(1, fixture.engine(reopenedOutbox, nextDay).drainOnce().done)
 
-        val delivered = fixture.dao.rows.getValue(id)
-        assertEquals(2, fixture.api.calls.size)
-        assertEquals(fixture.api.calls.first(), fixture.api.calls.last())
-        assertEquals(1, fixture.api.facts.size)
-        assertEquals(original.copy(status = delivered.status, retryCount = delivered.retryCount,
-            lastError = delivered.lastError, attemptedAt = delivered.attemptedAt,
-            completedAt = delivered.completedAt, receiptJson = delivered.receiptJson), delivered)
-        assertEquals(PendingMutationStatus.Done.wireValue, delivered.status)
-        val receipt = assertNotNull(fixture.adapters.debtRepaymentReceiptAdapter.fromJson(assertNotNull(delivered.receiptJson)))
-        assertEquals("repayment-original", receipt.repaymentPublicId)
-        assertEquals(40_000L, DebtRepository(fixture.provider, debtReaderFixture(fixture.provider, fixture.session))
-            .getDebt("d1").getOrThrow().value.remainingAmountCents)
+            val delivered = fixture.dao.rows.getValue(id)
+            assertEquals(2, fixture.api.calls.size)
+            assertEquals(fixture.api.calls.first(), fixture.api.calls.last())
+            assertEquals(1, fixture.api.facts.size)
+            assertEquals(original.copy(status = delivered.status, retryCount = delivered.retryCount,
+                lastError = delivered.lastError, attemptedAt = delivered.attemptedAt,
+                completedAt = delivered.completedAt, receiptJson = delivered.receiptJson), delivered)
+            assertEquals(PendingMutationStatus.Done.wireValue, delivered.status)
+            val receipt = assertNotNull(fixture.adapters.debtRepaymentReceiptAdapter.fromJson(assertNotNull(delivered.receiptJson)))
+            assertEquals("repayment-original", receipt.repaymentPublicId)
+            assertEquals(40_000L, DebtRepository(fixture.provider, debtReaderFixture(fixture.provider, fixture.session))
+                .getDebt("d1").getOrThrow().value.remainingAmountCents)
+        }
     }
 
     @Test fun publicationRejectsInvalidAmountViewerAndNonDirectDebtBeforePersistOrSend() = runTest {

@@ -13,15 +13,17 @@ import pytest
 from jinja2 import ChoiceLoader, DictLoader, Environment, FileSystemLoader, StrictUndefined
 from starlette.requests import Request
 
+from app.routes.web_common import _grouped_amount
+
 
 @pytest.fixture(scope="module")
 def web_modules() -> SimpleNamespace:
     from scripts.check_api_contract import _load_app_openapi
 
     _load_app_openapi()  # Safe import defaults only; does not start the app or its database.
-    from app.routes import _web_expense_return_context, web_reports
+    from app.routes import _web_expense_return_context, web_app, web_reports
 
-    return SimpleNamespace(reports=web_reports, returns=_web_expense_return_context)
+    return SimpleNamespace(reports=web_reports, returns=_web_expense_return_context, app=web_app)
 
 
 def test_report_top_rows_link_to_exact_facts_even_when_display_fields_match(
@@ -103,6 +105,7 @@ def test_data_quality_routes_each_uncategorized_count_to_its_records() -> None:
         autoescape=True,
         undefined=StrictUndefined,
     )
+    environment.filters["grouped"] = _grouped_amount
     summary = {
         "pending_total": 2, "missing_amount": 0, "missing_fx": 0, "missing_merchant": 0,
         "suspected_duplicates": 0, "ready_to_confirm_categorized": 0,
@@ -185,7 +188,7 @@ def test_shrunk_last_page_still_exposes_remaining_uncategorized_work(monkeypatch
     ("", "2026-05", {"month": ["2026-05"]}),
     ("missing_category", "", {"filter": ["missing_category"]}),
 ])
-def test_clear_tag_links_keep_only_the_current_month_or_all_month_scope(filter, month, scope):
+def test_clear_tag_links_keep_only_the_current_month_or_all_month_scope(filter, month, scope, web_modules):
     templates = Path(__file__).resolve().parents[1] / "app" / "templates" / "web"
     environment = Environment(
         loader=ChoiceLoader([
@@ -193,11 +196,15 @@ def test_clear_tag_links_keep_only_the_current_month_or_all_month_scope(filter, 
             FileSystemLoader(templates),
         ]), autoescape=True, undefined=StrictUndefined,
     )
+    environment.filters["grouped"] = _grouped_amount
     body = environment.get_template("confirmed.html").render(
         request=Request({"type": "http", "path": "/web/confirmed", "headers": [],
             "query_string": b"ledger_id=family&home_currency_code=JPY&tag=Shared"}),
         filter=filter, month=month, selected_month=month, selected_ledger_id="family",
         tag="Shared", can_write=False, total=0, expenses=[], flash_message=None,
+        query_text="", category="", category_options=[],
+        confirmed_edit_query=web_modules.app._confirmed_edit_query("family", effective_month=month,
+            page=1, tag="Shared", filter=filter, home_currency_code="JPY"),
         home_currency_symbol="¥", month_total_amount_yuan="0.00", month_total_count=0,
         by_day=[], source_breakdown=[], calendar_max=0, home_currency_code="JPY", missing_rates=[],
         money_task={"ledger_id": "family", "month": month, "home_currency_code": "JPY", "return_to": "confirmed"},

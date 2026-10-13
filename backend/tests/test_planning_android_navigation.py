@@ -8,10 +8,12 @@ from scripts.planning_journey_android import PlanningAndroid
 
 
 class ScrollableNative(PlanningAndroid):
-    def __init__(self, position, target, length=7):
+    def __init__(self, position, target, length=7, action="remaining action", footer=""):
         self.position = position
         self.target = target
         self.length = length
+        self.action = action
+        self.footer = footer
         self.swipes = []
         self.captures = []
         self.tree_attempt = 0
@@ -20,8 +22,10 @@ class ScrollableNative(PlanningAndroid):
         self.tree_attempt += 1
         root = ET.Element("hierarchy")
         viewport = ET.SubElement(root, "node", scrollable="true", bounds="[0,0][400,800]")
-        text = "remaining action" if self.position == self.target else f"history {self.position}"
+        text = self.action if self.position == self.target else f"history {self.position}"
         ET.SubElement(viewport, "node", text=text, bounds="[0,100][400,200]")
+        if self.footer:
+            ET.SubElement(root, "node", text=self.footer, bounds="[0,800][400,900]")
         return root
 
     def adb(self, *args, **_kwargs):
@@ -35,9 +39,10 @@ class ScrollableNative(PlanningAndroid):
 
 
 def test_reflow_above_current_viewport_does_not_hide_a_reachable_action():
-    native = ScrollableNative(position=4, target=2)
+    native = ScrollableNative(position=4, target=2, action="加载最新账单",
+        footer="原操作已完成。加载最新账单后可继续编辑。")
 
-    native.reveal_any("remaining action")
+    native.reveal_any("加载最新账单", exact=True)
 
     assert native.position == 2
     assert -1 in native.swipes
@@ -61,3 +66,66 @@ def test_missing_action_still_fails_after_a_bounded_search_in_both_directions():
 
     assert len(native.swipes) <= 6
     assert not native.captures
+
+
+def test_domain_return_uses_navigation_instead_of_a_same_named_recycle_filter():
+    class Native(PlanningAndroid):
+        def __init__(self):
+            self.page = "recycle"
+            self.visited = []
+
+        def tree(self):
+            root = ET.Element("hierarchy")
+            labels = {"recycle": ["回收站", "计划"], "library": ["资料库"],
+                      "ledger": ["流水", "流水", "计划"], "budget": ["预算"],
+                      "plans": ["计划", "计划"]}[self.page]
+            for text in labels:
+                ET.SubElement(root, "node", text=text)
+            if self.page in {"ledger", "plans"}:
+                ET.SubElement(root, "node", attrib={"content-desc": "打开账户与设置"})
+            return root
+
+        def click(self, label, **_kwargs):
+            assert self.page == "ledger", "The recycle filter is not domain navigation"
+            assert label == "计划"
+            self.page = "budget"  # The target domain restores its existing secondary stack.
+            self.visited.append(self.page)
+
+        def back(self):
+            self.page = {"recycle": "library", "library": "ledger", "budget": "plans"}[self.page]
+            self.visited.append(self.page)
+
+    native = Native()
+    native.domain_home("计划")
+    assert native.visited == ["library", "ledger", "budget", "plans"]
+
+
+def test_fill_scrolls_the_input_above_the_sticky_footer_before_typing():
+    class Native(PlanningAndroid):
+        def __init__(self):
+            self.value = "PeerNote"
+            self.focused = False
+            self.field_bounds = "[63,1975][1017,2101]"
+
+        def tree(self):
+            root = ET.Element("hierarchy")
+            viewport = ET.SubElement(root, "node", scrollable="true", bounds="[0,255][1080,2021]")
+            ET.SubElement(viewport, "node", attrib={"class": "android.widget.EditText",
+                "text": self.value, "focused": str(self.focused).lower(), "bounds": self.field_bounds})
+            return root
+
+        def adb(self, *args, **_kwargs):
+            assert args[:2] == ("shell", "input")
+            if args[2] == "swipe":
+                self.field_bounds = "[63,1200][1017,1326]"
+            elif args[2] == "tap":
+                assert 255 < int(args[4]) < 2021, "The input center is hidden behind the sticky footer"
+                self.focused = True
+            elif args[2:] == ("keyevent", "67"):
+                self.value = self.value[:-1]
+            elif args[2] == "text":
+                self.value += args[3]
+
+    native = Native()
+    native.fill("LaterNote", previous="PeerNote")
+    assert native.value == "LaterNote"

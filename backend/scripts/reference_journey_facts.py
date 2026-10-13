@@ -38,6 +38,8 @@ def facts(ledger_id):
                 for row in rows(RuleApplicationBatch)],
             "rule_changes": [{"expense_id": row.expense_id, "before": row.before_category,
                 "after": row.after_category, "status": row.status} for row in rows(RuleApplicationChange)],
-            "views": [{"id": row.public_id, "name": row.name, "tag_id": row.tag_public_id}
+            "views": [{"id": row.public_id, "name": row.name, "tag_id": row.tag_public_id,
+                "query_text": row.query_text, "category": row.category, "row_version": row.row_version,
+                "month_mode": row.month_mode, "month": row.month, "home_currency_code": row.home_currency_code}
                 for row in rows(SavedView)],
         }

@@ -46,6 +46,7 @@ data class LedgerScreenActions(
     val onApplyBatchTags: BatchReasonAction = noopBatchAction,
     val onManualCreateSettled: () -> Unit = {},
     val onBatchSettled: () -> Unit = {},
+    val onBack: (() -> Unit)? = null,
 )
 
 @Composable

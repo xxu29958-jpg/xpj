@@ -6,9 +6,12 @@ import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import com.ticketbox.data.remote.ApiService
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 /**
@@ -55,8 +58,23 @@ internal class ConfirmExpenseDispatcherTest : ExpensePendingRepositoryOutboxTest
     )
 
     @Test
+    fun `accepted confirm keeps its first result independently of later cache contents`() = runTest {
+        val original = confirmationResponse(successExpenseDto().copy(status = "confirmed", merchant = "Original merchant",
+            amountCents = 12860L, originalCurrencyCode = "JPY", originalAmountMinor = 2850L))
+        val current = original.copy(merchant = "Later correction", amountCents = 9900L, rowVersion = 9L,
+            imageDeletedAt = "2026-05-21T13:00:00Z")
+        val stub = ApiServiceStub(confirmExpenseResult = ApiResult.Success(current))
+        val row = confirmRow(idempotencyKey = "original-confirm")
+        val result = dispatcherFor(stub).dispatch(row) as DispatchResult.Success
+        val retained = expenseConfirmationReceiptSnapshot(row.copy(status = PendingMutationStatus.Done, receiptJson = result.receiptJson))
+        assertEquals(original.confirmationReceipt, retained)
+        assertEquals(current, published.single().second)
+        assertEquals(9L, result.newRowVersion)
+    }
+
+    @Test
     fun `accepted confirm retains its receipt when cache publication fails`() = runTest {
-        val response = successExpenseDto().copy(status = "confirmed")
+        val response = confirmationResponse()
         val stub = ApiServiceStub(confirmExpenseResult = ApiResult.Success(response))
         val row = confirmRow(idempotencyKey = "cache-failure-key", targetId = "expense:local:original-create")
         val api = object : ApiService by stub {
@@ -81,31 +99,59 @@ internal class ConfirmExpenseDispatcherTest : ExpensePendingRepositoryOutboxTest
         assertEquals(row.idempotencyKey, stub.lastConfirmIdempotencyKey)
         assertEquals(1, publicationAttempts)
         assertEquals(DispatchResult.Success(newRowVersion = 2L, cacheRefreshVersion = 2L,
-            receiptJson = """{"expenseId":42}"""), result)
+            receiptJson = expenseAcceptanceReceiptJson(requireNotNull(response.confirmationReceipt))), result)
     }
 
     @Test
     fun `dispatch replays the row's idempotency key and returns the new row_version`() = runTest {
-        val stub = ApiServiceStub(confirmExpenseResult = ApiResult.Success(successExpenseDto()))
+        val original = confirmationResponse()
+        val stub = ApiServiceStub(confirmExpenseResult = ApiResult.Success(original))
 
         val result = dispatcherFor(stub).dispatch(confirmRow(idempotencyKey = "key-abc"))
 
         assertEquals("key-abc", stub.lastConfirmIdempotencyKey, "dispatcher must send the row's key")
-        assertEquals(DispatchResult.Success(newRowVersion = 2L), result)
-        assertEquals(listOf("owner" to successExpenseDto()), published)
+        assertEquals(DispatchResult.Success(newRowVersion = 2L,
+            receiptJson = expenseAcceptanceReceiptJson(requireNotNull(original.confirmationReceipt))), result)
+        assertEquals(listOf("owner" to original), published)
     }
 
     @Test
     fun `dispatch sends a device-local ref straight to the API instead of discarding it`() = runTest {
         // issue #65 slice 3b: before the str-ref widening, a local:{client_ref}
         // targetId failed toLongOrNull() and was Discarded; now it dispatches.
-        val stub = ApiServiceStub(confirmExpenseResult = ApiResult.Success(successExpenseDto()))
+        val original = confirmationResponse()
+        val stub = ApiServiceStub(confirmExpenseResult = ApiResult.Success(original))
 
         val result = dispatcherFor(stub)
             .dispatch(confirmRow(idempotencyKey = "key-abc", targetId = "expense:local:abc-123"))
 
         assertEquals("local:abc-123", stub.lastConfirmId, "the local ref must reach the API path param")
-        assertEquals(DispatchResult.Success(newRowVersion = 2L), result)
+        assertEquals(DispatchResult.Success(newRowVersion = 2L,
+            receiptJson = expenseAcceptanceReceiptJson(requireNotNull(original.confirmationReceipt))), result)
+    }
+
+    @Test
+    fun `missing or mismatched original receipt cannot become an accepted current snapshot`() = runTest {
+        val valid = confirmationResponse()
+        val responses = listOf(valid.copy(confirmationReceipt = null), valid.copy(
+            confirmationReceipt = requireNotNull(valid.confirmationReceipt).copy(id = 99L)))
+        for (response in responses) {
+            val result = dispatcherFor(ApiServiceStub(confirmExpenseResult = ApiResult.Success(response)))
+                .dispatch(confirmRow(idempotencyKey = "original-confirm"))
+            assertEquals(DispatchResult.Failure(EXPENSE_CONFIRMATION_ORIGINAL_REQUIRES_REVIEW), result)
+        }
+        assertTrue(published.isEmpty())
+    }
+
+    @Test
+    fun `cancellation leaves the original confirmation unsettled`() = runTest {
+        val cancellation = CancellationException("cancel original confirmation")
+        val stub = ApiServiceStub(confirmExpenseResult = ApiResult.Throw(cancellation))
+        val row = confirmRow(idempotencyKey = "original-confirm")
+        val actual = assertFailsWith<CancellationException> { dispatcherFor(stub).dispatch(row) }
+        assertSame(cancellation, actual)
+        assertEquals(row.idempotencyKey, stub.lastConfirmIdempotencyKey)
+        assertTrue(published.isEmpty())
     }
 
     @Test

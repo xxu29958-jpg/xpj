@@ -16,6 +16,7 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.ReportTrendPoint
 import com.ticketbox.ui.components.AppAdaptiveContentActionRow
+import com.ticketbox.ui.components.AppAdaptiveContentActionStyle
 import com.ticketbox.ui.components.AppAmountText
 import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.formatDisplayAmount
@@ -227,6 +228,7 @@ private fun HeroTrendBreakdownRow(
 ) {
     AppAdaptiveContentActionRow(
         modifier = Modifier.fillMaxWidth(),
+        style = AppAdaptiveContentActionStyle(amountTrailing = true),
         content = {
             Text(
                 text = label,

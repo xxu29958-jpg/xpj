@@ -64,7 +64,7 @@ fun AppFilterChip(
     val density = LocalDensity.current
     val chipDensity = LocalAppChipDensity.current
     val visuals = LocalThemeVisuals.current
-    val shape = RoundedCornerShape(AppRadius.extraSmall)
+    val shape = RoundedCornerShape(AppRadius.pill)
     val metrics = appFilterChipMetrics(
         label = label,
         hasIcon = options.leadingIcon != null || options.trailingIcon != null,

@@ -31,7 +31,7 @@ fun ExpenseEditViewModel.reviewOriginalBaseline() {
                 if (it.expense != expense || !fresh.matches(before)) it.copy(expenseLoading = false,
                     message = UiText.res(R.string.original_edit_changed))
                 else it.copy(expense = fresh.expense, expenseItems = fresh.items, expenseSplits = fresh.splits,
-                    expenseLoading = false, originalBaselineRequired = false,
+                    expenseLoading = false, originalBaselineRequired = false, message = null,
                     preservedFormTimestamp = it.preservedFormTimestamp ?: expense.updatedAt)
             }
         }.onFailure { error ->

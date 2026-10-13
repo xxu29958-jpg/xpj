@@ -95,6 +95,8 @@ data class RuleApplicationBatchDto(
     val createdAt: String,
     @param:Json(name = "rolled_back_at")
     val rolledBackAt: String? = null,
+    @param:Json(name = "change_counts")
+    val changeCounts: Map<String, Int>? = null,
 )
 
 data class RuleApplicationListDto(
@@ -117,6 +119,7 @@ data class RuleApplyConfirmedRequestDto(
     val previewToken: String? = null,
 )
 
+@JsonClass(generateAdapter = true)
 data class RuleApplyPreviewItemDto(
     val id: Long,
     val merchant: String?,
@@ -129,6 +132,7 @@ data class RuleApplyPreviewItemDto(
     val reason: String,
 )
 
+@JsonClass(generateAdapter = true)
 data class RuleApplyConfirmedResponseDto(
     @param:Json(name = "dry_run")
     val dryRun: Boolean,
@@ -155,4 +159,8 @@ data class RuleApplyConfirmedResponseDto(
     val unavailableCount: Int = 0,
     @param:Json(name = "missing_currency_codes")
     val missingCurrencyCodes: List<String> = emptyList(),
+    @param:Json(name = "command_key")
+    val commandKey: String? = null,
+    @param:Json(name = "application_public_id")
+    val applicationPublicId: String? = null,
 )

@@ -4,6 +4,22 @@
 
   const app = window.TicketboxWeb = window.TicketboxWeb || {};
 
+  app.bindReceiptControls = function bindReceiptControls(root, image) {
+    const zoom = root.querySelector("[data-receipt-zoom]");
+    const rotate = root.querySelector("[data-receipt-rotate]");
+    if (zoom) zoom.onclick = function () {
+      const enlarged = image.classList.toggle("is-zoomed");
+      zoom.setAttribute("aria-label", enlarged ? "缩小小票原图" : "放大小票原图");
+      const scale = root.querySelector("[data-receipt-scale]");
+      if (scale) scale.textContent = enlarged ? "180%" : "100%";
+    };
+    if (rotate) rotate.onclick = function () {
+      const angle = (Number(image.dataset.rotation || 0) - 90) % 360;
+      image.dataset.rotation = String(angle);
+      image.style.rotate = angle + "deg";
+    };
+  };
+
   app.initReceiptSkeletons = function initReceiptSkeletons(root) {
     (root || document).querySelectorAll("[data-image-skeleton]").forEach(function (box) {
       if (box.getAttribute("data-skeleton-bound") === "1") return;

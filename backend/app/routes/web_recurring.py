@@ -7,6 +7,8 @@ Routes and page assembly only. Pure presenter/form helpers live in
 from __future__ import annotations
 
 import logging
+from urllib.parse import quote, urlencode
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -23,6 +25,7 @@ from app.routes._web_draft_binding import (
     require_draft_binding,
     reviewed_draft_scope,
 )
+from app.routes._web_recurring_occurrence_form import occurrence_href
 from app.routes._web_recurring_presenter import (
     apply_form_draft,
     candidate_review_prefill,
@@ -32,6 +35,7 @@ from app.routes._web_recurring_presenter import (
     item_view,
     parse_baseline_yuan,
     parse_optional_date,
+    retained_candidate_form,
     suggest_next_expected_date,
 )
 from app.routes._web_session_common import resolve_web_actor_account_id
@@ -63,6 +67,7 @@ from app.services.recurring_occurrence_query import next_due_dates
 from app.services.recurring_service import (
     RecurringAmountAnomaly,
     archive_recurring_item,
+    get_recurring_item,
     list_recurring_items,
     pause_recurring_item,
     recurring_amount_anomalies,
@@ -80,6 +85,13 @@ router.include_router(occurrences_router)
 
 _STALE_PAGE_FLASH = "页面已过期，请刷新后重新操作。"
 _VALID_STATUS_FILTERS = {"active", "paused", "archived"}
+
+
+def _lifecycle_redirect(selected_id: str, public_id: str, month: str, *,
+                        status: str = "", flash: str = "", error: str = "") -> RedirectResponse:
+    href = _with_ledger("/web/recurring", selected_id, month=month, status=status, flash=flash,
+        error=error, edit=public_id if error else "", result_item=public_id)
+    return RedirectResponse(href + "#item-" + quote(public_id, safe=""), status_code=303)
 
 
 def _conflict_kwargs(exc: AppError, *, selected_id: str, merchant: str | None = None) -> dict:
@@ -105,7 +117,10 @@ def _candidate_review(
     review_merchant: str | None,
     can_write: bool,
     candidates_error: bool,
+    submitted: dict | None = None,
 ) -> dict | None:
+    if submitted is not None:
+        return retained_candidate_form(submitted)
     if not review_merchant or not can_write or candidates_error:
         return None
     matched = next(
@@ -123,10 +138,12 @@ def _recurring_hero(db, *, selected_id, items, currency_code, due_dates):
 
 
 def _visible_recurring_items(items, status, open_edit_id, draft):
+    selected = (draft or {}).get("public_id") or open_edit_id
+    if selected:
+        return [item for item in items if item.public_id == selected]
     if status:
         return [item for item in items if item.status == status]
-    return [item for item in items if item.status != "archived" or item.public_id == open_edit_id or
-        (draft and item.public_id == draft.get("public_id"))]
+    return [item for item in items if item.status != "archived"]
 
 
 def _render_recurring(
@@ -145,6 +162,8 @@ def _render_recurring(
     prepare_review: bool = False,
     draft_result: str = "",
     status_code: int = 200,
+    navigation_month: str | None = None,
+    candidate_draft: dict | None = None,
 ) -> HTMLResponse:
     if status and status not in _VALID_STATUS_FILTERS:
         raise AppError("recurring_status_invalid", status_code=422)
@@ -178,20 +197,18 @@ def _render_recurring(
     # Coverage migrated from the deleted /web/stats page: candidate insight
     # failure must degrade to an inline notice, never 500 the recurring page.
     candidate_rows, candidates_error = _load_candidate_rows(db, selected_id=selected_id)
-    ctx["candidates"] = [
-        candidate_view(
-            candidate,
-            ledger_id=selected_id,
-        )
-        for candidate in candidate_rows
-    ]
+    ctx["candidates"] = [candidate_view(candidate) for candidate in candidate_rows]
     ctx["candidates_error"] = candidates_error
     # 候选「复核采用」: 按 URL 的商家定位候选, provenance 全部来自服务端扫描。
+    if candidate_draft is None and request.query_params.get("resume_candidate") == "1":
+        candidate_draft = {"merchant": "", "amount_cents": "", "home_currency_code": "",
+            "next_expected_date": "", "idempotency_key": "", "original_only": True}
     ctx["review"] = _candidate_review(
         candidate_rows,
         review_merchant=review_merchant,
         can_write=ctx["can_write"],
         candidates_error=candidates_error,
+        submitted=candidate_draft,
     )
     ctx["hero"] = _recurring_hero(db, selected_id=selected_id, items=all_items, currency_code=currency_code, due_dates=due_dates)
     ctx["status_filter"] = status or ""
@@ -205,6 +222,8 @@ def _render_recurring(
         draft = {**draft, "review_required": True}
     apply_form_draft(ctx, draft, prepare_review=prepare_review)
     ctx["open_edit_id"] = open_edit_id
+    ctx["recurring_creation"] = draft is not None and not draft.get("public_id")
+    ctx["navigation_month"] = navigation_month if navigation_month is not None else request.query_params.get("month", "")
     ctx.update(recurring_draft_scope=scope, recurring_draft_result=draft_result)
     return templates.TemplateResponse(request=request, name="recurring.html", context=ctx, status_code=status_code)
 
@@ -215,6 +234,7 @@ def web_recurring(
     ledger_id: str | None = None,
     status: str | None = None,
     flash: str | None = None,
+    error: str | None = None,
     review: str | None = None,
     edit: str | None = None,
     _local: None = LocalOnly,
@@ -229,6 +249,7 @@ def web_recurring(
         options=options,
         status=status,
         flash_message=flash,
+        error_message=error,
         review_merchant=(review or "").strip() or None,
         open_edit_id=edit,
     )
@@ -238,6 +259,8 @@ def web_recurring(
 def web_recurring_create(
     request: Request,
     ledger_id: str = Form(default=""),
+    month: str = Form(default=""),
+    status: str = Form(default=""),
     merchant: str = Form(default=""),
     baseline_amount_yuan: str = Form(default=""),
     home_currency_code: str = Form(default=""),
@@ -258,7 +281,7 @@ def web_recurring_create(
     draft = {"merchant": merchant, "baseline_amount_yuan": baseline_amount_yuan, "home_currency_code": home_currency_code,
              "next_expected_date": next_expected_date, "idempotency_key": idempotency_key, "draft_scope": draft_scope}
     retained = preserve_original_ledger_form(request, db, options=options, selected=selected_id,
-        fields={**draft, "ledger_id": ledger_id, "review_latest": review_latest}, task="添加固定支出")
+        fields={**draft, "ledger_id": ledger_id, "review_latest": review_latest, "month": month, "status": status}, task="添加固定支出")
     if retained is not None:
         return draft_error_response(request, AppError("session_binding_changed", "账本已切换，原稿仍保留。", status_code=409)) or retained
     _require_selected_ledger_write(options, selected_id)
@@ -267,7 +290,7 @@ def web_recurring_create(
         require_draft_binding(db, request, ledger_id=selected_id, draft_scope=draft["draft_scope"], require_session=False)
         if review_latest == "true":
             return _render_recurring(request=request, db=db, selected_id=selected_id, options=options,
-                draft=draft, prepare_review=True, draft_result="prepared")
+                draft=draft, status=status or None, navigation_month=month, prepare_review=True, draft_result="prepared")
         currency_code = normalize_currency_code(home_currency_code)
         amount_cents = parse_baseline_yuan(baseline_amount_yuan, currency_code=currency_code)
         expected_date = parse_optional_date(next_expected_date)
@@ -288,6 +311,7 @@ def web_recurring_create(
             db=db,
             selected_id=selected_id,
             options=options,
+            status=status or None, navigation_month=month,
             draft={**draft, "review_required": exc.error in {"idempotency_key_required", "idempotency_key_reused"}},
             draft_result=draft_refusal_result(exc),
             status_code=exc.status_code if exc.error == "session_binding_changed" else 200,
@@ -295,7 +319,7 @@ def web_recurring_create(
         )
     return draft_ack_response(request, draft_scope=draft_scope, idempotency_key=idempotency_key,
         receipt=receipt, next_href=_with_ledger("/web/recurring", selected_id,
-        flash="已加入你的固定支出。")) or _web_redirect("/web/recurring", selected_id, flash="已加入你的固定支出。")
+        month=month, status="active", flash="已加入你的固定支出。")) or _web_redirect("/web/recurring", selected_id, month=month, status="active", flash="已加入你的固定支出。")
 
 
 @router.post("/confirm-candidate", response_class=HTMLResponse)
@@ -306,46 +330,55 @@ def web_recurring_confirm_candidate(
     amount_cents: str = Form(...),
     home_currency_code: str = Form(default=""),
     next_expected_date: str = Form(default=""),
+    month: str = Form(default=""),
+    status: str = Form(default=""),
+    idempotency_key: str = Form(default=""),
+    draft_scope: str = Form(default=""),
+    review_latest: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ):
-    """候选「复核采用」的统一表单提交口: 只用 merchant + amount 定位服务端
-    候选, provenance (occurrence_count / last_seen_at / confidence) 由 confirm
-    service 从当前服务端扫描给出 — 本路由不接收也不转发客户端的这三个字段。
-    409 conflict/archived 消费 details 给出可行动下一步。"""
+    """Keep the original adoption distinct from a later observation or definition."""
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
+    proposal = {"merchant": merchant, "amount_cents": amount_cents, "home_currency_code": home_currency_code,
+        "next_expected_date": next_expected_date, "idempotency_key": idempotency_key, "draft_scope": draft_scope}
     retained = preserve_original_ledger_form(request, db, options=options, selected=selected_id,
-        fields={"ledger_id": ledger_id, "merchant": merchant, "amount_cents": amount_cents,
-            "home_currency_code": home_currency_code, "next_expected_date": next_expected_date}, task="采用固定支出建议")
+        fields={**proposal, "ledger_id": ledger_id, "month": month, "status": status, "review_latest": review_latest},
+        task="采用固定支出建议")
     if retained is not None:
-        return retained
+        return draft_error_response(request, AppError("session_binding_changed", "账本已切换，原稿仍保留。", status_code=409)) or retained
     _require_selected_ledger_write(options, selected_id)
     try:
-        parsed_amount_cents = parse_canonical_money_minor(
-            amount_cents,
-            sign=MoneySign.POSITIVE,
-            label="web_recurring.amount_cents",
-        )
-        payload = RecurringCandidateConfirmRequest(
-            merchant=merchant,
-            home_currency_code=normalize_currency_code(home_currency_code),
-            amount_cents=parsed_amount_cents,
-            frequency="monthly",
-            next_expected_date=parse_optional_date(next_expected_date),
-        )
-        confirm_recurring_candidate(db, tenant_id=selected_id, payload=payload,
-            actor_account_id=resolve_web_actor_account_id(db, request, selected_id))
+        proposal["draft_scope"] = reviewed_draft_scope(db, request, draft_scope, review=review_latest == "true")
+        require_draft_binding(db, request, ledger_id=selected_id, draft_scope=proposal["draft_scope"], require_session=False)
+        if review_latest == "true":
+            return _render_recurring(request=request, db=db, selected_id=selected_id, options=options,
+                status=status or None, navigation_month=month, draft_result="prepared",
+                candidate_draft={**proposal, "idempotency_key": uuid4().hex, "prepared_from_key": idempotency_key},
+                flash_message="原建议值和日期已保留，尚未采用。核对后再提交。")
+        parsed_amount_cents = parse_canonical_money_minor(amount_cents, sign=MoneySign.POSITIVE,
+            label="web_recurring.amount_cents")
+        payload = RecurringCandidateConfirmRequest(merchant=merchant,
+            home_currency_code=normalize_currency_code(home_currency_code), amount_cents=parsed_amount_cents,
+            frequency="monthly", next_expected_date=parse_optional_date(next_expected_date))
+        receipt = confirm_recurring_candidate(db, tenant_id=selected_id, payload=payload,
+            idempotency_key=idempotency_key, actor_account_id=resolve_web_actor_account_id(db, request, selected_id))
     except AppError as exc:
         db.rollback()
-        return _render_recurring(
-            request=request,
-            db=db,
-            selected_id=selected_id,
-            options=options,
-            **_conflict_kwargs(exc, selected_id=selected_id, merchant=merchant),
-        )
-    return _web_redirect("/web/recurring", selected_id, flash="已采用建议，加入你的固定支出。")
+        refusal = "rejected" if exc.error in {"recurring_candidate_not_found", "recurring_item_conflict",
+            "recurring_item_archived", "recurring_frequency_invalid", "recurring_merchant_too_long"} else draft_refusal_result(exc)
+        feedback = _conflict_kwargs(exc, selected_id=selected_id, merchant=merchant)
+        feedback["open_edit_id"] = None
+        return draft_error_response(request, exc, refusal_result=refusal) or _render_recurring(
+            request=request, db=db, selected_id=selected_id, options=options, navigation_month=month,
+            candidate_draft={**proposal, "review_required": exc.error in {"idempotency_key_required", "idempotency_key_reused"}},
+            draft_result=refusal, status=status or None, **feedback)
+    current = get_recurring_item(db, tenant_id=selected_id, public_id=receipt.public_id)
+    destination = _lifecycle_redirect(selected_id, receipt.public_id, month, status=current.status,
+        flash="已采用建议。")
+    return draft_ack_response(request, draft_scope=draft_scope, idempotency_key=idempotency_key,
+        receipt=receipt, next_href=destination.headers["location"]) or destination
 
 
 @router.post("/{public_id}/edit", response_class=HTMLResponse)
@@ -353,6 +386,8 @@ def web_recurring_edit(
     request: Request,
     public_id: str,
     ledger_id: str = Form(default=""),
+    month: str = Form(default=""),
+    status: str = Form(default=""),
     merchant: str = Form(default=""),
     baseline_amount_yuan: str = Form(default=""),
     home_currency_code: str = Form(default=""),
@@ -374,7 +409,7 @@ def web_recurring_edit(
              "next_expected_date": next_expected_date, "idempotency_key": idempotency_key,
              "expected_row_version": expected_row_version, "draft_scope": draft_scope}
     retained = preserve_original_ledger_form(request, db, options=options, selected=selected_id,
-        fields={**draft, "ledger_id": ledger_id, "review_latest": review_latest}, task="修改固定支出")
+        fields={**draft, "ledger_id": ledger_id, "review_latest": review_latest, "month": month, "status": status}, task="修改固定支出")
     if retained is not None:
         return draft_error_response(request, AppError("session_binding_changed", "账本已切换，原稿仍保留。", status_code=409)) or retained
     parsed = parse_form_row_version_token(expected_row_version)
@@ -384,7 +419,7 @@ def web_recurring_edit(
         require_draft_binding(db, request, ledger_id=selected_id, draft_scope=draft["draft_scope"], require_session=False)
         if review_latest == "true":
             return _render_recurring(request=request, db=db, selected_id=selected_id, options=options,
-                draft=draft, prepare_review=True, draft_result="prepared")
+                draft=draft, status=status or None, navigation_month=month, prepare_review=True, draft_result="prepared")
         if parsed is None:
             raise AppError("invalid_request", _STALE_PAGE_FLASH, status_code=422)
         currency_code = normalize_currency_code(home_currency_code)
@@ -412,6 +447,7 @@ def web_recurring_edit(
             db=db,
             selected_id=selected_id,
             options=options,
+            status=status or None, navigation_month=month,
             draft={**draft, "review_required": parsed is None or exc.error in {
                 "state_conflict", "idempotency_key_required", "idempotency_key_reused",
             }},
@@ -421,7 +457,7 @@ def web_recurring_edit(
         )
     return draft_ack_response(request, draft_scope=draft_scope, idempotency_key=idempotency_key,
         receipt=receipt, next_href=_with_ledger("/web/recurring", selected_id,
-        flash="固定支出已保存。")) or _web_redirect("/web/recurring", selected_id, flash="固定支出已保存。")
+        month=month, status=status, flash="固定支出已保存。")) or _web_redirect("/web/recurring", selected_id, month=month, status=status, flash="固定支出已保存。")
 
 
 @router.post("/{public_id}/pause", response_class=HTMLResponse)
@@ -430,6 +466,7 @@ def web_recurring_pause(
     public_id: str,
     ledger_id: str = Form(default=""),
     expected_row_version: str = Form(default=""),
+    month: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
@@ -438,15 +475,16 @@ def web_recurring_pause(
     _require_selected_ledger_write(options, selected_id)
     parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
-        return _web_redirect("/web/recurring", selected_id, flash=_STALE_PAGE_FLASH)
+        return _lifecycle_redirect(selected_id, public_id, month, error=_STALE_PAGE_FLASH)
     try:
         pause_recurring_item(db, tenant_id=selected_id, public_id=public_id, expected_row_version=parsed,
             actor_account_id=resolve_web_actor_account_id(db, request, selected_id))
     except AppError as exc:
         if exc.error == "state_conflict":
-            return _web_redirect("/web/recurring", selected_id, flash=_STALE_PAGE_FLASH)
+            return _lifecycle_redirect(selected_id, public_id, month, error=_STALE_PAGE_FLASH)
         raise
-    return _web_redirect("/web/recurring", selected_id)
+    return _lifecycle_redirect(selected_id, public_id, month, status="paused",
+        flash="固定支出已暂停，定义和已有付款关联仍保留。")
 
 
 @router.post("/{public_id}/resume", response_class=HTMLResponse)
@@ -455,6 +493,7 @@ def web_recurring_resume(
     public_id: str,
     ledger_id: str = Form(default=""),
     expected_row_version: str = Form(default=""),
+    month: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
@@ -463,15 +502,15 @@ def web_recurring_resume(
     _require_selected_ledger_write(options, selected_id)
     parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
-        return _web_redirect("/web/recurring", selected_id, flash=_STALE_PAGE_FLASH)
+        return _lifecycle_redirect(selected_id, public_id, month, error=_STALE_PAGE_FLASH)
     try:
         resume_recurring_item(db, tenant_id=selected_id, public_id=public_id, expected_row_version=parsed,
             actor_account_id=resolve_web_actor_account_id(db, request, selected_id))
     except AppError as exc:
         if exc.error == "state_conflict":
-            return _web_redirect("/web/recurring", selected_id, flash=_STALE_PAGE_FLASH)
+            return _lifecycle_redirect(selected_id, public_id, month, error=_STALE_PAGE_FLASH)
         raise
-    return _web_redirect("/web/recurring", selected_id)
+    return _lifecycle_redirect(selected_id, public_id, month, status="active", flash="固定支出已恢复为活跃。")
 
 
 @router.post("/{public_id}/archive", response_class=HTMLResponse)
@@ -479,6 +518,7 @@ def web_recurring_archive(
     request: Request,
     public_id: str,
     ledger_id: str = Form(default=""),
+    month: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
@@ -487,7 +527,8 @@ def web_recurring_archive(
     _require_selected_ledger_write(options, selected_id)
     archive_recurring_item(db, tenant_id=selected_id, public_id=public_id,
         actor_account_id=resolve_web_actor_account_id(db, request, selected_id))
-    return _web_redirect("/web/recurring", selected_id)
+    return _lifecycle_redirect(selected_id, public_id, month, status="archived",
+        flash="固定支出已归档，历史和已有付款关联仍保留。")
 
 
 @router.post("/{public_id}/restore", response_class=HTMLResponse)
@@ -496,6 +537,7 @@ def web_recurring_restore(
     public_id: str,
     ledger_id: str = Form(default=""),
     expected_row_version: str = Form(default=""),
+    month: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
@@ -505,21 +547,22 @@ def web_recurring_restore(
     _require_selected_ledger_write(options, selected_id)
     parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
-        return _web_redirect("/web/recurring", selected_id, flash=_STALE_PAGE_FLASH)
+        return _lifecycle_redirect(selected_id, public_id, month, error=_STALE_PAGE_FLASH)
     try:
         restore_recurring_item(db, tenant_id=selected_id, public_id=public_id, expected_row_version=parsed,
             actor_account_id=resolve_web_actor_account_id(db, request, selected_id))
     except AppError as exc:
         if exc.error == "state_conflict":
-            return _web_redirect("/web/recurring", selected_id, flash=_STALE_PAGE_FLASH)
+            return _lifecycle_redirect(selected_id, public_id, month, error=_STALE_PAGE_FLASH)
         raise
-    return _web_redirect("/web/recurring", selected_id, flash="已恢复为活跃。")
+    return _lifecycle_redirect(selected_id, public_id, month, status="active", flash="已恢复为活跃。")
 
 
 @router.get("/{public_id}/history", response_class=HTMLResponse)
 def web_recurring_history(
     request: Request, public_id: str, ledger_id: str | None = None, month: str | None = None,
     status: str = Query(default="", pattern="^(active|paused|archived)?$"), return_occurrence: bool = False,
+    payment_month: str | None = None, q: str = Query(default="", max_length=150), payment_id: str = "",
     limit: int = Query(default=20, ge=1, le=100), before_version: int | None = Query(default=None, ge=1),
     _local: None = LocalOnly, db: Session = Depends(get_db),
 ) -> HTMLResponse:
@@ -531,6 +574,13 @@ def web_recurring_history(
         show_month_picker=False, selected_month=month)
     ctx.update(history=history, return_month=month, status_filter=status, return_occurrence=return_occurrence,
         limit=limit, before_version=before_version, history_money=_recurring_history_money)
+    ctx["history_params"] = "?" + urlencode({key: value for key, value in {
+        "ledger_id": selected, "limit": limit, "status": status, "month": month,
+        "return_occurrence": str(return_occurrence).lower(), "payment_month": payment_month,
+        "q": q, "payment_id": payment_id,
+    }.items() if value is not None})
+    ctx["occurrence_return_href"] = occurrence_href(public_id, ledger_id=selected, month=month or "",
+        payment_month=(month or "") if payment_month is None else payment_month, q=q, payment_id=payment_id)
     return templates.TemplateResponse(request=request, name="recurring_history.html", context=ctx)
 
 

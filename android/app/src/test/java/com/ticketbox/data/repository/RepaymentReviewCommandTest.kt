@@ -22,7 +22,7 @@ class RepaymentReviewCommandTest {
         }, session)
         val binding = assertNotNull(LedgerRequestGuard(provider).captureLogicalBinding())
         val adapters = OutboxAdapterGraph()
-        val input = reviewInput(binding)
+        val input = reviewInput(binding).copy(paymentDate = "2026-08-31", calendarRevision = 3)
         val intent = input.command(binding, remote.capture.toDomain(), false, adapters)
         val dao = FakePendingMutationDao()
         fun queue() = OutboxRepository(dao, onRowsDeleted = {}, bindingProvider = { provider.currentSession().toOutboxBinding() })
@@ -42,6 +42,8 @@ class RepaymentReviewCommandTest {
         assertEquals(1, remote.accepted.size)
         assertEquals(listOf(7L, 7L), remote.calls.map { it.expectedRowVersion })
         assertTrue(remote.calls.all { it.originalCurrency == "CNY" && it.originalAmount == "90.00" })
+        assertTrue(remote.calls.all { it.timeInput?.userLocalDate == "2026-08-31" && it.timeInput?.calendarRevision == 3L })
+        assertTrue(remote.calls.all { it.timeInput?.instantUtc == null && it.timeInput?.precision == "date_only" })
         assertEquals(" 90.00 ", adapters.repaymentReviewAdapter.fromJson(completed.payload)?.reviewedAmount)
         assertEquals("repayment-original", adapters.repaymentDraftReceiptAdapter.fromJson(requireNotNull(completed.receiptJson))?.committedRepaymentPublicId)
     }
@@ -55,6 +57,7 @@ class RepaymentReviewCommandTest {
         val oldMoney = assertNotNull(adapters.repaymentReviewAdapter.fromJson(unchanged.payloadJson)).request
         assertEquals(null, oldMoney.originalCurrency)
         assertEquals(null, oldMoney.originalAmount)
+        assertEquals(null, oldMoney.timeInput, "legacy input keeps captured time; no new date is fabricated")
         val changed = assertNotNull(adapters.repaymentReviewAdapter.fromJson(input.command(binding, original, false, adapters).payloadJson)).request
         assertEquals("90.00", changed.originalAmount)
         assertEquals(10000L, original.originalAmountMinor)

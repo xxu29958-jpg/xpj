@@ -7,6 +7,20 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class CategoryRuleMoneyFormTest {
+    @Test fun sourceAndTagCanBeAddedChangedAndExplicitlyCleared() {
+        val form = CategoryRuleDraftForm(keyword = "早餐", category = "餐饮", sourceContains = "  支付宝  ", tagContains = "  家庭  ")
+        val request = form.toRequest().getOrThrow()
+        assertEquals("支付宝", request.sourceContains)
+        assertEquals("家庭", request.tagContains)
+        val baseline = CategoryRule(9, "早餐", "餐饮", true, 10, null, null, "原来源", "原标签", "2026-10-08", "2026-10-08", 7)
+        val editing = CategoryRuleDraftForm.fromRule(baseline)
+        assertEquals("原来源", editing.sourceContains)
+        assertEquals("原标签", editing.tagContains)
+        val changed = editing.copy(sourceContains = "微信", tagContains = "  ").toRequest().getOrThrow()
+        assertEquals("微信", changed.sourceContains)
+        assertEquals(null, changed.tagContains)
+    }
+
     @Test fun unselectedMoneyCurrencyCannotBecomeRenminbi() {
         val form = CategoryRuleDraftForm(keyword = "旅行", category = "交通", minimumAmount = "1200")
         assertTrue(form.toRequest().isFailure)

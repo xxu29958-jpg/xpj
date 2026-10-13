@@ -1,14 +1,7 @@
-"""ADR-0042 Slice E-1: request-idempotency for the bill-splits replace route.
+"""Accepted split replacements replay their first result without advancing OCC.
 
-Same uniform contract as the items replace (Slice D-2): ``PUT /splits`` claims an
-``Idempotency-Key`` (via the shared ``claim_idempotent_request``) BEFORE its OCC
-``row_version`` claim. A committed-but-unseen replay (same key + now-stale token)
-re-serialises the canonical splits via ``list_expense_splits`` rather than the
-false-409 the OCC claim would otherwise raise. Deletes don't apply here (replace
-is the only mutation); the HIT path is the update flavour.
-
-Single-member split on the personal ``owner`` ledger — the smallest valid setup
-(splits need not sum to the expense total, so one member is fine).
+The first receipt and rows share a transaction. A peer's later changes stay
+visible through GET and cannot become the basis of the next offline command.
 """
 
 from __future__ import annotations
@@ -79,12 +72,10 @@ def test_replace_splits_requires_idempotency_key(client: TestClient, *, identity
     assert resp.json()["error"] == "idempotency_key_required"
 
 
-def test_replace_splits_replay_same_key_returns_canonical_not_409(
+def test_replace_splits_replay_preserves_original_acceptance_after_peer_change(
     client: TestClient, *, identity
 ) -> None:
-    """Committed-but-unseen: the SAME key + SAME now-stale token re-serialises the
-    (already-replaced) splits via ``list_expense_splits`` rather than the
-    false-409 the OCC claim would raise on the bumped row_version."""
+    """An accepted replay keeps its first result after a later peer edit."""
     expense_id = _pending_expense(client, identity=identity)
     v0 = _row_version(client, expense_id, identity=identity)
     member_id = _owner_member_id()
@@ -101,10 +92,20 @@ def test_replace_splits_replay_same_key_returns_canonical_not_409(
     v1 = first.json()["row_version"]
     assert v1 != v0
 
+    peer = client.put(f"/api/expenses/{expense_id}/splits",
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"expected_row_version": v1, "splits": [{"member_id": member_id, "amount_cents": 700, "note": "他端后来填写"}]})
+    assert peer.status_code == 200, peer.text
+
     replay = client.put(f"/api/expenses/{expense_id}/splits", headers=headers, json=body)
-    assert replay.status_code == 200, replay.text  # HIT, not 409
-    assert [s["amount_cents"] for s in replay.json()["splits"]] == [1500]
-    assert replay.json()["row_version"] == v1  # canonical, not re-applied
+    assert replay.status_code == 200, replay.text
+    assert replay.json() == first.json()
+    following = client.put(f"/api/expenses/{expense_id}/splits",
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={**body, "expected_row_version": replay.json()["row_version"]})
+    assert following.status_code == 409, following.text
+    assert following.json()["error"] == "state_conflict"
+    assert client.get(f"/api/expenses/{expense_id}/splits", headers=identity.app_headers).json() == peer.json()
 
 
 def test_replace_splits_stale_token_with_different_key_still_409s(

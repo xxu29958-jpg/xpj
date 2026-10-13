@@ -75,6 +75,8 @@ internal fun testExpenseOfflineMutationWiring(
     val adapters = com.ticketbox.OutboxAdapterGraph()
     return ExpenseOfflineMutationWiring(outbox = outbox, correctionAdapter = adapters.correctionAdapter,
         billSplitReceiptAdapter = adapters.billSplitReceiptAdapter,
+        billSplitAcceptAdapter = adapters.billSplitAcceptAdapter,
+        billSplitAcceptedAdapter = adapters.billSplitAcceptedAdapter,
         billSplitCreateAdapter = adapters.billSplitCreateAdapter,
         legacyCorrectionAdapter = adapters.legacyCorrectionAdapter,
         manualCreateAdapter = com.ticketbox.OutboxAdapterGraph().manualCreateAdapter,
@@ -92,6 +94,7 @@ internal fun expenseRepositoryFixture(
     binding: ServerSessionBinding,
     sessionCoordinator: LocalLedgerSessionCoordinator = LocalLedgerSessionCoordinator(binding.settingsStore, binding.sessionStore, expenseDao),
     deviceNameProvider: () -> String = ::defaultAndroidDeviceName,
+    outbox: OutboxRepository = OutboxRepository(onRowsDeleted = {}, dao = FakePendingMutationDao(),
+        bindingProvider = { binding.sessionStore.currentSession().toOutboxBinding() }),
 ): ExpenseRepository = ExpenseRepository(expenseDao, binding, sessionCoordinator, deviceNameProvider,
-    testExpenseOfflineMutationWiring(OutboxRepository(onRowsDeleted = {}, dao = FakePendingMutationDao(),
-        bindingProvider = { binding.sessionStore.currentSession().toOutboxBinding() })))
+    testExpenseOfflineMutationWiring(outbox))

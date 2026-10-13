@@ -1,5 +1,6 @@
 """Use the actual shared-ledger member and viewer sessions for this planning group."""
 
+import re
 from contextlib import closing
 
 from scripts.planning_journey_budget import PAGES
@@ -25,7 +26,9 @@ def member(j, page, base):
         page.goto(f"{base}{path}?ledger_id={j.ledger_id}&month={j.month}")
         form = j.form(action, page=page)
         form.locator(f'[name="{field}"]').fill(amount)
-        form.locator(f"[data-{family}-submit]").click()
+        # A committed fact can precede the browser's ACK and return navigation.
+        with page.expect_navigation(url=re.compile(re.escape(base + path) + r"\?[^#]*$"), wait_until="domcontentloaded"):
+            form.locator(f"[data-{family}-submit]").click()
         j.expect_fact(fact, int(amount.replace(".", "")))
         j.capture("member-" + family, page=page)
 
@@ -38,7 +41,10 @@ def viewer(j, page, base):
         assert page.locator('form[action$="/edit"]').count() == 0
         j.capture("viewer-" + kind, page=page)
         history = f"/web/recurring/{j.facts()['series_id']}/history" if kind == "series" else path + "/history"
-        page.locator(f'a[href^="{history}?"]').click()
+        entry = page.locator(f'a[href^="{history}?"]')
+        if not entry.is_visible():
+            entry.locator("xpath=ancestor::details[1]/summary").click()
+        entry.click()
         original = {"budget": "10000.00", "arrangement": "1000.00", "series": "1200.00"}[kind]
         assert original in page.inner_text("main").replace(",", ""), "The viewer did not read the original definition"
         j.capture("viewer-" + kind + "-history", page=page)

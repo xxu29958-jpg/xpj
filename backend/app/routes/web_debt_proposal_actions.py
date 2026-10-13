@@ -5,22 +5,28 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import ValidationError
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from starlette.responses import Response
 
 from app.database import get_db
+from app.error_reporting import retain_handled_error
 from app.errors import AppError
 from app.money_carrier import MAX_MAJOR_DECIMAL_TEXT_LENGTH
+from app.routes._web_accounting_time import accounting_time_form_fields, parse_web_accounting_time
 from app.routes._web_debt_money import parse_web_debt_major_minor
+from app.routes._web_debt_repayment import REPAYMENT_TIME_FIELDS, require_repayment_binding
 from app.routes._web_debt_write import (
     PROPOSAL_CONFIRM_AMOUNT_FIELD,
     PROPOSAL_CONFIRM_AMOUNT_FIELD_LEGACY,
+    repayment_scope,
 )
 from app.routes.web_common import (
     LocalOnly,
     _list_ledger_options,
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
+    _web_redirect,
     parse_form_row_version_token,
 )
 from app.routes.web_debt_actions import (
@@ -28,6 +34,8 @@ from app.routes.web_debt_actions import (
     _action_redirect,
     _actor_account_id,
     _render_action_error,
+    _repayment_error,
+    _repayment_outcome,
 )
 from app.routes.web_debts import _render_debt_detail
 from app.schemas import (
@@ -67,13 +75,24 @@ def _proposal_error_message(exc: AppError) -> str:
     return _PROPOSAL_ERROR_MESSAGES.get(exc.error, exc.message)
 
 
+@router.get("/{public_id}/repayment-proposals", include_in_schema=False)
+def web_proposal_return(public_id: str, ledger_id: str = "", _local: None = LocalOnly):
+    return _web_redirect(f"/web/debts/{public_id}", ledger_id, task="member-repayment")
+
+
 @router.post("/{public_id}/repayment-proposals")
 def web_create_repayment_proposal(
     request: Request,
     public_id: str,
     ledger_id: str = Form(default=""),
+    debt_public_id: str = Form(default=""),
+    origin_binding: str = Form(default=""),
+    home_currency_code: str = Form(default=""),
     amount_major: str = Form(default=""),
     note: str = Form(default=""),
+    paid_at: str = Form(default=""),
+    paid_at_timezone: str = Form(default=""),
+    time_fields: dict[str, str] | None = Depends(accounting_time_form_fields),
     idempotency_key: str = Form(default=""),
     csrf_token: str = Form(default=""),
     _local: None = LocalOnly,
@@ -86,48 +105,58 @@ def web_create_repayment_proposal(
         options,
         request=request,
     )
-    _require_selected_ledger_write(options, selected_id)
-    actor_account_id = _actor_account_id(request, db, selected_id)
+    time_fields = {name: value for name, value in (time_fields or {}).items() if name in REPAYMENT_TIME_FIELDS}
+    retained = any((debt_public_id, origin_binding, home_currency_code, time_fields))
+    values = dict(ledger_id=ledger_id, debt_public_id=debt_public_id, origin_binding=origin_binding,
+        home_currency_code=home_currency_code, amount_major=amount_major, note=note,
+        paid_at=paid_at, paid_at_timezone=paid_at_timezone, idempotency_key=idempotency_key, **time_fields)
+    attempted = False
     try:
+        require_repayment_binding(request, db, values=values, public_id=public_id)
+        _require_selected_ledger_write(options, selected_id)
+        actor_account_id = _actor_account_id(request, db, selected_id)
         debt = get_participant_debt_response(
             db,
             public_id=public_id,
             ledger_id=selected_id,
             account_id=actor_account_id,
         )
+        if home_currency_code and home_currency_code != debt.home_currency_code:
+            raise AppError("debt_currency_changed", "原还款币种与这笔往来不一致，请核对原提交。", status_code=409)
+        values.update(home_currency_code=debt.home_currency_code, debt_public_id=public_id)
+        time_input = parse_web_accounting_time(None, {
+            **time_fields, "user_local_date": paid_at, "source_timezone": paid_at_timezone,
+        } if time_fields else None)
         payload = MemberRepaymentProposalCreateRequest(
             proposed_amount_cents=parse_web_debt_major_minor(
                 amount_major,
                 currency_code=debt.home_currency_code,
                 allow_negative=False,
             ),
-            note=(note or "").strip() or None,
+            note=note.strip() or None,
+            **({"time_input": time_input} if time_input is not None else {}),
         )
-        create_repayment_proposal_idempotently(
+        attempted = True
+        receipt = create_repayment_proposal_idempotently(
             db,
             tenant_id=selected_id,
             actor_account_id=actor_account_id,
             public_id=public_id,
             payload=payload,
-            idempotency_key=(idempotency_key or "").strip() or None,
+            idempotency_key=idempotency_key.strip() or None,
         )
-    except (AppError, ValidationError) as exc:
-        message = (
-            _proposal_error_message(exc)
-            if isinstance(exc, AppError)
-            else "请填写正确的还款金额；想说的话最多 500 个字。"
-        )
-        return _render_action_error(
-            request,
-            db,
-            options=options,
-            selected_id=selected_id,
-            public_id=public_id,
-            kind="proposal_create",
-            message=message,
-            draft={"amount_major": amount_major, "note": note},
-            status_code=exc.status_code if isinstance(exc, AppError) else 422,
-        )
+    except (AppError, ValidationError, SQLAlchemyError) as exc:
+        db.rollback()
+        retain_handled_error(request, exc)
+        outcome = _repayment_error(exc, attempted=attempted, message_for=_proposal_error_message)
+        return _repayment_outcome(request, db, options=options, selected_id=selected_id, public_id=public_id,
+            kind="proposal_create", values=values, **outcome)
+    if retained:
+        ack = {"scope": repayment_scope(request, db), "clientRef": idempotency_key,
+            "proposalPublicId": receipt.public_id,
+            "values": {key: value for key, value in values.items() if key != "idempotency_key"}}
+        return _repayment_outcome(request, db, options=options, selected_id=selected_id,
+            public_id=public_id, kind="proposal_create", ack=ack)
     return _action_redirect(
         public_id,
         selected_id,

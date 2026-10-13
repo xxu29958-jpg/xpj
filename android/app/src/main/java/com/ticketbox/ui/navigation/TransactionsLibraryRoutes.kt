@@ -2,11 +2,20 @@ package com.ticketbox.ui.navigation
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.ViewModelStoreOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.ticketbox.ui.screens.settings.ReferenceCreationEntry
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavHostController
@@ -63,12 +72,17 @@ internal const val TRANSACTIONS_LIBRARY_RECYCLE_BIN_ROUTE = "$TRANSACTIONS_LIBRA
  * Transactions owns its vocabulary as an explicit subflow. Main navigation
  * only needs to install this graph and navigate to [TRANSACTIONS_LIBRARY_ROUTE].
  */
+internal data class TransactionsLibraryWrites(
+    val vocabularyChanged: () -> Unit,
+    val restoreCompleted: () -> Unit,
+    val transactionRowsChanged: () -> Unit,
+)
+
 internal fun NavGraphBuilder.transactionsLibraryGraph(
     navController: NavHostController,
     screenFactory: MainScreenFactory,
-    onVocabularyChanged: () -> Unit,
-    onRestoreCompleted: () -> Unit,
-    onTransactionRowsChanged: () -> Unit,
+    writes: TransactionsLibraryWrites,
+    creationOwner: () -> ViewModelStoreOwner = { navController.getBackStackEntry(TRANSACTIONS_LIBRARY_ROUTE) },
 ) {
     navigation(
         startDestination = TRANSACTIONS_LIBRARY_OVERVIEW_ROUTE,
@@ -90,30 +104,32 @@ internal fun NavGraphBuilder.transactionsLibraryGraph(
             CategoryDirectoryRoute(
                 navController = navController,
                 screenFactory = screenFactory,
-                onVocabularyChanged = onVocabularyChanged,
+                onVocabularyChanged = writes.vocabularyChanged,
+                creationOwner = creationOwner,
             )
         }
         composable(TRANSACTIONS_LIBRARY_MERCHANTS_ROUTE) {
             MerchantDirectoryRoute(
                 navController = navController,
                 screenFactory = screenFactory,
-                onVocabularyChanged = onVocabularyChanged,
+                onVocabularyChanged = writes.vocabularyChanged,
             )
         }
         composable(TRANSACTIONS_LIBRARY_TAGS_ROUTE) {
             TagDirectoryRoute(
                 navController = navController,
                 screenFactory = screenFactory,
-                onVocabularyChanged = onVocabularyChanged,
+                onVocabularyChanged = writes.vocabularyChanged,
+                creationOwner = creationOwner,
             )
         }
-        categoryRulesDestination(navController, screenFactory, onVocabularyChanged, onTransactionRowsChanged)
+        categoryRulesDestination(navController, screenFactory, writes.vocabularyChanged, writes.transactionRowsChanged)
         composable(TRANSACTIONS_LIBRARY_RECYCLE_BIN_ROUTE) {
             RecycleBinLibraryRoute(
                 navController = navController,
                 screenFactory = screenFactory,
-                onRestoreCompleted = onRestoreCompleted,
-                onTransactionRowsChanged = onTransactionRowsChanged,
+                onRestoreCompleted = writes.restoreCompleted,
+                onTransactionRowsChanged = writes.transactionRowsChanged,
             )
         }
     }
@@ -149,6 +165,9 @@ private fun RecycleBinLibraryRoute(
     RecycleBinScreen(
         viewModel = viewModel,
         onBack = navController::popBackStack,
+        backText = stringResource(if (navController.previousBackStackEntry?.destination?.route?.substringBefore('?') in
+            setOf(ProductSecondaryPage.SpendingGoal.route, ProductSecondaryPage.DebtGoals.route)) R.string.spending_goal_recovery_back
+            else R.string.transactions_library_back_to_library),
     )
 }
 
@@ -157,6 +176,7 @@ private fun TagDirectoryRoute(
     navController: NavHostController,
     screenFactory: MainScreenFactory,
     onVocabularyChanged: () -> Unit,
+    creationOwner: () -> ViewModelStoreOwner,
 ) {
     val viewModel: TagManagementViewModel = viewModel(
         key = transactionsLibraryViewModelKey(
@@ -165,12 +185,28 @@ private fun TagDirectoryRoute(
         ),
         factory = tagManagementViewModelFactory(screenFactory.tagRepository),
     )
+    var returningFromRecycle by rememberSaveable { mutableStateOf(false) }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle, viewModel) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && returningFromRecycle) {
+                returningFromRecycle = false
+                viewModel.loadTags()
+            }
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
     TagManagementScreen(
         viewModel = viewModel,
-        readOnly = !screenFactory.repository.canModifyLedger(),
         onBack = navController::popBackStack,
         onTagsChanged = onVocabularyChanged,
         chrome = libraryManagementChrome(),
+        creation = { ready ->
+            ReferenceCreationEntry(screenFactory.tagRepository.creation, creationOwner(), ready,
+                onCreated = { viewModel.loadTags(); onVocabularyChanged() },
+                onRecycle = { returningFromRecycle = true; navController.navigate(TRANSACTIONS_LIBRARY_RECYCLE_BIN_ROUTE) })
+        },
     )
 }
 
@@ -190,19 +226,15 @@ private fun CategoryRulesLibraryRoute(
     )
     LaunchedEffect(viewModel, originalSubmissionId) { originalSubmissionId?.let(viewModel::openSubmission) }
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val definitions by viewModel.definitions.state.collectAsStateWithLifecycle()
     ReportSuccessfulLibraryWrites(viewModel.uiState, onVocabularyChanged) { it.changedRevision }
     ReportSuccessfulLibraryWrites(viewModel.uiState, onTransactionRowsChanged) { it.applicationRevision }
     CategoryRulesScreen(
         state = CategoryRulesScreenState(
-            rules = CategoryRulesRuleListState(
-                rules = state.categoryRules,
-                loading = state.categoryRulesLoading,
+            rules = CategoryRulesRuleListState(rules = state.categoryRules, loading = state.categoryRulesLoading,
                 loadFailed = state.categoryRulesLoadFailed,
             ),
-            interaction = CategoryRulesInteractionState(
-                busy = state.busy,
-                readOnly = !state.canModify,
-            ),
+            interaction = CategoryRulesInteractionState(busy = state.busy, readOnly = !state.canModify),
             status = CategoryRulesStatusState(state.message, state.messageTone),
             applications = CategoryRulesApplicationState(
                 history = state.ruleApplications,
@@ -212,13 +244,17 @@ private fun CategoryRulesLibraryRoute(
             ),
             undoableRule = state.undoableRule,
             submissions = state.pendingSubmissions, selectedSubmissionId = state.selectedSubmissionId,
+            applicationSubmissions = state.pendingApplications,
             submittedRevision = state.submittedRevision, binding = state.binding,
+            definitions = definitions,
         ),
         actions = CategoryRulesScreenActions(
             onBack = navController::popBackStack,
+            definitions = com.ticketbox.ui.screens.settings.CategoryRuleDefinitionActions(
+                viewModel.definitions::begin, viewModel.definitions::open, viewModel.definitions::change,
+                viewModel.definitions::submit, viewModel.definitions::close, viewModel.definitions::reviewBinding,
+                viewModel.definitions::reload),
             rules = CategoryRulesRuleActions(
-                onCreate = viewModel::createCategoryRule,
-                onUpdate = viewModel::updateCategoryRule,
                 onToggle = viewModel::toggleCategoryRule,
                 onDelete = viewModel::deleteCategoryRule,
                 onRecoverSubmission = viewModel::recoverSubmission,
@@ -229,6 +265,7 @@ private fun CategoryRulesLibraryRoute(
                 onConfirmApplyConfirmedRules = viewModel::confirmApplyConfirmedRules,
                 onRollbackRuleApplication = viewModel::rollbackRuleApplication,
                 onReload = { viewModel.loadRuleApplications() },
+                onRecover = viewModel::recoverApplication,
             ),
             undo = CategoryRulesUndoActions(
                 onUndoDelete = viewModel::undoDelete,
@@ -260,24 +297,29 @@ private fun MerchantDirectoryRoute(
             catalog = state.merchantCatalog,
             aliases = state.merchantAliases,
             aliasesLoadFailed = state.aliasesLoadFailed,
-            busy = state.busy,
+            busy = state.busy || state.drafts.busy,
             readOnly = !screenFactory.repository.canModifyLedger(),
             message = state.message,
             messageTone = state.messageTone,
             undoableAlias = state.undoableAlias,
             mergeSuggestion = state.mergeSuggestion,
             editorCompletion = state.editorCompletion,
+            drafts = state.drafts,
         ),
         actions = MerchantAliasesScreenActions(
+            creation = com.ticketbox.ui.screens.settings.MerchantCreationActions(
+                onEdit = viewModel.drafts::edit, onReview = { viewModel.drafts.review(it) },
+                onAccepted = viewModel.drafts::acknowledge, onReload = viewModel.drafts::reload),
             onBack = navController::popBackStack,
             onStartEditing = viewModel::dismissMessage,
             onReloadAliases = { viewModel.loadMerchantAliases() },
             catalog = MerchantAliasesCatalogActions(
                 onCreate = viewModel::createMerchantCatalog,
-                onRename = viewModel::renameMerchantCatalog,
-                onToggle = viewModel::toggleMerchantCatalog,
-                onMerge = viewModel::mergeMerchantCatalog,
-                onDelete = viewModel::deleteMerchantCatalog,
+                onBegin = { kind, source -> viewModel.drafts.begin(kind, source) },
+                onChange = viewModel.drafts::change,
+                onSubmit = viewModel.drafts::submit,
+                onReview = viewModel.drafts::review,
+                onSuggestMerge = { source, target -> viewModel.drafts.begin(com.ticketbox.data.repository.MerchantDraftKind.Merge, source, target) },
             ),
             alias = MerchantAliasesAliasActions(
                 onCreate = viewModel::createMerchantAlias,

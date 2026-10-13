@@ -19,8 +19,10 @@ import com.ticketbox.ui.components.AppAmountInputActions
 import com.ticketbox.ui.components.AppAmountInputState
 import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
+import com.ticketbox.ui.components.AppTextInputDecorations
 import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.viewmodel.BudgetCategoryInput
 
@@ -29,11 +31,13 @@ internal fun MoneyField(
     state: AppAmountInputState,
     onValueChange: (String) -> Unit,
     modifier: Modifier = Modifier,
+    amountRole: AppAmountRole? = null,
 ) {
     AppAmountInput(
         state = state,
         actions = AppAmountInputActions(onValueChange = onValueChange),
         modifier = modifier.fillMaxWidth(),
+        decorations = AppTextInputDecorations(amountRole = amountRole),
     )
 }
 

@@ -64,5 +64,6 @@ interface CategoryRuleApi {
         @Body request: RuleApplyConfirmedRequestDto = RuleApplyConfirmedRequestDto(),
         @Query("limit") limit: Int = 20,
         @Query("max_scan") maxScan: Int = 500,
+        @Header("Idempotency-Key") idempotencyKey: String? = null,
     ): RuleApplyConfirmedResponseDto
 }

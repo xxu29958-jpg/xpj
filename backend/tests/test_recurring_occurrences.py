@@ -55,6 +55,7 @@ def test_recurring_payment_reconciles_reservation_and_replays_once(
     initial = client.get(path, headers=identity.app_headers)
     assert initial.status_code == 200, initial.json()
     assert initial.json()["state"] == "unfulfilled"
+    assert initial.json()["payment_review_reason"] is None
     assert initial.json()["reserved_amount_cents"] == 10_000
 
     key = str(uuid4())
@@ -69,6 +70,7 @@ def test_recurring_payment_reconciles_reservation_and_replays_once(
     fulfilled = client.put(path, headers=headers, json=payload)
     assert fulfilled.status_code == 200, fulfilled.json()
     assert fulfilled.json()["state"] == "fulfilled"
+    assert fulfilled.json()["payment_review_reason"] is None
     assert fulfilled.json()["reserved_amount_cents"] == 0
     assert fulfilled.json()["expense_public_id"] == payment["public_id"]
     assert fulfilled.json()["next_due_date"] == "2026-10-05"
@@ -141,6 +143,7 @@ def test_confirmed_payment_corrected_to_zero_still_fulfills_explicit_obligation(
     current = client.get(path, headers=identity.app_headers).json()
     assert current["state"] == "fulfilled"
     assert current["paid_amount_cents"] == 0
+    assert current["payment_review_reason"] is None
     assert current["reserved_amount_cents"] == 0
     assert current["next_due_date"] == "2026-10-05"
     budget = client.get("/api/budget/discretionary?month=2026-09", headers=identity.app_headers).json()
@@ -183,6 +186,9 @@ def test_occurrence_conflicts_and_payment_reversal_are_visible(client: TestClien
     assert reversed_payment.status_code == 201, reversed_payment.json()
     current = client.get(f"{base}/2026-09", headers=identity.app_headers).json()
     assert current["state"] == "needs_review"
+    assert current["payment_review_reason"] == "reversed"
+    assert current["paid_amount_cents"] is None
+    assert current["paid_home_currency_code"] is None
     assert current["expense_public_id"] == payment["public_id"]
     assert current["reserved_amount_cents"] == 10_000
     assert current["next_due_date"] == "2026-09-05"
@@ -194,6 +200,24 @@ def test_occurrence_conflicts_and_payment_reversal_are_visible(client: TestClien
         json=_link_payload(series, reversed_payment.json()["root"]),
     )
     assert refused.status_code == 409, refused.json()
+
+    # Voiding the reversal restores the existing association, without relinking or rewriting its first receipt.
+    offset, = reversed_payment.json()["active_offsets"]
+    restored = client.post(
+        f"/api/expenses/{payment['id']}/offsets/{offset['public_id']}/voids",
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"void_reason": "核实原付款有效", "expected_row_version": offset["row_version"]},
+    )
+    assert restored.status_code == 201, restored.json()
+    recovered = client.get(f"{base}/2026-09", headers=identity.app_headers).json()
+    assert recovered["state"] == "fulfilled"
+    assert recovered["payment_review_reason"] is None
+    assert recovered["paid_amount_cents"] == payment["amount_cents"]
+    assert recovered["reserved_amount_cents"] == 0
+    assert recovered["row_version"] == linked.json()["row_version"]
+    assert recovered["expense_public_id"] == payment["public_id"]
+    replay = client.put(f"{base}/2026-09", headers=headers, json=_link_payload(series, payment))
+    assert replay.json() == linked.json()
 
 
 def test_occurrence_enforces_ledger_writer_and_explicit_payload(client: TestClient, *, identity) -> None:

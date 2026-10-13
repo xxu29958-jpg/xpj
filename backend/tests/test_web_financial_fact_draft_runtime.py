@@ -14,6 +14,8 @@ _spec.loader.exec_module(_browser)
 
 SCOPE = {"datasetId": "fact-dataset", "clientGeneration": "fact-generation", "accountId": "fact-account",
          "ledgerId": "owner", "deviceId": "fact-device"}
+ORIGIN = {"return_to": "recurring_occurrence", "return_recurring_public_id": "6dce3575-fb65-4df5-bb93-7bb270e8df9b",
+          "return_month": "2026-09", "return_payment_month": "all", "return_query": "原查询"}
 
 
 def correction_page(prepared=None, native_result="prepared"):
@@ -22,7 +24,7 @@ def correction_page(prepared=None, native_result="prepared"):
     expense = {"id": 7, "public_id": "fact-seven", "merchant": "原商家" if count == 1 else "后来商家",
         "row_version": count, "original_currency_code": "CNY" if count == 1 else "JPY",
         "original_amount_value": "10.00" if count == 1 else "1500", "category_input": "餐饮", "note": "",
-        "tags": "", "expense_time_local": "2026-09-30T12:30", "value_score": 2, "regret_score": None,
+        "tags": "", "expense_time_local": "2026-09-30T12:30", "value_score": 2, "regret_score": 3,
         "is_split_received": False}
     item = {"public_id": "item-one", "kind": "product", "name": "原明细", "quantity_text": "1份",
         "unit_price_yuan": "10.00", "amount_yuan": "10.00", "category": "餐饮", "errors": {}}
@@ -31,10 +33,10 @@ def correction_page(prepared=None, native_result="prepared"):
         expense.update(merchant=prepared["merchant"], original_amount_value=prepared["amount_yuan"],
             original_currency_code=prepared["original_currency"], row_version=prepared["expected_row_version"],
             value_score=prepared["value_score"], regret_score=prepared["regret_score"])
-    return _browser.ENV.get_template("expense_correct.html").render(expense=expense, can_write=True, correction_mode=True,
+    return _browser.ENV.get_template("expense_correct.html").render(expense=expense, current_expense=expense, can_write=True, correction_mode=True,
         frozen_scalars=[], field_errors={}, csrf_token="synthetic", selected_ledger_id="owner",
         confirm_idempotency_key=prepared["idempotency_key"] if prepared else str(uuid4()),
-        reason_input=prepared["reason"] if prepared else "", flow_return_fields={"return_to": "search", "return_query": "原查询"},
+        reason_input=prepared["reason"] if prepared else "", flow_return_fields=ORIGIN,
         fact_href="/web/expenses/7/edit?ledger_id=owner", currency_options=["CNY", "JPY", "USD"],
         selected_original_currency=expense["original_currency_code"], category_options=["餐饮"],
         currency_input={**_browser.JPY_INPUT, "currency_code": "CNY", "amount_step": "0.01", "inputmode": "decimal"},
@@ -123,9 +125,12 @@ def offset_page(expense_id, query):
     code = "JPY" if current else "CNY"
     row = {"public_id": "offset-original", "kind": "refund", "kind_label": "商家退款", "amount_label": "CNY 3.00",
         "accounting_date": "2026-09-30", "reason": "原退回", "row_version": 1, "void_idempotency_key": str(uuid4()), "active": True}
-    content = _browser.ENV.get_template("_fact_offsets.html").render(
+    content = _browser.ENV.from_string("""<div class="fact-workspace">
+        <div class="fact-layout" id="fact-overview">{% include '_fact_offsets.html' %}</div>
+        {% with reversal=false %}{% include '_offset_form.html' %}{% endwith %}
+        {% with reversal=true %}{% include '_offset_form.html' %}{% endwith %}</div>""").render(
         expense={"id": expense_id, "row_version": count, "original_currency_code": code},
-        selected_ledger_id="owner", csrf_token="synthetic", edit_return_fields={"return_to": "search", "return_query": "原查询"},
+        selected_ledger_id="owner", csrf_token="synthetic", edit_return_fields=ORIGIN,
         offset_draft_scope=SCOPE, offset_can_write=True, offset_can_create_refund=not current, offset_can_reverse=not current,
         offset_currency_input=_browser.JPY_INPUT,
         offset_summary={"status": "fully_refunded" if current else "confirmed", "remaining_original_value": "12.00",
@@ -136,7 +141,7 @@ def offset_page(expense_id, query):
             "reason": "", "expected_row_version": count, "original_currency_code": code, "idempotency_key": str(uuid4())},
         offset_reversal_key=str(uuid4()))
     return '<!doctype html><meta charset="utf-8">' + content + ''.join(
-        f'<script src="/static/web/{name}.js" defer></script>' for name in ("manual-drafts", "plan-entry", "financial-entry"))
+        f'<script src="/static/web/{name}.js" defer></script>' for name in ("desktop/core", "manual-drafts", "plan-entry", "financial-entry"))
 
 
 class OffsetRecoveryHandler(_browser.RecoveryHandler):
@@ -168,6 +173,9 @@ def test_correction_refresh_preserves_raw_inputs_original_basis_and_rows(tmp_pat
     assert not _browser.POSTS and not _browser.MISSING
     assert result["before"] == result["after"], "Reopening must retain the original intent, currency, version and key"
     assert dict(result["after"])["reason"] == " 原更正依据 "
+    assert dict(result["after"])["regret_score"] == "", "Explicitly clearing a prior score must survive refresh"
+    assert dict(result["after"])["return_payment_month"] == "all"
+    assert result["olderOriginReadable"], result["olderFields"]
 
 
 def test_unknown_correction_replays_exact_original_after_refresh_and_acknowledges_only_that_input(tmp_path):

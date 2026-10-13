@@ -50,6 +50,88 @@
     }).format(raw);
   };
 
+  // Native constraint validation must reveal the real field before focusing it.
+  // Shared by budget options, debt details and other progressive disclosures.
+  app.initFormDisclosures = function initFormDisclosures() {
+    app.bindReviewFields(document);
+    document.addEventListener("invalid", function (event) {
+      let disclosure = event.target.closest("details");
+      while (disclosure) {
+        disclosure.open = true;
+        disclosure = disclosure.parentElement?.closest("details");
+      }
+    }, true);
+  };
+
+  // The disclosure reads the real input, preserving raw long values without
+  // rounding or a second draft. Used by review, correction and restored rows.
+  app.bindReviewFields = function bindReviewFields(root) {
+    root.querySelectorAll("[data-review-value]").forEach(function (output) {
+      if (output.dataset.bound) return;
+      output.dataset.bound = "true";
+      const field = output.closest("details");
+      const input = field.querySelector('[name="' + output.dataset.reviewValue + '"]');
+      function showValue() {
+        output.textContent = input.value
+          ? (input.tagName === "SELECT" ? input.selectedOptions[0].textContent.trim() : input.value)
+          : output.dataset.empty;
+        (output.closest("[data-review-display]") || output).hidden = input.value === output.dataset.reviewHideValue;
+      }
+      input.addEventListener("input", showValue);
+      showValue();
+      if (!field.hasAttribute("data-review-line")) {
+        field.open = !input.value || input.getAttribute("aria-invalid") === "true";
+      }
+    });
+  };
+
+  app.readReviewRows = function readReviewRows(form, columns) {
+    return [...form.querySelectorAll('[name="' + columns[0] + '"]')].map(input => {
+      const row = input.closest("[data-review-line]");
+      return Object.fromEntries(columns.map(name => [name, row.querySelector('[name="' + name + '"]').value]));
+    });
+  };
+  app.putReviewField = function putReviewField(input, value) {
+    if (!input.tagName) {
+      [...input].forEach(option => { option.checked = option.value === value; });
+      return;
+    }
+    if (input.tagName === "SELECT" && ![...input.options].some(option => option.value === value)) {
+      input.add(new Option(value || "原选择为空", value));
+    }
+    if (["number", "date", "datetime-local"].includes(input.type)) {
+      input.value = value;
+      if (input.value !== value) input.type = "text";
+    }
+    input.value = value;
+  };
+  app.restoreReviewRows = function restoreReviewRows(form, columns, encoded) {
+    const original = form.querySelector('[name="' + columns[0] + '"]');
+    const prototype = original.closest("[data-review-line]").cloneNode(true);
+    const parent = original.closest(".expense-lines-editor");
+    const additions = parent.querySelector(".expense-line-additions")?.cloneNode(true);
+    additions?.querySelectorAll("[data-review-line]").forEach(row => row.remove());
+    if (additions) additions.open = false;
+    const rows = JSON.parse(encoded);
+    const lastData = rows.findLastIndex(values => columns.some(name => name !== "item_kind" && values[name]));
+    parent.replaceChildren();
+    rows.forEach((values, index) => {
+      const row = prototype.cloneNode(true);
+      row.hidden = index > lastData && !additions; row.open = index === lastData + 1;
+      row.querySelectorAll("[data-bound]").forEach(node => node.removeAttribute("data-bound"));
+      row.querySelectorAll(".field-error, .meta").forEach(node => node.remove());
+      row.querySelectorAll("[aria-describedby]").forEach(node => node.removeAttribute("aria-describedby"));
+      columns.forEach(name => {
+        const input = row.querySelector('[name="' + name + '"]');
+        app.putReviewField(input, values[name]);
+        if (input.hasAttribute("aria-label")) input.setAttribute("aria-label", input.getAttribute("aria-label").replace(/第 \d+ 行/, "第 " + (index + 1) + " 行"));
+      });
+      if (index === lastData + 1 && additions) parent.append(additions);
+      (index > lastData && additions ? additions : parent).append(row);
+    });
+    app.bindReviewFields(parent);
+  };
+
   app.homeMinorToMajorText = function homeMinorToMajorText(value) {
     let raw;
     if (typeof value === "bigint") {
@@ -70,6 +152,22 @@
     const whole = absolute / scale;
     const fraction = String(absolute % scale).padStart(digits, "0");
     return (negative ? "-" : "") + whole.toString() + "." + fraction;
+  };
+
+  // Read-only repayment/refund estimate. Currency precision and balance come
+  // from the displayed server snapshot; this never changes or accepts input.
+  app.remainingMoneyPreview = function remainingMoneyPreview(value, before, digits) {
+    if (!Number.isInteger(digits) || digits < 0 || digits > 20 || !/^[0-9]+$/.test(before)) return null;
+    const match = /^(0|[1-9][0-9]*)(?:\.([0-9]+))?$/.exec(value.trim());
+    if (!match) return null;
+    const fraction = match[2] || "";
+    if (/[^0]/.test(fraction.slice(digits))) return null;
+    const scale = 10n ** BigInt(digits);
+    const minor = BigInt(match[1]) * scale + BigInt(fraction.slice(0, digits).padEnd(digits, "0") || "0");
+    if (minor <= 0n || minor > BigInt(before)) return null;
+    const after = BigInt(before) - minor;
+    const whole = (after / scale).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    return whole + (digits ? "." + (after % scale).toString().padStart(digits, "0") : "");
   };
 
   app.homeMinorToMajor = function homeMinorToMajor(value) {
@@ -152,8 +250,8 @@
     else if (selected.left < viewport.left) filters.scrollLeft -= viewport.left - selected.left;
   };
 
-  app.initInboxEnrichmentWatch = function initInboxEnrichmentWatch() {
-    const marker = document.querySelector("[data-inbox-enrichment-watch]");
+  app.initInboxEnrichmentWatch = function initInboxEnrichmentWatch(root = document) {
+    const marker = root.querySelector("[data-inbox-enrichment-watch]");
     if (!marker) return;
     const delayMs = 1500;
     const fetchTimeoutMs = 5000;
@@ -172,7 +270,7 @@
     };
 
     const poll = async function poll() {
-      if (Date.now() >= deadline) {
+      if (!marker.isConnected || Date.now() >= deadline) {
         stopWaiting();
         return;
       }
@@ -181,15 +279,20 @@
         controller.abort();
       }, Math.min(fetchTimeoutMs, Math.max(1, deadline - Date.now())));
       try {
-        const response = await fetch(window.location.href, {
+        const response = await fetch(marker.dataset.watchHref || window.location.href, {
           cache: "no-store",
           headers: {Accept: "text/html"},
           signal: controller.signal
         });
         if (response.ok) {
           const next = new DOMParser().parseFromString(await response.text(), "text/html");
-          if (next.querySelector("[data-inbox-enrichment-terminal]")) {
-            window.location.replace(window.location.href);
+          const terminal = next.querySelector("[data-inbox-enrichment-terminal]");
+          if (terminal) {
+            if (marker.hasAttribute("data-watch-inline")) {
+              marker.setAttribute("aria-busy", "false");
+              marker.querySelector("span").textContent = terminal.textContent.trim();
+              marker.dispatchEvent(new CustomEvent("recognitioncomplete", {detail: {state: terminal.dataset.enrichmentState}}));
+            } else window.location.replace(window.location.href);
             return;
           }
           if (!next.querySelector("[data-inbox-enrichment-watch]")) {

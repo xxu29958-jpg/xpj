@@ -156,7 +156,7 @@ data class ExpenseRevisionDto(
     val changeKind: String,
     val reason: String,
     @param:Json(name = "changed_fields")
-    val changedFields: List<String>,
+    val changedFields: List<String> = emptyList(),
     val before: Map<String, Any?>? = null,
     val after: Map<String, Any?>,
     @param:Json(name = "actor_account_name")
@@ -165,6 +165,8 @@ data class ExpenseRevisionDto(
     val actorDeviceName: String? = null,
     @param:Json(name = "created_at")
     val createdAt: String,
+    @param:Json(name = "offset_public_id")
+    val offsetPublicId: String? = null,
 )
 
 data class ExpenseCorrectionResponseDto(
@@ -180,6 +182,8 @@ data class ExpenseRevisionPageDto(
     val total: Int,
     @param:Json(name = "snapshot_revision")
     val snapshotRevision: Long,
+    @param:Json(name = "offset_snapshot_id")
+    val offsetSnapshotId: Long? = null,
 )
 
 @JsonClass(generateAdapter = true)

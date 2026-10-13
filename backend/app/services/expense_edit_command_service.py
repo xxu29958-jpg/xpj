@@ -2,20 +2,44 @@
 
 from __future__ import annotations
 
+from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.models import Expense
+from app.models import ApiIdempotencyKey, Expense
 from app.schemas import ExpenseUpdateRequest
 from app.services.expense_service import get_expense, update_expense
 from app.services.idempotency import (
     claim_idempotent_request,
+    fingerprint_request,
     mark_idempotency_succeeded,
 )
 from app.services.pending_fx_task_service import prepare_pending_expense_fx, submit_pending_expense_fx
 
 _EDIT_OPERATION = "patch_expense"
+
+
+def expense_edit_was_accepted(
+    db: Session, *, tenant_id: str, expense_id: int, idempotency_key: str,
+    intent_body: dict[str, object], expected_row_version: int,
+) -> bool:
+    """Resolve the original save before Web validates against a later bill.
+
+    The existing committed key proves acceptance of this pending edit. It is
+    not a financial receipt or a snapshot of the current expense.
+    """
+    row = db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.tenant_id == tenant_id,
+        ApiIdempotencyKey.idempotency_key == idempotency_key, ApiIdempotencyKey.status == "succeeded"))
+    if row is None:
+        return False
+    fingerprint = fingerprint_request(operation=_EDIT_OPERATION, target_id=str(expense_id),
+        body=intent_body, expected_row_version=expected_row_version)
+    if (row.operation != _EDIT_OPERATION or row.target_id != str(expense_id)
+            or row.resource_type != "expense" or row.resource_id != str(expense_id)
+            or row.request_fingerprint != fingerprint):
+        raise AppError("idempotency_key_reused", status_code=422)
+    return True
 
 
 def edit_expense_submission(

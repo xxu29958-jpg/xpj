@@ -340,21 +340,9 @@ private class RecordingReportsActions : ReportsActions {
     override suspend fun debtGoals(includeArchived: Boolean, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?, timezone: String): Result<ReadSnapshot<List<Goal>>> =
         Result.success(ReadSnapshot(emptyList(), "2026-09-09T00:00:00Z", false))
 
-    override suspend fun replaceDebtLinks(
-        publicId: String,
-        expectedRowVersion: Long,
-        debtPublicIds: List<String>,
-    ): Result<Goal> = Result.failure(UnsupportedOperationException())
-
     override suspend fun acknowledgeDebtIntegrityReview(
         publicId: String,
         expectedRowVersion: Long,
-    ): Result<Goal> = Result.failure(UnsupportedOperationException())
-
-    override suspend fun setDebtGoalTargetDate(
-        publicId: String,
-        expectedRowVersion: Long,
-        targetDate: String?,
     ): Result<Goal> = Result.failure(UnsupportedOperationException())
 
     override fun dashboardAccess() = access.value

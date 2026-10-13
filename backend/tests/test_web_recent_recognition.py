@@ -28,7 +28,7 @@ from tests.test_background_task_continuation import _failed_upload
 def _render(engine, name, context):
     env = engine.env.overlay(loader=ChoiceLoader([
         DictLoader({"base.html": "{% block content %}{% endblock %}"}), engine.env.loader]))
-    return env.get_template(name).render(context)
+    return env.get_template(name).render({"upload_intent": {"scope": None}, **context})
 
 
 def _task_fragment(html, public_id):

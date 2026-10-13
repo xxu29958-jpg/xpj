@@ -24,6 +24,9 @@ fun BillSplitSentDto.toDomain(): BillSplitSent = BillSplitSent(
     receiverAccountId = receiverAccountId,
     receiverDisplayNameSnapshot = receiverDisplayNameSnapshot,
     senderExpenseId = senderExpenseId,
+    originalCurrencyCode = originalCurrencyCode,
+    originalAmountMinor = originalAmountMinor,
+    accountingTimeSnapshot = accountingTimeSnapshot?.toDomain(),
 )
 
 fun BillSplitInboxDto.toDomain(): BillSplitInbox = BillSplitInbox(
@@ -43,4 +46,29 @@ fun BillSplitInboxDto.toDomain(): BillSplitInbox = BillSplitInbox(
     senderAccountId = senderAccountId,
     senderDisplayName = senderDisplayName,
     receivedBill = receivedBill?.let { BillSplitReceivedBill(it.expenseId, it.ledgerId, it.ledgerName) },
+    originalCurrencyCode = originalCurrencyCode,
+    originalAmountMinor = originalAmountMinor,
+    accountingTimeSnapshot = accountingTimeSnapshot?.toDomain(),
+)
+
+fun com.ticketbox.data.remote.dto.BillSplitAcceptanceDto.toDomain(): BillSplitInbox = BillSplitInbox(
+    publicId = publicId,
+    status = status,
+    amountCents = amountCents,
+    homeCurrencyCode = homeCurrencyCode,
+    merchantSnapshot = merchantSnapshot,
+    categorySuggestion = categorySuggestion,
+    expenseTimeSnapshot = expenseTimeSnapshot,
+    expiresAt = expiresAt,
+    createdAt = createdAt,
+    acceptedAt = acceptedAt,
+    rejectedAt = rejectedAt,
+    cancelledAt = cancelledAt,
+    expiredAt = expiredAt,
+    senderAccountId = senderAccountId,
+    senderDisplayName = senderDisplayName,
+    receivedBill = receivedBill?.let { BillSplitReceivedBill(it.expenseId, it.ledgerId, it.ledgerName) },
+    originalCurrencyCode = originalCurrencyCode,
+    originalAmountMinor = originalAmountMinor,
+    accountingTimeSnapshot = accountingTimeSnapshot?.toDomain(),
 )

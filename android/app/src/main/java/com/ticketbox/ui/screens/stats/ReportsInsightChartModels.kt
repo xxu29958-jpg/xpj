@@ -25,7 +25,7 @@ internal fun reportTrendChartPoints(trend: List<ReportTrendPoint>): List<ReportT
         ReportTrendChartPoint(
             x = index,
             label = point.label.ifBlank { point.bucket.takeLast(5) },
-            amountCents = requireNotNull(point.amountCents).coerceAtLeast(0L),
+            amountCents = requireNotNull(point.amountCents),
             count = point.count.coerceAtLeast(0),
         )
     }
@@ -55,7 +55,7 @@ internal fun reportsRecentWindowTrend(
             DailySpend(
                 date = point.bucket,
                 label = point.label.ifBlank { point.bucket.takeLast(5) },
-                amountCents = requireNotNull(point.amountCents).coerceAtLeast(0L),
+                amountCents = requireNotNull(point.amountCents),
             )
         }
         .toList()
@@ -89,27 +89,27 @@ internal fun categoryComparisonMode(rows: List<CategoryComparisonChartRow>): Cat
     }
 
 /**
- * 轴3 对比图数据(纯函数,单测直测):负值钳零(图不画负柱);
- * 历史系列必须有后端 count 和正向金额才可展示,避免把缺失历史样本画成 0 对比。
+ * 保留已知净额；包含负值时消费者使用数值行，不画普通占比。
+ * 历史系列须有后端 count 和已知金额，避免把缺失历史样本画成 0 对比。
  */
 internal fun categoryComparisonChartRows(
     rows: List<ReportCategoryComparison>,
 ): List<CategoryComparisonChartRow> =
     if (rows.any { it.amountCents == null || it.previousAmountCents == null || it.yearOverYearAmountCents == null }) emptyList() else rows.asSequence()
         .map { row ->
-            val hasPrevious = row.previousCount > 0 && row.previousAmountCents?.let { it > 0L } == true
-            val hasYearOverYear = row.yearOverYearCount > 0 && row.yearOverYearAmountCents?.let { it > 0L } == true
+            val hasPrevious = row.previousCount > 0 && row.previousAmountCents != null
+            val hasYearOverYear = row.yearOverYearCount > 0 && row.yearOverYearAmountCents != null
             CategoryComparisonChartRow(
                 category = row.category,
-                currentAmountCents = requireNotNull(row.amountCents).coerceAtLeast(0L),
-                previousAmountCents = if (hasPrevious) requireNotNull(row.previousAmountCents).coerceAtLeast(0L) else 0L,
-                yearOverYearAmountCents = if (hasYearOverYear) requireNotNull(row.yearOverYearAmountCents).coerceAtLeast(0L) else 0L,
+                currentAmountCents = requireNotNull(row.amountCents),
+                previousAmountCents = if (hasPrevious) requireNotNull(row.previousAmountCents) else 0L,
+                yearOverYearAmountCents = if (hasYearOverYear) requireNotNull(row.yearOverYearAmountCents) else 0L,
                 hasPrevious = hasPrevious,
                 hasYearOverYear = hasYearOverYear,
             )
         }
         .filter {
-            it.currentAmountCents > 0L ||
+            it.currentAmountCents != 0L ||
                 it.hasPrevious ||
                 it.hasYearOverYear
         }
@@ -128,7 +128,7 @@ internal fun trendChartA11y(
     points: List<ReportTrendChartPoint>,
     currencyDisplay: CurrencyDisplay,
 ): TrendChartA11y {
-    val nonZero = points.filter { it.amountCents > 0L }
+    val nonZero = points.filter { it.amountCents != 0L }
     return TrendChartA11y(
         listed = nonZero.joinToString("，") { "${it.label} ${formatDisplayAmount(it.amountCents, currencyDisplay)}" },
         zeroBuckets = points.size - nonZero.size,

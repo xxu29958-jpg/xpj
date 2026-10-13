@@ -94,6 +94,20 @@ data class DebtDto(
     @param:Json(name = "is_forgiven")
     val isForgiven: Boolean = false,
     val note: String? = null,
+    @param:Json(name = "adjustment_amount_cents")
+    val adjustmentAmountCents: Long? = null,
+    @param:Json(name = "forgiven_amount_cents")
+    val forgivenAmountCents: Long? = null,
+    @param:Json(name = "repayment_calendar")
+    val repaymentCalendar: RepaymentCalendarDto? = null,
+    @param:Json(name = "accounting_time")
+    val accountingTime: ExpenseAccountingTimeDto? = null,
+)
+
+@JsonClass(generateAdapter = true)
+data class RepaymentCalendarDto(
+    val revision: Long,
+    @param:Json(name = "timezone_name") val timezoneName: String,
 )
 
 data class DebtListResponseDto(
@@ -167,6 +181,8 @@ data class DebtCreateRequestDto(
     @param:Json(name = "installment_period_months")
     val installmentPeriodMonths: Long? = null,
     val note: String? = null,
+    @param:Json(name = "time_input")
+    val timeInput: ExpenseTimeInputDto? = null,
 )
 
 /**
@@ -184,7 +200,9 @@ data class RepaymentCreateRequestDto(
     @param:Json(name = "expected_row_version")
     val expectedRowVersion: Long,
     @param:Json(name = "paid_at")
-    val paidAt: String,
+    val paidAt: String? = null,
+    @param:Json(name = "time_input")
+    val timeInput: ExpenseTimeInputDto? = null,
 )
 
 /**

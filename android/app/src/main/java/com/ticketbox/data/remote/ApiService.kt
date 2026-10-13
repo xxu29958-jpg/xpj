@@ -2,6 +2,7 @@ package com.ticketbox.data.remote
 
 import com.ticketbox.data.remote.api.AuthApi
 import com.ticketbox.data.remote.api.ExpenseListApi
+import com.ticketbox.data.remote.api.CategoryPreferenceApi
 import com.ticketbox.data.remote.api.ExpenseDetailApi
 import com.ticketbox.data.remote.api.ExpenseCorrectionApi
 import com.ticketbox.data.remote.api.BillSplitApi
@@ -9,6 +10,7 @@ import com.ticketbox.data.remote.api.ExpenseStateApi
 import com.ticketbox.data.remote.api.ExpenseMediaApi
 import com.ticketbox.data.remote.api.CategoryRuleApi
 import com.ticketbox.data.remote.api.MerchantApi
+import com.ticketbox.data.remote.api.SavedViewApi
 import com.ticketbox.data.remote.api.TagApi
 import com.ticketbox.data.remote.api.ServerSettingsApi
 import com.ticketbox.data.remote.api.RuntimeCompatibilityApi
@@ -51,6 +53,7 @@ interface ApiService :
     com.ticketbox.data.remote.api.PortableExportApi,
     AuthApi,
     ExpenseListApi,
+    CategoryPreferenceApi,
     ExpenseDetailApi,
     ExpenseCorrectionApi,
     BillSplitApi,
@@ -58,6 +61,7 @@ interface ApiService :
     ExpenseMediaApi,
     CategoryRuleApi,
     MerchantApi,
+    SavedViewApi,
     TagApi,
     ServerSettingsApi,
     ReportsApi,
@@ -85,6 +89,15 @@ interface ApiService :
     suspend fun verifyOriginal(
         @Path("id") id: Long,
         @Body body: OriginalVerificationRequestDto,
+        @Header("Idempotency-Key") idempotencyKey: String,
+    ): OriginalCommandReceiptDto
+
+    @Multipart
+    @POST("api/expenses/{id}/original/attach")
+    suspend fun attachOriginal(
+        @Path("id") id: Long,
+        @Part file: MultipartBody.Part,
+        @Query("expected_row_version") expectedRowVersion: Long,
         @Header("Idempotency-Key") idempotencyKey: String,
     ): OriginalCommandReceiptDto
 

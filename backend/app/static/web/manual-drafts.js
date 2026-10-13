@@ -72,10 +72,14 @@
           throw Error("submitted_snapshot_is_immutable");
         }
       }
-      const raw = JSON.stringify(next);
+      return write(next);
+    }
+
+    function write(record) {
+      const raw = JSON.stringify(record);
       if (raw.length > 131072) throw Error("draft_too_large");
-      window.localStorage.setItem(key(ref), raw);
-      return next;
+      window.localStorage.setItem(key(record.clientRef), raw);
+      return record;
     }
 
     function list(scope) {
@@ -90,10 +94,15 @@
       return records.sort((left, right) => right.updatedAt - left.updatedAt);
     }
 
-    function acknowledge(ack) {
+    function acknowledge(ack, continuedValues) {
       const record = read(ack.clientRef);
       if (!record || !matches(record.scope, scopeValue(ack.scope))) return false;
-      window.localStorage.removeItem(key(ack.clientRef));
+      if (continuedValues === undefined) window.localStorage.removeItem(key(ack.clientRef));
+      else {
+        const next = {...record, phase: "editing", values: fieldValues(continuedValues), updatedAt: Date.now()};
+        delete next.serverResult;
+        write(next);
+      }
       return true;
     }
 
@@ -139,6 +148,7 @@
       "return_to", "return_recurring_public_id", "return_month", "return_payment_expense_id"],
     legacyMissing: ["home_currency_code", "return_to", "return_recurring_public_id", "return_month", "return_payment_expense_id"],
     optionalFields: ["time_precision", "calendar_revision", "user_local_date", "source_timezone",
-      "source_utc_offset_seconds", "accounting_date"],
+      "source_utc_offset_seconds", "accounting_date", "original_file",
+      "return_filter", "return_page", "return_tag", "return_query", "return_category", "return_home_currency_code", "return_payment_month"],
   });
 })(window);

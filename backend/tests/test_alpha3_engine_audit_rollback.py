@@ -1,8 +1,10 @@
 """v0.4-alpha3 Smart Ledger Engine — Rules preview/apply + Recurring candidates."""
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from uuid import uuid4
 
+import pytest
 from api_contract_helpers import patch_expense, upload_png
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -42,7 +44,7 @@ def _apply_pending_rules(client: TestClient, *, identity, max_scan: int = 500):
     token = preview.json()["preview_token"]
     return client.post(
         f"/api/rules/apply-pending?max_scan={max_scan}",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"confirm": True, "preview_token": token},
     )
 
@@ -73,6 +75,7 @@ def test_rule_application_audit_and_rollback_integration(client: TestClient, *, 
     assert listed.status_code == 200
     batch_id = listed.json()["items"][0]["public_id"]
     assert listed.json()["items"][0]["status"] == "applied"
+    assert listed.json()["items"][0]["change_counts"] == {"applied": 1}
     with SessionLocal() as db:
         batch = db.scalar(select(RuleApplicationBatch).where(RuleApplicationBatch.public_id == batch_id))
         assert batch is not None
@@ -103,14 +106,19 @@ def test_rule_application_audit_and_rollback_integration(client: TestClient, *, 
 
     second = client.post(f"/api/rules/applications/{batch_id}/rollback", headers=identity.app_headers)
     assert second.status_code == 200
-    assert second.json()["changed"] == 0
-    assert second.json()["skipped"] == 1
+    assert second.json() == rollback.json()
+    history = client.get("/api/rules/applications", headers=identity.app_headers).json()["items"][0]
+    assert history["change_counts"] == {"rolled_back": 1}
+    assert history["rolled_back_at"] == rollback.json()["rolled_back_at"]
 
 
+@pytest.mark.real_db
 def test_rule_application_rollback_safety_boundaries_integration(client: TestClient, *, identity) -> None:
     """One integration path covers manual edits, cross-ledger hiding, and writer guard."""
     pending_id = upload_png(client, identity=identity)
     _set_pending_merchant(client, pending_id, "BoundaryCafe", identity=identity)
+    another_id = upload_png(client, identity=identity)
+    _set_pending_merchant(client, another_id, "BoundaryCafe 第二笔", identity=identity)
     client.post(
         "/api/rules/categories",
         headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
@@ -132,15 +140,31 @@ def test_rule_application_rollback_safety_boundaries_integration(client: TestCli
         fields={"category": "交通"},
     )
     assert manual.status_code == 200
-    skipped = client.post(f"/api/rules/applications/{batch_id}/rollback", headers=identity.app_headers)
-    assert skipped.status_code == 200
-    assert skipped.json()["status"] == "rollback_skipped"
-    assert skipped.json()["changed"] == 0
-    assert skipped.json()["skipped"] == 1
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        requests = [pool.submit(client.post, f"/api/rules/applications/{batch_id}/rollback",
+            headers=identity.app_headers) for _ in range(2)]
+        first, second = [request.result(timeout=10) for request in requests]
+    assert first.status_code == second.status_code == 200
+    assert first.json() == second.json()
+    assert first.json()["status"] == "rollback_partial"
+    assert first.json()["changed"] == first.json()["skipped"] == 1
+    history = client.get("/api/rules/applications", headers=identity.app_headers).json()["items"][0]
+    assert history["change_counts"] == {"rolled_back": 1, "skipped": 1}
     with SessionLocal() as db:
         expense = db.scalar(select(Expense).where(Expense.id == pending_id))
         assert expense is not None
         assert expense.category == "交通"
+        restored = db.get(Expense, another_id)
+        assert restored.category == "其他"
+        restored_version = restored.row_version
+
+    later = patch_expense(client, another_id, headers=identity.app_headers, fields={"category": "医疗"})
+    assert later.status_code == 200, later.text
+    replay = client.post(f"/api/rules/applications/{batch_id}/rollback", headers=identity.app_headers)
+    assert replay.status_code == 200 and replay.json() == first.json()
+    with SessionLocal() as db:
+        restored = db.get(Expense, another_id)
+        assert restored.category == "医疗" and restored.row_version == restored_version + 1
 
     with SessionLocal() as db:
         member = db.scalar(select(LedgerMember).where(LedgerMember.ledger_id == "owner").limit(1))

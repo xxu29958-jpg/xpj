@@ -11,19 +11,10 @@ import kotlinx.coroutines.CancellationException
 import retrofit2.HttpException
 
 /**
- * ADR-0038 PR-2g.9: replay a queued
- * ``POST /api/expenses/{id}/items/acknowledge-mismatch``. Token-only
- * shape like [ConfirmExpenseDispatcher]; the response is an items payload
- * (ExpenseItemsResponse) that now carries the parent expense's bumped
- * ``row_version`` on the wrapper. The ack bumps it server-side, so the
- * dispatcher returns that fresh ``row_version`` directly as
- * [DispatchResult.Success]'s ``newRowVersion`` (self-describing response,
- * no second GET) so the drain cascades it onto a chained same-target
- * PENDING row (e.g. offline ack→confirm), avoiding a spurious 409
- * (ADR-0041 P1).
- *
- * A refusal such as ``items_sum_not_in_mismatch`` does not prove that the
- * original difference was acknowledged. Keep it as a visible failure.
+ * Replays the original key and input, using the Outbox row's OCC token.
+ * The response is the first accepted subtask snapshot. Its parent version may
+ * advance our queued successor, but must never include a later peer's version.
+ * GET owns current state; an unverifiable old receipt stays available for review.
  */
 class AcknowledgeItemsMismatchDispatcher(
     private val apiProvider: (OutboxRow) -> ApiService,

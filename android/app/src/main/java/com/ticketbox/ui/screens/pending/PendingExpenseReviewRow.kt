@@ -40,6 +40,7 @@ import com.ticketbox.domain.model.pendingNeedsCategory
 import com.ticketbox.domain.model.pendingNeedsFx
 import com.ticketbox.ui.components.AppAdaptiveAmountRowDefaults
 import com.ticketbox.ui.components.AppAdaptiveContentActionStateRow
+import com.ticketbox.ui.components.AppAdaptiveContentActionStyle
 import com.ticketbox.ui.components.AppAdaptiveEditActionLayout
 import com.ticketbox.ui.components.AppAdaptiveEditActionMode
 import com.ticketbox.ui.components.AppAsyncImage
@@ -102,8 +103,10 @@ internal fun PendingExpenseReviewRow(
             verticalArrangement = Arrangement.spacedBy(metrics.contentGap),
         ) {
             AppAdaptiveContentActionStateRow(
-                wideActionWeight = AppAdaptiveAmountRowDefaults.reviewTrailingWeight,
-                verticalAlignment = Alignment.CenterVertically,
+                style = AppAdaptiveContentActionStyle(
+                    wideActionWeight = AppAdaptiveAmountRowDefaults.reviewTrailingWeight,
+                    compactAction = true,
+                ),
                 content = {
                     Row(
                         modifier = Modifier
@@ -143,7 +146,7 @@ internal fun PendingExpenseReviewRow(
 
 @Composable
 private fun PendingExpenseLeadingMark(item: PendingExpenseReviewItem) {
-    val size = if (item.compact) DpSize(40.dp, 52.dp) else DpSize(46.dp, 60.dp)
+    val size = if (item.compact) AppAsyncImageLayout.ReceiptThumbnail.compactSize else DpSize(46.dp, 60.dp)
     if (item.expense.hasUndeletedImage) {
         AppAsyncImage(
             image = item.thumbnail,
@@ -179,10 +182,7 @@ private fun RowScope.PendingExpenseTextBlock(item: PendingExpenseReviewItem) {
             overflow = TextOverflow.Ellipsis,
         )
         Text(
-            text = stringResource(
-                R.string.pending_row_meta,
-                com.ticketbox.ui.components.expenseTimeLabel(expense).asString(),
-            ),
+            text = com.ticketbox.ui.components.expenseTimeLabel(expense).asString(),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
             maxLines = 1,
@@ -224,15 +224,15 @@ private fun PendingExpenseAmountBlock(
         PendingAmountValue(expense = expense)
         PendingExpenseExchangeMetaText(expense = expense, stacked = stacked)
         // Viewer 无写命令：不渲染 mutation CTA；busy 经 canMutate 只禁用。
-        if (!readOnly) {
+        if (!readOnly || expense.duplicateStatus == DuplicateStatusValues.SUSPECTED) {
             TextButton(
-                enabled = actions.canMutate,
+                enabled = actions.canMutate || readOnly,
                 onClick = actions.onPrimaryAction,
                 modifier = Modifier.heightIn(min = AppSpacing.controlMinHeight),
                 contentPadding = PaddingValues(horizontal = AppSpacing.smallGap, vertical = AppSpacing.none),
             ) {
                 Text(
-                    text = stringResource(pendingPrimaryActionLabelRes(expense)),
+                    text = stringResource(if (readOnly) R.string.pending_row_action_duplicate else pendingPrimaryActionLabelRes(expense)),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -391,7 +391,7 @@ private fun PendingCategoryMark(category: String, size: DpSize) {
         modifier = Modifier
             .size(size)
             .clip(RoundedCornerShape(AppRadius.small))
-            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.74f))
+            .background(MaterialTheme.colorScheme.primaryContainer)
             .padding(top = AppSpacing.contentGap),
         color = MaterialTheme.colorScheme.primary,
         style = MaterialTheme.typography.titleSmall,

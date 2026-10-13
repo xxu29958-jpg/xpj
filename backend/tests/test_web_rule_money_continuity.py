@@ -1,5 +1,7 @@
 """Captured rule money survives native Web editing, replay and refusal."""
 
+import json
+from contextlib import closing
 from uuid import uuid4
 
 import pytest
@@ -85,3 +87,60 @@ def test_rule_stop_toggle_ack_retry_does_not_enable_again(web_client, identity):
     after = next(row for row in web_client.get("/api/rules/categories",
         headers=identity.app_headers).json() if row["id"] == rule["id"])
     assert after["enabled"] is False and after["row_version"] == rule["row_version"] + 1
+
+
+def _definition_input(web, rule=None):
+    action = f'/web/rules/{rule["id"]}/edit' if rule else "/web/rules/create"
+    page = web.get(action + "?ledger_id=owner" if rule else "/web/rules?ledger_id=owner&view=new")
+    assert page.status_code == 200, page.text
+    fields = hidden_post_forms(page.text)[action]
+    fields.update(keyword="  浏览器原规则  ", category="购物", priority="10",
+        amount_min_yuan="1500" if rule else "", amount_max_yuan="", source_contains="", tag_contains="")
+    return action, fields
+
+
+@pytest.mark.parametrize("editing", [False, True])
+def test_public_rule_definition_receipt_survives_deletion_but_not_revoked_permission(client, identity, editing):
+    from app.routes.web_auth import SESSION_COOKIE_NAME
+    from tests._infra.merchant_catalog import demote_owner_ledger_to_viewer
+    from tests._web_public_session_support import PUBLIC_HOST, mint_session, public_client
+
+    original = _rule(client, identity) if editing else None
+    with closing(public_client()) as web:
+        web.cookies.set(SESSION_COOKIE_NAME, mint_session(client, identity=identity))
+        action, fields = _definition_input(web, original)
+        headers = {"Origin": f"https://{PUBLIC_HOST}", "Accept": "application/json"}
+        accepted = web.post(action, data=fields, headers=headers)
+        assert accepted.status_code == 200, accepted.text
+        result = accepted.json()
+        assert result["ack"] == {"scope": json.loads(fields["draft_scope"]), "clientRef": fields["idempotency_key"]}
+        rule = result["receipt"]
+        deleted = client.request("DELETE", f'/api/rules/categories/{rule["id"]}',
+            headers={**identity.app_headers, "Idempotency-Key": str(uuid4())}, json={"expected_row_version": rule["row_version"]})
+        assert deleted.status_code == 200, deleted.text
+        replay = web.post(action, data=fields, headers=headers)
+        assert replay.status_code == 200 and replay.json() == result
+        assert rule["id"] not in {row["id"] for row in client.get("/api/rules/categories", headers=identity.app_headers).json()}
+        demote_owner_ledger_to_viewer()
+        assert web.post(action, data=fields, headers=headers).status_code == 403
+
+
+@pytest.mark.parametrize("editing", [False, True])
+def test_rule_definition_rejects_wrong_browser_binding_csrf_and_ledger_without_writes(client, identity, editing):
+    from app.routes.web_auth import SESSION_COOKIE_NAME
+    from tests._web_public_session_support import PUBLIC_HOST, mint_session, public_client
+
+    original = _rule(client, identity) if editing else None
+    before = client.get("/api/rules/categories", headers=identity.app_headers).json()
+    headers = {"Origin": f"https://{PUBLIC_HOST}", "Accept": "application/json"}
+    with closing(public_client()) as web, closing(public_client()) as another:
+        web.cookies.set(SESSION_COOKIE_NAME, mint_session(client, identity=identity))
+        action, fields = _definition_input(web, original)
+        assert web.post(action, data={**fields, "csrf_token": "invalid"}, headers=headers).status_code == 403
+        wrong_ledger = web.post(action, data={**fields, "ledger_id": "gray"}, headers=headers)
+        assert wrong_ledger.status_code == 409, wrong_ledger.text
+        another.cookies.set(SESSION_COOKIE_NAME, mint_session(client, identity=identity))
+        _, fresh = _definition_input(another, original)
+        refused = another.post(action, data={**fields, "csrf_token": fresh["csrf_token"]}, headers=headers)
+        assert refused.status_code == 409 and refused.json()["error"] == "session_binding_changed"
+    assert client.get("/api/rules/categories", headers=identity.app_headers).json() == before

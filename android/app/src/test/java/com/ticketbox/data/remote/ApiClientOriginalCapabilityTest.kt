@@ -13,19 +13,23 @@ class ApiClientOriginalCapabilityTest {
     @Test fun absentFeatureBlocksOriginalRoutesDespiteMatchingApiVersion() = checkFeature(null, false)
     @Test fun unsupportedFeatureVersionBlocksOriginalRoutes() = checkFeature(2, false)
     @Test fun supportedFeaturePreservesOriginalRoutes() = checkFeature(1, true)
+    @Test fun firstAttachmentRequiresItsOwnCapability() = checkFeature(1, true, 1)
+    @Test fun unknownFirstAttachmentCapabilityDoesNotBlockExistingRepair() = checkFeature(1, true, 2)
 
-    private fun checkFeature(version: Int?, supported: Boolean) {
-        val paths = listOf("original", "original/verify", "original/replenish", "original/cleanup/retry", "original/cleanup/cancel")
+    private fun checkFeature(version: Int?, supported: Boolean, createVersion: Int? = null) {
+        val paths = listOf("original", "original/attach", "original/verify", "original/replenish", "original/cleanup/retry", "original/cleanup/cancel")
         for (path in paths) {
+            val allowed = supported && (path != "original/attach" || createVersion == 1)
             val sent = mutableListOf<String>()
             val client = buildApiHttpClient(null, { "test-session" }, { "owner" }, null, null)
                 .newBuilder().addInterceptor { chain ->
                     val request = chain.request()
                     sent += request.url.encodedPath
                     val feature = version?.let { "\"original_attachment_version\":$it," }.orEmpty()
+                    val createFeature = createVersion?.let { "\"original_attachment_create_version\":$it," }.orEmpty()
                     val json = if (request.url.encodedPath == "/api/system/runtime-compatibility") {
                         """{"api_version":"$CURRENT_TICKETBOX_API_VERSION","write_compatibility":"compatible",
-                            "capabilities":{$feature"currency":{"request_binding":"1:1:CNY"}}}"""
+                            "capabilities":{$feature$createFeature"currency":{"request_binding":"1:1:CNY"}}}"""
                     } else "{}"
                     Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(200).message("Controlled response")
                         .body(json.toResponseBody("application/json".toMediaType())).build()
@@ -34,9 +38,9 @@ class ApiClientOriginalCapabilityTest {
                 .header(TICKETBOX_API_VERSION_HEADER, CURRENT_TICKETBOX_API_VERSION)
             if (path != "original") builder.post("{}".toRequestBody("application/json".toMediaType()))
             client.newCall(builder.build()).execute().use { response ->
-                assertEquals(if (supported) 200 else 409, response.code, path)
+                assertEquals(if (allowed) 200 else 409, response.code, path)
             }
-            assertEquals(if (supported) listOf("/api/system/runtime-compatibility", "/api/expenses/7/$path")
+            assertEquals(if (allowed) listOf("/api/system/runtime-compatibility", "/api/expenses/7/$path")
                 else listOf("/api/system/runtime-compatibility"), sent)
         }
     }

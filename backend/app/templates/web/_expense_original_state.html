@@ -1,0 +1,15 @@
+<div class="product-state product-drawer-image-state">
+  {% if e.image_state == 'cleaned' %}
+  <div class="product-state-title">凭证图片已清理</div>
+  <div class="product-state-body">原图已按清理策略移除，账面字段不受影响。</div>
+  {% elif e.image_state == 'none' %}
+  <div class="product-state-title">尚未添加原件</div>
+  <div class="product-state-body">可继续核对账单，也可以到原件页补充图片。</div>
+  {% elif e.image_state == 'missing' %}
+  <div class="product-state-title">原件当前不可用</div>
+  <div class="product-state-body">账单保留了原件记录，请到原件页检查并继续处理。</div>
+  {% else %}
+  <div class="product-state-title">原件状态待核对</div>
+  <div class="product-state-body">请到原件页查看状态，账单填写仍会保留。</div>
+  {% endif %}
+</div>

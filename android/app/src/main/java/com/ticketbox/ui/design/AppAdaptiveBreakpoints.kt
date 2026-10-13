@@ -40,7 +40,7 @@ object AppAdaptiveBreakpoints {
     val pairedActionInlineMinWidth: Dp = 320.dp
     val contentActionInlineMinWidth: Dp = 360.dp
     val editActionInlineMinWidth: Dp = 380.dp
-    val amountRowInlineMinWidth: Dp = 380.dp
+    val amountRowInlineMinWidth: Dp = 240.dp
 
     fun pageModeFor(maxWidth: Dp): AppAdaptivePageMode = when {
         maxWidth < mediumWidthMin -> AppAdaptivePageMode.SingleColumn

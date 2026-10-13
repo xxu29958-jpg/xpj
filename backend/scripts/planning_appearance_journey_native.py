@@ -10,6 +10,7 @@ from scripts.planning_journey_android import wait_for
 def open_appearance(native):
     native.plan_home()
     native.click("打开账户与设置")
+    native.click("通知与外观")
     native.click("外观与主题")
 
 

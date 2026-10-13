@@ -152,6 +152,8 @@ private fun DebtInstallmentCard(debt: Debt) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        if (payoff == null) Text(stringResource(R.string.debt_principal_schedule_unknown),
+            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(
             stringResource(
                 R.string.debt_installment_per_period,

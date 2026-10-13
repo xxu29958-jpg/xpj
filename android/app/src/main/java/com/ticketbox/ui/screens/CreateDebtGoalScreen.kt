@@ -33,6 +33,7 @@ import com.ticketbox.ui.components.AppListStateContent
 import com.ticketbox.ui.components.AppListStateMessage
 import com.ticketbox.ui.components.AppListStateSpec
 import com.ticketbox.ui.components.AppPageRole
+import com.ticketbox.ui.components.AppButtonIcons
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppSecondaryPageChrome
 import com.ticketbox.ui.components.AppSecondaryPageSlots
@@ -181,7 +182,7 @@ private fun DebtGoalPickerContent(
 }
 
 @Composable
-private fun DebtPickerRow(
+internal fun DebtPickerRow(
     debt: Debt,
     selected: Boolean,
     enabled: Boolean,
@@ -206,6 +207,8 @@ private fun DebtPickerRow(
                 text = stringResource(debtDirectionLabelRes(debt.direction)),
                 tone = LocalStateTokens.current.neutral,
             )
+            if (!debt.isOpen) Text(stringResource(debtLinkStatusLabelRes(debt.status)),
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(
                 stringResource(
                     R.string.debt_goal_create_remaining_amount,
@@ -262,7 +265,7 @@ private fun CreateDebtGoalFooter(
             } else {
                 stringResource(R.string.debt_goal_create_save)
             },
-            icon = Icons.Filled.Check,
+            icons = AppButtonIcons(leading = Icons.Filled.Check),
             modifier = Modifier.fillMaxWidth(),
             enabled = canSubmit,
             onClick = onSubmit,

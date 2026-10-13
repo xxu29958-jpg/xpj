@@ -30,9 +30,15 @@ internal fun BudgetAdviceUiState.arrangementHistoryRefreshed(read: Result<Monthl
         arrangementMessage = read.exceptionOrNull()?.toUiText(R.string.arrangement_load_failed))
     val items = result.response.items
     val known = (if (more) arrangementHistory + items else items).distinctBy { it.rowVersion }.sortedByDescending { it.rowVersion }
+    val readAt = if (more && arrangementHistoryLoaded) {
+        if (arrangementHistoryFetchedAt == null || result.fetchedAt == null) null
+        else minOf(arrangementHistoryFetchedAt, result.fetchedAt)
+    } else result.fetchedAt
+    val receipts = if (more) arrangementHistoryReceiptVersions - items.map { it.rowVersion }.toSet() else emptySet()
     return copy(arrangementBusy = false, arrangementHistoryLoaded = true,
         arrangementHistory = known,
         arrangementHistoryNext = result.response.nextBeforeVersion,
+        arrangementHistoryFetchedAt = readAt, arrangementHistoryReceiptVersions = receipts + result.receiptVersions,
         arrangementHistoryCached = result.fromCache || (more && arrangementHistoryCached), arrangementMessage = null)
 }
 
@@ -40,6 +46,7 @@ internal fun BudgetAdviceUiState.arrangementReadRefused(error: Throwable): Budge
     arrangementDraft = arrangementDraft?.takeIf { it.edited },
     arrangementRead = null, arrangementHistory = emptyList(), arrangementHistoryNext = null,
     arrangementHistoryLoaded = false, arrangementHistoryCached = false,
+    arrangementHistoryFetchedAt = null, arrangementHistoryReceiptVersions = emptySet(),
     arrangementLoading = false, arrangementBusy = false, trialRequest = null,
     inputs = null, inputsLoading = false, result = null, rates = emptyList(),
     loadState = BudgetAdviceLoadState.Idle,

@@ -34,10 +34,10 @@
     // 读不到 CSS 变量时生效；正常运行总是拿到主题实时值。务必与 tokens.css paper 块同步。
     return {
       series: [
-        cssVar('--chart-series-1', '#8a5a2b'),
-        cssVar('--chart-series-2', '#1c1a18'),
-        cssVar('--chart-series-3', '#4f6b3a'),
-        cssVar('--chart-series-4', '#a4361c'),
+        cssVar('--chart-series-1', '#487d5b'),
+        cssVar('--chart-series-2', '#bb9878'),
+        cssVar('--chart-series-3', '#a598c2'),
+        cssVar('--chart-series-4', '#deb985'),
         cssVar('--chart-series-5', '#3e6770'),
         cssVar('--chart-series-6', '#d6b487'),
         cssVar('--chart-series-7', '#5a4a6e'),
@@ -106,7 +106,7 @@
     return {
       backgroundColor: colors.tooltipBg,
       borderWidth: 0,
-      textStyle: { color: colors.tooltipFg, fontSize: 12, fontFamily: cssVar('--font-numeric', 'sans-serif') },
+      textStyle: { color: colors.tooltipFg, fontSize: parseFloat(cssVar('--type-caption-size', '13')), fontFamily: cssVar('--font-numeric', 'sans-serif') },
       extraCssText: 'box-shadow:0 8px 24px rgba(0,0,0,.22);border-radius:8px;',
     };
   }
@@ -126,13 +126,17 @@
     return chart;
   }
 
+  function hasChartSpace(container) {
+    return container && container.clientWidth > 0 && !container.closest('details:not([open])');
+  }
+
   function renderTrend(report, colors) {
     var container = document.getElementById('reports-trend-chart');
     var points = report && report.trend ? report.trend : [];
     var hasData = points.some(function (point) {
       return Number(point.amount_cents || 0) > 0 || Number(point.count || 0) > 0;
     });
-    if (!container || !hasData) return null;
+    if (!hasChartSpace(container) || !hasData) return null;
 
     var chart = chartFor(container);
     var lineColor = colors.series[0];
@@ -154,7 +158,7 @@
         data: points.map(function (point) { return point.label; }),
         axisLine: { lineStyle: { color: colors.axis } },
         axisTick: { show: false },
-        axisLabel: { color: colors.axisLabel, fontSize: 11, hideOverlap: true },
+        axisLabel: { color: colors.axisLabel, fontSize: parseFloat(cssVar('--type-caption-size', '13')), hideOverlap: true },
       },
       yAxis: {
         type: 'value',
@@ -162,7 +166,7 @@
         axisTick: { show: false },
         axisLabel: {
           color: colors.axisLabel,
-          fontSize: 11,
+          fontSize: parseFloat(cssVar('--type-caption-size', '13')),
           formatter: function (value) { return homeCompactCents(value); },
         },
         splitLine: { lineStyle: { color: colors.grid, type: 'dashed' } },
@@ -191,7 +195,7 @@
           },
         },
       }],
-      animationDuration: 600,
+      animationDuration: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 180,
       animationEasing: 'cubicOut',
     });
     return markRendered(container, chart);
@@ -200,7 +204,7 @@
   function renderMerchant(report, colors) {
     var container = document.getElementById('reports-merchant-chart');
     var rows = report && report.merchant_ranking ? report.merchant_ranking.slice(0, 8) : [];
-    if (!container || !rows.length) return null;
+    if (!hasChartSpace(container) || !rows.length) return null;
 
     var metric = report.ranking_metric === 'count' ? 'count' : 'amount';
     if (metric === 'amount' && rows.some(function (row) { return row.amount_cents == null; })) return null;
@@ -226,7 +230,7 @@
         axisTick: { show: false },
         axisLabel: {
           color: colors.axisLabel,
-          fontSize: 11,
+          fontSize: parseFloat(cssVar('--type-caption-size', '13')),
           formatter: function (value) {
             return metric === 'count' ? value : homeCompactCents(value);
           },
@@ -238,7 +242,7 @@
         data: reversedRows.map(function (row) { return truncate(row.merchant || '未填写商家', 12); }),
         axisLine: { show: false },
         axisTick: { show: false },
-        axisLabel: { color: colors.axisLabel, fontSize: 12 },
+        axisLabel: { color: colors.axisLabel, fontSize: parseFloat(cssVar('--type-caption-size', '13')) },
       },
       series: [{
         type: 'bar',
@@ -254,13 +258,13 @@
           show: true,
           position: 'right',
           color: colors.axisLabel,
-          fontSize: 11,
+          fontSize: parseFloat(cssVar('--type-caption-size', '13')),
           formatter: function (item) {
             return metric === 'count' ? item.value + ' 笔' : homeCompactCents(item.value);
           },
         },
       }],
-      animationDuration: 500,
+      animationDuration: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 180,
     });
     return markRendered(container, chart);
   }
@@ -268,7 +272,7 @@
   function renderCategory(report, colors) {
     var container = document.getElementById('reports-category-chart');
     var rows = report && report.category_comparison ? report.category_comparison.slice(0, 8) : [];
-    if (!container || !rows.length) return null;
+    if (!hasChartSpace(container) || !rows.length) return null;
 
     var chart = chartFor(container);
     chart.setOption({
@@ -277,7 +281,7 @@
       legend: {
         data: ['本月', '上月', '去年同月'],
         top: 0,
-        textStyle: { color: colors.axisLabel, fontSize: 12 },
+        textStyle: { color: colors.axisLabel, fontSize: parseFloat(cssVar('--type-caption-size', '13')) },
       },
       tooltip: Object.assign(baseTooltipColors(colors), {
         trigger: 'axis',
@@ -302,7 +306,7 @@
         data: rows.map(function (row) { return truncate(row.category || '未分类', 8); }),
         axisLine: { lineStyle: { color: colors.axis } },
         axisTick: { show: false },
-        axisLabel: { color: colors.axisLabel, fontSize: 11, interval: 0, hideOverlap: true },
+        axisLabel: { color: colors.axisLabel, fontSize: parseFloat(cssVar('--type-caption-size', '13')), interval: 0, hideOverlap: true },
       },
       yAxis: {
         type: 'value',
@@ -310,7 +314,7 @@
         axisTick: { show: false },
         axisLabel: {
           color: colors.axisLabel,
-          fontSize: 11,
+          fontSize: parseFloat(cssVar('--type-caption-size', '13')),
           formatter: function (value) { return homeCompactCents(value); },
         },
         splitLine: { lineStyle: { color: colors.grid, type: 'dashed' } },
@@ -341,17 +345,18 @@
         itemStyle: { borderRadius: [5, 5, 0, 0] },
         barWidth: 14,
       }],
-      animationDuration: 500,
+      animationDuration: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 180,
     });
     return markRendered(container, chart);
   }
 
-  function bindExport(trendChart) {
+  function bindExport() {
     var button = document.getElementById('reports-export-png');
     var dialog = document.getElementById('reports-export-dialog');
     var image = document.getElementById('reports-export-image');
     if (!button || !dialog || !image) return;
     button.addEventListener('click', function () {
+      var trendChart = window.echarts.getInstanceByDom(document.getElementById('reports-trend-chart'));
       if (!trendChart) {
         window.alert('还没有趋势图可导出。');
         return;
@@ -370,16 +375,23 @@
     });
   }
 
-  function bindResize() {
+  function bindResize(report) {
+    document.addEventListener('toggle', function (event) {
+      if (event.target.matches('details.report-section') && event.target.open) {
+        renderCharts(report);
+        chartInstances.forEach(function (chart) { chart.resize(); });
+      }
+    }, true);
     window.addEventListener('resize', function () {
       chartInstances.forEach(function (chart) { chart.resize(); });
     });
     if (typeof window.ResizeObserver === 'function') {
       var observer = new ResizeObserver(function () {
+        renderCharts(report);
         chartInstances.forEach(function (chart) { chart.resize(); });
       });
-      chartInstances.forEach(function (chart) {
-        observer.observe(chart.getDom());
+      document.querySelectorAll('.reports-panel .report-chart').forEach(function (container) {
+        observer.observe(container);
       });
     }
   }
@@ -395,13 +407,16 @@
   function init() {
     var report = parseReport();
     if (!report) return;
+    var section = document.getElementById(window.location.hash.slice(1));
+    if (section && section.matches('details.report-section')) section.open = true;
     var fontText = '0123456789.,%−-万本月上月去年同月' + app.homeCurrencySymbol() +
       (report.trend || []).map(function (point) { return point.label; }).join('') +
       (report.merchant_ranking || []).slice(0, 8).map(function (row) { return row.merchant; }).join('') +
       (report.category_comparison || []).slice(0, 8).map(function (row) { return row.category; }).join('');
     app.withChartFonts(fontText, function () {
-      bindExport(renderCharts(report));
-      bindResize();
+      renderCharts(report);
+      bindExport();
+      bindResize(report);
       new MutationObserver(function () { renderCharts(report); }).observe(root, {
         attributes: true, attributeFilter: ['data-theme', 'data-accent'],
       });
