@@ -61,6 +61,7 @@ import com.ticketbox.ui.components.AppAdaptiveEditActionMode
 import com.ticketbox.ui.components.AppAdaptiveTrailingActionRow
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.AppSecondaryButton
+import com.ticketbox.ui.components.displayDate
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.ledgerRoleLabelText
 import com.ticketbox.ui.design.AppAlpha
@@ -528,7 +529,7 @@ private fun FamilyMemberRow(
                     text = if (member.joinedAt.isNullOrBlank()) {
                         stringResource(R.string.family_members_row_joined_unknown)
                     } else {
-                        stringResource(R.string.family_members_row_joined, displayTime(member.joinedAt))
+                        stringResource(R.string.family_members_row_joined, displayDate(member.joinedAt))
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -546,24 +547,20 @@ private fun FamilyMemberRow(
                     )
                 }
             }
-            Column(
-                horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap + AppSpacing.tinyGap),
-            ) {
-                SettingsRoleChip(role = member.role)
-                Text(
-                    text = if (member.isDisabled) {
-                        stringResource(R.string.family_members_row_status_disabled)
-                    } else {
-                        stringResource(R.string.family_members_row_status_active)
-                    },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (member.isDisabled) {
-                        MaterialTheme.colorScheme.error
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    },
-                )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap + AppSpacing.tinyGap),
+                ) {
+                    SettingsRoleChip(role = member.role)
+                    if (member.isDisabled) {
+                        Text(
+                            text = stringResource(R.string.family_members_row_status_disabled),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
                 if (canManageMembers && member.canBeManaged) {
                     MemberActionsMenu(member = member, busy = busy, actions = actions)
                 }

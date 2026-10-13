@@ -24,11 +24,10 @@
     <string name="family_members_audit_target_unknown">未记录</string>
     <string name="family_members_row_self_badge">我</string>
     <string name="family_members_row_joined_unknown">加入时间：未记录</string>
-    <string name="family_members_row_joined">加入时间：%1$s</string>
+    <string name="family_members_row_joined">%1$s 加入</string>
     <string name="family_members_row_disabled_at">已停用：%1$s</string>
     <string name="family_members_row_disabled_time_unknown">停用时间待同步</string>
     <string name="family_members_row_status_disabled">已停用</string>
-    <string name="family_members_row_status_active">活跃</string>
     <string name="family_members_actions_content_description">成员操作</string>
     <string name="family_members_action_make_viewer">改为只读</string>
     <string name="family_members_action_make_member">改为成员</string>
