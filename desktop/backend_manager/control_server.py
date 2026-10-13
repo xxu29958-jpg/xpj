@@ -260,7 +260,7 @@ def request_existing_manager_window(
     )
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
     try:
-        with opener.open(request, timeout=timeout) as response:  # noqa: S310 - validated loopback
+        with opener.open(request, timeout=timeout) as response:  # validated loopback
             if response.status != 200:
                 return False
             media_type = response.headers.get("Content-Type", "").partition(";")[0].lower()

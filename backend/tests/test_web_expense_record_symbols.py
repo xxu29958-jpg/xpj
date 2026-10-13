@@ -342,6 +342,6 @@ def test_source_invitation_uses_parent_basis_for_input_and_each_agreement_for_se
         selected_ledger_id="owner", expense=context["expense"], can_write=True)
     html = _render("_fact_split_invite.html", context)
     assert "分摊金额（¥）" in html and "本张账单还可分摊 ¥12.00" in html
-    assert '<td class="amount">¥5.00</td>' in html
-    assert '<td class="amount">¥12</td>' in html
+    amounts = re.findall(r'<strong class="product-entry-amount">([^<]+)</strong>', html)
+    assert amounts == ["¥5.00", "¥12"]
     assert "$" not in html

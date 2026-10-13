@@ -238,7 +238,7 @@ def probe_ticketbox_health(
     )
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
     try:
-        with opener.open(request, timeout=timeout) as response:  # noqa: S310 - validated fixed loopback URL
+        with opener.open(request, timeout=timeout) as response:  # validated fixed loopback URL
             if response.status != 200:
                 return HealthProbeResult("pending", f"Ticketbox 后端尚未就绪（HTTP {response.status}）。")
             media_type = response.headers.get("Content-Type", "").partition(";")[0].strip().lower()

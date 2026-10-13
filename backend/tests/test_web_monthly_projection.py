@@ -98,7 +98,7 @@ def test_real_route_captures_home_for_both_query_owners(monthly_page):
         assert arguments["tenant_id"] == "family"
         assert arguments["year_month"] == "2026-05"
         assert arguments["home_currency_code"] == "JPY"
-    assert "JPY" in html and "1200" in html
+    assert "JPY" in html and "1,200" in html
     assert "CN¥" not in html and "12.00" not in html
 
 
@@ -155,7 +155,7 @@ def test_missing_previous_rate_does_not_hide_the_known_current_total(monthly_pag
     monthly_page.report = replace(monthly_page.report, delta_vs_previous_cents=None, delta_pct=None,
         missing_rates=(monthly_page.gap("USD", "JPY", date(2026, 4, 17)),))
     html = _sections(monthly_page)
-    assert "1200" in html and "待补汇率" in html
+    assert "1,200" in html and "待补汇率" in html
     assert "上月无数据" not in html
 
 

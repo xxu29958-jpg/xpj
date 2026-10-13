@@ -96,7 +96,7 @@ class IncomePlanRoomContinuityTest {
         compose.runOnIdle { model.value?.refresh() }
         compose.waitUntil(10_000) { model.value?.state?.value?.forecastMonth == "2026-10" }
         assertEquals(12_000L, model.value?.state?.value?.currentMonthSummary?.expectedAmountCents)
-        compose.onNodeWithText("2026-10 预计收入").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("2026年10月 预计收入").performScrollTo().assertIsDisplayed()
     }
 
     private fun reopenInOctober(original: Map<String, String?>, preAckState: Bundle) {

@@ -32,7 +32,7 @@
       amountLabel: doc.querySelector('label[for="income-create-amount"]')?.textContent.trim(),
       amountPlaceholder: field('amount_yuan').placeholder,
       amountInputmode: field('amount_yuan').inputMode,
-      intentNotice: form().querySelector('p.meta')?.textContent.trim(),
+      intentNotice: form().querySelector('[data-income-intent]')?.textContent.trim(),
       hash: frame.contentWindow.location.hash,
       navigationType: frame.contentWindow.performance.getEntriesByType('navigation')[0]?.type,
       draftStatus: doc.querySelector('[data-income-draft-status]')?.textContent,
