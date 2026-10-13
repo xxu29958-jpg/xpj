@@ -48,7 +48,8 @@ class SpendingGoalMoneyConnectedTest {
     @Test fun detailKeepsOriginalUnitsWhenCurrencyWasNeverCaptured() {
         compose.setContent {
             TicketboxTheme(skin = AppSkin.Paper) {
-                SpendingGoalViewContent(goal.copy(homeCurrencyCode = null), canModify = false, onArchive = {}, onOpenRecycleBin = {})
+                SpendingGoalViewContent(goal.copy(homeCurrencyCode = null), canModify = false, onArchive = {}, onOpenRecycleBin = {},
+                    onOpenHistory = {})
             }
         }
         compose.onNodeWithText(context.getString(R.string.spending_goal_original_amount_unknown, 1200)).assertExists()
