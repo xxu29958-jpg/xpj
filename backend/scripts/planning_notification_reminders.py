@@ -154,7 +154,11 @@ class NotificationReminders:
         self.j.background_process_death()
         self.j.reopen_original_task()
         self.native.reveal_any("notification-shared-original.png")
-        self.native.reveal_any("停止余下上传")
+        self.native.capture("notification-process-restored-upload")
+        self.native.back()
+        self.native.click("查看上传任务", stable=True)
+        wait_for(lambda: self.native.has("停止余下上传"), "The retained upload task has no original recovery controls")
+        self.native.reveal_any("notification-shared-original.png")
         self.native.capture("notification-return-to-original-share")
         assert shared_original_result(self.j, digest) is None, "The isolated original was accepted while its server was unavailable"
         self.native.connection(self.j.port, online=True)
