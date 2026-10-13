@@ -44,7 +44,7 @@
     <string name="relations_i_owe_tab">我欠</string>
     <string name="relations_owed_to_me_tab">欠我</string>
     <string name="relations_bill_splits">拆账</string>
-    <string name="relations_repayment_review">还款复核</string>
+    <string name="relations_repayment_review">还款采集</string>
     <string name="relations_debt_goals">还债目标</string>
     <string name="relations_task_section_title">往来任务</string>
     <!-- W2-C：全账本往来二级页入口（个人透镜之上保留账本完整视图）；行内副标题带当前账本名。 -->
