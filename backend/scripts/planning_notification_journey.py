@@ -208,11 +208,13 @@ class NotificationJourney:
         for theme, label, description in (("paper", "晨纸", "浅色纸面 · 深绿点缀"), ("midnight", "玄夜", "柔和深色 · 浅绿点缀")):
             self.native.plan_home()
             self.native.click("打开账户与设置")
+            self.native.click("通知与外观")
             self.native.click("外观与主题")
             self.native.reveal_any(description)
             self.native.click_within(description, label)
             self.native.plan_home()
             self.native.click("打开账户与设置")
+            self.native.click("通知与外观")
             self.native.click("通知与提醒")
             self.native.capture("notification-preferences-" + theme)
             self.native.domain_home("往来")

@@ -78,7 +78,7 @@
 {% if filter not in ['missing_category', 'missing_accounting_date'] and not _has_search %}
 <section class="product-surface product-surface--plain ledger-summary" aria-label="本月净支出">
   <p class="product-amount-label">本月净支出 · {{ home_currency_code }}</p>
-  <p class="product-amount"><span class="sr-only">{{ month }} 合计 </span>{% if month_total_amount_yuan is not none %}{{ home_currency_symbol }}{{ month_total_amount_yuan|grouped }}{% elif ledger_undated_expense_count|default(0) %}待核对账务日期{% else %}待补齐换算信息{% endif %}</p>
+  <p class="product-amount"><span class="sr-only">{{ month }} 合计 </span>{% if month_total_amount_yuan is not none %}<span>{{ home_currency_symbol }}</span><span>{{ month_total_amount_yuan|grouped }}</span>{% elif ledger_undated_expense_count|default(0) %}待核对账务日期{% else %}待补齐换算信息{% endif %}</p>
 {% endif %}
 {% if can_write %}
 <div class="ledger-view-actions">

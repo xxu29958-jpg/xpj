@@ -72,6 +72,9 @@ class PortableJourney:
         self.native.click("打开账户与设置")
         self.native.click("数据与隐私")
         self.native.click("数据与导出")
+        self.native.reveal_any("下载", "收起", exact=True, toward_start=True)
+        if any(node.attrib.get("text") == "下载" for node in self.native.tree().iter("node")):
+            self.native.click("下载完整数据")
         self.native.reveal_any("便携下载核对账本")
         self.native.reveal_any("下载并保存完整数据包")
 
@@ -120,6 +123,7 @@ class PortableJourney:
                 self.capture(self.page, f"selection-{width}-{theme}")
         self.native.plan_home()
         self.native.click("打开账户与设置")
+        self.native.click("通知与外观")
         self.native.click("外观与主题")
         self.native.click("玄夜")
         self.native_entry()
@@ -170,7 +174,7 @@ class PortableJourney:
             self.native_entry()
             self.native.reveal_any("已归档")
             self.native_download("native-no-active-ledger", archived=True)
-            self.native.reveal_any("当前账本与本机副本")
+            self.native.reveal_any("本机离线副本")
             self.native.capture("portable-daily-ledger-feedback")
             self.native.reveal_any("下载并保存完整数据包", toward_start=True)
             self.interrupted_destinations()

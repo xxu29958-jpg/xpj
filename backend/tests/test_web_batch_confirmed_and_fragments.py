@@ -309,14 +309,17 @@ def test_web_bulk_confirm_ready_fragment_returns_actioned_ids(web_client: TestCl
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["removed_ids"] == [ready]
-    assert body["flash_type"] == "success"
+    assert body["flash_type"] == "error"
     assert "已确认 1 条" in body["message"]
     assert "跳过 1 条" in body["message"]
     redirect = urlsplit(body["redirect_url"])
     assert redirect.path == "/web/pending"
     assert parse_qs(redirect.query)["ledger_id"] == ["owner"]
     assert parse_qs(redirect.query)["filter"] == ["all"]
-    assert parse_qs(redirect.query)["flash_type"] == ["success"]
+    assert parse_qs(redirect.query)["flash_type"] == ["error"]
+    assert parse_qs(redirect.query)["remaining"] == [
+        f"{no_amount}:{_row_version(web_client, no_amount, identity=identity)}"
+    ]
     # Server-side state actually changed: ready confirmed (gone), no-amount stays.
     pending = web_client.get("/web/pending?ledger_id=owner")
     assert f"/web/expenses/{ready}/edit" not in pending.text
