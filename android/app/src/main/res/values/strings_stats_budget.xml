@@ -735,7 +735,6 @@
     <string name="recurring_section_formal">正式计划</string>
     <string name="recurring_section_suggestions">发现的建议</string>
     <string name="recurring_header_subtitle">记录每月固定支出，只做提醒和对比，不会自动入账。</string>
-    <string name="recurring_items_card_title">%1$s 固定支出</string>
     <string name="recurring_items_card_count">%1$d 项</string>
     <string name="recurring_items_card_count_loading">读取中</string>
     <string name="recurring_items_card_count_unavailable">待刷新</string>

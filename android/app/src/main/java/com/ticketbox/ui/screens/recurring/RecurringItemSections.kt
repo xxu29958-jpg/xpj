@@ -168,7 +168,7 @@ private fun RecurringItemsCardHeader(state: RecurringItemsCardState, itemCount: 
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = stringResource(R.string.recurring_items_card_title, state.title),
+            text = state.title,
             style = MaterialTheme.typography.titleMedium,
             fontWeight = AppTextHierarchy.heading.weight,
         )
@@ -229,6 +229,7 @@ private fun RecurringItemRow(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+            itemVerticalAlignment = Alignment.CenterVertically,
         ) {
             RecurringStatusChips(item, meta)
             androidx.compose.material3.TextButton(onClick = { actions.onOpenOccurrence(item) }) {
