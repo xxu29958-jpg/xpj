@@ -2,6 +2,7 @@ package com.ticketbox.ui.screens.pending.sheets
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Column
@@ -79,8 +80,10 @@ internal fun QuickCategorySheetContent(
         },
     ) {
         ReviewExpenseSummary(expense)
-        Text(stringResource(R.string.pending_review_current_category, expense.category), style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (expense.category.isNotBlank()) {
+            Text(stringResource(R.string.pending_review_current_category, expense.category), style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         Text(stringResource(R.string.pending_category_choose), style = MaterialTheme.typography.titleMedium)
         QuickCategoryOptions(
             options = options,
@@ -98,6 +101,8 @@ internal fun QuickCategorySheetContent(
     }
 }
 
+private const val QUICK_CATEGORY_COLUMNS = 3
+
 @Composable
 private fun QuickCategoryOptions(
     options: List<String>,
@@ -111,7 +116,7 @@ private fun QuickCategoryOptions(
     var expanded by rememberSaveable { mutableStateOf(false) }
     val visible = if (expanded) primary + options.filterNot { it in primary } else primary
     FlowRow(
-        modifier = Modifier.fillMaxWidth(), maxItemsInEachRow = 3,
+        modifier = Modifier.fillMaxWidth(), maxItemsInEachRow = QUICK_CATEGORY_COLUMNS,
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
     ) {
@@ -129,6 +134,10 @@ private fun QuickCategoryOptions(
                     Text(option, style = MaterialTheme.typography.labelLarge)
                 }
             }
+        }
+        // Fill the last row so a lone category keeps the width of the others instead of stretching across.
+        repeat((QUICK_CATEGORY_COLUMNS - visible.size % QUICK_CATEGORY_COLUMNS) % QUICK_CATEGORY_COLUMNS) {
+            Spacer(Modifier.weight(1f))
         }
     }
     if (options.any { it !in primary }) TextButton(onClick = { expanded = !expanded }, enabled = enabled) {
