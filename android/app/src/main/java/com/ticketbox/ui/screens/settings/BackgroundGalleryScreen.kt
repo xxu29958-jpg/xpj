@@ -89,6 +89,8 @@ import com.ticketbox.ui.appearance.background.resolveCardContainerAlpha
 import com.ticketbox.ui.appearance.background.resolveGlobalScrim
 import com.ticketbox.ui.components.AppAdaptiveEditActionLayout
 import com.ticketbox.ui.components.AppAdaptiveEditActionMode
+import com.ticketbox.ui.components.AppAdaptiveMetricGrid
+import com.ticketbox.ui.components.AppAdaptiveMetricGridCompactMinWidth
 import com.ticketbox.ui.components.AppCompactChips
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.ScreenHeader
@@ -138,23 +140,17 @@ fun BackgroundGalleryScreen(
                 }
             }
         }
-        backgrounds.chunked(2).forEach { rowBackgrounds ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-            ) {
-                rowBackgrounds.forEach { background ->
-                    BuiltInBackgroundCard(
-                        modifier = Modifier.weight(1f),
-                        background = background,
-                        selected = currentSettings.builtInBackgroundId == background.id,
-                        onClick = { onPreviewBuiltIn(background) },
-                    )
-                }
-                if (rowBackgrounds.size == 1) {
-                    Spacer(modifier = Modifier.weight(1f))
-                }
-            }
+        AppAdaptiveMetricGrid(
+            itemCount = backgrounds.size,
+            twoColumnMinWidth = AppAdaptiveMetricGridCompactMinWidth,
+        ) { index, cardModifier ->
+            val background = backgrounds[index]
+            BuiltInBackgroundCard(
+                modifier = cardModifier,
+                background = background,
+                selected = currentSettings.builtInBackgroundId == background.id,
+                onClick = { onPreviewBuiltIn(background) },
+            )
         }
         SettingsSection(title = stringResource(R.string.background_gallery_section_custom_title)) {
             BackgroundGalleryCustomActions(

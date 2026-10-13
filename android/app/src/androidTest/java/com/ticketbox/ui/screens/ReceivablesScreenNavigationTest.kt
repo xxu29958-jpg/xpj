@@ -1,5 +1,7 @@
 package com.ticketbox.ui.screens
 
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.hasScrollToNodeAction
 import androidx.compose.ui.test.hasText
@@ -72,15 +74,19 @@ class ReceivablesScreenNavigationTest {
         composeRule.onNodeWithText("我还可以收回 · CNY").assertExists()
         composeRule.onNodeWithText("¥80.00").assertExists()
         composeRule.onNodeWithText("2 笔未结往来").assertExists()
-        saveConsumerArtPreview("receivables-totals", requireNotNull(
-            InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        capture("receivables-totals")
         composeRule.onNode(hasScrollToNodeAction()).performScrollToNode(hasText("小红欠我"))
         composeRule.onNodeWithText("小红欠我").performScrollTo()
-        saveConsumerArtPreview("receivables-row", requireNotNull(
-            InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        capture("receivables-row")
         composeRule.onNodeWithText("小红欠我").performClick()
 
         composeRule.runOnIdle { assertEquals("debt-2", openedPublicId) }
+    }
+
+    private fun capture(name: String) {
+        saveConsumerArtPreview(name, composeRule.onNode(hasScrollToNodeAction()).captureToImage().asAndroidBitmap())
+        saveConsumerArtPreview("$name-window", requireNotNull(
+            InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
     }
 }
 

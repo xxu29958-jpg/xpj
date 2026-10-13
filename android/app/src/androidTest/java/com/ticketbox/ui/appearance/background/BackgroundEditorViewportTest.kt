@@ -108,15 +108,16 @@ class BackgroundEditorViewportTest {
         assertEquals("Preview canvas width", appliedViewport.width, preview.width, 1f)
         assertEquals("Preview canvas height", appliedViewport.height, preview.height, 1f)
         assertSystemBarIcons(lightAppearance = true)
+        compose.onNodeWithText("正在预览：茶雾 · 内置背景").assertIsDisplayed()
         assertSampleAmountFits(1f)
         capture("background-editor-paper")
-        compose.runOnIdle { skin.value = AppSkin.Midnight; scale.value = 1.8f }
+        compose.runOnIdle { skin.value = AppSkin.Midnight; scale.value = 2f }
         assertSystemBarIcons(lightAppearance = false)
-        assertSampleAmountFits(1.8f)
+        assertSampleAmountFits(2f)
         capture("background-editor-midnight-large")
         compose.onNodeWithContentDescription("预览页面").performScrollTo().performClick()
-        compose.onNodeWithText("统计").performClick()
-        compose.onNodeWithText("统计").assertIsDisplayed()
+        compose.onNodeWithText("洞察").performClick()
+        compose.onNodeWithText("洞察").assertIsDisplayed()
         compose.onNodeWithContentDescription("沉浸强度").performScrollTo().performClick()
         compose.onNodeWithText("专注").performClick()
         compose.runOnIdle { assertEquals(ImmersionMode.Focus, editor.value.settings.immersionMode) }
@@ -127,6 +128,7 @@ class BackgroundEditorViewportTest {
             bitmap.recycle()
         }
         compose.runOnIdle { editor.value = editor.value.copy(settings = editor.value.settings.withCustomImage(image.absolutePath)) }
+        compose.onNodeWithText("正在预览：自定义图片").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("拖动与缩放").performScrollTo().performClick()
         val compositionViewport = compose.onNodeWithTag("background-editor-viewport").fetchSemanticsNode().boundsInWindow
         assertEquals(preview, compositionViewport)

@@ -162,6 +162,7 @@ class StatsAdaptiveExperienceTest {
             .assertIsDisplayed().fetchSemanticsNode().boundsInRoot
         assertTrue("Editor must stay out of the hinge: $editor", editor.right <= hinge.left || editor.left >= hinge.right)
         assertTrue("Save must stay out of the hinge: $save", save.right <= hinge.left || save.left >= hinge.right)
+        saveConsumerArtPreview("insights-book-posture-editor", composeRule.onRoot().captureToImage().asAndroidBitmap())
     }
 
     @Test

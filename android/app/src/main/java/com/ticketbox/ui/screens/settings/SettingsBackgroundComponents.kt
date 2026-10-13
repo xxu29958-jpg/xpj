@@ -133,7 +133,7 @@ internal fun BuiltInBackgroundCard(
 
     Box(
         modifier = modifier
-            .height(184.dp)
+            .heightIn(min = 184.dp)
             .shadow(
                 elevation = if (selected) AppElevation.softCard else 7.dp,
                 shape = cardShape,
@@ -148,9 +148,9 @@ internal fun BuiltInBackgroundCard(
     ) {
         Column(
             modifier = Modifier
-                .fillMaxSize()
+                .fillMaxWidth()
                 .padding(AppSpacing.compactPadding),
-            verticalArrangement = Arrangement.SpaceBetween,
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
         ) {
             GradientPreview(
                 colors = background.gradientColors,
@@ -163,15 +163,15 @@ internal fun BuiltInBackgroundCard(
             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     // The card previews its own skin, so its text follows that skin rather than the current theme.
                     Text(
                         text = stringResource(builtInBackgroundNameRes(background)),
+                        modifier = Modifier.weight(1f),
                         color = scheme.onSurface,
                         style = MaterialTheme.typography.titleSmall,
-                        maxLines = 1,
                     )
                     if (selected) {
                         SkinPill(text = stringResource(R.string.appearance_builtin_pill_current), scheme = scheme, visuals = visuals, emphasized = true)
@@ -188,8 +188,6 @@ internal fun BuiltInBackgroundCard(
                     ),
                     color = scheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }

@@ -7,12 +7,14 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextReplacement
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.navigation.compose.rememberNavController
@@ -123,12 +125,13 @@ class DebtCreationNavigationRoomTest {
         assertEquals(original["idempotencyKey"], calls.last().second)
         assertEquals(12_345_678_901L, calls.last().first.principalAmountCents)
         assertEquals("2026-01-31", calls.last().first.timeInput?.userLocalDate)
-        waitFor("原往来 小王")
-        compose.onNodeWithText("原往来 小王").performClick()
+        waitFor(context.getString(R.string.debt_list_total_payable, "CNY"))
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("我欠原往来 小王"))
+        compose.onNodeWithText("我欠原往来 小王").performClick()
         waitFor(text(R.string.debt_detail_principal))
         compose.onNodeWithText(text(R.string.debt_detail_principal)).assertIsDisplayed()
         compose.onNodeWithText(text(R.string.debt_detail_back)).performClick()
-        waitFor("原往来 小王")
+        waitFor("我欠原往来 小王")
         assertEquals(1, facts.size)
         assertEquals(1, harness.fixture.stored().size)
     }
