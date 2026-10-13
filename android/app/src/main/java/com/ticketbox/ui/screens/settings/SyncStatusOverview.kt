@@ -137,16 +137,20 @@ internal fun SyncStatusOverviewSection(status: OutboxStatus, corrections: List<P
                 text = overviewCaption(overview),
                 style = MaterialTheme.typography.bodyMedium,
             )
-            Text(
-                text = listOf(
-                    "${stringResource(R.string.sync_status_overview_queued_label)} ${overview.queuedCount}",
-                    "${stringResource(R.string.sync_status_overview_conflicts_label)} ${overview.conflictCount + overview.reviewRequiredCount}",
-                    "${stringResource(R.string.sync_status_overview_failed_label)} ${overview.failedCount}",
-                    "${stringResource(R.string.sync_status_overview_quarantined_label)} ${overview.quarantinedCount}",
-                ).joinToString(" · "),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall.tabularNum(),
-            )
+            // Only the counts that have something in them; a settled queue is just the sentence above.
+            val counts = listOf(
+                R.string.sync_status_overview_queued_label to overview.queuedCount,
+                R.string.sync_status_overview_conflicts_label to overview.conflictCount + overview.reviewRequiredCount,
+                R.string.sync_status_overview_failed_label to overview.failedCount,
+                R.string.sync_status_overview_quarantined_label to overview.quarantinedCount,
+            ).filter { it.second > 0 }.map { (label, count) -> "${stringResource(label)} $count" }
+            if (counts.isNotEmpty()) {
+                Text(
+                    text = counts.joinToString(" · "),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall.tabularNum(),
+                )
+            }
         }
     }
 }
