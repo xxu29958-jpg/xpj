@@ -290,7 +290,7 @@ private fun DebtActionSheet(
                         text = if (state.isSubmitting) {
                             stringResource(R.string.debt_action_submitting)
                         } else {
-                            stringResource(if (action == DebtAction.Repayment) R.string.debt_repayment_submit else R.string.debt_action_submit)
+                            stringResource(debtActionSubmitRes(action))
                         },
                         onClick = viewModel::submit,
                         enabled = state.canSubmitAction,

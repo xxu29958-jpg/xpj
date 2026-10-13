@@ -2,6 +2,7 @@ package com.ticketbox.ui.screens
 
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -35,6 +36,7 @@ class ManualExpenseAccountingTimeTest {
                 )
             }
         }
+        compose.onNodeWithTag("manual-expense-time-section").performScrollTo().performClick()
         compose.onNodeWithText("只记日期").performScrollTo().performClick()
         restoration.emulateSavedInstanceStateRestore()
         compose.onNodeWithText("记入账本").performClick()

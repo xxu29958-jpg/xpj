@@ -156,8 +156,14 @@ internal fun DebtRepaymentBalancePreview(debt: Debt, input: String) {
                 AppPaperCard(modifier = modifier, containerColor = LocalThemeVisuals.current.brandPrimaryBg) {
                     Column(Modifier.padding(AppSpacing.contentGap), verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
                         Text(stringResource(R.string.debt_payment_balance_after), style = MaterialTheme.typography.bodySmall)
-                        AppAmountText(remaining?.let { formatDisplayAmount(it, currency) }
-                            ?: stringResource(R.string.debt_detail_component_unknown))
+                        // Nothing typed yet is not an unknown fact: say what will appear here.
+                        if (remaining == null && input.isBlank()) {
+                            Text(stringResource(R.string.debt_payment_balance_after_pending),
+                                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        } else {
+                            AppAmountText(remaining?.let { formatDisplayAmount(it, currency) }
+                                ?: stringResource(R.string.debt_detail_component_unknown))
+                        }
                     }
                 }
             })

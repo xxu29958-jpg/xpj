@@ -1,10 +1,14 @@
 package com.ticketbox.ui.screens.plan
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Archive
@@ -17,8 +21,12 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.vectorResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import com.ticketbox.R
 import com.ticketbox.domain.model.Goal
 import com.ticketbox.ui.components.AppAmountInput
@@ -32,8 +40,6 @@ import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalStateTokens
-import com.ticketbox.ui.components.AppAdaptiveContentActionRow
-import com.ticketbox.ui.components.AppAdaptiveContentActionStyle
 import com.ticketbox.ui.screens.budget.MonthSwitcher
 import com.ticketbox.viewmodel.SpendingGoalDetailUiState
 import com.ticketbox.viewmodel.SpendingGoalDetailViewModel
@@ -45,6 +51,7 @@ internal fun SpendingGoalViewContent(
     canModify: Boolean,
     onArchive: () -> Unit,
     onOpenRecycleBin: () -> Unit,
+    onOpenHistory: () -> Unit,
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -52,7 +59,7 @@ internal fun SpendingGoalViewContent(
     ) {
         com.ticketbox.ui.components.AccountingDateNotice(goal.undatedExpenseCount)
         SpendingGoalSummaryCard(goal)
-        SpendingGoalFactsCard(goal)
+        SpendingGoalFactsCard(goal, onOpenHistory)
         if (goal.isArchived) SpendingGoalRecoveryEntry(onOpenRecycleBin)
         if (canModify && !goal.isArchived) {
             SpendingGoalArchiveEntry(onArchive)
@@ -61,7 +68,7 @@ internal fun SpendingGoalViewContent(
 }
 
 @Composable
-private fun SpendingGoalFactsCard(goal: Goal) {
+private fun SpendingGoalFactsCard(goal: Goal, onOpenHistory: () -> Unit) {
     AppContentCard {
         Text(
             text = stringResource(R.string.spending_goal_details_section),
@@ -77,6 +84,8 @@ private fun SpendingGoalFactsCard(goal: Goal) {
             label = stringResource(R.string.spending_goal_scope_label),
             value = goal.category ?: stringResource(R.string.spending_goal_scope_all),
         )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        SpendingGoalHistoryRow(onOpenHistory)
     }
 }
 
@@ -85,21 +94,48 @@ private fun SpendingGoalFactRow(
     label: String,
     value: String,
 ) {
-    AppAdaptiveContentActionRow(
-        style = AppAdaptiveContentActionStyle(compactAction = true, wideActionWeight = 1f),
-        content = { Text(
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+    ) {
+        Text(
             text = label,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodyMedium,
-        ) },
-        action = { Text(
+        )
+        Text(
             text = value,
-            modifier = it,
+            modifier = Modifier.weight(1f),
             color = MaterialTheme.colorScheme.onSurface,
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Medium,
-        ) },
-    )
+            textAlign = TextAlign.End,
+        )
+    }
+}
+
+@Composable
+private fun SpendingGoalHistoryRow(onOpenHistory: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(role = Role.Button, onClick = onOpenHistory)
+            .heightIn(min = AppSpacing.controlMinHeight),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = stringResource(R.string.goal_history_title),
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Icon(
+            imageVector = ImageVector.vectorResource(R.drawable.ic_lucide_chevron_right),
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(AppSpacing.cardPadding),
+        )
+    }
 }
 
 @Composable
@@ -146,6 +182,9 @@ internal fun SpendingGoalEditContent(
             Text(stringResource(R.string.spending_goal_currency_loading))
         }
         SpendingGoalCategoryInput(state = state, viewModel = viewModel)
+        if (state.goal != null) AppContentCard {
+            SpendingGoalHistoryRow(viewModel.historyTask::open)
+        }
     }
 }
 

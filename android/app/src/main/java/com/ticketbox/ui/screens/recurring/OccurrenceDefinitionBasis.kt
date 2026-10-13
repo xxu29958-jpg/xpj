@@ -20,6 +20,7 @@ import com.ticketbox.R
 import com.ticketbox.data.remote.dto.RecurringOccurrenceDto
 import com.ticketbox.ui.components.displayDateTime
 import com.ticketbox.ui.components.AppAmountText
+import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.components.AppPaperCard
 import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppSpacing
@@ -42,7 +43,8 @@ internal fun OccurrenceCurrentSummary(occurrence: RecurringOccurrenceDto) {
                 Text(stringResource(occurrenceReviewReasonLabel(occurrence.paymentReviewReason)),
                     style = MaterialTheme.typography.bodyMedium)
             }
-            Text(stringResource(R.string.occurrence_summary_period, occurrence.period), style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(R.string.occurrence_summary_period, displayMonthLabel(occurrence.period)),
+                style = MaterialTheme.typography.bodySmall)
             Text(stringResource(R.string.occurrence_planned_amount), style = MaterialTheme.typography.bodyMedium)
             AppAmountText(recurringRecordedAmountText(occurrence.plannedAmountCents, occurrence.homeCurrencyCode),
                 role = if (occurrence.state == "needs_review") AppAmountRole.Compact else AppAmountRole.Hero)

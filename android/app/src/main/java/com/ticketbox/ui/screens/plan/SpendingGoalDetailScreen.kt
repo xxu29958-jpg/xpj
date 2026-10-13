@@ -89,9 +89,6 @@ internal fun SpendingGoalDetailScreen(
                 onOpenRecycleBin = onOpenRecycleBin,
             )
         }
-        if (goal != null) item {
-            TextButton(onClick = viewModel.historyTask::open) { Text(stringResource(R.string.goal_history_title)) }
-        }
     }
     if (state.history.visible) GoalHistorySheet(state.history, viewModel.historyTask::retry, viewModel.historyTask::more,
         viewModel.historyTask::dismiss)
@@ -162,6 +159,7 @@ private fun SpendingGoalDetailBody(
             canModify = state.canModifyGoal && !state.hasPendingEdit,
             onArchive = { viewModel.showArchiveConfirmation(true) },
             onOpenRecycleBin = onOpenRecycleBin,
+            onOpenHistory = viewModel.historyTask::open,
         )
     }
 }

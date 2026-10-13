@@ -51,11 +51,16 @@ def native_link(j, payment_date):
     native.click(j.month + " · 筛选付款")
     native.reveal_any("付款账期 · 留空查看全部缓存")
     native.fill(payment_date[:7], previous=j.month, label="付款账期 · 留空查看全部缓存")
-    native.reveal_any(payment_date)
-    matches = [node.attrib["text"] for node in native.tree().iter("node")
-               if node.attrib.get("text", "").startswith(payment_date + " · " + SERIES)]
+    booked = date.fromisoformat(payment_date)
+    displayed_day = f"{booked.year}年{booked.month}月{booked.day}日"
+    native.reveal_any(displayed_day, exact=True)
+    matches = [node for node in native.tree().iter("node")
+               if node.attrib.get("clickable") == "true" and
+               {SERIES, displayed_day, "CNY ¥1,400.00"}.issubset(
+                   {part.attrib.get("text", "") for part in node.iter("node")})]
     assert len(matches) == 1, "The actual native payment picker did not offer the prior-month payment"
-    native.click(matches[0])
+    native.capture("cross-month-payment-picker")
+    native.tap(matches[0])
     native.reveal_any("保存本期提交", toward_start=True)
     native.click("保存本期提交")
     j.expect_fact("linked_expense_id", j.facts()["expense_id"])

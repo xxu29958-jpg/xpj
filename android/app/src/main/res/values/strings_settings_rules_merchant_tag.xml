@@ -262,7 +262,9 @@
     <string name="tag_management_section_all">标签列表</string>
     <string name="tag_management_loading_title">正在读取标签</string>
     <string name="tag_management_loading_body">会从当前账本同步最新标签。</string>
-    <string name="tag_management_reload_button">重新读取标签</string>
+    <string name="tag_management_error_subtitle">这次没有读到标签</string>
+    <string name="tag_management_error_title">标签暂时打不开</string>
+    <string name="tag_management_error_body">稍后重试；已有的标签不会因此丢失。</string>
     <string name="tag_management_list_empty">可先添加常用标签，也可在记账时填写新标签，之后在这里统一整理。</string>
     <string name="tag_management_delete_dialog_title">删除标签？</string>
     <string name="tag_management_delete_dialog_text_used">「%1$s」会从 %2$d 笔账单上移除。可立即撤销，或在资料库回收站的保留期内恢复；后来修改过的账单会跳过。</string>

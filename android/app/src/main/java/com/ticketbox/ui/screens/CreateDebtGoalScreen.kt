@@ -2,8 +2,12 @@ package com.ticketbox.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -18,6 +22,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -181,6 +186,7 @@ private fun DebtGoalPickerContent(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun DebtPickerRow(
     debt: Debt,
@@ -202,24 +208,38 @@ internal fun DebtPickerRow(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
         ) {
-            Text(name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-            DebtStatusBadge(
-                text = stringResource(debtDirectionLabelRes(debt.direction)),
-                tone = LocalStateTokens.current.neutral,
-            )
-            if (!debt.isOpen) Text(stringResource(debtLinkStatusLabelRes(debt.status)),
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(
-                stringResource(
-                    R.string.debt_goal_create_remaining_amount,
-                    // R14-3：record 口径（每笔欠款自带 homeCurrencyCode，未知码原样亮码），
-                    // 不用恒 Base 的环境 display。
-                    formatDisplayAmount(debt.remainingAmountCents, CurrencyDisplay.forRecord(debt.homeCurrencyCode)),
-                ),
-                style = MaterialTheme.typography.bodySmall.tabularNum(),
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            // 名字和剩余金额能并排就并排；放不下时金额整行落到名字下面，名字不被挤成窄列。
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+                itemVerticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(name, modifier = Modifier.padding(end = AppSpacing.contentGap),
+                    style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                Text(
+                    stringResource(
+                        R.string.debt_goal_create_remaining_amount,
+                        // R14-3：record 口径（每笔欠款自带 homeCurrencyCode，未知码原样亮码），
+                        // 不用恒 Base 的环境 display。
+                        formatDisplayAmount(debt.remainingAmountCents, CurrencyDisplay.forRecord(debt.homeCurrencyCode)),
+                    ),
+                    style = MaterialTheme.typography.bodyMedium.tabularNum(),
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                DebtStatusBadge(
+                    text = stringResource(debtDirectionLabelRes(debt.direction)),
+                    tone = LocalStateTokens.current.neutral,
+                )
+                if (!debt.isOpen) Text(stringResource(debtLinkStatusLabelRes(debt.status)),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
     }
 }

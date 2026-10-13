@@ -4,17 +4,23 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.vectorResource
 import com.ticketbox.R
 import com.ticketbox.data.remote.dto.SavedViewDefinitionRequestDto
 import com.ticketbox.data.repository.SavedQueryCommand
@@ -24,6 +30,8 @@ import com.ticketbox.domain.model.ManagedTag
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppFloatingActionBar
+import com.ticketbox.ui.components.AppOutlinedButton
+import com.ticketbox.ui.components.AppOutlinedButtonOptions
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppSecondaryButton
@@ -137,7 +145,12 @@ private fun SavedQueryCoreFields(draft: SavedQueryDraft, enabled: Boolean, conte
 private fun SavedQueryAdditionalFields(fields: SavedViewDefinitionRequestDto, enabled: Boolean,
     change: (SavedViewDefinitionRequestDto) -> Unit) {
     var expanded by rememberSaveable { mutableStateOf(false) }
-    AppSecondaryButton(stringResource(R.string.saved_query_more), onClick = { expanded = !expanded })
+    // 低频条件收在一行文字折叠里：箭头说明它会展开，而不是一个会提交什么的按钮。
+    TextButton(onClick = { expanded = !expanded }) {
+        Text(stringResource(R.string.saved_query_more))
+        Icon(ImageVector.vectorResource(if (expanded) R.drawable.ic_lucide_chevron_up else R.drawable.ic_lucide_chevron_down),
+            contentDescription = null, modifier = Modifier.padding(start = AppSpacing.miniGap).size(AppSpacing.cardPadding))
+    }
     if (expanded) {
         SavedQueryChoice(stringResource(R.string.saved_query_scope), fields.filter, listOf(
             "" to stringResource(R.string.saved_query_all),
@@ -154,8 +167,14 @@ private fun SavedQueryChoice(label: String, selected: String, entries: List<Pair
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
         Text(label, style = MaterialTheme.typography.labelLarge)
         Box {
-            AppSecondaryButton(entries.firstOrNull { it.first == selected }?.second ?: stringResource(R.string.saved_query_unavailable),
-                modifier = Modifier.fillMaxWidth(), enabled = enabled, onClick = { expanded = true })
+            // 选择项长成字段的样子：当前值靠左，右侧向下箭头说明会弹出选项。
+            AppOutlinedButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth(),
+                options = AppOutlinedButtonOptions(enabled = enabled)) {
+                Text(entries.firstOrNull { it.first == selected }?.second ?: stringResource(R.string.saved_query_unavailable),
+                    modifier = Modifier.weight(1f))
+                Icon(ImageVector.vectorResource(R.drawable.ic_lucide_chevron_down), contentDescription = null,
+                    modifier = Modifier.size(AppSpacing.cardPadding))
+            }
             DropdownMenu(expanded = expanded && enabled, onDismissRequest = { expanded = false }) {
                 entries.forEach { (key, title) -> DropdownMenuItem(text = { Text(title) }, onClick = { select(key); expanded = false }) }
             }

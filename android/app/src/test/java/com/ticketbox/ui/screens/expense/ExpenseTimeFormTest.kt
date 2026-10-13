@@ -12,6 +12,14 @@ class ExpenseTimeFormTest {
     private fun form(instant: String = "2026-11-01T06:30:00Z") =
         ExpenseTimeForm.initial(instant, null, rule, ZoneId.of("America/New_York"))
 
+    @Test fun summaryNamesTheZoneOnlyWhenItIsNotTheDeviceZone() {
+        val recorded = form()
+        assertEquals("${recorded.date} · ${recorded.time}", recorded.summary(deviceZone = recorded.sourceZone))
+        assertEquals("${recorded.date} · ${recorded.time} · ${recorded.sourceZone}", recorded.summary(deviceZone = "Asia/Tokyo"))
+        val dateOnly = recorded.withPrecision("date_only", rule)
+        assertEquals(dateOnly.date, dateOnly.summary(deviceZone = "Asia/Tokyo"))
+    }
+
     @Test fun unchangedLaterFoldKeepsOriginalInstantAndOffsetAcrossSavedDraft() {
         val restored = requireNotNull(readExpenseTimeForm(form().toSavedJson())).resolve()
         assertEquals("2026-11-01T06:30:00Z", restored.instant)

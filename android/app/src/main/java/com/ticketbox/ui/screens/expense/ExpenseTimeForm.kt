@@ -89,3 +89,8 @@ data class ExpenseTimeResolution(val instant: String? = null, val input: Expense
 private val timeFormAdapter = Moshi.Builder().build().adapter(ExpenseTimeForm::class.java)
 fun ExpenseTimeForm.toSavedJson(): String = timeFormAdapter.toJson(this)
 fun readExpenseTimeForm(json: String?): ExpenseTimeForm? = json?.let { runCatching { timeFormAdapter.fromJson(it) }.getOrNull() }
+
+/** One-line reading for a collapsed row. The zone is part of it only when the time was recorded somewhere else. */
+internal fun ExpenseTimeForm.summary(deviceZone: String = java.time.ZoneId.systemDefault().id): String =
+    listOfNotNull(date, time.takeIf { precision == "instant" },
+        sourceZone.takeIf { precision == "instant" && it != deviceZone }).joinToString(" · ")

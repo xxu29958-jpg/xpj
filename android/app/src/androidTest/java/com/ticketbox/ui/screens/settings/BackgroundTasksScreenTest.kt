@@ -94,7 +94,7 @@ class BackgroundTasksScreenTest {
         compose.onNodeWithText("没有后台任务").assertDoesNotExist()
         capture("background-tasks-read-failure")
         compose.runOnIdle { repo.result = Result.success(listOf(task("viewer-source", "running", 43))) }
-        compose.onNodeWithText("刷新").performScrollTo().performClick()
+        compose.onNodeWithText("重试").performScrollTo().performClick()
         compose.waitUntil { vm.uiState.value.tasks.size == 1 && !vm.uiState.value.loading }
         compose.onNodeWithText("取消任务").assertDoesNotExist()
         compose.onNodeWithText("打开原账单").performScrollTo().performClick()

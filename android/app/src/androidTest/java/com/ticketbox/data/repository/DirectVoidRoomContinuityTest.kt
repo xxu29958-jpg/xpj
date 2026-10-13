@@ -313,7 +313,7 @@ class DirectVoidRoomContinuityTest {
         compose.runOnIdle { requireNotNull(detail.value).openAction(action,
             remote.payment.takeIf { action == DebtAction.RepaymentVoid }) }
         compose.onAllNodes(hasSetTextAction())[0].performTextReplacement("  原记录重复  ")
-        compose.onNodeWithText("保存").performClick()
+        compose.onNodeWithText(context.getString(R.string.debt_action_void_submit)).performClick()
         compose.waitUntil(10_000) { fixture.stored().size == 1 && detail.value?.state?.value?.activeAction == null }
     }
 

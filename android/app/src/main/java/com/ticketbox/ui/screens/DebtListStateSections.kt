@@ -7,12 +7,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.domain.model.DebtListLens
-import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.ui.components.AppContentStateCopy
-import com.ticketbox.ui.components.AppContentStatePresentation
-import com.ticketbox.ui.components.AppContentStateSpec
-import com.ticketbox.ui.components.AppContentStateSlot
+import com.ticketbox.ui.asString
+import com.ticketbox.ui.components.AppErrorState
 import com.ticketbox.ui.components.AppListStateContent
 import com.ticketbox.ui.components.AppListStateSpec
 import com.ticketbox.ui.components.AppSectionGroup
@@ -64,29 +61,13 @@ internal fun DebtListNoRowsStateSection(
     }
 }
 
+/** The same failed-read card as the other lists: what failed, why, and a way to try again. */
 @Composable
-internal fun DebtListLoadFailedSection(error: UiText) {
-    val emptyTitle = stringResource(R.string.debt_list_empty_title)
-    val emptyBody = stringResource(R.string.debt_list_empty_body)
-    AppSectionGroup(
+internal fun DebtListLoadFailedSection(error: UiText, onRetry: () -> Unit) {
+    AppErrorState(
+        title = stringResource(R.string.debt_list_error_title),
+        body = error.asString(),
+        onRetry = onRetry,
         modifier = Modifier.fillMaxWidth(),
-        contentPadding = PaddingValues(vertical = AppSpacing.compactGap),
-        showTopDivider = false,
-    ) {
-        AppContentStateSlot(
-            state = AppContentStateSpec(
-                loading = false,
-                hasData = false,
-                copy = AppContentStateCopy(
-                    loadingTitle = emptyTitle,
-                    emptyText = emptyBody,
-                    emptyTitle = emptyTitle,
-                    emptyBody = emptyBody,
-                ),
-                message = error,
-                messageTone = MessageTone.Danger,
-                presentation = AppContentStatePresentation.Inline,
-            ),
-        )
-    }
+    )
 }

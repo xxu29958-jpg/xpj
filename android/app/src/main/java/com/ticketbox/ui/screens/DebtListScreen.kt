@@ -205,7 +205,7 @@ private fun DebtListContent(
         readableListInlineError(hasRows = state.debts.isNotEmpty(), error = state.error)?.let { err ->
             item { AppStatusBanner(message = err, tone = MessageTone.Danger) }
         }
-        debtListSection(state = state, onOpenDebt = callbacks.onOpenDebt)
+        debtListSection(state = state, onOpenDebt = callbacks.onOpenDebt, onRetry = callbacks.onRefresh)
     }
 }
 
@@ -244,7 +244,7 @@ private fun DebtListEmbeddedContent(
         readableListInlineError(hasRows = state.debts.isNotEmpty(), error = state.error)?.let { err ->
             item { AppStatusBanner(message = err, tone = MessageTone.Danger) }
         }
-        debtListSection(state = state, onOpenDebt = callbacks.onOpenDebt)
+        debtListSection(state = state, onOpenDebt = callbacks.onOpenDebt, onRetry = callbacks.onRefresh)
         chrome.domainNavigation?.let { navigation ->
             item(key = "obligations-domain-navigation") { navigation() }
         }
@@ -306,6 +306,7 @@ internal fun DebtBillParseIconButton(isParsingBill: Boolean, onClick: () -> Unit
 private fun LazyListScope.debtListSection(
     state: DebtListUiState,
     onOpenDebt: (Debt) -> Unit,
+    onRetry: () -> Unit,
 ) {
     item { DebtReadSource(state.fetchedAt, state.fromCache, state.isLoading) }
     when (
@@ -319,7 +320,7 @@ private fun LazyListScope.debtListSection(
             DebtListNoRowsStateSection(loading = true, lens = state.lens, canModify = state.canModify)
         }
         ReadableListBodyState.LoadFailed -> item(key = "debt-list-error") {
-            state.error?.let { DebtListLoadFailedSection(error = it) }
+            state.error?.let { DebtListLoadFailedSection(error = it, onRetry = onRetry) }
         }
         ReadableListBodyState.Empty -> item(key = "debt-list-empty") {
             if (state.pendingCreations.isEmpty()) {

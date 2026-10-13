@@ -180,10 +180,14 @@ fun parseAmountCentsForDisplay(input: String, display: CurrencyDisplay): Long? =
         if (display.unknownCode != null) CurrencyCode.JPY else display.homeCurrency,
     )
 
+// One spelling for a date, and for a date with a clock time, wherever the app shows one.
+private const val DATE_PATTERN = "yyyy年M月d日"
+private const val DATE_TIME_PATTERN = "$DATE_PATTERN HH:mm"
+
 fun displayTime(value: String?): String {
     if (value.isNullOrBlank()) return "未填写时间"
     val localZone = ZoneId.systemDefault()
-    val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(localZone)
+    val formatter = DateTimeFormatter.ofPattern(DATE_TIME_PATTERN).withZone(localZone)
     return runCatching { formatter.format(Instant.parse(value)) }
         .recoverCatching { formatter.format(OffsetDateTime.parse(value).toInstant()) }
         .getOrElse { value.replace("T", " ").removeSuffix("Z") }
@@ -197,11 +201,15 @@ fun displayCompactTime(value: String?): String {
 fun displayDate(value: String?): String {
     if (value.isNullOrBlank()) return "未设置"
     val localZone = ZoneId.systemDefault()
-    val formatter = DateTimeFormatter.ofPattern("yyyy年M月d日").withZone(localZone)
+    val formatter = DateTimeFormatter.ofPattern(DATE_PATTERN).withZone(localZone)
     return runCatching { formatter.format(Instant.parse(value)) }
         .recoverCatching { formatter.format(OffsetDateTime.parse(value).toInstant()) }
         .getOrElse { value.take(10) }
 }
+
+/** A frozen calendar day, spelled like other dates and never moved by the device zone. */
+fun displayCalendarDay(day: String): String =
+    runCatching { LocalDate.parse(day).format(DateTimeFormatter.ofPattern(DATE_PATTERN)) }.getOrDefault(day)
 
 /** Frozen input/ledger days stay independent of the current device time zone. */
 fun accountingTimeDateText(evidence: ExpenseAccountingTime?, legacyInstant: String?): UiText {
@@ -217,7 +225,7 @@ fun accountingTimeDateText(evidence: ExpenseAccountingTime?, legacyInstant: Stri
 
 fun displayDateTime(value: String?): String {
     if (value.isNullOrBlank()) return "未设置"
-    val formatter = DateTimeFormatter.ofPattern("yyyy年M月d日 HH:mm")
+    val formatter = DateTimeFormatter.ofPattern(DATE_TIME_PATTERN)
     return parseLocalDateTime(value)
         ?.format(formatter)
         ?: value.replace("T", " ").removeSuffix("Z")

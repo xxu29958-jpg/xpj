@@ -1,14 +1,18 @@
 package com.ticketbox.ui.screens.recurring
 
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -32,8 +36,11 @@ import com.ticketbox.ui.components.AppButtonIcons
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppBusyGuardedSheet
+import com.ticketbox.ui.components.AppListRow
+import com.ticketbox.ui.components.displayCalendarDay
 import com.ticketbox.ui.components.AppSheetScaffold
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.viewmodel.RecurringOccurrenceUiState
 
 data class OccurrencePaymentGuard(
@@ -84,8 +91,11 @@ fun RecurringOccurrenceSheet(
                 if (occurrence.expensePublicId != null) {
                     TextButton(onClick = { actions.onChoose(null) }, enabled = state.canWrite) { Text(stringResource(R.string.occurrence_clear)) }
                 }
-                if (state.access?.canModify == false) Text(stringResource(R.string.occurrence_readonly))
-                Text(stringResource(R.string.occurrence_next_due, occurrence.nextDueDate ?: stringResource(R.string.occurrence_no_reminder)))
+                if (state.access?.canModify == false) Text(stringResource(R.string.occurrence_readonly),
+                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.occurrence_next_due,
+                    occurrence.nextDueDate?.let(::displayCalendarDay) ?: stringResource(R.string.occurrence_no_reminder)),
+                    style = MaterialTheme.typography.bodyMedium)
             }
             state.occurrence?.let { occurrence ->
                 if (state.canWrite) paymentFilters.SaveableStateProvider("${item.publicId}:${occurrence.period}") {
@@ -251,7 +261,8 @@ private fun OccurrencePaymentPicker(
     var filtersExpanded by rememberSaveable(state.item?.publicId, state.occurrence?.period) { mutableStateOf(false) }
     val payments = occurrencePaymentChoices(state.payments, month, query, preferredExpenseId)
     HorizontalDivider()
-    Text(stringResource(R.string.occurrence_pick_explanation))
+    Text(stringResource(R.string.occurrence_pick_explanation), style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant)
     val scope = listOf(month.ifBlank { stringResource(R.string.occurrence_all_payment_months) }, query)
         .filter { it.isNotBlank() }.joinToString(" · ")
     TextButton(onClick = { filtersExpanded = !filtersExpanded }, modifier = Modifier.testTag("occurrence-payment-filter-toggle")) {
@@ -263,13 +274,34 @@ private fun OccurrencePaymentPicker(
         OutlinedTextField(value = query, onValueChange = { query = it }, singleLine = true,
             label = { Text(stringResource(R.string.occurrence_search)) }, modifier = Modifier.fillMaxWidth())
     }
-    if (payments.isEmpty()) Text(stringResource(R.string.occurrence_no_payments))
-    if (payments.size > 20) Text(stringResource(R.string.occurrence_narrow_search))
-    payments.take(20).forEach { payment ->
-        TextButton(onClick = { choose(payment) }, modifier = Modifier.fillMaxWidth().testTag("occurrence-payment-" + payment.root.id)) {
-            Text((payment.streamDate ?: stringResource(R.string.calendar_date_pending)) + " · " + payment.root.merchant.orEmpty() + " · " +
-                occurrencePaymentAmountText(payment.root.amountCents, payment.root.homeCurrencyCode) +
-                if (payment.lineageStatus != ExpenseLineageStatus.Confirmed) stringResource(R.string.occurrence_has_refund) else "")
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    if (payments.isEmpty()) Text(stringResource(R.string.occurrence_no_payments), style = MaterialTheme.typography.bodyMedium, color = muted)
+    if (payments.size > 20) Text(stringResource(R.string.occurrence_narrow_search), style = MaterialTheme.typography.bodySmall, color = muted)
+    payments.take(20).forEachIndexed { index, payment ->
+        OccurrencePaymentRow(payment, showDivider = index < minOf(payments.size, 20) - 1) { choose(payment) }
+    }
+}
+
+/** One confirmed bill offered as this period's payment: who, how much, and the day it was booked. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun OccurrencePaymentRow(payment: ConfirmedStreamItem.ExpenseRow, showDivider: Boolean, onChoose: () -> Unit) {
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    AppListRow(modifier = Modifier.fillMaxWidth().testTag("occurrence-payment-" + payment.root.id), onClick = onChoose,
+        showDivider = showDivider) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
+            FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
+                Text(payment.root.merchant.orEmpty(), modifier = Modifier.padding(end = AppSpacing.contentGap),
+                    style = MaterialTheme.typography.titleSmall)
+                Text(occurrencePaymentAmountText(payment.root.amountCents, payment.root.homeCurrencyCode),
+                    style = MaterialTheme.typography.titleSmall.tabularNum())
+            }
+            Text(payment.streamDate?.let(::displayCalendarDay) ?: stringResource(R.string.calendar_date_pending),
+                style = MaterialTheme.typography.bodySmall, color = muted)
+            if (payment.lineageStatus != ExpenseLineageStatus.Confirmed) {
+                Text(stringResource(R.string.occurrence_has_refund), style = MaterialTheme.typography.bodySmall, color = muted)
+            }
         }
     }
 }

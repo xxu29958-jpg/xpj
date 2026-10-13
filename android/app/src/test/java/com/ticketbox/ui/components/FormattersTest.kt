@@ -293,11 +293,19 @@ class FormattersTest {
     }
 
     @Test
+    fun calendarDayIsSpelledLikeOtherDatesAndLeftAloneWhenItIsNotADay() {
+        assertEquals("2026年5月3日", displayCalendarDay("2026-05-03"))
+        assertEquals("待核对", displayCalendarDay("待核对"))
+    }
+
+    @Test
     fun displaysIsoTimeWithoutLeakingRawSeparatorInNormalCase() {
         val rendered = displayTime("2026-05-03T04:20:00Z")
 
-        assertTrue(rendered.contains("2026-05-03"))
+        // Month and year hold in any device zone; the day and hour depend on it.
+        assertTrue(rendered.contains("2026年5月"))
         assertTrue(rendered.contains(":"))
+        assertTrue(!rendered.contains("T"))
     }
 
     @Test

@@ -12,10 +12,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.MessageTone
-import com.ticketbox.domain.model.UiText
+import com.ticketbox.ui.asString
+import com.ticketbox.ui.components.AppErrorState
 import com.ticketbox.ui.components.AppPaperCard
 import com.ticketbox.ui.components.AppListStateContent
-import com.ticketbox.ui.components.AppListStateMessage
 import com.ticketbox.ui.components.AppListStateSpec
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppSecondaryPageChrome
@@ -90,6 +90,7 @@ fun ReceivablesScreen(
         receivablesSection(
             state = state,
             onOpenReceivable = onOpenReceivable,
+            onRetry = viewModel::refresh,
         )
     }
 }
@@ -127,6 +128,7 @@ private fun ReceivablesEmbeddedContent(
         receivablesSection(
             state = state,
             onOpenReceivable = onOpenReceivable,
+            onRetry = onRefresh,
         )
         chrome.domainNavigation?.let { navigation ->
             item(key = "obligations-domain-navigation") { navigation() }
@@ -137,6 +139,7 @@ private fun ReceivablesEmbeddedContent(
 private fun LazyListScope.receivablesSection(
     state: ReceivablesUiState,
     onOpenReceivable: (Debt) -> Unit,
+    onRetry: () -> Unit,
 ) {
     item { DebtReadSource(state.fetchedAt, state.fromCache, state.isLoading) }
     val bodyState = readableListBodyState(
@@ -144,13 +147,20 @@ private fun LazyListScope.receivablesSection(
         isLoading = state.isLoading,
         error = state.error,
     )
-    if (bodyState != ReadableListBodyState.Content) {
+    val failure = state.error.takeIf { bodyState == ReadableListBodyState.LoadFailed }
+    if (failure != null) {
         item {
-            ReceivablesListStateCard(
-                loading = bodyState == ReadableListBodyState.Loading,
-                error = state.error.takeIf { bodyState == ReadableListBodyState.LoadFailed },
+            AppErrorState(
+                title = stringResource(R.string.receivables_error_title),
+                body = failure.asString(),
+                onRetry = onRetry,
+                modifier = Modifier.fillMaxWidth(),
             )
         }
+        return
+    }
+    if (bodyState != ReadableListBodyState.Content) {
+        item { ReceivablesListStateCard(loading = bodyState == ReadableListBodyState.Loading) }
         return
     }
     debtRowsSection(
@@ -160,10 +170,7 @@ private fun LazyListScope.receivablesSection(
 }
 
 @Composable
-private fun ReceivablesListStateCard(
-    loading: Boolean,
-    error: UiText?,
-) {
+private fun ReceivablesListStateCard(loading: Boolean) {
     AppPaperCard(modifier = Modifier.fillMaxWidth()) {
         AppListStateContent(
             modifier = Modifier.padding(AppSpacing.cardPaddingSmall),
@@ -174,7 +181,6 @@ private fun ReceivablesListStateCard(
                 emptyTitle = stringResource(R.string.receivables_empty_title),
                 emptyBody = stringResource(R.string.receivables_empty_body),
             ),
-            message = error?.let { AppListStateMessage(text = it, tone = MessageTone.Danger) },
         ) {
         }
     }

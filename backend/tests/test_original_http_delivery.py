@@ -63,10 +63,12 @@ async def _deliver(response, *, method="GET", headers=(), extensions=None, fail_
         messages.append(message)
 
     async def receive():
-        return {"type": "http.disconnect"}
+        # Keep the client connected until sending finishes or fail_send fires.
+        await asyncio.Event().wait()
 
     await response(
-        {"type": "http", "method": method, "headers": list(headers), "extensions": extensions or {}},
+        {"type": "http", "asgi": {"version": "3.0", "spec_version": "2.4"},
+         "method": method, "headers": list(headers), "extensions": extensions or {}},
         receive, send,
     )
     return messages
