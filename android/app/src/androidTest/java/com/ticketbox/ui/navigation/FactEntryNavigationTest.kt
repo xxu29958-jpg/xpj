@@ -227,9 +227,8 @@ class FactEntryNavigationTest {
             harness.shell.selectPrimaryDomain(PrimaryDomain.Transactions.key)
         }
         compose.waitUntil(5_000) { queries.lastOrNull()?.get("missing_accounting_date") != "true" }
-        val ledgerMonthLabel = currentMonth.toString().replace('-', '.')
-        waitForText(ledgerMonthLabel)
-        compose.onNode(hasText(ledgerMonthLabel) and hasClickAction()).performScrollTo().assertIsDisplayed()
+        waitForText(currentLabel)
+        compose.onNode(hasText(currentLabel) and hasClickAction()).performScrollTo().assertIsDisplayed()
     }
 
     @Test fun shareFromFactReachesDurableAcceptanceBeforeAcknowledgingTheOriginalSelection() {
