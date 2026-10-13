@@ -16,6 +16,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.vectorResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.domain.model.MessageTone
@@ -89,9 +90,15 @@ private fun androidx.compose.foundation.lazy.LazyListScope.debtGoalEditForm(
             DebtGoalDateField(state.targetDate, state.editable && state.hasDraft, viewModel::setTargetDate)
         } else if (onOpenDate != null && state.goal?.debtRepayment?.composition == com.ticketbox.domain.model.DebtGoalComposition.External) item {
             com.ticketbox.ui.components.AppFormFieldGroup(label = stringResource(R.string.debt_goal_date_label)) {
+                // 与日期页的字段同形：文字靠左，右侧箭头说明这里会进入另一页去改。
                 com.ticketbox.ui.components.AppOutlinedButton(
                     onClick = { onOpenDate(state.publicId) }, modifier = Modifier.fillMaxWidth()) {
-                    Text(state.goal?.debtRepayment?.targetDate ?: stringResource(R.string.debt_goal_date_empty))
+                    Text(state.goal?.debtRepayment?.targetDate ?: stringResource(R.string.debt_goal_date_empty),
+                        modifier = Modifier.weight(1f))
+                    androidx.compose.material3.Icon(
+                        imageVector = androidx.compose.ui.graphics.vector.ImageVector.vectorResource(R.drawable.ic_lucide_chevron_right),
+                        contentDescription = null,
+                    )
                 }
             }
         }
