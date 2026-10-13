@@ -67,6 +67,14 @@ internal fun debtActionTitleRes(action: DebtAction): Int = when (action) {
     DebtAction.RepaymentVoid -> R.string.debt_action_repayment_void_title
 }
 
+/** The submit label says what the sheet does; voiding is not a generic save. */
+@StringRes
+internal fun debtActionSubmitRes(action: DebtAction): Int = when (action) {
+    DebtAction.Repayment -> R.string.debt_repayment_submit
+    DebtAction.Adjustment -> R.string.debt_action_submit
+    DebtAction.Void, DebtAction.RepaymentVoid -> R.string.debt_action_void_submit
+}
+
 /** Amount-field label for a [DebtAction] (adjustment is a signed delta, hence its own copy). */
 @StringRes
 internal fun debtActionAmountLabelRes(action: DebtAction): Int = when (action) {
