@@ -356,42 +356,42 @@ internal fun LedgerExpenseListRow(
                 onLongClick = actions.onEnterSelection,
             ),
     ) {
-        AppAdaptiveContentActionStateRow(
+        Row(
             modifier = Modifier.padding(horizontal = AppSpacing.miniGap, vertical = rowMetrics.rowPadding),
-            style = AppAdaptiveContentActionStyle(amountTrailing = true),
-            content = {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(rowMetrics.itemSpacing),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    if (state.selection.enabled) {
-                        Checkbox(checked = state.selection.selected, onCheckedChange = null)
-                    }
-                    ExpenseCategoryMark(category = expense.category, density = AppListDensity.Compact)
-                    LedgerListTextBlock(
-                        expense = expense,
-                        metaText = metaText,
-                        lineageStatus = state.lineageStatus,
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-            },
-            action = { amountModifier, stacked ->
-                LedgerAmountOrPending(
-                    amountCents = expense.amountCents,
-                    currencyCode = expense.homeCurrencyCode,
-                    modifier = if (stacked) {
-                        amountModifier
-                    } else {
-                        amountModifier.widthIn(
-                            min = AppAdaptiveAmountRowDefaults.statusMinWidth,
-                            max = AppAdaptiveAmountRowDefaults.secondaryMetaInlineMaxWidth,
+            horizontalArrangement = Arrangement.spacedBy(rowMetrics.itemSpacing),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (state.selection.enabled) {
+                Checkbox(checked = state.selection.selected, onCheckedChange = null)
+            }
+            ExpenseCategoryMark(category = expense.category, density = AppListDensity.Compact)
+            // The amount shares the merchant's line; the meta line keeps the full width underneath,
+            // so a narrow phone never has to choose between the amount column and the category.
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+            ) {
+                AppAdaptiveContentActionStateRow(
+                    style = AppAdaptiveContentActionStyle(amountTrailing = true),
+                    content = { LedgerListTitle(expense = expense, lineageStatus = state.lineageStatus) },
+                    action = { amountModifier, stacked ->
+                        LedgerAmountOrPending(
+                            amountCents = expense.amountCents,
+                            currencyCode = expense.homeCurrencyCode,
+                            modifier = if (stacked) {
+                                amountModifier
+                            } else {
+                                amountModifier.widthIn(
+                                    min = AppAdaptiveAmountRowDefaults.statusMinWidth,
+                                    max = AppAdaptiveAmountRowDefaults.secondaryMetaInlineMaxWidth,
+                                )
+                            },
                         )
                     },
                 )
-            },
-        )
+                LedgerListMeta(metaText)
+            }
+        }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.subtle))
     }
 }

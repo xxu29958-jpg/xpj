@@ -136,11 +136,12 @@ private fun AmountRowCopy(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
     ) {
+        // The category is the row's identity; beside an amount it may need a second line.
         Text(
             text = title,
             style = MaterialTheme.typography.bodyLarge,
             fontWeight = AppTextHierarchy.body.weight,
-            maxLines = 1,
+            maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
         Text(
