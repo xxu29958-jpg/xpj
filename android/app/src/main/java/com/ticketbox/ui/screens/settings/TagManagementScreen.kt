@@ -143,7 +143,8 @@ private fun TagManagementPageContent(
             actions = actions.rowActions,
             onReload = actions.onReload,
         )
-        if (bodyState == TagManagementBodyState.Content || bodyState == TagManagementBodyState.Empty) {
+        // The empty state already says how tags get here; the note is about tidying existing ones.
+        if (bodyState == TagManagementBodyState.Content) {
             TagSemanticsNote()
         }
         creation(!state.loading && !state.busy)
