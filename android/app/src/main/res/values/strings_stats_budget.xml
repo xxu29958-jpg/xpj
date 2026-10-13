@@ -486,6 +486,7 @@
     <string name="debt_action_reason_label">原因</string>
     <string name="debt_action_void_warning">作废后这笔欠款不再计入未结清统计，但会保留在历史里。</string>
     <string name="debt_action_submit">保存</string>
+    <string name="debt_action_void_submit">确认作废</string>
     <string name="debt_repayment_submit">记录这次还款</string>
     <string name="debt_action_submitting">保存中…</string>
     <string name="debt_action_repayment_validation">请输入大于 0 的还款金额。</string>
@@ -568,6 +569,7 @@
     <string name="debt_payment_balance_preview">未结金额</string>
     <string name="debt_payment_balance_before">当前记录</string>
     <string name="debt_payment_balance_after">按本次金额确认后</string>
+    <string name="debt_payment_balance_after_pending">输入金额后显示</string>
     <string name="debt_payment_over_remaining">本次金额超过当前未结金额，请核对实际还款与当前记录。</string>
     <string name="debt_payment_waiting_confirmation">提交后等待对方确认。确认前，剩余金额保持不变。</string>
     <string name="debt_payment_confirmation_effect">确认后，将按本次实际收到的金额更新这笔往来。</string>
