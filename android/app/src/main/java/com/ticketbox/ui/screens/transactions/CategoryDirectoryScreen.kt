@@ -9,8 +9,10 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import com.ticketbox.ui.components.AppPrimaryButton
+import com.ticketbox.ui.asString
+import com.ticketbox.ui.components.AppErrorState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -68,7 +70,7 @@ fun CategoryDirectoryScreen(
             title = stringResource(R.string.category_directory_title),
             subtitle = if (state.customCategories.isEmpty() && (state.loading || state.loadFailed)) {
                 stringResource(if (state.loading) R.string.category_directory_loading
-                    else R.string.category_directory_load_failed)
+                    else R.string.category_directory_error_subtitle)
             } else stringResource(
                 R.string.category_directory_subtitle,
                 DEFAULT_EXPENSE_CATEGORIES.size,
@@ -79,7 +81,8 @@ fun CategoryDirectoryScreen(
         ),
         slots = AppSecondaryPageSlots(
             status = {
-                AppStatusBanner(
+                // 读不到任何分类时，原因写在下面的错误卡里，不在这里再说一遍。
+                if (!state.readFailedWithoutData) AppStatusBanner(
                     message = state.message,
                     tone = state.messageTone,
                 )
@@ -163,7 +166,11 @@ private fun CustomCategoriesCard(
             ) {
                 CircularProgressIndicator()
             }
-            state.loadFailed && state.customCategories.isEmpty() -> CategoryLoadFailed(onRetry = onRetry)
+            state.readFailedWithoutData -> AppErrorState(
+                title = stringResource(R.string.category_directory_error_title),
+                body = state.message?.asString() ?: stringResource(R.string.category_directory_load_failed),
+                onRetry = onRetry,
+            )
             state.customCategories.isEmpty() -> Text(
                 text = stringResource(R.string.category_directory_custom_empty),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -181,21 +188,7 @@ private fun CustomCategoriesCard(
     }
 }
 
-@Composable
-private fun CategoryLoadFailed(
-    onRetry: () -> Unit,
-) {
-    Column(
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-    ) {
-        Text(
-            text = stringResource(R.string.category_directory_load_failed),
-            color = MaterialTheme.colorScheme.error,
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        AppPrimaryButton(text = stringResource(R.string.category_directory_retry), onClick = onRetry)
-    }
-}
+private val CategoryDirectoryUiState.readFailedWithoutData: Boolean get() = loadFailed && customCategories.isEmpty()
 
 @Composable
 private fun CategoryPreferenceRow(
@@ -222,7 +215,9 @@ private fun CategoryPreferenceRow(
                     fontWeight = AppTextHierarchy.heading.weight,
                 )
                 Text(
-                    text = stringResource(R.string.category_directory_usage_count, category.usageCount),
+                    text = if (category.usageCount > 0) {
+                        stringResource(R.string.category_directory_usage_count, category.usageCount)
+                    } else stringResource(R.string.category_directory_unused),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -237,6 +232,8 @@ private fun CategoryPreferenceRow(
                         R.string.category_directory_delete_description,
                         category.name,
                     ),
+                    modifier = Modifier.size(AppSpacing.cardPadding),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
