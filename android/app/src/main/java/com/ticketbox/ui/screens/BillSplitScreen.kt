@@ -353,7 +353,7 @@ private fun BillSplitPartyAmountRow(
         style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     AppAdaptiveContentActionRow(
         modifier = Modifier.fillMaxWidth(),
-        style = AppAdaptiveContentActionStyle(wideActionWeight = BillSplitAmountWideWeight),
+        style = AppAdaptiveContentActionStyle(wideActionWeight = BillSplitAmountWideWeight, amountTrailing = true),
         content = {
             Text(
                 text = name,
