@@ -112,8 +112,8 @@ class SpendingGoalHistoryRoomConnectedTest {
         compose.onNodeWithText("创建时的计划").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("计划定义", substring = true).assertExists()
         compose.onNodeWithText("旧版已有计划").assertDoesNotExist()
-        // Four saved amounts and the three adjacent before-values retain the same original yen units.
-        compose.onAllNodes(hasText("JPY ¥1,200") and hasAnyAncestor(isDialog())).assertCountEquals(7)
+        // Each saved amount retains its original yen units; unchanged adjacent values are shown once.
+        compose.onAllNodes(hasText("JPY ¥1,200") and hasAnyAncestor(isDialog())).assertCountEquals(4)
         com.ticketbox.ui.saveConsumerArtPreview("goal-history-original-yen", requireNotNull(
             androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
         assertEquals(listOf(null, "3"), historyRequests().map { it.queryParameter("before_version") })

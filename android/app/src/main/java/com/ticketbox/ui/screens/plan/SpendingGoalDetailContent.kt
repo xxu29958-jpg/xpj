@@ -182,6 +182,9 @@ internal fun SpendingGoalEditContent(
             Text(stringResource(R.string.spending_goal_currency_loading))
         }
         SpendingGoalCategoryInput(state = state, viewModel = viewModel)
+        if (state.goal != null) AppContentCard {
+            SpendingGoalHistoryRow(viewModel.historyTask::open)
+        }
     }
 }
 
