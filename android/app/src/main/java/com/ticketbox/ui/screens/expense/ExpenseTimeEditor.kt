@@ -72,13 +72,14 @@ internal fun rememberExpenseTimeForm(
 /** One raw date/precision/zone editor for manual, pending, recurring payment and explicit correction. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun ExpenseTimeEditor(form: ExpenseTimeForm, onChange: (ExpenseTimeForm) -> Unit, enabled: Boolean) {
+internal fun ExpenseTimeEditor(form: ExpenseTimeForm, onChange: (ExpenseTimeForm) -> Unit, enabled: Boolean, showTitle: Boolean = true) {
     val loading = rememberLedgerCalendar(form.calendarRevision)
     val rule = loading.rule
     var pickingDate by rememberSaveable { mutableStateOf(false) }
     var pickingTime by rememberSaveable { mutableStateOf(false) }
+    var editingZone by rememberSaveable { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
-        Text(stringResource(R.string.calendar_input_title), style = MaterialTheme.typography.titleSmall)
+        if (showTitle) Text(stringResource(R.string.calendar_input_title), style = MaterialTheme.typography.titleSmall)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
             FilterChip(selected = form.precision == "instant", onClick = { onChange(form.withPrecision("instant", rule)) },
                 label = { Text(stringResource(R.string.calendar_input_instant)) }, enabled = enabled)
@@ -95,7 +96,13 @@ internal fun ExpenseTimeEditor(form: ExpenseTimeForm, onChange: (ExpenseTimeForm
         TimeTextField(stringResource(R.string.calendar_input_day), form.date, enabled) { onChange(form.copy(date = it, offsetSeconds = null, changed = true)) }
         if (form.precision == "instant") {
             TimeTextField(stringResource(R.string.calendar_input_clock), form.time, enabled) { onChange(form.copy(time = it, offsetSeconds = null, changed = true)) }
-            TimeTextField(stringResource(R.string.calendar_input_zone), form.sourceZone, enabled) { onChange(form.copy(sourceZone = it, offsetSeconds = null, changed = true)) }
+            // The zone is a field only when it matters: recorded elsewhere, not a valid zone, or asked for.
+            val zoneNeedsAttention = form.sourceZone != ZoneId.systemDefault().id || runCatching { ZoneId.of(form.sourceZone) }.isFailure
+            if (zoneNeedsAttention || editingZone) {
+                TimeTextField(stringResource(R.string.calendar_input_zone), form.sourceZone, enabled) { onChange(form.copy(sourceZone = it, offsetSeconds = null, changed = true)) }
+            } else {
+                TextButton(onClick = { editingZone = true }, enabled = enabled) { Text(stringResource(R.string.calendar_input_zone_change)) }
+            }
             val offsets = form.validOffsets()
             if (offsets.size > 1) FlowRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
                 offsets.forEach { offset ->

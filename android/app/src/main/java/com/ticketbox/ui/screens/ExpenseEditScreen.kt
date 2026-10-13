@@ -82,6 +82,7 @@ import com.ticketbox.ui.screens.expense.SplitsEditorSheetState
 import com.ticketbox.viewmodel.ExpenseEditUiState
 import com.ticketbox.ui.screens.settings.SettingsDetailRow
 import androidx.compose.ui.platform.testTag
+import com.ticketbox.ui.screens.expense.summary
 
 data class ExpenseEditScreenState(
     val expense: Expense,
@@ -505,13 +506,10 @@ fun ExpenseEditScreen(
         )
         SettingsDetailRow(
             title = stringResource(R.string.calendar_input_title),
-            // The zone is part of the reading only when the time was recorded somewhere else.
-            subtitle = listOfNotNull(timeForm.date, timeForm.time.takeIf { timeForm.precision == "instant" },
-                timeForm.sourceZone.takeIf { timeForm.precision == "instant" && it != java.time.ZoneId.systemDefault().id },
-            ).joinToString(" · "),
+            subtitle = timeForm.summary(),
             icon = R.drawable.ic_lucide_calendar_check,
             modifier = Modifier.testTag("expense-edit-time-section"),
-        ) { com.ticketbox.ui.screens.expense.ExpenseTimeEditor(timeForm, setTimeForm, !readOnly) }
+        ) { com.ticketbox.ui.screens.expense.ExpenseTimeEditor(timeForm, setTimeForm, !readOnly, showTitle = false) }
         if (timeForm.changed) androidx.compose.material3.TextButton(enabled = !readOnly, onClick = {
             com.ticketbox.ui.screens.expense.readExpenseTimeForm(baselineTimeFormJson)?.let(setTimeForm)
         }) { androidx.compose.material3.Text(stringResource(R.string.expense_edit_undo_change_button)) }
