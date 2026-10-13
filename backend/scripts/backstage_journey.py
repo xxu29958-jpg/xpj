@@ -163,7 +163,7 @@ class BackstageJourney:
             assert all(node.attrib.get("text") != "小票识别" for node in self.native.tree().iter("node"))
             assert not self.native.has("绑定账本")
             self.native.capture("backstage-read-refused")
-        self.native.click("刷新")
+        self.native.click("重试")
         wait_for(lambda: self.has_original_action(), "Restored membership did not reread the original task")
         assert self.facts() == before, "A read/refusal/recovery changed the underlying task or expense"
         self.native.restart()
