@@ -26,7 +26,6 @@
   </div>
   {% if pending_count %}
   <div class="product-page-actions">
-    {% if can_write %}<a class="product-button product-button--primary" href="#capture"><svg width="20" height="20" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#plus"/></svg>上传小票</a>{% endif %}
     <a class="product-button product-button--quiet" href="/web/import?ledger_id={{ selected_ledger_id|urlencode }}">导入与导出</a>
   </div>
   {% endif %}
