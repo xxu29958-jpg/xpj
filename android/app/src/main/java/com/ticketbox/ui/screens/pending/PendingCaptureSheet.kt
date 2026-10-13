@@ -17,6 +17,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
@@ -57,7 +58,10 @@ internal fun PendingCaptureSheet(
     val choosing = selection.pendingCount > 0
     val hasTask = !choosing && state.upload.originals.isNotEmpty()
     val received = hasTask && state.upload.originals.all { it.expenseId != null }
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    // The retained capture task owns whether this sheet is open, including after process death.
+    LaunchedEffect(sheetState) { sheetState.show() }
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         AppSheetScaffold(
             title = stringResource(when {
                 choosing || !hasTask -> R.string.pending_capture_title
