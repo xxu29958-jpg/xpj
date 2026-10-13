@@ -32,8 +32,11 @@ internal fun BackgroundTasksOverview(summary: BackgroundTasksSummaryModel) {
     SettingsOpenPanel(
         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
     ) {
-        Text(stringResource(R.string.background_tasks_summary_counts, summary.totalCount, summary.activeCount, summary.failedCount),
-            style = MaterialTheme.typography.bodyMedium)
+        // With nothing to count, the caption below already says so.
+        if (summary.totalCount > 0) {
+            Text(stringResource(R.string.background_tasks_summary_counts, summary.totalCount, summary.activeCount, summary.failedCount),
+                style = MaterialTheme.typography.bodyMedium)
+        }
         Text(
             text = backgroundTasksSummaryCaption(summary),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
