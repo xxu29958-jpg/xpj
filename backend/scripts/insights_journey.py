@@ -177,8 +177,8 @@ class InsightsJourney:
         self.goto(f"/web/overview?month={historical}")
         page.locator('[data-overview-card="budget"]').get_by_role("link", name="设置预算", exact=True).click()
         page.wait_for_url("**/web/budgets?**")
-        assert page.get_by_role("heading", name="月度预算", exact=True).is_visible()
         form = page.locator('form[action="/web/budgets/save"]')
+        assert form.locator('#budget-total-amount-yuan').is_visible()
         assert form.locator('input[name="month"]').input_value() == historical
         assert form.locator('input[name="ledger_id"]').input_value() == self.fixture.ledger_id
         self.capture("overview-historical-budget")

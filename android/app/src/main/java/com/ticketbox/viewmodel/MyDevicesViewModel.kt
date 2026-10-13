@@ -56,7 +56,7 @@ class MyDevicesViewModel(
         }
     }
 
-    fun rename(device: AccountDevice, newName: String, activeLedgerId: String?) {
+    fun rename(device: AccountDevice, newName: String, activeLedgerId: String?, onAccepted: () -> Unit = {}) {
         val cleanName = newName.trim()
         if (cleanName.isEmpty()) {
             _uiState.update {
@@ -70,7 +70,10 @@ class MyDevicesViewModel(
         viewModelScope.launch {
             _uiState.update { it.copy(busyDeviceId = device.publicId, message = null, messageTone = MessageTone.Neutral) }
             repository.renameDevice(device.publicId, cleanName, activeLedgerId)
-                .onSuccess { applyMutationSuccess(activeLedgerId, UiText.res(R.string.my_devices_message_renamed, cleanName)) }
+                .onSuccess {
+                    applyMutationSuccess(activeLedgerId, UiText.res(R.string.my_devices_message_renamed, cleanName))
+                    onAccepted()
+                }
                 .onFailure { err -> finishWithError(err) }
         }
     }

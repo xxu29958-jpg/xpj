@@ -87,7 +87,8 @@ fun MyDevicesScreen(
     when (val open = dialog) {
         is DeviceDialog.Rename -> RenameDeviceDialog(
             device = open.device,
-            onConfirm = { name -> viewModel.rename(open.device, name, activeLedgerId); dialog = null },
+            state = state,
+            onConfirm = { name -> viewModel.rename(open.device, name, activeLedgerId) { dialog = null } },
             onDismiss = { dialog = null },
         )
         is DeviceDialog.Recover -> RecoverDeviceDialog(
@@ -369,29 +370,36 @@ private fun AddDeviceSection(
 @Composable
 private fun RenameDeviceDialog(
     device: AccountDevice,
+    state: MyDevicesUiState,
     onConfirm: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var name by remember(device.publicId) { mutableStateOf(device.deviceName) }
+    var submitted by remember(device.publicId) { mutableStateOf(false) }
+    val busy = state.busyDeviceId == device.publicId
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!busy) onDismiss() },
         title = { Text(stringResource(R.string.my_devices_rename_dialog_title)) },
         text = {
-            SettingsDialogTextInput(
-                state = SettingsTextInputState(
-                    label = stringResource(R.string.my_devices_rename_dialog_label),
-                    value = name,
-                ),
-                onValueChange = { name = it },
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+                if (submitted) AppStatusBanner(message = state.message, tone = state.messageTone)
+                SettingsDialogTextInput(
+                    state = SettingsTextInputState(
+                        label = stringResource(R.string.my_devices_rename_dialog_label),
+                        value = name,
+                        enabled = !busy,
+                    ),
+                    onValueChange = { name = it },
+                )
+            }
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(name) }, enabled = name.isNotBlank()) {
+            TextButton(onClick = { submitted = true; onConfirm(name) }, enabled = !busy && name.isNotBlank()) {
                 Text(stringResource(R.string.my_devices_rename_dialog_confirm))
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(onClick = onDismiss, enabled = !busy) {
                 Text(stringResource(R.string.common_cancel))
             }
         },
