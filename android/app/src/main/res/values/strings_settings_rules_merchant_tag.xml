@@ -29,7 +29,6 @@
     <string name="category_rule_card_action_edit">编辑</string>
     <string name="category_rule_card_action_delete">删除</string>
     <string name="category_rule_condition_separator"> · </string>
-    <string name="category_rule_condition_none">无附加条件</string>
 
     <!-- CategoryRuleEditorCard（categoryrules/）：新增/编辑表单 -->
     <string name="category_rule_editor_keyword_label">商家关键词</string>
@@ -315,8 +314,8 @@
     <!-- ADR-0044 wave 2: CategoryRulesScreen / SettingsCategoryComponents vertical-local helper 文案 -->
     <string name="category_rules_summary_empty">还没有规则</string>
     <string name="category_rules_summary_count">%1$d 条启用 · 共 %2$d 条</string>
-    <string name="category_rule_condition_amount_min">金额 &gt;= %1$s</string>
-    <string name="category_rule_condition_amount_max">金额 &lt;= %1$s</string>
+    <string name="category_rule_condition_amount_min">金额不低于 %1$s</string>
+    <string name="category_rule_condition_amount_max">金额不高于 %1$s</string>
     <string name="category_rule_condition_source_contains">来源含 %1$s</string>
     <string name="category_rule_condition_tag">标签 %1$s</string>
     <string name="category_rule_form_validation_fields">请填写关键词和分类。</string>

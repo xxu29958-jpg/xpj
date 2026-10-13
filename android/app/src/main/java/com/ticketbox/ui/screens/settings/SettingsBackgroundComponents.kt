@@ -166,8 +166,10 @@ internal fun BuiltInBackgroundCard(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    // The card previews its own skin, so its text follows that skin rather than the current theme.
                     Text(
                         text = stringResource(builtInBackgroundNameRes(background)),
+                        color = scheme.onSurface,
                         style = MaterialTheme.typography.titleSmall,
                         maxLines = 1,
                     )
@@ -184,7 +186,7 @@ internal fun BuiltInBackgroundCard(
                         stringResource(appSkinNameRes(skin)),
                         stringResource(builtInBackgroundDescriptionRes(background)),
                     ),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = scheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
