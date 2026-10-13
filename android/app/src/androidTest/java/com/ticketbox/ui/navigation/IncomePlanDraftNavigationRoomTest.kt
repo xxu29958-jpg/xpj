@@ -223,7 +223,7 @@ class IncomePlanDraftNavigationRoomTest {
         income.network.failReads = true
         compose.runOnIdle { assertTrue(inner.popBackStack()) }
         enterIncome()
-        compose.onNodeWithText("2026-09 预计收入").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("2026年9月 预计收入").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("包含离线保留的读取", substring = true).performScrollTo().assertIsDisplayed()
         com.ticketbox.ui.saveConsumerArtPreview("income-retained-month", compose.onRoot().captureToImage().asAndroidBitmap())
         compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(context.getString(R.string.income_history_action)))
@@ -273,7 +273,7 @@ class IncomePlanDraftNavigationRoomTest {
 
     private fun enterIncome() {
         compose.runOnIdle { inner.navigate(ProductSecondaryPage.IncomePlans.route) }
-        compose.waitUntil(10_000) { compose.onAllNodesWithText("2026-09 预计收入").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("2026年9月 预计收入").fetchSemanticsNodes().isNotEmpty() }
         compose.waitForIdle()
     }
 
