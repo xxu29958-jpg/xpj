@@ -273,10 +273,10 @@
          关键文案：让用户分清「份额」与「拆账」——份额记在本账本，拆账是把一笔分给家人、
          对方在自己的账本记一笔，接受后两笔互不影响。 -->
     <string name="expense_edit_bill_split_card_title">找家人分摊</string>
-    <string name="expense_edit_bill_split_card_subtitle">把这笔的一部分分给家人，对方在自己的账本记一笔；接受后与本账单各自独立、互不影响。和上面的「家庭拆账」不同——那只是记下本账本里谁各自分摊多少份额。</string>
+    <string name="expense_edit_bill_split_card_subtitle">发给家人后，对方在自己的账本记一笔，和这笔账单互不影响。本账本里记的份额不变。</string>
     <string name="expense_edit_bill_split_start_button">发起拆账</string>
     <string name="expense_edit_bill_split_loading">拆账邀请加载中…</string>
-    <string name="expense_edit_bill_split_empty">还没有发出的拆账邀请。点「发起拆账」分给家人。</string>
+    <string name="expense_edit_bill_split_empty">还没有发出的邀请。</string>
     <string name="expense_edit_bill_split_row_to">发给 %1$s</string>
     <string name="expense_edit_bill_split_row_to_unknown">发给家人</string>
     <string name="expense_edit_bill_split_row_cancel">撤回</string>
