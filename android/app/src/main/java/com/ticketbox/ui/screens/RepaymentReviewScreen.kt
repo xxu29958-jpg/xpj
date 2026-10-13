@@ -2,8 +2,10 @@ package com.ticketbox.ui.screens
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -16,12 +18,18 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.MessageTone
+import com.ticketbox.domain.model.RepaymentDraft
+import com.ticketbox.ui.components.AppAdaptiveContentActionRow
+import com.ticketbox.ui.components.AppAdaptiveContentActionStyle
+import com.ticketbox.ui.components.AppPaperCard
 import com.ticketbox.ui.components.AppAmountInput
 import com.ticketbox.ui.components.AppAmountInputActions
 import com.ticketbox.ui.components.AppAmountInputState
@@ -36,6 +44,7 @@ import com.ticketbox.ui.components.AppSecondaryRefreshState
 import com.ticketbox.ui.components.AppSecondaryScrollableContent
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.viewmodel.RepaymentDraftInboxUiState
 import com.ticketbox.viewmodel.RepaymentDraftInboxViewModel
 
@@ -52,13 +61,7 @@ internal fun RepaymentReviewScreen(state: RepaymentDraftInboxUiState, model: Rep
         refresh = AppSecondaryRefreshState(state.isLoading, model::refresh),
         slots = AppSecondaryPageSlots(bottomBar = { RepaymentReviewActions(state, model) })) {
         item {
-            state.drafts.find { it.publicId == state.reviewId }?.let { capture ->
-                Text(stringResource(R.string.repayment_draft_original_money), style = MaterialTheme.typography.labelMedium)
-                Text("${capture.originalCurrencyCode} ${com.ticketbox.ui.components.formatMinorAmount(capture.originalAmountMinor,
-                    CurrencyCode.fromStorageKey(capture.originalCurrencyCode))}", style = MaterialTheme.typography.bodyLarge)
-                Text(capture.merchantLabel.orEmpty())
-                Text(stringResource(R.string.repayment_draft_captured_at, capture.capturedAt.take(10)))
-            }
+            state.drafts.find { it.publicId == state.reviewId }?.let { capture -> RepaymentReviewSource(capture) }
         }
         state.error?.let { item { AppStatusBanner(it, tone = MessageTone.Danger) } }
         item { RepaymentReviewInputs(state, model) { choosingDebt = true } }
@@ -66,7 +69,8 @@ internal fun RepaymentReviewScreen(state: RepaymentDraftInboxUiState, model: Rep
         state.drafts.find { it.publicId == state.reviewId && !it.isPending }?.let { capture ->
             item {
                 if (state.review.input != null && state.review.input.submittedAction == null) {
-                    Text(stringResource(R.string.repayment_review_unsubmitted_history))
+                    Text(stringResource(R.string.repayment_review_unsubmitted_history), style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 RepaymentDraftResolved(capture) { capture.committedDebtPublicId?.let(onOpenDebt) }
             }
@@ -77,32 +81,79 @@ internal fun RepaymentReviewScreen(state: RepaymentDraftInboxUiState, model: Rep
         onClose = { choosingDebt = false })
 }
 
+/** The capture as it arrived. It is evidence: shown on its own card and never edited on this page. */
+@Composable
+private fun RepaymentReviewSource(capture: RepaymentDraft) {
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    AppPaperCard(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(AppSpacing.cardPadding),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+        ) {
+            Text(stringResource(R.string.repayment_draft_original_money), style = MaterialTheme.typography.labelMedium, color = muted)
+            Text("${capture.originalCurrencyCode} ${com.ticketbox.ui.components.formatMinorAmount(capture.originalAmountMinor,
+                CurrencyCode.fromStorageKey(capture.originalCurrencyCode))}",
+                style = MaterialTheme.typography.titleMedium.tabularNum(), fontWeight = FontWeight.SemiBold)
+            capture.merchantLabel?.takeIf { it.isNotBlank() }?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = muted)
+            }
+            Text(stringResource(R.string.repayment_draft_captured_at, capture.capturedAt.take(10)),
+                style = MaterialTheme.typography.bodySmall, color = muted)
+        }
+    }
+}
+
 @Composable
 private fun RepaymentReviewInputs(state: RepaymentDraftInboxUiState, model: RepaymentDraftInboxViewModel, chooseDebt: () -> Unit) {
     val input = state.review.input ?: return
     val pending = state.drafts.any { it.publicId == input.draftPublicId && it.isPending }
     val unsubmitted = pending && input.submittedAction == null
     val editable = unsubmitted && !state.review.bindingChanged && state.canModify && state.pendingActionDraftId == null
-    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
         RepaymentReviewMoney(input.currency, input.amountText, editable, model.reviewEditor::updateReviewMoney)
-        if (editable) {
-            DebtDateField(input.paymentDate.orEmpty(), true, onChange = model.reviewEditor::updateReviewDate)
-            Text(stringResource(R.string.repayment_review_date_hint), style = MaterialTheme.typography.bodySmall)
-        } else {
-            Text(stringResource(R.string.debt_payment_date_label), style = MaterialTheme.typography.labelMedium)
-            Text(input.paymentDate?.takeIf { it.isNotEmpty() } ?: stringResource(R.string.repayment_review_original_time))
+        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
+            if (editable) {
+                DebtDateField(input.paymentDate.orEmpty(), true, onChange = model.reviewEditor::updateReviewDate)
+                Text(stringResource(R.string.repayment_review_date_hint), style = MaterialTheme.typography.bodySmall, color = muted)
+            } else {
+                Text(stringResource(R.string.debt_payment_date_label), style = MaterialTheme.typography.labelMedium, color = muted)
+                Text(input.paymentDate?.takeIf { it.isNotEmpty() } ?: stringResource(R.string.repayment_review_original_time),
+                    style = MaterialTheme.typography.titleMedium)
+            }
         }
-        Text(input.debtLabel ?: stringResource(R.string.repayment_review_no_target), style = MaterialTheme.typography.titleMedium)
-        if (editable) TextButton(onClick = chooseDebt) { Text(stringResource(R.string.repayment_review_select)) }
-        Text(stringResource(R.string.repayment_review_money_note), style = MaterialTheme.typography.bodySmall)
+        RepaymentReviewTarget(input.debtLabel, editable, chooseDebt)
+        Text(stringResource(R.string.repayment_review_money_note), style = MaterialTheme.typography.bodySmall, color = muted)
         if (unsubmitted && state.review.bindingChanged) {
             RepaymentReviewReopenUnsubmitted(state.canModify, model.reviewEditor::reviewAgain)
         }
-        if (unsubmitted) {
+        // 忽略是这页的低频出口：放在表单末尾居中，不夹在输入之间。
+        if (unsubmitted) Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
             TextButton(onClick = { model.dismiss(input.draftPublicId) }, enabled = editable) {
                 Text(stringResource(R.string.repayment_draft_dismiss))
             }
         }
+    }
+}
+
+/** Which debt this repayment goes to: the choice and the way to change it sit on one line. */
+@Composable
+private fun RepaymentReviewTarget(label: String?, editable: Boolean, chooseDebt: () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
+        Text(stringResource(R.string.repayment_review_target_label), style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        AppAdaptiveContentActionRow(
+            style = AppAdaptiveContentActionStyle(compactAction = true),
+            content = {
+                Text(label ?: stringResource(R.string.repayment_review_no_target), style = MaterialTheme.typography.titleMedium,
+                    color = if (label == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
+            },
+            action = { actionModifier ->
+                if (editable) TextButton(onClick = chooseDebt, modifier = actionModifier) {
+                    Text(stringResource(R.string.repayment_review_select))
+                }
+            },
+        )
     }
 }
 
@@ -133,8 +184,11 @@ private fun RepaymentReviewMoney(currency: String, amount: String, editable: Boo
                 onCurrencyClick = { choosingCurrency = true }),
             decorations = AppTextInputDecorations(amountRole = AppAmountRole.Hero))
     } else {
-        Text(stringResource(R.string.repayment_review_stored_amount), style = MaterialTheme.typography.labelMedium)
-        AppAmountText("$currency $amount", role = AppAmountRole.Hero)
+        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
+            Text(stringResource(R.string.repayment_review_stored_amount), style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            AppAmountText("$currency $amount", role = AppAmountRole.Hero)
+        }
     }
     if (choosingCurrency) RepaymentReviewCurrencyDialog(onClose = { choosingCurrency = false }) { selected ->
         onChange(selected.storageKey, amount)
@@ -168,21 +222,30 @@ private fun RepaymentReviewDelivery(state: RepaymentDraftInboxUiState, model: Re
     if (state.review.input?.submittedAction == null) return
     val row = state.review.original
     var confirmStop by rememberSaveable(row?.id) { mutableStateOf(false) }
-    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        Text(stringResource(R.string.repayment_review_original), style = MaterialTheme.typography.titleMedium)
-        Text(stringResource(when (row?.status) {
-            PendingMutationStatus.Done -> R.string.repayment_review_done
-            PendingMutationStatus.Abandoned -> R.string.repayment_review_stopped
-            null -> R.string.repayment_review_receipt_missing
-            else -> R.string.repayment_review_waiting
-        }))
-        if (state.review.bindingChanged) Text(stringResource(R.string.debt_write_original_binding_changed))
-        row?.lastError?.let { Text(repaymentReviewError(it), style = MaterialTheme.typography.bodySmall) }
-        if (state.review.canStop) TextButton(onClick = { confirmStop = true }) {
-            Text(stringResource(R.string.debt_write_drop))
-        }
-        if (row?.status == PendingMutationStatus.Abandoned) TextButton(onClick = model.reviewEditor::reviewAgain, enabled = state.canModify) {
-            Text(stringResource(R.string.repayment_review_again))
+    AppPaperCard(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(AppSpacing.cardPadding),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+        ) {
+            Text(stringResource(R.string.repayment_review_original), style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold)
+            Text(stringResource(when (row?.status) {
+                PendingMutationStatus.Done -> R.string.repayment_review_done
+                PendingMutationStatus.Abandoned -> R.string.repayment_review_stopped
+                null -> R.string.repayment_review_receipt_missing
+                else -> R.string.repayment_review_waiting
+            }), style = MaterialTheme.typography.bodyMedium)
+            if (state.review.bindingChanged) Text(stringResource(R.string.debt_write_original_binding_changed),
+                style = MaterialTheme.typography.bodyMedium)
+            row?.lastError?.let {
+                Text(repaymentReviewError(it), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (state.review.canStop) TextButton(onClick = { confirmStop = true }) {
+                Text(stringResource(R.string.debt_write_drop))
+            }
+            if (row?.status == PendingMutationStatus.Abandoned) TextButton(onClick = model.reviewEditor::reviewAgain, enabled = state.canModify) {
+                Text(stringResource(R.string.repayment_review_again))
+            }
         }
     }
     if (confirmStop) AlertDialog(onDismissRequest = { confirmStop = false },

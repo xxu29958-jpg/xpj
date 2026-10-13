@@ -2,14 +2,13 @@ package com.ticketbox.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
-import com.ticketbox.ui.components.AppAction
-import com.ticketbox.ui.components.AppActionRow
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -18,6 +17,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -27,12 +27,13 @@ import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.RepaymentDraft
-import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.AppAdaptiveAmountRowStyle
 import com.ticketbox.ui.components.AppAdaptiveEditAmountRow
+import com.ticketbox.ui.asString
+import com.ticketbox.ui.components.AppErrorState
 import com.ticketbox.ui.components.AppPaperCard
+import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppListStateContent
-import com.ticketbox.ui.components.AppListStateMessage
 import com.ticketbox.ui.components.AppListStateSpec
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppSecondaryPageChrome
@@ -108,6 +109,7 @@ fun RepaymentDraftInboxScreen(
         repaymentDraftListSection(
             state = state.copy(drafts = state.drafts.filter { it.isPending != showHistory }),
             showHistory = showHistory,
+            onRetry = viewModel::refresh,
             actions = RepaymentDraftListActions(
                 onOpenDebt = onOpenDebt,
                 onOpenPicker = { draft -> viewModel.reviewEditor.openReview(draft.publicId) },
@@ -127,6 +129,7 @@ private data class RepaymentDraftListActions(
 private fun LazyListScope.repaymentDraftListSection(
     state: RepaymentDraftInboxUiState,
     showHistory: Boolean,
+    onRetry: () -> Unit,
     actions: RepaymentDraftListActions,
 ) {
     val bodyState = readableListBodyState(
@@ -134,14 +137,20 @@ private fun LazyListScope.repaymentDraftListSection(
         isLoading = state.isLoading,
         error = state.error,
     )
-    if (bodyState != ReadableListBodyState.Content) {
+    val failure = state.error.takeIf { bodyState == ReadableListBodyState.LoadFailed }
+    if (failure != null) {
         item {
-            RepaymentDraftListStateCard(
-                loading = bodyState == ReadableListBodyState.Loading,
-                error = state.error.takeIf { bodyState == ReadableListBodyState.LoadFailed },
-                showHistory = showHistory,
+            AppErrorState(
+                title = stringResource(R.string.repayment_draft_error_title),
+                body = failure.asString(),
+                onRetry = onRetry,
+                modifier = Modifier.fillMaxWidth(),
             )
         }
+        return
+    }
+    if (bodyState != ReadableListBodyState.Content) {
+        item { RepaymentDraftListStateCard(loading = bodyState == ReadableListBodyState.Loading, showHistory = showHistory) }
         return
     }
     items(state.drafts, key = { it.publicId }) { draft ->
@@ -233,19 +242,27 @@ private fun RepaymentDraftCard(
 
 @Composable
 private fun RepaymentDraftCardActions(action: DraftRowAction, callbacks: RepaymentDraftCardCallbacks) {
-    AppActionRow(
-        primary = AppAction(text = stringResource(R.string.repayment_review_open),
-            onClick = callbacks.onOpenPicker, enabled = action != DraftRowAction.Busy),
-        secondary = AppAction(text = stringResource(R.string.repayment_draft_dismiss),
-            onClick = callbacks.onDismiss, enabled = action == DraftRowAction.Idle),
-        showDivider = false,
-    )
+    // 一张采集一行动作：忽略是次要的文字入口，核对是主按钮；不再各占一整行。
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        TextButton(enabled = action == DraftRowAction.Idle, onClick = callbacks.onDismiss) {
+            Text(stringResource(R.string.repayment_draft_dismiss))
+        }
+        AppPrimaryButton(
+            text = stringResource(R.string.repayment_review_open),
+            modifier = Modifier.weight(1f),
+            enabled = action != DraftRowAction.Busy,
+            onClick = callbacks.onOpenPicker,
+        )
+    }
 }
 
 @Composable
 private fun RepaymentDraftListStateCard(
     loading: Boolean,
-    error: UiText?,
     showHistory: Boolean,
 ) {
     AppPaperCard(modifier = Modifier.fillMaxWidth()) {
@@ -258,7 +275,6 @@ private fun RepaymentDraftListStateCard(
                 emptyTitle = stringResource(if (showHistory) R.string.repayment_draft_history_empty_title else R.string.repayment_draft_empty_title),
                 emptyBody = stringResource(if (showHistory) R.string.repayment_draft_history_empty_body else R.string.repayment_draft_empty_body),
             ),
-            message = error?.let { AppListStateMessage(text = it, tone = MessageTone.Danger) },
         ) {
         }
     }
