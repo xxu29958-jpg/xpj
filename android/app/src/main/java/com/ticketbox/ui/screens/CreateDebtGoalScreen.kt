@@ -2,9 +2,12 @@ package com.ticketbox.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -23,7 +26,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
@@ -31,8 +33,6 @@ import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.AppFloatingActionBar
-import com.ticketbox.ui.components.AppAdaptiveContentActionStateRow
-import com.ticketbox.ui.components.AppAdaptiveContentActionStyle
 import com.ticketbox.ui.components.AppListRow
 import com.ticketbox.ui.components.AppListStateContent
 import com.ticketbox.ui.components.AppListStateMessage
@@ -186,6 +186,7 @@ private fun DebtGoalPickerContent(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun DebtPickerRow(
     debt: Debt,
@@ -207,10 +208,15 @@ internal fun DebtPickerRow(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
         ) {
-            AppAdaptiveContentActionStateRow(
-                style = AppAdaptiveContentActionStyle(amountTrailing = true),
-                content = { Text(name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold) },
-            ) { amountModifier, stacked ->
+            // 名字和剩余金额能并排就并排；放不下时金额整行落到名字下面，名字不被挤成窄列。
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+                itemVerticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(name, modifier = Modifier.padding(end = AppSpacing.contentGap),
+                    style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                 Text(
                     stringResource(
                         R.string.debt_goal_create_remaining_amount,
@@ -218,11 +224,9 @@ internal fun DebtPickerRow(
                         // 不用恒 Base 的环境 display。
                         formatDisplayAmount(debt.remainingAmountCents, CurrencyDisplay.forRecord(debt.homeCurrencyCode)),
                     ),
-                    modifier = amountModifier,
                     style = MaterialTheme.typography.bodyMedium.tabularNum(),
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = if (stacked) TextAlign.Start else TextAlign.End,
                 )
             }
             Row(
