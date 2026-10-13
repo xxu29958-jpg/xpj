@@ -122,15 +122,13 @@ fun BindServerScreen(
         )
         if (scanInvalid) Text(stringResource(R.string.qr_pairing_invalid))
         scannedOrigin?.let { Text(stringResource(R.string.qr_pairing_ready, it)) }
-        Text(
-            text = if (serverUrlEntry.showInput) {
-                stringResource(R.string.bind_server_hint_with_url)
-            } else {
-                stringResource(R.string.bind_server_hint_no_url)
-            },
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        if (!serverUrlEntry.showInput) {
+            Text(
+                text = stringResource(R.string.bind_server_hint_no_url),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         if (serverUrlEntry.showInput) {
             AppTextInput(
                 state = AppTextInputState(

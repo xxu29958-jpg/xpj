@@ -113,6 +113,7 @@ private fun AmountRow(
         style = AppAdaptiveContentActionStyle(
             wideActionWeight = BUDGET_AMOUNT_ROW_TRAILING_WEIGHT,
             verticalAlignment = Alignment.Top,
+            amountTrailing = true,
         ),
         content = { AmountRowCopy(title = title, detail = detail) },
         action = { actionModifier ->

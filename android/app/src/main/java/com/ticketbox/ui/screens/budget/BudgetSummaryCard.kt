@@ -185,18 +185,16 @@ private fun BudgetMetricRows(
     budget: BudgetMonthly,
     currencyDisplay: CurrencyDisplay,
 ) {
+    // A figure the server did not provide is left out rather than shown as an amount to fill in.
     val metrics = listOf(
-        stringResource(R.string.budget_summary_metric_total) to
-            formatDisplayAmount(budget.availableAmountCents, currencyDisplay),
-        stringResource(R.string.budget_summary_metric_spent) to
-            formatDisplayAmount(budget.spentAmountCents, currencyDisplay),
-        stringResource(R.string.budget_summary_metric_flex) to
-            formatDisplayAmount(budget.flexBudgetCents, currencyDisplay),
-        stringResource(R.string.budget_summary_metric_fixed) to
-            formatDisplayAmount(budget.fixedAmountCents, currencyDisplay),
-        stringResource(R.string.budget_summary_metric_excluded) to
-            formatDisplayAmount(budget.excludedAmountCents, currencyDisplay),
-    )
+        R.string.budget_summary_metric_total to budget.availableAmountCents,
+        R.string.budget_summary_metric_spent to budget.spentAmountCents,
+        R.string.budget_summary_metric_flex to budget.flexBudgetCents,
+        R.string.budget_summary_metric_fixed to budget.fixedAmountCents,
+        R.string.budget_summary_metric_excluded to budget.excludedAmountCents,
+    ).mapNotNull { (label, amount) ->
+        amount?.let { stringResource(label) to formatDisplayAmount(it, currencyDisplay) }
+    }
     AppAdaptiveMetricGrid(
         itemCount = metrics.size,
         twoColumnMinWidth = AppAdaptiveMetricGridCompactMinWidth,

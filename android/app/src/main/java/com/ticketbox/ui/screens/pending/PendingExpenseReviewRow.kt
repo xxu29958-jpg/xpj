@@ -103,7 +103,10 @@ internal fun PendingExpenseReviewRow(
             verticalArrangement = Arrangement.spacedBy(metrics.contentGap),
         ) {
             AppAdaptiveContentActionStateRow(
-                style = AppAdaptiveContentActionStyle(wideActionWeight = AppAdaptiveAmountRowDefaults.reviewTrailingWeight),
+                style = AppAdaptiveContentActionStyle(
+                    wideActionWeight = AppAdaptiveAmountRowDefaults.reviewTrailingWeight,
+                    compactAction = true,
+                ),
                 content = {
                     Row(
                         modifier = Modifier
@@ -179,10 +182,7 @@ private fun RowScope.PendingExpenseTextBlock(item: PendingExpenseReviewItem) {
             overflow = TextOverflow.Ellipsis,
         )
         Text(
-            text = stringResource(
-                R.string.pending_row_meta,
-                com.ticketbox.ui.components.expenseTimeLabel(expense).asString(),
-            ),
+            text = com.ticketbox.ui.components.expenseTimeLabel(expense).asString(),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
             maxLines = 1,

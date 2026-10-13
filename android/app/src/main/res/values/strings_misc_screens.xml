@@ -110,7 +110,6 @@
     <!-- BindServerScreen：绑定私人账本 -->
     <string name="bind_server_header_title">连接私人账本</string>
     <string name="bind_server_header_subtitle">使用账本拥有者提供的地址和码。</string>
-    <string name="bind_server_hint_with_url">服务拥有者会提供账本地址和绑定码。</string>
     <string name="bind_server_hint_no_url">服务拥有者已配置账本地址，请输入绑定码。</string>
     <string name="bind_server_field_url_label">账本地址</string>
     <string name="bind_server_field_url_placeholder">向服务拥有者获取</string>
