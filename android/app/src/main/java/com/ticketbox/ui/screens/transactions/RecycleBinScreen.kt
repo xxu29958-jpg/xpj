@@ -54,7 +54,7 @@ import com.ticketbox.ui.components.AppSecondaryRefreshState
 import com.ticketbox.ui.components.AppSecondaryScrollableContent
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.DataAuthorityTone
-import com.ticketbox.ui.components.displayTime
+import com.ticketbox.ui.components.displayDateTime
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.viewmodel.RecycleBinUiState
@@ -297,7 +297,7 @@ private fun RecycleBinItemContent(item: RecycleBinItem) {
             Text(stringResource(if (item.kind in planKinds) R.string.recycle_bin_archived_status
                 else R.string.recycle_bin_removed_status, item.kindLabel, item.retentionLabel),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(displayTime(item.removedAt), style = MaterialTheme.typography.bodySmall,
+            Text(displayDateTime(item.removedAt), style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
