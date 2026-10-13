@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import com.ticketbox.ui.components.AppPrimaryButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -40,6 +41,11 @@ fun AccountProfileScreen(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
+                Text(
+                    text = stringResource(R.string.account_profile_online),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 AppPrimaryButton(
                     text = stringResource(if (state.busy) R.string.account_profile_working else R.string.account_profile_save),
                     onClick = onSave, enabled = state.fresh && !state.busy && state.name.isNotBlank(),
@@ -47,7 +53,6 @@ fun AccountProfileScreen(
                 TextButton(onClick = onRefresh, enabled = !state.busy) {
                     Text(stringResource(R.string.account_profile_refresh))
                 }
-                Text(stringResource(R.string.account_profile_online))
             }
         }
     }
