@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+from datetime import date
 from pathlib import Path
 
 from scripts.planning_journey_android import wait_for
@@ -108,6 +109,8 @@ class NotificationReminders:
     def original_taps(self):
         from scripts.planning_notification_context import share_original, shared_original_result
 
+        reminder_day = date.fromisoformat(self.expected_date)
+        displayed_reminder = f"下次提醒：{reminder_day.year}年{reminder_day.month}月{reminder_day.day}日"
         self.j.tap_notification("本月预算超了", expected="调整本月预算")
         self.native.click("调整本月预算")
         self.native.fill("321.09", label="月度总预算")
@@ -128,8 +131,8 @@ class NotificationReminders:
         self.native.click("固定支出", stable=True)
         self.native.reveal_any(SERIES)
         self.native.click("查看本期")
+        self.native.reveal_any(displayed_reminder, exact=True)
         self.native.reveal_any("履约月份")
-        self.native.reveal_any(self.expected_date)
         self.native.capture("notification-fixed-read-before-share")
         self.native.back()
         self.native.back()
@@ -137,8 +140,8 @@ class NotificationReminders:
         digest = share_original(self.j)
         self.j.tap_notification(SERIES, expected="固定支出")
         self.native.reveal_any(SERIES)
+        self.native.reveal_any(displayed_reminder, exact=True)
         self.native.reveal_any("履约月份")
-        self.native.reveal_any(self.expected_date)
         self.native.capture("notification-original-fixed-occurrence")
         reminder_facts = self.facts()
         assert reminder_facts["expected_date"] == self.expected_date, "Opening a reminder advanced the fixed-expense due date"
