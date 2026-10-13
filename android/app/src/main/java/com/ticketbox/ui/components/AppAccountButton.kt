@@ -36,7 +36,7 @@ fun AppAccountButton(
             modifier = Modifier
                 .size(AppAccountButtonTokens.AvatarSize)
                 .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f))
+                .background(MaterialTheme.colorScheme.primaryContainer)
                 .border(
                     width = AppAccountButtonTokens.BorderWidth,
                     color = MaterialTheme.colorScheme.outlineVariant,
