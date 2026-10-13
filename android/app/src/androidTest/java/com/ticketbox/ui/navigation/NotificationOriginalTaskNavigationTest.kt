@@ -125,6 +125,11 @@ class NotificationOriginalTaskNavigationTest {
     private fun waitForMonth(month: String) {
         waitForText(context.getString(R.string.budget_header_subtitle, monthLabel(month)))
         compose.waitUntil(5_000) { transport.budgetReads.contains(month) }
+        // The selected month and dispatched read precede the editable budget projection.
+        compose.waitUntil(5_000) {
+            compose.onAllNodes(hasSetTextAction() and hasAnyAncestor(hasTestTag("budget_total_amount")))
+                .fetchSemanticsNodes().size == 1
+        }
     }
 
     private fun monthLabel(month: String) = YearMonth.parse(month).let {

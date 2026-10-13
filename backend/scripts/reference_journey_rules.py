@@ -146,7 +146,9 @@ def apply_and_rollback_from_native(j):
 def restore_rule_and_category(j, category, rule):
     native, page = j.native, j.page
     j.goto("/web/rules")
-    j.confirm(j.form(f'/web/rules/{rule["id"]}/delete'))
+    removal = j.form(f'/web/rules/{rule["id"]}/delete')
+    page.locator(".product-more").filter(has=removal).locator("summary").click()
+    j.confirm(removal)
     j.expect(lambda state: any(row["id"] == rule["id"] and row["deleted"] for row in state["rules"]),
              "The Web rule delete did not commit")
     j.goto("/web/categories")

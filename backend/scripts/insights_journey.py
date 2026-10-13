@@ -134,7 +134,9 @@ class InsightsJourney:
             key for key in default_order if key not in {"goals", "monthly_spend", "pending"}]
         for position, key in enumerate(custom_order):
             row = page.locator(f'[data-dashboard-card-row="{key}"]')
+            row.locator(".layout-position > summary").click()
             row.locator("[data-card-position]").fill(str(position))
+            row.locator(".layout-position > summary").click()
             row.locator('[name="visible_key"]').set_checked(key != "reports")
         page.locator('#dashboard-cards-form button[type="submit"]').click()
         page.wait_for_url("**/web/dashboard/cards?*msg=*")

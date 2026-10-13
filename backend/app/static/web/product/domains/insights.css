@@ -23,7 +23,7 @@
 .insight-grid > .product-panel { border: 0; border-radius: 0; background: transparent; box-shadow: none; padding: 0; }
 .insight-grid > .insight-hero { padding: var(--space-6); border-radius: var(--radius-xl); background: var(--brand-primary-bg); }
 .insight-grid > [data-overview-card="budget"] .insight-stat-value { font-size: clamp(var(--type-headline-size), 14cqi, var(--type-display-size)); }
-.insight-grid .product-status { justify-self: start; }
+.insight-grid .product-status { justify-self: start; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 /* 小模块是一行: 图标、它是什么、去哪里; 补充说明另起一行。 */
 .insight-grid > .insight-brief > .insight-module-icon { grid-row: span 2; align-self: start; }
 .insight-grid > .insight-brief > :not(.insight-module-icon, a) { grid-column: 2; }

@@ -1,5 +1,6 @@
 package com.ticketbox.ui.screens.settings
 
+import android.Manifest
 import android.os.Build
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -19,6 +20,7 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.NotificationPreferences
@@ -59,6 +61,12 @@ class NotificationPreferencesScreenStatusTest {
 
     @Test
     fun namedReminderRowChangesItsPreferenceExactlyOncePerActivation() {
+        // This test checks row activation; the permission states are exercised separately below.
+        if (Build.VERSION.SDK_INT >= 33) {
+            val instrumentation = InstrumentationRegistry.getInstrumentation()
+            instrumentation.uiAutomation.grantRuntimePermission(
+                instrumentation.targetContext.packageName, Manifest.permission.POST_NOTIFICATIONS)
+        }
         var preferences by mutableStateOf(NotificationPreferences())
         var saves = 0
         composeRule.setContent {
