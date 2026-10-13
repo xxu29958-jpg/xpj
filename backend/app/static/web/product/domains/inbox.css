@@ -548,7 +548,7 @@ body:has(:is(.inbox-capture-panel, .inbox-empty-capture)[open]) .content { max-w
 .review-task-header { display: flex; grid-column: 1 / -1; align-items: center; justify-content: space-between; gap: var(--space-3); }
 .review-position { color: var(--text-meta); font-size: var(--type-caption-size); }
 .review-mobile-title { margin: 0; font-size: var(--type-hero-size); letter-spacing: -.035em; }
-.review-mobile-state { display: flex; justify-content: space-between; align-items: center; margin-block: var(--space-1) var(--space-3); color: var(--text-meta); font-size: var(--type-body-size); }
+.review-mobile-state { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: var(--space-3); margin-block: var(--space-1) var(--space-3); color: var(--text-meta); font-size: var(--type-body-size); }
 .review-original-details > summary { display: flex; align-items: center; justify-content: space-between; min-height: var(--target-min); cursor: pointer; color: var(--text-meta); font-size: var(--type-caption-size); }
 .review-original-details[open] { display: grid; gap: var(--space-4); }
 .review-more-actions { position: relative; }
@@ -607,9 +607,8 @@ body:has(:is(.inbox-capture-panel, .inbox-empty-capture)[open]) .content { max-w
 }
 .review-full-heading .page-title { font-size: var(--type-hero-size); }
 body[data-page="expense-detail"][data-domain="inbox"] .product-panel { background: transparent; box-shadow: none; border: 0; padding: 0; }
-/* 03 核对: 页头一行读完「在核对什么 / 现在什么状态」。 */
-body[data-page="expense-detail"][data-domain="inbox"] .review-full-heading { grid-template-columns: minmax(0, 1fr) auto; align-items: start; margin-block-end: var(--space-5); }
-body[data-page="expense-detail"][data-domain="inbox"] .review-full-heading > .product-page-actions { padding-block-start: var(--space-3); }
+/* 03 核对: 位置和状态共用抽屉的状态行，标题保留整行以支持大字重排。 */
+body[data-page="expense-detail"][data-domain="inbox"] .review-full-heading { grid-template-columns: minmax(0, 1fr); align-items: start; margin-block-end: var(--space-5); }
 /* 「核对当前记录」按钮未出现时, 它的空容器不占一档间距。 */
 .expense-review-refresh:not(:has(> :not([hidden]))) { display: none; }
 .edit-form > [data-expensereview-draft-status]:not(.product-feedback--warning) { margin: 0; padding: 0; background: transparent; color: var(--text-meta); font-size: var(--type-caption-size); }

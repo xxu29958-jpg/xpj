@@ -31,11 +31,11 @@
     <div class="product-form-actions"><button class="product-button" type="submit" data-repayment-submit{% if not kind_form.can_recover or kind_form.result == 'accepted-review' or kind_form.rejected %} disabled{% endif %}>{{ '继续核实原更正' if kind_form.result else '保存偿还方式' }}</button></div>
     <div data-void-rejection-review{% if not kind_form.rejected %} hidden{% endif %}>
       <a href="/web/debts/{{ kind_form.public_id }}?ledger_id={{ selected_ledger_id }}">核对原记录</a>
-      <button type="button" data-void-finish-rejected>已核对，结束这次未接受的更正</button>
+      <button class="product-button product-button--quiet" type="button" data-void-finish-rejected>已核对，结束这次未接受的更正</button>
     </div>
     {% if kind_form.result == 'accepted-review' %}
       <a href="/web/debts/{{ kind_form.public_id }}?ledger_id={{ selected_ledger_id }}">核对原记录</a>
-      <button type="button" data-void-finish-review>已核对原记录，结束本地恢复</button>
+      <button class="product-button product-button--quiet" type="button" data-void-finish-review>已核对原记录，结束本地恢复</button>
     {% endif %}
   </form>
 </details>

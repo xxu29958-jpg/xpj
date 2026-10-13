@@ -25,6 +25,20 @@
 {% set _q = '?ledger_id=' ~ selected_ledger_id %}
 <header class="product-page-header review-full-heading" id="review" tabindex="-1" data-review-stage="primary"{% if expense_review_inspection %} data-review-current-record{% endif %}>
   <div class="product-page-heading">
+    <div class="review-mobile-state">
+      {% if pending_review_position %}
+      <span class="review-position" data-review-position aria-label="当前筛选的待确认队列，第 {{ pending_review_position.position }} 张，共 {{ pending_review_position.total }} 张">第 {{ pending_review_position.position }} / {{ pending_review_position.total }} 张</span>
+      {% endif %}
+      <span class="product-status">
+        {% if e.is_duplicate %}疑似重复
+        {% elif e.status == 'confirmed' %}已确认
+        {% elif e.status == 'rejected' %}已忽略
+        {% elif e.needs_amount %}缺金额
+        {% elif e.fx_pending %}待汇率
+        {% elif e.needs_merchant %}缺商家
+        {% else %}待确认{% endif %}
+      </span>
+    </div>
     <h1 class="page-title">{{ '账单当前记录' if expense_review_inspection else '核对这张小票' }}</h1>
     <p class="product-page-summary">
       {% if expense_review_inspection %}这里显示账本当前保存的内容。你的原填写和提交仍保留在原核对任务中。
@@ -33,17 +47,6 @@
       {% if e.is_split_received %}· 来自家庭拆账的账单，金额、商家和消费时间按协定冻结，分类、标签和备注仍可整理。{% endif %}
       {% endif %}
     </p>
-  </div>
-  <div class="product-page-actions">
-    <span class="product-status">
-      {% if e.is_duplicate %}疑似重复
-      {% elif e.status == 'confirmed' %}已确认
-      {% elif e.status == 'rejected' %}已忽略
-      {% elif e.needs_amount %}缺金额
-      {% elif e.fx_pending %}待汇率
-      {% elif e.needs_merchant %}缺商家
-      {% else %}待确认{% endif %}
-    </span>
   </div>
 </header>
 

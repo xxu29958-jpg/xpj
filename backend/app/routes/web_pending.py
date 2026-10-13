@@ -33,6 +33,7 @@ from app.routes._web_pending_bulk_response import (
 from app.routes._web_pending_enrichment_watch import (
     web_pending_enrichment_context,
 )
+from app.routes._web_pending_filters import PENDING_FILTERS, matches_pending_filter
 from app.routes._web_session_common import resolve_web_actor
 from app.routes.web_common import (
     LocalOnly,
@@ -46,7 +47,6 @@ from app.routes.web_common import (
     templates,
 )
 from app.services.currency_binding_service import require_runtime_home_currency_code
-from app.services.data_quality_service import is_ready_to_confirm_row, is_uncategorized_expense_category
 from app.services.expense_review_command_service import submit_expense_rejection
 from app.services.expense_service import (
     fetch_expense_row_version_in_status,
@@ -60,54 +60,6 @@ from app.services.pending_review_bulk_service import (
 )
 
 router = APIRouter(prefix="/web", tags=["web"])
-
-
-_PENDING_FILTERS = {
-    "all",
-    "missing_amount",
-    "missing_merchant",
-    "missing_category",
-    "missing_fx",
-    "duplicate",
-    "ready",
-}
-
-
-def _needs_category(view: dict) -> bool:
-    # 与 /api/insights/data-quality 共享口径（is_uncategorized_expense_category）：
-    # 空/未分类/未分類/none/null 均视为待分类；「其他」仍是用户可主动选择的
-    # 合法分类，不计入缺分类，否则旧账单会被错误排除在 ready 筛选外。
-    return is_uncategorized_expense_category(view.get("category"))
-
-
-def _is_ready(view: dict) -> bool:
-    """Ready caliber for filter + tab count + DQ link — delegates to
-    ``data_quality_service.is_ready_to_confirm_row`` (shared with bulk confirm)."""
-    return is_ready_to_confirm_row(
-        amount_cents=view["amount_cents"],
-        merchant=view["merchant"],
-        category=view.get("category"),
-        duplicate_status=view["duplicate_status"],
-        fx_status=view["fx_status"],
-    )
-
-
-def _matches_filter(view: dict, filter_key: str) -> bool:
-    if filter_key == "all":
-        return True
-    if filter_key == "missing_amount":
-        return view["needs_amount"]
-    if filter_key == "missing_merchant":
-        return view["needs_merchant"]
-    if filter_key == "missing_category":
-        return _needs_category(view)
-    if filter_key == "missing_fx":
-        return view["fx_pending"] and view["is_foreign_currency"] and view["original_amount_minor"] is not None
-    if filter_key == "duplicate":
-        return view["is_duplicate"]
-    if filter_key == "ready":
-        return _is_ready(view)
-    return True
 
 
 def _resolve_single_undo(db: Session, *, selected_id: str, undo: str | None, undo_version: str | None) -> tuple[int | None, int | None]:
@@ -169,11 +121,11 @@ def web_pending(
     pending = list_pending(db, selected_id)
     raw_items = [_expense_view(e, presentation_currency_code=presentation_currency) for e in pending]
     filter_key = (filter or "all").strip().lower()
-    if filter_key not in _PENDING_FILTERS:
+    if filter_key not in PENDING_FILTERS:
         filter_key = "all"
 
-    items = [it for it in raw_items if _matches_filter(it, filter_key)]
-    filter_counts = {key: sum(_matches_filter(it, key) for it in raw_items) for key in _PENDING_FILTERS}
+    items = [it for it in raw_items if matches_pending_filter(it, filter_key)]
+    filter_counts = {key: sum(matches_pending_filter(it, key) for it in raw_items) for key in PENDING_FILTERS}
     pending_total = len(raw_items)
     suspected_total = filter_counts["duplicate"]
     ctx = _base_ctx(

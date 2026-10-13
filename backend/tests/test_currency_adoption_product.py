@@ -133,7 +133,9 @@ def test_fresh_currency_requires_choice_before_exposing_a_money_basis(
     page = browser.client.get(entry.headers["location"], headers=browser.headers)
     assert page.status_code == 200
     assert 'name="home_currency_code"' in page.text
-    assert not re.search(r'<input\b[^>]*name="home_currency_code"[^>]*\bchecked', page.text)
+    picker = re.search(r'<select\b[^>]*name="home_currency_code"[^>]*>(.*?)</select>', page.text, re.S)
+    assert picker is not None
+    assert re.findall(r'<option\b[^>]*value="([^"]*)"[^>]*\bselected', picker.group(1)) == ['']
     with SessionLocal() as db:
         assert db.get(InstallationCurrencyBinding, 1).state == "EMPTY"
 

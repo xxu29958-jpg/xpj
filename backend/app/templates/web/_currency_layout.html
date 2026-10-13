@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="{{ ui_theme or 'paper' }}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <title>{% block title %}本机币种{% endblock %} · 小票夹</title>
+  <link rel="icon" type="image/png" href="/static/web/product/brand/favicon-48.png">
+  <script src="/static/web/appearance-bootstrap.js?v={{ asset_version }}"></script>
+  <link rel="stylesheet" href="/static/shared/tokens.css?v={{ asset_version }}">
+  <link rel="stylesheet" href="/static/web/fonts/fonts.css?v={{ asset_version }}">
+  <link rel="stylesheet" href="/static/web/product/shell.css?v={{ asset_version }}">
+  <link rel="stylesheet" href="/static/web/product/components.css?v={{ asset_version }}">
+  <link rel="stylesheet" href="/static/web/pages/currency-adoption.css?v={{ asset_version }}">
+  <script defer src="/static/shared/csrf.js?v={{ asset_version }}"></script>
+</head>
+<body>
+<div class="currency-task">
+  <header class="currency-task-header">
+    <a class="product-button product-button--quiet" href="/web"><svg width="20" height="20" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-left"/></svg> 小票夹</a>
+    <span class="product-eyebrow">本机币种</span>
+  </header>
+  <main id="currency-task-content">{% block content %}{% endblock %}</main>
+  <p class="product-page-summary currency-task-foot">由安装拥有者在已配对的 Desktop 上管理。</p>
+</div>
+</body>
+</html>

@@ -1,9 +1,14 @@
 package com.ticketbox.ui.screens
 
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.hasScrollToNodeAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
+import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.data.repository.ReceivablesActions
 import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.LogicalSessionBinding
@@ -14,6 +19,7 @@ import com.ticketbox.domain.model.DebtDirections
 import com.ticketbox.domain.model.DebtLinkStatuses
 import com.ticketbox.domain.model.DebtSourceTypes
 import com.ticketbox.ui.theme.TicketboxTheme
+import com.ticketbox.ui.saveConsumerArtPreview
 import com.ticketbox.viewmodel.ReceivablesViewModel
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -49,7 +55,8 @@ class ReceivablesScreenNavigationTest {
         )
 
         composeRule.setContent {
-            TicketboxTheme(skin = AppSkin.Default) {
+            TicketboxTheme(skin = if (InstrumentationRegistry.getArguments().getString("captureSkin") == "midnight")
+                AppSkin.Midnight else AppSkin.Paper) {
                 ReceivablesScreen(
                     viewModel = viewModel,
                     onOpenReceivable = { openedPublicId = it.publicId },
@@ -58,11 +65,20 @@ class ReceivablesScreenNavigationTest {
             }
         }
 
-        // The VM loads on a viewModelScope coroutine; wait for the row to render before clicking.
+        // The summary is the first lazy item; large text can leave both debt rows uncomposed.
         composeRule.waitUntil(timeoutMillis = 5_000) {
-            composeRule.onAllNodesWithText("小红").fetchSemanticsNodes().isNotEmpty()
+            composeRule.onAllNodesWithText("我还可以收回 · CNY").fetchSemanticsNodes().isNotEmpty()
         }
-        composeRule.onNodeWithText("小红").performClick()
+        composeRule.onNodeWithText("我还可以收回 · CNY").assertExists()
+        composeRule.onNodeWithText("¥80.00").assertExists()
+        composeRule.onNodeWithText("2 笔未结往来").assertExists()
+        saveConsumerArtPreview("receivables-totals", requireNotNull(
+            InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        composeRule.onNode(hasScrollToNodeAction()).performScrollToNode(hasText("小红欠我"))
+        composeRule.onNodeWithText("小红欠我").performScrollTo()
+        saveConsumerArtPreview("receivables-row", requireNotNull(
+            InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        composeRule.onNodeWithText("小红欠我").performClick()
 
         composeRule.runOnIdle { assertEquals("debt-2", openedPublicId) }
     }

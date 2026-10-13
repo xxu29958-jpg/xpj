@@ -1,10 +1,22 @@
 {% extends 'base.html' %}
+{% set product_body_domain = 'obligations' %}
+{% set page_surface = 'tertiary' %}
+{% set page_title = '作废核对' %}
+{% set task_return_href = '/web/debts/' ~ void_form.public_id ~ '?ledger_id=' ~ selected_ledger_id|urlencode %}
+{% set task_return_label = '往来详情' %}
+{% block title %}核对原作废提交 · 小票夹{% endblock %}
 {% block page_scripts %}
 <script defer src="/static/web/manual-drafts.js?v={{ asset_version }}"></script>
 <script defer src="/static/web/repayment-entry.js?v={{ asset_version }}"></script>
 {% endblock %}
+{% block page_header %}
+<header class="product-page-header">
+  <div class="product-page-heading">
+    <h1 class="page-title">核对原作废提交</h1>
+    <p class="product-page-summary">{{ '撤销误记还款' if void_form.kind == 'repayment-void' else '作废欠款' }}的原提交仍在这里。先核对原结果，再继续处理。</p>
+  </div>
+</header>
+{% endblock %}
 {% block content %}
-<h1 class="page-title">核对原作废提交</h1>
 {% include '_debt_void_form.html' %}
-<a href="/web/debts/{{ void_form.public_id }}?ledger_id={{ selected_ledger_id }}">返回原欠款与往来历史</a>
 {% endblock %}
