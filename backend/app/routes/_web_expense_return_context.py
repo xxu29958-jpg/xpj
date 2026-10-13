@@ -9,6 +9,7 @@ from uuid import UUID
 
 from fastapi import Form
 
+from app.routes._web_pending_filters import PENDING_FILTERS
 from app.services.currency_common import supported_currency_codes
 from app.services.web_search_service import MAX_QUERY_LENGTH
 
@@ -38,17 +39,8 @@ RETURN_TO_LABELS: dict[str, str] = {
     "recurring_occurrence": "返回本期固定支出",
     "csv_import_event": "返回导入复核",
 }
-_PENDING_FILTERS = {
-    "all",
-    "missing_amount",
-    "missing_merchant",
-    "missing_category",
-    "missing_fx",
-    "duplicate",
-    "ready",
-}
 _RETURN_FILTERS = {
-    "pending": ("filter", _PENDING_FILTERS),
+    "pending": ("filter", PENDING_FILTERS),
     "bill_splits_inbox": ("status", {"all"}),
 }
 _MONTH_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")

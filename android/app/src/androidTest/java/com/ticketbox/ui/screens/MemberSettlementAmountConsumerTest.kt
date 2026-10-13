@@ -44,7 +44,7 @@ class MemberSettlementAmountConsumerTest {
         )
         composeRule.setContent {
             TicketboxTheme(skin = AppSkin.Paper) {
-                if (showDetail.value) DebtSummaryCard(debt) else MemberDebtRow(debt)
+                if (showDetail.value) DebtSummaryCard(debt) else DebtListRow(debt)
             }
         }
         composeRule.onNodeWithText("¥750", substring = true).assertIsDisplayed()

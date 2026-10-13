@@ -200,12 +200,7 @@ internal fun debtDetailTitle(debt: Debt?): String {
     if (debt == null) return stringResource(R.string.debt_detail_title)
     val name = debt.counterpartyLabel?.takeIf { it.isNotBlank() }
         ?: stringResource(debtCounterpartyFallbackRes(debt.counterpartyType))
-    val direction = if (debt.isMember) when (debt.viewerIsDebtor) {
-        true -> DebtDirections.I_OWE
-        false -> DebtDirections.OWED_TO_ME
-        null -> null
-    } else debt.direction
-    return stringResource(when (direction) {
+    return stringResource(when (debtViewDirection(debt)) {
         DebtDirections.I_OWE -> R.string.debt_detail_title_i_owe
         DebtDirections.OWED_TO_ME -> R.string.debt_detail_title_owed_to_me
         else -> R.string.debt_detail_title_third_party

@@ -239,7 +239,7 @@ def _parse_explicit_amount(
             None,
             "",
             "amount_missing",
-            "缺少可验证的 home-currency 金额",
+            "缺少可验证的本位币金额，请补充金额及对应币种后重试",
         )
     if len(set(candidates)) != 1:
         return (

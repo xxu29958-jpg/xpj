@@ -61,7 +61,12 @@ import com.ticketbox.ui.appearance.background.SurfaceRole
 import com.ticketbox.ui.appearance.background.rememberBackgroundImage
 import com.ticketbox.ui.components.AppButtonIcons
 import com.ticketbox.ui.components.AppPrimaryButton
+import com.ticketbox.ui.components.AppPageChrome
+import com.ticketbox.ui.components.AppPageRole
+import com.ticketbox.ui.components.AppPageScrollableColumn
+import com.ticketbox.ui.components.AppScrollablePageChrome
 import com.ticketbox.ui.components.AppStatusBanner
+import com.ticketbox.ui.design.AppAdaptiveContentWidth
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
@@ -121,38 +126,35 @@ private fun BackgroundEditorContent(
             BackgroundEditorCompositionPanel(editor, actions, onDone = { composing = false },
                 modifier = Modifier.align(Alignment.BottomCenter))
         } else {
-            Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
-                Column(
-                    Modifier.weight(1f).verticalScroll(rememberScrollState())
-                        .padding(horizontal = AppSpacing.screenHorizontal, vertical = AppSpacing.contentGap),
+            AppPageScrollableColumn(
+                chrome = AppScrollablePageChrome(
+                    page = AppPageChrome(role = AppPageRole.Settings, hasBottomBar = false, includeStatusBarPadding = false),
+                    contentWidth = AppAdaptiveContentWidth.Secondary,
                     verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap),
-                ) {
-                    BackgroundEditorHeading(actions.onCancel, !editor.saving)
-                    AppStatusBanner(message = editor.message, tone = MessageTone.Danger)
-                    BackgroundReadabilitySample()
-                    BackgroundEditorChoice(
-                        label = stringResource(R.string.background_editor_section_preview_role),
-                        choices = backgroundEditorPreviewRoles.map { stringResource(backgroundEditorRoleNameRes(it)) },
-                        selectedIndex = backgroundEditorPreviewRoles.indexOf(previewRole),
-                        enabled = !editor.saving,
-                        onSelect = { previewRole = backgroundEditorPreviewRoles[it] },
-                    )
-                    BackgroundEditorCompositionEntry(editor, onOpen = { composing = true })
-                    BackgroundEditorChoice(
-                        label = stringResource(R.string.appearance_section_immersion_title),
-                        choices = ImmersionMode.entries.map { stringResource(immersionModeNameRes(it)) },
-                        selectedIndex = ImmersionMode.entries.indexOf(draft.immersionMode),
-                        enabled = !editor.saving,
-                        onSelect = { actions.onDraftChange(draft.copy(immersionMode = ImmersionMode.entries[it])) },
-                    )
-                    Text(stringResource(R.string.background_editor_scope_note),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-                }
-                Surface(color = MaterialTheme.colorScheme.surface.copy(alpha = AppAlpha.opaque)) {
-                    Box(Modifier.padding(horizontal = AppSpacing.screenHorizontal, vertical = AppSpacing.contentGap)) {
-                        BackgroundEditorFooter(editor.saving, actions)
-                    }
-                }
+                ),
+                modifier = Modifier.statusBarsPadding(),
+                bottomBar = { BackgroundEditorBottomBar(editor.saving, actions) },
+            ) {
+                BackgroundEditorHeading(draft, actions.onCancel, !editor.saving)
+                AppStatusBanner(message = editor.message, tone = MessageTone.Danger)
+                BackgroundReadabilitySample()
+                BackgroundEditorChoice(
+                    label = stringResource(R.string.background_editor_section_preview_role),
+                    choices = backgroundEditorPreviewRoles.map { stringResource(backgroundEditorRoleNameRes(it)) },
+                    selectedIndex = backgroundEditorPreviewRoles.indexOf(previewRole),
+                    enabled = !editor.saving,
+                    onSelect = { previewRole = backgroundEditorPreviewRoles[it] },
+                )
+                BackgroundEditorCompositionEntry(editor, onOpen = { composing = true })
+                BackgroundEditorChoice(
+                    label = stringResource(R.string.appearance_section_immersion_title),
+                    choices = ImmersionMode.entries.map { stringResource(immersionModeNameRes(it)) },
+                    selectedIndex = ImmersionMode.entries.indexOf(draft.immersionMode),
+                    enabled = !editor.saving,
+                    onSelect = { actions.onDraftChange(draft.copy(immersionMode = ImmersionMode.entries[it])) },
+                )
+                Text(stringResource(R.string.background_editor_scope_note),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             }
         }
     }
@@ -234,6 +236,7 @@ private fun BackgroundEditorStage(
 
 @Composable
 private fun BackgroundEditorHeading(
+    draft: BackgroundSettings,
     onBack: () -> Unit,
     enabled: Boolean,
 ) {
@@ -247,6 +250,11 @@ private fun BackgroundEditorHeading(
                 style = AppTextHierarchy.hero.asTextStyle())
             Text(stringResource(R.string.background_editor_intro), style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(
+                if (draft.source == BackgroundSource.BuiltIn) R.string.background_editor_preview_builtin
+                else R.string.background_editor_preview_source,
+                backgroundSourceLabel(draft),
+            ), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -329,6 +337,18 @@ private fun BackgroundEditorCompositionPanel(
             )
             AppPrimaryButton(text = stringResource(R.string.background_editor_composition_done),
                 icons = AppButtonIcons(leading = Icons.Filled.Check), modifier = Modifier.fillMaxWidth(), enabled = !editor.saving, onClick = onDone)
+        }
+    }
+}
+
+@Composable
+private fun BackgroundEditorBottomBar(saving: Boolean, actions: BackgroundEditorActions) {
+    Surface(color = MaterialTheme.colorScheme.surface.copy(alpha = AppAlpha.opaque)) {
+        Box(
+            Modifier.navigationBarsPadding()
+                .padding(horizontal = AppSpacing.screenHorizontal, vertical = AppSpacing.contentGap),
+        ) {
+            BackgroundEditorFooter(saving, actions)
         }
     }
 }

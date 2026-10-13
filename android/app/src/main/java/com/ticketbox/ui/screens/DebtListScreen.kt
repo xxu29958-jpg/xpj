@@ -3,13 +3,10 @@ package com.ticketbox.ui.screens
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -36,14 +33,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
-import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.MessageTone
-import com.ticketbox.ui.components.AppListRow
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppSectionGroup
 import com.ticketbox.ui.components.AppSecondaryPageChrome
@@ -56,12 +50,9 @@ import com.ticketbox.ui.components.AppScrollableContentLayout
 import com.ticketbox.ui.components.AppScrollableRefreshState
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.PrimaryCtaButton
-import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppIconSize
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.LocalStateTokens
-import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.viewmodel.DebtListUiState
 import com.ticketbox.viewmodel.DebtListViewModel
 import kotlinx.coroutines.delay
@@ -340,6 +331,9 @@ internal fun LazyListScope.debtRowsSection(
     debts: List<Debt>,
     onOpenDebt: (Debt) -> Unit,
 ) {
+    debtListTotals(debts).forEach { total ->
+        item(key = "debt-total-${total.direction}-${total.currency}") { DebtListTotalCard(total) }
+    }
     val (members, externals) = groupDebtsForList(debts)
     // Keep family debts and external debts in separate scan groups.
     if (members.isNotEmpty()) {
@@ -350,7 +344,7 @@ internal fun LazyListScope.debtRowsSection(
             ) {
                 DebtSectionHeader(stringResource(R.string.debt_list_section_family))
                 members.forEachIndexed { index, debt ->
-                    MemberDebtRow(
+                    DebtListRow(
                         debt = debt,
                         onClick = { onOpenDebt(debt) },
                         showDivider = index < members.lastIndex,
@@ -368,68 +362,13 @@ internal fun LazyListScope.debtRowsSection(
             ) {
                 DebtSectionHeader(stringResource(R.string.debt_list_section_external))
                 externals.forEachIndexed { index, debt ->
-                    ExternalDebtRow(
+                    DebtListRow(
                         debt = debt,
                         onClick = { onOpenDebt(debt) },
                         showDivider = index < externals.lastIndex,
                     )
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun ExternalDebtRow(
-    debt: Debt,
-    onClick: () -> Unit,
-    showDivider: Boolean,
-) {
-    val name = debt.counterpartyLabel?.takeIf { it.isNotBlank() }
-        ?: stringResource(debtCounterpartyFallbackRes(debt.counterpartyType))
-    // 行内金额按 record 自带 homeCurrencyCode 渲染（PR#255 R5 P2）：屏级环境 display 恒
-    // Base，JPY/KRW 账本下零小数 minor 会按两位小数显示（与解析同源的 D8 范式）。
-    val recordDisplay = CurrencyDisplay.forRecord(debt.homeCurrencyCode)
-    AppListRow(
-        modifier = Modifier.fillMaxWidth(),
-        onClick = onClick,
-        settled = !debt.isOpen,
-        showDivider = showDivider,
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                name,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Spacer(Modifier.size(AppSpacing.smallGap))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                DebtStatusBadge(
-                    text = stringResource(debtDirectionLabelRes(debt.direction)),
-                    tone = LocalStateTokens.current.neutral,
-                )
-                Spacer(Modifier.width(AppSpacing.smallGap))
-                DebtStatusBadge(
-                    text = stringResource(debtLinkStatusLabelRes(debt.status)),
-                    tone = debtLinkStatusTone(debt.status),
-                )
-            }
-        }
-        Spacer(Modifier.width(AppSpacing.smallGap))
-        Column(horizontalAlignment = Alignment.End) {
-            Text(
-                formatDisplayAmount(debt.remainingAmountCents, recordDisplay),
-                style = MaterialTheme.typography.titleLarge.tabularNum(),
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                stringResource(
-                    R.string.debt_list_card_principal,
-                    formatDisplayAmount(debt.principalAmountCents, recordDisplay),
-                ),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 }

@@ -7,11 +7,14 @@ import xml.etree.ElementTree as ET
 from scripts.planning_journey_android import wait_for
 
 
-def open_appearance(native):
+def open_appearance(native, *, details=False):
     native.plan_home()
     native.click("打开账户与设置")
     native.click("通知与外观")
     native.click("外观与主题")
+    if details:
+        native.reveal_any("更多外观设置")
+        native.click("更多外观设置")
 
 
 def saved_background(native):
@@ -78,8 +81,8 @@ def read_domains(native, images):
         native.capture("appearance-settings-" + theme)
         for mode, choice, description in (("atmosphere", "氛围", "背景更明显，适合首页和统计"),
                 ("balanced", "平衡", "默认推荐，兼顾好看和清晰"), ("focus", "专注", "弱化背景，适合长时间记账")):
-            open_appearance(native)
-            native.reveal_any("减少动效")
+            open_appearance(native, details=True)
+            native.reveal_any(choice)
             previous = saved_background(native)
             native.click(choice, bottom=True)
             wait_for(lambda description=description: native.has(description), "The immersion choice did not reach the UI")
@@ -134,36 +137,47 @@ def native_appearance(j, path, image_digest):
     native.click("茶雾")
     native.click("应用背景")
     wait_for(lambda: not native.has("应用背景"), "The built-in background did not publish")
+    native.reveal_any("更多外观设置")
+    native.click("更多外观设置")
     native.reveal_any("茶雾", toward_start=True)
     native.capture("appearance-builtin-applied")
     original = saved_background(native)
     pick_photo(native)
+    native.click("拖动与缩放")
     native.click("放大")
     native.click("右移")
+    native.click("完成构图")
     assert saved_background(native) == original, "Editing published the candidate before Apply"
     native.capture("appearance-unpublished-preview")
     native.click("取消", bottom=True)
     wait_for(lambda: not private_images(native), "Cancel did not release its uncommitted candidate image")
     assert saved_background(native) == original
     pick_photo(native)
+    native.click("拖动与缩放")
     native.click("放大")
     native.click("右移")
+    native.click("完成构图")
     native.click("应用背景")
     wait_for(lambda: not native.has("应用背景"), "Apply did not return to appearance settings")
     assert saved_background(native) != original
     images = private_images(native)
     assert len(images) == 1 and list(images.values()) == [image_digest], "The private image changed at import"
+    native.reveal_any("更多外观设置")
+    native.click("更多外观设置")
     native.reveal_any("自定义图片", toward_start=True)
     native.capture("appearance-custom-applied")
     applied = read_domains(native, images)
     native.restart()
     assert saved_background(native) == applied and private_images(native) == images
-    open_appearance(native)
+    open_appearance(native, details=True)
     native.reveal_any("自定义图片")
+    native.reveal_any("调整构图", toward_start=True)
     native.click("调整构图")
     wait_for(lambda: native.has("应用背景"), "The saved composition did not reopen in its editor")
     native.capture("appearance-reopened-composition")
+    native.click("拖动与缩放")
     native.click("左移")
+    native.click("完成构图")
     native.click("取消", bottom=True)
     wait_for(lambda: not native.has("应用背景"), "Cancel did not leave the composition editor")
     assert saved_background(native) == applied and private_images(native) == images
@@ -182,11 +196,11 @@ def native_appearance(j, path, image_digest):
         native.reveal_any("TaggedMeal")
         native.capture("appearance-system-" + label)
         assert saved_background(native) == applied
-    open_appearance(native)
+    open_appearance(native, details=True)
     native.click("恢复主题背景")
     wait_for(lambda: not private_images(native), "Restore theme did not release the previously applied image")
     native.restart()
-    open_appearance(native)
+    open_appearance(native, details=True)
     native.reveal_any("跟随主题")
     native.capture("appearance-restored-theme-after-restart")
     assert not private_images(native) and saved_background(native) != applied

@@ -30,6 +30,7 @@ from app.routes._web_expense_return_context import (
 )
 from app.routes._web_expense_split_presenter import web_split_members, web_split_rows
 from app.routes._web_money_views import expense_fx_view
+from app.routes._web_pending_filters import review_queue_position
 from app.routes.web_common import (
     _amount_yuan,
     _base_ctx,
@@ -39,7 +40,7 @@ from app.routes.web_common import (
     templates,
 )
 from app.services.category_service import list_ledger_category_options
-from app.services.expense_service import get_expense
+from app.services.expense_service import get_expense, list_pending
 from app.services.ledger_calendar_service import calendar_revision
 from app.services.manual_expense_draft_presenter import manual_draft_ack
 from app.services.receipt_item_service import list_expense_items
@@ -286,6 +287,13 @@ def web_edit_context(
     ctx["splits_error"] = None
     ctx["field_errors"] = field_errors or {}
     ctx.update(edit_navigation_view(return_context, expense_id=expense_id, ledger_id=selected_id))
+    ctx["pending_review_position"] = None
+    if expense.status == "pending" and return_context.return_to == "pending" and not ctx["expense_review_inspection"]:
+        pending_views = [_expense_view(row, presentation_currency_code=ctx["home_currency_code"])
+                         for row in list_pending(db, selected_id)]
+        ctx["pending_review_position"] = review_queue_position(
+            pending_views, expense_id=expense_id, filter_key=return_context.return_filter,
+        )
     record_currency = expense.home_currency_code or ctx["home_currency_code"]
     ctx["currency_input"] = _currency_input_view(record_currency)
     ctx["expense_currency_input"] = _currency_input_view(

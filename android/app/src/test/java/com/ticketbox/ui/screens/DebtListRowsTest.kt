@@ -9,8 +9,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
- * ADR-0049 §7.0 (slice 1A) 列表软分组纯函数 [groupDebtsForList] 的单测 —— 镜像 web `_split_debt_views`：
- * 成员债(home-shape)归家人、外部债+外币成员债归外部，各组 active-first 排序 (open 在前)。
+ * 家人/外部分组由真实关系决定，币种不改变关系；各组保留未结在前的顺序。
  */
 class DebtListRowsTest {
 
@@ -51,16 +50,13 @@ class DebtListRowsTest {
             debt("e_voided", DebtCounterpartyTypes.EXTERNAL, DebtLinkStatuses.VOIDED),
             debt("m_open", DebtCounterpartyTypes.MEMBER, DebtLinkStatuses.OPEN),
             debt("e_open", DebtCounterpartyTypes.EXTERNAL, DebtLinkStatuses.OPEN),
-            // A foreign-currency member debt falls into the EXTERNAL group (FX fallback).
             debt("m_foreign", DebtCounterpartyTypes.MEMBER, DebtLinkStatuses.OPEN, foreign = true),
         )
 
         val (members, externals) = groupDebtsForList(debts)
 
-        // Members: open before cleared (active-first); foreign member NOT here.
-        assertEquals(listOf("m_open", "m_cleared"), members.map { it.publicId })
-        // Externals: opens first (stable order preserved), then voided; foreign member included.
-        assertEquals(listOf("e_open", "m_foreign", "e_voided"), externals.map { it.publicId })
+        assertEquals(listOf("m_open", "m_foreign", "m_cleared"), members.map { it.publicId })
+        assertEquals(listOf("e_open", "e_voided"), externals.map { it.publicId })
     }
 
     @Test
@@ -68,5 +64,34 @@ class DebtListRowsTest {
         val (members, externals) = groupDebtsForList(emptyList())
         assertEquals(emptyList<String>(), members.map { it.publicId })
         assertEquals(emptyList<String>(), externals.map { it.publicId })
+    }
+
+    @Test
+    fun `totals use participant direction and frozen currency without third party or closed balances`() {
+        val member = debt("member", DebtCounterpartyTypes.MEMBER, DebtLinkStatuses.OPEN)
+        val external = debt("external", DebtCounterpartyTypes.EXTERNAL, DebtLinkStatuses.OPEN)
+        val rows = listOf(
+            member.copy(viewerIsDebtor = false, remainingAmountCents = 3800, homeCurrencyCode = "JPY"),
+            member.copy(publicId = "foreign", viewerIsDebtor = false, remainingAmountCents = 700,
+                homeCurrencyCode = "JPY", originalCurrencyCode = "USD", originalAmountMinor = 500),
+            member.copy(publicId = "third-party", viewerIsDebtor = null),
+            external.copy(remainingAmountCents = 116000),
+            external.copy(publicId = "closed", status = DebtLinkStatuses.CLEARED),
+            external.copy(publicId = "voided", status = DebtLinkStatuses.VOIDED),
+            external.copy(publicId = "unknown-currency", homeCurrencyCode = "VND", remainingAmountCents = 2000),
+        )
+        assertEquals(listOf(
+            DebtListTotal(DebtDirections.OWED_TO_ME, "JPY", 2, 4500),
+            DebtListTotal(DebtDirections.I_OWE, "CNY", 1, 116000),
+            DebtListTotal(DebtDirections.I_OWE, "VND", 1, 2000),
+        ), debtListTotals(rows))
+        assertEquals(emptyList<DebtListTotal>(), debtListTotals(listOf(member)))
+    }
+
+    @Test
+    fun `an overflowing total does not become a negative balance`() {
+        val row = debt("large", DebtCounterpartyTypes.EXTERNAL, DebtLinkStatuses.OPEN)
+            .copy(remainingAmountCents = Long.MAX_VALUE)
+        assertEquals(DebtListTotal(DebtDirections.I_OWE, "CNY", 2, null), debtListTotals(listOf(row, row)).single())
     }
 }

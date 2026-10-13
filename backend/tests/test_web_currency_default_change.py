@@ -87,7 +87,9 @@ def test_native_editor_has_no_preselected_currency_and_states_history_boundary(o
     assert fields["expected_binding_revision"] == "2"
     assert fields["currency_contract_version"] == "1"
     assert UUID(fields["idempotency_key"]).version == 4
-    assert "checked" not in response.text
+    assert '<select class="product-input" name="home_currency_code" required>' in response.text
+    assert '<option value="" selected disabled>选择币种</option>' in response.text
+    assert response.text.count(" selected") == 1
     assert "不会改写历史记录的币种和金额" in response.text
     assert "还款通知" in response.text and 'class="currency-change-non-cny"' in response.text
 
@@ -98,9 +100,9 @@ def test_native_save_uses_original_key_revision_reason_and_original_receipt(owne
     owner_browser.current.binding_revision = 8
     response = _post(owner_browser, fields)
     assert response.status_code == 200, response.text
-    assert "本次修改已确认" in response.text and "JPY" in response.text
+    assert "默认币种修改已保存" in response.text and "JPY" in response.text
     assert "2026-09-09T09:00:00Z" in response.text
-    assert "最新默认币种已设为 EUR" not in response.text
+    assert "EUR" not in response.text
     args = owner_browser.saved.call_args.kwargs
     assert args == {"auth": owner_browser.auth, "idempotency_key": UUID(fields["idempotency_key"]),
         "expected_contract_version": 1, "home_code": "JPY", "expected_revision": 2,
@@ -126,8 +128,8 @@ def test_error_retains_every_original_field_and_never_claims_success(owner_brows
     retained = hidden_post_forms(response.text)[PATH]
     for key in ("source_home_currency_code", "expected_binding_revision", "currency_contract_version", "idempotency_key"):
         assert retained[key] == fields[key]
-    assert fields["reason"] in response.text and 'value="JPY" checked' in response.text
-    assert "本次修改已确认" not in response.text
+    assert fields["reason"] in response.text and '<option value="JPY" selected>' in response.text
+    assert "默认币种修改已保存" not in response.text
     assert 'name="review_latest" value="true"' in response.text
     owner_browser.db.rollback.assert_called_once()
 
@@ -142,7 +144,7 @@ def test_explicit_review_keeps_choice_and_reason_but_only_prepares_new_intent(ow
     assert prepared["source_home_currency_code"] == "USD"
     assert prepared["expected_binding_revision"] == "9"
     assert prepared["idempotency_key"] != fields["idempotency_key"]
-    assert fields["reason"] in response.text and 'value="JPY" checked' in response.text
+    assert fields["reason"] in response.text and '<option value="JPY" selected>' in response.text
     owner_browser.saved.assert_not_called()
 
 
@@ -177,7 +179,7 @@ def test_same_currency_rejection_stays_a_clear_no_change(owner_browser):
     owner_browser.saved.side_effect = AppError("invalid_request", "已在使用这个默认币种。", status_code=422)
     response = _post(owner_browser, fields)
     assert response.status_code == 422
-    assert "已在使用这个默认币种" in response.text and "本次修改已确认" not in response.text
+    assert "已在使用这个默认币种" in response.text and "默认币种修改已保存" not in response.text
     assert hidden_post_forms(response.text)[PATH]["idempotency_key"] == fields["idempotency_key"]
 
 

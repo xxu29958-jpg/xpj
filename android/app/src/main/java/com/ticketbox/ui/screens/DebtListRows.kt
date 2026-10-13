@@ -1,27 +1,32 @@
 package com.ticketbox.ui.screens
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.text.font.FontWeight
 import com.ticketbox.R
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.DebtLinkStatuses
 import com.ticketbox.ui.components.AppListRow
-import com.ticketbox.ui.components.AppProgressBar
+import com.ticketbox.ui.components.AppAdaptiveEditAmountRow
+import com.ticketbox.ui.components.AppAdaptiveAmountRowDefaults
+import com.ticketbox.ui.components.AppAdaptiveAmountRowStyle
+import com.ticketbox.ui.components.SettingsEntryIcon
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.LocalStateTokens
-import kotlin.math.roundToInt
+import com.ticketbox.ui.design.LocalThemeVisuals
 
 private fun debtRowStatusRank(status: String): Int = when (status) {
     DebtLinkStatuses.OPEN -> 0
@@ -29,13 +34,8 @@ private fun debtRowStatusRank(status: String): Int = when (status) {
     else -> 2
 }
 
-private fun isCommunalRow(debt: Debt): Boolean {
-    val foreign = debt.originalCurrencyCode != null && debt.originalCurrencyCode != debt.homeCurrencyCode
-    return debt.isMember && !foreign
-}
-
 internal fun groupDebtsForList(debts: List<Debt>): Pair<List<Debt>, List<Debt>> {
-    val (members, externals) = debts.partition { isCommunalRow(it) }
+    val (members, externals) = debts.partition { it.isMember }
     return members.sortedBy { debtRowStatusRank(it.status) } to externals.sortedBy { debtRowStatusRank(it.status) }
 }
 
@@ -51,14 +51,13 @@ internal fun DebtSectionHeader(title: String) {
 }
 
 @Composable
-internal fun MemberDebtRow(
+internal fun DebtListRow(
     debt: Debt,
     onClick: (() -> Unit)? = null,
     showDivider: Boolean = true,
 ) {
-    val name = debt.counterpartyLabel?.takeIf { it.isNotBlank() }
-        ?: stringResource(debtCounterpartyFallbackRes(debt.counterpartyType))
-    val ratio = communalRatio(debt.paidAmountCents, debt.principalAmountCents)
+    val display = CurrencyDisplay.forRecord(debt.homeCurrencyCode)
+    val visuals = LocalThemeVisuals.current
 
     AppListRow(
         modifier = Modifier.fillMaxWidth(),
@@ -66,47 +65,34 @@ internal fun MemberDebtRow(
         settled = !debt.isOpen,
         showDivider = showDivider,
     ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                name,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Spacer(Modifier.size(AppSpacing.smallGap))
-            Text(
-                stringResource(
-                    memberDebtHeadlineRes(
-                        debt.viewerIsDebtor,
-                        debt.status,
-                        isForgiven = debt.isForgiven,
-                        ratio = ratio,
-                    ),
-                ),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.size(AppSpacing.smallGap))
-            Text(
-                stringResource(R.string.debt_member_remaining_amount,
-                    formatDisplayAmount(debt.remainingAmountCents, CurrencyDisplay.forRecord(debt.homeCurrencyCode))),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            if (debt.isOpen) {
-                Spacer(Modifier.size(AppSpacing.compactGap))
-                val percent = (ratio.coerceIn(0f, 1f) * 100).roundToInt()
-                AppProgressBar(
-                    fraction = ratio,
-                    tone = LocalStateTokens.current.success,
-                    height = AppSpacing.miniGap,
-                    contentDescription = stringResource(R.string.debt_member_progress_a11y, percent),
+        SettingsEntryIcon(ImageVector.vectorResource(R.drawable.ic_lucide_user_round),
+            background = if (debt.isMember) visuals.brandPrimaryBg else visuals.surfaceLilac)
+        Spacer(Modifier.width(AppSpacing.contentGap))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+            AppAdaptiveEditAmountRow(
+                amount = formatDisplayAmount(debt.remainingAmountCents, display),
+                style = AppAdaptiveAmountRowStyle(trailingWeight = AppAdaptiveAmountRowDefaults.listTrailingWeight),
+            ) {
+                Text(debtDetailTitle(debt), style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold)
+            }
+            Text(stringResource(R.string.debt_list_card_balance,
+                debt.homeCurrencyCode, formatDisplayAmount(debt.principalAmountCents, display)),
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+                DebtStatusBadge(
+                    text = stringResource(if (debt.isMember) memberDebtStatusLabelRes(debt.status)
+                        else debtLinkStatusLabelRes(debt.status)),
+                    tone = if (debt.isMember) memberDebtStatusTone(debt.status) else debtLinkStatusTone(debt.status),
                 )
+                if (debt.originalCurrencyCode != null && debt.originalCurrencyCode != debt.homeCurrencyCode &&
+                    debt.originalAmountMinor != null) {
+                    Text(stringResource(R.string.debt_list_card_original,
+                        debt.originalCurrencyCode, formatDisplayAmount(debt.originalAmountMinor,
+                            CurrencyDisplay.forRecord(debt.originalCurrencyCode))),
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
         }
-        Spacer(Modifier.width(AppSpacing.smallGap))
-        DebtStatusBadge(
-            text = stringResource(memberDebtStatusLabelRes(debt.status)),
-            tone = memberDebtStatusTone(debt.status),
-        )
     }
 }

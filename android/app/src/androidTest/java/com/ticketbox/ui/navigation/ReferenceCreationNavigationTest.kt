@@ -27,6 +27,7 @@ import com.ticketbox.data.remote.dto.ReferenceCreateRequestDto
 import com.ticketbox.data.remote.dto.ReferenceCreatedDto
 import com.ticketbox.data.remote.dto.TagListItemDto
 import com.ticketbox.data.remote.dto.TagManagementListDto
+import com.ticketbox.ui.RealKeyboard
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.ResponseBody.Companion.toResponseBody
 import retrofit2.HttpException
@@ -42,6 +43,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 /** Shipped library routes and repositories, with controlled remote replies. */
 class ReferenceCreationNavigationTest {
     @get:Rule val compose = createComposeRule()
+    @get:Rule val keyboard = RealKeyboard()
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val mounted = mutableStateOf(true)
     private val accepted = ConcurrentHashMap<String, ReferenceCreatedDto>()
@@ -91,6 +93,7 @@ class ReferenceCreationNavigationTest {
         openDirectory(route)
         click("添加$label", scroll = true)
         compose.onNode(hasSetTextAction()).performTextInput("  暑期旅行  ")
+        keyboard.dismissAndWait(compose)
         click("添加$label")
         waitFor("回执暂时不可达")
         captureReferenceLibraryStep(compose, context, "$label-unconfirmed")

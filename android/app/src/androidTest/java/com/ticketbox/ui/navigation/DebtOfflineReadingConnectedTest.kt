@@ -168,10 +168,11 @@ class DebtOfflineReadingConnectedTest {
     }
 
     private fun openDebt() {
-        waitForText("原日元往来")
         val source = context.getString(if (offline) R.string.debt_read_cached_title else R.string.debt_read_title)
+        waitForText(source, substring = true)
         compose.onNodeWithText(source, substring = true).assertIsDisplayed()
-        compose.onNodeWithText("原日元往来").performClick()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("我欠原日元往来"))
+        compose.onNodeWithText("我欠原日元往来").performClick()
         compose.waitUntil(5_000) {
             compose.onAllNodesWithContentDescription(context.getString(R.string.debt_detail_back)).fetchSemanticsNodes().isNotEmpty()
         }

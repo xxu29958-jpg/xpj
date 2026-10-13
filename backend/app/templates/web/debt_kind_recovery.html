@@ -1,11 +1,23 @@
 {% extends "base.html" %}
+{% set product_body_domain = 'obligations' %}
+{% set page_surface = 'tertiary' %}
+{% set page_title = '偿还方式核对' %}
+{% set task_return_href = '/web/debts/' ~ kind_form.public_id ~ '?ledger_id=' ~ selected_ledger_id|urlencode %}
+{% set task_return_label = '往来详情' %}
+{% block title %}核对原偿还方式更正 · 小票夹{% endblock %}
 {% block page_scripts %}
 <script defer src="/static/web/manual-drafts.js?v={{ asset_version }}"></script>
 <script defer src="/static/web/repayment-entry.js?v={{ asset_version }}"></script>
 {% endblock %}
+{% block page_header %}
+<header class="product-page-header">
+  <div class="product-page-heading">
+    <h1 class="page-title">核对原偿还方式更正</h1>
+    <p class="product-page-summary">原来选择的偿还方式仍在这里。本金、已还和剩余金额不因此改变。</p>
+  </div>
+</header>
+{% endblock %}
 {% block content %}
-<h1>核对原偿还方式更正</h1>
+{% if kind_detail_error %}<p class="product-feedback product-feedback--warning" role="status">{{ kind_detail_error }}</p>{% endif %}
 {% include '_debt_kind_form.html' %}
-<p class="product-feedback product-feedback--warning" role="status">{{ kind_detail_error }}</p>
-<a href="/web/debts/{{ kind_form.public_id }}?ledger_id={{ selected_ledger_id }}">重新读取原欠款</a>
 {% endblock %}
