@@ -23,7 +23,7 @@ def test_web_cross_currency_posts_preserve_report_source_and_save_intent(monkeyp
     from fastapi import FastAPI
     from fastapi.responses import HTMLResponse
     from fastapi.testclient import TestClient
-    from jinja2 import ChoiceLoader, DictLoader, Environment, FileSystemLoader
+    from jinja2 import ChoiceLoader, DictLoader, FileSystemLoader
     from sqlalchemy.exc import SQLAlchemyError
 
     from app.database import get_db
@@ -73,11 +73,9 @@ def test_web_cross_currency_posts_preserve_report_source_and_save_intent(monkeyp
     monkeypatch.setattr(save, "review_monthly_arrangement_save", lambda *a, **kw: None)
     command = Mock()
     monkeypatch.setattr(save, "save_monthly_arrangement", command)
-    env = Environment(autoescape=True, loader=ChoiceLoader([
+    env = web.templates.env.overlay(loader=ChoiceLoader([
         DictLoader({"base.html": "{% block content %}{% endblock %}"}),
         FileSystemLoader(Path(__file__).parents[1] / "app/templates/web")]))
-    from app.services.time_service import to_iso
-    env.filters["to_iso"] = to_iso
     rendered = []
 
     def render(**kw):

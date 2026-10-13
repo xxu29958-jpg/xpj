@@ -28,7 +28,7 @@ def goal_entry(j, *, create=False):
         form.locator('[name="name"]').fill("跟踪这笔原始往来")
         form.locator(f'[name="debt_public_ids"][value="{j.facts()["original_id"]}"]').check()
         form.get_by_role("button", name="创建目标", exact=True).click()
-        j.receiver.locator('.plan-debt-goal[aria-label="还债目标：跟踪这笔原始往来"]').wait_for()
+        j.receiver.get_by_role("region", name="还债目标：跟踪这笔原始往来", exact=True).wait_for()
     native = j.native
     native.plan_home()
     native.click("还债目标")

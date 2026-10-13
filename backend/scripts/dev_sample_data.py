@@ -94,7 +94,9 @@ def _moment(day: date, hour: int) -> str:
 def add_expenses(client: Client, currency: str, today: date) -> None:
     first = today.replace(day=1)
     last_month = (first - timedelta(days=1)).replace(day=1)
-    this_month = lambda offset: min(first + timedelta(days=offset), today)  # noqa: E731
+    def this_month(offset: int) -> date:
+        return min(first + timedelta(days=offset), today)
+
     # A manual entry is a confirmed fact as soon as it is recorded; nothing here lands in the inbox.
     samples = [
         ("房租", "住房", 114000, last_month, 12), ("家常餐饮", "餐饮", 80000, last_month + timedelta(days=11), 12),
