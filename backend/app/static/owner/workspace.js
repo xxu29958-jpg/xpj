@@ -90,8 +90,9 @@
             }
         });
         var step = document.querySelector("[data-advisor-step]").dataset.advisorStep;
-        var next = step && document.getElementById("advisor-" + step);
+        var next = step && (document.querySelector("[role='alert']") || document.getElementById("advisor-" + step));
         if (next) {
+            next.tabIndex = -1;
             next.focus({preventScroll: true});
             next.scrollIntoView({block: "start"});
         }
