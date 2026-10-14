@@ -66,7 +66,7 @@ internal fun LedgerTopChrome(
                 onOpenTools = { chromeState.showLedgerTools = true },
                 onOpenSearch = actions.onOpenGlobalSearch,
                 onManualAdd = { if (!state.readOnly) chromeState.showManualSheet = true },
-                onMonthChange = actions.onMonthChange,
+                onCategoryChange = actions.onCategoryChange,
             ),
             recordCtaSlot = ledgerRecordCtaSlot(
                 readOnly = state.readOnly,

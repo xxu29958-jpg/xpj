@@ -5,11 +5,16 @@ import com.ticketbox.viewmodel.reviewInputKey
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.activity.compose.BackHandler
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -38,6 +43,8 @@ import com.ticketbox.ui.components.AppScrollableRefreshState
 import com.ticketbox.ui.components.DataAuthorityTone
 import com.ticketbox.ui.components.appAdaptiveSupportingPaneContent
 import com.ticketbox.ui.components.rememberAppHaptics
+import com.ticketbox.ui.components.expenseAccountingDayLabel
+import com.ticketbox.ui.components.displayCalendarDay
 import com.ticketbox.ui.design.AppAdaptiveContentWidth
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalAppAdaptiveLayoutPolicy
@@ -186,6 +193,17 @@ fun PendingScreen(
         }
     }
 
+    val reviewTarget = filteredItems.firstOrNull {
+        it.id !in state.actionInProgressIds && pendingPrimaryReviewAction(it) != PendingPrimaryReviewAction.Confirm
+    } ?: filteredItems.firstOrNull { it.id !in state.actionInProgressIds }
+    val onStartReview: (() -> Unit)? = if (readOnly || state.bulkConfirm.running || reviewTarget == null) null else {
+        {
+            if (pendingPrimaryReviewAction(reviewTarget) == PendingPrimaryReviewAction.Confirm) {
+                itemActions.onEdit(reviewTarget)
+            } else resolvePrimaryAction(reviewTarget)
+        }
+    }
+
     // Trigger celebration only when a settled non-loading queue goes from non-empty to empty.
     var previousItemCount by remember { mutableStateOf(if (state.loading) 0 else state.items.size) }
     var showCelebration by remember { mutableStateOf(false) }
@@ -215,12 +233,21 @@ fun PendingScreen(
     }
 
     if (showPendingTools) {
-        ModalBottomSheet(onDismissRequest = { showPendingTools = false }) {
+        ModalBottomSheet(
+            onDismissRequest = { showPendingTools = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        ) {
             PendingToolsSheet(
-                loading = blockingRefresh,
-                displayMode = displayMode,
+                state = com.ticketbox.ui.screens.pending.PendingToolsState(blockingRefresh, displayMode),
                 onDisplayModeChange = { displayMode = it },
                 actions = chromeActions,
+                queue = com.ticketbox.ui.screens.pending.PendingToolsQueueActions(
+                    onOpenCapture = { showCapture = true },
+                    onStartReview = onStartReview,
+                    onOpenBulkConfirm = if (!readOnly && !state.bulkConfirm.running &&
+                        com.ticketbox.ui.screens.pending.pendingQueueOverviewModel(queueCounts, triagePaneState.queueEvidence).canBulkConfirm
+                    ) reviewActions.queue.onOpenBulkConfirm else null,
+                ),
                 onDismiss = { showPendingTools = false },
             )
         }
@@ -278,6 +305,15 @@ fun PendingScreen(
             AppScrollableContent(
                 chrome = AppScrollableContentChrome(
                     role = AppPageRole.Pending,
+                    bottomBar = onStartReview?.let { start -> {
+                        com.ticketbox.ui.components.AppFloatingActionBar {
+                            com.ticketbox.ui.components.AppPrimaryButton(
+                                text = stringResource(R.string.pending_start_review),
+                                modifier = Modifier.fillMaxWidth(),
+                                onClick = start,
+                            )
+                        }
+                    } },
                     layout = AppScrollableContentLayout(
                         horizontalPadding = AppSpacing.cardPaddingSmall,
                         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
@@ -424,7 +460,16 @@ fun PendingScreen(
             if (filteredItems.isEmpty()) {
                 item { NeedsReviewEmptyFilterCard(filter = needsReviewFilter) }
             } else {
-                items(filteredItems, key = { it.id }) { expense ->
+                itemsIndexed(filteredItems, key = { _, expense -> expense.id }) { index, expense ->
+                    val accountingDay = expenseAccountingDayLabel(expense)
+                    if (index == 0 || accountingDay != expenseAccountingDayLabel(filteredItems[index - 1])) {
+                        Text(
+                            text = accountingDay?.let(::displayCalendarDay)
+                                ?: stringResource(R.string.calendar_date_pending),
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(top = AppSpacing.smallGap),
+                        )
+                    }
                     val actionBusy = expense.id in state.actionInProgressIds
                     val canMutate = !readOnly && !actionBusy
                     val showInlineActions = !readOnly && displayMode == PendingDisplayMode.Comfortable

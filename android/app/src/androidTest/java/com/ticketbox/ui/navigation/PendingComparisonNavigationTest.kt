@@ -13,6 +13,8 @@ import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
@@ -75,7 +77,12 @@ class PendingComparisonNavigationTest {
         prepare()
         mount()
         waitText(context.getString(R.string.pending_row_action_duplicate))
-        compose.onAllNodesWithText(context.getString(R.string.pending_row_action_duplicate))[0].performClick()
+        capture("inbox-root-populated")
+        compose.onNodeWithContentDescription(context.getString(R.string.pending_display_options_button)).performClick()
+        compose.onNodeWithText(context.getString(R.string.pending_tools_bulk)).assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.pending_tools_done)).assertIsDisplayed()
+        capture("inbox-tools-populated")
+        compose.onNodeWithText(context.getString(R.string.pending_tools_review)).performScrollTo().performClick()
         waitText("参考便利店")
         compose.onNodeWithText(context.getString(R.string.pending_duplicate_sheet_keep_both)).assertIsNotEnabled()
         capture("duplicate-native")

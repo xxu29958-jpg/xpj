@@ -11,13 +11,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.AccountBalanceWallet
-import androidx.compose.material.icons.filled.EventRepeat
-import androidx.compose.material.icons.filled.Flag
-import androidx.compose.material.icons.filled.Handshake
-import androidx.compose.material.icons.filled.Payments
-import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -27,16 +20,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import com.ticketbox.R
 import com.ticketbox.domain.model.BudgetMonthly
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppListRow
+import com.ticketbox.ui.components.AppPaperCard
+import com.ticketbox.ui.components.AppAmountText
+import com.ticketbox.ui.components.SettingsEntryIcon
 import com.ticketbox.ui.components.formatDisplayAmount
-import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.LocalCurrencyDisplay
+import com.ticketbox.ui.design.AppAmountRole
+import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.ui.design.tabularNum
@@ -51,7 +48,7 @@ import com.ticketbox.viewmodel.RecurringUiState
 private data class PlanRowModel(
     val title: String,
     val subtitle: String,
-    val icon: ImageVector,
+    val icon: Int,
     val testTag: String,
     val onClick: () -> Unit,
 )
@@ -68,7 +65,7 @@ internal fun PlanBudgetSection(
                 model = PlanRowModel(
                     title = stringResource(R.string.plan_budget_title),
                     subtitle = planBudgetFallbackSummary(state),
-                    icon = Icons.Filled.AccountBalanceWallet,
+                    icon = R.drawable.ic_lucide_book_open,
                     testTag = PlanDestinationTestTags.Budget,
                     onClick = actions.onOpenBudget,
                 ),
@@ -85,7 +82,7 @@ internal fun PlanBudgetSection(
             model = PlanRowModel(
                 title = stringResource(R.string.plan_budget_advice_title),
                 subtitle = stringResource(R.string.plan_budget_advice_subtitle),
-                icon = Icons.Filled.Tune,
+                icon = R.drawable.ic_lucide_sliders_horizontal,
                 testTag = PlanDestinationTestTags.BudgetAdvice,
                 onClick = actions.onOpenAdvice,
             ),
@@ -102,47 +99,51 @@ private fun PlanConfiguredBudget(
     val currency = CurrencyDisplay.forRecord(budget.homeCurrencyCode ?: "UNKNOWN")
     val danger = LocalStateTokens.current.danger.fg
     val amount = if (budget.isOverBudget) budget.overspentAmountCents else budget.remainingAmountCents
-    Column(
+    AppPaperCard(
         modifier = Modifier
             .fillMaxWidth()
             .testTag(PlanDestinationTestTags.Budget)
-            .clickable(role = Role.Button, onClick = onOpenBudget)
-            .padding(vertical = AppSpacing.cardPaddingSmall),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+            .clickable(role = Role.Button, onClick = onOpenBudget),
+        containerColor = LocalThemeVisuals.current.brandPrimaryBg,
     ) {
-        Row(verticalAlignment = Alignment.Top) {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
-            ) {
+        Column(
+            modifier = Modifier.padding(AppSpacing.cardPadding),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+        ) {
+            Row(verticalAlignment = Alignment.Top) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+                ) {
+                    Text(
+                        text = if (budget.isOverBudget) {
+                            stringResource(R.string.plan_budget_over_label)
+                        } else {
+                            stringResource(R.string.plan_budget_remaining_label)
+                        },
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    AppAmountText(
+                        text = formatDisplayAmount(amount, currency),
+                        color = if (budget.isOverBudget) danger else MaterialTheme.colorScheme.onSurface,
+                        role = AppAmountRole.Hero,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                PlanRowChevron(modifier = Modifier.align(Alignment.CenterVertically))
+            }
+            PlanBudgetProgress(budget, currency)
+            BudgetReadSource(state.fetchedAt, state.fromCache, state.loading)
+            state.loadError?.let {
                 Text(
-                    text = if (budget.isOverBudget) {
-                        stringResource(R.string.plan_budget_over_label)
-                    } else {
-                        stringResource(R.string.plan_budget_remaining_label)
-                    },
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Text(
-                    text = formatDisplayAmount(amount, currency),
-                    color = if (budget.isOverBudget) danger else MaterialTheme.colorScheme.onSurface,
-                    style = MaterialTheme.typography.displayMedium.tabularNum(),
+                    text = it.asString(),
+                    color = danger,
+                    style = MaterialTheme.typography.bodySmall,
                 )
             }
-            PlanRowChevron(modifier = Modifier.align(Alignment.CenterVertically))
-        }
-        PlanBudgetProgress(budget, currency)
-        BudgetReadSource(state.fetchedAt, state.fromCache, state.loading)
-        state.loadError?.let {
-            Text(
-                text = it.asString(),
-                color = danger,
-                style = MaterialTheme.typography.bodySmall,
-            )
         }
     }
-    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium))
 }
 
 @Composable
@@ -168,12 +169,11 @@ internal fun PlanGoalsSection(
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         PlanSectionTitle(stringResource(R.string.plan_section_goals))
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium))
         PlanDestinationRow(
             model = PlanRowModel(
                 title = stringResource(R.string.plan_spending_goal_title),
                 subtitle = stringResource(R.string.plan_spending_goal_subtitle),
-                icon = Icons.Filled.Flag,
+                icon = R.drawable.ic_lucide_target,
                 testTag = PlanDestinationTestTags.SpendingGoal,
                 onClick = onOpenSpendingGoal,
             ),
@@ -182,7 +182,7 @@ internal fun PlanGoalsSection(
             model = PlanRowModel(
                 title = stringResource(R.string.plan_debt_goal_title),
                 subtitle = stringResource(R.string.plan_debt_goal_subtitle),
-                icon = Icons.Filled.Handshake,
+                icon = R.drawable.ic_lucide_flag,
                 testTag = PlanDestinationTestTags.DebtGoal,
                 onClick = onOpenDebtGoal,
             ),
@@ -199,12 +199,11 @@ internal fun PlanFixedArrangementsSection(
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         PlanSectionTitle(stringResource(R.string.plan_section_ongoing))
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium))
         PlanDestinationRow(
             model = PlanRowModel(
                 title = stringResource(R.string.plan_recurring_title),
                 subtitle = planRecurringSummary(recurring),
-                icon = Icons.Filled.EventRepeat,
+                icon = R.drawable.ic_lucide_calendar_check,
                 testTag = PlanDestinationTestTags.Recurring,
                 onClick = onOpenRecurring,
             ),
@@ -218,7 +217,7 @@ internal fun PlanFixedArrangementsSection(
             model = PlanRowModel(
                 title = stringResource(R.string.plan_income_title),
                 subtitle = planIncomeSummary(income),
-                icon = Icons.Filled.Payments,
+                icon = R.drawable.ic_lucide_chart_no_axes_combined,
                 testTag = PlanDestinationTestTags.IncomePlans,
                 onClick = onOpenIncomePlans,
             ),
@@ -232,9 +231,9 @@ private fun PlanSectionTitle(title: String) {
     Text(
         text = title,
         modifier = Modifier.padding(bottom = AppSpacing.smallGap),
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        style = MaterialTheme.typography.bodyMedium,
-        fontWeight = FontWeight.Medium,
+        color = MaterialTheme.colorScheme.onSurface,
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.SemiBold,
     )
 }
 
@@ -249,11 +248,13 @@ private fun PlanDestinationRow(
         onClick = model.onClick,
         showDivider = showDivider,
     ) {
-        Icon(
-            imageVector = model.icon,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(AppSpacing.cardPadding),
+        SettingsEntryIcon(
+            icon = ImageVector.vectorResource(model.icon),
+            background = when (model.icon) {
+                R.drawable.ic_lucide_sliders_horizontal, R.drawable.ic_lucide_chart_no_axes_combined -> LocalThemeVisuals.current.surfaceLilac
+                R.drawable.ic_lucide_target -> LocalThemeVisuals.current.surfaceApricot
+                else -> LocalThemeVisuals.current.brandPrimaryBg
+            },
         )
         Spacer(modifier = Modifier.width(AppSpacing.compactGap))
         Column(
@@ -264,6 +265,7 @@ private fun PlanDestinationRow(
                 text = model.title,
                 color = MaterialTheme.colorScheme.onSurface,
                 style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
             )
             Text(
                 text = model.subtitle,

@@ -18,9 +18,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.shiftLedgerMonth
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.MonthPickerListState
 import com.ticketbox.ui.components.MonthPickerSheet
+import com.ticketbox.ui.components.displayMonthLabel
+import com.ticketbox.ui.screens.ledger.LedgerMonthStepper
+import com.ticketbox.ui.screens.ledger.LedgerMonthStepperState
 import com.ticketbox.ui.components.AppSheetScaffold
 import com.ticketbox.ui.screens.ledger.LedgerBulkEditSheetActions
 import com.ticketbox.ui.screens.ledger.LedgerBulkEditSheetState
@@ -59,6 +63,15 @@ private fun LedgerMonthPickerHost(
 ) {
     if (!chromeState.showMonthPicker) return
     ModalBottomSheet(onDismissRequest = { chromeState.showMonthPicker = false }) {
+        LedgerMonthStepper(
+            state = LedgerMonthStepperState(
+                label = displayMonthLabel(state.monthFilter).takeIf { state.monthFilter.isNotBlank() }
+                    ?: stringResource(R.string.ledger_inline_month_all),
+                previousMonth = shiftLedgerMonth(state.monthFilter, -1L),
+                nextMonth = shiftLedgerMonth(state.monthFilter, 1L),
+            ),
+            onMonthChange = actions.onMonthChange,
+        )
         MonthPickerSheet(
             months = state.months,
             selectedMonth = state.monthFilter,

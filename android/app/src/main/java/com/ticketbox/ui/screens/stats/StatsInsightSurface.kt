@@ -11,6 +11,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalStatsTokens
@@ -19,6 +20,7 @@ import com.ticketbox.ui.design.LocalStatsTokens
 internal fun StatsInsightSurface(
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(AppSpacing.cardPaddingSmall),
+    containerColor: Color? = null,
     content: @Composable () -> Unit,
 ) {
     val surfaceTokens = LocalStatsTokens.current.surface
@@ -28,9 +30,9 @@ internal fun StatsInsightSurface(
         modifier = modifier
             .fillMaxWidth()
             .clip(shape)
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = tokens.topAlpha))
+            .background(containerColor ?: MaterialTheme.colorScheme.surface.copy(alpha = tokens.topAlpha))
             .then(
-                if (tokens.borderAlpha > 0f) {
+                if (containerColor == null && tokens.borderAlpha > 0f) {
                     Modifier.border(
                         width = 1.dp,
                         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = tokens.borderAlpha),

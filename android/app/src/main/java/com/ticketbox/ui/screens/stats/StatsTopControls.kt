@@ -1,7 +1,6 @@
 package com.ticketbox.ui.screens.stats
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -46,6 +45,7 @@ import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppWindowWidthClass
 import com.ticketbox.ui.design.LocalAppAdaptiveLayoutPolicy
 import com.ticketbox.ui.design.LocalStatsTokens
+import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.viewmodel.StatsUiState
 
 private const val StatsTagFilterOptionLimit = 12
@@ -263,7 +263,7 @@ private fun StatsSelectablePill(
     trailingIcon: (@Composable () -> Unit)? = null,
 ) {
     val controlTokens = LocalStatsTokens.current.control
-    val shape = RoundedCornerShape(AppRadius.small)
+    val shape = RoundedCornerShape(AppRadius.pill)
     val labelColor = if (selected) {
         MaterialTheme.colorScheme.primary
     } else if (onClick == null) {
@@ -275,16 +275,7 @@ private fun StatsSelectablePill(
         modifier = modifier
             .heightIn(min = AppSpacing.controlMinHeight)
             .clip(shape)
-            .background(MaterialTheme.colorScheme.surface)
-            .border(
-                width = controlTokens.borderWidth,
-                color = if (selected) {
-                    MaterialTheme.colorScheme.primary.copy(alpha = 0.44f)
-                } else {
-                    MaterialTheme.colorScheme.outlineVariant
-                },
-                shape = shape,
-            )
+            .background(if (selected) LocalThemeVisuals.current.chipSelected else LocalThemeVisuals.current.solidCard)
             .clickable(enabled = onClick != null, role = Role.Button, onClick = { onClick?.invoke() })
             .padding(horizontal = controlTokens.horizontalPadding),
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap, Alignment.CenterHorizontally),

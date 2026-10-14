@@ -213,6 +213,7 @@ private fun DebtListEmbeddedContent(
     AppScrollableContent(
         chrome = AppScrollableContentChrome(
             role = AppPageRole.Ledger,
+            bottomBar = chrome.bottomBar,
             layout = AppScrollableContentLayout(
                 hasBottomBar = false,
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),

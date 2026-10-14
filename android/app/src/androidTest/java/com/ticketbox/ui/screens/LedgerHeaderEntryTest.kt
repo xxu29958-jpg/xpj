@@ -151,14 +151,29 @@ class LedgerHeaderEntryTest {
     @Test
     fun headerExposesSearchAsFirstClassEntry() {
         var searchOpened = false
+        var category = ""
+        var month = ""
         render(
-            LedgerUiState(items = listOf(ledgerHeaderConfirmedRow()), syncedInCurrentSession = true),
-            actions = LedgerScreenActions(onOpenGlobalSearch = { searchOpened = true }),
+            LedgerUiState(items = listOf(ledgerHeaderConfirmedRow()), monthFilter = "2026-10",
+                categories = listOf("餐饮"), syncedInCurrentSession = true),
+            actions = LedgerScreenActions(onOpenGlobalSearch = { searchOpened = true },
+                onCategoryChange = { category = it }, onMonthChange = { month = it }),
         )
 
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         composeRule.onNodeWithContentDescription(context.getString(R.string.global_search_header_title)).performClick()
         assertTrue(searchOpened)
+        composeRule.onNodeWithText(context.getString(R.string.ledger_inline_category_all)).performClick()
+        composeRule.onNodeWithText("餐饮").performClick()
+        org.junit.Assert.assertEquals("餐饮", category)
+        composeRule.onNodeWithText(context.getString(R.string.components_month_label, "2026", "10")).performClick()
+        composeRule.onNodeWithContentDescription(context.getString(R.string.ledger_inline_month_prev)).performClick()
+        org.junit.Assert.assertEquals("2026-09", month)
+        composeRule.onNodeWithContentDescription(context.getString(R.string.ledger_inline_month_next)).performClick()
+        org.junit.Assert.assertEquals("2026-11", month)
+        composeRule.onNodeWithText(context.getString(R.string.components_month_picker_all_months)).performClick()
+        org.junit.Assert.assertEquals("", month)
+        composeRule.onNodeWithText(context.getString(R.string.components_month_picker_title)).assertDoesNotExist()
     }
 
     @Test
@@ -167,7 +182,7 @@ class LedgerHeaderEntryTest {
         render(LedgerUiState(items = listOf(ledgerHeaderConfirmedRow()), syncedInCurrentSession = true),
             onReviewDates = { reviewed = true })
 
-        composeRule.onNodeWithText("筛选与工具").performClick()
+        composeRule.onNodeWithText("筛选").performClick()
         composeRule.onNodeWithText("账本工具").assertIsDisplayed()
         composeRule.onNodeWithText("筛选关键词").assertIsDisplayed()
         composeRule.onNodeWithText("显示方式").assertExists()

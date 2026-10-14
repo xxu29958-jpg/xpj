@@ -28,6 +28,7 @@ import com.ticketbox.domain.model.DashboardCard
 import com.ticketbox.domain.model.visibleDashboardCards
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalCurrencyDisplay
+import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.screens.overviewMonthComparison
 import com.ticketbox.ui.screens.overviewRecent7DaysAmount
 import com.ticketbox.viewmodel.DashboardLayoutUiState
@@ -95,7 +96,7 @@ internal fun LazyListScope.overviewModuleItems(
 @Composable
 private fun OverviewMonthModule(state: StatsUiState) {
     val stats = state.stats ?: return
-    StatsInsightSurface {
+    StatsInsightSurface(containerColor = LocalThemeVisuals.current.brandPrimaryBg) {
         StatsOverviewCard(
             header = StatsOverviewHeaderModel(
                 stats, state.statsSource, overviewRecent7DaysAmount(state), overviewMonthComparison(state),
