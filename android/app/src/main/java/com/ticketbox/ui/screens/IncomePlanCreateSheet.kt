@@ -144,6 +144,7 @@ private fun AddIncomePlanSheet(
                 onFrequency = viewModel::updateDraftFrequency,
             ),
         )
+        IncomePlanCreationDiscard(state, viewModel, onDismiss)
     }
 }
 
@@ -157,7 +158,6 @@ private fun IncomePlanCreationActions(
     val recovery = session.phase in setOf(IncomePlanCreationPhase.DraftNeedsRecovery, IncomePlanCreationPhase.NeedsRecovery)
     val busy = state.isSubmitting || state.isRestoring
     val editable = session.phase == IncomePlanCreationPhase.Draft && state.canModify
-    var confirmDiscard by rememberSaveable(session.binding, session.creationKey) { mutableStateOf(false) }
     AppSheetActionRow(
         primary = AppAction(
             text = when {
@@ -168,14 +168,22 @@ private fun IncomePlanCreationActions(
             onClick = if (recovery) viewModel::retryPublicationRecovery else viewModel::submit,
             enabled = !busy && (recovery || editable),
         ),
-        secondary = AppAction(
-            text = stringResource(R.string.income_plan_creation_discard),
-            onClick = {
-                if (recovery) confirmDiscard = true else { viewModel.cancel(); onDismiss() }
-            },
-            enabled = !busy && session.phase != IncomePlanCreationPhase.Publishing,
-        ),
     )
+    TextButton(onClick = onDismiss, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
+        Text(stringResource(R.string.common_keep_draft_return))
+    }
+}
+
+@Composable
+private fun IncomePlanCreationDiscard(state: IncomePlanCreateUiState, viewModel: IncomePlanCreateViewModel, onDismiss: () -> Unit) {
+    val session = state.session ?: return
+    val recovery = session.phase in setOf(IncomePlanCreationPhase.DraftNeedsRecovery, IncomePlanCreationPhase.NeedsRecovery)
+    val busy = state.isSubmitting || state.isRestoring
+    var confirmDiscard by rememberSaveable(session.binding, session.creationKey) { mutableStateOf(false) }
+    TextButton(
+        onClick = { if (recovery) confirmDiscard = true else { viewModel.cancel(); onDismiss() } },
+        enabled = !busy && session.phase != IncomePlanCreationPhase.Publishing,
+    ) { Text(stringResource(R.string.income_plan_creation_discard)) }
     if (confirmDiscard) AlertDialog(
         onDismissRequest = { confirmDiscard = false },
         title = { Text(stringResource(R.string.income_plan_creation_discard)) },

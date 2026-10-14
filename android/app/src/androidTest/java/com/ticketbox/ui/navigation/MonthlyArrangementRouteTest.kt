@@ -1,11 +1,13 @@
 package com.ticketbox.ui.navigation
 
 import android.content.Context
+import android.view.WindowManager
+import androidx.activity.ComponentActivity
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.*
-import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
@@ -21,6 +23,7 @@ import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.ui.saveConsumerArtPreview
+import com.ticketbox.ui.RealKeyboard
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.*
@@ -29,7 +32,8 @@ import org.junit.Test
 
 /** Actual route, VM, repository, Room and dispatcher; only the remote service is synthetic. */
 class MonthlyArrangementRouteTest {
-    @get:Rule val compose = createComposeRule()
+    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val keyboard = RealKeyboard()
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val fixture = BudgetAdviceManualRateFixture(context)
     private val mounted = mutableStateOf(true)
@@ -127,6 +131,9 @@ class MonthlyArrangementRouteTest {
     }
 
     private fun show() {
+        // Match MainActivity's manifest: an unspecified test window can pan the
+        // already IME-inset page a second time when a text field gains focus.
+        compose.runOnUiThread { compose.activity.window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE) }
         val skin = if (InstrumentationRegistry.getArguments().getString("captureSkin") == "midnight") AppSkin.Midnight else AppSkin.Paper
         compose.setContent { if (mounted.value) TicketboxTheme(skin = skin) {
             CompositionLocalProvider(LocalViewModelStoreOwner provides models,
@@ -159,7 +166,14 @@ class MonthlyArrangementRouteTest {
         closeSoftKeyboard()
         compose.waitForIdle()
     }
-    private fun tap(tag: String) { compose.onNodeWithTag(tag).performScrollTo().assertIsEnabled().performClick(); compose.waitForIdle() }
+    private fun tap(tag: String) {
+        if (tag == "arrangement_save") {
+            input("arrangement_savings").performScrollTo().performClick()
+            keyboard.assertActionAboveKeyboard(compose, context.getString(R.string.arrangement_save), "arrangement-save-keyboard")
+        } else compose.onNodeWithTag(tag).performScrollTo()
+        compose.onNodeWithTag(tag).assertIsDisplayed().assertIsEnabled().performClick()
+        keyboard.dismissAndWait(compose)
+    }
     private fun capture(name: String) {
         saveConsumerArtPreview(name, compose.onRoot().captureToImage().asAndroidBitmap())
     }

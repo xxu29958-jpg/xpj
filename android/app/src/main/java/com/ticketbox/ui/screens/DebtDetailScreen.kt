@@ -295,14 +295,11 @@ private fun DebtActionSheet(
                         onClick = viewModel::submit,
                         enabled = state.canSubmitAction,
                     ),
-                    secondary = if (action == DebtAction.Repayment) null else AppSheetAction(
-                        text = stringResource(R.string.common_cancel),
-                        onClick = onClose,
-                        enabled = !state.isSubmitting,
-                    ),
                 )
-                if (action == DebtAction.Repayment) TextButton(onClick = onClose, enabled = !state.isSubmitting,
-                    modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.debt_proposal_back_keep_draft)) }
+                TextButton(onClick = onClose, enabled = !state.isSubmitting, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(if (action == DebtAction.Repayment) R.string.debt_proposal_back_keep_draft
+                        else R.string.common_cancel))
+                }
             },
         ) {
             DebtActionForm(state, viewModel, action)

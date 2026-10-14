@@ -1,5 +1,7 @@
 package com.ticketbox.ui.screens.settings
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -11,7 +13,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -33,12 +34,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.vectorResource
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.domain.model.AccountDevice
 import com.ticketbox.domain.model.DevicePairingCode
 import com.ticketbox.ui.components.AppStatusBanner
+import com.ticketbox.ui.components.SettingsEntryIcon
 import com.ticketbox.ui.components.displayDateTime
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
@@ -47,34 +51,26 @@ import com.ticketbox.viewmodel.MyDevicesViewModel
 
 /** Row management callbacks grouped so device rows stay small and stable. */
 @Immutable
-private class DeviceRowActions(
+internal class DeviceRowActions(
     val onRename: (AccountDevice) -> Unit,
     val onRecover: (AccountDevice) -> Unit,
     val onRevoke: (AccountDevice) -> Unit,
     val onDelete: (AccountDevice) -> Unit,
 )
 
-/** One nullable state enforces one device-management dialog at a time. */
-private sealed interface DeviceDialog {
-    val device: AccountDevice
-
-    data class Rename(override val device: AccountDevice) : DeviceDialog
-    data class Recover(override val device: AccountDevice) : DeviceDialog
-    data class Revoke(override val device: AccountDevice) : DeviceDialog
-    data class Remove(override val device: AccountDevice) : DeviceDialog
-}
-
 @Composable
 fun MyDevicesScreen(
     viewModel: MyDevicesViewModel,
     activeLedgerId: String?,
     onBack: () -> Unit,
+    onOpenSecurity: () -> Unit,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    var dialog by remember { mutableStateOf<DeviceDialog?>(null) }
-    val rowActions = remember {
+    var dialog by remember(activeLedgerId) { mutableStateOf<DeviceDialog?>(null) }
+    var selectedDevice by remember(activeLedgerId) { mutableStateOf<AccountDevice?>(null) }
+    val rowActions = remember(activeLedgerId, viewModel) {
         DeviceRowActions(
-            onRename = { dialog = DeviceDialog.Rename(it) },
+            onRename = { selectedDevice = it },
             onRecover = { dialog = DeviceDialog.Recover(it) },
             onRevoke = { dialog = DeviceDialog.Revoke(it) },
             onDelete = { dialog = DeviceDialog.Remove(it) },
@@ -83,30 +79,19 @@ fun MyDevicesScreen(
 
     LaunchedEffect(activeLedgerId) { viewModel.refresh(activeLedgerId) }
     DisposableEffect(viewModel) { onDispose { viewModel.dismissPairingCode() } }
+    BackHandler(enabled = selectedDevice != null && dialog == null) {
+        if (state.busyDeviceId == null) { selectedDevice = null; viewModel.dismissPairingCode() }
+    }
 
-    when (val open = dialog) {
-        is DeviceDialog.Rename -> RenameDeviceDialog(
-            device = open.device,
-            state = state,
-            onConfirm = { name -> viewModel.rename(open.device, name, activeLedgerId) { dialog = null } },
-            onDismiss = { dialog = null },
-        )
-        is DeviceDialog.Recover -> RecoverDeviceDialog(
-            device = open.device,
-            onConfirm = { viewModel.recover(open.device, activeLedgerId); dialog = null },
-            onDismiss = { dialog = null },
-        )
-        is DeviceDialog.Revoke -> RevokeDeviceDialog(
-            device = open.device,
-            onConfirm = { viewModel.revoke(open.device, activeLedgerId); dialog = null },
-            onDismiss = { dialog = null },
-        )
-        is DeviceDialog.Remove -> DeleteDeviceDialog(
-            device = open.device,
-            onConfirm = { viewModel.delete(open.device, activeLedgerId); dialog = null },
-            onDismiss = { dialog = null },
-        )
-        null -> Unit
+    DeviceManagementDialogHost(dialog, viewModel, activeLedgerId) { dialog = null }
+
+    selectedDevice?.let { selected ->
+        DeviceManagementPage(selected, state, rowActions, DeviceEditorActions(
+            onSave = { name -> viewModel.rename(selected, name, activeLedgerId) { selectedDevice = null; viewModel.dismissPairingCode() } },
+            onBack = { selectedDevice = null; viewModel.dismissPairingCode() },
+            onDismissCode = viewModel::dismissPairingCode,
+        ))
+        return
     }
 
     SettingsPageFrame(
@@ -126,6 +111,8 @@ fun MyDevicesScreen(
             onCreate = { viewModel.createPairingCode(activeLedgerId) },
             onDismissResult = { viewModel.dismissPairingCode() },
         )
+        SettingsEntryRow(stringResource(R.string.my_devices_session_entry), stringResource(R.string.my_devices_session_hint),
+            R.drawable.ic_lucide_user_round_x, onClick = onOpenSecurity)
     }
 }
 
@@ -192,9 +179,12 @@ private fun DeviceRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .clickable(enabled = !busy) { actions.onRename(device) }
             .padding(vertical = AppSpacing.miniGap),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        SettingsEntryIcon(ImageVector.vectorResource(if (device.platform == "web") R.drawable.ic_lucide_monitor_smartphone else R.drawable.ic_lucide_phone))
+        Spacer(Modifier.width(AppSpacing.contentGap))
         Column(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
@@ -233,7 +223,7 @@ private fun DeviceTitleRow(device: AccountDevice) {
 }
 
 @Composable
-private fun DeviceActivityText(device: AccountDevice) {
+internal fun DeviceActivityText(device: AccountDevice) {
     val platformLabel = when (device.platform) {
         "android" -> stringResource(R.string.my_devices_platform_android)
         "web" -> stringResource(R.string.my_devices_platform_web)
@@ -365,118 +355,4 @@ private fun AddDeviceSection(
             }
         }
     }
-}
-
-@Composable
-private fun RenameDeviceDialog(
-    device: AccountDevice,
-    state: MyDevicesUiState,
-    onConfirm: (String) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    var name by remember(device.publicId) { mutableStateOf(device.deviceName) }
-    var submitted by remember(device.publicId) { mutableStateOf(false) }
-    val busy = state.busyDeviceId == device.publicId
-    AlertDialog(
-        onDismissRequest = { if (!busy) onDismiss() },
-        title = { Text(stringResource(R.string.my_devices_rename_dialog_title)) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-                if (submitted) AppStatusBanner(message = state.message, tone = state.messageTone)
-                SettingsDialogTextInput(
-                    state = SettingsTextInputState(
-                        label = stringResource(R.string.my_devices_rename_dialog_label),
-                        value = name,
-                        enabled = !busy,
-                    ),
-                    onValueChange = { name = it },
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = { submitted = true; onConfirm(name) }, enabled = !busy && name.isNotBlank()) {
-                Text(stringResource(R.string.my_devices_rename_dialog_confirm))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !busy) {
-                Text(stringResource(R.string.common_cancel))
-            }
-        },
-    )
-}
-
-@Composable
-private fun RecoverDeviceDialog(
-    device: AccountDevice,
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.my_devices_recovery_dialog_title)) },
-        text = { Text(stringResource(R.string.my_devices_recovery_dialog_text, device.deviceName)) },
-        confirmButton = {
-            TextButton(onClick = onConfirm) {
-                Text(stringResource(R.string.my_devices_recovery_dialog_confirm))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.common_cancel))
-            }
-        },
-    )
-}
-
-@Composable
-private fun RevokeDeviceDialog(
-    device: AccountDevice,
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.my_devices_revoke_dialog_title)) },
-        text = { Text(stringResource(R.string.my_devices_revoke_dialog_text, device.deviceName)) },
-        confirmButton = {
-            TextButton(onClick = onConfirm) {
-                Text(
-                    stringResource(R.string.my_devices_revoke_dialog_confirm),
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.common_cancel))
-            }
-        },
-    )
-}
-
-@Composable
-private fun DeleteDeviceDialog(
-    device: AccountDevice,
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.my_devices_delete_dialog_title)) },
-        text = { Text(stringResource(R.string.my_devices_delete_dialog_text, device.deviceName)) },
-        confirmButton = {
-            TextButton(onClick = onConfirm) {
-                Text(
-                    stringResource(R.string.my_devices_delete_dialog_confirm),
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.common_cancel))
-            }
-        },
-    )
 }

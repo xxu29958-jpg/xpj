@@ -18,9 +18,7 @@ import com.ticketbox.data.remote.dto.RecycleBinRestoreRequestDto
 import com.ticketbox.data.remote.dto.InvitationAcceptRequestDto
 import com.ticketbox.data.remote.dto.InvitationAcceptResponseDto
 import com.ticketbox.data.remote.dto.InvitationCreateRequestDto
-import com.ticketbox.data.remote.dto.InvitationCreateResponseDto
 import com.ticketbox.data.remote.dto.InvitationPreviewRequestDto
-import com.ticketbox.data.remote.dto.InvitationPreviewResponseDto
 import com.ticketbox.data.remote.dto.LedgerAuditDto
 import com.ticketbox.data.remote.dto.LedgerMemberDto
 import com.ticketbox.data.remote.dto.LedgerMemberRoleUpdateRequestDto
@@ -28,6 +26,7 @@ import com.ticketbox.data.remote.dto.OwnerTransferResponseDto
 import com.ticketbox.domain.model.AccountDevice
 import com.ticketbox.domain.model.DevicePairingCode
 import com.ticketbox.domain.model.FamilyInvitationCreated
+import com.ticketbox.domain.model.FamilyInvitation
 import com.ticketbox.domain.model.FamilyMember
 import com.ticketbox.domain.model.InvitationPreview
 import com.ticketbox.domain.model.InvitationSessionTarget
@@ -271,11 +270,13 @@ class LedgerRepository(
     /**
      * 轴7 发邀请(owner 级,后端 403 兜底;UI 已按角色隐藏只做体验)。返回的
      * [FamilyInvitationCreated.inviteToken] 是唯一一次明文——调用方负责当场展示/复制。
-     * note / ttl_days 走后端默认(7 天),MVP 不在客户端暴露。
+     * 备注与有效天数使用同一邀请接口，不改变邀请角色和设备绑定的分工。
      */
     suspend fun createFamilyInvitation(
         role: String,
         ledgerId: String? = activeLedgerId(),
+        note: String? = null,
+        ttlDays: Int = 7,
     ): Result<FamilyInvitationCreated> = wrap {
         val targetLedgerId = requireActiveLedger(ledgerId)
         val cleanRole = role.trim()
@@ -283,12 +284,22 @@ class LedgerRepository(
         require(cleanRole == LEDGER_ROLE_MEMBER || cleanRole == LEDGER_ROLE_VIEWER) {
             "邀请角色只能是成员或只读。"
         }
+        require(ttlDays in 1..30 && (note?.trim()?.length ?: 0) <= 80) { "有效天数应为 1–30 天，备注最多 80 字。" }
         requestGuard.guardedCall(expectedLedgerId = targetLedgerId) { api ->
             api.createInvitation(
                 ledgerId = targetLedgerId,
-                request = InvitationCreateRequestDto(role = cleanRole),
+                request = InvitationCreateRequestDto(role = cleanRole, note = note?.trim()?.takeIf(String::isNotEmpty), ttlDays = ttlDays),
             ).toFamilyInvitationCreated()
         }
+    }
+
+    suspend fun readFamilyInvitations(binding: LogicalSessionBinding): Result<List<FamilyInvitation>> = wrap {
+        requestGuard.bindExact(binding).call { api -> api.listInvitations(binding.ledgerId).invitations.map { it.toFamilyInvitation() } }
+    }
+
+    suspend fun revokeFamilyInvitation(invitation: FamilyInvitation, binding: LogicalSessionBinding): Result<FamilyInvitation> = wrap {
+        require(invitation.ledgerId == binding.ledgerId) { "账本已切换，请重新打开邀请。" }
+        requestGuard.bindExact(binding).call { api -> api.revokeInvitation(binding.ledgerId, invitation.publicId).toFamilyInvitation() }
     }
 
     suspend fun disableFamilyMember(
@@ -660,15 +671,6 @@ private fun RecycleBinItemDto.toRecycleBinItem(): RecycleBinItem = RecycleBinIte
     restoreIntentMonth = restoreIntentMonth,
 )
 
-private fun InvitationPreviewResponseDto.toInvitationPreview(): InvitationPreview = InvitationPreview(
-    serverId = serverId.requireSessionProtocolId("服务器身份"),
-    dataGeneration = dataGeneration.requireSessionProtocolId("数据代际"),
-    ledgerId = ledgerId,
-    ledgerName = ledgerName,
-    role = role,
-    expiresAt = expiresAt,
-)
-
 private fun InvitationAcceptResponseDto.toLedgerSelectionTransition(
     boundAt: String,
 ): LedgerSessionTransition = LedgerSessionTransition(
@@ -689,14 +691,6 @@ private fun InvitationAcceptResponseDto.toLedgerSessionIdentity(boundAt: String)
         deviceName = deviceName,
         role = role,
         boundAt = boundAt,
-    )
-
-private fun InvitationCreateResponseDto.toFamilyInvitationCreated(): FamilyInvitationCreated =
-    FamilyInvitationCreated(
-        inviteToken = inviteToken,
-        inviteUrl = inviteUrl,
-        role = invitation.role,
-        expiresAt = invitation.expiresAt,
     )
 
 private fun OwnerTransferResponseDto.toOwnerTransferResult(): OwnerTransferResult = OwnerTransferResult(

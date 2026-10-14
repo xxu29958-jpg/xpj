@@ -1,10 +1,12 @@
 <resources>
     <string name="debt_creation_subtitle">只记录约定，不新增消费。</string>
-    <string name="debt_creation_details_expand">分期与说明 · 展开</string>
-    <string name="debt_creation_details_collapse">分期与说明 · 收起</string>
+    <string name="debt_creation_details_expand">分期与说明</string>
+    <string name="debt_creation_details_apply">采用到本次欠款</string>
+    <string name="debt_creation_details_note">调整留在本次原稿中；记下这笔往来后才提交，不代表已经还款。</string>
+    <string name="debt_creation_installment_preview">每期本金估算：%1$s（不含手续费）</string>
     <string name="debt_creation_i_owe">我欠对方</string>
     <string name="debt_creation_owed_to_me">对方欠我</string>
-    <string name="debt_creation_keep_exit">暂存退出</string>
+    <string name="debt_creation_keep_exit">保留原稿并返回</string>
     <string name="debt_creation_discard_original">放弃这份原稿</string>
     <string name="debt_creation_check_local">核实本机保存</string>
     <string name="debt_creation_local_unverified">尚未确认本机保存结果。原输入已保留，请先核实这次原提交。</string>

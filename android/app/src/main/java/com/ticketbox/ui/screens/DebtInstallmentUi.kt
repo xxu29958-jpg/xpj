@@ -26,6 +26,19 @@ import com.ticketbox.ui.components.AppTextInputDecorations
 import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.viewmodel.DebtDraftUi
+
+@Composable
+internal fun DebtInstallmentDraftPreview(draft: DebtDraftUi) {
+    if (draft.kind != DebtKinds.INSTALLMENT) return
+    val principal = draft.parsedAmountCents() ?: return
+    val count = draft.parsedInstallmentCount() ?: return
+    Text(
+        stringResource(R.string.debt_creation_installment_preview,
+            formatDisplayAmount(installmentPerPeriodCents(principal, count.toLong()), CurrencyDisplay(draft.homeCurrency))),
+        style = MaterialTheme.typography.titleMedium,
+    )
+}
 
 /**
  * ADR-0049 §B 完整 installment 的 Android UI（**仅外部 installment 债**）：① 新建外部债选「分期还款」后才显示的

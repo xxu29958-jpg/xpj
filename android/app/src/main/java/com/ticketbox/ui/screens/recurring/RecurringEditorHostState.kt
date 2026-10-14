@@ -24,27 +24,62 @@ internal data class RecurringEditorState(
 @Stable
 internal class RecurringEditorHostState internal constructor(
     initialEditor: RecurringEditorState? = null,
+    initiallyVisible: Boolean = initialEditor != null,
 ) {
     var editor by mutableStateOf(initialEditor)
         private set
+    var visible by mutableStateOf(initiallyVisible)
+        private set
+    var replacement by mutableStateOf<RecurringEditorState?>(null)
+        private set
 
     fun openCreate(currency: CurrencyCode) {
-        editor = RecurringEditorState(
+        open(RecurringEditorState(
             target = RecurringEditorTarget.Create,
             session = newRecurringEditorSession(baseline = null, currency = currency),
-        )
+        ))
     }
 
     fun openEdit(item: RecurringItem, currency: CurrencyCode) {
         require(item.publicId.isNotBlank()) { "recurring editor target must have a public id" }
-        editor = RecurringEditorState(
+        open(RecurringEditorState(
             target = RecurringEditorTarget.Edit(item.publicId),
             session = newRecurringEditorSession(baseline = item, currency = currency),
-        )
+        ))
+    }
+
+    private fun open(requested: RecurringEditorState) {
+        if (editor != null && editor?.target != requested.target) {
+            replacement = requested
+        } else {
+            if (editor == null) editor = requested
+            resume()
+        }
+    }
+
+    fun resume() {
+        replacement = null
+        visible = editor != null
+    }
+
+    fun keepDraft() {
+        visible = false
+    }
+
+    fun discardAndSwitch() {
+        editor = replacement
+        replacement = null
+        visible = editor != null
+    }
+
+    fun cancelSwitch() {
+        replacement = null
     }
 
     fun dismiss() {
         editor = null
+        visible = false
+        replacement = null
     }
 }
 
@@ -72,6 +107,7 @@ private fun recurringEditorHostStateSaver(editorEpoch: Long, runtimeId: String) 
             buildList {
                 add(runtimeId)
                 add(editorEpoch.toString())
+                addBoolean(host.visible)
                 val editor = host.editor
                 when (val target = editor?.target) {
                     null -> add(TARGET_NONE)
@@ -92,6 +128,7 @@ private fun recurringEditorHostStateSaver(editorEpoch: Long, runtimeId: String) 
                 val values = saved.iterator()
                 if (values.next() != runtimeId) return@runCatching RecurringEditorHostState()
                 if (values.next().toLong() != editorEpoch) return@runCatching RecurringEditorHostState()
+                val visible = values.next().decodeBoolean()
                 when (val kind = values.next()) {
                     TARGET_NONE -> RecurringEditorHostState()
                     TARGET_CREATE -> {
@@ -99,6 +136,7 @@ private fun recurringEditorHostStateSaver(editorEpoch: Long, runtimeId: String) 
                         check(session.editing == null)
                         RecurringEditorHostState(
                             RecurringEditorState(RecurringEditorTarget.Create, session),
+                            initiallyVisible = visible,
                         )
                     }
                     TARGET_EDIT -> {
@@ -107,6 +145,7 @@ private fun recurringEditorHostStateSaver(editorEpoch: Long, runtimeId: String) 
                         check(session.editing?.publicId == publicId)
                         RecurringEditorHostState(
                             RecurringEditorState(RecurringEditorTarget.Edit(publicId), session),
+                            initiallyVisible = visible,
                         )
                     }
                     else -> error("unknown recurring editor target: $kind")

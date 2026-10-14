@@ -80,6 +80,13 @@ internal fun ExpenseCorrectionSheet(
     actions: ExpenseCorrectionSheetActions,
 ) {
     if (state.expense == null) return
+    val review = availability.review
+    var keepItems by remember(review) { mutableStateOf<Boolean?>(null) }
+    var keepSplits by remember(review) { mutableStateOf<Boolean?>(null) }
+    var scalarChoices by remember(review?.current?.rowVersion) {
+        mutableStateOf(emptyMap<com.ticketbox.viewmodel.CorrectionReviewField, Boolean>())
+    }
+    val selection = CorrectionReviewSelection(review?.current?.rowVersion ?: basis.rowVersion, scalarChoices, keepItems, keepSplits)
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true,
         confirmValueChange = { target -> !state.correction.saving || target != SheetValue.Hidden })
     ModalBottomSheet(onDismissRequest = actions.onDismiss, sheetState = sheetState) {
@@ -87,7 +94,7 @@ internal fun ExpenseCorrectionSheet(
             title = stringResource(R.string.expense_correction_sheet_title),
             subtitle = stringResource(R.string.expense_correction_sheet_subtitle),
             actions = {
-                (state.correction.submitError ?: availability.contextError.takeIf { availability.review == null })?.let { error ->
+                (state.correction.submitError ?: availability.contextError.takeIf { review?.ready != true })?.let { error ->
                     AppStatusBanner(
                         message = error,
                         tone = MessageTone.Danger,
@@ -95,7 +102,7 @@ internal fun ExpenseCorrectionSheet(
                     )
                 }
                 com.ticketbox.ui.screens.expense.fact.FactInputSaveStatus(state, actions.onRetryInputSave)
-                AppSheetActionRow(
+                if (review != null) CorrectionReviewAction(review, selection, actions.onReview) else AppSheetActionRow(
                     primary = AppSheetAction(
                         text = if (state.correction.saving) {
                             stringResource(R.string.expense_correction_saving)
@@ -105,11 +112,19 @@ internal fun ExpenseCorrectionSheet(
                         enabled = availability.canSubmit,
                         onClick = actions.onSubmit,
                     ),
-                    secondary = AppSheetAction(text = stringResource(R.string.expense_fact_input_close),
-                        enabled = !state.correction.saving, onClick = actions.onDismiss),
                 )
+                TextButton(onClick = actions.onDismiss, enabled = !state.correction.saving, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.expense_fact_input_close))
+                }
             },
         ) {
+            review?.let {
+                CorrectionReviewPanel(it, state, selection, choose = { chosen ->
+                    scalarChoices = chosen.scalars
+                    keepItems = chosen.keepItems
+                    keepSplits = chosen.keepSplits
+                }, refresh = actions.onRefreshFact)
+            }
             CorrectionFormContent(state, basis, availability, actions)
         }
     }
@@ -137,7 +152,6 @@ private fun CorrectionFormContent(state: ExpenseFactUiState, basis: com.ticketbo
                 announceUpdates = true,
             )
         }
-        availability.review?.let { CorrectionReviewPanel(it, state, actions.onReview, actions.onRefreshFact) }
         val inputState = state.copy(expense = basis,
             correction = state.correction.copy(saving = state.correction.saving || !availability.canEditInput))
         CorrectionReasonSection(state = inputState, actions = actions)

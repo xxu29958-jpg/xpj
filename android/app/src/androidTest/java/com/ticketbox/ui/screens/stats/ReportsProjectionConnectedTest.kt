@@ -106,6 +106,7 @@ class ReportsProjectionConnectedTest {
         compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(context.getString(R.string.stats_reports_merchant_metric_amount)))
         compose.onNodeWithText(context.getString(R.string.stats_reports_merchant_metric_amount)).performClick()
         assertEquals(ReportRankingMetric.Amount, ranking)
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("日常采购"))
         capture("reports-rankings")
         compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(context.getString(R.string.reports_rankings_title)))
         compose.onNodeWithText(context.getString(R.string.reports_rankings_title)).performClick()

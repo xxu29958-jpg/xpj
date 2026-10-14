@@ -20,6 +20,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.ticketbox.data.remote.dto.SavedViewDefinitionRequestDto
 import com.ticketbox.data.repository.queryDefinition
+import com.ticketbox.ui.components.AppBusyGuardedSheet
 import com.ticketbox.ui.design.LocalCurrencyCode
 import com.ticketbox.ui.screens.SavedQueryActions
 import com.ticketbox.ui.screens.SavedQueryEditor
@@ -65,15 +66,19 @@ private fun SavedQueryRoute(entry: NavBackStackEntry, dependencies: MainProductR
     }
     val draft = drafts.drafts.firstOrNull { it.slot == slot }
     LaunchedEffect(slot, drafts.drafts, drafts.ready) { if (slot != null && drafts.ready && draft == null) slot = null }
-    if (draft != null) {
-        SavedQueryEditor(draft, drafts, SavedQueryEditorContext(screenFactory.ledgerRepository.currentLedgerName().orEmpty(), state.tags, state.tagError),
-            SavedQueryEditorActions(change = { model.drafts.change(draft.slot, it) }, submit = { model.drafts.submit(draft.slot) },
-                review = { model.drafts.review(draft.slot) }, acknowledge = { model.drafts.acknowledge(draft.slot) },
-                retrySave = { model.drafts.retrySave(draft.slot) }, back = { slot = null; model.refresh() }))
-    } else SavedQueryScreen(state, drafts, SavedQueryActions(
+    SavedQueryScreen(state, drafts, SavedQueryActions(
         back = { if (state.selectedId == null) dependencies.onBack() else model.closeResults() },
         create = create, open = model::open, edit = { query, delete -> slot = model.drafts.begin(query.queryDefinition(), query, delete) },
         resume = { slot = it.slot }, refresh = { model.drafts.reload(); model.refresh() }, openExpense = dependencies.runtime.navController::openExpense,
         repairRate = { gap -> drafts.binding?.let { dependencies.runtime.navController.navigate(correctionRateRoute(it, gap)) } },
     ))
+    if (draft != null) {
+        val dismiss = { slot = null; model.refresh() }
+        AppBusyGuardedSheet(isSubmitting = drafts.busy, onDismiss = dismiss, skipPartiallyExpanded = true) {
+            SavedQueryEditor(draft, drafts, SavedQueryEditorContext(screenFactory.ledgerRepository.currentLedgerName().orEmpty(), state.tags, state.tagError),
+                SavedQueryEditorActions(change = { model.drafts.change(draft.slot, it) }, submit = { model.drafts.submit(draft.slot) },
+                    review = { model.drafts.review(draft.slot) }, acknowledge = { model.drafts.acknowledge(draft.slot) },
+                    retrySave = { model.drafts.retrySave(draft.slot) }, back = dismiss))
+        }
+    }
 }

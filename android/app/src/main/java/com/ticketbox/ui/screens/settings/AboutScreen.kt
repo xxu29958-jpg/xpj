@@ -1,137 +1,48 @@
 package com.ticketbox.ui.screens.settings
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Security
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
-import com.ticketbox.ui.design.AppAlpha
-import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.AppTextHierarchy
 
 @Composable
 fun AboutScreen(
     appVersionName: String,
     appVersionCode: Int,
     onBack: () -> Unit,
+    onOpenSecurity: () -> Unit,
 ) {
+    var helpOpen by rememberSaveable { mutableStateOf(false) }
     SettingsPageFrame(
         title = stringResource(R.string.settings_about_page_title),
         subtitle = stringResource(R.string.settings_about_page_subtitle),
         onBack = onBack,
     ) {
-        SettingsSection(
-            title = stringResource(R.string.settings_about_section_app_info),
-        ) {
-            SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
-                AboutInfoRow(
-                    label = stringResource(R.string.settings_about_label_app),
-                    value = stringResource(R.string.settings_about_app_name),
-                )
-                AboutDivider()
-                AboutInfoRow(
-                    label = stringResource(R.string.settings_about_label_version),
-                    value = stringResource(R.string.settings_about_version, appVersionName, appVersionCode),
-                )
-            }
+        SettingsEntryRow(stringResource(R.string.settings_about_build_title),
+            stringResource(R.string.settings_about_version, appVersionName, appVersionCode),
+            R.drawable.ic_lucide_info, onClick = null)
+        SettingsEntryRow(stringResource(R.string.settings_about_security_title),
+            stringResource(R.string.settings_about_security_body), R.drawable.ic_lucide_shield_check, onClick = onOpenSecurity)
+        SettingsEntryRow(stringResource(R.string.settings_about_help_title),
+            stringResource(R.string.settings_about_help_body), R.drawable.ic_lucide_book_open, onClick = { helpOpen = !helpOpen },
+            options = SettingsEntryRowOptions(expanded = helpOpen))
+        if (helpOpen) {
+            AboutHelpText(R.string.settings_about_confirm_title, R.string.settings_about_confirm_body)
+            AboutHelpText(R.string.settings_about_authority_title, R.string.settings_about_authority_body)
+            AboutHelpText(R.string.settings_about_privacy_title, R.string.settings_about_privacy_body)
         }
-        SettingsSection(
-            title = stringResource(R.string.settings_about_section_boundaries),
-        ) {
-            SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
-                AboutTrustRow(
-                    title = stringResource(R.string.settings_about_confirm_title),
-                    body = stringResource(R.string.settings_about_confirm_body),
-                )
-                AboutDivider()
-                AboutTrustRow(
-                    title = stringResource(R.string.settings_about_authority_title),
-                    body = stringResource(R.string.settings_about_authority_body),
-                )
-                AboutDivider()
-                AboutTrustRow(
-                    title = stringResource(R.string.settings_about_privacy_title),
-                    body = stringResource(R.string.settings_about_privacy_body),
-                )
-            }
-        }
+        SettingsEntryRow(stringResource(R.string.settings_about_owner_title),
+            stringResource(R.string.settings_about_owner_body), R.drawable.ic_lucide_info, onClick = null)
     }
 }
 
 @Composable
-private fun AboutInfoRow(
-    label: String,
-    value: String,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = AppSpacing.miniGap),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = label,
-            modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyLarge,
-            fontWeight = AppTextHierarchy.body.weight,
-            textAlign = TextAlign.End,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
+private fun AboutHelpText(title: Int, body: Int) {
+    Text(stringResource(title), style = MaterialTheme.typography.titleSmall)
+    Text(stringResource(body), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
-
-@Composable
-private fun AboutTrustRow(
-    title: String,
-    body: String,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = AppSpacing.miniGap),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = AppTextHierarchy.heading.weight,
-            )
-            Text(
-                text = body,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
-
-@Composable
-private fun AboutDivider() =
-    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium))

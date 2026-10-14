@@ -29,7 +29,7 @@
     <string name="income_plan_sheet_label_payday">每月预计日期 (1-31)</string>
     <string name="income_plan_sheet_label_arrival_day">预计日期 (1-31)</string>
     <string name="income_plan_sheet_submitting">提交中…</string>
-    <string name="income_plan_sheet_save">保存</string>
+    <string name="income_plan_sheet_save">保存收入计划</string>
     <string name="income_plan_source_salary">工资</string>
     <string name="income_plan_source_bonus">奖金</string>
     <string name="income_plan_source_freelance">副业 / 接单</string>

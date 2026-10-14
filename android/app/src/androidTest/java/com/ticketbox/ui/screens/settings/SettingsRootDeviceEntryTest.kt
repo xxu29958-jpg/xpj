@@ -1,6 +1,7 @@
 package com.ticketbox.ui.screens.settings
 
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertIsDisplayed
@@ -30,6 +31,7 @@ import org.junit.Test
 class SettingsRootDeviceEntryTest {
     private var accountOpened = false
     private val opened = mutableListOf<String>()
+    private val aboutOpen = mutableStateOf(false)
     @get:Rule
     val composeRule = createComposeRule()
 
@@ -88,12 +90,17 @@ class SettingsRootDeviceEntryTest {
         }
         composeRule.onNodeWithText("我的设备").performScrollTo().performClick()
         composeRule.onNodeWithText("关于").performScrollTo().performClick()
-        capture("settings-root-final-destinations")
+        composeRule.onNodeWithText(context.getString(R.string.settings_about_version,
+            context.getString(R.string.app_version_name), context.resources.getInteger(R.integer.app_version_code))).assertIsDisplayed()
+        capture("about-current-build")
         composeRule.runOnIdle {
             check(opened.toSet() == setOf("account", "ledgers", "members", "join", "devices", "export",
                 "notifications", "appearance", "connection", "sync", "background", "security", "about"))
             check(opened.size == 13)
         }
+        composeRule.onNodeWithText("使用说明").performScrollTo().performClick()
+        composeRule.onNodeWithText(context.getString(R.string.settings_about_confirm_body)).performScrollTo().assertIsDisplayed()
+        capture("about-help-expanded")
     }
 
     private fun capture(name: String) =
@@ -104,7 +111,10 @@ class SettingsRootDeviceEntryTest {
             val density = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale)) {
                 TicketboxTheme(skin = skin) {
-                    SettingsRootScreen(
+                    val context = InstrumentationRegistry.getInstrumentation().targetContext
+                    if (aboutOpen.value) AboutScreen(context.getString(R.string.app_version_name),
+                        context.resources.getInteger(R.integer.app_version_code), { aboutOpen.value = false }, { opened += "security" })
+                    else SettingsRootScreen(
                         state = SettingsUiState(
                             serverUrl = "https://family.example.test",
                             accountName = "小林",
@@ -149,7 +159,7 @@ class SettingsRootDeviceEntryTest {
                 onOpenSyncStatus = { opened += "sync" },
                 onOpenBackgroundTasks = { opened += "background" },
                 onOpenSecurity = { opened += "security" },
-                onOpenAbout = { opened += "about" },
+                onOpenAbout = { opened += "about"; aboutOpen.value = true },
             ),
         )
 }

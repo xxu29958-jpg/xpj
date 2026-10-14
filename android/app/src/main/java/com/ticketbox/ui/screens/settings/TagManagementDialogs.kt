@@ -5,12 +5,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
@@ -25,6 +22,9 @@ import com.ticketbox.domain.model.ManagedTag
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.AppStatusBanner
+import com.ticketbox.ui.components.AppBusyGuardedSheet
+import com.ticketbox.ui.components.AppPrimaryButton
+import com.ticketbox.ui.components.AppSheetScaffold
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.TagEditorAction
 import com.ticketbox.viewmodel.TagEditorDraft
@@ -189,20 +189,22 @@ private fun MergeTagDialog(
     state: MergeTagDialogState,
     actions: MergeTagDialogActions,
 ) {
-    AlertDialog(
-        onDismissRequest = { if (!state.busy) actions.onDismiss() },
-        title = { Text(stringResource(R.string.tag_management_merge_dialog_title)) },
-        text = { MergeTagDialogBody(state, actions.onSelected) },
-        confirmButton = {
-            TextButton(
-                enabled = !state.busy && !state.readOnly && state.selected != null,
-                onClick = { state.selected?.let(actions.onConfirm) },
-            ) { Text(stringResource(R.string.tag_management_merge_dialog_confirm)) }
-        },
-        dismissButton = {
-            TextButton(enabled = !state.busy, onClick = actions.onDismiss) { Text(stringResource(R.string.common_cancel)) }
-        },
-    )
+    AppBusyGuardedSheet(isSubmitting = state.busy, onDismiss = actions.onDismiss, skipPartiallyExpanded = true) {
+        AppSheetScaffold(
+            title = stringResource(R.string.tag_management_merge_dialog_title),
+            actions = {
+                AppPrimaryButton(
+                    text = stringResource(R.string.tag_management_merge_dialog_confirm),
+                    enabled = !state.busy && !state.readOnly && state.selected != null,
+                    onClick = { state.selected?.let(actions.onConfirm) },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                TextButton(enabled = !state.busy, onClick = actions.onDismiss, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.common_cancel))
+                }
+            },
+        ) { MergeTagDialogBody(state, actions.onSelected) }
+    }
 }
 
 @Composable
@@ -211,10 +213,7 @@ private fun MergeTagDialogBody(state: MergeTagDialogState, onSelected: (ManagedT
         AppStatusBanner(message = state.message, tone = state.messageTone)
         TagDraftAccessMessage(state.readOnly, state.bindingChanged)
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(max = AppSpacing.controlMinHeight * 8)
-                .verticalScroll(rememberScrollState()),
+            modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
         ) {
             Text(
@@ -222,6 +221,8 @@ private fun MergeTagDialogBody(state: MergeTagDialogState, onSelected: (ManagedT
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodyMedium,
             )
+            Text(stringResource(R.string.tag_management_merge_source_count, state.source.usageCount),
+                style = MaterialTheme.typography.bodyMedium)
             MergeTargetPicker(state.targets, state.selected, !state.busy, onSelected)
             Text(
                 text = stringResource(R.string.tag_management_merge_dialog_consequences),

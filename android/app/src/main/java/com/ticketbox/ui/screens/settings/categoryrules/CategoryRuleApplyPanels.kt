@@ -21,9 +21,8 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.RuleApplicationBatch
 import com.ticketbox.domain.model.RuleApplyConfirmedResult
 import com.ticketbox.domain.model.RuleApplyPreviewItem
-import com.ticketbox.ui.components.AppAction
-import com.ticketbox.ui.components.AppActionRow
-import com.ticketbox.ui.components.AppSecondaryButton
+import com.ticketbox.ui.components.AppFloatingActionBar
+import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppPaperCard
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.design.AppAlpha
@@ -43,10 +42,7 @@ import com.ticketbox.ui.screens.settings.SettingsOpenPanel
 @Composable
 internal fun ConfirmedRuleApplyPanel(
     preview: RuleApplyConfirmedResult?,
-    busy: Boolean,
     readOnly: Boolean,
-    onPreview: () -> Unit,
-    onConfirm: () -> Unit,
 ) {
     SettingsOpenPanel(
         verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
@@ -56,29 +52,31 @@ internal fun ConfirmedRuleApplyPanel(
             }
             SettingsEntryRow(stringResource(R.string.category_rule_impact_history_note),
                 stringResource(R.string.category_rule_impact_history_body), R.drawable.ic_lucide_info, onClick = null)
-            AppActionRow(
-                primary = AppAction(
-                    text = stringResource(R.string.category_rule_apply_confirm_button),
-                    enabled = !busy && !readOnly && preview?.dryRun == true &&
-                        !preview.previewToken.isNullOrBlank() && preview.changedCount > 0,
-                    onClick = onConfirm,
-                ),
-                secondary = AppAction(
-                    text = if (busy) {
-                        stringResource(R.string.category_rule_apply_preview_busy)
-                    } else {
-                        stringResource(R.string.category_rule_impact_refresh)
-                    },
-                    enabled = !busy,
-                    onClick = onPreview,
-                ),
-            )
             if (readOnly) {
                 Text(
                     text = stringResource(R.string.category_rule_apply_panel_readonly),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+    }
+}
+
+@Composable
+internal fun ConfirmedRuleApplyActions(
+    preview: RuleApplyConfirmedResult?,
+    busy: Boolean,
+    readOnly: Boolean,
+    onPreview: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    AppFloatingActionBar {
+        AppPrimaryButton(stringResource(R.string.category_rule_apply_confirm_button),
+            enabled = !busy && !readOnly && preview?.dryRun == true &&
+                !preview.previewToken.isNullOrBlank() && preview.changedCount > 0,
+            onClick = onConfirm, modifier = Modifier.fillMaxWidth())
+        TextButton(onClick = onPreview, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
+            Text(stringResource(if (busy) R.string.category_rule_apply_preview_busy else R.string.category_rule_impact_refresh))
+        }
     }
 }
 
@@ -194,32 +192,24 @@ private fun RuleApplicationRow(
             .padding(vertical = AppSpacing.smallGap),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
     ) {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
-            ) {
-                Text(
-                    text = stringResource(when {
+            SettingsEntryRow(
+                    title = stringResource(when {
                         application.status == "rollback_partial" -> R.string.category_rule_apply_history_status_partial
                         application.status == "rollback_skipped" -> R.string.category_rule_apply_history_status_skipped
                         application.isRolledBack -> R.string.category_rule_apply_history_status_rolled_back
                         else -> R.string.category_rule_apply_history_status_applied
                     }),
-                    style = MaterialTheme.typography.titleSmall,
-                )
-                Text(
-                    text = stringResource(R.string.category_rule_apply_history_changed_count, application.changedCount),
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = AppTextHierarchy.body.weight,
-                )
-            }
-            Text(
-                text = stringResource(
+                subtitle = stringResource(
                     R.string.category_rule_apply_history_scanned,
                     application.pendingScanned,
                     displayTime(application.createdAt),
                 ),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                icon = if (application.isRolledBack) R.drawable.ic_lucide_refresh_cw else R.drawable.ic_lucide_git_branch,
+                onClick = null,
+                options = SettingsEntryRowOptions(supportingContent = {
+                    Text(stringResource(R.string.category_rule_apply_history_changed_count, application.changedCount),
+                        color = MaterialTheme.colorScheme.primary, fontWeight = AppTextHierarchy.body.weight)
+                }),
             )
             application.rolledBackAt?.let {
                 val outcomes = application.changeCounts
@@ -238,11 +228,10 @@ private fun RuleApplicationRow(
                     style = MaterialTheme.typography.bodySmall)
             }
             if (!readOnly && !application.isRolledBack) {
-                AppSecondaryButton(
-                    text = stringResource(R.string.category_rule_apply_history_rollback_button),
+                TextButton(
                     enabled = !busy,
                     onClick = onRollback,
-                )
+                ) { Text(stringResource(R.string.category_rule_apply_history_rollback_button)) }
             }
     }
 }

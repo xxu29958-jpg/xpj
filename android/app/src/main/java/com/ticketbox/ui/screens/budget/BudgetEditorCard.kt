@@ -2,13 +2,15 @@ package com.ticketbox.ui.screens.budget
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import com.ticketbox.ui.components.AppPrimaryButton
+import com.ticketbox.ui.components.AppBusyGuardedSheet
+import com.ticketbox.ui.components.AppSheetScaffold
+import com.ticketbox.ui.components.AppSheetActionRow
+import com.ticketbox.ui.components.AppSheetAction
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -25,7 +27,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
-import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppAmountInputState
@@ -46,7 +47,6 @@ internal data class BudgetEditorActions(
     val onCategoryRowChange: (Int, String, String) -> Unit,
     val onAddCategoryRow: () -> Unit,
     val onRemoveCategoryRow: (Int) -> Unit,
-    val onSave: () -> Unit,
 )
 
 @Composable
@@ -55,7 +55,6 @@ internal fun BudgetEditorSection(
     actions: BudgetEditorActions,
 ) {
     var showOptional by rememberSaveable(state.binding, state.month) { mutableStateOf(false) }
-    val expanded = showOptional || state.hasPendingSave || state.messageTone == MessageTone.Danger
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
@@ -86,22 +85,22 @@ internal fun BudgetEditorSection(
                 )
             }
             BudgetCategoryFields(state, actions)
-            TextButton(onClick = { showOptional = !showOptional }, modifier = Modifier.testTag("budget_optional_toggle")) {
-                Text(stringResource(if (expanded) R.string.budget_editor_optional_hide else R.string.budget_editor_optional_show))
+            TextButton(onClick = { showOptional = true }, modifier = Modifier.testTag("budget_optional_toggle")) {
+                Text(stringResource(R.string.budget_editor_optional_show))
             }
-            if (expanded) {
-                Column(modifier = Modifier.testTag("budget_optional_fields"),
-                    verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap)) {
-                    BudgetOptionalAmounts(state, actions)
+            if (showOptional) {
+                AppBusyGuardedSheet(isSubmitting = state.saving, onDismiss = { showOptional = false }, skipPartiallyExpanded = true) {
+                    AppSheetScaffold(
+                        title = stringResource(R.string.budget_optional_title),
+                        subtitle = stringResource(R.string.budget_optional_draft_note),
+                        modifier = Modifier.testTag("budget_optional_fields"),
+                        actions = { AppSheetActionRow(primary = AppSheetAction(
+                            stringResource(R.string.budget_optional_return), { showOptional = false }, enabled = !state.saving,
+                        )) },
+                    ) { BudgetOptionalAmounts(state, actions) }
                 }
             }
         }
-        AppPrimaryButton(
-            text = stringResource(if (state.saving) R.string.common_saving else R.string.budget_editor_save),
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !state.saving && !state.hasPendingSave,
-            onClick = actions.onSave,
-        )
     }
 }
 
@@ -112,18 +111,16 @@ private fun BudgetOptionalAmounts(
 ) {
     val enabled = !state.saving && !state.hasPendingSave
     val currency = LocalCurrencyDisplay.current.homeCurrency
-    Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
         MoneyField(
             state = AppAmountInputState(stringResource(R.string.budget_editor_rollover_label), currency,
                 state.form.rolloverAmount, stringResource(R.string.budget_editor_rollover_placeholder), enabled = enabled),
             onValueChange = actions.onRolloverAmountChange,
-            modifier = Modifier.weight(1f),
         )
         MoneyField(
             state = AppAmountInputState(stringResource(R.string.budget_editor_non_monthly_label), currency,
                 state.form.nonMonthlyAmount, stringResource(R.string.budget_editor_non_monthly_placeholder), enabled = enabled),
             onValueChange = actions.onNonMonthlyAmountChange,
-            modifier = Modifier.weight(1f),
         )
     }
     AppTextInput(

@@ -39,6 +39,7 @@ import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.settings.categoryrules.CategoryRuleDraftForm
 import com.ticketbox.ui.screens.settings.categoryrules.CategoryRuleList
 import com.ticketbox.ui.screens.settings.categoryrules.ConfirmedRuleApplyPanel
+import com.ticketbox.ui.screens.settings.categoryrules.ConfirmedRuleApplyActions
 import com.ticketbox.ui.screens.settings.categoryrules.DeleteCategoryRuleDialog
 import com.ticketbox.ui.screens.settings.categoryrules.RuleApplicationHistory
 import com.ticketbox.ui.screens.settings.categoryrules.RollbackRuleApplicationDialog
@@ -145,10 +146,6 @@ fun CategoryRulesScreen(
             }
         }
     }
-    if (state.definitions.selected != null) {
-        CategoryRuleDefinitionEditor(state.definitions, actions.definitions, chrome, initialRuleId?.let { actions.onBack })
-        return
-    }
     var deletingRule by remember(state.binding) { mutableStateOf<CategoryRule?>(null) }
     var rollbackApplication by remember(state.binding) { mutableStateOf<RuleApplicationBatch?>(null) }
 
@@ -172,6 +169,7 @@ fun CategoryRulesScreen(
             }
         }
     }
+    CategoryRuleDefinitionEditor(state.definitions, actions.definitions, initialRuleId?.let { actions.onBack })
 }
 
 @Composable
@@ -236,10 +234,13 @@ private fun CategoryRulesApplicationPage(
             chrome.copy(backText = stringResource(R.string.category_rule_editor_cancel))),
         onBack = actions.onBack,
         status = { AppStatusBanner(state.status.message, state.status.messageTone) },
+        bottomBar = if (preview) { {
+            ConfirmedRuleApplyActions(state.applications.confirmedPreview, state.interaction.busy, state.interaction.readOnly,
+                actions.applications.onPreviewApplyConfirmedRules, actions.applications.onConfirmApplyConfirmedRules)
+        } } else null,
     ) {
         if (preview) {
-            ConfirmedRuleApplyPanel(state.applications.confirmedPreview, state.interaction.busy, state.interaction.readOnly,
-                actions.applications.onPreviewApplyConfirmedRules, actions.applications.onConfirmApplyConfirmedRules)
+            ConfirmedRuleApplyPanel(state.applications.confirmedPreview, state.interaction.readOnly)
         } else {
             RuleApplicationHistory(state.applications, state.interaction,
                 actions.applications.onRollbackRuleApplication, actions.applications.onReload)

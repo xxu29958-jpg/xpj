@@ -75,6 +75,9 @@ internal fun BudgetAdviceScreen(
             verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
         ),
         slots = AppSecondaryPageSlots(
+            bottomBar = if (!ratesOnly && state.arrangementDraft != null && state.rateEditor == null) ({
+                MonthlyArrangementSaveAction(state, actions.onSaveArrangement)
+            }) else null,
             status = {
                 state.authorityTone?.let { AppDataAuthorityStrip(tone = it) }
             },

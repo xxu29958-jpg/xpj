@@ -21,10 +21,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.ui.components.AppSectionHeader
@@ -35,37 +31,45 @@ import com.ticketbox.viewmodel.FactCorrectionReview
 
 @Composable
 internal fun CorrectionReviewPanel(review: FactCorrectionReview, state: ExpenseFactUiState,
-    adopt: (CorrectionReviewSelection) -> Unit, refresh: () -> Unit) {
-    var keepItems by remember(review) { mutableStateOf<Boolean?>(null) }
-    var keepSplits by remember(review) { mutableStateOf<Boolean?>(null) }
-    var scalarChoices by remember(review.current.rowVersion) { mutableStateOf(emptyMap<CorrectionReviewField, Boolean>()) }
+    selection: CorrectionReviewSelection, choose: (CorrectionReviewSelection) -> Unit, refresh: () -> Unit) {
     AppSectionHeader(title = stringResource(R.string.expense_correction_review_title))
     val current = review.current
     Text(stringResource(R.string.expense_correction_review_versions, review.original.rowVersion, current.rowVersion),
         style = MaterialTheme.typography.bodySmall)
     review.scalars.forEach { row ->
         CorrectionComparison(row)
-        if (row.conflict) ReviewChoice(scalarChoices[row.field]) { scalarChoices = scalarChoices + (row.field to it) }
+        if (row.conflict) ReviewChoice(selection.scalars[row.field]) {
+            choose(selection.copy(scalars = selection.scalars + (row.field to it)))
+        }
     }
     Text(stringResource(R.string.expense_correction_review_explainer), style = MaterialTheme.typography.bodySmall)
     if (review.itemsChoiceRequired) {
         val currentRows = state.expenseItems?.items.orEmpty().joinToString("\n") { "${it.name} · ${it.kind} · ${homeAmount(it.amountCents, current)}" }
         val originalRows = state.correction.itemDrafts.joinToString("\n") { "${it.name} · ${it.kind} · ${it.amountText}" }
-        CollectionReviewChoice(stringResource(R.string.expense_correction_items_entry), currentRows, originalRows, keepItems) { keepItems = it }
+        CollectionReviewChoice(stringResource(R.string.expense_correction_items_entry), currentRows, originalRows, selection.keepItems) {
+            choose(selection.copy(keepItems = it))
+        }
     }
     if (review.splitsChoiceRequired) {
         val currentRows = state.expenseSplits?.splits.orEmpty().joinToString("\n") { "${it.accountName} · ${homeAmount(it.amountCents, current)} · ${it.note.orEmpty()}" }
         val originalRows = state.correction.splitDrafts.filter { it.included }.joinToString("\n") { "${it.displayName} · ${it.amountText}" }
-        CollectionReviewChoice(stringResource(R.string.expense_correction_splits_entry), currentRows, originalRows, keepSplits) { keepSplits = it }
+        CollectionReviewChoice(stringResource(R.string.expense_correction_splits_entry), currentRows, originalRows, selection.keepSplits) {
+            choose(selection.copy(keepSplits = it))
+        }
     }
-    AppPrimaryButton(text = stringResource(R.string.expense_correction_review_adopt),
-        modifier = Modifier.fillMaxWidth(),
-        onClick = { adopt(CorrectionReviewSelection(current.rowVersion, scalarChoices, keepItems, keepSplits)) },
-        enabled = review.ready && review.scalars.none { it.conflict && it.field !in scalarChoices } &&
-            (!review.itemsChoiceRequired || keepItems != null) && (!review.splitsChoiceRequired || keepSplits != null))
     TextButton(onClick = refresh, enabled = !state.expenseLoading && !state.itemsLoading && !state.splitsLoading) {
         Text(stringResource(R.string.expense_fact_refresh_current))
     }
+}
+
+@Composable
+internal fun CorrectionReviewAction(review: FactCorrectionReview, selection: CorrectionReviewSelection,
+    adopt: (CorrectionReviewSelection) -> Unit) {
+    AppPrimaryButton(text = stringResource(R.string.expense_correction_review_adopt),
+        modifier = Modifier.fillMaxWidth(), onClick = { adopt(selection) },
+        enabled = review.ready && review.scalars.none { it.conflict && it.field !in selection.scalars } &&
+            (!review.itemsChoiceRequired || selection.keepItems != null) &&
+            (!review.splitsChoiceRequired || selection.keepSplits != null))
 }
 
 @Composable

@@ -91,7 +91,7 @@ class ReferenceCreationNavigationTest {
             }
         }
         openDirectory(route)
-        click("添加$label", scroll = true)
+        click("添加$label")
         compose.onNode(hasSetTextAction()).performTextInput("  暑期旅行  ")
         keyboard.dismissAndWait(compose)
         click("添加$label")
@@ -101,7 +101,7 @@ class ReferenceCreationNavigationTest {
         click("稍后继续")
         compose.runOnIdle { navigation.popBackStack("test/root", false) }
         openDirectory(route)
-        click("继续添加$label", scroll = true)
+        click("继续添加$label")
         compose.onNodeWithText("  暑期旅行  ").assertIsDisplayed()
         click("核实原添加")
         waitFor("已确认添加「暑期旅行」。")
@@ -118,9 +118,8 @@ class ReferenceCreationNavigationTest {
         compose.waitForIdle()
     }
 
-    private fun click(text: String, scroll: Boolean = false) {
+    private fun click(text: String) {
         val node = compose.onNode(hasText(text) and hasClickAction())
-        if (scroll) node.performScrollTo()
         // Sheet/IME animations run outside Compose's test clock; semantics can precede visibility.
         compose.waitUntil(5_000) { node.isDisplayed() }
         node.assertIsDisplayed().performTouchInput { click() }

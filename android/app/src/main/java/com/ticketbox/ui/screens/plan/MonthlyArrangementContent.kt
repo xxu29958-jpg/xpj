@@ -23,8 +23,8 @@ import com.ticketbox.viewmodel.BudgetAdviceUiState
 internal fun MonthlyArrangementContent(state: BudgetAdviceUiState, actions: BudgetAdviceActions) {
     var stopId by remember(state.binding) { mutableStateOf<Long?>(null) }
     var historyVisible by remember(state.binding, state.month) { mutableStateOf(false) }
-    val pending = state.arrangementPending.filter { it.intent?.month == state.month || it.row.targetId == "monthly_arrangement:${state.month}" }
-    MonthlyArrangementEditor(state, actions, pending) {
+    val pending = state.currentArrangementSubmissions
+    MonthlyArrangementEditor(state, actions) {
         historyVisible = true
         actions.onHistory(false)
     }
@@ -42,7 +42,7 @@ internal fun MonthlyArrangementContent(state: BudgetAdviceUiState, actions: Budg
 
 @Composable
 private fun MonthlyArrangementEditor(state: BudgetAdviceUiState, actions: BudgetAdviceActions,
-    pending: List<PendingMonthlyArrangement>, onHistory: () -> Unit) {
+    onHistory: () -> Unit) {
     val busy = state.arrangementBusy || state.arrangementLoading
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
         Text(stringResource(R.string.arrangement_explanation))
@@ -61,13 +61,23 @@ private fun MonthlyArrangementEditor(state: BudgetAdviceUiState, actions: Budget
                 modifier = Modifier.testTag("arrangement_trial")) { Text(stringResource(R.string.arrangement_trial)) }
             if (state.reportingHomeCurrencyCode == null) Text(stringResource(
                 if (state.inputsLoading) R.string.arrangement_reading_currency else R.string.arrangement_refresh_currency))
-            AppPrimaryButton(text = stringResource(R.string.arrangement_save), onClick = actions.onSaveArrangement,
-                enabled = !busy && state.canRequest && state.arrangementRead != null && pending.none { p -> !p.isConfirmed },
-                modifier = Modifier.fillMaxWidth().testTag("arrangement_save"))
         }
         TextButton(onClick = actions.onRefreshArrangement, enabled = !busy) { Text(stringResource(R.string.arrangement_refresh)) }
         TextButton(onClick = onHistory, enabled = !busy) { Text(stringResource(R.string.arrangement_history)) }
         state.arrangementMessage?.let { Text(it.asString()) }
+    }
+}
+
+private val BudgetAdviceUiState.currentArrangementSubmissions: List<PendingMonthlyArrangement>
+    get() = arrangementPending.filter { it.intent?.month == month || it.row.targetId == "monthly_arrangement:$month" }
+
+@Composable
+internal fun MonthlyArrangementSaveAction(state: BudgetAdviceUiState, onSave: () -> Unit) {
+    AppFloatingActionBar {
+        AppPrimaryButton(text = stringResource(R.string.arrangement_save), onClick = onSave,
+            enabled = !state.arrangementBusy && !state.arrangementLoading && state.canRequest &&
+                state.arrangementRead != null && state.currentArrangementSubmissions.none { !it.isConfirmed },
+            modifier = Modifier.fillMaxWidth().testTag("arrangement_save"))
     }
 }
 

@@ -24,6 +24,7 @@ internal data class RecurringEditorEnvironment(
     val onRefresh: () -> Unit,
     val onDismiss: () -> Unit,
     val onConflictAction: (RecurringConflictModel) -> Unit,
+    val onFinish: () -> Unit = onDismiss,
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -98,7 +99,7 @@ internal fun RecurringEditorSheet(
     RecurringSubmitSettleEffect(
         session = session,
         feedback = ownerState.attemptFeedback,
-        onAccepted = environment.onDismiss,
+        onAccepted = environment.onFinish,
     )
     RecurringEditorContent(session, ownerState, actions, environment)
 }
@@ -259,11 +260,12 @@ private fun recurringEditorCallbacks(
                     merchantError = merchantError,
                     amountError = amountError,
                     currencyError = currencyError,
-                    onDismiss = environment.onDismiss,
+                    onDismiss = environment.onFinish,
                 )
             }
         },
         onCancel = environment.onDismiss,
+        onDiscard = environment.onFinish,
         onCurrency = if (session.editing == null) session::selectCurrency else null,
         onHistory = session.editing?.let { item -> actions.onOpenHistory?.let { open -> { open(item) } } },
     )

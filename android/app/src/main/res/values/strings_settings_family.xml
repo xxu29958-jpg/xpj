@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- ADR-0044 wave 1, cluster settings_family. See strings.xml for naming convention (screen_位置_用途, snake_case, 不缩写). 只放中文，不建第二语言。 -->
 <resources>
+    <string name="my_devices_session_entry">退出当前设备会话</string>
+    <string name="my_devices_session_hint">前往安全与隐私，先查看本机未发送内容和退出的影响。</string>
 
     <!-- FamilyMembersScreen：设置→家庭成员 屏 -->
     <string name="family_members_page_title">家庭成员</string>
@@ -59,6 +61,24 @@
     <!-- FamilyMembersScreen：轴7 发邀请区（owner-only；此前发邀请唯一入口在 /owner 控制台）。
          结果卡标题 %1$s=角色标签。明文只显示一次，复制反馈依赖系统剪贴板浮窗（Android 13+）。 -->
     <string name="family_members_section_invite">邀请家人</string>
+    <string name="family_invites_generate">生成家庭邀请</string>
+    <string name="family_invites_note">邀请备注</string>
+    <string name="family_invites_days">有效天数</string>
+    <string name="family_invites_limits">有效天数为 1–30 天，备注最多 80 字。</string>
+    <string name="family_invites_binding_hint">这是加入当前家庭账本的邀请，与连接新设备的配对码不同。</string>
+    <string name="family_invites_history">查看已发出的邀请与撤销</string>
+    <string name="family_invites_refresh">重新读取已发邀请</string>
+    <string name="family_invites_loading">正在读取已发邀请…</string>
+    <string name="family_invites_empty">还没有发出邀请。</string>
+    <string name="family_invites_read_failed">暂时无法读取已发邀请，请重新读取。</string>
+    <string name="family_invites_revoke">撤销邀请</string>
+    <string name="family_invites_revoke_named">撤销邀请：%1$s</string>
+    <string name="family_invites_revoke_body">撤销“%1$s”后，对方将不能再使用这份邀请加入账本。已经加入的成员不会被移除。</string>
+    <string name="family_invites_revoke_failed">尚未确认撤销结果，请重新读取这份邀请的状态。</string>
+    <string name="family_invites_revoked">已撤销</string>
+    <string name="family_invites_used">已使用</string>
+    <string name="family_invites_available">等待加入</string>
+    <string name="family_invites_expired">已到期或有效期无法确认</string>
     <string name="family_members_invite_intro">对方接受后加入当前账本。</string>
     <string name="family_members_invite_as_member">邀请为成员</string>
     <string name="family_members_invite_as_viewer">邀请为只读</string>
@@ -193,6 +213,8 @@
     <string name="my_devices_page_title">我的设备</string>
     <string name="my_devices_page_subtitle_manage">管理你的设备；可添加新设备、恢复旧设备或撤销访问。</string>
     <string name="my_devices_section_devices">我的账号设备</string>
+    <string name="my_devices_management_intro">管理这台设备的名称与连接状态</string>
+    <string name="my_devices_original_identity_hint">恢复原设备身份不会创建另一台设备。请先查看旧设备尚未发送的内容，停用与明确移除也有不同后果。</string>
     <string name="my_devices_loading_title">正在同步设备</string>
     <string name="my_devices_loading_body">同步完成后显示最新可访问设备。</string>
     <string name="my_devices_empty">还没有可显示的设备。</string>

@@ -6,8 +6,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
@@ -124,13 +126,13 @@ class CategoryRuleRouteRecoveryTest {
         waitForText(add)
         compose.waitUntil(5_000) { routeModel().definitions.state.value.ready }
         compose.onNodeWithText(add).performScrollTo().performClick()
-        compose.onNodeWithText(raw).performScrollTo().assertIsDisplayed()
+        compose.onNode(hasSetTextAction() and hasText(raw)).performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("家庭餐饮").assertIsDisplayed()
         saveConsumerArtPreview("rule-definition-retained-${visualMode()}",
             requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
         compose.onNodeWithText("  支付宝原来源  ").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("  家庭原标签  ").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText(context.getString(R.string.category_rule_editor_cancel)).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.category_rule_editor_cancel)).assertIsDisplayed()
         saveConsumerArtPreview("rule-definition-actions-${visualMode()}",
             requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
         assertEquals(original, runBlocking { requireNotNull(harness.screenFactory.ruleRepository.definitionInputs).read(binding).single() })
@@ -150,12 +152,12 @@ class CategoryRuleRouteRecoveryTest {
         val original = runBlocking { requireNotNull(owner.definitionInputs).read(binding).single() }
         compose.runOnIdle { harness.fixture.role("viewer") }
         waitForText(context.getString(R.string.common_readonly_ledger))
-        compose.onNodeWithText("只读后仍保留的规则").performScrollTo().assertIsDisplayed().assertIsNotEnabled()
-        compose.onNodeWithText(add).performScrollTo().assertIsNotEnabled()
-        compose.onNodeWithText(context.getString(R.string.category_rule_editor_cancel)).performScrollTo().performClick()
+        editorNode("只读后仍保留的规则").performScrollTo().assertIsDisplayed().assertIsNotEnabled()
+        editorNode(add).assertIsDisplayed().assertIsNotEnabled()
+        editorNode(context.getString(R.string.category_rule_editor_cancel)).assertIsDisplayed().performClick()
         compose.onNodeWithText(add).assertDoesNotExist()
         compose.onNodeWithText("只读后仍保留的规则").performScrollTo().performClick()
-        compose.onNodeWithText("只读后仍保留的规则").performScrollTo().assertIsDisplayed().assertIsNotEnabled()
+        editorNode("只读后仍保留的规则").performScrollTo().assertIsDisplayed().assertIsNotEnabled()
         assertEquals(original, runBlocking { requireNotNull(owner.definitionInputs).read(binding).single() })
         assertEquals(emptyList<Map<String, String?>>(), harness.fixture.stored())
         org.junit.Assert.assertTrue(runBlocking { owner.createCategoryRule(binding,
@@ -180,11 +182,11 @@ class CategoryRuleRouteRecoveryTest {
         waitForText(context.getString(R.string.category_rule_draft_retained))
         compose.onNodeWithText("重新登录后的原规则").performScrollTo().performClick()
         compose.onNodeWithText(context.getString(R.string.category_rule_draft_binding_changed)).performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText(add).performScrollTo().assertIsNotEnabled()
+        editorNode(add).assertIsDisplayed().assertIsNotEnabled()
         compose.onNodeWithText(context.getString(R.string.category_rule_draft_review_binding)).performScrollTo().performClick()
-        compose.onNodeWithText("重新登录后的原规则").performScrollTo().assertIsEnabled()
+        editorNode("重新登录后的原规则").performScrollTo().assertIsEnabled()
         assertEquals(original.key, runBlocking { requireNotNull(owner.definitionInputs).read(binding).single().key })
-        compose.onNodeWithText(add).performScrollTo().performClick()
+        editorNode(add).assertIsDisplayed().performClick()
         waitForText(context.getString(R.string.category_rule_submission_saved))
         assertEquals(original.key, harness.fixture.stored().single()["idempotencyKey"])
         org.junit.Assert.assertTrue(runBlocking { requireNotNull(owner.definitionInputs).read(binding).isEmpty() })
@@ -221,6 +223,8 @@ class CategoryRuleRouteRecoveryTest {
         harness.screenFactory.ledgerRepository.activeLedgerId()), CategoryRulesViewModel::class.java]
 
     private fun visualMode(): String = InstrumentationRegistry.getArguments().getString("visualMode") ?: "normal"
+
+    private fun editorNode(text: String) = compose.onNode(hasText(text) and hasAnyAncestor(isDialog()))
 
     private fun waitForText(text: String) = compose.waitUntil(5_000) {
         compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()

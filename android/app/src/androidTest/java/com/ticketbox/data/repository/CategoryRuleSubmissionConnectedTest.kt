@@ -1,6 +1,10 @@
 package com.ticketbox.data.repository
 
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.hasSetTextAction
@@ -78,7 +82,7 @@ class CategoryRuleSubmissionConnectedTest {
         compose.onNodeWithText("选择金额币种").performScrollTo().performClick()
         compose.onNodeWithText("JPY · 日元").performScrollTo().performClick()
         compose.onAllNodes(hasSetTextAction())[3].performScrollTo().performTextInput("1200")
-        compose.onNodeWithText("添加规则").performScrollTo().performClick()
+        compose.onNode(hasText("添加规则") and hasAnyAncestor(isDialog())).assertIsDisplayed().performClick()
         compose.waitUntil(10_000) { model.uiState.value.pendingSubmissions.isNotEmpty() }
         val original = fixture.stored().single()
         assertEquals(emptyList<String>(), keys)

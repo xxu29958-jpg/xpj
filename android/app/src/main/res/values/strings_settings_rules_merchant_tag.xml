@@ -104,7 +104,9 @@
     <string name="category_rule_delete_dialog_title">删除这条规则？</string>
     <string name="category_rule_delete_dialog_text">删除后，后续识别不再参考「%1$s」。</string>
     <string name="category_rule_delete_dialog_confirm">确定删除</string>
-    <string name="category_rule_rollback_dialog_title">回退这次应用？</string>
+    <string name="category_rule_rollback_dialog_title">核对回退范围</string>
+    <string name="category_rule_rollback_original_count">原批次更正 %1$d 笔</string>
+    <string name="category_rule_rollback_recheck">提交时逐笔核对原批次；完成后显示实际恢复与跳过的数量。</string>
     <string name="category_rule_rollback_dialog_text">会尽量恢复这次规则应用前的分类，已经手动改过的账单会跳过。</string>
     <string name="category_rule_rollback_dialog_confirm">回退</string>
 
@@ -281,6 +283,7 @@
     <string name="tag_management_rename_dialog_confirm">保存</string>
     <string name="tag_management_merge_dialog_title">合并标签</string>
     <string name="tag_management_merge_dialog_text">将「%1$s」合并到：</string>
+    <string name="tag_management_merge_source_count">当前有 %1$d 笔交易使用原标签，提交时会再次核对。</string>
     <string name="tag_management_merge_dialog_consequences">原标签的账单将改用所选标签，原标签会被移除。可立即撤销，或在回收站保留期内恢复；后来修改过的账单会跳过。</string>
     <string name="tag_management_merge_dialog_target_with_count">%1$s（%2$d 笔）</string>
     <string name="tag_management_merge_dialog_confirm">合并</string>

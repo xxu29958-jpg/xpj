@@ -38,6 +38,7 @@ import com.ticketbox.ui.screens.settings.SettingsDetailRow
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.components.AppListRow
+import com.ticketbox.ui.components.AppFloatingActionBar
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppSecondaryPageChrome
 import com.ticketbox.ui.components.AppSecondaryPageSlots
@@ -62,7 +63,10 @@ fun CategoryDirectoryScreen(
         if (state.changedRevision > 0) onCategoriesChanged()
     }
 
-    CategoryInspectionDialog(state, viewModel, onOpenReference)
+    if (state.inspectingCategory != null) {
+        CategoryInspectionScreen(state, viewModel, onOpenReference)
+        return
+    }
 
     AppSecondaryScrollableColumn(
         chrome = AppSecondaryPageChrome(
@@ -80,6 +84,7 @@ fun CategoryDirectoryScreen(
             onBack = onBack,
         ),
         slots = AppSecondaryPageSlots(
+            bottomBar = { AppFloatingActionBar { creation(!state.loading && state.busyCategoryId == null) } },
             status = {
                 // 读不到任何分类时，原因写在下面的错误卡里，不在这里再说一遍。
                 if (!state.readFailedWithoutData) AppStatusBanner(
@@ -104,7 +109,6 @@ fun CategoryDirectoryScreen(
         DefaultCategoriesCard()
         Text(stringResource(R.string.category_directory_creation_hint),
             color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
-        creation(!state.loading && state.busyCategoryId == null)
     }
 }
 

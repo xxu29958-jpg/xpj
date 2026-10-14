@@ -68,8 +68,8 @@ class NotificationOriginalTaskNavigationTest {
         assertEquals(listOf("2026-07", "2026-08"), transport.budgetReads.toList())
         val editorBack = context.getString(R.string.budget_editor_back)
         // The month header is visible while its remote budget is still loading.
-        compose.waitUntil(5_000) { compose.onAllNodesWithContentDescription(editorBack).fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithContentDescription(editorBack).performScrollTo().performClick()
+        compose.waitUntil(5_000) { compose.onAllNodesWithText(editorBack).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText(editorBack).assertIsDisplayed().performClick()
         compose.onNodeWithContentDescription(context.getString(R.string.budget_back_to_stats)).performClick()
         waitForMonth("2026-07")
         compose.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag("budget_total_amount")))

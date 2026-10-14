@@ -82,30 +82,13 @@ fun CreateSpendingGoalScreen(
                     canSubmit = state.canSubmit,
                     isSubmitting = state.isSubmitting,
                     onSubmit = viewModel::submit,
+                    onBack = onBack,
                 )
             },
         ),
     ) {
         if (showDraft) item {
-            DebtGoalOpenSection(
-                title = stringResource(R.string.spending_goal_create_month_section),
-                subtitle = stringResource(R.string.spending_goal_create_month_hint),
-            ) {
-                MonthSwitcher(
-                    month = displayMonthLabel(state.month),
-                    onPreviousMonth = { viewModel.shiftMonth(-1) },
-                    onNextMonth = { viewModel.shiftMonth(1) },
-                    enabled = state.editable,
-                )
-            }
-        }
-        if (showDraft) item {
-            DebtGoalOpenSection(
-                title = stringResource(R.string.spending_goal_create_form_section),
-                subtitle = stringResource(R.string.spending_goal_create_form_hint),
-            ) {
-                SpendingGoalForm(state = state, viewModel = viewModel)
-            }
+            SpendingGoalForm(state = state, viewModel = viewModel)
         }
     }
 }
@@ -165,6 +148,13 @@ private fun SpendingGoalForm(
             actions = AppTextInputActions(onValueChange = viewModel::updateName),
             modifier = Modifier.fillMaxWidth(),
         )
+        Text(stringResource(R.string.spending_goal_create_month_section), style = MaterialTheme.typography.labelLarge)
+        MonthSwitcher(
+            month = displayMonthLabel(state.month),
+            onPreviousMonth = { viewModel.shiftMonth(-1) },
+            onNextMonth = { viewModel.shiftMonth(1) },
+            enabled = state.editable,
+        )
         if (currency != null) {
         AppAmountInput(
             state = AppAmountInputState(
@@ -204,6 +194,7 @@ private fun CreateSpendingGoalFooter(
     canSubmit: Boolean,
     isSubmitting: Boolean,
     onSubmit: () -> Unit,
+    onBack: () -> Unit,
 ) {
     AppFloatingActionBar {
         AppPrimaryButton(
@@ -217,5 +208,8 @@ private fun CreateSpendingGoalFooter(
             enabled = canSubmit,
             onClick = onSubmit,
         )
+        TextButton(onClick = onBack, enabled = !isSubmitting, modifier = Modifier.fillMaxWidth()) {
+            Text(stringResource(R.string.common_keep_draft_return))
+        }
     }
 }

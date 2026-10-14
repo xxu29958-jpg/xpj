@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -19,6 +20,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
@@ -128,8 +130,8 @@ private fun PendingSelectedImages(selection: PendingUploadSelectionUiState) {
             // Local picker/share URIs stay with Android's grant owner; previewing does not copy or accept the file.
             Box(Modifier.size(AppAsyncImageLayout.ReceiptThumbnail.compactSize).clip(RoundedCornerShape(AppRadius.small))
                 .background(MaterialTheme.colorScheme.surfaceVariant)) {
-                Text(stringResource(R.string.pending_capture_preview), style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(AppSpacing.smallGap))
+                Icon(ImageVector.vectorResource(R.drawable.ic_lucide_image_plus),
+                    contentDescription = null, modifier = Modifier.align(Alignment.Center))
                 AsyncImage(model = Uri.parse(source), contentDescription = stringResource(R.string.pending_capture_image, index + 1),
                     contentScale = ContentScale.Fit, modifier = Modifier.matchParentSize())
             }
@@ -190,8 +192,8 @@ private fun PendingCaptureActions(state: PendingUiState, actions: PendingScreenC
         state.canRetryUpload -> AppAction(stringResource(R.string.pending_upload_retry_action), actions.onRetryCapacityUpload)
         else -> null
     }
-    if (primary != null) AppActionRow(primary, secondary = AppAction(stringResource(R.string.pending_capture_back), onDismiss))
-    else TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.pending_capture_back)) }
+    if (primary != null) AppActionRow(primary)
+    TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.pending_capture_back)) }
     if (selection.pendingCount > 0) {
         TextButton(onClick = selection.onStop, enabled = !selection.accepting) { Text(stringResource(R.string.pending_upload_selection_stop)) }
     } else if (state.canStopUpload) {

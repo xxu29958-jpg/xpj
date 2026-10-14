@@ -941,7 +941,12 @@
     <string name="recurring_form_date_hint_set">清空日期后不会提醒。</string>
     <string name="recurring_form_date_hint_none">未设置日期，不会提醒。</string>
     <string name="recurring_form_date_picker_title">选择下次日期</string>
-    <string name="recurring_form_save">保存</string>
+    <string name="recurring_form_save">保存固定支出</string>
+    <string name="recurring_draft_continue">继续固定支出原稿</string>
+    <string name="recurring_draft_discard">放弃这份草稿</string>
+    <string name="recurring_draft_switch_title">还有一份未保存的原稿</string>
+    <string name="recurring_draft_switch_body">“%1$s”的原稿还没保存。继续这份原稿，或放弃后打开“%2$s”。</string>
+    <string name="recurring_draft_switch_discard">放弃原稿并切换</string>
     <string name="recurring_form_saving">保存中…</string>
     <string name="recurring_form_loading_latest">正在同步最新内容…</string>
     <string name="recurring_form_reload_latest">重新加载最新内容</string>

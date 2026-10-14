@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -47,6 +48,7 @@ import com.ticketbox.ui.screens.recurring.RecurringConflictModel
 import com.ticketbox.ui.screens.recurring.RecurringDerivedModel
 import com.ticketbox.ui.screens.recurring.RecurringEditorEnvironment
 import com.ticketbox.ui.screens.recurring.RecurringEditorSheetHost
+import com.ticketbox.ui.screens.recurring.RecurringEditorHostState
 import com.ticketbox.ui.screens.recurring.RecurringOverviewDetails
 import com.ticketbox.ui.screens.recurring.RecurringItemsCard
 import com.ticketbox.ui.screens.recurring.RecurringItemsCardState
@@ -132,19 +134,7 @@ fun RecurringScreen(
                     onValueChange = { showCandidates = it },
                 )
             },
-            bottomBar = if (state.canModify && !showCandidates && editorHost.editor == null) {
-                {
-                    AppFloatingActionBar {
-                        AppPrimaryButton(
-                            modifier = Modifier.fillMaxWidth(),
-                            text = stringResource(R.string.recurring_add_cta),
-                            icons = AppButtonIcons(trailing = Icons.AutoMirrored.Filled.ArrowForward),
-                            enabled = !state.manualSaveInFlight,
-                            onClick = callbacks.onCreate,
-                        )
-                    }
-                }
-            } else null,
+            bottomBar = if (!showCandidates) ({ RecurringCreateOrContinue(state, editorHost, callbacks.onCreate) }) else null,
         ),
     ) {
         recurringOverviewSection(state, derived, callbacks, showCandidates, actions.onOpenSyncStatus)
@@ -160,7 +150,7 @@ fun RecurringScreen(
         } else {
             recurringRegistrySection(
                 derived,
-                actions.copy(items = actions.items.copy(onOpenHistory = actions.items.onOpenHistory.takeIf { editorHost.editor == null })),
+                actions.copy(items = actions.items.copy(onOpenHistory = actions.items.onOpenHistory.takeIf { !editorHost.visible })),
                 callbacks,
                 editEnabled = !state.manualSaveInFlight,
             )
@@ -175,7 +165,7 @@ fun RecurringScreen(
     }
 
     RecurringEditorSheetHost(
-        editor = editorHost.editor,
+        editor = editorHost.editor.takeIf { editorHost.visible },
         uiState = state,
         environment = RecurringEditorEnvironment(
             conflict = resolveRecurringDuplicateConflict(
@@ -184,10 +174,41 @@ fun RecurringScreen(
                 ownerLoaded = state.itemsLoadState == RecurringListLoadState.Loaded,
             ),
             onRefresh = actions.onRefresh,
-            onDismiss = editorHost::dismiss,
+            onDismiss = editorHost::keepDraft,
             onConflictAction = callbacks.onConflictAction,
+            onFinish = editorHost::dismiss,
         ),
         actions = actions.items,
+    )
+    RecurringRetainedDraftPrompt(editorHost)
+}
+
+@Composable
+private fun RecurringCreateOrContinue(state: RecurringUiState, host: RecurringEditorHostState, onCreate: () -> Unit) {
+    if (host.visible || (!state.canModify && host.editor == null)) return
+    AppFloatingActionBar {
+        AppPrimaryButton(
+            modifier = Modifier.fillMaxWidth(),
+            text = stringResource(if (host.editor == null) R.string.recurring_add_cta else R.string.recurring_draft_continue),
+            icons = AppButtonIcons(trailing = Icons.AutoMirrored.Filled.ArrowForward),
+            enabled = !state.manualSaveInFlight,
+            onClick = { if (host.editor == null) onCreate() else host.resume() },
+        )
+    }
+}
+
+@Composable
+private fun RecurringRetainedDraftPrompt(host: RecurringEditorHostState) {
+    val replacement = host.replacement ?: return
+    val original = host.editor ?: return
+    val unnamed = stringResource(R.string.recurring_form_title_create)
+    AlertDialog(
+        onDismissRequest = host::cancelSwitch,
+        title = { Text(stringResource(R.string.recurring_draft_switch_title)) },
+        text = { Text(stringResource(R.string.recurring_draft_switch_body,
+            original.session.merchant.ifBlank { unnamed }, replacement.session.merchant.ifBlank { unnamed })) },
+        confirmButton = { TextButton(onClick = host::resume) { Text(stringResource(R.string.recurring_draft_continue)) } },
+        dismissButton = { TextButton(onClick = host::discardAndSwitch) { Text(stringResource(R.string.recurring_draft_switch_discard)) } },
     )
 }
 

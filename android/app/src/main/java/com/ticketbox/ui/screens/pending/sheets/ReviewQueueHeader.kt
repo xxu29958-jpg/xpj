@@ -79,10 +79,14 @@ internal fun ReviewSheetActionFeedback(
     AppSheetActionFeedback(
         modifier = modifier,
         primary = primary,
-        secondary = secondary,
         state = AppSheetActionFeedbackState(
             statusMessage = chrome.statusMessage,
             statusTone = chrome.statusTone,
         ),
     )
+    secondary?.let { action ->
+        TextButton(onClick = action.onClick, enabled = action.enabled, modifier = Modifier.fillMaxWidth()) {
+            Text(action.text)
+        }
+    }
 }

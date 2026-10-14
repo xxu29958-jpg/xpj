@@ -1,6 +1,8 @@
 package com.ticketbox.ui.navigation
 
 import android.content.Context
+import android.view.WindowManager
+import androidx.activity.ComponentActivity
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -10,7 +12,7 @@ import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -30,6 +32,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso.closeSoftKeyboard
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.R
+import com.ticketbox.ui.RealKeyboard
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.GoalListResponseDto
 import com.ticketbox.data.remote.dto.GoalDto
@@ -57,7 +60,8 @@ import org.junit.Test
 
 /** The production plan route is destroyed; the original creation belongs to MAIN_ROUTE. */
 class SpendingGoalDraftNavigationRoomTest {
-    @get:Rule val compose = createComposeRule()
+    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val keyboard = RealKeyboard()
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private var restored = false
     private val restoredDetailRead = CompletableDeferred<Unit>()
@@ -176,7 +180,12 @@ class SpendingGoalDraftNavigationRoomTest {
         compose.onNodeWithText(context.getString(R.string.budget_month_next)).performClick()
         val original = originalOwner.state.value
         val entry = compose.runOnIdle { requireNotNull(inner.currentBackStackEntry) }
-        compose.runOnIdle { assertTrue(inner.popBackStack()) }
+        compose.onAllNodes(hasSetTextAction())[1].performScrollTo().performClick()
+        keyboard.assertActionAboveKeyboard(compose, context.getString(R.string.spending_goal_create_save), "goal-create-keyboard")
+        keyboard.dismissAndWait(compose)
+        compose.onNodeWithText(context.getString(R.string.common_keep_draft_return)).performClick()
+        compose.onNodeWithText(context.getString(R.string.goal_draft_continue)).assertExists()
+        androidx.test.espresso.Espresso.pressBack()
         compose.waitUntil(10_000) { entry.lifecycle.currentState == Lifecycle.State.DESTROYED }
         enterGoals()
         assertNotSame(entry, compose.runOnIdle { inner.currentBackStackEntry })
@@ -344,6 +353,7 @@ class SpendingGoalDraftNavigationRoomTest {
     private fun showRoutes() {
         val skin = if (InstrumentationRegistry.getArguments().getString("captureSkin") == "midnight")
             AppSkin.Midnight else AppSkin.Paper
+        compose.runOnUiThread { compose.activity.window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE) }
         compose.setContent {
             if (mounted.value) CompositionLocalProvider(LocalViewModelStoreOwner provides harness.models) {
                 TicketboxTheme(skin = skin) {
