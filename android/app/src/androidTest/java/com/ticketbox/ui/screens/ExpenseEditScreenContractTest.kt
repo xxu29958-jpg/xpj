@@ -156,6 +156,7 @@ class ExpenseEditScreenContractTest {
             amountCents = 12_345L, homeAmountCents = 12_345L,
             homeCurrency = CurrencyCode.KWD, originalCurrency = CurrencyCode.KWD,
             originalCurrencyCode = CurrencyCode.KWD, originalAmountMinor = 12_345L,
+            categorySuggestion = com.ticketbox.domain.model.ExpenseCategorySuggestion("日用品", 3),
         )
 
         composeRule.setContent {
@@ -180,6 +181,9 @@ class ExpenseEditScreenContractTest {
         }
 
         composeRule.onNode(hasSetTextAction() and hasText("12.345")).assertIsDisplayed()
+        composeRule.onNodeWithTag("expense-use-category-suggestion").performScrollTo().performClick()
+        composeRule.runOnIdle { assertEquals(null, savedDraft) } // Filling advice alone cannot publish.
+        capture("review-learning-category-filled")
         composeRule.onNodeWithTag("expense-edit-more-row").performScrollTo().performClick()
         composeRule.onNode(hasSetTextAction() and hasText(recorded.note!!))
             .performScrollTo().performTextReplacement("仅改备注")
@@ -188,6 +192,7 @@ class ExpenseEditScreenContractTest {
         composeRule.runOnIdle {
             val request = requireNotNull(savedDraft).toRequest(recorded)
             assertEquals("仅改备注", request.note)
+            assertEquals("日用品", request.category)
             assertEquals(null, request.originalAmount)
             assertEquals(recorded.rowVersion, request.expectedRowVersion)
         }

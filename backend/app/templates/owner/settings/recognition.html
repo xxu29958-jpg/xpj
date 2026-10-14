@@ -27,7 +27,7 @@
   <section id="recognition-model" aria-label="本机视觉模型连接">
   <h2>连接本机视觉模型</h2>
   {% with model_base_field='local_llm_base_url', model_name_field='local_llm_model' %}{% include '_local_models.html' %}{% endwith %}
-  <p class="workspace-note">请选择支持图片的模型。下方会用一张示例图片验证，成功后才用于新小票。</p>
+  <p class="workspace-note">请选择支持图片的模型。“测试并保存”会先用示例图片验证；识别细节中的“仅保存”会跳过测试，请上传小票核对效果。</p>
   <details class="workspace-disclosure"{% if error %} open{% endif %}>
   <summary><span>其他地址或手动填写<span>用于自定义端口、服务或模型</span></span>{{ icon('chevron-right') }}</summary>
   <div class="workspace-disclosure__body">
@@ -42,7 +42,7 @@
     <datalist id="local-model-options">
       {% for model in recognition_models|default([]) %}<option value="{{ model }}">{% endfor %}
     </datalist>
-    <span class="workspace-note" id="model-selection-note">保存前会实际测试所选模型能否识别图片。</span>
+    <span class="workspace-note" id="model-selection-note">点击“测试并保存”可实际检查所选模型能否识别图片。</span>
   </label>
   </div>
   </details>
@@ -78,11 +78,12 @@
           <option value="rapidocr" {% if recognition_view.form.ocr_fallback_provider == 'rapidocr' %}selected{% endif %} {% if not recognition_view.rapidocr_available %}disabled{% endif %}>本机文字识别{% if not recognition_view.rapidocr_available %}（组件不可用）{% endif %}</option>
         </select><span class="workspace-note">主要结果缺字段或低于阈值时才使用备用方式。</span>
       </label>
-      <label class="workspace-field" for="ocr_min_confidence"><span>启用备用识别的阈值</span><input id="ocr_min_confidence" name="ocr_min_confidence" type="number" min="0" max="1" step="0.01" value="{{ recognition_view.form.ocr_min_confidence }}"></label>
-      <label class="workspace-field" for="ocr_default_timezone"><span>默认时区</span><input id="ocr_default_timezone" name="ocr_default_timezone" type="text" value="{{ recognition_view.form.ocr_default_timezone }}"></label>
-      <label class="workspace-field" for="local_llm_timeout_seconds"><span>单次识别超时（秒）</span><input id="local_llm_timeout_seconds" name="local_llm_timeout_seconds" type="number" min="5" max="300" value="{{ recognition_view.form.local_llm_timeout_seconds }}"></label>
-      <label class="workspace-field" for="local_llm_max_concurrent"><span>同时识别任务</span><input id="local_llm_max_concurrent" name="local_llm_max_concurrent" type="number" min="1" max="8" value="{{ recognition_view.form.local_llm_max_concurrent }}"></label>
-      <label class="workspace-field" for="local_llm_queue_timeout_seconds"><span>排队等待（秒）</span><input id="local_llm_queue_timeout_seconds" name="local_llm_queue_timeout_seconds" type="number" min="0" max="60" step="0.5" value="{{ recognition_view.form.local_llm_queue_timeout_seconds }}"></label>
+      <label class="workspace-field" for="ocr_min_confidence"><span>启用备用识别的阈值</span><input id="ocr_min_confidence" name="ocr_min_confidence" type="number" min="0" max="1" step="0.01" value="{{ recognition_view.form.ocr_min_confidence }}"><span class="workspace-note">例如 0.8：主要识别的自评分低于 0.8 时尝试备用方式。调高会更常调用备用识别；这不是实测准确率，未启用备用方式时不产生额外调用。</span></label>
+      <label class="workspace-field" for="ocr_default_timezone"><span>默认时区</span><input id="ocr_default_timezone" name="ocr_default_timezone" type="text" value="{{ recognition_view.form.ocr_default_timezone }}"><span class="workspace-note">未单独指定时间区域时使用，例如 Asia/Shanghai。也供新账本和部分统计使用；不会改写已保存的交易时间。</span></label>
+      <p class="workspace-note">以下三项只控制本机视觉模型的请求，也用于债务账单识别，不会改变本机文字识别或云端预算顾问。</p>
+      <label class="workspace-field" for="local_llm_timeout_seconds"><span>单次识别超时（秒）</span><input id="local_llm_timeout_seconds" name="local_llm_timeout_seconds" type="number" min="5" max="300" value="{{ recognition_view.form.local_llm_timeout_seconds }}"><span class="workspace-note">等待模型响应的最长时间。模型较慢时可调高；超时会显示失败，原件仍保留，可稍后重试。</span></label>
+      <label class="workspace-field" for="local_llm_max_concurrent"><span>同时识别任务</span><input id="local_llm_max_concurrent" name="local_llm_max_concurrent" type="number" min="1" max="8" value="{{ recognition_view.form.local_llm_max_concurrent }}"><span class="workspace-note">电脑卡顿或显存不足时调低。调高允许更多任务同时请求模型，不保证识别更快。</span></label>
+      <label class="workspace-field" for="local_llm_queue_timeout_seconds"><span>排队等待（秒）</span><input id="local_llm_queue_timeout_seconds" name="local_llm_queue_timeout_seconds" type="number" min="0" max="60" step="0.5" value="{{ recognition_view.form.local_llm_queue_timeout_seconds }}"><span class="workspace-note">任务已满时最多等待多久。0 表示立即返回忙碌状态；等待结束仍无空位时，可稍后重试。</span></label>
       <button type="submit" name="recognition_action" value="save" class="btn">仅保存，稍后检查</button>
     </div>
   </details>
@@ -92,4 +93,5 @@
   <p class="workspace-note">保存后立即生效，无需重启；已上传的草稿和人工修改会保留。</p>
 </form>
 {{ task_link('/web/pending#capture', '去收件，上传并核对小票', 'scan-line', '识别只提供建议，确认后才会入账') }}
+{{ task_link('/owner/algorithm-versions', '分类和重复提醒怎样学习', 'sparkles', '查看内置能力、实际反馈与生效条件', 'lilac') }}
 {% endblock %}

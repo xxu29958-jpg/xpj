@@ -43,6 +43,7 @@ from app.services.learning_service import (
     run_full_maintenance,
     set_decision_status,
 )
+from app.services.pending_suggestion_service import record_pending_suggestion_event
 
 if TYPE_CHECKING:
     from app.models import AlgorithmDecision
@@ -147,7 +148,11 @@ def owner_learning_maintenance_dismiss_post(
             db, tenant_id=selected.ledger_id, public_id=decision_public_id
         )
         if decision is not None and decision.status == "active":
-            set_decision_status(db, tenant_id=selected.ledger_id, decision_id=decision.id, new_status="dismissed")
+            if decision.subject_kind == "expense" and decision.subject_id is not None and decision.decision_type in ("category_suggestion", "duplicate_candidate"):
+                record_pending_suggestion_event(db, tenant_id=selected.ledger_id, expense_id=decision.subject_id,
+                    decision_public_id=decision.public_id, event_type="reject", actor_account_id=None)
+            else:
+                set_decision_status(db, tenant_id=selected.ledger_id, decision_id=decision.id, new_status="dismissed")
             db.commit()
     except SQLAlchemyError as exc:
         db.rollback()

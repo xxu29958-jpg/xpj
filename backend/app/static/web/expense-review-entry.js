@@ -5,6 +5,21 @@
     "amount_yuan", "original_currency", "manual_exchange_rate", "merchant", "category", "note", "tags", "expense_time",
     "time_precision", "calendar_revision", "user_local_date", "source_timezone", "source_utc_offset_seconds", "accounting_date", "value_score", "regret_score"];
   const names = [...fields, "return_context", "present_fields", "reject_row_version", "undo_idempotency_key"];
+  document.addEventListener("click", event => {
+    const button = event.target.closest("[data-category-suggestion]");
+    const form = button?.closest("form");
+    const input = form?.elements.namedItem("category");
+    const phase = form?.dataset.expensereviewDraftPhase;
+    if (!input || input.disabled || (phase && phase !== "editing")) return;
+    put(form, "category", button.dataset.categorySuggestion);
+    input.focus();
+  });
+  document.addEventListener("input", event => {
+    if (event.target.name !== "merchant") return;
+    event.target.form?.querySelectorAll("[data-learning-suggestion]").forEach(hint => {
+      hint.hidden = event.target.value !== hint.dataset.categoryMerchant;
+    });
+  });
   function read(form) {
     const values = Object.fromEntries(fields.map(name => [name, form.elements.namedItem(name)?.value || ""]));
     values.present_fields = JSON.stringify(fields.filter(name => form.elements.namedItem(name) &&

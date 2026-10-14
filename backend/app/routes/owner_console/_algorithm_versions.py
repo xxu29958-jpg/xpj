@@ -15,6 +15,7 @@ from app.routes.owner_console._shared import LocalOnly, _base, templates
 from app.services import owner_console_service as svc
 from app.services.learning_service import (
     ALGORITHM_TYPES,
+    learning_activity,
     list_algorithm_versions,
     withdraw_algorithm_version,
 )
@@ -30,6 +31,7 @@ def _render_versions(
     ctx = _base(request, db)
     ctx.update(ledger_choices=choices, selected_ledger=selected, algorithm_types=ALGORITHM_TYPES, error=error)
     ctx["versions"] = list_algorithm_versions(db, tenant_id=selected.ledger_id) if selected else []
+    ctx["activity"] = learning_activity(db, tenant_id=selected.ledger_id) if selected else None
     return templates.TemplateResponse(
         request=request,
         name="algorithm_versions.html",

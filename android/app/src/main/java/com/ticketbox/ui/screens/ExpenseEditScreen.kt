@@ -497,6 +497,9 @@ fun ExpenseEditScreen(
                 categories = state.categories,
                 enabled = !readOnly,
                 sheetOpen = categorySheetOpen,
+                suggestion = currentExpense.categorySuggestion?.takeIf {
+                    merchant == (currentExpense.merchant ?: "") && currentExpense.status == "pending"
+                },
             ),
             actions = ExpenseEditCategorySelectorActions(
                 onCategoryChange = { category = it },
@@ -619,6 +622,10 @@ fun ExpenseEditScreen(
     ) {
         if (currentExpense.duplicateStatus == DuplicateStatusValues.SUSPECTED) {
             DuplicateNotice(reason = currentExpense.duplicateReason)
+            if ("recent_user_reject" in currentExpense.duplicateSuggestionReasons) {
+                androidx.compose.material3.Text(stringResource(R.string.expense_learning_duplicate_adjusted),
+                    style = androidx.compose.material3.MaterialTheme.typography.bodySmall)
+            }
             if (!readOnly) {
                 ExpenseDetailActionButtonRow(
                     text = stringResource(R.string.expense_edit_keep_duplicate_button),

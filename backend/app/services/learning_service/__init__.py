@@ -45,6 +45,7 @@ from app.money_contract import (
     ensure_optional_money_minor,
 )
 from app.services._json_types import JsonObject
+from app.services.learning_service._activity import learning_activity
 from app.services.learning_service._algorithm_registry import (
     ALGORITHM_TYPES,
     BUDGET_SUGGESTION,
@@ -150,6 +151,7 @@ __all__ = [
     "get_algorithm_type",
     "get_status_overview",
     "learning_decision_expenses",
+    "learning_activity",
     "is_algorithm_type_registered",
     "latest_ocr_fact_for_expense",
     "list_algorithm_versions",

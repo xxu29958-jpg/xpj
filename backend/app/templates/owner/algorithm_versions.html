@@ -1,18 +1,57 @@
 {% extends "_workspace.html" %}
 {% from "_workspace_ui.html" import icon with context %}
 {% from "_learning_ui.html" import ledger_filter, registry %}
-{% block title %}算法版本 — 小票夹{% endblock %}
+{% block title %}自动建议与学习 — 小票夹{% endblock %}
 {% block back_url %}/owner/settings{% endblock %}
 {% block back_label %}高级维护{% endblock %}
-{% block workspace_title %}算法版本{% endblock %}
-{% block workspace_description %}低频高级设置{% endblock %}
+{% block workspace_title %}自动建议与学习{% endblock %}
+{% block workspace_description %}了解它能帮什么、怎样记住你的选择，以及本账本实际用过什么。{% endblock %}
 {% block workspace_body %}
 <div class="workspace-learning">
   {{ ledger_filter(ledger_choices, selected_ledger, '/owner/algorithm-versions') }}
   {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+  <p class="workspace-note">以下能力内置运行，无需 Key 或单独开启。填入只改草稿，保存保留选择，确认后才入账；它们不会训练或更新小票识别模型。</p>
+  <section class="workspace-section" aria-label="自动建议能做什么">
+    {% for kind, title, benefit, location, href, tone in [
+      ('category_suggestion', '少重复选分类', '记住同一家店通常归到哪类，下次核对时可一键填入。', '收件 → 打开小票 → 分类', '/web/pending', 'green'),
+      ('duplicate_candidate', '让重复核对更有依据', '结合图片、金额、商家和时间提醒相似账单；你的保留决定会参与后续评分。', '收件 → 相似账单', '/web/duplicates', 'apricot'),
+      ('budget_suggestion', '看懂支出是否偏高', '用自己的历史支出作比较，帮助判断本月各类花费。', '洞察 → 报表 → 月报摘要与预算对照', '/web/reports', 'lilac')
+    ] %}
+    {% set entry = algorithm_types[kind] %}
+    {% set usage = activity.usage.get(kind) if activity else none %}
+    <details class="workspace-disclosure workspace-task-group"{% if loop.first %} open{% endif %}>
+      <summary><span class="workspace-task__icon workspace-tone-{{ tone }}">{{ icon('sparkles' if loop.first else 'copy' if kind == 'duplicate_candidate' else 'chart-no-axes-combined') }}</span><span class="workspace-task__text"><strong>{{ title }}</strong><span>{{ benefit }}</span></span>{{ icon('chevron-right') }}</summary>
+      <div class="workspace-disclosure__body">
+        <p>{{ entry.description }}</p>
+        {% if kind == 'category_suggestion' %}<p class="workspace-note">填入建议只是修改草稿。改成建议分类并保存会记为采用，改成其他分类会记为纠正；直接确认小票时也会记住最终选择。同一条已处理的建议不会因刷新再次出现。记录不足时可照常手动选择。</p>
+        {% elif kind == 'duplicate_candidate' %}<p class="workspace-note">“不是重复，保留两条”会记住这对账单。降低评分不等于取消所有提醒，新小票仍需核对；不会自动删除记录。</p>
+        {% else %}<p class="workspace-note">这是随账目计算的历史参考，不会根据赞成或反对训练模型。缺少历史、日期或汇率时，洞察会说明原因。需要模型分析时，另用 <a href="/owner/ai-advisor">AI 预算顾问</a>。</p>{% endif %}
+        {% if selected_ledger %}
+        <p class="workspace-note"><strong>{{ selected_ledger.name }}</strong> · {% if kind == 'budget_suggestion' %}进入洞察时按实际账目计算，不生成待采纳学习记录。{% elif usage %}保留 {{ usage.count }} 条生成记录，最近一次 {{ usage.last_at|owner_datetime }}。记录数不代表准确率。{% else %}尚无生成记录。可到下方入口使用；没有记录不等于功能关闭。{% endif %}</p>
+        <a class="workspace-text-action" href="{{ href }}?ledger_id={{ selected_ledger.ledger_id|urlencode }}">去使用 · {{ location }}</a>
+        {% endif %}
+      </div>
+    </details>
+    {% endfor %}
+  </section>
+  {% if selected_ledger %}
+  <details class="workspace-disclosure workspace-task-group" id="learning-feedback">
+    <summary><span class="workspace-task__icon workspace-tone-green">{{ icon('history') }}</span><span class="workspace-task__text"><strong>最近记住的选择</strong><span>查看真实保存的反馈，最多 10 条</span></span>{{ icon('chevron-right') }}</summary>
+    <div class="workspace-disclosure__body">
+      {% for row in activity.feedback %}
+      <div class="workspace-learning-record">
+        <h3>{{ row.expense.merchant or '未填写商家' }} · {{ '分类建议' if row.event.signal_type == 'category_suggestion' else '重复核对' }}</h3>
+        <p>{{ '已采用这次建议' if row.event.event_type == 'accept' else '未采用这次建议' }} · {{ row.event.created_at|owner_datetime }}</p>
+        <p class="workspace-note">{% if row.event.signal_type == 'category_suggestion' %}当前分类：{{ row.expense.category }}。这次选择已进入本账本的反馈记录；是否影响新建议，按上方条件判断。{% else %}相同商家和金额的后续重复评分会参考近 90 天的这次反馈。{% endif %}</p>
+        {% if row.expense.status in ['pending', 'confirmed'] %}<a href="/web/expenses/{{ row.expense.id }}/edit?ledger_id={{ selected_ledger.ledger_id|urlencode }}">查看这笔账目</a>{% else %}<p class="workspace-note">原小票已移出当前账目，保留这次选择记录。</p>{% endif %}
+      </div>
+      {% else %}<p>还没有保存采用或纠正记录。</p><p class="workspace-note">遇到分类建议后，修改并保存分类或确认小票；在相似账单中选择“不是重复”，也会保存反馈。单纯查看页面或清理记录不算学习。</p>{% endfor %}
+    </div>
+  </details>
+  {% endif %}
   <section class="workspace-section" aria-label="算法版本与来源">
     <details class="workspace-disclosure workspace-task-group">
-      <summary><span class="workspace-task__icon workspace-tone-green">{{ icon('cpu') }}</span><span class="workspace-task__text"><strong>当前算法</strong><span>版本号从实际构建读取</span></span><span class="workspace-view-label">查看</span>{{ icon('chevron-right') }}</summary>
+      <summary><span class="workspace-task__icon workspace-tone-green">{{ icon('cpu') }}</span><span class="workspace-task__text"><strong>版本与技术信息</strong><span>排查问题时查看，平时无需调整</span></span><span class="workspace-view-label">查看</span>{{ icon('chevron-right') }}</summary>
       <div class="workspace-disclosure__body">{{ registry(algorithm_types) }}</div>
     </details>
     <details id="algorithm-history" class="workspace-disclosure workspace-task-group"{% if error %} open{% endif %}>
@@ -31,7 +70,7 @@
             <div><dt>待采纳</dt><dd>{{ row.active_count }}</dd></div>
             <div><dt>已被新建议替代</dt><dd>{{ row.superseded_count }}</dd></div>
             <div><dt>已撤回</dt><dd>{{ row.withdrawn_count }}</dd></div>
-            <div><dt>已采纳 / 已忽略</dt><dd>{{ row.accepted_count }} / {{ row.dismissed_count }}</dd></div>
+            <div><dt>已采纳 / 已关闭</dt><dd>{{ row.accepted_count }} / {{ row.dismissed_count }}</dd></div>
           </dl>
           {% if row.active_count > 0 %}
           <form method="post" action="/owner/algorithm-versions/withdraw" data-confirm="撤回所选账本中这个版本尚未采纳的建议？这不会更改账单，也不会停用算法。">
@@ -48,6 +87,6 @@
       </div>
     </details>
   </section>
-  <div class="workspace-guidance">{{ icon('info') }}<div><strong>查看版本与来源</strong><p>排查识别问题时，可一并提供这些信息。</p></div></div>
+  <div class="workspace-guidance">{{ icon('info') }}<div><strong>记录与效果分开看</strong><p>这里能核对生成过的建议和已保存的选择。目前没有准确率提升测量，不能用记录数量、版本号或清理成功宣称“越用越准”。</p></div></div>
 </div>
 {% endblock %}

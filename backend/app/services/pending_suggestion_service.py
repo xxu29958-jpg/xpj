@@ -67,10 +67,32 @@ class PendingSuggestions:
 def suggestions_for_pending_expense(
     db: Session, *, tenant_id: str, expense: Expense
 ) -> PendingSuggestions:
+    if expense.status != "pending":
+        return PendingSuggestions()
     return PendingSuggestions(
         category_suggestion=_category_suggestion(db, tenant_id=tenant_id, expense=expense),
         duplicate_candidates=_duplicate_candidates(db, tenant_id=tenant_id, expense=expense),
     )
+
+
+def record_category_choice(db: Session, *, expense: Expense, previous_category: str | None, previous_merchant: str | None) -> None:
+    """Remember an explicit category edit in the same successful financial transaction."""
+    if expense.category == previous_category or expense.merchant != previous_merchant:
+        return
+    decision = active_decision_for_subject(db, tenant_id=expense.tenant_id,
+        decision_type=CATEGORY_SUGGESTION.decision_type, subject_kind="expense", subject_id=expense.id)
+    if decision is not None:
+        record_pending_suggestion_event(db, tenant_id=expense.tenant_id, expense_id=expense.id,
+            decision_public_id=decision.public_id, actor_account_id=None,
+            event_type="accept" if _loads(decision.output_payload).get("category") == expense.category else "reject")
+
+
+def record_duplicate_choice(db: Session, *, expense: Expense) -> None:
+    """A successful 'keep both' command also teaches the existing duplicate scorer."""
+    suggestions = _duplicate_candidates(db, tenant_id=expense.tenant_id, expense=expense)
+    for suggestion in suggestions:
+        record_pending_suggestion_event(db, tenant_id=expense.tenant_id, expense_id=expense.id,
+            decision_public_id=suggestion.decision_public_id, event_type="reject", actor_account_id=None)
 
 
 def record_pending_suggestion_event(
@@ -181,6 +203,7 @@ def _category_suggestion(
         "category": suggestion.category,
         "score": suggestion.score,
         "sample_size": suggestion.sample_size,
+        "merchant": expense.merchant,
     }
     decision = _ensure_decision(
         db,
@@ -191,6 +214,8 @@ def _category_suggestion(
         payload=payload,
         score=suggestion.score,
     )
+    if decision is None:
+        return None
     return PendingCategorySuggestion(
         decision_public_id=decision.public_id,
         category=suggestion.category,
@@ -237,6 +262,8 @@ def _duplicate_candidates(
             payload=payload,
             score=item.score,
         )
+        if decision is None:
+            continue
         results.append(
             PendingDuplicateCandidate(
                 decision_public_id=decision.public_id,
@@ -259,7 +286,20 @@ def _ensure_decision(
     algorithm_version: str,
     payload: DecisionPayload,
     score: float | None,
-) -> AlgorithmDecision:
+) -> AlgorithmDecision | None:
+    closed = db.scalars(select(AlgorithmDecision).where(
+        AlgorithmDecision.tenant_id == tenant_id, AlgorithmDecision.subject_kind == "expense",
+        AlgorithmDecision.subject_id == expense.id, AlgorithmDecision.decision_type == decision_type,
+        AlgorithmDecision.algorithm_version == algorithm_version,
+        AlgorithmDecision.status.in_(("accepted", "dismissed", "withdrawn")),
+    ))
+    marker = build_feedback_marker(decision_type, payload)
+    for row in closed:
+        previous = _loads(row.output_payload)
+        if build_feedback_marker(decision_type, previous) == marker and (
+            decision_type != CATEGORY_SUGGESTION.decision_type or previous.get("merchant", expense.merchant) == expense.merchant
+        ):
+            return None
     existing = active_decision_for_subject(
         db,
         tenant_id=tenant_id,

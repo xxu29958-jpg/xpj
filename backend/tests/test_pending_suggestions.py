@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -26,7 +27,7 @@ def _confirmed(
             "home_currency_code": "CNY", "amount_cents": 1200 + day,
             "merchant": merchant,
             "category": category,
-            "spent_at": f"2026-05-{day:02d}T03:00:00Z",
+            "spent_at": (datetime.now(UTC) - timedelta(days=day)).isoformat(),
         },
     )
     assert response.status_code == 200, response.json()
@@ -39,10 +40,11 @@ def _pending_notification(client: TestClient, *, identity, merchant: str) -> int
         headers=identity.app_headers,
         json={
             "source": "alipay",
+            "notification_key": str(uuid4()),
             "amount_cents": 1888,
             "merchant": merchant,
             "category": "其他",
-            "spent_at": "2026-05-10T03:00:00Z",
+            "spent_at": datetime.now(UTC).isoformat(),
         },
     )
     assert response.status_code == 200, response.json()
@@ -200,3 +202,73 @@ def test_pending_suggestion_feedback_requires_auth(client: TestClient, *, identi
 
     assert accept.status_code == 401
     assert reject.status_code == 401
+
+
+def test_feedback_changes_the_next_real_review_without_changing_money(client, web_client, identity):
+    """Read -> correct -> reopen -> next receipt, across the actual consumers."""
+    from api_contract_helpers import patch_expense
+
+    from app.models import Expense
+
+    for day in (1, 2, 3):
+        _confirmed(client, identity=identity, merchant="学习咖啡店", category="餐饮", day=day)
+    pending_id = _pending_notification(client, identity=identity, merchant="学习咖啡店")
+    detail = client.get(f"/api/expenses/{pending_id}", headers=identity.app_headers).json()
+    suggestion = detail["category_suggestion"]
+    assert suggestion and suggestion["category"] == "餐饮"
+    page = web_client.get(f"/web/expenses/{pending_id}/edit?ledger_id=owner")
+    assert 'data-category-suggestion="餐饮"' in page.text
+    assert "3 笔" in page.text
+
+    intervening = patch_expense(client, pending_id, headers=identity.app_headers, fields={"note": "另一端刚保存"})
+    assert intervening.status_code == 200
+    stale = client.patch(f"/api/expenses/{pending_id}",
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"category": "购物", "expected_row_version": detail["row_version"]})
+    assert stale.status_code == 409
+    with SessionLocal() as db:
+        assert db.query(LedgerLearningEvent).filter(LedgerLearningEvent.subject_id == pending_id).count() == 0
+
+    changed = patch_expense(client, pending_id, headers=identity.app_headers, fields={"category": "购物"})
+    assert changed.status_code == 200, changed.text
+    # A stored feedback row alone is not the outcome: reopening must honour it.
+    reopened = client.get(f"/api/expenses/{pending_id}", headers=identity.app_headers).json()
+    assert reopened["category_suggestion"] is None
+    assert reopened["category"] == "购物" and reopened["amount_cents"] == 1888
+
+    second_id = _pending_notification(client, identity=identity, merchant="学习咖啡店")
+    second = client.get(f"/api/expenses/{second_id}", headers=identity.app_headers).json()
+    assert second_id != pending_id, second
+    assert second["category_suggestion"] is not None, second
+    decision_id = second["category_suggestion"]["decision_public_id"]
+    rejected = client.post(f"/api/expenses/{second_id}/suggestions/{decision_id}/reject", headers=identity.app_headers)
+    assert rejected.status_code == 200
+    third_id = _pending_notification(client, identity=identity, merchant="学习咖啡店")
+    third = client.get(f"/api/expenses/{third_id}", headers=identity.app_headers).json()
+    assert third["category_suggestion"] is None  # Two corrections suppress the same merchant/category.
+    with SessionLocal() as db:
+        assert db.get(Expense, third_id).category == "其他"
+        assert db.get(Expense, third_id).amount_cents == 1888
+        events = db.query(LedgerLearningEvent).filter(LedgerLearningEvent.subject_id.in_([pending_id, second_id])).all()
+        assert [e.event_type for e in sorted(events, key=lambda e: e.id)] == ["reject", "reject"]
+
+
+def test_keep_both_changes_future_duplicate_evidence_and_preserves_both_bills(client, web_client, identity):
+    from api_contract_helpers import mark_not_duplicate_api
+
+    first_id = _pending_notification(client, identity=identity, merchant="重复核对店")
+    second_id = _pending_notification(client, identity=identity, merchant="重复核对店")
+    before = client.get(f"/api/expenses/{second_id}", headers=identity.app_headers).json()
+    assert before["duplicate_candidates"]
+    original_score = before["duplicate_candidates"][0]["score"]
+    kept = mark_not_duplicate_api(client, second_id, headers=identity.app_headers)
+    assert kept.status_code == 200, kept.text
+    third_id = _pending_notification(client, identity=identity, merchant="重复核对店")
+    after = client.get(f"/api/expenses/{third_id}", headers=identity.app_headers).json()
+    assert after["duplicate_candidates"][0]["score"] < original_score
+    assert "recent_user_reject" in after["duplicate_candidates"][0]["reasons"]
+    page = web_client.get("/web/duplicates?ledger_id=owner")
+    assert "已参考你之前“不是重复”的选择" in page.text
+    for expense_id in (first_id, second_id):
+        expense = client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers).json()
+        assert expense["amount_cents"] == 1888 and expense["status"] == "pending"

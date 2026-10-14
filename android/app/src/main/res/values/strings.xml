@@ -12,6 +12,9 @@
   纯不变原子（取消/确定/关闭/加载中/重试）才进 common_*。保存/删除/编辑默认走 screen key。
 -->
 <resources xmlns:tools="http://schemas.android.com/tools" tools:locale="zh">
+    <string name="expense_learning_category_hint">参考同一商家最近 %1$d 笔已入账记录，建议用「%2$s」。保存后记住你的选择，确认后才入账。</string>
+    <string name="expense_learning_category_use">填入这个分类</string>
+    <string name="expense_learning_duplicate_adjusted">已参考你之前“不是重复”的选择，降低相同商家和金额的重复评分；这次仍需对照原件。</string>
     <string name="expense_fact_history_cached">显示上次读取的历史 · %1$s</string>
     <string name="expense_fact_input_save_failed">原输入尚未保存，请重试后再离开。</string>
     <string name="expense_fact_input_load_failed">原输入暂时未能读取，内容仍保留，请重试。</string>

@@ -185,6 +185,14 @@
   <datalist id="{{ _p }}-category-options">
     {% for option in category_options %}<option value="{{ option }}"></option>{% endfor %}
   </datalist>
+  {% if learning_suggestions and learning_suggestions.category_suggestion and can_write %}
+  {% set suggestion = learning_suggestions.category_suggestion %}
+  <div class="product-feedback" data-learning-suggestion data-category-merchant="{{ e.merchant }}">
+    <strong>常用分类：{{ suggestion.category }}</strong>
+    <p>参考同一商家最近 {{ suggestion.sample_size }} 笔已入账记录。保存后记住你的选择；仍需确认才会入账。</p>
+    <button type="button" class="product-button product-button--quiet" data-category-suggestion="{{ suggestion.category }}">填入这个分类</button>
+  </div>
+  {% endif %}
   {% if core_fields_compact|default(false) %}</details>{% endif %}
 
   {% if time_form %}

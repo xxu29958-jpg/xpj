@@ -1,14 +1,15 @@
 {% extends "_workspace.html" %}
 {% from "_workspace_ui.html" import icon with context %}
 {% from "_learning_ui.html" import ledger_filter, registry %}
-{% block title %}学习记录维护 — 小票夹{% endblock %}
+{% block title %}建议记录与清理 — 小票夹{% endblock %}
 {% block back_url %}/owner/settings{% endblock %}
 {% block back_label %}高级维护{% endblock %}
-{% block workspace_title %}学习记录维护{% endblock %}
+{% block workspace_title %}建议记录与清理{% endblock %}
 {% block workspace_description %}核对不合适的建议，或清理过期记录。账目和原件保持不变。{% endblock %}
 {% block workspace_body %}
 <div class="workspace-learning">
   {{ ledger_filter(ledger_choices, selected_ledger, '/owner/learning-maintenance') }}
+  <p class="workspace-note">想知道学习有没有用？先查看 <a href="/owner/algorithm-versions{% if selected_ledger %}?ledger_id={{ selected_ledger.ledger_id|urlencode }}{% endif %}">自动建议的用途与最近反馈</a>。本页用于处理具体建议和释放过期记录占用，不会训练识别模型。</p>
   {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
   {% if message %}<div class="alert alert-success" role="status">{{ message }}</div>{% endif %}
   <section class="workspace-section" aria-label="学习记录维护详情">
@@ -46,7 +47,7 @@
       <summary><span class="workspace-task__icon workspace-tone-apricot">{{ icon('list') }}</span><span class="workspace-task__text"><strong>近期候选</strong><span>{{ overview.active_decisions }} 条待采纳建议，可逐条核对</span></span><span class="workspace-view-label">查看</span>{{ icon('chevron-right') }}</summary>
       <div class="workspace-disclosure__body">
         <h2>待采纳建议 · {{ selected_ledger.name }}</h2>
-        <p class="workspace-note">最近 {{ active_decisions|length }} 条，最多显示 50 条。忽略只关闭这条建议，不会修改账单；请先展开内容核对。</p>
+        <p class="workspace-note">最近 {{ active_decisions|length }} 条，最多显示 50 条。忽略会从本页关闭这条建议，并为分类或重复判断记下一次“不采用”；不会修改账单。请先展开核对。</p>
         {% for decision in active_decisions %}
         {% set entry = algorithm_types.get(decision.decision_type) %}
         {% set expense = decision_expenses.get(decision.subject_id) if decision.subject_kind == 'expense' else none %}
@@ -55,6 +56,7 @@
           <div class="workspace-disclosure__body">
             {% if expense %}<p class="workspace-note">账目日期：{{ expense.expense_time|owner_datetime }} · {{ {'pending': '待核对', 'confirmed': '已入账', 'rejected': '已拒绝'}.get(expense.status, expense.status) }}</p>{% endif %}
             {% if expense and expense.status in ('pending', 'confirmed') %}<a class="workspace-text-action" href="/web/expenses/{{ expense.id }}/edit?{{ {'ledger_id': selected_ledger.ledger_id}|urlencode }}">打开这张小票核对</a>{% endif %}
+            {% if decision.decision_type == 'duplicate_candidate' %}<p class="workspace-note">忽略建议会参与后续重复评分，但不会取消小票的重复标记。要确认保留两条，请到<a href="/web/duplicates?{{ {'ledger_id': selected_ledger.ledger_id}|urlencode }}">疑似重复</a>核对处理。</p>{% endif %}
             <details class="workspace-disclosure">
               <summary>技术记录与原始内容 {{ icon('chevron-right') }}</summary>
               <div class="workspace-disclosure__body">
@@ -68,7 +70,7 @@
             <p class="workspace-note">建议内容（原始记录）</p><pre class="workspace-learning-payload">{{ decision.output_payload or '未提供内容' }}</pre>
               </div>
             </details>
-            <form method="post" action="/owner/learning-maintenance/dismiss-decision" data-confirm="忽略这条建议？之后不再展示，账单不受影响。">
+            <form method="post" action="/owner/learning-maintenance/dismiss-decision" data-confirm="关闭这条建议并记住不采用的反馈？账单和重复标记保持不变。">
               <input type="hidden" name="ledger_id" value="{{ selected_ledger.ledger_id }}">
               <input type="hidden" name="decision_public_id" value="{{ decision.public_id }}">
               <button type="submit" class="btn btn-danger">忽略这条建议</button>
