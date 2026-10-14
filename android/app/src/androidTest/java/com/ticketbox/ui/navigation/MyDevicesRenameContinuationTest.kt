@@ -6,7 +6,7 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasSetTextAction
-import androidx.compose.ui.test.isDialog
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -61,7 +61,7 @@ class MyDevicesRenameContinuationTest {
         val large = InstrumentationRegistry.getArguments().getString("visualMode") == "large"
         compose.setContent {
             if (mounted.value) TicketboxTheme(skin = if (large) AppSkin.Midnight else AppSkin.Default) {
-                MyDevicesScreen(viewModel, "correction-ledger", {})
+                MyDevicesScreen(viewModel, "correction-ledger", {}, {})
             }
         }
         compose.waitUntil(5_000) { viewModel.uiState.value.devices.size == 1 }
@@ -73,12 +73,12 @@ class MyDevicesRenameContinuationTest {
         compose.onNodeWithText(context.getString(com.ticketbox.R.string.my_devices_rename_dialog_confirm)).performClick()
         compose.waitUntil(5_000) { requests.size == 1 && viewModel.uiState.value.busyDeviceId == null }
         compose.onNode(hasSetTextAction()).assertTextContains(raw)
-        saveConsumerArtPreview("device-rename-failed-retained", compose.onNode(isDialog()).captureToImage().asAndroidBitmap())
+        saveConsumerArtPreview("device-rename-failed-retained", compose.onRoot().captureToImage().asAndroidBitmap())
         assertEquals("旧设备", viewModel.uiState.value.devices.single().deviceName)
         reject = false
         compose.onNodeWithText(context.getString(com.ticketbox.R.string.my_devices_rename_dialog_confirm)).performClick()
         compose.waitUntil(5_000) { viewModel.uiState.value.devices.single().deviceName == raw.trim() }
-        compose.onNode(isDialog()).assertDoesNotExist()
+        compose.onNode(hasSetTextAction()).assertDoesNotExist()
         assertEquals(listOf("rename-device" to raw.trim(), "rename-device" to raw.trim()), requests.toList())
     }
 }

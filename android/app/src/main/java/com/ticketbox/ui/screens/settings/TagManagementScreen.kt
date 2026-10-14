@@ -14,6 +14,7 @@ import com.ticketbox.domain.model.ManagedTag
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.AppStatusBanner
+import com.ticketbox.ui.components.AppFloatingActionBar
 import com.ticketbox.viewmodel.TagManagementUiState
 import com.ticketbox.viewmodel.TagManagementViewModel
 import com.ticketbox.viewmodel.TagEditorAction
@@ -109,6 +110,7 @@ private fun TagManagementPageContent(
             chrome = chrome,
         ),
         onBack = actions.onBack,
+        bottomBar = { AppFloatingActionBar { creation(!state.loading && !state.busy) } },
         status = {
             if (state.bindingChanged) {
                 AppStatusBanner(UiText.res(R.string.tag_management_draft_binding_changed), MessageTone.Info)
@@ -147,7 +149,6 @@ private fun TagManagementPageContent(
         if (bodyState == TagManagementBodyState.Content) {
             TagSemanticsNote()
         }
-        creation(!state.loading && !state.busy)
     }
 }
 

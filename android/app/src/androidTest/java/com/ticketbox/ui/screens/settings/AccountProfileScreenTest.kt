@@ -3,6 +3,7 @@ package com.ticketbox.ui.screens.settings
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -15,12 +16,14 @@ import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.ui.theme.TicketboxTheme
+import com.ticketbox.ui.RealKeyboard
 import com.ticketbox.viewmodel.AccountProfileViewModel
 import org.junit.Rule
 import org.junit.Test
 
 class AccountProfileScreenTest {
     @get:Rule val compose = createComposeRule()
+    @get:Rule val keyboard = RealKeyboard()
 
     @Test
     fun failedSaveKeepsEditableInputThenExplicitRetryShowsTheAcceptedName() {
@@ -33,12 +36,14 @@ class AccountProfileScreenTest {
             }
         }
         compose.runOnIdle { vm.refresh() }
-        compose.onNodeWithText("显示名称").performTextReplacement("我的新名称")
-        compose.onNodeWithText("保存账号名称").performScrollTo().performClick()
-        compose.onNodeWithText("显示名称").assertTextContains("我的新名称")
+        compose.onNode(hasSetTextAction()).performClick().performTextReplacement("我的新名称")
+        keyboard.assertActionAboveKeyboard(compose, "保存账号名称", "account-profile-keyboard")
+        compose.onNodeWithText("保存账号名称").assertIsDisplayed().performClick()
+        keyboard.dismissAndWait(compose)
+        compose.onNode(hasSetTextAction()).assertTextContains("我的新名称")
         compose.onNodeWithText("当前名称：原名称").performScrollTo().assertIsDisplayed()
         compose.runOnIdle { check(vm.uiState.value.message != null); account.fail = false }
-        compose.onNodeWithText("保存账号名称").performScrollTo().performClick()
+        compose.onNodeWithText("保存账号名称").assertIsDisplayed().performClick()
         compose.onNodeWithText("账号名称已保存。").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("当前名称：我的新名称").performScrollTo().assertIsDisplayed()
         compose.runOnIdle { check(account.name == "我的新名称" && account.writes == 2) }

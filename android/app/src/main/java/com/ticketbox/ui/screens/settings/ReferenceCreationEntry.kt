@@ -108,5 +108,8 @@ private fun ReferenceCreationActions(
         },
         enabled = !state.busy && (state.canReviewIdentity || state.canModify && draft.name.isNotBlank()),
         onClick = when { state.bindingChanged -> model::reviewIdentity; rejected -> model::reviewRejected; else -> model::submit },
-    ), secondary = AppAction(stringResource(R.string.reference_later), onDismiss, enabled = !state.busy))
+    ))
+    TextButton(onClick = onDismiss, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) {
+        Text(stringResource(R.string.reference_later))
+    }
 }

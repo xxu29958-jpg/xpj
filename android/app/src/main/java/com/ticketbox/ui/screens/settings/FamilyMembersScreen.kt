@@ -1,7 +1,5 @@
 package com.ticketbox.ui.screens.settings
 
-import android.content.Intent
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,9 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -34,20 +30,17 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
-import com.ticketbox.ui.components.HandoffQrCode
-import com.ticketbox.domain.model.FamilyInvitationCreated
 import com.ticketbox.domain.model.FamilyMember
 import com.ticketbox.domain.model.LEDGER_ROLE_MEMBER
 import com.ticketbox.domain.model.LEDGER_ROLE_OWNER
@@ -55,11 +48,11 @@ import com.ticketbox.domain.model.LEDGER_ROLE_VIEWER
 import com.ticketbox.domain.model.LedgerAuditEntry
 import com.ticketbox.domain.model.ledgerAuditActionLabel
 import com.ticketbox.domain.model.ledgerAuditResultLabel
-import com.ticketbox.domain.model.shareText
-import com.ticketbox.ui.components.AppAdaptiveEditActionLayout
-import com.ticketbox.ui.components.AppAdaptiveEditActionMode
 import com.ticketbox.ui.components.AppAdaptiveTrailingActionRow
 import com.ticketbox.ui.components.AppStatusBanner
+import com.ticketbox.ui.components.SettingsEntryIcon
+import com.ticketbox.ui.components.AppFloatingActionBar
+import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.displayDate
 import com.ticketbox.ui.components.displayTime
@@ -87,6 +80,7 @@ fun FamilyMembersScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var pendingAction by remember { mutableStateOf<FamilyMemberAction?>(null) }
+    var invitationOpen by rememberSaveable(activeLedgerId) { mutableStateOf(false) }
     val canManageMembers = currentRole == LEDGER_ROLE_OWNER && viewModel.deviceIsOwner()
     val rowActions = remember {
         MemberRowActions(
@@ -121,15 +115,26 @@ fun FamilyMembersScreen(
         )
     }
 
-    SettingsPageFrame(
-        title = stringResource(R.string.family_members_page_title),
-        subtitle = if (canManageMembers) {
+    if (invitationOpen && canManageMembers) {
+        FamilyInvitationSheet(state, viewModel, activeLedgerId) {
+            invitationOpen = false
+            viewModel.dismissCreatedInvite()
+        }
+    }
+
+    ManagementPageFrame(
+        header = ManagementPageHeader(title = stringResource(R.string.family_members_page_title),
+            subtitle = if (canManageMembers) {
             stringResource(R.string.family_members_page_subtitle_manage)
         } else {
             stringResource(R.string.family_members_page_subtitle_view)
-        },
+        }),
         onBack = onBack,
         status = { AppStatusBanner(message = state.message, tone = state.messageTone) },
+        bottomBar = if (canManageMembers) ({ AppFloatingActionBar {
+            AppPrimaryButton(stringResource(R.string.family_members_section_invite),
+                modifier = Modifier.fillMaxWidth(), onClick = { invitationOpen = true })
+        } }) else null,
     ) {
         SettingsSection(
             title = stringResource(R.string.family_members_section_members),
@@ -175,12 +180,6 @@ fun FamilyMembersScreen(
             }
         }
         if (canManageMembers) {
-            InviteFamilySection(
-                creating = state.inviteCreating,
-                createdInvite = state.createdInvite,
-                onCreate = { role -> viewModel.createInvitation(role, activeLedgerId) },
-                onDismissResult = { viewModel.dismissCreatedInvite() },
-            )
             SettingsSection(
                 title = stringResource(R.string.family_members_section_audit),
             ) {
@@ -209,221 +208,6 @@ fun FamilyMembersScreen(
                         )
                     }
                 }
-            }
-        }
-    }
-}
-
-/** Owner-only invitation creation; the one-time share value stays in memory until this result is dismissed. */
-@Composable
-private fun InviteFamilySection(
-    creating: Boolean,
-    createdInvite: FamilyInvitationCreated?,
-    onCreate: (String) -> Unit,
-    onDismissResult: () -> Unit,
-) {
-    val clipboard = LocalClipboardManager.current
-    val context = LocalContext.current
-    val shareChooserTitle = stringResource(R.string.family_members_invite_share_chooser)
-    SettingsSection(
-        title = stringResource(R.string.family_members_section_invite),
-    ) {
-        SettingsOpenPanel {
-            Text(
-                text = stringResource(R.string.family_members_invite_intro),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-            )
-            InviteRoleActions(creating = creating, onCreate = onCreate)
-            createdInvite?.let { invite ->
-                CreatedInviteResult(
-                    invite = invite,
-                    onCopy = { clipboard.setText(AnnotatedString(invite.shareText)) },
-                    onShare = {
-                        val send = Intent(Intent.ACTION_SEND)
-                            .setType("text/plain")
-                            .putExtra(Intent.EXTRA_TEXT, invite.shareText)
-                        context.startActivity(
-                            Intent.createChooser(
-                                send,
-                                shareChooserTitle,
-                            ),
-                        )
-                    },
-                    onDismissResult = onDismissResult,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun InviteRoleActions(
-    creating: Boolean,
-    onCreate: (String) -> Unit,
-) {
-    Column {
-        InviteRoleActionRow(
-            text = stringResource(R.string.family_members_invite_as_member),
-            icon = Icons.Filled.PersonAdd,
-            enabled = !creating,
-            trailing = if (creating) {
-                stringResource(R.string.family_members_invite_creating)
-            } else {
-                stringResource(R.string.family_members_invite_create_action)
-            },
-            onClick = { onCreate(LEDGER_ROLE_MEMBER) },
-        )
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium))
-        InviteRoleActionRow(
-            text = stringResource(R.string.family_members_invite_as_viewer),
-            icon = Icons.Filled.Visibility,
-            enabled = !creating,
-            trailing = if (creating) {
-                stringResource(R.string.family_members_invite_creating)
-            } else {
-                stringResource(R.string.family_members_invite_create_action)
-            },
-            onClick = { onCreate(LEDGER_ROLE_VIEWER) },
-        )
-    }
-}
-
-@Composable
-private fun InviteRoleActionRow(
-    text: String,
-    icon: ImageVector,
-    enabled: Boolean,
-    trailing: String,
-    onClick: () -> Unit,
-) {
-    val contentColor = if (enabled) {
-        MaterialTheme.colorScheme.onSurface
-    } else {
-        MaterialTheme.colorScheme.onSurfaceVariant
-    }
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 44.dp)
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(vertical = AppSpacing.smallGap),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = contentColor,
-            modifier = Modifier.size(20.dp),
-        )
-        Text(
-            text = text,
-            style = MaterialTheme.typography.bodyLarge,
-            color = contentColor,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Spacer(Modifier.weight(1f))
-        Text(
-            text = trailing,
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.primary,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
-@Composable
-private fun CreatedInviteResult(
-    invite: FamilyInvitationCreated,
-    onCopy: () -> Unit,
-    onShare: () -> Unit,
-    onDismissResult: () -> Unit,
-) {
-    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium))
-    Text(
-        text = stringResource(
-            R.string.family_members_invite_created_title,
-            ledgerRoleLabelText(invite.role),
-        ),
-        style = MaterialTheme.typography.titleSmall,
-        color = MaterialTheme.colorScheme.onSurface,
-    )
-    Text(
-        text = stringResource(
-            if (!invite.inviteUrl.isNullOrBlank()) {
-                R.string.family_members_invite_link_ready
-            } else {
-                R.string.family_members_invite_token_fallback
-            },
-        ),
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-    invite.expiresAt?.let { expiresAt ->
-        Text(
-            text = stringResource(R.string.family_members_invite_expires_at, displayTime(expiresAt)),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-    invite.inviteUrl?.takeIf(String::isNotBlank)?.let { url ->
-        HandoffQrCode(url, stringResource(R.string.qr_invitation_description))
-    }
-    Text(
-        text = stringResource(R.string.family_members_invite_once_hint),
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-    CreatedInviteActions(
-        onCopy = onCopy,
-        onShare = onShare,
-        onDismissResult = onDismissResult,
-    )
-}
-
-@Composable
-private fun CreatedInviteActions(
-    onCopy: () -> Unit,
-    onShare: () -> Unit,
-    onDismissResult: () -> Unit,
-) {
-    AppAdaptiveEditActionLayout(actionCount = 3, compact = false, stackTwoActionsOnNarrow = true) { mode ->
-        when (mode) {
-            AppAdaptiveEditActionMode.Stacked -> Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
-            ) {
-                AppSecondaryButton(
-                    text = stringResource(R.string.family_members_invite_copy),
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = onCopy,
-                )
-                AppSecondaryButton(
-                    text = stringResource(R.string.family_members_invite_share),
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = onShare,
-                )
-                AppSecondaryButton(
-                    text = stringResource(R.string.family_members_invite_dismiss),
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = onDismissResult,
-                )
-            }
-            AppAdaptiveEditActionMode.Compact,
-            AppAdaptiveEditActionMode.Inline -> Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap, Alignment.End),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                AppSecondaryButton(text = stringResource(R.string.family_members_invite_copy), onClick = onCopy)
-                AppSecondaryButton(text = stringResource(R.string.family_members_invite_share), onClick = onShare)
-                AppSecondaryButton(
-                    text = stringResource(R.string.family_members_invite_dismiss),
-                    onClick = onDismissResult,
-                )
             }
         }
     }
@@ -500,6 +284,8 @@ private fun FamilyMemberRow(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            SettingsEntryIcon(ImageVector.vectorResource(R.drawable.ic_lucide_user_round))
+            Spacer(Modifier.width(AppSpacing.contentGap))
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),

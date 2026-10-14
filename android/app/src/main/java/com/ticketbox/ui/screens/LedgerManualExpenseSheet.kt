@@ -270,12 +270,10 @@ private fun ManualExpenseActionSlot(
             enabled = editable && !saving,
             onClick = onSubmit,
         ),
-        secondary = AppSheetAction(
-            text = stringResource(R.string.common_cancel),
-            enabled = !saving,
-            onClick = onDismiss,
-        ),
     )
+    androidx.compose.material3.TextButton(onClick = onDismiss, enabled = !saving, modifier = Modifier.fillMaxWidth()) {
+        Text(stringResource(R.string.common_cancel))
+    }
 }
 
 @Composable

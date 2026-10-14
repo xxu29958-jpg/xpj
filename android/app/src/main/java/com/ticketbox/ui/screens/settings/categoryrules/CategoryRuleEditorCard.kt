@@ -1,20 +1,22 @@
 package com.ticketbox.ui.screens.settings.categoryrules
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import com.ticketbox.R
 import com.ticketbox.ui.asString
-import com.ticketbox.ui.components.AppAction
-import com.ticketbox.ui.components.AppActionRow
+import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.settings.SettingsDialogTextInput
 import com.ticketbox.ui.screens.settings.SettingsOpenPanel
@@ -28,8 +30,6 @@ internal fun CategoryRuleEditorCard(
     form: CategoryRuleDraftForm,
     interaction: CategoryRulesInteractionState,
     onFormChange: (CategoryRuleDraftForm) -> Unit,
-    onSubmit: () -> Unit,
-    onCancel: () -> Unit,
 ) {
     SettingsOpenPanel(
         verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
@@ -39,12 +39,6 @@ internal fun CategoryRuleEditorCard(
         CategoryRuleOptionalFields(form, disabled, onFormChange)
         Text(stringResource(R.string.category_rule_definition_hint), style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
-        CategoryRuleEditorActions(
-            form = form,
-            interaction = interaction,
-            onSubmit = onSubmit,
-            onCancel = onCancel,
-        )
         form.localMessage?.let {
             Text(it.asString(), color = MaterialTheme.colorScheme.secondary)
         }
@@ -108,23 +102,21 @@ private fun CategoryRuleOptionalFields(form: CategoryRuleDraftForm, busy: Boolea
 }
 
 @Composable
-private fun CategoryRuleEditorActions(
+internal fun CategoryRuleEditorActions(
     form: CategoryRuleDraftForm,
     interaction: CategoryRulesInteractionState,
     onSubmit: () -> Unit,
     onCancel: () -> Unit,
 ) {
-    AppActionRow(
-        primary = AppAction(
+    AppPrimaryButton(
             text = categoryRuleSubmitLabel(busy = interaction.busy, editing = form.editingRule != null),
             enabled = !interaction.busy && !interaction.readOnly,
             onClick = onSubmit,
-        ),
-        secondary = AppAction(
-                text = stringResource(R.string.category_rule_editor_cancel),
-                onClick = onCancel,
-            ),
+            modifier = Modifier.fillMaxWidth(),
     )
+    TextButton(onClick = onCancel, enabled = !interaction.busy, modifier = Modifier.fillMaxWidth()) {
+        Text(stringResource(R.string.category_rule_editor_cancel))
+    }
 }
 
 @Composable

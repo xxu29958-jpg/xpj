@@ -4,7 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.LedgerRepository
+import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.domain.model.FamilyInvitationCreated
+import com.ticketbox.domain.model.FamilyInvitation
 import com.ticketbox.domain.model.FamilyMember
 import com.ticketbox.domain.model.LEDGER_ROLE_MEMBER
 import com.ticketbox.domain.model.LEDGER_ROLE_OWNER
@@ -40,6 +42,11 @@ data class FamilyMembersUiState(
      * 收起/再次生成覆盖/离开屏幕)。非 null 时屏幕渲染结果卡(token+复制+有效期)。
      */
     val createdInvite: FamilyInvitationCreated? = null,
+    val invitations: List<FamilyInvitation> = emptyList(),
+    val invitationsLoading: Boolean = false,
+    val invitationsFresh: Boolean = false,
+    val invitationsError: UiText? = null,
+    val revokingInvitationId: String? = null,
 )
 
 sealed class FamilyMemberAction(open val member: FamilyMember) {
@@ -59,6 +66,7 @@ class FamilyMembersViewModel(
 
     private val _uiState = MutableStateFlow(FamilyMembersUiState())
     val uiState: StateFlow<FamilyMembersUiState> = _uiState.asStateFlow()
+    private var invitationsBinding: LogicalSessionBinding? = null
 
     /** Returns true if the currently-bound device's session is OWNER on
      * the active ledger. The screen still checks ``currentRole`` (passed
@@ -85,13 +93,13 @@ class FamilyMembersViewModel(
      * 轴7 发邀请(owner-only:屏幕按 currentRole 隐藏入口,这里再以 [deviceIsOwner]
      * 双查,后端 403 兜底)。成功置 [FamilyMembersUiState.createdInvite] 渲染结果卡。
      */
-    fun createInvitation(role: String, activeLedgerId: String?) {
-        if (!deviceIsOwner()) return
+    fun createInvitation(role: String, activeLedgerId: String?, note: String? = null, ttlDays: Int = 7) {
+        if (!deviceIsOwner() || _uiState.value.inviteCreating) return
         viewModelScope.launch {
             _uiState.update {
                 it.copy(inviteCreating = true, message = null, messageTone = MessageTone.Neutral)
             }
-            repository.createFamilyInvitation(role = role, ledgerId = activeLedgerId)
+            repository.createFamilyInvitation(role = role, ledgerId = activeLedgerId, note = note, ttlDays = ttlDays)
                 .onSuccess { created ->
                     _uiState.update {
                         it.copy(
@@ -116,6 +124,42 @@ class FamilyMembersViewModel(
     /** 收起邀请结果卡(明文不再展示;服务端只存哈希,收起后不可再取回)。 */
     fun dismissCreatedInvite() {
         _uiState.update { it.copy(createdInvite = null) }
+    }
+
+    fun refreshInvitations(activeLedgerId: String?) {
+        val binding = repository.currentBinding()?.takeIf { it.ledgerId == activeLedgerId } ?: return
+        if (!deviceIsOwner()) return
+        if (invitationsBinding == binding && (_uiState.value.invitationsLoading || _uiState.value.revokingInvitationId != null)) return
+        if (invitationsBinding != binding) _uiState.update { it.copy(invitations = emptyList(), revokingInvitationId = null) }
+        invitationsBinding = binding
+        _uiState.update { it.copy(invitationsLoading = true, invitationsFresh = false, invitationsError = null) }
+        viewModelScope.launch {
+            val result = repository.readFamilyInvitations(binding)
+            if (invitationsBinding != binding) return@launch
+            result.onSuccess { rows -> _uiState.update { current -> current.copy(
+                invitations = rows, invitationsFresh = true,
+                createdInvite = current.createdInvite?.takeUnless { created -> rows.any { it.publicId == created.publicId && !it.canRevoke } },
+            ) } }
+                .onFailure { error -> _uiState.update { it.copy(invitationsError = error.toUiText(R.string.family_invites_read_failed)) } }
+            _uiState.update { it.copy(invitationsLoading = false) }
+        }
+    }
+
+    fun revokeInvitation(invitation: FamilyInvitation) {
+        val binding = invitationsBinding ?: return
+        if (!deviceIsOwner() || !_uiState.value.invitationsFresh || _uiState.value.revokingInvitationId != null) return
+        _uiState.update { it.copy(revokingInvitationId = invitation.publicId, invitationsError = null) }
+        viewModelScope.launch {
+            val result = repository.revokeFamilyInvitation(invitation, binding)
+            if (invitationsBinding != binding) return@launch
+            result.onSuccess { updated -> _uiState.update { current -> current.copy(
+                invitations = current.invitations.map { if (it.publicId == updated.publicId) updated else it },
+                createdInvite = current.createdInvite?.takeUnless { it.publicId == updated.publicId && !updated.canRevoke },
+            ) } }.onFailure { error -> _uiState.update {
+                it.copy(invitationsFresh = false, invitationsError = error.toUiText(R.string.family_invites_revoke_failed))
+            } }
+            _uiState.update { it.copy(revokingInvitationId = null) }
+        }
     }
 
     fun runAction(

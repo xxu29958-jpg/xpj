@@ -153,11 +153,13 @@ class IncomePlanCreationRoomTest {
         installModels()
         compose.waitUntil(10_000) { creator.value?.state?.value?.session?.phase == IncomePlanCreationPhase.NeedsRecovery }
         compose.onNodeWithTag("income-creation-action").performClick()
-        compose.onNodeWithText("放弃草稿").performClick()
+        com.ticketbox.ui.saveConsumerArtPreview("income-original-discard-before-scroll",
+            requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        compose.onNodeWithText("放弃草稿").performScrollTo().assertIsDisplayed().performClick()
         compose.onNodeWithText("取消").performClick()
         compose.onNodeWithText("已保存的补贴").performScrollTo().assertEditableTextEquals("已保存的补贴").assertIsNotEnabled()
         assertEquals(original.creationKey, creator.value?.state?.value?.session?.creationKey)
-        compose.onNodeWithText("放弃草稿").performClick()
+        compose.onNodeWithText("放弃草稿").performScrollTo().assertIsDisplayed().performClick()
         compose.onNodeWithText("确认放弃").performClick()
         compose.onNodeWithTag("income-creation-action").performClick()
         assertEquals("", compose.onAllNodes(hasSetTextAction())[0].fetchSemanticsNode().config[SemanticsProperties.EditableText].text)

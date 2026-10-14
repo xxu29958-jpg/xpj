@@ -5,6 +5,9 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onLast
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.espresso.Espresso.pressBack
@@ -72,7 +75,7 @@ class CategoryRulesScreenMessageTest {
         composeRule.onNodeWithText("展开 1 笔样本").performScrollTo().performClick()
         composeRule.onNodeWithText("街角小馆").performScrollTo().assertIsDisplayed()
         capture("rule-preview-skips")
-        composeRule.onNodeWithText("确认应用").performScrollTo().assertIsNotEnabled()
+        composeRule.onNodeWithText("确认应用").assertIsDisplayed().assertIsNotEnabled()
         pressBack()
         composeRule.onNodeWithText("规则列表").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("规则应用记录").performScrollTo().performClick()
@@ -85,7 +88,15 @@ class CategoryRulesScreenMessageTest {
     fun historySeparatesOriginalUpdatesFromRetainedRollbackCounts() {
         val original = RuleApplicationBatch("batch-first", "rollback_partial", 7, 3,
             "2026-10-07T10:00:00Z", "2026-10-07T11:00:00Z", mapOf("rolled_back" to 2, "skipped" to 1))
-        setScreenContent(null, listOf(original, original.copy(publicId = "legacy", changeCounts = null)))
+        val history = mutableStateOf(listOf(original, original.copy(publicId = "legacy", changeCounts = null)))
+        var selected: RuleApplicationBatch? = null
+        composeRule.setContent {
+            TicketboxTheme(skin = AppSkin.Default) {
+                val actions = categoryRulesActionsUnusedByMessageSlot()
+                CategoryRulesScreen(categoryRulesScreenWithHeaderMessage(null, history.value),
+                    actions.copy(applications = actions.applications.copy(onRollbackRuleApplication = { selected = it })))
+            }
+        }
         composeRule.onNodeWithText("规则应用记录").performScrollTo().performClick()
         composeRule.onNodeWithText("已恢复 2 笔 · 跳过 1 笔").performScrollTo().assertIsDisplayed()
         composeRule.waitForIdle()
@@ -94,6 +105,13 @@ class CategoryRulesScreenMessageTest {
             InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
         composeRule.onNodeWithText("此服务端未提供回退明细。").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("回退", substring = false).assertDoesNotExist()
+        val applied = original.copy(publicId = "applied-original", status = "applied", rolledBackAt = null, changeCounts = null)
+        composeRule.runOnIdle { history.value = listOf(applied) }
+        composeRule.onNodeWithText("回退", substring = false).performScrollTo().performClick()
+        composeRule.onNodeWithText("原批次更正 3 笔").assertIsDisplayed()
+        capture("rule-rollback-original-scope")
+        composeRule.onAllNodesWithText("回退", substring = false).onLast().assertIsDisplayed().performClick()
+        org.junit.Assert.assertEquals(applied, selected)
     }
 
     private fun capture(name: String) {

@@ -158,6 +158,7 @@ internal fun SettingsDestinationHost(
 ) {
     var route by rememberSaveable { mutableStateOf(navigation.initialDestination) }
     var joinReturnRoute by rememberSaveable { mutableStateOf(SettingsDestination.Root) }
+    var securityReturnRoute by rememberSaveable { mutableStateOf(SettingsDestination.Root) }
     val appVersionName = stringResource(R.string.app_version_name)
     val appVersionCode = integerResource(R.integer.app_version_code)
 
@@ -201,6 +202,7 @@ internal fun SettingsDestinationHost(
             else -> route = SettingsDestination.Root
         }
     }
+    BackHandler(enabled = route == SettingsDestination.SecurityPrivacy) { route = securityReturnRoute }
 
     when (route) {
         SettingsDestination.Root -> SettingsRootScreen(
@@ -226,7 +228,7 @@ internal fun SettingsDestinationHost(
                     onOpenServer = { route = SettingsDestination.Server },
                     onOpenSyncStatus = { route = SettingsDestination.SyncStatus },
                     onOpenBackgroundTasks = { route = SettingsDestination.BackgroundTasks },
-                    onOpenSecurity = { route = SettingsDestination.SecurityPrivacy },
+                    onOpenSecurity = { securityReturnRoute = SettingsDestination.Root; route = SettingsDestination.SecurityPrivacy },
                     onOpenAbout = { route = SettingsDestination.About },
                 ),
             ),
@@ -343,7 +345,7 @@ internal fun SettingsDestinationHost(
         )
 
         SettingsDestination.SecurityPrivacy -> SecurityPrivacyScreen(
-            onBack = { route = SettingsDestination.Root },
+            onBack = { route = securityReturnRoute },
             onClearCache = actions.onClearCache,
             onBindingCleared = actions.onBindingCleared,
             busy = states.settings.busy,
@@ -390,6 +392,7 @@ internal fun SettingsDestinationHost(
                 viewModel = vm,
                 activeLedgerId = repositories.activeLedgerId,
                 onBack = { route = SettingsDestination.Root },
+                onOpenSecurity = { securityReturnRoute = SettingsDestination.MyDevices; route = SettingsDestination.SecurityPrivacy },
             )
         }
 
@@ -450,6 +453,7 @@ internal fun SettingsDestinationHost(
             appVersionName = appVersionName,
             appVersionCode = appVersionCode,
             onBack = { route = SettingsDestination.Root },
+            onOpenSecurity = { securityReturnRoute = SettingsDestination.About; route = SettingsDestination.SecurityPrivacy },
         )
     }
 }

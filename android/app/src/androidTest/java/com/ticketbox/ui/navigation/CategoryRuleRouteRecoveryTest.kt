@@ -124,13 +124,13 @@ class CategoryRuleRouteRecoveryTest {
         waitForText(add)
         compose.waitUntil(5_000) { routeModel().definitions.state.value.ready }
         compose.onNodeWithText(add).performScrollTo().performClick()
-        compose.onNodeWithText(raw).performScrollTo().assertIsDisplayed()
+        compose.onNode(hasSetTextAction() and hasText(raw)).performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("家庭餐饮").assertIsDisplayed()
         saveConsumerArtPreview("rule-definition-retained-${visualMode()}",
             requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
         compose.onNodeWithText("  支付宝原来源  ").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("  家庭原标签  ").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText(context.getString(R.string.category_rule_editor_cancel)).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.category_rule_editor_cancel)).assertIsDisplayed()
         saveConsumerArtPreview("rule-definition-actions-${visualMode()}",
             requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
         assertEquals(original, runBlocking { requireNotNull(harness.screenFactory.ruleRepository.definitionInputs).read(binding).single() })

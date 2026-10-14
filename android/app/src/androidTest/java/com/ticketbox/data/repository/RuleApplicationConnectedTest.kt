@@ -60,7 +60,7 @@ class RuleApplicationConnectedTest {
         compose.waitUntil(10_000) { model!!.uiState.value.binding != null }
         compose.onNodeWithText("预览已确认账单", substring = false).performScrollTo().performClick()
         compose.waitUntil(10_000) { model!!.uiState.value.confirmedRulesPreview != null }
-        compose.onNodeWithText("确认应用", substring = false).performScrollTo().performClick()
+        compose.onNodeWithText("确认应用", substring = false).assertIsDisplayed().performClick()
         compose.waitUntil(10_000) { model!!.uiState.value.pendingApplications.isNotEmpty() }
         val original = fixture.stored().single()
         assertEquals(emptyList<String>(), network.keys)

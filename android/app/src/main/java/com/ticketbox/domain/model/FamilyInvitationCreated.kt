@@ -13,7 +13,25 @@ data class FamilyInvitationCreated(
     val inviteUrl: String?,
     val role: String,
     val expiresAt: String?,
+    val publicId: String? = null,
 )
 
 val FamilyInvitationCreated.shareText: String
     get() = inviteUrl?.takeIf { it.isNotBlank() } ?: inviteToken
+
+/** Invitation history contains no token; the original invitation remains the revoke target. */
+data class FamilyInvitation(
+    val publicId: String,
+    val ledgerId: String,
+    val role: String,
+    val note: String?,
+    val createdAt: String?,
+    val expiresAt: String?,
+    val usedAt: String?,
+    val revokedAt: String?,
+    val usedByAccountName: String?,
+) {
+    val canRevoke: Boolean
+        get() = usedAt == null && revokedAt == null &&
+            runCatching { java.time.Instant.parse(expiresAt).isAfter(java.time.Instant.now()) }.getOrDefault(false)
+}

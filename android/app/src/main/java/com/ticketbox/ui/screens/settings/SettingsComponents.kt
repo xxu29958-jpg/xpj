@@ -274,6 +274,7 @@ internal fun ManagementPageFrame(
     header: ManagementPageHeader,
     onBack: (() -> Unit)?,
     status: (@Composable () -> Unit)? = null,
+    bottomBar: (@Composable () -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
     AppSecondaryScrollableColumn(
@@ -286,7 +287,7 @@ internal fun ManagementPageFrame(
             hasBottomBar = false,
             verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
         ),
-        slots = AppSecondaryPageSlots(status = status),
+        slots = AppSecondaryPageSlots(status = status, bottomBar = bottomBar),
     ) {
         content()
     }

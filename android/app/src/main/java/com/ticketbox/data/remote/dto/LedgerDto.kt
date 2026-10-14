@@ -164,6 +164,8 @@ data class InvitationSummaryDto(
     val usedByAccountName: String? = null,
 )
 
+data class InvitationListResponseDto(val invitations: List<InvitationSummaryDto>)
+
 /**
  * 创建邀请响应(后端 ``InvitationCreateResponse``)。``invite_token`` 是**唯一一次**
  * 返回的明文(服务端只存哈希)——UI 必须当场展示/复制,离开即不可再取。

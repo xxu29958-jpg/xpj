@@ -151,7 +151,7 @@ class CategoryReferenceNavigationTest {
         assertEquals(0, deleteRequests.size)
         failInspectionRead = false
         compose.onNodeWithText(context.getString(R.string.category_directory_inspection_retry))
-            .performScrollTo().performTouchInput { click() }
+            .assertIsDisplayed().performTouchInput { click() }
         waitForText(referenceLabel)
         assertEquals(0, deleteRequests.size)
     }
