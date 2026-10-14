@@ -203,6 +203,12 @@ async def lifespan(_: FastAPI):
     # ADR-0038 undo: optional periodic purge of soft-deleted rows past
     # retention. Disabled by default; opt in via SOFT_DELETE_PURGE_AUTO_ENABLED.
     soft_delete_purge_scheduler = start_soft_delete_purge_scheduler()
+    app.state.maintenance_workers = {
+        "learning_cleanup": learning_scheduler,
+        "budget_advisor_audit_cleanup": advisor_audit_scheduler,
+        "device_cleanup": device_cleanup_scheduler,
+        "soft_delete_purge": soft_delete_purge_scheduler,
+    }
     try:
         yield
     finally:

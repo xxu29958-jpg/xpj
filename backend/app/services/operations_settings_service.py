@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 from dataclasses import asdict
-from decimal import Decimal, DecimalException
+from decimal import ROUND_CEILING, Decimal, DecimalException
 from zoneinfo import ZoneInfoNotFoundError
 
+from sqlalchemy.orm import Session
+
 from app.config import get_settings
+from app.errors import AppError
 from app.services import runtime_settings_service as runtime
+from app.services.admin_service import cleanup_revoked_devices, expired_revoked_devices
 from app.services.budget_advisor_audit_cleanup_scheduler import budget_advisor_audit_cleanup_status_snapshot
+from app.services.budget_advisor_service import cleanup_expired_audit_logs, expired_audit_logs
 from app.services.device_cleanup_scheduler import device_cleanup_status_snapshot
 from app.services.learning_cleanup_scheduler import learning_cleanup_status_snapshot
 from app.services.runtime_operations_settings import (
@@ -29,17 +34,26 @@ _RETENTION_LABELS = {
 
 
 def upload_budget_mb(value: int | None) -> str:
-    return "" if value is None else format(Decimal(value) / _MIB, "f")
+    if value is None:
+        return ""
+    amount = Decimal(value) / _MIB
+    # Use the shortest decimal that still saves as exactly this byte limit.
+    # Ordinary inputs such as 0.1 MB should not return a binary fraction.
+    for places in range(21):
+        compact = amount.quantize(Decimal(10) ** -places)
+        if (compact * _MIB).to_integral_value(rounding=ROUND_CEILING) == value:
+            return format(compact, "f")
+    return format(amount, "f")
 
 
 def parse_upload_budget_mb(value: str) -> int:
     try:
         budget = Decimal(value) * _MIB
-        if not budget.is_finite() or budget != budget.to_integral_value() or not 0 <= budget <= INTEGER_LIMITS["upload_link_default_daily_byte_budget"][1]:
+        if not budget.is_finite() or not 0 <= budget <= INTEGER_LIMITS["upload_link_default_daily_byte_budget"][1]:
             raise ValueError("invalid upload budget")
     except (DecimalException, ValueError) as exc:
         raise runtime._invalid("每日上传配额须为 0–1048576 MB，可填写小数；0 表示不限额。") from exc
-    return int(budget)
+    return int(budget.to_integral_value(rounding=ROUND_CEILING))
 
 
 def upload_form() -> dict[str, str]:
@@ -99,3 +113,28 @@ def maintenance_status() -> dict[str, object]:
         "device_cleanup": device_cleanup_status_snapshot(),
         "soft_delete_purge": soft_delete_purge_status_snapshot(),
     }
+
+
+def cleanup_preview(db: Session, task: str) -> dict:
+    if task == "budget_advisor_audit_cleanup":
+        rows = expired_audit_logs(db)
+        return {"task": task, "title": "过期 AI 调用记录", "count": len(rows), "rows": rows}
+    if task == "device_cleanup":
+        keep_days = get_settings().device_cleanup_retention_days
+        rows = expired_revoked_devices(db, retention_days=keep_days)
+        return {"task": task, "title": "已过保留期的撤销设备", "count": len(rows), "retention_days": keep_days, "rows": rows}
+    raise AppError("route_not_found", "没有这个清理任务。", status_code=404)
+
+
+def run_cleanup(db: Session, task: str, *, confirmed: bool, retention_days: str) -> int:
+    if not confirmed:
+        raise runtime._invalid("请先核对范围并勾选清理确认；尚未删除任何记录。")
+    if task == "budget_advisor_audit_cleanup":
+        return cleanup_expired_audit_logs(db)
+    if task == "device_cleanup":
+        keep_days = get_settings().device_cleanup_retention_days
+        if retention_days != str(keep_days):
+            raise AppError("conflict", "设备保留期限已改变，请核对更新后的范围再确认。尚未执行本次清理。", status_code=409)
+        result = cleanup_revoked_devices(db, retention_days=keep_days)
+        return result.deleted_devices
+    raise AppError("route_not_found", "没有这个清理任务。", status_code=404)

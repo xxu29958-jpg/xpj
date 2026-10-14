@@ -94,7 +94,9 @@
             });
             document.getElementById("recognition-model").hidden = !usesModel;
             if (usesModel) discoverOnce(recognition.querySelector("[data-local-models]"));
-            document.getElementById("ocr_auto_run").closest("label").hidden = recognition.elements.ocr_provider.value === "empty";
+            var automatic = document.getElementById("ocr_auto_run");
+            automatic.disabled = recognition.elements.ocr_provider.value === "empty";
+            automatic.closest("label").hidden = automatic.disabled;
             var save = document.getElementById("recognition-save");
             save.value = usesModel ? "test_save" : "save";
             save.querySelector("span").textContent = usesModel ? "测试并保存识别设置" : "保存识别设置";

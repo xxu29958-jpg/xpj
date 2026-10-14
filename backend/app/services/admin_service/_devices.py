@@ -417,6 +417,18 @@ def _delete_revoked_device_candidates(
     )
 
 
+def expired_revoked_devices(db: Session, *, retention_days: int, batch_size: int = 500) -> list[DeviceSummary]:
+    """Read the cleanup candidates so the Owner can inspect each device first."""
+    checked_at = now_utc()
+    ids = _revoked_device_candidate_ids(db, account_id=None,
+        cutoff=checked_at - timedelta(days=retention_days), checked_at=checked_at, batch_size=batch_size)
+    rows = db.execute(select(Device, Account.display_name).join(Account, Account.id == Device.account_id)
+                      .where(Device.id.in_(ids)).order_by(Device.revoked_at, Device.id)).all()
+    return [DeviceSummary(device.public_id, device.device_name, device.platform, account_name, None, None,
+                          to_iso(device.created_at), to_iso(device.last_seen_at), to_iso(device.revoked_at))
+            for device, account_name in rows]
+
+
 def cleanup_revoked_devices(
     db: Session,
     *,

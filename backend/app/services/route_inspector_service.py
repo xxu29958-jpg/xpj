@@ -51,7 +51,7 @@ _GROUPS: tuple[tuple[str, str, str, str], ...] = (
         "surface-web",
     ),
     ("bootstrap", "首次绑定 / 引导", "受 ENABLE_HTTP_BOOTSTRAP 与 secret 控制，绑定完成后建议关闭。", "surface-bootstrap"),
-    ("public", "其他公开端点", "/api/health 等无需鉴权的状态查询。", "surface-public"),
+    ("public", "其他业务与状态接口", "账本业务仍按凭证、角色和账本权限校验；健康检查等少量入口公开。这里的分组不代表匿名可调用。", "surface-public"),
     ("docs", "OpenAPI 文档", "默认 ENABLE_API_DOCS=false 时不会挂载。", "surface-docs"),
     ("static", "静态资源", "Owner Console / Web 版的 CSS、图片等。", "surface-static"),
 )
@@ -72,7 +72,7 @@ def _classify(path: str) -> tuple[str, str, str]:
         return ("static", "静态资源", "surface-static")
     if path in {"/openapi.json", "/docs", "/redoc"}:
         return ("docs", "OpenAPI 文档", "surface-docs")
-    return ("public", "其他公开端点", "surface-public")
+    return ("public", "其他业务与状态接口", "surface-public")
 
 
 def list_route_groups(app: FastAPI) -> list[RouteGroup]:

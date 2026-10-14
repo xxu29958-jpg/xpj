@@ -254,7 +254,8 @@ def test_first_scheduled_fetch_claims_lease_after_currency_read(monkeypatch):
 
 @pytest.mark.parametrize("method,path", [("POST", path) for path in (
     "/owner/ai-advisor/settings", "/owner/ai-advisor/test", "/owner/fx/settings",
-    "/owner/settings/uploads", "/owner/settings/maintenance")] + [("GET", "/owner/local-models")])
+    "/owner/settings/uploads", "/owner/settings/maintenance", "/owner/settings/maintenance/run")] + [
+        ("GET", "/owner/local-models"), ("GET", "/owner/settings/maintenance/preview?task=device_cleanup")])
 def test_public_requests_cannot_configure_host_integrations(client, integration_file, method, path):
     response = client.request(method, path, headers={"Host": "api.example.com"})
     assert response.status_code == 403
@@ -264,18 +265,69 @@ def test_public_requests_cannot_configure_host_integrations(client, integration_
 def test_owner_configures_upload_defaults_and_recovers_a_failed_form(owner, integration_file):
     page = owner.get("/owner/settings/uploads")
     assert page.status_code == 200 and 'action="/owner/settings/uploads"' in page.text
-    form = {"max_upload_size_mb": "20", "upload_link_ttl_days": "30", "daily_budget_mb": "50",
+    form = {"max_upload_size_mb": "20", "upload_link_ttl_days": "30", "daily_budget_mb": "0.1",
             "upload_link_default_per_remote_interval_seconds": "3"}
     saved = owner.post("/owner/settings/uploads", data=form)
     assert saved.status_code == 200 and "上传设置已保存" in saved.text
     assert config.get_settings().upload_link_ttl_days == 30
-    assert config.get_settings().upload_link_default_daily_byte_budget == 50 * 1024 * 1024
+    assert config.get_settings().upload_link_default_daily_byte_budget == 104858
+    assert 'value="0.1"' in saved.text
     before = integration_file.read_bytes()
     invalid = owner.post("/owner/settings/uploads", data={**form, "max_upload_size_mb": "-1"})
     assert invalid.status_code == 422 and 'value="30"' in invalid.text
     assert integration_file.read_bytes() == before
     corrected = owner.post("/owner/settings/uploads", data={**form, "max_upload_size_mb": "25"})
     assert corrected.status_code == 200 and config.get_settings().max_upload_size_mb == 25
+
+
+@pytest.mark.parametrize("task", ["budget_advisor_audit_cleanup", "device_cleanup"])
+def test_owner_previews_then_cleans_expired_records_and_can_retry(owner, identity, integration_file, monkeypatch, task):
+    from datetime import timedelta
+
+    from sqlalchemy.exc import OperationalError
+
+    from app.models import BudgetAdvisorAuditLog, Device
+    from app.services.time_service import now_utc
+
+    old = now_utc() - timedelta(days=400)
+    with SessionLocal() as db:
+        expense = Expense(tenant_id="owner", amount_cents=12345, category="餐饮", status="confirmed", source="manual")
+        if task == "device_cleanup":
+            account_id = db.scalar(select(Device.account_id))
+            expired = Device(account_id=account_id, device_name="已到期的旧手机", platform="android", revoked_at=old)
+            retained = Device(account_id=account_id, device_name="正在使用的手机", platform="android")
+        else:
+            expired = BudgetAdvisorAuditLog(tenant_id="owner", provider="empty", model="expired", input_hash="preview-expired",
+                                           success=1, called_at=old, retention_days=1)
+            retained = BudgetAdvisorAuditLog(tenant_id="owner", provider="empty", model="retained", input_hash="preview-retained",
+                                            success=1, called_at=old, retention_days=0)
+        db.add_all([expense, expired, retained])
+        db.commit()
+        expense_id, expired_id, retained_id, row_type = expense.id, expired.id, retained.id, type(expired)
+    preview = owner.get("/owner/settings/maintenance/preview", params={"task": task})
+    assert preview.status_code == 200 and "本批可清理 1" in preview.text
+    data = {"task": task, "retention_days": str(config.get_settings().device_cleanup_retention_days)}
+    assert owner.post("/owner/settings/maintenance/run", data=data).status_code == 422
+    if task == "device_cleanup":
+        stale = owner.post("/owner/settings/maintenance/run", data={**data, "confirmed": "on", "retention_days": "0"})
+        assert stale.status_code == 409
+    with SessionLocal() as db:
+        assert db.get(row_type, expired_id) is not None  # Preview and refused commands have no deletion.
+    method = "cleanup_revoked_devices" if task == "device_cleanup" else "cleanup_expired_audit_logs"
+    def interrupted(db, **kwargs):
+        raise OperationalError("controlled failure", {}, None)
+    with monkeypatch.context() as patch:
+        patch.setattr(operations, method, interrupted)
+        failed = owner.post("/owner/settings/maintenance/run", data={**data, "confirmed": "on"})
+    assert failed.status_code == 503 and "本批可清理 1" in failed.text
+    completed = owner.post("/owner/settings/maintenance/run", data={**data, "confirmed": "on"})
+    assert completed.status_code == 200 and "已清理 1" in completed.text and "目前没有需要清理" in completed.text
+    assert completed.history[-1].status_code == 303  # Reloading the result cannot submit another cleanup.
+    with SessionLocal() as db:
+        assert db.get(row_type, expired_id) is None and db.get(row_type, retained_id) is not None
+        expense = db.get(Expense, expense_id)
+        assert (expense.amount_cents, expense.status, expense.category) == (12345, "confirmed", "餐饮")
+    assert not getattr(config.get_settings(), task + "_auto_enabled")
 
 
 def test_lower_upload_limit_keeps_existing_original_readable(owner, integration_file, monkeypatch, tmp_path):
