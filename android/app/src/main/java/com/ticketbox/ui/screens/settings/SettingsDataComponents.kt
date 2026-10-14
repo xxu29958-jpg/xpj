@@ -34,6 +34,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.ticketbox.ui.components.SettingsEntryIcon
+import com.ticketbox.ui.components.AppAdaptiveContentActionRow
+import com.ticketbox.ui.components.AppAdaptiveContentActionStyle
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
@@ -57,28 +59,38 @@ internal fun SettingsDataRow(
         else -> SettingsColors.generalEntry
     }
     Column {
-        Row(
-            Modifier.fillMaxWidth().clickable(enabled = onClick != null, role = Role.Button) { onClick?.invoke() }
+        AppAdaptiveContentActionRow(
+            modifier = Modifier.fillMaxWidth().clickable(enabled = onClick != null, role = Role.Button) { onClick?.invoke() }
                 .alpha(if (onClick != null) 1f else AppAlpha.strong)
                 .heightIn(min = 80.dp).padding(vertical = AppSpacing.contentGap),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            SettingsEntryIcon(icon, Modifier.size(40.dp), background = badge,
-                shape = RoundedCornerShape(14.dp))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
-                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = AppTextHierarchy.heading.weight)
-                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            if (action.label.isNotBlank()) Text(action.label, style = MaterialTheme.typography.labelLarge,
-                color = if (action.confirmed == true) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                modifier = if (action.confirmed != null) Modifier.clip(RoundedCornerShape(10.dp))
-                    .background(if (action.confirmed) SettingsColors.generalEntry else SettingsColors.connectionEntry)
-                    .padding(horizontal = AppSpacing.smallGap, vertical = AppSpacing.tinyGap) else Modifier)
-            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
-        }
+            style = AppAdaptiveContentActionStyle(compactAction = true),
+            content = {
+                Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap), verticalAlignment = Alignment.CenterVertically) {
+                    SettingsEntryIcon(icon, Modifier.size(40.dp), background = badge,
+                        shape = RoundedCornerShape(14.dp))
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
+                        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = AppTextHierarchy.heading.weight)
+                        Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            },
+            action = { SettingsDataRowAction(action, it) },
+        )
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium))
+    }
+}
+
+@Composable
+private fun SettingsDataRowAction(action: SettingsDataAction, modifier: Modifier) {
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap, Alignment.End),
+        verticalAlignment = Alignment.CenterVertically) {
+        if (action.label.isNotBlank()) Text(action.label, style = MaterialTheme.typography.labelLarge,
+            color = if (action.confirmed == true) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+            modifier = if (action.confirmed != null) Modifier.clip(RoundedCornerShape(10.dp))
+                .background(if (action.confirmed) SettingsColors.generalEntry else SettingsColors.connectionEntry)
+                .padding(horizontal = AppSpacing.smallGap, vertical = AppSpacing.tinyGap) else Modifier)
+        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
     }
 }
 

@@ -55,7 +55,7 @@ fun AppAmountInput(
     focusRequester: FocusRequester? = null,
     decorations: AppTextInputDecorations = AppTextInputDecorations(),
 ) {
-    val currencyTrailing = state.currency.trailingLabel()
+    val currencyTrailing = state.currency.symbolAndCodeLabel()
     val hero = decorations.amountRole == AppAmountRole.Hero
     val currencyAction: (@Composable () -> Unit)? = actions.onCurrencyClick?.let { onCurrencyClick ->
         { AppAmountInputCurrencyTrailing(text = currencyTrailing, enabled = state.enabled, onClick = onCurrencyClick) }
@@ -87,8 +87,6 @@ fun AppAmountInput(
         ),
     )
 }
-
-private fun CurrencyCode.trailingLabel(): String = "$symbol $storageKey"
 
 @Composable
 private fun AppAmountInputCurrencyTrailing(

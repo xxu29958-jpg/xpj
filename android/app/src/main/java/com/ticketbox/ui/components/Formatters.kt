@@ -53,6 +53,9 @@ fun formatDisplayAmount(amountCents: Long?, display: CurrencyDisplay = CurrencyD
 
 fun formatMinorAmount(amountMinor: Long?, currency: CurrencyCode): String = formatAmount(amountMinor, currency)
 
+internal fun CurrencyCode.symbolAndCodeLabel(): String =
+    symbol.trim().let { if (it == storageKey) storageKey else "$it $storageKey" }
+
 fun formatMinorAmountInput(amountMinor: Long?, currency: CurrencyCode): String =
     amountMinor?.let { BigDecimal.valueOf(it, currency.minorUnitDigits).toPlainString() }.orEmpty()
 
