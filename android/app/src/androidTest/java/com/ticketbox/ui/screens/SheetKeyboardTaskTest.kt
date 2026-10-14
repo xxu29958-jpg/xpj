@@ -10,7 +10,10 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasSetTextAction
-import androidx.compose.ui.test.isToggleable
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.isDialog
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -23,18 +26,19 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseSourceValues
+import com.ticketbox.domain.model.ConfirmedStreamItem
+import com.ticketbox.domain.model.MessageTone
+import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.RealKeyboard
 import com.ticketbox.ui.screens.expense.ItemsEditorSheet
 import com.ticketbox.ui.screens.expense.ItemsEditorSheetActions
 import com.ticketbox.ui.screens.expense.ItemsEditorSheetState
-import com.ticketbox.ui.screens.ledger.LedgerBulkEditSheet
-import com.ticketbox.ui.screens.ledger.LedgerBulkEditSheetActions
-import com.ticketbox.ui.screens.ledger.LedgerBulkEditSheetState
 import com.ticketbox.ui.screens.pending.PendingReviewSheetHost
 import com.ticketbox.ui.screens.pending.PendingReviewSheetHostState
 import com.ticketbox.ui.screens.pending.PendingReviewSheetHostActions
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.EditableItem
+import com.ticketbox.viewmodel.LedgerUiState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -117,32 +121,51 @@ class SheetKeyboardTaskTest {
     @Test fun bulkCategoryAndTagCommandsKeepTheirReasonAndReplacementConfirmation() {
         val categories = mutableListOf<Pair<String, String>>()
         val tags = mutableListOf<Pair<String, String>>()
+        val receipt = (ledgerHeaderConfirmedRow() as ConfirmedStreamItem.ExpenseRow).root.copy(tags = "出差")
+        val expenses = listOf(receipt,
+            receipt.copy(id = 2, merchant = "出差车票", originalCurrencyCodeRaw = "KWD", originalAmountMinor = 12345L))
+        var state by mutableStateOf(LedgerUiState(
+            items = expenses.map { (ledgerHeaderConfirmedRow() as ConfirmedStreamItem.ExpenseRow).copy(root = it) },
+            selectedIds = setOf(1L, 2L), selectedExpenses = expenses, selectedHaveTags = true,
+            categories = listOf("餐饮", "交通"), selectionMode = true,
+        ))
         compose.setContent {
             TicketboxTheme(skin = AppSkin.Paper) {
-                ModalBottomSheet(onDismissRequest = {},
-                    sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-                    LedgerBulkEditSheet(
-                        state = LedgerBulkEditSheetState(31, true, listOf("餐饮", "交通"), false),
-                        actions = LedgerBulkEditSheetActions(
-                            onApplyCategory = { category, reason -> categories += category to reason },
-                            onApplyTags = { value, reason -> tags += value to reason },
-                        ),
-                    )
-                }
+                LedgerScreen(state = state, actions = LedgerScreenActions(
+                    onApplyBatchCategory = { category, reason -> categories += category to reason },
+                    onApplyBatchTags = { value, reason -> tags += value to reason },
+                ))
             }
         }
-        field(0, "补记通勤用途")
-        field(1, "交通")
-        val categoryAction = context.getString(R.string.ledger_bulk_apply_category, 31)
+        compose.onNodeWithText(text(R.string.ledger_selection_edit)).performTouchInput { click() }
+        compose.onNodeWithText("12.345", substring = true).assertExists()
+        compose.waitForIdle()
+        InstrumentationRegistry.getInstrumentation().uiAutomation.waitForIdle(500, 5_000)
+        com.ticketbox.ui.saveConsumerArtPreview("ledger-bulk-preview-paper",
+            requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        compose.onNode(hasSetTextAction() and hasText(text(R.string.expense_edit_category_field_label)))
+            .performScrollTo().performTextInput("交通")
+        compose.onNode(hasSetTextAction() and hasText(text(R.string.ledger_bulk_reason_label)))
+            .performScrollTo().performTouchInput { click() }.performTextInput("补记通勤用途")
+        val categoryAction = context.getString(R.string.ledger_bulk_apply_category, 2)
         keyboard.assertActionAboveKeyboard(compose, categoryAction, "bulk-category-keyboard")
         compose.onNodeWithText(categoryAction).performTouchInput { click() }
         compose.runOnIdle {
             assertEquals(listOf("交通" to "补记通勤用途"), categories)
             assertTrue(tags.isEmpty())
+            state = state.copy(message = UiText.raw("连接失败，请重试"), messageTone = MessageTone.Danger, readOnly = true)
         }
-        compose.onNode(isToggleable()).performScrollTo().performTouchInput { click() }
-        field(2, "通勤")
-        val tagsAction = context.getString(R.string.ledger_bulk_apply_tags, 31)
+        compose.onNode(hasText("连接失败，请重试") and hasAnyAncestor(isDialog())).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(categoryAction).assertIsNotEnabled()
+        compose.onNodeWithText(text(R.string.ledger_bulk_reason_label))
+            .assertTextContains("补记通勤用途").assertIsNotEnabled()
+        compose.runOnIdle { state = state.copy(readOnly = false, message = null) }
+        compose.onNode(hasSetTextAction() and hasText(text(R.string.expense_edit_category_field_label)))
+            .assertTextContains("交通")
+        compose.onNodeWithText(text(R.string.ledger_bulk_replace_tags_title)).performScrollTo().performTouchInput { click() }
+        compose.onNode(hasSetTextAction() and hasText(text(R.string.ledger_bulk_tags_label)))
+            .performScrollTo().performTouchInput { click() }.performTextInput("通勤")
+        val tagsAction = context.getString(R.string.ledger_bulk_apply_tags, 2)
         keyboard.assertActionAboveKeyboard(compose, tagsAction, "bulk-tags-keyboard")
         compose.onNodeWithText(tagsAction).performTouchInput { click() }
         compose.onNodeWithText(text(R.string.ledger_bulk_tags_confirm_message)).assertIsDisplayed()
@@ -152,6 +175,9 @@ class SheetKeyboardTaskTest {
             assertEquals(listOf("通勤" to "补记通勤用途"), tags)
             assertEquals(1, categories.size)
         }
+        compose.onNodeWithText(text(R.string.ledger_bulk_keep_selection)).performTouchInput { click() }
+        compose.onNodeWithText(context.getString(R.string.ledger_bulk_title, 2)).assertDoesNotExist()
+        compose.onNodeWithText(context.getString(R.string.ledger_selection_count, 2)).assertIsDisplayed()
     }
 
     private fun field(index: Int, value: String) {

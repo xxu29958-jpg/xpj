@@ -38,9 +38,10 @@
     <string name="ledger_selection_edit">编辑</string>
 
     <!-- LedgerBulkEditSheet：批量编辑 sheet -->
-    <string name="ledger_bulk_title">批量编辑 %1$d 笔</string>
+    <string name="ledger_bulk_title">统一更正 · 已选 %1$d 笔</string>
     <string name="ledger_bulk_apply_category">应用分类到 %1$d 笔</string>
-    <string name="ledger_bulk_replace_tags_title">替换标签</string>
+    <string name="ledger_bulk_replace_tags_title">改标签，而不改分类</string>
+    <string name="ledger_bulk_replace_category_title">改分类，而不改标签</string>
     <string name="ledger_bulk_tags_label">标签</string>
     <string name="ledger_bulk_tags_placeholder">真香、必要支出</string>
     <string name="ledger_bulk_tags_replace_warning">将整串覆盖所选账单的现有标签。</string>
@@ -189,4 +190,12 @@
     <string name="ledger_msg_batch_refresh_pending">更正已提交；列表将在下次同步时刷新</string>
     <string name="ledger_manual_currency_loading">正在读取当前默认币种…</string>
     <string name="ledger_manual_original_unverified">这条原提交缺少支付币种或金额，已保留在本机。请核对原记录，不会用当前默认币种替它填写。</string>
+    <string name="ledger_bulk_preview_subtitle">核对所选记录与变更内容，再确认。</string>
+    <string name="ledger_bulk_keep_selection">保留选择并返回</string>
+    <string name="ledger_bulk_selection_unavailable">部分所选记录已无法读取，请返回重新选择。</string>
+    <string name="ledger_bulk_unchanged">金额、账务日期和原件保持不变。更正原因会保存在记录历史中。</string>
+    <string name="ledger_bulk_value_empty">未填写</string>
+    <string name="ledger_bulk_value_change">%1$s → %2$s</string>
+    <string name="ledger_bulk_preview_all">查看全部 %1$d 笔</string>
+    <string name="ledger_bulk_preview_less">收起记录</string>
 </resources>

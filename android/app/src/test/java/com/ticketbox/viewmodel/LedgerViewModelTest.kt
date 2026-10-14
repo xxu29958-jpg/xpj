@@ -294,92 +294,6 @@ class LedgerViewModelTest {
     }
 
     @Test
-    fun applyBatchCategoryAppliesToSelectedExpenses() = ledgerTest {
-        val fake = FakeLedgerActions(
-            expenses = listOf(
-                expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "早餐店"),
-                expense(id = 2, amountCents = 3000, category = "交通", merchant = "地铁"),
-            ),
-        )
-        val vm = LedgerViewModel(fake, CapabilityDebtActions())
-        advanceUntilIdle()
-        vm.setMonthFilter(FIXTURE_MONTH)
-        advanceUntilIdle()
-
-        vm.enterSelection(1)
-        vm.toggleSelected(2)
-        vm.applyBatchCategory("购物", "统一整理")
-        advanceUntilIdle()
-
-        assertEquals(1, fake.batchCallCount)
-        assertEquals(setOf(1L, 2L), fake.lastBatchExpenses.map { it.id }.toSet())
-        assertEquals("购物", fake.lastBatchCategory)
-        assertEquals(null, fake.lastBatchTags)
-        // selection clears on success; honest count message (per-clause
-        // resourced via Compound now that the ledger surface renders it).
-        assertTrue(!vm.uiState.value.selectionMode)
-        assertEquals(emptySet(), vm.uiState.value.selectedIds)
-        assertEquals(
-            UiText.compound(listOf(UiText.res(R.string.ledger_msg_batch_part_updated, 2)), "；"),
-            vm.uiState.value.message,
-        )
-    }
-
-    @Test
-    fun applyBatchTagsSendsTagsNotCategory() = ledgerTest {
-        val fake = FakeLedgerActions(
-            expenses = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "早餐店")),
-        )
-        val vm = LedgerViewModel(fake, CapabilityDebtActions())
-        advanceUntilIdle()
-        vm.setMonthFilter(FIXTURE_MONTH)
-        advanceUntilIdle()
-
-        vm.enterSelection(1)
-        vm.applyBatchTags("出差", "统一整理")
-        advanceUntilIdle()
-
-        // The category column must NOT be touched by a tags-only batch.
-        assertEquals("出差", fake.lastBatchTags)
-        assertEquals(null, fake.lastBatchCategory)
-    }
-
-    @Test
-    fun applyBatchReportsPartialSuccessHonestly() = ledgerTest {
-        val fake = FakeLedgerActions(
-            expenses = listOf(
-                expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "A"),
-                expense(id = 2, amountCents = 1200, category = "餐饮", merchant = "B"),
-                expense(id = 3, amountCents = 1200, category = "餐饮", merchant = "C"),
-            ),
-            batchResult = BatchApplyResult(requested = 3, updated = 1, skippedNotFound = 1, skippedNotConfirmed = 1),
-        )
-        val vm = LedgerViewModel(fake, CapabilityDebtActions())
-        advanceUntilIdle()
-        vm.setMonthFilter(FIXTURE_MONTH)
-        advanceUntilIdle()
-
-        vm.selectAllVisible()
-        vm.applyBatchCategory("购物", "统一整理")
-        advanceUntilIdle()
-
-        // Per-clause resourced parts joined by Compound (ADR-0044): the
-        // ledger surface now renders state.message, so the clauses must be
-        // UiText.Res, not a pre-resolved Raw string.
-        assertEquals(
-            UiText.compound(
-                listOf(
-                    UiText.res(R.string.ledger_msg_batch_part_updated, 1),
-                    UiText.res(R.string.ledger_msg_batch_part_skipped_not_found, 1),
-                    UiText.res(R.string.ledger_msg_batch_part_skipped_not_confirmed, 1),
-                ),
-                "；",
-            ),
-            vm.uiState.value.message,
-        )
-    }
-
-    @Test
     fun manualCreateSuccessFlipsDoneForTheSheetToClose() = ledgerTest {
         val fake = FakeLedgerActions(
             expenses = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "A")),
@@ -477,165 +391,6 @@ class LedgerViewModelTest {
 
         vm.manualCreateSettled()
         assertEquals(null, vm.uiState.value.manualCreateError)
-    }
-
-    @Test
-    fun applyBatchSetsBatchDoneOnSuccessThenSettleClears() = ledgerTest {
-        // batchDone is the one-shot signal the screen uses to close the sheet AFTER
-        // the batch resolves (not eagerly) — set on success, cleared by batchSettled.
-        val fake = FakeLedgerActions(
-            expenses = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "A")),
-        )
-        val vm = LedgerViewModel(fake, CapabilityDebtActions())
-        advanceUntilIdle()
-        vm.setMonthFilter(FIXTURE_MONTH)
-        advanceUntilIdle()
-
-        vm.enterSelection(1)
-        vm.applyBatchCategory("购物", "统一整理")
-        advanceUntilIdle()
-
-        assertTrue(vm.uiState.value.batchDone)
-        vm.batchSettled()
-        assertTrue(!vm.uiState.value.batchDone)
-    }
-
-    @Test
-    fun applyBatchFailureSetsBatchDoneAndKeepsSelection() = ledgerTest {
-        // On a whole-batch failure the sheet must still close (batchDone) so the
-        // page-level error message is visible; selection is preserved (only success
-        // clears it) so the user can re-open the sheet and retry.
-        val fake = FakeLedgerActions(
-            expenses = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "A")),
-            batchFailure = RuntimeException("offline"),
-        )
-        val vm = LedgerViewModel(fake, CapabilityDebtActions())
-        advanceUntilIdle()
-        vm.setMonthFilter(FIXTURE_MONTH)
-        advanceUntilIdle()
-
-        vm.enterSelection(1)
-        vm.applyBatchCategory("购物", "统一整理")
-        advanceUntilIdle()
-
-        assertTrue(vm.uiState.value.batchDone)
-        assertTrue(vm.uiState.value.selectionMode)
-        assertEquals(setOf(1L), vm.uiState.value.selectedIds)
-        // Pin the specific failure copy (toUiText carries the throwable message), not just non-null,
-        // so a wrong/stale message resource on the failure arm is caught.
-        assertEquals(UiText.raw("offline"), vm.uiState.value.message)
-    }
-
-    @Test
-    fun applyBatchIgnoresReentryWhileInFlight() = ledgerTest {
-        // Double-launch guard: a second apply while the first batch is in-flight must be ignored
-        // (otherwise the second fan-out captures the same rowVersions and reports spurious OCC
-        // failures). applyingBatch is set synchronously before the launch so the guard is effective.
-        val gate = CompletableDeferred<Unit>()
-        val fake = FakeLedgerActions(
-            expenses = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "A")),
-            batchGate = gate,
-        )
-        val vm = LedgerViewModel(fake, CapabilityDebtActions())
-        advanceUntilIdle()
-        vm.setMonthFilter(FIXTURE_MONTH)
-        advanceUntilIdle()
-
-        vm.enterSelection(1)
-        vm.applyBatchCategory("购物", "统一整理") // launches; applyingBatch=true synchronously, awaits the gate
-        runCurrent()
-        assertTrue(vm.uiState.value.applyingBatch)
-
-        vm.applyBatchCategory("购物", "统一整理") // re-entry while in-flight → guard returns, no second launch
-        runCurrent()
-
-        gate.complete(Unit)
-        advanceUntilIdle()
-        // Exactly one batch ran despite the second tap.
-        assertEquals(1, fake.batchCallCount)
-    }
-
-    @Test
-    fun applyBatchBlockedWhenReadOnly() = ledgerTest {
-        val fake = FakeLedgerActions(
-            expenses = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "A")),
-            canModify = false,
-        )
-        val vm = LedgerViewModel(fake, CapabilityDebtActions())
-        advanceUntilIdle()
-        vm.setMonthFilter(FIXTURE_MONTH)
-        advanceUntilIdle()
-
-        vm.enterSelection(1)
-        vm.applyBatchCategory("购物", "统一整理")
-        advanceUntilIdle()
-
-        assertEquals(0, fake.batchCallCount)
-        assertEquals(UiText.res(R.string.common_readonly_ledger), vm.uiState.value.message)
-    }
-
-    @Test
-    fun applyBatchWithoutSelectionPrompts() = ledgerTest {
-        val fake = FakeLedgerActions(
-            expenses = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "A")),
-        )
-        val vm = LedgerViewModel(fake, CapabilityDebtActions())
-        advanceUntilIdle()
-        vm.setMonthFilter(FIXTURE_MONTH)
-        advanceUntilIdle()
-
-        vm.applyBatchCategory("购物", "统一整理")
-        advanceUntilIdle()
-
-        assertEquals(0, fake.batchCallCount)
-        assertEquals(UiText.res(R.string.ledger_msg_batch_no_selection), vm.uiState.value.message)
-        // The empty-targets arm must also flip batchDone so the screen closes the sheet and the
-        // page-level message is revealed (regression guard: the old eager close did this; the
-        // batchDone-driven close would otherwise strand the sheet open over the message).
-        assertTrue(vm.uiState.value.batchDone)
-    }
-
-    @Test
-    fun selectAllVisibleRespectsActiveFilter() = ledgerTest {
-        val fake = FakeLedgerActions(
-            expenses = listOf(
-                expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "早餐店"),
-                expense(id = 2, amountCents = 3000, category = "交通", merchant = "地铁"),
-            ),
-        )
-        val vm = LedgerViewModel(fake, CapabilityDebtActions())
-        advanceUntilIdle()
-        vm.setMonthFilter(FIXTURE_MONTH)
-        vm.setCategoryFilter("餐饮")
-        advanceUntilIdle()
-
-        vm.selectAllVisible()
-        // Only the visible (filtered) row is selected — not the whole dataset.
-        assertEquals(setOf(1L), vm.uiState.value.selectedIds)
-    }
-
-    @Test
-    fun selectedHaveTagsTracksFullSelectionNotFilteredView() = ledgerTest {
-        val fake = FakeLedgerActions(
-            expenses = listOf(
-                expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "早餐店", tags = "出差"),
-                expense(id = 2, amountCents = 3000, category = "交通", merchant = "地铁"),
-            ),
-        )
-        val vm = LedgerViewModel(fake, CapabilityDebtActions())
-        advanceUntilIdle()
-        vm.setMonthFilter(FIXTURE_MONTH)
-        advanceUntilIdle()
-
-        vm.enterSelection(1)
-        assertTrue(vm.uiState.value.selectedHaveTags)
-
-        // Narrow the filter so the tagged row leaves the visible list — the
-        // replace-gate flag must stay true (keyed off allConfirmed, not the
-        // filtered view), so the destructive-replace confirm can't be bypassed.
-        vm.setCategoryFilter("交通")
-        advanceUntilIdle()
-        assertTrue(vm.uiState.value.selectedHaveTags)
     }
 
     // 8.4 — first-sync skeleton signal (pure LedgerUiState derivation) ------
@@ -852,23 +607,264 @@ class LedgerViewModelTest {
     }
 }
 
-/** 218-B4 review P2-23: the ledger batch seam fires advice invalidation only
- *  when the batch moves CATEGORY (payload) — a tags-only batch preserves the
- *  advice cache. Separate class (per-class function cap). */
+/** Bulk command boundaries, original selection and downstream advice invalidation. */
 @OptIn(ExperimentalCoroutinesApi::class)
-class LedgerBatchAdviceInvalidationTest {
-    private fun batchTest(block: suspend TestScope.() -> Unit) = runTest {
-        val dispatcher = StandardTestDispatcher(testScheduler)
-        Dispatchers.setMain(dispatcher)
-        try {
-            block()
-        } finally {
-            Dispatchers.resetMain()
-        }
+class LedgerBatchActionsTest {
+    @Test
+    fun applyBatchCategoryAppliesToSelectedExpenses() = ledgerTest {
+        val fake = FakeLedgerActions(
+            expenses = listOf(
+                expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "早餐店"),
+                expense(id = 2, amountCents = 3000, category = "交通", merchant = "地铁"),
+            ),
+        )
+        val vm = LedgerViewModel(fake, CapabilityDebtActions())
+        advanceUntilIdle()
+        vm.setMonthFilter(FIXTURE_MONTH)
+        advanceUntilIdle()
+
+        vm.enterSelection(1)
+        vm.toggleSelected(2)
+        vm.applyBatchCategory("购物", "统一整理")
+        advanceUntilIdle()
+
+        assertEquals(1, fake.batchCallCount)
+        assertEquals(setOf(1L, 2L), fake.lastBatchExpenses.map { it.id }.toSet())
+        assertEquals("购物", fake.lastBatchCategory)
+        assertEquals(null, fake.lastBatchTags)
+        // selection clears on success; honest count message (per-clause
+        // resourced via Compound now that the ledger surface renders it).
+        assertTrue(!vm.uiState.value.selectionMode)
+        assertEquals(emptySet(), vm.uiState.value.selectedIds)
+        assertEquals(
+            UiText.compound(listOf(UiText.res(R.string.ledger_msg_batch_part_updated, 2)), "；"),
+            vm.uiState.value.message,
+        )
     }
 
     @Test
-    fun tagOnlyBatchDoesNotFireAdviceInvalidation() = batchTest {
+    fun applyBatchTagsSendsTagsNotCategory() = ledgerTest {
+        val fake = FakeLedgerActions(
+            expenses = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "早餐店")),
+        )
+        val vm = LedgerViewModel(fake, CapabilityDebtActions())
+        advanceUntilIdle()
+        vm.setMonthFilter(FIXTURE_MONTH)
+        advanceUntilIdle()
+
+        vm.enterSelection(1)
+        vm.applyBatchTags("出差", "统一整理")
+        advanceUntilIdle()
+
+        // The category column must NOT be touched by a tags-only batch.
+        assertEquals("出差", fake.lastBatchTags)
+        assertEquals(null, fake.lastBatchCategory)
+    }
+
+    @Test
+    fun applyBatchReportsPartialSuccessHonestly() = ledgerTest {
+        val fake = FakeLedgerActions(
+            expenses = listOf(
+                expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "A"),
+                expense(id = 2, amountCents = 1200, category = "餐饮", merchant = "B"),
+                expense(id = 3, amountCents = 1200, category = "餐饮", merchant = "C"),
+            ),
+            batchResult = BatchApplyResult(requested = 3, updated = 1, skippedNotFound = 1, skippedNotConfirmed = 1),
+        )
+        val vm = LedgerViewModel(fake, CapabilityDebtActions())
+        advanceUntilIdle()
+        vm.setMonthFilter(FIXTURE_MONTH)
+        advanceUntilIdle()
+
+        vm.selectAllVisible()
+        vm.applyBatchCategory("购物", "统一整理")
+        advanceUntilIdle()
+
+        // Per-clause resourced parts joined by Compound (ADR-0044): the
+        // ledger surface now renders state.message, so the clauses must be
+        // UiText.Res, not a pre-resolved Raw string.
+        assertEquals(
+            UiText.compound(
+                listOf(
+                    UiText.res(R.string.ledger_msg_batch_part_updated, 1),
+                    UiText.res(R.string.ledger_msg_batch_part_skipped_not_found, 1),
+                    UiText.res(R.string.ledger_msg_batch_part_skipped_not_confirmed, 1),
+                ),
+                "；",
+            ),
+            vm.uiState.value.message,
+        )
+    }
+
+    @Test
+    fun applyBatchSetsBatchDoneOnSuccessThenSettleClears() = ledgerTest {
+        // batchDone is the one-shot signal the screen uses to close the sheet AFTER
+        // the batch resolves (not eagerly) — set on success, cleared by batchSettled.
+        val fake = FakeLedgerActions(
+            expenses = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "A")),
+        )
+        val vm = LedgerViewModel(fake, CapabilityDebtActions())
+        advanceUntilIdle()
+        vm.setMonthFilter(FIXTURE_MONTH)
+        advanceUntilIdle()
+
+        vm.enterSelection(1)
+        vm.applyBatchCategory("购物", "统一整理")
+        advanceUntilIdle()
+
+        assertTrue(vm.uiState.value.batchDone)
+        vm.batchSettled()
+        assertTrue(!vm.uiState.value.batchDone)
+    }
+
+    @Test
+    fun applyBatchFailureKeepsTheOriginalFormAndSelection() = ledgerTest {
+        // The error is visible inside the original form, so failure must not dismiss its inputs.
+        val fake = FakeLedgerActions(
+            expenses = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "A")),
+            batchFailure = RuntimeException("offline"),
+        )
+        val vm = LedgerViewModel(fake, CapabilityDebtActions())
+        advanceUntilIdle()
+        vm.setMonthFilter(FIXTURE_MONTH)
+        advanceUntilIdle()
+
+        vm.enterSelection(1)
+        vm.applyBatchCategory("购物", "统一整理")
+        advanceUntilIdle()
+
+        assertTrue(!vm.uiState.value.batchDone)
+        assertTrue(vm.uiState.value.selectionMode)
+        assertEquals(setOf(1L), vm.uiState.value.selectedIds)
+        assertEquals(listOf(1L), vm.uiState.value.selectedExpenses.map { it.id })
+        // Pin the specific failure copy (toUiText carries the throwable message), not just non-null,
+        // so a wrong/stale message resource on the failure arm is caught.
+        assertEquals(UiText.raw("offline"), vm.uiState.value.message)
+    }
+
+    @Test
+    fun applyBatchIgnoresReentryWhileInFlight() = ledgerTest {
+        // Double-launch guard: a second apply while the first batch is in-flight must be ignored
+        // (otherwise the second fan-out captures the same rowVersions and reports spurious OCC
+        // failures). applyingBatch is set synchronously before the launch so the guard is effective.
+        val gate = CompletableDeferred<Unit>()
+        val fake = FakeLedgerActions(
+            expenses = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "A")),
+            batchGate = gate,
+        )
+        val vm = LedgerViewModel(fake, CapabilityDebtActions())
+        advanceUntilIdle()
+        vm.setMonthFilter(FIXTURE_MONTH)
+        advanceUntilIdle()
+
+        vm.enterSelection(1)
+        vm.applyBatchCategory("购物", "统一整理") // launches; applyingBatch=true synchronously, awaits the gate
+        runCurrent()
+        assertTrue(vm.uiState.value.applyingBatch)
+
+        vm.applyBatchCategory("购物", "统一整理") // re-entry while in-flight → guard returns, no second launch
+        runCurrent()
+
+        gate.complete(Unit)
+        advanceUntilIdle()
+        // Exactly one batch ran despite the second tap.
+        assertEquals(1, fake.batchCallCount)
+    }
+
+    @Test
+    fun applyBatchBlockedWhenReadOnly() = ledgerTest {
+        val fake = FakeLedgerActions(
+            expenses = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "A")),
+            canModify = false,
+        )
+        val vm = LedgerViewModel(fake, CapabilityDebtActions())
+        advanceUntilIdle()
+        vm.setMonthFilter(FIXTURE_MONTH)
+        advanceUntilIdle()
+
+        vm.enterSelection(1)
+        vm.applyBatchCategory("购物", "统一整理")
+        advanceUntilIdle()
+
+        assertEquals(0, fake.batchCallCount)
+        assertEquals(UiText.res(R.string.common_readonly_ledger), vm.uiState.value.message)
+    }
+
+    @Test
+    fun applyBatchWithoutSelectionPrompts() = ledgerTest {
+        val fake = FakeLedgerActions(
+            expenses = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "A")),
+        )
+        val vm = LedgerViewModel(fake, CapabilityDebtActions())
+        advanceUntilIdle()
+        vm.setMonthFilter(FIXTURE_MONTH)
+        advanceUntilIdle()
+
+        vm.applyBatchCategory("购物", "统一整理")
+        advanceUntilIdle()
+
+        assertEquals(0, fake.batchCallCount)
+        assertEquals(UiText.res(R.string.ledger_msg_batch_no_selection), vm.uiState.value.message)
+        assertFalse(vm.uiState.value.batchDone)
+
+        // One selected record is no longer in the cache. Never change only the remaining record.
+        vm.enterSelection(1)
+        vm.toggleSelected(2)
+        vm.applyBatchCategory("购物", "统一整理")
+        advanceUntilIdle()
+        assertEquals(0, fake.batchCallCount)
+        assertEquals(setOf(1L, 2L), vm.uiState.value.selectedIds)
+        assertEquals(UiText.res(R.string.ledger_bulk_selection_unavailable), vm.uiState.value.message)
+        assertFalse(vm.uiState.value.batchDone)
+    }
+
+    @Test
+    fun selectAllVisibleRespectsActiveFilter() = ledgerTest {
+        val fake = FakeLedgerActions(
+            expenses = listOf(
+                expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "早餐店"),
+                expense(id = 2, amountCents = 3000, category = "交通", merchant = "地铁"),
+            ),
+        )
+        val vm = LedgerViewModel(fake, CapabilityDebtActions())
+        advanceUntilIdle()
+        vm.setMonthFilter(FIXTURE_MONTH)
+        vm.setCategoryFilter("餐饮")
+        advanceUntilIdle()
+
+        vm.selectAllVisible()
+        // Only the visible (filtered) row is selected — not the whole dataset.
+        assertEquals(setOf(1L), vm.uiState.value.selectedIds)
+    }
+
+    @Test
+    fun selectedHaveTagsTracksFullSelectionNotFilteredView() = ledgerTest {
+        val fake = FakeLedgerActions(
+            expenses = listOf(
+                expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "早餐店", tags = "出差"),
+                expense(id = 2, amountCents = 3000, category = "交通", merchant = "地铁"),
+            ),
+        )
+        val vm = LedgerViewModel(fake, CapabilityDebtActions())
+        advanceUntilIdle()
+        vm.setMonthFilter(FIXTURE_MONTH)
+        advanceUntilIdle()
+
+        vm.enterSelection(1)
+        assertTrue(vm.uiState.value.selectedHaveTags)
+
+        // Narrow the filter so the tagged row leaves the visible list — the
+        // replace-gate flag must stay true (keyed off allConfirmed, not the
+        // filtered view), so the destructive-replace confirm can't be bypassed.
+        vm.setCategoryFilter("交通")
+        advanceUntilIdle()
+        assertTrue(vm.uiState.value.selectedHaveTags)
+        assertEquals(listOf(1L), vm.uiState.value.selectedExpenses.map { it.id })
+        assertEquals(listOf(2L), vm.uiState.value.items.map { it.root.id })
+    }
+
+    @Test
+    fun tagOnlyBatchDoesNotFireAdviceInvalidation() = ledgerTest {
         val fake = FakeLedgerActions(
             expenses = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "早餐店")),
         )
@@ -888,7 +884,7 @@ class LedgerBatchAdviceInvalidationTest {
     }
 
     @Test
-    fun categoryBatchFiresAdviceInvalidation() = batchTest {
+    fun categoryBatchFiresAdviceInvalidation() = ledgerTest {
         val fake = FakeLedgerActions(
             expenses = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "早餐店")),
         )
