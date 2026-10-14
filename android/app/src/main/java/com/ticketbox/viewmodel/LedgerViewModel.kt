@@ -105,20 +105,15 @@ data class LedgerUiState(
     // while the fan-out runs.
     val selectionMode: Boolean = false,
     val selectedIds: Set<Long> = emptySet(),
+    // Preview the same root objects as the batch command, including selections outside the current filter.
+    val selectedExpenses: List<Expense> = emptyList(),
     // Whether ANY selected expense already has tags — drives the destructive
     // replace-tags confirm dialog. Computed in the VM from the full synced list
     // (the same source the fan-out resolves targets from), NOT the filtered view,
     // so a filter change can't slip a tagged row past the confirm gate.
     val selectedHaveTags: Boolean = false,
     val applyingBatch: Boolean = false,
-    // Batch-edit sheet outcome channel: unlike manual-create (error shown INSIDE
-    // the sheet), batch synced/queued/failed is reported PAGE-LEVEL via [message],
-    // so the sheet must close on done EITHER WAY to reveal it. [batchDone] flips on
-    // both success and failure; the screen acks via batchSettled() (mirrors the
-    // manualCreateResult pattern, but closes on both arms because the result is
-    // page-level — see applyBatch). Fixes the optimistic close: the sheet used to
-    // dismiss in the onApply lambda BEFORE applyConfirmedBatch resolved, so the
-    // `applyingBatch` disable flag was dead and a typed tag string was lost on close.
+    // A receipt closes the sheet. Failure stays in the same form with its reason and inputs intact.
     val batchDone: Boolean = false,
     val message: UiText? = null,
     val messageTone: MessageTone = MessageTone.Neutral,
@@ -303,6 +298,7 @@ class LedgerViewModel(
         val undated = filterItems(streamItems, copy(monthFilter = "", dataQualityFilter = LedgerDataQualityFilter.MissingAccountingDate))
         return copy(
             items = filterItems(streamItems, this),
+            selectedExpenses = streamItems.mapNotNull { it.asExpenseRoot() }.filter { it.id in selectedIds },
             undatedExpenseCountsByCurrency = undated.groupingBy { it.root.homeCurrencyCode }.eachCount(),
         )
     }
@@ -659,7 +655,7 @@ class LedgerViewModel(
     }
 
     fun exitSelection() {
-        _uiState.update { it.copy(selectionMode = false, selectedIds = emptySet(), selectedHaveTags = false) }
+        _uiState.update { it.copy(selectionMode = false, selectedIds = emptySet(), selectedExpenses = emptyList(), selectedHaveTags = false) }
     }
 
     fun toggleSelected(id: Long) {
@@ -719,16 +715,14 @@ class LedgerViewModel(
         // token) from the synced confirmed cache, not the filtered view. Only
         // expense root rows are batch targets.
         val targets = allConfirmed.mapNotNull { it.asExpenseRoot() }.filter { it.id in selected }
-        if (targets.isEmpty()) {
-            // Flip batchDone so the screen closes the sheet and the page-level no-selection
-            // message becomes visible (the still-open sheet would otherwise cover it). Mirrors
-            // the resolve arms — without this the close-on-batchDone migration would strand the
-            // sheet here (regression vs the old eager close, which dismissed before applyBatch).
+        if (targets.isEmpty() || targets.size != selected.size) {
+            // Do not silently narrow the command if a selected record disappeared after preview.
             _uiState.update {
                 it.copy(
-                    batchDone = true,
-                    message = UiText.res(R.string.ledger_msg_batch_no_selection),
-                    messageTone = MessageTone.Info,
+                    batchDone = false,
+                    message = UiText.res(if (selected.isEmpty()) R.string.ledger_msg_batch_no_selection
+                        else R.string.ledger_bulk_selection_unavailable),
+                    messageTone = MessageTone.Danger,
                 )
             }
             return null
@@ -752,6 +746,7 @@ class LedgerViewModel(
                             batchDone = true,
                             selectionMode = false,
                             selectedIds = emptySet(),
+                            selectedExpenses = emptyList(),
                             selectedHaveTags = false,
                             message = batchResultMessage(result),
                             messageTone = batchResultTone(result),
@@ -764,12 +759,11 @@ class LedgerViewModel(
                     }
                 }
                 .onFailure { error ->
-                    // Close the sheet too (batchDone) so the page-level error is
-                    // visible; selection is kept (not cleared) so the user can retry.
+                    // Keep the original form for a retry; the sheet renders the same error inline.
                     _uiState.update {
                         it.copy(
                             applyingBatch = false,
-                            batchDone = true,
+                            batchDone = false,
                             message = error.toUiText(R.string.ledger_msg_batch_failed),
                             messageTone = MessageTone.Danger,
                         )
@@ -840,6 +834,7 @@ private fun LedgerUiState.withSelection(
 ): LedgerUiState = copy(
     selectionMode = true,
     selectedIds = ids,
+    selectedExpenses = allConfirmed.mapNotNull { it.asExpenseRoot() }.filter { it.id in ids },
     // From allConfirmed (the fan-out's target source), not the filtered view.
     // Ids are root ids; an offset row's root answers the same predicate.
     selectedHaveTags = allConfirmed.any { it.root.id in ids && !it.root.tags.isNullOrBlank() },

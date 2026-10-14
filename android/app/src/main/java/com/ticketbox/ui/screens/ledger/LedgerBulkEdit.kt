@@ -13,7 +13,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -27,6 +26,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
+import com.ticketbox.domain.model.Expense
+import com.ticketbox.domain.model.MessageTone
+import com.ticketbox.domain.model.UiText
+import com.ticketbox.ui.asString
+import com.ticketbox.ui.components.AppEndAlignedAmountText
+import com.ticketbox.ui.components.AppAdaptiveAmountRowDefaults
+import com.ticketbox.ui.components.AppAdaptiveContentActionStyle
+import com.ticketbox.ui.design.AppAmountRole
+import com.ticketbox.ui.components.AppListRow
+import com.ticketbox.ui.components.AppStatusBanner
+import com.ticketbox.ui.components.formatExpensePrimaryAmount
+import com.ticketbox.ui.components.expenseTimeLabel
 import com.ticketbox.ui.components.AppAdaptiveContentActionStateRow
 import com.ticketbox.ui.components.AppButtonIcons
 import com.ticketbox.ui.components.AppPrimaryButton
@@ -152,11 +163,20 @@ internal data class LedgerBulkEditSheetState(
     val selectedHaveTags: Boolean,
     val categories: List<String>,
     val applying: Boolean,
-)
+    val selectedExpenses: List<Expense>,
+    val canModify: Boolean = true,
+    val message: UiText? = null,
+) {
+    val editable: Boolean get() = canModify && !applying
+    val selectionAvailable: Boolean get() = selectedCount > 0 && selectedExpenses.size == selectedCount
+    fun canApply(value: String, reason: String): Boolean =
+        editable && selectionAvailable && value.isNotBlank() && reason.isNotBlank()
+}
 
 internal data class LedgerBulkEditSheetActions(
     val onApplyCategory: (category: String, reason: String) -> Unit,
     val onApplyTags: (tags: String, reason: String) -> Unit,
+    val onDismiss: () -> Unit,
 )
 
 @Composable
@@ -169,56 +189,56 @@ internal fun LedgerBulkEditSheet(
     var tags by rememberSaveable { mutableStateOf("") }
     var reason by rememberSaveable { mutableStateOf("") }
     var showTagConfirm by remember { mutableStateOf(false) }
+    val editable = state.editable
+    val completeSelection = state.selectionAvailable
+    val value = if (tagsEnabled) tags else category
 
     AppSheetScaffold(
         title = stringResource(R.string.ledger_bulk_title, state.selectedCount),
+        subtitle = stringResource(R.string.ledger_bulk_preview_subtitle),
         actions = {
-            AppSheetActionRow(
-                primary = AppSheetAction(
-                    text = stringResource(R.string.ledger_bulk_apply_category, state.selectedCount),
-                    enabled = category.isNotBlank() && reason.isNotBlank() && !state.applying,
-                    onClick = { actions.onApplyCategory(category, reason.trim()) },
-                ),
-                secondary = if (tagsEnabled) AppSheetAction(
-                    text = stringResource(R.string.ledger_bulk_apply_tags, state.selectedCount),
-                    enabled = tags.isNotBlank() && reason.isNotBlank() && !state.applying,
-                    onClick = {
-                        if (state.selectedHaveTags) showTagConfirm = true
-                        else actions.onApplyTags(tags, reason.trim())
-                    },
-                ) else null,
-            )
+            AppSheetActionRow(primary = AppSheetAction(
+                text = stringResource(if (tagsEnabled) R.string.ledger_bulk_apply_tags
+                    else R.string.ledger_bulk_apply_category, state.selectedCount),
+                enabled = state.canApply(value, reason),
+                onClick = {
+                    if (!tagsEnabled) actions.onApplyCategory(category, reason.trim())
+                    else if (state.selectedHaveTags) showTagConfirm = true
+                    else actions.onApplyTags(tags, reason.trim())
+                },
+            ))
+            TextButton(onClick = actions.onDismiss, enabled = !state.applying,
+                modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.ledger_bulk_keep_selection))
+            }
         },
     ) {
-        // A1: 批量更正必须有自然语言 reason（backend 原子 endpoint 必填）——
-        // 原因居首共享给两个动作，按钮在未填时禁用而不是事后报错。
+        if (!state.canModify) AppStatusBanner(
+            message = UiText.res(R.string.common_readonly_ledger), tone = MessageTone.Info,
+        )
+        state.message?.let { AppStatusBanner(message = it, tone = MessageTone.Danger) }
+        if (!completeSelection) AppStatusBanner(
+            message = UiText.res(R.string.ledger_bulk_selection_unavailable), tone = MessageTone.Danger,
+        )
+        LedgerBulkSelectionPreview(state.selectedExpenses, tagsEnabled, value)
+        if (!tagsEnabled) ExpenseEditCategoryField(
+            category = category, categories = state.categories,
+            onCategoryChange = { category = it }, enabled = editable,
+        ) else LedgerBulkTagsSection(tags = tags, enabled = editable, onTagsChange = { tags = it })
         AppTextInput(
             state = AppTextInputState(
-                label = stringResource(R.string.ledger_bulk_reason_label),
-                value = reason,
-                placeholder = stringResource(R.string.ledger_bulk_reason_placeholder),
-                enabled = !state.applying,
+                label = stringResource(R.string.ledger_bulk_reason_label), value = reason,
+                placeholder = stringResource(R.string.ledger_bulk_reason_placeholder), enabled = editable,
             ),
             actions = AppTextInputActions(onValueChange = { reason = it }),
             modifier = Modifier.fillMaxWidth(),
         )
-        ExpenseEditCategoryField(
-            category = category,
-            categories = state.categories,
-            onCategoryChange = { category = it },
-            enabled = !state.applying,
-        )
-        LedgerBulkTagsSection(
-            state = LedgerBulkTagsState(
-                tagsEnabled = tagsEnabled,
-                tags = tags,
-                applying = state.applying,
-            ),
-            actions = LedgerBulkTagsActions(
-                onTagsEnabledChange = { tagsEnabled = it },
-                onTagsChange = { tags = it },
-            ),
-        )
+        Text(stringResource(R.string.ledger_bulk_unchanged), style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        TextButton(onClick = { tagsEnabled = !tagsEnabled }, enabled = editable) {
+            Text(stringResource(if (tagsEnabled) R.string.ledger_bulk_replace_category_title
+                else R.string.ledger_bulk_replace_tags_title))
+        }
     }
 
     if (showTagConfirm) {
@@ -227,7 +247,7 @@ internal fun LedgerBulkEditSheet(
             title = { Text(stringResource(R.string.ledger_bulk_tags_confirm_title)) },
             text = { Text(stringResource(R.string.ledger_bulk_tags_confirm_message)) },
             confirmButton = {
-                TextButton(onClick = {
+                TextButton(enabled = editable && completeSelection, onClick = {
                     showTagConfirm = false
                     actions.onApplyTags(tags, reason.trim())
                 }) { Text(stringResource(R.string.ledger_bulk_tags_confirm_replace)) }
@@ -239,44 +259,63 @@ internal fun LedgerBulkEditSheet(
     }
 }
 
-@Immutable
-private data class LedgerBulkTagsState(
-    val tagsEnabled: Boolean,
-    val tags: String,
-    val applying: Boolean,
-)
+@Composable
+private fun LedgerBulkSelectionPreview(expenses: List<Expense>, tagsEnabled: Boolean, value: String) {
+    var showAll by rememberSaveable { mutableStateOf(false) }
+    val visible = if (showAll) expenses else expenses.take(LedgerBulkPreviewLimit)
+    Column {
+        visible.forEach { expense ->
+            AppListRow {
+                AppAdaptiveContentActionStateRow(
+                    style = AppAdaptiveContentActionStyle(
+                        wideActionWeight = AppAdaptiveAmountRowDefaults.trailingWeight, amountTrailing = true,
+                    ),
+                    content = {
+                        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
+                            Text(expense.merchant?.takeIf { it.isNotBlank() }
+                                ?: stringResource(R.string.ledger_item_merchant_empty), style = MaterialTheme.typography.titleSmall)
+                            Text(expenseTimeLabel(expense).asString(), style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            val original = (if (tagsEnabled) expense.tags else expense.category).orEmpty().ifBlank {
+                                stringResource(R.string.ledger_bulk_value_empty)
+                            }
+                            Text(
+                                text = if (value.isBlank()) original
+                                    else stringResource(R.string.ledger_bulk_value_change, original, value),
+                                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    },
+                    action = { amountModifier, _ ->
+                        AppEndAlignedAmountText(text = formatExpensePrimaryAmount(expense),
+                            modifier = amountModifier, role = AppAmountRole.Compact)
+                    },
+                )
+            }
+        }
+        if (expenses.size > LedgerBulkPreviewLimit) TextButton(onClick = { showAll = !showAll }) {
+            Text(if (showAll) stringResource(R.string.ledger_bulk_preview_less)
+                else stringResource(R.string.ledger_bulk_preview_all, expenses.size))
+        }
+    }
+}
 
-private data class LedgerBulkTagsActions(
-    val onTagsEnabledChange: (Boolean) -> Unit,
-    val onTagsChange: (String) -> Unit,
-)
+private const val LedgerBulkPreviewLimit = 3
 
 @Composable
 private fun LedgerBulkTagsSection(
-    state: LedgerBulkTagsState,
-    actions: LedgerBulkTagsActions,
+    tags: String,
+    enabled: Boolean,
+    onTagsChange: (String) -> Unit,
 ) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(
-            text = stringResource(R.string.ledger_bulk_replace_tags_title),
-            style = MaterialTheme.typography.titleSmall,
-            modifier = Modifier.weight(1f),
-        )
-        Switch(
-            checked = state.tagsEnabled,
-            onCheckedChange = actions.onTagsEnabledChange,
-            enabled = !state.applying,
-        )
-    }
-    if (!state.tagsEnabled) return
     AppTextInput(
         state = AppTextInputState(
             label = stringResource(R.string.ledger_bulk_tags_label),
-            value = state.tags,
+            value = tags,
             placeholder = stringResource(R.string.ledger_bulk_tags_placeholder),
-            enabled = !state.applying,
+            enabled = enabled,
         ),
-        actions = AppTextInputActions(onValueChange = actions.onTagsChange),
+        actions = AppTextInputActions(onValueChange = onTagsChange),
         modifier = Modifier.fillMaxWidth(),
     )
     Text(

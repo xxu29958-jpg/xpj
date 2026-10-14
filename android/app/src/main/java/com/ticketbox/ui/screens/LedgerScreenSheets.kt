@@ -3,6 +3,7 @@ package com.ticketbox.ui.screens
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -12,6 +13,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
@@ -202,10 +204,14 @@ private fun LedgerBulkEditHost(
     chromeState: LedgerScreenChromeState,
     actions: LedgerScreenActions,
 ) {
-    if (!chromeState.showBulkEdit || !state.selectionMode || state.readOnly) return
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    if (!chromeState.showBulkEdit || !state.selectionMode) return
+    val applying by rememberUpdatedState(state.applyingBatch)
+    val sheetState = rememberModalBottomSheetState(
+        skipPartiallyExpanded = true,
+        confirmValueChange = { it != SheetValue.Hidden || !applying },
+    )
     ModalBottomSheet(
-        onDismissRequest = { chromeState.showBulkEdit = false },
+        onDismissRequest = { if (!applying) chromeState.showBulkEdit = false },
         sheetState = sheetState,
     ) {
         LedgerBulkEditSheet(
@@ -214,12 +220,16 @@ private fun LedgerBulkEditHost(
                 selectedHaveTags = state.selectedHaveTags,
                 categories = state.categories,
                 applying = state.applyingBatch,
+                selectedExpenses = state.selectedExpenses,
+                canModify = !state.readOnly,
+                message = state.message.takeIf { state.messageTone == com.ticketbox.domain.model.MessageTone.Danger },
             ),
             actions = LedgerBulkEditSheetActions(
                 // A1: reason 随动作贯通到 backend 原子批量更正（Codex 接缝：
                 // LedgerScreenActions 的这两个字段类型随之变为 (String, String)）。
                 onApplyCategory = { category, reason -> actions.onApplyBatchCategory(category, reason) },
                 onApplyTags = { tags, reason -> actions.onApplyBatchTags(tags, reason) },
+                onDismiss = { chromeState.showBulkEdit = false },
             ),
         )
     }

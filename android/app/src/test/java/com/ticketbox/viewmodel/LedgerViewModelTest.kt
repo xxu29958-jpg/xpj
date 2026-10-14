@@ -501,10 +501,8 @@ class LedgerViewModelTest {
     }
 
     @Test
-    fun applyBatchFailureSetsBatchDoneAndKeepsSelection() = ledgerTest {
-        // On a whole-batch failure the sheet must still close (batchDone) so the
-        // page-level error message is visible; selection is preserved (only success
-        // clears it) so the user can re-open the sheet and retry.
+    fun applyBatchFailureKeepsTheOriginalFormAndSelection() = ledgerTest {
+        // The error is visible inside the original form, so failure must not dismiss its inputs.
         val fake = FakeLedgerActions(
             expenses = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "A")),
             batchFailure = RuntimeException("offline"),
@@ -518,9 +516,10 @@ class LedgerViewModelTest {
         vm.applyBatchCategory("购物", "统一整理")
         advanceUntilIdle()
 
-        assertTrue(vm.uiState.value.batchDone)
+        assertTrue(!vm.uiState.value.batchDone)
         assertTrue(vm.uiState.value.selectionMode)
         assertEquals(setOf(1L), vm.uiState.value.selectedIds)
+        assertEquals(listOf(1L), vm.uiState.value.selectedExpenses.map { it.id })
         // Pin the specific failure copy (toUiText carries the throwable message), not just non-null,
         // so a wrong/stale message resource on the failure arm is caught.
         assertEquals(UiText.raw("offline"), vm.uiState.value.message)
@@ -589,10 +588,17 @@ class LedgerViewModelTest {
 
         assertEquals(0, fake.batchCallCount)
         assertEquals(UiText.res(R.string.ledger_msg_batch_no_selection), vm.uiState.value.message)
-        // The empty-targets arm must also flip batchDone so the screen closes the sheet and the
-        // page-level message is revealed (regression guard: the old eager close did this; the
-        // batchDone-driven close would otherwise strand the sheet open over the message).
-        assertTrue(vm.uiState.value.batchDone)
+        assertFalse(vm.uiState.value.batchDone)
+
+        // One selected record is no longer in the cache. Never change only the remaining record.
+        vm.enterSelection(1)
+        vm.toggleSelected(2)
+        vm.applyBatchCategory("购物", "统一整理")
+        advanceUntilIdle()
+        assertEquals(0, fake.batchCallCount)
+        assertEquals(setOf(1L, 2L), vm.uiState.value.selectedIds)
+        assertEquals(UiText.res(R.string.ledger_bulk_selection_unavailable), vm.uiState.value.message)
+        assertFalse(vm.uiState.value.batchDone)
     }
 
     @Test
@@ -636,6 +642,8 @@ class LedgerViewModelTest {
         vm.setCategoryFilter("交通")
         advanceUntilIdle()
         assertTrue(vm.uiState.value.selectedHaveTags)
+        assertEquals(listOf(1L), vm.uiState.value.selectedExpenses.map { it.id })
+        assertEquals(listOf(2L), vm.uiState.value.items.map { it.root.id })
     }
 
     // 8.4 — first-sync skeleton signal (pure LedgerUiState derivation) ------
