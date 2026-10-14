@@ -134,7 +134,12 @@ class ExpenseEditScreenContractTest {
             TicketboxTheme(skin = skin) {
                 ExpenseEditScreen(
                     screenState = expenseEditScreenState(
-                        expense = expense().copy(hasImage = true),
+                        expense = expense().copy(
+                            hasImage = true,
+                            duplicateStatus = "suspected",
+                            duplicateReason = "amount, merchant, time",
+                            duplicateSuggestionReasons = listOf("recent_user_reject"),
+                        ),
                         editState = ExpenseEditUiState(readOnly = true),
                     ),
                     actions = ExpenseEditScreenActions(
@@ -144,6 +149,9 @@ class ExpenseEditScreenContractTest {
             }
         }
 
+        composeRule.onNodeWithText("已参考你之前“不是重复”的选择", substring = true)
+            .performScrollTo().assertIsDisplayed()
+        capture("review-learning-duplicate-feedback")
         composeRule.onNodeWithText("看原图").performScrollTo().assertIsEnabled().performClick()
         composeRule.runOnIdle { assertEquals(1, originalRequests) }
     }

@@ -621,11 +621,10 @@ fun ExpenseEditScreen(
         ),
     ) {
         if (currentExpense.duplicateStatus == DuplicateStatusValues.SUSPECTED) {
-            DuplicateNotice(reason = currentExpense.duplicateReason)
-            if ("recent_user_reject" in currentExpense.duplicateSuggestionReasons) {
-                androidx.compose.material3.Text(stringResource(R.string.expense_learning_duplicate_adjusted),
-                    style = androidx.compose.material3.MaterialTheme.typography.bodySmall)
-            }
+            DuplicateNotice(
+                reason = currentExpense.duplicateReason,
+                feedbackAdjusted = "recent_user_reject" in currentExpense.duplicateSuggestionReasons,
+            )
             if (!readOnly) {
                 ExpenseDetailActionButtonRow(
                     text = stringResource(R.string.expense_edit_keep_duplicate_button),
