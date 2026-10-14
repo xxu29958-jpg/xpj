@@ -115,26 +115,29 @@ def maintenance_status() -> dict[str, object]:
     }
 
 
+def _validate_cleanup_task(task: str) -> None:
+    if task not in {"budget_advisor_audit_cleanup", "device_cleanup"}:
+        raise AppError("route_not_found", "没有这个清理任务。", status_code=404)
+
+
 def cleanup_preview(db: Session, task: str) -> dict:
+    _validate_cleanup_task(task)
     if task == "budget_advisor_audit_cleanup":
         rows = expired_audit_logs(db)
         return {"task": task, "title": "过期 AI 调用记录", "count": len(rows), "rows": rows}
-    if task == "device_cleanup":
-        keep_days = get_settings().device_cleanup_retention_days
-        rows = expired_revoked_devices(db, retention_days=keep_days)
-        return {"task": task, "title": "已过保留期的撤销设备", "count": len(rows), "retention_days": keep_days, "rows": rows}
-    raise AppError("route_not_found", "没有这个清理任务。", status_code=404)
+    keep_days = get_settings().device_cleanup_retention_days
+    rows = expired_revoked_devices(db, retention_days=keep_days)
+    return {"task": task, "title": "已过保留期的撤销设备", "count": len(rows), "retention_days": keep_days, "rows": rows}
 
 
 def run_cleanup(db: Session, task: str, *, confirmed: bool, retention_days: str) -> int:
+    _validate_cleanup_task(task)
     if not confirmed:
         raise runtime._invalid("请先核对范围并勾选清理确认；尚未删除任何记录。")
     if task == "budget_advisor_audit_cleanup":
         return cleanup_expired_audit_logs(db)
-    if task == "device_cleanup":
-        keep_days = get_settings().device_cleanup_retention_days
-        if retention_days != str(keep_days):
-            raise AppError("conflict", "设备保留期限已改变，请核对更新后的范围再确认。尚未执行本次清理。", status_code=409)
-        result = cleanup_revoked_devices(db, retention_days=keep_days)
-        return result.deleted_devices
-    raise AppError("route_not_found", "没有这个清理任务。", status_code=404)
+    keep_days = get_settings().device_cleanup_retention_days
+    if retention_days != str(keep_days):
+        raise AppError("conflict", "设备保留期限已改变，请核对更新后的范围再确认。尚未执行本次清理。", status_code=409)
+    result = cleanup_revoked_devices(db, retention_days=keep_days)
+    return result.deleted_devices
