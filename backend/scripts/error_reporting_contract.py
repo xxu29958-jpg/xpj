@@ -41,6 +41,12 @@ REQUIRED_FILES = (*PYTHON_OWNERS, *KOTLIN_OWNERS, "android/app/build.gradle.kts"
 # Exact-symbol evidence, never a module/directory exemption or a handler registry.
 # A changed symbol invalidates this reviewed responsibility and requires a fresh review.
 REVIEWED_BOUNDARIES = {
+    ("backend/app/services/integration_settings_service.py", "discover_local_models"): {
+        "sha256": "ae7785abaf829801ef941f40e489fc964fef12a1b9e18c41d2255c9186f69af6",
+        "owner": "existing HTTP exception handler and sanitized ticketbox.http output",
+        "test": "backend/tests/test_owner_integration_settings.py::test_local_scan_worker_failures_reach_http_log",
+        "reason": "The request consumes the pool.map iterator and joins the bounded pool before returning. Unexpected Future errors propagate to the HTTP boundary with the original traceback and request id; no detached job or new output owner exists. Expected unavailable model services produce an empty discovery result without changing settings.",
+    },
     ("backend/app/services/background_task_executor.py", "_ExecutorPool.submit"): {
         "sha256": "3228d34871e9c9efc391ac6bcd4ea2fbf711dd1e09b8fe4137132484fa137056", "owner": "pool completion reports Future errors; inline errors propagate to submit_committed",
         "test": "backend/tests/test_background_task_claim.py::test_claim_failure_is_observed_without_publishing_a_new_task_state",

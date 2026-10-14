@@ -126,6 +126,17 @@ def test_reading_models_does_not_save_or_send_a_saved_key_to_a_new_destination(o
     assert config.get_settings().budget_advisor_owner_confirmed is False
 
 
+def test_local_scan_worker_failures_reach_http_log(owner, integration_file, monkeypatch, caplog):
+    def fail_read(*args, **kwargs):
+        raise RuntimeError("model discovery worker failed")
+    monkeypatch.setattr(integration, "_read_models", fail_read)
+    with pytest.raises(RuntimeError, match="model discovery worker failed"):
+        owner.get("/owner/local-models", headers={"X-Request-Id": "local-model-scan-probe"})
+    records = [row for row in caplog.records if row.name == "ticketbox.http" and "local-model-scan-probe" in row.getMessage()]
+    assert len(records) == 1 and records[0].exc_info[0] is RuntimeError
+    assert not integration_file.exists()
+
+
 def test_recognition_test_then_save_keeps_the_old_setup_until_the_picture_passes(owner, integration_file, monkeypatch):
     from app.services import recognition_setup_service as setup
 
