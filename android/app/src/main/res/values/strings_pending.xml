@@ -51,9 +51,11 @@
     <string name="pending_filter_empty_body">切换其他筛选可以看到剩余账单。当前不会自动判断，也不会自动入账。</string>
 
     <!-- 页头 PendingTop -->
-    <string name="pending_top_title">待我处理</string>
     <string name="pending_top_subtitle_has_items">逐条核对后入账</string>
-    <string name="pending_top_subtitle_count">%1$d 张待整理</string>
+    <string name="pending_top_subtitle_count">%1$d 张待整理 · 确认后才计入流水</string>
+    <string name="pending_capture_hero_title">收好生活里的小票</string>
+    <string name="pending_capture_hero_body">拍下来，慢慢整理。</string>
+    <string name="pending_start_review">开始核对</string>
     <string name="pending_top_subtitle_empty">截图上传后逐条确认</string>
     <string name="pending_top_subtitle_empty_readonly">当前可查看待确认状态</string>
     <string name="pending_top_metric_caption">待核对截图</string>
@@ -113,7 +115,18 @@
 
     <!-- 工具 sheet PendingToolsSheet -->
     <string name="pending_tools_title">收件工具</string>
-    <string name="pending_tools_subtitle">调整列表密度，或重新获取待确认账单。</string>
+    <string name="pending_tools_subtitle">从当前队列继续，关闭后保留筛选与位置。</string>
+    <string name="pending_tools_uploads">近期上传</string>
+    <string name="pending_tools_uploads_body">查看本机上传任务与接收结果</string>
+    <string name="pending_tools_review">连续核对</string>
+    <string name="pending_tools_review_body">按当前待处理队列继续核对</string>
+    <string name="pending_tools_review_unavailable">当前没有可继续的核对任务</string>
+    <string name="pending_tools_bulk">批量确认</string>
+    <string name="pending_tools_bulk_body">先查看可确认的小票，以及暂不能确认的原因</string>
+    <string name="pending_tools_bulk_unavailable">需读取到至少两条可确认记录；只读时不可确认</string>
+    <string name="pending_tools_repayment_body">查看并核对待处理的还款记录</string>
+    <string name="pending_tools_quality_body">补齐缺少的日期、分类或汇率</string>
+    <string name="pending_tools_density_title">显示方式</string>
     <string name="pending_tools_density_compact">紧凑</string>
     <string name="pending_tools_density_comfortable">舒适</string>
     <string name="pending_tools_refresh_loading">刷新中</string>

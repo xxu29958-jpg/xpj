@@ -96,7 +96,8 @@ EXEMPT_FILES = (
 # The inbox category mark and the account button use their container token
 # as-is (the override made the already-translucent midnight token opaque):
 # two literals fewer.
-BASELINE = 63
+# The insight filter now uses the shared chip, retiring its local border alpha.
+BASELINE = 62
 
 # ``.copy(alpha = <number>)`` — number is a decimal/int float literal (optional
 # trailing ``f``). Identifier args (AppAlpha.heavy / resolvedAlpha) are NOT

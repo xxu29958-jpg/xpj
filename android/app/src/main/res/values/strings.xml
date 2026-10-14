@@ -46,6 +46,8 @@
     <!-- 往来域（Obligations）根页：我欠 / 欠我 双视图与往来任务入口 -->
     <string name="relations_i_owe_tab">我欠</string>
     <string name="relations_owed_to_me_tab">欠我</string>
+    <string name="relations_personal_payables">个人视角 · 我需要偿还的往来</string>
+    <string name="relations_personal_receivables">个人视角 · 别人需要归还给我的往来</string>
     <string name="relations_bill_splits">拆账</string>
     <string name="relations_repayment_review">还款采集</string>
     <string name="relations_debt_goals">还债目标</string>

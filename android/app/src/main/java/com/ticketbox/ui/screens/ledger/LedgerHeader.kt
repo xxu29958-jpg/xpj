@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
+import com.ticketbox.ui.components.AppPaperCard
 import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.tabularNum
@@ -23,29 +24,31 @@ internal fun LedgerHeader(
 ) {
     val summary = state.summary
     val statusText = ledgerHeaderStatusText(state, ledgerSyncEvidence(state))
-    Column(
-        modifier = Modifier.fillMaxWidth().padding(vertical = AppSpacing.miniGap),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
-    ) {
-        Text(
-            text = stringResource(R.string.ledger_header_total_current_list),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.labelSmall,
-            maxLines = 1,
-        )
-        LedgerAmounts(
-            amounts = summary.amountsByCurrency,
-            modifier = Modifier.fillMaxWidth(),
-            role = AppAmountRole.Hero,
-        )
-        if (state.undatedExpenseCount > 0) com.ticketbox.ui.components.AccountingDateNotice(state.undatedExpenseCount)
-        Text(
-            text = stringResource(R.string.ledger_header_count_value, summary.itemCount) + " · " + statusText,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.labelSmall.tabularNum(),
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
+    AppPaperCard {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(AppSpacing.cardPaddingSmall),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+        ) {
+            Text(
+                text = stringResource(R.string.ledger_header_total_current_list),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 1,
+            )
+            LedgerAmounts(
+                amounts = summary.amountsByCurrency,
+                modifier = Modifier.fillMaxWidth(),
+                role = AppAmountRole.Hero,
+            )
+            if (state.undatedExpenseCount > 0) com.ticketbox.ui.components.AccountingDateNotice(state.undatedExpenseCount)
+            Text(
+                text = stringResource(R.string.ledger_header_count_value, summary.itemCount) + " · " + statusText,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.labelSmall.tabularNum(),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 

@@ -9,6 +9,10 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.theme.TicketboxTheme
+import com.ticketbox.ui.components.AppPageRole
+import com.ticketbox.ui.components.AppScrollableContent
+import com.ticketbox.ui.components.AppScrollableContentChrome
+import com.ticketbox.ui.components.AppScrollableRefreshState
 import com.ticketbox.viewmodel.DebtListUiState
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -29,11 +33,15 @@ class ObligationsPrimaryChromeTest {
     private fun setChrome(composer: RelationsComposerHandles) {
         composeRule.setContent {
             TicketboxTheme(skin = AppSkin.Default) {
-                ObligationsPrimaryChrome(
+                val chrome = relationsListChrome(
                     selectedView = ObligationsView.I_OWE,
                     onSelectView = {},
                     composer = composer,
                 )
+                AppScrollableContent(
+                    chrome = AppScrollableContentChrome(role = AppPageRole.Ledger, bottomBar = chrome.bottomBar),
+                    refresh = AppScrollableRefreshState(false, {}),
+                ) { item { chrome.topChrome?.invoke() } }
             }
         }
         composeRule.waitForIdle()

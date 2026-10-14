@@ -12,7 +12,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SecondaryTabRow
+import androidx.compose.material3.SecondaryScrollableTabRow
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
@@ -29,6 +29,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -44,6 +45,7 @@ import com.ticketbox.ui.components.AppAdaptivePanePurpose
 import com.ticketbox.ui.components.AppAdaptivePaneStructures
 import com.ticketbox.ui.components.AppAdaptiveSupportingPane
 import com.ticketbox.ui.components.AppListRow
+import com.ticketbox.ui.components.AppFloatingActionBar
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.PrimaryCtaButton
@@ -113,21 +115,9 @@ internal fun RelationsRoute(
             ledgerName = screenFactory.ledgerRepository.currentLedgerName(),
         )
     }
-    val chrome = RelationsListChrome(
-        title = "",
-        subtitle = null,
-        backText = "",
-        onBack = null,
-        // expanded：导航区在右 supporting pane；compact：沉到列表尾（真实内容上半屏）。
-        domainNavigation = if (adaptivePolicy.showsSupportingPane) null else navigation,
-        embeddedInDomain = true,
-        topChrome = {
-            ObligationsPrimaryChrome(
-                selectedView = selectedView,
-                onSelectView = { selectedView = it },
-                composer = composer,
-            )
-        },
+    val chrome = relationsListChrome(
+        selectedView, onSelectView = { selectedView = it }, composer,
+        navigation = if (adaptivePolicy.showsSupportingPane) null else navigation,
     )
 
     RelationsAdaptivePaneConsumer(
@@ -143,6 +133,47 @@ internal fun RelationsRoute(
         },
     )
 }
+
+internal fun relationsListChrome(
+    selectedView: ObligationsView,
+    onSelectView: (ObligationsView) -> Unit,
+    composer: RelationsComposerHandles,
+    navigation: (@Composable () -> Unit)? = null,
+): RelationsListChrome = RelationsListChrome(
+    title = "",
+    subtitle = null,
+    backText = "",
+    onBack = null,
+    // expanded：导航区在右 supporting pane；compact：沉到列表尾（真实内容上半屏）。
+    domainNavigation = navigation,
+    embeddedInDomain = true,
+    topChrome = {
+        ObligationsPrimaryChrome(
+            selectedView = selectedView,
+            onSelectView = onSelectView,
+            composer = composer,
+        )
+    },
+    bottomBar = if (composer.state.canModify || composer.state.hasCreationDraft) {
+        {
+            AppFloatingActionBar {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+                    PrimaryCtaButton(
+                        text = stringResource(R.string.debt_list_add),
+                        icon = Icons.Default.Add,
+                        modifier = Modifier.weight(1f),
+                        enabled = !composer.state.isParsingBill,
+                        onClick = composer.actions.onAddDebt,
+                    )
+                    if (composer.state.canModify) DebtBillParseIconButton(
+                        isParsingBill = composer.state.isParsingBill,
+                        onClick = composer.actions.onParseBillImage,
+                    )
+                }
+            }
+        }
+    } else null,
+)
 
 /** 域级新建抽屉的呈现把手：RelationsRoute 只读这些状态与动作，创建链路细节全在 host 内。 */
 internal class RelationsComposerHandles(
@@ -332,7 +363,7 @@ private fun RelationsPrimaryPane(
     }
 }
 
-/** 主域首屏 chrome：tabs（任务视角切换）+ 单主 CTA；OCR 为 quiet 入口。作为列表首项随内容滚动。 */
+/** 主域首屏只承接视角和原任务状态；新建动作由列表的统一底部动作区承接。 */
 @Composable
 internal fun ObligationsPrimaryChrome(
     selectedView: ObligationsView,
@@ -341,24 +372,9 @@ internal fun ObligationsPrimaryChrome(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
         ObligationsTabs(selectedView = selectedView, onSelectView = onSelectView)
-        if (composer.state.canModify || composer.state.hasCreationDraft) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-            ) {
-                PrimaryCtaButton(
-                    text = stringResource(R.string.debt_list_add),
-                    icon = Icons.Default.Add,
-                    modifier = Modifier.weight(1f),
-                    enabled = !composer.state.isParsingBill,
-                    onClick = composer.actions.onAddDebt,
-                )
-                if (composer.state.canModify) DebtBillParseIconButton(
-                    isParsingBill = composer.state.isParsingBill,
-                    onClick = composer.actions.onParseBillImage,
-                )
-            }
-        }
+        Text(stringResource(if (selectedView == ObligationsView.I_OWE) R.string.relations_personal_payables
+            else R.string.relations_personal_receivables), style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
         composer.state.flashMessage?.let { AppStatusBanner(message = it, tone = MessageTone.Info) }
         DebtPendingCreations(composer.state.pendingCreations, composer.actions.onOpenSyncStatus)
         // 错误可见且可继续（R1）：banner 旁给用户重试，不再只有静默文案。
@@ -386,15 +402,20 @@ private fun ObligationsTabs(
         ObligationsView.I_OWE to stringResource(R.string.relations_i_owe_tab),
         ObligationsView.OWED_TO_ME to stringResource(R.string.relations_owed_to_me_tab),
     )
-    SecondaryTabRow(
+    SecondaryScrollableTabRow(
         selectedTabIndex = views.indexOfFirst { it.first == selectedView },
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = Color.Transparent,
+        contentColor = MaterialTheme.colorScheme.primary,
+        edgePadding = AppSpacing.none,
+        minTabWidth = AppSpacing.controlMinHeight,
     ) {
         views.forEach { (view, label) ->
             Tab(
                 selected = selectedView == view,
                 onClick = { onSelectView(view) },
                 text = { Text(label) },
+                selectedContentColor = MaterialTheme.colorScheme.primary,
+                unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
