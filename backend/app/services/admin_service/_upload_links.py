@@ -219,7 +219,7 @@ def rotate_upload_link(
     if _is_expired(link):
         raise AppError(
             "invalid_request",
-            "Cannot rotate an expired upload link.",
+            "链接已过期，请为此账本新建上传链接。已上传图片和账单保留。",
             status_code=409,
         )
     now = now_utc()
@@ -273,13 +273,13 @@ def extend_upload_link(
     if link.revoked_at is not None:
         raise AppError(
             "invalid_request",
-            "Cannot extend a revoked upload link.",
+            "链接已停用，请为此账本新建上传链接。已上传图片和账单保留。",
             status_code=409,
         )
     if _is_expired(link):
         raise AppError(
             "invalid_request",
-            "Cannot extend an expired upload link.",
+            "链接已过期，请为此账本新建上传链接。已上传图片和账单保留。",
             status_code=409,
         )
     now = now_utc()

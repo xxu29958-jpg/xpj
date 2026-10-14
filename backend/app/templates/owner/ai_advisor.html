@@ -105,7 +105,7 @@
         <form method="post" action="/owner/ai-advisor/test{{ ledger_query }}" data-show-loading="正在测试模型，最长约 20 秒…">
           <button type="submit" class="btn" {% if not status.configuration_valid or not status.is_live or not status.owner_confirmed %}disabled{% endif %}>测试模型（仅发送示例）</button>
         </form>
-        <p class="workspace-note"><a href="/web/budget-advise">前往月度安排使用建议</a></p>
+        <p class="workspace-note"><a href="/web/budget-advise{{ ledger_query }}">前往月度安排使用建议</a></p>
         <h2 class="mt-5">最近 10 次预算建议调用</h2>
         {% with ledger_scope_action='/owner/ai-advisor#advisor-checks', ledger_scope_note='这里选择调用记录所属的账本；模型连接与请求授权仍作用于整个本机服务。' %}
           {% include "_ledger_scope.html" %}

@@ -1,9 +1,6 @@
 package com.ticketbox.ui.screens
 
 import android.content.Context
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.mutableStateOf
 import com.ticketbox.ui.assertEditableTextEquals
 import androidx.compose.ui.test.hasSetTextAction
@@ -16,15 +13,17 @@ import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ApplicationProvider
 import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
+import com.ticketbox.domain.model.ConfirmedStreamItem
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ExpenseDraft
+import com.ticketbox.domain.model.ExpenseSourceValues
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.ui.RealKeyboard
+import com.ticketbox.viewmodel.LedgerUiState
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 
-@OptIn(ExperimentalMaterial3Api::class)
 class ManualExpenseDefaultChangeTest {
     @get:Rule val compose = createComposeRule()
     @get:Rule val keyboard = RealKeyboard()
@@ -33,21 +32,29 @@ class ManualExpenseDefaultChangeTest {
     @Test
     fun existingRawDraftKeepsCnyWhileTheNextTaskStartsWithJpy() {
         val defaultCurrency = mutableStateOf(CurrencyCode.CNY)
-        val visible = mutableStateOf(true)
+        val state = mutableStateOf(LedgerUiState(monthFilter = "", syncedInCurrentSession = true))
         val submitted = mutableListOf<ExpenseDraft>()
+        val receipt = (ledgerHeaderConfirmedRow() as ConfirmedStreamItem.ExpenseRow).root
         compose.setContent {
             TicketboxTheme(skin = AppSkin.Default) {
-                if (visible.value) {
-                    ModalBottomSheet(onDismissRequest = {},
-                        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-                        ManualExpenseSheet(
-                            state = ManualExpenseSheetState(emptyList(), saving = false, initialCurrency = defaultCurrency.value),
-                            actions = ManualExpenseSheetActions(onCreate = { submitted += it; visible.value = false }, onDismiss = {}),
-                        )
-                    }
-                }
+                LedgerScreen(state = state.value, actions = LedgerScreenActions(
+                    onPrepareManualCreate = { defaultCurrency.value },
+                    onManualCreate = { draft ->
+                        submitted += draft
+                        val currency = requireNotNull(draft.originalCurrencyCode)
+                        state.value = state.value.copy(manualCreateResult = receipt.copy(
+                            id = submitted.size.toLong(), publicId = "manual-${submitted.size}",
+                            amountCents = draft.originalAmountMinor, homeAmountCents = draft.originalAmountMinor,
+                            homeCurrency = currency, homeCurrencyCode = currency.storageKey,
+                            originalCurrency = currency, originalCurrencyCode = currency,
+                            originalAmountMinor = draft.originalAmountMinor, source = ExpenseSourceValues.MANUAL_ENTRY,
+                        ))
+                    },
+                    onManualCreateSettled = { state.value = state.value.copy(manualCreateResult = null) },
+                ))
             }
         }
+        compose.onNodeWithText("记一笔").performTouchInput { click() }
         enterAmount()
         compose.runOnIdle { defaultCurrency.value = CurrencyCode.JPY }
         save("manual-original-cny-keyboard")
@@ -59,12 +66,12 @@ class ManualExpenseDefaultChangeTest {
         assertEquals(1200L, original.originalAmountMinor)
         assertEquals(CurrencyCode.CNY, original.ledgerHomeCurrency)
 
-        // Removing the dialog also posts an OS input-session hide. Settle that
-        // removal before opening the next task; settling only before disposal
-        // can let the old window's hide overtake the new keyboard's show.
-        compose.waitForIdle()
+        // Let the real receipt effect close the first task. Start the next one
+        // through the ledger entry, rather than replacing dialog windows from a
+        // test-only visibility variable while the OS input target is changing.
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_sheet_title)).assertDoesNotExist()
         keyboard.dismissAndWait(compose)
-        compose.runOnIdle { visible.value = true }
+        compose.onNodeWithText("记一笔").performTouchInput { click() }
         enterAmount()
         save("manual-next-jpy-keyboard")
         val next = compose.runOnIdle {

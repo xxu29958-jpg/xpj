@@ -78,6 +78,7 @@ def _scheduler_loop(stop_event: threading.Event) -> None:
                     continue
             devices_scanned, devices_deleted = _run_cleanup_once()
             _status.success_count += 1
+            _status.last_error = None
             _status.last_success_at = datetime.now(attempted_at.tzinfo)
             logger.info(
                 "device cleanup: scanned=%s deleted_devices=%s",

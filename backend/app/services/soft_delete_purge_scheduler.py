@@ -81,6 +81,7 @@ def _scheduler_loop(stop_event: threading.Event, interval_seconds: int) -> None:
             with SessionLocal() as db:
                 purged = purge_expired_soft_deletes(db)
             _status.success_count += 1
+            _status.last_error = None
             _status.last_purged = purged
             _status.last_success_at = now_utc()
             logger.info("soft-delete purge: purged=%s", purged)

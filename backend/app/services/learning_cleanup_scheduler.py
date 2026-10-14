@@ -89,6 +89,7 @@ def _scheduler_loop(stop_event: threading.Event) -> None:
             with SessionLocal() as db:
                 result = run_full_maintenance(db)
             _status.success_count += 1
+            _status.last_error = None
             _status.last_success_at = datetime.now(attempted_at.tzinfo)
             logger.info(
                 "learning cleanup: swept=%s deleted=%s elapsed_ms=%s",

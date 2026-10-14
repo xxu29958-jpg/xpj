@@ -390,7 +390,7 @@ def test_owner_upload_link_limits_can_be_updated(
     response = local_client.post(
         f"/owner/upload-links/{public_id}/limits",
         data={
-            "daily_byte_budget": "1048576",
+            "daily_budget_mb": "1.5",
             "per_remote_min_interval_seconds": "9",
         },
         follow_redirects=False,
@@ -399,11 +399,11 @@ def test_owner_upload_link_limits_can_be_updated(
 
     with SessionLocal() as db:
         link = db.query(UploadLink).filter(UploadLink.public_id == public_id).one()
-        assert link.daily_byte_budget == 1048576
+        assert link.daily_byte_budget == 1572864
         assert link.per_remote_min_interval_seconds == 9
 
 
-@pytest.mark.parametrize("budget,interval", [("1.5", "9"), ("-1", "7"), ("2048", "-2")])
+@pytest.mark.parametrize("budget,interval", [("-1", "7"), ("2048", "-2")])
 def test_owner_upload_link_invalid_limits_keep_draft_and_saved_values(
     local_client: TestClient, phone_mobile_endpoint, budget: str, interval: str,
 ) -> None:
@@ -418,10 +418,10 @@ def test_owner_upload_link_invalid_limits_keep_draft_and_saved_values(
         link = db.query(UploadLink).filter(UploadLink.public_id == public_id).one()
         saved = (link.daily_byte_budget, link.per_remote_min_interval_seconds)
     response = local_client.post(f"/owner/upload-links/{public_id}/limits", data={
-        "daily_byte_budget": budget, "per_remote_min_interval_seconds": interval,
+        "daily_budget_mb": budget, "per_remote_min_interval_seconds": interval,
     })
     assert response.status_code == 422
-    assert re.search(fr'name="daily_byte_budget"[^>]*value="{re.escape(budget)}"', response.text)
+    assert re.search(fr'name="daily_budget_mb"[^>]*value="{re.escape(budget)}"', response.text)
     assert re.search(fr'name="per_remote_min_interval_seconds"[^>]*value="{re.escape(interval)}"', response.text)
     assert 'workspace-upload-limits" open' in response.text
     with SessionLocal() as db:
@@ -429,12 +429,12 @@ def test_owner_upload_link_invalid_limits_keep_draft_and_saved_values(
         assert (link.daily_byte_budget, link.per_remote_min_interval_seconds) == saved
 
     corrected = local_client.post(f"/owner/upload-links/{public_id}/limits", data={
-        "daily_byte_budget": "2048", "per_remote_min_interval_seconds": "9",
+        "daily_budget_mb": "0.5", "per_remote_min_interval_seconds": "9",
     }, follow_redirects=False)
     assert corrected.status_code == 303
     with SessionLocal() as db:
         link = db.query(UploadLink).filter(UploadLink.public_id == public_id).one()
-        assert (link.daily_byte_budget, link.per_remote_min_interval_seconds) == (2048, 9)
+        assert (link.daily_byte_budget, link.per_remote_min_interval_seconds) == (524288, 9)
 
 
 def test_owner_upload_link_can_be_extended(
@@ -468,6 +468,21 @@ def test_owner_upload_link_can_be_extended(
     with SessionLocal() as db:
         link = db.query(UploadLink).filter(UploadLink.public_id == public_id).one()
         assert ensure_utc(link.expires_at) > ensure_utc(old_expiry + timedelta(days=89))
+        link.expires_at = now_utc() - timedelta(seconds=1)
+        original = (link.token_hash, link.ledger_id)
+        db.commit()
+    # The old page may still be open when the link expires. Keep the user in
+    # link management with a same-ledger recovery, not a generic error page.
+    for action in ("extend", "rotate"):
+        denied = local_client.post(f"/owner/upload-links/{public_id}/{action}",
+            headers={"Accept": "text/html"})
+        assert denied.status_code == 409
+        assert "链接已过期" in denied.text and "新建上传链接" in denied.text
+        assert f'/owner/upload-links/{public_id}/extend' not in denied.text
+        assert f'/owner/upload-links/{public_id}/rotate' not in denied.text
+    with SessionLocal() as db:
+        link = db.query(UploadLink).filter(UploadLink.public_id == public_id).one()
+        assert (link.token_hash, link.ledger_id) == original
 
 
 def test_owner_upload_links_create_reveals_once(local_client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -546,8 +561,8 @@ def test_owner_upload_links_blocks_creation_until_endpoint_configured(
             resp.text,
             flags=re.S,
         )
-        warning = next((message for message in warnings if "手机连接设置" in message), "")
-        assert 'href="/owner/settings"' in warning
+        warning = next((message for message in warnings if "手机连接地址" in message), "")
+        assert 'href="/owner/settings/public-base-url"' in warning
         assert 'disabled aria-disabled="true"' in resp.text
         # A missing or invalid endpoint must not produce a usable credential URL.
         full_urls = re.findall(r"https?://[^\s\"<]+/u/[A-Za-z0-9_\-]+", resp.text)

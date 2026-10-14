@@ -16,6 +16,7 @@ from app.services.installation_health_service import (
     installation_owner_state,
     owner_recovery_message,
 )
+from app.services.operations_settings_service import parse_upload_budget_mb, upload_budget_mb
 
 router = APIRouter(prefix="/owner", tags=["owner-console"])
 
@@ -57,8 +58,10 @@ def _render_upload_links(
     ctx["ledger_choices"] = choices
     ctx["selected_upload_ledger_id"] = selected
     ctx["selected_upload_ledger_available"] = any(choice.ledger_id == selected for choice in choices)
+    ctx["selected_upload_link_id"] = request.query_params.get("link_id")
     ctx["error"] = error
     ctx["limits_draft"] = limits_draft
+    ctx["upload_budget_mb"] = upload_budget_mb
     return templates.TemplateResponse(
         request=request,
         name="upload_links.html",
@@ -74,7 +77,8 @@ def owner_upload_links_get(
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     mobile_endpoint = configured_mobile_endpoint_url(get_settings().public_base_url)
-    return _render_upload_links(request, db, mobile_endpoint=mobile_endpoint)
+    return _render_upload_links(request, db, mobile_endpoint=mobile_endpoint,
+                                selected_ledger_id=request.query_params.get("ledger_id"))
 
 
 @router.post("/upload-links", response_class=HTMLResponse)
@@ -160,7 +164,12 @@ def owner_upload_links_rotate(
             mobile_endpoint=None,
             error="请先在设置中配置可供手机访问的 HTTPS 地址，再重新生成上传链接。",
         )
-    _summary, secret = svc.do_rotate_upload_link(db, public_id)
+    try:
+        _summary, secret = svc.do_rotate_upload_link(db, public_id)
+    except AppError as exc:
+        db.rollback()
+        return _render_upload_links(request, db, mobile_endpoint=mobile_endpoint,
+                                    error=exc.message, status_code=exc.status_code)
     return _render_upload_links(request, db, mobile_endpoint=mobile_endpoint, secret=secret)
 
 
@@ -181,8 +190,14 @@ def owner_upload_links_extend(
     request: Request,
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
-) -> RedirectResponse:
-    svc.do_extend_upload_link(db, public_id)
+) -> Response:
+    try:
+        svc.do_extend_upload_link(db, public_id)
+    except AppError as exc:
+        db.rollback()
+        return _render_upload_links(request, db,
+            mobile_endpoint=configured_mobile_endpoint_url(get_settings().public_base_url),
+            error=exc.message, status_code=exc.status_code)
     return RedirectResponse(url="/owner/upload-links", status_code=303)
 
 
@@ -191,12 +206,14 @@ def owner_upload_links_limits(
     public_id: str,
     request: Request,
     daily_byte_budget: str | None = Form(default=None),
+    daily_budget_mb: str | None = Form(default=None),
     per_remote_min_interval_seconds: str = Form(default="0"),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> Response:
     try:
-        budget = _parse_optional_int(daily_byte_budget)
+        # An already-open form from the previous version still submits bytes.
+        budget = parse_upload_budget_mb(daily_budget_mb) if daily_budget_mb and daily_budget_mb.strip() else _parse_optional_int(daily_byte_budget)
         interval = int(per_remote_min_interval_seconds)
         if (budget is not None and budget < 0) or interval < 0:
             raise ValueError("negative limit")
@@ -212,12 +229,12 @@ def owner_upload_links_limits(
             request,
             db,
             mobile_endpoint=configured_mobile_endpoint_url(get_settings().public_base_url),
-            error=exc.message if isinstance(exc, AppError) else "配额和间隔必须是非负整数；配额留空表示使用默认值。",
+            error=exc.message if isinstance(exc, AppError) else "上传间隔须为非负整数；配额使用 MB，留空沿用默认值。",
             status_code=exc.status_code if isinstance(exc, AppError) else 422,
-            limits_draft={"public_id": public_id, "daily_byte_budget": daily_byte_budget or "",
+            limits_draft={"public_id": public_id, "daily_budget_mb": daily_budget_mb or "",
                           "per_remote_min_interval_seconds": per_remote_min_interval_seconds},
         )
-    return RedirectResponse(url="/owner/upload-links", status_code=303)
+    return RedirectResponse(url=f"/owner/upload-links?link_id={public_id}#upload-link-{public_id}", status_code=303)
 
 
 @router.post("/upload-links/{public_id}/delete", response_class=HTMLResponse)

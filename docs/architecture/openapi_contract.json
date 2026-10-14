@@ -2466,6 +2466,17 @@
       },
       "Body_owner_upload_links_limits_owner_upload_links__public_id__limits_post": {
         "properties": {
+          "daily_budget_mb": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Daily Budget Mb"
+          },
           "daily_byte_budget": {
             "anyOf": [
               {
