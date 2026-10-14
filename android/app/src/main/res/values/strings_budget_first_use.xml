@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="budget_editor_optional_show">结转、预留与不计入预算的分类</string>
-    <string name="budget_editor_optional_hide">收起可选设置</string>
+    <string name="budget_optional_title">结转、预留与排除范围</string>
+    <string name="budget_optional_draft_note">这些调整留在本次草稿中。返回后点“保存预算”才会生效。</string>
+    <string name="budget_optional_return">返回预算编辑</string>
 </resources>

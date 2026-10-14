@@ -96,20 +96,17 @@ class BudgetArchiveRouteTest {
 
     @Test fun confirmedArchiveUsesTheReadVersionAndRetainsAnUnsavedOriginalDraft() {
         show()
-        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasTestTag("budget_edit_open"))
         compose.onNodeWithTag("budget_edit_open").performClick()
-        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasTestTag("budget_total_amount"))
         val field = compose.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag("budget_total_amount")), useUnmergedTree = true)
         field.performScrollTo().performTextReplacement("1500")
         closeSoftKeyboard()
-        compose.onNodeWithContentDescription(context.getString(R.string.budget_editor_back)).performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.budget_editor_back)).assertIsDisplayed().performClick()
         openArchive()
         compose.onNodeWithText("移入回收站").performClick()
         compose.waitUntil(5_000) { archives.isNotEmpty() }
         assertEquals(7L, archives.single().second)
         compose.waitUntil(5_000) { compose.onAllNodes(hasText("预算已移入回收站，原支出和修改记录保留。"))
             .fetchSemanticsNodes().isNotEmpty() }
-        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasTestTag("budget_total_amount"))
         field.performScrollTo().assertTextEquals("1500")
         assertTrue(runBlocking { harness.fixture.pendingDao.allRows().isEmpty() })
     }

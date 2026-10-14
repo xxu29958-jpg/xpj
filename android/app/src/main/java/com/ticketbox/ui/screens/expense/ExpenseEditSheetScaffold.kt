@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Modifier
@@ -74,12 +75,10 @@ internal fun ExpenseEditSheetActions(
             enabled = state.primaryEnabled && !state.saving,
             onClick = handlers.onSubmit,
         ),
-        secondary = AppSheetAction(
-            text = state.secondaryText ?: stringResource(R.string.common_cancel),
-            enabled = !state.saving,
-            onClick = handlers.onDismiss,
-        ),
     )
+    TextButton(onClick = handlers.onDismiss, enabled = !state.saving, modifier = Modifier.fillMaxWidth()) {
+        Text(state.secondaryText ?: stringResource(R.string.common_cancel))
+    }
 }
 
 @Composable

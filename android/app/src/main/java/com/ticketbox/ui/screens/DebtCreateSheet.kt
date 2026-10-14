@@ -23,12 +23,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.domain.model.DebtDirections
-import com.ticketbox.domain.model.DebtKinds
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.AppAmountInput
 import com.ticketbox.ui.components.AppAmountInputActions
 import com.ticketbox.ui.components.AppAmountInputState
+import com.ticketbox.ui.components.AppBusyGuardedSheet
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppFilterChipOptions
 import com.ticketbox.ui.components.AppSheetAction
@@ -97,12 +97,10 @@ private fun DebtDraftForm(
                     // JPY/KRW 账本会放大 100×（PR#255 P1-3，VM submitDraft 另有同条件防线）。
                     enabled = state.canSubmitCreation,
                 ),
-                secondary = AppSheetAction(
-                    text = stringResource(R.string.debt_creation_keep_exit),
-                    onClick = onCancel,
-                    enabled = !state.isSubmitting,
-                ),
             )
+            TextButton(onClick = onCancel, enabled = !state.isSubmitting, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.debt_creation_keep_exit))
+            }
         },
     ) {
         DebtDirectionField(selected = draft.direction, enabled = editable, onSelect = viewModel::updateDraftDirection)
@@ -140,17 +138,26 @@ private fun DebtDraftForm(
 
 @Composable
 private fun DebtDraftDetails(draft: DebtDraftUi, editable: Boolean, viewModel: DebtListViewModel) {
-    var expanded by rememberSaveable { mutableStateOf(draft.note.isNotBlank() || draft.kind == DebtKinds.INSTALLMENT) }
-    LaunchedEffect(draft.kind) { if (draft.kind == DebtKinds.INSTALLMENT) expanded = true }
-    TextButton(onClick = { expanded = !expanded }, modifier = Modifier.fillMaxWidth()) {
-        Text(stringResource(if (expanded) R.string.debt_creation_details_collapse else R.string.debt_creation_details_expand))
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    TextButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth()) {
+        Text(stringResource(R.string.debt_creation_details_expand))
     }
     if (expanded) {
-        DebtInstallmentCountField(kind = draft.kind, countInput = draft.installmentCountInput,
-            enabled = editable, onValueChange = viewModel::updateDraftInstallmentCount)
-        DebtInstallmentPeriodField(kind = draft.kind, periodInput = draft.installmentPeriodInput,
-            enabled = editable, onValueChange = viewModel::updateDraftInstallmentPeriod)
-        DebtContextField(draft = draft, enabled = editable, onValueChange = viewModel::updateDraftNote)
+        AppBusyGuardedSheet(isSubmitting = false, onDismiss = { expanded = false }, skipPartiallyExpanded = true) {
+            AppSheetScaffold(title = stringResource(R.string.debt_creation_details_expand),
+                subtitle = stringResource(R.string.debt_creation_details_note),
+                actions = { AppSheetActionRow(primary = AppSheetAction(
+                    stringResource(R.string.debt_creation_details_apply), { expanded = false },
+                )) },
+            ) {
+                DebtInstallmentCountField(kind = draft.kind, countInput = draft.installmentCountInput,
+                    enabled = editable, onValueChange = viewModel::updateDraftInstallmentCount)
+                DebtInstallmentPeriodField(kind = draft.kind, periodInput = draft.installmentPeriodInput,
+                    enabled = editable, onValueChange = viewModel::updateDraftInstallmentPeriod)
+                DebtContextField(draft = draft, enabled = editable, onValueChange = viewModel::updateDraftNote)
+                DebtInstallmentDraftPreview(draft)
+            }
+        }
     }
 }
 

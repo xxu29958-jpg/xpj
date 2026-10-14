@@ -26,6 +26,7 @@ import com.ticketbox.data.repository.RecurringItemPatch
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.ui.saveConsumerArtPreview
+import com.ticketbox.ui.RealKeyboard
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -44,6 +45,7 @@ import org.junit.Test
 /** Real route, Retrofit and Room; wire history cannot substitute for a reachable user task. */
 class RecurringDefinitionHistoryConnectedTest {
     @get:Rule val compose = createComposeRule()
+    @get:Rule val keyboard = RealKeyboard()
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val mounted = mutableStateOf(true)
     private val requests = CopyOnWriteArrayList<Request>()
@@ -99,6 +101,17 @@ class RecurringDefinitionHistoryConnectedTest {
         saveConsumerArtPreview("recurring-editor-date", requireNotNull(automation.takeScreenshot()))
         compose.onNodeWithText(context.getString(R.string.recurring_form_date_change)).performScrollTo().assertIsDisplayed()
         compose.onNodeWithText(context.getString(R.string.recurring_form_date_clear)).performScrollTo().assertIsDisplayed()
+        compose.onNode(hasSetTextAction() and hasText("1250")).performScrollTo().performClick()
+        keyboard.assertActionAboveKeyboard(compose, context.getString(R.string.recurring_form_save), "recurring-editor-keyboard")
+        keyboard.dismissAndWait(compose)
+        compose.onNodeWithText(context.getString(R.string.common_keep_draft_return)).assertIsDisplayed().performClick()
+        compose.onNodeWithTag("recurring-actions-history-recurring").performScrollTo().performClick()
+        compose.onNodeWithText("定义历史").assertExists()
+        Espresso.pressBack()
+        compose.onNodeWithText(context.getString(R.string.recurring_draft_continue)).assertIsDisplayed().performClick()
+        compose.onNode(hasSetTextAction() and hasText("尚未保存的原名称")).assertExists()
+        compose.onNode(hasSetTextAction() and hasText("1250")).assertExists()
+        assertTrue(harness.fixture.stored().isEmpty())
         val repository = harness.screenFactory.recurringRepository
         runBlocking {
             val access = requireNotNull(repository.observeActiveLedgerAccess().first())

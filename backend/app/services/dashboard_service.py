@@ -27,7 +27,7 @@ DEFAULT_DASHBOARD_CARDS: dict[DashboardSurface, tuple[DashboardCardDefinition, .
         DashboardCardDefinition("goals", "目标"),
         DashboardCardDefinition("recurring", "固定支出"),
         DashboardCardDefinition("pending", "待整理小票"),
-        DashboardCardDefinition("recent_uploads", "最近新增"),
+        DashboardCardDefinition("recent_uploads", "最近上传"),
     ),
     "web": (
         DashboardCardDefinition("monthly_spend", "月度净支出"),

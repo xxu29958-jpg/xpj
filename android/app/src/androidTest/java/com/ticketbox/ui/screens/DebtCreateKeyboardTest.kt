@@ -77,7 +77,9 @@ class DebtCreateKeyboardTest {
         note.performScrollTo().performTouchInput { click() }
         note.performTextInput("出差垫付车费，等本月报销到账后归还")
         compose.runOnIdle { skin.value = AppSkin.Midnight }
-        assertSaveAboveKeyboard("debt-create-keyboard-midnight")
+        keyboard.assertActionAboveKeyboard(compose, text(R.string.debt_creation_details_apply), "debt-details-keyboard-midnight")
+        compose.onNodeWithText(text(R.string.debt_creation_details_apply)).performTouchInput { click() }
+        keyboard.dismissAndWait(compose)
 
         compose.onNodeWithText(text(R.string.debt_create_save)).performTouchInput { click() }
         compose.waitUntil(5_000) { viewModel.state.value.isSubmitting }

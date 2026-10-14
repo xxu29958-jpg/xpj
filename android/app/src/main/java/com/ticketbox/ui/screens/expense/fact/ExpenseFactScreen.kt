@@ -21,13 +21,12 @@ import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppSecondaryPageChrome
 import com.ticketbox.ui.components.AppSecondaryPageSlots
 import com.ticketbox.ui.components.AppPrimaryButton
+import com.ticketbox.ui.components.AppFloatingActionBar
 import com.ticketbox.ui.components.expenseTimeLabel
 import com.ticketbox.ui.components.AppSecondaryScrollableColumn
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppAdaptiveContentWidth
-import com.ticketbox.ui.design.AppListDensity
-import com.ticketbox.ui.components.ExpenseCategoryMark
 import com.ticketbox.ui.screens.settings.SettingsDetailRow
 import com.ticketbox.ui.screens.expense.ExpenseBillSplitInvitePanel
 import com.ticketbox.ui.screens.expense.ExpenseBillSplitInvitePanelActions
@@ -83,11 +82,7 @@ fun ExpenseFactScreen(
                 contentWidth = AppAdaptiveContentWidth.Focus,
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
             ),
-            slots = AppSecondaryPageSlots(headingPrefix = {
-                state.expense?.takeUnless { state.timelineExpanded }?.let {
-                    ExpenseCategoryMark(it.category, AppListDensity.Standard)
-                }
-            }),
+            slots = factPageActions(state, viewModel::openCorrectionSheet),
         ) {
             AppStatusBanner(message = state.message, tone = state.messageTone)
             FactInputContinuitySection(state, viewModel)
@@ -114,6 +109,15 @@ fun ExpenseFactScreen(
 
     ExpenseFactSheetHosts(state = state, viewModel = viewModel)
 }
+
+private fun factPageActions(state: ExpenseFactUiState, onCorrect: () -> Unit) = AppSecondaryPageSlots(
+    bottomBar = if (state.expense != null && !state.timelineExpanded && !state.readOnly) ({
+        AppFloatingActionBar {
+            AppPrimaryButton(text = stringResource(R.string.expense_fact_correct_cta), onClick = onCorrect,
+                enabled = state.canStartCorrection, modifier = Modifier.fillMaxWidth())
+        }
+    }) else null,
+)
 
 @Composable
 private fun FactCorrectionSubmissions(state: ExpenseFactUiState, viewModel: ExpenseFactViewModel, onRepairRate: CorrectionRateAction) {
@@ -181,9 +185,7 @@ private fun FactContentSections(
         onToggleExpanded = viewModel::toggleTimelineExpanded,
         onLoadOlder = viewModel::loadOlderExpenseRevisions,
     )
-    if (state.readOnly) Text(stringResource(R.string.expense_fact_readonly_hint)) else
-        AppPrimaryButton(text = stringResource(R.string.expense_fact_correct_cta), onClick = viewModel::openCorrectionSheet,
-            enabled = state.canStartCorrection, modifier = Modifier.fillMaxWidth())
+    if (state.readOnly) Text(stringResource(R.string.expense_fact_readonly_hint))
     FactBillSplitSubmissions(state, viewModel)
     if (expense.canInitiateBillSplit(state.readOnly)) {
         ExpenseBillSplitInvitePanel(

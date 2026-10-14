@@ -85,6 +85,7 @@ class FactEntryNavigationTest {
         prepareFactCapture()
         installMainGraph()
         openFact()
+        compose.onNodeWithText(context.getString(R.string.expense_fact_correct_cta)).assertIsDisplayed()
         val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
         automation.waitForIdle(300, 3_000)
         saveConsumerArtPreview("fact-overview", requireNotNull(automation.takeScreenshot()))
@@ -99,7 +100,7 @@ class FactEntryNavigationTest {
         compose.onNodeWithText(context.getString(R.string.expense_fact_title)).performClick()
         waitForText(context.getString(R.string.expense_fact_original_spend))
         compose.onNodeWithText(context.getString(R.string.expense_fact_correct_cta))
-            .performScrollTo().performClick()
+            .assertIsDisplayed().performClick()
         waitForText(context.getString(R.string.expense_correction_sheet_title))
     }
 
@@ -729,7 +730,7 @@ class FactEntryNavigationTest {
         waitForText(context.getString(R.string.expense_fact_original_spend))
         compose.onNodeWithTag("expense-fact").assertIsDisplayed()
         waitForText("更正这笔账单")
-        compose.onNodeWithText("更正这笔账单").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("更正这笔账单").assertIsDisplayed()
         compose.runOnIdle {
             assertEquals(EXPENSE_ROUTE, outer.currentBackStackEntry?.destination?.route)
             assertEquals(42L, outer.currentBackStackEntry?.arguments?.getLong(EXPENSE_ID_ARG))

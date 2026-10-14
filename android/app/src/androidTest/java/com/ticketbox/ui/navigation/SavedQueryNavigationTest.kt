@@ -74,7 +74,7 @@ class SavedQueryNavigationTest {
         waitFor("便利店后来更正")
         capture("saved-query-after-detail")
         click("修改条件或名称")
-        waitFor("下次一键找到")
+        waitFor("名称")
         compose.onAllNodes(hasSetTextAction())[0].performScrollTo().performTextReplacement("每月家庭日用")
         capture("saved-query-editor")
         compose.onNode(hasText("保存这组查询") and hasClickAction()).performClick()

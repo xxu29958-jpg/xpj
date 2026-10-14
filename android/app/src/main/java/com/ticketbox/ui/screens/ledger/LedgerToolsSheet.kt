@@ -282,29 +282,15 @@ private fun LedgerToolsFooter(
     onDismiss: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+        AppPrimaryButton(
+            text = stringResource(R.string.ledger_tools_done),
+            modifier = Modifier.fillMaxWidth(),
+            onClick = onDismiss,
+        )
         if (hasUserFilters) {
-            AppAdaptiveEqualControlRow(
-                leading = { actionModifier ->
-                    AppSecondaryButton(
-                        text = stringResource(R.string.ledger_tools_clear_filters),
-                        modifier = actionModifier,
-                        onClick = onClearFilters,
-                    )
-                },
-                trailing = { actionModifier ->
-                    AppPrimaryButton(
-                        text = stringResource(R.string.ledger_tools_done),
-                        modifier = actionModifier,
-                        onClick = onDismiss,
-                    )
-                },
-            )
-        } else {
-            AppPrimaryButton(
-                text = stringResource(R.string.ledger_tools_done),
-                modifier = Modifier.fillMaxWidth(),
-                onClick = onDismiss,
-            )
+            androidx.compose.material3.TextButton(onClick = onClearFilters, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.ledger_tools_clear_filters))
+            }
         }
         if (showNoExport) {
             Text(

@@ -112,9 +112,10 @@ private fun SplitAgreementEditor(state: SplitAgreementUiState, model: SplitAgree
             AppSheetActionRow(primary = AppSheetAction(
                 text = stringResource(if (state.replacingProposalPublicId == null) R.string.split_agreement_propose
                     else R.string.split_agreement_submit_replacement),
-                onClick = model::propose, enabled = state.canPropose),
-                secondary = AppSheetAction(text = stringResource(R.string.debt_proposal_back_keep_draft),
-                    onClick = onClose, enabled = !state.submitting))
+                onClick = model::propose, enabled = state.canPropose))
+            TextButton(onClick = onClose, enabled = !state.submitting, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.debt_proposal_back_keep_draft))
+            }
         }) {
             DebtReadSource(state.fetchedAt, state.fromCache, state.loading)
             state.error?.let { Text(it.asString(), color = MaterialTheme.colorScheme.error) }

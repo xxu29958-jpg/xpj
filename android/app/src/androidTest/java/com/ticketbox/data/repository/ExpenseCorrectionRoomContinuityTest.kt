@@ -66,7 +66,7 @@ class ExpenseCorrectionRoomContinuityTest {
         }
         compose.waitUntil(10_000) { model.value?.uiState?.value?.factInputsReady == true &&
             model.value?.uiState?.value?.authoritativeRootReady == true }
-        compose.onNodeWithText("更正这笔账单").performScrollTo().performClick()
+        compose.onNodeWithText("更正这笔账单").assertIsDisplayed().performClick()
         compose.runOnIdle {
             model.value!!.updateCorrectionField(CorrectionScalarField.Category, "餐饮")
             model.value!!.updateCorrectionField(CorrectionScalarField.Reason, "核对小票后调整")
@@ -81,13 +81,13 @@ class ExpenseCorrectionRoomContinuityTest {
         fixture.network.current = fixture.network.current.copy(rowVersion = currentVersion, category = "购物")
         compose.runOnIdle { model.value!!.refreshCorrectionFact() }
         compose.waitUntil(10_000) { model.value?.correctionAvailability()?.review?.ready == true }
-        compose.onNodeWithText("按以上选择继续核对").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithText("按以上选择继续核对").assertIsDisplayed().assertIsNotEnabled()
         compose.onNodeWithText("改为我的选择，沿用更正原因").performScrollTo().performClick()
         compose.onNodeWithText("按以上选择继续核对").assertIsEnabled()
         compose.waitForIdle()
         automation.waitForIdle(300, 3_000)
         com.ticketbox.ui.saveConsumerArtPreview("correction-conflict", requireNotNull(automation.takeScreenshot()))
-        compose.onNodeWithText("按以上选择继续核对").performScrollTo().assertIsEnabled().performClick()
+        compose.onNodeWithText("按以上选择继续核对").assertIsDisplayed().assertIsEnabled().performClick()
         compose.runOnIdle {
             assertEquals(currentVersion, model.value!!.correctionBaseline?.rowVersion)
             assertEquals("餐饮", model.value!!.uiState.value.correction.category)
@@ -106,7 +106,7 @@ class ExpenseCorrectionRoomContinuityTest {
         }
         compose.waitUntil(10_000) { model.value?.uiState?.value?.factInputsReady == true &&
             model.value?.uiState?.value?.authoritativeRootReady == true }
-        compose.onNodeWithText("更正这笔账单").performScrollTo().performClick()
+        compose.onNodeWithText("更正这笔账单").assertIsDisplayed().performClick()
         compose.onAllNodes(hasSetTextAction())[0].performScrollTo().performTextReplacement("  核对原小票  ")
         keyboard.dismissAndWait(compose)
         compose.onNode(hasSetTextAction() and hasText(requireNotNull(fixture.network.current.merchant)))
@@ -127,11 +127,11 @@ class ExpenseCorrectionRoomContinuityTest {
         installModel()
         compose.waitUntil(10_000) { model.value?.uiState?.value?.factInputKeys?.contains("correction") == true &&
             model.value?.uiState?.value?.expense != null }
-        compose.onNodeWithText("继续更正账单").performScrollTo().performClick()
+        compose.onNodeWithText("继续更正账单").assertIsDisplayed().performClick()
         compose.onNode(hasSetTextAction() and hasText("  核对原小票  ")).performScrollTo().assertIsDisplayed()
         compose.onNode(hasSetTextAction() and hasText(" 00012.00 ")).performScrollTo().assertIsDisplayed()
         compose.onNode(hasSetTextAction() and hasText("NativeShop")).performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("保存更正").assertIsNotEnabled()
+        compose.onNodeWithText("按以上选择继续核对").assertIsDisplayed().assertIsNotEnabled()
         assertEquals(original, runBlocking {
             fixture.graph.expenseRepository.loadFactInputs(original.binding, original.expenseId).getOrThrow().single()
         })
@@ -148,7 +148,7 @@ class ExpenseCorrectionRoomContinuityTest {
             TicketboxTheme(skin = AppSkin.Paper) { ExpenseFactScreen(state, vm, {}, { _, _ -> }) }
         }
         compose.waitUntil(10_000) { model.value?.uiState?.value?.expenseLoadState == ExpenseDetailDataLoadState.Loaded }
-        compose.onNodeWithText("更正这笔账单").performScrollTo().performClick()
+        compose.onNodeWithText("更正这笔账单").assertIsDisplayed().performClick()
         compose.onAllNodes(hasSetTextAction())[0].performScrollTo().performTextReplacement("核对原小票")
         compose.onNode(hasSetTextAction() and hasText("10.00")).performScrollTo().performTextReplacement("12.00")
         compose.onNodeWithText("保存更正").performClick()

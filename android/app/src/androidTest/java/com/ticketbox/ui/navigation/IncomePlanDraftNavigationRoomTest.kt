@@ -38,6 +38,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.espresso.Espresso.closeSoftKeyboard
 import androidx.test.espresso.Espresso.pressBack
 import com.ticketbox.data.repository.IncomePlanActions
+import com.ticketbox.ui.RealKeyboard
 import com.ticketbox.R
 import com.ticketbox.data.repository.IncomePlanConnectedFixture
 import com.ticketbox.data.repository.IncomePlanPatch
@@ -61,6 +62,7 @@ import org.junit.Test
 /** Real outer MAIN_ROUTE and inner production plan routes; pop destroys the income entry. */
 class IncomePlanDraftNavigationRoomTest {
     @get:Rule val compose = createComposeRule()
+    @get:Rule val keyboard = RealKeyboard()
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val base = FactEntryNavigationHarness(context)
     private val income = IncomePlanConnectedFixture(context)
@@ -101,9 +103,10 @@ class IncomePlanDraftNavigationRoomTest {
         compose.onNodeWithText("100.00").performScrollTo().performTextReplacement("00120.00")
         val originalEditor = retainedEditor()
         val original = requireNotNull(originalEditor.state.value.session)
-        closeSoftKeyboard()
-        compose.waitForIdle()
-        pressBack()
+        compose.onNodeWithText("00120.00").performClick()
+        keyboard.assertActionAboveKeyboard(compose, context.getString(R.string.income_plan_sheet_save), "income-editor-keyboard")
+        keyboard.dismissAndWait(compose)
+        compose.onNodeWithText(context.getString(R.string.common_keep_draft_return)).assertIsDisplayed().performClick()
         compose.waitForIdle()
         compose.onNode(isDialog()).assertDoesNotExist()
         compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("九月工资计划"))
@@ -123,13 +126,13 @@ class IncomePlanDraftNavigationRoomTest {
         closeSoftKeyboard()
         compose.waitForIdle()
         com.ticketbox.ui.saveConsumerArtPreview("income-editor-resumed", compose.onNode(isDialog()).captureToImage().asAndroidBitmap())
-        compose.onNodeWithText("保存").assertIsDisplayed().assertIsEnabled().performClick()
+        compose.onNodeWithText("保存收入计划").assertIsDisplayed().assertIsEnabled().performClick()
         assertTrue(income.stored().isEmpty())
         assertEquals("00120.00", originalEditor.state.value.session?.draft?.amountYuanInput)
         compose.onNodeWithText("00120.00").performScrollTo().performTextReplacement("120.00")
         closeSoftKeyboard()
         compose.waitForIdle()
-        compose.onNodeWithText("保存").assertIsDisplayed().assertIsEnabled().performClick()
+        compose.onNodeWithText("保存收入计划").assertIsDisplayed().assertIsEnabled().performClick()
         compose.waitUntil(10_000) { income.stored().size == 1 && originalEditor.state.value.isSubmitting }
         val accepted = income.stored().single()
         compose.runOnIdle { assertTrue(inner.popBackStack()) }
@@ -191,7 +194,7 @@ class IncomePlanDraftNavigationRoomTest {
         compose.onNodeWithTag("income-creation-action").performClick()
         compose.onAllNodes(hasSetTextAction())[0].assertEditableTextEquals("十月临时稿")
         compose.onAllNodes(hasSetTextAction())[1].assertEditableTextEquals("00120.00")
-        compose.onNodeWithText(context.getString(R.string.income_plan_creation_discard)).performClick()
+        compose.onNodeWithText(context.getString(R.string.income_plan_creation_discard)).performScrollTo().performClick()
         compose.onNodeWithTag("income-creation-action").performClick()
         assertEquals("", compose.onAllNodes(hasSetTextAction())[0].fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
         assertEquals("", compose.onAllNodes(hasSetTextAction())[1].fetchSemanticsNode().config[SemanticsProperties.EditableText].text)

@@ -16,6 +16,9 @@ import com.ticketbox.ui.screens.recurring.RecurringSubmitUi
 import com.ticketbox.ui.screens.recurring.rememberRecurringEditorHostState
 import org.junit.Rule
 import org.junit.Test
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertSame
 
 class RecurringEditorRestorationTest {
     @get:Rule
@@ -56,6 +59,13 @@ class RecurringEditorRestorationTest {
                     merchant = "交通月票"
                     amountText = "1200"
                 }
+                val original = host.editor
+                host.keepDraft()
+                assertFalse(host.visible)
+                host.openEdit(item(), CurrencyCode.USD)
+                assertSame(original, host.editor)
+                assertNotNull(host.replacement)
+                host.cancelSwitch()
             }
             val session = host.editor?.session
             BasicText(
@@ -63,11 +73,14 @@ class RecurringEditorRestorationTest {
                     .joinToString("|"),
                 Modifier.testTag(EDITOR_STATE_TAG),
             )
+            BasicText(host.visible.toString(), Modifier.testTag("editor-visible"))
         }
         composeRule.runOnIdle(openAndFill)
         composeRule.onNodeWithTag(EDITOR_STATE_TAG).assertTextEquals("Create|JPY|交通月票|1200")
+        composeRule.onNodeWithTag("editor-visible").assertTextEquals("false")
         restorationTester.emulateSavedInstanceStateRestore()
         composeRule.onNodeWithTag(EDITOR_STATE_TAG).assertTextEquals("Create|JPY|交通月票|1200")
+        composeRule.onNodeWithTag("editor-visible").assertTextEquals("false")
     }
 
     @Test

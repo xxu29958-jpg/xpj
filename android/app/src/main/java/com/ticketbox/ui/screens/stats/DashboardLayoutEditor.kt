@@ -26,14 +26,13 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import com.ticketbox.R
 import com.ticketbox.domain.model.DashboardCard
-import com.ticketbox.ui.components.AppAction
-import com.ticketbox.ui.components.AppActionRow
+import com.ticketbox.ui.components.AppSheetAction
+import com.ticketbox.ui.components.AppSheetActionRow
 import com.ticketbox.ui.components.AppSheetScaffold
 import com.ticketbox.ui.components.AppStatusBanner
+import com.ticketbox.ui.components.AppBusyGuardedSheet
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.DashboardLayoutUiState
 
@@ -76,9 +75,8 @@ internal fun DashboardLayoutFeedback(state: DashboardLayoutUiState, actions: Das
 @Composable
 internal fun DashboardLayoutEditor(state: DashboardLayoutUiState, actions: DashboardLayoutActions) {
     val cards = state.draft ?: return
-    Dialog(
-        onDismissRequest = actions.onCancel,
-        properties = DialogProperties(dismissOnBackPress = !state.saving, dismissOnClickOutside = !state.saving),
+    AppBusyGuardedSheet(
+        isSubmitting = state.saving, onDismiss = actions.onCancel, skipPartiallyExpanded = true,
     ) {
         DashboardLayoutEditorContent(state, cards, actions)
     }
@@ -96,11 +94,13 @@ internal fun DashboardLayoutEditorContent(
             subtitle = stringResource(R.string.dashboard_editor_description),
             actions = {
                 state.message?.let { AppStatusBanner(message = it, tone = state.messageTone) }
-                AppActionRow(
-                    primary = AppAction(stringResource(if (state.saving) R.string.common_saving else R.string.dashboard_save),
+                AppSheetActionRow(
+                    primary = AppSheetAction(stringResource(if (state.saving) R.string.common_saving else R.string.dashboard_save),
                         actions.onSave, enabled = !state.saving),
-                    secondary = AppAction(stringResource(R.string.common_cancel), actions.onCancel, enabled = !state.saving),
                 )
+                TextButton(onClick = actions.onCancel, enabled = !state.saving, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.common_cancel))
+                }
             },
         ) {
             cards.forEachIndexed { index, card ->

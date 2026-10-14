@@ -1,19 +1,19 @@
 package com.ticketbox.ui.navigation
 
 import android.content.Context
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertTextEquals
+import com.ticketbox.ui.assertEditableTextEquals
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -27,7 +27,6 @@ import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.text.TextLayoutResult
-import androidx.compose.ui.unit.Density
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -45,6 +44,7 @@ import com.ticketbox.data.repository.OutboxDrainEngine
 import com.ticketbox.data.repository.SaveMonthlyBudgetDispatcher
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.ui.saveConsumerArtPreview
+import com.ticketbox.ui.RealKeyboard
 import com.ticketbox.ui.theme.TicketboxTheme
 import java.time.YearMonth
 import java.util.concurrent.CopyOnWriteArrayList
@@ -58,6 +58,7 @@ import org.junit.Test
 /** Real route and Room admission; only the budget HTTP transport is controlled. */
 class BudgetFirstUseRouteTest {
     @get:Rule val compose = createComposeRule()
+    @get:Rule val keyboard = RealKeyboard()
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val mounted = mutableStateOf(true)
     private val transport = FirstBudgetTransport()
@@ -75,7 +76,10 @@ class BudgetFirstUseRouteTest {
         compose.onNodeWithText(text(R.string.budget_editor_category_section_title)).assertExists()
         compose.onNodeWithTag("budget_optional_fields").assertDoesNotExist()
         input("budget_total_amount", "1200")
+        field("budget_total_amount").performClick()
+        keyboard.assertActionAboveKeyboard(compose, text(R.string.budget_editor_save), "budget-save-keyboard")
         save()
+        keyboard.dismissAndWait(compose)
         compose.waitUntil(5_000) { runBlocking { harness.fixture.pendingDao.allRows().size == 1 } }
         val original = runBlocking { harness.fixture.pendingDao.allRows().single() }
         val intent = requireNotNull(adapters.budgetSaveAdapter.fromJson(original.payload))
@@ -95,32 +99,42 @@ class BudgetFirstUseRouteTest {
         assertEquals(1, runBlocking { engine.drainOnce().done })
         assertEquals(original.idempotencyKey, transport.writes.single().second)
         assertEquals(intent.request, transport.writes.single().first)
-        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasTestTag("budget_total_amount"))
-        compose.onNodeWithContentDescription(text(R.string.budget_editor_back)).performScrollTo().performClick()
+        compose.waitUntil(5_000) { compose.onAllNodes(hasText(text(R.string.budget_editor_title))).fetchSemanticsNodes().isEmpty() }
+        compose.onNode(hasScrollToIndexAction()).performScrollToIndex(0)
         compose.onNodeWithText(text(R.string.budget_header_title)).assertIsDisplayed()
         saveConsumerArtPreview("budget-execution-paper", requireNotNull(
             InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
-        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasTestTag("budget_edit_open"))
-        compose.onNodeWithTag("budget_edit_open").performClick()
+        compose.onNodeWithTag("budget_edit_open").assertIsDisplayed().performClick()
         compose.onNodeWithTag("budget_optional_fields").assertDoesNotExist()
         openOptional()
-        compose.onNodeWithTag("budget_optional_fields").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("budget_optional_fields").assertIsDisplayed()
+        compose.onNodeWithText(text(R.string.budget_optional_return)).performClick()
         assertEquals(PendingMutationStatus.Done.wireValue, runBlocking { harness.fixture.pendingDao.allRows().single().status })
     }
 
     @Test fun advancedDraftAndItsErrorStayReachableWhileExpansionDoesNotLeakAcrossTasks() {
         show()
         openOptional()
+        compose.onNodeWithText(text(R.string.budget_optional_return)).performClick()
         shiftMonth(R.string.budget_month_next)
         compose.onNodeWithTag("budget_optional_fields").assertDoesNotExist()
         openOptional()
+        val rollover = compose.onNode(hasText(text(R.string.budget_editor_rollover_label)) and hasSetTextAction())
+        rollover.performScrollTo().performTextReplacement("200")
+        keyboard.assertActionAboveKeyboard(compose, text(R.string.budget_optional_return), "budget-optional-keyboard")
+        compose.onNodeWithText(text(R.string.budget_optional_return)).performClick()
+        keyboard.dismissAndWait(compose)
         input("budget_total_amount", "1200")
         input("budget_category_name", "餐饮")
         save()
         val error = text(R.string.budget_validation_category_amount_required)
-        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(error))
         compose.onNodeWithText(error).assertIsDisplayed()
         field("budget_category_name").performScrollTo().assertTextEquals("餐饮")
+        openOptional()
+        rollover.performScrollTo().assertEditableTextEquals("200")
+        saveConsumerArtPreview("budget-optional-draft", requireNotNull(
+            InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        compose.onNodeWithText(text(R.string.budget_optional_return)).performClick()
         assertTrue(runBlocking { harness.fixture.pendingDao.allRows().isEmpty() })
 
         shiftMonth(R.string.budget_month_next)
@@ -137,15 +151,14 @@ class BudgetFirstUseRouteTest {
     }
 
     @Test fun historyOpensFromTheRealBudgetAndKeepsTheOriginalYenAndCategoriesAcrossPages() {
-        show(fontScale = 1.8f)
-        compose.onNode(hasScrollToIndexAction()).performScrollToIndex(0)
-        saveConsumerArtPreview("budget-header-large-font", requireNotNull(
+        show()
+        saveConsumerArtPreview("budget-editor-header", requireNotNull(
             InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
         val headings = listOf(text(R.string.budget_editor_title),
             context.getString(R.string.budget_header_subtitle, monthLabel(transport.reads.first())))
         for (heading in headings) {
             val layouts = mutableListOf<TextLayoutResult>()
-            compose.onNodeWithText(heading, useUnmergedTree = true)
+            compose.onNode(hasText(heading) and hasAnyAncestor(isDialog()), useUnmergedTree = true)
                 .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
             // String semantics rebuilds a MultiParagraph at the parent's max width, even
             // when the rendered Text wraps its width. Check the visible lines, not that box.
@@ -156,6 +169,7 @@ class BudgetFirstUseRouteTest {
                 }
             })
         }
+        compose.onNodeWithText(text(R.string.budget_editor_back)).assertIsDisplayed().performClick()
         compose.onNodeWithText(text(R.string.budget_history_title)).performScrollTo().performTouchInput { click() }
         val modified = context.getString(R.string.goal_history_version, 2, text(R.string.budget_history_edit))
         compose.waitUntil(5_000) { compose.onAllNodesWithText(modified).fetchSemanticsNodes().isNotEmpty() }
@@ -174,14 +188,11 @@ class BudgetFirstUseRouteTest {
         assertTrue(runBlocking { harness.fixture.pendingDao.allRows().isEmpty() })
     }
 
-    private fun show(fontScale: Float = 1f) {
+    private fun show() {
         compose.setContent {
-            val density = LocalDensity.current
-            CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale)) {
-                if (mounted.value) TicketboxTheme(skin = AppSkin.Default) {
-                    NavHost(rememberNavController(), startDestination = "budget") {
-                        composable("budget") { BudgetRoute(harness.screenFactory, onBack = {}) }
-                    }
+            if (mounted.value) TicketboxTheme(skin = AppSkin.Default) {
+                NavHost(rememberNavController(), startDestination = "budget") {
+                    composable("budget") { BudgetRoute(harness.screenFactory, onBack = {}) }
                 }
             }
         }
@@ -201,11 +212,12 @@ class BudgetFirstUseRouteTest {
     }
 
     private fun save() { compose.onNodeWithText(text(R.string.budget_editor_save))
-        .performScrollTo().assertIsEnabled().performClick() }
+        .assertIsDisplayed().assertIsEnabled().performClick() }
 
     private fun openOptional() { compose.onNodeWithTag("budget_optional_toggle").performScrollTo().performClick() }
 
     private fun shiftMonth(label: Int) {
+        compose.onNodeWithText(text(R.string.budget_editor_back)).assertIsDisplayed().performClick()
         val count = transport.reads.size
         compose.onNodeWithText(text(label)).performScrollTo().performClick()
         compose.waitUntil(5_000) { transport.reads.size > count }

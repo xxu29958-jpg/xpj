@@ -134,7 +134,7 @@ class BudgetRecoveryNavigationRouteTest {
         val review = compose.onNodeWithText(context.getString(R.string.arrangement_review)).performScrollTo()
         review.assertIsDisplayed()
         if (readOnly) review.assertIsNotEnabled()
-        compose.onNodeWithText(context.getString(R.string.arrangement_save)).performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithText(context.getString(R.string.arrangement_save)).assertIsDisplayed().assertIsNotEnabled()
         assertEquals(MainProductDestination.Secondary(ProductSecondaryPage.BudgetAdvice), harness.shell.activeDestination)
         assertEquals(MAIN_ROUTE, outer.currentBackStackEntry?.destination?.route)
         assertEquals("Opening must preserve the original key, body, binding, OCC and Conflict", original,
@@ -156,7 +156,7 @@ class BudgetRecoveryNavigationRouteTest {
         if (!readOnly) {
             review.performScrollTo().performClick()
             waitForText(context.getString(R.string.arrangement_reviewed))
-            compose.onNodeWithText(context.getString(R.string.arrangement_save)).performScrollTo().assertIsNotEnabled()
+            compose.onNodeWithText(context.getString(R.string.arrangement_save)).assertIsDisplayed().assertIsNotEnabled()
             assertEquals(original, harness.fixture.stored().single())
             val reviewed = MonthlyArrangementDraft("JPY", "3000", "500", 2, true)
             compose.waitUntil(5_000) { runBlocking { repository.arrangementDraft(binding, originalMonth) == reviewed } }

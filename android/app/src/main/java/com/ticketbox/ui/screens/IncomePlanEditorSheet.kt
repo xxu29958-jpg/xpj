@@ -25,6 +25,7 @@ internal data class IncomePlanEditSheetCallbacks(
     val onSubmit: () -> Unit,
     val onCancel: () -> Unit,
     val onArchive: () -> Unit,
+    val onDismiss: () -> Unit,
 )
 
 /** 编辑会话宿主：滑走/返回保留原草稿，明确取消才丢弃。 */
@@ -57,12 +58,13 @@ internal fun IncomePlanEditSheetHost(
                 onSubmit = editViewModel::submit,
                 onCancel = editViewModel::cancel,
                 onArchive = editViewModel::archiveFromEdit,
+                onDismiss = editViewModel::dismiss,
             ),
         )
     }
 }
 
-/** 编辑收入抽屉：共享表单 + 安静 danger 文字级归档 + 保存/放弃原稿；成功才由 ack 关闭。 */
+/** 编辑收入面板：保存为主动作，返回保留原稿；成功才由 ack 关闭。 */
 @Composable
 private fun EditIncomePlanSheet(
     state: IncomePlanEditUiState,
@@ -83,12 +85,10 @@ private fun EditIncomePlanSheet(
                     onClick = callbacks.onSubmit,
                     enabled = !state.isSubmitting && state.canModify && !state.succeeded,
                 ),
-                secondary = AppAction(
-                    text = stringResource(R.string.income_plan_creation_discard),
-                    onClick = callbacks.onCancel,
-                    enabled = !state.isSubmitting,
-                ),
             )
+            TextButton(onClick = callbacks.onDismiss, enabled = !state.isSubmitting, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.common_keep_draft_return))
+            }
         },
     ) {
         if (!state.canModify) Text(stringResource(R.string.common_readonly_ledger))
@@ -101,6 +101,9 @@ private fun EditIncomePlanSheet(
             fieldCallbacks = callbacks.fields,
             choiceCallbacks = callbacks.choices,
         )
+        TextButton(onClick = callbacks.onCancel, enabled = !state.isSubmitting) {
+            Text(stringResource(R.string.income_plan_creation_discard))
+        }
         Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
             TextButton(onClick = callbacks.onArchive, enabled = !state.isSubmitting && state.canModify && !state.succeeded) {
                 Text(

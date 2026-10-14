@@ -106,7 +106,6 @@ class PlanningFinancialRefreshRouteTest {
         waitForText("¥2,400")
         compose.runOnIdle { harness.shell.openSecondaryPage(ProductSecondaryPage.Budget) }
         waitForText(context.getString(R.string.budget_status_badge_active))
-        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasTestTag("budget_edit_open"))
         compose.onNodeWithTag("budget_edit_open").performClick()
         waitForText(context.getString(R.string.budget_editor_total_label))
         val field = compose.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag("budget_total_amount")),
@@ -121,15 +120,14 @@ class PlanningFinancialRefreshRouteTest {
         switchDomain(PrimaryDomain.Plans)
 
         compose.onNode(hasScrollToIndexAction()).performScrollToIndex(0)
-        compose.onNodeWithContentDescription(context.getString(R.string.budget_editor_back)).performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.budget_editor_back)).assertIsDisplayed().performClick()
         waitForText("¥4,400")
         compose.onNodeWithText("¥4,400").performScrollTo().assertIsDisplayed()
-        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasTestTag("budget_edit_open"))
         compose.onNodeWithTag("budget_edit_open").performClick()
         field.performScrollTo().assertTextEquals("3000.00")
         val completedBeforeBudget = completedExpenseCommands()
         assertEquals(2, completedBeforeBudget.size)
-        compose.onNodeWithText(context.getString(R.string.budget_editor_save)).performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.budget_editor_save)).assertIsDisplayed().performClick()
         compose.waitUntil(5_000) {
             runBlocking {
                 harness.fixture.pendingDao.allRows()

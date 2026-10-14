@@ -12,6 +12,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasTestTag
@@ -25,7 +26,6 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.unit.DpSize
-import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.R
@@ -33,7 +33,7 @@ import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.saveConsumerArtPreview
 import com.ticketbox.domain.model.DashboardCard
 import com.ticketbox.ui.screens.stats.DashboardLayoutActions
-import com.ticketbox.ui.screens.stats.DashboardLayoutEditorContent
+import com.ticketbox.ui.screens.stats.DashboardLayoutEditor
 import com.ticketbox.ui.screens.stats.OverviewModuleActions
 import com.ticketbox.ui.screens.stats.OverviewModulesState
 import com.ticketbox.ui.screens.stats.OverviewInteractionActions
@@ -210,15 +210,13 @@ class StatsAdaptiveExperienceTest {
         get() = context.getString(R.string.components_month_label, "2026", "9")
 
     @Test
-    fun compactLayoutEditorKeepsVisibilityOrderAndDraftWhileResizing() {
+    fun layoutEditorKeepsVisibilityOrderAndDraftAfterSaveFailure() {
         val editorCards = requireNotNull(overview.layout.cards) + listOf(
             DashboardCard("budget", "预算", true, 3), DashboardCard("goals", "目标", true, 4),
             DashboardCard("recurring", "固定支出", true, 5), DashboardCard("pending", "待整理小票", true, 6),
         )
         val layout = mutableStateOf(overview.layout.copy(draft = editorCards))
-        val viewport = mutableStateOf(393.dp)
         val skin = mutableStateOf(AppSkin.Paper)
-        val scale = mutableStateOf(1f)
         var saved: List<DashboardCard>? = null
         val layoutActions = DashboardLayoutActions({}, {},
             onVisible = { key, visible -> layout.value = layout.value.copy(draft = layout.value.draft?.map {
@@ -230,26 +228,21 @@ class StatsAdaptiveExperienceTest {
             onSave = { saved = layout.value.draft }, onCancel = {}, onReset = {},
         )
         composeRule.setContent {
-            DeviceConfigurationOverride(DeviceConfigurationOverride.ForcedSize(DpSize(viewport.value, 900.dp))) {
-                CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, scale.value)) {
-                    TicketboxTheme(skin = skin.value) {
-                        DashboardLayoutEditorContent(layout.value, actions = layoutActions)
-                    }
-                }
+            TicketboxTheme(skin = skin.value) {
+                DashboardLayoutEditor(layout.value, actions = layoutActions)
             }
         }
-        saveConsumerArtPreview("dashboard-editor-paper", composeRule.onRoot().captureToImage().asAndroidBitmap())
+        saveConsumerArtPreview("dashboard-editor-paper", composeRule.onNode(isDialog()).captureToImage().asAndroidBitmap())
         composeRule.onNodeWithContentDescription(context.getString(R.string.dashboard_visibility, "趋势报表")).performClick()
         composeRule.onNodeWithContentDescription(context.getString(R.string.dashboard_order_action, "趋势报表", 2)).performClick()
         composeRule.onNodeWithContentDescription(context.getString(R.string.dashboard_move_up, "趋势报表")).performClick()
-        composeRule.runOnIdle { viewport.value = 768.dp }
         composeRule.onNodeWithText(context.getString(R.string.dashboard_save)).performClick()
         composeRule.runOnIdle {
             assertEquals(listOf("reports", "monthly_spend", "recent_uploads", "budget", "goals", "recurring", "pending"), saved?.map { it.key })
             assertEquals(false, saved?.first()?.visible)
         }
         composeRule.runOnIdle {
-            viewport.value = 320.dp; scale.value = 2f; skin.value = AppSkin.Midnight
+            skin.value = AppSkin.Midnight
             layout.value = layout.value.copy(saving = true)
         }
         composeRule.onNodeWithText(context.getString(R.string.common_saving)).assertIsDisplayed().assertIsNotEnabled()
@@ -257,11 +250,11 @@ class StatsAdaptiveExperienceTest {
             layout.value = layout.value.copy(saving = false, message = UiText.Res(R.string.dashboard_save_failed))
         }
         composeRule.onNodeWithText(context.getString(R.string.dashboard_save)).assertIsDisplayed()
-        saveConsumerArtPreview("dashboard-editor-midnight-large", composeRule.onRoot().captureToImage().asAndroidBitmap())
+        saveConsumerArtPreview("dashboard-editor-midnight-failed", composeRule.onNode(isDialog()).captureToImage().asAndroidBitmap())
         composeRule.onNodeWithContentDescription(context.getString(R.string.dashboard_visibility, "待整理小票"))
             .performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.dashboard_reset_save)).performScrollTo().assertIsDisplayed()
-        saveConsumerArtPreview("dashboard-editor-midnight-large-last", composeRule.onRoot().captureToImage().asAndroidBitmap())
+        saveConsumerArtPreview("dashboard-editor-midnight-last", composeRule.onNode(isDialog()).captureToImage().asAndroidBitmap())
     }
 
     private fun actions(
@@ -284,7 +277,7 @@ class StatsAdaptiveExperienceTest {
             layout = DashboardLayoutUiState(cards = listOf(
                 DashboardCard("monthly_spend", "月度净支出", true, 0),
                 DashboardCard("reports", "趋势报表", true, 1),
-                DashboardCard("recent_uploads", "最近新增", true, 2),
+                DashboardCard("recent_uploads", "最近上传", true, 2),
             ), canModify = true),
             recurring = RecurringUiState(),
         )

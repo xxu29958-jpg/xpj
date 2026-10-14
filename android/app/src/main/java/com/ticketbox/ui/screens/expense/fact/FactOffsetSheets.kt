@@ -133,12 +133,10 @@ private fun OffsetFormActions(state: ExpenseFactUiState, viewModel: ExpenseFactV
             enabled = viewModel.canSubmitOffset() && reviewed,
             onClick = viewModel::submitOffset,
         ),
-        secondary = AppSheetAction(
-            text = stringResource(R.string.expense_fact_input_close),
-            enabled = !form.saving,
-            onClick = viewModel::closeOffsetSheet,
-        ),
     )
+    TextButton(onClick = viewModel::closeOffsetSheet, enabled = !form.saving, modifier = Modifier.fillMaxWidth()) {
+        Text(stringResource(R.string.expense_fact_input_close))
+    }
 }
 
 @Composable
@@ -322,12 +320,10 @@ private fun FactVoidOffsetSheet(
                         enabled = viewModel.canSubmitVoidOffset(),
                         onClick = viewModel::submitVoidOffset,
                     ),
-                    secondary = AppSheetAction(
-                        text = stringResource(R.string.expense_fact_input_close),
-                        enabled = !form.saving,
-                        onClick = viewModel::closeVoidOffsetSheet,
-                    ),
                 )
+                TextButton(onClick = viewModel::closeVoidOffsetSheet, enabled = !form.saving, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.expense_fact_input_close))
+                }
             },
         ) {
             Column(

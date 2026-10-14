@@ -113,8 +113,7 @@ class BudgetOfflineReadingConnectedTest {
         compose.onNodeWithText("¥789").assertIsDisplayed()
         preview("budget-offline-plans")
         compose.onNodeWithTag("plan_destination_budget").performScrollTo().performClick()
-        // The pending-command summary can put the editor below the lazy viewport.
-        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasTestTag("budget_total_amount"))
+        // The original pending draft remains reachable in the native editor.
         // The original queued command locks editing; disabled fields retain text but have no SetText action.
         val originalAmount = SemanticsMatcher.keyIsDefined(SemanticsProperties.EditableText) and
             hasAnyAncestor(hasTestTag("budget_total_amount"))
@@ -128,7 +127,7 @@ class BudgetOfflineReadingConnectedTest {
         assertEquals("Reopening must not manufacture a new fetch time", originalReadTime, readTime())
         assertTrue(sourceText().contains("离线"))
         preview("budget-offline-editor")
-        compose.onNodeWithContentDescription(context.getString(R.string.budget_editor_back)).performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.budget_editor_back)).assertIsDisplayed().performClick()
         verifyCachedBudgetPresentation(month)
 
         compose.runOnIdle { harness.shell.selectPrimaryDomain(PrimaryDomain.Insights.key) }

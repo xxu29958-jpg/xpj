@@ -60,7 +60,7 @@ class IncomePlanCreationRoomTest {
         compose.onAllNodes(hasSetTextAction())[1].performScrollTo().performTextInput("1200")
         closeSoftKeyboard()
         compose.waitForIdle()
-        compose.onNodeWithText("保存").performClick()
+        compose.onNodeWithText("保存收入计划").performClick()
         compose.waitUntil(10_000) { fixture.stored().size == 1 }
         val original = fixture.stored().single()
         assertEquals(0, fixture.network.creationCalls.size)
@@ -98,7 +98,7 @@ class IncomePlanCreationRoomTest {
         compose.waitForIdle()
         val oldDraft = requireNotNull(creator.value?.state?.value?.session)
         val beforeSave = compose.runOnIdle { requireNotNull(creatorOwner).save() }
-        compose.onNodeWithText("保存").performClick()
+        compose.onNodeWithText("保存收入计划").performClick()
         compose.waitUntil(10_000) { fixture.stored().size == 1 && creator.value?.state?.value?.isSubmitting == true }
         val accepted = fixture.stored().single()
         assertEquals(oldDraft.creationKey, accepted["idempotencyKey"])
@@ -132,7 +132,7 @@ class IncomePlanCreationRoomTest {
         compose.onAllNodes(hasSetTextAction())[1].performScrollTo().performTextInput("120.00")
         closeSoftKeyboard()
         compose.waitForIdle()
-        compose.onNodeWithText("保存").performClick()
+        compose.onNodeWithText("保存收入计划").performClick()
         compose.waitUntil(10_000) { fixture.stored().size == 1 && creator.value?.state?.value?.isSubmitting == true }
         val original = requireNotNull(creator.value?.state?.value?.session)
         fixture.network.loseResponse = false

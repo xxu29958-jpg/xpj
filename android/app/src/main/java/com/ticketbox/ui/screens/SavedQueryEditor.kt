@@ -29,14 +29,11 @@ import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ManagedTag
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.asString
-import com.ticketbox.ui.components.AppFloatingActionBar
 import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppOutlinedButtonOptions
-import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppSecondaryButton
-import com.ticketbox.ui.components.AppSecondaryPageChrome
-import com.ticketbox.ui.components.AppSecondaryScrollableColumn
+import com.ticketbox.ui.components.AppSheetScaffold
 import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
 import com.ticketbox.ui.components.AppTextInputState
@@ -58,14 +55,11 @@ data class SavedQueryEditorContext(val ledgerName: String, val tags: List<Manage
 fun SavedQueryEditor(draft: SavedQueryDraft, state: SavedQueryDraftState, context: SavedQueryEditorContext, actions: SavedQueryEditorActions) {
     val deleting = draft.command == SavedQueryCommand.Delete
     val enabled = state.canEdit(draft)
-    AppSecondaryScrollableColumn(
-        chrome = AppSecondaryPageChrome(AppPageRole.Ledger,
-            stringResource(if (deleting) R.string.saved_query_delete else R.string.saved_query_editor_title),
-            stringResource(if (deleting) R.string.saved_query_delete_intro else R.string.saved_query_intro),
-            stringResource(R.string.saved_query_back), actions.back,
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)),
-        bottomBar = {
-            AppFloatingActionBar {
+    AppSheetScaffold(
+        title = stringResource(if (deleting) R.string.saved_query_delete else R.string.saved_query_save),
+        subtitle = stringResource(if (deleting) R.string.saved_query_delete_intro else R.string.saved_query_intro),
+        actions = {
+            Column {
                 AppPrimaryButton(stringResource(when {
                     draft.phase == "accepted" -> R.string.saved_query_done
                     draft.phase == "unconfirmed" -> R.string.saved_query_replay
@@ -74,6 +68,9 @@ fun SavedQueryEditor(draft: SavedQueryDraft, state: SavedQueryDraftState, contex
                 }), modifier = Modifier.fillMaxWidth(),
                     enabled = if (draft.phase == "accepted") !state.busy && draft.binding == state.binding else state.canSubmit(draft),
                     onClick = if (draft.phase == "accepted") actions.acknowledge else actions.submit)
+                TextButton(onClick = actions.back, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.common_keep_draft_return))
+                }
             }
         },
     ) {

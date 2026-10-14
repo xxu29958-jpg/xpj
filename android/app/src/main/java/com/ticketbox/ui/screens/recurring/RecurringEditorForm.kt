@@ -74,6 +74,7 @@ internal data class RecurringEditorFormCallbacks(
     val onCancel: () -> Unit,
     val onCurrency: ((CurrencyCode) -> Unit)? = null,
     val onHistory: (() -> Unit)? = null,
+    val onDiscard: (() -> Unit)? = null,
 )
 
 internal data class RecurringEditorFeedback(
@@ -139,6 +140,11 @@ internal fun RecurringEditorForm(
             feedback = feedback,
             state = state,
         )
+        callbacks.onDiscard?.let { discard ->
+            TextButton(onClick = discard, enabled = !state.awaiting) {
+                Text(stringResource(R.string.recurring_draft_discard))
+            }
+        }
     }
 }
 
@@ -202,12 +208,10 @@ private fun RecurringEditorActions(
             enabled = state.primaryEnabled,
             onClick = callbacks.onSubmit,
         ),
-        secondary = AppSheetAction(
-            text = stringResource(R.string.common_cancel),
-            enabled = !state.awaiting,
-            onClick = callbacks.onCancel,
-        ),
     )
+    TextButton(onClick = callbacks.onCancel, enabled = !state.awaiting, modifier = Modifier.fillMaxWidth()) {
+        Text(stringResource(R.string.common_keep_draft_return))
+    }
 }
 
 @Composable
