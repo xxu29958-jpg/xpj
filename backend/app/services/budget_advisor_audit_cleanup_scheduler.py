@@ -75,6 +75,7 @@ def _scheduler_loop(stop_event: threading.Event) -> None:
             with SessionLocal() as db:
                 deleted = cleanup_expired_audit_logs(db)
             _status.success_count += 1
+            _status.last_error = None
             _status.last_success_at = datetime.now(attempted_at.tzinfo)
             logger.info("budget advisor audit cleanup: deleted=%s", deleted)
         except Exception as exc:  # noqa: BLE001 - daemon thread guard

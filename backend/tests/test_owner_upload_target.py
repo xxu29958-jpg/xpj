@@ -44,8 +44,9 @@ def test_selected_ledger_owns_the_link_and_actual_uploaded_receipt(owner, identi
     with SessionLocal() as db:
         existing = {row.public_id: row.ledger_id for row in db.scalars(select(UploadLink))}
         default = owner_console_service.get_default_ledger_id(db)
-    page = owner.get("/owner/upload-links")
+    page = owner.get("/owner/upload-links", params={"ledger_id": target})
     assert 'name="ledger_id"' in page.text and f'value="{target}"' in page.text
+    assert f'value="{target}" selected' in page.text
     created = owner.post("/owner/upload-links", data={"ledger_id": target})
     assert created.status_code == 200, created.text
     assert f'value="{target}" selected' in created.text

@@ -65,6 +65,8 @@ def test_selected_ledger_records_are_visible_on_all_three_pages(owner, ledgers):
         assert result.status_code == 200, result.text
         assert f'value="{target}" selected' in result.text
         assert visible in result.text and absent not in result.text
+        if page == "ai-advisor":
+            assert f'href="/web/budget-advise?ledger_id={target}"' in result.text
 
 
 @pytest.mark.parametrize("action", ["withdraw", "dismiss", "cleanup"])
