@@ -58,8 +58,10 @@ def test_cleanup_requires_acknowledgement_and_keeps_the_saved_upload_choices(ope
     assert saved.budget_advisor_audit_retention_days == 0 and saved.device_cleanup_retention_days == 7
     assert saved.public_base_url == "https://upload.example"
     form.update(learning_cleanup_auto_enabled=False, recycle_bin_retention_days="1")
-    with pytest.raises(AppError, match="恢复窗口"):
+    before = operations_file.read_bytes()
+    with pytest.raises(AppError, match="确认清理影响"):
         operations.save_maintenance(form, confirmed=False)
+    assert operations_file.read_bytes() == before
     form["recycle_bin_retention_days"] = str(saved.recycle_bin_retention_days)
     operations.save_maintenance(form, confirmed=False)
     assert config.get_settings().learning_cleanup_auto_enabled is False
