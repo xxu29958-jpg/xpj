@@ -7,7 +7,7 @@ from datetime import date, datetime
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.fx_constants import CURRENCY_SYMBOLS, FX_STATUS_PENDING, NO_FRACTION_CURRENCY_CODES
+from app.fx_constants import CURRENCY_SYMBOLS, FX_STATUS_PENDING
 from app.money_contract import projection_sum_to_int
 from app.routes._web_accounting_time import known_instant_label
 from app.schemas import ConfirmedExpenseStreamItem
@@ -16,6 +16,7 @@ from app.services.currency_common import (
     currency_input_metadata,
     minor_amount_label,
     minor_amount_value,
+    minor_unit_digits,
 )
 from app.services.data_quality_service import (
     is_uncategorized_expense_category,
@@ -124,11 +125,12 @@ def _amount_segments(
         label="web.amount_segments",
         empty_is_zero=True,
     )
-    if code in NO_FRACTION_CURRENCY_CODES:
+    digits = minor_unit_digits(code)
+    if digits == 0:
         return {"cur": symbol, "int": f"{cents:,}", "dec": ""}
     sign = "-" if cents < 0 else ""
-    whole, frac = divmod(abs(cents), 100)
-    return {"cur": symbol, "int": f"{sign}{whole:,}", "dec": f".{frac:02d}"}
+    whole, frac = divmod(abs(cents), 10**digits)
+    return {"cur": symbol, "int": f"{sign}{whole:,}", "dec": f".{frac:0{digits}d}"}
 
 
 def _exchange_rate_source_label(source: str) -> str:

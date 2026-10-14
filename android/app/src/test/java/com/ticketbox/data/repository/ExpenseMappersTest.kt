@@ -20,6 +20,27 @@ import kotlin.test.assertFailsWith
 
 class ExpenseMappersTest {
     @Test
+    fun threeDecimalAmountSurvivesApiCacheAndCreateSubmission() {
+        val dto = expenseDto(publicId = "kwd-original").copy(
+            originalCurrencyCode = "KWD", originalAmountMinor = 12_345L,
+            homeCurrency = "KWD", amountCents = 12_345L,
+        )
+        val online = dto.toDomain()
+        val cached = dto.toEntity(ledgerId = "owner").toDomain()
+        for (expense in listOf(online, cached)) {
+            assertEquals("12.345", expense.originalAmount)
+            assertEquals(12_345L, expense.originalAmountMinor)
+        }
+        val draft = ExpenseDraft(
+            amountCents = null, originalCurrencyCode = CurrencyCode.KWD,
+            originalAmountMinor = 12_345L, ledgerHomeCurrency = CurrencyCode.KWD,
+            merchant = "Kuwait", category = "交通", note = "原备注",
+            expenseTime = cached.expenseTime, tags = null, valueScore = null, regretScore = null,
+        )
+        assertEquals("12.345", draft.toManualCreateRequest("kwd-original").originalAmount)
+    }
+
+    @Test
     fun mapsPublicIdFromServer() {
         val expense = expenseDto(publicId = "691da31d-e8d7-49b0-bece-ec6f61c044b2").toDomain()
 

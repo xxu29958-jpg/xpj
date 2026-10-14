@@ -26,11 +26,11 @@ from sqlalchemy.orm import Mapped, mapped_column, validates
 from app.attachment_cleanup_contract import ATTACHMENT_CLEANUP_REQUEST_CHECK_SQL, CleanupRequest
 from app.database_model_registry import Base
 from app.fx_constants import (
+    CURRENCY_MINOR_UNIT_DIGITS,
     DEFAULT_HOME_CURRENCY_CODE,
     FX_SOURCE_BASE,
     FX_STATUS_PENDING,
     FX_STATUS_READY,
-    NO_FRACTION_CURRENCY_CODES,
 )
 from app.models.ledger_calendar import time_evidence_constraints
 from app.money_contract import money_check_constraints_for_table
@@ -222,10 +222,8 @@ class Expense(Base):
     def original_amount(self) -> Decimal | None:
         if self.original_amount_minor is None:
             return None
-        units = 0 if self.original_currency_code in NO_FRACTION_CURRENCY_CODES else 2
-        if units == 0:
-            return Decimal(self.original_amount_minor)
-        return Decimal(self.original_amount_minor) / Decimal(100)
+        digits = CURRENCY_MINOR_UNIT_DIGITS[self.original_currency_code]
+        return Decimal(self.original_amount_minor) / Decimal(10**digits)
 
     @property
     def fx_rate(self) -> Decimal | None:
