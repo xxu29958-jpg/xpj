@@ -68,7 +68,7 @@ def test_product_currency_minor_metadata_is_explicit_and_closed() -> None:
     assert {code: minor_unit_digits(code) for code in DEFAULT_SUPPORTED_CURRENCY_CODES} == CURRENCY_MINOR_UNIT_DIGITS
 
 
-@pytest.mark.parametrize("currency_code", ["KWD", "人民币", "US1"])
+@pytest.mark.parametrize("currency_code", ["ZZZ", "人民币", "US1"])
 def test_unknown_or_non_ascii_currency_code_fails_closed(
     currency_code: str,
 ) -> None:
@@ -82,7 +82,7 @@ def test_unknown_or_non_ascii_currency_code_fails_closed(
     [
         pytest.param(
             "FX_SUPPORTED_CURRENCY_CODES",
-            "CNY,KWD",
+            "CNY,ZZZ",
             supported_currency_codes,
             id="unknown-supported-code",
         ),

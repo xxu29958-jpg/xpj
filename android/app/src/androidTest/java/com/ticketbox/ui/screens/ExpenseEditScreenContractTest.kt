@@ -6,6 +6,7 @@ import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -14,7 +15,9 @@ import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.test.espresso.Espresso.closeSoftKeyboard
 import androidx.test.platform.app.InstrumentationRegistry
+import com.ticketbox.data.repository.toRequest
 import com.ticketbox.domain.model.AppSkin
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.ProtectedImage
@@ -149,11 +152,17 @@ class ExpenseEditScreenContractTest {
     fun expenseTimeAndMoreSectionClicksStayStableAndSubmitDraft() {
         var retryCount = 0
         var savedDraft: ExpenseDraft? = null
+        val recorded = expense().copy(
+            amountCents = 12_345L, homeAmountCents = 12_345L,
+            homeCurrency = CurrencyCode.KWD, originalCurrency = CurrencyCode.KWD,
+            originalCurrencyCode = CurrencyCode.KWD, originalAmountMinor = 12_345L,
+        )
 
         composeRule.setContent {
             TicketboxTheme(skin = skin) {
                 ExpenseEditScreen(
                     screenState = expenseEditScreenState(
+                        expense = recorded,
                         editState = ExpenseEditUiState(
                             categories = listOf("餐饮", "交通", "其他"),
                         ),
@@ -170,6 +179,22 @@ class ExpenseEditScreenContractTest {
             }
         }
 
+        composeRule.onNode(hasSetTextAction() and hasText("12.345")).assertIsDisplayed()
+        composeRule.onNodeWithTag("expense-edit-more-row").performScrollTo().performClick()
+        composeRule.onNode(hasSetTextAction() and hasText(recorded.note!!))
+            .performScrollTo().performTextReplacement("仅改备注")
+        closeSoftKeyboard()
+        composeRule.onNodeWithText("保存").performClick()
+        composeRule.runOnIdle {
+            val request = requireNotNull(savedDraft).toRequest(recorded)
+            assertEquals("仅改备注", request.note)
+            assertEquals(null, request.originalAmount)
+            assertEquals(recorded.rowVersion, request.expectedRowVersion)
+        }
+        composeRule.onNode(hasSetTextAction() and hasText("12.345"))
+            .performScrollTo().performTextReplacement("12.346")
+        closeSoftKeyboard()
+        capture("review-kwd-edited-amount")
         composeRule.onNodeWithTag("expense-edit-time-section").performScrollTo().performClick()
         // 日期 picker 的主路径是点时间行本身；「选时间」仍是行内安静动作。
         composeRule.onNodeWithTag(TAG_TIME_ROW).performScrollTo().performClick()
@@ -180,7 +205,6 @@ class ExpenseEditScreenContractTest {
         composeRule.onNodeWithText("选择时间").assertIsDisplayed()
         composeRule.onNodeWithText("取消").performClick()
 
-        composeRule.onNodeWithTag("expense-edit-more-row").performScrollTo().performClick()
         // Locate the 「更多记录」inputs by stable testTag, not the Material3 label/value text node
         // (which isn't reliably exposed in the semantics tree — was the flaky "标签" lookup).
         composeRule.onNodeWithTag(TAG_TAGS_FIELD).performScrollTo().assertIsDisplayed()
@@ -200,6 +224,10 @@ class ExpenseEditScreenContractTest {
             assertEquals(3, draft.valueScore)
             assertEquals(1, draft.regretScore)
             assertEquals("2026-05-12T10:15:00Z", draft.expenseTime)
+            assertEquals(12_346L, draft.originalAmountMinor)
+            val request = draft.toRequest(recorded)
+            assertEquals("12.346", request.originalAmount)
+            assertEquals(recorded.rowVersion, request.expectedRowVersion)
         }
     }
 

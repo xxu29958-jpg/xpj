@@ -47,23 +47,30 @@ import com.ticketbox.viewmodel.BudgetAdviceLoadState
 import com.ticketbox.viewmodel.BudgetAdviceUiState
 import kotlin.math.roundToInt
 
+internal enum class BudgetAdvicePurpose(val title: Int, val back: Int) {
+    Arrangement(R.string.budget_advice_page_title, R.string.budget_advice_back_to_plan),
+    ReportRates(R.string.advice_reference_page_title, R.string.advice_reference_back_to_insights),
+    CorrectionRates(R.string.advice_reference_page_title, R.string.correction_rate_back),
+}
+
 @Composable
 internal fun BudgetAdviceScreen(
     state: BudgetAdviceUiState,
     actions: BudgetAdviceActions,
     onBack: () -> Unit,
-    correctionContinuation: Boolean = false,
+    purpose: BudgetAdvicePurpose = BudgetAdvicePurpose.Arrangement,
     onOpenBudget: (() -> Unit)? = null,
 ) {
+    val ratesOnly = purpose != BudgetAdvicePurpose.Arrangement
     AppSecondaryScrollableColumn(
         chrome = AppSecondaryPageChrome(
             role = AppPageRole.Stats,
-            title = stringResource(if (correctionContinuation) R.string.correction_rate_title else R.string.budget_advice_page_title),
-            subtitle = stringResource(
+            title = stringResource(purpose.title),
+            subtitle = if (ratesOnly) stringResource(R.string.advice_reference_page_body) else stringResource(
                 R.string.budget_advice_page_subtitle,
                 displayMonthLabel(state.month),
             ),
-            backText = stringResource(if (correctionContinuation) R.string.correction_rate_back else R.string.budget_advice_back_to_plan),
+            backText = stringResource(purpose.back),
             onBack = onBack,
             verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
         ),
@@ -73,9 +80,8 @@ internal fun BudgetAdviceScreen(
             },
         ),
     ) {
-        if (correctionContinuation) {
-            Text(stringResource(R.string.correction_rate_continuation))
-            ManualRateContent(state, actions)
+        if (ratesOnly) {
+            BudgetRateContent(state, actions, purpose)
             return@AppSecondaryScrollableColumn
         }
         BudgetAdviceInputsContent(state, actions, onOpenBudget)
@@ -85,6 +91,14 @@ internal fun BudgetAdviceScreen(
         }
         BudgetAdviceReferenceContent(state, actions)
     }
+}
+
+@Composable
+private fun BudgetRateContent(state: BudgetAdviceUiState, actions: BudgetAdviceActions, purpose: BudgetAdvicePurpose) {
+    state.arrangementMessage?.let { Text(it.asString(), color = MaterialTheme.colorScheme.error) }
+    if (purpose == BudgetAdvicePurpose.CorrectionRates) Text(stringResource(R.string.correction_rate_continuation))
+    if (purpose == BudgetAdvicePurpose.ReportRates && state.rateEditor == null) ReferenceRateLookup(state, actions)
+    ManualRateContent(state, actions)
 }
 
 @Composable

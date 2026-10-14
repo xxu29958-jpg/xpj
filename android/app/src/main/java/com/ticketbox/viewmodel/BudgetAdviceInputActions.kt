@@ -12,7 +12,9 @@ import java.time.YearMonth
 
 data class ManualRateEditor(val binding: LogicalSessionBinding, val currencyCode: String,
     val homeCurrencyCode: String, val rateDate: String, val current: ExchangeRateDto?,
-    val value: String, val reviewSubmissionId: Long? = null)
+    val value: String, val reviewSubmissionId: Long? = null,
+    val reference: com.ticketbox.data.remote.dto.ReferenceRatesDto? = null,
+    val manualEditing: Boolean = false)
 
 internal fun BudgetAdviceViewModel.observeAdviceAccess() {
     viewModelScope.launch {
@@ -74,8 +76,15 @@ fun BudgetAdviceViewModel.refreshInputs() {
         val inputs = snapshot.trialRequest?.let { repository.trialAdviceInputs(binding, snapshot.month, it, snapshot.reportingHomeCurrencyCode) }
             ?: repository.adviceInputs(binding, snapshot.month, snapshot.reportingHomeCurrencyCode)
         val rates = repository.exchangeRates(binding)
+        val home = inputs.getOrNull()?.homeCurrencyCode ?: snapshot.reportingHomeCurrencyCode
+        val reference = home?.let { repository.referenceRates(binding,
+            com.ticketbox.data.remote.dto.ReferenceRateRequestDto(it)) }
         if (_state.value.binding != binding || _state.value.month != snapshot.month || generation != inputGeneration) return@launch
         acceptAdviceInputs(inputs, rates, snapshot.inputs)
+        if (reference?.exceptionOrNull()?.isReadAccessDenied() == true) {
+            rejectArrangementRead(requireNotNull(reference.exceptionOrNull()))
+        } else _state.update { it.copy(referenceRates = reference?.getOrNull(),
+            referenceError = reference?.exceptionOrNull()?.toUiText(R.string.advice_reference_failed)) }
     }
 }
 

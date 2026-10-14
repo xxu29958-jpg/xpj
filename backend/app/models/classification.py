@@ -19,6 +19,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.currency_catalog import CURRENCY_SQL_LIST
 from app.database_model_registry import Base
 from app.money_contract import money_check_constraints_for_table
 from app.services.time_service import now_utc
@@ -28,7 +29,7 @@ from app.tenant_contract import DEFAULT_TENANT_ID
 class CategoryRule(Base):
     __tablename__ = "category_rules"
     __table_args__ = (*money_check_constraints_for_table("category_rules"),
-        CheckConstraint("home_currency_code IN ('CNY', 'USD', 'EUR', 'GBP', 'JPY', 'HKD', 'KRW')", name="ck_category_rule_currency"),)
+        CheckConstraint(f"home_currency_code IN ({CURRENCY_SQL_LIST})", name="ck_category_rule_currency"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     tenant_id: Mapped[str] = mapped_column(

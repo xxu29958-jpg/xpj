@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.currency_catalog import CURRENCY_CATALOG
 from app.database import get_db
 from app.errors import AppError
 from app.fx_constants import CURRENCY_SYMBOLS
@@ -30,15 +31,8 @@ from app.version import BACKEND_VERSION, STATIC_ASSET_VERSION
 router = APIRouter(prefix="/web", tags=["web"])
 
 _CONFIRM_REASON = "安装拥有者通过小票夹 Desktop 明确选择并确认本位币。"
-_CURRENCY_NAMES = {
-    "CNY": "人民币",
-    "USD": "美元",
-    "EUR": "欧元",
-    "GBP": "英镑",
-    "JPY": "日元",
-    "HKD": "港币",
-    "KRW": "韩元",
-}
+_CURRENCY_NAMES = {code: value[0] for code, value in CURRENCY_CATALOG.items()}
+
 _RETRYABLE_ERRORS = {
     "currency_binding_evidence_changed": "核对期间记录发生了变化。已重新检查，请再次确认。",
     "currency_binding_state_conflict": "本位币状态刚刚发生了变化。已重新检查当前结果。",

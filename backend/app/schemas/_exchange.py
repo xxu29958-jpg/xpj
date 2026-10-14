@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
@@ -54,6 +55,37 @@ class ExchangeRateResponse(BaseModel):
 
 class ExchangeRateListResponse(BaseModel):
     items: list[ExchangeRateResponse]
+
+
+class ReferenceRateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    currency_code: str | None = Field(default=None, min_length=3, max_length=3)
+    home_currency_code: str = Field(min_length=3, max_length=3)
+    rate_date: date | None = None
+
+
+class ReferenceRateResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    currency_code: str
+    home_currency_code: str
+    rate_date: date
+    rate_to_home: Decimal
+    source: str
+    fetched_at: datetime | None = None
+    verified_through: date | None = None
+
+    @field_serializer("rate_to_home")
+    def serialize_rate(self, value: Decimal) -> str:
+        return format(value, "f")
+
+
+class ReferenceRatesResponse(BaseModel):
+    provider: str
+    auto_enabled: bool
+    sync_state: Literal["ready", "waiting", "paused", "error"]
+    requested_date: date | None = None
+    effective: ReferenceRateResponse | None = None
+    items: list[ReferenceRateResponse]
 
 
 class ProjectionReferenceDto(BaseModel):

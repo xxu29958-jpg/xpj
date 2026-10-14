@@ -13,6 +13,7 @@
   <link rel="stylesheet" href="/static/web/product/components.css?v={{ asset_version }}">
   <link rel="stylesheet" href="/static/web/pages/currency-adoption.css?v={{ asset_version }}">
   <script defer src="/static/shared/csrf.js?v={{ asset_version }}"></script>
+  <script defer src="/static/web/currency-picker.js?v={{ asset_version }}" data-currency-names="{{ currency_names|tojson|forceescape }}"></script>
 </head>
 <body>
 <div class="currency-task">

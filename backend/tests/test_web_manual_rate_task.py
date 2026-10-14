@@ -158,7 +158,7 @@ def test_existing_rate_editor_keeps_the_reviewed_pair_and_date_fixed(task, monke
     monkeypatch.setattr(web_budget_fx, "list_exchange_rates", Mock(return_value=[current]))
     response = task.client.get("/web/budget-advise/rates", params=_form())
     assert response.status_code == 200, response.text
-    editor = response.text.split('<form method="post"', 1)[1].split('</form>', 1)[0]
+    editor = response.text.split('<form method="post" action="/web/budget-advise/rates"', 1)[1].split('</form>', 1)[0]
     assert 'type="hidden" name="currency_code" value="CNY"' in editor
     assert 'type="hidden" name="rate_date" value="2026-08-05"' in editor
     assert 'name="expected_row_version" value="2"' in editor

@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.config import Settings, get_settings
 from app.errors import AppError
+from app.fx_constants import FX_DEFAULT_URLS
 from app.services import runtime_settings_service as runtime
 from app.services.budget_advisor_service._models import BudgetInputs, CategorySnapshot
 from app.services.budget_advisor_service._provider_names import canonical_provider_name
@@ -18,7 +19,12 @@ from app.services.budget_advisor_service._providers import (
     _validate_base_url,
     get_budget_advisor,
 )
-from app.services.runtime_integration_settings import AdvisorSettingsProjection, FxSettingsProjection, advisor_payload
+from app.services.runtime_integration_settings import (
+    AdvisorSettingsProjection,
+    FxSettingsProjection,
+    advisor_payload,
+    validate_fx_url,
+)
 from app.services.runtime_settings_store import (
     RuntimeSettingsMutation,
     read_runtime_settings,
@@ -38,9 +44,10 @@ class AdvisorSettingsForm:
 @dataclass(frozen=True)
 class FxSettingsForm:
     auto_enabled: bool = True
-    source: str = "frankfurter"
+    source: str = "frankfurter_v2"
     sync_times: str = "09:10,23:10"
     timezone: str = "Asia/Shanghai"
+    url: str = ""
 
 
 def advisor_form(settings: Settings | None = None) -> AdvisorSettingsForm:
@@ -67,8 +74,17 @@ def display_advisor_url(value: str) -> str:
 
 def fx_form() -> FxSettingsForm:
     settings = get_settings()
+    url = settings.fx_rate_ecb_url if settings.fx_rate_source == "ecb" else settings.fx_rate_frankfurter_url
     return FxSettingsForm(settings.fx_rate_auto_sync_enabled, settings.fx_rate_source,
-                          settings.fx_rate_sync_times, settings.fx_rate_sync_timezone)
+                          settings.fx_rate_sync_times, settings.fx_rate_sync_timezone,
+                          "" if url == FX_DEFAULT_URLS[settings.fx_rate_source] else display_fx_url(settings.fx_rate_source, url))
+
+
+def display_fx_url(source: str, value: str) -> str:
+    try:
+        return validate_fx_url(source, value)
+    except ValueError:
+        return ""
 
 
 def _connection_snapshot() -> AdvisorSettingsProjection | None:
@@ -144,8 +160,12 @@ def save_advisor(form: AdvisorSettingsForm, *, api_key: str, key_action: str) ->
 
 
 def save_fx(form: FxSettingsForm) -> None:
-    if form.source not in {"frankfurter", "ecb"}:
+    if form.source not in FX_DEFAULT_URLS:
         raise runtime._invalid("请选择支持的汇率来源。")
+    try:
+        url = validate_fx_url(form.source, form.url)
+    except ValueError as exc:
+        raise runtime._invalid("请填写所选来源的兼容地址：广覆盖版以 /v2/rates 结尾，ECB 镜像以 /latest 结尾，ECB 直连以 /eurofxref-daily.xml 结尾；公网须用 HTTPS，不可含账号或密钥。留空使用内置地址。") from exc
     try:
         times = [time.fromisoformat(item.strip()) for item in form.sync_times.split(",")]
         if not 1 <= len(times) <= 6 or any(item.second or item.microsecond or item.tzinfo for item in times):
@@ -155,7 +175,7 @@ def save_fx(form: FxSettingsForm) -> None:
     except (ValueError, ZoneInfoNotFoundError) as exc:
         raise runtime._invalid("每天可设置 1–6 个 HH:MM 时间，用逗号分隔；时区请填写 Asia/Shanghai 等有效名称。") from exc
     value = FxSettingsProjection(form.auto_enabled, form.source,
-                                 ",".join(sorted({item.strftime("%H:%M") for item in times})), timezone)
+                                 ",".join(sorted({item.strftime("%H:%M") for item in times})), timezone, url)
     runtime.save_runtime_mutation(RuntimeSettingsMutation("fx", value))
 
 

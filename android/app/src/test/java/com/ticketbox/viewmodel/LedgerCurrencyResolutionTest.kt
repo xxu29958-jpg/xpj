@@ -59,7 +59,7 @@ class LedgerCurrencyResolutionTest {
         // 任一 record 未知键（支持集外）→ fail closed：按其口径解析会放大/缩小金额。
         assertNull(
             resolveLedgerCurrency(
-                DebtListPage(debts = listOf(resolutionDebt("VND")), ledgerHomeCurrencyCode = "CNY"),
+                DebtListPage(debts = listOf(resolutionDebt("ZZZ")), ledgerHomeCurrencyCode = "CNY"),
             ),
         )
     }
@@ -69,7 +69,7 @@ class LedgerCurrencyResolutionTest {
         // R8-1：capability 非 blank 却在支持集外 ≠ 缺失 —— 即便 record 已知也 fail closed。
         assertNull(
             resolveLedgerCurrency(
-                DebtListPage(debts = listOf(resolutionDebt("CNY")), ledgerHomeCurrencyCode = "VND"),
+                DebtListPage(debts = listOf(resolutionDebt("CNY")), ledgerHomeCurrencyCode = "ZZZ"),
             ),
         )
         // 拉取失败（page=null）两源皆缺 → 同归 null。

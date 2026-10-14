@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 
-from app.fx_constants import DEFAULT_SUPPORTED_CURRENCY_CODES
+from app.fx_constants import DEFAULT_SUPPORTED_CURRENCY_CODES, FX_DEFAULT_URLS
 from app.recognition_config import resolve_recognition_config
 from app.services.runtime_integration_settings import AdvisorSettingsProjection, FxSettingsProjection
 from app.services.runtime_operations_settings import resolve_maintenance_settings, resolve_upload_settings
@@ -294,12 +294,20 @@ def _resolve_advisor_config(saved: AdvisorSettingsProjection | None) -> AdvisorS
 def _resolve_fx_config(saved: FxSettingsProjection | None) -> FxSettingsProjection:
     if saved is not None:
         return saved
+    default_source = "frankfurter" if os.getenv("FX_RATE_FRANKFURTER_URL") else "frankfurter_v2"
     return FxSettingsProjection(
         auto_enabled=_bool_env("FX_RATE_AUTO_SYNC_ENABLED", True),
-        source=os.getenv("FX_RATE_SOURCE", "frankfurter").strip().lower() or "frankfurter",
+        source=os.getenv("FX_RATE_SOURCE", default_source).strip().lower() or default_source,
         sync_times=os.getenv("FX_RATE_SYNC_TIMES", "09:10,23:10").strip() or "09:10,23:10",
         timezone=os.getenv("FX_RATE_SYNC_TIMEZONE", "Asia/Shanghai").strip() or "Asia/Shanghai",
     )
+
+
+def _resolve_fx_url(fx: FxSettingsProjection, source: str) -> str:
+    if fx.source == source and fx.url is not None:
+        return fx.url
+    name = "FX_RATE_ECB_URL" if source == "ecb" else "FX_RATE_FRANKFURTER_URL"
+    return os.getenv(name, FX_DEFAULT_URLS[source]).strip() or FX_DEFAULT_URLS[source]
 
 
 @lru_cache
@@ -421,20 +429,8 @@ def get_settings() -> Settings:
         fx_rate_sync_times=fx.sync_times,
         fx_rate_sync_timezone=fx.timezone,
         fx_rate_source=fx.source,
-        fx_rate_ecb_url=(
-            os.getenv(
-                "FX_RATE_ECB_URL",
-                "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml",
-            ).strip()
-            or "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml"
-        ),
-        fx_rate_frankfurter_url=(
-            os.getenv(
-                "FX_RATE_FRANKFURTER_URL",
-                "https://api.frankfurter.dev/v1/latest?base=EUR",
-            ).strip()
-            or "https://api.frankfurter.dev/v1/latest?base=EUR"
-        ),
+        fx_rate_ecb_url=_resolve_fx_url(fx, "ecb"),
+        fx_rate_frankfurter_url=_resolve_fx_url(fx, "frankfurter_v2" if fx.source == "frankfurter_v2" else "frankfurter"),
         debt_rollout_enabled=_bool_env("DEBT_ROLLOUT_ENABLED", True),
         **asdict(uploads),
         **asdict(maintenance),

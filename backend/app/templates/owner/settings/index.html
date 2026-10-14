@@ -8,14 +8,14 @@
   <div>
     <section class="workspace-section" aria-labelledby="settings-daily">
       <h2 id="settings-daily">日常</h2>
-      {{ task_link('/owner/settings/recognition', '识别与录入', 'scan-line') }}
-      {{ task_link('/owner/ai-advisor', 'AI 预算顾问', 'sparkles', tone='lilac') }}
-      {{ task_link('/owner/fx', '汇率同步', 'refresh-cw', tone='apricot') }}
+      {{ task_link('/owner/settings/recognition', '识别与录入', 'scan-line', recognition_view.receipt_status) }}
+      {{ task_link('/owner/ai-advisor', 'AI 预算顾问', 'sparkles', '已关闭' if effective_settings.budget_advisor_provider == 'empty' else '已配置，已允许请求' if effective_settings.budget_advisor_owner_confirmed else '已配置，等待允许请求', 'lilac') }}
+      {{ task_link('/owner/fx', '汇率同步', 'refresh-cw', (fx_view.rows|length|string ~ ' 种参考价 · ' ~ fx_view.latest_date) if fx_view and fx_view.rows else '尚未取得参考价' if fx_view else '先确认账本币种', 'apricot') }}
     </section>
     <section class="workspace-section" aria-labelledby="settings-services">
       <h2 id="settings-services">服务</h2>
-      {{ task_link('/owner/settings/uploads', '上传与链接', 'upload') }}
-      {{ task_link('/owner/settings/maintenance', '清理与保留', 'archive', tone='sand') }}
+      {{ task_link('/owner/settings/uploads', '上传与链接', 'upload', '单文件 ' ~ effective_settings.max_upload_size_mb ~ ' MB · 新链接 ' ~ effective_settings.upload_link_ttl_days ~ ' 天') }}
+      {{ task_link('/owner/settings/maintenance', '清理与保留', 'archive', '已开启自动清理，请核对保留期限' if effective_settings.learning_cleanup_auto_enabled or effective_settings.budget_advisor_audit_cleanup_auto_enabled or effective_settings.device_cleanup_auto_enabled or effective_settings.soft_delete_purge_auto_enabled else '自动清理已关闭', 'sand') }}
       {{ task_link('/owner/settings/public-base-url', '公网域名', 'link', '已配置' if settings_view.public_base_url_configured else '未配置', 'apricot') }}
     </section>
   </div>
@@ -35,7 +35,7 @@
   </section>
 </div>
 <details class="workspace-disclosure">
-  <summary><span>当前连接与设置状态<span>公网连接、接口开关和保存状态</span></span>{{ icon('chevron-right') }}</summary>
+  <summary><span>当前设置状态<span>域名配置、接口开关和保存状态</span></span>{{ icon('chevron-right') }}</summary>
   <div class="workspace-disclosure__body">
   <dl class="kv-list">
     <dt>公网域名</dt>
@@ -69,12 +69,12 @@
         <span class="badge badge-ok">已关闭</span>
       {% endif %}
     </dd>
-    <dt>运行时设置</dt>
+    <dt>设置保存</dt>
     <dd>
       {% if settings_view.settings_exists %}
-        <span class="badge badge-ok">受保护投影已建立</span>
+        <span class="badge badge-ok">自定义设置已保存</span>
       {% else %}
-        <span class="badge badge-off">不存在（保存后会自动创建）</span>
+        <span class="badge badge-off">使用初始设置</span>
       {% endif %}
     </dd>
   </dl>

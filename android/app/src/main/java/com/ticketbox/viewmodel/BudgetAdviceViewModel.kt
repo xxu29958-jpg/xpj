@@ -51,6 +51,8 @@ data class BudgetAdviceUiState(
     val inputsLoading: Boolean = false,
     val inputsError: UiText? = null,
     val rates: List<com.ticketbox.data.remote.dto.ExchangeRateDto> = emptyList(),
+    val referenceRates: com.ticketbox.data.remote.dto.ReferenceRatesDto? = null,
+    val referenceError: UiText? = null,
     val rateEditor: ManualRateEditor? = null,
     val rateSubmissions: List<com.ticketbox.data.repository.PendingManualRateSubmission> = emptyList(),
     val selectedRateSubmissionId: Long? = null,

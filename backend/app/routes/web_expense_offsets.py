@@ -310,7 +310,7 @@ def web_offset_rate(
     get_expense(db, expense_id, selected)
     values = {key: original.get(f"fx_{key}", "") for key in _RATE_FIELDS}
     result = submit_recovery_rate(db, request, selected, values,
-        review_latest=original.get("fx_review_latest") == "true")
+        review_latest=original.get("fx_review_latest") == "true", fetch_reference=original.get("fx_fetch_reference") == "true")
     draft = {key: original.get(key, "") for key in ("kind", "original_amount", "accounting_date", "reason",
         "expected_row_version", "idempotency_key", "draft_client_ref", "draft_scope", "original_currency_code")}
     return _render_error(db, request, options, selected, expense_id, return_context, None,

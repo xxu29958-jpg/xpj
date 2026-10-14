@@ -1,15 +1,17 @@
 {% if rate_recovery %}
 <section class="expense-manual-fx" aria-label="补汇率并继续原操作">
   <div class="expense-manual-fx-copy">
-    <strong>补入这一天的汇率</strong>
+    <strong>取得这一天的汇率</strong>
     <span>{{ rate_recovery.currency_code }} → {{ rate_recovery.home_currency_code }} · {{ rate_recovery.rate_date }}</span>
-    <span>保存的是这一天的账本共用汇率。原操作与填写仍保留，补率后请核对并继续提交。</span>
+    <span>先从已配置的来源获取。原操作与填写仍保留，取得结果后请核对并继续提交。</span>
   </div>
   {% if rate_recovery.error %}<p class="product-feedback product-feedback--danger" role="alert">{{ rate_recovery.error }}</p>{% endif %}
   {% if rate_recovery.message %}<p class="product-feedback" role="status">{{ rate_recovery.message }}</p>{% endif %}
   {% for key in ['currency_code', 'home_currency_code', 'rate_date', 'expected_row_version', 'idempotency_key'] %}
   <input type="hidden" name="fx_{{ key }}" value="{{ rate_recovery[key] }}">
   {% endfor %}
+  <button type="submit" class="product-button product-button--primary" formaction="{{ rate_recovery_action }}" name="fx_fetch_reference" value="true" formnovalidate>获取参考汇率，保留原操作</button>
+  <details class="product-disclosure"{% if rate_recovery.conflict or rate_recovery.rate_to_cny %} open{% endif %}><summary>自行补录或纠正</summary>
   <label class="product-field">1 {{ rate_recovery.currency_code }} 折合多少 {{ rate_recovery.home_currency_code }}
     <input class="product-input" name="fx_rate_to_cny" type="text" inputmode="decimal" autocomplete="off" value="{{ rate_recovery.rate_to_cny }}">
   </label>
@@ -17,5 +19,6 @@
   {% if rate_recovery.conflict %}
   <button type="submit" class="product-button product-button--quiet" formaction="{{ rate_recovery_action }}" name="fx_review_latest" value="true" formnovalidate>核对当前汇率，保留原输入</button>
   {% endif %}
+  </details>
 </section>
 {% endif %}

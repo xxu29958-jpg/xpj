@@ -99,35 +99,5 @@ internal fun ExpenseCurrencyChoices(
     enabled: Boolean,
     onCurrencySelect: (CurrencyCode) -> Unit,
 ) {
-    AppCompactChips {
-        FlowRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
-        ) {
-            CurrencyCode.entries.forEach { code ->
-                ExpenseCurrencyChoice(
-                    code = code,
-                    selected = currency == code,
-                    enabled = enabled,
-                    onClick = { onCurrencySelect(code) },
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun ExpenseCurrencyChoice(
-    code: CurrencyCode,
-    selected: Boolean,
-    enabled: Boolean,
-    onClick: () -> Unit,
-) {
-    AppFilterChip(
-        label = code.storageKey,
-        selected = selected,
-        onClick = onClick,
-        options = AppFilterChipOptions(enabled = enabled),
-    )
+    com.ticketbox.ui.components.CurrencyChoiceField(currency, enabled, onChoose = onCurrencySelect)
 }

@@ -138,12 +138,12 @@ class ExpenseFactRevisionTimelineModelsTest {
             reason = "修正账单金额",
             changedFields = listOf("amount_cents"),
             before = mapOf(
-                "home_currency_code" to "VND",
+                "home_currency_code" to "ZZZ",
                 "amount_cents" to 1_200L,
                 "splits" to listOf(mapOf("amount_cents" to 1_200L)),
             ),
             after = mapOf(
-                "home_currency_code" to "VND",
+                "home_currency_code" to "ZZZ",
                 "amount_cents" to 1_300L,
                 "splits" to listOf(mapOf("amount_cents" to 1_200L)),
             ),
@@ -164,11 +164,11 @@ class ExpenseFactRevisionTimelineModelsTest {
             (it.label as? UiText.Res)?.id == R.string.expense_fact_timeline_field_splits
         }
 
-        assertEquals(UiText.raw("1200 VND"), amountChange.before)
-        assertEquals(UiText.raw("1300 VND"), amountChange.after)
+        assertEquals(UiText.raw("1200 ZZZ"), amountChange.before)
+        assertEquals(UiText.raw("1300 ZZZ"), amountChange.after)
         assertEquals(UiText.res(R.string.expense_fact_timeline_allocation_complete), allocationChange.before)
         assertEquals(
-            UiText.res(R.string.expense_fact_timeline_allocation_remaining, "100 VND"),
+            UiText.res(R.string.expense_fact_timeline_allocation_remaining, "100 ZZZ"),
             allocationChange.after,
         )
     }

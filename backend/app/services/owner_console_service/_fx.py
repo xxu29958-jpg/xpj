@@ -10,12 +10,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.fx_constants import FX_SOURCE_ECB
-from app.models import FxRate
+from app.services.fx_rate_provider import list_reference_rates
 from app.services.fx_rate_scheduler import fx_rate_sync_status
 
 _SYNC_FAILURE_MESSAGES = {
@@ -53,13 +51,7 @@ class FxPanelVM:
 def get_fx_panel_vm(db: Session, *, home_currency_code: str) -> FxPanelVM:
     cfg = get_settings()
     home = (home_currency_code or "").strip().upper()
-    rows = db.scalars(
-        select(FxRate)
-        .where(FxRate.source == FX_SOURCE_ECB)
-        .where(FxRate.home_currency_code == home)
-        .order_by(FxRate.rate_date.desc(), FxRate.currency_code.asc())
-        .limit(30)
-    ).all()
+    rows = list_reference_rates(db, home_currency_code=home)
     status = fx_rate_sync_status()
     source = (cfg.fx_rate_source or "frankfurter").strip().lower()
     return FxPanelVM(
@@ -87,5 +79,5 @@ def get_fx_panel_vm(db: Session, *, home_currency_code: str) -> FxPanelVM:
             )
             for row in rows
         ],
-        latest_date=rows[0].rate_date.isoformat() if rows else None,
+        latest_date=max(row.rate_date for row in rows).isoformat() if rows else None,
     )

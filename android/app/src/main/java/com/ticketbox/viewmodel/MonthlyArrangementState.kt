@@ -49,6 +49,8 @@ internal fun BudgetAdviceUiState.arrangementReadRefused(error: Throwable): Budge
     arrangementHistoryFetchedAt = null, arrangementHistoryReceiptVersions = emptySet(),
     arrangementLoading = false, arrangementBusy = false, trialRequest = null,
     inputs = null, inputsLoading = false, result = null, rates = emptyList(),
+    referenceRates = null, referenceError = null, rateBusy = false,
+    rateEditor = rateEditor?.copy(reference = null),
     loadState = BudgetAdviceLoadState.Idle,
     arrangementMessage = error.toUiText(R.string.arrangement_load_failed),
 )

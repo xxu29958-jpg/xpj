@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import SessionLocal
+from app.errors import AppError
 from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.fx_rate_provider import FxFetchError, refresh_ecb_fx_rates
 from app.services.pending_fx_task_service import refill_pending_expense_fx
@@ -139,20 +140,30 @@ def _record_sync_failure(code: str) -> None:
     logger.warning("FX sync failed (%s); keeping last-known rates", code)
 
 
-def _run_scheduled_fx_sync() -> None:
+def _run_scheduled_fx_sync() -> bool:
     try:
         with SessionLocal() as db:
+            try:
+                require_runtime_home_currency_code(db)
+            except AppError as exc:
+                if exc.error == "currency_adoption_required":
+                    return False  # Initial setup has not chosen a currency yet; try the next short tick.
+                raise
+            db.rollback()  # End the currency read before the independently committed scheduler lease.
             if not try_claim_scheduler_lease(
                 db,
                 name="fx_rate_sync",
                 lease_seconds=_SCHEDULER_LEASE_SECONDS,
             ):
                 logger.info("FX sync skipped: scheduler lease is held")
-                return
+                return True
         with SessionLocal() as db:
             run_fx_sync_once(db)
     except SQLAlchemyError:
         _record_sync_failure("storage_unavailable")
+    except AppError:
+        _record_sync_failure("sync_failed")
+    return True
 
 
 def _scheduler_loop(stop_event: threading.Event, sync_times: list[time], timezone: tzinfo, *, follow_settings: bool = False) -> None:
@@ -164,12 +175,14 @@ def _scheduler_loop(stop_event: threading.Event, sync_times: list[time], timezon
     while not stop_event.is_set():
         if follow_settings:
             settings = get_settings()
-            schedule = (settings.fx_rate_auto_sync_enabled, settings.fx_rate_sync_times, settings.fx_rate_sync_timezone)
+            schedule = (settings.fx_rate_auto_sync_enabled, settings.fx_rate_sync_times, settings.fx_rate_sync_timezone,
+                        settings.fx_rate_source, settings.fx_rate_ecb_url, settings.fx_rate_frankfurter_url)
             enabled = settings.fx_rate_auto_sync_enabled
             if schedule != applied_schedule:
                 sync_times, timezone = _configured_schedule(settings)
                 now = datetime.now(timezone)
-                next_sync_at = now + timedelta(seconds=_seconds_until_next_run(now, sync_times)) if sync_times else None
+                # First startup, enabling and source changes must not leave a fresh installation empty until tonight.
+                next_sync_at = now if sync_times else None
                 applied_schedule = schedule
         if enabled:
             try:
@@ -180,9 +193,10 @@ def _scheduler_loop(stop_event: threading.Event, sync_times: list[time], timezon
             return
         now = datetime.now(timezone)
         if next_sync_at is not None and now >= next_sync_at:
-            _run_scheduled_fx_sync()
+            ready = _run_scheduled_fx_sync()
             now = datetime.now(timezone)
-            next_sync_at = now + timedelta(seconds=_seconds_until_next_run(now, sync_times))
+            next_sync_at = now + timedelta(seconds=(
+                _PENDING_FX_TICK_SECONDS if ready is False else _seconds_until_next_run(now, sync_times)))
         delay_seconds = (
             min(_PENDING_FX_TICK_SECONDS, max((next_sync_at - now).total_seconds(), 1))
             if next_sync_at is not None else _PENDING_FX_TICK_SECONDS

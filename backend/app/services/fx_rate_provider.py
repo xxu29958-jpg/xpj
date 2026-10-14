@@ -11,12 +11,12 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 from xml.etree import ElementTree
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.fx_constants import ECB_PROVIDER_BASE_CURRENCY, FX_SOURCE_ECB
+from app.fx_constants import ECB_PROVIDER_BASE_CURRENCY, FX_SOURCE_ECB, FX_SOURCE_FRANKFURTER
 from app.models import FxRate
 from app.services.currency_common import (
     RATE_QUANT,
@@ -48,8 +48,54 @@ class FxFetchError(Exception):
 
 @dataclass(frozen=True)
 class EcbDailyRates:
+    """One provider response; the legacy vector name also carries V2 direct pairs."""
     rate_date: date
     rates_per_eur: dict[str, Decimal]
+    source: str = FX_SOURCE_ECB
+    base_currency_code: str = ECB_PROVIDER_BASE_CURRENCY
+    publication_dates: dict[str, date] | None = None
+
+    def publication_date(self, currency: str, home: str) -> date:
+        """V2 supplies direct pairs to the requested home, each with its actual date."""
+        if self.publication_dates is None:
+            return self.rate_date
+        if home != self.base_currency_code:
+            raise ValueError("Direct reference pairs cannot be crossed through mismatched publication dates")
+        return self.publication_dates[currency]
+
+
+def parse_frankfurter_v2_rates(json_text: str, *, home_currency_code: str) -> EcbDailyRates:
+    payload = json.loads(json_text, parse_float=Decimal)
+    if not isinstance(payload, list) or not payload:
+        raise ValueError("Frankfurter V2 response must contain dated pairs")
+    rates = {home_currency_code: Decimal("1")}
+    dates: dict[str, date] = {}
+    for item in payload:
+        if not isinstance(item, dict) or item.get("base") != home_currency_code:
+            raise ValueError("Frankfurter V2 response has a different base")
+        code = str(item.get("quote", "")).strip().upper()
+        if not code.isascii() or len(code) != 3 or not code.isalpha() or code in dates:
+            raise ValueError("Frankfurter V2 response has an invalid or duplicate currency")
+        try:
+            rates[code] = Decimal(str(item.get("rate")))
+            dates[code] = date.fromisoformat(str(item.get("date")))
+        except (ValueError, InvalidOperation) as exc:
+            raise ValueError("Frankfurter V2 response has an invalid date or rate") from exc
+    return EcbDailyRates(max(dates.values()), rates, FX_SOURCE_FRANKFURTER, home_currency_code, dates)
+
+
+def _fetch_frankfurter_v2(home_currency_code: str, requested_date: date | None = None) -> EcbDailyRates:
+    parts = urlsplit(get_settings().fx_rate_frankfurter_url)
+    query = {"base": home_currency_code}
+    if requested_date is not None:
+        query["date"] = requested_date.isoformat()
+    target = urlunsplit(parts._replace(query=urlencode(query), fragment=""))
+    return parse_frankfurter_v2_rates(_http_get_text(target), home_currency_code=home_currency_code)
+
+
+def _reference_source_priority():
+    preferred = FX_SOURCE_FRANKFURTER if get_settings().fx_rate_source == "frankfurter_v2" else FX_SOURCE_ECB
+    return case((FxRate.source == preferred, 0), else_=1)
 
 
 def parse_ecb_daily_rates(xml_text: str) -> EcbDailyRates:
@@ -132,7 +178,7 @@ def _http_get_text(target: str) -> str:
     [FxFetchError] so the caller can degrade gracefully. Used by both the ECB
     (XML) and Frankfurter (JSON) transports.
     """
-    request = Request(target, headers={"User-Agent": "xiaopiaojia-fx-sync/1.0"})
+    request = Request(target, headers={"User-Agent": "xiaopiaojia-fx-sync/1.0", "Accept": "application/json, application/xml"})
     last_exc: Exception | None = None
     for attempt in range(1, FETCH_RETRIES + 1):
         try:
@@ -160,17 +206,13 @@ def fetch_frankfurter_daily_rates(url: str | None = None) -> EcbDailyRates:
     return parse_frankfurter_rates(_http_get_text(target))
 
 
-def fetch_reference_rates() -> EcbDailyRates:
-    """Fetch EUR-based reference rates from the configured transport.
-
-    Default is Frankfurter (``FX_RATE_SOURCE=frankfurter``): key-free and
-    reachable from mainland China without a proxy, where europa.eu intermittently
-    drops the outbound TLS handshake. Both transports yield the ECB reference set
-    (Frankfurter redistributes it), so ``source='ecb'`` still describes the data
-    provenance. Set ``FX_RATE_SOURCE=ecb`` to fetch europa.eu directly. See
-    ADR-0027.
+def fetch_reference_rates(*, home_currency_code: str = ECB_PROVIDER_BASE_CURRENCY) -> EcbDailyRates:
+    """Fetch the configured source. V2 pairs retain Frankfurter provenance;
+    the V1 mirror and ECB XML retain their existing ECB provenance.
     """
     settings = get_settings()
+    if settings.fx_rate_source == "frankfurter_v2":
+        return _fetch_frankfurter_v2(home_currency_code)
     if (settings.fx_rate_source or "frankfurter").strip().lower() == "ecb":
         return fetch_ecb_daily_rates()
     return fetch_frankfurter_daily_rates()
@@ -201,18 +243,20 @@ def _ecb_history_url(configured_url: str) -> str:
 def _validate_dated_rates(daily: EcbDailyRates, requested_date: date) -> None:
     if daily.rate_date > requested_date:
         raise ValueError("Reference rate publication is after the requested date")
-    if daily.rates_per_eur.get(ECB_PROVIDER_BASE_CURRENCY) != Decimal("1"):
-        raise ValueError("Reference rates must use one EUR as the provider base")
+    if daily.rates_per_eur.get(daily.base_currency_code) != Decimal("1"):
+        raise ValueError("Reference rates must use one unit of the provider base")
     if any(not value.is_finite() or value <= 0 for value in daily.rates_per_eur.values()):
         raise ValueError("Reference rates must be finite and positive")
 
 
-def fetch_reference_rates_for_date(requested_date: date) -> EcbDailyRates:
+def fetch_reference_rates_for_date(requested_date: date, *, home_currency_code: str = ECB_PROVIDER_BASE_CURRENCY) -> EcbDailyRates:
     """Fetch the actual reference published on/before D without changing D."""
     if requested_date > now_utc().date():
         raise ValueError("A future provider date cannot be fetched as historical coverage")
     settings = get_settings()
-    if (settings.fx_rate_source or "frankfurter").strip().lower() == "ecb":
+    if settings.fx_rate_source == "frankfurter_v2":
+        daily = _fetch_frankfurter_v2(home_currency_code, requested_date)
+    elif (settings.fx_rate_source or "frankfurter").strip().lower() == "ecb":
         daily = _parse_ecb_rates_for_date(_http_get_text(_ecb_history_url(settings.fx_rate_ecb_url)), requested_date)
     else:
         target = _frankfurter_dated_url(settings.fx_rate_frankfurter_url, requested_date)
@@ -247,7 +291,7 @@ def get_fx_rate(
     currency_code: str,
     rate_date: date,
     home_currency_code: str,
-    source: str = FX_SOURCE_ECB,
+    source: str | None = None,
 ) -> FxRate | None:
     currency = normalize_currency_code(currency_code)
     home = normalize_currency_code(home_currency_code)
@@ -255,10 +299,11 @@ def get_fx_rate(
         return None
     return db.scalar(
         select(FxRate)
-        .where(FxRate.source == source)
+        .where(FxRate.source == source if source else FxRate.source.in_((FX_SOURCE_ECB, FX_SOURCE_FRANKFURTER)))
         .where(FxRate.home_currency_code == home)
         .where(FxRate.currency_code == currency)
         .where(FxRate.rate_date == rate_date)
+        .order_by(_reference_source_priority()).limit(1)
     )
 
 
@@ -268,7 +313,7 @@ def get_fx_rate_on_or_before(
     currency_code: str,
     rate_date: date,
     home_currency_code: str,
-    source: str = FX_SOURCE_ECB,
+    source: str | None = None,
 ) -> FxRate | None:
     """Latest known quote for an explicit current valuation, with its real date.
 
@@ -280,11 +325,11 @@ def get_fx_rate_on_or_before(
         return None
     return db.scalar(
         select(FxRate)
-        .where(FxRate.source == source)
+        .where(FxRate.source == source if source else FxRate.source.in_((FX_SOURCE_ECB, FX_SOURCE_FRANKFURTER)))
         .where(FxRate.home_currency_code == home)
         .where(FxRate.currency_code == currency)
         .where(FxRate.rate_date <= rate_date)
-        .order_by(FxRate.rate_date.desc())
+        .order_by(FxRate.rate_date.desc(), _reference_source_priority())
         .limit(1)
     )
 
@@ -295,7 +340,7 @@ def get_covered_fx_rate(
     currency_code: str,
     rate_date: date,
     home_currency_code: str,
-    source: str = FX_SOURCE_ECB,
+    source: str | None = None,
 ) -> FxRate | None:
     """An exact publication or a prior quote verified through the requested day."""
     quote = get_fx_rate_on_or_before(
@@ -306,6 +351,18 @@ def get_covered_fx_rate(
     )):
         return quote
     return None
+
+
+def list_reference_rates(db: Session, *, home_currency_code: str, currency_code: str | None = None,
+                         rate_date: date | None = None) -> list[FxRate]:
+    query = select(FxRate).where(FxRate.source.in_((FX_SOURCE_ECB, FX_SOURCE_FRANKFURTER)),
+                               FxRate.home_currency_code == normalize_currency_code(home_currency_code))
+    if currency_code:
+        query = query.where(FxRate.currency_code == normalize_currency_code(currency_code))
+    if rate_date:
+        query = query.where(FxRate.rate_date <= rate_date)
+    return list(db.scalars(query.distinct(FxRate.currency_code)
+        .order_by(FxRate.currency_code, FxRate.rate_date.desc(), _reference_source_priority())))
 
 
 def upsert_fx_rate(
@@ -360,12 +417,13 @@ def cache_reference_rates_for_date(
     _validate_dated_rates(daily, requested_date)
     home = normalize_currency_code(home_currency_code)
     covered_through = requested_date if requested_date < now_utc().date() else None
-    target_currencies = supported_currency_codes() if currencies is None else currencies
+    target_currencies = supported_currency_codes().intersection(daily.rates_per_eur) if currencies is None else currencies
     quotes = [(normalize_currency_code(code), cross_rate_to_home(
         daily.rates_per_eur, currency_code=code, home_currency_code=home,
     )) for code in sorted(target_currencies) if normalize_currency_code(code) != home]
     return [upsert_fx_rate(
-        db, currency_code=code, rate_date=daily.rate_date, rate_to_home=rate,
+        db, currency_code=code, rate_date=daily.publication_date(code, home), rate_to_home=rate,
+        source=daily.source, provider_base_currency=daily.base_currency_code,
         home_currency_code=home, provider_rate=daily.rates_per_eur.get(code), verified_through=covered_through,
     ) for code, rate in quotes]
 
@@ -382,8 +440,9 @@ def refresh_ecb_fx_rates(
     home = normalize_currency_code(home_currency_code)
     # ``url`` forces the ECB XML transport (tests / explicit override); the
     # default path dispatches on FX_RATE_SOURCE (Frankfurter by default).
-    daily = fetch_ecb_daily_rates(url) if url is not None else fetch_reference_rates()
-    target_currencies = currencies or supported_currency_codes()
+    daily = fetch_ecb_daily_rates(url) if url is not None else fetch_reference_rates(home_currency_code=home)
+    _validate_dated_rates(daily, now_utc().date())
+    target_currencies = currencies if currencies is not None else supported_currency_codes() & daily.rates_per_eur.keys()
     rows: list[FxRate] = []
     for raw_code in sorted(target_currencies):
         code = normalize_currency_code(raw_code)
@@ -402,12 +461,16 @@ def refresh_ecb_fx_rates(
             upsert_fx_rate(
                 db,
                 currency_code=code,
-                rate_date=daily.rate_date,
+                rate_date=daily.publication_date(code, home),
                 rate_to_home=rate_to_home,
                 home_currency_code=home,
+                source=daily.source,
+                provider_base_currency=daily.base_currency_code,
                 provider_rate=daily.rates_per_eur.get(code),
             )
         )
+    if not rows:
+        raise ValueError("Reference source returned no usable currency pairs")
     db.commit()
     for row in rows:
         db.refresh(row)

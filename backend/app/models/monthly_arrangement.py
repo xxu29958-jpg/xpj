@@ -16,6 +16,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.currency_catalog import CURRENCY_SQL_LIST
 from app.database_model_registry import Base
 from app.monthly_arrangement_money_contract import monthly_arrangement_money_checks
 
@@ -25,7 +26,7 @@ class MonthlyArrangement(Base):
     __table_args__ = (
         *monthly_arrangement_money_checks("monthly_arrangements"),
         CheckConstraint("month ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'", name="ck_monthly_arrangement_month"),
-        CheckConstraint("home_currency_code IN ('CNY', 'USD', 'EUR', 'GBP', 'JPY', 'HKD', 'KRW')", name="ck_monthly_arrangement_currency"),
+        CheckConstraint(f"home_currency_code IN ({CURRENCY_SQL_LIST})", name="ck_monthly_arrangement_currency"),
         CheckConstraint("row_version >= 1", name="ck_monthly_arrangement_version"),
         UniqueConstraint("tenant_id", "month", name="uq_monthly_arrangement_tenant_month"),
         UniqueConstraint("id", "tenant_id", name="uq_monthly_arrangement_id_tenant"),
@@ -50,7 +51,7 @@ class MonthlyArrangementRevision(Base):
             name="fk_monthly_arrangement_revision_parent", ondelete="RESTRICT"),
         UniqueConstraint("tenant_id", "arrangement_id", "row_version", name="uq_monthly_arrangement_revision_version"),
         CheckConstraint("row_version >= 1", name="ck_monthly_arrangement_revision_version"),
-        CheckConstraint("home_currency_code IN ('CNY', 'USD', 'EUR', 'GBP', 'JPY', 'HKD', 'KRW')", name="ck_monthly_arrangement_revision_currency"),
+        CheckConstraint(f"home_currency_code IN ({CURRENCY_SQL_LIST})", name="ck_monthly_arrangement_revision_currency"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

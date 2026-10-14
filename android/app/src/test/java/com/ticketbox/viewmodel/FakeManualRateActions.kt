@@ -6,6 +6,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 
 internal class FakeManualRateActions : ManualRateActions {
+    var reference = ReferenceRatesDto("frankfurter", true, "waiting", items = emptyList())
+    override suspend fun referenceRates(expectedBinding: LogicalSessionBinding, request: ReferenceRateRequestDto,
+        fetch: Boolean): Result<ReferenceRatesDto> = Result.success(reference)
     val submissions = MutableStateFlow<List<PendingManualRateSubmission>>(emptyList())
     var currentRates: List<ExchangeRateDto> = emptyList()
     val writes = mutableListOf<Pair<String, ExchangeRateRequestDto>>()

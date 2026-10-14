@@ -39,11 +39,11 @@ internal class ExpenseEditViewModelCurrencyTextTest {
 
     @Test
     fun centsToYuanTextPassesUnknownRecordCodeThroughAsRawMinor() = edit { fake ->
-        // 未知码（VND，枚举已回落 CNY）：原 minor 整数原样回填 —— 不冒 CNY 两位口径把
-        // 1200 VND 写成 "12.00"；已知零小数码（JPY）不 ÷100；CNY 维持两位。
+        // 未知码（ZZZ，枚举已回落 CNY）：原 minor 整数原样回填 —— 不冒 CNY 两位口径把
+        // 1200 ZZZ 写成 "12.00"；已知零小数码（JPY）不 ÷100；CNY 维持两位。
         val vm = viewModel(fake)
 
-        vm._uiState.update { it.copy(expense = fake.baseExpense.copy(homeCurrencyCode = "VND")) }
+        vm._uiState.update { it.copy(expense = fake.baseExpense.copy(homeCurrencyCode = "ZZZ")) }
         assertEquals("1200", vm.centsToYuanText(1_200L))
 
         vm._uiState.update {
@@ -88,12 +88,12 @@ internal class ExpenseEditViewModelCurrencyTextTest {
 
     @Test
     fun evenSplitUsesRawMinorSpaceForUnknownRecordCode() = edit { fake ->
-        // PR#255 R15b-2：未知码（VND）票据的均分按原 minor 整数口径 —— parent 1201
+        // PR#255 R15b-2：未知码（ZZZ）票据的均分按原 minor 整数口径 —— parent 1201
         // 两人均分 "601"/"600"（旧码落 CNY 兜底解析/渲染，footer 与回填互相放大 100×）。
         val vm = viewModel(fake)
         vm._uiState.update {
             it.copy(
-                expense = fake.baseExpense.copy(homeCurrencyCode = "VND"),
+                expense = fake.baseExpense.copy(homeCurrencyCode = "ZZZ"),
                 expenseSplits = fake.splits(parentAmountCents = 1_201L),
                 splitDrafts = listOf(
                     EditableSplit(memberId = 1L, displayName = "甲", included = true),

@@ -10,6 +10,7 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.orm import Session
 
+from app.currency_catalog import CURRENCY_CATALOG
 from app.errors import AppError
 from app.models import InstallationCurrencyAuditLog, InstallationCurrencyBinding, InstallationIdempotencyKey
 from app.services import currency_adoption_service as adoption
@@ -146,7 +147,7 @@ def test_preview_reads_current_default_without_restricting_choice_to_historical_
     preview = defaults.currency_change_preview(store.db, auth=SimpleNamespace())
     assert preview.home_currency_code == "CNY"
     assert preview.binding_revision == 1
-    assert set(preview.allowed_home_currency_codes) == {"CNY", "USD", "EUR", "GBP", "JPY", "HKD", "KRW"}
+    assert set(preview.allowed_home_currency_codes) == set(CURRENCY_CATALOG)
     assert not store.pending
 
 

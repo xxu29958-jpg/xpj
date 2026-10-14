@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import re
 
+from app.currency_catalog import CURRENCY_CATALOG
 from app.errors import AppError
 from app.services.currency_common import major_amount_to_minor, minor_unit_digits
 
 _GROUPED_MAJOR_AMOUNT = re.compile(
-    r"-?(?:[1-9][0-9]{0,2})(?:,[0-9]{3})+(?:\.[0-9]{1,2})?\Z"
+    r"-?(?:[1-9][0-9]{0,2})(?:,[0-9]{3})+(?:\.[0-9]{1,3})?\Z"
 )
 _EXPLICIT_CURRENCY_MARKERS = {
+    **{code: (code, data[0]) for code, data in CURRENCY_CATALOG.items()},
     "CNY": ("CNY", "RMB", "人民币"),
     "JPY": ("JPY", "日元", "円"),
     "KRW": ("KRW", "韩元", "韓元", "₩", "원"),

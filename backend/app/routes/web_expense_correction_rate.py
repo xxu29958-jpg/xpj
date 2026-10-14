@@ -44,7 +44,7 @@ def save_correction_rate(
     get_expense(db, expense_id, selected)
     values = {key: str(raw.get(f"fx_{key}", "")) for key in _RATE_FIELDS}
     result = submit_recovery_rate(db, request, selected, values,
-        review_latest=raw.get("fx_review_latest") == "true")
+        review_latest=raw.get("fx_review_latest") == "true", fetch_reference=raw.get("fx_fetch_reference") == "true")
     original = correction_form_projection(form)
     return correction_form_error_response(db, request, options, selected, expense_id,
         error="", status_code=result["status_code"], form_values=original.form_values,

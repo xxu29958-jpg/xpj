@@ -5,6 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ticketbox.ui.screens.plan.BudgetAdviceScreen
+import com.ticketbox.ui.screens.plan.BudgetAdvicePurpose
 import com.ticketbox.viewmodel.BudgetAdviceViewModel
 import com.ticketbox.viewmodel.budgetAdviceViewModelFactory
 import com.ticketbox.viewmodel.*
@@ -48,9 +49,14 @@ internal fun BudgetAdviceRoute(
             viewModel::shiftMonth, { viewModel.openRate(it) }, viewModel::editRate, viewModel::updateRateInput,
             viewModel::saveRate, viewModel::closeRateEditor, viewModel::reviewRate, viewModel::recoverRate,
             viewModel::editArrangement, viewModel::trialArrangement, viewModel::saveArrangement,
-            viewModel::refreshArrangement, viewModel::loadArrangementHistory, viewModel::reviewArrangement, viewModel::recoverArrangement),
+            viewModel::refreshArrangement, viewModel::loadArrangementHistory, viewModel::reviewArrangement, viewModel::recoverArrangement,
+            viewModel::fetchReferenceRates, viewModel::showManualRate),
         onBack = onBack,
-        correctionContinuation = context.correctionContinuation,
+        purpose = when {
+            context.correctionContinuation -> BudgetAdvicePurpose.CorrectionRates
+            reportContext != null -> BudgetAdvicePurpose.ReportRates
+            else -> BudgetAdvicePurpose.Arrangement
+        },
         onOpenBudget = onOpenBudget?.let { open -> { open(state.month) } },
     )
 }

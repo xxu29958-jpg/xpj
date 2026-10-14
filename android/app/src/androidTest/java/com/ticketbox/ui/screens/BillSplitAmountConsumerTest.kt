@@ -59,7 +59,7 @@ class BillSplitAmountConsumerTest {
 
     private fun assertFrozenAmounts(surface: String) {
         compose.onAllNodesWithText("原定截止", substring = true).assertCountEquals(3)
-        listOf("¥1,200", "$12.00", "1200 VND").forEach {
+        listOf("¥1,200", "$12.00", "1200 ZZZ").forEach {
             compose.onNodeWithText(it).performScrollTo().assertIsDisplayed()
         }
         listOf("原消费 JPY ¥2,500", "原消费 JPY ¥5,000", "原消费金额未记录").forEachIndexed { index, label ->
@@ -83,11 +83,11 @@ private class CurrencySplitActions : BillSplitActions {
     override fun observeAccess(): Flow<LedgerAccessContext?> = access
 
     private val moshi = Moshi.Builder().addLast(KotlinJsonAdapterFactory()).build()
-    private val payloads = listOf("JPY", "USD", "VND").mapIndexed { index, currency ->
+    private val payloads = listOf("JPY", "USD", "ZZZ").mapIndexed { index, currency ->
         """{
           "public_id":"split-$currency","status":"accepted","amount_cents":1200,
           "home_currency_code":"$currency","merchant_snapshot":"Shared meal",
-          "original_currency_code":"JPY","original_amount_minor":${if (currency == "VND") "null" else ((index + 1) * 2500).toString()},
+          "original_currency_code":"JPY","original_amount_minor":${if (currency == "ZZZ") "null" else ((index + 1) * 2500).toString()},
           "accounting_time_snapshot":{"precision":"date_only","user_local_date":"2026-01-31",
             "accounting_date":"2026-02-01","calendar_revision":7,"basis":"user_date"},
           "category_suggestion":null,"expense_time_snapshot":null,

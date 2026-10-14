@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.fx_constants import FX_SOURCE_ECB, FX_STATUS_READY
+from app.fx_constants import FX_STATUS_READY
 from app.models import Expense
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.duplicate_service import mark_duplicate_status
@@ -81,8 +81,8 @@ def fetch_pending_fx_reference(original: PendingFxInput) -> EcbDailyRates:
     if original.rate_date > now.astimezone(accounting_zone()).date():
         raise AppError("fx_date_not_available", "这笔账单日期尚未到来，请核对日期或填写本笔汇率。", status_code=409)
     if original.rate_date >= now.date():
-        return fetch_reference_rates()
-    return fetch_reference_rates_for_date(original.rate_date)
+        return fetch_reference_rates(home_currency_code=original.home_currency_code)
+    return fetch_reference_rates_for_date(original.rate_date, home_currency_code=original.home_currency_code)
 
 
 def apply_pending_fx(
@@ -105,7 +105,8 @@ def apply_pending_fx(
         # provider day into permanent historical cache coverage.
         rate = cross_rate_to_home(daily.rates_per_eur, currency_code=original.original_currency_code,
             home_currency_code=original.home_currency_code)
-        source, status, published = FX_SOURCE_ECB, FX_STATUS_READY, daily.rate_date
+        source, status, published = daily.source, FX_STATUS_READY, daily.publication_date(
+            original.original_currency_code, original.home_currency_code)
     if rate is None:
         raise AppError("exchange_rate_pending", "仍未取得这笔账单日期的汇率，可重试或填写本笔汇率。", status_code=409)
     apply_resolved_currency_rate(current, rate=rate, source=source, fx_status=status, rate_date=published)

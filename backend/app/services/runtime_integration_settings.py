@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+from urllib.parse import parse_qsl, urlsplit
+
+from app.fx_constants import FX_DEFAULT_URLS
 
 
 @dataclass(frozen=True)
@@ -22,6 +25,25 @@ class FxSettingsProjection:
     source: str
     sync_times: str
     timezone: str
+    url: str | None = None
+
+
+def validate_fx_url(source: str, value: str) -> str:
+    """An explicit key-free endpoint using one of the supported reference formats."""
+    if source not in FX_DEFAULT_URLS:
+        raise ValueError("unsupported reference format")
+    target = value.strip() or FX_DEFAULT_URLS[source]
+    parts = urlsplit(target)
+    local = parts.hostname in {"localhost", "127.0.0.1", "::1"}
+    endpoint = parts.path.rstrip("/").rsplit("/", 1)[-1]
+    valid_endpoint = endpoint == {"frankfurter": "latest", "frankfurter_v2": "rates", "ecb": "eurofxref-daily.xml"}[source]
+    if (not _text(target, 2048) or not parts.hostname or parts.username is not None or parts.password is not None
+            or parts.fragment or not (parts.scheme == "https" or (local and parts.scheme == "http"))
+            or not valid_endpoint or any(pair not in {("base", "EUR"), ("amount", "1")}
+                                         for pair in parse_qsl(parts.query, keep_blank_values=True))):
+        raise ValueError("invalid reference endpoint")
+    _ = parts.port
+    return target
 
 
 def _text(value: object, limit: int) -> bool:
@@ -47,9 +69,10 @@ def advisor_payload(value: AdvisorSettingsProjection) -> dict[str, object]:
 def fx_payload(value: FxSettingsProjection) -> dict[str, object]:
     if (
         type(value.auto_enabled) is not bool
-        or value.source not in {"ecb", "frankfurter"}
+        or value.source not in FX_DEFAULT_URLS
         or not _text(value.sync_times, 128)
         or not _text(value.timezone, 64)
+        or (value.url is not None and validate_fx_url(value.source, value.url) != value.url)
     ):
         raise ValueError("runtime exchange-rate settings are invalid")
     return asdict(value)

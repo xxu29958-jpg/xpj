@@ -17,6 +17,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.currency_catalog import CURRENCY_SQL_LIST
 from app.database_model_registry import Base
 from app.models.financial_planning import MonthlyIncomePlan
 from app.money_contract_types import MONEY_MINOR_MAX
@@ -25,7 +26,7 @@ from app.money_contract_types import MONEY_MINOR_MAX
 class IncomePlanRevision(Base):
     __tablename__ = "income_plan_revisions"
     __table_args__ = (
-        CheckConstraint("home_currency_code IN ('CNY', 'USD', 'EUR', 'GBP', 'JPY', 'HKD', 'KRW')", name="ck_income_revision_currency"),
+        CheckConstraint(f"home_currency_code IN ({CURRENCY_SQL_LIST})", name="ck_income_revision_currency"),
         ForeignKeyConstraint(
             ["plan_id", "tenant_id"], ["monthly_income_plans.id", "monthly_income_plans.tenant_id"],
             name="fk_income_plan_revision_plan_tenant", ondelete="RESTRICT",

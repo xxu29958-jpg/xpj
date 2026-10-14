@@ -4,27 +4,37 @@
 {% block back_url %}/owner/settings{% endblock %}
 {% block back_label %}设置{% endblock %}
 {% block workspace_title %}汇率自动更新{% endblock %}
-{% block workspace_description %}用于补充参考换算信息。{% endblock %}
+{% block workspace_description %}选好来源，获取参考价，供桌面和安卓换算使用。无需逐笔手填。{% endblock %}
 {% block workspace_body %}
 {% if message %}<div class="alert alert-success" role="status">{{ message }}</div>{% endif %}
 {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
 {% if refreshed == 'ok' %}
-<div class="alert alert-success" role="status">已拉取最新汇率{% if fx_latest_date %}（最新价格日期 {{ fx_latest_date }}）{% endif %}。历史账单是否补齐，请回原账单核对。</div>
+<div class="alert alert-success" role="status">已取得参考汇率{% if fx_latest_date %}，报价日期 {{ fx_latest_date }}{% endif %}。桌面和安卓刷新换算依据即可查看；已确认账单保持原换算。</div>
 {% elif refreshed == 'fail' %}
 <div class="alert alert-danger" role="alert">拉取失败，已保留上一次的汇率。原因见下方「最近错误」。</div>
 {% endif %}
 <div class="workspace-columns">
   <form method="post" action="/owner/fx/settings" class="workspace-form">
     <label class="workspace-switch" for="fx_auto_enabled">
-      <span><strong>每天更新参考汇率</strong><small>关闭后仍可手动同步</small></span>
+      <span><strong>自动获取参考汇率</strong><small>初始化时获取一次，之后按每日计划更新；关闭后保留已有报价</small></span>
       <input id="fx_auto_enabled" name="auto_enabled" type="checkbox" role="switch" {% if fx_form.auto_enabled %}checked{% endif %}>
     </label>
     <label class="workspace-field" for="fx_source">
       <span>汇率来源</span>
       <select id="fx_source" name="source">
+        <option value="frankfurter_v2" {% if fx_form.source == 'frankfurter_v2' %}selected{% endif %}>Frankfurter 广覆盖（推荐，无需密钥）</option>
         <option value="frankfurter" {% if fx_form.source == 'frankfurter' %}selected{% endif %}>Frankfurter（欧洲央行参考汇率镜像）</option>
         <option value="ecb" {% if fx_form.source == 'ecb' %}selected{% endif %}>欧洲央行直连</option>
       </select>
+    </label>
+    <p class="workspace-note">广覆盖来源可获取台币、越南盾等更多币种；欧洲央行来源仅覆盖其发布的币种。保存后立即获取，可查看实际报价和日期。</p>
+    <details class="workspace-disclosure"{% if fx_form.url or error %} open{% endif %}>
+      <summary>更新时间与自定义来源</summary>
+      <div class="workspace-disclosure__body">
+    <label class="workspace-field" for="fx_url">
+      <span>自定义镜像地址（选填）</span>
+      <input id="fx_url" name="url" type="url" value="{{ fx_form.url }}" placeholder="留空使用内置来源" maxlength="2048" aria-describedby="fx-url-note">
+      <span class="workspace-note" id="fx-url-note">留空即可使用上方来源的内置地址，无需密钥。自定义地址须提供相同格式的最新报价与历史报价接口。</span>
     </label>
     <label class="workspace-field" for="fx_sync_times">
       <span>每日时间</span>
@@ -36,12 +46,20 @@
       <input id="fx_timezone" name="timezone" value="{{ fx_form.timezone }}" maxlength="64" list="fx_timezones" required>
       <datalist id="fx_timezones"><option value="Asia/Shanghai"><option value="Asia/Hong_Kong"><option value="Asia/Tokyo"><option value="UTC"></datalist>
     </label>
-    <p class="workspace-note">后台空闲时在 30 秒内采用新计划，进行中的任务完成后切换。已有汇率和历史账单不会被清除或重新计算。</p>
-    <div class="workspace-save"><button type="submit" class="btn btn-primary">保存同步设置 {{ icon('arrow-right') }}</button></div>
+      </div>
+    </details>
+    <p class="workspace-note">保存后无需重启。自动更新开启时，后台在空闲后的 30 秒内采用新配置并获取；也可现在保存并获取，直接核对结果。</p>
+    <div class="workspace-save"><button type="submit" class="btn btn-primary" name="action" value="refresh">保存并获取汇率 {{ icon('arrow-right') }}</button>
+      <button type="submit" class="btn" name="action" value="save">仅保存设置</button></div>
   </form>
 
   <section class="workspace-section" aria-labelledby="fx-recent-heading">
-    <h2 id="fx-recent-heading">最近运行</h2>
+    <h2 id="fx-recent-heading">现在能否使用</h2>
+    {% if fx_rows %}
+    <p><strong>已有 {{ fx_rows|length }} 个币种的参考汇率</strong> · 最新报价 {{ fx_latest_date }}</p>
+    {% else %}
+    <p><strong>尚未取得参考汇率</strong></p><p class="workspace-note">来源已配置不等于汇率已就绪。点击「保存并获取汇率」，取得数据后桌面和安卓才能使用。</p>
+    {% endif %}
     <p class="workspace-note" data-testid="fx-scheduler-state">
       {% if not fx_auto_enabled %}
         <span class="badge badge-off">自动同步已关闭</span> 可手动拉取
@@ -49,7 +67,7 @@
         <span class="badge badge-err">报价计划配置无效</span> 请修正时间和时区后保存。
         {% if fx_scheduler_running %}待补汇率的账单仍会继续处理。{% endif %}
       {% elif fx_scheduler_running %}
-        <span class="badge badge-ok">运行中</span> 等待计划时间或正在同步
+        <span class="badge badge-ok">自动更新已开启</span> {% if not fx_rows %}等待首次获取结果{% else %}按每日计划更新{% endif %}
       {% else %}
         <span class="badge badge-err">任务未运行</span> 请通过桌面管理器查看后端状态；仍可尝试手动拉取。
       {% endif %}
@@ -62,7 +80,7 @@
       </summary>
       <div class="workspace-disclosure__body">
         <dl class="workspace-facts">
-          <div><dt>数据源</dt><dd>欧洲央行参考汇率{% if fx_source == 'ecb' %}（ECB 直连）{% else %}（经 Frankfurter 镜像）{% endif %}</dd></div>
+          <div><dt>数据源</dt><dd>{% if fx_source == 'frankfurter_v2' %}Frankfurter 广覆盖（公开机构参考价）{% elif fx_source == 'ecb' %}欧洲央行直连{% else %}欧洲央行参考汇率（Frankfurter 镜像）{% endif %}</dd></div>
           <div><dt>已保存的计划</dt><dd>{% if fx_auto_enabled %}每日 {{ fx_sync_times }}（{{ fx_sync_timezone }}）{% else %}自动同步已关闭{% endif %}</dd></div>
           <div><dt>本次启动后最近成功</dt><dd>{{ fx_last_success_at|owner_datetime }}</dd></div>
           <div><dt>本次启动后运行次数</dt><dd>成功 {{ fx_success_count }} 次 / 失败 {{ fx_failed_count }} 次</dd></div>
@@ -73,7 +91,7 @@
           <table>
             <thead><tr><th>币种</th><th class="num">1 外币 = ? {{ home_currency_code }}</th><th>价格日期</th><th>来源</th><th>拉取时间</th></tr></thead>
             <tbody>{% for row in fx_rows %}
-              <tr><td>{{ row.currency }}</td><td class="num">{{ row.rate }}</td><td>{{ row.rate_date }}</td><td>{{ row.source }}</td><td>{{ row.fetched_at|owner_datetime }}</td></tr>
+              <tr><td>{{ row.currency }}</td><td class="num">{{ row.rate }}</td><td>{{ row.rate_date }}</td><td>{{ 'Frankfurter' if row.source == 'frankfurter' else '欧洲央行' }}</td><td>{{ row.fetched_at|owner_datetime }}</td></tr>
             {% endfor %}</tbody>
           </table>
         </div>
@@ -87,7 +105,9 @@
     {% if fx_scheduler_running and not fx_scheduler_config_error and fx_last_error %}
     <p class="workspace-note">自动任务会在后续计划时间继续尝试，也可现在手动拉取。</p>
     {% endif %}
-    <p class="workspace-note">历史账单请在待确认中按账单日期补齐汇率，取得结果后仍需核对并确认。</p>
+    <h3>获取后如何生效</h3>
+    <p class="workspace-note">新录入的外币账单按交易日期获取报价，换算后仍由你核对确认。计划估值可使用最近已公布的报价，并显示报价日期。</p>
+    <p class="workspace-note">洞察中的历史日期若缺少报价，可在「换算依据」按原日期获取。已确认账单保留当时的汇率；人工补录优先用于对应账本、币种和日期，不会被自动更新覆盖。</p>
   </section>
 </div>
 {% endblock %}

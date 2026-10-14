@@ -218,14 +218,14 @@ class DebtListViewModelCapabilityTest {
 
     @Test
     fun knownRecordWithUnknownEnvelopeCapabilityFailsClosed() = runTest(dispatcher) {
-        // PR#255 R8-1：capability **在场但未知**（新服务端 VND，客户端支持集外）≠ 缺失 ——
+        // PR#255 R8-1：capability **在场但未知**（新服务端 ZZZ，客户端支持集外）≠ 缺失 ——
         // 服务端已宣告当前 binding 是客户端无法解释的币种，新写入会被按其盖章；即便 record
-        // 已知（CNY）也不得按 record 口径放行（"1200" 按 CNY 解析 120000 → 服务端按 VND
+        // 已知（CNY）也不得按 record 口径放行（"1200" 按 CNY 解析 120000 → 服务端按 ZZZ
         // 盖章 = 100×）。判定用原始串（blank 才算缺失）。
         val repo = FakeDebtActions(
             listResult = Result.success(listOf(sampleDebt("cny-debt").copy(homeCurrencyCode = "CNY"))),
         )
-        repo.listCapability = "VND"
+        repo.listCapability = "ZZZ"
         val viewModel = DebtListViewModel(repo, repo.creation, repo.writes)
         advanceUntilIdle()
 

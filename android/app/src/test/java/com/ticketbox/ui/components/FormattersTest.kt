@@ -14,6 +14,25 @@ import java.util.TimeZone
 
 class FormattersTest {
     @Test
+    fun expandedCurrenciesRetainTheirExactMinorUnitsThroughDisplayAndInput() {
+        listOf(
+            Triple(CurrencyCode.TWD, 12345L, "123.45"),
+            Triple(CurrencyCode.VND, 12345L, "12345"),
+            Triple(CurrencyCode.KWD, 12345L, "12.345"),
+        ).forEach { (currency, minor, input) ->
+            assertEquals(input, formatMinorAmountInput(minor, currency))
+            assertEquals(input, formatAmountInput(minor, currency))
+            assertEquals(minor, parseMinorAmount(input, currency))
+            assertEquals(minor, parseAmountCents(input, currency))
+        }
+        assertEquals("TWD 123.45", formatMinorAmount(12345, CurrencyCode.TWD))
+        assertEquals("VND 12,345", formatMinorAmount(12345, CurrencyCode.VND))
+        assertEquals("KWD 12.345", formatMinorAmount(12345, CurrencyCode.KWD))
+        assertNull(parseMinorAmount("12.3456", CurrencyCode.KWD))
+        assertNull(parseMinorAmount("12345.1", CurrencyCode.VND))
+    }
+
+    @Test
     fun parsesYuanInputToCents() {
         assertEquals(3680, parseAmountCents("36.80", CurrencyCode.CNY))
         assertEquals(123, parseAmountCents("1.230", CurrencyCode.CNY))
@@ -240,13 +259,13 @@ class FormattersTest {
 
     @Test
     fun primaryAmountDefaultsToRecordCurrencyDisplay() {
-        // PR#255 R14-3：display 缺省改 record 口径 —— 原始 home 码未知（VND，枚举已回落
-        // CNY）按 "1200 VND" 原样亮码（原 minor 整数），不再冒 env Base 的 ¥12.00；
+        // PR#255 R14-3：display 缺省改 record 口径 —— 原始 home 码未知（ZZZ，枚举已回落
+        // CNY）按 "1200 ZZZ" 原样亮码（原 minor 整数），不再冒 env Base 的 ¥12.00；
         // 已知非 CNY record 码不 ÷100。
         val unknownHome = formatterExpense(
             FormatterExpenseFixture(amountCents = 1200, originalAmountMinor = null),
-        ).copy(homeCurrencyCode = "VND")
-        assertEquals("1200 VND", formatExpensePrimaryAmount(unknownHome))
+        ).copy(homeCurrencyCode = "ZZZ")
+        assertEquals("1200 ZZZ", formatExpensePrimaryAmount(unknownHome))
 
         val jpyHome = formatterExpense(
             FormatterExpenseFixture(
@@ -260,13 +279,13 @@ class FormattersTest {
 
     @Test
     fun primaryAmountRendersUnknownOriginalRawCodeHonestly() {
-        // PR#255 R14-3：原币腿原码未知（VND）时按原 minor 亮码，不冒回落枚举（CNY）的
+        // PR#255 R14-3：原币腿原码未知（ZZZ）时按原 minor 亮码，不冒回落枚举（CNY）的
         // 符号与缩放（旧口径会渲染成 "¥12.00"）。
         val expense = formatterExpense(
             FormatterExpenseFixture(amountCents = 34, originalAmountMinor = 1200),
-        ).copy(homeCurrencyCode = "CNY", originalCurrencyCodeRaw = "VND")
+        ).copy(homeCurrencyCode = "CNY", originalCurrencyCodeRaw = "ZZZ")
 
-        assertEquals("1200 VND", formatExpensePrimaryAmount(expense))
+        assertEquals("1200 ZZZ", formatExpensePrimaryAmount(expense))
     }
 
     @Test
@@ -277,15 +296,15 @@ class FormattersTest {
         )
         assertEquals(CurrencyDisplay(homeCurrency = CurrencyCode.JPY), manual.recordCurrencyDisplay())
 
-        val servedUnknown = manual.copy(homeCurrencyCode = "vnd")
-        assertEquals(CurrencyDisplay(unknownCode = "VND"), servedUnknown.recordCurrencyDisplay())
+        val servedUnknown = manual.copy(homeCurrencyCode = "zzz")
+        assertEquals(CurrencyDisplay(unknownCode = "ZZZ"), servedUnknown.recordCurrencyDisplay())
     }
 
     @Test
     fun parseForDisplayUsesRawMinorSpaceForUnknownCodes() {
         // PR#255 R15b-2：footer/均分解析 —— 未知码按原 minor 整数（"1200"→1200，不按兜底
         // 枚举放大成 120000；拒小数）；已知码维持 exponent 口径（JPY 不缩放、CNY ×100）。
-        val unknown = CurrencyDisplay(unknownCode = "VND")
+        val unknown = CurrencyDisplay(unknownCode = "ZZZ")
         assertEquals(1_200L, parseAmountCentsForDisplay("1200", unknown))
         assertNull(parseAmountCentsForDisplay("12.5", unknown))
         assertEquals(1_200L, parseAmountCentsForDisplay("1200", CurrencyDisplay(homeCurrency = CurrencyCode.JPY)))

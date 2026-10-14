@@ -10,7 +10,9 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.routes._web_session_common import resolve_web_actor_account_id
 from app.schemas import ExchangeRateRequest
+from app.schemas._exchange import ReferenceRateRequest
 from app.services.currency_common import supported_currency_codes
+from app.services.exchange_rate_reference_service import acquire_reference_rates
 from app.services.exchange_rate_service import list_exchange_rates, set_exchange_rate_idempotently
 
 _RATE_FIELDS = ("currency_code", "home_currency_code", "rate_date", "rate_to_cny",
@@ -52,9 +54,15 @@ def rate_recovery_context(db: Session, selected: str, details: dict[str, object]
 
 
 def submit_recovery_rate(db: Session, request: Request, selected: str, values: dict[str, str],
-    *, review_latest: bool = False) -> dict[str, object]:
+    *, review_latest: bool = False, fetch_reference: bool = False) -> dict[str, object]:
     """Rate acceptance never claims, refreshes or executes the original command."""
     try:
+        if fetch_reference:
+            reference = acquire_reference_rates(db, tenant_id=selected, request=ReferenceRateRequest(
+                **{key: values[key] for key in _RATE_FIELDS[:3]}))
+            message = ("已取得这一天可用的参考汇率，无需手填。" if reference.effective
+                       else "已取得参考报价，但尚无已核实适用于该日期的汇率。可稍后重试或自行补录。")
+            return {"status_code": 200, "message": message + "原输入已保留，原操作尚未提交。"}
         if review_latest:
             reviewed = rate_recovery_context(db, selected, values)
             if reviewed is None:

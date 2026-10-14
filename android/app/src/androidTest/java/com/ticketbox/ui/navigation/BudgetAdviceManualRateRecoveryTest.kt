@@ -66,6 +66,8 @@ class BudgetAdviceManualRateRecoveryTest {
         compose.waitForIdle()
         saveConsumerArtPreview("rate-gap-origin", requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
         compose.onNodeWithText(context.getString(R.string.advice_rate_add)).performScrollTo().performClick()
+        compose.waitUntil(5_000) { compose.onAllNodes(androidx.compose.ui.test.hasText(context.getString(R.string.advice_reference_manual))).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText(context.getString(R.string.advice_reference_manual)).performScrollTo().performClick()
         compose.waitUntil(5_000) { compose.onAllNodes(hasTestTag("advice_rate_value"), useUnmergedTree = true)
             .fetchSemanticsNodes().isNotEmpty() }
         val rateInput = compose.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag("advice_rate_value")), useUnmergedTree = true)

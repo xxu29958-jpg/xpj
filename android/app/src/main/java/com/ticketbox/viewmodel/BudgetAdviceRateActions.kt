@@ -5,6 +5,7 @@ import com.ticketbox.R
 import com.ticketbox.data.remote.dto.ExchangeRateDto
 import com.ticketbox.data.remote.dto.ExchangeRateRequestDto
 import com.ticketbox.data.remote.dto.MissingExchangeRateDto
+import com.ticketbox.data.remote.dto.ReferenceRateRequestDto
 import com.ticketbox.data.repository.PendingManualRateSubmission
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.canonicalManualExchangeRateOrNull
@@ -15,22 +16,53 @@ import kotlinx.coroutines.launch
 fun BudgetAdviceViewModel.openRate(gap: MissingExchangeRateDto, original: PendingManualRateSubmission? = null) {
     val binding = _state.value.binding ?: return
     val month = _state.value.month
-    if (!_state.value.canRequest || !gap.canEnterManualRate() || _state.value.rateBusy) return
+    if (!gap.canEnterManualRate() || _state.value.rateBusy) return
     _state.update { it.copy(rateBusy = true, rateMessage = null) }
     viewModelScope.launch {
         val response = repository.exchangeRates(binding, gap.sourceCurrencyCode, gap.homeCurrencyCode, gap.rateDate)
+        val reference = repository.referenceRates(binding, ReferenceRateRequestDto(gap.homeCurrencyCode, gap.sourceCurrencyCode, gap.rateDate))
         if (_state.value.binding != binding) return@launch
         if (_state.value.month != month) {
             _state.update { it.copy(rateBusy = false) }
             return@launch
         }
+        val denied = listOfNotNull(response.exceptionOrNull(), reference.exceptionOrNull()).firstOrNull { it.isReadAccessDenied() }
+        if (denied != null) { rejectArrangementRead(denied); return@launch }
         response.fold(onSuccess = { rates ->
             val current = rates.singleOrNull()
             _state.update { it.copy(rateBusy = false, rateEditor = ManualRateEditor(binding,
                 requireNotNull(gap.sourceCurrencyCode), gap.homeCurrencyCode, requireNotNull(gap.rateDate), current,
-                original?.intent?.request?.rateToHome ?: current?.rateToHome.orEmpty(), original?.row?.id)) }
+                original?.intent?.request?.rateToHome ?: current?.rateToHome.orEmpty(), original?.row?.id,
+                reference.getOrNull(), manualEditing = original != null || current != null),
+                referenceError = reference.exceptionOrNull()?.toUiText(R.string.advice_reference_failed)) }
         }, onFailure = { error -> _state.update { it.copy(rateBusy = false,
             rateMessage = error.toUiText(R.string.advice_rates_load_failed)) } })
+    }
+}
+
+fun BudgetAdviceViewModel.showManualRate() {
+    _state.update { it.copy(rateEditor = it.rateEditor?.copy(manualEditing = true)) }
+}
+
+fun BudgetAdviceViewModel.fetchReferenceRates() {
+    val snapshot = _state.value
+    val binding = snapshot.binding ?: return
+    val editor = snapshot.rateEditor
+    val home = editor?.homeCurrencyCode ?: snapshot.reportingHomeCurrencyCode ?: snapshot.inputs?.homeCurrencyCode ?: return
+    if (snapshot.rateBusy || !snapshot.canRequest) return
+    _state.update { it.copy(rateBusy = true, referenceError = null) }
+    viewModelScope.launch {
+        val result = repository.referenceRates(binding, ReferenceRateRequestDto(home, editor?.currencyCode, editor?.rateDate), fetch = true)
+        if (_state.value.binding != binding || _state.value.month != snapshot.month) return@launch
+        if (result.exceptionOrNull()?.isReadAccessDenied() == true) {
+            rejectArrangementRead(requireNotNull(result.exceptionOrNull()))
+            return@launch
+        }
+        _state.update { it.copy(rateBusy = false, referenceRates = result.getOrNull() ?: it.referenceRates,
+            rateEditor = it.rateEditor?.copy(reference = result.getOrNull() ?: it.rateEditor.reference),
+            referenceError = result.exceptionOrNull()?.toUiText(R.string.advice_reference_failed),
+            rateMessage = if (result.isSuccess) UiText.res(R.string.advice_reference_acquired) else null) }
+        if (result.isSuccess) { repository.invalidateBudgetAdvice(); refreshInputs() }
     }
 }
 

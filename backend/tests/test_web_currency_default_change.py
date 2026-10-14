@@ -1,5 +1,6 @@
 """The native Desktop Owner form retains the original default-change command."""
 
+import re
 from types import SimpleNamespace
 from unittest.mock import Mock
 from uuid import UUID
@@ -102,7 +103,10 @@ def test_native_save_uses_original_key_revision_reason_and_original_receipt(owne
     assert response.status_code == 200, response.text
     assert "默认币种修改已保存" in response.text and "JPY" in response.text
     assert "2026-09-09T09:00:00Z" in response.text
-    assert "EUR" not in response.text
+    receipt = re.search(r"<main\b[^>]*>([\s\S]*?)</main>", response.text)
+    assert receipt is not None
+    # The shared picker catalog may contain EUR; the saved receipt must not.
+    assert "CNY → JPY" in receipt.group(1) and "EUR" not in receipt.group(1)
     args = owner_browser.saved.call_args.kwargs
     assert args == {"auth": owner_browser.auth, "idempotency_key": UUID(fields["idempotency_key"]),
         "expected_contract_version": 1, "home_code": "JPY", "expected_revision": 2,

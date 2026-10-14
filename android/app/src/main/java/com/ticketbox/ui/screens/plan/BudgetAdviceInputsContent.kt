@@ -42,7 +42,8 @@ internal data class BudgetAdviceActions(val onGenerate: () -> Unit, val onRefres
     val onTrialArrangement: () -> Unit, val onSaveArrangement: () -> Unit,
     val onRefreshArrangement: () -> Unit, val onHistory: (Boolean) -> Unit,
     val onReviewArrangement: (com.ticketbox.data.repository.PendingMonthlyArrangement) -> Unit,
-    val onRecoverArrangement: (com.ticketbox.data.repository.PendingMonthlyArrangement, Boolean) -> Unit)
+    val onRecoverArrangement: (com.ticketbox.data.repository.PendingMonthlyArrangement, Boolean) -> Unit,
+    val onFetchRates: () -> Unit, val onManualRate: () -> Unit)
 
 @Composable
 internal fun BudgetAdviceInputsContent(state: BudgetAdviceUiState, actions: BudgetAdviceActions, onOpenBudget: (() -> Unit)? = null) {
@@ -105,7 +106,7 @@ internal fun BudgetAdviceReferenceContent(state: BudgetAdviceUiState, actions: B
                     })
             }
             com.ticketbox.ui.components.CurrencyReferenceDates(inputs.referenceRates.map { it.toDomain() })
-            MissingExchangeRates(inputs.missingRates, state.canRequest && !state.rateBusy, actions.onOpenRate)
+            MissingExchangeRates(inputs.missingRates, !state.rateBusy, actions.onOpenRate)
         }
         state.inputsError?.let { Text(it.asString(), color = MaterialTheme.colorScheme.error) }
         TextButton(onClick = actions.onRefreshInputs, enabled = !state.inputsLoading) { Text(stringResource(R.string.advice_inputs_refresh)) }
@@ -130,6 +131,7 @@ private fun MissingExchangeRates(rates: List<MissingExchangeRateDto>, enabled: B
 
 @Composable
 internal fun ManualRateContent(state: BudgetAdviceUiState, actions: BudgetAdviceActions) {
+    AutomaticRateContent(state, actions)
     ManualRateSubmissions(state, actions)
     state.rateMessage?.let { Text(it.asString()) }
     state.rateEditor?.let { ManualRateEditorCard(state, actions) }
@@ -138,9 +140,9 @@ internal fun ManualRateContent(state: BudgetAdviceUiState, actions: BudgetAdvice
 
 @Composable
 private fun CurrentExchangeRates(state: BudgetAdviceUiState, actions: BudgetAdviceActions) {
+    if (state.rates.isEmpty()) return
     AppContentCard {
         Text(stringResource(R.string.advice_rates_title), style = MaterialTheme.typography.titleMedium)
-        if (state.rates.isEmpty()) Text(stringResource(R.string.advice_rates_empty))
         state.rates.forEach { rate ->
             Text(stringResource(R.string.advice_rate_pair_date, rate.currencyCode, rate.homeCurrencyCode, rate.rateDate))
             Text(stringResource(R.string.advice_rate_current, rate.rateToHome, rate.rowVersion))
@@ -159,6 +161,13 @@ private fun ManualRateEditorCard(state: BudgetAdviceUiState, actions: BudgetAdvi
         Text(editor.current?.let { stringResource(R.string.advice_rate_current, it.rateToHome, it.rowVersion) }
             ?: stringResource(R.string.advice_rate_new))
         if (editor.reviewSubmissionId != null) Text(stringResource(R.string.advice_rate_review))
+        if (!editor.manualEditing) {
+            TextButton(onClick = actions.onManualRate, enabled = !state.rateBusy && state.canRequest) {
+                Text(stringResource(R.string.advice_reference_manual))
+            }
+            TextButton(onClick = actions.onCloseRate, enabled = !state.rateBusy) { Text(stringResource(R.string.advice_reference_choose_again)) }
+            return@AppContentCard
+        }
         AppTextInput(state = AppTextInputState(label = stringResource(R.string.advice_rate_value, editor.currencyCode, editor.homeCurrencyCode),
             value = editor.value, enabled = !state.rateBusy && state.canRequest,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)),

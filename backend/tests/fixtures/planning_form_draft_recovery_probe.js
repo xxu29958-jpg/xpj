@@ -37,7 +37,7 @@
   for (const spec of specs.filter(spec => spec.kind.startsWith("debt-") === debtOnly)) {
     const frame=document.createElement("iframe"); document.body.append(frame);
     const url="/fixture?kind="+spec.kind;
-    const getForm=()=>frame.contentDocument.querySelector('form[method="post"][action="'+spec.action+'"]');
+    const getForm=()=>frame.contentDocument.querySelector('form[method="post"][action="'+spec.action+'"][data-'+spec.family+'-draft-scope]');
     const submit=form=>[...form.elements].find(input=>input.matches("[data-"+spec.family+"-submit]"));
     const ready=()=>getForm()?.dataset[spec.family+"DraftPhase"] && !submit(getForm()).disabled;
     await load(frame,url); await until(ready,"draft lease unavailable: "+spec.kind);

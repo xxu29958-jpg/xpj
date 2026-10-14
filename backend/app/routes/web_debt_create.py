@@ -273,6 +273,6 @@ def web_debt_rate(
             fields=original, task="补汇率并继续原欠款", error=exc)
     values = {key: original.get(f"fx_{key}", "") for key in _RATE_FIELDS}
     result = submit_recovery_rate(db, request, selected, values,
-        review_latest=original.get("fx_review_latest") == "true")
+        review_latest=original.get("fx_review_latest") == "true", fetch_reference=original.get("fx_fetch_reference") == "true")
     return _render_create_error(request, db, options=options, selected_id=selected,
         values=original, message="", status_code=result["status_code"], rate_recovery={**values, **result})

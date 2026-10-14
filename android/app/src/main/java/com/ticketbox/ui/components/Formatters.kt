@@ -38,15 +38,9 @@ fun formatAmount(amountCents: Long?, currency: CurrencyCode = CurrencyCode.Defau
     if (amountCents == null) return "待填写金额"
     val locale = Locale.forLanguageTag(currency.localeTag)
     val symbols = DecimalFormatSymbols.getInstance(locale)
-    return if (currency.noFractionDigits) {
-        // JPY/KRW 等无小数币种：minor 已等于 major，不再除以 100
-        val pattern = DecimalFormat("#,##0", symbols)
-        "${currency.symbol}${pattern.format(amountCents)}"
-    } else {
-        val yuan = BigDecimal(amountCents).divide(BigDecimal(100), 2, RoundingMode.HALF_UP)
-        val pattern = DecimalFormat("#,##0.00", symbols)
-        "${currency.symbol}${pattern.format(yuan)}"
-    }
+    val digits = currency.minorUnitDigits
+    val pattern = DecimalFormat("#,##0" + if (digits == 0) "" else "." + "0".repeat(digits), symbols)
+    return "${currency.symbol}${pattern.format(BigDecimal.valueOf(amountCents, digits))}"
 }
 
 fun formatDisplayAmount(amountCents: Long?, display: CurrencyDisplay = CurrencyDisplay.Base): String {
@@ -57,28 +51,10 @@ fun formatDisplayAmount(amountCents: Long?, display: CurrencyDisplay = CurrencyD
     return formatAmount(amountCents, display.homeCurrency)
 }
 
-fun formatMinorAmount(amountMinor: Long?, currency: CurrencyCode): String {
-    if (amountMinor == null) return "待填写金额"
-    val locale = Locale.forLanguageTag(currency.localeTag)
-    val symbols = DecimalFormatSymbols.getInstance(locale)
-    return if (currency.noFractionDigits) {
-        val pattern = DecimalFormat("#,##0", symbols)
-        "${currency.symbol}${pattern.format(amountMinor)}"
-    } else {
-        val major = BigDecimal(amountMinor).divide(BigDecimal(100), 2, RoundingMode.HALF_UP)
-        val pattern = DecimalFormat("#,##0.00", symbols)
-        "${currency.symbol}${pattern.format(major)}"
-    }
-}
+fun formatMinorAmount(amountMinor: Long?, currency: CurrencyCode): String = formatAmount(amountMinor, currency)
 
-fun formatMinorAmountInput(amountMinor: Long?, currency: CurrencyCode): String {
-    if (amountMinor == null) return ""
-    return if (currency.noFractionDigits) {
-        amountMinor.toString()
-    } else {
-        BigDecimal(amountMinor).divide(BigDecimal(100), 2, RoundingMode.HALF_UP).toPlainString()
-    }
-}
+fun formatMinorAmountInput(amountMinor: Long?, currency: CurrencyCode): String =
+    amountMinor?.let { BigDecimal.valueOf(it, currency.minorUnitDigits).toPlainString() }.orEmpty()
 
 fun sanitizeMinorAmountInput(
     input: String,

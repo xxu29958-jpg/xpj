@@ -437,7 +437,7 @@ class LedgerViewModelTest {
     fun manualCreateBlockedWhenCapabilityUnresolved() = ledgerTest {
         // R13-6：capability 未知（支持集外）→ 手记禁提交 + sheet 内联明示，repository 不可达。
         val debts = CapabilityDebtActions(
-            page = DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = "VND"),
+            page = DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = "ZZZ"),
         )
         val fake = FakeLedgerActions(expenses = emptyList())
         val vm = LedgerViewModel(fake, debts)

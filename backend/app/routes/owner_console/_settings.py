@@ -10,10 +10,16 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.database import get_db
 from app.error_reporting import retain_handled_error
 from app.routes.owner_console._shared import LocalOnly, _base, templates
-from app.services import recognition_setup_service, route_inspector_service, runtime_settings_service
+from app.services import (
+    owner_console_service,
+    recognition_setup_service,
+    route_inspector_service,
+    runtime_settings_service,
+)
 
 router = APIRouter(prefix="/owner", tags=["owner-console"])
 
@@ -40,6 +46,12 @@ def owner_settings_index(
 ) -> HTMLResponse:
     ctx = _settings_ctx(request, db)
     ctx["security_view"] = runtime_settings_service.get_security_view()
+    ctx["recognition_view"] = runtime_settings_service.get_recognition_view()
+    ctx["effective_settings"] = get_settings()
+    ctx["fx_view"] = (
+        owner_console_service.get_fx_panel_vm(db, home_currency_code=ctx["home_currency_code"])
+        if ctx["home_currency_code"] else None
+    )
     return templates.TemplateResponse(request=request, name="settings/index.html", context=ctx)
 
 
@@ -142,7 +154,7 @@ def _post_public_base_url(
     ctx = _settings_ctx(
         request,
         db,
-        message="已保存到受保护的运行时设置，下一次创建上传链接即生效。公网连接仍需单独检查。",
+        message="地址已保存，之后获取的上传地址使用新域名；已分享的旧地址请重新获取并分享。公网连接请在桌面管理器检查。",
     )
     return templates.TemplateResponse(request=request, name="settings/public_base_url.html", context=ctx)
 

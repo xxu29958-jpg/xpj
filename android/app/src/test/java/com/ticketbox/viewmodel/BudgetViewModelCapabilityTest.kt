@@ -33,7 +33,7 @@ class BudgetViewModelCapabilityTest {
     fun saveBlockedWhenCapabilityUnsupported() = budgetTest {
         // R13-7：capability 在支持集外 → 禁写 + 明示文案，repository 不可达。
         val fake = FakeBudgetActions(budget = budget(configured = false))
-        fake.budget = fake.budget.copy(homeCurrencyCode = "VND")
+        fake.budget = fake.budget.copy(homeCurrencyCode = "ZZZ")
         val vm = BudgetViewModel(fake, initialMonth = "2026-05")
         advanceUntilIdle()
 

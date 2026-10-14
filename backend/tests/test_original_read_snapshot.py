@@ -139,11 +139,9 @@ def test_missing_temporary_storage_does_not_claim_original_is_missing(original_s
     assert original.read_bytes() == ORIGINAL
 
 
-def test_snapshot_bounds_stream_reads_before_writing_oversized_original(original_store, monkeypatch):
+def test_snapshot_bounds_stream_reads_if_held_original_grows(original_store, monkeypatch):
     original, snapshots = original_store
-    original.write_bytes(b"x" * 4096)
-    monkeypatch.setattr(original_read_service, "get_settings", lambda: SimpleNamespace(max_upload_size_bytes=128),
-        raising=False)
+    original.write_bytes(b"x" * 128)
     real_reader = original_read_service.hold_stable_file_for_read
     reads = []
 
@@ -151,7 +149,7 @@ def test_snapshot_bounds_stream_reads_before_writing_oversized_original(original
     def measured_reader(path):
         with real_reader(path) as source:
             def read(size):
-                chunk = source.read(size)
+                chunk = b"x" * size  # Simulate growth after the held file-size snapshot.
                 reads.append(len(chunk))
                 return chunk
             yield SimpleNamespace(fileno=source.fileno, read=read)

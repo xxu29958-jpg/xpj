@@ -51,7 +51,6 @@ import com.ticketbox.domain.model.TagStats
 import com.ticketbox.domain.model.TagUndoResult
 import com.ticketbox.domain.model.normalizeExpenseCategory
 import java.math.BigDecimal
-import java.math.RoundingMode
 import java.time.Instant
 
 fun ExpenseDto.toDomain(): Expense {
@@ -611,11 +610,5 @@ fun ServerSettingsDto.toDomain(): ServerSettings = ServerSettings(
 
 internal fun String?.cleanOptional(): String? = this?.trim()?.takeIf { it.isNotBlank() }
 
-private fun minorToMajorText(amountMinor: Long?, currency: CurrencyCode): String? {
-    if (amountMinor == null) return null
-    return if (currency.noFractionDigits) {
-        amountMinor.toString()
-    } else {
-        BigDecimal(amountMinor).divide(BigDecimal(100), 2, RoundingMode.HALF_UP).toPlainString()
-    }
-}
+private fun minorToMajorText(amountMinor: Long?, currency: CurrencyCode): String? =
+    amountMinor?.let { BigDecimal.valueOf(it, currency.minorUnitDigits).toPlainString() }

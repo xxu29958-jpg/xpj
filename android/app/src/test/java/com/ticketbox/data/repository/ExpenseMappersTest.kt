@@ -20,6 +20,27 @@ import kotlin.test.assertFailsWith
 
 class ExpenseMappersTest {
     @Test
+    fun threeDecimalAmountSurvivesApiCacheAndCreateSubmission() {
+        val dto = expenseDto(publicId = "kwd-original").copy(
+            originalCurrencyCode = "KWD", originalAmountMinor = 12_345L,
+            homeCurrency = "KWD", amountCents = 12_345L,
+        )
+        val online = dto.toDomain()
+        val cached = dto.toEntity(ledgerId = "owner").toDomain()
+        for (expense in listOf(online, cached)) {
+            assertEquals("12.345", expense.originalAmount)
+            assertEquals(12_345L, expense.originalAmountMinor)
+        }
+        val draft = ExpenseDraft(
+            amountCents = null, originalCurrencyCode = CurrencyCode.KWD,
+            originalAmountMinor = 12_345L, ledgerHomeCurrency = CurrencyCode.KWD,
+            merchant = "Kuwait", category = "交通", note = "原备注",
+            expenseTime = cached.expenseTime, tags = null, valueScore = null, regretScore = null,
+        )
+        assertEquals("12.345", draft.toManualCreateRequest("kwd-original").originalAmount)
+    }
+
+    @Test
     fun mapsPublicIdFromServer() {
         val expense = expenseDto(publicId = "691da31d-e8d7-49b0-bece-ec6f61c044b2").toDomain()
 
@@ -182,15 +203,15 @@ class ExpenseMappersTest {
     fun toDomainPassesThroughRawOriginalCurrencyCode() {
         // R13-4：original 原码透传（DTO 侧 originalCurrencyCode 字段 + Entity 缓存侧）——
         // 未知码进原码字段供金额编辑严格解析/禁写，枚举侧维持回落语义不动。
-        val expense = expenseDto(publicId = "p1").copy(originalCurrencyCode = "VND").toDomain()
+        val expense = expenseDto(publicId = "p1").copy(originalCurrencyCode = "ZZZ").toDomain()
 
-        assertEquals("VND", expense.originalCurrencyCodeRaw)
+        assertEquals("ZZZ", expense.originalCurrencyCodeRaw)
         assertEquals(CurrencyCode.CNY, expense.originalCurrencyCode) // 枚举回落语义不动
 
-        val entity = expenseDto(publicId = "p1").copy(originalCurrencyCode = "VND")
+        val entity = expenseDto(publicId = "p1").copy(originalCurrencyCode = "ZZZ")
             .toEntity(ledgerId = "owner")
         val fromCache = entity.toDomain()
-        assertEquals("VND", fromCache.originalCurrencyCodeRaw)
+        assertEquals("ZZZ", fromCache.originalCurrencyCodeRaw)
     }
 
     @Test

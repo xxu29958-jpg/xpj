@@ -6,7 +6,9 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-CurrencyCode = Literal["CNY", "USD", "EUR", "GBP", "JPY", "HKD", "KRW"]
+from app.currency_catalog import CURRENCY_CATALOG
+
+CurrencyCode = Literal[*sorted(CURRENCY_CATALOG)]
 RuntimeCompatibilityConclusion = Literal[
     "compatible",
     "client_upgrade_required",
