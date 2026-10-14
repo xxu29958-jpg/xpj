@@ -82,9 +82,12 @@ def record_category_choice(db: Session, *, expense: Expense, previous_category: 
     decision = active_decision_for_subject(db, tenant_id=expense.tenant_id,
         decision_type=CATEGORY_SUGGESTION.decision_type, subject_kind="expense", subject_id=expense.id)
     if decision is not None:
+        payload = _loads(decision.output_payload)
+        if payload.get("merchant", expense.merchant) != expense.merchant:
+            return
         record_pending_suggestion_event(db, tenant_id=expense.tenant_id, expense_id=expense.id,
             decision_public_id=decision.public_id, actor_account_id=None,
-            event_type="accept" if _loads(decision.output_payload).get("category") == expense.category else "reject")
+            event_type="accept" if payload.get("category") == expense.category else "reject")
 
 
 def record_duplicate_choice(db: Session, *, expense: Expense) -> None:

@@ -206,7 +206,7 @@ def test_pending_suggestion_feedback_requires_auth(client: TestClient, *, identi
 
 def test_feedback_changes_the_next_real_review_without_changing_money(client, web_client, identity):
     """Read -> correct -> reopen -> next receipt, across the actual consumers."""
-    from api_contract_helpers import patch_expense
+    from api_contract_helpers import confirm_expense_api, patch_expense
 
     from app.models import Expense
 
@@ -219,6 +219,19 @@ def test_feedback_changes_the_next_real_review_without_changing_money(client, we
     page = web_client.get(f"/web/expenses/{pending_id}/edit?ledger_id=owner")
     assert 'data-category-suggestion="餐饮"' in page.text
     assert "3 笔" in page.text
+
+    # Replacing the merchant makes the old advice irrelevant, not a rejected category for the new shop.
+    replaced_id = _pending_notification(client, identity=identity, merchant="学习咖啡店")
+    assert client.get(f"/api/expenses/{replaced_id}", headers=identity.app_headers).json()["category_suggestion"]
+    replaced = patch_expense(client, replaced_id, headers=identity.app_headers,
+        fields={"merchant": "新商家", "category": "购物"})
+    assert replaced.status_code == 200
+    confirmed = confirm_expense_api(client, replaced_id, headers=identity.app_headers)
+    assert confirmed.status_code == 200, confirmed.text
+    with SessionLocal() as db:
+        assert db.query(LedgerLearningEvent).filter(LedgerLearningEvent.subject_id == replaced_id).count() == 0
+        assert db.get(Expense, replaced_id).merchant == "新商家"
+        assert db.get(Expense, replaced_id).amount_cents == 1888
 
     intervening = patch_expense(client, pending_id, headers=identity.app_headers, fields={"note": "另一端刚保存"})
     assert intervening.status_code == 200
