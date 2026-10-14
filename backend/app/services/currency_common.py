@@ -119,12 +119,12 @@ def currency_input_metadata(currency_code: str | None) -> dict[str, object]:
         "currency_code": code,
         "currency_symbol": currency_symbol(code),
         "minor_unit_digits": digits,
-        "amount_step": "1" if zero_fraction else "0.01",
-        "positive_amount_min": "1" if zero_fraction else "0.01",
-        "amount_placeholder": "0" if zero_fraction else "0.00",
-        "amount_example": "1200" if zero_fraction else "12.34",
+        "amount_step": "1" if zero_fraction else "0." + "0" * (digits - 1) + "1",
+        "positive_amount_min": "1" if zero_fraction else "0." + "0" * (digits - 1) + "1",
+        "amount_placeholder": "0" if zero_fraction else "0." + "0" * digits,
+        "amount_example": "1200" if zero_fraction else "12." + "3456"[:digits],
         "inputmode": "numeric" if zero_fraction else "decimal",
-        "amount_input_hint": "仅支持整数" if zero_fraction else "最多两位小数",
+        "amount_input_hint": "仅支持整数" if zero_fraction else "最多两位小数" if digits == 2 else f"最多 {digits} 位小数",
     }
 
 

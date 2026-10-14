@@ -9,10 +9,26 @@ from app.auth import get_current_app_context, get_current_protocol_writer_contex
 from app.database import get_db
 from app.errors import AppError
 from app.schemas import ExchangeRateListResponse, ExchangeRateRequest, ExchangeRateResponse
+from app.schemas._exchange import ReferenceRateRequest, ReferenceRatesResponse
+from app.services.exchange_rate_reference_service import acquire_reference_rates, read_reference_rates
 from app.services.exchange_rate_service import list_exchange_rates, set_exchange_rate_idempotently
 from app.tenants import AuthContext
 
 router = APIRouter(prefix="/api/exchange-rates", tags=["exchange-rates"])
+
+
+@router.get("/reference", response_model=ReferenceRatesResponse)
+def get_reference_rates(home_currency_code: str = Query(min_length=3, max_length=3),
+    currency_code: str | None = Query(default=None, min_length=3, max_length=3), rate_date: date | None = None,
+    auth: AuthContext = Depends(get_current_app_context), db: Session = Depends(get_db)) -> ReferenceRatesResponse:
+    return read_reference_rates(db, tenant_id=auth.tenant_id, request=ReferenceRateRequest(
+        currency_code=currency_code, home_currency_code=home_currency_code, rate_date=rate_date))
+
+
+@router.post("/reference", response_model=ReferenceRatesResponse)
+def fetch_reference_rates(payload: ReferenceRateRequest,
+    auth: AuthContext = Depends(get_current_protocol_writer_context), db: Session = Depends(get_db)) -> ReferenceRatesResponse:
+    return acquire_reference_rates(db, tenant_id=auth.tenant_id, request=payload)
 
 
 @router.get("", response_model=ExchangeRateListResponse)

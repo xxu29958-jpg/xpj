@@ -21,6 +21,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.currency_catalog import CURRENCY_SQL_LIST
 from app.database_model_registry import Base
 from app.money_contract import money_check_constraints_for_table
 from app.services.time_service import now_utc
@@ -32,7 +33,7 @@ class Budget(Base):
     __table_args__ = (
         *money_check_constraints_for_table("budgets"),
         CheckConstraint("length(month) = 7", name="ck_budgets_month_format"),
-        CheckConstraint("home_currency_code IN ('CNY', 'USD', 'EUR', 'GBP', 'JPY', 'HKD', 'KRW')", name="ck_budget_currency"),
+        CheckConstraint(f"home_currency_code IN ({CURRENCY_SQL_LIST})", name="ck_budget_currency"),
         UniqueConstraint("tenant_id", "month", name="uq_budgets_tenant_month"),
         UniqueConstraint("id", "tenant_id", name="uq_budgets_id_tenant"),
     )
@@ -127,7 +128,7 @@ class Goal(Base):
         ),
         CheckConstraint("period IN ('monthly')", name="ck_goals_period_valid"),
         CheckConstraint("status IN ('active', 'archived')", name="ck_goals_status_valid"),
-        CheckConstraint("home_currency_code IN ('CNY', 'USD', 'EUR', 'GBP', 'JPY', 'HKD', 'KRW')", name="ck_goal_currency"),
+        CheckConstraint(f"home_currency_code IN ({CURRENCY_SQL_LIST})", name="ck_goal_currency"),
         CheckConstraint("goal_type <> 'debt_repayment' OR home_currency_code IS NULL", name="ck_goal_currency_shape"),
         # C07's shared goal-money shape also enforces the per-type month shape:
         # spending goals require a seven-character month; debt goals require NULL.

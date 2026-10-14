@@ -11,6 +11,8 @@ the same status counters.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
@@ -63,20 +65,22 @@ def owner_fx_get(
 @router.post("/fx/settings", response_class=HTMLResponse)
 def owner_fx_settings_post(
     request: Request,
-    auto_enabled: bool = Form(False), source: str = Form("frankfurter"),
+    auto_enabled: bool = Form(False), source: str = Form("frankfurter_v2"),
     sync_times: str = Form("09:10,23:10"), timezone: str = Form("Asia/Shanghai"),
+    url: str = Form(""), action: str = Form("save"),
     _local: None = LocalOnly, db: Session = Depends(get_db),
 ) -> HTMLResponse:
-    form = integration.FxSettingsForm(auto_enabled, source, sync_times, timezone)
+    form = integration.FxSettingsForm(auto_enabled, source, sync_times, timezone, url)
     error = None
     status_code = 200
     try:
         integration.save_fx(form)
     except AppError as exc:
         error, status_code = exc.message, exc.status_code
-    ctx = _fx_context(request, db)
-    ctx.update(fx_form=form if error else integration.fx_form(), error=error,
-               message=None if error else "汇率设置已保存，无需重启。后台空闲时在 30 秒内采用新计划；进行中的任务完成后切换。")
+    refreshed = ("ok" if run_fx_sync_once(db) else "fail") if not error and action == "refresh" else None
+    ctx = _fx_context(request, db, refreshed=refreshed)
+    ctx.update(fx_form=replace(form, url=integration.display_fx_url(source, url)) if error else integration.fx_form(), error=error,
+               message=None if error else "汇率设置已保存。开启自动更新后，后台会在初始化或配置变化后主动获取，再按每日计划更新。保存设置本身不代表获取成功。")
     return templates.TemplateResponse(request=request, name="fx.html", context=ctx, status_code=status_code)
 
 

@@ -17,17 +17,16 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.currency_catalog import CURRENCY_MINOR_UNIT_SQL, CURRENCY_SQL_LIST
 from app.database_model_registry import Base
 from app.services.time_service import now_utc
 
-_BINDING_SHAPE_CHECK = """
+_BINDING_SHAPE_CHECK = f"""
 (
     state = 'ACTIVE'
-    AND home_currency_code IN ('CNY', 'USD', 'EUR', 'GBP', 'JPY', 'HKD', 'KRW')
+    AND home_currency_code IN ({CURRENCY_SQL_LIST})
     AND (
-        (home_currency_code IN ('JPY', 'KRW') AND minor_unit_exponent = 0)
-        OR
-        (home_currency_code IN ('CNY', 'USD', 'EUR', 'GBP', 'HKD') AND minor_unit_exponent = 2)
+        {CURRENCY_MINOR_UNIT_SQL}
     )
     AND rounding_mode = 'ROUND_HALF_UP'
     AND binding_revision >= 1

@@ -78,12 +78,12 @@ class DebtListRowsTest {
             external.copy(remainingAmountCents = 116000),
             external.copy(publicId = "closed", status = DebtLinkStatuses.CLEARED),
             external.copy(publicId = "voided", status = DebtLinkStatuses.VOIDED),
-            external.copy(publicId = "unknown-currency", homeCurrencyCode = "VND", remainingAmountCents = 2000),
+            external.copy(publicId = "unknown-currency", homeCurrencyCode = "ZZZ", remainingAmountCents = 2000),
         )
         assertEquals(listOf(
             DebtListTotal(DebtDirections.OWED_TO_ME, "JPY", 2, 4500),
             DebtListTotal(DebtDirections.I_OWE, "CNY", 1, 116000),
-            DebtListTotal(DebtDirections.I_OWE, "VND", 1, 2000),
+            DebtListTotal(DebtDirections.I_OWE, "ZZZ", 1, 2000),
         ), debtListTotals(rows))
         assertEquals(emptyList<DebtListTotal>(), debtListTotals(listOf(member)))
     }

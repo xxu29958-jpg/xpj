@@ -176,7 +176,7 @@ class IncomePlanCreateDraftContinuityTest {
 
     @Test
     fun unsupportedCurrencyIsNeverReinterpretedByLaterDefault() = runTest(dispatcher) {
-        val repo = FakeIncomePlanCreateRepository().apply { active = active.copy(homeCurrencyCode = "VND") }
+        val repo = FakeIncomePlanCreateRepository().apply { active = active.copy(homeCurrencyCode = "ZZZ") }
         val owner = IncomePlanCreateViewModel(repo)
         advanceUntilIdle()
         owner.openOriginal(repo)

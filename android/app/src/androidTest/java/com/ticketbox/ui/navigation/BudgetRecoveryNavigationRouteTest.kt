@@ -191,7 +191,7 @@ class BudgetRecoveryNavigationRouteTest {
             compose.onNode(hasTestTag(tag)).performClick()
             assertReportRateMonth()
             compose.waitUntil(5_000) { transport.rateReads.contains(Triple("USD", "CNY", gap.rateDate)) }
-            compose.onNode(hasTestTag("advice_rate_value"), useUnmergedTree = true).performScrollTo().assertIsDisplayed()
+            compose.onNodeWithText(context.getString(R.string.advice_reference_manual)).performScrollTo().assertIsDisplayed()
             saveConsumerArtPreview("insights-$prefix-editor", compose.onRoot().captureToImage().asAndroidBitmap())
             androidx.test.espresso.Espresso.pressBack()
             compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(context.getString(R.string.stats_tab_overview)))
@@ -205,7 +205,7 @@ class BudgetRecoveryNavigationRouteTest {
     }
 
     private fun assertReportRateMonth() {
-        waitForText(context.getString(R.string.budget_advice_page_title))
+        waitForText(context.getString(R.string.advice_reference_page_title))
         compose.waitUntil(5_000) { transport.adviceInputReads.lastOrNull() == (originalMonth to "CNY") }
         assertEquals(MainProductDestination.Secondary(ProductSecondaryPage.BudgetAdvice), harness.shell.activeDestination)
         assertEquals(MAIN_ROUTE, outer.currentBackStackEntry?.destination?.route)
@@ -348,6 +348,9 @@ internal class BudgetNavigationTransport(private val currentMonth: String, priva
             rateReads += Triple(currencyCode, homeCurrencyCode, rateDate)
             return com.ticketbox.data.remote.dto.ExchangeRateListDto(emptyList())
         }
+
+        override suspend fun referenceRates(homeCurrencyCode: String, currencyCode: String?, rateDate: String?) =
+            com.ticketbox.data.remote.dto.ReferenceRatesDto("frankfurter", true, "waiting", rateDate, items = emptyList())
 
         override suspend fun months(timezone: String?) = MonthsDto(listOf(currentMonth, originalMonth))
 

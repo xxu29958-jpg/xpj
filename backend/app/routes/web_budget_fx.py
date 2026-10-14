@@ -32,8 +32,10 @@ from app.routes.web_common import (
     templates,
 )
 from app.schemas import ExchangeRateRequest
+from app.schemas._exchange import ReferenceRateRequest
 from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.currency_common import normalize_currency_code, supported_currency_codes
+from app.services.exchange_rate_reference_service import acquire_reference_rates, read_reference_rates
 from app.services.exchange_rate_service import list_exchange_rates, set_exchange_rate_idempotently
 from app.services.ledger_calendar_service import current_ledger_month
 
@@ -110,15 +112,24 @@ def _review_rate(db, selected, values, *, keep_value):
         values["rate_to_cny"] = str(current.rate_to_cny)
 
 
-def _render_rates(request, db, options, selected, values, *, error=None, conflict=False, status_code=200):
+def _reference_request(values):
+    return ReferenceRateRequest(currency_code=values["currency_code"] or None,
+        home_currency_code=values["home_currency_code"], rate_date=values["rate_date"] or None)
+
+
+def _render_rates(request, db, options, selected, values, *, error=None, conflict=False, status_code=200, message=None):
+    reference = None
     try:
         rates = _current_rates(db, selected, values)
-    except (AppError, ValueError):
+        reference = read_reference_rates(db, tenant_id=selected, request=_reference_request(values))
+    except (AppError, ValueError) as exc:
         rates = []
-    ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected, page_title="人工汇率")
+        error = error or (exc.message if isinstance(exc, AppError) else "请检查币种和换算日期。")
+    ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected, page_title="换算依据")
     path, params, label = _task_return(values)
     scope, binding_required = rendered_draft_scope(db, request, values["draft_scope"] if request.method == "POST" else None)
-    ctx.update(values=values, rates=rates, error=error, conflict=conflict,
+    ctx.update(values=values, rates=rates, reference=reference, error=error, conflict=conflict, message=message,
+        reference_action=request.url.path.endswith("/reference"),
         rate_task={key: values[key] for key in _TASK_FIELDS}, currency_codes=sorted(supported_currency_codes()),
         rate_draft_scope=scope, rate_binding_required=binding_required,
         return_href=path + "?" + urlencode({"ledger_id": values["ledger_id"], **params}), return_label=label)
@@ -144,6 +155,29 @@ def page_budget_rates(request: Request, db: Session = Depends(get_db), _local: N
         except (AppError, ValueError) as exc:
             error = exc.message if isinstance(exc, AppError) else "请检查换算日期。"
     return _render_rates(request, db, options, selected, values, error=error)
+
+
+@router.post("/reference", response_class=HTMLResponse)
+def fetch_budget_reference(request: Request, form: BudgetRateForm = Form(),
+    db: Session = Depends(get_db), _local: None = LocalOnly) -> Response:
+    values = {key: str(form.model_dump().get(key, "")) for key in (*_TASK_FIELDS, *_RATE_FIELDS)}
+    options = _list_ledger_options(db)
+    selected = _resolve_selected_ledger_id(db, values["ledger_id"] or None, options, request=request)
+    retained = preserve_original_ledger_form(request, db, options=options, selected=selected,
+        fields=values, task="获取参考汇率")
+    if retained is not None:
+        return retained
+    try:
+        _require_selected_ledger_write(options, selected)
+        require_draft_binding(db, request, ledger_id=selected, draft_scope=values["draft_scope"], require_session=False)
+        acquire_reference_rates(db, tenant_id=selected, request=_reference_request(values))
+    except (AppError, ValueError) as exc:
+        db.rollback()
+        return _render_rates(request, db, options, selected, values,
+            error=exc.message if isinstance(exc, AppError) else "请检查币种和换算日期。原任务已保留。",
+            status_code=exc.status_code if isinstance(exc, AppError) else 422)
+    return _render_rates(request, db, options, selected, values,
+        message="已取得来源的参考报价。请核对下面的日期与适用状态，再返回原任务；没有写入人工汇率或提交财务操作。")
 
 
 def _rate_payload(values):

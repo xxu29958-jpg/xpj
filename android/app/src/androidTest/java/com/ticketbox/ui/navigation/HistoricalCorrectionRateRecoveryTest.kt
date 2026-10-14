@@ -84,6 +84,8 @@ class HistoricalCorrectionRateRecoveryTest {
             override suspend fun exchangeRates(currencyCode: String?, homeCurrencyCode: String?, rateDate: String?, limit: Int) =
                 ExchangeRateListDto(listOfNotNull(currentRate).filter { (currencyCode == null || it.currencyCode == currencyCode) &&
                     (homeCurrencyCode == null || it.homeCurrencyCode == homeCurrencyCode) && (rateDate == null || it.rateDate == rateDate) })
+            override suspend fun referenceRates(homeCurrencyCode: String, currencyCode: String?, rateDate: String?) =
+                ReferenceRatesDto("frankfurter", true, "waiting", rateDate, items = emptyList())
             override suspend fun saveExchangeRate(currencyCode: String, rateDate: String, request: ExchangeRateRequestDto,
                 idempotencyKey: String): ExchangeRateDto {
                 assertEquals("JPY", currencyCode)
@@ -271,6 +273,8 @@ class HistoricalCorrectionRateRecoveryTest {
         val text = context.getString(R.string.correction_rate_open)
         waitForText(text)
         compose.onNodeWithText(text).performScrollTo().performClick()
+        compose.waitUntil(5_000) { compose.onAllNodes(androidx.compose.ui.test.hasText(context.getString(R.string.advice_reference_manual))).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText(context.getString(R.string.advice_reference_manual)).performScrollTo().performClick()
         compose.waitUntil(5_000) { compose.onAllNodes(hasTestTag("advice_rate_value"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText(context.getString(R.string.advice_rate_pair_date, "JPY", "CNY", "2025-12-03"))
             .performScrollTo().assertIsDisplayed()

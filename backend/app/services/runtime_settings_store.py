@@ -30,13 +30,15 @@ from app.services.secure_file import (
 
 _LEGACY_SCHEMA = "ticketbox-runtime-settings-v1"
 _RECOGNITION_SCHEMA = "ticketbox-runtime-settings-v2"
-_SCHEMA = "ticketbox-runtime-settings-v3"
+_INTEGRATION_SCHEMA = "ticketbox-runtime-settings-v3"
+_SCHEMA = "ticketbox-runtime-settings-v4"
 _MAX_BYTES = 32768
 _LEGACY_FIELDS = frozenset({"schema", "public_base_url", "budget_advisor_owner_confirmed"})
 _RECOGNITION_SCHEMA_FIELDS = frozenset({*_LEGACY_FIELDS, "recognition"})
 _FIELDS = frozenset({*_RECOGNITION_SCHEMA_FIELDS, "advisor", "fx", "uploads", "maintenance"})
 _FIELDS_BY_SCHEMA = {
     _RECOGNITION_SCHEMA: _RECOGNITION_SCHEMA_FIELDS,
+    _INTEGRATION_SCHEMA: _FIELDS,
     _SCHEMA: _FIELDS,
 }
 _RECOGNITION_FIELDS = frozenset(
@@ -279,13 +281,17 @@ def _decode_runtime_settings(encoded: bytes) -> RuntimeSettingsProjection:
         budget_advisor_owner_confirmed=value.get("budget_advisor_owner_confirmed"),
         recognition=_decode_recognition(value.get("recognition")),
         advisor=_decode_integration(value.get("advisor"), AdvisorSettingsProjection),
-        fx=_decode_integration(value.get("fx"), FxSettingsProjection),
+        fx=_decode_integration(
+            {**value["fx"], "url": None} if schema == _INTEGRATION_SCHEMA and isinstance(value.get("fx"), dict)
+            and "url" not in value["fx"] else value.get("fx"), FxSettingsProjection),
         uploads=_decode_integration(value.get("uploads"), UploadSettingsProjection),
         maintenance=_decode_integration(value.get("maintenance"), MaintenanceSettingsProjection),
     )
     canonical = _payload(projection)
     canonical = {key: val for key, val in canonical.items() if key in expected_fields}
     canonical["schema"] = schema
+    if schema == _INTEGRATION_SCHEMA and canonical.get("fx") is not None:
+        canonical["fx"].pop("url")
     expected = json.dumps(canonical, ensure_ascii=True, allow_nan=False, sort_keys=True, separators=(",", ":")) + "\n"
     if encoded.decode("utf-8") != expected:
         raise ValueError("runtime settings projection is not canonical")

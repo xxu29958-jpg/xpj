@@ -69,7 +69,11 @@ def test_parse_frankfurter_rejects_malformed(bad: str) -> None:
         parse_frankfurter_rates(bad)
 
 
-def test_fetch_reference_rates_defaults_to_frankfurter() -> None:
+def test_fetch_reference_rates_retains_legacy_frankfurter(monkeypatch: pytest.MonkeyPatch) -> None:
+    from dataclasses import replace
+
+    cfg = replace(provider.get_settings(), fx_rate_source="frankfurter")
+    monkeypatch.setattr(provider, "get_settings", lambda: cfg)
     with patch.object(provider, "urlopen", return_value=_frankfurter_response()):
         daily = fetch_reference_rates()
     assert daily.rate_date == date(2026, 5, 29)
@@ -247,11 +251,15 @@ def test_owner_fx_remote_returns_403(client: TestClient) -> None:
     assert client.post("/owner/fx/refresh").status_code == 403
 
 
-def test_owner_fx_manual_refresh_fetches_and_renders(local_client: TestClient) -> None:
+def test_owner_fx_manual_refresh_fetches_and_renders(local_client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    from dataclasses import replace
+
+    cfg = replace(provider.get_settings(), fx_rate_source="frankfurter")
+    monkeypatch.setattr(provider, "get_settings", lambda: cfg)
     with patch.object(provider, "urlopen", return_value=_frankfurter_response()):
         resp = local_client.post("/owner/fx/refresh")
     assert resp.status_code == 200
-    assert "已拉取最新汇率" in resp.text
+    assert "已取得参考汇率" in resp.text
     # The fetched USD→CNY cross rate (7.8793 / 1.1644) should now be listed.
     page = local_client.get("/owner/fx")
     assert page.status_code == 200
@@ -260,7 +268,7 @@ def test_owner_fx_manual_refresh_fetches_and_renders(local_client: TestClient) -
 
 @pytest.mark.parametrize(
     ("running", "config_error", "expected"),
-    [(True, False, "运行中"), (False, True, "报价计划配置无效"),
+    [(True, False, "自动更新已开启"), (False, True, "报价计划配置无效"),
         (True, True, "报价计划配置无效"), (False, False, "任务未运行")],
 )
 def test_owner_fx_distinguishes_enabled_configuration_from_running_task(

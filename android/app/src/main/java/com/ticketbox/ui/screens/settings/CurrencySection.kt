@@ -65,7 +65,9 @@ internal fun CurrencySection(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                 )
-                CurrencyCode.entries.chunked(2).forEach { rowCodes ->
+                Text(stringResource(R.string.currency_picker_more), style = MaterialTheme.typography.labelMedium)
+                com.ticketbox.ui.components.CurrencyChoiceField(currentCurrency, onChoose = onCurrencyChange)
+                CurrencyCode.entries.take(7).chunked(2).forEach { rowCodes ->
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),

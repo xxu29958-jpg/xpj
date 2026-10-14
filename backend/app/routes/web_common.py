@@ -16,6 +16,7 @@ from fastapi.responses import Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
+from app.currency_catalog import CURRENCY_CATALOG
 from app.errors import AppError
 from app.middleware.csrf import csrf_context
 from app.money_contract import projection_sum_to_int, projection_values_sum_to_int
@@ -116,6 +117,7 @@ templates = Jinja2Templates(
     context_processors=[csrf_context],
 )
 templates.env.filters["to_iso"] = _datetime_to_iso
+templates.env.globals["currency_names"] = {code: values[0] for code, values in CURRENCY_CATALOG.items()}
 
 
 def _grouped_amount(value: object) -> str:

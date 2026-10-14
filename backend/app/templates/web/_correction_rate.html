@@ -1,6 +1,6 @@
 {% if rate_recovery %}
 <section class="product-panel product-panel--padded" aria-label="补汇率并继续原更正">
-  <h2 class="section-title">补入这一天的汇率</h2>
+  <h2 class="section-title">取得这一天的汇率</h2>
   <p>{{ rate_recovery.currency_code }} → {{ rate_recovery.home_currency_code }} · {{ rate_recovery.rate_date }}</p>
   <p class="meta">这是原账单的换算币种和本次更正需要的日期。补率后，请重新检查并保存更正。</p>
   {% if rate_recovery.error %}<p class="product-feedback product-feedback--danger" role="alert">{{ rate_recovery.error }}</p>{% endif %}
@@ -8,11 +8,14 @@
   {% for key in ['currency_code', 'home_currency_code', 'rate_date', 'expected_row_version', 'idempotency_key'] %}
   <input type="hidden" name="fx_{{ key }}" value="{{ rate_recovery[key] }}">
   {% endfor %}
+  <button type="submit" class="product-button product-button--primary" formaction="/web/expenses/{{ expense.id }}/correction-rate" name="fx_fetch_reference" value="true" formnovalidate>获取参考汇率，保留原更正</button>
+  <details class="product-disclosure"{% if rate_recovery.conflict or rate_recovery.rate_to_cny %} open{% endif %}><summary>自行补录或纠正</summary>
   <label for="correction-rate">1 {{ rate_recovery.currency_code }} 折合多少 {{ rate_recovery.home_currency_code }}</label>
   <input id="correction-rate" name="fx_rate_to_cny" type="text" inputmode="decimal" autocomplete="off" value="{{ rate_recovery.rate_to_cny }}">
   <button type="submit" class="product-button" formaction="/web/expenses/{{ expense.id }}/correction-rate" formnovalidate>保存汇率，保留原更正</button>
   {% if rate_recovery.conflict %}
   <button type="submit" class="product-button product-button--quiet" formaction="/web/expenses/{{ expense.id }}/correction-rate" name="fx_review_latest" value="true" formnovalidate>核对当前汇率，保留原输入</button>
   {% endif %}
+  </details>
 </section>
 {% endif %}

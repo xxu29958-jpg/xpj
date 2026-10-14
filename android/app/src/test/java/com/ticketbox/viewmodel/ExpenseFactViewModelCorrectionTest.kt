@@ -188,7 +188,7 @@ internal class ExpenseFactViewModelCorrectionTest : ExpenseFactViewModelTestBase
     @Test
     fun `unknown original currency does not block a non-amount correction`() = edit { fake ->
         fake.baseExpense = fake.baseExpense.copy(
-            originalCurrencyCodeRaw = "VND",
+            originalCurrencyCodeRaw = "ZZZ",
             originalAmountMinor = 1200L,
         )
         val vm = viewModel(fake)

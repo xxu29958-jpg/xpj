@@ -47,12 +47,12 @@ def test_worker_recovers_after_storage_failure(
     monkeypatch: pytest.MonkeyPatch, failure_at: str, ticks: _ScheduledTicks
 ) -> None:
     unavailable = OperationalError("lease", {}, RuntimeError("temporarily unavailable"))
-    sessions = Mock(side_effect=lambda: nullcontext(object()))
+    sessions = Mock(side_effect=lambda: nullcontext(Mock()))
     lease = Mock(return_value=True)
     if failure_at == "lease":
         lease.side_effect = [unavailable, True]
     else:
-        sessions.side_effect = [unavailable, nullcontext(object()), nullcontext(object())]
+        sessions.side_effect = [unavailable, nullcontext(Mock()), nullcontext(Mock())]
     refresh = Mock(return_value=[])
     monkeypatch.setattr(scheduler._runtime, "counters", scheduler.FxRateSyncStatus())
     monkeypatch.setattr(scheduler, "SessionLocal", sessions)
@@ -75,7 +75,7 @@ def test_recovery_respects_an_unexpired_lease_before_a_later_success(
 ) -> None:
     unavailable = OperationalError("working session", {}, RuntimeError("temporarily unavailable"))
     sessions = Mock(side_effect=[
-        nullcontext(object()), unavailable, nullcontext(object()), nullcontext(object()), nullcontext(object()),
+        nullcontext(Mock()), unavailable, nullcontext(Mock()), nullcontext(Mock()), nullcontext(Mock()),
     ])
     lease = Mock(side_effect=[True, False, True])
     refresh = Mock(return_value=[])
@@ -119,11 +119,13 @@ def test_startup_and_short_ticks_resume_cursor_without_early_quotes_or_failure_c
 
 def test_status_tracks_actual_scheduler_thread_lifetime(monkeypatch: pytest.MonkeyPatch) -> None:
     settings = SimpleNamespace(
-        fx_rate_auto_sync_enabled=True, fx_rate_sync_times="09:10", fx_rate_sync_timezone="UTC"
+        fx_rate_auto_sync_enabled=True, fx_rate_sync_times="09:10", fx_rate_sync_timezone="UTC",
+        fx_rate_source="frankfurter", fx_rate_ecb_url="ecb", fx_rate_frankfurter_url="frankfurter",
     )
     monkeypatch.setattr(scheduler, "get_settings", lambda: settings)
     refilled = threading.Event()
     monkeypatch.setattr(scheduler, "refill_pending_expense_fx", lambda **_: refilled.set() or 0)
+    monkeypatch.setattr(scheduler, "_run_scheduled_fx_sync", Mock())
     worker = scheduler.start_fx_rate_scheduler()
     assert worker is not None
     try:
@@ -145,6 +147,7 @@ def test_invalid_quote_schedule_still_continues_accepted_bills_on_the_existing_t
 ) -> None:
     settings = SimpleNamespace(
         fx_rate_auto_sync_enabled=True, fx_rate_sync_times=sync_times, fx_rate_sync_timezone=timezone,
+        fx_rate_source="frankfurter", fx_rate_ecb_url="ecb", fx_rate_frankfurter_url="frankfurter",
     )
     ticks.count = 2
     refill = Mock(side_effect=[32, 64, 0])
@@ -177,6 +180,7 @@ def test_invalid_quote_schedule_still_continues_accepted_bills_on_the_existing_t
 def test_disabled_configuration_waits_without_work_and_can_be_enabled_without_restart(monkeypatch: pytest.MonkeyPatch) -> None:
     settings = SimpleNamespace(
         fx_rate_auto_sync_enabled=False, fx_rate_sync_times="invalid", fx_rate_sync_timezone="Unavailable/Timezone",
+        fx_rate_source="frankfurter", fx_rate_ecb_url="ecb", fx_rate_frankfurter_url="frankfurter",
     )
     refill = Mock()
     monkeypatch.setattr(scheduler, "get_settings", lambda: settings)
@@ -198,5 +202,28 @@ def test_disabled_configuration_waits_without_work_and_can_be_enabled_without_re
     monkeypatch.setattr(scheduler, "_run_scheduled_fx_sync", scheduled)
     scheduler._scheduler_loop(stop, [], ZoneInfo("UTC"), follow_settings=True)
     assert refill.call_count == 2
-    scheduled.assert_not_called()  # Enabling does not invent a past due run.
+    scheduled.assert_called_once()  # First usable configuration acquires a reference without waiting until tonight.
     assert scheduler.fx_rate_sync_status().scheduler_config_error is False
+
+
+def test_initialization_waits_for_currency_then_acquires_and_source_change_acquires_again(monkeypatch, ticks):
+    from dataclasses import replace
+
+    from app.config import get_settings
+
+    settings = replace(get_settings(), fx_rate_auto_sync_enabled=True, fx_rate_sync_times="23:10", fx_rate_sync_timezone="UTC")
+    original = settings
+    runs = []
+    def acquire():
+        runs.append(settings.fx_rate_source)
+        return len(runs) != 1  # Initial setup has not selected a currency at the first tick.
+    def wait(delay):
+        nonlocal settings
+        if len(runs) == 2:
+            settings = replace(original, fx_rate_source="ecb")
+        return ticks.wait(delay)
+    monkeypatch.setattr(scheduler, "get_settings", lambda: settings)
+    monkeypatch.setattr(scheduler, "_run_scheduled_fx_sync", acquire)
+    scheduler._scheduler_loop(SimpleNamespace(is_set=lambda: False, wait=wait), [time(23, 10)],
+                              ZoneInfo("UTC"), follow_settings=True)
+    assert runs == [original.fx_rate_source, original.fx_rate_source, "ecb"]

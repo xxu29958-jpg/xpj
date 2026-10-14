@@ -156,8 +156,10 @@ private fun SavedQueryAdditionalFields(fields: SavedViewDefinitionRequestDto, en
             "" to stringResource(R.string.saved_query_all),
             "missing_category" to stringResource(R.string.saved_query_missing_category),
             "missing_accounting_date" to stringResource(R.string.saved_query_missing_date)), enabled) { change(fields.copy(filter = it)) }
-        SavedQueryChoice(stringResource(R.string.saved_query_currency), fields.homeCurrencyCode,
-            CurrencyCode.entries.map { it.storageKey to it.displayName }, enabled) { change(fields.copy(homeCurrencyCode = it)) }
+        Text(stringResource(R.string.saved_query_currency), style = MaterialTheme.typography.labelLarge)
+        com.ticketbox.ui.components.CurrencyChoiceField(CurrencyCode.fromStorageKeyOrNull(fields.homeCurrencyCode), enabled) {
+            change(fields.copy(homeCurrencyCode = it.storageKey))
+        }
     }
 }
 

@@ -8,9 +8,9 @@ class ExpenseSearchTest {
 
     @Test
     fun unknownHomeCurrencyRowMatchesByRawMinorValue() {
-        // PR#255 R10⑥：home 码在支持集外（新版服务端币种，显示口径 "1200 VND"，R8-4）——
+        // PR#255 R10⑥：home 码在支持集外（新版服务端币种，显示口径 "1200 ZZZ"，R8-4）——
         // 金额匹配按原 minor 整数值："1200" 必须命中 1200，而非按 CNY 解析成 120000。
-        val row = searchExpense(amountCents = 1_200L, homeCurrencyCode = "VND")
+        val row = searchExpense(amountCents = 1_200L, homeCurrencyCode = "ZZZ")
 
         assertTrue(expenseMatchesSearchAmount(row, "1200"))
         assertFalse(expenseMatchesSearchAmount(row, "120000"))
@@ -41,10 +41,10 @@ class ExpenseSearchTest {
     @Test
     fun unknownHomeRowStillMatchesSupportedOriginalLeg() {
         // PR#255 R12-B：raw-minor 只比 home 双腿，original 腿按其声明币种续配 ——
-        // VND-home/USD-original 行："1200" 命中 raw home，"12.50" 命中 USD 原币腿。
+        // ZZZ-home/USD-original 行："1200" 命中 raw home，"12.50" 命中 USD 原币腿。
         val row = searchExpense(
             amountCents = 1_200L,
-            homeCurrencyCode = "VND",
+            homeCurrencyCode = "ZZZ",
         ).copy(
             originalCurrency = CurrencyCode.USD,
             originalCurrencyCode = CurrencyCode.USD,
@@ -58,11 +58,11 @@ class ExpenseSearchTest {
 
     @Test
     fun unknownOriginalRawLegMatchesByRawMinorNotHomeCoincidence() {
-        // PR#255 R14-4a：CNY-home / VND-original（原码未知，枚举已回落 CNY）—— foreignOriginal
+        // PR#255 R14-4a：CNY-home / ZZZ-original（原码未知，枚举已回落 CNY）—— foreignOriginal
         // 判定按原码："1200" 按原 minor 命中原币腿；"12.00" 的 home 解析（1200 分）不得
-        // 巧合命中 1200-VND 原 minor（旧枚举判定会把它当本币行误中）。
+        // 巧合命中 1200-ZZZ 原 minor（旧枚举判定会把它当本币行误中）。
         val row = searchExpense(amountCents = 34L, homeCurrencyCode = "CNY").copy(
-            originalCurrencyCodeRaw = "VND",
+            originalCurrencyCodeRaw = "ZZZ",
             originalAmountMinor = 1_200L,
         )
 
@@ -72,17 +72,17 @@ class ExpenseSearchTest {
 
     @Test
     fun explicitTrailingUnknownCodeQueryMatchesRawRowsStrictly() {
-        // PR#255 R14-4b："1200 VND" 粘贴直查 —— 命中 VND raw 行（原 minor 原码），
-        // 严格单码：不命中 JPY/CNY 行（不借 JPY 代理外溢）；未知码拒小数（"12.5 VND" 不中）。
-        val vndRow = searchExpense(amountCents = 1_200L, homeCurrencyCode = "VND")
+        // PR#255 R14-4b："1200 ZZZ" 粘贴直查 —— 命中 ZZZ raw 行（原 minor 原码），
+        // 严格单码：不命中 JPY/CNY 行（不借 JPY 代理外溢）；未知码拒小数（"12.5 ZZZ" 不中）。
+        val vndRow = searchExpense(amountCents = 1_200L, homeCurrencyCode = "ZZZ")
         val jpyRow = searchExpense(amountCents = 1_200L, homeCurrencyCode = "JPY", homeCurrency = CurrencyCode.JPY)
         val cnyRow = searchExpense(amountCents = 1_200L, homeCurrencyCode = "CNY")
 
-        assertTrue(expenseMatchesSearchAmount(vndRow, "1200 VND"))
-        assertTrue(expenseMatchesSearchAmount(vndRow, "1200 vnd"))
-        assertFalse(expenseMatchesSearchAmount(jpyRow, "1200 VND"))
-        assertFalse(expenseMatchesSearchAmount(cnyRow, "1200 VND"))
-        assertFalse(expenseMatchesSearchAmount(vndRow, "12.5 VND"))
+        assertTrue(expenseMatchesSearchAmount(vndRow, "1200 ZZZ"))
+        assertTrue(expenseMatchesSearchAmount(vndRow, "1200 zzz"))
+        assertFalse(expenseMatchesSearchAmount(jpyRow, "1200 ZZZ"))
+        assertFalse(expenseMatchesSearchAmount(cnyRow, "1200 ZZZ"))
+        assertFalse(expenseMatchesSearchAmount(vndRow, "12.5 ZZZ"))
     }
 
     @Test

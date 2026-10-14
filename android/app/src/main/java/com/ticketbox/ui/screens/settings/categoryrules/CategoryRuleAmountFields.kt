@@ -20,20 +20,9 @@ import com.ticketbox.ui.screens.settings.SettingsTextInputState
 
 @Composable
 internal fun CategoryRuleAmountFields(form: CategoryRuleDraftForm, busy: Boolean, onChange: (CategoryRuleDraftForm) -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
-    Box {
-        TextButton(enabled = !busy && form.editingRule?.homeCurrencyCode == null && !form.hasUnconfirmedOriginalAmount,
-            onClick = { expanded = true }) {
-            Text(form.homeCurrencyCode ?: stringResource(R.string.category_rule_currency_choose))
-        }
-        DropdownMenu(expanded, onDismissRequest = { expanded = false }) {
-            CurrencyCode.entries.forEach { currency ->
-                DropdownMenuItem(text = { Text("${currency.storageKey} · ${currency.displayName}") }, onClick = {
-                    expanded = false
-                    onChange(form.copy(homeCurrencyCode = currency.storageKey, localMessage = null))
-                })
-            }
-        }
+    com.ticketbox.ui.components.CurrencyChoiceField(CurrencyCode.fromStorageKeyOrNull(form.homeCurrencyCode),
+        enabled = !busy && form.editingRule?.homeCurrencyCode == null && !form.hasUnconfirmedOriginalAmount) {
+        onChange(form.copy(homeCurrencyCode = it.storageKey, localMessage = null))
     }
     SettingsDialogTextInput(SettingsTextInputState(label = stringResource(R.string.category_rule_amount_min),
         value = form.minimumAmount, enabled = !busy && !form.hasUnconfirmedOriginalAmount,

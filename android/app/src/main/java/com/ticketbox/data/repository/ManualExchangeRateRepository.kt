@@ -5,6 +5,8 @@ import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.ExchangeRateDto
 import com.ticketbox.data.remote.dto.ExchangeRateRequestDto
+import com.ticketbox.data.remote.dto.ReferenceRateRequestDto
+import com.ticketbox.data.remote.dto.ReferenceRatesDto
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -12,6 +14,8 @@ import kotlinx.coroutines.flow.map
 import java.util.UUID
 
 interface ManualRateActions {
+    suspend fun referenceRates(expectedBinding: LogicalSessionBinding,
+        request: ReferenceRateRequestDto, fetch: Boolean = false): Result<ReferenceRatesDto>
     fun describeRate(row: OutboxRow): PendingManualRateSubmission?
     fun observeRates(expectedBinding: LogicalSessionBinding): Flow<List<PendingManualRateSubmission>>
     suspend fun recoverRate(expectedBinding: LogicalSessionBinding, pending: PendingManualRateSubmission, drop: Boolean): Result<Unit>
@@ -26,6 +30,15 @@ class ManualExchangeRateRepository(private val provider: ApiServiceProvider, pri
     private val payloadAdapter: JsonAdapter<ManualRatePayload>, private val receiptAdapter: JsonAdapter<ExchangeRateDto>) : ManualRateActions {
     private val guard = LedgerRequestGuard(provider)
     private val errors = NetworkErrorHandler({ provider.currentSession()?.serverUrl }, "ManualExchangeRate")
+
+    override suspend fun referenceRates(expectedBinding: LogicalSessionBinding,
+        request: ReferenceRateRequestDto, fetch: Boolean): Result<ReferenceRatesDto> = errors.safeCall {
+        if (fetch && !ledgerRoleCanModify(provider.currentLedgerRole())) throw RepositoryException("permission_denied", "permission_denied")
+        guard.bindExact(expectedBinding).call {
+            if (fetch) it.acquireReferenceRates(request)
+            else it.referenceRates(request.homeCurrencyCode, request.currencyCode, request.rateDate)
+        }
+    }
 
     override fun describeRate(row: OutboxRow): PendingManualRateSubmission? {
         val binding = guard.captureLogicalBinding() ?: return null

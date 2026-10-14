@@ -111,7 +111,7 @@ class IncomePlanCreateViewModelTest {
     fun submitDraftBlockedWhenCapabilityUnsupported() = runTest(dispatcher) {
         // R12-D：capability 在支持集外（新版服务端币种）→ 草稿 homeCurrency=null → 禁写 +
         // 明示文案，create 不可达。
-        val repo = FakeIncomePlanCreateRepository().apply { active = active.copy(homeCurrencyCode = "VND") }
+        val repo = FakeIncomePlanCreateRepository().apply { active = active.copy(homeCurrencyCode = "ZZZ") }
         val viewModel = IncomePlanCreateViewModel(repo)
         advanceUntilIdle()
         viewModel.openOriginal(repo)

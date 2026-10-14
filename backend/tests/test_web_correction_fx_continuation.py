@@ -94,12 +94,13 @@ class _NativeForm(HTMLParser):
             self.fields.setdefault(self.select, []).append(selected[-1] if selected else self.options[0][0])
             self.select, self.options = None, []
 
-    def post(self, client, *, rate=False, review=False):
+    def post(self, client, *, rate=False, review=False, fetch=False):
         fields = deepcopy(self.fields)
         action = self.action
         if rate:
             candidates = [button for button in self.buttons
                 if button.get("formaction", "").endswith("/correction-rate")
+                and (button.get("name") == "fx_fetch_reference") == fetch
                 and (button.get("name") == "fx_review_latest") == review]
             assert len(candidates) == 1, self.buttons
             button = candidates[0]
@@ -214,6 +215,36 @@ def test_native_rate_save_preserves_complete_correction_then_explicit_save_updat
     splits = web_client.get(f"/api/expenses/{fact['id']}/splits", headers=identity.app_headers).json()["splits"]
     assert [(row["name"], row["amount_cents"]) for row in items] == [("车票", 30), ("午餐", 66)]
     assert [(row["amount_cents"], row["note"]) for row in splits] == [(20, "原拆账意图")]
+
+
+def test_reference_fetch_failure_and_retry_keep_correction_until_explicit_save(web_client, identity, monkeypatch):
+    from app.services import exchange_rate_reference_service as reference
+    from app.services.fx_rate_provider import EcbDailyRates, FxFetchError
+
+    fact, original = _historical_expense(web_client, identity.app_headers)
+    recovery = _missing_rate(web_client, fact, original)
+    before = _snapshot(fact["id"])
+    def unavailable(_, **kwargs):
+        raise FxFetchError("private transport details")
+    monkeypatch.setattr(reference, "fetch_reference_rates_for_date", unavailable)
+    failed = recovery.post(web_client, rate=True, fetch=True)
+    assert failed.status_code == 502 and "private transport details" not in failed.text
+    retained = _read_form(failed, fact["id"])
+    _assert_original(retained, original)
+    assert _snapshot(fact["id"]) == before
+    monkeypatch.setattr(reference, "fetch_reference_rates_for_date", lambda requested, **kwargs: EcbDailyRates(
+        requested, {"EUR": Decimal("1"), "USD": Decimal("4"), "JPY": Decimal("50")}))
+    acquired = retained.post(web_client, rate=True, fetch=True)
+    assert acquired.status_code == 200 and "无需手填" in acquired.text
+    returned = _read_form(acquired, fact["id"])
+    _assert_original(returned, original)
+    assert _snapshot(fact["id"]) == before
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count()).select_from(ExchangeRate)) == 1  # Only the old manual quote.
+    saved = returned.post(web_client)
+    assert saved.status_code == 303, saved.text
+    current = web_client.get(f"/api/expenses/{fact['id']}", headers=identity.app_headers).json()
+    assert (current["amount_cents"], current["exchange_rate_date"], current["original_amount_minor"]) == (96, NEW_DATE, 12)
 
 
 def test_rate_conflict_review_only_replaces_rate_baseline_and_peer_expense_still_conflicts(web_client, identity):

@@ -12,7 +12,7 @@
     <div class="text-meta" role="status">
       {% if gap.source_currency_code and gap.rate_date %}
         待补汇率 · {{ gap.source_currency_code }} → {{ gap.home_currency_code }} · {{ gap.rate_date }}
-        <a href="/web/budget-advise/rates?{{ rate_context|urlencode }}&amp;currency_code={{ gap.source_currency_code|urlencode }}&amp;rate_date={{ gap.rate_date|string|urlencode }}">补录汇率</a>
+        <a href="/web/budget-advise/rates?{{ rate_context|urlencode }}&amp;currency_code={{ gap.source_currency_code|urlencode }}&amp;rate_date={{ gap.rate_date|string|urlencode }}">查看与获取汇率</a>
       {% else %}
         待补信息 · 原币种或日期尚未确认，请核对原记录。
         <a href="/web/budget-advise/rates?{{ rate_context|urlencode }}">查看汇率</a>

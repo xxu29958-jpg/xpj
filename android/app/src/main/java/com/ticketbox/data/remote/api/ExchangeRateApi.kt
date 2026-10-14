@@ -9,8 +9,18 @@ import retrofit2.http.Header
 import retrofit2.http.PUT
 import retrofit2.http.Path
 import retrofit2.http.Query
+import retrofit2.http.POST
+import com.ticketbox.data.remote.dto.ReferenceRateRequestDto
+import com.ticketbox.data.remote.dto.ReferenceRatesDto
 
 interface ExchangeRateApi {
+    @GET("api/exchange-rates/reference")
+    suspend fun referenceRates(@Query("home_currency_code") homeCurrencyCode: String,
+        @Query("currency_code") currencyCode: String? = null, @Query("rate_date") rateDate: String? = null): ReferenceRatesDto
+
+    @POST("api/exchange-rates/reference")
+    suspend fun acquireReferenceRates(@Body request: ReferenceRateRequestDto): ReferenceRatesDto
+
     @GET("api/exchange-rates")
     suspend fun exchangeRates(@Query("currency_code") currencyCode: String? = null,
         @Query("home_currency_code") homeCurrencyCode: String? = null,

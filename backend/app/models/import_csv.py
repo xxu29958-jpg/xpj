@@ -24,6 +24,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.currency_catalog import CURRENCY_SQL_LIST
 from app.database_model_registry import Base
 from app.money_contract import MONEY_AGGREGATE_MAX, money_check_constraints_for_table
 from app.services.time_service import now_utc
@@ -83,7 +84,7 @@ class CsvImportRow(Base):
     __tablename__ = "csv_import_rows"
     __table_args__ = (
         *money_check_constraints_for_table("csv_import_rows"),
-        CheckConstraint("home_currency_code IN ('CNY', 'USD', 'EUR', 'GBP', 'JPY', 'HKD', 'KRW')", name="ck_csv_import_rows_home_currency"),
+        CheckConstraint(f"home_currency_code IN ({CURRENCY_SQL_LIST})", name="ck_csv_import_rows_home_currency"),
         CheckConstraint("line_number >= 2", name="ck_csv_import_rows_line_number_valid"),
         # Exported stream/lineage projections are staged evidence, not new facts.
         CheckConstraint(

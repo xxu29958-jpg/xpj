@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="currency_picker_title">选择币种</string>
+    <string name="currency_picker_search">搜索名称或代码，如 新加坡 / SGD</string>
+    <string name="currency_picker_empty">没有匹配的币种，请换个名称或代码。</string>
+    <string name="currency_picker_more">更多币种</string>
+</resources>

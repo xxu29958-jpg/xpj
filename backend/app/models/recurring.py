@@ -16,6 +16,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.currency_catalog import CURRENCY_SQL_LIST
 from app.database_model_registry import Base
 from app.money_contract import money_check_constraints_for_table
 from app.services.time_service import now_utc
@@ -28,7 +29,7 @@ class RecurringItem(Base):
         *money_check_constraints_for_table("recurring_items"),
         CheckConstraint("frequency IN ('monthly')", name="ck_recurring_items_frequency_valid"),
         CheckConstraint("status IN ('active', 'paused', 'archived')", name="ck_recurring_items_status_valid"),
-        CheckConstraint("home_currency_code IN ('CNY', 'USD', 'EUR', 'GBP', 'JPY', 'HKD', 'KRW')", name="ck_recurring_currency"),
+        CheckConstraint(f"home_currency_code IN ({CURRENCY_SQL_LIST})", name="ck_recurring_currency"),
         UniqueConstraint("tenant_id", "merchant_key", "frequency", name="uq_recurring_items_tenant_merchant_frequency"),
         UniqueConstraint("id", "tenant_id", name="uq_recurring_items_id_tenant"),
     )

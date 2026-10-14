@@ -55,6 +55,9 @@ internal class BudgetAdviceManualRateFixture(private val context: Context) : Aut
     val request = ExchangeRateRequestDto("CNY", "JPY", rateDate, "20", "manual", 0)
     val inputReads = CopyOnWriteArrayList<Pair<String, String?>>()
     val writes = CopyOnWriteArrayList<Pair<ExchangeRateRequestDto, String>>()
+    var referenceUnavailable = false
+    val referenceRequests = CopyOnWriteArrayList<com.ticketbox.data.remote.dto.ReferenceRateRequestDto>()
+    var referenceQuote: com.ticketbox.data.remote.dto.ReferenceRateDto? = null
     val adviceCalls = CopyOnWriteArrayList<BudgetAdviseRequestDto>()
     var advice: com.ticketbox.data.remote.dto.BudgetAdviceDto? = null
     val arrangementWrites = CopyOnWriteArrayList<Pair<MonthlyArrangementSaveRequest, String>>()
@@ -114,6 +117,16 @@ internal class BudgetAdviceManualRateFixture(private val context: Context) : Aut
         override suspend fun exchangeRates(currencyCode: String?, homeCurrencyCode: String?, rateDate: String?, limit: Int) =
             ExchangeRateListDto(listOfNotNull(latest).filter { (currencyCode == null || it.currencyCode == currencyCode) &&
                 (homeCurrencyCode == null || it.homeCurrencyCode == homeCurrencyCode) && (rateDate == null || it.rateDate == rateDate) })
+        override suspend fun referenceRates(homeCurrencyCode: String, currencyCode: String?, rateDate: String?) =
+            com.ticketbox.data.remote.dto.ReferenceRatesDto("frankfurter", true, "ready", rateDate,
+                referenceQuote?.takeIf { it.currencyCode == currencyCode && it.rateDate == rateDate }, listOfNotNull(referenceQuote))
+        override suspend fun acquireReferenceRates(request: com.ticketbox.data.remote.dto.ReferenceRateRequestDto): com.ticketbox.data.remote.dto.ReferenceRatesDto {
+            referenceRequests += request
+            if (referenceUnavailable) throw java.net.ConnectException("offline")
+            referenceQuote = com.ticketbox.data.remote.dto.ReferenceRateDto(request.currencyCode ?: "CNY", request.homeCurrencyCode,
+                request.rateDate ?: rateDate, "20", "ecb")
+            return referenceRates(request.homeCurrencyCode, request.currencyCode, request.rateDate)
+        }
         override suspend fun saveExchangeRate(currencyCode: String, rateDate: String,
             request: ExchangeRateRequestDto, idempotencyKey: String): ExchangeRateDto {
             check(currencyCode == request.currencyCode && rateDate == request.rateDate)
@@ -145,7 +158,7 @@ internal class BudgetAdviceManualRateFixture(private val context: Context) : Aut
     init { reopen() }
 
     private fun inputs(month: String, home: String, savings: Long, buffer: Long, trial: Boolean): BudgetAdviceInputsDto {
-        val missing = latest == null && home == "JPY"
+        val missing = latest == null && referenceQuote == null && home == "JPY"
         val remaining = 7000 - savings - buffer
         return BudgetAdviceInputsDto(month, home,
             DiscretionaryResponseDto(10000, 1000, if (missing) null else 2000, savings, buffer,

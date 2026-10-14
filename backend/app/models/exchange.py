@@ -19,6 +19,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.currency_catalog import CURRENCY_SQL_LIST
 from app.database_model_registry import Base
 from app.fx_constants import ECB_PROVIDER_BASE_CURRENCY, FX_SOURCE_ECB, FX_SOURCE_MANUAL
 from app.services.time_service import now_utc
@@ -32,7 +33,7 @@ class ExchangeRate(Base):
         CheckConstraint("rate_to_cny > 0", name="ck_exchange_rates_rate_positive"),
         CheckConstraint("row_version >= 1", name="ck_exchange_rates_row_version_positive"),
         CheckConstraint(
-            "home_currency_code IN ('CNY', 'USD', 'EUR', 'GBP', 'JPY', 'HKD', 'KRW') "
+            f"home_currency_code IN ({CURRENCY_SQL_LIST}) "
             "AND home_currency_code <> currency_code", name="ck_exchange_rates_home_currency",
         ),
     )

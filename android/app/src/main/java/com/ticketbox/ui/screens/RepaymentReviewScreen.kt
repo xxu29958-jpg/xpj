@@ -198,10 +198,7 @@ private fun RepaymentReviewMoney(currency: String, amount: String, editable: Boo
 
 @Composable
 private fun RepaymentReviewCurrencyDialog(onClose: () -> Unit, onPick: (CurrencyCode) -> Unit) {
-    AlertDialog(onDismissRequest = onClose, title = { Text(stringResource(R.string.repayment_review_currency)) },
-        text = { Column(Modifier.verticalScroll(rememberScrollState())) { CurrencyCode.entries.forEach { currency ->
-            TextButton(onClick = { onPick(currency) }) { Text("${currency.storageKey} ${currency.displayName}") }
-        } } }, confirmButton = {})
+    com.ticketbox.ui.components.CurrencyPickerDialog(onChoose = onPick, onDismiss = onClose)
 }
 
 @Composable

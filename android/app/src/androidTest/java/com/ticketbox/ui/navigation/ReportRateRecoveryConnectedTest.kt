@@ -12,6 +12,11 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.isDialog
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
@@ -29,6 +34,7 @@ import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.theme.TicketboxTheme
+import com.ticketbox.ui.saveConsumerArtPreview
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -112,17 +118,64 @@ class ReportRateRecoveryConnectedTest {
         assertTrue(fixture.adviceCalls.isEmpty())
     }
 
-    private fun show() {
+    @Test fun reportAcquiresConfiguredReferenceWithRetryWithoutManualEntryOrFinancialSubmission() {
+        fixture.referenceUnavailable = true
+        show()
+        compose.waitUntil(5_000) { compose.onAllNodes(hasText(context.getString(R.string.advice_reference_fetch_date))).fetchSemanticsNodes().isNotEmpty() }
+        val fetch = compose.onNodeWithText(context.getString(R.string.advice_reference_fetch_date))
+        fetch.performScrollTo().performClick()
+        compose.waitUntil(5_000) { fixture.referenceRequests.size == 1 }
+        compose.waitUntil(5_000) { compose.onAllNodes(hasText(context.getString(R.string.advice_reference_fetch_date))).fetchSemanticsNodes().isNotEmpty() }
+        fixture.referenceUnavailable = false
+        fetch.performScrollTo().performClick()
+        compose.waitUntil(5_000) { compose.onAllNodes(hasText(context.getString(R.string.advice_reference_ready))).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText(context.getString(R.string.advice_reference_ready)).performScrollTo().assertIsDisplayed()
+        assertEquals(2, fixture.referenceRequests.size)
+        assertEquals(com.ticketbox.data.remote.dto.ReferenceRateRequestDto("JPY", "CNY", "2026-08-05"), fixture.referenceRequests.last())
+        assertTrue(runBlocking { fixture.rows().isEmpty() })
+        assertTrue(fixture.writes.isEmpty())
+        assertTrue(fixture.adviceCalls.isEmpty())
+        compose.onNodeWithTag("advice_rate_value").assertDoesNotExist()
+    }
+
+    @Test fun reportDirectoryFindsExpandedCurrencyAndKeepsOriginalMonthWithoutCreatingFinancialIntent() {
+        show(report.copy(sourceCurrencyCode = null, rateDate = null))
+        val choice = "USD · 美元"
+        compose.waitUntil(5_000) { compose.onAllNodes(hasText(choice)).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText(choice).performScrollTo().performClick()
+        compose.onNode(hasSetTextAction()).performTextReplacement("新台币")
+        closeSoftKeyboard()
+        saveConsumerArtPreview("currency-search", compose.onNode(isDialog()).captureToImage().asAndroidBitmap())
+        compose.onNodeWithText("TWD · 新台币").performClick()
+        compose.onNodeWithText(context.getString(R.string.advice_reference_lookup_pair, "TWD", "JPY"))
+            .performScrollTo().performClick()
+        val fetch = context.getString(R.string.advice_reference_fetch_date)
+        compose.waitUntil(5_000) { compose.onAllNodes(hasText(fetch)).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText(fetch).performScrollTo().performClick()
+        val ready = context.getString(R.string.advice_reference_ready)
+        compose.waitUntil(5_000) { compose.onAllNodes(hasText(ready)).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText(ready).performScrollTo().assertIsDisplayed()
+        saveConsumerArtPreview("currency-reference-ready", compose.onRoot().captureToImage().asAndroidBitmap())
+        assertEquals(com.ticketbox.data.remote.dto.ReferenceRateRequestDto("JPY", "TWD", "2026-09-30"), fixture.referenceRequests.single())
+        assertEquals(report.month to report.homeCurrencyCode, fixture.inputReads.last())
+        assertTrue(runBlocking { fixture.rows().isEmpty() })
+        assertTrue(fixture.writes.isEmpty())
+        assertTrue(fixture.adviceCalls.isEmpty())
+    }
+
+    private fun show(task: ReportRateContext = report) {
         val factory = fixture.screenFactory
         compose.setContent { if (mounted.value) TicketboxTheme(skin = AppSkin.Default) {
             CompositionLocalProvider(LocalViewModelStoreOwner provides models,
                 LocalCurrencyDisplay provides CurrencyDisplay(CurrencyCode.CNY)) {
-                BudgetAdviceRoute(factory, onBack = {}, context = BudgetAdviceRouteContext(report = report))
+                BudgetAdviceRoute(factory, onBack = {}, context = BudgetAdviceRouteContext(report = task))
             }
         } }
     }
 
     private fun waitForEditor() {
+        compose.waitUntil(5_000) { compose.onAllNodes(hasText(context.getString(R.string.advice_reference_manual))).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText(context.getString(R.string.advice_reference_manual)).performScrollTo().performClick()
         compose.waitUntil(5_000) {
             compose.onAllNodes(hasTestTag("advice_rate_value"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
         }
