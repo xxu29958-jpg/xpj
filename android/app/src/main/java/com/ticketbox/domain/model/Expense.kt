@@ -32,6 +32,9 @@ data class Expense(
     // blank/NULL rows stop hiding from the missing-category surfaces (218-B3).
     val serverCategory: String? = null,
     val category: String,
+    /** Fresh server advice; never a financial fact or an offline persisted intent. */
+    val categorySuggestion: ExpenseCategorySuggestion? = null,
+    val duplicateSuggestionReasons: List<String> = emptyList(),
     val note: String?,
     val source: String,
     val imagePath: String?,
@@ -83,6 +86,8 @@ data class Expense(
     // Metadata permits an image request; the protected reader still checks access and bytes.
     val hasUndeletedImage: Boolean get() = hasImage && imageDeletedAt == null
 }
+
+data class ExpenseCategorySuggestion(val category: String, val sampleSize: Int)
 
 /**
  * UI/UX 第三波 批 13：本票是否可发起跨账本拆账邀请（ADR-0029）。

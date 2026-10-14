@@ -19,6 +19,7 @@ import com.ticketbox.ui.design.LocalStateTokens
 fun DuplicateNotice(
     reason: String?,
     modifier: Modifier = Modifier,
+    feedbackAdjusted: Boolean = false,
 ) {
     val tone = LocalStateTokens.current.warn
     Column(
@@ -46,6 +47,13 @@ fun DuplicateNotice(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
         )
+        if (feedbackAdjusted) {
+            Text(
+                text = stringResource(R.string.expense_learning_duplicate_adjusted),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
     }
 }
 

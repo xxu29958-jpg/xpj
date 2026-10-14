@@ -413,7 +413,9 @@ def get_expense_detail(
     db: Session = Depends(get_db),
 ) -> ExpenseResponse:
     expense = get_expense(db, expense_id, auth.tenant_id)
-    return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
+    response = _expense_response_with_suggestions(db, tenant_id=auth.tenant_id, expense=expense)
+    db.commit()
+    return response
 
 
 @router.post(

@@ -81,6 +81,10 @@ fun ExpenseDto.toDomain(): Expense {
         merchant = merchant,
         serverCategory = category,
         category = normalizeExpenseCategory(category),
+        categorySuggestion = categorySuggestion?.let {
+            com.ticketbox.domain.model.ExpenseCategorySuggestion(it.category, it.sampleSize)
+        },
+        duplicateSuggestionReasons = duplicateCandidates.firstOrNull()?.reasons.orEmpty(),
         note = note,
         source = source,
         imagePath = imagePath.takeIf { imageAvailable },

@@ -96,6 +96,7 @@
       </div>
     </details>
     <p class="duplicate-reason meta">{{ pair.reason_label }}。请按实际消费判断；保留两笔后仍需核对待确认账单。</p>
+    {% if pair.feedback_applied %}<p class="meta">已参考你之前“不是重复”的选择，降低相同商家和金额的重复评分；这次仍需对照原件。</p>{% endif %}
     <div class="duplicate-decision">
       {% if can_write or duplicate_task_action %}
       {% for decision, decision_label in [('keep', '不是重复，保留两笔'), ('reject-current', '忽略本次收到的账单'), ('reject-original', '忽略参考账单，保留本次收到')] %}

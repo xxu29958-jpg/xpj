@@ -45,6 +45,8 @@ from app.routes.web_common import (
     preserve_original_ledger_form,
     templates,
 )
+from app.services.expense_service import get_expense
+from app.services.pending_suggestion_service import suggestions_for_pending_expense
 
 router = APIRouter(prefix="/web", tags=["web"])
 
@@ -113,6 +115,10 @@ def web_edit_get(
             return_context=return_context,
         )
         return templates.TemplateResponse(request=request, name="expense_fact.html", context=fact_ctx)
+    if ctx["expense"]["status"] == "pending" and not ctx["expense_review_inspection"]:
+        ctx["learning_suggestions"] = suggestions_for_pending_expense(
+            db, tenant_id=selected_id, expense=get_expense(db, expense_id, selected_id))
+        db.commit()
     if ctx["expense_review_inspection"]:
         # Inspect the server's pending/rejected fields without restoring a local
         # command or opening another submission. The original task owns editing.

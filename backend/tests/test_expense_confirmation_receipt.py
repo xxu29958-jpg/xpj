@@ -16,7 +16,14 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.models import ApiIdempotencyKey, Expense
+from app.models import (
+    AlgorithmDecision,
+    ApiIdempotencyKey,
+    Expense,
+    Ledger,
+    LedgerCalendarRevision,
+    LedgerLearningEvent,
+)
 from app.schemas import ExpenseConfirmRequest, ExpenseResponse
 from app.services import expense_review_command_service as owner
 
@@ -35,12 +42,17 @@ def confirmation_store(tmp_path, monkeypatch):
 
     ApiIdempotencyKey.__table__.create(engine)
     metadata = MetaData()
-    Table(Expense.__tablename__, metadata, *(Column(column.name,
-        JSON() if isinstance(column.type, JSONB) else column.type, primary_key=column.primary_key)
-        for column in Expense.__table__.columns))
+    # The real review GET now reads suggestions; keep its calendar and learning tables real too.
+    for model in (Expense, Ledger, LedgerCalendarRevision, AlgorithmDecision, LedgerLearningEvent):
+        Table(model.__tablename__, metadata, *(Column(column.name,
+            JSON() if isinstance(column.type, JSONB) else column.type, primary_key=column.primary_key)
+            for column in model.__table__.columns))
     metadata.create_all(engine)
     now = datetime(2026, 10, 8, tzinfo=UTC)
     with Session(engine) as db:
+        db.add(Ledger(ledger_id="owner", name="家庭账本", owner_account_id=1, calendar_revision=1))
+        db.add(LedgerCalendarRevision(ledger_id="owner", revision=1, timezone_name="Asia/Shanghai",
+            basis="legacy_assumed", adopted_at=now))
         db.add(Expense(id=42, public_id="original-expense", tenant_id="owner", merchant="首次便利店", category="购物",
             home_currency_code="CNY", original_currency_code="JPY", original_amount_minor=2850, amount_cents=12860,
             source="上传", status="pending", fx_status="ready", duplicate_status="none", row_version=4,

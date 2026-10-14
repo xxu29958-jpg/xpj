@@ -15,6 +15,7 @@ from app.services.duplicate_service import (
 from app.services.expense_service._helpers import EDITABLE_STATUSES
 from app.services.expense_service._query import get_expense, resolve_expense
 from app.services.optimistic_concurrency import claim_row_with_token
+from app.services.pending_suggestion_service import record_duplicate_choice
 from app.services.time_service import now_utc
 
 __all__ = ["list_duplicate_expenses", "mark_expense_not_duplicate"]
@@ -73,6 +74,8 @@ def mark_expense_not_duplicate(
         raise AppError("state_conflict", status_code=409)
 
     if duplicate_of_id is not None:
+        # The claim above holds the expense lock; retain the original candidate for feedback.
+        record_duplicate_choice(db, expense=pre_claim)
         for kind in ACTIVE_DUPLICATE_IGNORE_KINDS:
             _remember_duplicate_ignore(db, tenant_id, expense_id, duplicate_of_id, kind)
 

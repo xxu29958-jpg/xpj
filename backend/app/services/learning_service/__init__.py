@@ -45,6 +45,7 @@ from app.money_contract import (
     ensure_optional_money_minor,
 )
 from app.services._json_types import JsonObject
+from app.services.learning_service._activity import learning_activity
 from app.services.learning_service._algorithm_registry import (
     ALGORITHM_TYPES,
     BUDGET_SUGGESTION,
@@ -87,6 +88,7 @@ from app.services.learning_service._duplicate_scoring import (
 )
 from app.services.learning_service._duplicate_scoring import (
     DuplicateCandidateScore,
+    duplicate_feedback_expense_ids,
     score_duplicate_candidates,
 )
 from app.services.learning_service._lifecycle import (
@@ -150,6 +152,7 @@ __all__ = [
     "get_algorithm_type",
     "get_status_overview",
     "learning_decision_expenses",
+    "learning_activity",
     "is_algorithm_type_registered",
     "latest_ocr_fact_for_expense",
     "list_algorithm_versions",
@@ -162,6 +165,7 @@ __all__ = [
     "recent_events_for_subject",
     "run_full_maintenance",
     "score_duplicate_candidates",
+    "duplicate_feedback_expense_ids",
     "set_decision_status",
     "stale_active_count",
     "supersede_decision",
