@@ -70,7 +70,7 @@ from app.services.expense_service import (
     list_duplicate_expenses,
     list_expenses_by_ids,
 )
-from app.services.learning_service import score_duplicate_candidates
+from app.services.learning_service import duplicate_feedback_expense_ids
 
 if TYPE_CHECKING:
     from app.models import Expense
@@ -192,10 +192,9 @@ def web_duplicates(
     home = require_runtime_home_currency_code(db)
     pairs = [_duplicate_pair_view(row, originals_by_id.get(row.duplicate_of_id), home=home, selected_id=selected_id)
         for row in rows]
+    feedback_ids = duplicate_feedback_expense_ids(db, tenant_id=selected_id, expenses=rows)
     for row, pair in zip(rows, pairs, strict=True):
-        original = originals_by_id.get(row.duplicate_of_id)
-        scores = score_duplicate_candidates(db, tenant_id=selected_id, expense=row, candidates=[original] if original else [])
-        pair["feedback_applied"] = any("recent_user_reject" in score.reasons for score in scores)
+        pair["feedback_applied"] = row.id in feedback_ids
     ctx = _base_ctx(
         request,
         db=db,

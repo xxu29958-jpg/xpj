@@ -88,6 +88,7 @@ from app.services.learning_service._duplicate_scoring import (
 )
 from app.services.learning_service._duplicate_scoring import (
     DuplicateCandidateScore,
+    duplicate_feedback_expense_ids,
     score_duplicate_candidates,
 )
 from app.services.learning_service._lifecycle import (
@@ -164,6 +165,7 @@ __all__ = [
     "recent_events_for_subject",
     "run_full_maintenance",
     "score_duplicate_candidates",
+    "duplicate_feedback_expense_ids",
     "set_decision_status",
     "stale_active_count",
     "supersede_decision",

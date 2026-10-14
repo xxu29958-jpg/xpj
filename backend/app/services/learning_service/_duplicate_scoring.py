@@ -88,13 +88,31 @@ def _has_recent_reject(
 
     if not merchant or amount_cents is None:
         return False
-    cutoff = now_utc() - timedelta(days=max(horizon_days, 0))
     marker = DUPLICATE_CANDIDATE.build_marker(
         {"amount_cents": amount_cents, "merchant": merchant}
     )
     indexed_hash = canonical_marker_hash(marker)
-    found = db.scalar(
-        select(LedgerLearningEvent.id)
+    return indexed_hash in _recent_reject_hashes(db, tenant_id=tenant_id, hashes=[indexed_hash], horizon_days=horizon_days)
+
+
+def duplicate_feedback_expense_ids(db: Session, *, tenant_id: str, expenses: Iterable[Expense]) -> set[int]:
+    """Read the same scoring feedback for a whole review page in one indexed query."""
+    markers = {
+        row.id: canonical_marker_hash(DUPLICATE_CANDIDATE.build_marker(
+            {"amount_cents": row.amount_cents, "merchant": _normalised_merchant(row.merchant)}))
+        for row in expenses if _normalised_merchant(row.merchant) and row.amount_cents is not None
+    }
+    rejected = _recent_reject_hashes(db, tenant_id=tenant_id, hashes=list(set(markers.values())),
+        horizon_days=DEFAULT_REJECT_HORIZON_DAYS)
+    return {expense_id for expense_id, marker in markers.items() if marker in rejected}
+
+
+def _recent_reject_hashes(db: Session, *, tenant_id: str, hashes: list[str | None], horizon_days: int) -> set[str]:
+    if not hashes:
+        return set()
+    cutoff = now_utc() - timedelta(days=max(horizon_days, 0))
+    found = db.scalars(
+        select(LedgerLearningEvent.signal_hash).distinct()
         .where(LedgerLearningEvent.tenant_id == tenant_id)
         .where(LedgerLearningEvent.subject_kind == "expense")
         .where(LedgerLearningEvent.event_type == "reject")
@@ -103,10 +121,9 @@ def _has_recent_reject(
             LedgerLearningEvent.signal_type
             == DUPLICATE_CANDIDATE.decision_type
         )
-        .where(LedgerLearningEvent.signal_hash == indexed_hash)
-        .limit(1)
+        .where(LedgerLearningEvent.signal_hash.in_(hashes))
     )
-    return found is not None
+    return {value for value in found if value is not None}
 
 
 def _score_one_candidate(
@@ -205,5 +222,6 @@ def score_duplicate_candidates(
 __all__ = [
     "ALGORITHM_VERSION",
     "DuplicateCandidateScore",
+    "duplicate_feedback_expense_ids",
     "score_duplicate_candidates",
 ]

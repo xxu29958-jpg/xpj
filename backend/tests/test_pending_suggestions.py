@@ -255,6 +255,7 @@ def test_feedback_changes_the_next_real_review_without_changing_money(client, we
 
 def test_keep_both_changes_future_duplicate_evidence_and_preserves_both_bills(client, web_client, identity):
     from api_contract_helpers import mark_not_duplicate_api
+    from sqlalchemy import event
 
     first_id = _pending_notification(client, identity=identity, merchant="重复核对店")
     second_id = _pending_notification(client, identity=identity, merchant="重复核对店")
@@ -267,7 +268,22 @@ def test_keep_both_changes_future_duplicate_evidence_and_preserves_both_bills(cl
     after = client.get(f"/api/expenses/{third_id}", headers=identity.app_headers).json()
     assert after["duplicate_candidates"][0]["score"] < original_score
     assert "recent_user_reject" in after["duplicate_candidates"][0]["reasons"]
-    page = web_client.get("/web/duplicates?ledger_id=owner")
+    for _ in range(2):
+        _pending_notification(client, identity=identity, merchant="重复核对店")
+    feedback_queries = []
+
+    def capture_feedback_query(conn, cursor, statement, parameters, context, executemany):
+        if "ledger_learning_events" in statement and "signal_hash" in statement:
+            feedback_queries.append(statement)
+
+    with SessionLocal() as db:
+        engine = db.get_bind()
+        event.listen(engine, "before_cursor_execute", capture_feedback_query)
+        try:
+            page = web_client.get("/web/duplicates?ledger_id=owner")
+        finally:
+            event.remove(engine, "before_cursor_execute", capture_feedback_query)
+    assert len(feedback_queries) == 1  # The whole review page shares one indexed feedback read.
     assert "已参考你之前“不是重复”的选择" in page.text
     for expense_id in (first_id, second_id):
         expense = client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers).json()
