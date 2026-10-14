@@ -324,13 +324,13 @@ def recent_audit_rows(db: Session, *, tenant_id: str, limit: int = 10) -> list[B
     )
 
 
-def cleanup_expired_audit_logs(
+def expired_audit_logs(
     db: Session,
     *,
     now: datetime | None = None,
     batch_size: int = 500,
-) -> int:
-    """Delete audit rows whose per-row retention window has elapsed."""
+) -> list[BudgetAdvisorAuditLog]:
+    """Read one batch using the same retention rules as cleanup."""
 
     threshold = now or now_utc()
     # ``called_at + retention_days days`` as a SQL expression for the pre-filter
@@ -353,6 +353,12 @@ def cleanup_expired_audit_logs(
         called_at = ensure_utc(row.called_at) or row.called_at
         if called_at + timedelta(days=row.retention_days) <= threshold:
             expired.append(row)
+    return expired
+
+
+def cleanup_expired_audit_logs(db: Session, *, now: datetime | None = None, batch_size: int = 500) -> int:
+    """Delete audit rows whose per-row retention window has elapsed."""
+    expired = expired_audit_logs(db, now=now, batch_size=batch_size)
     for row in expired:
         db.delete(row)
     if expired:
@@ -388,6 +394,7 @@ __all__ = [
     "AdvisorStatus",
     "advisor_status_for_tenant",
     "cleanup_expired_audit_logs",
+    "expired_audit_logs",
     "complete_live_call_audit_row",
     "compute_input_hash",
     "enforce_live_call_budget",

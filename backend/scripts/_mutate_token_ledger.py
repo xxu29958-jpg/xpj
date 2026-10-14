@@ -480,6 +480,14 @@ ALLOWLIST: dict[str, Exempt] = {
     # these routes do not delete rows or change issued link expiry timestamps.
     "POST /owner/settings/uploads": Exempt("external_side_effect", "owner_console", ()),
     "POST /owner/settings/maintenance": Exempt("external_side_effect", "owner_console", (), "medium"),
+    # Explicitly confirmed, bounded retention cleanup through the existing domain
+    # commands. Devices recheck eligibility under the identity lifecycle lock;
+    # AI rows use their own stored retention window. No editable row-version fact.
+    "POST /owner/settings/maintenance/run": Exempt(
+        "batch_db_write", "maintenance", _DEVICE_CLEANUP + (
+            "pairing_codes", "upload_link_daily_usage", "upload_link_remote_attempts", "budget_advisor_audit_logs",
+        ), "medium",
+    ),
     "POST /owner/upload-links": Exempt("create_row", "owner_console", _UPLOAD_LINKS),
     "POST /owner/upload-links/{public_id}/delete": Exempt("terminal_flag_flip", "owner_console", _UPLOAD_LINKS),
     "POST /owner/upload-links/{public_id}/limits": Exempt("admin_single_writer", "owner_console", _UPLOAD_LINKS),

@@ -7,6 +7,9 @@
 {% block workspace_description %}按需开启自动清理，账目和原件有各自的保留范围。{% endblock %}
 {% macro run_status(key) %}
 {% set state = statuses[key] %}
+{% if saved_form[key ~ '_auto_enabled'] %}
+<p class="workspace-note">{% if key in running_workers %}后台任务正在运行，将按已保存的计划检查。{% else %}<strong>计划已保存，但后台任务未运行。</strong>请在桌面管理器核对后端状态；下方仍可手动处理。{% endif %}</p>
+{% endif %}
 <p class="workspace-note">本次服务启动以来：成功 {{ state.success_count }} 次，失败 {{ state.failed_count }} 次。
   {% if state.last_success_at %}最近成功 {{ state.last_success_at|owner_datetime }}。{% else %}尚无成功运行记录。{% endif %}
   {% if state.last_error %}上次运行失败；可检查<a href="/owner/diagnostics">系统诊断</a>并调整配置。{% endif %}
@@ -23,7 +26,7 @@
       ('budget_advisor_audit_cleanup', 'AI 调用记录', 'history', 'lilac', '清理超过各条记录自身保留期限的调用历史，不会删除预算或账目。'),
       ('device_cleanup', '已撤销设备', 'smartphone', 'apricot', '清理已撤销且超过保留期限的设备及关联失效凭证；仍有有效凭证、有效上传链接或恢复码的设备会保留。')
     ] %}
-    <details class="workspace-disclosure workspace-task-group"{% if loop.first or error %} open{% endif %}>
+    <details id="{{ prefix }}" class="workspace-disclosure workspace-task-group"{% if loop.first or error %} open{% endif %}>
       <summary><span class="workspace-task__icon workspace-tone-{{ tone }}">{{ icon(symbol) }}</span><span class="workspace-task__text"><strong>{{ title }}</strong><span>{{ '已开启每天清理' if form[prefix ~ '_auto_enabled'] else '每天清理已关闭' }}</span></span>{{ icon('chevron-right') }}</summary>
       <div class="workspace-disclosure__body">
         <p class="workspace-note">{{ description }}</p>
@@ -39,6 +42,7 @@
         {% endif %}
         {{ run_status(prefix) }}
         {% if prefix == 'learning_cleanup' %}<a class="workspace-text-action" href="/owner/learning-maintenance">查看候选记录或手动重试清理</a>{% endif %}
+        {% if prefix in ('budget_advisor_audit_cleanup', 'device_cleanup') %}<a class="workspace-text-action" href="/owner/settings/maintenance/preview?task={{ prefix }}">查看可清理记录并立即处理</a>{% endif %}
       </div>
     </details>
     {% endfor %}

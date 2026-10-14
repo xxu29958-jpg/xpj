@@ -2221,6 +2221,29 @@
         "title": "Body_owner_calendar_post_owner_ledgers__ledger_id__calendar_post",
         "type": "object"
       },
+      "Body_owner_cleanup_run_owner_settings_maintenance_run_post": {
+        "properties": {
+          "confirmed": {
+            "default": false,
+            "title": "Confirmed",
+            "type": "boolean"
+          },
+          "retention_days": {
+            "default": "",
+            "title": "Retention Days",
+            "type": "string"
+          },
+          "task": {
+            "title": "Task",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task"
+        ],
+        "title": "Body_owner_cleanup_run_owner_settings_maintenance_run_post",
+        "type": "object"
+      },
       "Body_owner_fx_settings_post_owner_fx_settings_post": {
         "properties": {
           "action": {
@@ -51611,6 +51634,107 @@
           }
         },
         "summary": "Owner Maintenance Settings Post",
+        "tags": [
+          "owner-console"
+        ]
+      }
+    },
+    "/owner/settings/maintenance/preview": {
+      "get": {
+        "operationId": "owner_cleanup_preview_owner_settings_maintenance_preview_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "task",
+            "required": true,
+            "schema": {
+              "title": "Task",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "removed",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 500,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Removed"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Owner Cleanup Preview",
+        "tags": [
+          "owner-console"
+        ]
+      }
+    },
+    "/owner/settings/maintenance/run": {
+      "post": {
+        "operationId": "owner_cleanup_run_owner_settings_maintenance_run_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_owner_cleanup_run_owner_settings_maintenance_run_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Owner Cleanup Run",
         "tags": [
           "owner-console"
         ]
