@@ -140,10 +140,10 @@ def evaluate_debt(counts: DebtCounts) -> int:
 # counter is and how it's computed.
 STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_carriers": 142,  # First-original association carries the existing bill's OCC version.
-    "mutate_token_exempted": 150,  # Web/API reference acquisition upserts the quote cache, never a financial command.
+    "mutate_token_exempted": 151,  # Owner retention cleanup adapts the existing bounded maintenance commands.
     "mutate_token_reason_admin_single_writer": 16,
     "mutate_token_reason_append_only_fact": 3,
-    "mutate_token_reason_batch_db_write": 16,
+    "mutate_token_reason_batch_db_write": 17,
     "mutate_token_reason_create_row": 42,  # New rows with original-key receipts; existing OCC routes unchanged.
     "mutate_token_reason_enqueue_task": 2,
     "mutate_token_reason_external_side_effect": 7,  # Owner FX save-and-fetch now also upserts fx_rates.
@@ -181,6 +181,13 @@ BASELINE_RATCHET_DOWN: frozenset[str] = frozenset(
     }
 )
 _MUTATE_TOKEN_EXEMPTION_ADMISSIONS = (
+    # ADR-0038 batch_db_write: one Local Owner adapter previews and confirms
+    # existing retention cleanup. Device eligibility is rechecked under the
+    # identity lifecycle lock; AI audit rows use their stored retention window.
+    # test_owner_integration_settings proves refusal, retention conflict, retry
+    # and preserved financial facts. All 142 existing OCC carriers remain.
+    # Admit only this exact base/count transition; future growth still fails.
+    ("6346d6c75c96a2cf10306f6ca2a592812ff10274", 150, 151),
     # ADR-0038 upsert/replace-all: Web and API reference acquisition share the
     # existing fx_rates cache owner. PostgreSQL's unique source/home/pair/date
     # upsert owns concurrency; neither writes a manual override, command receipt
