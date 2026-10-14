@@ -22,6 +22,7 @@ import com.ticketbox.ui.components.AppCompactChips
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppFilterChipOptions
 import com.ticketbox.ui.components.AppSecondaryButton
+import com.ticketbox.ui.components.symbolAndCodeLabel
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 
@@ -75,7 +76,7 @@ private fun CurrencySummaryRow(
                 fontWeight = AppTextHierarchy.caption.weight,
             )
             Text(
-                text = stringResource(R.string.expense_edit_currency_value, currency.symbol, currency.storageKey),
+                text = currency.symbolAndCodeLabel(),
                 color = MaterialTheme.colorScheme.onSurface,
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = AppTextHierarchy.body.weight,

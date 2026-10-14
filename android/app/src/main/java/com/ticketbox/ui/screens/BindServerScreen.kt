@@ -39,6 +39,7 @@ import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageScrollableColumn
 import com.ticketbox.ui.components.AppScrollablePageChrome
 import com.ticketbox.ui.components.AppButtonIcons
+import com.ticketbox.ui.components.AppFloatingActionBar
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.AppTextInput
@@ -101,6 +102,17 @@ fun BindServerScreen(
             contentWidth = AppAdaptiveContentWidth.Focus,
             verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap),
         ),
+        bottomBar = {
+            AppFloatingActionBar {
+                AppPrimaryButton(
+                    text = stringResource(if (loading) R.string.bind_server_button_binding else R.string.bind_server_button_bind),
+                    icons = AppButtonIcons(trailing = ImageVector.vectorResource(R.drawable.ic_lucide_arrow_right)),
+                    enabled = canBind,
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = submitBind,
+                )
+            }
+        },
     ) {
         AppPageHeader(
             title = stringResource(R.string.bind_server_header_title),
@@ -179,17 +191,6 @@ fun BindServerScreen(
             }
         }
         Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-            AppPrimaryButton(
-                text = if (loading) {
-                    stringResource(R.string.bind_server_button_binding)
-                } else {
-                    stringResource(R.string.bind_server_button_bind)
-                },
-                icons = AppButtonIcons(trailing = ImageVector.vectorResource(R.drawable.ic_lucide_arrow_right)),
-                enabled = canBind,
-                modifier = Modifier.fillMaxWidth(),
-                onClick = submitBind,
-            )
             AppSecondaryButton(
                 text = stringResource(R.string.bind_server_button_join_with_invitation),
                 enabled = !loading,
