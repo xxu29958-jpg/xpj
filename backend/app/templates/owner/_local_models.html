@@ -1,0 +1,12 @@
+<div data-local-models data-base-field="{{ model_base_field }}" data-model-field="{{ model_name_field }}">
+  <p class="workspace-note">自动查找这台电脑上正在运行的 LM Studio、Ollama 和已配置的模型服务，再由你选择。</p>
+  <button type="button" class="btn" data-scan-models>扫描本机模型</button>
+  <p class="workspace-note" role="status" data-scan-status>扫描只读取模型列表，不发送图片或账本数据。</p>
+  <label class="workspace-field" for="{{ model_name_field }}_discovered">
+    <span>选择本机模型</span>
+    <select id="{{ model_name_field }}_discovered" data-discovered-model disabled>
+      <option value="">扫描后选择模型</option>
+    </select>
+  </label>
+  <p class="workspace-note" data-model-selection></p>
+</div>

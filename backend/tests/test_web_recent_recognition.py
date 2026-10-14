@@ -56,13 +56,13 @@ def test_reopened_pending_template_shows_failed_and_no_result_original_tasks():
         assert not re.search(r'<form\b[^>]*method="post"', fragment), "发现任务不能自动重跑旧上传任务"
 
 
-@pytest.mark.parametrize("page", ["settings/recognition.html", "diagnostics.html"])
-def test_owner_recognition_pages_navigate_to_user_pending_context(page):
+@pytest.mark.parametrize("page,anchor", [("settings/recognition.html", "capture"), ("diagnostics.html", "recognition")])
+def test_owner_recognition_pages_navigate_to_user_pending_context(page, anchor):
     context = {"request": Request({"type": "http", "path": "/owner/" + page.removesuffix(".html"), "headers": []}),
         "recognition_view": SimpleNamespace(form=SimpleNamespace(), rapidocr_available=False,
         receipt_status="已配置，自动识别关闭", debt_bill_status="手动录入")}
     html = _render(owner_templates, page, context)
-    assert 'href="/web/pending#recognition"' in html, (
+    assert f'href="/web/pending#{anchor}"' in html, (
         "Owner 只导航到用户待处理业务上下文，不用管理权限代列其他人的识别任务")
 
 

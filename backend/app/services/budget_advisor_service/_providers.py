@@ -60,6 +60,13 @@ MAX_ADVICE_SUMMARY_CHARS = 800
 MAX_ADVICE_RATIONALE_CHARS = 600
 MAX_ADVICE_SUGGESTIONS = 20
 
+
+class _NoProviderRedirect(request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        # The owner approves one destination; do not forward its key elsewhere.
+        return None
+
+
 _SYSTEM_PROMPT = (
     "你是家庭预算助手。输入只有分类聚合、泛化收入计划、固定支出摘要和储蓄备用金安排，绝无真实商户名、姓名或路径。"
     "home_currency 是所有后缀为 _cents 的整数金额的本位币；这些字段表示该币种的最小货币单位，"
@@ -199,7 +206,7 @@ class OpenAiCompatBudgetAdvisor:
             headers["Authorization"] = f"Bearer {self._api_key}"
         req = request.Request(endpoint, data=encoded, method="POST", headers=headers)
         try:
-            with request.urlopen(req, timeout=self._timeout) as response:
+            with request.build_opener(_NoProviderRedirect()).open(req, timeout=self._timeout) as response:
                 raw = response.read(MAX_PROVIDER_RESPONSE_BYTES + 1)
                 if len(raw) > MAX_PROVIDER_RESPONSE_BYTES:
                     logger.warning(

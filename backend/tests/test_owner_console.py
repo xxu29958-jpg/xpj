@@ -1005,7 +1005,7 @@ def test_owner_ai_advisor_panel_opens(local_client: TestClient) -> None:
     response = local_client.get("/owner/ai-advisor")
     assert response.status_code == 200
     assert "AI 预算顾问" in response.text
-    assert "/owner/ai-advisor/confirmation" in response.text
+    assert "/owner/ai-advisor/settings" in response.text
     active_link = re.search(r'<a\b([^>]*)>设置</a>', response.text)
     assert active_link is not None
     attributes = dict(re.findall(r'([\w-]+)="([^"]*)"', active_link.group(1)))
@@ -1032,6 +1032,8 @@ def test_owner_ai_advisor_confirmation_updates_runtime_projection(
     ):
         import re
 
+        assert local_client.post("/owner/ai-advisor/settings", data={"provider": "openai_compat",
+            "base_url": "http://127.0.0.1:1234/v1", "model": "local-model"}).status_code == 200
         revision = re.search(r'name="connection_revision" value="([^"]+)"', local_client.get("/owner/ai-advisor").text)
         assert revision is not None
         response = local_client.post(

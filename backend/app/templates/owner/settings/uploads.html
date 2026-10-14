@@ -1,15 +1,25 @@
 {% extends "_workspace.html" %}
 {% from "_workspace_ui.html" import icon, task_link with context %}
-{% block title %}上传默认值 — 设置 — 小票夹{% endblock %}
+{% block title %}上传与链接 — 设置 — 小票夹{% endblock %}
 {% block back_url %}/owner/settings{% endblock %}
 {% block back_label %}设置{% endblock %}
-{% block workspace_title %}上传默认值{% endblock %}
-{% block workspace_description %}影响新建链接与之后的上传。{% endblock %}
+{% block workspace_title %}上传与链接{% endblock %}
+{% block workspace_description %}先选上传方式；大小、配额和有效期通常保持默认即可。{% endblock %}
 {% block workspace_body %}
 {% if message %}<div class="alert alert-success" role="status">{{ message }}</div>{% endif %}
 {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
 <div class="workspace-columns">
+  <section class="workspace-section" aria-label="开始上传">
+    <h2>把小票送进来</h2>
+    {{ task_link('/web/pending#capture', '在这台电脑上传', 'upload', '进入收件，选图片，识别后核对') }}
+    {{ task_link('/owner/pairing', '连接安卓手机', 'smartphone', '生成绑定码，在小票夹 App 中扫码连接', 'lilac') }}
+    {{ task_link('/owner/upload-links', 'iPhone 快捷指令与上传链接', 'link', '为账本创建链接、复制配置，管理额度与有效期', 'apricot') }}
+    <p class="workspace-note">手机不在本机网络时，需要先配置可用的<a href="/owner/settings/public-base-url">公网访问地址</a>。收到的小票进入对应账本的收件箱，仍需人工确认。</p>
+  </section>
   <form method="post" action="/owner/settings/uploads" class="workspace-form workspace-upload-defaults">
+    <details class="workspace-disclosure"{% if error or message %} open{% endif %}>
+      <summary><span>上传限制与默认值<span>修改后用于新上传和新链接</span></span>{{ icon('chevron-right') }}</summary>
+      <div class="workspace-disclosure__body">
     <label class="workspace-field" for="max_upload_size_mb">
       <span>单个文件上限（MB）</span>
       <input id="max_upload_size_mb" name="max_upload_size_mb" type="number" min="1" max="1024" required value="{{ form.max_upload_size_mb }}">
@@ -37,9 +47,8 @@
       </div>
     </details>
     <div class="workspace-save"><button class="btn btn-primary" type="submit">保存上传设置 {{ icon('arrow-right') }}</button></div>
+      </div>
+    </details>
   </form>
-  <section class="workspace-section" aria-label="链接管理">
-    {{ task_link('/owner/upload-links', 'iPhone 上传链接', 'smartphone', '查看额度、续期与管理每个上传入口') }}
-  </section>
 </div>
 {% endblock %}

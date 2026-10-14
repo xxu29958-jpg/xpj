@@ -4,7 +4,7 @@
 {% block back_url %}/owner/settings{% endblock %}
 {% block back_label %}设置{% endblock %}
 {% block workspace_title %}清理与保留{% endblock %}
-{% block workspace_description %}让每次处置都有明确范围。{% endblock %}
+{% block workspace_description %}按需开启自动清理，账目和原件有各自的保留范围。{% endblock %}
 {% macro run_status(key) %}
 {% set state = statuses[key] %}
 <p class="workspace-note">本次服务启动以来：成功 {{ state.success_count }} 次，失败 {{ state.failed_count }} 次。
@@ -16,7 +16,8 @@
 {% if message %}<div class="alert alert-success" role="status">{{ message }}</div>{% endif %}
 {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
 <div class="workspace-columns">
-  <form method="post" action="/owner/settings/maintenance" class="workspace-form workspace-maintenance">
+  <form method="post" action="/owner/settings/maintenance" class="workspace-form workspace-maintenance" data-maintenance-setup>
+    <datalist id="cleanup-timezones"><option value="Asia/Shanghai" label="中国 · 北京时间"><option value="Asia/Hong_Kong" label="香港"><option value="Asia/Taipei" label="台北"><option value="Asia/Tokyo" label="日本"><option value="Asia/Singapore" label="新加坡"><option value="Europe/London" label="伦敦"><option value="Europe/Berlin" label="柏林"><option value="America/New_York" label="纽约"><option value="America/Los_Angeles" label="洛杉矶"><option value="UTC" label="世界协调时间"></datalist>
     {% for prefix, title, symbol, tone, description in [
       ('learning_cleanup', '识别与学习记录', 'sparkles', 'green', '清理已失效建议和超过各记录保留期限的识别、学习记录。正在使用的建议保留，不会删除账目。'),
       ('budget_advisor_audit_cleanup', 'AI 调用记录', 'history', 'lilac', '清理超过各条记录自身保留期限的调用历史，不会删除预算或账目。'),
@@ -26,14 +27,14 @@
       <summary><span class="workspace-task__icon workspace-tone-{{ tone }}">{{ icon(symbol) }}</span><span class="workspace-task__text"><strong>{{ title }}</strong><span>{{ '已开启每天清理' if form[prefix ~ '_auto_enabled'] else '每天清理已关闭' }}</span></span>{{ icon('chevron-right') }}</summary>
       <div class="workspace-disclosure__body">
         <p class="workspace-note">{{ description }}</p>
-        <label class="workspace-switch"><span><strong>每天自动清理</strong><small>默认关闭，保存后才采用新计划</small></span><input type="checkbox" name="{{ prefix }}_auto_enabled" aria-label="{{ title }}：每天自动清理"{% if form[prefix ~ '_auto_enabled'] %} checked{% endif %}></label>
-        <label class="workspace-field" for="{{ prefix }}_daily_at"><span>每天清理时间</span><input id="{{ prefix }}_daily_at" name="{{ prefix }}_daily_at" type="text" inputmode="numeric" pattern="(?:[01][0-9]|2[0-3]):[0-5][0-9]" maxlength="5" required value="{{ form[prefix ~ '_daily_at'] }}"></label>
-        <label class="workspace-field" for="{{ prefix }}_timezone"><span>执行时区</span><input id="{{ prefix }}_timezone" name="{{ prefix }}_timezone" maxlength="64" required value="{{ form[prefix ~ '_timezone'] }}"></label>
+        <label class="workspace-switch"><span><strong>每天自动清理</strong><small>默认关闭，保存后才采用新计划</small></span><input type="checkbox" name="{{ prefix }}_auto_enabled" data-saved-enabled="{{ 'true' if saved_form[prefix ~ '_auto_enabled'] else 'false' }}" aria-label="{{ title }}：每天自动清理"{% if form[prefix ~ '_auto_enabled'] %} checked{% endif %}></label>
+        <label class="workspace-field" for="{{ prefix }}_daily_at"><span>每天清理时间</span><input id="{{ prefix }}_daily_at" name="{{ prefix }}_daily_at" type="time" required value="{{ form[prefix ~ '_daily_at'] }}"></label>
+        <label class="workspace-field" for="{{ prefix }}_timezone"><span>执行时区</span><input id="{{ prefix }}_timezone" name="{{ prefix }}_timezone" list="cleanup-timezones" maxlength="64" required value="{{ form[prefix ~ '_timezone'] }}"><span class="workspace-note">国内使用默认的北京时间即可；也可选择或填写其他时区。</span></label>
         {% if prefix == 'budget_advisor_audit_cleanup' %}
         <label class="workspace-field" for="budget_advisor_audit_retention_days"><span>新调用记录保留（天）</span><input id="budget_advisor_audit_retention_days" name="budget_advisor_audit_retention_days" type="number" min="0" max="36500" required value="{{ form.budget_advisor_audit_retention_days }}" aria-describedby="audit-retention-note"></label>
         <p class="workspace-note" id="audit-retention-note">只影响此后新增的调用记录。0 表示新记录长期保留；已有记录仍按创建时的保留期限清理。</p>
         {% elif prefix == 'device_cleanup' %}
-        <label class="workspace-field" for="device_cleanup_retention_days"><span>撤销后保留（天）</span><input id="device_cleanup_retention_days" name="device_cleanup_retention_days" type="number" min="0" max="36500" required value="{{ form.device_cleanup_retention_days }}" aria-describedby="device-retention-note"></label>
+        <label class="workspace-field" for="device_cleanup_retention_days"><span>撤销后保留（天）</span><input id="device_cleanup_retention_days" name="device_cleanup_retention_days" type="number" min="0" max="36500" required value="{{ form.device_cleanup_retention_days }}" data-saved-retention="{{ saved_form.device_cleanup_retention_days }}" aria-describedby="device-retention-note"></label>
         <p class="workspace-note" id="device-retention-note">适用于现有和将来撤销的设备。0 表示撤销后即可成为清理候选；清理前仍检查有效关联。</p>
         {% endif %}
         {{ run_status(prefix) }}
@@ -45,16 +46,17 @@
       <summary><span class="workspace-task__icon workspace-tone-sand">{{ icon('archive') }}</span><span class="workspace-task__text"><strong>回收站</strong><span>{{ '过期记录清理已开启' if form.soft_delete_purge_auto_enabled else '过期记录清理已关闭' }}</span></span>{{ icon('chevron-right') }}</summary>
       <div class="workspace-disclosure__body">
         <p class="workspace-note">回收站中的账目在保留期限内可恢复。超过期限后，自动清理会永久删除符合条件的记录；不能再从回收站恢复。</p>
-        <label class="workspace-switch"><span><strong>自动清理过期记录</strong><small>开启后约每 30 分钟检查一次</small></span><input name="soft_delete_purge_auto_enabled" type="checkbox"{% if form.soft_delete_purge_auto_enabled %} checked{% endif %}></label>
-        <label class="workspace-field" for="recycle_bin_retention_days"><span>回收站保留（天）</span><input id="recycle_bin_retention_days" name="recycle_bin_retention_days" type="number" min="1" max="36500" required value="{{ form.recycle_bin_retention_days }}" aria-describedby="recycle-retention-note"></label>
+        <label class="workspace-switch"><span><strong>自动清理过期记录</strong><small>开启后约每 30 分钟检查一次</small></span><input name="soft_delete_purge_auto_enabled" type="checkbox" data-saved-enabled="{{ 'true' if saved_form.soft_delete_purge_auto_enabled else 'false' }}"{% if form.soft_delete_purge_auto_enabled %} checked{% endif %}></label>
+        <label class="workspace-field" for="recycle_bin_retention_days"><span>回收站保留（天）</span><input id="recycle_bin_retention_days" name="recycle_bin_retention_days" type="number" min="1" max="36500" required value="{{ form.recycle_bin_retention_days }}" data-saved-retention="{{ saved_form.recycle_bin_retention_days }}" aria-describedby="recycle-retention-note"></label>
         <p class="workspace-note" id="recycle-retention-note">适用于现有回收站记录。缩短期限也会缩短现有记录的恢复窗口；不开启自动清理时不会自动执行永久删除。</p>
         {{ run_status('soft_delete_purge') }}
+        <a class="workspace-text-action" href="/web/recycle-bin">去回收站查看或恢复账目</a>
       </div>
     </details>
     <div class="workspace-maintenance-confirm">
-      <div class="workspace-maintenance-warning">{{ icon('circle-alert') }}<div><strong>保存前核对影响范围</strong><p>启用自动清理或缩短回收站恢复窗口，需要明确确认。</p></div></div>
+      <div class="workspace-maintenance-warning">{{ icon('circle-alert') }}<div><strong>这次更改需要确认</strong><p>新开启清理，或缩短回收站、已撤销设备的保留期，会影响已有记录。</p></div></div>
       <label class="workspace-consent"><input name="confirm_cleanup" type="checkbox"><span>我已了解上述清理范围；同意保存启用的自动清理，以及对现有记录生效的保留期限。</span></label>
-      <p class="workspace-note">只关闭全部自动清理，并延长或保留回收站恢复窗口，无需勾选。</p>
+      <p class="workspace-note">只改执行时间、关闭任务或延长保留期，无需重复确认。</p>
     </div>
     <div class="workspace-save"><button class="btn btn-primary" type="submit">保存清理与保留设置 {{ icon('arrow-right') }}</button></div>
   </form>

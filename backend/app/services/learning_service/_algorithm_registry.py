@@ -135,10 +135,7 @@ CATEGORY_SUGGESTION = AlgorithmType(
     decision_type="category_suggestion",
     current_version="category-history-v1",
     display_label="分类建议",
-    description=(
-        "merchant→category history aggregator with reject-based "
-        "feedback down-weighting"
-    ),
+    description="根据同一商户的历史分类提供建议；用户拒绝后会降低相应建议的权重。",
     subject_kinds=("expense",),
     default_retention_days=180,
     marker_keys=("category",),
@@ -149,10 +146,7 @@ DUPLICATE_CANDIDATE = AlgorithmType(
     decision_type="duplicate_candidate",
     current_version="duplicate-scoring-v1",
     display_label="疑似重复",
-    description=(
-        "image_hash / amount / merchant / time weighted score with "
-        "recent-reject penalty"
-    ),
+    description="结合图片、金额、商户和时间识别疑似重复；近期被用户拒绝的判断会降低权重。",
     subject_kinds=("expense",),
     default_retention_days=180,
     marker_keys=("amount_cents", "merchant"),
@@ -163,7 +157,7 @@ BUDGET_SUGGESTION = AlgorithmType(
     decision_type="budget_suggestion",
     current_version="budget-quantile-v1",
     display_label="预算建议",
-    description="trailing-window P50 / P75 monthly spend per category",
+    description="参考近期各分类的月支出中位数和较高支出水平，提供预算建议。",
     subject_kinds=("expense", "month"),
     default_retention_days=365,
     marker_keys=(),

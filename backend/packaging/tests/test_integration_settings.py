@@ -74,7 +74,7 @@ def test_save_confirm_change_and_clear_secret_keep_other_settings(settings_file)
 
 
 @pytest.mark.parametrize("changed", [
-    {"provider": "empty", "base_url": "http://127.0.0.1:4321/v1"},
+    {"base_url": "http://127.0.0.1:4321/v1"},
     {"base_url": "http://cloud.example/v1"}, {"base_url": "https://user:pass@cloud.example/v1"},
     {"model": ""}, {"model": "model\nsecret"}, {"timeout_seconds": "zero"}, {"daily_call_limit": "-1"},
 ])
@@ -117,12 +117,18 @@ def test_old_recognition_projection_can_gain_integration_settings_without_losing
 
 def test_connection_check_uses_saved_model_and_only_fixed_example(settings_file, caplog):
     requests = []
-    reject = False
+    redirected_requests = []
+    redirect = False
     test_key = "example-private-key-for-connection-test"
     class ModelHandler(BaseHTTPRequestHandler):
         def do_POST(self):
-            requests.append((self.path, json.loads(self.rfile.read(int(self.headers["Content-Length"])))))
-            if reject:
+            requests.append((self.path, self.headers.get("Authorization"), json.loads(self.rfile.read(int(self.headers["Content-Length"])))))
+            if redirect:
+                self.send_response(302)
+                self.send_header("Location", "/unexpected-destination")
+                self.end_headers()
+                return
+            if self.headers.get("Authorization") != f"Bearer {test_key}":
                 self.send_response(401, test_key)
                 self.end_headers()
                 self.wfile.write(test_key.encode())
@@ -131,6 +137,11 @@ def test_connection_check_uses_saved_model_and_only_fixed_example(settings_file,
             self.send_response(200)
             self.end_headers()
             self.wfile.write(body)
+
+        def do_GET(self):
+            redirected_requests.append(self.headers.get("Authorization"))
+            self.send_response(200)
+            self.end_headers()
 
         def log_message(self, *args):
             pass
@@ -145,16 +156,25 @@ def test_connection_check_uses_saved_model_and_only_fixed_example(settings_file,
         assert requests == []
         integration.confirm_advisor(confirmed=True, revision=integration.advisor_connection_revision())
         assert "测试成功" in integration.test_advisor_connection()
-        path, body = requests[0]
+        path, authorization, body = requests[0]
+        assert authorization == f"Bearer {test_key}"
         assert path == "/v1/chat/completions" and body["model"] == "home-model"
         sent = json.loads(body["messages"][1]["content"])
         assert sent["month"] == "2026-01" and sent["home_currency"] == "CNY"
         assert sent["category_breakdown"] == [{"category": "餐饮", "amount_cents": 1000, "count": 1}]
-        reject = True
+        integration.save_advisor(form, api_key="wrong-key", key_action="replace")
+        integration.confirm_advisor(confirmed=True, revision=integration.advisor_connection_revision())
         saved = settings_file.read_bytes()
         with pytest.raises(AppError, match="测试失败"):
             integration.test_advisor_connection()
         assert settings_file.read_bytes() == saved
+        integration.save_advisor(form, api_key=test_key, key_action="replace")
+        integration.confirm_advisor(confirmed=True, revision=integration.advisor_connection_revision())
+        assert "测试成功" in integration.test_advisor_connection()
+        redirect = True
+        with pytest.raises(AppError, match="测试失败"):
+            integration.test_advisor_connection()
+        assert redirected_requests == []
         assert test_key not in caplog.text
     finally:
         server.shutdown()

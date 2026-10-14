@@ -4,11 +4,20 @@
 {% block back_url %}/owner/settings{% endblock %}
 {% block back_label %}设置{% endblock %}
 {% block workspace_title %}公网访问地址{% endblock %}
-{% block workspace_description %}管理入口仍然只在本机。{% endblock %}
+{% block workspace_description %}让手机和上传链接在外网连接这台电脑。{% endblock %}
 {% block workspace_body %}
 <div class="workspace-information">
 {% if message %}<div class="alert alert-success" role="status">{{ message }}</div>{% endif %}
 {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+<section class="workspace-section" aria-labelledby="public-setup">
+  <h2 id="public-setup">先准备连接，再获取上传地址</h2>
+  <ol class="workspace-note">
+    <li>先在域名与隧道服务中，将自己的 HTTPS 域名连接到这台电脑。桌面管理器负责检查已有连接，目前不提供创建域名或隧道的功能。</li>
+    <li>把自己的 HTTPS 服务地址填在下方并保存，再到桌面管理器运行「完整检查」。</li>
+    <li>检查通过后，<a href="/owner/pairing">连接安卓手机</a>或<a href="/owner/upload-links">获取 iPhone 上传链接</a>。</li>
+  </ol>
+  <p class="workspace-note">当前：{{ '地址已保存；本页没有公网连通性检查结果' if settings_view.public_base_url_configured else '尚未保存公网地址' }}。是否可用以桌面管理器的完整检查结果为准。</p>
+</section>
 <form method="post" action="/owner/settings/public-base-url" class="workspace-form workspace-public-address">
   <label class="workspace-field" for="public_base_url"><span>公开服务域名</span>
     <span class="workspace-address-input"><input type="text" id="public_base_url" name="public_base_url"
@@ -17,8 +26,7 @@
       pattern="https?://.+" title="公网地址使用 https://，http:// 仅用于本机环回调试"
       aria-describedby="address-guidance">{{ icon('link') }}</span>
   </label>
-  <div class="workspace-guidance" id="address-guidance">{{ icon('info') }}<div><strong>保存后用于生成上传地址</strong><p>需要先配好域名和隧道。连接是否可用，请回到桌面管理器，在「连接帮助 → 公网连接」运行「完整检查」。</p></div></div>
-  <a class="workspace-check-action workspace-task" href="/owner/upload-links"><strong class="workspace-task__text">查看与管理上传链接</strong>{{ icon('arrow-right') }}</a>
+  <p class="workspace-note" id="address-guidance">例如 https://receipts.example.com，只填地址开头的域名部分。保存不会自动建立隧道，本机管理入口始终只在这台电脑可用。</p>
   <details class="workspace-disclosure workspace-address-help">
     <summary><span>当前地址与填写说明</span>{{ icon('chevron-right') }}</summary>
     <div class="workspace-disclosure__body">
@@ -26,10 +34,10 @@
       <p>填写已配置的 HTTPS 服务域名，例如本机后端通过 Cloudflare Tunnel 对外提供的地址。只填写协议、主机和可选端口，不包含路径、查询参数、片段或用户名密码。HTTP 仅允许本机环回调试。</p>
       <p>iPhone 快捷指令需要以 <code>https://</code> 开头的完整公网上传 URL；新建或轮换上传链接时，会使用这里的域名生成完整 URL。可到 <a href="/owner/upload-links">上传链接管理</a> 获取自己的配置。</p>
       <p>留空可清除该配置；末尾斜杠会自动去掉。保存后无需重启，之后获取的上传地址使用新域名；已经复制出去的旧地址需要重新分享。保存不会替你建立隧道，也不会把本机管理入口开放到公网。</p>
-      <p class="workspace-note">设置项：<code>PUBLIC_BASE_URL</code></p>
     </div>
   </details>
   <div class="workspace-save"><button type="submit" class="btn btn-primary">保存地址 {{ icon('arrow-right') }}</button></div>
+  {% if message %}<a class="workspace-check-action workspace-task" href="/owner/upload-links"><strong class="workspace-task__text">下一步：获取上传链接</strong>{{ icon('arrow-right') }}</a>{% endif %}
 </form>
 </div>
 {% endblock %}

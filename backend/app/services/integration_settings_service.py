@@ -4,17 +4,22 @@ from __future__ import annotations
 
 import hashlib
 import json
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, replace
 from datetime import time
+from urllib import error, request
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.config import Settings, get_settings
 from app.errors import AppError
 from app.fx_constants import FX_DEFAULT_URLS
+from app.recognition_config import resolve_local_llm_base_url
 from app.services import runtime_settings_service as runtime
 from app.services.budget_advisor_service._models import BudgetInputs, CategorySnapshot
 from app.services.budget_advisor_service._provider_names import canonical_provider_name
 from app.services.budget_advisor_service._providers import (
+    MAX_PROVIDER_RESPONSE_BYTES,
+    _NoProviderRedirect,
     _validate_api_key_for_base_url,
     _validate_base_url,
     get_budget_advisor,
@@ -39,6 +44,7 @@ class AdvisorSettingsForm:
     timeout_seconds: str = "60"
     min_interval_seconds: str = "60"
     daily_call_limit: str = "50"
+    connection_mode: str = ""
 
 
 @dataclass(frozen=True)
@@ -59,6 +65,8 @@ def advisor_form(settings: Settings | None = None) -> AdvisorSettingsForm:
         timeout_seconds=str(settings.budget_advisor_timeout_seconds),
         min_interval_seconds=str(settings.budget_advisor_live_min_interval_seconds),
         daily_call_limit=str(settings.budget_advisor_live_daily_call_limit),
+        connection_mode=("empty" if canonical_provider_name(settings.budget_advisor_provider) == "empty"
+                         else "local" if resolve_local_llm_base_url(settings.budget_advisor_base_url) else "cloud"),
     )
 
 
@@ -118,8 +126,12 @@ def confirm_advisor(*, confirmed: bool, revision: str) -> None:
 
 def _resolve_advisor_key(form: AdvisorSettingsForm, *, api_key: str, key_action: str) -> str:
     """Keep a stored secret only when its destination remains the same."""
+    if key_action == "auto":
+        key_action = "replace" if api_key else "keep"
     if key_action not in {"keep", "replace", "clear"}:
         raise runtime._invalid("请选择保留、更换或清除密钥。")
+    if key_action == "clear" and api_key:
+        raise runtime._invalid("已填写新密钥，请取消「清除原密钥」后继续。")
     if key_action == "keep" and api_key:
         raise runtime._invalid("已填写新密钥，请选择更换密钥后再保存。")
     settings = get_settings()
@@ -131,9 +143,75 @@ def _resolve_advisor_key(form: AdvisorSettingsForm, *, api_key: str, key_action:
     return key
 
 
+def read_advisor_models(form: AdvisorSettingsForm, *, api_key: str, key_action: str) -> tuple[str, ...]:
+    _validate_connection_mode(form)
+    key = _resolve_advisor_key(form, api_key=api_key, key_action=key_action)
+    try:
+        base_url = _validate_base_url(form.base_url)
+        _validate_api_key_for_base_url(base_url, key)
+    except AppError as exc:
+        raise runtime._invalid("请先填写模型服务的接口地址；公网服务还需要 HTTPS 和调用密钥。") from exc
+    return _read_models(base_url, key=key)
+
+
+def _read_models(base_url: str, *, key: str = "", timeout: int = 10) -> tuple[str, ...]:
+    headers = {"Authorization": f"Bearer {key}"} if key else {}
+    req = request.Request(base_url + "/models", headers=headers)
+    try:
+        with request.build_opener(_NoProviderRedirect()).open(req, timeout=timeout) as response:
+            raw = response.read(MAX_PROVIDER_RESPONSE_BYTES + 1)
+            if len(raw) > MAX_PROVIDER_RESPONSE_BYTES:
+                raise ValueError("model list too large")
+            payload = json.loads(raw)
+        rows = payload.get("data") if isinstance(payload, dict) else None
+        if not isinstance(rows, list):
+            raise ValueError("invalid model list")
+        models = tuple(dict.fromkeys(row["id"].strip() for row in rows if isinstance(row, dict)
+                                     and isinstance(row.get("id"), str) and 0 < len(row["id"].strip().encode("utf-8")) <= 256))
+        if not models:
+            raise ValueError("no available models")
+        return models
+    except error.HTTPError as exc:
+        message = "密钥未被服务接受，请检查后重试。" if exc.code in {401, 403} else "服务未提供模型列表，请从模型服务复制模型名称后继续保存。"
+        raise AppError("dependency_unavailable", message, status_code=502) from exc
+    except (OSError, error.URLError, ValueError) as exc:
+        raise AppError("dependency_unavailable", "未读取到可用模型。请确认服务已启动；也可直接填写模型名称。输入和原设置均保留。", status_code=502) from exc
+
+
+def discover_local_models(current_url: str = "") -> list[dict]:
+    """Inspect known loopback services, never send keys or change configuration."""
+    settings = get_settings()
+    urls = dict.fromkeys(filter(None, (resolve_local_llm_base_url(url) for url in (
+        current_url, settings.local_llm_base_url, settings.budget_advisor_base_url,
+        "http://127.0.0.1:1234/v1", "http://127.0.0.1:11434/v1",
+    ))))
+
+    def inspect(base_url: str) -> dict:
+        try:
+            return {"base_url": base_url, "models": _read_models(base_url, timeout=2)}
+        except AppError:
+            return {"base_url": base_url, "models": ()}
+
+    with ThreadPoolExecutor(max_workers=5) as pool:
+        return [service for service in pool.map(inspect, urls) if service["models"]]
+
+
+def _validate_connection_mode(form: AdvisorSettingsForm) -> None:
+    if form.connection_mode not in {"", "empty", "local", "cloud"}:
+        raise runtime._invalid("请选择本机模型、云端模型或关闭 AI。")
+    if form.connection_mode == "local" and not resolve_local_llm_base_url(form.base_url):
+        raise runtime._invalid("本机模式只能连接这台电脑。请扫描后选择模型，或填写本机服务地址。")
+    if form.connection_mode == "cloud" and resolve_local_llm_base_url(form.base_url):
+        raise runtime._invalid("这是本机服务地址，请选择本机模型；云端模式请填写服务商提供的 HTTPS 地址。")
+
+
 def save_advisor(form: AdvisorSettingsForm, *, api_key: str, key_action: str) -> None:
     if form.provider not in {"empty", "openai_compat"}:
         raise runtime._invalid("请选择关闭 AI 或兼容 OpenAI 的模型服务。")
+    if form.provider == "empty":
+        runtime.save_runtime_mutation(RuntimeSettingsMutation("advisor", replace(_advisor_snapshot(get_settings()), provider="empty")))
+        return
+    _validate_connection_mode(form)
     base_url = form.base_url.strip().rstrip("/")
     key = _resolve_advisor_key(form, api_key=api_key, key_action=key_action)
     model = form.model.strip()
@@ -195,4 +273,6 @@ def test_advisor_connection() -> str:
                            category_breakdown=[CategorySnapshot("餐饮", 1000, 1)]))
     if result is None:
         raise AppError("dependency_unavailable", "测试失败：请检查服务是否启动、密钥和模型是否有效。设置已保留，可修改后重试。", status_code=502)
-    return "连接测试成功：模型已返回有效建议。本次只发送固定示例，没有读取或修改你的账本。"
+    key_status = "已携带保存的 Key 发起请求" if settings.budget_advisor_api_key else "未使用 Key"
+    return (f"连接测试成功：{settings.budget_advisor_model} 已返回有效建议，{key_status}。"
+            "本次只发送固定示例，没有读取或修改你的账本。实际预算调用可在下方「最近的使用结果」核对。")

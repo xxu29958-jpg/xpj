@@ -84,10 +84,11 @@ def save_maintenance(form: dict[str, str | bool], *, confirmed: bool) -> None:
     except (ValueError, TypeError, ZoneInfoNotFoundError) as exc:
         raise runtime._invalid("请检查清理时间和时区：时间使用 HH:MM，时区使用 Asia/Shanghai 等有效名称。") from exc
     settings = get_settings()
-    changes_recovery_window = value.recycle_bin_retention_days < settings.recycle_bin_retention_days
-    auto_cleanup = any(item for name, item in values.items() if name.endswith("_enabled"))
+    changes_recovery_window = (value.recycle_bin_retention_days < settings.recycle_bin_retention_days
+                               or value.device_cleanup_retention_days < settings.device_cleanup_retention_days)
+    auto_cleanup = any(item and not getattr(settings, name) for name, item in values.items() if name.endswith("_enabled"))
     if (auto_cleanup or changes_recovery_window) and not confirmed:
-        raise runtime._invalid("请先确认清理影响。自动清理会永久删除符合条件的过期数据；缩短回收站期限也会缩短现有记录的恢复窗口。")
+        raise runtime._invalid("请先确认清理影响。新开启的任务会永久清理符合条件的数据；缩短回收站或已撤销设备的保留期会影响已有记录。")
     runtime.save_runtime_mutation(RuntimeSettingsMutation("maintenance", value))
 
 

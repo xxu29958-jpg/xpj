@@ -58,8 +58,8 @@ def test_owner_configures_model_without_env_and_never_receives_saved_secret(owne
     page = owner.get("/owner/ai-advisor")
     assert page.status_code == 200
     assert 'action="/owner/ai-advisor/settings?ledger_id=owner"' in page.text
-    form = {"provider": "openai_compat", "base_url": "https://model.example/v1", "model": "household-model",
-            "key_action": "replace", "api_key": "private-model-key", "daily_call_limit": "12"}
+    form = {"connection_mode": "cloud", "base_url": "https://model.example/v1", "model": "household-model",
+            "api_key": "private-model-key", "daily_call_limit": "12"}
     saved = owner.post("/owner/ai-advisor/settings", data=form)
     assert saved.status_code == 200, saved.text
     assert "已保存" in saved.text and "private-model-key" not in saved.text
@@ -67,13 +67,12 @@ def test_owner_configures_model_without_env_and_never_receives_saved_secret(owne
     assert config.get_settings().budget_advisor_live_daily_call_limit == 12
     assert config.get_settings().budget_advisor_owner_confirmed is False
     revision = _revision(saved.text)
-    allowed = owner.post("/owner/ai-advisor/confirmation", data={"confirmed": "on", "connection_revision": revision}, follow_redirects=False)
-    assert allowed.status_code == 303
     captures = []
     monkeypatch.setattr(integration, "get_budget_advisor", lambda **_: SimpleNamespace(
         advise=lambda inputs: captures.append(inputs) or BudgetAdvice(summary="示例", confidence=0.5)))
-    tested = owner.post("/owner/ai-advisor/test")
+    tested = owner.post("/owner/ai-advisor/confirmation", data={"confirmed": "on", "connection_revision": revision, "action": "test"})
     assert tested.status_code == 200 and "连接测试成功" in tested.text
+    assert config.get_settings().budget_advisor_owner_confirmed is True
     assert captures[0].month == "2026-01" and captures[0].category_breakdown[0].amount_cents == 1000
     changed = owner.post("/owner/ai-advisor/settings", data={**form, "model": "new-model", "key_action": "keep", "api_key": ""})
     assert changed.status_code == 200
@@ -88,6 +87,72 @@ def test_owner_configures_model_without_env_and_never_receives_saved_secret(owne
     assert "url-private-key" not in invalid.text and "private-model-key" not in invalid.text
     assert 'value="household-model"' in invalid.text
     assert integration_file.read_bytes() == before
+    off = owner.post("/owner/ai-advisor/settings", data={"provider": "empty", "base_url": "invalid draft"})
+    assert off.status_code == 200
+    assert config.get_settings().budget_advisor_provider == "empty"
+    assert config.get_settings().budget_advisor_api_key == "private-model-key"
+
+
+def test_reading_models_does_not_save_or_send_a_saved_key_to_a_new_destination(owner, integration_file, monkeypatch):
+    form = {"provider": "openai_compat", "base_url": "https://model.example/v1", "api_key": "private-model-key"}
+    calls = []
+    stream = MagicMock()
+    stream.__enter__.return_value = stream
+    stream.read.return_value = b'{"data":[{"id":"household-model"}]}'
+    monkeypatch.setattr(integration.request, "build_opener", lambda *handlers: SimpleNamespace(
+        open=lambda req, **kwargs: calls.append((req.full_url, req.get_header("Authorization"))) or stream))
+    response = owner.post("/owner/ai-advisor/settings", data={**form, "advisor_action": "models"}, headers={"Accept": "application/json"})
+    assert response.json()["models"] == ["household-model"]
+    assert calls == [("https://model.example/v1/models", "Bearer private-model-key")]
+    assert "private-model-key" not in response.text and not integration_file.exists()
+    assert owner.post("/owner/ai-advisor/settings", data={**form, "model": "household-model"}).status_code == 200
+    before = integration_file.read_bytes()
+    conflicting_key = owner.post("/owner/ai-advisor/settings", data={
+        **form, "model": "household-model", "clear_key": "on"})
+    assert conflicting_key.status_code == 422 and "清除原密钥" in conflicting_key.text
+    assert integration_file.read_bytes() == before
+    refused = owner.post("/owner/ai-advisor/settings", data={
+        "provider": "openai_compat", "base_url": "https://different.example/v1", "advisor_action": "models"}, headers={"Accept": "application/json"})
+    assert refused.status_code == 422 and "接口地址已改变" in refused.json()["error"]
+    assert len(calls) == 1 and integration_file.read_bytes() == before
+    calls.clear()
+    scanned = owner.get("/owner/local-models", params={"current_url": "https://different.example/v1"})
+    assert scanned.status_code == 200 and scanned.json()["services"]
+    assert all(url.startswith("http://127.0.0.1:") and key is None for url, key in calls)
+    assert integration_file.read_bytes() == before
+    local = owner.post("/owner/ai-advisor/settings", data={"connection_mode": "local",
+        "base_url": "http://127.0.0.1:1234/v1", "model": "household-model", "clear_key": "on"})
+    assert local.status_code == 200 and not config.get_settings().budget_advisor_api_key
+    assert config.get_settings().budget_advisor_owner_confirmed is False
+
+
+def test_local_scan_worker_failures_reach_http_log(owner, integration_file, monkeypatch, caplog):
+    def fail_read(*args, **kwargs):
+        raise RuntimeError("model discovery worker failed")
+    monkeypatch.setattr(integration, "_read_models", fail_read)
+    with pytest.raises(RuntimeError, match="model discovery worker failed"):
+        owner.get("/owner/local-models", headers={"X-Request-Id": "local-model-scan-probe"})
+    records = [row for row in caplog.records if row.name == "ticketbox.http" and "local-model-scan-probe" in row.getMessage()]
+    assert len(records) == 1 and records[0].exc_info[0] is RuntimeError
+    assert not integration_file.exists()
+
+
+def test_recognition_test_then_save_keeps_the_old_setup_until_the_picture_passes(owner, integration_file, monkeypatch):
+    from app.services import recognition_setup_service as setup
+
+    monkeypatch.setattr(setup, "list_local_llm_models", lambda _: ("tested-vision-model",))
+    monkeypatch.setattr(setup, "call_local_llm_vision", lambda *args, **kwargs: {"number": "wrong"})
+    form = {"ocr_provider": "local_llm", "ocr_auto_run": "on", "local_llm_base_url": "http://127.0.0.1:1234/v1",
+            "recognition_action": "test_save", "local_llm_model": "tested-vision-model"}
+    failed = owner.post("/owner/settings/recognition", data=form)
+    assert failed.status_code == 502 and "没有正确读出测试图片" in failed.text
+    assert 'value="http://127.0.0.1:1234/v1"' in failed.text
+    assert not integration_file.exists() and config.get_settings().ocr_provider == "empty"
+    monkeypatch.setattr(setup, "call_local_llm_vision", lambda *args, **kwargs: {"number": "24"})
+    saved = owner.post("/owner/settings/recognition", data=form)
+    assert saved.status_code == 200 and "图片识别通过" in saved.text
+    assert config.get_settings().local_llm_model == "tested-vision-model"
+    assert config.get_settings().ocr_auto_run is True
 
 
 def test_owner_changes_fx_schedule_and_corrects_validation_without_losing_choices(owner, integration_file):
@@ -187,10 +252,11 @@ def test_first_scheduled_fetch_claims_lease_after_currency_read(monkeypatch):
     assert calls == [{"home_currency_code": "CNY"}]
 
 
-@pytest.mark.parametrize("path", ["/owner/ai-advisor/settings", "/owner/ai-advisor/test", "/owner/fx/settings",
-                                  "/owner/settings/uploads", "/owner/settings/maintenance"])
-def test_public_requests_cannot_configure_host_integrations(client, integration_file, path):
-    response = client.post(path, headers={"Host": "api.example.com"})
+@pytest.mark.parametrize("method,path", [("POST", path) for path in (
+    "/owner/ai-advisor/settings", "/owner/ai-advisor/test", "/owner/fx/settings",
+    "/owner/settings/uploads", "/owner/settings/maintenance")] + [("GET", "/owner/local-models")])
+def test_public_requests_cannot_configure_host_integrations(client, integration_file, method, path):
+    response = client.request(method, path, headers={"Host": "api.example.com"})
     assert response.status_code == 403
     assert not integration_file.exists()
 
@@ -259,6 +325,12 @@ def test_owner_sees_cleanup_impact_and_must_confirm_before_enabling(owner, integ
     invalid = owner.post("/owner/settings/maintenance", data={**form, "confirm_cleanup": "on", "device_cleanup_timezone": "invalid/zone"})
     assert invalid.status_code == 422 and 'value="05:30"' in invalid.text
     assert integration_file.read_bytes() == before
+    adjusted = owner.post("/owner/settings/maintenance", data={**form, "learning_cleanup_daily_at": "06:45"})
+    assert adjusted.status_code == 200 and config.get_settings().learning_cleanup_daily_at == "06:45"
+    assert config.get_settings().learning_cleanup_auto_enabled is True
+    shortened = owner.post("/owner/settings/maintenance", data={**form, "recycle_bin_retention_days": "1"})
+    assert shortened.status_code == 422
+    assert config.get_settings().recycle_bin_retention_days != 1
     stopped = owner.post("/owner/settings/maintenance", data={name: value for name, value in form.items() if not name.endswith("_enabled")})
     assert stopped.status_code == 200 and config.get_settings().learning_cleanup_auto_enabled is False
 

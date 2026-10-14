@@ -67,6 +67,10 @@ def test_selected_ledger_records_are_visible_on_all_three_pages(owner, ledgers):
         assert visible in result.text and absent not in result.text
         if page == "ai-advisor":
             assert f'href="/web/budget-advise?ledger_id={target}"' in result.text
+        if page == "learning-maintenance":
+            assert "travel-record" in result.text and "home-record" not in result.text
+            assert "建议分类为「餐饮」" in result.text
+            assert f'href="/web/expenses/{target_rows[3]}/edit?ledger_id={target}"' in result.text
 
 
 @pytest.mark.parametrize("action", ["withdraw", "dismiss", "cleanup"])
@@ -79,7 +83,8 @@ def test_operation_changes_selected_ledger_and_keeps_financial_facts(owner, ledg
     result = owner.post(f"/owner/{page}/{endpoint}", data=data, follow_redirects=False)
     assert result.status_code == 303, result.text
     section = {"withdraw": "algorithm-history", "dismiss": "learning-candidates", "cleanup": "learning-volume"}[action]
-    assert result.headers["location"] == f"/owner/{page}?ledger_id={target}#{section}"
+    outcome = {"withdraw": "", "dismiss": "&result=dismissed", "cleanup": "&result=cleaned"}[action]
+    assert result.headers["location"] == f"/owner/{page}?ledger_id={target}{outcome}#{section}"
     with SessionLocal() as db:
         assert db.get(AlgorithmDecision, source_rows[0]).status == "active"
         assert db.get(AlgorithmDecision, source_rows[2]) is not None
@@ -152,7 +157,9 @@ def test_no_manageable_ledger_has_no_default_data_fallback(owner, ledgers):
 
 def test_invalid_model_form_keeps_ledger_and_unsaved_input(owner, ledgers):
     target, _, _ = ledgers
-    result = owner.post(f"/owner/ai-advisor/settings?ledger_id={target}", data={"timeout_seconds": "0", "model": "draft-model"})
+    result = owner.post(f"/owner/ai-advisor/settings?ledger_id={target}", data={
+        "provider": "openai_compat", "base_url": "http://127.0.0.1:1234/v1",
+        "timeout_seconds": "0", "model": "draft-model"})
     assert result.status_code == 422, result.text
     assert f'value="{target}" selected' in result.text
     assert f'action="/owner/ai-advisor/settings?ledger_id={target}"' in result.text

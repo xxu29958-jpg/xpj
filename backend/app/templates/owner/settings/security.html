@@ -1,5 +1,5 @@
 {% extends "_workspace.html" %}
-{% from "_workspace_ui.html" import icon with context %}
+{% from "_workspace_ui.html" import icon, task_link with context %}
 {% block title %}安全说明 — 设置 — 小票夹{% endblock %}
 {% block back_url %}/owner/settings/about{% endblock %}
 {% block back_label %}关于小票夹{% endblock %}
@@ -7,7 +7,9 @@
 {% block workspace_description %}本机、设备与数据边界{% endblock %}
 {% block workspace_body %}
 <div class="workspace-information">
-  <p class="workspace-note">本页只读，说明当前访问边界。设备治理和维护入口仅在运行小票夹后端的电脑上可用，不能通过公网域名开放。</p>
+  <p class="workspace-note">本页说明当前访问范围。需要撤销手机或停用分享链接时，从下方进入对应管理。</p>
+  {{ task_link('/owner/devices', '管理已连接的设备', 'smartphone', '查看设备，撤销不再使用的连接') }}
+  {{ task_link('/owner/upload-links', '管理分享的上传链接', 'link', '查看有效期，停用不再使用的入口', 'apricot') }}
   <nav class="workspace-doc-index" aria-label="本页目录"><a href="#security-access">本机管理</a><a href="#security-switches">接口与首次绑定</a><a href="#security-address">公网域名</a></nav>
   <details class="workspace-disclosure" id="security-access">
     <summary><span>本机管理<span>本机环回与 Host 头共同校验</span></span>{{ icon('chevron-right') }}</summary>

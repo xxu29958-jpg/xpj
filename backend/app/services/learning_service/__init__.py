@@ -103,6 +103,7 @@ from app.services.learning_service._maintenance import (
     LearningStatusOverview,
     LearningTableSnapshot,
     get_status_overview,
+    learning_decision_expenses,
     run_full_maintenance,
 )
 from app.services.learning_service._model_versions import (
@@ -148,6 +149,7 @@ __all__ = [
     "decision_types",
     "get_algorithm_type",
     "get_status_overview",
+    "learning_decision_expenses",
     "is_algorithm_type_registered",
     "latest_ocr_fact_for_expense",
     "list_algorithm_versions",
