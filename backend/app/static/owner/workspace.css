@@ -84,6 +84,7 @@
 .workspace-form { max-width: 720px; }
 .workspace-field { display: block; margin-bottom: 18px; }
 .workspace-field[hidden] { display: none; }
+.owner-workspace [hidden] { display: none !important; }
 .workspace-field > span { display: block; font-size: var(--type-body-size); color: var(--text-muted); margin-bottom: 6px; }
 .workspace-field input, .workspace-field select { display: block; width: 100%; min-width: 0; min-height: calc(var(--target-min) + var(--space-3)); border: 1px solid var(--border-card); border-radius: var(--radius-input); background: var(--surface-card); color: var(--text-default); font: inherit; line-height: 1.5; padding: 12px 15px; }
 .workspace-field input:hover, .workspace-field select:hover { border-color: var(--border-input); }
@@ -226,8 +227,6 @@
 .workspace-calendar-rules li span { display: block; color: var(--text-muted); font-size: 13px; margin-top: 4px; }
 
 @media (max-width: 880px) {
-  .workspace-upload-defaults { display: flex; flex-direction: column; min-height: calc(100svh - 180px); }
-  .workspace-upload-defaults .workspace-save { margin-top: auto; }
   .workspace-ledgers, .workspace-calendar-form { display: flex; flex-direction: column; min-height: calc(100svh - 180px); }
   .workspace-ledgers > div { width: 100%; min-width: 0; }
   .workspace-ledger-create { flex: 1; }
@@ -294,7 +293,7 @@
 .workspace-information > .workspace-task-group { border-bottom: 0; }
 .workspace-information code { overflow-wrap: anywhere; }
 .workspace-information [id] { scroll-margin-top: 24px; }
-.workspace-public-address { min-height: calc(100svh - 250px); display: flex; flex-direction: column; }
+.workspace-public-address { display: flex; flex-direction: column; }
 .workspace-address-input { position: relative; display: block; }
 .workspace-address-input input { padding-right: 48px; }
 .workspace-address-input > .workspace-icon { position: absolute; right: 16px; top: 15px; width: 20px; height: 20px; color: var(--text-muted); pointer-events: none; }

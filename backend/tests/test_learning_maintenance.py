@@ -232,9 +232,9 @@ def test_owner_console_panel_renders(
     assert response.status_code == 200
     text = response.text
     assert "学习记录维护" in text
-    assert "algorithm_decisions" in text
-    assert "ledger_learning_events" in text
-    assert "ocr_facts" in text
+    assert "算法建议" in text
+    assert "学习反馈" in text
+    assert "识别事实" in text
     # Display labels from the registry.
     assert "分类建议" in text
     assert "疑似重复" in text
@@ -248,7 +248,7 @@ def test_owner_console_panel_run_redirects(
         "/owner/learning-maintenance/run", follow_redirects=False
     )
     assert response.status_code == 303
-    assert response.headers["location"] == "/owner/learning-maintenance?ledger_id=owner#learning-volume"
+    assert response.headers["location"] == "/owner/learning-maintenance?ledger_id=owner&result=cleaned#learning-volume"
 
 
 def test_owner_console_lists_active_decisions(
@@ -288,7 +288,7 @@ def test_owner_console_dismiss_flips_active_row(
         follow_redirects=False,
     )
     assert response.status_code == 303
-    assert response.headers["location"] == "/owner/learning-maintenance?ledger_id=owner#learning-candidates"
+    assert response.headers["location"] == "/owner/learning-maintenance?ledger_id=owner&result=dismissed#learning-candidates"
 
     with SessionLocal() as db:
         row = (

@@ -55,4 +55,4 @@ def inspect_connection(form: runtime.RecognitionSettingsForm, *, action: str) ->
                        status_code=502) from exc
     if str(result.get("number", "")).strip() != "24":
         raise AppError("dependency_unavailable", "模型已响应，但没有正确读出测试图片。请确认选用视觉模型后重试；原设置未改变。", status_code=502)
-    return RecognitionCheck(f"测试图片识别通过：{model}。本次仅发送固定测试图片，未读取账本或原件；表单尚未保存。")
+    return RecognitionCheck(f"测试图片识别通过：{model}。本次仅发送固定测试图片，未读取账本或原件；表单尚未保存。", (model,))

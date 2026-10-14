@@ -6,6 +6,8 @@ Owner-facing runtime controls and read-only host boundaries under
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
@@ -97,7 +99,14 @@ def _post_recognition_settings(
         debt_bill_provider=debt_bill_provider,
     )
     try:
-        if recognition_action == "save":
+        if recognition_action == "test_save":
+            runtime_settings_service._validated_recognition(form)
+            check = recognition_setup_service.inspect_connection(form, action="test")
+            form = replace(form, local_llm_model=check.models[0])
+            recognition_view = runtime_settings_service.update_recognition_settings(form)
+            check = recognition_setup_service.RecognitionCheck(
+                f"图片识别通过，已保存并使用 {form.local_llm_model}。下一张小票开始使用新设置，已有草稿保持原样。")
+        elif recognition_action == "save":
             recognition_view = runtime_settings_service.update_recognition_settings(form)
             check = recognition_setup_service.RecognitionCheck("识别设置已保存；下一次上传或手动识别即使用新配置，无需重启。")
         else:

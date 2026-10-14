@@ -91,7 +91,7 @@
           <table>
             <thead><tr><th>币种</th><th class="num">1 外币 = ? {{ home_currency_code }}</th><th>价格日期</th><th>来源</th><th>拉取时间</th></tr></thead>
             <tbody>{% for row in fx_rows %}
-              <tr><td>{{ row.currency }}</td><td class="num">{{ row.rate }}</td><td>{{ row.rate_date }}</td><td>{{ 'Frankfurter' if row.source == 'frankfurter' else '欧洲央行' }}</td><td>{{ row.fetched_at|owner_datetime }}</td></tr>
+              <tr><td>{{ row.currency }}</td><td class="num">{{ row.rate }}</td><td>{{ row.rate_date }}</td><td>{{ {'frankfurter_v2': 'Frankfurter 广覆盖', 'frankfurter': 'Frankfurter', 'ecb': '欧洲央行'}.get(row.source, row.source) }}</td><td>{{ row.fetched_at|owner_datetime }}</td></tr>
             {% endfor %}</tbody>
           </table>
         </div>

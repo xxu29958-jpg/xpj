@@ -22,6 +22,7 @@ def _render(request: Request, db: Session, group: str, *, form: dict | None = No
         ctx["form"] = operations.upload_form() if form is None else form
     else:
         ctx["form"] = operations.maintenance_form() if form is None else form
+        ctx["saved_form"] = operations.maintenance_form()
         ctx["statuses"] = operations.maintenance_status()
     return templates.TemplateResponse(request=request, name=f"settings/{group}.html", context=ctx, status_code=status_code)
 

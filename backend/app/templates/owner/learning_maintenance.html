@@ -5,21 +5,22 @@
 {% block back_url %}/owner/settings{% endblock %}
 {% block back_label %}高级维护{% endblock %}
 {% block workspace_title %}学习记录维护{% endblock %}
-{% block workspace_description %}仅作用于既定维护范围。{% endblock %}
+{% block workspace_description %}核对不合适的建议，或清理过期记录。账目和原件保持不变。{% endblock %}
 {% block workspace_body %}
 <div class="workspace-learning">
   {{ ledger_filter(ledger_choices, selected_ledger, '/owner/learning-maintenance') }}
   {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+  {% if message %}<div class="alert alert-success" role="status">{{ message }}</div>{% endif %}
   <section class="workspace-section" aria-label="学习记录维护详情">
     {% if selected_ledger %}
     <details id="learning-volume" class="workspace-disclosure workspace-task-group"{% if active_section == 'volume' %} open{% endif %}>
-      <summary><span class="workspace-task__icon workspace-tone-green">{{ icon('database') }}</span><span class="workspace-task__text"><strong>表体量</strong><span>查看使用情况</span></span><span class="workspace-view-label">查看</span>{{ icon('chevron-right') }}</summary>
+      <summary><span class="workspace-task__icon workspace-tone-green">{{ icon('database') }}</span><span class="workspace-task__text"><strong>过期记录清理</strong><span>查看数量、范围和上次结果</span></span><span class="workspace-view-label">查看</span>{{ icon('chevron-right') }}</summary>
       <div class="workspace-disclosure__body">
         <h2>{{ selected_ledger.name }} · 学习记录</h2>
         <p class="workspace-note">清理已过保留期的学习记录，并关闭主体已入账、已拒绝或已删除的失效建议。不会删除账单或原件；候选数量是当前快照，执行时会重新判断，每类记录分批处理。</p>
         {% for name, key in [('算法建议', 'algorithm_decisions'), ('学习反馈', 'ledger_learning_events'), ('识别事实', 'ocr_facts')] %}
         <section class="workspace-learning-record">
-          <h3>{{ name }}</h3><p class="workspace-note"><code>{{ key }}</code></p>
+          <h3>{{ name }}</h3>
           <dl class="workspace-facts"><div><dt>总记录</dt><dd>{{ overview[key].total_rows }}</dd></div><div><dt>已过保留期的候选</dt><dd>{{ overview[key].expired_candidate_rows }}</dd></div></dl>
         </section>
         {% endfor %}
@@ -42,15 +43,21 @@
       </div>
     </details>
     <details id="learning-candidates" class="workspace-disclosure workspace-task-group"{% if active_section == 'candidates' %} open{% endif %}>
-      <summary><span class="workspace-task__icon workspace-tone-apricot">{{ icon('list') }}</span><span class="workspace-task__text"><strong>近期候选</strong><span>查看近期学习建议</span></span><span class="workspace-view-label">查看</span>{{ icon('chevron-right') }}</summary>
+      <summary><span class="workspace-task__icon workspace-tone-apricot">{{ icon('list') }}</span><span class="workspace-task__text"><strong>近期候选</strong><span>{{ overview.active_decisions }} 条待采纳建议，可逐条核对</span></span><span class="workspace-view-label">查看</span>{{ icon('chevron-right') }}</summary>
       <div class="workspace-disclosure__body">
         <h2>待采纳建议 · {{ selected_ledger.name }}</h2>
         <p class="workspace-note">最近 {{ active_decisions|length }} 条，最多显示 50 条。忽略只关闭这条建议，不会修改账单；请先展开内容核对。</p>
         {% for decision in active_decisions %}
         {% set entry = algorithm_types.get(decision.decision_type) %}
+        {% set expense = decision_expenses.get(decision.subject_id) if decision.subject_kind == 'expense' else none %}
         <details class="workspace-disclosure workspace-learning-record"{% if decision.public_id == error_decision_public_id %} open{% endif %}>
-          <summary><span>{{ entry.display_label if entry else decision.decision_type }}<span>{{ decision.created_at|owner_datetime }}</span></span>{{ icon('chevron-right') }}</summary>
+          <summary><span>{{ entry.display_label if entry else decision.decision_type }}{% if expense %} · {{ expense.merchant or '未填写商户' }}{% endif %}<span>{{ decision_summaries[decision.id] }}</span></span>{{ icon('chevron-right') }}</summary>
           <div class="workspace-disclosure__body">
+            {% if expense %}<p class="workspace-note">账目日期：{{ expense.expense_time|owner_datetime }} · {{ {'pending': '待核对', 'confirmed': '已入账', 'rejected': '已拒绝'}.get(expense.status, expense.status) }}</p>{% endif %}
+            {% if expense and expense.status in ('pending', 'confirmed') %}<a class="workspace-text-action" href="/web/expenses/{{ expense.id }}/edit?{{ {'ledger_id': selected_ledger.ledger_id}|urlencode }}">打开这张小票核对</a>{% endif %}
+            <details class="workspace-disclosure">
+              <summary>技术记录与原始内容 {{ icon('chevron-right') }}</summary>
+              <div class="workspace-disclosure__body">
             <dl class="workspace-facts">
               <div><dt>建议编号</dt><dd><code>{{ decision.public_id }}</code></dd></div>
               <div><dt>类型标识</dt><dd><code>{{ decision.decision_type }}</code></dd></div>
@@ -59,6 +66,8 @@
               <div><dt>评分</dt><dd>{{ '%.2f'|format(decision.score) if decision.score is not none else '未提供' }}</dd></div>
             </dl>
             <p class="workspace-note">建议内容（原始记录）</p><pre class="workspace-learning-payload">{{ decision.output_payload or '未提供内容' }}</pre>
+              </div>
+            </details>
             <form method="post" action="/owner/learning-maintenance/dismiss-decision" data-confirm="忽略这条建议？之后不再展示，账单不受影响。">
               <input type="hidden" name="ledger_id" value="{{ selected_ledger.ledger_id }}">
               <input type="hidden" name="decision_public_id" value="{{ decision.public_id }}">

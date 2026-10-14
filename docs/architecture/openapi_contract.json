@@ -2078,6 +2078,11 @@
       },
       "Body_owner_ai_advisor_confirmation_post_owner_ai_advisor_confirmation_post": {
         "properties": {
+          "action": {
+            "default": "save",
+            "title": "Action",
+            "type": "string"
+          },
           "confirmed": {
             "anyOf": [
               {
@@ -2100,6 +2105,11 @@
       },
       "Body_owner_ai_advisor_settings_post_owner_ai_advisor_settings_post": {
         "properties": {
+          "advisor_action": {
+            "default": "save",
+            "title": "Advisor Action",
+            "type": "string"
+          },
           "api_key": {
             "default": "",
             "title": "Api Key",
@@ -2110,13 +2120,18 @@
             "title": "Base Url",
             "type": "string"
           },
+          "clear_key": {
+            "default": false,
+            "title": "Clear Key",
+            "type": "boolean"
+          },
           "daily_call_limit": {
             "default": "50",
             "title": "Daily Call Limit",
             "type": "string"
           },
           "key_action": {
-            "default": "keep",
+            "default": "auto",
             "title": "Key Action",
             "type": "string"
           },

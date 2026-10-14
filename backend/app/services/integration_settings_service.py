@@ -6,6 +6,7 @@ import hashlib
 import json
 from dataclasses import asdict, dataclass, replace
 from datetime import time
+from urllib import error, request
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.config import Settings, get_settings
@@ -15,6 +16,7 @@ from app.services import runtime_settings_service as runtime
 from app.services.budget_advisor_service._models import BudgetInputs, CategorySnapshot
 from app.services.budget_advisor_service._provider_names import canonical_provider_name
 from app.services.budget_advisor_service._providers import (
+    MAX_PROVIDER_RESPONSE_BYTES,
     _validate_api_key_for_base_url,
     _validate_base_url,
     get_budget_advisor,
@@ -118,8 +120,12 @@ def confirm_advisor(*, confirmed: bool, revision: str) -> None:
 
 def _resolve_advisor_key(form: AdvisorSettingsForm, *, api_key: str, key_action: str) -> str:
     """Keep a stored secret only when its destination remains the same."""
+    if key_action == "auto":
+        key_action = "replace" if api_key else "keep"
     if key_action not in {"keep", "replace", "clear"}:
         raise runtime._invalid("请选择保留、更换或清除密钥。")
+    if key_action == "clear" and api_key:
+        raise runtime._invalid("已填写新密钥，请取消「清除原密钥」后继续。")
     if key_action == "keep" and api_key:
         raise runtime._invalid("已填写新密钥，请选择更换密钥后再保存。")
     settings = get_settings()
@@ -131,9 +137,48 @@ def _resolve_advisor_key(form: AdvisorSettingsForm, *, api_key: str, key_action:
     return key
 
 
+class _NoModelRedirect(request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        # A model-list request must not forward the submitted key elsewhere.
+        return None
+
+
+def read_advisor_models(form: AdvisorSettingsForm, *, api_key: str, key_action: str) -> tuple[str, ...]:
+    key = _resolve_advisor_key(form, api_key=api_key, key_action=key_action)
+    try:
+        base_url = _validate_base_url(form.base_url)
+        _validate_api_key_for_base_url(base_url, key)
+    except AppError as exc:
+        raise runtime._invalid("请先填写模型服务的接口地址；公网服务还需要 HTTPS 和调用密钥。") from exc
+    headers = {"Authorization": f"Bearer {key}"} if key else {}
+    req = request.Request(base_url + "/models", headers=headers)
+    try:
+        with request.build_opener(_NoModelRedirect()).open(req, timeout=10) as response:
+            raw = response.read(MAX_PROVIDER_RESPONSE_BYTES + 1)
+            if len(raw) > MAX_PROVIDER_RESPONSE_BYTES:
+                raise ValueError("model list too large")
+            payload = json.loads(raw)
+        rows = payload.get("data") if isinstance(payload, dict) else None
+        if not isinstance(rows, list):
+            raise ValueError("invalid model list")
+        models = tuple(dict.fromkeys(row["id"].strip() for row in rows if isinstance(row, dict)
+                                     and isinstance(row.get("id"), str) and 0 < len(row["id"].strip().encode("utf-8")) <= 256))
+        if not models:
+            raise ValueError("no available models")
+        return models
+    except error.HTTPError as exc:
+        message = "密钥未被服务接受，请检查后重试。" if exc.code in {401, 403} else "服务未提供模型列表，请从模型服务复制模型名称后继续保存。"
+        raise AppError("dependency_unavailable", message, status_code=502) from exc
+    except (OSError, error.URLError, ValueError) as exc:
+        raise AppError("dependency_unavailable", "未读取到可用模型。请确认服务已启动；也可直接填写模型名称。输入和原设置均保留。", status_code=502) from exc
+
+
 def save_advisor(form: AdvisorSettingsForm, *, api_key: str, key_action: str) -> None:
     if form.provider not in {"empty", "openai_compat"}:
         raise runtime._invalid("请选择关闭 AI 或兼容 OpenAI 的模型服务。")
+    if form.provider == "empty":
+        runtime.save_runtime_mutation(RuntimeSettingsMutation("advisor", replace(_advisor_snapshot(get_settings()), provider="empty")))
+        return
     base_url = form.base_url.strip().rstrip("/")
     key = _resolve_advisor_key(form, api_key=api_key, key_action=key_action)
     model = form.model.strip()

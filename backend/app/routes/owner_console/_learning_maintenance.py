@@ -21,16 +21,19 @@ counts.
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.error_reporting import retain_handled_error
+from app.models import Expense
 from app.routes.owner_console._shared import LocalOnly, _base, templates
 from app.services import owner_console_service as svc
 from app.services.learning_service import (
@@ -54,6 +57,20 @@ router = APIRouter(prefix="/owner", tags=["owner-console"])
 _ACTIVE_PEEK_LIMIT = 50
 
 
+def _decision_summary(decision: AlgorithmDecision) -> str:
+    try:
+        payload = json.loads(decision.output_payload or "{}")
+    except (TypeError, ValueError):
+        return "原建议内容无法读取，可展开技术记录核对。"
+    if not isinstance(payload, dict):
+        return "请展开原始记录核对建议内容。"
+    if decision.decision_type == "category_suggestion" and isinstance(payload.get("category"), str):
+        return "建议分类为「" + payload["category"] + "」"
+    if decision.decision_type == "duplicate_candidate":
+        return "这张小票可能与已有账目重复，请在收件中比较原件后决定是否保留。"
+    return "请核对原始建议；在这里忽略不会修改账目。"
+
+
 def _recent_active_decisions(
     db: Session, *, tenant_id: str, limit: int = _ACTIVE_PEEK_LIMIT
 ) -> list[AlgorithmDecision]:
@@ -71,6 +88,13 @@ def _render_maintenance(
     ctx["error_decision_public_id"] = error_decision_public_id
     ctx["overview"] = get_status_overview(db, tenant_id=selected.ledger_id) if selected else None
     ctx["active_decisions"] = _recent_active_decisions(db, tenant_id=selected.ledger_id) if selected else []
+    ids = [row.subject_id for row in ctx["active_decisions"] if row.subject_kind == "expense"]
+    ctx["decision_expenses"] = {row.id: row for row in db.scalars(
+        select(Expense).where(Expense.tenant_id == selected.ledger_id, Expense.id.in_(ids))
+    )} if selected and ids else {}
+    ctx["decision_summaries"] = {row.id: _decision_summary(row) for row in ctx["active_decisions"]}
+    ctx["message"] = {"dismissed": "建议已处理，当前待采纳列表已更新。账目和原件保持不变。",
+                      "cleaned": "本次清理已完成，数量和结果已更新。账目和原件保持不变。"}.get(request.query_params.get("result"))
     ctx["algorithm_types"] = ALGORITHM_TYPES
     return templates.TemplateResponse(
         request=request,
@@ -105,7 +129,7 @@ def owner_learning_maintenance_run_post(
         return _render_maintenance(request, db, selected.ledger_id, status_code=500, active_section="volume",
             error="未能确认本次维护结果，部分批次可能已经完成。请核对下方数量和上次完成记录，再决定是否继续。")
     return RedirectResponse(
-        url="/owner/learning-maintenance?" + urlencode({"ledger_id": selected.ledger_id}) + "#learning-volume", status_code=303
+        url="/owner/learning-maintenance?" + urlencode({"ledger_id": selected.ledger_id, "result": "cleaned"}) + "#learning-volume", status_code=303
     )
 
 
@@ -135,5 +159,5 @@ def owner_learning_maintenance_dismiss_post(
             error_decision_public_id=decision_public_id,
             error="未能确认忽略结果。请先核对当前待采纳建议，再决定是否重试。")
     return RedirectResponse(
-        url="/owner/learning-maintenance?" + urlencode({"ledger_id": selected.ledger_id}) + "#learning-candidates", status_code=303
+        url="/owner/learning-maintenance?" + urlencode({"ledger_id": selected.ledger_id, "result": "dismissed"}) + "#learning-candidates", status_code=303
     )
