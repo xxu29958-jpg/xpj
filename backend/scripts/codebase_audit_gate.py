@@ -140,18 +140,18 @@ def evaluate_debt(counts: DebtCounts) -> int:
 # counter is and how it's computed.
 STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_carriers": 142,  # First-original association carries the existing bill's OCC version.
-    "mutate_token_exempted": 148,  # Adds duplicate-decision read-only review; bulk-set retains OCC.
+    "mutate_token_exempted": 150,  # Web/API reference acquisition upserts the quote cache, never a financial command.
     "mutate_token_reason_admin_single_writer": 16,
     "mutate_token_reason_append_only_fact": 3,
     "mutate_token_reason_batch_db_write": 16,
     "mutate_token_reason_create_row": 42,  # New rows with original-key receipts; existing OCC routes unchanged.
     "mutate_token_reason_enqueue_task": 2,
-    "mutate_token_reason_external_side_effect": 8,
+    "mutate_token_reason_external_side_effect": 7,  # Owner FX save-and-fetch now also upserts fx_rates.
     "mutate_token_reason_governance_action": 8,
     "mutate_token_reason_read_only_compute": 6,
     "mutate_token_reason_session_rotation": 8,
     "mutate_token_reason_terminal_flag_flip": 35,
-    "mutate_token_reason_upsert_bucket": 4,
+    "mutate_token_reason_upsert_bucket": 7,
 }
 STRICT_EQUALITY_BASELINE.update(load_current_test_count_baselines())
 
@@ -181,6 +181,14 @@ BASELINE_RATCHET_DOWN: frozenset[str] = frozenset(
     }
 )
 _MUTATE_TOKEN_EXEMPTION_ADMISSIONS = (
+    # ADR-0038 upsert/replace-all: Web and API reference acquisition share the
+    # existing fx_rates cache owner. PostgreSQL's unique source/home/pair/date
+    # upsert owns concurrency; neither writes a manual override, command receipt
+    # or financial fact. Writer authorization and failure/retry are exercised by
+    # test_owner_integration_settings and test_web_manual_rate_continuity.
+    # Existing manual financial commands retain their OCC carriers. Admit only
+    # these two cache adapters against this exact base, not general growth.
+    ("72bde9c50ec80b62f1b16a29178c62219c444472", 148, 150),
     # ADR-0038 create_row / Rev3.2 section 6.6 Reference Library: category API,
     # tag API, shared Web create adapter and native saved-query create have no predecessor row. Their
     # common command keeps original actor/key receipts and unique ledger names;

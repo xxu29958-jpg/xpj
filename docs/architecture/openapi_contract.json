@@ -10208,7 +10208,7 @@
         "type": "object"
       },
       "BudgetRateForm": {
-        "description": "Raw native fields survive validation before the command owner parses them.",
+        "description": "Only the manual override command carries that row's OCC and retry key.",
         "properties": {
           "arrangement_currency_code": {
             "default": "",
@@ -10332,6 +10332,113 @@
           }
         },
         "title": "BudgetRateForm",
+        "type": "object"
+      },
+      "BudgetRateTaskForm": {
+        "description": "Raw native fields survive validation before the command owner parses them.",
+        "properties": {
+          "arrangement_currency_code": {
+            "default": "",
+            "title": "Arrangement Currency Code",
+            "type": "string"
+          },
+          "arrangement_key": {
+            "default": "",
+            "title": "Arrangement Key",
+            "type": "string"
+          },
+          "arrangement_version": {
+            "default": "",
+            "title": "Arrangement Version",
+            "type": "string"
+          },
+          "category": {
+            "default": "",
+            "title": "Category",
+            "type": "string"
+          },
+          "currency_code": {
+            "default": "",
+            "title": "Currency Code",
+            "type": "string"
+          },
+          "draft_scope": {
+            "default": "",
+            "title": "Draft Scope",
+            "type": "string"
+          },
+          "filter": {
+            "default": "",
+            "title": "Filter",
+            "type": "string"
+          },
+          "granularity": {
+            "default": "",
+            "title": "Granularity",
+            "type": "string"
+          },
+          "home_currency_code": {
+            "default": "",
+            "title": "Home Currency Code",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "merchant_category": {
+            "default": "",
+            "title": "Merchant Category",
+            "type": "string"
+          },
+          "month": {
+            "default": "",
+            "title": "Month",
+            "type": "string"
+          },
+          "page": {
+            "default": "",
+            "title": "Page",
+            "type": "string"
+          },
+          "q": {
+            "default": "",
+            "title": "Q",
+            "type": "string"
+          },
+          "ranking_metric": {
+            "default": "",
+            "title": "Ranking Metric",
+            "type": "string"
+          },
+          "rate_date": {
+            "default": "",
+            "title": "Rate Date",
+            "type": "string"
+          },
+          "reserved_buffer_yuan": {
+            "default": "",
+            "title": "Reserved Buffer Yuan",
+            "type": "string"
+          },
+          "return_to": {
+            "default": "",
+            "title": "Return To",
+            "type": "string"
+          },
+          "savings_target_yuan": {
+            "default": "",
+            "title": "Savings Target Yuan",
+            "type": "string"
+          },
+          "tag": {
+            "default": "",
+            "title": "Tag",
+            "type": "string"
+          }
+        },
+        "title": "BudgetRateTaskForm",
         "type": "object"
       },
       "BudgetRevisionResponse": {
@@ -52740,7 +52847,7 @@
           "content": {
             "application/x-www-form-urlencoded": {
               "schema": {
-                "$ref": "#/components/schemas/BudgetRateForm"
+                "$ref": "#/components/schemas/BudgetRateTaskForm"
               }
             }
           },

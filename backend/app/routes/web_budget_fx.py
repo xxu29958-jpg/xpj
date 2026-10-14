@@ -46,7 +46,7 @@ _TASK_FIELDS = ("ledger_id", "month", "home_currency_code", "savings_target_yuan
 _RATE_FIELDS = ("currency_code", "rate_date", "rate_to_cny", "expected_row_version", "idempotency_key", "draft_scope")
 
 
-class BudgetRateForm(BaseModel):
+class BudgetRateTaskForm(BaseModel):
     """Raw native fields survive validation before the command owner parses them."""
 
     ledger_id: str = ""
@@ -68,10 +68,14 @@ class BudgetRateForm(BaseModel):
     category: str = ""
     currency_code: str = ""
     rate_date: str = ""
+    draft_scope: str = ""
+
+
+class BudgetRateForm(BudgetRateTaskForm):
+    """Only the manual override command carries that row's OCC and retry key."""
     rate_to_cny: str = ""
     expected_row_version: str = ""
     idempotency_key: str = ""
-    draft_scope: str = ""
     review_latest: str = ""
 
 
@@ -158,9 +162,10 @@ def page_budget_rates(request: Request, db: Session = Depends(get_db), _local: N
 
 
 @router.post("/reference", response_class=HTMLResponse)
-def fetch_budget_reference(request: Request, form: BudgetRateForm = Form(),
+def fetch_budget_reference(request: Request, form: BudgetRateTaskForm = Form(),
     db: Session = Depends(get_db), _local: None = LocalOnly) -> Response:
     values = {key: str(form.model_dump().get(key, "")) for key in (*_TASK_FIELDS, *_RATE_FIELDS)}
+    values.update(idempotency_key=str(uuid4()), expected_row_version="0")
     options = _list_ledger_options(db)
     selected = _resolve_selected_ledger_id(db, values["ledger_id"] or None, options, request=request)
     retained = preserve_original_ledger_form(request, db, options=options, selected=selected,
@@ -170,6 +175,8 @@ def fetch_budget_reference(request: Request, form: BudgetRateForm = Form(),
     try:
         _require_selected_ledger_write(options, selected)
         require_draft_binding(db, request, ledger_id=selected, draft_scope=values["draft_scope"], require_session=False)
+        if values["currency_code"] and values["rate_date"]:
+            _review_rate(db, selected, values, keep_value=False)
         acquire_reference_rates(db, tenant_id=selected, request=_reference_request(values))
     except (AppError, ValueError) as exc:
         db.rollback()
@@ -177,7 +184,7 @@ def fetch_budget_reference(request: Request, form: BudgetRateForm = Form(),
             error=exc.message if isinstance(exc, AppError) else "请检查币种和换算日期。原任务已保留。",
             status_code=exc.status_code if isinstance(exc, AppError) else 422)
     return _render_rates(request, db, options, selected, values,
-        message="已取得来源的参考报价。请核对下面的日期与适用状态，再返回原任务；没有写入人工汇率或提交财务操作。")
+        message="参考汇率已更新，可返回原任务继续。")
 
 
 def _rate_payload(values):

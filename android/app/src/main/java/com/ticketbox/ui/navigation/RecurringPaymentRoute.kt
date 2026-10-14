@@ -483,5 +483,6 @@ internal fun RecurringPaymentSheet(
 
 @Composable
 private fun PeriodPaymentCurrencyChoice(onChoose: (String) -> Unit, onDismiss: () -> Unit) {
-    com.ticketbox.ui.components.CurrencyPickerDialog(onChoose = { onChoose(it.storageKey) }, onDismiss = onDismiss)
+    com.ticketbox.ui.components.CurrencyPickerDialog(title = stringResource(R.string.occurrence_payment_currency),
+        onChoose = { onChoose(it.storageKey) }, onDismiss = onDismiss)
 }

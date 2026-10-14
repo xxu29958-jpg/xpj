@@ -17,6 +17,36 @@ TASK = {"ledger_id": "owner", "month": "2026-09", "home_currency_code": "JPY",
     "savings_target_yuan": "12", "reserved_buffer_yuan": "3", "currency_code": "CNY", "rate_date": "2026-09-05"}
 
 
+def test_native_reference_retry_preserves_task_and_only_fills_reference_cache(web_client, monkeypatch):
+    from datetime import date
+    from decimal import Decimal
+
+    from app.services import exchange_rate_reference_service as reference
+    from app.services.fx_rate_provider import EcbDailyRates, FxFetchError
+
+    action = "/web/budget-advise/rates/reference"
+    opened = web_client.get(ACTION, params=TASK)
+    fields = hidden_post_forms(opened.text)[action]
+    assert "expected_row_version" not in fields and "idempotency_key" not in fields
+    def unavailable(*args, **kwargs):
+        raise FxFetchError("private transport details")
+    monkeypatch.setattr(reference, "fetch_reference_rates_for_date", unavailable)
+    failed = web_client.post(action, data=fields)
+    assert failed.status_code == 502 and "private transport details" not in failed.text
+    retained = hidden_post_forms(failed.text)[action]
+    assert all(retained[key] == value for key, value in TASK.items())
+    monkeypatch.setattr(reference, "fetch_reference_rates_for_date", lambda *args, **kwargs: EcbDailyRates(
+        date(2026, 9, 4), {"EUR": Decimal(1), "CNY": Decimal(5), "JPY": Decimal(100)}))
+    ready = web_client.post(action, data=retained)
+    assert ready.status_code == 200 and "这一天已有可用汇率，无需手填" in ready.text
+    manual = hidden_post_forms(ready.text)[ACTION]
+    assert manual["expected_row_version"] == "0" and manual["idempotency_key"]
+    assert "month=2026-09" in ready.text and "2026-09-04" in ready.text
+    with SessionLocal() as db:
+        assert db.scalar(select(ExchangeRate)) is None
+        assert db.scalar(select(Expense)) is None
+
+
 def _rate_form(client):
     response = client.get(ACTION, params=TASK)
     assert response.status_code == 200, response.text
@@ -48,7 +78,7 @@ def test_native_save_and_lost_ack_replay_return_original_month_with_current_proj
     assert 'value="12"' in accepted.text and 'value="3"' in accepted.text
     assert "待补汇率" not in accepted.text and "− ¥60" in accepted.text
     # Correction stays reachable after the original gap has disappeared.
-    assert "人工汇率" in accepted.text
+    assert 'href="/web/budget-advise/rates?' in accepted.text and ">换算依据</a>" in accepted.text
     current = _rate_form(web_client)
     assert current["expected_row_version"] == "1"
     assert current["idempotency_key"] != original["idempotency_key"]

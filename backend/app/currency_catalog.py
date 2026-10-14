@@ -6,9 +6,7 @@ CurrencyData.properties. Cash rounding and localized display digits never define
 stored units. Funds, metals and test codes are excluded. Existing facts retain
 these exponents. Generate the Android catalog with scripts/sync_currency_catalog.py.
 
-https://github.com/unicode-org/cldr/tree/main/common
-https://github.com/openjdk/jdk/blob/master/src/java.base/share/data/currency/CurrencyData.properties
-https://www.six-group.com/en/products-services/financial-information/market-reference-data/data-standards.html
+Source references and update policy: docs/architecture/CURRENCY_CATALOG.md.
 """
 
 # Code: (Chinese name, unambiguous display prefix, locale, ISO minor-unit exponent).

@@ -454,7 +454,10 @@ ALLOWLIST: dict[str, Exempt] = {
     # trigger) but no row_version to guard — concurrency safety rests on the
     # upsert being idempotent (same data either way), not on single-writer.
     "POST /owner/fx/refresh": Exempt("upsert_bucket", "exchange_rates", ("fx_rates",)),
-    "POST /owner/fx/settings": Exempt("external_side_effect", "owner_console", ()),
+    # Save-and-fetch also writes the same reference cache; it never writes an ExchangeRate or financial fact.
+    "POST /owner/fx/settings": Exempt("upsert_bucket", "exchange_rates", ("fx_rates",)),
+    "POST /api/exchange-rates/reference": Exempt("upsert_bucket", "exchange_rates", ("fx_rates",)),
+    "POST /web/budget-advise/rates/reference": Exempt("upsert_bucket", "exchange_rates", ("fx_rates",)),
     "POST /owner/learning-maintenance/dismiss-decision": Exempt(
         "terminal_flag_flip", "learning", _ALGO_DECISIONS
     ),

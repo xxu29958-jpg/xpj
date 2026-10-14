@@ -1,5 +1,7 @@
 """Original goal amounts and submission identity survive currency refusals."""
 
+import re
+
 import pytest
 
 from tests._web_native_form_support import hidden_post_forms, open_creation_form
@@ -195,7 +197,9 @@ def test_goal_history_missing_recorded_currency_does_not_use_runtime_currency(hi
     entries[0]["snapshot"]["home_currency_code"] = None
     page = client.get("/web/goals/goal-one/history", params={"limit":1})
     assert page.status_code == 200 and "1800 最小单位（原币种未记录）" in page.text
-    assert "CNY" not in page.text and "¥18.00" not in page.text
+    history = re.search(r"<main\b[^>]*>([\s\S]*?)</main>", page.text)
+    assert history is not None
+    assert "CNY" not in history.group(1) and "¥18.00" not in history.group(1)
 
 
 

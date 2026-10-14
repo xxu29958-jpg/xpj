@@ -99,5 +99,5 @@ internal fun ExpenseCurrencyChoices(
     enabled: Boolean,
     onCurrencySelect: (CurrencyCode) -> Unit,
 ) {
-    com.ticketbox.ui.components.CurrencyChoiceField(currency, enabled, onCurrencySelect)
+    com.ticketbox.ui.components.CurrencyChoiceField(currency, enabled, onChoose = onCurrencySelect)
 }

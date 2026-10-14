@@ -303,6 +303,13 @@ def _resolve_fx_config(saved: FxSettingsProjection | None) -> FxSettingsProjecti
     )
 
 
+def _resolve_fx_url(fx: FxSettingsProjection, source: str) -> str:
+    if fx.source == source and fx.url is not None:
+        return fx.url
+    name = "FX_RATE_ECB_URL" if source == "ecb" else "FX_RATE_FRANKFURTER_URL"
+    return os.getenv(name, FX_DEFAULT_URLS[source]).strip() or FX_DEFAULT_URLS[source]
+
+
 @lru_cache
 def get_settings() -> Settings:
     from app.services.runtime_settings_store import read_runtime_settings
@@ -422,20 +429,8 @@ def get_settings() -> Settings:
         fx_rate_sync_times=fx.sync_times,
         fx_rate_sync_timezone=fx.timezone,
         fx_rate_source=fx.source,
-        fx_rate_ecb_url=fx.url if fx.source == "ecb" and fx.url is not None else (
-            os.getenv(
-                "FX_RATE_ECB_URL",
-                FX_DEFAULT_URLS["ecb"],
-            ).strip()
-            or FX_DEFAULT_URLS["ecb"]
-        ),
-        fx_rate_frankfurter_url=fx.url if fx.source in {"frankfurter", "frankfurter_v2"} and fx.url is not None else (
-            os.getenv(
-                "FX_RATE_FRANKFURTER_URL",
-                FX_DEFAULT_URLS["frankfurter_v2" if fx.source == "frankfurter_v2" else "frankfurter"],
-            ).strip()
-            or FX_DEFAULT_URLS["frankfurter_v2" if fx.source == "frankfurter_v2" else "frankfurter"]
-        ),
+        fx_rate_ecb_url=_resolve_fx_url(fx, "ecb"),
+        fx_rate_frankfurter_url=_resolve_fx_url(fx, "frankfurter_v2" if fx.source == "frankfurter_v2" else "frankfurter"),
         debt_rollout_enabled=_bool_env("DEBT_ROLLOUT_ENABLED", True),
         **asdict(uploads),
         **asdict(maintenance),

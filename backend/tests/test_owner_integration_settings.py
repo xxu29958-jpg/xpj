@@ -338,6 +338,7 @@ def test_reference_fetch_requires_writer_and_current_protocol_before_network(cli
     monkeypatch.setattr(provider, "fetch_reference_rates", forbidden)
     params = {"home_currency_code": "CNY", "currency_code": "TWD"}
     assert client.get("/api/exchange-rates/reference", params=params).status_code == 401
+    assert client.post("/api/exchange-rates/reference", json=params).status_code == 401
     headers = negotiated_headers(client, identity.app_headers)
     stale = client.post("/api/exchange-rates/reference", json=params,
         headers={**headers, "Ticketbox-Api-Version": "stale"})

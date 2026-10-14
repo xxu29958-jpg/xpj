@@ -22,19 +22,21 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
 
 @Composable
-internal fun CurrencyChoiceField(currency: CurrencyCode?, enabled: Boolean = true, onChoose: (CurrencyCode) -> Unit) {
+internal fun CurrencyChoiceField(currency: CurrencyCode?, enabled: Boolean = true,
+    title: String = stringResource(R.string.currency_picker_title), onChoose: (CurrencyCode) -> Unit) {
     var choosing by rememberSaveable { mutableStateOf(false) }
     AppSecondaryButton(text = currency?.let { "${it.storageKey} · ${it.displayName}" }
-        ?: stringResource(R.string.currency_picker_title), enabled = enabled, onClick = { choosing = true })
-    if (choosing && enabled) CurrencyPickerDialog(currency, onChoose = { onChoose(it); choosing = false },
+        ?: title, enabled = enabled, onClick = { choosing = true })
+    if (choosing && enabled) CurrencyPickerDialog(currency, title = title, onChoose = { onChoose(it); choosing = false },
         onDismiss = { choosing = false })
 }
 
 @Composable
-internal fun CurrencyPickerDialog(selected: CurrencyCode? = null, onChoose: (CurrencyCode) -> Unit, onDismiss: () -> Unit) {
+internal fun CurrencyPickerDialog(selected: CurrencyCode? = null,
+    title: String = stringResource(R.string.currency_picker_title), onChoose: (CurrencyCode) -> Unit, onDismiss: () -> Unit) {
     var query by rememberSaveable { mutableStateOf("") }
     val choices = CurrencyCode.entries.filter { it.storageKey.contains(query.trim(), ignoreCase = true) || it.displayName.contains(query.trim()) }
-    AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.currency_picker_title)) },
+    AlertDialog(onDismissRequest = onDismiss, title = { Text(title) },
         text = { Column {
             OutlinedTextField(value = query, onValueChange = { query = it }, singleLine = true,
                 label = { Text(stringResource(R.string.currency_picker_search)) }, modifier = Modifier.fillMaxWidth())

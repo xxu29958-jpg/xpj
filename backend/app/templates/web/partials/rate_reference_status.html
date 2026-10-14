@@ -35,7 +35,9 @@
   </form>
   <form method="post" action="/web/budget-advise/rates/reference" class="product-task-actions">
     {{ csrf_field|safe }}
-    {% for name, value in values.items() %}{% if name != 'draft_scope' %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endif %}{% endfor %}
+    {% for name, value in rate_task.items() %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
+    <input type="hidden" name="currency_code" value="{{ values.currency_code }}">
+    <input type="hidden" name="rate_date" value="{{ values.rate_date }}">
     <input type="hidden" name="draft_scope" value="{{ values.draft_scope or (rate_draft_scope | tojson if rate_draft_scope else '') | forceescape }}">
     <button class="product-button{% if not reference or not reference.effective %} product-button--primary{% endif %}" type="submit"{% if not can_write or rate_binding_required %} disabled{% endif %}>{{ '按此日期获取参考汇率' if values.rate_date else '获取最新参考汇率' }}</button>
     <a class="product-button{% if reference and reference.effective %} product-button--primary{% endif %}" href="{{ return_href }}">返回{{ return_label }}继续</a>

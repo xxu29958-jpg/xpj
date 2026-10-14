@@ -250,6 +250,20 @@ def read_runtime_settings(
     return _decode_runtime_settings(encoded)
 
 
+def _decode_fx_settings(value: object, schema: str) -> FxSettingsProjection | None:
+    if schema == _INTEGRATION_SCHEMA and isinstance(value, dict) and "url" not in value:
+        value = {**value, "url": None}
+    return _decode_integration(value, FxSettingsProjection)
+
+
+def _canonical_runtime_payload(projection: RuntimeSettingsProjection, schema: str) -> dict:
+    canonical = {key: val for key, val in _payload(projection).items() if key in _FIELDS_BY_SCHEMA[schema]}
+    canonical["schema"] = schema
+    if schema == _INTEGRATION_SCHEMA and canonical.get("fx") is not None:
+        canonical["fx"].pop("url")
+    return canonical
+
+
 def _decode_runtime_settings(encoded: bytes) -> RuntimeSettingsProjection:
     """Validate the complete saved document before any group becomes effective."""
     if len(encoded) > _MAX_BYTES:
@@ -281,17 +295,11 @@ def _decode_runtime_settings(encoded: bytes) -> RuntimeSettingsProjection:
         budget_advisor_owner_confirmed=value.get("budget_advisor_owner_confirmed"),
         recognition=_decode_recognition(value.get("recognition")),
         advisor=_decode_integration(value.get("advisor"), AdvisorSettingsProjection),
-        fx=_decode_integration(
-            {**value["fx"], "url": None} if schema == _INTEGRATION_SCHEMA and isinstance(value.get("fx"), dict)
-            and "url" not in value["fx"] else value.get("fx"), FxSettingsProjection),
+        fx=_decode_fx_settings(value.get("fx"), schema),
         uploads=_decode_integration(value.get("uploads"), UploadSettingsProjection),
         maintenance=_decode_integration(value.get("maintenance"), MaintenanceSettingsProjection),
     )
-    canonical = _payload(projection)
-    canonical = {key: val for key, val in canonical.items() if key in expected_fields}
-    canonical["schema"] = schema
-    if schema == _INTEGRATION_SCHEMA and canonical.get("fx") is not None:
-        canonical["fx"].pop("url")
+    canonical = _canonical_runtime_payload(projection, schema)
     expected = json.dumps(canonical, ensure_ascii=True, allow_nan=False, sort_keys=True, separators=(",", ":")) + "\n"
     if encoded.decode("utf-8") != expected:
         raise ValueError("runtime settings projection is not canonical")
