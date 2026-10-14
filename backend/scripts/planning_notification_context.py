@@ -34,6 +34,8 @@ def share_original(journey):
     uri = "content://media/external/images/media/" + wait_for(media_id, "The actual shared image did not enter MediaStore")
     native.adb("shell", "am", "start", "-a", "android.intent.action.SEND", "-t", "image/png", "-d", uri,
         "--eu", "android.intent.extra.STREAM", uri, "--grant-read-uri-permission", "-n", "com.ticketbox/.MainActivity")
+    native.reveal_any("上传 1 张小票")
+    native.click("上传 1 张小票")
     native.reveal_any("停止余下上传")
     native.reveal_any("notification-shared-original.png")
     native.capture("notification-shared-original-offline")
@@ -59,6 +61,28 @@ def shared_original_result(journey, digest):
         return {"id": row.id, "status": row.status, "sha256": digest}
 
 
+def open_ledger_directory(native):
+    native.plan_home()
+    native.click("打开账户与设置")
+    native.click("账本和家庭成员")
+    native.click("账本")
+
+
+def switch_ledger(native, name):
+    def current():
+        return any(node.attrib.get("clickable") == "true" and
+            any(child.attrib.get("text") == name for child in node.iter("node")) and
+            any(child.attrib.get("text") == "当前" for child in node.iter("node"))
+            for node in native.tree().iter("node"))
+
+    native.click_within(name, "切换")
+    # A new ledger opens its root; a previous ledger can restore its directory.
+    # Verify the durable current row after reopening, rather than an old page's message.
+    wait_for(lambda: current() or native.has("打开账户与设置"), "The ledger switch did not restore its workspace")
+    open_ledger_directory(native)
+    wait_for(current, "The selected ledger is not the current ledger in the actual directory")
+
+
 def identity_changes(journey):
     from sqlalchemy import func, select
 
@@ -71,16 +95,12 @@ def identity_changes(journey):
         journey.sources.post(SOURCES[0], sample)
     wait_for(lambda: len(journey.facts()["captures"]) == 4, "The original identity did not retain its final two reminders")
     journey.sources.post(SOURCES[0], 4)
-    native.plan_home()
-    native.click("打开账户与设置")
-    native.click("账本")
-    native.reveal_any("账本名称")
-    native.fill(OTHER_LEDGER, label="账本名称")
-    # The section heading and its action share this label; the action is below.
-    native.click("新建账本", bottom=True)
+    open_ledger_directory(native)
+    native.reveal_any("新账本名称")
+    native.fill(OTHER_LEDGER, label="新账本名称")
+    native.click("创建账本")
     native.reveal_any("已新建账本")
-    native.click_within(OTHER_LEDGER, "切换")
-    native.reveal_any(f"已切换到「{OTHER_LEDGER}」")
+    switch_ledger(native, OTHER_LEDGER)
     journey.tap_notification("60.00", expected=BINDING_REFUSAL)
     native.capture("notification-original-ledger-required")
     with SessionLocal() as db:
@@ -88,12 +108,13 @@ def identity_changes(journey):
         assert other is not None and other.ledger_id != journey.fixture.ledger_id
         assert db.scalar(select(func.count()).select_from(Expense).where(Expense.tenant_id == other.ledger_id)) == 0
         assert db.scalar(select(func.count()).select_from(RepaymentDraft).where(RepaymentDraft.tenant_id == other.ledger_id)) == 0
-    native.back()
-    native.click_within(journey.fixture.ledger_name, "切换")
-    native.reveal_any(f"已切换到「{journey.fixture.ledger_name}」")
+    open_ledger_directory(native)
+    switch_ledger(native, journey.fixture.ledger_name)
     native.plan_home()
     native.click("打开账户与设置")
+    native.click("数据与隐私")
     native.click("安全与隐私")
+    native.reveal_any("退出账本")
     native.click("退出账本")
     native.click("确定退出")
     native.bind(_member_code(journey.fixture.ledger_id, "member"), journey.port)

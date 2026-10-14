@@ -11,6 +11,7 @@ from urllib.parse import urlencode
 
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 
+from app.routes._web_bulk_snapshot import parse_bulk_snapshot
 from app.routes.web_common import _web_redirect, _with_ledger
 from app.services.pending_review_bulk_service import SKIP_REASON_STALE, BulkResult
 
@@ -27,6 +28,22 @@ def pending_redirect(selected_id: str, *, filter: str, msg: str) -> RedirectResp
     return _web_redirect("/web/pending", selected_id, filter=filter or "all", msg=msg)
 
 
+def pending_bulk_continuation_context(
+    views: list[dict], remaining: list[str], *, category: str, merchant: str,
+) -> dict:
+    """Read the original redirect snapshot within the already authorized queue."""
+    selection = parse_bulk_snapshot([], [], remaining)
+    originals = selection[1] if selection else {}
+    pending_ids = {view["id"] for view in views}
+    versions = {key: version for key, version in originals.items() if key in pending_ids}
+    return {
+        "bulk_versions": versions,
+        "bulk_unavailable": len(originals) - len(versions),
+        "bulk_category": category,
+        "bulk_merchant": merchant,
+    }
+
+
 def pending_bulk_result_url(
     selected_id: str,
     *,
@@ -34,14 +51,24 @@ def pending_bulk_result_url(
     filter: str,
     msg: str,
     result: BulkResult,
+    expected_by_id: dict[int, int] | None = None,
+    category: str = "",
+    merchant: str = "",
 ) -> str:
     url = _with_ledger(
         "/web/pending",
         selected_id,
         filter=filter or "all",
         msg=msg,
-        flash_type="success",
+        flash_type="error" if result.skipped_reasons else "success",
     )
+    remaining = [("remaining", f"{expense_id}:{version}") for expense_id, version in (expected_by_id or {}).items()
+                 if expense_id not in result.success_ids]
+    if remaining:
+        # Navigation carries the original selection, never a newly read OCC token.
+        # GET still scopes these ids to the selected ledger; POST remains the write owner.
+        remaining.extend((("bulk_category", category), ("bulk_merchant", merchant)))
+        url += "&" + urlencode(remaining)
     if action != "reject":
         return url
     undo_pairs: list[tuple[str, str]] = []
@@ -59,6 +86,9 @@ def pending_bulk_result_redirect(
     filter: str,
     msg: str,
     result: BulkResult,
+    expected_by_id: dict[int, int] | None = None,
+    category: str = "",
+    merchant: str = "",
 ) -> RedirectResponse:
     return RedirectResponse(
         url=pending_bulk_result_url(
@@ -67,12 +97,15 @@ def pending_bulk_result_redirect(
             filter=filter,
             msg=msg,
             result=result,
+            expected_by_id=expected_by_id,
+            category=category,
+            merchant=merchant,
         ),
         status_code=303,
     )
 
 
-def format_bulk_message(action: str, result: BulkResult, *, stale_hint: str = SKIP_REASON_STALE) -> str:
+def format_bulk_message(action: str, result: BulkResult, *, stale_hint: str = "内容已变化，请打开账单核对后再继续") -> str:
     parts: list[str] = []
     if result.success_count:
         parts.append(f"{_SUCCESS_VERBS.get(action, '已更新')} {result.success_count} 条")
@@ -86,18 +119,24 @@ def bulk_fragment_json(
     *,
     selected_id: str,
     filter: str,
+    expected_by_id: dict[int, int] | None = None,
+    category: str = "",
+    merchant: str = "",
 ) -> JSONResponse:
     message = format_bulk_message(action, result)
     body = {
         "removed_ids": list(result.success_ids),
         "message": message,
-        "flash_type": "success",
+        "flash_type": "error" if result.skipped_reasons else "success",
         "redirect_url": pending_bulk_result_url(
             selected_id,
             action=action,
             filter=filter,
             msg=message,
             result=result,
+            expected_by_id=expected_by_id,
+            category=category,
+            merchant=merchant,
         ),
     }
     if action == "reject":

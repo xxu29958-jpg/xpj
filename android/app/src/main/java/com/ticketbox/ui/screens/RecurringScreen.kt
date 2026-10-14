@@ -1,10 +1,17 @@
 package com.ticketbox.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -12,6 +19,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.testTag
 import com.ticketbox.R
 import com.ticketbox.data.repository.RecurringItemDraft
 import com.ticketbox.data.repository.RecurringItemPatch
@@ -39,7 +47,7 @@ import com.ticketbox.ui.screens.recurring.RecurringConflictModel
 import com.ticketbox.ui.screens.recurring.RecurringDerivedModel
 import com.ticketbox.ui.screens.recurring.RecurringEditorEnvironment
 import com.ticketbox.ui.screens.recurring.RecurringEditorSheetHost
-import com.ticketbox.ui.screens.recurring.RecurringHeroSection
+import com.ticketbox.ui.screens.recurring.RecurringOverviewDetails
 import com.ticketbox.ui.screens.recurring.RecurringItemsCard
 import com.ticketbox.ui.screens.recurring.RecurringItemsCardState
 import com.ticketbox.ui.screens.recurring.RecurringPendingSection
@@ -130,7 +138,7 @@ fun RecurringScreen(
                         AppPrimaryButton(
                             modifier = Modifier.fillMaxWidth(),
                             text = stringResource(R.string.recurring_add_cta),
-                            icons = AppButtonIcons(leading = Icons.Filled.Add),
+                            icons = AppButtonIcons(trailing = Icons.AutoMirrored.Filled.ArrowForward),
                             enabled = !state.manualSaveInFlight,
                             onClick = callbacks.onCreate,
                         )
@@ -150,13 +158,19 @@ fun RecurringScreen(
                 )
             }
         } else {
-            item { RecurringHeroSection(model = derived.hero) }
             recurringRegistrySection(
                 derived,
                 actions.copy(items = actions.items.copy(onOpenHistory = actions.items.onOpenHistory.takeIf { editorHost.editor == null })),
                 callbacks,
                 editEnabled = !state.manualSaveInFlight,
             )
+            item {
+                RecurringOverviewDetails(derived.hero) {
+                    if (!state.itemsFromCache) {
+                        RecurringReadSource(state.itemsFetchedAt, fromCache = false, loading = state.loading)
+                    }
+                }
+            }
         }
     }
 
@@ -214,7 +228,7 @@ private fun LazyListScope.recurringOverviewSection(
     showCandidates: Boolean,
     onOpenSyncStatus: (() -> Unit)?,
 ) {
-    if (!showCandidates) {
+    if (!showCandidates && (state.itemsFromCache || state.loading)) {
         item { RecurringReadSource(state.itemsFetchedAt, state.itemsFromCache, state.loading) }
     }
     val visibleBody = if (showCandidates) derived.candidateSection.bodyState else derived.itemSection.bodyState
@@ -250,16 +264,9 @@ private fun LazyListScope.recurringRegistrySection(
     editEnabled: Boolean,
 ) {
     item {
-        RecurringTabRow(
-            selected = derived.selectedTab,
-            counts = derived.counts,
-            onSelect = callbacks.onSelectTab,
-        )
-    }
-    item {
         RecurringItemsCard(
             state = RecurringItemsCardState(
-                title = stringResource(derived.selectedTab.labelRes),
+                title = stringResource(R.string.recurring_list_title),
                 section = derived.itemSection,
                 canModify = derived.canModify,
                 editEnabled = editEnabled,
@@ -267,34 +274,51 @@ private fun LazyListScope.recurringRegistrySection(
             onRetry = actions.onRefresh,
             onEdit = callbacks.onEdit,
             actions = actions.items,
+            filter = {
+                RecurringStatusFilter(derived.selectedTab, derived.counts, callbacks.onSelectTab)
+            },
         )
     }
 }
 
 @Composable
-private fun RecurringTabRow(
+private fun RecurringStatusFilter(
     selected: RecurringTab,
     counts: RecurringTabCounts,
     onSelect: (RecurringTab) -> Unit,
 ) {
-    AppSegmentedControl(
-        options = RecurringTab.entries.map { tab ->
-            val count = when (tab) {
-                RecurringTab.Upcoming -> counts.upcoming
-                RecurringTab.Active -> counts.active
-                RecurringTab.Paused -> counts.paused
-                RecurringTab.Archived -> counts.archived
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    val options = RecurringTab.entries.map { tab ->
+        val count = when (tab) {
+            RecurringTab.Upcoming -> counts.upcoming
+            RecurringTab.Active -> counts.active
+            RecurringTab.Paused -> counts.paused
+            RecurringTab.Archived -> counts.archived
+        }
+        AppSegmentedItem(
+            value = tab,
+            label = if (counts.factual) {
+                stringResource(R.string.recurring_tab_label_count, stringResource(tab.labelRes), count)
+            } else {
+                stringResource(tab.labelRes)
+            },
+        )
+    }
+    Box {
+        TextButton(modifier = Modifier.testTag("recurring-status-filter"), onClick = { expanded = true }) {
+            Text(options.first { it.value == selected }.label)
+            Icon(Icons.Filled.ExpandMore, contentDescription = stringResource(R.string.recurring_filter_description))
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            options.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(option.label) },
+                    onClick = {
+                        expanded = false
+                        onSelect(option.value)
+                    },
+                )
             }
-            AppSegmentedItem(
-                value = tab,
-                label = if (counts.factual) {
-                    stringResource(R.string.recurring_tab_label_count, stringResource(tab.labelRes), count)
-                } else {
-                    stringResource(tab.labelRes)
-                },
-            )
-        },
-        selectedValue = selected,
-        onValueChange = onSelect,
-    )
+        }
+    }
 }

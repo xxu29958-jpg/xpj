@@ -71,7 +71,8 @@ def row(**changes):
 def root(**changes):
     values = {
         "id": 42, "row_version": 9, "status": "confirmed", "merchant": "Coffee", "category": "餐饮",
-        "expense_time": "2026-05-02", "original_currency_code": "USD", "original_amount_value": "3.00",
+        "expense_time": "2026-05-02", "accounting_date": "2026-05-02", "accounting_date_assumed": False,
+        "original_currency_code": "USD", "original_amount_value": "3.00",
         "fx_meta": "冻结汇率 7.00 · 2026-05-02", "fx_pending": False,
     }
     return SimpleNamespace(**{**values, **changes})

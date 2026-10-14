@@ -17,9 +17,8 @@ def _configure_plans(j):
         j.expect(lambda value: value["budget_configured"], "The real budget form did not commit")
     if not state["goals"]:
         j.goto(f'/web/goals?month={state["month"]}')
+        j.page.get_by_role("link", name="新建消费目标", exact=True).click()
         form = j.form("/web/goals/create")
-        if not form.locator('[name="name"]').is_visible():
-            form.locator("xpath=ancestor::details").locator("summary").click()
         form.locator('[name="name"]').fill("FactCap")
         form.locator('[name="target_amount_yuan"]').fill("100.00")
         form.locator('button[type="submit"]:not([name])').click()

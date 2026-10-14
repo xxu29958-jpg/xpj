@@ -27,6 +27,7 @@ from app.routes._web_pending_bulk_response import (
     bulk_invalid_snapshot,
     bulk_no_selection,
     format_bulk_message,
+    pending_bulk_continuation_context,
     pending_bulk_result_redirect,
     pending_redirect,
 )
@@ -112,6 +113,9 @@ def web_pending(
     undo_id: list[int] = Query(default=[]),
     undo_rv: list[str] = Query(default=[]),
     flash_type: str | None = None,
+    remaining: list[str] = Query(default=[]),
+    bulk_category: str = Query(default="", max_length=64),
+    bulk_merchant: str = Query(default="", max_length=120),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
@@ -124,7 +128,8 @@ def web_pending(
     if filter_key not in PENDING_FILTERS:
         filter_key = "all"
 
-    items = [it for it in raw_items if matches_pending_filter(it, filter_key)]
+    bulk_context = pending_bulk_continuation_context(raw_items, remaining, category=bulk_category, merchant=bulk_merchant)
+    items = [it for it in raw_items if matches_pending_filter(it, filter_key) or it["id"] in bulk_context["bulk_versions"]]
     filter_counts = {key: sum(matches_pending_filter(it, key) for it in raw_items) for key in PENDING_FILTERS}
     pending_total = len(raw_items)
     suspected_total = filter_counts["duplicate"]
@@ -137,6 +142,7 @@ def web_pending(
         sidebar_counts=(pending_total, suspected_total),
     )
     ctx["expenses"] = items
+    ctx.update(bulk_context)
     ctx["upload_intent"] = attachment_form_context(db, request, action="/web/pending/upload", ledger_id=selected_id)
     ctx["pending_count"] = pending_total
     ctx["inbox_is_empty"] = pending_total == 0
@@ -243,6 +249,7 @@ def web_pending_batch_reject(
             result,
             selected_id=selected_id,
             filter=filter,
+            expected_by_id=expected_by_id,
         )
     return pending_bulk_result_redirect(
         selected_id,
@@ -250,6 +257,7 @@ def web_pending_batch_reject(
         filter=filter,
         msg=format_bulk_message("reject", result),
         result=result,
+        expected_by_id=expected_by_id,
     )
 
 
@@ -350,6 +358,9 @@ def _bulk_review_response(
     filter_key: str,
     fragment_removal: bool,
     result: BulkResult,
+    expected_by_id: dict[int, int],
+    category: str,
+    merchant: str,
 ) -> Response:
     if fragment_removal:
         return bulk_fragment_json(
@@ -357,17 +368,15 @@ def _bulk_review_response(
             result,
             selected_id=selected_id,
             filter=filter_key,
+            expected_by_id=expected_by_id,
+            category=category,
+            merchant=merchant,
         )
     message = format_bulk_message(action, result)
-    if action in REMOVAL_ACTIONS:
-        return pending_bulk_result_redirect(
-            selected_id,
-            action=action,
-            filter=filter_key,
-            msg=message,
-            result=result,
-        )
-    return pending_redirect(selected_id, filter=filter_key, msg=message)
+    return pending_bulk_result_redirect(
+        selected_id, action=action, filter=filter_key, msg=message, result=result,
+        expected_by_id=expected_by_id, category=category, merchant=merchant,
+    )
 
 
 @router.post("/review/bulk", response_class=HTMLResponse)
@@ -438,4 +447,7 @@ def web_review_bulk(
         filter_key=filter,
         fragment_removal=fragment_removal,
         result=result,
+        expected_by_id=expected_by_id,
+        category=category,
+        merchant=merchant,
     )

@@ -13,16 +13,19 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.SheetState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
@@ -57,7 +60,8 @@ internal fun PendingCaptureSheet(
     val choosing = selection.pendingCount > 0
     val hasTask = !choosing && state.upload.originals.isNotEmpty()
     val received = hasTask && state.upload.originals.all { it.expenseId != null }
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+    val sheetState = rememberCaptureSheetState()
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         AppSheetScaffold(
             title = stringResource(when {
                 choosing || !hasTask -> R.string.pending_capture_title
@@ -83,6 +87,21 @@ internal fun PendingCaptureSheet(
             if (!choosing) PendingCaptureFeedback(state, actions, onOpenExpense, onDismiss)
             CaptureNote(stringResource(R.string.pending_capture_original_note))
         }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun rememberCaptureSheetState(): SheetState {
+    val density = LocalDensity.current
+    // The caller restores the open task; motion must start against this window's fresh anchors.
+    // Use Material's drag thresholds without persisting the previous window's motion state.
+    return remember(density) {
+        SheetState(
+            skipPartiallyExpanded = true,
+            positionalThreshold = { with(density) { 56.dp.toPx() } },
+            velocityThreshold = { with(density) { 125.dp.toPx() } },
+        )
     }
 }
 

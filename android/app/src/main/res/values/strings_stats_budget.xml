@@ -744,10 +744,12 @@
     <string name="recurring_header_title">固定支出</string>
     <string name="recurring_section_formal">正式计划</string>
     <string name="recurring_section_suggestions">发现的建议</string>
-    <string name="recurring_header_subtitle">记录每月固定支出，只做提醒和对比，不会自动入账。</string>
-    <string name="recurring_items_card_count">%1$d 项</string>
-    <string name="recurring_items_card_count_loading">读取中</string>
-    <string name="recurring_items_card_count_unavailable">待刷新</string>
+    <string name="recurring_header_subtitle">把每个月的安排放在心里。</string>
+    <string name="recurring_list_title">我的固定支出</string>
+    <string name="recurring_overview_details">每月支出概览</string>
+    <string name="recurring_plan_notice">计划只做提醒和对比，不会自动入账。</string>
+    <string name="recurring_more_actions">更多操作：%1$s</string>
+    <string name="recurring_filter_description">筛选固定支出</string>
     <string name="recurring_items_empty">还没有这一类固定支出。</string>
     <string name="recurring_items_load_failed_title">固定支出暂时打不开</string>
     <string name="recurring_items_load_failed_body">列表暂未同步完成，已有的固定支出不会因此消失。</string>

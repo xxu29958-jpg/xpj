@@ -1,66 +1,34 @@
-<!DOCTYPE html>
-<html lang="zh-CN" data-theme="{{ ui_theme or 'paper' }}">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="csrf-token" content="{{ csrf_token }}">
-  <title>{{ page_title }} — 小票夹</title>
-  <link rel="icon" type="image/png" href="/static/web/product/brand/favicon-48.png">
-  <script src="/static/web/appearance-bootstrap.js?v={{ asset_version }}"></script>
-  <link rel="stylesheet" href="/static/shared/tokens.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/fonts/fonts.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/pages/auth-login.css?v={{ asset_version }}">
-  <script defer src="/static/shared/csrf.js?v={{ asset_version }}"></script>
-</head>
-<body>
-  <main class="auth-layout">
-    <section class="auth-story" aria-label="{{ story_aria_label }}">
-      <div class="auth-brand">
-        {% include "_brand_mark.html" %}
-        <span class="auth-brand-name">小票夹</span>
-      </div>
-      <h1 class="auth-title">{{ story_title_line_one }}<br>{{ story_title_line_two }}</h1>
-      <ol class="auth-steps">
-        {% for step in steps %}
-        <li><span class="auth-step-num">{{ loop.index }}</span>{{ step }}</li>
-        {% endfor %}
-      </ol>
-    </section>
-
-    <section class="auth-card" aria-label="{{ card_aria_label }}">
-      <h2 class="auth-card-title">{{ card_title }}</h2>
-      <p class="auth-hint">{{ hint_prefix }} <strong>{{ identity.account_name }}</strong>{{ hint_suffix }}</p>
-
-      {% if error_message %}
-      <div class="auth-error" role="alert">{{ error_message }}</div>
-      {% endif %}
-
-      <form method="{{ 'get' if download_mode else 'post' }}" action="{{ form_action }}">
-        {% if not download_mode %}
-        {{ csrf_field|safe }}
-        <input type="hidden" name="next" value="{{ next_url }}">
-        {% endif %}
-        <fieldset class="auth-ledger-list">
-          <legend>选择账本</legend>
-          {% for ledger in identity.ledgers %}
-          {% set role_zh = {'owner': '拥有者', 'member': '成员', 'viewer': '只读'}.get(ledger.role, ledger.role|upper) %}
-          <label class="auth-ledger-option">
-            <input type="radio" name="ledger_id" value="{{ ledger.ledger_id }}"{% if ledger.ledger_id == identity.selected_ledger_id %} checked{% endif %}>
-            <span class="auth-ledger-copy">
-              <strong>{{ ledger.name }}</strong>
-              <span>{{ role_zh }}{% if ledger.archived_at %} · 已归档{% endif %}</span>
-            </span>
-          </label>
-          {% endfor %}
-        </fieldset>
-        <button class="auth-submit" type="submit"{% if not identity.ledgers %} disabled{% endif %}>{{ submit_label }}</button>
-      </form>
-
-      <p class="auth-foot">{{ footnote }}</p>
-      {% if portable_export_url %}<p class="auth-foot"><a href="{{ portable_export_url }}">下载账本数据，包括拥有的已归档账本</a></p>{% endif %}
-      {% if account_settings_url %}<p class="auth-foot"><a href="{{ account_settings_url }}">设置与设备</a></p>{% endif %}
-      {% if return_url %}<p class="auth-foot"><a href="{{ return_url }}">{{ return_label }}</a></p>{% endif %}
-    </section>
-  </main>
-</body>
-</html>
+{% extends "auth/base.html" %}
+{% block form_open %}<form id="ledger-selection-form" method="{{ 'get' if download_mode else 'post' }}" action="{{ form_action }}" aria-label="{{ card_aria_label }}">{% endblock %}
+{% block title %}{{ page_title }}{% endblock %}
+{% block heading %}{{ card_title }}{% endblock %}
+{% block summary %}{{ hint_prefix }} <strong>{{ identity.account_name }}</strong>{{ hint_suffix }}{% endblock %}
+{% block content %}
+{% if error_message %}<div class="product-feedback product-feedback--danger" role="alert">{{ error_message }}</div>{% endif %}
+<div class="product-form">
+  {% if not download_mode %}
+  {{ csrf_field|safe }}
+  <input type="hidden" name="next" value="{{ next_url }}">
+  {% endif %}
+  <fieldset class="product-field">
+    <legend>选择账本</legend>
+    <div class="product-entry-list">
+    {% for ledger in identity.ledgers %}
+    {% set role_zh = {'owner': '拥有者', 'member': '成员', 'viewer': '只读'}.get(ledger.role, ledger.role|upper) %}
+    <label class="product-entry auth-ledger-option">
+      <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#book-open"/></svg></span>
+      <span class="product-entry-copy"><strong>{{ ledger.name }}</strong><span>{{ role_zh }}{% if ledger.archived_at %} · 已归档{% endif %}</span></span>
+      <input type="radio" name="ledger_id" value="{{ ledger.ledger_id }}"{% if ledger.ledger_id == identity.selected_ledger_id %} checked{% endif %}>
+    </label>
+    {% endfor %}
+    </div>
+  </fieldset>
+</div>
+<p class="product-note auth-alternatives"><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#info"/></svg><strong>使用当前身份</strong><span>{{ footnote }}</span></p>
+<div class="product-form-actions">
+  {% if portable_export_url %}<a class="product-button product-button--quiet" href="{{ portable_export_url }}">下载账本数据，包括拥有的已归档账本</a>{% endif %}
+  {% if account_settings_url %}<a class="product-button product-button--quiet" href="{{ account_settings_url }}">设置与设备</a>{% endif %}
+  {% if return_url %}<a class="product-button product-button--quiet" href="{{ return_url }}">{{ return_label }}</a>{% endif %}
+</div>
+{% endblock %}
+{% block actions %}<button class="product-button product-button--primary" type="submit" form="ledger-selection-form"{% if not identity.ledgers %} disabled{% endif %}>{{ submit_label }}</button>{% endblock %}

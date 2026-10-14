@@ -145,10 +145,6 @@ def local_web_identity_form(
         context={
             "identity": preview,
             "page_title": "确认本机身份",
-            "story_aria_label": "关于本机连接",
-            "story_title_line_one": "这台电脑已经认识你，",
-            "story_title_line_two": "浏览器仍需一次确认",
-            "steps": ("核对本机账户", "选择要进入的账本", "建立独立浏览器会话"),
             "card_aria_label": "确认本机身份",
             "card_title": "确认本机身份",
             "hint_prefix": "将以",
@@ -241,10 +237,6 @@ def web_ledger_picker(
         context={
             "identity": identity,
             "page_title": "选择账本",
-            "story_aria_label": "关于账本选择",
-            "story_title_line_one": "浏览器身份仍然有效，",
-            "story_title_line_two": "请选择当前可访问的账本",
-            "steps": ("保留当前账户", "核对实时成员角色", "继续原来的操作"),
             "card_aria_label": "选择账本",
             "card_title": "选择账本",
             "hint_prefix": "当前账户是",

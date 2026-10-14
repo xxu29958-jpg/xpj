@@ -28,7 +28,7 @@ def _connect(page, base_url, ledger_id, role):
     page.goto(f"{base_url}/web/auth/login?next=/web/income-plans")
     page.locator('[name="pairing_code"]').fill(code)
     page.locator('form[action="/web/auth/login"] button[type="submit"]').click()
-    page.wait_for_url("**/web/income-plans*")
+    page.wait_for_url(f"{base_url}/web/income-plans*")
     assert "联动工资" in page.inner_text("main"), "The member did not reach the shared ledger"
 
 

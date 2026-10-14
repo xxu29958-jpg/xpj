@@ -303,20 +303,33 @@ def test_web_bulk_confirm_ready_fragment_returns_actioned_ids(web_client: TestCl
             ),
             "filter": "all",
             "fragment": "1",
+            "category": "待继续核对的分类",
+            "merchant": "待继续核对的商家",
         },
         follow_redirects=False,
     )
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["removed_ids"] == [ready]
-    assert body["flash_type"] == "success"
+    assert body["flash_type"] == "error"
     assert "已确认 1 条" in body["message"]
     assert "跳过 1 条" in body["message"]
     redirect = urlsplit(body["redirect_url"])
     assert redirect.path == "/web/pending"
     assert parse_qs(redirect.query)["ledger_id"] == ["owner"]
     assert parse_qs(redirect.query)["filter"] == ["all"]
-    assert parse_qs(redirect.query)["flash_type"] == ["success"]
+    assert parse_qs(redirect.query)["flash_type"] == ["error"]
+    assert parse_qs(redirect.query)["remaining"] == [
+        f"{no_amount}:{_row_version(web_client, no_amount, identity=identity)}"
+    ]
+    assert parse_qs(redirect.query)["bulk_category"] == ["待继续核对的分类"]
+    assert parse_qs(redirect.query)["bulk_merchant"] == ["待继续核对的商家"]
+    continued = web_client.get(body["redirect_url"])
+    assert 'value="待继续核对的分类"' in continued.text
+    assert 'value="待继续核对的商家"' in continued.text
+    with SessionLocal() as db:
+        accepted = db.get(Expense, ready)
+        assert (accepted.merchant, accepted.category) == ("Ready", "其他")
     # Server-side state actually changed: ready confirmed (gone), no-amount stays.
     pending = web_client.get("/web/pending?ledger_id=owner")
     assert f"/web/expenses/{ready}/edit" not in pending.text

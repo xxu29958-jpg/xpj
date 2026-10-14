@@ -69,9 +69,7 @@ def web_portable_selection(request: Request, db: Session = Depends(get_db)) -> H
     return templates.TemplateResponse(request=request, name="auth/local.html", context={
         "identity": {"account_name": principal.account_name, "ledgers": ledgers,
             "selected_ledger_id": ledgers[0].ledger_id if ledgers else ""},
-        "page_title": "带走账本数据", "story_aria_label": "关于账本数据包",
-        "story_title_line_one": "账本里的记录，", "story_title_line_two": "随时留一份在手边",
-        "steps": ("选择有权下载的账本", "保留记录、历史与可用原件", "保存后直接查看"),
+        "page_title": "带走账本数据",
         "card_aria_label": "下载账本数据", "card_title": "选择要带走的账本",
         "hint_prefix": "当前账户是", "hint_suffix": "。已归档账本仅向当前拥有者提供下载。",
         "form_action": "/web/export/portable", "download_mode": True,

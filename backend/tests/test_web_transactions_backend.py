@@ -154,8 +154,8 @@ def test_confirmed_default_list_and_summary_share_current_month(
     assert "Current Month Cafe" in response.text
     assert "Previous Month Cafe" not in response.text
     assert (
-        f'<span class="sr-only">{current_month} 合计 </span>¥12.00'
-        in response.text
+        f"{current_month} 合计 ¥12.00"
+        in re.sub(r"<[^>]+>", "", response.text)
     )
     assert f"{current_month} · 共 1 笔 ·" in response.text
 

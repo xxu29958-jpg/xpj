@@ -103,7 +103,9 @@ class InsightsJourney:
         assert not native.has("TaggedRide"), "Category drill discarded the selected category"
         wait_for(lambda: native.has("13.00"), "The drill kept an older ledger snapshot than its source report")
         native.click("TaggedMeal")
-        native.click("更正这笔账单")
+        native.reveal_any("更正这笔账单")
+        native.capture("insights-before-correction")
+        native.click("更正这笔账单", stable=True)
         native.fill("DrillAmount", label="更正原因（必填）")
         native.reveal_any("13.00")
         native.fill("15.00", previous="13.00")
@@ -134,7 +136,9 @@ class InsightsJourney:
             key for key in default_order if key not in {"goals", "monthly_spend", "pending"}]
         for position, key in enumerate(custom_order):
             row = page.locator(f'[data-dashboard-card-row="{key}"]')
+            row.locator(".layout-position > summary").click()
             row.locator("[data-card-position]").fill(str(position))
+            row.locator(".layout-position > summary").click()
             row.locator('[name="visible_key"]').set_checked(key != "reports")
         page.locator('#dashboard-cards-form button[type="submit"]').click()
         page.wait_for_url("**/web/dashboard/cards?*msg=*")
@@ -175,8 +179,8 @@ class InsightsJourney:
         self.goto(f"/web/overview?month={historical}")
         page.locator('[data-overview-card="budget"]').get_by_role("link", name="设置预算", exact=True).click()
         page.wait_for_url("**/web/budgets?**")
-        assert page.get_by_role("heading", name="月度预算", exact=True).is_visible()
         form = page.locator('form[action="/web/budgets/save"]')
+        assert form.locator('#budget-total-amount-yuan').is_visible()
         assert form.locator('input[name="month"]').input_value() == historical
         assert form.locator('input[name="ledger_id"]').input_value() == self.fixture.ledger_id
         self.capture("overview-historical-budget")

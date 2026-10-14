@@ -398,7 +398,8 @@ def test_planning_and_reference_entries_replay_original_body_after_unknown_reply
     result = _run_browser(tmp_path, RecoveryHandler, "window.__planningRecovery || undefined", "?group=" + group)
     (tmp_path / "planning-recovery-result.json").write_text(json.dumps({"browser": result, "posts": POSTS},
         ensure_ascii=False, indent=2), encoding="utf-8")
-    assert not result.get("error"), result
+    if result.get("error"):
+        pytest.fail(json.dumps(result, ensure_ascii=False, indent=2), pytrace=False)
     assert not MISSING, MISSING
     expected = {"debt-create", "debt-links", "debt-target-date", "debt-principal"} if group == "debt" else {
         "budget", "arrangement", "rate", "recurring-create", "recurring-edit", "candidate", "occurrence", "tag-create", "category-create",

@@ -74,7 +74,7 @@ class SystemPaymentSources:
         native.capture("notification-system-access-granted")
         native.back()
         native.back()
-        native.reveal_any("本机解析支付通知")
+        native.reveal_any("解析支付通知")
 
     def capture_payments(self, facts):
         native = self.native
@@ -83,15 +83,15 @@ class SystemPaymentSources:
         # a processing boundary for checking these earlier ignored samples.
         self.post(SOURCES[0], 3)
         time.sleep(2)
-        native.set_switch("本机解析支付通知", True)
+        native.set_switch("解析支付通知", True)
         self.post(SOURCES[2], 3)
         self.post(SOURCES[0], 0)
         wait_for(lambda: len(facts()["captures"]) == 1, "The enabled real listener did not accept the whitelisted repayment")
         assert facts()["expenses"] == 0, "Default-off or unlisted notifications created an Expense"
-        native.set_switch("本机解析支付通知", False)
+        native.set_switch("解析支付通知", False)
         self.post(SOURCES[0], 3)
         time.sleep(2)
-        native.set_switch("本机解析支付通知", True)
+        native.set_switch("解析支付通知", True)
         self.post(SOURCES[1], 1)
         wait_for(lambda: len(facts()["captures"]) == 2, "Capture did not resume after the application switch was enabled")
         assert facts()["expenses"] == 0, "The disabled application switch still captured a payment"

@@ -676,9 +676,10 @@ class FactEntryNavigationTest {
         compose.runOnIdle { harness.shell.openSecondaryPage(ProductSecondaryPage.Recurring) }
         val openOccurrence = context.getString(R.string.occurrence_open)
         compose.waitUntil(5_000) {
-            runCatching { compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(openOccurrence)) }.isSuccess
+            runCatching { compose.onNodeWithTag("recurring-actions-navigation-recurring").performScrollTo() }.isSuccess
         }
         compose.onNodeWithTag("recurring-item-navigation-recurring").assertIsDisplayed()
+        compose.onNodeWithTag("recurring-actions-navigation-recurring").performClick()
         compose.onNodeWithText(openOccurrence).performClick()
         val openPayment = context.getString(R.string.occurrence_open_payment)
         waitForText(openPayment)
@@ -697,8 +698,9 @@ class FactEntryNavigationTest {
         compose.onNode(monthField).assertTextContains("2026-08")
         compose.onNode(queryField).assertTextContains("家庭午餐")
         androidx.test.espresso.Espresso.pressBack()
-        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(openOccurrence))
+        compose.onNodeWithTag("recurring-actions-navigation-recurring").performScrollTo()
         compose.onNodeWithTag("recurring-item-navigation-recurring").assertIsDisplayed()
+        compose.onNodeWithTag("recurring-actions-navigation-recurring").performClick()
         compose.onNodeWithText(openOccurrence).assertIsDisplayed()
         assertEquals(MainProductDestination.Secondary(ProductSecondaryPage.Recurring), harness.shell.activeDestination)
         assertEquals("navigation-recurring", harness.fixture.network.occurrenceReads.single().first)

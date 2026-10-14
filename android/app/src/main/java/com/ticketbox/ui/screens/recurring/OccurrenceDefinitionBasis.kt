@@ -43,16 +43,28 @@ internal fun OccurrenceCurrentSummary(occurrence: RecurringOccurrenceDto) {
                 Text(stringResource(occurrenceReviewReasonLabel(occurrence.paymentReviewReason)),
                     style = MaterialTheme.typography.bodyMedium)
             }
-            Text(stringResource(R.string.occurrence_summary_period, displayMonthLabel(occurrence.period)),
-                style = MaterialTheme.typography.bodySmall)
-            Text(stringResource(R.string.occurrence_planned_amount), style = MaterialTheme.typography.bodyMedium)
-            AppAmountText(recurringRecordedAmountText(occurrence.plannedAmountCents, occurrence.homeCurrencyCode),
-                role = if (occurrence.state == "needs_review") AppAmountRole.Compact else AppAmountRole.Hero)
-            Text(stringResource(R.string.occurrence_reserved,
-                recurringRecordedAmountText(occurrence.reservedAmountCents, occurrence.homeCurrencyCode)))
-            occurrence.paidAmountCents?.let {
-                Text(stringResource(R.string.occurrence_paid_amount, recurringRecordedAmountText(it, occurrence.paidHomeCurrencyCode)))
+            if (occurrence.state != "needs_review") {
+                Text(stringResource(R.string.occurrence_planned_amount), style = MaterialTheme.typography.bodyMedium)
+                AppAmountText(recurringRecordedAmountText(occurrence.plannedAmountCents, occurrence.homeCurrencyCode),
+                    role = AppAmountRole.Hero)
             }
+        }
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
+        Text(stringResource(R.string.occurrence_summary_period, displayMonthLabel(occurrence.period)),
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (occurrence.state == "needs_review") {
+            Text(stringResource(R.string.occurrence_planned_amount), style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            AppAmountText(recurringRecordedAmountText(occurrence.plannedAmountCents, occurrence.homeCurrencyCode),
+                role = AppAmountRole.Compact)
+        }
+        Text(stringResource(R.string.occurrence_reserved,
+            recurringRecordedAmountText(occurrence.reservedAmountCents, occurrence.homeCurrencyCode)),
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        occurrence.paidAmountCents?.let {
+            Text(stringResource(R.string.occurrence_paid_amount, recurringRecordedAmountText(it, occurrence.paidHomeCurrencyCode)),
+                style = MaterialTheme.typography.bodySmall)
         }
     }
 }

@@ -1,4 +1,11 @@
 {% extends "base.html" %}
+{% set bulk_versions = bulk_versions|default({}) %}
+{% if bulk_versions %}
+{% set page_surface = 'tertiary' %}
+{% set page_title = '批量整理' %}
+{% set task_return_href = '/web/pending?' ~ ({'ledger_id': selected_ledger_id, 'filter': filter}|urlencode) %}
+{% set task_return_label = '收件箱' %}
+{% endif %}
 {% set manual_create_href = '/web/expenses/new?' ~ ({'ledger_id': selected_ledger_id, 'return_to': 'pending', 'return_filter': filter}|urlencode) %}
 {% block title %}待我处理 · 小票夹{% endblock %}
 {% block page_scripts %}{% include "_attachment_scripts.html" %}
@@ -15,9 +22,11 @@
 {% if pending_count %}
 <header class="product-page-header inbox-page-header">
   <div class="product-page-heading">
-    <h1 class="page-title">小票收件箱</h1>
+    <h1 class="page-title">{{ '批量整理' if bulk_versions else '小票收件箱' }}</h1>
     <p class="product-page-summary">
-      {% if pending_count %}
+      {% if bulk_versions %}
+      {{ bulk_versions|length }} 张待继续，已完成的不会重复处理
+      {% elif pending_count %}
       <span data-pending-count>{{ pending_count }}</span> 张待整理，确认后计入流水
       {% else %}
       当前账本没有待处理记录。
@@ -38,6 +47,8 @@
 
 <div class="inbox-workspace">
 <div class="inbox-queue">
+{% if bulk_versions %}<p class="inbox-filter-note">未完成的仍保留选中。打开账单核对变化后，再继续整理。</p>{% endif %}
+{% if bulk_unavailable|default(0) %}<p class="inbox-filter-note" role="status">部分原记录已不在当前待确认范围，请回看原账单；不会改选其他记录。</p>{% endif %}
 {% if upload_intent.scope %}
 <details class="product-panel product-panel--padded" data-expensereview-draft-shelf data-expensereview-scope='{{ upload_intent.scope | tojson }}' hidden>
   <summary>保留的核对任务</summary><ul data-expensereview-draft-list></ul>
@@ -46,7 +57,7 @@
   <summary>待核实的撤销</summary><ul></ul>
 </details>
 {% endif %}
-{% if pending_count %}
+{% if pending_count and not bulk_versions %}
 {% if can_write %}
 <details class="inbox-capture-panel">
   <summary class="inbox-capture-cover">
@@ -207,6 +218,10 @@
   {% else %}
     {% set _status_label, _status_tone, _repair_label = '可确认', 'success', '' %}
   {% endif %}
+  {% if e.id in bulk_versions and bulk_versions[e.id] != e.row_version %}
+    {% set _status_label, _status_tone, _repair_label = '内容已变化', 'warning', '核对这笔' %}
+  {% endif %}
+  {% set selection_version = bulk_versions.get(e.id, e.row_version) %}
   <div class="exp-row" data-expense-id="{{ e.id }}">
     <div class="exp-row-selector"{% if not can_write %} aria-hidden="true"{% endif %}>
       {% if can_write %}
@@ -214,10 +229,10 @@
         <input class="checkbox row-check"
              type="checkbox"
              name="expense_snapshot"
-             value="{{ e.id }}:{{ e.row_version }}"
+             value="{{ e.id }}:{{ selection_version }}"
              form="bulk-form"
              data-id="{{ e.id }}"
-             data-row-version="{{ e.row_version }}"
+             data-row-version="{{ selection_version }}"{% if e.id in bulk_versions %} checked{% endif %}
              aria-label="选择账单 #{{ e.id }}">
       </label>
       {% endif %}
@@ -293,7 +308,7 @@
 {% if pending_count %}{% include "_recent_recognition_tasks.html" %}{% endif %}
 
 {% if can_write and expenses %}
-<form id="bulk-form" method="post" action="/web/review/bulk" class="bulk-bar" data-bulk>
+<form id="bulk-form" method="post" action="/web/review/bulk" class="bulk-bar" data-bulk{% if bulk_versions %} data-bulk-continuation{% endif %}>
   {# 无 JS 时也不能让字段内回车误选第一个批量命令；各按钮仍可原生提交。 #}
   <input type="submit" hidden disabled>
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -304,15 +319,15 @@
   <span class="bulk-selection-status"><span class="count" data-bulk-count>0</span><span class="label">笔已选</span></span>
   {# main 保留 (矿无): 一键清空选择并把焦点还回第一个已选行 (批选可达性合同)。 #}
   <button class="product-button" type="button" data-bulk-clear>取消选择</button>
-  <details class="bulk-editor">
+  <details class="bulk-editor"{% if bulk_versions %} open{% endif %}>
     <summary class="product-button">修改信息</summary>
     <div class="bulk-editor-fields">
       <div class="bulk-group" role="group" aria-label="批量改分类">
-        <label>统一分类<input type="text" name="category" maxlength="64" placeholder="填写分类" aria-label="批量设置分类"></label>
+        <label>统一分类<input type="text" name="category" maxlength="64" value="{{ bulk_category|default('') }}" placeholder="填写分类" aria-label="批量设置分类"></label>
         <button class="product-button" type="submit" name="action" value="set_category">应用分类</button>
       </div>
       <div class="bulk-group" role="group" aria-label="批量改商家">
-        <label>统一商家<input type="text" name="merchant" maxlength="120" placeholder="填写商家" aria-label="批量设置商家"></label>
+        <label>统一商家<input type="text" name="merchant" maxlength="120" value="{{ bulk_merchant|default('') }}" placeholder="填写商家" aria-label="批量设置商家"></label>
         <button class="product-button" type="submit" name="action" value="set_merchant">应用商家</button>
       </div>
     </div>

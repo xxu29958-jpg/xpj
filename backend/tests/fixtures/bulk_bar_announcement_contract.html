@@ -52,6 +52,7 @@
             removed_ids: ["1"],
             message: "已确认 1 条流水。",
             flash_type: "success",
+            redirect_url: window.location.href.split("#")[0] + "#remaining-2-12",
             undo_items: [{id: "1", expected_row_version: "21"}]
           })
         };
@@ -164,11 +165,18 @@
       };
 
       firstCheck.click();
+      document.getElementById("check-2").click();
       submit();
       await wait();
       const successWithUndo = capture();
+      const remaining = {
+        ids: new FormData(form).getAll("expense_ids"),
+        versions: new FormData(form).getAll("expected_row_version"),
+        checked: document.getElementById("check-2").checked,
+        count: form.querySelector("[data-bulk-count]").textContent,
+        locationHash: window.location.hash
+      };
 
-      document.getElementById("check-2").click();
       submit();
       await wait();
       const failure = capture();
@@ -181,6 +189,7 @@
         batchMode,
         cleared,
         successWithUndo,
+        remaining,
         failure,
         nativeFallback
       };

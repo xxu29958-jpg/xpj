@@ -43,7 +43,7 @@ class RelationshipJourney:
         page.goto(f"{self.public_url}/web/auth/login?next={next_path}")
         page.locator('[name="pairing_code"]').fill(code)
         page.locator('form[action="/web/auth/login"] button[type="submit"]').click()
-        page.wait_for_url(f"**{next_path}*")
+        page.wait_for_url(f"{self.public_url}{next_path}*")
 
     def create_relationship(self):
         page = self.page

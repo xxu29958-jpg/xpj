@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+from datetime import date
 from pathlib import Path
 
 from scripts.planning_journey_android import wait_for
@@ -90,11 +91,12 @@ class NotificationReminders:
             self.set_channel(channel, False)
         self.native.plan_home()
         self.native.click("打开账户与设置")
+        self.native.click("通知与外观")
         self.native.click("通知与提醒")
         for label in ("固定支出提醒", "预算超支提醒", "备份超龄提醒"):
             self.native.set_switch(label, True)
         assert self.facts()["expenses"][0]["status"] == "pending"
-        self.j.tap_notification("16.80", expected="确认账单")
+        self.j.tap_notification("16.80", expected="核对这张小票")
         self.native.capture("notification-expense-original")
         self.native.click("确认入账")
         wait_for(lambda: self.facts()["expenses"][0]["status"] == "confirmed", "The captured payment did not wait for actual human confirmation")
@@ -107,7 +109,10 @@ class NotificationReminders:
     def original_taps(self):
         from scripts.planning_notification_context import share_original, shared_original_result
 
-        self.j.tap_notification("本月预算超了", expected="月度总预算")
+        reminder_day = date.fromisoformat(self.expected_date)
+        displayed_reminder = f"下次提醒：{reminder_day.year}年{reminder_day.month}月{reminder_day.day}日"
+        self.j.tap_notification("本月预算超了", expected="调整本月预算")
+        self.native.click("调整本月预算")
         self.native.fill("321.09", label="月度总预算")
         self.native.capture("notification-budget-original-input")
         self.j.tap_notification("备份记录太久没更新", expected="备份")
@@ -125,9 +130,10 @@ class NotificationReminders:
         self.native.plan_home()
         self.native.click("固定支出", stable=True)
         self.native.reveal_any(SERIES)
+        self.native.click("更多操作：" + SERIES)
         self.native.click("查看本期")
+        self.native.reveal_any(displayed_reminder, exact=True)
         self.native.reveal_any("履约月份")
-        self.native.reveal_any(self.expected_date)
         self.native.capture("notification-fixed-read-before-share")
         self.native.back()
         self.native.back()
@@ -135,8 +141,8 @@ class NotificationReminders:
         digest = share_original(self.j)
         self.j.tap_notification(SERIES, expected="固定支出")
         self.native.reveal_any(SERIES)
+        self.native.reveal_any(displayed_reminder, exact=True)
         self.native.reveal_any("履约月份")
-        self.native.reveal_any(self.expected_date)
         self.native.capture("notification-original-fixed-occurrence")
         reminder_facts = self.facts()
         assert reminder_facts["expected_date"] == self.expected_date, "Opening a reminder advanced the fixed-expense due date"
@@ -147,8 +153,9 @@ class NotificationReminders:
         self.native.reveal_any("notification-shared-original.png")
         self.j.background_process_death()
         self.j.reopen_original_task()
+        wait_for(lambda: self.native.has("停止余下上传"), "The retained upload task has no original recovery controls")
         self.native.reveal_any("notification-shared-original.png")
-        self.native.reveal_any("停止余下上传")
+        self.native.capture("notification-process-restored-upload")
         self.native.capture("notification-return-to-original-share")
         assert shared_original_result(self.j, digest) is None, "The isolated original was accepted while its server was unavailable"
         self.native.connection(self.j.port, online=True)

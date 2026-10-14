@@ -4,9 +4,11 @@ import android.content.Context
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
@@ -101,12 +103,13 @@ class RecurringCandidateNavigationTest {
         capture("recurring-candidate-pending")
         selectSection(R.string.recurring_section_formal)
         val paused = context.getString(R.string.recurring_tab_label_count, context.getString(R.string.recurring_tab_paused), 0)
-        scrollTo(paused)
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasTestTag("recurring-status-filter"))
+        compose.onNodeWithTag("recurring-status-filter").performScrollTo().performClick()
         compose.onNodeWithText(paused).performClick()
         selectSection(R.string.recurring_section_suggestions)
         selectSection(R.string.recurring_section_formal)
         scrollTo(paused)
-        compose.onNodeWithText(paused).assertIsSelected()
+        compose.onNodeWithTag("recurring-status-filter").assertTextEquals(paused)
         assertEquals(1, harness.fixture.stored().size)
 
         val previousReads = candidateReads.get()
@@ -118,7 +121,7 @@ class RecurringCandidateNavigationTest {
         compose.waitForIdle()
         scrollTo(pending)
         compose.onNodeWithText(pending).assertIsDisplayed()
-        compose.onAllNodesWithText("JPY ¥2,400")[0].assertIsDisplayed()
+        compose.onAllNodesWithText("JPY ¥2,400")[0].performScrollTo().assertIsDisplayed()
         assertEquals(original["payload"], harness.fixture.stored().single()["payload"])
         assertEquals(original["idempotency_key"], harness.fixture.stored().single()["idempotency_key"])
         selectSection(R.string.recurring_section_suggestions)

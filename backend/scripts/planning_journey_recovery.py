@@ -132,7 +132,9 @@ class PlanningRecovery:
         family = "income-plans" if kind == "income" else "goals"
         self.page.goto(f"{self.base_url}/web/{family}?ledger_id={self.ledger_id}")
         action = f"/web/{family}/{facts[kind + '_id']}/archive"
-        self.page.locator(f'form[action="{action}"] button[type="submit"]').click()
+        form = self.page.locator(f'form[action="{action}"]')
+        form.locator("xpath=ancestor::details[1]/summary").click()
+        form.get_by_role("button", name="归档", exact=True).click()
         wait_for(lambda: self.facts()[kind + "_status"] == "archived", "Web archive did not commit")
 
     def web_restore(self, kind):

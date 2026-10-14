@@ -60023,6 +60023,41 @@
               ],
               "title": "Flash Type"
             }
+          },
+          {
+            "in": "query",
+            "name": "remaining",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "title": "Remaining",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "bulk_category",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 64,
+              "title": "Bulk Category",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "bulk_merchant",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 120,
+              "title": "Bulk Merchant",
+              "type": "string"
+            }
           }
         ],
         "responses": {

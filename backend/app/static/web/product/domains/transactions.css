@@ -34,6 +34,7 @@
     overflow: hidden;
     padding: 0;
     position: relative;
+    container-type: inline-size;
 }
 
 .confirmed-batch-head,
@@ -201,9 +202,11 @@
     margin-block-start: var(--space-6);
 }
 
-/* 06 月度合计: 共享金额承载面 (白面); 这里只留它在本页的位置与卡内的视图动作。 */
-.ledger-summary { margin-block: var(--space-5) var(--space-7); }
-.ledger-summary > .ledger-view-actions { margin: var(--space-2) calc(var(--space-5) * -1) calc(var(--space-3) * -1); }
+/* 06 月度合计沿共享金额层级，宽窄共用同一净额与视图动作。 */
+.ledger-summary { margin-block: var(--space-5) var(--space-7); padding: 0; background: transparent; border-radius: 0; }
+.ledger-summary > .product-amount { display: flex; flex-wrap: wrap; }
+.ledger-summary > .product-amount > span { max-width: 100%; }
+.ledger-summary > .ledger-view-actions { margin: var(--space-2) 0 0; }
 .ledger-stream.product-panel { box-shadow: none; border-radius: var(--radius-xl); padding: var(--space-5) var(--space-7); }
 .ledger-stream-heading { display: none; }
 .ledger-stream-footer { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: var(--space-3); padding-top: var(--space-5); color: var(--text-meta); font-size: var(--type-caption-size); }
@@ -252,6 +255,13 @@
     .timeline-row.lrow { gap: var(--space-3); }
     .timeline-row.lrow > .timeline-row-detail { gap: var(--space-3); }
     .amt-main { font-size: var(--type-subtitle-size); }
+}
+
+@container (max-width: 20em) {
+    .lday { grid-template-columns: minmax(0, 1fr); }
+    .timeline-row.lrow > .timeline-row-detail { grid-template-columns: var(--space-9) minmax(0, 1fr) var(--space-5); }
+    .lrow-amt { grid-column: 2 / -1; grid-row: 2; justify-items: start; text-align: start; }
+    .ledger-row-chevron { grid-column: 3; grid-row: 1; }
 }
 
 .heatmap {

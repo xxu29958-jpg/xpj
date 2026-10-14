@@ -100,7 +100,7 @@ class RecurringOfflineReadingConnectedTest {
         waitForText("原日元安排")
         Espresso.pressBack()
         showArchived()
-        openHistory()
+        openHistory("offline-archived")
         waitForText("原美元归档安排")
         Espresso.pressBack()
         selectTab(R.string.recurring_tab_active)
@@ -115,7 +115,8 @@ class RecurringOfflineReadingConnectedTest {
         val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
         automation.waitForIdle(300, 3_000)
         saveConsumerArtPreview("recurring-list-offline", requireNotNull(automation.takeScreenshot()))
-        compose.onNodeWithText(context.getString(R.string.occurrence_open)).performScrollTo().performClick()
+        compose.onNodeWithTag("recurring-actions-offline-active").performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.occurrence_open)).performClick()
         waitForText(context.getString(R.string.occurrence_review))
         compose.waitUntil(5_000) { compose.onNodeWithText(context.getString(R.string.occurrence_open_payment)).isDisplayed() }
         compose.onNodeWithText(context.getString(R.string.occurrence_show_period)).performScrollTo().performClick()
@@ -159,7 +160,7 @@ class RecurringOfflineReadingConnectedTest {
             assertEquals(2400L, rows.single { it.publicId == "offline-active" }.baselineAmountCents)
         }
         showArchived()
-        openHistory()
+        openHistory("offline-archived")
         waitForText("原美元归档安排")
         assertTrue(harness.fixture.stored().isEmpty())
         assertTrue(requests.all { it.method == "GET" })
@@ -181,7 +182,7 @@ class RecurringOfflineReadingConnectedTest {
                 baselineAmountCents = 1300, homeCurrencyCode = "JPY")).getOrThrow()
         }
         val original = harness.fixture.stored().single()
-        openHistory()
+        openHistory(fromEditor = true)
         waitForText("原日元安排")
         holdReads = true
         val outcomes = runBlocking {
@@ -224,8 +225,11 @@ class RecurringOfflineReadingConnectedTest {
                 }
             }
         }
-        waitForText(context.getString(R.string.recurring_read_title))
+        waitForText("原日元固定支出")
         compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("原日元固定支出"))
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        automation.waitForIdle(300, 3_000)
+        saveConsumerArtPreview("recurring-formal-current", requireNotNull(automation.takeScreenshot()))
     }
 
     private fun restart() {
@@ -238,7 +242,8 @@ class RecurringOfflineReadingConnectedTest {
         compose.waitForIdle()
     }
 
-    private fun openHistory() {
+    private fun openHistory(id: String = "offline-active", fromEditor: Boolean = false) {
+        if (!fromEditor) compose.onNodeWithTag("recurring-actions-$id").performScrollTo().performClick()
         compose.onNodeWithText("定义历史").performScrollTo().performClick()
     }
 
@@ -250,8 +255,8 @@ class RecurringOfflineReadingConnectedTest {
 
     private fun selectTab(label: Int) {
         val title = context.getString(R.string.recurring_tab_label_count, context.getString(label), 1)
-        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(title))
-        compose.onNodeWithText(title).performScrollTo().performClick()
+        compose.onNodeWithTag("recurring-status-filter").performScrollTo().performClick()
+        compose.onNodeWithText(title).performClick()
     }
 
     private fun waitForText(text: String) {

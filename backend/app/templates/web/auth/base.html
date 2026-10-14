@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="{{ ui_theme or 'paper' }}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <title>{% block title %}连接小票夹{% endblock %} — 小票夹</title>
+  <link rel="icon" type="image/png" href="/static/web/product/brand/favicon-48.png">
+  <script src="/static/web/appearance-bootstrap.js?v={{ asset_version }}"></script>
+  <link rel="stylesheet" href="/static/shared/tokens.css?v={{ asset_version }}">
+  <link rel="stylesheet" href="/static/web/fonts/fonts.css?v={{ asset_version }}">
+  <link rel="stylesheet" href="/static/web/product/shell.css?v={{ asset_version }}">
+  <link rel="stylesheet" href="/static/web/product/components.css?v={{ asset_version }}">
+  <link rel="stylesheet" href="/static/web/pages/auth-login.css?v={{ asset_version }}">
+  <script defer src="/static/shared/csrf.js?v={{ asset_version }}"></script>
+  {% block scripts %}{% endblock %}
+</head>
+<body class="auth-page">
+  <a class="skip-link" href="#main-content">跳到主要内容</a>
+  {% block form_open %}{% endblock %}
+  <div class="product-workspace">
+    <header class="auth-navigation">
+      {% block navigation %}<span class="auth-brand">{% include "_brand_mark.html" %}<span>欢迎</span></span>{% endblock %}
+    </header>
+    <main id="main-content" class="content" data-page-level="tertiary">
+      {% block introduction %}{% endblock %}
+      <header class="product-page-header">
+        <div class="product-page-heading">
+          <h1 class="page-title">{% block heading %}{% endblock %}</h1>
+          <p class="product-page-summary">{% block summary %}{% endblock %}</p>
+        </div>
+      </header>
+      {% block content %}{% endblock %}
+    </main>
+    <div class="product-task-actions">{% block actions %}{% endblock %}</div>
+  </div>
+  </form>
+</body>
+</html>

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+from scripts.planning_appearance_journey_native import theme_mode
 from scripts.planning_journey_android import wait_for
 from scripts.planning_notification_reminders import NotificationReminders
 from scripts.planning_notification_source import SystemPaymentSources, notification_control
@@ -46,11 +47,12 @@ class NotificationJourney:
         form = self.page.locator('form[action="/web/debts"]')
         form.locator('[name="counterparty_label"]').fill("采集核对欠款")
         form.locator('[name="amount_major"]').fill("400.00")
-        form.get_by_role("button", name="记下这笔欠款", exact=True).click()
+        self.page.locator('button[form="debt-creation"][data-debtcreation-submit]').click()
         wait_for(lambda: len(self.facts()["debts"]) == 1, "Web did not create the review target")
         self.native.bind(self.fixture.pairing_code, self.port)
         self.native.plan_home()
         self.native.click("打开账户与设置")
+        self.native.click("通知与外观")
         self.native.click("通知与提醒")
         self.native.set_switch("待确认提醒", True)
         self.native.capture("notification-configured")
@@ -171,13 +173,13 @@ class NotificationJourney:
             self.page.expect_event("domcontentloaded"),
             self.page.expect_event("requestfailed", predicate=lambda request: request.url.endswith(action)),
         ):
-            form.locator('[data-repayment-submit]').click()
+            self.page.locator('[form="repayment-review-form"][data-repayment-submit]').click()
         wait_for(lambda: len(self.facts()["payments"]) == 2, "Web review did not reach the shared repayment owner")
         self.goto("/web/repayment-drafts/" + pending["id"])
         wait_for(lambda: form.locator('[name="idempotency_key"]').input_value() == key, "The unresolved original disappeared after response loss")
         assert form.locator('select[name="target_with_expected_row_version"]').input_value() == choice
         assert form.locator('[name="original_amount"]').input_value() == "70.00"
-        form.locator('[data-repayment-submit]').click()
+        self.page.locator('[form="repayment-review-form"][data-repayment-submit]').click()
         self.page.locator('[data-repayment-ack]').wait_for()
         assert sorted(item["amount"] for item in self.facts()["payments"]) == [7000, 9000]
         self.capture("original-receipt")
@@ -204,14 +206,16 @@ class NotificationJourney:
                     paid = next(item["amount"] for item in self.facts()["payments"] if item["id"] == capture["repayment"])
                     assert f"{paid // 100}.{paid % 100:02}" in fact.inner_text(), "The original link did not display its actual accepted repayment"
                     self.capture(f"linked-repayment-{capture['original']}-{width}-{theme}")
-        for theme, label, description in (("paper", "晨纸", "浅色纸面 · 深绿点缀"), ("midnight", "玄夜", "柔和深色 · 浅绿点缀")):
+        for theme, description in (("paper", "浅色纸面 · 深绿点缀"), ("midnight", "柔和深色 · 浅绿点缀")):
             self.native.plan_home()
             self.native.click("打开账户与设置")
+            self.native.click("通知与外观")
             self.native.click("外观与主题")
-            self.native.reveal_any(description)
-            self.native.click_within(description, label)
+            self.native.click(description)
+            wait_for(lambda theme=theme: theme_mode(self.native) == theme, "The native theme choice was not persisted")
             self.native.plan_home()
             self.native.click("打开账户与设置")
+            self.native.click("通知与外观")
             self.native.click("通知与提醒")
             self.native.capture("notification-preferences-" + theme)
             self.native.domain_home("往来")

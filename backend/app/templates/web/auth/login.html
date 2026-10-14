@@ -1,79 +1,35 @@
-<!DOCTYPE html>
-<html lang="zh-CN" data-theme="{{ ui_theme or 'paper' }}">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="csrf-token" content="{{ csrf_token }}">
-  <title>连接小票夹 — 小票夹</title>
-  <link rel="icon" type="image/png" href="/static/web/product/brand/favicon-48.png">
-  {# 与 base.html 共享的外观 bootstrap: 首屏前恢复 ui-texture/ui-accent
-     本地偏好 (CSP 合规外部脚本)。 #}
-  <script src="/static/web/appearance-bootstrap.js?v={{ asset_version }}"></script>
-  <link rel="stylesheet" href="/static/shared/tokens.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/fonts/fonts.css?v={{ asset_version }}">
-  <link rel="stylesheet" href="/static/web/pages/auth-login.css?v={{ asset_version }}">
-  <script defer src="/static/shared/csrf.js?v={{ asset_version }}"></script>
-  <script defer src="/static/web/auth-pairing.js?v={{ asset_version }}"></script>
-</head>
-<body>
-  <main class="auth-layout">
-    <section class="auth-story" aria-label="关于小票夹">
-      <div class="auth-brand">
-        {% include "_brand_mark.html" %}
-        <span class="auth-brand-name">小票夹</span>
-      </div>
-      <h1 class="auth-title">把每张小票，<br>变成全家都看得懂的账</h1>
-      <ol class="auth-steps">
-        <li><span class="auth-step-num">1</span>拍下或截图小票</li>
-        <li><span class="auth-step-num">2</span>核对识别结果</li>
-        <li><span class="auth-step-num">3</span>确认后正式入账</li>
-      </ol>
-    </section>
-
-    <section class="auth-card" aria-label="连接这台设备">
-      <h2 class="auth-card-title">连接已有身份</h2>
-      <p class="auth-hint" data-pairing-scan-hint>输入小票夹为你生成的 8 位连接码，连接当前已有身份的一台设备。</p>
-
-      {% if error_message %}
-      <div class="auth-error" role="alert">{{ error_message }}</div>
-      {% endif %}
-
-      <form method="post" action="/web/auth/login" autocomplete="off">
-        {{ csrf_field|safe }}
-        <input type="hidden" name="next" value="{{ next_url }}">
-
-        <label class="auth-field" for="pairing_code">
-          <span class="auth-field-label">连接码</span>
-          <input
-            id="pairing_code"
-            name="pairing_code"
-            type="text"
-            inputmode="numeric"
-            pattern="[0-9]{8}"
-            maxlength="8"
-            placeholder="1234 5678"
-            autofocus
-            required
-          >
-          <span class="auth-field-hint">连接码只授权这台设备；不要把家庭邀请码填在这里。</span>
-        </label>
-
-        <label class="auth-field" for="device_name">
-          <span class="auth-field-label">设备名称（可选）</span>
-          <input
-            id="device_name"
-            name="device_name"
-            type="text"
-            placeholder="例如：客厅的电脑"
-            maxlength="120"
-          >
-        </label>
-
-        <button class="auth-submit" type="submit">连接</button>
-      </form>
-
-      <p class="auth-foot">收到家庭邀请？<a href="/web/auth/join">核对并加入家庭账本</a>，无需先获取连接码。</p>
-    </section>
-  </main>
-</body>
-</html>
+{% extends "auth/base.html" %}
+{% block form_open %}<form id="pairing-form" method="post" action="/web/auth/login" autocomplete="off">{% endblock %}
+{% block scripts %}<script defer src="/static/web/auth-pairing.js?v={{ asset_version }}"></script>{% endblock %}
+{% block introduction %}
+<section class="auth-welcome" aria-label="连接这台设备">
+  <div><h2 class="product-panel-title">把账本带到这台设备</h2><p>使用账本拥有者提供的连接信息。</p></div>
+  <img src="/static/web/product/art/receipt-clip.png" width="1280" height="1280" alt="">
+</section>
+{% endblock %}
+{% block heading %}连接已有身份{% endblock %}
+{% block summary %}<span data-pairing-scan-hint>输入小票夹为你生成的 8 位连接码，连接当前已有身份的一台设备。</span>{% endblock %}
+{% block content %}
+<div class="product-feedback product-feedback--danger" role="alert" data-pairing-error{% if not error_message %} hidden{% endif %}>{{ error_message }}</div>
+<div class="product-form">
+  {{ csrf_field|safe }}
+  <input type="hidden" name="next" value="{{ next_url }}">
+  <label class="product-field" for="pairing_code">
+    <span>连接码</span>
+    <input class="product-input" id="pairing_code" name="pairing_code" type="text" inputmode="numeric" pattern="[0-9]{8}" maxlength="8" placeholder="输入 8 位连接码" autofocus required>
+    <span class="hint">连接码只授权这台设备；不要把家庭邀请码填在这里。</span>
+  </label>
+  <label class="product-field" for="device_name">
+    <span>设备名称（可选）</span>
+    <input class="product-input" id="device_name" name="device_name" type="text" placeholder="例如：客厅的电脑" maxlength="120">
+  </label>
+</div>
+<nav class="product-entry-list auth-alternatives" aria-label="其它连接方式">
+  <a class="product-entry" href="/web/auth/join">
+    <span class="product-entry-icon product-entry-icon--peach" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#users"/></svg></span>
+    <span class="product-entry-copy"><strong>加入家庭账本</strong><span>收到家庭邀请？核对后加入，无需连接码。</span></span>
+    <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
+  </a>
+</nav>
+{% endblock %}
+{% block actions %}<button class="product-button product-button--primary" type="submit" form="pairing-form">连接</button>{% endblock %}

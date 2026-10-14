@@ -108,7 +108,21 @@
     }
 
     // drawer 等消费者更新行快照后可重算计数并重建提交字段。
-    app.refreshBulkBar = refresh;
+    app.refreshBulkBar = function (accepted) {
+      if (accepted) {
+        const url = new URL(window.location.href);
+        const remaining = url.searchParams.getAll("remaining");
+        if (remaining.some(value => value.split(":")[0] === String(accepted.id))) {
+          url.searchParams.delete("remaining");
+          remaining.forEach(function (value) {
+            if (value.split(":")[0] !== String(accepted.id)) url.searchParams.append("remaining", value);
+            else if (accepted.rowVersion) url.searchParams.append("remaining", accepted.id + ":" + accepted.rowVersion);
+          });
+          window.history.replaceState(null, "", url);
+        }
+      }
+      refresh();
+    };
 
     // 批10: shift-click 范围连选。记最近点击的行 index;按住 shift 点另一行时,把
     // 区间内的可见行全部设成被点行的新状态(剔除隐藏行,与 isVisible 一致)。
@@ -269,7 +283,14 @@
     }
 
     function applyBulkResult(data) {
+      // The continued task's heading and result must leave with its final row.
+      // Reuse the server page for both another partial result and completion.
+      if (form.hasAttribute("data-bulk-continuation") && data && data.redirect_url) {
+        window.location.assign(data.redirect_url);
+        return;
+      }
       const ids = (data && data.removed_ids) || [];
+      if (data && data.redirect_url) window.history.replaceState(null, "", data.redirect_url);
       let removed = 0;
       ids.forEach(function (id) {
         const row = document.querySelector('.exp-row[data-expense-id="' + id + '"]');
@@ -281,7 +302,9 @@
         window.location.reload();
         return;
       }
-      clearSelection();
+      // Successful rows are gone. Keep the remaining checkboxes and their
+      // original OCC tokens so partial success does not discard the task.
+      refresh();
       decrementFilterCounts(removed);
       flashBanner(
         data && data.message,

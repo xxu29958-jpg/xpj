@@ -3,23 +3,26 @@ package com.ticketbox.ui.screens.recurring
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import com.ticketbox.R
 import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.ui.components.AppAdaptiveAmountRowDefaults
 import com.ticketbox.ui.components.AppAdaptiveAmountRowStyle
-import com.ticketbox.ui.components.AppAdaptiveContentActionRow
-import com.ticketbox.ui.components.AppAdaptiveContentActionStyle
 import com.ticketbox.ui.components.AppAdaptiveEditAmountRow
 import com.ticketbox.ui.components.AppListStateContent
 import com.ticketbox.ui.components.AppListStateSpec
-import com.ticketbox.ui.components.AppSecondaryButton
+import com.ticketbox.ui.components.AppListRow
+import com.ticketbox.ui.components.SettingsEntryIcon
 import com.ticketbox.ui.components.AppSectionGroup
 import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppSpacing
@@ -106,49 +109,44 @@ private fun RecurringCandidateRow(
     actions: RecurringCandidateActions,
 ) {
     val merchantFallback = stringResource(R.string.recurring_candidate_merchant_fallback)
-    val content = @Composable {
-        AppAdaptiveEditAmountRow(
-            amount = recurringRecordedAmountText(candidate.amountCents, candidate.homeCurrencyCode),
-            style = AppAdaptiveAmountRowStyle(
-                role = AppAmountRole.Compact,
-                trailingWeight = AppAdaptiveAmountRowDefaults.listTrailingWeight,
-            ),
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
-                Text(
-                    text = candidate.merchant.ifBlank { merchantFallback },
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    text = stringResource(
-                        R.string.recurring_candidate_meta_summary,
-                        candidate.occurrenceCount,
-                        stringResource(if (candidate.confidence == "high") {
-                            R.string.recurring_candidate_stable
-                        } else {
-                            R.string.recurring_candidate_review
-                        }),
+    AppListRow {
+        Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap), verticalAlignment = Alignment.Top) {
+            SettingsEntryIcon(Icons.Outlined.AutoAwesome, background = MaterialTheme.colorScheme.secondaryContainer)
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+                AppAdaptiveEditAmountRow(
+                    amount = recurringRecordedAmountText(candidate.amountCents, candidate.homeCurrencyCode),
+                    style = AppAdaptiveAmountRowStyle(
+                        role = AppAmountRole.Compact,
+                        trailingWeight = AppAdaptiveAmountRowDefaults.listTrailingWeight,
                     ),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall.tabularNum(),
-                )
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
+                        Text(
+                            text = candidate.merchant.ifBlank { merchantFallback },
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            text = stringResource(
+                                R.string.recurring_candidate_meta_summary,
+                                candidate.occurrenceCount,
+                                stringResource(if (candidate.confidence == "high") {
+                                    R.string.recurring_candidate_stable
+                                } else {
+                                    R.string.recurring_candidate_review
+                                }),
+                            ),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall.tabularNum(),
+                        )
+                    }
+                }
+                if (canModify) {
+                    TextButton(onClick = { actions.onConfirmCandidate(candidate) }, modifier = Modifier.align(Alignment.End)) {
+                        Text(stringResource(R.string.recurring_candidate_confirm))
+                    }
+                }
             }
         }
-    }
-    if (canModify) {
-        AppAdaptiveContentActionRow(
-            style = AppAdaptiveContentActionStyle(wideActionWeight = 0.46f, verticalAlignment = Alignment.Top),
-            content = content,
-            action = { actionModifier ->
-                AppSecondaryButton(
-                    modifier = actionModifier,
-                    text = stringResource(R.string.recurring_candidate_confirm),
-                    onClick = { actions.onConfirmCandidate(candidate) },
-                )
-            },
-        )
-    } else {
-        content()
     }
 }
