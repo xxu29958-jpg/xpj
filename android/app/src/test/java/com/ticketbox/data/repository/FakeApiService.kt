@@ -257,6 +257,15 @@ internal class FakeApiService(
         request: com.ticketbox.data.remote.dto.InvitationCreateRequestDto,
     ): com.ticketbox.data.remote.dto.InvitationCreateResponseDto = unsupported()
 
+    override suspend fun listInvitations(
+        ledgerId: String,
+    ): com.ticketbox.data.remote.dto.InvitationListResponseDto = unsupported()
+
+    override suspend fun revokeInvitation(
+        ledgerId: String,
+        publicId: String,
+    ): com.ticketbox.data.remote.dto.InvitationSummaryDto = unsupported()
+
     override suspend fun pendingExpenses(): List<ExpenseDto> =
         onPendingRequest?.invoke() ?: unsupported()
 

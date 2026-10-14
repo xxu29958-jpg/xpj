@@ -271,7 +271,10 @@ class BudgetRecoveryNavigationRouteTest {
     }
 
     private fun assertBudgetMonth(readsBeforeOpen: Int) {
-        compose.waitUntil(5_000) { transport.budgetReads.size > readsBeforeOpen }
+        compose.waitUntil(5_000) {
+            harness.shell.activeDestination == MainProductDestination.Secondary(ProductSecondaryPage.Budget) &&
+                transport.budgetReads.size > readsBeforeOpen
+        }
         assertEquals(originalMonth, transport.budgetReads.last())
         assertEquals(MainProductDestination.Secondary(ProductSecondaryPage.Budget), harness.shell.activeDestination)
         assertEquals(MAIN_ROUTE, outer.currentBackStackEntry?.destination?.route)
