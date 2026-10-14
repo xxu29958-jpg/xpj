@@ -28,7 +28,7 @@ from time import perf_counter
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import AlgorithmDecision, LedgerLearningEvent, OcrFact
+from app.models import AlgorithmDecision, Expense, LedgerLearningEvent, OcrFact
 from app.models.app_meta import (
     LEARNING_CLEANUP_LAST_RUN_KEY,
     LEARNING_CLEANUP_LAST_SUMMARY_KEY,
@@ -44,6 +44,13 @@ from app.services.learning_service._lifecycle import (
     sweep_stale_active_decisions,
 )
 from app.services.time_service import ensure_utc, now_utc
+
+
+def learning_decision_expenses(db: Session, *, tenant_id: str, decisions: list[AlgorithmDecision]) -> dict[int, Expense]:
+    ids = [row.subject_id for row in decisions if row.subject_kind == "expense"]
+    return {row.id: row for row in db.scalars(
+        select(Expense).where(Expense.tenant_id == tenant_id, Expense.id.in_(ids))
+    )} if ids else {}
 
 
 @dataclass(frozen=True)

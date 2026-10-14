@@ -58,7 +58,7 @@ def test_owner_configures_model_without_env_and_never_receives_saved_secret(owne
     page = owner.get("/owner/ai-advisor")
     assert page.status_code == 200
     assert 'action="/owner/ai-advisor/settings?ledger_id=owner"' in page.text
-    form = {"provider": "openai_compat", "base_url": "https://model.example/v1", "model": "household-model",
+    form = {"connection_mode": "cloud", "base_url": "https://model.example/v1", "model": "household-model",
             "api_key": "private-model-key", "daily_call_limit": "12"}
     saved = owner.post("/owner/ai-advisor/settings", data=form)
     assert saved.status_code == 200, saved.text
@@ -115,6 +115,15 @@ def test_reading_models_does_not_save_or_send_a_saved_key_to_a_new_destination(o
         "provider": "openai_compat", "base_url": "https://different.example/v1", "advisor_action": "models"}, headers={"Accept": "application/json"})
     assert refused.status_code == 422 and "接口地址已改变" in refused.json()["error"]
     assert len(calls) == 1 and integration_file.read_bytes() == before
+    calls.clear()
+    scanned = owner.get("/owner/local-models", params={"current_url": "https://different.example/v1"})
+    assert scanned.status_code == 200 and scanned.json()["services"]
+    assert all(url.startswith("http://127.0.0.1:") and key is None for url, key in calls)
+    assert integration_file.read_bytes() == before
+    local = owner.post("/owner/ai-advisor/settings", data={"connection_mode": "local",
+        "base_url": "http://127.0.0.1:1234/v1", "model": "household-model", "clear_key": "on"})
+    assert local.status_code == 200 and not config.get_settings().budget_advisor_api_key
+    assert config.get_settings().budget_advisor_owner_confirmed is False
 
 
 def test_recognition_test_then_save_keeps_the_old_setup_until_the_picture_passes(owner, integration_file, monkeypatch):
@@ -123,7 +132,7 @@ def test_recognition_test_then_save_keeps_the_old_setup_until_the_picture_passes
     monkeypatch.setattr(setup, "list_local_llm_models", lambda _: ("tested-vision-model",))
     monkeypatch.setattr(setup, "call_local_llm_vision", lambda *args, **kwargs: {"number": "wrong"})
     form = {"ocr_provider": "local_llm", "ocr_auto_run": "on", "local_llm_base_url": "http://127.0.0.1:1234/v1",
-            "recognition_action": "test_save"}
+            "recognition_action": "test_save", "local_llm_model": "tested-vision-model"}
     failed = owner.post("/owner/settings/recognition", data=form)
     assert failed.status_code == 502 and "没有正确读出测试图片" in failed.text
     assert 'value="http://127.0.0.1:1234/v1"' in failed.text
@@ -232,10 +241,11 @@ def test_first_scheduled_fetch_claims_lease_after_currency_read(monkeypatch):
     assert calls == [{"home_currency_code": "CNY"}]
 
 
-@pytest.mark.parametrize("path", ["/owner/ai-advisor/settings", "/owner/ai-advisor/test", "/owner/fx/settings",
-                                  "/owner/settings/uploads", "/owner/settings/maintenance"])
-def test_public_requests_cannot_configure_host_integrations(client, integration_file, path):
-    response = client.post(path, headers={"Host": "api.example.com"})
+@pytest.mark.parametrize("method,path", [("POST", path) for path in (
+    "/owner/ai-advisor/settings", "/owner/ai-advisor/test", "/owner/fx/settings",
+    "/owner/settings/uploads", "/owner/settings/maintenance")] + [("GET", "/owner/local-models")])
+def test_public_requests_cannot_configure_host_integrations(client, integration_file, method, path):
+    response = client.request(method, path, headers={"Host": "api.example.com"})
     assert response.status_code == 403
     assert not integration_file.exists()
 

@@ -26,21 +26,26 @@
   {% if not recognition_view.rapidocr_available %}<p class="workspace-note">本机文字识别组件不可用，可<a href="/owner/diagnostics">查看系统诊断</a>。仍可手动录入或使用已安装的视觉模型。</p>{% endif %}
   <section id="recognition-model" aria-label="本机视觉模型连接">
   <h2>连接本机视觉模型</h2>
-  <p class="workspace-note">在模型软件中加载视觉模型并启动服务，把服务地址填在这里；然后读取模型，测试通过后再保存。</p>
+  {% with model_base_field='local_llm_base_url', model_name_field='local_llm_model' %}{% include '_local_models.html' %}{% endwith %}
+  <p class="workspace-note">请选择支持图片的模型。下方会用一张示例图片验证，成功后才用于新小票。</p>
+  <details class="workspace-disclosure"{% if error %} open{% endif %}>
+  <summary><span>其他地址或手动填写<span>用于自定义端口、服务或模型</span></span>{{ icon('chevron-right') }}</summary>
+  <div class="workspace-disclosure__body">
   <label class="workspace-field" for="local_llm_base_url">
     <span>本机接口地址</span>
     <input id="local_llm_base_url" name="local_llm_base_url" type="url" value="{{ recognition_view.form.local_llm_base_url }}" placeholder="http://127.0.0.1:1234/v1" aria-describedby="model-address-note">
     <span class="workspace-note" id="model-address-note">只连接本机环回地址，图片不会由此发往公网。</span>
   </label>
-  <button type="submit" class="btn" name="recognition_action" value="models" formaction="/owner/settings/recognition#model-checks" formnovalidate>读取可用模型</button>
   <label class="workspace-field" for="local_llm_model">
     <span>模型</span>
     <input id="local_llm_model" name="local_llm_model" type="text" value="{{ recognition_view.form.local_llm_model }}" placeholder="读取后选择，或填写模型名称" list="local-model-options" aria-describedby="model-selection-note">
     <datalist id="local-model-options">
       {% for model in recognition_models|default([]) %}<option value="{{ model }}">{% endfor %}
     </datalist>
-    <span class="workspace-note" id="model-selection-note">读取后从列表选择支持图片的模型；留空时测试服务返回的第一个模型，保存时会固定为这次通过的模型。</span>
+    <span class="workspace-note" id="model-selection-note">保存前会实际测试所选模型能否识别图片。</span>
   </label>
+  </div>
+  </details>
   <div class="workspace-model-checks" id="model-checks" tabindex="-1">
       {% if checking %}
       <section class="workspace-check-result" aria-label="本次检查结果">

@@ -44,8 +44,13 @@ def _render_advisor(
     ctx["tenant_id"] = tenant_id
     ctx["status"] = advisor_status_for_tenant(db, tenant_id=tenant_id)
     ctx["audit_rows"] = recent_audit_rows(db, tenant_id=tenant_id, limit=10) if tenant_id is not None else []
+    ctx["advisor_display_url"] = integration.display_advisor_url
     ctx["advisor_form"] = replace(form, base_url=integration.display_advisor_url(form.base_url)) if form else integration.advisor_form(settings)
+    ctx["advisor_mode"] = ctx["advisor_form"].connection_mode or (
+        "empty" if ctx["advisor_form"].provider == "empty" else
+        "local" if integration.resolve_local_llm_base_url(ctx["advisor_form"].base_url) else "cloud")
     ctx["advisor_key_configured"] = bool(settings.budget_advisor_api_key)
+    ctx["advisor_draft"] = form is not None
     ctx["advisor_saved_base_url"] = integration.display_advisor_url(settings.budget_advisor_base_url)
     ctx["advisor_saved_model"] = settings.budget_advisor_model
     ctx["advisor_connection_revision"] = integration.advisor_connection_revision(settings)
@@ -70,11 +75,14 @@ def owner_ai_advisor_settings_post(
     provider: str = Form("empty"), base_url: str = Form(""), model: str = Form(""),
     api_key: str = Form(""), key_action: str = Form("auto"), clear_key: bool = Form(False),
     advisor_action: str = Form("save"),
+    connection_mode: str = Form(""),
     timeout_seconds: str = Form("60"), min_interval_seconds: str = Form("60"), daily_call_limit: str = Form("50"),
     _local: None = LocalOnly, db: Session = Depends(get_db),
 ) -> Response:
     svc.resolve_console_ledger_scope(db, request.query_params.get("ledger_id"))
-    form = integration.AdvisorSettingsForm(provider, base_url, model, timeout_seconds, min_interval_seconds, daily_call_limit)
+    if connection_mode:
+        provider = "empty" if connection_mode == "empty" else "openai_compat"
+    form = integration.AdvisorSettingsForm(provider, base_url, model, timeout_seconds, min_interval_seconds, daily_call_limit, connection_mode)
     key_action = "clear" if clear_key else key_action
     try:
         if advisor_action == "models":

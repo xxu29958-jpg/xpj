@@ -1,7 +1,7 @@
 """v1.1 PR-3: OpenAiCompatBudgetAdvisor — HTTP transport, response parse,
 fail-closed semantics, guard integration.
 
-These tests use ``unittest.mock`` to stub ``urllib.request.urlopen`` so
+These tests use ``unittest.mock`` to stub ``urllib.request.OpenerDirector.open`` so
 the suite never actually opens a socket. The advisor's contract is:
 
 - On success: parse OpenAI Chat Completions response → BudgetAdvice.
@@ -99,7 +99,7 @@ def test_advise_parses_openai_response_into_advice() -> None:
     }
     body_bytes = json.dumps(response_payload, ensure_ascii=False).encode("utf-8")
 
-    with patch("app.services.budget_advisor_service._providers.request.urlopen") as mock_urlopen:
+    with patch("app.services.budget_advisor_service._providers.request.OpenerDirector.open") as mock_urlopen:
         # urlopen used as context manager → __enter__ returns a file-like
         mock_urlopen.return_value.__enter__.return_value = BytesIO(body_bytes)
         advice = _advisor().advise(_inputs())
@@ -120,7 +120,7 @@ def test_advise_handles_response_wrapped_in_markdown_fence() -> None:
     response_payload = {"choices": [{"message": {"content": fenced}}]}
     body_bytes = json.dumps(response_payload).encode("utf-8")
 
-    with patch("app.services.budget_advisor_service._providers.request.urlopen") as mock_urlopen:
+    with patch("app.services.budget_advisor_service._providers.request.OpenerDirector.open") as mock_urlopen:
         mock_urlopen.return_value.__enter__.return_value = BytesIO(body_bytes)
         advice = _advisor().advise(_inputs())
 
@@ -135,7 +135,7 @@ def test_advise_handles_response_wrapped_in_markdown_fence() -> None:
 
 
 def test_advise_returns_none_on_http_error() -> None:
-    with patch("app.services.budget_advisor_service._providers.request.urlopen") as mock_urlopen:
+    with patch("app.services.budget_advisor_service._providers.request.OpenerDirector.open") as mock_urlopen:
         mock_urlopen.side_effect = error.HTTPError(
             "http://x", 500, "Server Error", {}, BytesIO(b"upstream down")
         )
@@ -145,7 +145,7 @@ def test_advise_returns_none_on_http_error() -> None:
 
 def test_http_error_body_is_not_exposed_in_app_error() -> None:
     advisor = _advisor()
-    with patch("app.services.budget_advisor_service._providers.request.urlopen") as mock_urlopen:
+    with patch("app.services.budget_advisor_service._providers.request.OpenerDirector.open") as mock_urlopen:
         mock_urlopen.side_effect = error.HTTPError(
             "http://x",
             500,
@@ -162,7 +162,7 @@ def test_http_error_body_is_not_exposed_in_app_error() -> None:
 
 
 def test_advise_returns_none_on_transport_error() -> None:
-    with patch("app.services.budget_advisor_service._providers.request.urlopen") as mock_urlopen:
+    with patch("app.services.budget_advisor_service._providers.request.OpenerDirector.open") as mock_urlopen:
         mock_urlopen.side_effect = error.URLError("dns down")
         advice = _advisor().advise(_inputs())
     assert advice is None
@@ -172,7 +172,7 @@ def test_provider_response_size_cap_returns_none() -> None:
     response_bytes = b'{"choices":[{"message":{"content":"' + (
         b"x" * MAX_PROVIDER_RESPONSE_BYTES
     ) + b'"}}]}'
-    with patch("app.services.budget_advisor_service._providers.request.urlopen") as mock_urlopen:
+    with patch("app.services.budget_advisor_service._providers.request.OpenerDirector.open") as mock_urlopen:
         mock_urlopen.return_value.__enter__.return_value = BytesIO(response_bytes)
         advice = _advisor().advise(_inputs())
 
@@ -182,7 +182,7 @@ def test_provider_response_size_cap_returns_none() -> None:
 def test_advise_returns_none_on_malformed_json() -> None:
     response_payload = {"choices": [{"message": {"content": "not json at all"}}]}
     body_bytes = json.dumps(response_payload).encode("utf-8")
-    with patch("app.services.budget_advisor_service._providers.request.urlopen") as mock_urlopen:
+    with patch("app.services.budget_advisor_service._providers.request.OpenerDirector.open") as mock_urlopen:
         mock_urlopen.return_value.__enter__.return_value = BytesIO(body_bytes)
         advice = _advisor().advise(_inputs())
     assert advice is None
@@ -191,7 +191,7 @@ def test_advise_returns_none_on_malformed_json() -> None:
 def test_advise_returns_none_on_unexpected_provider_response_shape() -> None:
     # Missing "choices" entirely.
     body_bytes = json.dumps({"error": "rate limited"}).encode("utf-8")
-    with patch("app.services.budget_advisor_service._providers.request.urlopen") as mock_urlopen:
+    with patch("app.services.budget_advisor_service._providers.request.OpenerDirector.open") as mock_urlopen:
         mock_urlopen.return_value.__enter__.return_value = BytesIO(body_bytes)
         advice = _advisor().advise(_inputs())
     assert advice is None
@@ -208,7 +208,7 @@ def test_advise_sends_only_allowed_top_level_keys() -> None:
     response_payload = {"choices": [{"message": {"content": json.dumps({"summary": "x", "suggestions": [], "confidence": 0.5})}}]}
     response_bytes = json.dumps(response_payload).encode("utf-8")
 
-    def fake_urlopen(req, timeout):  # noqa: ARG001
+    def fake_urlopen(self, req, timeout):  # noqa: ARG001
         captured["body"] = req.data
         # Capture sent payload then return a stub response.
         class _Resp:
@@ -220,7 +220,7 @@ def test_advise_sends_only_allowed_top_level_keys() -> None:
 
         return _Resp()
 
-    with patch("app.services.budget_advisor_service._providers.request.urlopen", fake_urlopen):
+    with patch("app.services.budget_advisor_service._providers.request.OpenerDirector.open", fake_urlopen):
         _advisor().advise(_inputs())
 
     body = json.loads(captured["body"].decode("utf-8"))

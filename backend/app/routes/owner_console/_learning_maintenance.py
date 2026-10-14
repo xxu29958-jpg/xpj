@@ -27,19 +27,18 @@ from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
-from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.error_reporting import retain_handled_error
-from app.models import Expense
 from app.routes.owner_console._shared import LocalOnly, _base, templates
 from app.services import owner_console_service as svc
 from app.services.learning_service import (
     ALGORITHM_TYPES,
     find_decision_by_public_id,
     get_status_overview,
+    learning_decision_expenses,
     list_recent_active_decisions,
     run_full_maintenance,
     set_decision_status,
@@ -88,10 +87,8 @@ def _render_maintenance(
     ctx["error_decision_public_id"] = error_decision_public_id
     ctx["overview"] = get_status_overview(db, tenant_id=selected.ledger_id) if selected else None
     ctx["active_decisions"] = _recent_active_decisions(db, tenant_id=selected.ledger_id) if selected else []
-    ids = [row.subject_id for row in ctx["active_decisions"] if row.subject_kind == "expense"]
-    ctx["decision_expenses"] = {row.id: row for row in db.scalars(
-        select(Expense).where(Expense.tenant_id == selected.ledger_id, Expense.id.in_(ids))
-    )} if selected and ids else {}
+    ctx["decision_expenses"] = learning_decision_expenses(
+        db, tenant_id=selected.ledger_id, decisions=ctx["active_decisions"]) if selected else {}
     ctx["decision_summaries"] = {row.id: _decision_summary(row) for row in ctx["active_decisions"]}
     ctx["message"] = {"dismissed": "建议已处理，当前待采纳列表已更新。账目和原件保持不变。",
                       "cleaned": "本次清理已完成，数量和结果已更新。账目和原件保持不变。"}.get(request.query_params.get("result"))

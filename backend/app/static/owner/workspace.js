@@ -20,6 +20,72 @@
         }
     }, true);
 
+    function localSelection(picker) {
+        var form = picker.closest("form");
+        var model = form.elements[picker.dataset.modelField].value;
+        var base = form.elements[picker.dataset.baseField].value;
+        picker.querySelector("[data-model-selection]").textContent = model ? "当前选择：" + model + " · " + base : "尚未选择模型。";
+        if (form.elements.clear_key && form.elements.clear_key.checked) {
+            picker.querySelector("[data-model-selection]").textContent += " 原 Key 不会用于所选服务，保存后清除。";
+        }
+    }
+    async function scanLocalModels(picker) {
+        var form = picker.closest("form");
+        var button = picker.querySelector("[data-scan-models]");
+        var status = picker.querySelector("[data-scan-status]");
+        var select = picker.querySelector("[data-discovered-model]");
+        if (button.disabled) return;
+        picker.dataset.scanned = "true";
+        button.disabled = true;
+        select.disabled = true;
+        status.textContent = "正在查找本机模型服务…";
+        try {
+            var response = await fetch("/owner/local-models?" + new URLSearchParams({current_url: form.elements[picker.dataset.baseField].value}));
+            if (!response.ok) throw new Error("discovery failed");
+            var payload = await response.json();
+            select.replaceChildren(new Option("请选择模型", ""));
+            payload.services.forEach(function (service) {
+                var group = document.createElement("optgroup");
+                group.label = service.base_url;
+                service.models.forEach(function (model) {
+                    var option = new Option(model, model);
+                    option.dataset.baseUrl = service.base_url;
+                    option.selected = model === form.elements[picker.dataset.modelField].value && service.base_url === form.elements[picker.dataset.baseField].value;
+                    group.appendChild(option);
+                });
+                select.appendChild(group);
+            });
+            select.disabled = !payload.services.length;
+            status.textContent = payload.services.length ? "已找到 " + (select.options.length - 1) + " 个模型，请选择要使用的模型。" : "未发现可用模型。请在 LM Studio 或 Ollama 中启动模型服务后重新扫描；使用其他端口时，可在下方填写地址再扫描。";
+        } catch (_) {
+            status.textContent = "扫描未完成，请重试。已填写的内容仍保留。";
+        } finally {
+            button.disabled = false;
+            button.textContent = "重新扫描";
+        }
+    }
+    document.querySelectorAll("[data-local-models]").forEach(function (picker) {
+        var form = picker.closest("form");
+        picker.querySelector("[data-scan-models]").addEventListener("click", function () { scanLocalModels(picker); });
+        picker.querySelector("[data-discovered-model]").addEventListener("change", function (event) {
+            var option = event.target.selectedOptions[0];
+            if (!option.value) return;
+            var base = form.elements[picker.dataset.baseField];
+            if (base.value !== option.dataset.baseUrl && form.elements.api_key) {
+                form.elements.api_key.value = "";
+                if (form.elements.clear_key) form.elements.clear_key.checked = true;
+            }
+            base.value = option.dataset.baseUrl;
+            form.elements[picker.dataset.modelField].value = option.value;
+            base.dispatchEvent(new Event("input", {bubbles: true}));
+        });
+        form.addEventListener("input", function () { localSelection(picker); });
+        localSelection(picker);
+    });
+    function discoverOnce(picker) {
+        if (!picker.dataset.scanned) scanLocalModels(picker);
+    }
+
     var recognition = document.querySelector("[data-recognition-setup]");
     if (recognition) {
         function showRecognitionFields() {
@@ -27,6 +93,7 @@
                 return recognition.elements[name].value === "local_llm";
             });
             document.getElementById("recognition-model").hidden = !usesModel;
+            if (usesModel) discoverOnce(recognition.querySelector("[data-local-models]"));
             document.getElementById("ocr_auto_run").closest("label").hidden = recognition.elements.ocr_provider.value === "empty";
             var save = document.getElementById("recognition-save");
             save.value = usesModel ? "test_save" : "save";
@@ -39,13 +106,24 @@
     var advisor = document.querySelector("[data-advisor-setup]");
     if (advisor) {
         function showAdvisorFields() {
-            var off = advisor.elements.provider.value === "empty";
+            var mode = advisor.elements.connection_mode.value;
+            var off = mode === "empty";
             var connection = document.getElementById("advisor-connection");
             connection.hidden = off;
-            connection.querySelectorAll("input, button").forEach(function (field) { field.disabled = off; });
+            connection.querySelectorAll("input, button, select").forEach(function (field) { field.disabled = off; });
+            var picker = connection.querySelector("[data-local-models]");
+            picker.hidden = mode !== "local";
+            connection.querySelector("[data-cloud-only]").hidden = mode !== "cloud";
+            var manual = document.getElementById("advisor-manual-connection");
+            manual.querySelector("summary").hidden = mode === "cloud";
+            if (mode === "cloud") manual.open = true;
+            if (mode === "local") discoverOnce(picker);
             document.getElementById("advisor-save-label").textContent = off ? "保存关闭设置" : "保存连接，下一步";
         }
-        advisor.elements.provider.addEventListener("change", showAdvisorFields);
+        advisor.elements.connection_mode.addEventListener("change", function () {
+            document.getElementById("advisor-manual-connection").open = advisor.elements.connection_mode.value === "cloud";
+            showAdvisorFields();
+        });
         showAdvisorFields();
         advisor.addEventListener("input", function () {
             var savedStep = document.querySelector("[data-advisor-saved-step]");
@@ -65,7 +143,7 @@
             try {
                 var response = await fetch(advisor.action, {method: "POST", body: draft, headers: {Accept: "application/json"}});
                 var payload = await response.json();
-                if (["base_url", "api_key", "clear_key"].some(function (name) {
+                if (["connection_mode", "base_url", "api_key", "clear_key"].some(function (name) {
                     return draft.get(name) !== new FormData(advisor).get(name);
                 })) {
                     result.textContent = "连接内容已修改，请重新读取模型。";
@@ -80,13 +158,16 @@
                         option.value = name;
                         options.appendChild(option);
                     });
-                    if (!advisor.elements.model.value && payload.models.length === 1) advisor.elements.model.value = payload.models[0];
+                    if (!advisor.elements.model.value && payload.models.length === 1) {
+                        advisor.elements.model.value = payload.models[0];
+                        advisor.elements.model.dispatchEvent(new Event("input", {bubbles: true}));
+                    }
                     advisor.elements.model.focus();
                 }
             } catch (_) {
                 result.textContent = "未能读取模型。输入仍保留，请重试或直接填写模型名称。";
             } finally {
-                button.disabled = advisor.elements.provider.value === "empty";
+                button.disabled = advisor.elements.connection_mode.value === "empty";
             }
         });
         var step = document.querySelector("[data-advisor-step]").dataset.advisorStep;

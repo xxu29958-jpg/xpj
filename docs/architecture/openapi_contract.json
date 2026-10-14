@@ -2125,6 +2125,11 @@
             "title": "Clear Key",
             "type": "boolean"
           },
+          "connection_mode": {
+            "default": "",
+            "title": "Connection Mode",
+            "type": "string"
+          },
           "daily_call_limit": {
             "default": "50",
             "title": "Daily Call Limit",
@@ -51073,6 +51078,48 @@
           }
         },
         "summary": "Owner Ledger Unarchive Post",
+        "tags": [
+          "owner-console"
+        ]
+      }
+    },
+    "/owner/local-models": {
+      "get": {
+        "operationId": "owner_local_models_get_owner_local_models_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "current_url",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 2048,
+              "title": "Current Url",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Owner Local Models Get",
         "tags": [
           "owner-console"
         ]

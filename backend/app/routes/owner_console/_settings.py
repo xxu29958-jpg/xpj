@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
+from fastapi.responses import HTMLResponse, JSONResponse
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -17,6 +17,7 @@ from app.database import get_db
 from app.error_reporting import retain_handled_error
 from app.routes.owner_console._shared import LocalOnly, _base, templates
 from app.services import (
+    integration_settings_service,
     owner_console_service,
     recognition_setup_service,
     route_inspector_service,
@@ -24,6 +25,11 @@ from app.services import (
 )
 
 router = APIRouter(prefix="/owner", tags=["owner-console"])
+
+
+@router.get("/local-models", response_class=JSONResponse)
+def owner_local_models_get(current_url: str = Query("", max_length=2048), _local: None = LocalOnly) -> JSONResponse:
+    return JSONResponse({"services": integration_settings_service.discover_local_models(current_url)})
 
 
 def _settings_ctx(
@@ -100,6 +106,8 @@ def _post_recognition_settings(
     )
     try:
         if recognition_action == "test_save":
+            if not form.local_llm_model.strip():
+                raise runtime_settings_service._invalid("请先扫描并选择要使用的模型，也可在手动填写中输入模型名称。")
             runtime_settings_service._validated_recognition(form)
             check = recognition_setup_service.inspect_connection(form, action="test")
             form = replace(form, local_llm_model=check.models[0])
