@@ -85,7 +85,7 @@ def test_app_window_uses_a_dedicated_profile_and_returns_process_handle(
     assert "--edge-skip-compat-layer-relaunch" in captured["command"]
     assert "--disable-background-mode" in captured["command"]
     assert f"--app={bootstrap_url}" in captured["command"]
-    assert "--window-size=1180,760" in captured["command"]
+    assert "--start-maximized" in captured["command"]
     assert instance_secret not in " ".join(captured["command"])
     assert instance_secret not in str(profile)
     assert captured["stdout"] is desktop_shell.subprocess.DEVNULL
