@@ -1,10 +1,7 @@
 package com.ticketbox.data.remote
 
-import android.net.Network
 import java.net.InetAddress
-import java.net.Socket
 import java.net.SocketException
-import javax.net.SocketFactory
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -35,38 +32,6 @@ class ApiClientNetworkResilienceTest {
         assertFalse(shouldRetryGetIOException(method = "POST", attempt = 0, maxRetries = 2))
         assertFalse(shouldRetryGetIOException(method = "PATCH", attempt = 0, maxRetries = 2))
         assertFalse(shouldRetryGetIOException(method = "DELETE", attempt = 0, maxRetries = 2))
-    }
-
-    @Test
-    fun dynamicSocketFactoryFallsBackToDefaultFactoryWhenNoBypassNetworkExists() {
-        val defaultFactory = CountingSocketFactory()
-        val factory = DynamicNetworkSocketFactory(networkProvider = null, defaultFactory = defaultFactory)
-
-        factory.createSocket()
-
-        assertEquals(1, defaultFactory.createdSockets)
-    }
-
-    @Test
-    fun dynamicRouteHelpersUseActiveNonVpnRouteWhenAvailable() {
-        val ipv6 = InetAddress.getByName("2001:db8::20")
-        val ipv4 = InetAddress.getByName("203.0.113.20")
-        val defaultFactory = CountingSocketFactory()
-        val bypassFactory = CountingSocketFactory()
-        val routeProvider = FakeBackendNetworkRouteProvider(
-            addresses = listOf(ipv6, ipv4),
-            socketFactory = bypassFactory,
-        )
-        val dns = DynamicNetworkDns(routeProvider)
-        val socketFactory = DynamicNetworkSocketFactory(routeProvider, defaultFactory)
-
-        val resolved = dns.lookup("api.zen70.cn")
-        socketFactory.createSocket()
-
-        assertEquals(listOf(ipv4, ipv6), resolved)
-        assertEquals(listOf("api.zen70.cn"), routeProvider.lookups)
-        assertEquals(0, defaultFactory.createdSockets)
-        assertEquals(1, bypassFactory.createdSockets)
     }
 
     @Test
@@ -130,54 +95,5 @@ class ApiClientNetworkResilienceTest {
         val tinyBase = 1L
         val tinyAttempt = retryBackoffMs(attempt = 0, baseDelayMs = tinyBase, random = { 0.0 })
         assertTrue(tinyAttempt >= 1L)
-    }
-}
-
-private class FakeBackendNetworkRouteProvider(
-    private val addresses: List<InetAddress>? = null,
-    private val socketFactory: SocketFactory? = null,
-) : BackendNetworkRouteProvider {
-    val lookups = mutableListOf<String>()
-
-    override fun activeNonVpnLookup(hostname: String): List<InetAddress>? {
-        lookups += hostname
-        return addresses
-    }
-
-    override fun activeNonVpnSocketFactory(): SocketFactory? = socketFactory
-
-    override fun validatedNonVpnNetwork(): Network? = null
-
-    override fun disableNonVpnRouting() = Unit
-}
-
-private class CountingSocketFactory : SocketFactory() {
-    var createdSockets: Int = 0
-        private set
-
-    override fun createSocket(): Socket {
-        createdSockets += 1
-        return Socket()
-    }
-
-    override fun createSocket(host: String, port: Int): Socket {
-        return createSocket()
-    }
-
-    override fun createSocket(host: String, port: Int, localHost: InetAddress, localPort: Int): Socket {
-        return createSocket()
-    }
-
-    override fun createSocket(host: InetAddress, port: Int): Socket {
-        return createSocket()
-    }
-
-    override fun createSocket(
-        address: InetAddress,
-        port: Int,
-        localAddress: InetAddress,
-        localPort: Int,
-    ): Socket {
-        return createSocket()
     }
 }

@@ -97,7 +97,8 @@ EXEMPT_FILES = (
 # as-is (the override made the already-translucent midnight token opaque):
 # two literals fewer.
 # The insight filter now uses the shared chip, retiring its local border alpha.
-BASELINE = 62
+# Retiring the unused CardSkeleton also removes its local surface alpha.
+BASELINE = 61
 
 # ``.copy(alpha = <number>)`` — number is a decimal/int float literal (optional
 # trailing ``f``). Identifier args (AppAlpha.heavy / resolvedAlpha) are NOT

@@ -22,13 +22,6 @@ class MemberDebtLabelsTest {
     }
 
     @Test
-    fun memberDirectionMapsViewerRole() {
-        assertEquals(R.string.debt_member_direction_i_owe, memberDebtDirectionRes(viewerIsDebtor = true))
-        assertEquals(R.string.debt_member_direction_owed_to_me, memberDebtDirectionRes(viewerIsDebtor = false))
-        assertEquals(R.string.debt_member_direction_third_party, memberDebtDirectionRes(viewerIsDebtor = null))
-    }
-
-    @Test
     fun headlineThirdPartyUsesNeutralVoice() {
         val open = memberDebtHeadlineRes(null, DebtLinkStatuses.OPEN, isForgiven = false, ratio = 0.4f)
         val cleared = memberDebtHeadlineRes(null, DebtLinkStatuses.CLEARED, isForgiven = false, ratio = 1f)

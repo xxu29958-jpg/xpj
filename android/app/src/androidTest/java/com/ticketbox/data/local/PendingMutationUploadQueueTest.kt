@@ -53,7 +53,6 @@ class PendingMutationUploadQueueTest {
             assertFalse(failed.blocksFollowing)
             assertEquals(originals[1].idempotencyKey, failed.idempotencyKey)
             assertEquals(originals[1].payload, failed.payload)
-            assertFalse(dao.hasUnresolvedRowForTarget(OWNER, LEDGER, TARGET, UNRESOLVED))
         }
     }
 
@@ -72,9 +71,6 @@ class PendingMutationUploadQueueTest {
 
             assertEquals(listOf(free), runnable(fixture.dao).map { it.id })
             assertTrue(fixture.dao.allRows().single { it.id == oldIds[0] }.blocksFollowing)
-            assertTrue(fixture.dao.hasUnresolvedRowForTarget(OWNER, LEDGER, old.targetId, UNRESOLVED))
-            assertTrue(fixture.dao.hasUnresolvedRowForTarget(OWNER, LEDGER, conflict.targetId, UNRESOLVED))
-            assertTrue(fixture.dao.hasUnresolvedRowForTarget(OWNER, LEDGER, busy.targetId, UNRESOLVED))
         }
     }
 

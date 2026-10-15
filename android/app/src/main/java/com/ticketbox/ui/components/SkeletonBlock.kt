@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -97,41 +96,5 @@ fun ListItemSkeleton(
         SkeletonBlock(
             modifier = Modifier.width(64.dp).height(16.dp),
         )
-    }
-}
-
-/**
- * 卡片骨架：卡片标题条 + 多行内容条。
- *
- * 用于 Stats / Dashboard 类卡片堆叠的页面加载态。
- */
-@Composable
-fun CardSkeleton(
-    modifier: Modifier = Modifier,
-    lines: Int = 3,
-) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadius.medium))
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.6f))
-            .padding(AppSpacing.cardPaddingSmall),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-    ) {
-        // Title bar
-        SkeletonBlock(
-            modifier = Modifier.fillMaxWidth(fraction = 0.4f).height(18.dp),
-        )
-        Spacer(modifier = Modifier.height(2.dp))
-        // Hero number (amount placeholder)
-        SkeletonBlock(
-            modifier = Modifier.fillMaxWidth(fraction = 0.6f).height(28.dp),
-        )
-        // Content lines
-        repeat(lines) {
-            SkeletonBlock(
-                modifier = Modifier.fillMaxWidth(fraction = (0.5f + it * 0.12f).coerceAtMost(0.95f)).height(12.dp),
-            )
-        }
     }
 }

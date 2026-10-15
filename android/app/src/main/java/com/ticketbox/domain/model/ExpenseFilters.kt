@@ -5,8 +5,6 @@ import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.time.YearMonth
 import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import kotlin.math.roundToInt
 
 private val TAG_SPLIT_REGEX = Regex("[,，;；\\n]+")
 
@@ -17,37 +15,6 @@ data class ExpenseFilterCriteria(
     val query: String = "",
     val zoneId: ZoneId = ZoneId.systemDefault(),
 )
-
-fun filterConfirmedExpenses(
-    expenses: List<Expense>,
-    criteria: ExpenseFilterCriteria = ExpenseFilterCriteria(),
-): List<Expense> {
-    val cleanMonth = criteria.month.trim()
-    val cleanCategory = criteria.category.trim()
-    val cleanTag = criteria.tag.trim()
-    val cleanTagKey = cleanTag.lowercase()
-    val cleanQuery = criteria.query.trim().lowercase()
-    val targetMonth = cleanMonth
-        .takeIf { it.isNotBlank() }
-        ?.let { value -> runCatching { YearMonth.parse(value) }.getOrNull() }
-    if (cleanMonth.isNotBlank() && targetMonth == null) {
-        return emptyList()
-    }
-    return expenses.filter { expense ->
-        val expenseMonth = expense.ledgerLocalDate(criteria.zoneId)?.let { YearMonth.from(it) }
-        val monthMatched = targetMonth == null || expenseMonth == targetMonth
-        val categoryMatched = cleanCategory.isBlank() || expense.category == cleanCategory
-        val tagMatched = cleanTag.isBlank() || expense.normalizedTagNames().any { it.lowercase() == cleanTagKey }
-        val queryMatched = cleanQuery.isBlank() || listOfNotNull(
-            expense.merchant,
-            expense.category,
-            expense.note,
-            expense.tags,
-            expense.source,
-        ).any { it.lowercase().contains(cleanQuery) }
-        monthMatched && categoryMatched && tagMatched && queryMatched
-    }
-}
 
 fun expenseLedgerMonth(
     expense: Expense,

@@ -14,7 +14,6 @@ import kotlinx.coroutines.flow.Flow
  * selection. The engine can select again after a predecessor settles.
  * Shared SQL predicates exclude blocking siblings before LIMIT and make
  * [markInFlightIfPending] recheck that same ordering at the actual claim.
- * [nextPendingBatch] remains a plain read; it does not authorize dispatch.
  *
  * [insert] / [insertBatch] persist before the repository schedules work;
  * [markDone] commits a receipt with its delivery status. Explicit recovery
@@ -122,7 +121,7 @@ interface PendingMutationDao {
      * [codex finding P1#2] fix: without the ``status = :fromStatus``
      * predicate, two concurrent drains (two WorkManager workers, a
      * UI-triggered drain plus a periodic one, etc) both read the
-     * same PENDING row from ``nextPendingBatch`` and both call
+     * same PENDING row from ``nextRunnableBatch`` and both call
      * ``markInFlight``, then both fire the ApiService request.
      */
     @Query(
@@ -546,88 +545,6 @@ interface PendingMutationDao {
     ): List<PendingMutationEntity>
 
     /**
-     * Plain "PENDING ordered by createdAt" pull. Pre-round-3 entry
-     * point — kept for tests and for the recovery sweep code path
-     * that doesn't care about target dedup. Drain engine uses
-     * [nextRunnableBatch] instead.
-     */
-    @Query(
-        """
-        SELECT * FROM pending_mutations
-        WHERE ownerKey = :ownerKey
-          AND ledgerId = :ledgerId
-          AND status = :pendingStatus
-        ORDER BY createdAt ASC, id ASC
-        LIMIT :limit
-        """,
-    )
-    suspend fun nextPendingBatch(
-        ownerKey: String,
-        ledgerId: String,
-        pendingStatus: String,
-        limit: Int,
-    ): List<PendingMutationEntity>
-
-    /**
-     * True if another row for the same target is currently
-     * ``IN_FLIGHT``. PR-2g's drain worker calls this to enforce
-     * "same target_id serial" without holding a global drain lock.
-     *
-     * Note: kept for backward compatibility; PR-2g.1 codex round-2
-     * found this is insufficient for serial guarantees (a CONFLICT
-     * or FAILED row also blocks same-target progress). Drain uses
-     * [hasUnresolvedRowForTarget] instead.
-     */
-    @Query(
-        """
-        SELECT COUNT(*) > 0 FROM pending_mutations
-        WHERE ownerKey = :ownerKey
-          AND ledgerId = :ledgerId
-          AND targetId = :targetId
-          AND status = :inFlightStatus
-        """,
-    )
-    suspend fun isTargetBusy(
-        ownerKey: String,
-        ledgerId: String,
-        targetId: String,
-        inFlightStatus: String,
-    ): Boolean
-
-    /**
-     * True if any non-terminal row for [targetId] exists — IN_FLIGHT
-     * (another drain already running it), CONFLICT (user hasn't
-     * picked "keep mine / drop mine" yet), or FAILED with its
-     * blocking flag still set while awaiting retry or dismissal.
-     *
-     * [codex round-2 finding P1#1] fix: dequeue must NOT advance
-     * past an unresolved row for the same target. Otherwise:
-     *
-     *   A (CONFLICT, user hasn't decided) → B (PENDING)
-     *
-     * the old logic ran B anyway because only ``IN_FLIGHT`` was
-     * checked. B then either fake-conflicts (if A's resolution
-     * was DropMine) or applies on top of a state the user hasn't
-     * confirmed (if KeepMine).
-     */
-    @Query(
-        """
-        SELECT COUNT(*) > 0 FROM pending_mutations AS sib
-        WHERE sib.ownerKey = :ownerKey
-          AND sib.ledgerId = :ledgerId
-          AND sib.targetId = :targetId
-          AND sib.status IN (:unresolvedStatuses)
-          AND $OUTBOX_FAILED_ROW_BLOCKS
-        """,
-    )
-    suspend fun hasUnresolvedRowForTarget(
-        ownerKey: String,
-        ledgerId: String,
-        targetId: String,
-        unresolvedStatuses: Collection<String>,
-    ): Boolean
-
-    /**
      * Recovery sweep: rows stuck in IN_FLIGHT past [staleCutoffIso]
      * are pushed back to PENDING. Used at drain start to recover
      * from worker cancellations / process death that left a row
@@ -773,13 +690,6 @@ interface PendingMutationDao {
     /** Attach explicit period-payment origin onto an existing CreateExpense payload. */
     @Query("UPDATE pending_mutations SET payload = :payload WHERE id = :id AND type = :type")
     suspend fun replacePayload(id: Long, type: String, payload: String): Int
-
-    /**
-     * Delete by id. Used when the user picks "drop mine" on a
-     * conflict, or when cleanup runs.
-     */
-    @Query("DELETE FROM pending_mutations WHERE id = :id")
-    suspend fun deleteById(id: Long): Int
 
     /** One bound Stop; the repository holds dispatch and binding leases across this statement. */
     @Query(

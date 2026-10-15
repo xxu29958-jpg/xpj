@@ -362,10 +362,6 @@ def delete_relative_upload(relative_path: str | None) -> None:
     candidate.unlink(missing_ok=True)
 
 
-def delete_saved_upload(saved_upload: SavedUpload) -> None:
-    delete_relative_upload(saved_upload.relative_path)
-
-
 def _tenant_upload_dir(tenant_id: str) -> Path:
     return (get_settings().upload_dir / tenant_id).resolve()
 

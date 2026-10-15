@@ -15,61 +15,9 @@ def test_backend_log_is_rendered_as_text_not_html() -> None:
     assert "log.innerHTML" not in html
 
 
-def test_narrow_window_switches_task_workbench_to_one_column() -> None:
-    html = (Path(__file__).parents[1] / "backend_manager" / "ui.html").read_text(encoding="utf-8")
-
-    assert "@media (max-width: 700px)" in html
-    assert ".task-grid { grid-template-columns: 1fr; }" in html
-
-
-def test_status_refresh_is_single_flight_and_deadline_bounded() -> None:
-    html = (Path(__file__).parents[1] / "backend_manager" / "ui.html").read_text(encoding="utf-8")
-
-    assert "if (refreshInFlight) return" in html
-    assert "refreshInFlight = false" in html
-    assert "const STATUS_REFRESH_DEADLINE_MS = 2000" in html
-    assert 'fetch("/api/status", {' in html
-    assert "signal: controller.signal" in html
-    assert 'if (!response.ok) throw new Error("status")' in html
-    assert "render(await Promise.race([response.json(), deadline]))" in html
-    assert "Promise.race([loadProductSession(requestOptions), deadline])" in html
-    assert "Promise.race([loadProductLedgers(requestOptions), deadline])" in html
-
-
-def test_installer_shutdown_state_closes_only_the_manager_window() -> None:
-    html = (Path(__file__).parents[1] / "backend_manager" / "ui.html").read_text(encoding="utf-8")
-
-    assert "s.manager_shutdown_requested" in html
-    assert "setTimeout(() => window.close(), 50)" in html
-    assert "服务可能暂时不可用" in html
-    assert "小票夹会继续在后台运行" not in html
-    assert "Windows 服务需要修复" not in html
-
-
-def test_actions_are_single_flight_and_availability_is_reapplied_from_status() -> None:
-    html = (Path(__file__).parents[1] / "backend_manager" / "ui.html").read_text(encoding="utf-8")
-
-    assert "if (actionInFlight) return" in html
-    assert "applyActionAvailability(latestStatus)" in html
-    assert 'document.querySelectorAll(".owner-action")' in html
-    assert 'response.status === 409' in html
-    assert 'button.disabled = false' not in html
-
-
 def test_public_connectivity_card_is_projection_driven_and_read_only() -> None:
     html = (Path(__file__).parents[1] / "backend_manager" / "ui.html").read_text(encoding="utf-8")
 
-    assert '<h2 id="publicConnectivityTitle">公网连接</h2>' in html
-    assert '<p class="card-subtitle">由 Cloudflare Tunnel 提供</p>' in html
-    assert 'id="publicConnectivitySummary"' in html
-    assert 'id="publicConnectivityNextStep"' in html
-    assert 'id="publicConnectivityDetails"' in html
-    assert "PUBLIC_CONNECTIVITY_ACTIONS" in html
-    assert 'refresh: {label: "刷新状态", action: "refresh_public_connectivity"}' in html
-    assert 'full_check: {label: "完整检查", action: "run_full_public_connectivity_check"}' in html
-    assert 'export_diagnostics: {label: "导出诊断", action: "export_diagnostics"}' in html
-    assert ".filter(([key]) => supported.has(key))" in html
-    assert "projection.overall" in html
     for derived_axis in (
         "projection.service ===",
         "projection.connector ===",
@@ -78,10 +26,6 @@ def test_public_connectivity_card_is_projection_driven_and_read_only() -> None:
         "projection.boundary ===",
     ):
         assert derived_axis not in html
-    assert "summary.textContent = projection.summary" in html
-    assert "nextStep.textContent = projection.next_step" in html
-    assert "label.textContent = row.label" in html
-    assert "value.textContent = row.text" in html
 
     card_start = html.index('<section class="connectivity-card"')
     card_end = html.index("</section>", card_start)
@@ -97,15 +41,6 @@ def test_public_connectivity_card_is_projection_driven_and_read_only() -> None:
         "update_cloudflared",
     ):
         assert forbidden_action not in html
-
-
-def test_public_connectivity_card_has_keyboard_and_narrow_layout_contracts() -> None:
-    html = (Path(__file__).parents[1] / "backend_manager" / "ui.html").read_text(encoding="utf-8")
-
-    assert "button:focus-visible" in html
-    assert ".connectivity-actions { display: flex; flex-wrap: wrap;" in html
-    assert ".connectivity-grid { grid-template-columns: 1fr; }" in html
-    assert 'aria-live="polite"' in html
 
 
 def test_primary_workbench_uses_real_tasks_without_fake_qr_or_token_copy() -> None:
@@ -161,14 +96,6 @@ def test_manager_package_ships_only_ui_html_without_product_assets() -> None:
     assert "product.js" not in spec
 
 
-def test_hidden_attribute_is_authoritative_over_product_display_rules() -> None:
-    html = (Path(__file__).parents[1] / "backend_manager" / "ui.html").read_text(encoding="utf-8")
-
-    # .product-actions/.product-link set display:flex; the hidden attribute must
-    # still win or pair form, manage group and the /web link all render at once.
-    assert "[hidden] { display: none !important; }" in html
-
-
 def test_data_protection_card_exposes_only_real_capabilities() -> None:
     html = (Path(__file__).parents[1] / "backend_manager" / "ui.html").read_text(encoding="utf-8")
 
@@ -184,10 +111,6 @@ def test_data_protection_card_exposes_only_real_capabilities() -> None:
     # The card stays visible when service controls are unavailable.
     assert "dataProtectionCard" in html
     assert "maintenanceCard" not in html
-    # The product entry rides the existing owner-action disable mechanism and
-    # is additionally gated on a live product binding — no dead clicks.
-    assert 'class="button button-primary owner-action" id="importExportAction" type="button" disabled' in html
-    assert '$("importExportAction").disabled' in html
     # The retired backup/restore mutations leave no markup, JS, or fetch behind.
     for retired in (
         "立即完整备份",

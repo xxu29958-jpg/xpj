@@ -101,7 +101,7 @@ sealed interface DispatchResult {
      * Splitting Failure / RetryableFailure is the [codex finding
      * P1#3] fix: previously a single transient network error
      * would mark the row FAILED, and FAILED rows are not picked
-     * up by ``nextPendingBatch`` so the outbox effectively
+     * up by ``nextRunnableBatch`` so the outbox effectively
      * stopped auto-replaying after one server hiccup.
      *
      * **Bounded by max_attempts (codex P1 #7)**: the engine itself caps the

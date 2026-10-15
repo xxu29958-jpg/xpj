@@ -34,7 +34,6 @@ __all__ = [
     "fetch_expense_row_version_in_status",
     "filtered_confirmed_stream",
     "get_expense",
-    "is_expense_in_status_for_tenant",
     "ledger_has_any_expense",
     "list_confirmed",
     "list_expenses_by_ids",
@@ -59,29 +58,6 @@ def ledger_has_any_expense(db: Session, tenant_id: str) -> bool:
         db.scalar(
             ledger_scoped_select(Expense, tenant_id)
             .with_only_columns(Expense.id)
-            .limit(1)
-        )
-        is not None
-    )
-
-
-def is_expense_in_status_for_tenant(
-    db: Session, *, expense_id: int, tenant_id: str, status: str
-) -> bool:
-    """Cheap predicate: does this expense exist in [status] under [tenant_id].
-
-    ADR-0038 /web undo: the pending.html banner uses this to decide whether the
-    ``?undo=<id>`` query in the URL is still meaningful (right ledger, still
-    rejected, not yet purged). Soft affordance — the atomic UPDATE in
-    ``undo_reject_expense`` is the real authority; this is the page telling
-    the truth rather than rendering a misleading "可撤销" button.
-    """
-    return (
-        db.scalar(
-            ledger_scoped_select(Expense, tenant_id)
-            .with_only_columns(Expense.id)
-            .where(Expense.id == expense_id)
-            .where(Expense.status == status)
             .limit(1)
         )
         is not None

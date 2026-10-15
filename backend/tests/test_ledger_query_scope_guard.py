@@ -32,7 +32,7 @@ LEDGER_SCOPED_MODELS = {
     "TagMutationUndoItem",
 }
 SCOPE_COLUMNS = {"tenant_id", "ledger_id"}
-SCOPE_HELPERS = {"add_ledger_scope", "ledger_filter", "ledger_scoped_select"}
+SCOPE_HELPERS = {"ledger_filter", "ledger_scoped_select"}
 ORM_QUERY_FUNCTIONS = {"delete", "select", "update"}
 
 
@@ -146,9 +146,8 @@ EXEMPTIONS: tuple[ScopeExemption, ...] = (
         reason=(
             "ADR-0038 undo: the periodic purge scheduler sweeps system-wide "
             "across all tenants, so it intentionally carries no tenant_id "
-            "predicate — only `deleted_at < retention cutoff`. The per-ledger "
-            "path uses the tenant-scoped "
-            "`purge_expired_soft_deleted_merchant_aliases` instead."
+            "predicate — only `deleted_at < retention cutoff`. Request routes "
+            "do not expose this scheduler-owned purge."
         ),
     ),
     ScopeExemption(
@@ -230,7 +229,7 @@ def test_ledger_scoped_orm_queries_are_explicitly_filtered() -> None:
         messages.extend(_format_site(site) for site in remaining)
         messages.append(
             "Add an explicit Model.tenant_id/ledger_id predicate, or use "
-            "app.ledger_scope.ledger_scoped_select/add_ledger_scope. If the "
+            "app.ledger_scope.ledger_scoped_select. If the "
             "query is intentionally global, add a narrow EXEMPTIONS entry "
             "with an occurrence count and reason."
         )

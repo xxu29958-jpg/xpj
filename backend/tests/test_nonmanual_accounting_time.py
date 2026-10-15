@@ -38,6 +38,7 @@ from app.services.csv_import_batch_service._events import _matches_fact, _same_s
 from app.services.expense_service import _ocr_facts
 from app.services.expense_service._query import _offset_stream_projection
 from app.services.ocr_service import OcrResult, apply_ocr_result
+from tests._infra.csv import parse_uploaded_csv
 
 
 def _rule(revision=3, zone="Asia/Shanghai"):
@@ -220,7 +221,7 @@ def test_real_stream_dto_export_import_preserves_complete_source_time(monkeypatc
         lineage_status="partially_refunded" if kind == "offset" else "confirmed", lineage_home_net_cents=70)
     monkeypatch.setattr(stats_service, "filtered_confirmed_stream", lambda *_a, **_k: [entry])
     csv = stats_service.export_confirmed_csv(Mock(), tenant_id="target")
-    parsed = import_service.parse_csv_preview(csv, home_currency="CNY").rows[0]
+    parsed = parse_uploaded_csv(csv, home_currency="CNY").rows[0]
     assert parsed.is_valid, parsed.error
     assert parsed.expense_time is None
     assert json.loads(parsed.event_input["accounting_time"]) == source.model_dump(mode="json")

@@ -4,7 +4,6 @@ import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import lru_cache
-from hmac import compare_digest
 from typing import TypeAlias
 
 from app.config import get_settings
@@ -20,12 +19,6 @@ class Tenant:
     name: str
     upload_token: str
     app_token: str
-
-
-@dataclass(frozen=True)
-class AdminContext:
-    tenants: tuple[Tenant, ...]
-    default_tenant: Tenant
 
 
 @dataclass(frozen=True)
@@ -143,25 +136,3 @@ def default_tenant() -> Tenant:
         if tenant.id == DEFAULT_TENANT_ID:
             return tenant
     return tenants[0]
-
-
-def tenant_from_upload_token(upload_token: str | None) -> Tenant:
-    if not upload_token:
-        raise AppError("invalid_token", status_code=401)
-    for tenant in configured_tenants():
-        if compare_digest(upload_token, tenant.upload_token):
-            return tenant
-    raise AppError("invalid_token", status_code=401)
-
-
-def tenant_from_app_token(app_token: str | None) -> Tenant:
-    if not app_token:
-        raise AppError("invalid_token", status_code=401)
-    for tenant in configured_tenants():
-        if compare_digest(app_token, tenant.app_token):
-            return tenant
-    raise AppError("invalid_token", status_code=401)
-
-
-def admin_context() -> AdminContext:
-    return AdminContext(tenants=configured_tenants(), default_tenant=default_tenant())

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import csv as csv_module
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
@@ -17,10 +16,7 @@ from app.models import CsvImportBatch, Expense
 from app.routes.web_app import _require_local as _web_require_local
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.fx_rate_provider import upsert_fx_rate
-from app.services.import_service import (
-    MAX_PREVIEW_ROWS,
-    parse_csv_preview,
-)
+from tests._infra.csv import parse_uploaded_csv
 
 
 @pytest.fixture()
@@ -48,9 +44,9 @@ def _create_pending(client: TestClient, *, identity) -> int:
 # ── service unit tests ─────────────────────────────────────────────────────
 
 
-def test_parse_csv_preview_accepts_amount_yuan() -> None:
+def test_parse_uploaded_csv_accepts_amount_yuan() -> None:
     csv = "amount_yuan,merchant,category\n12.34,Starbucks,餐饮\n"
-    preview = parse_csv_preview(csv, home_currency="CNY")
+    preview = parse_uploaded_csv(csv, home_currency="CNY")
     assert preview.valid_count == 1
     row = preview.rows[0]
     assert row.amount_cents == 1234
@@ -58,13 +54,13 @@ def test_parse_csv_preview_accepts_amount_yuan() -> None:
     assert row.category == "餐饮"
 
 
-def test_parse_csv_preview_accepts_foreign_currency_columns() -> None:
+def test_parse_uploaded_csv_accepts_foreign_currency_columns() -> None:
     csv = (
         "amount_cents,original_currency_code,original_amount_minor,"
         "exchange_rate_to_cny,exchange_rate_date,merchant,category\n"
         "0,USD,12345,7.1234,2026-05-04,Overseas Cafe,餐饮\n"
     )
-    preview = parse_csv_preview(csv, home_currency="CNY")
+    preview = parse_uploaded_csv(csv, home_currency="CNY")
     assert preview.valid_count == 1
     row = preview.rows[0]
     assert row.amount_cents == 0
@@ -81,8 +77,8 @@ def test_parse_csv_preview_accepts_foreign_currency_columns() -> None:
         "amount_cents,original_currency_code\n1234,JPY\n",
     ],
 )
-def test_parse_csv_preview_rejects_ambiguous_foreign_amount(csv: str) -> None:
-    preview = parse_csv_preview(csv, home_currency="CNY")
+def test_parse_uploaded_csv_rejects_ambiguous_foreign_amount(csv: str) -> None:
+    preview = parse_uploaded_csv(csv, home_currency="CNY")
     assert preview.valid_count == 0
     assert preview.error_count == 1
     row = preview.rows[0]
@@ -91,82 +87,64 @@ def test_parse_csv_preview_rejects_ambiguous_foreign_amount(csv: str) -> None:
     assert "original_amount_minor" in (row.error or "")
 
 
-def test_parse_csv_preview_treats_naive_time_as_configured_local_time() -> None:
+def test_parse_uploaded_csv_treats_naive_time_as_configured_local_time() -> None:
     csv = "amount_yuan,merchant,expense_time\n1.00,Cafe,2026-05-01 00:30:00\n"
-    preview = parse_csv_preview(csv, timezone_name="Asia/Shanghai", home_currency="CNY")
+    preview = parse_uploaded_csv(csv, timezone_name="Asia/Shanghai", home_currency="CNY")
 
     assert preview.valid_count == 1
     assert preview.rows[0].expense_time == datetime(2026, 4, 30, 16, 30, tzinfo=UTC)
 
 
-def test_parse_csv_preview_derives_fx_date_from_local_spending_day() -> None:
+def test_parse_uploaded_csv_derives_fx_date_from_original_offset_day() -> None:
     csv = (
         "amount_cents,original_currency_code,original_amount_minor,"
         "exchange_rate_to_cny,merchant,expense_time\n"
         "12345,USD,12345,7.0000,Overseas Cafe,2026-05-04T16:30:00Z\n"
     )
-    preview = parse_csv_preview(csv, timezone_name="Asia/Shanghai", home_currency="CNY")
+    preview = parse_uploaded_csv(csv, timezone_name="Asia/Shanghai", home_currency="CNY")
 
     assert preview.valid_count == 1
     assert preview.rows[0].expense_time == datetime(2026, 5, 4, 16, 30, tzinfo=UTC)
     assert preview.rows[0].exchange_rate_date
-    assert preview.rows[0].exchange_rate_date.isoformat() == "2026-05-05"
+    assert preview.rows[0].exchange_rate_date.isoformat() == "2026-05-04"
 
 
-def test_parse_csv_preview_expense_time_overrides_legacy_fx_date() -> None:
+def test_parse_uploaded_csv_expense_time_overrides_legacy_fx_date() -> None:
     csv = (
         "amount_cents,original_currency_code,original_amount_minor,"
         "exchange_rate_to_cny,exchange_rate_date,merchant,expense_time\n"
-        "12345,USD,12345,7.0000,2026-04-30,Overseas Cafe,2026-04-30T16:30:00Z\n"
+        "12345,USD,12345,7.0000,2026-04-29,Overseas Cafe,2026-04-30T16:30:00Z\n"
     )
-    preview = parse_csv_preview(csv, timezone_name="Asia/Shanghai", home_currency="CNY")
+    preview = parse_uploaded_csv(csv, timezone_name="Asia/Shanghai", home_currency="CNY")
 
     assert preview.valid_count == 1
     assert preview.rows[0].exchange_rate_date
-    assert preview.rows[0].exchange_rate_date.isoformat() == "2026-05-01"
+    assert preview.rows[0].exchange_rate_date.isoformat() == "2026-04-30"
 
 
-def test_parse_csv_preview_flags_invalid_rows() -> None:
+def test_parse_uploaded_csv_flags_invalid_rows() -> None:
     csv = "amount_yuan,merchant\nabc,Bad\n5.00,Good\n"
-    preview = parse_csv_preview(csv, home_currency="CNY")
+    preview = parse_uploaded_csv(csv, home_currency="CNY")
     assert preview.valid_count == 1
     assert preview.error_count == 1
     assert preview.rows[0].error and "amount_yuan" in preview.rows[0].error
 
 
-def test_parse_csv_preview_rejects_dirty_exchange_rate_date() -> None:
+def test_parse_uploaded_csv_rejects_dirty_exchange_rate_date() -> None:
     csv = (
         "amount_cents,original_currency_code,original_amount_minor,"
         "exchange_rate_to_cny,exchange_rate_date,merchant\n"
         "0,USD,12345,7.1234,2026-05-04xxx,Dirty Date Cafe\n"
     )
-    preview = parse_csv_preview(csv, home_currency="CNY")
+    preview = parse_uploaded_csv(csv, home_currency="CNY")
     assert preview.valid_count == 0
     assert preview.error_count == 1
     assert "exchange_rate_date" in (preview.rows[0].error or "")
 
 
-def test_parse_csv_preview_converts_csv_reader_errors_to_invalid_request() -> None:
-    old_limit = csv_module.field_size_limit()
-    csv_module.field_size_limit(8)
-    try:
-        with pytest.raises(AppError) as exc_info:
-            parse_csv_preview("amount_yuan,merchant\n1.00,VeryLongMerchant\n", home_currency="CNY")
-    finally:
-        csv_module.field_size_limit(old_limit)
-    assert exc_info.value.error == "invalid_request"
-
-
-def test_parse_csv_preview_requires_amount_column() -> None:
+def test_parse_uploaded_csv_requires_amount_column() -> None:
     with pytest.raises(AppError):
-        parse_csv_preview("merchant,note\nA,B\n", home_currency="CNY")
-
-
-def test_parse_csv_preview_truncates_at_limit() -> None:
-    body = "amount_yuan\n" + "1.00\n" * (MAX_PREVIEW_ROWS + 5)
-    preview = parse_csv_preview(body, home_currency="CNY")
-    assert preview.truncated is True
-    assert len(preview.rows) == MAX_PREVIEW_ROWS
+        parse_uploaded_csv("merchant,note\nA,B\n", home_currency="CNY")
 
 
 # ── /web/export.csv ────────────────────────────────────────────────────────

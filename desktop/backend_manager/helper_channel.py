@@ -19,11 +19,6 @@ _SID_PATTERN = re.compile(r"S-1-(?:[0-9]+-)+[0-9]+\Z", re.IGNORECASE)
 _ACE_PATTERN = re.compile(r"\(([^()]*)\)")
 
 
-def channel_file_identity(stream: BinaryIO) -> str:
-    info = os.fstat(stream.fileno())
-    return f"{info.st_dev:x}:{info.st_ino:x}"
-
-
 def require_sid(value: str) -> str:
     if not _SID_PATTERN.fullmatch(value):
         raise RuntimeControlError("管理员结果通道 owner SID 格式无效。")

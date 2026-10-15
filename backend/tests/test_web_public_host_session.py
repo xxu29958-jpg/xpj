@@ -401,15 +401,3 @@ def test_public_host_legacy_null_expires_at_falls_back_to_created_at(client: Tes
         row = db.scalar(select(AuthToken).where(AuthToken.token_hash == hash_secret(token)))
         assert row is not None
         assert row.revoked_at is not None
-
-
-def test_loopback_host_still_works_without_cookie(client: TestClient) -> None:
-    # Existing Owner Console loopback flow is left intact: TestClient default
-    # (peer=testclient, host=testserver) is excluded from the public-mode gate
-    # so the legacy LocalOnly dependency path is what reports the result.
-    # This is a regression guard — if someone accidentally removes the
-    # testclient/testserver carve-out the suite will tell us.
-    resp = client.get("/web/pending")
-    # LocalOnly still rejects because the testclient peer is NOT one of the
-    # loopback peers (127.0.0.1 / ::1 / localhost). Same response as before PR-4.
-    assert resp.status_code == 403

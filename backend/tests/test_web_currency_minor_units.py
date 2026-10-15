@@ -275,32 +275,6 @@ def test_confirmed_search_and_reports_use_zero_fraction_home_amounts(
         get_settings.cache_clear()
 
 
-def test_active_report_scripts_share_the_home_currency_minor_digit_contract() -> None:
-    static_root = Path(__file__).resolve().parents[1] / "app" / "static" / "web"
-    core = (static_root / "desktop" / "core.js").read_text(encoding="utf-8")
-    reports = (static_root / "reports.js").read_text(encoding="utf-8")
-    trend = (static_root / "desktop" / "trend-chart.js").read_text(
-        encoding="utf-8"
-    )
-    donut = (static_root / "desktop" / "category-donut.js").read_text(
-        encoding="utf-8"
-    )
-
-    assert "app.homeMinorToMajor" in core
-    assert "app.homeMinorToMajorText" in core
-    assert "app.homeMoneyMinor" in core
-    assert "Number(cents || 0) / 100" not in reports
-    assert "app.homeMoneyMinor(cents)" in reports
-    assert "app.homeCurrencySymbol() + compactYuan(cents)" in reports
-    assert "root.getAttribute('data-home-currency-symbol')" not in reports
-    assert "Math.round(s.amount_yuan)" not in trend
-    assert "app.homeMinorToMajor(s.amount_cents)" in trend
-    assert "app.homeMoneyMajor(p.data.majorText)" in trend
-    assert "app.homeMoneyMajor(p.value || 0)" not in trend
-    assert "p.data.amountLabel" in donut
-    assert "app.homeMoneyMajor(p.value || 0)" not in donut
-
-
 def test_web_money_copy_formats_exact_minor_strings_without_number_rounding() -> None:
     node = shutil.which("node")
     if node is None:

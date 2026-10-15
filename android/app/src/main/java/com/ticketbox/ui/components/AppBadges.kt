@@ -2,12 +2,9 @@ package com.ticketbox.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -18,7 +15,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -28,7 +24,6 @@ import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.StateTone
-import com.ticketbox.ui.design.tabularNum
 
 /**
  * [tone] (issue #65 slice 5): when non-null, the pill renders in that
@@ -107,37 +102,4 @@ fun SafeBadge(
     text: String = stringResource(R.string.components_safe_badge_label),
 ) {
     StatusPill(text = text, modifier = modifier, active = true)
-}
-
-/**
- * 计数 badge：镜像 /web 的 `.nav-badge`（pill、brand 主色容器底 + 主色字、等宽数字、紧凑），用于
- * 菜单项/导航项的待办计数（如统计页头「管理」菜单的「还款待确认」项 = pending 还款草稿数）。三端共用
- * 一套设计语言（brand 主色容器），不分叉。
- *
- * 调用方负责「>0 才显示」的判定（与 /web `{% if pending_count %}` 一致）；[contentDescription] 给定时整个
- * badge 作为单个无障碍节点朗读该描述（如「3 笔待复核」），替代裸数字「3」。
- */
-@Composable
-fun CountBadge(
-    count: Int,
-    modifier: Modifier = Modifier,
-    contentDescription: String? = null,
-) {
-    Text(
-        text = count.toString(),
-        modifier = modifier
-            .clip(RoundedCornerShape(AppRadius.pill))
-            .background(MaterialTheme.colorScheme.primaryContainer)
-            .padding(horizontal = AppSpacing.smallGap, vertical = AppSpacing.tinyGap)
-            .then(
-                if (contentDescription != null) {
-                    Modifier.clearAndSetSemantics { this.contentDescription = contentDescription }
-                } else {
-                    Modifier
-                },
-            ),
-        color = MaterialTheme.colorScheme.primary,
-        style = MaterialTheme.typography.labelMedium.tabularNum(),
-        fontWeight = AppTextHierarchy.body.weight,
-    )
 }

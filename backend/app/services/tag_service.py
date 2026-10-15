@@ -132,30 +132,6 @@ def backfill_expense_tags(db: Session, tenant_id: str) -> None:
         db.commit()
 
 
-def _expense_tag_mirror_drifted(db: Session, expense: Expense) -> bool:
-    """True if the expense's ``tags`` string and ``expense_tags`` links disagree.
-
-    Compares the two as *key sets* (casefold), so case/order/whitespace-only
-    string differences that the relation already represents correctly are not
-    treated as drift (and so don't trigger a needless ``row_version`` bump).
-    """
-    desired_keys = {tag_key(name) for name in parse_tags(expense.tags)}
-    link_tag_ids = {
-        link.tag_id
-        for link in db.scalars(
-            ledger_scoped_select(ExpenseTag, expense.tenant_id).where(ExpenseTag.expense_id == expense.id)
-        )
-    }
-    if not desired_keys and not link_tag_ids:
-        return False
-    current_keys: set[str] = set()
-    if link_tag_ids:
-        current_keys = {
-            tag.key for tag in db.scalars(ledger_scoped_select(Tag, expense.tenant_id).where(Tag.id.in_(link_tag_ids)))
-        }
-    return desired_keys != current_keys
-
-
 def _expense_tag_key_sets(db: Session, tenant_id: str, expense_ids: set[int]) -> dict[int, set[str]]:
     if not expense_ids:
         return {}

@@ -4,16 +4,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ExpandMore
 import com.ticketbox.ui.components.AppPrimaryButton
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -23,41 +18,11 @@ import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppErrorState
-import com.ticketbox.ui.components.AppFilterChip
-import com.ticketbox.ui.components.AppFilterChipOptions
-import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.screens.StatsProductLoadingState
 import com.ticketbox.viewmodel.StatsUiState
-
-@Composable
-internal fun StatsMonthChip(
-    selectedMonth: String,
-    onClick: () -> Unit,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.Start,
-    ) {
-        AppFilterChip(
-            selected = true,
-            onClick = onClick,
-            label = selectedMonth.takeIf { it.isNotBlank() }?.let { displayMonthLabel(it) }
-                ?: stringResource(R.string.stats_empty_month_chip_all),
-            options = AppFilterChipOptions(
-                trailingIcon = {
-                    Icon(
-                        imageVector = Icons.Filled.ExpandMore,
-                        contentDescription = stringResource(R.string.stats_empty_month_chip_description),
-                        modifier = Modifier.size(AppSpacing.cardPadding),
-                    )
-                },
-            ),
-        )
-    }
-}
 
 @Composable
 internal fun EmptyStatsCard(

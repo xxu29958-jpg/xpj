@@ -43,10 +43,6 @@ def is_invitable_role(role: str) -> bool:
     return role in ROLES_INVITABLE
 
 
-def can_read(ctx: AuthContext) -> bool:
-    return ctx.scope == SCOPE_APP and ctx.role in ROLES_VALID
-
-
 def can_write_expense(ctx: AuthContext) -> bool:
     return ctx.scope == SCOPE_APP and ctx.role in ROLES_WRITE
 
@@ -97,16 +93,6 @@ def require_create_pending_expense(ctx: AuthContext) -> None:
 
 def require_manage_members(ctx: AuthContext) -> None:
     if not can_manage_members(ctx):
-        _deny()
-
-
-def require_manage_ledger(ctx: AuthContext) -> None:
-    if not can_manage_ledger(ctx):
-        _deny()
-
-
-def require_manage_upload_links(ctx: AuthContext) -> None:
-    if not can_manage_upload_links(ctx):
         _deny()
 
 

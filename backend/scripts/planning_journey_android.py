@@ -289,9 +289,8 @@ class PlanningAndroid:
         wait_for(lambda: self.has("计划"), "The saved native identity did not reopen")
 
     def recycle_bin(self):
-        self.plan_home()
-        self.click("流水", bottom=True)
-        self.click("筛选与工具")
+        self.domain_home("流水")
+        self.click("筛选")
         self.click("资料库")
         self.click("回收站")
 

@@ -328,17 +328,6 @@ class FormattersTest {
     }
 
     @Test
-    fun displaysCompactTimeForDenseRows() {
-        val previous = TimeZone.getDefault()
-        TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"))
-        try {
-            assertEquals("7/3 19:35", displayCompactTime("2026-07-03T11:35:00Z"))
-        } finally {
-            TimeZone.setDefault(previous)
-        }
-    }
-
-    @Test
     fun updatesDateWithoutLosingExistingTime() {
         val original = com.ticketbox.ui.screens.expense.ExpenseTimeForm.initial(
             "2026-05-03T04:20:00Z", null, null, ZoneOffset.UTC,
@@ -354,29 +343,6 @@ class FormattersTest {
         assertEquals("2026-05-03T08:45:00Z", original.copy(time = "08:45", changed = true).resolve().instant)
     }
 
-    @Test
-    fun formatsStorageSize() {
-        assertEquals("512 B", formatStorageSize(512))
-        assertEquals("1 KB", formatStorageSize(1024))
-        assertEquals("1 MB", formatStorageSize(1024 * 1024))
-    }
-
-    @Test
-    fun previewDecodeSampleSizeKeepsSmallImagesAtFullResolution() {
-        assertEquals(
-            1,
-            previewDecodeSampleSize(width = 1080, height = 2400, maxLongSide = 4096, maxPixels = 4_000_000),
-        )
-    }
-
-    @Test
-    fun previewDecodeSampleSizeCapsLargeImagesByLongSideAndPixels() {
-        val sampleSize = previewDecodeSampleSize(width = 8000, height = 6000, maxLongSide = 2048, maxPixels = 4_000_000)
-
-        assertEquals(4, sampleSize)
-        assertTrue((8000 / sampleSize).toLong() * (6000 / sampleSize).toLong() <= 4_000_000)
-        assertTrue(8000 / sampleSize <= 2048)
-    }
 }
 
 private data class FormatterExpenseFixture(

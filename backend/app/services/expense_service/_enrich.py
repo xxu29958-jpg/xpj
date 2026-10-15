@@ -18,7 +18,6 @@ from app.services.currency_binding_service import resolve_write_capability
 from app.services.duplicate_service import mark_duplicate_status
 from app.services.expense_query import resolve_expense
 from app.services.expense_service._helpers import (
-    _record_background_failure,
     _replace_ocr_draft_items_from_text,
 )
 from app.services.expense_service._ocr_facts import apply_ocr_result_and_append_fact
@@ -83,7 +82,6 @@ def _try_stage_thumbnail(relative_path: str | None, tenant_id: str, expected_sha
     try:
         return stage_thumbnail(relative_path, tenant_id=tenant_id, expected_sha256=expected_sha256)
     except (AppError, OSError, PathTraversalError, RecursionError, RuntimeError, ValueError) as exc:
-        _record_background_failure("thumbnail")
         logger.warning("event=thumbnail_staging_failed error_type=%s", type(exc).__name__)
         return None
 
@@ -99,7 +97,6 @@ def _publish_enrichment_thumbnail_best_effort(
     try:
         publish_claimed_thumbnail(db, expense, staged)
     except (OSError, SQLAlchemyError):
-        _record_background_failure("thumbnail")
         logger.exception(
             "thumbnail publication failed after durable owner commit for expense_id=%s ledger=%s",
             expense_id,
@@ -232,7 +229,6 @@ def _failed_enrichment_result(
     expense_id: int,
     tenant_id: str,
 ) -> PendingEnrichmentResult:
-    _record_background_failure("auto_enrich")
     logger.exception(
         "auto enrichment failed for expense_id=%s tenant_id=%s",
         expense_id,

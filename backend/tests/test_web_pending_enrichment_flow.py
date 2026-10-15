@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import re
-from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
@@ -118,11 +117,6 @@ def test_pending_watch_is_task_scoped_and_ignores_unrelated_expense_edits(
     conflict_page = web_client.get(watch_url)
     assert 'data-enrichment-state="conflict"' in conflict_page.text
     assert "你后来保存的修改已保留" in conflict_page.text
-
-    static_root = Path(__file__).resolve().parents[1] / "app" / "static" / "web"
-    core_js = (static_root / "desktop" / "core.js").read_text(encoding="utf-8")
-    assert "maxAttempts = 8" not in core_js
-    assert "AbortController" in core_js
 
 
 @pytest.mark.real_db

@@ -1,4 +1,4 @@
-"""Execute the actual report charts with nullable ECharts data and captured JPY metadata."""
+"""Execute report charts with nullable data and captured zero/three-digit currencies."""
 
 import json
 import shutil
@@ -11,15 +11,15 @@ _CHART_SCRIPT = r"""
 const fs = require('fs');
 const vm = require('vm');
 const report = {
-  home_currency_code: 'JPY', ranking_metric: METRIC,
-  trend: [{label:'第一周', amount_cents:null, count:2}, {label:'第二周', amount_cents:1200, count:1}],
+  home_currency_code: CURRENCY, ranking_metric: METRIC,
+  trend: [{label:'第一周', amount_cents:null, count:2}, {label:'第二周', amount_cents:12345, count:1}],
   merchant_ranking: [{merchant:'原商家', amount_cents:null, count:2}],
-  category_comparison: [{category:'餐饮', amount_cents:null, previous_amount_cents:1200,
+  category_comparison: [{category:'餐饮', amount_cents:null, previous_amount_cents:12345,
     year_over_year_amount_cents:null, delta_amount_cents:null, year_over_year_delta_amount_cents:null}],
 };
-const history = [{month:'2026-04', amount_cents:1200, budget_cents:1500},
+const history = [{month:'2026-04', amount_cents:12345, budget_cents:20000},
   {month:'2026-05', amount_cents:null, budget_cents:null}];
-const attrs = {'data-home-currency':'JPY','data-home-currency-symbol':'¥','data-home-currency-minor-digits':'0'};
+const attrs = {'data-home-currency':CURRENCY,'data-home-currency-symbol':SYMBOL,'data-home-currency-minor-digits':DIGITS};
 const charts = {};
 const instances = {};
 const elements = {};
@@ -70,6 +70,7 @@ process.stdout.write(JSON.stringify({
   monthValues:months.series[1].data.map(item => item.value),
   budgetValues:months.series[0].data.map(item => item.value),
   monthUnknown:months.tooltip.formatter([{axisValue:'5月', data:months.series[1].data[1], seriesName:'支出', color:'#000'}]),
+  monthKnown:months.tooltip.formatter([{axisValue:'4月', data:months.series[1].data[0], seriesName:'支出', color:'#000'}]),
   merchantValues:merchant ? merchant.series[0].data.map(item => item.value) : null,
   themeLabels:Object.values(charts).flatMap(option => [option.xAxis.axisLabel.color, option.yAxis.axisLabel.color]),
   financialValuesUnchanged:values() === originalValues,
@@ -79,19 +80,25 @@ process.stdout.write(JSON.stringify({
 
 
 @pytest.mark.parametrize("metric", ["amount", "count"])
-def test_actual_report_charts_preserve_money_when_the_existing_views_change_theme(metric):
+@pytest.mark.parametrize("currency,digits,symbol,label", [("JPY", 0, "¥", "¥12,345"), ("KWD", 3, "", "KWD 12.345")])
+def test_actual_report_charts_preserve_money_when_the_existing_views_change_theme(metric, currency, digits, symbol, label):
     node = shutil.which("node")
     assert node is not None, "Node.js is required to verify the real chart consumers"
     root = Path(__file__).resolve().parents[1] / "app/static/web"
     script = _CHART_SCRIPT.replace("ROOT", json.dumps(str(root))).replace("METRIC", json.dumps(metric))
+    script = script.replace("CURRENCY", json.dumps(currency)).replace("DIGITS", json.dumps(str(digits)))
+    script = script.replace("SYMBOL", json.dumps(symbol))
     result = subprocess.run([node, "-e", script], capture_output=True, text=True, encoding="utf-8", timeout=15)
     assert result.returncode == 0, result.stderr
     actual = json.loads(result.stdout)
-    assert actual["weekValues"] == [None, 1200]
-    assert actual["monthValues"] == [1200, None] and actual["budgetValues"] == [1500, None]
+    major = 12345 / 10 ** digits
+    # The report keeps minor units for geometry; its tooltip converts them.
+    # The monthly consumer projects geometry to major units before rendering.
+    assert actual["weekValues"] == [None, 12345]
+    assert actual["monthValues"] == [major, None] and actual["budgetValues"] == [20000 / 10 ** digits, None]
     assert "待补汇率" in actual["weekUnknown"] and "待补汇率" in actual["monthUnknown"]
     assert "待补汇率" in actual["categoryUnknown"] and "¥0" not in actual["categoryUnknown"]
-    assert "1,200" in actual["weekKnown"] and "12.00" not in actual["weekKnown"]
+    assert label in actual["weekKnown"] and label in actual["monthKnown"]
     assert actual["merchantValues"] == ([2] if metric == "count" else None)
     assert set(actual["themeLabels"]) == {"#abcdef"}, "Every chart must reread its theme colors"
     assert actual["financialValuesUnchanged"], "Appearance must not reinterpret financial values"

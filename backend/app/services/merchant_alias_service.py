@@ -444,15 +444,3 @@ def canonical_merchant_for(
     if not key:
         return display
     return alias_map.get(key, display)
-
-
-def resolve_canonical_merchant(
-    db: Session,
-    *,
-    tenant_id: str,
-    merchant: str | None,
-) -> str:
-    return canonical_merchant_for(
-        merchant,
-        alias_map=enabled_merchant_alias_map(db, tenant_id=tenant_id),
-    )

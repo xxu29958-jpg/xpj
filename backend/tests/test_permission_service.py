@@ -27,7 +27,6 @@ def test_app_roles_define_business_permissions() -> None:
     member = _ctx(scope="app", role="member")
     viewer = _ctx(scope="app", role="viewer")
 
-    assert permission_service.can_read(owner)
     assert permission_service.can_write_expense(owner)
     assert permission_service.can_write_expense(member)
     assert not permission_service.can_write_expense(viewer)
@@ -45,7 +44,6 @@ def test_app_roles_define_business_permissions() -> None:
 def test_admin_scope_is_maintenance_not_ledger_business_role() -> None:
     admin_owner = _ctx(scope="admin", role="owner")
 
-    assert not permission_service.can_read(admin_owner)
     assert not permission_service.can_write_expense(admin_owner)
     assert not permission_service.can_create_pending_expense(admin_owner)
     assert not permission_service.can_manage_members(admin_owner)
@@ -64,7 +62,6 @@ def test_upload_scope_can_only_create_pending_expenses() -> None:
     upload_owner = _ctx(scope="upload", role="owner")
     upload_viewer = _ctx(scope="upload", role="viewer")
 
-    assert not permission_service.can_read(upload_owner)
     assert not permission_service.can_write_expense(upload_owner)
     assert permission_service.can_create_pending_expense(upload_owner)
     assert not permission_service.can_create_pending_expense(upload_viewer)

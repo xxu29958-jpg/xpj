@@ -14,7 +14,6 @@ import java.io.IOException
 import java.net.Inet4Address
 import java.net.InetAddress
 import java.net.Proxy
-import java.net.Socket
 import java.net.SocketException
 import java.util.concurrent.TimeUnit
 import javax.net.SocketFactory
@@ -113,49 +112,7 @@ internal object Ipv4FirstDns : Dns {
 }
 
 internal interface BackendNetworkRouteProvider {
-    fun activeNonVpnLookup(hostname: String): List<InetAddress>?
-    fun activeNonVpnSocketFactory(): SocketFactory?
     fun validatedNonVpnNetwork(): Network?
-    fun disableNonVpnRouting()
-}
-
-internal class DynamicNetworkDns(
-    private val networkProvider: BackendNetworkRouteProvider?,
-) : Dns {
-    override fun lookup(hostname: String): List<InetAddress> {
-        val addresses = networkProvider?.activeNonVpnLookup(hostname)
-            ?: Dns.SYSTEM.lookup(hostname)
-        return preferIpv4First(addresses)
-    }
-}
-
-internal class DynamicNetworkSocketFactory(
-    private val networkProvider: BackendNetworkRouteProvider?,
-    private val defaultFactory: SocketFactory = SocketFactory.getDefault(),
-) : SocketFactory() {
-    private fun selectedFactory(): SocketFactory {
-        return networkProvider?.activeNonVpnSocketFactory() ?: defaultFactory
-    }
-
-    override fun createSocket(): Socket {
-        return selectedFactory().createSocket()
-    }
-
-    override fun createSocket(host: String, port: Int): Socket {
-        return selectedFactory().createSocket(host, port)
-    }
-
-    override fun createSocket(host: String, port: Int, localHost: InetAddress, localPort: Int): Socket {
-        return selectedFactory().createSocket(host, port, localHost, localPort)
-    }
-
-    override fun createSocket(host: InetAddress, port: Int): Socket {
-        return selectedFactory().createSocket(host, port)
-    }
-
-    override fun createSocket(address: InetAddress, port: Int, localAddress: InetAddress, localPort: Int): Socket {
-        return selectedFactory().createSocket(address, port, localAddress, localPort)
-    }
 }
 
 internal fun preferIpv4First(addresses: List<InetAddress>): List<InetAddress> {
@@ -241,7 +198,6 @@ internal class NonVpnGetFallbackInterceptor(
         } catch (defaultNetworkError: IOException) {
             if (chain.call().isCanceled()) throw defaultNetworkError
             if (defaultNetworkError.isNetworkSelectionDenied()) {
-                networkProvider?.disableNonVpnRouting()
                 return executeFallbackCall(
                     request = request,
                     originalError = defaultNetworkError,
@@ -311,8 +267,6 @@ internal class NetworkDns(
 internal class NonVpnNetworkProvider(context: Context) : BackendNetworkRouteProvider {
     private val connectivityManager =
         context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-    @Volatile
-    private var nonVpnRoutingDisabled = false
 
     @Suppress("DEPRECATION")
     override fun validatedNonVpnNetwork(): Network? {
@@ -326,34 +280,6 @@ internal class NonVpnNetworkProvider(context: Context) : BackendNetworkRouteProv
                 }
             }
         }.getOrNull()
-    }
-
-    fun activeNonVpnNetwork(): Network? {
-        if (nonVpnRoutingDisabled) {
-            return null
-        }
-        // Some proxy/VPN apps rewrite backend DNS to 198.18.x virtual
-        // addresses without reliably exposing TRANSPORT_VPN to the app.
-        // Remote backend traffic therefore prefers a validated NOT_VPN
-        // network whenever Android exposes one. Local dev URLs opt out
-        // before this provider is wired into OkHttp.
-        return validatedNonVpnNetwork()
-    }
-
-    override fun activeNonVpnLookup(hostname: String): List<InetAddress>? {
-        return activeNonVpnNetwork()?.let { network ->
-            runCatching {
-                network.getAllByName(hostname).toList()
-            }.getOrNull()
-        }
-    }
-
-    override fun activeNonVpnSocketFactory(): SocketFactory? {
-        return activeNonVpnNetwork()?.socketFactory
-    }
-
-    override fun disableNonVpnRouting() {
-        nonVpnRoutingDisabled = true
     }
 
     private fun Network.isValidatedNonVpnNetwork(): Boolean {

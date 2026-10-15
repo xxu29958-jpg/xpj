@@ -28,17 +28,6 @@ private const val MEMBER_DEBT_NEAR_RATIO = 0.7f
 private const val MEMBER_DEBT_SOME_RATIO = 0.5f
 
 /**
- * Header 副标题 / 方向 (viewer-relative，§2.3)：`true`=你帮我垫的、`false`=我帮你垫的、
- * `null`=第三人称 (非当事方)。外部债仍走 [debtDirectionLabelRes] 应付/应收。
- */
-@StringRes
-internal fun memberDebtDirectionRes(viewerIsDebtor: Boolean?): Int = when (viewerIsDebtor) {
-    true -> R.string.debt_member_direction_i_owe
-    false -> R.string.debt_member_direction_owed_to_me
-    null -> R.string.debt_member_direction_third_party
-}
-
-/**
  * 关系进度语英雄主句 (无金额，§2.3)。状态全读服务端：`status` (open/cleared/voided)、`isForgiven`
  * (8e-2 恒 false——`Debt` 尚无 forgiveness 字段，8e-3 forgive op 落地后接线)、`viewerIsDebtor`。
  * forgiven 落地态是 `cleared` (非 voided)，故 forgiven 分支挂在 cleared 下，用专属暖语而非复用两清。

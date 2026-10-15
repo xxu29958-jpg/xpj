@@ -101,17 +101,6 @@ fun parseSearchAmountCents(
     return parseExactMoneyMinor(normalized, currency)
 }
 
-/**
- * True when [expense] matches the parsed search amount on any currency leg —
- * the home/base `amount_cents` or the original foreign minor amount — so a
- * search for "12.50" finds a ¥12.50 row regardless of which leg the user
- * remembers. Pure cents-vs-cents integer compare.
- */
-fun expenseMatchesAmountCents(expense: Expense, amountCents: Long): Boolean =
-    expense.amountCents == amountCents ||
-        expense.homeAmountCents == amountCents ||
-        expense.originalAmountMinor == amountCents
-
 /** Convenience overload for single-shot callers/tests: parses [query] once
  *  （含 R14-4b 尾部显式码直查）, then runs the cached/explicit match above. Hot paths
  *  (global search) must pre-parse via [parseSearchAmountsByCurrency] instead. */

@@ -234,14 +234,3 @@ def mark_not_duplicate(db: Session, expense: Expense) -> Expense:
     expense.duplicate_of_id = None
     expense.duplicate_reason = None
     return expense
-
-
-def _duplicate_kind(expense: Expense) -> str:
-    reason = expense.duplicate_reason or ""
-    if "感知" in reason:
-        return "image_perceptual_hash"
-    if "hash" in reason:
-        return "image_hash"
-    if "金额" in reason:
-        return "similar"
-    return "manual"

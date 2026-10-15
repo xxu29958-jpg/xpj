@@ -56,7 +56,3 @@ def verify_cloudflare_access_jwt(
     if not isinstance(claims, dict):
         raise CloudflareAccessVerificationError("Cloudflare Access JWT claims were invalid.")
     return claims
-
-
-def reset_cloudflare_access_cache() -> None:
-    _jwk_client.cache_clear()

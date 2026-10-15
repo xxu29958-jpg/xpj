@@ -19,7 +19,6 @@ from ``app.services.expense_service``.
 from __future__ import annotations
 
 import hashlib
-import logging
 
 from sqlalchemy.orm import Session
 
@@ -42,8 +41,6 @@ __all__ = [
     "NOTIFICATION_DRAFT_SOURCE_LABELS",
     "NOTIFICATION_DRAFT_SOURCE_PREFIX",
     "NOTIFICATION_DRAFT_WINDOW_MINUTES",
-    "logger",
-    "background_failure_counts",
     "_clean_category",
     "_clean_notification_source",
     "_clean_optional_text",
@@ -55,27 +52,7 @@ __all__ = [
     "_notification_draft_key",
     "_notification_window_key",
     "_replace_ocr_draft_items_from_text",
-    "_record_background_failure",
 ]
-
-
-logger = logging.getLogger(__name__)
-
-
-# Background tasks (thumbnail generation, auto-OCR enrichment) intentionally
-# swallow exceptions so a failure doesn't fail the user-facing upload. The
-# counters below give those silent failures a visible surface so health
-# checks / future metrics exporters can see them.
-_background_failure_counts: dict[str, int] = {}
-
-
-def background_failure_counts() -> dict[str, int]:
-    """Snapshot of in-process background-task failure counters."""
-    return dict(_background_failure_counts)
-
-
-def _record_background_failure(kind: str) -> None:
-    _background_failure_counts[kind] = _background_failure_counts.get(kind, 0) + 1
 
 
 NOTIFICATION_DRAFT_WINDOW_MINUTES = 30

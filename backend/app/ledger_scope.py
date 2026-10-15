@@ -24,9 +24,3 @@ def ledger_filter(model: type[ModelT], tenant_id: str) -> ColumnElement[bool]:
 
 def ledger_scoped_select(model: type[ModelT], tenant_id: str) -> Select[Any]:
     return select(model).where(ledger_filter(model, tenant_id))
-
-
-def add_ledger_scope(
-    statement: Select[Any], model: type[ModelT], tenant_id: str
-) -> Select[Any]:
-    return statement.where(ledger_filter(model, tenant_id))

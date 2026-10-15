@@ -44,7 +44,6 @@ from contextvars import ContextVar
 from typing import Any
 
 from sqlalchemy import select
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
@@ -81,12 +80,6 @@ _handler_registry_context: ContextVar[TaskHandlerRegistry | None] = ContextVar(
 
 def _current_handler_registry() -> TaskHandlerRegistry:
     return _handler_registry_context.get() or _runtime_handler_registry()
-
-
-def has_active_handler_registry_context() -> bool:
-    """True when tests installed a temporary registry in this context."""
-
-    return _handler_registry_context.get() is not None
 
 
 @contextmanager
@@ -213,82 +206,6 @@ def submit_existing(db: Session, task: BackgroundTask, payload: dict[str, object
         task=task, task_id=task.id, task_public_id=task.public_id,
         payload=dict(payload), registry=_current_handler_registry(),
     ))
-
-
-def enqueue_or_get_active(
-    db: Session,
-    *,
-    task_type: str,
-    initiator_account_id: int | None,
-    initiator_device_id: int | None = None,
-    ledger_id: str | None = None,
-    payload: dict[str, Any] | None = None,
-    progress_total: int | None = None,
-) -> tuple[BackgroundTask, bool]:
-    """Insert a task unless an active one already exists.
-
-    Returns ``(task, created)``. This is intentionally narrow: it is for
-    singleton flows where a second click must point at the existing
-    ``queued``/``running`` row rather than starting a duplicate run.
-    """
-    registry = _current_handler_registry()
-    if not registry.contains(task_type):
-        raise AppError(
-            "unknown_task_type",
-            f"Background task type {task_type!r} is not registered.",
-            status_code=400,
-        )
-    payload_copy = dict(payload or {})
-    try:
-        # PG-only (债 #1): the SQLite-only BEGIN IMMEDIATE writer guard that
-        # serialized this read-then-insert is gone. The singleton has no
-        # lockable anchor row, so its proper PG close is a pg_advisory_xact_lock
-        # deferred to the SQLite-removal slice (step 3); until then the
-        # read-then-insert keeps the pre-existing accepted tail race that prod
-        # (single-process) has run since the PG cut-over.
-        existing = _active_task(
-            db,
-            task_type=task_type,
-            ledger_id=ledger_id,
-        )
-        if existing is not None:
-            db.commit()
-            db.refresh(existing)
-            return existing, False
-
-        task = BackgroundTask(
-            task_type=task_type,
-            tenant_id=ledger_id,
-            initiated_by_account_id=initiator_account_id,
-            initiated_by_device_id=initiator_device_id,
-            progress_total=progress_total,
-        )
-        db.add(task)
-        db.commit()
-        db.refresh(task)
-    except SQLAlchemyError:
-        db.rollback()
-        raise
-
-    background_task_executor.submit_task(task.id, payload_copy, registry=registry, runner=_run_background_task)
-    return task, True
-
-
-def _active_task(
-    db: Session,
-    *,
-    task_type: str,
-    ledger_id: str | None,
-) -> BackgroundTask | None:
-    stmt = select(BackgroundTask).where(
-        BackgroundTask.task_type == task_type,
-        BackgroundTask.status.in_(_RECOVERABLE_STATUSES),
-    )
-    if ledger_id is None:
-        stmt = stmt.where(BackgroundTask.tenant_id.is_(None))
-    else:
-        stmt = stmt.where(BackgroundTask.tenant_id == ledger_id)
-    return db.scalar(stmt.order_by(BackgroundTask.created_at.desc()).limit(1))
 
 
 def get_task(db: Session, public_id: str, *, account_id: int | None, tenant_id: str | None) -> BackgroundTask:

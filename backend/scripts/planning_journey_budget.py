@@ -165,7 +165,7 @@ class BudgetJourney:
         self.native.capture("series-from-web-paper")
         self.native.click(SERIES)
         self.native.fill("1300.00", previous=r"1,?200(?:\.00)?")
-        self.native.click("保存")
+        self.native.click("保存固定支出")
         self.expect_fact("series_amount", 130000)
 
     def history(self, *, offline=False):

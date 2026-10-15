@@ -126,17 +126,6 @@ def _duplicate_evidence(reason: str) -> tuple[str, str, str]:
     return "系统未提供判定原因", "待人工核对", ""
 
 
-def _load_pair(db: Session, *, tenant_id: str, expense_id: int) -> tuple[Expense, Expense | None]:
-    expense = get_expense(db, expense_id, tenant_id)
-    other: Expense | None = None
-    if expense.duplicate_of_id is not None:
-        others = list_expenses_by_ids(
-            db, tenant_id=tenant_id, expense_ids=[expense.duplicate_of_id]
-        )
-        other = others[0] if others else None
-    return expense, other
-
-
 def _duplicate_pair_view(row, original, *, home: str, selected_id: str) -> dict:
     reason = row.duplicate_reason or ""
     reason_label, evidence_label, evidence_tone = _duplicate_evidence(reason)

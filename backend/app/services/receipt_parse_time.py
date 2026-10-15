@@ -5,8 +5,6 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.config import get_settings
 from app.services.receipt_parse_common import (
-    _best_candidate,
-    _build_receipt_context,
     _line_index_for_offset,
     _merge_dimensions,
     _nearby_text,
@@ -16,16 +14,6 @@ from app.services.receipt_parse_common import (
 )
 from app.services.receipt_parse_rules import RELATIVE_TIME_PATTERNS, TIME_PATTERNS
 from app.services.time_service import ensure_utc
-
-
-def _extract_expense_time(
-    text: str, timezone_name: str | None = None
-) -> datetime | None:
-    context = _build_receipt_context(text)
-    candidate = _best_candidate(
-        _calibrate_time_candidates(_time_candidates(text, timezone_name), context)
-    )
-    return candidate.value if candidate else None
 
 
 def _time_candidates(
@@ -91,10 +79,6 @@ def _time_candidates(
                 )
             )
     return candidates
-
-
-def _score_time_match(match_text: str, pattern_index: int) -> int:
-    return _score_time_dimensions(match_text, pattern_index).total
 
 
 def _score_time_dimensions(match_text: str, pattern_index: int) -> _ScoreDimensions:
