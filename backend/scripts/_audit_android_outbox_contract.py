@@ -9,6 +9,7 @@ before applying LIMIT.
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -80,10 +81,10 @@ def _check_entity_contract() -> bool:
 def _check_dao_contract() -> bool:
     dao = _read("main/java/com/ticketbox/data/local/PendingMutationDao.kt")
     predicates = _read("main/java/com/ticketbox/data/local/PendingMutationQueueSql.kt")
+    queries = {name: sql for sql, name in re.findall(r"@Query\((.*?)\)\s*(?:suspend\s+)?fun\s+(\w+)", dao, re.DOTALL)}
     selection_ok = _requires(
-        dao,
+        queries.get("nextRunnableBatch", ""),
         (
-            "fun nextRunnableBatch",
             "WHERE ownerKey = :ownerKey",
             "AND ledgerId = :ledgerId",
             "AND id NOT IN (:excludedIds)",
@@ -108,9 +109,14 @@ def _check_dao_contract() -> bool:
         ),
         surface="PendingMutationQueueSql shared claim/selection predicates",
     )
-    shared_ok = dao.count("$OUTBOX_FAILED_ROW_BLOCKS") == 3 and dao.count("$OUTBOX_NO_EARLIER_PENDING_SIBLING") == 2
-    if not shared_ok:
-        _fail("Runnable selection, atomic claim and target inspection must consume their shared predicates")
+    shared_ok = all(
+        _requires(
+            queries.get(name, ""),
+            ("$OUTBOX_FAILED_ROW_BLOCKS", "$OUTBOX_NO_EARLIER_PENDING_SIBLING"),
+            surface=f"PendingMutationDao {name}",
+        )
+        for name in ("nextRunnableBatch", "markInFlightIfPending")
+    )
     return selection_ok and predicates_ok and shared_ok
 
 
