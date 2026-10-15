@@ -26,7 +26,7 @@
 <label for="rollback-reason">回退说明（选填）</label>
 <textarea id="rollback-reason" name="reason" maxlength="500" rows="2"{% if not can_write %} readonly{% endif %} placeholder="例如：核对后撤回本批次">{{ rollback_reason }}</textarea>
 <p class="meta">随首次回退结果保存，最多 500 字。</p>
-<button type="submit" class="product-button product-button--primary"{% if not can_write or not rollback_preview or rollback_preview.eligible_count == 0 %} disabled{% endif %}>回退允许的 {{ rollback_preview.eligible_count if rollback_preview else 0 }} 笔</button>
+<button type="submit" class="product-button product-button--primary"{% if not can_write or not rollback_preview or rollback_preview.eligible_count == 0 %} disabled{% endif %}>{% if rollback_preview %}回退允许的 {{ rollback_preview.eligible_count }} 笔{% else %}核对范围后回退{% endif %}</button>
 </form>
 <a class="product-button product-button--quiet" href="{{ task_return_href }}">返回应用记录</a>
 </div>

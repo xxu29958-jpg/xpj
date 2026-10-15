@@ -10,6 +10,8 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.click
+import androidx.compose.ui.test.performTouchInput
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.test.platform.app.InstrumentationRegistry
@@ -27,6 +29,7 @@ import com.ticketbox.data.remote.dto.RuleApplyConfirmedRequestDto
 import com.ticketbox.data.remote.dto.RuleApplyConfirmedResponseDto
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.ui.saveConsumerArtPreview
+import com.ticketbox.ui.RealKeyboard
 import com.ticketbox.ui.screens.settings.CategoryRuleDefinitionActions
 import com.ticketbox.ui.screens.settings.CategoryRulesApplicationActions
 import com.ticketbox.ui.screens.settings.CategoryRulesApplicationState
@@ -53,6 +56,7 @@ import org.junit.Test
 /** Production Graph, disk Room, ViewModel and Compose; the remote service is controlled. */
 class RuleApplicationConnectedTest {
     @get:Rule val compose = createComposeRule()
+    @get:Rule val keyboard = RealKeyboard()
     private val network = RuleApplicationConnectedNetwork()
     private val fixture = DebtAdjustmentConnectedFixture(InstrumentationRegistry.getInstrumentation().targetContext, network.api)
     private var model by mutableStateOf<CategoryRulesViewModel?>(null)
@@ -68,9 +72,11 @@ class RuleApplicationConnectedTest {
         compose.waitUntil(10_000) { model!!.uiState.value.binding != null }
         compose.onNodeWithText("预览已确认账单", substring = false).performScrollTo().performClick()
         compose.waitUntil(10_000) { model!!.uiState.value.confirmedRulesPreview != null }
-        compose.onNodeWithText("例如：按商家统一分类").performScrollTo().performTextInput("按商家统一分类")
-        capture("rule-application-reason-ime")
-        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        compose.onNodeWithText("例如：按商家统一分类").performScrollTo().performTouchInput { click() }
+            .performTextInput("按商家统一分类")
+        keyboard.assertActionAboveKeyboard(compose, "确认应用", "rule-application-reason-ime")
+        compose.onNodeWithText("按商家统一分类", substring = false).assertIsDisplayed()
+        keyboard.dismissAndWait(compose)
         capture("rule-application-reason")
         compose.onNodeWithText("确认应用", substring = false).assertIsDisplayed().performClick()
         compose.waitUntil(10_000) { model!!.uiState.value.pendingApplications.isNotEmpty() }
@@ -115,10 +121,12 @@ class RuleApplicationConnectedTest {
         compose.onNodeWithText("规则应用记录").performScrollTo().performClick()
         compose.onNodeWithText("回退", substring = false).performScrollTo().performClick()
         compose.waitUntil(10_000) { model!!.uiState.value.rollback.error != null }
-        compose.onNodeWithText("回退允许的 0 笔").assertIsDisplayed().assertIsNotEnabled()
-        compose.onNodeWithText("例如：核对后撤回本批次").performScrollTo().performTextInput("核对后撤回本批次")
-        capture("rule-rollback-reason-ime")
-        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        compose.onNodeWithText("核对范围后回退").assertIsDisplayed().assertIsNotEnabled()
+        compose.onNodeWithText("例如：核对后撤回本批次").performScrollTo().performTouchInput { click() }
+            .performTextInput("核对后撤回本批次")
+        keyboard.assertActionAboveKeyboard(compose, "核对范围后回退", "rule-rollback-reason-ime")
+        compose.onNodeWithText("核对后撤回本批次", substring = false).assertIsDisplayed()
+        keyboard.dismissAndWait(compose)
         network.previewFails = false
         compose.onNodeWithText("重新预览").performScrollTo().performClick()
         compose.waitUntil(10_000) { model!!.uiState.value.rollback.preview != null }
@@ -157,6 +165,7 @@ class RuleApplicationConnectedTest {
         compose.waitForIdle()
         val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
         automation.waitForIdle(250, 5_000)
+        compose.waitForIdle()
         saveConsumerArtPreview(name, requireNotNull(automation.takeScreenshot()))
     }
 

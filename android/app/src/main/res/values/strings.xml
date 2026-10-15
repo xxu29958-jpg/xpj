@@ -316,6 +316,7 @@
     <string name="category_rule_rollback_reason_value">回退说明：%1$s</string>
     <string name="category_rule_rollback_preview_failed">暂时无法读取回退范围，输入已保留，请重新核对。</string>
     <string name="category_rule_rollback_loading">正在核对本批次可回退的记录…</string>
+    <string name="category_rule_rollback_wait_for_preview">核对范围后回退</string>
     <string name="category_rule_rollback_counts">当前可回退 %1$d 笔 · 保留 %2$d 笔</string>
     <string name="category_rule_rollback_eligible_action">回退允许的 %1$d 笔</string>
     <string name="category_rule_rollback_none">当前没有可回退的记录，不会覆盖保留项。</string>

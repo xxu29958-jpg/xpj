@@ -92,6 +92,7 @@ private fun RuleRollbackFooter(state: RuleRollbackState, interaction: CategoryRu
     val verifying = state.submittedReason != null
     val eligibleCount = state.preview?.eligibleCount ?: 0
     AppPrimaryButton(if (verifying) stringResource(R.string.category_rule_rollback_verify)
+        else if (state.preview == null) stringResource(R.string.category_rule_rollback_wait_for_preview)
         else stringResource(R.string.category_rule_rollback_eligible_action, eligibleCount),
         enabled = !interaction.busy && !interaction.readOnly && !state.loading && (verifying || eligibleCount > 0),
         onClick = actions.onConfirm, modifier = Modifier.fillMaxWidth())
