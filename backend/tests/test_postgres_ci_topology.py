@@ -362,7 +362,7 @@ def _assert_windows_release_lanes(
     assert windows_environment["VNEXT_RESULT"] == "${{ needs.windows_vnext_lifecycle.result }}"
     assert windows_environment["BUILD_RESULT"] == "${{ needs.windows_packaging_build.result }}"
     maintenance = _steps(jobs["windows_packaging_build"])["Windows database maintenance contract"]["run"]
-    assert "tests/test_dataset_originals_file_identity.py" in maintenance
+    assert "tests/test_database_maintenance_entrypoint.py" in maintenance
 
 
 def test_github_postgres_jobs_bind_scope_resources_commands_auth_and_sha() -> None:
@@ -439,7 +439,7 @@ def test_gitea_keeps_the_shared_lane_runner_without_scope_modernization() -> Non
         assert "needs" not in job
         assert "if" not in job
     maintenance = _steps(jobs["backend-full"])["Windows database maintenance contract"]["run"]
-    assert "tests/test_dataset_originals_file_identity.py" in maintenance
+    assert "tests/test_database_maintenance_entrypoint.py" in maintenance
     postgres = jobs["backend-postgres"]
     assert isinstance(postgres, dict)
     lane = next(step["run"] for step in postgres["steps"] if step["name"].startswith("PostgreSQL lane"))
