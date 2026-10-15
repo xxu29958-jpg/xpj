@@ -11,6 +11,7 @@ import com.ticketbox.data.remote.dto.MerchantCatalogMergeDto
 import com.ticketbox.domain.model.MerchantCatalog
 import com.ticketbox.domain.model.MerchantCatalogAliasPolicy
 
+@JsonClass(generateAdapter = false)
 enum class MerchantDraftKind {
     Catalog, Alias, Rename, Visibility, Delete, Merge;
     val isCreation get() = this == Catalog || this == Alias

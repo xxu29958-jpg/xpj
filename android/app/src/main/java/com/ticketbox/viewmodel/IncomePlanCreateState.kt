@@ -49,6 +49,7 @@ data class IncomePlanAdmissionFailure(val message: String, val errorCode: String
     }
 }
 
+@JsonClass(generateAdapter = false)
 enum class IncomePlanCreationPhase { Draft, DraftNeedsRecovery, Publishing, NeedsRecovery }
 
 data class IncomePlanCreateUiState(
