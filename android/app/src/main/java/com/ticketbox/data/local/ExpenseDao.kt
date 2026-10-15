@@ -335,21 +335,6 @@ interface ExpenseDao : BudgetReadProtectionDao, ExpenseFactQueryCacheDao, Expens
 
     @Query(
         """
-        SELECT * FROM expenses
-        WHERE ledgerId = :ledgerId
-          AND status = 'confirmed'
-          AND streamSortTime IS NOT NULL
-          AND streamSortId IS NOT NULL
-          AND streamAmountCents IS NOT NULL
-          AND lineageStatus IS NOT NULL
-          AND lineageHomeNetCents IS NOT NULL
-        ORDER BY streamDate DESC, streamSortTime DESC, streamSortId DESC
-        """,
-    )
-    fun observeConfirmedStreamRoots(ledgerId: String): Flow<List<ExpenseEntity>>
-
-    @Query(
-        """
         SELECT * FROM expense_offset_stream
         WHERE ledgerId = :ledgerId
         ORDER BY streamDate DESC, streamSortTime DESC, streamSortId DESC
@@ -363,9 +348,6 @@ interface ExpenseDao : BudgetReadProtectionDao, ExpenseFactQueryCacheDao, Expens
     @Transaction
     suspend fun getConfirmedStreamSnapshot(ledgerId: String): ConfirmedStreamSnapshot =
         ConfirmedStreamSnapshot(getConfirmed(ledgerId), getConfirmedStreamOffsets(ledgerId))
-
-    @Query("SELECT publicId FROM expense_offset_stream WHERE ledgerId = :ledgerId")
-    suspend fun confirmedStreamOffsetPublicIdsForLedger(ledgerId: String): List<String>
 
     @Query(
         """
@@ -542,9 +524,6 @@ interface ExpenseDao : BudgetReadProtectionDao, ExpenseFactQueryCacheDao, Expens
     @Query("DELETE FROM expenses WHERE ledgerId = :ledgerId")
     suspend fun clearForLedger(ledgerId: String)
 
-    @Query("DELETE FROM expenses WHERE ledgerId = :ledgerId AND status = 'confirmed'")
-    suspend fun deleteConfirmedForLedger(ledgerId: String)
-
     @Query(
         """
         DELETE FROM expenses
@@ -629,39 +608,6 @@ interface ExpenseDao : BudgetReadProtectionDao, ExpenseFactQueryCacheDao, Expens
         deleteConfirmedStreamOffsetsForRoot(ledgerId, rootServerId)
         if (activeOffsets.isNotEmpty()) upsertConfirmedStreamOffsets(activeOffsets)
         return true
-    }
-
-    @Transaction
-    suspend fun applyConfirmedSyncForLedger(
-        ledgerId: String,
-        expenses: List<ExpenseEntity>,
-        replaceCache: Boolean,
-        // Prune eligibility snapshot, taken by the caller BEFORE the network
-        // fetch; null disables pruning. A full-list response is a snapshot of
-        // the server at request time — a row confirmed-and-cached WHILE the
-        // (paginated) fetch was in flight is missing from that response, and
-        // an unscoped prune would delete it. Restricting deletion to rows
-        // that already existed pre-fetch keeps the prune to genuinely
-        // server-deleted rows; anything cached mid-flight survives until the
-        // next sync reconciles it.
-        pruneScope: Set<Long>?,
-    ) {
-        if (replaceCache) {
-            clearForLedger(ledgerId)
-        }
-        expenses.chunked(SQLITE_BINDING_CHUNK_SIZE).forEach { chunk ->
-            upsertAllByServerIdForLedger(ledgerId, chunk)
-        }
-        if (pruneScope != null) {
-            val remoteServerIds = expenses.mapNotNull { it.serverId }.toSet()
-            val staleServerIds = confirmedServerIdsForLedger(ledgerId)
-                .filter { it !in remoteServerIds && it in pruneScope }
-            staleServerIds.chunked(SQLITE_BINDING_CHUNK_SIZE).forEach { chunk ->
-                if (chunk.isNotEmpty()) {
-                    deleteConfirmedByServerIds(ledgerId, chunk)
-                }
-            }
-        }
     }
 
     /** Atomically applies the server-owned typed stream and returns the roots actually accepted. */

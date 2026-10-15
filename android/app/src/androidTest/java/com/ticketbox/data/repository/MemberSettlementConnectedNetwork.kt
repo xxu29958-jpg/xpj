@@ -10,7 +10,6 @@ import com.ticketbox.data.remote.dto.ExpenseAccountingTimeDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalListResponseDto
 import com.ticketbox.data.remote.dto.RepaymentFactDto
-import com.ticketbox.data.remote.dto.RepaymentFactListDto
 import java.io.IOException
 import java.lang.reflect.Proxy
 
@@ -87,8 +86,8 @@ internal class MemberSettlementConnectedNetwork {
         }
 
         override suspend fun debtActivity(publicId: String, page: Int, focusRepayment: String?): com.ticketbox.data.remote.dto.DebtActivityListDto {
-            val history = debtRepayments(publicId, page)
-            val events = history.items.map { payment -> com.ticketbox.data.remote.dto.DebtActivityDto(
+            check(publicId == current.publicId)
+            val events = listOfNotNull(payment).map { payment -> com.ticketbox.data.remote.dto.DebtActivityDto(
                 kind = "repayment", publicId = payment.publicId, recordedAt = payment.createdAt,
                 actorIsYou = true, repayment = payment,
             ) }
@@ -98,14 +97,8 @@ internal class MemberSettlementConnectedNetwork {
                 proposal.resolvedAt?.let { com.ticketbox.data.remote.dto.DebtActivityDto("proposal_resolved", proposal.publicId, it,
                     actorIsYou = true, proposal = proposal) },
             ) else emptyList()
-            return com.ticketbox.data.remote.dto.DebtActivityListDto(publicId, history.homeCurrencyCode,
-                events + proposalEvents, history.page, history.pageSize, events.size + proposalEvents.size)
-        }
-
-        override suspend fun debtRepayments(publicId: String, page: Int): RepaymentFactListDto {
-            check(publicId == current.publicId)
-            val items = listOfNotNull(payment)
-            return RepaymentFactListDto(publicId, "JPY", items, page, 20, items.size)
+            return com.ticketbox.data.remote.dto.DebtActivityListDto(publicId, "JPY",
+                events + proposalEvents, page, 20, events.size + proposalEvents.size)
         }
 
         override suspend fun forgiveDebt(publicId: String, request: DebtForgiveCreateRequestDto,

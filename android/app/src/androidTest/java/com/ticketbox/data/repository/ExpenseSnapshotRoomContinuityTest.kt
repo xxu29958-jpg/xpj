@@ -26,8 +26,6 @@ import com.ticketbox.viewmodel.OutboxRecoveryRepositories
 import com.ticketbox.viewmodel.OutboxStatusViewModel
 import com.ticketbox.viewmodel.outboxStatusViewModelFactory
 import java.io.IOException
-import java.time.Clock
-import java.time.Duration
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.cancel
@@ -116,12 +114,10 @@ class ExpenseSnapshotRoomContinuityTest {
         assertEquals(originals.last()["idempotencyKey"], commits.single().second)
 
         val binding = requireNotNull(fixture.outbox.observeStatus().first().binding)
-        val cleanup = OutboxRepository(fixture.pendingDao, Clock.offset(fixture.clock, Duration.ofDays(14)),
-            bindingProvider = { binding }, onRowsDeleted = {})
-        assertEquals("Only the original Create receipt is eligible for retirement", 1, cleanup.gcCompleted())
+        val acceptedReceipts = fixture.stored()
         fixture.expenseDao.clearForLedger(binding.ledgerId)
         val reopened = fixture.reopen().expenseRepository
-        assertEquals(listOf(delivered), fixture.stored())
+        assertEquals(acceptedReceipts, fixture.stored())
         showSync()
         compose.waitUntil(10_000) { compose.onAllNodes(hasText(REFRESH_REQUIRED)).fetchSemanticsNodes().isNotEmpty() }
         compose.onAllNodes(hasText(REFRESH_REQUIRED)).onFirst().performScrollTo().performClick()
@@ -133,7 +129,7 @@ class ExpenseSnapshotRoomContinuityTest {
         }
         compose.waitUntil(10_000) { global?.uiState?.value?.busyRowId == null }
         assertEquals("The refresh action must resolve the original local target", beforeRead + 1, reads.get())
-        assertEquals(listOf(delivered + ("lastError" to null)), fixture.stored())
+        assertEquals(acceptedReceipts.dropLast(1) + (delivered + ("lastError" to null)), fixture.stored())
         assertEquals("""{"expenseId":42}""", delivered["receiptJson"])
         assertEquals("Reviewed local merchant", reopened.fetchExpenseFromLocalCache(42).getOrThrow().merchant)
         assertEquals(0, drain().attempted)
@@ -174,11 +170,6 @@ class ExpenseSnapshotRoomContinuityTest {
 
         val reopened = fixture.reopen().expenseRepository
         assertEquals(delivered, fixture.stored())
-        val binding = requireNotNull(fixture.outbox.observeStatus().first().binding)
-        val cleanup = OutboxRepository(fixture.pendingDao, Clock.offset(fixture.clock, Duration.ofDays(14)),
-            bindingProvider = { binding }, onRowsDeleted = {})
-        assertEquals(0, cleanup.gcCompleted())
-        assertEquals(delivered, fixture.stored())
         showSync()
         compose.waitUntil(10_000) { compose.onAllNodes(hasText(REFRESH_REQUIRED)).fetchSemanticsNodes().isNotEmpty() }
         compose.onAllNodes(hasText(REFRESH_REQUIRED)).onFirst().performScrollTo().assertIsDisplayed().performClick()
@@ -191,7 +182,6 @@ class ExpenseSnapshotRoomContinuityTest {
         staleRead = true
         refreshAndAwaitRead()
         assertEquals(delivered, fixture.stored())
-        assertEquals(0, cleanup.gcCompleted())
 
         staleRead = false
         clickRefresh()
@@ -203,7 +193,6 @@ class ExpenseSnapshotRoomContinuityTest {
         assertEquals(0, drain().attempted)
         assertEquals(acceptedAttempts, attempts.get())
         assertEquals(2, commits.size)
-        assertEquals(2, cleanup.gcCompleted())
     }
 
     private suspend fun drain() = OutboxDrainEngine(fixture.outbox, listOf(PatchExpenseDispatcher(

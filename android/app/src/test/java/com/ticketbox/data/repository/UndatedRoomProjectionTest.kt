@@ -6,7 +6,6 @@ import androidx.room.Room
 import com.ticketbox.data.local.AppDatabase
 import com.ticketbox.ui.components.expenseTimeLabel
 import com.ticketbox.ui.screens.groupConfirmedStream
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -32,10 +31,11 @@ class UndatedRoomProjectionTest {
                 streamAmountCents = 1200, lineageStatus = "confirmed", lineageHomeNetCents = 1200, timePrecision = "unknown")
             dao.upsertByServerIdForLedger("owner", unknown)
             dao.upsertByServerIdForLedger("owner", raw.copy(serverId = 10, publicId = "absent-projection"))
-            assertEquals(listOf(9L), dao.observeConfirmedStreamRoots("owner").first().map { it.serverId })
+            val initial = dao.getConfirmedStreamSnapshot("owner")
+            assertEquals(listOf(9L), confirmedStreamFromCache(initial.roots, initial.offsets).map { it.root.id })
             dao.upsertByServerIdForLedger("owner", raw)
-            val rows = dao.observeConfirmedStreamRoots("owner").first()
-            val stream = confirmedStreamFromCache(rows, emptyList())
+            val snapshot = dao.getConfirmedStreamSnapshot("owner")
+            val stream = confirmedStreamFromCache(snapshot.roots, snapshot.offsets)
             assertEquals(1, stream.size)
             assertNull(stream.single().streamDate)
             assertEquals("账务日期待核对", expenseTimeLabel(stream.single().root).resolve(context))

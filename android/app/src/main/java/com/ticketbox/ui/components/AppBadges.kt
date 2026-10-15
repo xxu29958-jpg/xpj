@@ -14,11 +14,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import com.ticketbox.R
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalThemeVisuals
@@ -94,12 +92,4 @@ fun AppSwitch(
             disabledUncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.44f),
         ),
     )
-}
-
-@Composable
-fun SafeBadge(
-    modifier: Modifier = Modifier,
-    text: String = stringResource(R.string.components_safe_badge_label),
-) {
-    StatusPill(text = text, modifier = modifier, active = true)
 }

@@ -23,7 +23,6 @@ import com.ticketbox.data.remote.dto.DebtKindSetRequestDto
 import com.ticketbox.data.remote.dto.DebtRepaymentReceiptDto
 import com.ticketbox.data.remote.dto.RepaymentCreateRequestDto
 import com.ticketbox.data.remote.dto.RepaymentFactDto
-import com.ticketbox.data.remote.dto.RepaymentFactListDto
 import com.ticketbox.data.remote.dto.RepaymentDraftDto
 import com.ticketbox.data.remote.dto.RepaymentDraftListResponseDto
 import androidx.lifecycle.ViewModel
@@ -168,16 +167,6 @@ internal class DebtAdjustmentConnectedNetwork {
         }
 
         override suspend fun debtActivity(publicId: String, page: Int, focusRepayment: String?): com.ticketbox.data.remote.dto.DebtActivityListDto {
-            val history = debtRepayments(publicId, page)
-            val events = history.items.map { payment -> com.ticketbox.data.remote.dto.DebtActivityDto(
-                kind = "repayment", publicId = payment.publicId, recordedAt = payment.createdAt,
-                actorIsYou = true, repayment = payment,
-            ) }
-            return com.ticketbox.data.remote.dto.DebtActivityListDto(publicId, history.homeCurrencyCode,
-                events, history.page, history.pageSize, history.total)
-        }
-
-        override suspend fun debtRepayments(publicId: String, page: Int): RepaymentFactListDto {
             if (failReads) throw IOException("Synthetic unavailable repayment history")
             val facts = repaymentResults.values.map { (request, receipt) ->
                 RepaymentFactDto(receipt.repaymentPublicId, request.amountCents, request.paidAt, "2026-09-02T01:00:00Z", "active",
@@ -186,7 +175,11 @@ internal class DebtAdjustmentConnectedNetwork {
                         sourceTimezone = input.sourceTimezone, accountingDate = input.accountingDate,
                         calendarRevision = input.calendarRevision, basis = "manual") })
             }
-            return RepaymentFactListDto(publicId, "CNY", facts, page, 20, facts.size)
+            val events = facts.map { payment -> com.ticketbox.data.remote.dto.DebtActivityDto(
+                kind = "repayment", publicId = payment.publicId, recordedAt = payment.createdAt,
+                actorIsYou = true, repayment = payment,
+            ) }
+            return com.ticketbox.data.remote.dto.DebtActivityListDto(publicId, "CNY", events, page, 20, events.size)
         }
 
         override suspend fun recordDebtRepayment(publicId: String, request: RepaymentCreateRequestDto,

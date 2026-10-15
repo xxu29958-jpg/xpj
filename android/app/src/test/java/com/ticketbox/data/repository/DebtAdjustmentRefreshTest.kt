@@ -54,7 +54,7 @@ class DebtAdjustmentRefreshTest {
     }
 
     @Test
-    fun newDoneRefreshesOnceAndRetentionDoesNotReplayOrHideTheNextCompletion() = runTest {
+    fun eachNewDoneRefreshesOnceWithoutHidingTheNextCompletion() = runTest {
         val fixture = DebtAdjustmentFixture()
         val historicalId = fixture.save().getOrThrow()
         fixture.outbox.markDone(historicalId)
@@ -74,10 +74,6 @@ class DebtAdjustmentRefreshTest {
         runCurrent()
         assertEquals(listOf(true, false), events.filter { it.requiresRefresh }.map { it.initial })
 
-        val later = fixture.newOutbox(Clock.offset(fixture.clock, Duration.ofDays(2)))
-        assertEquals(2, later.gcCompleted(retentionMillis = Duration.ofDays(1).toMillis()))
-        runCurrent()
-        assertEquals(2, events.count { it.requiresRefresh }, "Removing retained Done rows is not a new completion")
         val following = fixture.save().getOrThrow()
         runCurrent()
         assertEquals(2, events.count { it.requiresRefresh })
@@ -138,7 +134,6 @@ class DebtAdjustmentRefreshTest {
         assertEquals(PendingMutationStatus.Abandoned, reopened.writes.single().row.status)
         assertTrue(reopened.acceptsCanonical(fixture.debt), "A post-stop read may retain the original RV")
         val later = fixture.newOutbox(Clock.offset(fixture.clock, Duration.ofDays(40)))
-        assertEquals(0, later.gcCompleted(retentionMillis = 0))
         assertEquals(0, later.reapExpiredPending(fixture.clock.millis() + Duration.ofDays(40).toMillis()))
         assertTrue(fixture.outbox.activeForTarget("debt:${fixture.debt.publicId}").isEmpty())
         assertEquals(0, fixture.engine().drainOnce().attempted)

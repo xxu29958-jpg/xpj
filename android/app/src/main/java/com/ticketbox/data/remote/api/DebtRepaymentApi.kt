@@ -1,7 +1,6 @@
 package com.ticketbox.data.remote.api
 
 import com.ticketbox.data.remote.dto.DebtDto
-import com.ticketbox.data.remote.dto.RepaymentFactListDto
 import com.ticketbox.data.remote.dto.RepaymentVoidCreateRequestDto
 import retrofit2.http.Body
 import retrofit2.http.GET
@@ -18,12 +17,6 @@ interface DebtRepaymentApi {
         @Query("page") page: Int,
         @Query("focus_repayment") focusRepayment: String? = null,
     ): com.ticketbox.data.remote.dto.DebtActivityListDto
-
-    @GET("api/debts/{publicId}/repayments")
-    suspend fun debtRepayments(
-        @Path("publicId") publicId: String,
-        @Query("page") page: Int,
-    ): RepaymentFactListDto
 
     @POST("api/debts/{publicId}/repayment-voids")
     suspend fun voidDebtRepayment(

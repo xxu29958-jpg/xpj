@@ -228,55 +228,6 @@ class ExpenseDaoContractTest {
     }
 
     @Test
-    fun confirmedSyncPruneSparesRowsCachedAfterTheSnapshot() = runTest {
-        // Audit follow-up P2: the full-list response is a snapshot of the
-        // server at request time. A row confirmed-and-cached while the fetch
-        // was in flight is missing from that response by timing alone — the
-        // prune must only delete rows that already existed pre-fetch.
-        val dao = FakeExpenseDao()
-        dao.upsertByServerIdForLedger(
-            "owner",
-            entity("owner", serverId = 1, fixture = ExpenseEntityFixture(merchant = "pre-existing")),
-        )
-        val preFetchSnapshot = dao.confirmedServerIdsForLedger("owner").toSet()
-        // Confirmed mid-fetch: cached after the snapshot, absent from the
-        // (stale) response below.
-        dao.upsertByServerIdForLedger(
-            "owner",
-            entity("owner", serverId = 2, fixture = ExpenseEntityFixture(merchant = "in-flight-confirm")),
-        )
-
-        dao.applyConfirmedSyncForLedger(
-            ledgerId = "owner",
-            expenses = listOf(entity("owner", serverId = 1, fixture = ExpenseEntityFixture(merchant = "pre-existing"))),
-            replaceCache = false,
-            pruneScope = preFetchSnapshot,
-        )
-
-        assertEquals(setOf(1L, 2L), dao.getConfirmed("owner").map { it.serverId }.toSet())
-    }
-
-    @Test
-    fun confirmedSyncPruneStillRemovesServerDeletedRows() = runTest {
-        val dao = FakeExpenseDao()
-        dao.upsertByServerIdForLedger("owner", entity("owner", serverId = 1))
-        dao.upsertByServerIdForLedger(
-            "owner",
-            entity("owner", serverId = 9, fixture = ExpenseEntityFixture(merchant = "deleted-on-server")),
-        )
-        val preFetchSnapshot = dao.confirmedServerIdsForLedger("owner").toSet()
-
-        dao.applyConfirmedSyncForLedger(
-            ledgerId = "owner",
-            expenses = listOf(entity("owner", serverId = 1)),
-            replaceCache = false,
-            pruneScope = preFetchSnapshot,
-        )
-
-        assertEquals(listOf(1L), dao.getConfirmed("owner").map { it.serverId })
-    }
-
-    @Test
     fun pendingSyncRoundTripsAndPreservesConfirmedCache() = runTest {
         // A3: applyPendingSyncForLedger must populate the pending cache without
         // touching the confirmed cache that shares the same table (the
@@ -499,17 +450,11 @@ private class FakeExpenseDao : ExpenseDao, ExpenseFactQueryCacheDao by ExpenseFa
         return flowFor(ledgerId)
     }
 
-    override fun observeConfirmedStreamRoots(ledgerId: String): Flow<List<ExpenseEntity>> =
-        MutableStateFlow(emptyList())
-
     override fun observeConfirmedStreamOffsets(ledgerId: String): Flow<List<ExpenseOffsetStreamEntity>> =
         MutableStateFlow(offsets.values.filter { it.ledgerId == ledgerId })
 
     override suspend fun getConfirmedStreamOffsets(ledgerId: String): List<ExpenseOffsetStreamEntity> =
         offsets.values.filter { it.ledgerId == ledgerId }
-
-    override suspend fun confirmedStreamOffsetPublicIdsForLedger(ledgerId: String): List<String> =
-        getConfirmedStreamOffsets(ledgerId).map { it.publicId }
 
     override suspend fun getConfirmed(ledgerId: String): List<ExpenseEntity> {
         return expenses.values
@@ -581,15 +526,6 @@ private class FakeExpenseDao : ExpenseDao, ExpenseFactQueryCacheDao by ExpenseFa
         ids.forEach { expenses.remove(it) }
         emit(ledgerId)
     }
-
-    override suspend fun deleteConfirmedForLedger(ledgerId: String) {
-        val ids = expenses.values
-            .filter { it.ledgerId == ledgerId && it.status == "confirmed" }
-            .map { it.id }
-        ids.forEach { expenses.remove(it) }
-        emit(ledgerId)
-    }
-
 
     override suspend fun deleteConfirmedByServerIds(ledgerId: String, serverIds: List<Long>) {
         val remove = serverIds.toSet()

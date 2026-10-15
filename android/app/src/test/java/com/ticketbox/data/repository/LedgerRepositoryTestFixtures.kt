@@ -473,12 +473,9 @@ internal class LedgerFakeDao : ExpenseDao, com.ticketbox.data.local.ExpenseFactQ
     fun insertEntity(entity: ExpenseEntity) { map[entity.id] = entity }
     fun find(id: Long): ExpenseEntity? = map[id]
     override fun observeConfirmed(ledgerId: String): Flow<List<ExpenseEntity>> = flowFor(ledgerId)
-    override fun observeConfirmedStreamRoots(ledgerId: String): Flow<List<ExpenseEntity>> =
-        MutableStateFlow(emptyList())
     override fun observeConfirmedStreamOffsets(ledgerId: String): Flow<List<ExpenseOffsetStreamEntity>> =
         MutableStateFlow(emptyList())
     override suspend fun getConfirmedStreamOffsets(ledgerId: String): List<ExpenseOffsetStreamEntity> = emptyList()
-    override suspend fun confirmedStreamOffsetPublicIdsForLedger(ledgerId: String): List<String> = emptyList()
     override suspend fun getConfirmed(ledgerId: String): List<ExpenseEntity> = map.values.filter { it.ledgerId == ledgerId }
     override suspend fun getPending(ledgerId: String): List<ExpenseEntity> =
         map.values.filter { it.ledgerId == ledgerId && it.status == "pending" }
@@ -503,10 +500,6 @@ internal class LedgerFakeDao : ExpenseDao, com.ticketbox.data.local.ExpenseFactQ
     override suspend fun clear() { map.clear() }
     override suspend fun clearForLedger(ledgerId: String) {
         val ids = map.values.filter { it.ledgerId == ledgerId }.map { it.id }
-        ids.forEach { map.remove(it) }
-    }
-    override suspend fun deleteConfirmedForLedger(ledgerId: String) {
-        val ids = map.values.filter { it.ledgerId == ledgerId && it.status == "confirmed" }.map { it.id }
         ids.forEach { map.remove(it) }
     }
     override suspend fun deleteConfirmedByServerIds(ledgerId: String, serverIds: List<Long>) {

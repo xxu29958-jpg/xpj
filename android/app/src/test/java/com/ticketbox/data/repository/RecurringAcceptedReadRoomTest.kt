@@ -272,8 +272,6 @@ class RecurringAcceptedReadRoomTest {
                 assertEquals("done", done.status)
                 assertEquals(original.retryCount + 4, done.retryCount)
                 assertEquals("1", db.expenseDao().recurringReadEpoch(bindingKey))
-                assertEquals(1, db.pendingMutationDao().deleteResolvedBefore("done", "2099-01-01T00:00:00Z"))
-                assertEquals("1", db.expenseDao().recurringReadEpoch(bindingKey), "Ordinary Done cleanup cannot reset the query epoch")
             } finally { requireNotNull(api.release).complete(Unit) }
             assertTrue(late.await().isFailure, "A different query owner cannot republish a read begun before acceptance")
             api.failure = ConnectException("offline after original acceptance")

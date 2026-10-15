@@ -1,15 +1,5 @@
-"""v1.2 — OCR single-source read helpers.
-
-Two helpers tested here:
-
-* ``latest_ocr_fact_for_expense`` — the indexed lookup that returns
-  the newest ``ocr_facts`` row for a given expense (or ``None``).
-* ``read_ocr_text`` — returns the latest fact's ``raw_text`` and
-  **does not** fall back to ``expense.raw_text``. The fallback existed
-  in steps 1–3 of the migration while consumers were ported; step 4
-  dropped it now that the backfill (``bb00c453bf29``) guarantees every
-  expense with non-empty ``raw_text`` also has a fact carrying that
-  text. The tests below pin the post-step-4 contract.
+"""Current OCR text read owner: latest nonempty fact, stable ties and tenant isolation.
+The retired expense.raw_text mirror never supplies the answer.
 """
 
 from __future__ import annotations
@@ -20,7 +10,6 @@ from app.database import SessionLocal
 from app.models import Expense
 from app.services.learning_service import (
     OcrFactDraft,
-    latest_ocr_fact_for_expense,
     read_ocr_text,
     record_ocr_fact,
 )
@@ -41,31 +30,7 @@ def _make_expense(
         return expense.id
 
 
-def test_latest_returns_newest_row(*, identity) -> None:
-    expense_id = _make_expense()
-    base = datetime(2026, 5, 1, tzinfo=UTC)
-    with SessionLocal() as db:
-        # Two facts, three minutes apart.
-        for offset_min in (0, 5):
-            record_ocr_fact(
-                db,
-                OcrFactDraft(
-                    tenant_id="owner",
-                    expense_id=expense_id,
-                    ocr_provider="local_llm",
-                    raw_text=f"snapshot-{offset_min}",
-                ),
-                now=base + timedelta(minutes=offset_min),
-            )
-        db.commit()
-        latest = latest_ocr_fact_for_expense(
-            db, tenant_id="owner", expense_id=expense_id
-        )
-        assert latest is not None
-        assert latest.raw_text == "snapshot-5"
-
-
-def test_latest_breaks_same_timestamp_ties_by_append_order(
+def test_current_text_breaks_same_timestamp_ties_by_append_order(
     *, identity,
 ) -> None:
     expense_id = _make_expense()
@@ -92,69 +57,11 @@ def test_latest_breaks_same_timestamp_ties_by_append_order(
             now=timestamp,
         )
         db.commit()
-        latest = latest_ocr_fact_for_expense(
-            db, tenant_id="owner", expense_id=expense_id
+        latest = read_ocr_text(
+            db, tenant_id="owner", expense=db.get(Expense, expense_id)
         )
         assert latest is not None
-        assert latest.raw_text == "second-row"
-
-
-def test_latest_returns_none_when_no_facts(*, identity) -> None:
-    expense_id = _make_expense()
-    with SessionLocal() as db:
-        assert (
-            latest_ocr_fact_for_expense(
-                db, tenant_id="owner", expense_id=expense_id
-            )
-            is None
-        )
-
-
-def test_latest_is_tenant_scoped(*, identity) -> None:
-    owner_expense = _make_expense(tenant_id="owner")
-    tester_expense = _make_expense(tenant_id="tester_1")
-    with SessionLocal() as db:
-        record_ocr_fact(
-            db,
-            OcrFactDraft(
-                tenant_id="owner",
-                expense_id=owner_expense,
-                ocr_provider="local_llm",
-                raw_text="owner-side",
-            ),
-        )
-        record_ocr_fact(
-            db,
-            OcrFactDraft(
-                tenant_id="tester_1",
-                expense_id=tester_expense,
-                ocr_provider="local_llm",
-                raw_text="tester-side",
-            ),
-        )
-        db.commit()
-
-        # Cross-tenant lookup using owner's expense id but tester
-        # tenant returns None (tenant filter blocks it).
-        assert (
-            latest_ocr_fact_for_expense(
-                db, tenant_id="tester_1", expense_id=owner_expense
-            )
-            is None
-        )
-        # Each tenant sees its own.
-        assert (
-            latest_ocr_fact_for_expense(
-                db, tenant_id="owner", expense_id=owner_expense
-            ).raw_text
-            == "owner-side"
-        )
-        assert (
-            latest_ocr_fact_for_expense(
-                db, tenant_id="tester_1", expense_id=tester_expense
-            ).raw_text
-            == "tester-side"
-        )
+        assert latest == "second-row"
 
 
 def test_read_ocr_text_returns_latest_fact_text(*, identity) -> None:

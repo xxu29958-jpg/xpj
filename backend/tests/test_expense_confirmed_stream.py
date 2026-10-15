@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import csv
-from datetime import UTC, datetime
 from io import StringIO
 from uuid import uuid4
 
@@ -14,7 +13,6 @@ from app.schemas import ConfirmedExpenseStreamItem
 from app.services.budget_advisor_service import read_budget_inputs
 from app.services.category_service import list_category_summary
 from app.services.goal_spending_response import month_spend_totals
-from app.services.insight_radar_service import cashflow_radar
 from app.services.monthly_report_service import compose_monthly_report
 from app.services.reports_service import reports_overview
 from app.services.web_stats_service import confirmed_by_day
@@ -337,18 +335,6 @@ def _assert_refund_service_consumers() -> None:
         )
         assert travel.confirmed_amount_cents == -300
         assert travel.confirmed_count == 1
-        september_cashflow = next(
-            item
-            for item in cashflow_radar(
-                db,
-                tenant_id="owner",
-                look_back_months=2,
-                now=datetime(2026, 9, 15, tzinfo=UTC),
-                timezone_name="Asia/Shanghai",
-            )
-            if item.year_month == "2026-09"
-        )
-        assert september_cashflow.expense_cents == -300
 
 
 def _assert_refund_export_and_lifestyle(client: TestClient, identity) -> None:

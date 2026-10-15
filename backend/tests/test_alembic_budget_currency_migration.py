@@ -8,11 +8,10 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
 from app.database import SessionLocal, engine
-from app.services.currency_adoption_service import adopt_currency_binding, adoption_preview
+from app.services.currency_adoption_service import adopt_currency_binding_for_installation_owner, adoption_preview
 from app.services.currency_binding_service import resolve_write_capability
-from app.services.identity_service import authenticate_session_token, bootstrap_owner
 from tests._infra.c07_money_migration import reset_schema, run_alembic, seed_owner
-from tests._infra.currency import activate_test_currency_authority
+from tests._infra.currency import activate_test_currency_authority, authenticate_migration_currency_owner
 
 pytestmark = [pytest.mark.real_db, pytest.mark.currency_binding_unbound]
 _PARENT = "20260908_0003"
@@ -76,11 +75,10 @@ def test_unknown_budget_currency_is_filled_only_by_owner_adoption():
         run_alembic(command.upgrade, "head")
         with SessionLocal() as db:
             # Authenticate the existing historical owner only on the current schema.
-            bootstrap = bootstrap_owner(db, account_name="Owner", ledger_name="Owner ledger", device_name="migration-admin")
-            auth = authenticate_session_token(db, bootstrap.admin_token, {"app", "admin"})
+            auth = authenticate_migration_currency_owner(db)
             assert auth.account_id == owner_id
             preview = adoption_preview(db)
-            receipt = adopt_currency_binding(db, auth=auth, idempotency_key=uuid4(), home_code="CNY",
+            receipt = adopt_currency_binding_for_installation_owner(db, auth=auth, idempotency_key=uuid4(), home_code="CNY",
                 expected_contract_version=preview.currency_contract_version, expected_state=preview.state,
                 expected_revision=preview.binding_revision, expected_evidence_sha256=preview.evidence_sha256,
                 reason="Owner verified the historical budget as CNY.")

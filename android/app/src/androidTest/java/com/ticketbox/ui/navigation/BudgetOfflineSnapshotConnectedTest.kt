@@ -19,7 +19,6 @@ import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.data.repository.ExpenseCorrectionConnectedFixture
 import com.ticketbox.data.repository.OutboxDrainEngine
 import com.ticketbox.data.repository.SaveMonthlyBudgetDispatcher
-import com.ticketbox.data.repository.deleteResolvedBeforeCutoff
 import com.ticketbox.data.repository.newTaskMonth
 import com.ticketbox.data.repository.toDomain
 import com.ticketbox.domain.model.NotificationPreferences
@@ -370,7 +369,6 @@ class BudgetOfflineSnapshotConnectedTest {
         val status = fixture.outbox.observeStatus().first()
         assertTrue(status.failed.isEmpty())
         assertEquals(accepted["id"], status.refreshRequired.single().id.toString())
-        assertEquals(0, fixture.pendingDao.deleteResolvedBeforeCutoff("9999-01-01T00:00:00.000Z"))
         assertEquals(0, engine.drainOnce().attempted)
         transport.offline = true
         assertTrue("Room reopen must not resurrect the v7 read while local recovery is blocked",

@@ -715,12 +715,6 @@ class OutboxRepository private constructor(
         return changed
     }
 
-    suspend fun gcCompleted(retentionMillis: Long = DEFAULT_RETENTION_MS): Int {
-        val removed = dao.deleteResolvedBeforeCutoff(ISO.format(Instant.now(clock).minusMillis(retentionMillis)))
-        notifyRowsDeleted(removed)
-        return removed
-    }
-
     private fun overAgeCutoffIso(): String =
         ISO.format(Instant.now(clock).minusMillis(OUTBOX_PENDING_AGE_CAP_MILLIS))
 
@@ -784,7 +778,6 @@ class OutboxRepository private constructor(
         const val DEFAULT_DRAIN_BATCH: Int = 25
         /** 7 days — enough to power undo / audit and not enough to
          *  let the DB grow unbounded on a phone. */
-        const val DEFAULT_RETENTION_MS: Long = 7L * 24L * 60L * 60L * 1000L
         /** 5 minutes — any IN_FLIGHT older than this is presumed
          *  abandoned by a cancelled / dead worker and is swept
          *  back to PENDING at next drain start. */

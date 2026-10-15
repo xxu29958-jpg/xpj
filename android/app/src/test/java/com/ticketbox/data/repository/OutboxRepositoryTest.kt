@@ -234,30 +234,6 @@ class OutboxRepositoryTest {
         assertTrue(dao.rows[id] == null)
     }
 
-    @Test
-    fun gcCompletedDeletesDoneRowsOlderThanRetention() = runTest {
-        val dao = FakePendingMutationDao()
-        val now = "2026-05-04T12:00:00Z"
-        val repo = testOutboxRepository(dao = dao, clock = fixedClock(now))
-
-        val oldId = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 0L)
-        // Hand-edit completedAt to before retention window.
-        dao.rows[oldId] = dao.rows[oldId]!!.copy(
-            status = PendingMutationStatus.Done.wireValue,
-            completedAt = "2026-04-01T00:00:00Z",
-        )
-        val recentId = repo.enqueue(PendingMutationType.PatchExpense, "expense:2", "{}", 0L)
-        dao.rows[recentId] = dao.rows[recentId]!!.copy(
-            status = PendingMutationStatus.Done.wireValue,
-            completedAt = now,
-        )
-
-        val pruned = repo.gcCompleted()
-
-        assertEquals(1, pruned)
-        assertTrue(dao.rows[oldId] == null)
-        assertTrue(dao.rows[recentId] != null)
-    }
 
     @Test
     fun reapExpiredPendingFailsOverAgeRowAndLeavesFreshRowUntouched() = runTest {
@@ -372,7 +348,7 @@ class OutboxRepositoryTest {
     }
 
     @Test
-    fun failedRowsAreNotCompletedAndAreNotGarbageCollected() = runTest {
+    fun failedRowsKeepTheirUnresolvedState() = runTest {
         val dao = FakePendingMutationDao()
         val repo = testOutboxRepository(
             dao = dao,
@@ -381,10 +357,8 @@ class OutboxRepositoryTest {
         val failedId = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 0L)
 
         repo.markFailed(failedId, "user must decide")
-        val pruned = repo.gcCompleted(retentionMillis = 0)
 
         val row = dao.rows[failedId]
-        assertEquals(0, pruned)
         assertNotNull(row)
         assertEquals(PendingMutationStatus.Failed.wireValue, row.status)
         assertNull(row.completedAt)

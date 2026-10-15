@@ -15,7 +15,6 @@ _TOKEN_GROUPS = 2
 _SE_GROUP_ENABLED = 0x00000004
 _SE_GROUP_OWNER = 0x00000008
 _SE_GROUP_USE_FOR_DENY_ONLY = 0x00000010
-_PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 _ERROR_INSUFFICIENT_BUFFER = 122
 _GENERIC_WRITE = 0x40000000
 _GENERIC_READ = 0x80000000
@@ -69,13 +68,6 @@ class _SecurityAttributes(ctypes.Structure):
 
 class _FileAttributeTagInfo(ctypes.Structure):
     _fields_ = [("attributes", wintypes.DWORD), ("reparse_tag", wintypes.DWORD)]
-
-
-class _FileTime(ctypes.Structure):
-    _fields_ = [
-        ("low", wintypes.DWORD),
-        ("high", wintypes.DWORD),
-    ]
 
 
 class _AclSizeInformation(ctypes.Structure):
@@ -156,19 +148,6 @@ def _configure_advapi32(advapi32: object) -> None:
 
 def _configure_kernel32(kernel32: object) -> None:
     kernel32.GetCurrentProcess.restype = wintypes.HANDLE
-    kernel32.OpenProcess.argtypes = [
-        wintypes.DWORD,
-        wintypes.BOOL,
-        wintypes.DWORD,
-    ]
-    kernel32.OpenProcess.restype = wintypes.HANDLE
-    kernel32.GetProcessTimes.argtypes = [
-        wintypes.HANDLE,
-        ctypes.POINTER(_FileTime),
-        ctypes.POINTER(_FileTime),
-        ctypes.POINTER(_FileTime),
-        ctypes.POINTER(_FileTime),
-    ]
     kernel32.CreateFileW.argtypes = [
         wintypes.LPCWSTR,
         wintypes.DWORD,
@@ -213,43 +192,6 @@ def windows_apis() -> tuple[object, object]:
     _configure_advapi32(advapi32)
     _configure_kernel32(kernel32)
     return advapi32, kernel32
-
-
-def process_start_filetime(
-    process_id: int,
-    *,
-    apis: tuple[object, object],
-) -> tuple[int, int]:
-    """Return the immutable Windows creation FILETIME for one live process."""
-
-    if os.name != "nt":
-        raise OSError("Windows process identity is unavailable")
-    if isinstance(process_id, bool) or process_id <= 0:
-        raise ValueError("process id must be a positive integer")
-    _advapi32, kernel32 = apis
-    handle = kernel32.OpenProcess(
-        _PROCESS_QUERY_LIMITED_INFORMATION,
-        False,
-        process_id,
-    )
-    if not handle:
-        raise ctypes.WinError(ctypes.get_last_error())
-    created = _FileTime()
-    exited = _FileTime()
-    kernel = _FileTime()
-    user = _FileTime()
-    try:
-        if not kernel32.GetProcessTimes(
-            handle,
-            ctypes.byref(created),
-            ctypes.byref(exited),
-            ctypes.byref(kernel),
-            ctypes.byref(user),
-        ):
-            raise ctypes.WinError(ctypes.get_last_error())
-        return int(created.high), int(created.low)
-    finally:
-        kernel32.CloseHandle(handle)
 
 
 def current_process_sid(advapi32: object, kernel32: object) -> str:

@@ -202,7 +202,6 @@ class OpenApiContractGateTest {
         // the optional foreign-currency fields (a subset of the schema, so the forward check passes).
         Pairing(RepaymentCreateRequestDto::class, "RepaymentCreateRequest"),
         Pairing(RepaymentFactDto::class, "RepaymentFactResponse"),
-        Pairing(RepaymentFactListDto::class, "RepaymentFactListResponse"),
         Pairing(DebtActivityDto::class, "DebtActivityResponse"),
         Pairing(DebtActivityListDto::class, "DebtActivityListResponse"),
         Pairing(RepaymentVoidFactDto::class, "RepaymentVoidFactResponse"),

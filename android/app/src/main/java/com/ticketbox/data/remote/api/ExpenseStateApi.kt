@@ -3,7 +3,6 @@ package com.ticketbox.data.remote.api
 import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.ExpenseRepaymentDraftCreateRequestDto
 import com.ticketbox.data.remote.dto.RepaymentDraftDto
-import com.ticketbox.data.remote.dto.StatusDto
 import retrofit2.http.Body
 import retrofit2.http.Header
 import retrofit2.http.POST
@@ -57,18 +56,6 @@ interface ExpenseStateApi {
         // for Retrofit ergonomics; the repository always supplies a UUID.
         @Header("Idempotency-Key") idempotencyKey: String?,
     ): ExpenseDto
-
-    @POST("api/expenses/{id}/suggestions/{decisionPublicId}/accept")
-    suspend fun acceptPendingSuggestion(
-        @Path("id") id: Long,
-        @Path("decisionPublicId") decisionPublicId: String,
-    ): StatusDto
-
-    @POST("api/expenses/{id}/suggestions/{decisionPublicId}/reject")
-    suspend fun rejectPendingSuggestion(
-        @Path("id") id: Long,
-        @Path("decisionPublicId") decisionPublicId: String,
-    ): StatusDto
 
     @POST("api/expenses/{id}/mark-not-duplicate")
     suspend fun markNotDuplicate(

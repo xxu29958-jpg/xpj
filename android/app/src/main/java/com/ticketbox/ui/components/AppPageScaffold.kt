@@ -89,22 +89,10 @@ object AppPageDefaults {
 
     val BottomContentExtraPadding: Dp =
         AppSpacing.bottomContentPadding + AppSpacing.sectionGap + AppSpacing.cardGap
-    val CardGap: Dp = AppSpacing.cardGap
 
     fun topContentPadding(density: PageDensity): Dp = when (density) {
         PageDensity.Compact -> 14.dp
         PageDensity.Comfortable -> 18.dp
-    }
-
-    /**
-     * 页头与正文之间的间隙。
-     *
-     * 当前由各页面自行控制 header 下方间距，骨架本身只用 [sectionGap] 串联
-     * 所有正文块；这里保留 token 是为了让密度规则保持自洽，并供 UI 单元测试断言。
-     */
-    fun headerToContentGap(density: PageDensity): Dp = when (density) {
-        PageDensity.Compact -> 12.dp
-        PageDensity.Comfortable -> AppSpacing.cardGap
     }
 
     fun sectionGap(density: PageDensity): Dp = when (density) {

@@ -435,22 +435,6 @@ class FakePendingMutationDao : PendingMutationDao {
         return ids.size
     }
 
-    override suspend fun deleteResolvedBefore(
-        doneStatus: String,
-        cutoffIso: String,
-    ): Int {
-        val victims = rows.values.filter {
-            it.status == doneStatus &&
-                it.completedAt != null &&
-                it.completedAt < cutoffIso &&
-                it.lastError?.startsWith("correction_refresh_required:") != true &&
-                it.lastError != BUDGET_READ_REFRESH_REQUIRED
-        }.map { it.id }
-        victims.forEach { rows.remove(it) }
-        refreshObservables()
-        return victims.size
-    }
-
     override suspend fun clearAll(): Int {
         val removed = rows.size
         rows.clear()

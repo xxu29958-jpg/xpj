@@ -409,9 +409,6 @@ private fun ContractNavigationSync(
                     launchSingleTop = request.route == WORKSPACE_ROUTE
                 }
             }
-            MainNavigationRequest.Back -> {
-                navController.popBackStack()
-            }
             null -> Unit
         }
     }

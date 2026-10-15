@@ -98,7 +98,6 @@ internal sealed interface MainNavigationRequest {
         val singleTop: Boolean = true,
     ) : MainNavigationRequest
     data class OpenWorkspace(val route: String = WORKSPACE_ROUTE) : MainNavigationRequest
-    data object Back : MainNavigationRequest
 }
 
 internal class MainShellState(val launchAction: LaunchActionState = LaunchActionState()) {
@@ -188,16 +187,8 @@ internal class MainShellState(val launchAction: LaunchActionState = LaunchAction
         )
     }
 
-    fun closeSecondaryPage() {
-        navigationRequest = MainNavigationRequest.Back
-    }
-
     fun openAccount(route: String = WORKSPACE_ROUTE) {
         navigationRequest = MainNavigationRequest.OpenWorkspace(route)
-    }
-
-    fun closeAccount() {
-        navigationRequest = MainNavigationRequest.Back
     }
 
     fun syncDestination(destination: MainProductDestination) {

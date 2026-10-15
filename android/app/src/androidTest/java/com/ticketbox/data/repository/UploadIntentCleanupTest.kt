@@ -12,7 +12,7 @@ import org.junit.runners.Parameterized
 /** Every existing row-deletion entry must release only files whose last reference was removed. */
 @RunWith(Parameterized::class)
 class UploadIntentCleanupTest(private val entry: Entry) {
-    enum class Entry { CONFLICT_DROP, FAILED_DROP, STOP, QUARANTINE, CLEAR_ALL, CLEAR_ON_BINDING, DONE_GC }
+    enum class Entry { CONFLICT_DROP, FAILED_DROP, STOP, QUARANTINE, CLEAR_ALL, CLEAR_ON_BINDING }
 
     @Test
     fun deletionReclaimsUnreferencedOriginalsAndPreservesEverySurvivingRow() = runBlocking<Unit> {
@@ -27,7 +27,6 @@ class UploadIntentCleanupTest(private val entry: Entry) {
                 Entry.CONFLICT_DROP -> original.copy(status = "conflict")
                 Entry.FAILED_DROP -> original.copy(status = "failed")
                 Entry.QUARANTINE -> original.copy(ownerKey = "another-owner")
-                Entry.DONE_GC -> original.copy(status = "done", completedAt = "2026-09-06T00:00:00.000Z")
                 else -> original
             }
             fixture.dao.clearAll()
@@ -43,7 +42,6 @@ class UploadIntentCleanupTest(private val entry: Entry) {
                     Entry.QUARANTINE -> assertEquals(1, fixture.outbox.clearQuarantined())
                     Entry.CLEAR_ALL -> assertEquals(2, fixture.outbox.clearAll())
                     Entry.CLEAR_ON_BINDING -> fixture.outbox.withBindingTransition(clearExistingRows = true) {}
-                    Entry.DONE_GC -> assertEquals(1, fixture.outbox.gcCompleted(retentionMillis = 0))
                 }
             }
 

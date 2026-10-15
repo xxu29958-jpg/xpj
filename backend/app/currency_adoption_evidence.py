@@ -174,7 +174,3 @@ def currency_adoption_evidence(connection: Connection) -> CurrencyAdoptionEviden
         allowed_home_currency_codes=allowed,
         has_conflict=has_conflict,
     )
-
-
-def currency_adoption_evidence_sha256(connection: Connection) -> str:
-    return currency_adoption_evidence(connection).sha256

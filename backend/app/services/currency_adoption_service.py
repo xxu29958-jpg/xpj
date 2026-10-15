@@ -42,7 +42,6 @@ from app.models import (
     MonthlyIncomePlan,
     RecurringItem,
 )
-from app.services import permission_service
 from app.services.currency_binding_service import (
     CurrencyBindingState,
     _load_binding,
@@ -191,15 +190,11 @@ def _adopt_in_transaction(
     expected_evidence_sha256: str,
     cleaned_reason: str,
     fingerprint: str,
-    authority: Literal["admin", "installation_owner"],
 ) -> CurrencyAdoptionReceipt:
     locked_auth = lock_and_revalidate_credential_mint_context(db, auth)
     if locked_auth is None:
         raise AppError("invalid_token", status_code=401)
-    if authority == "admin":
-        permission_service.require_admin_maintenance(locked_auth)
-    else:
-        _require_installation_owner_desktop(db, locked_auth)
+    _require_installation_owner_desktop(db, locked_auth)
     claimed = _claim_idempotency_key(db, key=_canonical_uuid4(idempotency_key), fingerprint=fingerprint)
     if isinstance(claimed, CurrencyAdoptionReceipt):
         db.rollback()
@@ -297,7 +292,7 @@ def _receipt(
     )
 
 
-def _adopt_currency_binding(
+def adopt_currency_binding_for_installation_owner(
     db: Session,
     *,
     auth: AuthContext,
@@ -308,7 +303,6 @@ def _adopt_currency_binding(
     expected_revision: int,
     expected_evidence_sha256: str,
     reason: str,
-    authority: Literal["admin", "installation_owner"],
 ) -> CurrencyAdoptionReceipt:
     code = _normalize_code(home_code)
     cleaned_reason = reason.strip()
@@ -334,7 +328,6 @@ def _adopt_currency_binding(
             expected_evidence_sha256=expected_evidence_sha256,
             cleaned_reason=cleaned_reason,
             fingerprint=fingerprint,
-            authority=authority,
         )
     except AppError:
         db.rollback()
@@ -344,32 +337,6 @@ def _adopt_currency_binding(
         if getattr(exc.orig, "sqlstate", None) == "55P03":
             raise AppError("currency_binding_state_conflict", status_code=409) from None
         raise
-
-
-def adopt_currency_binding(
-    db: Session,
-    *,
-    auth: AuthContext,
-    idempotency_key: UUID,
-    expected_contract_version: int,
-    home_code: str,
-    expected_state: str,
-    expected_revision: int,
-    expected_evidence_sha256: str,
-    reason: str,
-) -> CurrencyAdoptionReceipt:
-    return _adopt_currency_binding(
-        db,
-        auth=auth,
-        idempotency_key=idempotency_key,
-        expected_contract_version=expected_contract_version,
-        home_code=home_code,
-        expected_state=expected_state,
-        expected_revision=expected_revision,
-        expected_evidence_sha256=expected_evidence_sha256,
-        reason=reason,
-        authority="admin",
-    )
 
 
 def _require_installation_owner_desktop(
@@ -403,29 +370,3 @@ def revalidate_currency_adoption_owner(
         raise AppError("permission_denied", status_code=403)
     _require_installation_owner_desktop(db, locked_auth)
     return locked_auth
-
-
-def adopt_currency_binding_for_installation_owner(
-    db: Session,
-    *,
-    auth: AuthContext,
-    idempotency_key: UUID,
-    expected_contract_version: int,
-    home_code: str,
-    expected_state: str,
-    expected_revision: int,
-    expected_evidence_sha256: str,
-    reason: str,
-) -> CurrencyAdoptionReceipt:
-    return _adopt_currency_binding(
-        db,
-        auth=auth,
-        idempotency_key=idempotency_key,
-        expected_contract_version=expected_contract_version,
-        home_code=home_code,
-        expected_state=expected_state,
-        expected_revision=expected_revision,
-        expected_evidence_sha256=expected_evidence_sha256,
-        reason=reason,
-        authority="installation_owner",
-    )

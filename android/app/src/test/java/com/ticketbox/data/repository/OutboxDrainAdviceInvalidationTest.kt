@@ -179,8 +179,8 @@ class OutboxDrainAdviceInvalidationTest {
     fun replaceItemsReplaySuccessDoesNotFireInvalidationSeam() = runTest {
         // 218-B4 review P2-24 (verified): replace_expense_items rewrites
         // ExpenseItem sub-lines + updated_at + items_sum_status only; the
-        // advisor aggregates Expense.category / amount_cents / month via
-        // confirmed_amount_query, never line items — nothing it reads moves.
+        // advisor reads the confirmed financial stream through spending_projection_service,
+        // never line items — nothing it reads moves.
         val (engine, outbox) = withDispatcher(
             TypedStubDispatcher(type = PendingMutationType.ReplaceItems),
         )

@@ -25,7 +25,6 @@ from app.services.learning_service import (
     DecisionDraft,
     EventDraft,
     active_decision_for_subject,
-    recent_events_for_subject,
     record_decision,
     record_event,
     supersede_decision,
@@ -379,30 +378,6 @@ def test_active_decision_returns_latest_only(*, identity) -> None:
         )
         assert latest is not None
         assert latest.id == newer.id
-
-
-def test_recent_events_filtered_by_type(*, identity) -> None:
-    with SessionLocal() as db:
-        for event_type in ("accept", "reject", "reject", "manual_override"):
-            record_event(
-                db,
-                EventDraft(
-                    tenant_id="owner",
-                    event_type=event_type,
-                    subject_kind="merchant",
-                    subject_id=8,
-                ),
-            )
-        db.commit()
-        rejects = recent_events_for_subject(
-            db,
-            tenant_id="owner",
-            subject_kind="merchant",
-            subject_id=8,
-            event_types=["reject"],
-        )
-        assert len(rejects) == 2
-        assert all(e.event_type == "reject" for e in rejects)
 
 
 def test_tenant_isolation_in_reads(*, identity) -> None:

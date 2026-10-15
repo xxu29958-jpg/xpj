@@ -122,8 +122,6 @@ class MainShellStateTest {
         state.syncDestination(MainProductDestination.Workspace)
         assertTrue(state.accountOpen)
         assertEquals(SurfaceRole.Settings, state.surfaceRole(currentRoute = MAIN_ROUTE))
-        state.closeAccount()
-        assertEquals(MainNavigationRequest.Back, state.consumeNavigationRequest())
         state.syncDestination(MainProductDestination.Domain(PrimaryDomain.Transactions))
         assertFalse(state.accountOpen)
 
@@ -135,8 +133,6 @@ class MainShellStateTest {
         state.syncDestination(MainProductDestination.Secondary(ProductSecondaryPage.Budget))
         assertEquals(ProductSecondaryPage.Budget, state.secondaryPage)
         assertEquals(PrimaryDomain.Plans, state.selectedDomain)
-        state.closeSecondaryPage()
-        assertEquals(MainNavigationRequest.Back, state.consumeNavigationRequest())
         state.syncDestination(MainProductDestination.Domain(PrimaryDomain.Transactions))
         assertNull(state.secondaryPage)
     }
@@ -160,14 +156,6 @@ class MainShellStateTest {
         assertEquals(SurfaceRole.Ledger, state.surfaceRole(currentRoute = MAIN_ROUTE))
     }
 
-    @Test
-    fun retiredInboxProcessingEntryNoLongerResolves() {
-        // The duplicate 「处理进度」 product entry is retired: its secondary page,
-        // route and Pending link are gone. Background-task authority now lives
-        // only under Settings.
-        assertTrue(ProductSecondaryPage.entries.none { it.route == "product/inbox/processing" })
-        assertNull(mainProductDestination("product/inbox/processing"))
-    }
 
     @Test
     fun focusedRepaymentDraftTravelsInTheRestorableNavigationRoute() {
@@ -183,8 +171,6 @@ class MainShellStateTest {
         )
         state.syncDestination(MainProductDestination.Secondary(ProductSecondaryPage.RepaymentDrafts))
 
-        state.closeSecondaryPage()
-        assertEquals(MainNavigationRequest.Back, state.consumeNavigationRequest())
         state.syncDestination(MainProductDestination.Domain(PrimaryDomain.Obligations))
 
         assertNull(state.secondaryPage)

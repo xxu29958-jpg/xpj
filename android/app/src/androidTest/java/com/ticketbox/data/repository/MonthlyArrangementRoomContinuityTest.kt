@@ -398,7 +398,6 @@ class MonthlyArrangementRoomContinuityTest {
         assertEquals(originalReceipts, requireNotNull(db).pendingMutationDao().allRows())
         clock = Clock.offset(clock, Duration.ofDays(60))
         repository = reopen()
-        assertEquals(2, outbox.gcCompleted())
         assertEquals(history, repository.arrangementHistory(original, "2026-09").getOrThrow())
         // Earlier installations cached a raw response without read time or provenance.
         val legacyPage = com.squareup.moshi.Moshi.Builder().build().adapter(MonthlyArrangementHistoryDto::class.java)

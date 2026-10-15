@@ -7,7 +7,6 @@ from dataclasses import FrozenInstanceError
 import pytest
 
 from app.services.learning_service import (
-    ALGORITHM_TYPES,
     BUDGET_QUANTILE_VERSION,
     BUDGET_SUGGESTION,
     CATEGORY_SUGGESTION,
@@ -15,21 +14,8 @@ from app.services.learning_service import (
     DUPLICATE_CANDIDATE,
     DUPLICATE_SCORING_VERSION,
     AlgorithmType,
-    decision_types,
     get_algorithm_type,
-    is_algorithm_type_registered,
 )
-
-
-def test_registry_contains_known_types() -> None:
-    assert is_algorithm_type_registered("category_suggestion")
-    assert is_algorithm_type_registered("duplicate_candidate")
-    assert is_algorithm_type_registered("budget_suggestion")
-    assert decision_types() == (
-        "budget_suggestion",
-        "category_suggestion",
-        "duplicate_candidate",
-    )
 
 
 def test_get_returns_full_entry() -> None:
@@ -43,13 +29,6 @@ def test_get_returns_full_entry() -> None:
 def test_get_raises_on_unknown_type() -> None:
     with pytest.raises(KeyError, match="unknown algorithm decision_type"):
         get_algorithm_type("not_a_real_type")
-
-
-def test_typo_detection_is_strict() -> None:
-    # Common typos should NOT silently land in the registry.
-    assert not is_algorithm_type_registered("category_suggestions")  # plural
-    assert not is_algorithm_type_registered("catgory_suggestion")  # missing e
-    assert not is_algorithm_type_registered("CATEGORY_SUGGESTION")  # casing
 
 
 def test_service_modules_pull_version_from_registry() -> None:
@@ -67,10 +46,3 @@ def test_registry_entries_are_frozen() -> None:
     # would let one consumer poison another's view.
     with pytest.raises(FrozenInstanceError):
         CATEGORY_SUGGESTION.current_version = "hacked"  # type: ignore[misc]
-
-
-def test_subject_kinds_constraint_is_iterable_tuple() -> None:
-    for entry in ALGORITHM_TYPES.values():
-        assert isinstance(entry.subject_kinds, tuple)
-        assert all(isinstance(k, str) for k in entry.subject_kinds)
-        assert len(entry.subject_kinds) >= 1

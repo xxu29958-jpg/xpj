@@ -23,12 +23,6 @@ internal suspend fun PendingMutationDao.expireBoundIfOverAge(
     cutoffCreatedAtIso = cutoffIso,
 ) > 0
 
-internal suspend fun PendingMutationDao.deleteResolvedBeforeCutoff(cutoffIso: String): Int =
-    deleteResolvedBefore(
-        doneStatus = PendingMutationStatus.Done.wireValue,
-        cutoffIso = cutoffIso,
-    )
-
 internal suspend fun PendingMutationDao.refusesExpenseRecovery(
     binding: OutboxBinding,
     id: Long,
