@@ -30,7 +30,6 @@ jobs:
       - run: powershell -NoProfile -File distribution/windows/build/check_source_inputs.ps1
       - run: pwsh -NoProfile -File distribution/windows/build/check_source_inputs.ps1
       - run: powershell -NoProfile -File scripts/build_backend_exe.ps1 -Clean
-      - run: python scripts/postgres_backup_drill.py
       - run: python scripts/check_api_contract.py
       - run: ruff check app scripts tests packaging/tests
       - run: python -m compileall app scripts tests packaging/tests
@@ -96,7 +95,6 @@ jobs:
       - run: |
           powershell -Command Write-Host python scripts\\release_audit.py
           powershell -Command Write-Host python scripts\\smoke_test.py
-          powershell -Command Write-Host python scripts\\postgres_backup_drill.py
           powershell -Command Write-Host python scripts\\check_api_contract.py
           powershell -Command Write-Host ruff check app scripts tests packaging\\tests
           powershell -Command Write-Host python -m compileall app scripts tests packaging\\tests
@@ -106,7 +104,6 @@ jobs:
     missing = mod._missing_ci_invocations(mod._iter_workflow_run_commands(workflows))
     assert "release audit aggregator" in missing
     assert "end-to-end smoke" in missing
-    assert "backup/restore drill" in missing
     assert "API contract check" in missing
     assert "backend ruff lint" in missing
     assert "backend compileall" in missing

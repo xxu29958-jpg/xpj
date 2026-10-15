@@ -159,8 +159,6 @@ class CreateDebtGoalViewModel(
         refreshCandidates()
     }
 
-    fun openOriginal(id: Long) = reload(id)
-
     /** Refresh or retry within the open form, preserving its name and explicit selection. */
     fun refreshCandidates() {
         val observation = writeObservation

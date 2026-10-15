@@ -1,4 +1,4 @@
-"""Sanitized runtime inventory and bounded retention for complete backups."""
+"""Read-only compatibility for previously published backup inventory records."""
 
 from __future__ import annotations
 
@@ -12,19 +12,15 @@ from uuid import UUID
 
 from app.config import DATA_ROOT
 from app.errors import AppError
-from app.services.dataset_backup_contract import BACKUP_KINDS
 from app.services.path_entry_safety import is_link_or_reparse
 from app.services.time_service import now_utc
 
+BACKUP_KINDS = frozenset({"manual"})
 INVENTORY_SCHEMA = "ticketbox-complete-backup-inventory-v1"
 RETAINED_COMPLETE_GENERATIONS = 3
 _GENERATION_PREFIX = "ticketbox-backup-"
 _INVENTORY_PATH = DATA_ROOT / "backup-inventory.json"
-_BACKUP_DIRECTORY_LABEL = (
-    f"{DATA_ROOT.parent.name}\\backups"
-    if os.environ.get("TICKETBOX_DATA_ROOT_MARKER_PATH", "").strip()
-    else f"{DATA_ROOT.name}\\backups"
-)
+
 
 
 @dataclass(frozen=True)
@@ -113,10 +109,6 @@ def published_backup_inventory(*, review_after_hours: int = 48) -> PublishedBack
     )
 
 
-def backup_directory_label() -> str:
-    return _BACKUP_DIRECTORY_LABEL
-
-
 def _decode_entry(value: object) -> BackupEntry:
     fields = {
         "generation",
@@ -187,7 +179,6 @@ __all__ = [
     "BackupEntry",
     "PublishedBackupInventory",
     "RETAINED_COMPLETE_GENERATIONS",
-    "backup_directory_label",
     "latest_published_backup_record",
     "list_published_backup_records",
     "published_backup_inventory",

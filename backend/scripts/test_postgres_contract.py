@@ -35,7 +35,6 @@ class TestPostgresContract:
     application_role: str
     base_database: str
     smoke_database: str
-    restore_database: str
     cluster_marker: str
     worker_marker_prefix: str
     ownership_marker_name: str
@@ -139,7 +138,6 @@ def load_test_postgres_contract() -> TestPostgresContract:
         "application_role",
         "base_database",
         "smoke_database",
-        "restore_database",
         "cluster_marker",
         "worker_marker_prefix",
         "ownership_marker_name",
@@ -151,11 +149,11 @@ def load_test_postgres_contract() -> TestPostgresContract:
         "ports",
         "forbidden_host_ports",
     }
-    if not isinstance(raw, dict) or raw.get("schema_version") != 7 or set(raw) != expected_keys:
+    if not isinstance(raw, dict) or raw.get("schema_version") != 8 or set(raw) != expected_keys:
         raise RuntimeError("unsupported test PostgreSQL contract schema")
     databases = tuple(
         _required_string(raw, key, _DATABASE_NAME)
-        for key in ("base_database", "smoke_database", "restore_database")
+        for key in ("base_database", "smoke_database")
     )
     if len(set(databases)) != len(databases):
         raise RuntimeError("test PostgreSQL database roles must be distinct")
@@ -183,7 +181,6 @@ def load_test_postgres_contract() -> TestPostgresContract:
         application_role=_required_string(raw, "application_role", _DATABASE_NAME),
         base_database=databases[0],
         smoke_database=databases[1],
-        restore_database=databases[2],
         cluster_marker=_required_string(raw, "cluster_marker", _MARKER),
         worker_marker_prefix=_required_string(raw, "worker_marker_prefix", _MARKER),
         ownership_marker_name=_required_string(raw, "ownership_marker_name", _MARKER_FILE),

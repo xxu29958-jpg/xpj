@@ -108,14 +108,14 @@ GITHUB_TERMINAL_JOBS = {
     ("ci.yml", "postgres"): GithubTerminalContract(
         job="backend-postgres",
         command=_scoped_verifier_command(
-            "PostgreSQL", "POSTGRES_SCOPE", "ORDINARY", "REAL_DB", "RECOVERY"
+            "PostgreSQL", "POSTGRES_SCOPE", "ORDINARY", "REAL_DB", "SMOKE"
         ),
         shell=None,
         scope_bindings=(("POSTGRES_SCOPE", "postgres"),),
         lane_bindings=(
             ("backend_postgres_ordinary", "ORDINARY"),
             ("backend_postgres_real_db", "REAL_DB"),
-            ("backend_postgres_recovery", "RECOVERY"),
+            ("backend_postgres_smoke", "SMOKE"),
         ),
     ),
     ("ci.yml", "backend_frozen"): _BACKEND_TERMINAL,

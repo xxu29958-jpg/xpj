@@ -96,15 +96,7 @@ _WINDOWS_SECURITY_BACKEND_FILES = {
     "backend/app/services/secure_file_windows_acl.py",
 }
 _BACKEND_ROOT = pathlib.Path(__file__).resolve().parents[1]
-_DATASET_MAINTENANCE_ROOT_MODULES = (
-    "app.database_maintenance_runtime",
-    "app.dataset_maintenance_cli",
-    "app.database._dataset_backup_action",
-    "app.database._dataset_backup_snapshot",
-    "app.database._dataset_restore_action",
-    "app.database._dataset_restore_authority",
-    "app.database._dataset_restore_security",
-)
+_DATASET_MAINTENANCE_ROOT_MODULES = ("app.database_maintenance_runtime",)
 _FRESH_INSTALL_ROOT_MODULES = (
     "app.database._fresh_schema_upgrade",
     "app.services.identity_service",
@@ -208,9 +200,6 @@ _WINDOWS_FRESH_INSTALL_FILES = fresh_install_python_dependencies()
 _WINDOWS_INSTALLATION_HEALTH_FILES = installation_health_python_dependencies() | {
     "backend/app/main.py",
 }
-_WINDOWS_DATASET_MAINTENANCE_PREFIXES = (
-    "backend/app/database/_dataset_",
-)
 _REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 _WEB_BFF_SOURCE = _REPO_ROOT / "desktop" / "backend_manager" / "web_bff.py"
 _DESKTOP_PRODUCT_SCOPES = ("postgres", "backend_frozen", "desktop", "windows")
@@ -361,10 +350,6 @@ _PREFIX_SCOPE_RULES = (
     (
         _SHARED_WEB_DESKTOP_PREFIXES,
         _DESKTOP_PRODUCT_SCOPES,
-    ),
-    (
-        _WINDOWS_DATASET_MAINTENANCE_PREFIXES,
-        ("postgres", "backend_frozen", "windows"),
     ),
     (("backend/app/services/identity_service/",), _DESKTOP_PAIRING_SCOPES),
     (_POSTGRES_WINDOWS_BACKEND_PREFIXES, ("postgres", "backend_frozen")),

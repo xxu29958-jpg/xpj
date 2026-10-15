@@ -149,12 +149,6 @@ def test_dataset_maintenance_changes_select_all_required_execution_scopes() -> N
     _assert_path_scopes(
         (
             "backend/app/database_maintenance_runtime.py",
-            "backend/app/dataset_maintenance_cli.py",
-            "backend/app/database/_dataset_backup_action.py",
-            "backend/app/database/_dataset_backup_snapshot.py",
-            "backend/app/database/_dataset_restore_action.py",
-            "backend/app/database/_dataset_restore_authority.py",
-            "backend/app/database/_dataset_restore_security.py",
         ),
         "postgres",
         "backend_frozen",
@@ -166,8 +160,6 @@ def test_dataset_maintenance_transitive_app_dependencies_select_windows() -> Non
     dependencies = ci_gap_trigger_scope.dataset_maintenance_python_dependencies()
     assert "backend/app/__init__.py" in dependencies
     assert "backend/app/database_maintenance_runtime.py" in dependencies
-    assert "backend/app/dataset_maintenance_cli.py" in dependencies
-    assert "backend/app/models/__init__.py" in dependencies
     for dependency in dependencies:
         assert classify_ci_paths([dependency])["windows"], dependency
 

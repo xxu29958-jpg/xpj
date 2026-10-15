@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from app.database._dataset_restore_security import RESTORE_TABLE_SECURITY
 from app.database_model_registry import Base
 from migrations.versions._baseline.schema_01 import STATEMENTS as BASELINE_STATEMENTS
 
@@ -23,5 +22,4 @@ def test_cross_surface_ui_preferences_owner_is_physically_retired(
 
 def test_cross_surface_ui_preferences_storage_is_physically_retired() -> None:
     assert "user_ui_preferences" not in Base.metadata.tables
-    assert "user_ui_preferences" not in RESTORE_TABLE_SECURITY
     assert all("user_ui_preferences" not in statement for statement in BASELINE_STATEMENTS)

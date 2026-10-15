@@ -58,7 +58,6 @@ if ([string]::IsNullOrWhiteSpace($DataDir)) {
 $DataDir = Resolve-XpjTestPostgresDataDir -DataDir $DataDir
 $baseDatabase = [string]$contract.base_database
 $smokeDatabase = [string]$contract.smoke_database
-$restoreDatabase = [string]$contract.restore_database
 $applicationRole = [string]$contract.application_role
 $clusterMarker = [string]$contract.cluster_marker
 $loopbackHost = [Net.IPAddress]::Loopback.ToString()
@@ -425,7 +424,7 @@ if (-not [string]::Equals($resolvedServerDataDir, $resolvedExpectedDataDir, [Str
     throw "PostgreSQL connection reached another data directory: $resolvedServerDataDir"
 }
 
-foreach ($db in @($baseDatabase, $smokeDatabase, $restoreDatabase)) {
+foreach ($db in @($baseDatabase, $smokeDatabase)) {
     $exists = Invoke-XpjPsqlScalar `
         -PsqlExe "$pgbin\psql.exe" `
         -Connection $adminConnection `

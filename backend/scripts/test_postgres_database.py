@@ -19,7 +19,6 @@ else:
 _DEDICATED_DATABASES = frozenset(
     {
         TEST_POSTGRES_CONTRACT.smoke_database,
-        TEST_POSTGRES_CONTRACT.restore_database,
     }
 )
 

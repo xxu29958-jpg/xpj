@@ -187,7 +187,7 @@ class DebtGoalCreationSavedStateTest {
         val other = PendingGoalCreation(debtCreationRow(adjustmentBinding(), "other-key", 7),
             GoalCreateRequestDto(name = "另一个原提交", goalType = "debt_repayment", debtPublicIds = listOf("cleared")), null)
         edits.origins[7] = adjustmentBinding(); edits.rows.value = listOf(other)
-        vm.openOriginal(7); advanceUntilIdle()
+        vm.reload(7); advanceUntilIdle()
         assertEquals("另一个原提交", vm.state.value.name)
         assertEquals(setOf("cleared"), vm.state.value.selectedDebtIds)
         vm.reload(); advanceUntilIdle()
@@ -196,7 +196,7 @@ class DebtGoalCreationSavedStateTest {
         advanceUntilIdle()
         assertNull(vm.state.value.createdPublicId)
         assertEquals("  独立草稿  ", vm.state.value.name)
-        vm.openOriginal(7); advanceUntilIdle()
+        vm.reload(7); advanceUntilIdle()
         assertEquals("other-confirmed", vm.state.value.createdPublicId)
         vm.consumeCreated(); advanceUntilIdle()
         assertEquals("  独立草稿  ", vm.state.value.name)

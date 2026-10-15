@@ -149,7 +149,6 @@ def render_environment(
     names = {
         "base_database": contract.base_database,
         "smoke_database": contract.smoke_database,
-        "restore_database": contract.restore_database,
     }
     urls = {
         role: _url(
@@ -173,14 +172,11 @@ def render_environment(
     values = {
         "XPJ_TEST_BASE_DATABASE": names["base_database"],
         "XPJ_TEST_SMOKE_DATABASE": names["smoke_database"],
-        "XPJ_TEST_RESTORE_DATABASE": names["restore_database"],
         "XPJ_TEST_APPLICATION_ROLE": application_user,
         "XPJ_TEST_CLUSTER_IDENTITY": cluster_identity,
         "XPJ_TEST_ADMIN_URL": admin_url,
         "XPJ_TEST_DATABASE_URL": urls["base_database"],
         "SMOKE_DATABASE_URL": urls["smoke_database"],
-        "DRILL_SOURCE_URL": urls["smoke_database"],
-        "DRILL_RESTORE_URL": urls["restore_database"],
     }
     if passfile is not None:
         values["PGPASSFILE"] = str(passfile.resolve())

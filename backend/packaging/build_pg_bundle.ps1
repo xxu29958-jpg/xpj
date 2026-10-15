@@ -109,7 +109,7 @@ $KeepExe = @(
     "postgres.exe",       # 服务器
     "initdb.exe",         # 首启建簇
     "pg_ctl.exe",         # 起停 / register 服务
-    "psql.exe",           # 应用角色 bootstrap + fix_table_owners.sql
+    "psql.exe",           # 受管角色建立与只读诊断
     "pg_dump.exe",        # PostgreSQL/source-test scratch 工具（无产品 mutation owner）
     "pg_restore.exe",     # PostgreSQL/source-test scratch 工具（无产品 mutation owner）
     "pg_isready.exe",     # 就绪探针（运维）
