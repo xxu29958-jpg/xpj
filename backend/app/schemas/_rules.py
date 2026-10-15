@@ -288,6 +288,7 @@ class RuleApplyPendingRequest(BaseModel):
 
     confirm: bool = False
     preview_token: str | None = None
+    reason: str | None = Field(default=None, max_length=500)
 
 
 class RuleApplyConfirmedRequest(BaseModel):
@@ -295,6 +296,7 @@ class RuleApplyConfirmedRequest(BaseModel):
 
     confirm: bool = False
     preview_token: str | None = None
+    reason: str | None = Field(default=None, max_length=500)
 
 
 class RuleApplicationBatchResponse(BaseModel):
@@ -307,6 +309,8 @@ class RuleApplicationBatchResponse(BaseModel):
     change_counts: dict[str, int]
     created_at: datetime
     rolled_back_at: datetime | None = None
+    application_reason: str | None = None
+    rollback_reason: str | None = None
 
     @field_serializer("created_at", "rolled_back_at")
     def serialize_datetime(self, value: datetime | None) -> str | None:
@@ -323,10 +327,32 @@ class RuleApplicationRollbackResponse(BaseModel):
     changed: int
     skipped: int
     rolled_back_at: datetime | None = None
+    rollback_reason: str | None = None
 
     @field_serializer("rolled_back_at")
     def serialize_datetime(self, value: datetime | None) -> str | None:
         return to_iso(value)
+
+
+class RuleApplicationRollbackRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class RuleRollbackSkippedItem(BaseModel):
+    expense_id: int
+    merchant: str | None
+    reason: str
+
+
+class RuleApplicationRollbackPreview(BaseModel):
+    public_id: str
+    original_count: int
+    eligible_count: int
+    skipped_count: int
+    reason_counts: dict[str, int]
+    skipped_items: list[RuleRollbackSkippedItem]
 
 
 class RuleApplyPendingPreviewItem(BaseModel):

@@ -558,6 +558,8 @@ fun RuleApplicationBatchDto.toDomain(): RuleApplicationBatch = RuleApplicationBa
     createdAt = createdAt,
     rolledBackAt = rolledBackAt,
     changeCounts = changeCounts,
+    applicationReason = applicationReason,
+    rollbackReason = rollbackReason,
 )
 
 fun RuleApplicationRollbackDto.toDomain(): RuleApplicationRollback = RuleApplicationRollback(
@@ -566,6 +568,7 @@ fun RuleApplicationRollbackDto.toDomain(): RuleApplicationRollback = RuleApplica
     changed = changed,
     skipped = skipped,
     rolledBackAt = rolledBackAt,
+    rollbackReason = rollbackReason,
 )
 
 fun RuleApplyPreviewItemDto.toDomain(): RuleApplyPreviewItem = RuleApplyPreviewItem(

@@ -16,10 +16,12 @@ data class RuleApplicationPayload(
     val maxScan: Int,
     val scanned: Int,
     val expectedChanges: Int,
+    val reason: String? = null,
 ) {
     fun supports(row: OutboxRow): Boolean = version == 1 && row.type == PendingMutationType.ApplyConfirmedRules &&
         row.targetId == RULE_APPLICATION_TARGET && row.expectedRowVersion == 0L && !row.idempotencyKey.isNullOrBlank() &&
-        previewToken.isNotBlank() && maxScan in 1..1000 && scanned in 1..maxScan && expectedChanges in 1..scanned
+        previewToken.isNotBlank() && maxScan in 1..1000 && scanned in 1..maxScan && expectedChanges in 1..scanned &&
+        (reason == null || reason.length <= 500)
 
     fun accepts(row: OutboxRow, receipt: RuleApplyConfirmedResponseDto): Boolean = supports(row) && !receipt.dryRun &&
         receipt.commandKey == row.idempotencyKey && receipt.confirmedScanned == scanned && receipt.scanLimit == maxScan &&

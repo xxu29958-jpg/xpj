@@ -14,22 +14,28 @@ from app.services.idempotency import (
     mark_idempotency_succeeded,
 )
 from app.services.rule_application_service._apply import apply_rules_to_confirmed, apply_rules_to_pending
+from app.services.rule_application_service._common import normalize_rule_reason
 from app.services.rule_application_service._preview import validate_rule_application_preview
 
 
 def apply_rules_idempotently(db: Session, *, tenant_id: str, status: Literal["pending", "confirmed"],
     preview_token: str | None, idempotency_key: str | None, max_scan: int = 500,
     actor_account_id: int | None = None, actor_device_id: int | None = None,
+    reason: str | None = None,
 ) -> RuleApplyPendingResponse | RuleApplyConfirmedResponse:
     if not idempotency_key:
         raise AppError("idempotency_key_required", status_code=422)
     if len(idempotency_key) > 64:
         raise AppError("invalid_request", status_code=422)
     operation = f"apply_{status}_rules"
+    reason = normalize_rule_reason(reason)
+    body = {"confirm": True, "preview_token": preview_token, "max_scan": max_scan}
+    if reason is not None:
+        body["reason"] = reason
     claim = claim_idempotency_key(db, tenant_id=tenant_id, idempotency_key=idempotency_key,
         operation=operation, target_type="rule_application_batch", target_id=None,
         request_fingerprint=fingerprint_request(operation=operation, target_id=None,
-            body={"confirm": True, "preview_token": preview_token, "max_scan": max_scan}, expected_row_version=None))
+            body=body, expected_row_version=None))
     if claim.kind is IdempotencyOutcomeKind.IN_PROGRESS:
         raise AppError("idempotency_key_in_progress", status_code=409)
     if claim.kind is IdempotencyOutcomeKind.FINGERPRINT_MISMATCH:
@@ -49,7 +55,7 @@ def apply_rules_idempotently(db: Session, *, tenant_id: str, status: Literal["pe
         preview_token=preview_token, max_scan=max_scan)
     apply = apply_rules_to_confirmed if status == "confirmed" else apply_rules_to_pending
     scanned, changed, limited, public_id = apply(db, tenant_id=tenant_id, preview_token=preview_token,
-        max_scan=max_scan, actor_account_id=actor_account_id, actor_device_id=actor_device_id, commit=False)
+        max_scan=max_scan, actor_account_id=actor_account_id, actor_device_id=actor_device_id, commit=False, reason=reason)
     fields = {"command_key": idempotency_key, "application_public_id": public_id,
         "changed_count": changed, "unavailable_count": preview["unavailable_count"],
         "missing_currency_codes": preview["missing_currency_codes"], "scan_limit_reached": limited, "scan_limit": max_scan}

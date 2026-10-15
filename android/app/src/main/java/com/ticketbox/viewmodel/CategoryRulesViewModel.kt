@@ -34,6 +34,8 @@ data class CategoryRulesUiState(
     val categoryRules: List<CategoryRule> = emptyList(),
     val ruleApplications: List<RuleApplicationBatch> = emptyList(),
     val confirmedRulesPreview: RuleApplyConfirmedResult? = null,
+    val applicationReason: String = "",
+    val rollback: RuleRollbackState = RuleRollbackState(),
     val categoryRulesLoading: Boolean = false,
     val ruleApplicationsLoading: Boolean = false,
     val categoryRulesLoadFailed: Boolean = false,
@@ -350,10 +352,10 @@ class CategoryRulesViewModel(
                 return@launch
             }
             _uiState.update { it.copy(busy = true, message = null, messageTone = MessageTone.Neutral) }
-            ruleRepository.confirmApplyConfirmedRules(origin, requireNotNull(preview))
+            ruleRepository.confirmApplyConfirmedRules(origin, requireNotNull(preview), _uiState.value.applicationReason)
                 .onSuccess { id ->
                     if (ruleRepository.currentAccess()?.binding != origin) return@onSuccess
-                    _uiState.update { it.copy(busy = false, selectedSubmissionId = id, confirmedRulesPreview = null,
+                    _uiState.update { it.copy(busy = false, selectedSubmissionId = id, confirmedRulesPreview = null, applicationReason = "",
                         message = UiText.res(R.string.rule_application_queued), messageTone = MessageTone.Info) }
                 }
                 .onFailure { error ->
@@ -369,8 +371,57 @@ class CategoryRulesViewModel(
         }
     }
 
-    fun rollbackRuleApplication(application: RuleApplicationBatch) {
+    fun changeApplicationReason(reason: String) {
+        if (!_uiState.value.busy && reason.length <= 500) _uiState.update { it.copy(applicationReason = reason) }
+    }
+
+    fun openRollback(application: RuleApplicationBatch) {
+        if (_uiState.value.busy) return
+        val current = _uiState.value.rollback
+        val selected = if (current.application?.publicId == application.publicId || current.submittedReason != null) current
+            else RuleRollbackState(application = application)
+        _uiState.update { it.copy(rollback = selected.copy(visible = true)) }
+        if (selected.submittedReason == null) refreshRollbackPreview()
+    }
+
+    fun dismissRollback() {
+        if (!_uiState.value.busy) _uiState.update { it.copy(rollback = it.rollback.copy(visible = false)) }
+    }
+
+    fun changeRollbackReason(reason: String) {
+        if (!_uiState.value.busy && _uiState.value.rollback.submittedReason == null && reason.length <= 500) {
+            _uiState.update { it.copy(rollback = it.rollback.copy(reason = reason)) }
+        }
+    }
+
+    fun refreshRollbackPreview() {
         val origin = _uiState.value.binding ?: return
+        val selected = _uiState.value.rollback
+        val application = selected.application ?: return
+        if (_uiState.value.busy || selected.loading || selected.submittedReason != null) return
+        _uiState.update { it.copy(rollback = selected.copy(loading = true, preview = null, error = null)) }
+        viewModelScope.launch {
+            val result = ruleRepository.previewRuleApplicationRollback(origin, application.publicId)
+            if (_uiState.value.binding != origin || ruleRepository.currentAccess()?.binding != origin ||
+                _uiState.value.rollback.application?.publicId != application.publicId) return@launch
+            _uiState.update { it.copy(rollback = it.rollback.copy(loading = false, preview = result.getOrNull(),
+                error = result.exceptionOrNull()?.toUiText(R.string.category_rule_rollback_preview_failed))) }
+        }
+    }
+
+    fun confirmRollback() {
+        val selected = _uiState.value.rollback
+        val application = selected.application ?: return
+        if (_uiState.value.busy || !canModifyCurrentLedger() || selected.loading ||
+            selected.submittedReason == null && (selected.preview?.eligibleCount ?: 0) <= 0) return
+        val reason = selected.submittedReason ?: selected.reason
+        _uiState.update { it.copy(rollback = selected.copy(submittedReason = reason, error = null)) }
+        rollbackRuleApplication(application, reason)
+    }
+
+    fun rollbackRuleApplication(application: RuleApplicationBatch, reason: String? = null) {
+        val origin = _uiState.value.binding ?: return
+        if (_uiState.value.busy) return
         if (!canModifyCurrentLedger()) {
             _uiState.update {
                 it.copy(busy = false, message = UiText.res(R.string.common_readonly_ledger), messageTone = MessageTone.Danger)
@@ -380,7 +431,7 @@ class CategoryRulesViewModel(
         viewModelScope.launch {
             if (ruleRepository.currentAccess()?.binding != origin) return@launch
             _uiState.update { it.copy(busy = true, message = null, messageTone = MessageTone.Neutral) }
-            ruleRepository.rollbackRuleApplication(application.publicId)
+            ruleRepository.rollbackRuleApplication(application.publicId, reason, origin)
                 .onSuccess { rollback ->
                     if (ruleRepository.currentAccess()?.binding != origin) return@onSuccess
                     val history = ruleRepository.ruleApplications()
@@ -389,6 +440,7 @@ class CategoryRulesViewModel(
                         it.withRuleHistory(history).copy(
                             busy = false,
                             confirmedRulesPreview = null,
+                            rollback = RuleRollbackState(),
                             message = UiText.res(R.string.category_rules_rollback_done, rollback.changed, rollback.skipped),
                             messageTone = MessageTone.Success,
                             applicationRevision = if (rollback.changed > 0) {
@@ -406,6 +458,7 @@ class CategoryRulesViewModel(
                             busy = false,
                             message = error.toUiText(R.string.category_rules_rollback_failed),
                             messageTone = MessageTone.Danger,
+                            rollback = it.rollback.copy(error = error.toUiText(R.string.category_rules_rollback_failed)),
                         )
                     }
                 }

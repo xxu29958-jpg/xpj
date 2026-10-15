@@ -2,7 +2,7 @@
 (function (window, document) {
   "use strict";
   const fields = ["ledger_id", "apply_status", "preview_confirmed", "preview_token", "idempotency_key", "draft_ref",
-    "original_scanned", "original_changed"];
+    "original_scanned", "original_changed", "reason"];
   const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
   function href(record, scope, form) {
     const target = record?.values.apply_status || form.elements.apply_status.value;

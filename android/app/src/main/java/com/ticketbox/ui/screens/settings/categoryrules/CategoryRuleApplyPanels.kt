@@ -25,6 +25,10 @@ import com.ticketbox.ui.components.AppFloatingActionBar
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppPaperCard
 import com.ticketbox.ui.components.displayTime
+import com.ticketbox.ui.components.AppTextInput
+import com.ticketbox.ui.components.AppTextInputState
+import com.ticketbox.ui.components.AppTextInputActions
+import com.ticketbox.ui.components.AppTextInputDecorations
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
@@ -43,6 +47,9 @@ import com.ticketbox.ui.screens.settings.SettingsOpenPanel
 internal fun ConfirmedRuleApplyPanel(
     preview: RuleApplyConfirmedResult?,
     readOnly: Boolean,
+    reason: String,
+    busy: Boolean,
+    onReasonChange: (String) -> Unit,
 ) {
     SettingsOpenPanel(
         verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
@@ -50,6 +57,11 @@ internal fun ConfirmedRuleApplyPanel(
             preview?.let { result ->
                 ConfirmedRulePreviewSummary(result)
             }
+            AppTextInput(AppTextInputState(label = stringResource(R.string.category_rule_application_reason),
+                value = reason, placeholder = stringResource(R.string.category_rule_application_reason_hint),
+                singleLine = false, minLines = 2, enabled = !busy, readOnly = readOnly),
+                AppTextInputActions(onValueChange = onReasonChange), decorations = AppTextInputDecorations(
+                    supportingText = { Text(stringResource(R.string.category_rule_reason_retained, reason.length)) }))
             SettingsEntryRow(stringResource(R.string.category_rule_impact_history_note),
                 stringResource(R.string.category_rule_impact_history_body), R.drawable.ic_lucide_info, onClick = null)
             if (readOnly) {
@@ -227,6 +239,8 @@ private fun RuleApplicationRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall)
             }
+            application.applicationReason?.let { Text(stringResource(R.string.category_rule_application_reason_value, it)) }
+            application.rollbackReason?.let { Text(stringResource(R.string.category_rule_rollback_reason_value, it)) }
             if (!readOnly && !application.isRolledBack) {
                 TextButton(
                     enabled = !busy,

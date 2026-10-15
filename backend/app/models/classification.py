@@ -95,6 +95,8 @@ class RuleApplicationBatch(Base):
     status: Mapped[str] = mapped_column(String(32), default="applied", nullable=False, index=True)
     pending_scanned: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     changed_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    application_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    rollback_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
     actor_account_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("accounts.id"), nullable=True, index=True)
     actor_device_id: Mapped[int | None] = mapped_column(
         Integer,

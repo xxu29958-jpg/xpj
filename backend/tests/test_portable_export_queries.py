@@ -595,3 +595,9 @@ def test_application_export_retains_original_zero_and_changed_results_with_ledge
     rows = _rows(records, "accepted_operations")
     assert [row["id"] for row in rows] == [1, 2]
     assert [_receipt_record(dict(row))["response_body"]["changed_count"] for row in rows] == [0, 2]
+    for id_, ledger in ((2, "selected"), (3, "other")):
+        _seed(records, m.RuleApplicationBatch, id=id_, public_id=f"batch-{id_}", tenant_id=ledger,
+            application_reason="按商家统一分类", rollback_reason="核对后撤回本批次")
+    batches = _rows(records, "rule_application_batches")
+    assert [(row["public_id"], row["application_reason"], row["rollback_reason"]) for row in batches] == [
+        ("batch-2", "按商家统一分类", "核对后撤回本批次")]

@@ -29,6 +29,7 @@ internal fun RuleSubmissionRecovery(definition: PendingCategoryRuleSubmission?, 
 internal fun RuleApplicationSubmissionSummary(original: PendingRuleApplication) {
     Text(stringResource(R.string.rule_application_original))
     original.original?.let { Text(stringResource(R.string.rule_application_original_counts, it.scanned, it.expectedChanges)) }
+    original.original?.reason?.let { Text(stringResource(R.string.category_rule_application_reason_value, it)) }
     original.receipt?.let {
         Text(stringResource(R.string.rule_application_receipt, it.changedCount))
         if (it.conflictCount > 0) Text(stringResource(R.string.rule_application_conflicts, it.conflictCount))

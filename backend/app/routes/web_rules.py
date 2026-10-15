@@ -34,7 +34,12 @@ from app.routes.web_common import (
     preserve_original_ledger_form,
     templates,
 )
-from app.routes.web_rule_application_forms import RuleApplicationForm, render_rule_application, submit_rule_application
+from app.routes.web_rule_application_forms import (
+    RuleApplicationForm,
+    render_rule_application,
+    render_rule_rollback,
+    submit_rule_application,
+)
 from app.routes.web_rule_edit import render_rule_definition
 from app.routes.web_rule_forms import (
     RuleDefinitionForm,
@@ -216,14 +221,24 @@ def web_rules_create(request: Request, form: Annotated[RuleDefinitionForm, Form(
         receipt=receipt, next_href=redirect.headers["location"]) or redirect
 
 
+@router.get("/rules/applications/{public_id}/rollback", response_class=HTMLResponse)
+def web_rules_rollback_preview(request: Request, public_id: str, ledger_id: str = "",
+    _local: None = LocalOnly, db: Session = Depends(get_db),
+) -> Response:
+    options = _list_ledger_options(db)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
+    return render_rule_rollback(request, db, options=options, selected_id=selected_id, public_id=public_id)
+
+
 @router.post("/rules/applications/{public_id}/rollback", response_class=HTMLResponse)
 def web_rules_application_rollback(
     request: Request,
     public_id: str,
     ledger_id: str = Form(""),
+    reason: str = Form(""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
-) -> RedirectResponse:
+) -> Response:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
@@ -235,11 +250,13 @@ def web_rules_application_rollback(
             public_id=public_id,
             actor_account_id=actor_account_id,
             actor_device_id=actor_device_id,
+            reason=reason,
         )
         msg = f"本批次回退结果：恢复 {changed} 条，跳过 {skipped} 条。"
     except AppError as exc:
         db.rollback()
-        msg = "回退失败：" + (exc.message or "规则应用批次不存在。")
+        return render_rule_rollback(request, db, options=options, selected_id=selected_id,
+            public_id=public_id, reason=reason, error=exc)
     return _web_redirect("/web/rules", selected_id, view="history", msg=msg)
 
 

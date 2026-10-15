@@ -5,7 +5,7 @@ from typing import Literal
 from uuid import uuid4
 
 from fastapi import Request, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
@@ -27,6 +27,7 @@ from app.services.rule_application_service import (
     apply_rules_idempotently,
     preview_apply_rules_to_confirmed,
     preview_apply_rules_to_pending,
+    preview_rule_application_rollback,
 )
 
 
@@ -41,6 +42,7 @@ class RuleApplicationForm(BaseModel):
     original_scanned: int = 0
     original_changed: int = 0
     review_new: bool = False
+    reason: str = Field(default="", max_length=500)
 
 
 def render_rule_application(request: Request, db: Session, *, options, selected_id: str,
@@ -56,6 +58,7 @@ def render_rule_application(request: Request, db: Session, *, options, selected_
         form = RuleApplicationForm(ledger_id=selected_id, apply_status=status, preview_confirmed="yes",
             preview_token=impact["preview_token"] if impact else "", idempotency_key=str(uuid4()),
             draft_ref=form.draft_ref if form else str(uuid4()), draft_scope=json.dumps(scope) if scope else "",
+            reason=form.reason if form else "",
             original_scanned=impact["scanned"] if impact else 0, original_changed=impact["changed_count"] if impact else 0)
     ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id)
     ctx.update(rule_draft_scope=scope, application_form=form.model_dump(), application_result=result,
@@ -87,7 +90,7 @@ def submit_rule_application(request: Request, db: Session, *, options, selected_
         account_id, device_id = resolve_web_actor(db, request, selected_id)
         receipt = apply_rules_idempotently(db, tenant_id=selected_id, status=status,
             preview_token=form.preview_token, idempotency_key=form.idempotency_key,
-            actor_account_id=account_id, actor_device_id=device_id)
+            actor_account_id=account_id, actor_device_id=device_id, reason=form.reason)
     except AppError as exc:
         db.rollback()
         result = "rejected" if exc.error in {"preview_stale", "preview_required"} else "blocked"
@@ -98,3 +101,18 @@ def submit_rule_application(request: Request, db: Session, *, options, selected_
         msg=f"已核实原应用：改写了 {receipt.changed_count} 笔分类。{suffix}")
     return draft_ack_response(request, draft_scope=form.draft_scope, idempotency_key=form.idempotency_key,
         receipt=receipt, next_href=redirect.headers["location"]) or redirect
+
+
+def render_rule_rollback(request: Request, db: Session, *, options, selected_id: str, public_id: str,
+    reason: str = "", error: AppError | None = None,
+) -> Response:
+    preview = None
+    try:
+        preview = preview_rule_application_rollback(db, tenant_id=selected_id, public_id=public_id)
+    except AppError as exc:
+        error = error or exc
+    ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id)
+    ctx.update(rollback_preview=preview, rollback_reason=reason, batch_public_id=public_id,
+        error=error.message if error else "", q="?ledger_id=" + selected_id)
+    return templates.TemplateResponse(request=request, name="rule_rollback.html", context=ctx,
+        status_code=error.status_code if error else 200)

@@ -168,20 +168,29 @@ class CategoryRulesViewModelTest {
     fun rollbackFailureShowsDangerToneAndClearsBusy() = rulesTest {
         val vm = harness(
             object : ApiService by FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0) {
-                override suspend fun rollbackRuleApplication(publicId: String): RuleApplicationRollbackDto {
+                override suspend fun rollbackRuleApplication(publicId: String,
+                    request: com.ticketbox.data.remote.dto.RuleApplicationRollbackRequestDto): RuleApplicationRollbackDto {
+                    assertEquals("核对后撤回本批次", request.reason)
                     throw RepositoryException("")
                 }
             },
         )
         val application = awaitInitialLoads(vm).ruleApplications.single()
 
-        vm.rollbackRuleApplication(application)
+        vm.openRollback(application)
+        vm.uiState.first { it.rollback.preview != null }
+        vm.changeRollbackReason("核对后撤回本批次")
+        vm.confirmRollback()
         val state = vm.uiState.first { !it.busy && it.message != null }
         runCurrent()
 
         assertEquals(UiText.res(R.string.category_rules_rollback_failed), state.message)
         assertEquals(MessageTone.Danger, state.messageTone)
         assertEquals(0, state.changedRevision)
+        assertTrue(state.rollback.visible)
+        assertEquals("核对后撤回本批次", state.rollback.submittedReason)
+        vm.changeRollbackReason("不能换掉原说明")
+        assertEquals("核对后撤回本批次", vm.uiState.value.rollback.reason)
     }
 
     @Test
@@ -195,6 +204,7 @@ class CategoryRulesViewModelTest {
 
         vm.previewApplyConfirmedRules()
         vm.uiState.first { it.confirmedRulesPreview != null }
+        vm.changeApplicationReason("按商家统一分类")
         vm.confirmApplyConfirmedRules()
         vm.uiState.first { it.selectedSubmissionId != null }
         assertEquals(0, vm.uiState.value.applicationRevision)
@@ -209,6 +219,7 @@ class CategoryRulesViewModelTest {
         assertEquals(1, state.applicationRevision)
         assertEquals(0, state.changedRevision)
         assertEquals(MessageTone.Success, state.messageTone)
+        assertEquals("按商家统一分类", api.applyConfirmedRequests.last().reason)
         assertEquals(null, state.confirmedRulesPreview, "An original receipt must not become a current preview")
         val reopened = harness(api, queue = queue)
         awaitInitialLoads(reopened)
@@ -245,7 +256,8 @@ class CategoryRulesViewModelTest {
                     status = "rollback_partial", rolledBackAt = "2026-05-01T00:15:00Z")))
             }
 
-            override suspend fun rollbackRuleApplication(publicId: String): RuleApplicationRollbackDto {
+            override suspend fun rollbackRuleApplication(publicId: String,
+                request: com.ticketbox.data.remote.dto.RuleApplicationRollbackRequestDto): RuleApplicationRollbackDto {
                 rollbackCalls += 1
                 rejectHistory = true
                 return RuleApplicationRollbackDto(publicId, "rollback_partial", 1, 1, "2026-05-01T00:15:00Z")

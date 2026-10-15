@@ -399,6 +399,7 @@ def test_web_rules_apply_pending_audit_and_rollback_integration(
     assert "将改写" in preview.text
     assert "Starbucks 上海" in preview.text
     assert "确认应用到待确认" in preview.text
+    assert 'name="reason"' in preview.text
     token_match = re.search(r'name="preview_token" value="([0-9a-f]+)"', preview.text)
     assert token_match, preview.text[:1000]
 
@@ -419,6 +420,7 @@ def test_web_rules_apply_pending_audit_and_rollback_integration(
             "ledger_id": "owner",
             "preview_confirmed": "yes",
             "preview_token": token_match.group(1),
+            "reason": "按商家统一分类",
         },
         follow_redirects=False,
     )
@@ -431,13 +433,19 @@ def test_web_rules_apply_pending_audit_and_rollback_integration(
     page = web_client.get("/web/rules?ledger_id=owner&view=history")
     assert page.status_code == 200
     assert "已应用" in page.text
-    assert "回退这次应用" in page.text
+    assert "核对回退范围" in page.text
+    assert "应用理由：按商家统一分类" in page.text
     batch_match = re.search(r"/web/rules/applications/([^/]+)/rollback", page.text)
     assert batch_match, page.text[:1000]
+    rollback_path = f"/web/rules/applications/{batch_match.group(1)}/rollback"
+    preview_page = web_client.get(rollback_path + "?ledger_id=owner")
+    assert preview_page.status_code == 200
+    assert "回退允许的 1 笔" in preview_page.text
+    assert 'name="reason"' in preview_page.text
 
     rolled_back = web_client.post(
         f"/web/rules/applications/{batch_match.group(1)}/rollback",
-        data={"ledger_id": "owner"},
+        data={"ledger_id": "owner", "reason": "核对后撤回本批次"},
         follow_redirects=False,
     )
     assert rolled_back.status_code in {303, 307}
@@ -445,10 +453,11 @@ def test_web_rules_apply_pending_audit_and_rollback_integration(
     history = web_client.get(rolled_back.headers["location"])
     assert "已恢复 1 笔 · 跳过 0 笔" in history.text
     assert "首次回退于" in history.text
+    assert "回退说明：核对后撤回本批次" in history.text
     restored = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
     assert "其他" in restored.text
     replay = web_client.post("/web/rules/apply-pending",
-        data=hidden_post_forms(preview.text)["/web/rules/apply-pending"], follow_redirects=False)
+        data={**hidden_post_forms(preview.text)["/web/rules/apply-pending"], "reason": "按商家统一分类"}, follow_redirects=False)
     assert replay.status_code == applied.status_code
     assert replay.headers["location"] == applied.headers["location"]
     assert "其他" in web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner").text

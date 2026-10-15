@@ -636,7 +636,11 @@ internal class FakeApiService(
         ),
     )
 
-    override suspend fun rollbackRuleApplication(publicId: String): RuleApplicationRollbackDto {
+    override suspend fun previewRuleApplicationRollback(publicId: String) =
+        com.ticketbox.data.remote.dto.RuleApplicationRollbackPreviewDto(publicId, 1, 1, 0, emptyMap(), emptyList())
+
+    override suspend fun rollbackRuleApplication(publicId: String,
+        request: com.ticketbox.data.remote.dto.RuleApplicationRollbackRequestDto): RuleApplicationRollbackDto {
         rollbackPublicIds += publicId
         return RuleApplicationRollbackDto(
             publicId = publicId,
@@ -644,6 +648,7 @@ internal class FakeApiService(
             changed = 1,
             skipped = 0,
             rolledBackAt = "2026-05-13T00:05:00Z",
+            rollbackReason = request.reason,
         )
     }
 
