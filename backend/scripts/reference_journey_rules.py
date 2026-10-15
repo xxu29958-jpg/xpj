@@ -1,5 +1,7 @@
 """Rule definition, preview, explicit application and partial recovery stay distinct."""
 
+from playwright.sync_api import expect
+
 from scripts.planning_journey_android import wait_for
 
 
@@ -91,6 +93,7 @@ def preview_apply_and_rollback(j, initial_categories):
     native.capture("reference-rule-native-preview")
     j.goto("/web/rules")
     page.get_by_role("link", name="预览已确认账单").click()
+    resume_legacy_application(j)
     assert [row["category"] for row in j.facts()["expenses"]] == initial_categories
     page.get_by_label("应用理由（选填）").fill("WebRuleReview")
     j.capture("rule-web-preview")
@@ -120,6 +123,32 @@ def preview_apply_and_rollback(j, initial_categories):
     assert "应用理由：WebRuleReview" in page.inner_text("main")
     assert "回退说明：NativeRollbackReview" in page.inner_text("main")
     j.capture("rule-partial-rollback-from-native")
+
+
+def resume_legacy_application(j):
+    """An existing v1 browser intent remains reachable after the reason field is added."""
+    page = j.page
+    original = page.locator("form[data-rule-application]").evaluate("""form => {
+        const names = ["ledger_id", "apply_status", "preview_confirmed", "preview_token", "idempotency_key",
+            "draft_ref", "original_scanned", "original_changed"];
+        const values = Object.fromEntries(names.map(name => [name, form.elements[name].value]));
+        values.amount_placeholder = ""; values.amount_inputmode = "";
+        const record = {version: 1, clientRef: values.draft_ref, phase: "editing", values,
+            scope: JSON.parse(form.dataset.ruleapplicationDraftScope), updatedAt: Date.now()};
+        localStorage.setItem("ticketbox:ruleapplication-create-draft:v1:" + record.clientRef, JSON.stringify(record));
+        return values;
+    }""")
+    assert j.goto("/web/rules").status == 200
+    shelf = page.locator("[data-ruleapplication-draft-shelf]")
+    expect(shelf).to_be_visible()
+    shelf.locator("summary").click()
+    shelf.locator("a").click()
+    expect(page.get_by_label("应用理由（选填）")).to_be_editable()
+    expect(page.get_by_label("应用理由（选填）")).to_have_value("")
+    target = "已确认" if original["apply_status"] == "confirmed" else "待确认"
+    expect(page.get_by_role("button", name=f'确认应用到{target} · {original["original_changed"]} 笔', exact=True)).to_be_enabled()
+    for name in ("idempotency_key", "draft_ref", "preview_token"):
+        expect(page.locator(f'form[data-rule-application] [name="{name}"]')).to_have_value(original[name])
 
 
 def apply_and_rollback_from_native(j):

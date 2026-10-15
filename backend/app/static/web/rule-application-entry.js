@@ -22,17 +22,22 @@
     window.TicketboxPlanEntry.mount(form, {family: "ruleapplication", label: "规则应用", list: "/web/rules",
       create: fields, edit: fields, idField: "apply_status", titleField: "apply_status",
       commandKeyField: "idempotency_key", draftRefField: "draft_ref", pendingLabel: "核实原应用",
+      legacyMissing: ["reason"],
       reviewRequiresRejection: true, href,
       present: (current, saved) => { current.action = "/web/rules/apply-" + saved.apply_status; },
       updatePresentation: (current, state) => {
         const pending = state.phase !== "editing";
-        document.querySelector("[data-ruleapplication-impact]").hidden = pending;
+        const originalOnly = current.dataset.ruleapplicationHasPreview !== "true";
+        document.querySelector("[data-ruleapplication-impact]").hidden = pending || originalOnly;
         document.querySelector("[data-ruleapplication-heading]").textContent = pending ? "核实这次规则应用" : "这次会改哪些账单";
         document.querySelector("[data-ruleapplication-new]").hidden = pending;
         const original = current.querySelector("[data-ruleapplication-original]");
-        original.hidden = !pending;
-        if (!pending && (!current.elements.preview_token.value || Number(current.elements.original_changed.value) === 0)) {
-          current.querySelector('[type="submit"]:not([name="review_new"])').disabled = true;
+        original.hidden = !pending && !originalOnly;
+        if (!pending) {
+          const submit = current.querySelector('[type="submit"]:not([name="review_new"])');
+          submit.textContent = "确认应用到" + (current.elements.apply_status.value === "confirmed" ? "已确认" : "待确认") +
+            " · " + current.elements.original_changed.value + " 笔";
+          if (!current.elements.preview_token.value || Number(current.elements.original_changed.value) === 0) submit.disabled = true;
         }
         original.textContent = "原预览扫描 " + current.elements.original_scanned.value + " 笔" +
           (current.elements.apply_status.value === "confirmed" ? "已确认" : "待确认") + "，预计改写 " +
@@ -50,7 +55,7 @@
     try {
       const scope = JSON.parse(shelf.dataset.ruleScope), list = shelf.querySelector("ul");
       const store = window.TicketboxDraftStore.createStore({prefix: "ticketbox:ruleapplication-create-draft:v1:",
-        fields: [...fields, "amount_placeholder", "amount_inputmode"], validRef: uuid});
+        fields: [...fields, "amount_placeholder", "amount_inputmode"], legacyMissing: ["reason"], validRef: uuid});
       for (const record of store.list(scope)) {
         const item = document.createElement("li"), link = document.createElement("a");
         link.href = href(record, scope);
