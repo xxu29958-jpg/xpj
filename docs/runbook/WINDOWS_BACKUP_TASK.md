@@ -12,7 +12,7 @@
 
 当前 Manager 不暴露 `/api/backup`、`/api/backups` 或 `/api/restore` mutation，不出货或调用提权备份/恢复 helper。完整数据集备份、正式恢复以及 repair/upgrade/uninstall 生命周期仍为 `HOLD`，不能作为当前产品能力操作或宣传。
 
-backend 中的 complete-dataset/restore 模块、历史 Windows 脚本、旧 ADR 和旧验收记录只作审计与演进输入；它们不是当前出货 Owner，也不进入 frozen runtime。单独 `pg_dump`、手工复制 uploads、`pg_restore --list`、CI green 或旧源码历史都不能冒充正式备份/恢复闭环。
+未发布的 complete-dataset/restore 原型及专属源码演练已经退役；历史 Windows 脚本、旧 ADR 和旧验收记录只作审计背景。现行有界冷备和只读库存保留，不代表完整恢复已经可用。单独 `pg_dump`、手工复制 uploads、`pg_restore --list`、CI green 或旧源码历史都不能冒充正式备份/恢复闭环。
 
 ## 2026-10-01 Beta 冷备整组事前范围（CLOSED）
 

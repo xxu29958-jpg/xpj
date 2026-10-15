@@ -180,7 +180,7 @@ git push gitee main                  # 推 cloud mirror
 
 2. **`project_ci_branch_trigger.md` 整篇以 `.gitea/workflows/windows-ci.yml` 为「the」trigger 真相**。该描述对 gitea 准确，但本仓**主 CI 是 GitHub Actions**——GitHub 侧有 `pull_request` trigger（纯建 PR 会触发，与该记忆「没 pull_request trigger，纯建 PR 不触发」相反）。文档已分两套列清。
 
-3. **backend-postgres 运行环境**：`project_github_actions_ci_behavior.md` / HANDOFF 未区分。真实情况——GitHub `ci.yml` 的 ordinary、`real_db`、smoke + recovery 三个 job 各自在 `ubuntu-latest` 使用发布策略动态生成的 PostgreSQL service matrix；容器内使用 PostgreSQL 标准端口，runner 宿主端口由 GitHub 动态分配并从 `job.services.postgres.ports` 读取。三个结果和 checkout SHA 汇总为稳定检查 `Backend (PostgreSQL)`。gitea `windows-ci.yml` 的同名 job 跑在 Windows + initdb 起的 SCRAM ephemeral 集群，端口从测试合同读取；HANDOFF 中的固定端口说明仅属旧实现。
+3. **backend-postgres 运行环境**：`project_github_actions_ci_behavior.md` / HANDOFF 未区分。真实情况——GitHub `ci.yml` 的 ordinary、`real_db`、端到端 smoke 三个 job 各自在 `ubuntu-latest` 使用发布策略动态生成的 PostgreSQL service matrix；容器内使用 PostgreSQL 标准端口，runner 宿主端口由 GitHub 动态分配并从 `job.services.postgres.ports` 读取。三个结果和 checkout SHA 汇总为稳定检查 `Backend (PostgreSQL)`。gitea `windows-ci.yml` 的同名 job 跑在 Windows + initdb 起的 SCRAM ephemeral 集群，端口从测试合同读取；HANDOFF 中的固定端口说明仅属旧实现。
 
 4. **CodeQL trigger**：记忆只笼统说「Analyze×4」。真实 `codeql.yml` 的 **push 只触发 `main`**，外加 `pull_request: main` 和 `schedule: cron "37 3 * * 1"`；工作分支靠 PR 的 `pull_request` 事件触发 CodeQL。4 条 Analyze job 名核实无误：`actions` / `javascript-typescript` / `python` / `java-kotlin`。
 

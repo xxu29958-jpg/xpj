@@ -159,7 +159,7 @@ Get-ScheduledTask -TaskName TicketboxBackend
 
 ## 数据保护当前边界
 
-正式 Windows Manager 当前只连接产品内 CSV 导入和已确认流水 CSV 导出；不提供完整数据集
+正式 Windows Manager 连接产品内 CSV 导入、已确认流水 CSV 导出和可携带账本包；不提供完整数据集
 备份/恢复 mutation。未发布的 complete-dataset 与 restore 原型及其专属演练已退役。
 现行有界冷备和只读库存的范围见 [POSTGRES_MIGRATION.md](../docs/runbook/POSTGRES_MIGRATION.md)。
 完整恢复、repair、保留数据 reinstall、upgrade/downgrade 继续
