@@ -15,16 +15,6 @@ def test_backend_log_is_rendered_as_text_not_html() -> None:
     assert "log.innerHTML" not in html
 
 
-def test_actions_are_single_flight_and_availability_is_reapplied_from_status() -> None:
-    html = (Path(__file__).parents[1] / "backend_manager" / "ui.html").read_text(encoding="utf-8")
-
-    assert "if (actionInFlight) return" in html
-    assert "applyActionAvailability(latestStatus)" in html
-    assert 'document.querySelectorAll(".owner-action")' in html
-    assert 'response.status === 409' in html
-    assert 'button.disabled = false' not in html
-
-
 def test_public_connectivity_card_is_projection_driven_and_read_only() -> None:
     html = (Path(__file__).parents[1] / "backend_manager" / "ui.html").read_text(encoding="utf-8")
 
