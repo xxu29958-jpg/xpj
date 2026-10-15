@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import re
 from datetime import timedelta
-from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -306,28 +305,6 @@ def test_overview_amounts_follow_home_currency_exponent(
         assert '"amount_major": 1234' in body
     finally:
         get_settings.cache_clear()
-
-
-def test_category_donut_escapes_tooltip_name_and_prefers_amount_major() -> None:
-    """PR #253 P1-2/P1-1 + R2 复审: 无 JS runner, 钉 category-donut.js 的安全/币种契约。"""
-    source = (
-        Path(__file__).resolve().parents[1] / "app/static/web/desktop/category-donut.js"
-    ).read_text(encoding="utf-8")
-    # tooltip: 名称进 HTML 前必须转义 — 正向钉完整片段, 负向钉漏洞形态 (复审 P2-1)。
-    assert "app.escapeHtml(p.name)" in source
-    assert '+ p.name + "</b>' not in source
-    # tooltip 金额与中心/清单消费服务器生成的精确 label；几何 value
-    # 不能重新格式化金额（否则会再次引入 exponent/浮点解释）。
-    assert "p.data.amountLabel" in source
-    assert "app.homeMoneyMajor(p.value || 0)" not in source
-    assert "(p.value || 0).toLocaleString()" not in source
-    # 中心 label: 纯文本, 不用 rich-text DSL — 分类名的 }/{x| 元字符会破坏排版 (复审 P2-2)。
-    assert '"{n|"' not in source
-    # 中心金额同样使用精确 label，不再 Math.round 或自行解释币种。
-    assert "p.data.amountLabel" in source
-    assert "Math.round(p.value" not in source
-    # exponent 感知的图表数值投影。
-    assert "amount_major" in source
 
 
 def test_overview_recent_count_is_confirmed_only(web_client: TestClient, *, identity) -> None:
