@@ -509,16 +509,7 @@ class _Handler(BaseHTTPRequestHandler):
                 client_socket=self.connection,
             )
         except ProductDataError as exc:
-            message = (
-                "桌面账本尚未绑定，请从系统管理完成绑定。"
-                if exc.status_code == 401
-                else "小票夹服务尚未就绪，请先从系统管理恢复服务。"
-            )
-            self._send(
-                exc.status_code,
-                _recovery_page(message),
-                "text/html; charset=utf-8",
-            )
+            self._serve_web_unavailable(exc)
             return
         except WebBridgeError as exc:
             if exc.status != 499:
@@ -553,6 +544,24 @@ class _Handler(BaseHTTPRequestHandler):
             self.close_connection = True
         finally:
             response.close()
+
+    def _serve_web_unavailable(self, error: ProductDataError) -> None:
+        if (
+            error.error == "product_principal_required"
+            and self.command == "GET"
+            and urllib.parse.urlsplit(self.path).path in {"/web", "/web/"}
+        ):
+            self.send_response(302)
+            self.send_header("Location", "/")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        message = (
+            "桌面账本尚未绑定，请从系统管理完成绑定。"
+            if error.status_code == 401
+            else "小票夹服务尚未就绪，请先从系统管理恢复服务。"
+        )
+        self._send(error.status_code, _recovery_page(message), "text/html; charset=utf-8")
 
     def _deliver_web_bridge(self, response: BridgeResponse) -> None:
         self._web_bridge_response = True

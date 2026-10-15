@@ -916,9 +916,8 @@ def test_lost_ledger_reaches_download_selection_through_the_same_desktop_identit
                         ("/web/exports", "Bearer retained-desktop-token")]
 
 
-def test_unpaired_bootstrap_recovery_page_routes_back_to_manager(tmp_path) -> None:
-    """P1-1: bootstrap lands on /web, but the address-bar-less window must
-    still reach the manager UI: the recovery page carries the way back."""
+def test_unpaired_bootstrap_opens_manager_connection_page(tmp_path) -> None:
+    """First use opens the connection flow without presenting a recovery error."""
 
     from backend_manager.product_data import ProductDataError
 
@@ -949,11 +948,10 @@ def test_unpaired_bootstrap_recovery_page_routes_back_to_manager(tmp_path) -> No
         cookie = _bootstrap_cookie_header(server, tmp_path)
         connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=2)
         connection.request("GET", "/web", headers={"Cookie": cookie})
-        recovery = connection.getresponse()
-        assert recovery.status == 401
-        body = recovery.read().decode()
-        assert "桌面账本尚未绑定，请从系统管理完成绑定。" in body
-        assert 'href="/"' in body
+        destination = connection.getresponse()
+        assert destination.status == 302
+        assert destination.getheader("Location") == "/"
+        assert destination.read() == b""
         connection.close()
 
         # The same bootstrap's control cookie opens the manager page itself.
