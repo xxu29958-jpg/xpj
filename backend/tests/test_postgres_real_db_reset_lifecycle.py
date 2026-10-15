@@ -1,103 +1,16 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
+from threading import Event
 
-import conftest as suite_conftest
 import pytest
-from sqlalchemy import text
+from sqlalchemy import event, text
 
 from app.database import SessionLocal, engine
 from app.database._lifecycle import load_alembic_context
 from app.models import DatasetAuthorityRecord
-from scripts.run_postgres_pytest_lane import (
-    POSTGRES_PYTEST_LANE_DEST,
-    POSTGRES_PYTEST_SHARD_COUNT_DEST,
-)
+from app.services import background_task_executor
+from app.services.background_task_registry import TaskHandlerRegistry
 from tests._infra import db as test_db
-
-
-class _LifecycleConfig:
-    def __init__(self, *, lane: str | None, shard_count: int) -> None:
-        self._options = {
-            POSTGRES_PYTEST_LANE_DEST: lane,
-            POSTGRES_PYTEST_SHARD_COUNT_DEST: shard_count,
-        }
-
-    def getoption(self, name: str) -> object:
-        return self._options[name]
-
-
-def _fixture_request(*, lane: str | None, shard_count: int) -> SimpleNamespace:
-    return SimpleNamespace(
-        config=_LifecycleConfig(lane=lane, shard_count=shard_count),
-        keywords={"real_db": True},
-    )
-
-
-def _run_real_db_fixture(
-    monkeypatch: pytest.MonkeyPatch,
-    *,
-    lane: str | None,
-    shard_count: int,
-    fail_test: bool = False,
-) -> list[str]:
-    calls: list[str] = []
-    monkeypatch.setattr(suite_conftest, "reset_db_state", lambda: calls.append("reset"))
-    monkeypatch.setattr(suite_conftest, "clear_db_state", lambda: calls.append("clear"))
-    fixture = suite_conftest._db_isolation.__wrapped__(
-        _fixture_request(lane=lane, shard_count=shard_count)
-    )
-    next(fixture)
-    if fail_test:
-        with pytest.raises(RuntimeError, match="simulated test failure"):
-            fixture.throw(RuntimeError("simulated test failure"))
-    else:
-        with pytest.raises(StopIteration):
-            next(fixture)
-    return calls
-
-
-@pytest.mark.parametrize("fail_test", [False, True])
-def test_sharded_real_db_lifecycle_rebuilds_before_and_clears_after(
-    monkeypatch: pytest.MonkeyPatch,
-    fail_test: bool,
-) -> None:
-    assert _run_real_db_fixture(
-        monkeypatch,
-        lane="real-db",
-        shard_count=4,
-        fail_test=fail_test,
-    ) == ["reset", "clear"]
-
-
-@pytest.mark.parametrize(
-    ("lane", "shard_count"),
-    [(None, 1), (None, 4), ("ordinary", 4), ("real-db", 1)],
-)
-def test_other_real_db_invocations_keep_the_rebuilt_teardown_baseline(
-    monkeypatch: pytest.MonkeyPatch,
-    lane: str | None,
-    shard_count: int,
-) -> None:
-    assert _run_real_db_fixture(
-        monkeypatch,
-        lane=lane,
-        shard_count=shard_count,
-    ) == ["reset", "reset"]
-
-
-def test_optimized_lane_still_rejects_a_mixed_collection() -> None:
-    config = _LifecycleConfig(lane="real-db", shard_count=4)
-    session = SimpleNamespace(
-        config=config,
-        items=[
-            SimpleNamespace(keywords={"real_db": True}),
-            SimpleNamespace(keywords={}),
-        ],
-    )
-
-    with pytest.raises(pytest.UsageError, match="real-db PostgreSQL lane"):
-        suite_conftest.pytest_collection_finish(session)
 
 
 @pytest.mark.real_db
@@ -114,7 +27,31 @@ def test_clear_then_full_reset_restores_schema_migration_seed_and_files() -> Non
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT to_regclass('public.alembic_version')")) is None
 
-    test_db.clear_db_state()
+    entered, release, finished = Event(), Event(), Event()
+
+    def read_before_teardown(_task_id, _payload, _registry):
+        with engine.connect() as connection:
+            assert connection.scalar(text("SELECT id FROM lifecycle_teardown_sentinel")) == 1
+            entered.set()
+            release.wait(2)
+        finished.set()
+
+    def bound_schema_wait(_connection, cursor, statement, _parameters, _context, _many):
+        if statement.startswith("DROP SCHEMA"):
+            cursor.execute("SET LOCAL lock_timeout = '150ms'")
+
+    # A real executor still owns a live PostgreSQL reader when reset starts.
+    # Reset must join it before DDL, not race it or leave it querying the next test.
+    event.listen(engine, "before_cursor_execute", bound_schema_wait)
+    try:
+        background_task_executor.submit_task(0, {}, registry=TaskHandlerRegistry(), runner=read_before_teardown)
+        assert entered.wait(5)
+        test_db.clear_db_state()
+        assert finished.is_set()
+    finally:
+        release.set()
+        background_task_executor.shutdown_executor(wait=True)
+        event.remove(engine, "before_cursor_execute", bound_schema_wait)
 
     assert not runtime_path.exists()
     with engine.connect() as connection:

@@ -211,6 +211,12 @@ def _cleanup_test_files() -> None:
 
 def clear_db_state() -> None:
     """Leave the throwaway schema and owned files empty without rebuilding them."""
+    from app.services.background_task_executor import shutdown_executor
+
+    # Real uploads may return while their worker still owns a database reader.
+    # Finish that work before DDL; otherwise schema reset can wait on the worker
+    # while its next query waits on reset, or the task can leak into the next test.
+    shutdown_executor(wait=True)
     reset_public_schema(engine)
     _cleanup_test_files()
 
