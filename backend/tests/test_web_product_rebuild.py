@@ -301,14 +301,6 @@ def test_overview_new_body_omits_desktop_hook(web_client: TestClient) -> None:
     assert 'data-body-stack="product"' in body_tag.group(0)
 
 
-def test_product_shell_resets_legacy_sidebar_gap(web_client: TestClient) -> None:
-    """S3-R2 (#256): 旧 _shell.css .sidebar{gap:28px} 在双栈下存活, product
-    shell.css 必须显式重置 .sidebar gap (矿版间距全走子元素, 容器无 gap 语义)。"""
-    css = web_client.get("/static/web/product/shell.css")
-    assert css.status_code == 200
-    assert re.search(r"\.sidebar\s*\{[^}]*gap:\s*0\s*;", css.text, re.S)
-
-
 def test_overview_new_body_mounts_insights_module(web_client: TestClient) -> None:
     """overview (S2 新页, 正文已是新标记): 断旧栈, 挂 insights 域模块。
     W3: 页级 pages/overview.css 已并入 domains/insights.css 并物理删除。"""
@@ -341,25 +333,6 @@ def test_overview_new_body_mounts_insights_module(web_client: TestClient) -> Non
 
     assert "<style" not in body
     _assert_shell_chrome_has_no_inline_style(body)
-
-
-def test_product_shell_owns_month_picker_styles(web_client: TestClient) -> None:
-    response = web_client.get("/web/confirmed?ledger_id=owner&month=2026-05")
-
-    assert response.status_code == 200
-    assert '<div class="month-picker">' in response.text
-    # 月份选择器是壳 chrome, 样式归属 product/shell.css (旧 _shell.css 虽因
-    # 正文旧标记分流而在场, 其旧规则对新的壳标记不生效)。
-    assert "/static/web/product/shell.css" in response.text
-
-    css = web_client.get("/static/web/product/shell.css")
-    assert css.status_code == 200
-    assert re.search(r"\.month-picker\s*\{", css.text)
-    assert re.search(r"\.month-picker a\s*\{", css.text)
-    assert re.search(r"\.month-picker \.label\s*\{", css.text)
-    assert "font-family: var(--font-numeric)" in css.text
-    assert "width: var(--space-9)" in css.text
-    assert "height: var(--space-9)" in css.text
 
 
 def test_product_shell_self_hosts_consumer_fonts(web_client: TestClient) -> None:

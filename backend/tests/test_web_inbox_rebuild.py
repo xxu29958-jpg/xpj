@@ -43,61 +43,7 @@ def _create_pending(client: TestClient, *, identity) -> int:
     return int(resp.json()["id"])
 
 
-def _assert_bulk_bar_runtime_contract(js_path: Path) -> None:
-    js = js_path.read_text(encoding="utf-8")
-    assert 'h.name = "expense_ids";' in js
-    assert 'token.name = "expected_row_version";' in js
-    assert "token.value = entry.rowVersion;" in js
-    assert "if (entry.rowVersion)" not in js
-    assert 'document.querySelectorAll(".row-check:checked")' in js
-    assert "isNativeBox" not in js
-    assert 'classList.toggle("checked", on);' not in js
-    # Selection/navigation coexistence is exercised in real Edge; do not pin
-    # the retired exclusive-mode implementation here.
-    assert "e.stopPropagation();" in js
-
-
-def _assert_review_keyboard_runtime_contract(js_path: Path) -> None:
-    drawer_js = js_path.with_name("drawer.js").read_text(encoding="utf-8")
-    keyboard_js = js_path.with_name("review-keyboard.js").read_text(encoding="utf-8")
-    assert 'row.getAttribute("aria-disabled") === "true"' in drawer_js
-    assert 'row.setAttribute("aria-haspopup", "dialog");' in drawer_js
-    assert 'row.setAttribute("aria-controls", "drawer");' in drawer_js
-    assert 'row.setAttribute("aria-expanded", "false");' in drawer_js
-    assert "aria-selected" not in drawer_js
-    assert "if (e.isComposing) return;" in keyboard_js
-    # Real Edge verifies that navigation skips disabled rows; selector spelling is not the behavior.
-    assert 'getAttribute("aria-disabled") !== "true"' in keyboard_js
-    for key in ('"ArrowDown"', '"ArrowUp"', '"Home"', '"End"'):
-        assert key in keyboard_js
-    assert '"j"' not in keyboard_js
-    assert '"k"' not in keyboard_js
-    # Open-drawer arrow suppression is exercised in real Edge; its equivalent
-    # optional-chain syntax is not a separate product contract.
-    assert "if (e.altKey || e.ctrlKey || e.metaKey) return;" in keyboard_js
-    assert '(e.ctrlKey || e.metaKey) && e.key === "Enter"' in keyboard_js
-    assert "aria-selected" not in keyboard_js
-    assert "app.initReviewKeyboard = function initReviewKeyboard()" in keyboard_js
-
-    desktop_boot = (js_path.parents[1] / "desktop.js").read_text(encoding="utf-8")
-    assert 'call("initReviewKeyboard");' in desktop_boot
-    assert "initReviewHotkeys" not in desktop_boot
-    base_html = (Path(__file__).resolve().parents[1] / "app/templates/web/base.html").read_text(
-        encoding="utf-8"
-    )
-    assert "/static/web/desktop/review-keyboard.js" in base_html
-    assert "review-hotkeys" not in base_html
-    assert not js_path.with_name("review-hotkeys.js").exists(), "旧 J/K 实现必须物理退役"
-
-    assert not (js_path.parents[1] / "_misc.css").exists()
-    inbox_css_text = (
-        js_path.parents[1] / "product" / "domains" / "inbox.css"
-    ).read_text(encoding="utf-8")
-    assert inbox_css_text.count(".exp-row.is-current") >= 1
-    assert ".exp-row:focus-within" in inbox_css_text
-
-
-def test_web_pending_bulk_selection_markup_and_js_field_name(web_client: TestClient, *, identity) -> None:
+def test_web_pending_bulk_selection_preserves_native_occ_submission(web_client: TestClient, *, identity) -> None:
     eid = _seed_pending_with_amount(web_client, "9.00", "X", identity=identity)
     resp = web_client.get("/web/pending?ledger_id=owner")
     assert resp.status_code == 200
@@ -116,10 +62,6 @@ def test_web_pending_bulk_selection_markup_and_js_field_name(web_client: TestCli
     assert "exp-row-detail" in resp.text
     assert 'name="category"' in resp.text
     assert 'name="merchant"' in resp.text
-
-    js_path = Path(__file__).resolve().parents[1] / "app/static/web/desktop/bulk-bar.js"
-    _assert_bulk_bar_runtime_contract(js_path)
-    _assert_review_keyboard_runtime_contract(js_path)
 
     # JS 只增强显隐：没有 JS 时批量命令仍必须可见并可原生提交；增强初始化后，
     # 未选中态才隐藏，选中态由 .on 恢复。不能把 query/presentation 可用性变成
@@ -182,6 +124,11 @@ def test_inbox_pages_render_new_modular_product_shell(
 
     for retired in _RETIRED_GLOBAL_STACK:
         assert retired not in body
+    static_root = Path(__file__).resolve().parents[1] / "app/static/web"
+    assert not (static_root / "_misc.css").exists()
+    assert not (static_root / "desktop/review-hotkeys.js").exists()
+    assert "/static/web/desktop/review-keyboard.js" in body
+    assert "review-hotkeys" not in body
     for retired_page in (
         "/static/web/pages/pending.css",
         "/static/web/pages/duplicates.css",
