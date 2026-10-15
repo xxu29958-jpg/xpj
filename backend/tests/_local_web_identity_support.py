@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterator
 from dataclasses import dataclass
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -73,7 +74,10 @@ def installed_web_setup() -> Iterator[_InstalledWeb]:
         installation_account_id = claim.account_id
         installation_ledger_name = installation_ledger.name
 
-    with TestClient(
+    # Installed-Web journeys exercise HTTP commands, not automatic public FX
+    # polling: a slow fetch can outlive TestClient and race the schema reset.
+    # Request-triggered background tasks remain real; scheduler tests own polling.
+    with patch("app.main.start_fx_rate_scheduler", return_value=None), TestClient(
         app,
         base_url="http://127.0.0.1:8000",
         client=("127.0.0.1", 51241),
