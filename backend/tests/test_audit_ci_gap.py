@@ -10,7 +10,6 @@ jobs:
   backend-postgres:
     steps:
       - run: .\\.ci-venv\\Scripts\\python.exe scripts\\smoke_test.py
-      - run: .\\.ci-venv\\Scripts\\python.exe scripts\\postgres_backup_drill.py
       - run: .\\.ci-venv\\Scripts\\python.exe -m scripts.run_postgres_pytest_lane --lane ordinary --workers 4
       - run: .\\.ci-venv\\Scripts\\python.exe -m scripts.run_postgres_pytest_lane --lane real-db --workers 1
   android:
@@ -201,7 +200,6 @@ jobs:
         "installer source preflight (PowerShell 7)",
         "frozen backend locked release build",
         "end-to-end smoke",
-        "backup/restore drill",
         "API contract check",
         "backend ruff lint",
         "backend compileall",
@@ -263,7 +261,6 @@ jobs:
           python scripts\\release_audit.py
           python -m pytest -q -p no:cacheprovider
           python scripts\\smoke_test.py
-          python scripts\\postgres_backup_drill.py
           python scripts\\check_api_contract.py
           ruff check app scripts tests
           python -m compileall app scripts tests
@@ -284,7 +281,6 @@ jobs:
         "installer source preflight (PowerShell 7)",
         "frozen backend locked release build",
         "end-to-end smoke",
-        "backup/restore drill",
         "API contract check",
         "backend ruff lint",
         "backend compileall",
@@ -428,7 +424,6 @@ jobs:
           python scripts\\release_audit.py
           python -m pytest -q -p no:cacheprovider
           python scripts\\smoke_test.py
-          python scripts\\postgres_backup_drill.py
           python scripts\\check_api_contract.py
           ruff check app scripts tests
           python -m compileall app scripts tests
@@ -451,7 +446,6 @@ jobs:
         "installer source preflight (PowerShell 7)",
         "frozen backend locked release build",
         "end-to-end smoke",
-        "backup/restore drill",
         "API contract check",
         "backend ruff lint",
         "backend compileall",

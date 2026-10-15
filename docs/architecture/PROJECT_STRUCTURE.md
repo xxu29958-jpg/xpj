@@ -151,7 +151,6 @@ backend\
     test_v09_reports_goals_integration.py
     test_web_reports_goals.py
   scripts\
-    postgres_backup_drill.py       # complete dataset generation + scratch restore CI drill
     export_confirmed.ps1
     install_startup_task.ps1
     setup_backend.ps1

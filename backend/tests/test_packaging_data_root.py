@@ -166,26 +166,16 @@ def test_build_log_config_keeps_console_when_stdout_present(tmp_path):
     assert cfg["root"]["handlers"] == ["file", "console"]
 
 
-def test_runtime_settings_follow_data_root_and_backup_root_is_explicit(tmp_path):
-    """Runtime projection follows DATA_ROOT; maintenance owns backup placement.
-
-    Simulates a managed host where DATA_ROOT diverges from the read-only program
-    root. The long-running backend may project runtime settings below that root,
-    but the short-lived backup owner must receive its protected sibling root as
-    a mandatory request field instead of deriving ambient filesystem authority.
-    """
+def test_runtime_settings_follow_data_root(tmp_path):
+    """Runtime settings remain below DATA_ROOT when the program root is read-only."""
     original = config.DATA_ROOT
     config.DATA_ROOT = tmp_path
     try:
-        backup_service = importlib.reload(importlib.import_module("app.services.backup_service"))
         runtime_settings = importlib.reload(importlib.import_module("app.services.runtime_settings_service"))
         expected_settings = tmp_path / "runtime-settings" / "runtime-settings.json"
         assert expected_settings == runtime_settings._SETTINGS_PATH
-        assert "backup_root" in backup_service.CompleteBackupRequest.__dataclass_fields__
-        assert not hasattr(backup_service, "_BACKUP_DIR")
     finally:
         config.DATA_ROOT = original
-        importlib.reload(importlib.import_module("app.services.backup_service"))
         importlib.reload(importlib.import_module("app.services.runtime_settings_service"))
 
 
@@ -206,25 +196,6 @@ def test_source_data_root_does_not_claim_installer_runtime_settings_authority(
         importlib.reload(importlib.import_module("app.services.runtime_settings_service"))
 
 
-def test_installed_backup_inventory_exposes_only_sanitized_sibling_label(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    original = config.DATA_ROOT
-    config.DATA_ROOT = tmp_path / "app"
-    monkeypatch.setenv(
-        "TICKETBOX_DATA_ROOT_MARKER_PATH",
-        str(tmp_path / ".ticketbox-data-root.json"),
-    )
-    try:
-        inventory = importlib.reload(importlib.import_module("app.services.dataset_backup_inventory"))
-        assert inventory.backup_directory_label() == f"{tmp_path.name}\\backups"
-        assert str(tmp_path) not in inventory.backup_directory_label()
-        assert "app" not in inventory.backup_directory_label().split("\\")
-    finally:
-        monkeypatch.delenv("TICKETBOX_DATA_ROOT_MARKER_PATH")
-        config.DATA_ROOT = original
-        importlib.reload(importlib.import_module("app.services.dataset_backup_inventory"))
 
 
 def test_main_configures_file_logging_and_tells_uvicorn_not_to(monkeypatch, tmp_path):

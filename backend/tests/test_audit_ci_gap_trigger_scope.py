@@ -76,14 +76,14 @@ jobs:
     steps:
       - run: python -m pytest tests -q -ra --tb=short -p no:cacheprovider
   backend_postgres_real_db: *postgres_lane
-  backend_postgres_recovery: *postgres_lane
+  backend_postgres_smoke: *postgres_lane
   backend-postgres:
     name: Backend (PostgreSQL)
     needs:
       - scope
       - backend_postgres_ordinary
       - backend_postgres_real_db
-      - backend_postgres_recovery
+      - backend_postgres_smoke
     if: ${{ always() }}
     steps:
       - name: Verify qualification SHA
@@ -100,7 +100,7 @@ jobs:
           POSTGRES_SCOPE: ${{ needs.scope.outputs.postgres }}
           ORDINARY_RESULT: ${{ needs.backend_postgres_ordinary.result }}
           REAL_DB_RESULT: ${{ needs.backend_postgres_real_db.result }}
-          RECOVERY_RESULT: ${{ needs.backend_postgres_recovery.result }}
+          SMOKE_RESULT: ${{ needs.backend_postgres_smoke.result }}
           ORDINARY_SHA: ${{ needs.backend_postgres_ordinary.outputs.qualification_sha }}
           ORDINARY_SOURCE_SHA: ${{ needs.backend_postgres_ordinary.outputs.qualification_source_sha }}
           EXPECTED_SHA: ${{ github.sha }}
@@ -111,9 +111,9 @@ jobs:
           SCOPE_SOURCE_SHA: ${{ needs.scope.outputs.qualification_source_sha }}
           REAL_DB_SHA: ${{ needs.backend_postgres_real_db.outputs.qualification_sha }}
           REAL_DB_SOURCE_SHA: ${{ needs.backend_postgres_real_db.outputs.qualification_source_sha }}
-          RECOVERY_SHA: ${{ needs.backend_postgres_recovery.outputs.qualification_sha }}
-          RECOVERY_SOURCE_SHA: ${{ needs.backend_postgres_recovery.outputs.qualification_source_sha }}
-        run: python -E -S backend/scripts/verify_scoped_ci_results.py --label PostgreSQL --scope-key POSTGRES_SCOPE --lane ORDINARY --lane REAL_DB --lane RECOVERY
+          SMOKE_SHA: ${{ needs.backend_postgres_smoke.outputs.qualification_sha }}
+          SMOKE_SOURCE_SHA: ${{ needs.backend_postgres_smoke.outputs.qualification_source_sha }}
+        run: python -E -S backend/scripts/verify_scoped_ci_results.py --label PostgreSQL --scope-key POSTGRES_SCOPE --lane ORDINARY --lane REAL_DB --lane SMOKE
 """
 
 
@@ -176,7 +176,7 @@ def _terminal_regressions(valid: str) -> tuple[str, ...]:
             "      - scope\n"
             "      - backend_postgres_ordinary\n"
             "      - backend_postgres_real_db\n"
-            "      - backend_postgres_recovery\n"
+            "      - backend_postgres_smoke\n"
             "    if: ${{ always() }}",
             "  backend-postgres:\n"
             "    name: Backend (PostgreSQL)\n"
@@ -184,7 +184,7 @@ def _terminal_regressions(valid: str) -> tuple[str, ...]:
             "      - scope\n"
             "      - backend_postgres_ordinary\n"
             "      - backend_postgres_real_db\n"
-            "      - backend_postgres_recovery\n"
+            "      - backend_postgres_smoke\n"
             "    if: ${{ false }}",
         ),
         valid.replace(
@@ -207,7 +207,7 @@ def _terminal_regressions(valid: str) -> tuple[str, ...]:
         valid.replace(
             "run: python -E -S backend/scripts/verify_scoped_ci_results.py "
             "--label PostgreSQL --scope-key POSTGRES_SCOPE --lane ORDINARY "
-            "--lane REAL_DB --lane RECOVERY",
+            "--lane REAL_DB --lane SMOKE",
             "run: echo terminal-bypassed",
             1,
         ),

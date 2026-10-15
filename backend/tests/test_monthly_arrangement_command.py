@@ -103,7 +103,6 @@ def test_unaccepted_command_does_not_publish_or_change_intent(monkeypatch, kind)
 def test_arrangement_registry_preserves_facts_and_bounds_without_mutating_frozen_money():
     from sqlalchemy import BigInteger, CheckConstraint
 
-    from app.database._dataset_restore_security import RESTORE_TABLE_SECURITY
     from app.database_model_registry import Base
     from app.monthly_arrangement_money_contract import MONTHLY_ARRANGEMENT_MONEY_COLUMNS
     from app.services.portable_export_queries import PORTABLE_COLLECTION_SCOPES
@@ -114,7 +113,6 @@ def test_arrangement_registry_preserves_facts_and_bounds_without_mutating_frozen
         checks = {check.name: str(check.sqltext) for check in table.constraints if isinstance(check, CheckConstraint)}
         assert checks[column.final_check_name] == column.final_check_predicate
         assert len(column.final_check_name) <= 63
-        assert RESTORE_TABLE_SECURITY[column.table] == "preserve"
         assert column.table in PORTABLE_COLLECTION_SCOPES
 
 

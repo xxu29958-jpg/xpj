@@ -17,7 +17,6 @@ function Get-XpjTestPostgresContract {
         'application_role',
         'base_database',
         'smoke_database',
-        'restore_database',
         'cluster_marker',
         'worker_marker_prefix',
         'ownership_marker_name',
@@ -33,15 +32,15 @@ function Get-XpjTestPostgresContract {
     if (@(Compare-Object ($expectedFields | Sort-Object) ($actualFields | Sort-Object)).Count -ne 0) {
         throw 'Test PostgreSQL contract fields do not match the supported schema'
     }
-    if ($contract.schema_version -ne 7) {
+    if ($contract.schema_version -ne 8) {
         throw "Unsupported test PostgreSQL contract schema: $($contract.schema_version)"
     }
-    foreach ($field in @('application_role', 'base_database', 'smoke_database', 'restore_database', 'cluster_marker', 'worker_marker_prefix', 'ownership_marker_name', 'deletion_marker_name', 'credential_name', 'passfile_name')) {
+    foreach ($field in @('application_role', 'base_database', 'smoke_database', 'cluster_marker', 'worker_marker_prefix', 'ownership_marker_name', 'deletion_marker_name', 'credential_name', 'passfile_name')) {
         if ([string]::IsNullOrWhiteSpace([string]$contract.$field)) {
             throw "Test PostgreSQL contract field is missing: $field"
         }
     }
-    foreach ($field in @('application_role', 'base_database', 'smoke_database', 'restore_database')) {
+    foreach ($field in @('application_role', 'base_database', 'smoke_database')) {
         if ([string]$contract.$field -notmatch '^[a-z][a-z0-9_]{0,62}$') {
             throw "Test PostgreSQL contract database name is invalid: $field"
         }
@@ -93,8 +92,7 @@ function Get-XpjTestPostgresContract {
     }
     $databaseNames = @(
         [string]$contract.base_database,
-        [string]$contract.smoke_database,
-        [string]$contract.restore_database
+        [string]$contract.smoke_database
     )
     if (@($databaseNames | Sort-Object -Unique).Count -ne $databaseNames.Count) {
         throw 'Test PostgreSQL database roles must be distinct'

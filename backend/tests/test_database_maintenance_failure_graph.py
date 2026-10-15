@@ -37,34 +37,6 @@ def _assert_exact_failure_graph(error: BaseException, aggregate: PostgresOperati
     assert [str(cleanup) for cleanup in aggregate.cleanup] == ["database cleanup failed"]
 
 
-def test_managed_schema_public_action_preserves_operation_failure_graph(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    import app.database._managed_schema_upgrade as managed
-
-    aggregate = _aggregate()
-
-    class FailingRuntime:
-        def __init__(self, _contract) -> None:
-            pass
-
-        def run(self, **_kwargs) -> str:
-            raise aggregate
-
-    monkeypatch.setattr(managed, "load_database_generation_program", lambda **_kwargs: _program())
-    monkeypatch.setattr(managed, "ManagedPostgresMigrationRuntimeV1", FailingRuntime)
-    with pytest.raises(managed.ManagedSchemaUpgradeError) as caught:
-        managed.run_managed_schema_upgrade_action(
-            database_url=MIGRATOR_URL,
-            pgpassfile=(tmp_path / ".pgpass").resolve(),
-            generation_program_path=(tmp_path / "generation.json").resolve(),
-            expected_generation_program_sha256=PROGRAM_SHA256,
-            source_revision=SOURCE_REVISION,
-            target_revision=TARGET_REVISION,
-            generation_operation_id=OPERATION_ID,
-        )
-    _assert_exact_failure_graph(caught.value, aggregate)
 
 
 def test_target_verification_public_action_preserves_operation_failure_graph(

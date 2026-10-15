@@ -1,9 +1,8 @@
 {
-  "schema_version": 7,
+  "schema_version": 8,
   "application_role": "xpj_test_app",
   "base_database": "xpj_test",
   "smoke_database": "xpj_smoke",
-  "restore_database": "xpj_restore",
   "cluster_marker": "xpj-test-cluster-v1",
   "worker_marker_prefix": "xpj-test-worker-v1:",
   "ownership_marker_name": ".xpj-test-postgres-owner.json",

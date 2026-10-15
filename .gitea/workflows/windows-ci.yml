@@ -118,8 +118,6 @@ jobs:
         run: >-
           .\.ci-venv\Scripts\python.exe -m pytest -q
           tests/test_database_maintenance_entrypoint.py
-          tests/test_postgres_backup_dialect.py
-          tests/test_dataset_originals_file_identity.py
           --noconftest --strict-markers -p no:cacheprovider -o addopts=
 
       - name: vNext fresh-install contracts
@@ -377,19 +375,6 @@ jobs:
             Write-Host "--- PostgreSQL end-to-end smoke ---"
             .\.ci-venv\Scripts\python.exe scripts\smoke_test.py
             if ($LASTEXITCODE -ne 0) { throw "PostgreSQL smoke failed" }
-
-            # Backup/restore recovery drill (ENGINEERING_RULES section 6: a backup
-            # without a restore drill is no backup). Dumps the smoke-populated DB
-            # through the real backend backup code (pg_dump -Fc via find_pg_binary),
-            # validates the archive, restores into the fresh xpj_restore DB and
-            # asserts identical row counts. Lived on the GitHub-era PG lane, lost
-            # in the Gitea move, revived here. Runs before the pytest suite
-            # mutates anything; pg_restore resolves via the same Program Files
-            # glob as pg_dump (not on the runner's PATH).
-            Write-Host "--- PostgreSQL backup/restore drill ---"
-            .\.ci-venv\Scripts\python.exe scripts\postgres_backup_drill.py `
-              --upload-root (Join-Path $PWD "uploads")
-            if ($LASTEXITCODE -ne 0) { throw "PostgreSQL backup/restore drill failed" }
 
             # Keep the offline single-runner mirror serial. Source-local real_db
             # markers preserve the same test-set boundary as GitHub without

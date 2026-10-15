@@ -19,14 +19,11 @@ $PostgresScriptsRoot = Join-Path $BackendRoot "scripts"
 $BackendPostgresEnvironmentNames = @(
     "XPJ_TEST_BASE_DATABASE",
     "XPJ_TEST_SMOKE_DATABASE",
-    "XPJ_TEST_RESTORE_DATABASE",
     "XPJ_TEST_APPLICATION_ROLE",
     "XPJ_TEST_CLUSTER_IDENTITY",
     "XPJ_TEST_ADMIN_URL",
     "XPJ_TEST_DATABASE_URL",
     "SMOKE_DATABASE_URL",
-    "DRILL_SOURCE_URL",
-    "DRILL_RESTORE_URL",
     "PGPASSFILE"
 )
 
@@ -267,11 +264,7 @@ if (-not $SkipBackend) {
         Invoke-Checked -FilePath $tools.Python -Arguments @("scripts\release_audit.py") -WorkingDirectory $BackendRoot
         if (-not $SkipSmoke) {
             Invoke-Checked -FilePath $tools.Python -Arguments @("scripts\smoke_test.py") -WorkingDirectory $BackendRoot
-            Invoke-Checked -FilePath $tools.Python -Arguments @(
-                "scripts\postgres_backup_drill.py",
-                "--upload-root",
-                (Join-Path $BackendRoot "uploads")
-            ) -WorkingDirectory $BackendRoot
+
         }
     }
 }

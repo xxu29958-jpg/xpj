@@ -146,7 +146,7 @@ jobs:
       - if: github.event_name != 'pull_request'
         run: python scripts/smoke_test.py
       - if: ${{ github.event_name == 'pull_request' && false }}
-        run: python scripts/postgres_backup_drill.py
+        run: python -m pytest -q
       - if: contains(fromJSON('["workflow_dispatch"]'), github.event_name)
         run: python -m compileall app scripts tests packaging/tests
       - if: ${{ !(github.event_name == 'pull_request') }}
@@ -182,7 +182,7 @@ jobs:
       - continue-on-error: ${{ github.event_name == 'pull_request' }}
         run: python scripts/smoke_test.py
       - continue-on-error: false
-        run: python scripts/postgres_backup_drill.py
+        run: python -m pytest -q
 """,
         encoding="utf-8",
     )
@@ -190,7 +190,7 @@ jobs:
     commands = mod._iter_workflow_run_commands(workflows, protected_only=True)
 
     assert [command.text for command in commands] == [
-        "python scripts/postgres_backup_drill.py"
+        "python -m pytest -q"
     ]
 
 
@@ -250,7 +250,7 @@ jobs:
             python scripts/smoke_test.py
           }
           for ($i = 0; $false; $i++) {
-            python scripts/postgres_backup_drill.py
+            python -m pytest -q
           }
           foreach ($item in @()) {
             python -m compileall app scripts tests packaging/tests
@@ -267,7 +267,7 @@ jobs:
     assert "release audit aggregator" in missing
     assert "API contract check" in missing
     assert "end-to-end smoke" in missing
-    assert "backup/restore drill" in missing
+    assert "desktop pytest" in missing
     assert "backend compileall" in missing
 
 
@@ -289,7 +289,7 @@ jobs:
       - if: ${{ env.RUN_SMOKE == 'true' }}
         run: python scripts/smoke_test.py
       - if: ${{ github.event_name == 'pull_request' && matrix.experimental }}
-        run: python scripts/postgres_backup_drill.py
+        run: python -m pytest -q
 """,
         encoding="utf-8",
     )
@@ -300,7 +300,7 @@ jobs:
     missing = mod._missing_ci_invocations(commands)
     assert "API contract check" in missing
     assert "end-to-end smoke" in missing
-    assert "backup/restore drill" in missing
+    assert "desktop pytest" in missing
 
 
 def _assert_ci_gap_stops_at_powershell_terminal_statements(tmp_path: Path) -> None:
@@ -327,7 +327,7 @@ jobs:
           exit 0
           python scripts/smoke_test.py
           '@
-          python scripts/postgres_backup_drill.py
+          python -m pytest -q
       - run: |
           $unused = {
             return
@@ -343,7 +343,7 @@ jobs:
     assert [command.text.strip() for command in commands] == [
         "exit",
         "Write-Output 'done'\nreturn",
-        "python scripts/postgres_backup_drill.py",
+        "python -m pytest -q",
         "ruff check app scripts tests packaging/tests",
     ]
     missing = mod._missing_ci_invocations(commands)
@@ -389,7 +389,7 @@ jobs:
   missing-dependent:
     needs: absent
     steps:
-      - run: python scripts/postgres_backup_drill.py
+      - run: python -m pytest -q
   cycle-a:
     needs: cycle-b
     steps:
@@ -413,7 +413,7 @@ jobs:
     assert "release audit aggregator" not in missing
     assert "API contract check" not in missing
     assert "end-to-end smoke" in missing
-    assert "backup/restore drill" in missing
+    assert "desktop pytest" in missing
     assert "backend compileall" in missing
     assert "backend ruff lint" in missing
 
@@ -454,7 +454,7 @@ jobs:
           #>
       - run: |
           & {
-            python scripts/postgres_backup_drill.py
+            python -m pytest -q
             if ($LASTEXITCODE -ne 0) { throw 'invoked gate failed' }
           }
       - run: |
@@ -470,11 +470,11 @@ jobs:
 
     assert len(commands) == 5
     assert [command.text.strip() for command in commands[:3]] == ["", "", ""]
-    assert "python scripts/postgres_backup_drill.py" in commands[3].text
+    assert "python -m pytest -q" in commands[3].text
     assert commands[4].text.strip() == ""
     missing = mod._missing_ci_invocations(commands)
     assert "release audit aggregator" in missing
     assert "API contract check" in missing
     assert "end-to-end smoke" in missing
-    assert "backup/restore drill" not in missing
+    assert "desktop pytest" not in missing
     assert "backend compileall" in missing

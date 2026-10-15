@@ -19,7 +19,6 @@ from sqlalchemy.engine import URL, Connection, make_url
 from sqlalchemy.pool import NullPool
 
 from app.database import _managed_postgres_migration_runtime as managed_runtime
-from app.database import _managed_schema_upgrade as managed_schema
 from app.database._database_generation_program import (
     DatabaseGenerationProgram,
     load_database_generation_program,
@@ -388,20 +387,6 @@ def _assert_rollback_retry_and_replay(
     assert topology.runtime.run(**arguments) == "target_committed"
     assert _revision(topology.admin_database_url) == topology.program.target_revision
     assert topology.runtime.run(**arguments) == "target_observed_after_interruption"
-    monkeypatch.setattr(managed_schema, "DATABASE_NAME", topology.database)
-    monkeypatch.setattr(managed_schema, "MIGRATOR_ROLE", topology.migrator)
-    monkeypatch.setattr(managed_schema, "SCHEMA_OWNER_ROLE", topology.owner)
-    noop_result = managed_schema.run_managed_schema_upgrade_action(
-        database_url=topology.migrator_url.render_as_string(hide_password=False),
-        pgpassfile=topology.pgpass,
-        generation_program_path=topology.program_path,
-        expected_generation_program_sha256=topology.program.payload_sha256,
-        source_revision=topology.program.target_revision,
-        target_revision=topology.program.target_revision,
-        generation_operation_id=topology.operation_id,
-    )
-    assert noop_result["result"] == "target_observed_after_interruption"
-    assert noop_result["alembic_revision"] == topology.program.target_revision
     assert (
         _migrator_sessions(
             topology.admin,

@@ -392,10 +392,6 @@ REQUIRED_CI_INVOCATIONS = (
         re.compile(_PYTHON_PREFIX + r"scripts[\\/]+smoke_test\.py\b"),
     ),
     RequiredCommand(
-        "backup/restore drill",
-        re.compile(_PYTHON_PREFIX + r"scripts[\\/]+postgres_backup_drill\.py\b"),
-    ),
-    RequiredCommand(
         "API contract check",
         re.compile(_PYTHON_PREFIX + r"scripts[\\/]+check_api_contract\.py\b"),
     ),

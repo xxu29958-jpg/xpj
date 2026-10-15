@@ -17,12 +17,10 @@ from scripts.test_postgres_database import validated_test_postgres_conninfo
 _ROLE_DATABASES = {
     "base": TEST_POSTGRES_CONTRACT.base_database,
     "smoke": TEST_POSTGRES_CONTRACT.smoke_database,
-    "restore": TEST_POSTGRES_CONTRACT.restore_database,
 }
 _ROLE_URLS = {
     "base": "XPJ_TEST_DATABASE_URL",
     "smoke": "SMOKE_DATABASE_URL",
-    "restore": "DRILL_RESTORE_URL",
 }
 
 

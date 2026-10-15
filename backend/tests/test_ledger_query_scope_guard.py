@@ -6,7 +6,6 @@ from pathlib import Path
 
 APP_ROOT = Path(__file__).resolve().parents[1] / "app"
 SCAN_ROOTS = (APP_ROOT / "routes", APP_ROOT / "services")
-EXTRA_SCAN_FILES = (APP_ROOT / "database" / "_dataset_backup_snapshot.py",)
 
 LEDGER_SCOPED_MODELS = {
     "Budget",
@@ -127,18 +126,6 @@ EXEMPTIONS: tuple[ScopeExemption, ...] = (
         ),
     ),
     ScopeExemption(
-        path="database/_dataset_backup_snapshot.py",
-        function="read_original_reference_rows",
-        model="Expense",
-        occurrences=1,
-        reason=(
-            "H2 complete-dataset backup runs only inside the frozen maintenance "
-            "snapshot and must enumerate every ledger's referenced original. "
-            "The sole production consumer is backup_service's complete-dataset "
-            "writer; this is not a request- or ledger-scoped read path."
-        ),
-    ),
-    ScopeExemption(
         path="services/cleanup_service.py",
         function="purge_expired_soft_deletes",
         model="MerchantAlias",
@@ -243,17 +230,6 @@ def test_ledger_scoped_orm_queries_are_explicitly_filtered() -> None:
     assert not messages, "\n".join(messages)
 
 
-def test_dataset_wide_snapshot_query_has_one_frozen_maintenance_consumer() -> None:
-    symbol = "read_original_reference_rows"
-    callers = [
-        path.relative_to(APP_ROOT).as_posix()
-        for path in APP_ROOT.rglob("*.py")
-        if path not in EXTRA_SCAN_FILES and symbol in path.read_text(encoding="utf-8")
-    ]
-
-    assert callers == ["services/backup_service.py"]
-    consumer = (APP_ROOT / callers[0]).read_text(encoding="utf-8")
-    assert consumer.count(f"{symbol}(") == 1
 
 
 def _find_unscoped_query_sites() -> list[QuerySite]:
@@ -295,7 +271,6 @@ def _iter_python_files() -> list[Path]:
     files: list[Path] = []
     for root in SCAN_ROOTS:
         files.extend(path for path in root.rglob("*.py") if path.name != "__init__.py")
-    files.extend(EXTRA_SCAN_FILES)
     return sorted(files)
 
 

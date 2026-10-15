@@ -37,22 +37,6 @@ retired_c07_modules = sorted(
     if module == "app.database_generation_c07_contract"
     or module.startswith("app.database._c07_")
 )
-retired_dataset_mutation_modules = {
-    "app.dataset_maintenance_cli",
-    "app.database._dataset_backup_action",
-    "app.database._dataset_backup_snapshot",
-    "app.database._dataset_restore_action",
-    "app.database._dataset_restore_authority",
-    "app.database._dataset_restore_security",
-    "app.database._managed_schema_upgrade",
-    "app.services.backup_service",
-    "app.services.backup_job_lease",
-    "app.services.dataset_backup_inventory_writer",
-    "app.services.dataset_originals_adapter",
-    "app.services.dataset_restore_service",
-    "app.services.postgres_backup_adapter",
-    "app.services.postgres_backup_validation_service",
-}
 if retired_c07_modules:
     raise RuntimeError(
         "retired C07 database modules returned to the frozen source graph: "
@@ -67,7 +51,6 @@ app_hiddenimports = [
         "app.database._fresh_schema_upgrade",
         "app.database._database_generation_target_verification",
     }
-    and module not in retired_dataset_mutation_modules
 ]
 for required_app_module in (
     "app.app_meta_observation",
@@ -161,7 +144,6 @@ excludes = [
     "pysqlite2",
     "MySQLdb",
     *retired_c07_modules,
-    *sorted(retired_dataset_mutation_modules),
 ]
 
 a = Analysis(

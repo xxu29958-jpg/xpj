@@ -111,7 +111,6 @@ ERROR_MESSAGES = {
     "rule_category_deleted": "规则目标分类已在回收站，请先恢复分类。",
     "admin_api_local_only": "管理接口仅允许本机访问。",
     "maintenance_local_only": "这项安装维护操作仅允许在本机执行。",
-    "backup_in_progress": "正在备份中，请稍后再试。",
     "server_error": "服务器开小差了，请稍后再试。",
     "invalid_request": "请求参数不正确。",
     "route_not_found": "没有找到这个功能入口。",

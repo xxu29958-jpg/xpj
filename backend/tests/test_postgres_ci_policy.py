@@ -30,13 +30,13 @@ def _valid_results(*, scope: str = "true") -> dict[str, str]:
         "SCOPE_SOURCE_SHA": sha,
         "ORDINARY_RESULT": result,
         "REAL_DB_RESULT": result,
-        "RECOVERY_RESULT": result,
+        "SMOKE_RESULT": result,
         "ORDINARY_SHA": sha if scope == "true" else "",
         "ORDINARY_SOURCE_SHA": sha if scope == "true" else "",
         "REAL_DB_SHA": sha if scope == "true" else "",
         "REAL_DB_SOURCE_SHA": sha if scope == "true" else "",
-        "RECOVERY_SHA": sha if scope == "true" else "",
-        "RECOVERY_SOURCE_SHA": sha if scope == "true" else "",
+        "SMOKE_SHA": sha if scope == "true" else "",
+        "SMOKE_SOURCE_SHA": sha if scope == "true" else "",
     }
 
 
@@ -45,7 +45,7 @@ def _verify(values: dict[str, str]) -> Verification:
         values,
         label="PostgreSQL",
         scope_key="POSTGRES_SCOPE",
-        lanes=("ORDINARY", "REAL_DB", "RECOVERY"),
+        lanes=("ORDINARY", "REAL_DB", "SMOKE"),
         source_lanes=(),
     )
 
@@ -55,11 +55,11 @@ def test_per_lane_scope_preserves_status_and_both_sha_obligations(parent, apk) -
     values = _valid_results(scope=parent)
     values["APK_SCOPE"] = apk
     for key, value in _valid_results(scope=apk).items():
-        if key.startswith("RECOVERY_"):
+        if key.startswith("SMOKE_"):
             values[key] = value
     kwargs = {"label": "Scoped capabilities", "scope_key": "POSTGRES_SCOPE",
-              "lanes": ("ORDINARY", "REAL_DB", "RECOVERY"), "source_lanes": (),
-              "lane_scopes": {"RECOVERY": "APK_SCOPE"}}
+              "lanes": ("ORDINARY", "REAL_DB", "SMOKE"), "source_lanes": (),
+              "lane_scopes": {"SMOKE": "APK_SCOPE"}}
     assert verify(values, **kwargs).ok
     for key in values:
         candidate = dict(values)
@@ -78,8 +78,8 @@ def test_per_lane_scope_preserves_status_and_both_sha_obligations(parent, apk) -
 def test_per_lane_scope_cannot_enable_a_child_of_an_unselected_parent() -> None:
     values = {**_valid_results(scope="false"), "APK_SCOPE": "true"}
     assert not verify(values, label="Android", scope_key="POSTGRES_SCOPE",
-                      lanes=("ORDINARY", "REAL_DB", "RECOVERY"), source_lanes=(),
-                      lane_scopes={"RECOVERY": "APK_SCOPE"}).ok
+                      lanes=("ORDINARY", "REAL_DB", "SMOKE"), source_lanes=(),
+                      lane_scopes={"SMOKE": "APK_SCOPE"}).ok
 
 
 def test_per_lane_scope_rejects_unknown_lane_and_malformed_cli(monkeypatch) -> None:
@@ -182,7 +182,7 @@ def test_postgres_result_verifier_rejects_every_single_field_mutation(scope: str
     scope_only = {
         key: value
         for key, value in baseline.items()
-        if not key.startswith(("ORDINARY_", "REAL_DB_", "RECOVERY_"))
+        if not key.startswith(("ORDINARY_", "REAL_DB_", "SMOKE_"))
     }
     assert verify(
         scope_only,
@@ -202,13 +202,13 @@ def test_postgres_result_verifier_rejects_every_single_field_mutation(scope: str
         "SCOPE_SOURCE_SHA": "b" * 40,
         "ORDINARY_RESULT": "failure" if scope == "true" else "success",
         "REAL_DB_RESULT": "cancelled" if scope == "true" else "success",
-        "RECOVERY_RESULT": "skipped" if scope == "true" else "success",
+        "SMOKE_RESULT": "skipped" if scope == "true" else "success",
         "ORDINARY_SHA": "b" * 40,
         "ORDINARY_SOURCE_SHA": "b" * 40,
         "REAL_DB_SHA": "b" * 40,
         "REAL_DB_SOURCE_SHA": "b" * 40,
-        "RECOVERY_SHA": "b" * 40,
-        "RECOVERY_SOURCE_SHA": "b" * 40,
+        "SMOKE_SHA": "b" * 40,
+        "SMOKE_SOURCE_SHA": "b" * 40,
     }
     for field, value in mutations.items():
         candidate = {**baseline, field: value}

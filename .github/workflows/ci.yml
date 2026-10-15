@@ -394,8 +394,6 @@ jobs:
         run: >-
           python -m pytest -q
           tests/test_database_maintenance_entrypoint.py
-          tests/test_postgres_backup_dialect.py
-          tests/test_dataset_originals_file_identity.py
           --noconftest --strict-markers -p no:cacheprovider -o addopts=
 
       - name: Start native PostgreSQL for Desktop backend consumers
@@ -827,7 +825,7 @@ jobs:
 
       - name: Prepare real-db lane database
         env: *postgres_prepare_environment
-        run: ./.ci-venv/bin/python -m scripts.prepare_test_postgres_databases --role base --role restore --expected-major "${{ matrix.postgres['postgres-major'] }}"
+        run: ./.ci-venv/bin/python -m scripts.prepare_test_postgres_databases --role base --expected-major "${{ matrix.postgres['postgres-major'] }}"
 
       - name: PostgreSQL real-db serial pytest shard
         # Each matrix row owns a fresh service cluster; within that cluster all
@@ -836,8 +834,8 @@ jobs:
 
       - *postgres_remove_passfile
 
-  backend_postgres_recovery:
-    name: "Backend PostgreSQL / smoke + recovery (PG ${{ matrix.postgres['postgres-major'] }})"
+  backend_postgres_smoke:
+    name: "Backend PostgreSQL / end-to-end smoke (PG ${{ matrix.postgres['postgres-major'] }})"
     needs: scope
     if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.postgres != 'false') }}
     runs-on: ubuntu-latest
@@ -867,18 +865,12 @@ jobs:
 
       - *postgres_install_dependencies
 
-      - name: Prepare smoke and recovery databases
+      - name: Prepare smoke database
         env: *postgres_prepare_environment
-        run: ./.ci-venv/bin/python -m scripts.prepare_test_postgres_databases --role smoke --role restore --expected-major "${{ matrix.postgres['postgres-major'] }}"
+        run: ./.ci-venv/bin/python -m scripts.prepare_test_postgres_databases --role smoke --expected-major "${{ matrix.postgres['postgres-major'] }}"
 
       - name: PostgreSQL end-to-end smoke (ADR-0041)
         run: ./.ci-venv/bin/python scripts/smoke_test.py
-
-      - name: PostgreSQL backup/restore recovery drill (ADR-0041 phase-2)
-        # A backup without a restore drill is not qualification evidence. Dump
-        # xpj_smoke through production backup code, restore into xpj_restore,
-        # then compare the expected data before this ephemeral job exits.
-        run: ./.ci-venv/bin/python scripts/postgres_backup_drill.py --upload-root "$GITHUB_WORKSPACE/backend/uploads"
 
       - *postgres_remove_passfile
 
@@ -888,7 +880,7 @@ jobs:
       - scope
       - backend_postgres_ordinary
       - backend_postgres_real_db
-      - backend_postgres_recovery
+      - backend_postgres_smoke
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -916,7 +908,7 @@ jobs:
           POSTGRES_SCOPE: ${{ needs.scope.outputs.postgres }}
           ORDINARY_RESULT: ${{ needs.backend_postgres_ordinary.result }}
           REAL_DB_RESULT: ${{ needs.backend_postgres_real_db.result }}
-          RECOVERY_RESULT: ${{ needs.backend_postgres_recovery.result }}
+          SMOKE_RESULT: ${{ needs.backend_postgres_smoke.result }}
           EXPECTED_SHA: ${{ github.sha }}
           EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           AGGREGATOR_SHA: ${{ steps.qualification.outputs.sha }}
@@ -927,9 +919,9 @@ jobs:
           ORDINARY_SOURCE_SHA: ${{ needs.backend_postgres_ordinary.outputs.qualification_source_sha }}
           REAL_DB_SHA: ${{ needs.backend_postgres_real_db.outputs.qualification_sha }}
           REAL_DB_SOURCE_SHA: ${{ needs.backend_postgres_real_db.outputs.qualification_source_sha }}
-          RECOVERY_SHA: ${{ needs.backend_postgres_recovery.outputs.qualification_sha }}
-          RECOVERY_SOURCE_SHA: ${{ needs.backend_postgres_recovery.outputs.qualification_source_sha }}
-        run: python -E -S backend/scripts/verify_scoped_ci_results.py --label PostgreSQL --scope-key POSTGRES_SCOPE --lane ORDINARY --lane REAL_DB --lane RECOVERY
+          SMOKE_SHA: ${{ needs.backend_postgres_smoke.outputs.qualification_sha }}
+          SMOKE_SOURCE_SHA: ${{ needs.backend_postgres_smoke.outputs.qualification_source_sha }}
+        run: python -E -S backend/scripts/verify_scoped_ci_results.py --label PostgreSQL --scope-key POSTGRES_SCOPE --lane ORDINARY --lane REAL_DB --lane SMOKE
 
   desktop-manager:
     name: Desktop manager

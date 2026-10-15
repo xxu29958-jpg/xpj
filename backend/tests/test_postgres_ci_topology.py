@@ -237,9 +237,9 @@ def _assert_lane(
     _assert_checkout_independent_passfile_cleanup(steps["Remove PostgreSQL passfile"])
 
 
-def _assert_recovery_job(job: object) -> None:
+def _assert_smoke_job(job: object) -> None:
     assert isinstance(job, dict)
-    assert job["name"] == ("Backend PostgreSQL / smoke + recovery (PG ${{ matrix.postgres['postgres-major'] }})")
+    assert job["name"] == ("Backend PostgreSQL / end-to-end smoke (PG ${{ matrix.postgres['postgres-major'] }})")
     assert job["needs"] == "scope"
     assert job["if"] == _SCOPE_IF
     _assert_postgres_job_contract(job, ordinary=False, sharded=False)
@@ -252,8 +252,8 @@ def _assert_recovery_job(job: object) -> None:
         "TEST_POSTGRES_PASSWORD": "xpj-ci-${{ github.run_id }}-${{ github.run_attempt }}",
         "TEST_POSTGRES_APPLICATION_PASSWORD": ("xpj-app-${{ github.run_id }}-${{ github.run_attempt }}"),
     }
-    prepare = shlex.split(steps["Prepare smoke and recovery databases"]["run"])
-    assert steps["Prepare smoke and recovery databases"]["env"] == {
+    prepare = shlex.split(steps["Prepare smoke database"]["run"])
+    assert steps["Prepare smoke database"]["env"] == {
         "XPJ_TEST_APPLICATION_PASSWORD": ("xpj-app-${{ github.run_id }}-${{ github.run_attempt }}")
     }
     assert prepare == [
@@ -262,16 +262,10 @@ def _assert_recovery_job(job: object) -> None:
         "scripts.prepare_test_postgres_databases",
         "--role",
         "smoke",
-        "--role",
-        "restore",
         "--expected-major",
         "${{ matrix.postgres['postgres-major'] }}",
     ]
     assert steps["PostgreSQL end-to-end smoke (ADR-0041)"]["run"] == ("./.ci-venv/bin/python scripts/smoke_test.py")
-    assert (
-        steps["PostgreSQL backup/restore recovery drill (ADR-0041 phase-2)"]["run"]
-        == './.ci-venv/bin/python scripts/postgres_backup_drill.py --upload-root "$GITHUB_WORKSPACE/backend/uploads"'
-    )
     scripts = "\n".join(str(step.get("run", "")) for step in job["steps"])
     assert _LANE_RUNNER not in scripts
     assert " -m pytest " not in scripts
@@ -282,7 +276,7 @@ def _assert_no_postgres_password_leaks(jobs: dict[str, object]) -> None:
     for job_name in (
         "backend_postgres_ordinary",
         "backend_postgres_real_db",
-        "backend_postgres_recovery",
+        "backend_postgres_smoke",
     ):
         job = jobs[job_name]
         assert "TEST_POSTGRES_PASSWORD" not in job.get("env", {})
@@ -302,7 +296,7 @@ def _assert_postgres_aggregator(job: object) -> None:
         "scope",
         "backend_postgres_ordinary",
         "backend_postgres_real_db",
-        "backend_postgres_recovery",
+        "backend_postgres_smoke",
     ]
     assert job["if"] == "${{ always() }}"
     _assert_no_continue_on_error(job)
@@ -311,7 +305,7 @@ def _assert_postgres_aggregator(job: object) -> None:
     assert enforcement["run"] == (
         "python -E -S backend/scripts/verify_scoped_ci_results.py "
         "--label PostgreSQL --scope-key POSTGRES_SCOPE "
-        "--lane ORDINARY --lane REAL_DB --lane RECOVERY"
+        "--lane ORDINARY --lane REAL_DB --lane SMOKE"
     )
     assert enforcement["env"] == {
         "BASH_ENV": "",
@@ -320,7 +314,7 @@ def _assert_postgres_aggregator(job: object) -> None:
         "POSTGRES_SCOPE": "${{ needs.scope.outputs.postgres }}",
         "ORDINARY_RESULT": "${{ needs.backend_postgres_ordinary.result }}",
         "REAL_DB_RESULT": "${{ needs.backend_postgres_real_db.result }}",
-        "RECOVERY_RESULT": "${{ needs.backend_postgres_recovery.result }}",
+        "SMOKE_RESULT": "${{ needs.backend_postgres_smoke.result }}",
         "EXPECTED_SHA": "${{ github.sha }}",
         "EXPECTED_SOURCE_SHA": "${{ github.event.pull_request.head.sha || github.sha }}",
         "AGGREGATOR_SHA": "${{ steps.qualification.outputs.sha }}",
@@ -331,8 +325,8 @@ def _assert_postgres_aggregator(job: object) -> None:
         "ORDINARY_SOURCE_SHA": "${{ needs.backend_postgres_ordinary.outputs.qualification_source_sha }}",
         "REAL_DB_SHA": "${{ needs.backend_postgres_real_db.outputs.qualification_sha }}",
         "REAL_DB_SOURCE_SHA": "${{ needs.backend_postgres_real_db.outputs.qualification_source_sha }}",
-        "RECOVERY_SHA": "${{ needs.backend_postgres_recovery.outputs.qualification_sha }}",
-        "RECOVERY_SOURCE_SHA": "${{ needs.backend_postgres_recovery.outputs.qualification_source_sha }}",
+        "SMOKE_SHA": "${{ needs.backend_postgres_smoke.outputs.qualification_sha }}",
+        "SMOKE_SOURCE_SHA": "${{ needs.backend_postgres_smoke.outputs.qualification_source_sha }}",
     }
 
 
@@ -368,7 +362,7 @@ def _assert_windows_release_lanes(
     assert windows_environment["VNEXT_RESULT"] == "${{ needs.windows_vnext_lifecycle.result }}"
     assert windows_environment["BUILD_RESULT"] == "${{ needs.windows_packaging_build.result }}"
     maintenance = _steps(jobs["windows_packaging_build"])["Windows database maintenance contract"]["run"]
-    assert "tests/test_dataset_originals_file_identity.py" in maintenance
+    assert "tests/test_database_maintenance_entrypoint.py" in maintenance
 
 
 def test_github_postgres_jobs_bind_scope_resources_commands_auth_and_sha() -> None:
@@ -404,7 +398,7 @@ def test_github_postgres_jobs_bind_scope_resources_commands_auth_and_sha() -> No
     _assert_windows_release_lanes(jobs, windows_jobs)
 
     assert jobs["backend_postgres_ordinary"]["strategy"] != jobs["backend_postgres_real_db"]["strategy"]
-    assert jobs["backend_postgres_real_db"]["strategy"] != jobs["backend_postgres_recovery"]["strategy"]
+    assert jobs["backend_postgres_real_db"]["strategy"] != jobs["backend_postgres_smoke"]["strategy"]
 
     _assert_lane(
         jobs["backend_postgres_ordinary"],
@@ -421,14 +415,14 @@ def test_github_postgres_jobs_bind_scope_resources_commands_auth_and_sha() -> No
         jobs["backend_postgres_real_db"],
         name=("Backend PostgreSQL / real-db ${{ matrix.shard.label }} (PG ${{ matrix.postgres['postgres-major'] }})"),
         prepare_step="Prepare real-db lane database",
-        prepare_roles=("base", "restore"),
+        prepare_roles=("base",),
         runner_step="PostgreSQL real-db serial pytest shard",
         lane="real-db",
         workers=1,
         shard_index="${{ matrix.shard.index }}",
         shard_count="${{ matrix.shard.count }}",
     )
-    _assert_recovery_job(jobs["backend_postgres_recovery"])
+    _assert_smoke_job(jobs["backend_postgres_smoke"])
     _assert_no_postgres_password_leaks(jobs)
     _assert_postgres_aggregator(jobs["backend-postgres"])
     _assert_smoke_test_process_boundary()
@@ -445,7 +439,7 @@ def test_gitea_keeps_the_shared_lane_runner_without_scope_modernization() -> Non
         assert "needs" not in job
         assert "if" not in job
     maintenance = _steps(jobs["backend-full"])["Windows database maintenance contract"]["run"]
-    assert "tests/test_dataset_originals_file_identity.py" in maintenance
+    assert "tests/test_database_maintenance_entrypoint.py" in maintenance
     postgres = jobs["backend-postgres"]
     assert isinstance(postgres, dict)
     lane = next(step["run"] for step in postgres["steps"] if step["name"].startswith("PostgreSQL lane"))

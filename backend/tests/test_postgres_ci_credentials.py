@@ -106,7 +106,6 @@ def _assert_windows_packaging_keeps_frozen_restore_on_hold() -> None:
 
     assert "Exact frozen dataset restore" not in packaging_job
     assert "--frozen-restore-helper" not in packaging_job
-    assert "scripts\\postgres_backup_drill.py" not in packaging_job
 
 
 def test_lane_runner_scrubs_ambient_libpq_routes_but_keeps_passfile() -> None:
@@ -210,15 +209,12 @@ def test_ci_environment_uses_passwordless_scram_urls_and_private_passfile(tmp_pa
     assert values["PGPASSFILE"] == str(passfile.resolve())
     assert values["XPJ_TEST_BASE_DATABASE"] == TEST_POSTGRES_CONTRACT.base_database
     assert values["XPJ_TEST_SMOKE_DATABASE"] == TEST_POSTGRES_CONTRACT.smoke_database
-    assert values["XPJ_TEST_RESTORE_DATABASE"] == TEST_POSTGRES_CONTRACT.restore_database
     assert values["XPJ_TEST_APPLICATION_ROLE"] == TEST_POSTGRES_CONTRACT.application_role
     resolved_hostaddr = parse_qs(urlsplit(values["XPJ_TEST_DATABASE_URL"]).query)["hostaddr"][0]
     for key in (
         "XPJ_TEST_ADMIN_URL",
         "XPJ_TEST_DATABASE_URL",
         "SMOKE_DATABASE_URL",
-        "DRILL_SOURCE_URL",
-        "DRILL_RESTORE_URL",
     ):
         url = values[key]
         parsed = urlsplit(url.replace("postgresql+psycopg", "postgresql", 1))
@@ -336,9 +332,9 @@ def test_dedicated_database_lease_rejects_a_competing_process(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    database_url, _passfile = _dedicated_database_url(tmp_path, "DRILL_RESTORE_URL")
+    database_url, _passfile = _dedicated_database_url(tmp_path, "SMOKE_DATABASE_URL")
     authority = (
-        TEST_POSTGRES_CONTRACT.restore_database,
+        TEST_POSTGRES_CONTRACT.smoke_database,
         TEST_POSTGRES_CONTRACT.application_role,
         False,
         True,
@@ -351,7 +347,7 @@ def test_dedicated_database_lease_rejects_a_competing_process(
         pytest.raises(RuntimeError, match="another process"),
         test_database.dedicated_test_database_lease(
             database_url,
-            expected_database=TEST_POSTGRES_CONTRACT.restore_database,
+            expected_database=TEST_POSTGRES_CONTRACT.smoke_database,
             reset=True,
             cluster_identity=_CLUSTER_IDENTITY,
         ),
@@ -376,8 +372,6 @@ def test_no_challenge_environment_is_sealed_without_a_passfile() -> None:
         "XPJ_TEST_ADMIN_URL",
         "XPJ_TEST_DATABASE_URL",
         "SMOKE_DATABASE_URL",
-        "DRILL_SOURCE_URL",
-        "DRILL_RESTORE_URL",
     ):
         parsed = urlsplit(values[key].replace("postgresql+psycopg", "postgresql", 1))
         query = parse_qs(parsed.query)
