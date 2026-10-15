@@ -5,8 +5,6 @@ import re
 from app.money_contract import MONEY_MINOR_MAX
 from app.services.receipt_parse_common import (
     _AmountCandidate,
-    _best_candidate,
-    _build_receipt_context,
     _is_before_payment_sheet,
     _is_payment_sheet_amount,
     _line_index_for_offset,
@@ -38,30 +36,6 @@ from app.services.receipt_parse_rules import (
     iter_labeled_amount_matches,
     parse_primary_amount_line,
 )
-
-
-def _extract_amount_cents(
-    text: str,
-    *,
-    currency_code: str | None,
-    minor_unit_exponent: int | None,
-) -> int | None:
-    context_pair = _validated_money_context(currency_code, minor_unit_exponent)
-    if context_pair is None:
-        return None
-    code, exponent = context_pair
-    context = _build_receipt_context(text)
-    candidate = _best_candidate(
-        _calibrate_amount_candidates(
-            _amount_candidates(
-                text,
-                currency_code=code,
-                minor_unit_exponent=exponent,
-            ),
-            context,
-        )
-    )
-    return candidate.amount_cents if candidate else None
 
 
 def _amount_candidates(

@@ -3,8 +3,6 @@ from __future__ import annotations
 import re
 
 from app.services.receipt_parse_common import (
-    _best_candidate,
-    _build_receipt_context,
     _line_index_for_offset,
     _MerchantCandidate,
     _merge_dimensions,
@@ -28,14 +26,6 @@ from app.services.receipt_parse_rules import (
     is_primary_amount_line,
     iter_labeled_merchant_matches,
 )
-
-
-def _extract_merchant(text: str) -> str | None:
-    context = _build_receipt_context(text)
-    candidate = _best_candidate(
-        _calibrate_merchant_candidates(_merchant_candidates(text), context)
-    )
-    return candidate.value if candidate else None
 
 
 def _merchant_candidates(text: str) -> list[_MerchantCandidate]:

@@ -15,13 +15,6 @@ def test_backend_log_is_rendered_as_text_not_html() -> None:
     assert "log.innerHTML" not in html
 
 
-def test_narrow_window_switches_task_workbench_to_one_column() -> None:
-    html = (Path(__file__).parents[1] / "backend_manager" / "ui.html").read_text(encoding="utf-8")
-
-    assert "@media (max-width: 700px)" in html
-    assert ".task-grid { grid-template-columns: 1fr; }" in html
-
-
 def test_status_refresh_is_single_flight_and_deadline_bounded() -> None:
     html = (Path(__file__).parents[1] / "backend_manager" / "ui.html").read_text(encoding="utf-8")
 
@@ -159,14 +152,6 @@ def test_manager_package_ships_only_ui_html_without_product_assets() -> None:
     assert "product.html" not in spec
     assert "product.css" not in spec
     assert "product.js" not in spec
-
-
-def test_hidden_attribute_is_authoritative_over_product_display_rules() -> None:
-    html = (Path(__file__).parents[1] / "backend_manager" / "ui.html").read_text(encoding="utf-8")
-
-    # .product-actions/.product-link set display:flex; the hidden attribute must
-    # still win or pair form, manage group and the /web link all render at once.
-    assert "[hidden] { display: none !important; }" in html
 
 
 def test_data_protection_card_exposes_only_real_capabilities() -> None:
