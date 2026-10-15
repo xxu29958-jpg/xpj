@@ -85,7 +85,7 @@ def test_recovery_respects_an_unexpired_lease_before_a_later_success(
     monkeypatch.setattr(scheduler, "require_runtime_home_currency_code", lambda db: "CNY")
     monkeypatch.setattr(scheduler, "refresh_ecb_fx_rates", refresh)
 
-    ticks.count = 4
+    ticks.count = 5
     scheduler._scheduler_loop(ticks, [time(9, 10), time(9, 11), time(9, 12)], ZoneInfo("UTC"))
 
     assert lease.call_count == 3
@@ -231,7 +231,12 @@ def test_initialization_waits_for_currency_then_acquires_and_source_change_acqui
             settings = replace(original, fx_rate_source="ecb")
         return ticks.wait(delay)
     ticks.count = 4
-    lease = Mock(side_effect=[True, False, True])
+    leases = {}
+    def lease(db, *, name, lease_seconds):
+        if name in leases and leases[name] > ticks.current:
+            return False
+        leases[name] = ticks.current + timedelta(seconds=lease_seconds)
+        return True
     monkeypatch.setattr(scheduler, "get_settings", lambda: settings)
     monkeypatch.setattr(scheduler, "SessionLocal", lambda: nullcontext(Mock()))
     monkeypatch.setattr(scheduler, "require_runtime_home_currency_code", currency)
@@ -241,6 +246,12 @@ def test_initialization_waits_for_currency_then_acquires_and_source_change_acqui
     scheduler._scheduler_loop(SimpleNamespace(is_set=lambda: False, wait=wait), [time(23, 10)],
                               ZoneInfo("UTC"), follow_settings=True)
     assert runs == [original.fx_rate_source, "ecb"]
-    assert lease.call_count == 3
+    assert len(leases) == 2
+    # Another worker seeing the same configured source must consume the shared
+    # occurrence, not wait out its lease and fetch the same quote again.
+    ticks.delays.clear()
+    ticks.count = 22
+    scheduler._scheduler_loop(ticks, [time(23, 10)], ZoneInfo("UTC"), follow_settings=True)
+    assert runs == [original.fx_rate_source, "ecb"]
     assert scheduler.fx_rate_sync_status().success_count == 2
     assert scheduler.fx_rate_sync_status().failed_count == 0
