@@ -9,6 +9,11 @@
     }
   }
   try {
+    // This inline probe is parsed before the page's deferred production scripts.
+    // Start behavior waits after those scripts load, as the browser driver does.
+    if (document.readyState === "loading") {
+      await new Promise(resolve => document.addEventListener("DOMContentLoaded", resolve, {once: true}));
+    }
     const form = document.querySelector('form[action*="/original/attach?"]');
     const button = form.querySelector('[type="submit"]');
     const file = form.elements.namedItem("file");
@@ -76,5 +81,8 @@
     assert(review.checked && review.disabled && file.disabled, "Unknown result keeps the confirmed file fixed");
     assert(api.store.read(previous.ref).phase === "submitted", "Lost reply must retain the original command");
     window.__expenseReviewResult = {decoded: true, restored: true, explicit_confirmation: true, fixed_after_reply_loss: true};
-  } catch (error) { window.__expenseReviewResult = {error: String(error), stage}; }
+  } catch (error) {
+    window.__expenseReviewResult = {error: String(error), stage,
+      readyState: document.readyState, entryLoaded: !!window.TicketboxAttachmentEntry};
+  }
 })();

@@ -67,16 +67,6 @@ def _assert_revision_schema_present() -> None:
     }
 
 
-def _downgrade_to_parent(command) -> None:
-    _run(command.stamp, _HEAD)
-    _run(command.downgrade, _PARENT)
-    inspector = inspect(engine)
-    assert _TABLE not in inspector.get_table_names()
-    assert _COLUMN not in {
-        column["name"] for column in inspector.get_columns("expenses")
-    }
-
-
 def _seed_legacy_confirmed_expense() -> int:
     confirmed_at = datetime(2026, 8, 20, 8, 30, tzinfo=UTC)
     with SessionLocal.begin() as db:

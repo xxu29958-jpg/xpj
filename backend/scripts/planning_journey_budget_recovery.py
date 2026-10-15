@@ -18,9 +18,10 @@ class BudgetRecovery:
         original = {name: form.locator(f'[name="{name}"]').input_value()
                     for name in ("idempotency_key", "expected_row_version", "savings_target_yuan")}
         j.open_native("arrangement")
-        native.reveal_any("1000", "1,000")
-        native.fill("1100.00", previous=r"1,?000(?:\.00)?")
-        native.fill("600.00", previous=r"500(?:\.00)?")
+        native.reveal_any("储蓄目标", exact=True)
+        native.fill("1100.00", previous=r"1,?000(?:\.00)?", label="储蓄目标")
+        native.reveal_any("备用金", exact=True)
+        native.fill("600.00", previous=r"500(?:\.00)?", label="备用金")
         native.click("试算，不保存")
         native.reveal_any("本次试算：尚未保存")
         assert j.facts()["arrangement_revisions"] == 1, "Native trial saved a definition"
