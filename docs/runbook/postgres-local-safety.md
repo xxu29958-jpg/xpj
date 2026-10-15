@@ -11,6 +11,45 @@
 - base 库供业务验证，smoke 库供真实 HTTP/Web/Android 消费流程。旧源码恢复原型的专用数据库及环境变量已退役。
 - 现有 worker 隔离、租约及 real-db 串行边界由 [run_postgres_pytest_lane.py](../../backend/scripts/run_postgres_pytest_lane.py) 和现有夹具执行。两个独立进程不能把同一个共享库当作各自独占的夹具。
 
+### 启动源码后端前显式绑定测试库
+
+`start_test_pg.ps1` 只准备实例；生成测试环境也不会自动设置父 PowerShell 的 `DATABASE_URL`。不能在这两步后直接沿用日常 `.env` 启动后端。
+
+在已激活项目 Python 环境的独立 PowerShell 中，从 `backend/` 执行以下代码。先用 `scripts/start_test_pg.ps1` 准备合同中的 local 实例，再从同一合同生成连接；不读取或输出口令。
+
+```powershell
+$postgresEnvironmentJson = @'
+import json
+from scripts.test_postgres_contract import TEST_POSTGRES_CONTRACT as contract
+from scripts.write_test_postgres_env import render_environment
+
+port = contract.ports.local
+print(json.dumps(render_environment(
+    host="127.0.0.1",
+    port=port,
+    admin_user="postgres",
+    application_user=contract.application_role,
+    passfile=contract.default_data_dir(port) / contract.passfile_name,
+    cluster_identity=contract.local_database_identity(port),
+)))
+'@ | python -
+if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve the isolated PostgreSQL environment.' }
+$postgresEnvironment = $postgresEnvironmentJson | ConvertFrom-Json
+foreach ($entry in $postgresEnvironment.PSObject.Properties) {
+    [Environment]::SetEnvironmentVariable($entry.Name, [string]$entry.Value, 'Process')
+}
+if ([string]::IsNullOrWhiteSpace($env:SMOKE_DATABASE_URL)) {
+    throw 'Isolated smoke database is not configured.'
+}
+$env:DATABASE_URL = $env:SMOKE_DATABASE_URL
+
+# 仅读取应用配置，确认启动后端前已经选中测试库；不连接或重置数据库。
+python -c "import os; from app.config import get_settings; assert get_settings().database_url == os.environ['SMOKE_DATABASE_URL']; print('Isolated application database selected.')"
+if ($LASTEXITCODE -ne 0) { throw 'The application database binding is incorrect.' }
+```
+
+应用必须从该进程启动。手动调试还要为上传、日志与运行设置使用专属测试目录，不能继承已安装服务的 `TICKETBOX_DATA_DIR`；结束后关闭该终端。自动 HTTP 验证优先运行 `python scripts/smoke_test.py`，它在子进程导入应用前传入同一数据库地址，并持有现有 smoke 库租约。租约会清空隔离 smoke 夹具，不能用于需要保留的数据，也不要与另一个手动后端共享该库。
+
 ## 迁移与失败恢复
 
 测试中可以在已验证归属的隔离库演练迁移、事务回滚与重试。正式安装的 Fresh helper 和迁移 runtime 有独立的 schema owner、migrator 与运行角色；旧的全库改属主脚本已经退役，不能用单角色旧部署办法绕过现行边界。

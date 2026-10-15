@@ -20,6 +20,8 @@
 
 测试拓扑由 [test_postgres_contract.json](../../backend/scripts/test_postgres_contract.json) 单独定义，保留业务用的 base 库和真实消费流程用的 smoke 库。旧恢复原型专用库不再创建。
 
+本机启动源码后端前，按 [本机 PostgreSQL 验证边界](postgres-local-safety.md) 显式设置 `DATABASE_URL`。启动测试实例或生成测试变量并不会自动改写当前终端的应用数据库地址。
+
 - 真实 smoke 运行 bootstrap、上传与 OCC 确认；Web/Android 联调使用同一隔离 smoke 库。
 - ordinary 与 real-db lanes 验证现行业务、权限、迁移、事务回滚与失败恢复；云端检查绑定实际源码。
 - 显式 loopback、受保护 passfile、数据库归属及进程租约仍为测试隔离边界，不把已安装数据用作测试夹具。

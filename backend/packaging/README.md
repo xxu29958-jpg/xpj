@@ -147,12 +147,12 @@ Owner Console 修改。安装重试只校验并复用已有值，不覆盖 opera
 ### 数据保护当前边界
 
 正式安装的桌面管理器只连接产品内 CSV 导入与已确认流水 CSV 导出，不出货或调用完整数据集
-备份/恢复 mutation。backend 中保留的 complete-dataset 源码和 PostgreSQL 演练只作审计与演进输入，
-不会被收进 frozen runtime，也不是当前 Windows 产品能力。
+备份/恢复 mutation。未发布的 complete-dataset/restore 原型及其专属演练已经退役；
+现行有界冷备与只读库存保持原职责，不因此获得完整恢复能力。
 
-[POSTGRES_MIGRATION.md](../../docs/runbook/POSTGRES_MIGRATION.md) 的直接 `pg_restore` 只用于
-源码/测试 scratch。没有同一 exact-head EXE 的干净 Windows VM 全生命周期证据前，仍为
-`QUALIFIED_HOLD`。
+当前数据库路径和恢复边界见 [POSTGRES_MIGRATION.md](../../docs/runbook/POSTGRES_MIGRATION.md)，
+源码验证的显式测试库绑定见 [postgres-local-safety.md](../../docs/runbook/postgres-local-safety.md)。
+完整恢复仍为 `QUALIFIED_HOLD`，没有可照抄执行的源码 scratch 恢复步骤。
 
 ## 冻结要点（给维护者）
 

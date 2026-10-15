@@ -59,18 +59,18 @@ _QUALIFICATION_TASKS = {
         "qualification": "Android fast + debug/release APK + SCA -> Android; isolated Connected shards with live-device finalizers -> exact test-ID union in Connected (emulator); CodeQL extraction remains separate.",
     },
     "postgres-qualification": {
-        "title": "PostgreSQL collection, isolated shards and recovery",
+        "title": "PostgreSQL collection, isolated shards and end-to-end smoke",
         "chain": (
             (".github/workflows/ci.yml", "database_execution", "test_or_runtime_consumer"),
             ("backend/scripts/run_postgres_pytest_lane.py", "selection_and_shards", "declared_anchor"),
             ("backend/scripts/test_postgres_contract.py", "cluster_contract", "declared_anchor"),
             ("backend/tests/conftest.py", "database_and_worker_isolation", "test_or_runtime_consumer"),
             ("backend/tests/test_postgres_ci_lane_runner.py", "collection_and_failure_contracts", "test_or_runtime_consumer"),
-            ("backend/tests/test_postgres_ci_topology.py", "recovery_and_aggregation_wiring", "test_or_runtime_consumer"),
+            ("backend/tests/test_postgres_ci_topology.py", "smoke_and_aggregation_wiring", "test_or_runtime_consumer"),
         ),
-        "notes": "Read nodeid plus setup/call/teardown duration. Preserve ordinary/real-db/recovery boundaries; counts or map anchors do not prove a test passed.",
+        "notes": "Read nodeid plus setup/call/teardown duration. Preserve ordinary/real-db/smoke boundaries; current migration and failure recovery remain in their real-db consumers. Counts or map anchors do not prove a test passed.",
         "reproduce": "From backend/, with the authorized isolated PostgreSQL test environment: python -m scripts.run_postgres_pytest_lane --lane real-db --workers 1",
-        "qualification": "All ordinary and real-db shards + real PostgreSQL smoke and backup/restore drill -> Backend (PostgreSQL).",
+        "qualification": "All ordinary and real-db shards + real PostgreSQL end-to-end smoke -> Backend (PostgreSQL). This does not qualify complete dataset restore.",
     },
 }
 
