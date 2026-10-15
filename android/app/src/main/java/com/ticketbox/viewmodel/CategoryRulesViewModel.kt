@@ -86,6 +86,8 @@ class CategoryRulesViewModel(
     private var deliveredIds: Set<Long> = emptySet()
     private var deliveredApplicationIds: Set<Long> = emptySet()
     private var requestedSubmissionId: Long? = null
+    // Only inactive batches live here; opening one moves its original input back into uiState.
+    private val parkedRollbacks = mutableMapOf<String, RuleRollbackState>()
 
     init {
         viewModelScope.launch {
@@ -94,6 +96,7 @@ class CategoryRulesViewModel(
                     observation?.cancel()
                     deliveredIds = emptySet()
                     deliveredApplicationIds = emptySet()
+                    parkedRollbacks.clear()
                     val selected = requestedSubmissionId.takeIf { _uiState.value.binding == null }
                     requestedSubmissionId = null
                     _uiState.value = CategoryRulesUiState(binding = access?.binding, canModify = access?.canModify == true,
@@ -378,8 +381,10 @@ class CategoryRulesViewModel(
     fun openRollback(application: RuleApplicationBatch) {
         if (_uiState.value.busy) return
         val current = _uiState.value.rollback
-        val selected = if (current.application?.publicId == application.publicId || current.submittedReason != null) current
-            else RuleRollbackState(application = application)
+        val selected = if (current.application?.publicId == application.publicId) current else {
+            current.application?.let { parkedRollbacks[it.publicId] = current.copy(visible = false, loading = false) }
+            parkedRollbacks.remove(application.publicId) ?: RuleRollbackState(application = application)
+        }
         _uiState.update { it.copy(rollback = selected.copy(visible = true)) }
         if (selected.submittedReason == null) refreshRollbackPreview()
     }

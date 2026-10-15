@@ -166,16 +166,21 @@ class CategoryRulesViewModelTest {
 
     @Test
     fun rollbackFailureShowsDangerToneAndClearsBusy() = rulesTest {
+        val requests = mutableListOf<Pair<String, String?>>()
+        val session = TestSessionFixture().apply { saveToken("synthetic-rule-session") }
         val vm = harness(
             object : ApiService by FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0) {
+                override suspend fun ruleApplications(limit: Int) = RuleApplicationListDto(listOf(
+                    ruleApplicationDto(), ruleApplicationDto().copy(publicId = "other-batch")))
                 override suspend fun rollbackRuleApplication(publicId: String,
                     request: com.ticketbox.data.remote.dto.RuleApplicationRollbackRequestDto): RuleApplicationRollbackDto {
-                    assertEquals("核对后撤回本批次", request.reason)
+                    requests += publicId to request.reason
                     throw RepositoryException("")
                 }
             },
+            session,
         )
-        val application = awaitInitialLoads(vm).ruleApplications.single()
+        val (application, other) = awaitInitialLoads(vm).ruleApplications
 
         vm.openRollback(application)
         vm.uiState.first { it.rollback.preview != null }
@@ -191,6 +196,26 @@ class CategoryRulesViewModelTest {
         assertEquals("核对后撤回本批次", state.rollback.submittedReason)
         vm.changeRollbackReason("不能换掉原说明")
         assertEquals("核对后撤回本批次", vm.uiState.value.rollback.reason)
+        vm.dismissRollback()
+        vm.openRollback(other)
+        vm.uiState.first { !it.rollback.loading && it.rollback.preview != null }
+        assertEquals(other.publicId, vm.uiState.value.rollback.application?.publicId)
+        assertEquals("", vm.uiState.value.rollback.reason)
+        vm.changeRollbackReason("另一批的说明")
+        vm.confirmRollback()
+        vm.uiState.first { !it.busy && it.rollback.error != null }
+        vm.dismissRollback()
+        vm.openRollback(application)
+        assertEquals("核对后撤回本批次", vm.uiState.value.rollback.submittedReason)
+        vm.confirmRollback()
+        vm.uiState.first { !it.busy && it.rollback.error != null }
+        assertEquals(listOf<Pair<String, String?>>(application.publicId to "核对后撤回本批次",
+            other.publicId to "另一批的说明", application.publicId to "核对后撤回本批次"), requests)
+        session.switchLedgerForFixture("other", "其他账本")
+        runCurrent()
+        vm.openRollback(other)
+        assertEquals("", vm.uiState.value.rollback.reason)
+        assertEquals(null, vm.uiState.value.rollback.submittedReason)
     }
 
     @Test
