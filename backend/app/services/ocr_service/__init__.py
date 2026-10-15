@@ -22,11 +22,9 @@ from app.services.ocr_service._apply import (
     OcrApplyContractError,
     apply_ocr_result,
     collect_auto_ocr_extractions,
-    collect_auto_ocr_results,
     extract_ocr_result,
     ocr_fact_snapshot,
     retry_ocr,
-    run_auto_ocr,
 )
 from app.services.ocr_service._draft_fields import (
     canonical_ocr_draft_fields,
@@ -69,13 +67,11 @@ __all__ = [
     "canonical_ocr_draft_fields",
     "clear_ocr_draft_fields",
     "collect_auto_ocr_extractions",
-    "collect_auto_ocr_results",
     "extract_ocr_result",
     "get_ocr_provider",
     "ocr_fact_snapshot",
     "ocr_draft_fields",
     "ocr_draft_fields_after_clearing",
     "retry_ocr",
-    "run_auto_ocr",
     "serialize_ocr_draft_fields",
 ]

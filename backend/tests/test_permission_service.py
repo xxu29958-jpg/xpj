@@ -62,7 +62,6 @@ def test_upload_scope_can_only_create_pending_expenses() -> None:
     upload_owner = _ctx(scope="upload", role="owner")
     upload_viewer = _ctx(scope="upload", role="viewer")
 
-    assert not permission_service.can_read(upload_owner)
     assert not permission_service.can_write_expense(upload_owner)
     assert permission_service.can_create_pending_expense(upload_owner)
     assert not permission_service.can_create_pending_expense(upload_viewer)

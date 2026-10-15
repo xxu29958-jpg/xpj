@@ -17,7 +17,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.ticketbox.ui.design.LocalThemeVisuals
 @Composable
@@ -63,8 +62,4 @@ fun ReceiptStub(
                 .background(palette.footer),
         )
     }
-}
-
-private fun Color.luminance(): Float {
-    return red * 0.299f + green * 0.587f + blue * 0.114f
 }

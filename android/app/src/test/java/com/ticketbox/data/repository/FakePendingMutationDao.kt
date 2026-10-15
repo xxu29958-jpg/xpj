@@ -186,17 +186,6 @@ class FakePendingMutationDao : PendingMutationDao {
         return matching.size
     }
 
-    override suspend fun nextPendingBatch(
-        ownerKey: String,
-        ledgerId: String,
-        pendingStatus: String,
-        limit: Int,
-    ): List<PendingMutationEntity> =
-        rows.values
-            .filter { it.ownerKey == ownerKey && it.ledgerId == ledgerId && it.status == pendingStatus }
-            .sortedWith(compareBy({ it.createdAt }, { it.id }))
-            .take(limit)
-
     override suspend fun requeueConflictWithFreshToken(
         id: Long,
         ownerKey: String,
@@ -350,33 +339,6 @@ class FakePendingMutationDao : PendingMutationDao {
             .distinctBy { it.targetId }
     }
 
-    override suspend fun isTargetBusy(
-        ownerKey: String,
-        ledgerId: String,
-        targetId: String,
-        inFlightStatus: String,
-    ): Boolean =
-        rows.values.any {
-            it.ownerKey == ownerKey &&
-                it.ledgerId == ledgerId &&
-                it.targetId == targetId &&
-                it.status == inFlightStatus
-        }
-
-    override suspend fun hasUnresolvedRowForTarget(
-        ownerKey: String,
-        ledgerId: String,
-        targetId: String,
-        unresolvedStatuses: Collection<String>,
-    ): Boolean {
-        return rows.values.any {
-            it.ownerKey == ownerKey &&
-                it.ledgerId == ledgerId &&
-                it.targetId == targetId &&
-                it.status in unresolvedStatuses && (it.status != "failed" || it.blocksFollowing)
-        }
-    }
-
     override suspend fun recoverStaleInFlight(
         ownerKey: String,
         ledgerId: String,
@@ -462,12 +424,6 @@ class FakePendingMutationDao : PendingMutationDao {
                 .filter { it.ownerKey == ownerKey && it.ledgerId == ledgerId && it.status == failedStatus }
                 .sortedWith(compareBy({ it.createdAt }, { it.id }))
         }
-
-    override suspend fun deleteById(id: Long): Int {
-        val existed = rows.remove(id) != null
-        refreshObservables()
-        return if (existed) 1 else 0
-    }
 
     override suspend fun deleteUnfinishedUploadGroup(ownerKey: String, ledgerId: String, targetId: String): Int {
         val ids = rows.values.filter {

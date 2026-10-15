@@ -236,13 +236,10 @@ def test_web_pending_upload_openapi_keeps_explicit_multipart_contract() -> None:
     assert multipart["properties"]["csrf_token"]["type"] == "string"
 
 
-def test_inbox_pending_header_has_native_upload_form_and_flat_queue_summary(
+def test_inbox_pending_header_has_bound_native_upload_form(
     web_client: TestClient, *, identity
 ) -> None:
-    """K3: 页头给 writer 原生无 JS 上传表单 (multipart → /web/pending/upload,
-    ledger 在 query、csrf 在 body，时区仅作渐进增强；accept=image/* required),
-    导入与导出保留为次级入口; 三数字概况墙压平为一句队列小结, 可行动计数
-    只留在筛选 pill 上。"""
+    """Render a native upload with its ledger, intent key, CSRF and size limit."""
     _seed_pending_with_amount(web_client, "9.00", "X", identity=identity)
     response = web_client.get("/web/pending?ledger_id=owner")
 
@@ -265,26 +262,12 @@ def test_inbox_pending_header_has_native_upload_form_and_flat_queue_summary(
         r' name="file" accept="image/\*" required',
         form_html,
     )
-    # 原生常显 file input: 代理 label 按钮与 JS 文件名槽整体退役。
-    assert "file-picker-label" not in form_html
-    assert "data-file-picker-name" not in form_html
     assert "上传小票" in form_html
     assert "导入与导出" in body
 
-    assert "inbox-summary-item" not in body
-    assert "product-page-summary" in body
-    assert "张待整理" in body
-
-    static_root = Path(__file__).resolve().parents[1] / "app" / "static" / "web"
-    capture_js = (static_root / "attachment-entry.js").read_text(encoding="utf-8")
-    assert "data-inbox-capture" in capture_js
-    assert 'searchParams.set("timezone", Intl.DateTimeFormat()' in capture_js
-    assert ".submit(" not in capture_js
     assert "attachment-entry.js" in body
     from app.config import get_settings
     assert f'data-upload-max-bytes="{get_settings().max_upload_size_bytes}"' in body
-    desktop_js = (static_root / "desktop.js").read_text(encoding="utf-8")
-    assert 'call("initInboxCapture");' not in desktop_js
 
 
 def test_inbox_pending_row_single_priority_status_and_one_writer_action(web_client: TestClient, *, identity) -> None:

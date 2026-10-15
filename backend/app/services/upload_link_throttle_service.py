@@ -356,79 +356,12 @@ def release_upload_bytes(
         db.rollback()
 
 
-def assert_daily_budget_available(
-    db: Session,
-    *,
-    link: UploadLink,
-    declared_content_length: int | None = None,
-    limits: UploadLinkLimits | None = None,
-) -> int:
-    """Refuse the request if today's link budget is already exhausted.
-
-    Called *before* the body is streamed, so a giant upload that would
-    blow the budget is rejected without taking the bytes. We use
-    ``Content-Length`` when the client provides one; otherwise we only
-    reject the trivial "budget already at zero" case here and rely on
-    :func:`record_upload_bytes` to finalise the count.
-
-    Returns the bytes-remaining-in-budget so the caller can clamp the
-    streaming body limit. ``-1`` means "no budget configured".
-    """
-
-    limits = limits or resolve_limits(link)
-    if not limits.has_byte_budget:
-        return -1
-    now = now_utc()
-    _prune_daily_usage(db, link.id, now=now)
-    ymd = _ymd(now)
-    usage = _daily_usage(db, link_id=link.id, ymd=ymd)
-    used = usage.bytes_total if usage is not None else 0
-    remaining = limits.daily_byte_budget - used
-    if remaining <= 0:
-        _raise_daily_budget_exhausted("今日该上传链接配额已用尽，请明天再试。")
-    if declared_content_length is not None and declared_content_length > remaining:
-        _raise_daily_budget_exhausted("此次上传将超过今日配额。")
-    return remaining
-
-
-def record_upload_bytes(db: Session, *, link: UploadLink, bytes_used: int) -> None:
-    """Commit ``bytes_used`` against today's link counter.
-
-    Idempotent at the row level: the (link, ymd) row is created on first
-    use. ``bytes_used`` may be ``0`` for a metadata-only success — we
-    still bump request_count.
-    """
-
-    if bytes_used < 0:
-        bytes_used = 0
-    now = now_utc()
-    ymd = _ymd(now)
-    usage = _daily_usage(db, link_id=link.id, ymd=ymd)
-    if usage is None:
-        usage = UploadLinkDailyUsage(
-            upload_link_id=link.id,
-            ymd=ymd,
-            bytes_total=bytes_used,
-            request_count=1,
-            created_at=now,
-            updated_at=now,
-        )
-        db.add(usage)
-    else:
-        usage.bytes_total = (usage.bytes_total or 0) + bytes_used
-        usage.request_count = (usage.request_count or 0) + 1
-        usage.updated_at = now
-    db.commit()
-
-
 __all__ = [
     "UploadBudgetReservation",
     "UploadLinkLimits",
-    "assert_daily_budget_available",
     "enforce_remote_interval",
     "finalize_upload_bytes",
     "release_upload_bytes",
-    "record_upload_bytes",
     "reserve_upload_bytes",
     "resolve_limits",
 ]

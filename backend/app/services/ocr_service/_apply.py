@@ -232,22 +232,6 @@ def collect_auto_ocr_extractions(
         return []
 
 
-def collect_auto_ocr_results(expense: Expense, timezone_name: str | None = None) -> list[OcrResult]:
-    """Backward-compatible result-only wrapper for tests and old callers."""
-
-    return [
-        extraction.result
-        for extraction in collect_auto_ocr_extractions(
-            expense, timezone_name=timezone_name
-        )
-    ]
-
-
-def run_auto_ocr(expense: Expense, timezone_name: str | None = None) -> None:
-    for extraction in collect_auto_ocr_extractions(expense, timezone_name=timezone_name):
-        apply_ocr_result(expense, extraction.result, timezone_name=timezone_name)
-
-
 def apply_ocr_result(expense: Expense, result: OcrResult, timezone_name: str | None = None) -> None:
     """Apply OCR to a transient Expense draft.
 
