@@ -46,6 +46,8 @@ _FULL_PATHS = {
     "backend/scripts/verify_scoped_ci_results.py",
 }
 _ALWAYS_ON_CONTRACT_PATHS = {
+    # Navigation output is consumed by the resident repository-weight checks.
+    "backend/scripts/engineering_task_map.py",
     "backend/tests/_infra/android_test_qualification.py",
     "backend/tests/test_android_process_qualification.py",
     "backend/tests/test_android_test_qualification.py",
@@ -61,7 +63,10 @@ _CI_POLICY_PREFIXES = (
     "backend/tests/_infra/ci_gap_",
 )
 _DOC_PREFIXES = ("docs/", ".agents/", ".claude/")
-_DOC_FILES = {"AGENTS.md", "CLAUDE.md", "README.md", "LICENSE"}
+_DOC_FILES = {
+    "AGENTS.md", "CLAUDE.md", "README.md", "LICENSE",
+    "backend/README.md", "backend/packaging/README.md",
+}
 _WINDOWS_ONLY_BACKEND_PREFIXES = ("backend/packaging/", "backend/build/")
 _WINDOWS_ONLY_BACKEND_FILES = {
     "backend/requirements-build.txt",

@@ -64,9 +64,9 @@ pip-audit --strict（OSV 库）
 
 ### backend-postgres（按域全量测试）
 
-GitHub 是发布验收与合并权威；Gitea 是离线镜像和自检后备，Gitea-only 失败不阻断 GitHub 合并。后端运行时、测试、迁移相关路径变化或全量 fallback 时，ordinary、`real_db`、smoke + recovery 三个独立 job 各自使用隔离的 PostgreSQL service container；三个责任域保持显式 job。当前只支持安装器钉住的单一 PostgreSQL major，matrix 从发布配置和固定 service image 动态生成；未来扩展多个 major 前，必须先为每个 major 提供独立固定镜像。稳定汇总检查 `Backend (PostgreSQL)` 必须核对三个结果和实际 checkout SHA。
+GitHub 是发布验收与合并权威；Gitea 是离线镜像和自检后备，Gitea-only 失败不阻断 GitHub 合并。后端运行时、测试、迁移相关路径变化或全量 fallback 时，ordinary、`real_db`、端到端 smoke 三个独立 job 各自使用隔离的 PostgreSQL service container；三个责任域保持显式 job。当前只支持安装器钉住的单一 PostgreSQL major，matrix 从发布配置和固定 service image 动态生成；未来扩展多个 major 前，必须先为每个 major 提供独立固定镜像。稳定汇总检查 `Backend (PostgreSQL)` 必须核对三个结果和实际 checkout SHA。
 
-ordinary lane 以两个同构 GitHub matrix 分片执行完整测试树中所有未标记 `real_db` 的用例，每个分片再为四个 xdist worker 动态创建独立数据库、文件根和租约。`real_db` 分成四个 GitHub matrix job，但每个 job 使用独立 PostgreSQL service cluster 且 shard 内保持单进程串行，固定 restore database、cluster-global role、DDL 与 migration 测试不会在同一 cluster 内并发；本地与 Gitea 仍完整串行。ordinary 保持完整 pytest nodeid 的稳定哈希归属；real-db 从本次完整 collection 的 nodeid 哈希排序后轮转分配，使四片承担的逐项 reset/migration 数量相差至多一项，片内保留原 collection 顺序。两者都不维护 nodeid、文件名、目录或字符串名单；新增、移动、重命名、参数化及删除测试自动参与完整分配。smoke + recovery lane 继续执行真实 `pg_dump` / restore drill。ordinary / real-db 的责任分类权威仍只有测试源码 marker。
+ordinary lane 以两个同构 GitHub matrix 分片执行完整测试树中所有未标记 `real_db` 的用例，每个分片再为四个 xdist worker 动态创建独立数据库、文件根和租约。`real_db` 分成四个 GitHub matrix job，但每个 job 使用独立 PostgreSQL service cluster 且 shard 内保持单进程串行，专属数据库、cluster-global role、DDL 与 migration 测试不会在同一 cluster 内并发；本地与 Gitea 仍完整串行。ordinary 保持完整 pytest nodeid 的稳定哈希归属；real-db 从本次完整 collection 的 nodeid 哈希排序后轮转分配，使四片承担的逐项 reset/migration 数量相差至多一项，片内保留原 collection 顺序。两者都不维护 nodeid、文件名、目录或字符串名单；新增、移动、重命名、参数化及删除测试自动参与完整分配。端到端 smoke lane 执行真实 bootstrap、上传与 OCC 确认。迁移、角色边界和失败恢复检查保留在对应 real-db 消费者中；已退役的完整数据集恢复 drill 不再是汇总门的证据。ordinary / real-db 的责任分类权威仍只有测试源码 marker。
 
 ordinary 分片内将 `large_dataset` marker 标注的完整大数据旅程提前，其余测试保持相对顺序，让既有 worksteal worker 尽早处理已测得的长任务。当前用于 10,000 行 CSV 分页导入；行数、逐行持久化、分页、重放和最终数据比较不变。marker 只影响执行顺序，缺少它仍完整执行；不改变分片归属，也不改变未分片的本地/Gitea 顺序，不引入历史耗时服务或手工测试名权重表。数量平衡和提前开始不等于已证明墙钟提速，收益与总 runner 成本以实际完整资格为准。
 
@@ -74,7 +74,7 @@ ordinary 分片内将 `large_dataset` marker 标注的完整大数据旅程提�
 
 后端测试数量只在 `backend/audit/test_count_baseline.txt` 维护。它是严格对账信号，不是覆盖率或分类权威：新增测试与源码同 commit 提高基线；base ratchet 同时阻止一个 PR 删除测试并下调自己的可编辑基线。测试整合必须先保留或补上独立风险证明，不能为了变绿改小数字。总数仍不能证明语义质量，因为“删除高价值测试、补同数量低价值参数化用例”也能骗过它，所以机器计数与代码审计缺一不可。该文件与测试源码同属 PostgreSQL 域；`codebase_audit_gate.py` 只保留政策，不再因正常增测把 PR 放大成全端构建。
 
-GitHub PostgreSQL service container 按共享 matrix 的受支持 major 启动，并接收本次运行派生的密码；建库前还读取真实 `server_version_num`，同时验证 matrix major 与发布策略的完整版本区间。runner 侧只有 passfile 生成 step 接收原始密码，后续测试进程只消费短命 passfile并要求 SCRAM-SHA-256；密码不得进入 URL、命令参数或日志。local-Gitea 的 Windows 测试簇也从 `initdb --pwfile` 直接建立 SCRAM，受保护凭据文件是簇生命周期内的权威，测试、smoke 和备份恢复只消费受保护 passfile。每个 GitHub PostgreSQL job 的目标门槛是 runner elapsed time 不超过 12 分钟；最终以 exact-head 云端记录为准，`timeout-minutes` 不是达标证据。
+GitHub PostgreSQL service container 按共享 matrix 的受支持 major 启动，并接收本次运行派生的密码；建库前还读取真实 `server_version_num`，同时验证 matrix major 与发布策略的完整版本区间。runner 侧只有 passfile 生成 step 接收原始密码，后续测试进程只消费短命 passfile并要求 SCRAM-SHA-256；密码不得进入 URL、命令参数或日志。local-Gitea 的 Windows 测试簇也从 `initdb --pwfile` 直接建立 SCRAM，受保护凭据文件是簇生命周期内的权威，测试和 smoke 只消费受保护 passfile。每个 GitHub PostgreSQL job 的目标门槛是 runner elapsed time 不超过 12 分钟；最终以 exact-head 云端记录为准，`timeout-minutes` 不是达标证据。
 
 测试 PG 的数据库名、marker、密钥文件名、固定 `gitea/local` 端口和宿主禁用端口只从 `test_postgres_contract.json` 读取。GitHub 按官方 service-container 合同把容器内 PostgreSQL 端口映射到 runner 随机空闲端口，并从 `job.services.postgres.ports` 动态注入；它不是第三个固定宿主端口 profile。Windows 临时 PG 只接受 OS 临时目录下以 `xpj_pg_` 开头的目录；start/stop 共同消费宿主与数据目录双所有权标记、端口级跨会话 lease、精确进程代际和句柄绑定删除。新簇只从同一发布策略允许的本机 binary 中选择，并用 `postgres --version` 校验完整版本区间；marker 记录实际 binary root，因此安装新大版本后，旧测试簇仍由原版本安全停止，不会交给新 major 误接管。Gitea 使用稳定的端口级 DataDir；前一 run 异常退出后，新 run 在持有同一 lease 时清理已证明归属的遗留实例再重建。无标记目录、文件、junction/reparse point 或无法证明归属的 PostgreSQL 进程均 fail closed。
 

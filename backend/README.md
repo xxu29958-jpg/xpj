@@ -159,14 +159,15 @@ Get-ScheduledTask -TaskName TicketboxBackend
 
 ## 数据保护当前边界
 
-正式 Windows Manager 当前只连接产品内 CSV 导入和已确认流水 CSV 导出；不提供完整数据集
-备份/恢复 mutation。complete-dataset 与 restore 源码只作审计和后续演进输入，不进入 frozen
-backend，也不是当前产品能力。完整备份/恢复、repair、reinstall、upgrade/downgrade 继续
+正式 Windows Manager 连接产品内 CSV 导入、已确认流水 CSV 导出和可携带账本包；不提供完整数据集
+备份/恢复 mutation。未发布的 complete-dataset 与 restore 原型及其专属演练已退役。
+现行有界冷备和只读库存的范围见 [POSTGRES_MIGRATION.md](../docs/runbook/POSTGRES_MIGRATION.md)。
+完整恢复、repair、保留数据 reinstall、upgrade/downgrade 继续
 `QUALIFIED_HOLD`。
 
-源码/测试 scratch 的 PostgreSQL 演练见
-[POSTGRES_MIGRATION.md](../docs/runbook/POSTGRES_MIGRATION.md)；不得把 `pg_dump` 文件、
-`pg_restore --list` 或旧代码路径当作正式 Windows 恢复能力。
+源码调试先按 [本机测试隔离](../docs/runbook/postgres-local-safety.md) 显式绑定测试库，
+再使用现行 smoke 或真实数据库用例。当前没有源码 scratch 恢复操作说明；不得把 `pg_dump`
+文件、`pg_restore --list` 或历史代码当作正式 Windows 恢复能力。
 
 ## PowerShell 测试
 

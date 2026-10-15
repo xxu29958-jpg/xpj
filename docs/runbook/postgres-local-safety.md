@@ -11,6 +11,59 @@
 - base 库供业务验证，smoke 库供真实 HTTP/Web/Android 消费流程。旧源码恢复原型的专用数据库及环境变量已退役。
 - 现有 worker 隔离、租约及 real-db 串行边界由 [run_postgres_pytest_lane.py](../../backend/scripts/run_postgres_pytest_lane.py) 和现有夹具执行。两个独立进程不能把同一个共享库当作各自独占的夹具。
 
+### 在同一租约内启动隔离源码后端
+
+`start_test_pg.ps1` 只准备实例，生成环境也不会自动改写应用的数据库或文件目录。手动调试必须在同一入口内绑定数据库、创建独立运行目录并持有数据库租约，不能在设置连接后另起一个不持有租约的后端。
+
+在已激活项目 Python 环境的独立 PowerShell 中，从 `backend/` 执行以下代码。先用 `scripts/start_test_pg.ps1` 准备合同中的 local 实例。此步骤会重建一次性的 smoke 库；该库不能用于需要保留的资料。若已有 smoke 或手动调试进程占用，现有租约会在重建前拒绝启动。
+
+```powershell
+@'
+import os
+from pathlib import Path
+from tempfile import mkdtemp
+from scripts.test_postgres_contract import TEST_POSTGRES_CONTRACT as contract
+from scripts.test_postgres_database import dedicated_test_database_lease
+from scripts.write_test_postgres_env import render_environment
+
+port = contract.ports.local
+environment = render_environment(
+    host="127.0.0.1",
+    port=port,
+    admin_user="postgres",
+    application_user=contract.application_role,
+    passfile=contract.default_data_dir(port) / contract.passfile_name,
+    cluster_identity=contract.local_database_identity(port),
+)
+runtime = Path(mkdtemp(prefix="ticketbox-manual-smoke-")).resolve()
+os.environ.update(environment)
+os.environ["DATABASE_URL"] = environment["SMOKE_DATABASE_URL"]
+os.environ["TICKETBOX_DATA_DIR"] = str(runtime)
+os.environ["UPLOAD_DIR"] = str(runtime / "uploads")
+os.environ["XPJ_EXTRA_LOOPBACK_HOSTS"] = "127.0.0.1:8008"
+with dedicated_test_database_lease(
+    environment["SMOKE_DATABASE_URL"],
+    expected_database=contract.smoke_database,
+    reset=True,
+    cluster_identity=environment["XPJ_TEST_CLUSTER_IDENTITY"],
+    passfile=environment["PGPASSFILE"],
+):
+    from app.config import DATA_ROOT, get_settings
+    settings = get_settings()
+    assert settings.database_url == environment["SMOKE_DATABASE_URL"]
+    assert DATA_ROOT == runtime
+    assert settings.upload_dir == runtime / "uploads"
+    print(f"Isolated runtime: {runtime}", flush=True)
+    import uvicorn
+    uvicorn.run("app.main:app", host="127.0.0.1", port=8008)
+'@ | python -
+if ($LASTEXITCODE -ne 0) { throw 'Isolated source backend failed.' }
+```
+
+浏览器使用 `http://127.0.0.1:8008`。服务退出后现有租约释放；独立文件目录保留，便于核对本次现场，不会清理日常附件。不要拆开代码块，也不要从该终端另起裸 `uvicorn` 进程来绕过租约。
+
+自动 HTTP 验证使用既有 `python scripts/smoke_test.py`，其子进程同样持有 smoke 库租约；手动服务未退出时，自动验证必须被拒绝，不能并行清空它的数据库。
+
 ## 迁移与失败恢复
 
 测试中可以在已验证归属的隔离库演练迁移、事务回滚与重试。正式安装的 Fresh helper 和迁移 runtime 有独立的 schema owner、migrator 与运行角色；旧的全库改属主脚本已经退役，不能用单角色旧部署办法绕过现行边界。
