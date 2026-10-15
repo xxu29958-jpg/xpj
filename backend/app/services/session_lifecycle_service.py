@@ -19,14 +19,11 @@ from uuid import UUID
 from sqlalchemy import or_, select, update
 from sqlalchemy.orm import Session
 
-from app.errors import AppError
 from app.models import AuthToken, Device, PairingCode, SessionRefreshAttempt, UploadLink
 from app.services.session_credential_lock import (
-    lock_and_revalidate_credential_mint_context,
     lock_bootstrap_owner_transaction,
 )
 from app.services.time_service import ensure_utc, now_utc
-from app.tenants import AuthContext
 
 PairingConsumeResult = Literal["consumed", "used", "expired"]
 PAIRING_CODE_DIGITS = 8
@@ -440,60 +437,3 @@ def revoke_token_value(
         statement.values(revoked_at=revoked_at, grace_until=None).execution_options(synchronize_session=False)
     )
     return int(result.rowcount or 0)
-
-
-def rotate_app_token_for_ledger(
-    db: Session,
-    *,
-    auth: AuthContext,
-    current_token_value: str,
-    account_id: int,
-    device_id: int,
-    target_ledger_id: str,
-    rotated_at: datetime | None = None,
-    expires_at: datetime | None = None,
-    allow_grace: bool = False,
-) -> tuple[str, datetime]:
-    # Exposure recovery and normal app-token replacement share one transaction
-    # lock. Authentication happened before this service call, so re-read the
-    # exact credential id+hash under the lock before revoking or minting.
-    if hash_secret(current_token_value) != auth.credential_hash:
-        raise AppError("invalid_token", status_code=401)
-    locked_auth = lock_and_revalidate_credential_mint_context(db, auth)
-    if (
-        locked_auth is None
-        or locked_auth.scope != "app"
-        or locked_auth.account_id != account_id
-        or locked_auth.device_id != device_id
-    ):
-        raise AppError("invalid_token", status_code=401)
-    rotated_at = rotated_at or now_utc()
-    current_hash = hash_secret(current_token_value)
-    from app.config import get_settings
-
-    grace_seconds = max(get_settings().app_token_rotation_grace_seconds, 0) if allow_grace else 0
-    grace_until = rotated_at + timedelta(seconds=grace_seconds) if grace_seconds > 0 else None
-
-    result = db.execute(
-        update(AuthToken)
-        .where(AuthToken.id == locked_auth.credential_id)
-        .where(AuthToken.token_hash == current_hash)
-        .where(AuthToken.account_id == account_id)
-        .where(AuthToken.device_id == device_id)
-        .where(AuthToken.scope == "app")
-        .where(AuthToken.revoked_at.is_(None))
-        .values(revoked_at=rotated_at, grace_until=grace_until)
-        .execution_options(synchronize_session=False)
-    )
-    if result.rowcount != 1:
-        raise AppError("invalid_token", status_code=401)
-
-    new_token = issue_auth_token(
-        db,
-        account_id=account_id,
-        device_id=device_id,
-        ledger_id=target_ledger_id,
-        scope="app",
-        expires_at=expires_at,
-    )
-    return new_token, rotated_at

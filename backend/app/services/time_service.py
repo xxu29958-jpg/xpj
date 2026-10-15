@@ -139,12 +139,3 @@ def local_month_label(value: datetime | None, timezone_name: str | None) -> str 
     if value is None:
         return None
     return value.astimezone(safe_zone(timezone_name)).strftime("%Y-%m")
-
-
-def matches_month(value: datetime | None, month: str | None) -> bool:
-    if not month:
-        return True
-    value = ensure_utc(value)
-    if value is None:
-        return False
-    return value.strftime("%Y-%m") == month

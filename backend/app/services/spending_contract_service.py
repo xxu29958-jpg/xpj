@@ -370,30 +370,6 @@ def confirmed_ordered(query: Select[tuple[Expense]]) -> Select[tuple[Expense]]:
     return query.order_by(Expense.accounting_date.desc(), stat_sort_time_expr().desc(), Expense.id.desc())
 
 
-def filtered_confirmed(
-    db: Session,
-    *,
-    tenant_id: str,
-    month: str | None = None,
-    category: str | None = None,
-    tag: str | None = None,
-    timezone_name: str | None = None,
-) -> list[Expense]:
-    return list(
-        db.scalars(
-            confirmed_ordered(
-                confirmed_query(
-                    tenant_id=tenant_id,
-                    month=month,
-                    category=category,
-                    tag=tag,
-                    timezone_name=timezone_name,
-                )
-            )
-        )
-    )
-
-
 def canonical_merchant_display(merchant: str | None, alias_map: dict[str, str]) -> str:
     display = display_merchant(merchant)
     if not display:

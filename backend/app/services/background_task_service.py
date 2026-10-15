@@ -83,12 +83,6 @@ def _current_handler_registry() -> TaskHandlerRegistry:
     return _handler_registry_context.get() or _runtime_handler_registry()
 
 
-def has_active_handler_registry_context() -> bool:
-    """True when tests installed a temporary registry in this context."""
-
-    return _handler_registry_context.get() is not None
-
-
 @contextmanager
 def isolated_registered_handlers_for_testing(
     handlers: dict[str, TaskHandler] | None = None,
