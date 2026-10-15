@@ -85,7 +85,7 @@ def test_recovery_respects_an_unexpired_lease_before_a_later_success(
     monkeypatch.setattr(scheduler, "require_runtime_home_currency_code", lambda db: "CNY")
     monkeypatch.setattr(scheduler, "refresh_ecb_fx_rates", refresh)
 
-    ticks.count = 5
+    ticks.count = 4
     scheduler._scheduler_loop(ticks, [time(9, 10), time(9, 11), time(9, 12)], ZoneInfo("UTC"))
 
     assert lease.call_count == 3
@@ -210,20 +210,37 @@ def test_initialization_waits_for_currency_then_acquires_and_source_change_acqui
     from dataclasses import replace
 
     from app.config import get_settings
+    from app.errors import AppError
 
     settings = replace(get_settings(), fx_rate_auto_sync_enabled=True, fx_rate_sync_times="23:10", fx_rate_sync_timezone="UTC")
     original = settings
     runs = []
-    def acquire():
+    currency_ready = False
+    def currency(db):
+        nonlocal currency_ready
+        if not currency_ready:
+            currency_ready = True
+            raise AppError("currency_adoption_required")
+        return "CNY"
+    def refresh(db, **kwargs):
         runs.append(settings.fx_rate_source)
-        return len(runs) != 1  # Initial setup has not selected a currency at the first tick.
+        return []
     def wait(delay):
         nonlocal settings
-        if len(runs) == 2:
+        if len(runs) == 1:
             settings = replace(original, fx_rate_source="ecb")
         return ticks.wait(delay)
+    ticks.count = 4
+    lease = Mock(side_effect=[True, False, True])
     monkeypatch.setattr(scheduler, "get_settings", lambda: settings)
-    monkeypatch.setattr(scheduler, "_run_scheduled_fx_sync", acquire)
+    monkeypatch.setattr(scheduler, "SessionLocal", lambda: nullcontext(Mock()))
+    monkeypatch.setattr(scheduler, "require_runtime_home_currency_code", currency)
+    monkeypatch.setattr(scheduler, "try_claim_scheduler_lease", lease)
+    monkeypatch.setattr(scheduler, "refresh_ecb_fx_rates", refresh)
+    monkeypatch.setattr(scheduler._runtime, "counters", scheduler.FxRateSyncStatus())
     scheduler._scheduler_loop(SimpleNamespace(is_set=lambda: False, wait=wait), [time(23, 10)],
                               ZoneInfo("UTC"), follow_settings=True)
-    assert runs == [original.fx_rate_source, original.fx_rate_source, "ecb"]
+    assert runs == [original.fx_rate_source, "ecb"]
+    assert lease.call_count == 3
+    assert scheduler.fx_rate_sync_status().success_count == 2
+    assert scheduler.fx_rate_sync_status().failed_count == 0

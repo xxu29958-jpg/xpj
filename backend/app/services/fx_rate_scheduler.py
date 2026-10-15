@@ -156,7 +156,7 @@ def _run_scheduled_fx_sync() -> bool:
                 lease_seconds=_SCHEDULER_LEASE_SECONDS,
             ):
                 logger.info("FX sync skipped: scheduler lease is held")
-                return True
+                return False  # Still due: retry on the short tick, not tomorrow's schedule.
         with SessionLocal() as db:
             run_fx_sync_once(db)
     except SQLAlchemyError:
