@@ -18,7 +18,6 @@ import copy
 import logging
 import re
 import time
-from collections.abc import Mapping
 from pathlib import Path
 
 from app.diagnostic_identity import diagnostic_build_identity
@@ -36,57 +35,6 @@ def mask_upload_path(value: str | None) -> str:
     if not value:
         return ""
     return _UPLOAD_PATH_RE.sub(r"\1***", value)
-
-
-def mask_token(value: str | None) -> str:
-    """Mask any token-like opaque string. Returns ``***`` for non-empty input.
-
-    Use for session tokens, upload keys, bootstrap secrets, token hashes, and
-    pairing codes. Never use for non-secret short identifiers like
-    ``account_name``.
-    """
-
-    if not value:
-        return ""
-    return "***"
-
-
-def safe_headers(headers: Mapping[str, str] | None) -> dict[str, str]:
-    """Return a redacted copy of an HTTP header mapping for logging.
-
-    - Bearer / cookie / upload-token / bootstrap-secret / Cloudflare Access JWT /
-      CSRF token fields collapse to ``***``
-    - ``Referer`` / ``Origin`` values keep scheme + host but any ``/u/<key>``
-      path inside them is masked (a browser-sent Referer can include the upload
-      link if a user clicks an in-page link from /u/...; without this rule the
-      upload_key would leak into the 5xx log via the Referer header).
-
-    codex P2: ``cf-access-jwt-assertion`` carries the Cloudflare Access user
-    identity JWT, ``x-csrf-token`` carries the per-session CSRF token. Both are
-    bearer-class secrets in the same sense as ``Authorization`` and must never
-    appear in 5xx error logs.
-    """
-
-    if not headers:
-        return {}
-    redacted: dict[str, str] = {}
-    for key, value in headers.items():
-        lk = key.lower()
-        if lk in {
-            "authorization",
-            "upload-token",
-            "x-bootstrap-secret",
-            "cookie",
-            "set-cookie",
-            "cf-access-jwt-assertion",
-            "x-csrf-token",
-        }:
-            redacted[key] = "***"
-        elif lk in {"referer", "origin"}:
-            redacted[key] = mask_upload_path(value)
-        else:
-            redacted[key] = value
-    return redacted
 
 
 _SECRET_FIELD_RE = re.compile(

@@ -12,7 +12,6 @@ class AppearanceTextResourcesTest {
     @Test
     fun skinAndModeLabelsResolveToResources() {
         assertEquals(R.string.appearance_skin_name_paper, appSkinNameRes(AppSkin.Paper))
-        assertEquals(R.string.appearance_skin_description_midnight, appSkinDescriptionRes(AppSkin.Midnight))
         assertEquals(R.string.appearance_immersion_name_balanced, immersionModeNameRes(ImmersionMode.Balanced))
         assertEquals(R.string.appearance_immersion_description_focus, immersionModeDescriptionRes(ImmersionMode.Focus))
     }

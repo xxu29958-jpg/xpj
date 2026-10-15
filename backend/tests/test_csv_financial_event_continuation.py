@@ -18,7 +18,7 @@ from app.services import stats_service
 from app.services.csv_import_batch_service import _queries
 from app.services.csv_import_batch_service._csv_io import _row_from_parsed, build_csv_import_errors_csv
 from app.services.expense_service._query import _offset_stream_projection
-from app.services.import_service import parse_csv_preview
+from tests._infra.csv import parse_uploaded_csv
 
 ROOT_ID = "94794f1d-9445-436f-bb03-62bc6e23e438"
 OFFSET_ID = "e7d7f226-3364-432e-951e-61712f932f76"
@@ -53,7 +53,7 @@ def _export_offset(monkeypatch, kind: str) -> str:
 
 @pytest.mark.parametrize("kind", ["refund", "chargeback", "reversal"])
 def test_native_offset_keeps_its_kind_root_date_and_frozen_money_on_preview(monkeypatch, kind):
-    preview = parse_csv_preview(_export_offset(monkeypatch, kind), home_currency="JPY")
+    preview = parse_uploaded_csv(_export_offset(monkeypatch, kind), home_currency="JPY")
     assert preview.valid_count == 1, [row.error for row in preview.rows]
     row, = preview.rows
 
@@ -74,7 +74,7 @@ def test_native_offset_keeps_its_kind_root_date_and_frozen_money_on_preview(monk
 
 
 def test_saved_import_row_does_not_lose_the_offset_before_later_review(monkeypatch):
-    parsed, = parse_csv_preview(_export_offset(monkeypatch, "refund"), home_currency="JPY").rows
+    parsed, = parse_uploaded_csv(_export_offset(monkeypatch, "refund"), home_currency="JPY").rows
     batch = CsvImportBatch(id=7, public_id="saved-batch", tenant_id="target-ledger", file_name="own.csv")
 
     row = _row_from_parsed(batch, parsed)
@@ -97,7 +97,7 @@ def test_unknown_native_event_never_falls_through_as_an_ordinary_expense(kind):
         f"2000,CNY,{kind},{OFFSET_ID},{ROOT_ID},2026-05-09\n"
     )
 
-    preview = parse_csv_preview(content, home_currency="CNY")
+    preview = parse_uploaded_csv(content, home_currency="CNY")
 
     assert preview.error_count == 1
     assert preview.valid_count == 0
@@ -112,7 +112,7 @@ def test_unknown_native_event_never_falls_through_as_an_ordinary_expense(kind):
     ],
 )
 def test_plain_expense_csv_keeps_its_existing_currency_aware_admission(content, currency, minor):
-    preview = parse_csv_preview(content, home_currency=currency)
+    preview = parse_uploaded_csv(content, home_currency=currency)
     assert preview.valid_count == 1
     assert preview.error_count == 0
     assert preview.rows[0].amount_cents == minor
@@ -133,7 +133,7 @@ def _replace_cells(content: str, **changes: str) -> str:
 def test_native_quote_precision_cannot_be_silently_rounded(monkeypatch):
     content = _replace_cells(_export_offset(monkeypatch, "refund"),
         exchange_rate_to_cny="149.123456789")
-    preview = parse_csv_preview(content, home_currency="JPY")
+    preview = parse_uploaded_csv(content, home_currency="JPY")
     assert preview.error_count == 1
     assert preview.rows[0].event_input["exchange_rate_to_cny"] == "149.123456789"
 
@@ -157,7 +157,7 @@ def test_native_root_retains_gross_money_even_when_its_stream_contribution_is_ze
     )
     monkeypatch.setattr(stats_service, "filtered_confirmed_stream", lambda *args, **kwargs: [entry])
 
-    row, = parse_csv_preview(stats_service.export_confirmed_csv(object(), tenant_id="source"), home_currency="CNY").rows
+    row, = parse_uploaded_csv(stats_service.export_confirmed_csv(object(), tenant_id="source"), home_currency="CNY").rows
 
     assert row.is_valid, row.error
     assert row.source_event_public_id == row.source_root_public_id == ROOT_ID
@@ -191,7 +191,7 @@ def test_native_root_retains_gross_money_even_when_its_stream_contribution_is_ze
 def test_native_missing_or_contradictory_cells_remain_repairable_errors(monkeypatch, changes):
     content = _replace_cells(_export_offset(monkeypatch, "refund"), **changes)
 
-    row, = parse_csv_preview(content, home_currency="JPY").rows
+    row, = parse_uploaded_csv(content, home_currency="JPY").rows
     staged = _row_from_parsed(CsvImportBatch(id=7, tenant_id="target", public_id="batch"), row)
 
     assert not row.is_valid
@@ -206,11 +206,11 @@ def test_native_lineage_net_preserves_the_projection_range_not_the_single_fact_l
     net = -(MONEY_MINOR_MAX + 1)
     content = _replace_cells(_export_offset(monkeypatch, "refund"), lineage_home_net_cents=str(net))
 
-    row, = parse_csv_preview(content, home_currency="JPY").rows
+    row, = parse_uploaded_csv(content, home_currency="JPY").rows
 
     assert row.is_valid, row.error
     assert row.lineage_home_net_cents == net
-    invalid, = parse_csv_preview(
+    invalid, = parse_uploaded_csv(
         _replace_cells(content, lineage_home_net_cents=str(-MONEY_AGGREGATE_MAX - 1)), home_currency="JPY",
     ).rows
     assert not invalid.is_valid
@@ -224,7 +224,7 @@ def test_native_legacy_null_quote_remains_missing_evidence_instead_of_an_invente
     content = _replace_cells(_export_offset(monkeypatch, "refund"),
         **dict.fromkeys(missing, ""))
 
-    row, = parse_csv_preview(content, home_currency="JPY").rows
+    row, = parse_uploaded_csv(content, home_currency="JPY").rows
 
     assert row.is_valid, row.error
     expected = {"exchange_rate_to_cny": Decimal("149.12345678"),
@@ -244,7 +244,7 @@ def _error_download(monkeypatch, rows) -> str:
 
 def test_error_csv_repairs_native_identity_without_losing_signed_money_or_quote(monkeypatch):
     original = _replace_cells(_export_offset(monkeypatch, "refund"), public_id="broken-source-id")
-    parsed, = parse_csv_preview(original, home_currency="JPY").rows
+    parsed, = parse_uploaded_csv(original, home_currency="JPY").rows
     saved = _row_from_parsed(CsvImportBatch(id=7, tenant_id="target", public_id="batch"), parsed)
     assert saved.source_event_public_id is None
 
@@ -253,7 +253,7 @@ def test_error_csv_repairs_native_identity_without_losing_signed_money_or_quote(
     assert exported["public_id"] == "broken-source-id"
     assert exported["stream_amount_cents"] == "-3728"
     assert exported["exchange_rate_date"] == "2026-05-05"
-    repaired, = parse_csv_preview(_replace_cells(downloaded, public_id=OFFSET_ID), home_currency="CNY").rows
+    repaired, = parse_uploaded_csv(_replace_cells(downloaded, public_id=OFFSET_ID), home_currency="CNY").rows
 
     assert repaired.is_valid, repaired.error
     assert repaired.entry_kind == "offset"
@@ -266,14 +266,14 @@ def test_error_csv_repairs_native_identity_without_losing_signed_money_or_quote(
 
 
 def test_mixed_error_download_keeps_plain_rows_plain_and_native_rows_native(monkeypatch):
-    ordinary, = parse_csv_preview("amount_yuan,merchant\n12.34,Cafe\n", home_currency="CNY").rows
-    native, = parse_csv_preview(_export_offset(monkeypatch, "reversal"), home_currency="JPY").rows
+    ordinary, = parse_uploaded_csv("amount_yuan,merchant\n12.34,Cafe\n", home_currency="CNY").rows
+    native, = parse_uploaded_csv(_export_offset(monkeypatch, "reversal"), home_currency="JPY").rows
     batch = CsvImportBatch(id=7, tenant_id="target", public_id="batch")
     rows = [_row_from_parsed(batch, parsed) for parsed in (ordinary, native)]
     for row in rows:
         row.status = "insert_failed"
 
-    restored = parse_csv_preview(_error_download(monkeypatch, rows), home_currency="CNY")
+    restored = parse_uploaded_csv(_error_download(monkeypatch, rows), home_currency="CNY")
 
     assert restored.valid_count == 2, [row.error for row in restored.rows]
     plain, reversal = restored.rows
@@ -287,17 +287,17 @@ def test_mixed_error_download_keeps_plain_rows_plain_and_native_rows_native(monk
     assert reversal.stream_amount_cents == 0
 
 
-def test_ordinary_legacy_foreign_csv_keeps_its_released_fx_resolution_path():
+def test_ordinary_foreign_csv_preserves_source_day_and_uses_backend_fx():
     content = (
         "amount_cents,original_currency_code,exchange_rate_to_cny,exchange_rate_date,expense_time\n"
         "12345,USD,7.1234,2026-05-01,2026-05-04T16:30:00Z\n"
     )
 
-    row, = parse_csv_preview(content, timezone_name="Asia/Shanghai", home_currency="CNY").rows
+    row, = parse_uploaded_csv(content, timezone_name="Asia/Shanghai", home_currency="CNY").rows
 
     assert row.is_valid, row.error
     assert row.event_input is None
     assert row.amount_cents is None
     assert row.original_amount_minor == 12345
     assert row.exchange_rate_to_cny is None
-    assert row.exchange_rate_date == date(2026, 5, 5)
+    assert row.exchange_rate_date == date(2026, 5, 4)

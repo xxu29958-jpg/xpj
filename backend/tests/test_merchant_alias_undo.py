@@ -20,7 +20,6 @@ from sqlalchemy import select
 from app.database import SessionLocal
 from app.models import LedgerAuditLog, MerchantAlias
 from app.services.cleanup_service import (
-    purge_expired_soft_deleted_merchant_aliases,
     purge_expired_soft_deletes,
 )
 from app.services.time_service import now_utc
@@ -153,36 +152,6 @@ def test_undo_past_retention_window_returns_404(client: TestClient, *, identity)
     assert undo.json()["error"] == "merchant_alias_not_found"
 
 
-def test_purge_removes_aged_soft_deletes_and_spares_fresh(client: TestClient, *, identity) -> None:
-    aged = _create(client, identity.app_headers, alias="AGED 店")
-    fresh = _create(client, identity.app_headers, alias="FRESH 店")
-    _delete(client, identity.app_headers, aged)
-    _delete(client, identity.app_headers, fresh)
-
-    with SessionLocal() as db:
-        row = db.scalar(select(MerchantAlias).where(MerchantAlias.public_id == aged["public_id"]))
-        assert row is not None
-        tenant_id = row.tenant_id
-        row.deleted_at = now_utc() - timedelta(days=31)
-        db.commit()
-
-    with SessionLocal() as db:
-        purged = purge_expired_soft_deleted_merchant_aliases(db, tenant_id)
-    assert purged == 1
-
-    with SessionLocal() as db:
-        assert db.scalar(select(MerchantAlias).where(MerchantAlias.public_id == aged["public_id"])) is None
-        assert db.scalar(select(MerchantAlias).where(MerchantAlias.public_id == fresh["public_id"])) is not None
-
-    # The purged key is free again.
-    recreate = client.post(
-        "/api/merchants/aliases",
-        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
-        json={"canonical_merchant": "星巴克", "alias": "AGED 店"},
-    )
-    assert recreate.status_code == 201, recreate.text
-
-
 def test_global_purge_removes_aged_spares_fresh(client: TestClient, *, identity) -> None:
     """The scheduler's tenant-less purge uses recycle-bin retention by default."""
     aged = _create(client, identity.app_headers, alias="AGED 全局")
@@ -203,6 +172,14 @@ def test_global_purge_removes_aged_spares_fresh(client: TestClient, *, identity)
     with SessionLocal() as db:
         assert db.scalar(select(MerchantAlias).where(MerchantAlias.public_id == aged["public_id"])) is None
         assert db.scalar(select(MerchantAlias).where(MerchantAlias.public_id == fresh["public_id"])) is not None
+
+    # A physically purged alias can be created again through the real API.
+    recreate = client.post(
+        "/api/merchants/aliases",
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"canonical_merchant": "星巴克", "alias": "AGED 全局"},
+    )
+    assert recreate.status_code == 201, recreate.text
 
 
 def test_purge_scheduler_disabled_by_default() -> None:

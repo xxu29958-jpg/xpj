@@ -81,10 +81,6 @@ def _time_candidates(
     return candidates
 
 
-def _score_time_match(match_text: str, pattern_index: int) -> int:
-    return _score_time_dimensions(match_text, pattern_index).total
-
-
 def _score_time_dimensions(match_text: str, pattern_index: int) -> _ScoreDimensions:
     evidence = [match_text]
     if any(

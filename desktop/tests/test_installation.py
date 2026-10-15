@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import ctypes
 import os
 import shutil
 import subprocess
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -16,7 +18,6 @@ from backend_manager.installation import (
     load_installed_release_config,
     parse_installed_binding,
 )
-from backend_manager.lifecycle_lock import hold_installer_lifecycle_lock
 from backend_manager.windows_machine_state import _require_exact_binding_security
 
 _INSTALL_ID = "11111111-1111-4111-8111-111111111111"
@@ -196,8 +197,24 @@ def test_binding_security_accepts_only_system_admin_backend_and_current_user() -
     )
 
 
+@contextmanager
+def _held_lock_file(path: Path):
+    kernel32 = ctypes.WinDLL("Kernel32", use_last_error=True)
+    kernel32.CreateFileW.argtypes = [ctypes.c_wchar_p, ctypes.c_ulong, ctypes.c_ulong,
+        ctypes.c_void_p, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_void_p]
+    kernel32.CreateFileW.restype = ctypes.c_void_p
+    kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+    kernel32.CloseHandle.restype = ctypes.c_int
+    handle = kernel32.CreateFileW(str(path), 0xC0000000, 0, None, 4, 0x80, None)
+    assert handle != ctypes.c_void_p(-1).value, ctypes.get_last_error()
+    try:
+        yield
+    finally:
+        assert kernel32.CloseHandle(handle), ctypes.get_last_error()
+
+
 @pytest.mark.skipif(os.name != "nt", reason="Windows file-share semantics required")
-def test_python_lifecycle_lock_interoperates_with_real_powershell_hosts(tmp_path: Path) -> None:
+def test_powershell_lifecycle_lock_rejects_a_held_file_then_acquires_after_release(tmp_path: Path) -> None:
     lock_path = tmp_path / "installer-lifecycle.lock"
     lock_script = Path(__file__).parents[2] / "backend" / "packaging" / "windows_lifecycle_lock.ps1"
     harness = tmp_path / "lock-interoperability.ps1"
@@ -213,7 +230,7 @@ def test_python_lifecycle_lock_interoperates_with_real_powershell_hosts(tmp_path
     hosts = [Path(found) for name in ("powershell", "pwsh") if (found := shutil.which(name))]
     assert hosts, "no PowerShell host available"
 
-    with hold_installer_lifecycle_lock(path=lock_path):
+    with _held_lock_file(path=lock_path):
         blocked = [subprocess.run([host, "-NoProfile", "-File", harness], check=False).returncode for host in hosts]
     acquired = [subprocess.run([host, "-NoProfile", "-File", harness], check=False).returncode for host in hosts]
 

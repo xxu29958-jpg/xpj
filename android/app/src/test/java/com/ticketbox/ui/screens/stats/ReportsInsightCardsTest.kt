@@ -225,28 +225,6 @@ class ReportsInsightCardsTest {
         assertEquals(2, a11y.zeroBuckets)
     }
 
-    @Test
-    fun comparisonA11yBodyInterleavesLabelsJoinedByFullwidthSemicolon() {
-        val body = comparisonChartA11yBody(
-            listOf(
-                CategoryComparisonChartRow("餐饮", 1_200L, 900L, 1_000L, hasPrevious = true, hasYearOverYear = true),
-                CategoryComparisonChartRow("交通", 0L, 800L, 0L, hasPrevious = true, hasYearOverYear = false),
-            ),
-            currentMonthLabel = "本月",
-            previousMonthLabel = "上月",
-            yearOverYearLabel = "去年同月",
-            currencyDisplay = currencyDisplay,
-        )
-        assertEquals(
-            "餐饮 本月 ${formatDisplayAmount(1_200L, currencyDisplay)} " +
-                "上月 ${formatDisplayAmount(900L, currencyDisplay)} " +
-                "去年同月 ${formatDisplayAmount(1_000L, currencyDisplay)}；" +
-                "交通 本月 ${formatDisplayAmount(0L, currencyDisplay)} " +
-                "上月 ${formatDisplayAmount(800L, currencyDisplay)}",
-            body,
-        )
-    }
-
     private fun comparisonRow(
         category: String,
         amountCents: Long,

@@ -89,21 +89,6 @@ def windows_system_directory() -> Path:
     return Path(buffer.value)
 
 
-def trusted_windows_command_environment(system_directory: Path) -> dict[str, str]:
-    """Build the closed environment for an elevated Windows system command."""
-
-    system32 = Path(os.path.abspath(system_directory))
-    windows_directory = system32.parent
-    powershell_directory = system32 / "WindowsPowerShell" / "v1.0"
-    return {
-        "SystemRoot": str(windows_directory),
-        "WINDIR": str(windows_directory),
-        "ComSpec": str(system32 / "cmd.exe"),
-        "PATH": os.pathsep.join((str(powershell_directory), str(system32), str(windows_directory))),
-        "PATHEXT": ".COM;.EXE;.BAT;.CMD",
-    }
-
-
 def local_app_data() -> Path:
     if os.name != "nt":
         raise RuntimeControlError("管理员结果通道只支持 Windows。")

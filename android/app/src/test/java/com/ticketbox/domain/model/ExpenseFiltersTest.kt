@@ -12,55 +12,6 @@ import java.util.TimeZone
 
 class ExpenseFiltersTest {
     @Test
-    fun filtersByExpenseTimeMonthAndCategory() {
-        val items = listOf(
-            expense(id = 1, category = "餐饮", expenseTime = "2026-05-03T04:20:00Z"),
-            expense(id = 2, category = "交通", expenseTime = "2026-05-04T04:20:00Z"),
-            expense(id = 3, category = "餐饮", expenseTime = "2026-06-03T04:20:00Z"),
-        )
-
-        val filtered = filterConfirmedExpenses(
-            items,
-            ExpenseFilterCriteria(month = "2026-05", category = "餐饮"),
-        )
-
-        assertEquals(listOf(1L), filtered.map { it.id })
-    }
-
-    @Test
-    fun fallsBackToConfirmedAtWhenExpenseTimeIsBlank() {
-        val items = listOf(
-            expense(id = 1, category = "购物", expenseTime = null, details = FixtureDetails(confirmedAt = "2026-05-03T04:20:00Z")),
-            expense(id = 2, category = "购物", expenseTime = null, details = FixtureDetails(confirmedAt = "2026-04-03T04:20:00Z")),
-        )
-
-        val filtered = filterConfirmedExpenses(
-            items,
-            ExpenseFilterCriteria(month = "2026-05"),
-        )
-
-        assertEquals(listOf(1L), filtered.map { it.id })
-    }
-
-    @Test
-    fun filtersLedgerMonthUsingLocalTimezone() {
-        val items = listOf(
-            expense(id = 1, category = "餐饮", expenseTime = "2026-04-30T16:30:00Z"),
-            expense(id = 2, category = "餐饮", expenseTime = "2026-04-30T15:30:00Z"),
-        )
-
-        val filtered = filterConfirmedExpenses(
-            expenses = items,
-            criteria = ExpenseFilterCriteria(
-                month = "2026-05",
-                zoneId = ZoneId.of("Asia/Shanghai"),
-            ),
-        )
-
-        assertEquals(listOf(1L), filtered.map { it.id })
-    }
-
-    @Test
     fun defaultLedgerMonthUsesPhoneSystemTimezone() {
         val previous = TimeZone.getDefault()
         try {
@@ -70,12 +21,6 @@ class ExpenseFiltersTest {
                 expense(id = 2, category = "餐饮", expenseTime = "2026-04-30T15:30:00Z"),
             )
 
-            val filtered = filterConfirmedExpenses(
-                items,
-                ExpenseFilterCriteria(month = "2026-05"),
-            )
-
-            assertEquals(listOf(1L), filtered.map { it.id })
             assertEquals("2026-05", expenseLedgerMonth(items.first()))
         } finally {
             TimeZone.setDefault(previous)
@@ -113,85 +58,6 @@ class ExpenseFiltersTest {
     fun legacyReceiptWithoutAnyEffectiveTimeDoesNotAcquireItsCreationMonth() {
         val unknown = expense(id = 9, category = "餐饮", expenseTime = null, details = FixtureDetails(confirmedAt = null))
         assertEquals(null, expenseLedgerMonth(unknown, ZoneId.of("Asia/Shanghai")))
-        assertEquals(listOf(unknown), filterConfirmedExpenses(listOf(unknown)))
-        assertEquals(emptyList(), filterConfirmedExpenses(listOf(unknown), ExpenseFilterCriteria(month = "2026-05")))
-    }
-
-    @Test
-    fun invalidLedgerMonthMatchesNothing() {
-        val items = listOf(
-            expense(id = 1, category = "餐饮", expenseTime = "2026-05-03T04:20:00Z"),
-        )
-
-        val filtered = filterConfirmedExpenses(
-            items,
-            ExpenseFilterCriteria(month = "2026-13"),
-        )
-
-        assertEquals(emptyList(), filtered.map { it.id })
-    }
-
-    @Test
-    fun filtersByMerchantNoteTagsAndSourceQuery() {
-        val items = listOf(
-            expense(id = 1, category = "餐饮", expenseTime = "2026-05-03T04:20:00Z", details = FixtureDetails(merchant = "美团外卖")),
-            expense(id = 2, category = "交通", expenseTime = "2026-05-03T04:20:00Z", details = FixtureDetails(note = "地铁通勤")),
-            expense(id = 3, category = "购物", expenseTime = "2026-05-03T04:20:00Z", details = FixtureDetails(tags = "真香")),
-            expense(id = 4, category = "其他", expenseTime = "2026-05-03T04:20:00Z", details = FixtureDetails(source = "手动记账")),
-        )
-
-        assertEquals(
-            listOf(1L),
-            filterConfirmedExpenses(
-                items,
-                ExpenseFilterCriteria(month = "2026-05", query = "美团"),
-            ).map { it.id },
-        )
-        assertEquals(
-            listOf(2L),
-            filterConfirmedExpenses(
-                items,
-                ExpenseFilterCriteria(month = "2026-05", query = "通勤"),
-            ).map { it.id },
-        )
-        assertEquals(
-            listOf(3L),
-            filterConfirmedExpenses(
-                items,
-                ExpenseFilterCriteria(month = "2026-05", query = "真香"),
-            ).map { it.id },
-        )
-        assertEquals(
-            listOf(4L),
-            filterConfirmedExpenses(
-                items,
-                ExpenseFilterCriteria(month = "2026-05", query = "手动"),
-            ).map { it.id },
-        )
-    }
-
-    @Test
-    fun filtersByExactNormalizedTag() {
-        val items = listOf(
-            expense(id = 1, category = "餐饮", expenseTime = "2026-05-03T04:20:00Z", details = FixtureDetails(tags = " 周末 ，AI")),
-            expense(id = 2, category = "购物", expenseTime = "2026-05-04T04:20:00Z", details = FixtureDetails(tags = "周末采购")),
-            expense(id = 3, category = "交通", expenseTime = "2026-05-05T04:20:00Z", details = FixtureDetails(tags = "ai")),
-        )
-
-        assertEquals(
-            listOf(1L),
-            filterConfirmedExpenses(
-                items,
-                ExpenseFilterCriteria(month = "2026-05", tag = "周末"),
-            ).map { it.id },
-        )
-        assertEquals(
-            listOf(1L, 3L),
-            filterConfirmedExpenses(
-                items,
-                ExpenseFilterCriteria(month = "2026-05", tag = "AI"),
-            ).map { it.id },
-        )
     }
 
     @Test
@@ -291,17 +157,6 @@ class ExpenseFiltersTest {
     }
 
     @Test
-    fun expenseMatchesAmountOnHomeOrOriginalLeg() {
-        val homeLeg = expense(id = 1, category = "餐饮", expenseTime = null, amountCents = 1_250)
-        val foreignLeg = expense(id = 2, category = "餐饮", expenseTime = null, amountCents = 9_900)
-            .copy(originalAmountMinor = 1_250)
-
-        assertTrue(expenseMatchesAmountCents(homeLeg, 1_250))
-        assertTrue(expenseMatchesAmountCents(foreignLeg, 1_250))
-        assertFalse(expenseMatchesAmountCents(homeLeg, 800))
-    }
-
-    @Test
     fun parsesSearchAmountAcceptsDisplayedValuesAcrossCurrencies() {
         // PR#255 P2-1：从 Android 自己的格式化器（formatAmount，localeTag 同款
         // DecimalFormatSymbols）复制的显示值，按所选币种归一化符号与分隔符后必须可解析。
@@ -364,7 +219,7 @@ class ExpenseFiltersTest {
         assertTrue(expenseMatchesSearchAmount(cnyHomeJpyOriginal, "1200"))
         assertTrue(expenseMatchesSearchAmount(cnyHomeJpyOriginal, "55"))
 
-        // 同币种 legacy 行：original 腿与 home 共用一次解析，行为与 expenseMatchesAmountCents 一致。
+        // 同币种 legacy 行：original 腿与 home 共用一次解析，任一已声明金额匹配即可。
         val sameCurrency = expense(id = 3, category = "餐饮", expenseTime = null, amountCents = 9_900)
             .copy(originalAmountMinor = 1_250)
         assertTrue(expenseMatchesSearchAmount(sameCurrency, "12.5"))

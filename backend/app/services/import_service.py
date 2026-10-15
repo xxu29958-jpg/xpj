@@ -26,12 +26,10 @@ with errors are reported in the preview but skipped on import.
 
 from __future__ import annotations
 
-import csv
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
-from io import StringIO
 
 from app.config import get_settings
 from app.errors import AppError
@@ -64,7 +62,6 @@ from app.services.spending_contract_service import fx_rate_date_for_expense_time
 from app.services.tag_service import normalize_tags
 from app.services.time_service import resolve_local_datetime, strict_zone
 
-MAX_PREVIEW_ROWS = 500
 DEFAULT_SOURCE = "CSV导入"
 
 
@@ -102,21 +99,6 @@ class ParsedRow:
     @property
     def is_valid(self) -> bool:
         return self.error is None
-
-
-@dataclass
-class CsvPreview:
-    rows: list[ParsedRow] = field(default_factory=list)
-    headers: list[str] = field(default_factory=list)
-    truncated: bool = False
-
-    @property
-    def valid_count(self) -> int:
-        return sum(1 for r in self.rows if r.is_valid)
-
-    @property
-    def error_count(self) -> int:
-        return sum(1 for r in self.rows if not r.is_valid)
 
 
 def _parse_expense_time(raw: str, timezone_name: str | None = None) -> tuple[datetime | None, str, str | None, date | None]:
@@ -165,10 +147,10 @@ def _captured_time_input(raw: str, *, instant: datetime | None, timezone_name: s
     return parsed.model_dump(mode="json")
 
 
-def _csv_time_fields(raw: str, *, native: bool, timezone_name: str | None, calendar_revision: int | None):
+def _csv_time_fields(raw: str, *, native: bool, timezone_name: str | None, calendar_revision: int):
     instant, display, error, rate_date = _parse_expense_time(raw, timezone_name=timezone_name)
     value = None
-    if not native and calendar_revision is not None and error is None:
+    if not native and error is None:
         value = _captured_time_input(raw, instant=instant,
             timezone_name=timezone_name, calendar_revision=calendar_revision)
         if value is not None:
@@ -202,62 +184,6 @@ def _parse_optional_date(raw: str) -> tuple[date | None, str | None]:
         return date.fromisoformat(text), None
     except ValueError:
         return None, "exchange_rate_date 不是合法日期"
-
-
-def parse_csv_preview(content: str, timezone_name: str | None = None, *, home_currency: str) -> CsvPreview:
-    """Parse ``content`` into a preview structure.
-
-    Caller is responsible for applying any size/encoding limits before
-    calling this — we enforce :data:`MAX_PREVIEW_ROWS` and a defensive
-    per-cell byte cap (``CSV_IMPORT_MAX_CELL_BYTES``). Total bytes / line
-    counts must be enforced upstream (see ``create_csv_import_batch``).
-    """
-    max_cell_bytes = max(get_settings().csv_import_max_cell_bytes, 1)
-
-    def _assert_cell(cell: str) -> None:
-        if len(cell.encode("utf-8")) > max_cell_bytes:
-            raise AppError(
-                "invalid_request",
-                f"CSV 单元格超过 {max_cell_bytes} 字节上限。",
-                status_code=400,
-            )
-    text = content.lstrip("\ufeff")
-    if not text.strip():
-        raise AppError("invalid_request", "CSV 内容为空。", status_code=400)
-    try:
-        reader = csv.reader(StringIO(text))
-        header_row = next(reader)
-    except StopIteration as exc:
-        raise AppError("invalid_request", "CSV 缺少表头。", status_code=400) from exc
-    except csv.Error as exc:
-        raise AppError("invalid_request", f"CSV 格式无效：{exc}", status_code=400) from exc
-    for cell in header_row:
-        _assert_cell(cell)
-    headers = [h.strip().lstrip("\ufeff").lower() for h in header_row]
-    validate_csv_headers(headers)
-    parsed_home_currency = home_currency
-    preview = CsvPreview(headers=headers)
-    try:
-        for index, row in enumerate(reader, start=2):  # line 1 was the header
-            if len(preview.rows) >= MAX_PREVIEW_ROWS:
-                preview.truncated = True
-                break
-            if not any(cell.strip() for cell in row):
-                continue
-            for cell in row:
-                _assert_cell(cell)
-            preview.rows.append(
-                parse_csv_row(
-                    headers,
-                    row,
-                    line_number=index,
-                    timezone_name=timezone_name,
-                    home_currency=parsed_home_currency,
-                )
-            )
-    except csv.Error as exc:
-        raise AppError("invalid_request", f"CSV 格式无效：{exc}", status_code=400) from exc
-    return preview
 
 
 def _parse_csv_currency_code(
@@ -449,7 +375,7 @@ def parse_csv_row(
     line_number: int,
     timezone_name: str | None = None,
     home_currency: str,
-    calendar_revision: int | None = None,
+    calendar_revision: int,
 ) -> ParsedRow:
     cells = dict(zip(headers, row + [""] * max(0, len(headers) - len(row)), strict=False))
     native = has_financial_event(cells)

@@ -65,12 +65,6 @@ def _windows_apis() -> tuple[object, object]:
     return _windows.windows_apis()
 
 
-def windows_process_start_filetime(process_id: int) -> tuple[int, int]:
-    """Return the immutable Windows creation FILETIME for one live process."""
-
-    return _windows.process_start_filetime(process_id, apis=_windows_apis())
-
-
 def _current_process_sid(advapi32: object, kernel32: object) -> str:
     return _windows.current_process_sid(advapi32, kernel32)
 

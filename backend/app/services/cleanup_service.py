@@ -78,34 +78,6 @@ def cleanup_orphan_uploads(db: Session, tenant_id: str, *, dry_run: bool = True)
     return run_orphan_cleanup(db, tenant_id, settings=get_settings(), dry_run=dry_run)
 
 
-def purge_expired_soft_deleted_merchant_aliases(
-    db: Session,
-    tenant_id: str,
-    *,
-    retention_days: int | None = None,
-    retention_minutes: int | None = None,
-    now: datetime | None = None,
-) -> int:
-    """Permanently delete merchant_aliases soft-deleted past retention.
-
-    Tenant-scoped so an admin/maintenance call cannot purge other ledgers.
-    Rows still inside the window stay recoverable via the recycle bin.
-    """
-    cutoff = _soft_delete_purge_cutoff(
-        now=now,
-        retention_days=retention_days,
-        retention_minutes=retention_minutes,
-    )
-    result = db.execute(
-        delete(MerchantAlias)
-        .where(MerchantAlias.tenant_id == tenant_id)
-        .where(MerchantAlias.deleted_at.is_not(None))
-        .where(MerchantAlias.deleted_at < cutoff)
-    )
-    db.commit()
-    return int(result.rowcount or 0)
-
-
 def purge_expired_soft_deletes(
     db: Session,
     *,

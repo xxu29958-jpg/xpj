@@ -34,7 +34,6 @@ data class StatsChartTokens(
     val guideAlpha: Float,
     val quietAlpha: Float,
     val emphasisAlpha: Float,
-    val comparison: StatsComparisonChartTokens,
 )
 
 data class StatsTokens(
@@ -55,20 +54,6 @@ data class StatsDistributionTokens(
     val trackWeight: Float,
     val amountWeight: Float,
     val minFillFraction: Float,
-)
-
-data class StatsComparisonChartTokens(
-    val height: Dp,
-    val verticalPadding: Dp,
-    val innerGap: Dp,
-    val groupWidthFraction: Float,
-    val minBarWidth: Dp,
-    val maxBarWidth: Dp,
-    val minBarHeight: Dp,
-    val guideStrokeWidth: Dp,
-    val guideRatios: List<Float>,
-    val guideAlpha: Float,
-    val barAlpha: Float,
 )
 
 private fun paperStatsTokens(): StatsTokens =
@@ -94,7 +79,6 @@ private fun paperStatsTokens(): StatsTokens =
             guideAlpha = 0.34f,
             quietAlpha = 0.62f,
             emphasisAlpha = 0.92f,
-            comparison = defaultStatsComparisonChartTokens(guideAlpha = 0.26f, barAlpha = 0.84f),
         ),
     )
 
@@ -121,7 +105,6 @@ private fun midnightStatsTokens(): StatsTokens =
             guideAlpha = 0.34f,
             quietAlpha = 0.62f,
             emphasisAlpha = 0.92f,
-            comparison = defaultStatsComparisonChartTokens(guideAlpha = 0.28f, barAlpha = 0.84f),
         ),
     )
 
@@ -131,24 +114,6 @@ private fun defaultStatsDistributionTokens(): StatsDistributionTokens =
         trackWeight = 1.46f,
         amountWeight = 1.08f,
         minFillFraction = 0.08f,
-    )
-
-private fun defaultStatsComparisonChartTokens(
-    guideAlpha: Float,
-    barAlpha: Float,
-): StatsComparisonChartTokens =
-    StatsComparisonChartTokens(
-        height = 138.dp,
-        verticalPadding = 8.dp,
-        innerGap = 3.dp,
-        groupWidthFraction = 0.62f,
-        minBarWidth = 4.dp,
-        maxBarWidth = 12.dp,
-        minBarHeight = 6.dp,
-        guideStrokeWidth = 1.dp,
-        guideRatios = listOf(0.5f, 1f),
-        guideAlpha = guideAlpha,
-        barAlpha = barAlpha,
     )
 
 private val StatsRangeLabelMinimumWidth = 60.dp

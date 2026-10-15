@@ -71,10 +71,6 @@ class MerchantCreateForm(BaseModel):
     review_new: bool = False
 
 
-def _stale_catalog_redirect(selected_id: str) -> RedirectResponse:
-    return _web_redirect("/web/merchants", selected_id, msg="页面已过期，请刷新后重试。")
-
-
 def _catalog_conflict_message(exc: AppError) -> str:
     if exc.error == "not_found":
         return "商家不存在或已被删除。"

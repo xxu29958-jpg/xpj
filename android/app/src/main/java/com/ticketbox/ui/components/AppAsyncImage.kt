@@ -38,8 +38,6 @@ import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.valentinilk.shimmer.shimmer
 
-private const val MAX_PREVIEW_LONG_SIDE = 2048
-private const val MAX_PREVIEW_PIXELS = 4_194_304
 
 data class AppAsyncImagePresentation(
     val placeholder: String,
@@ -145,22 +143,4 @@ fun AppAsyncImage(
             )
         }
     }
-}
-
-internal fun previewDecodeSampleSize(
-    width: Int,
-    height: Int,
-    maxLongSide: Int = MAX_PREVIEW_LONG_SIDE,
-    maxPixels: Int = MAX_PREVIEW_PIXELS,
-): Int {
-    if (width <= 0 || height <= 0) return 1
-    var sampleSize = 1
-    while (
-        width / sampleSize > maxLongSide ||
-        height / sampleSize > maxLongSide ||
-        (width.toLong() / sampleSize) * (height.toLong() / sampleSize) > maxPixels
-    ) {
-        sampleSize *= 2
-    }
-    return sampleSize
 }

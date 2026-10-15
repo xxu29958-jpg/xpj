@@ -22,12 +22,6 @@ class Tenant:
 
 
 @dataclass(frozen=True)
-class AdminContext:
-    tenants: tuple[Tenant, ...]
-    default_tenant: Tenant
-
-
-@dataclass(frozen=True)
 class AuthContext:
     account_id: int
     account_public_id: str
@@ -142,7 +136,3 @@ def default_tenant() -> Tenant:
         if tenant.id == DEFAULT_TENANT_ID:
             return tenant
     return tenants[0]
-
-
-def admin_context() -> AdminContext:
-    return AdminContext(tenants=configured_tenants(), default_tenant=default_tenant())

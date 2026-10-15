@@ -25,33 +25,16 @@
     <string name="stats_overview_rhythm_title">支出节奏</string>
     <string name="stats_overview_rhythm_caption">%1$d 笔已确认，最近 7 天 %2$s。</string>
     <string name="stats_overview_rhythm_caption_empty">确认账单后，会展示月内节奏和最近窗口。</string>
-    <string name="stats_lead_title">本月支出</string>
-    <string name="stats_lead_source_server_report">数据已更新</string>
-    <string name="stats_lead_source_monthly">当前账本</string>
-    <string name="stats_lead_total_label">已确认支出</string>
-    <string name="stats_lead_total_caption">%1$d 笔已入账</string>
     <string name="stats_lead_month_delta_label">较上月</string>
-    <string name="stats_lead_month_delta_more_label">较上月增加</string>
-    <string name="stats_lead_month_delta_less_label">较上月减少</string>
-    <string name="stats_lead_month_delta_flat_label">较上月持平</string>
     <string name="stats_lead_month_delta_no_previous">上月暂无确认支出</string>
     <string name="stats_lead_month_delta_previous">上月 %1$s</string>
     <string name="stats_lead_month_delta_previous_percent">上月 %1$s · %2$d%%</string>
     <string name="stats_lead_month_delta_percent">%1$d%%</string>
-    <string name="stats_lead_month_delta_percent_hint">约 %1$d%%</string>
-    <string name="stats_lead_variable_label">变化最大</string>
     <string name="stats_lead_inline_value">%1$s · %2$s</string>
     <string name="stats_lead_top_merchant_label">重点商家</string>
-    <string name="stats_lead_top_merchant_amount_caption">%1$s · %2$d 笔</string>
-    <string name="stats_lead_top_merchant_count_caption">%1$d 笔 · %2$s</string>
-    <string name="stats_lead_delta_more">增加 %1$s</string>
-    <string name="stats_lead_delta_less">减少 %1$s</string>
-    <string name="stats_lead_delta_flat">持平</string>
     <string name="stats_lead_yoy_more">同比%1$s</string>
     <string name="stats_lead_yoy_less">同比%1$s</string>
     <string name="stats_lead_yoy_flat">同比持平</string>
-    <string name="stats_lead_category_more">较上月%1$s</string>
-    <string name="stats_lead_category_less">较上月%1$s</string>
     <string name="stats_overview_delta_flat">持平</string>
     <string name="stats_overview_delta_up">比上月多 %1$s%2$s</string>
     <string name="stats_overview_delta_down">比上月少 %1$s%2$s</string>
@@ -215,9 +198,6 @@
     <string name="stats_reports_granularity_day">按日</string>
     <string name="stats_reports_granularity_week">按周</string>
     <!-- 轴3 三柱对比图例（色点与 grouped chart 的 series 同源）。 -->
-    <string name="stats_reports_legend_current_month">本月</string>
-    <string name="stats_reports_legend_previous_month">上月</string>
-    <string name="stats_reports_legend_year_over_year_month">去年同月</string>
     <string name="stats_reports_chart_empty">这个月份还没有可画出的确认支出。</string>
     <string name="stats_reports_chart_sparse">本月仅 %1$d 天有确认支出，优先展示发生日期与金额。</string>
     <string name="stats_reports_recent_window_title">最近 7 天</string>
@@ -237,7 +217,6 @@
          _with_zeros 变体把零额档汇总成「其余 N 档无支出」，避免日粒度下逐日朗读 ¥0.00。 -->
     <string name="stats_reports_chart_a11y">支出趋势，各档金额：%1$s</string>
     <string name="stats_reports_chart_a11y_with_zeros">净支出趋势，各档金额：%1$s；其余 %2$d 档净额为零</string>
-    <string name="stats_reports_comparison_a11y">分类对比：%1$s</string>
     <string name="stats_reports_merchant_frequency_title">高频商家</string>
     <string name="stats_reports_merchant_spend_title">商家金额排行</string>
     <string name="stats_reports_merchant_count_caption">按确认次数排序，金额仅作参考。</string>
@@ -258,40 +237,6 @@
     <string name="stats_reports_category_comparison_previous_only">上月 %1$s</string>
     <string name="stats_reports_category_comparison_yoy_only">去年同月 %1$s</string>
     <string name="stats_reports_bar_count">%1$d 笔</string>
-    <string name="stats_reports_goals_title">开销目标</string>
-    <string name="stats_reports_goals_empty">本月还没有开销目标。</string>
-    <string name="stats_reports_goals_empty_hint">设置后会显示支出上限、进度和风险。还债目标在规划菜单单独管理。</string>
-    <string name="stats_reports_goals_create_action">设置本月开销目标</string>
-    <string name="stats_reports_goals_loading">正在读取本月目标。</string>
-    <string name="stats_reports_goals_loading_hint">目标读取完成后再显示进度和风险。</string>
-    <string name="stats_reports_goals_unavailable">目标暂时打不开。</string>
-    <string name="stats_reports_goals_unavailable_hint">本月目标尚未同步完成，稍后刷新再试。</string>
-    <string name="stats_reports_goals_count">本月 %1$d 个开销目标</string>
-    <string name="stats_reports_goals_loading_count">正在读取目标</string>
-    <string name="stats_reports_goals_unavailable_count">目标状态暂不可用</string>
-    <string name="stats_reports_goals_attention">%1$d 个要看</string>
-    <string name="stats_reports_goals_reading">读取中</string>
-    <string name="stats_reports_goals_unavailable_badge">暂不可用</string>
-    <string name="stats_reports_goals_unset">未设置</string>
-    <string name="stats_reports_goals_stable">节奏稳定</string>
-    <string name="stats_reports_goals_average_label">整体进度</string>
-    <string name="stats_reports_goals_progress_a11y">本月 %1$d 个目标，整体进度 %2$d%%</string>
-    <string name="stats_reports_goal_total">总支出</string>
-    <string name="stats_reports_goal_progress">%1$s · %2$s</string>
-    <string name="stats_reports_goal_spent_label">已花</string>
-    <string name="stats_reports_goal_remaining_label">剩余</string>
-    <string name="stats_reports_goal_debt_progress">%1$s · 已结清 %2$d/%3$d 笔</string>
-    <string name="stats_reports_goal_meta_line">%1$s · %2$s</string>
-    <string name="stats_reports_goal_type_spending">开销目标</string>
-    <string name="stats_reports_goal_type_debt">还债目标</string>
-    <string name="stats_reports_goal_type_unknown">目标</string>
-    <string name="stats_reports_goal_status_over">已超限</string>
-    <string name="stats_reports_goal_status_near">接近上限</string>
-    <string name="stats_reports_goal_status_on_track">正常</string>
-    <string name="stats_reports_goal_status_idle">未开始</string>
-    <string name="stats_reports_goal_status_archived">已归档</string>
-    <string name="stats_reports_goal_percent">%1$d%%</string>
-    <string name="stats_reports_goal_progress_a11y">%1$s，进度 %2$d%%</string>
 
     <!-- ADR-0049 §6 (slice 7) 还债目标：还债目标列表/详情 + §6/F13 完整性复核 -->
     <string name="debt_goal_topbar_back">返回</string>
@@ -628,9 +573,6 @@
 
     <!-- ADR-0049 §7.0 (slice 8e-2) ② 成员债关系化重构：「共同的事·各自那份」框架（仅 isMember 分支；
          外部债走原 DebtSummaryCard / debtDirectionLabelRes 不动）。方向/进度语/明细全用关系语言。 -->
-    <string name="debt_member_direction_i_owe">你帮我垫的</string>
-    <string name="debt_member_direction_owed_to_me">我帮你垫的</string>
-    <string name="debt_member_direction_third_party">TA 们之间的一件事</string>
     <string name="debt_member_card_eyebrow">一起处理 · %1$s</string>
     <string name="debt_member_card_eyebrow_third_party">他们的一件事 · %1$s</string>
     <!-- 关系进度语英雄主句（无金额）：i_owe = viewer 是债务人（别人帮我垫的） -->
@@ -726,8 +668,6 @@
     <string name="debt_goal_target_date_updated">还清日期已更新</string>
 
     <!-- StatsEmptyStates：统计空态卡 + 骨架占位 -->
-    <string name="stats_empty_month_chip_all">全部月份</string>
-    <string name="stats_empty_month_chip_description">选择统计月份</string>
     <string name="stats_empty_card_title">还没有统计数据</string>
     <string name="stats_empty_card_body">确认账单后刷新统计，这里会显示本月总支出、分类占比和高频商家。</string>
     <string name="stats_empty_card_refresh">刷新统计</string>

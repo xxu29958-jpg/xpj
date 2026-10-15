@@ -1,9 +1,7 @@
 package com.ticketbox.ui.screens.plan
 
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
-import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.test.platform.app.InstrumentationRegistry
@@ -14,9 +12,7 @@ import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.GoalProgressState
 import com.ticketbox.ui.design.LocalCurrencyDisplay
-import com.ticketbox.ui.screens.stats.GoalsSummaryCard
 import com.ticketbox.ui.theme.TicketboxTheme
-import com.ticketbox.viewmodel.ReportGoalsLoadState
 import org.junit.Rule
 import org.junit.Test
 
@@ -57,15 +53,4 @@ class SpendingGoalMoneyConnectedTest {
         compose.onNodeWithText(context.getString(R.string.spending_goal_progress_unavailable)).assertExists()
     }
 
-    @Test fun statisticsDoesNotDescribeMissingConversionAsZeroOrStable() {
-        compose.setContent {
-            TicketboxTheme(skin = AppSkin.Paper) {
-                GoalsSummaryCard(listOf(goal), ReportGoalsLoadState.Loaded)
-            }
-        }
-        compose.onNodeWithText("JPY ¥1,200").assertExists()
-        compose.onNodeWithText(context.getString(R.string.stats_reports_goals_stable)).assertDoesNotExist()
-        compose.onAllNodesWithText(context.getString(R.string.stats_reports_goal_percent, 0)).assertCountEquals(0)
-        compose.onNodeWithText(context.getString(R.string.spending_goal_progress_unavailable)).assertExists()
-    }
 }

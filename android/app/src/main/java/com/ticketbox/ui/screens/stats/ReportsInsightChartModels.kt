@@ -134,23 +134,3 @@ internal fun trendChartA11y(
         zeroBuckets = points.size - nonZero.size,
     )
 }
-
-/** 对比图文本替代 body:只拼接后端确认存在的历史系列,避免把缺失历史样本读成 ¥0.00。 */
-internal fun comparisonChartA11yBody(
-    rows: List<CategoryComparisonChartRow>,
-    currentMonthLabel: String,
-    previousMonthLabel: String,
-    yearOverYearLabel: String,
-    currencyDisplay: CurrencyDisplay,
-): String =
-    rows.joinToString("；") {
-        buildList {
-            add("${it.category} $currentMonthLabel ${formatDisplayAmount(it.currentAmountCents, currencyDisplay)}")
-            if (it.hasPrevious) {
-                add("$previousMonthLabel ${formatDisplayAmount(it.previousAmountCents, currencyDisplay)}")
-            }
-            if (it.hasYearOverYear) {
-                add("$yearOverYearLabel ${formatDisplayAmount(it.yearOverYearAmountCents, currencyDisplay)}")
-            }
-        }.joinToString(" ")
-    }

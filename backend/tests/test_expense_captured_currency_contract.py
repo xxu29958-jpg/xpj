@@ -14,7 +14,7 @@ from app.runtime_compatibility_contract import RUNTIME_COMPATIBILITY_SESSION_KEY
 from app.schemas import ExpenseUpdateRequest
 from app.services import exchange_rate_service
 from app.services.expense_service._update_currency import _apply_update_currency
-from app.services.import_service import parse_csv_preview
+from tests._infra.csv import parse_uploaded_csv
 
 
 def _current_cny_session() -> Session:
@@ -108,7 +108,7 @@ def test_frozen_amount_correction_still_refuses_unversioned_money_writes():
 
 
 def test_a_parsed_import_retains_the_currency_used_to_read_its_minor_units():
-    preview = parse_csv_preview("home_currency_code,amount_cents,merchant\nJPY,1200,Train\n", home_currency="JPY")
+    preview = parse_uploaded_csv("home_currency_code,amount_cents,merchant\nJPY,1200,Train\n", home_currency="JPY")
     row = preview.rows[0]
     assert row.is_valid, row.error
     assert row.home_currency_code == row.original_currency_code == "JPY"

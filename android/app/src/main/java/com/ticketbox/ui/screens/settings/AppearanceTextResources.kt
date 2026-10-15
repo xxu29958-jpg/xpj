@@ -20,12 +20,6 @@ internal fun appSkinNameRes(skin: AppSkin): Int = when (skin) {
 }
 
 @StringRes
-internal fun appSkinDescriptionRes(skin: AppSkin): Int = when (skin) {
-    AppSkin.Paper -> R.string.appearance_skin_description_paper
-    AppSkin.Midnight -> R.string.appearance_skin_description_midnight
-}
-
-@StringRes
 internal fun immersionModeNameRes(mode: ImmersionMode): Int = when (mode) {
     ImmersionMode.Atmosphere -> R.string.appearance_immersion_name_atmosphere
     ImmersionMode.Balanced -> R.string.appearance_immersion_name_balanced

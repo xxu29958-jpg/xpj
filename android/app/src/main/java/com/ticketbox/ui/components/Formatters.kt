@@ -172,11 +172,6 @@ fun displayTime(value: String?): String {
         .getOrElse { value.replace("T", " ").removeSuffix("Z") }
 }
 
-fun displayCompactTime(value: String?): String {
-    val localDateTime = parseLocalDateTime(value) ?: return displayTime(value)
-    return localDateTime.format(DateTimeFormatter.ofPattern("M/d HH:mm"))
-}
-
 fun displayDate(value: String?): String {
     if (value.isNullOrBlank()) return "未设置"
     val localZone = ZoneId.systemDefault()
@@ -230,14 +225,4 @@ private fun parseLocalDateTime(
         .recoverCatching { LocalDateTime.parse(value) }
         .recoverCatching { LocalDate.parse(value.take(10)).atStartOfDay() }
         .getOrNull()
-}
-
-fun formatStorageSize(bytes: Long): String {
-    if (bytes < 1024) return "$bytes B"
-    val kb = BigDecimal(bytes).divide(BigDecimal(1024), 1, RoundingMode.HALF_UP)
-    if (kb < BigDecimal(1024)) return "${kb.stripTrailingZeros().toPlainString()} KB"
-    val mb = kb.divide(BigDecimal(1024), 1, RoundingMode.HALF_UP)
-    if (mb < BigDecimal(1024)) return "${mb.stripTrailingZeros().toPlainString()} MB"
-    val gb = mb.divide(BigDecimal(1024), 1, RoundingMode.HALF_UP)
-    return "${gb.stripTrailingZeros().toPlainString()} GB"
 }

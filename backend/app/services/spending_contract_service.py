@@ -366,10 +366,6 @@ def monthly_recurring_items_query(
     )
 
 
-def confirmed_ordered(query: Select[tuple[Expense]]) -> Select[tuple[Expense]]:
-    return query.order_by(Expense.accounting_date.desc(), stat_sort_time_expr().desc(), Expense.id.desc())
-
-
 def canonical_merchant_display(merchant: str | None, alias_map: dict[str, str]) -> str:
     display = display_merchant(merchant)
     if not display:

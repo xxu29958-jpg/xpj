@@ -12,7 +12,7 @@ from sqlalchemy import select
 from app.database import SessionLocal
 from app.models import Expense, LedgerMember
 from app.services.expense_accounting_time_service import refresh_legacy_expense_time
-from app.services.merchant_alias_service import resolve_canonical_merchant
+from app.services.merchant_alias_service import canonical_merchant_for, enabled_merchant_alias_map
 from tests._infra.assets import PNG_BYTES
 
 
@@ -205,7 +205,7 @@ def test_viewer_cannot_mutate_merchant_aliases(client: TestClient, *, identity) 
     assert len(listed.json()["items"]) == 1
 
 
-def test_resolve_canonical_merchant_uses_enabled_alias_only(client: TestClient, *, identity) -> None:
+def test_merchant_resolution_uses_only_the_ledgers_enabled_aliases(client: TestClient, *, identity) -> None:
     _create_alias(client, identity.app_headers, canonical="星巴克", alias="STARBUCKS 国贸店")
     _create_alias(
         client,
@@ -217,19 +217,15 @@ def test_resolve_canonical_merchant_uses_enabled_alias_only(client: TestClient, 
 
     with SessionLocal() as db:
         assert (
-            resolve_canonical_merchant(db, tenant_id="owner", merchant=" starbucks 国贸店 ")
+            canonical_merchant_for(" starbucks 国贸店 ", alias_map=enabled_merchant_alias_map(db, tenant_id="owner"))
             == "星巴克"
         )
         assert (
-            resolve_canonical_merchant(db, tenant_id="owner", merchant="KFC 国贸店")
+            canonical_merchant_for("KFC 国贸店", alias_map=enabled_merchant_alias_map(db, tenant_id="owner"))
             == "KFC 国贸店"
         )
         assert (
-            resolve_canonical_merchant(
-                db,
-                tenant_id="tester_1",
-                merchant="STARBUCKS 国贸店",
-            )
+            canonical_merchant_for("STARBUCKS 国贸店", alias_map=enabled_merchant_alias_map(db, tenant_id="tester_1"))
             == "STARBUCKS 国贸店"
         )
 
