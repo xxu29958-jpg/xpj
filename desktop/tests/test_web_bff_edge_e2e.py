@@ -513,7 +513,7 @@ def test_real_backend_bootstrap_pair_bridge_render_probe(
     assert session.session_token not in str(tmp_path / f"edge-real-{width}x{height}")
 
 
-def test_real_backend_unpaired_bridge_renders_manager_recovery_action(
+def test_real_backend_unpaired_bridge_opens_manager_connection_flow(
     tmp_path: Path,
     real_backend: RealBackend,
 ) -> None:
@@ -522,9 +522,12 @@ def test_real_backend_unpaired_bridge_renders_manager_recovery_action(
     with _serving(manager):
         cookie = manager_bootstrap_cookies(manager, tmp_path / "unpaired-bootstrap.html")
         status, body = manager_get(manager, "/web", cookie)
+        assert status == 302
+        assert body == ""
+        status, body = manager_get(manager, "/", cookie)
 
-    assert status == 401
-    assert "桌面账本尚未绑定，请从系统管理完成绑定。" in body
+    assert status == 200
+    assert 'id="pairingCodeInput"' in body
     assert _INSTANCE_SECRET not in body
 
 
