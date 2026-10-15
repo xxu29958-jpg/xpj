@@ -4,6 +4,7 @@ import logging
 import threading
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, time, timedelta, tzinfo
+from hashlib import sha256
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy.exc import SQLAlchemyError
@@ -144,15 +145,20 @@ def _run_scheduled_fx_sync() -> bool:
     try:
         with SessionLocal() as db:
             try:
-                require_runtime_home_currency_code(db)
+                home_currency = require_runtime_home_currency_code(db)
             except AppError as exc:
                 if exc.error == "currency_adoption_required":
                     return False  # Initial setup has not chosen a currency yet; try the next short tick.
                 raise
             db.rollback()  # End the currency read before the independently committed scheduler lease.
+            settings = get_settings()
+            source_url = settings.fx_rate_ecb_url if settings.fx_rate_source == "ecb" else settings.fx_rate_frankfurter_url
+            # A new source must not consume another source's occurrence. Workers
+            # using the same source still share its lease, including after a restart.
+            source_key = sha256(f"{home_currency}\0{settings.fx_rate_source}\0{source_url}".encode()).hexdigest()[:20]
             if not try_claim_scheduler_lease(
                 db,
-                name="fx_rate_sync",
+                name=f"fx_rate_sync_{source_key}",
                 lease_seconds=_SCHEDULER_LEASE_SECONDS,
             ):
                 logger.info("FX sync skipped: scheduler lease is held")
