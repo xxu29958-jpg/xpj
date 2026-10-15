@@ -17,9 +17,6 @@ enum class IncomePlanDraftField {
 fun IncomePlanCreateViewModel.updateDraftLabel(value: String) =
     updateDraftField(IncomePlanDraftField.Label, value)
 
-fun IncomePlanCreateViewModel.updateDraftIncomeMonth(value: String) =
-    updateDraftField(IncomePlanDraftField.IncomeMonth, value)
-
 fun IncomePlanCreateViewModel.updateDraftAmount(value: String) =
     updateDraftField(IncomePlanDraftField.Amount, value)
 

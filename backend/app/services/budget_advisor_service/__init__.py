@@ -7,8 +7,6 @@ private sub-modules carry the implementation:
 - ``_models``: ``BudgetInputs`` / ``BudgetAdvice`` dataclasses (the
   allowed-fields contract — see ADR-0036) + ``BudgetAdvisorProvider``
   Protocol.
-- ``_aliases``: tenant-scoped real → opaque maps backed by the three
-  ``ai_*_anon_map`` tables.
 - ``_outbound_guard``: schema check that runs immediately before the
   HTTP body is built. Fail-closed on any drift.
 - ``_providers``: ``EmptyBudgetAdvisor`` (default) / ``MockBudgetAdvisor``
@@ -26,16 +24,6 @@ with an explicit user-confirmation step.
 
 from __future__ import annotations
 
-from app.services.budget_advisor_service._aliases import (
-    BudgetAdvisorAliasAllocationError,
-    assign_transaction_temp_id,
-    cleanup_session,
-    get_or_create_member_anon,
-    get_or_create_merchant_anon,
-    resolve_member_anon,
-    resolve_merchant_anon,
-    resolve_transaction_temp_id,
-)
 from app.services.budget_advisor_service._audit import (
     LIVE_PROVIDER_NAMES,
     AdvisorStatus,
@@ -43,13 +31,10 @@ from app.services.budget_advisor_service._audit import (
     cleanup_expired_audit_logs,
     complete_live_call_audit_row,
     compute_input_hash,
-    enforce_live_call_budget,
     expired_audit_logs,
-    is_live_provider,
     latest_audit_row,
     mask_base_url,
     recent_audit_rows,
-    record_audit_row,
     reserve_live_call_budget,
 )
 from app.services.budget_advisor_service._inputs_builder import (
@@ -88,7 +73,6 @@ __all__ = [
     "AdvisorRunResult",
     "AdvisorStatus",
     "BudgetAdvice",
-    "BudgetAdvisorAliasAllocationError",
     "BudgetAdvisorProvider",
     "BudgetInputs",
     "BudgetSuggestion",
@@ -99,31 +83,21 @@ __all__ = [
     "MockBudgetAdvisor",
     "OpenAiCompatBudgetAdvisor",
     "advisor_status_for_tenant",
-    "assign_transaction_temp_id",
     "BudgetInputProjection",
     "read_budget_inputs",
     "canonical_provider_name",
-    "cleanup_session",
     "cleanup_expired_audit_logs",
     "complete_live_call_audit_row",
     "clean_provider_name",
     "compute_input_hash",
-    "enforce_live_call_budget",
     "expired_audit_logs",
     "get_budget_advisor",
     "get_advisor_readiness",
-    "get_or_create_member_anon",
-    "get_or_create_merchant_anon",
-    "is_live_provider",
     "is_known_provider",
     "latest_audit_row",
     "mask_base_url",
     "recent_audit_rows",
-    "record_audit_row",
     "reserve_live_call_budget",
-    "resolve_member_anon",
-    "resolve_merchant_anon",
-    "resolve_transaction_temp_id",
     "run_budget_advisor",
     "to_outbound_dict",
     "validate_outbound_payload",

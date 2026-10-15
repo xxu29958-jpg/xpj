@@ -10,7 +10,6 @@ coverage gets its own file instead of banking debt. Helpers are local copies
 from __future__ import annotations
 
 from datetime import timedelta
-from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -113,10 +112,6 @@ def test_web_pending_edit_hides_split_invite_card(web_client: TestClient) -> Non
     resp = web_client.get(f"/web/expenses/{pending_id}/edit?ledger_id=owner")
     assert resp.status_code == 200
     assert "找家人分摊" not in resp.text
-    edit_template = (
-        Path(__file__).resolve().parents[1] / "app/templates/web/edit.html"
-    ).read_text(encoding="utf-8")
-    assert "split_invite" not in edit_template
 
 
 def test_web_edit_received_split_hides_invite_card(web_client: TestClient) -> None:

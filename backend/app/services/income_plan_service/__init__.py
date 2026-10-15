@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.errors import AppError
 from app.ledger_scope import ledger_filter, ledger_scoped_select
-from app.models import IncomePlanRevision, MonthlyIncomePlan
+from app.models import MonthlyIncomePlan
 from app.services.currency_binding_service import (
     resolve_write_capability,
 )
@@ -62,18 +62,6 @@ def list_income_plans(
     return list(db.scalars(statement))
 
 
-def list_applicable_income_plans(
-    db: Session,
-    *,
-    tenant_id: str,
-    month: str,
-    as_of: datetime | None = None,
-    timezone_name: str | None = None,
-) -> list[IncomePlanRevision]:
-    """The declared whole-month estimates, including archived plans' earlier revisions."""
-    return list(income_forecast(
-        db, tenant_id=tenant_id, month=month, as_of=as_of, timezone_name=timezone_name,
-    ).entries)
 
 
 def income_forecast(
@@ -484,7 +472,6 @@ __all__ = [
     "create_income_plan",
     "get_income_plan",
     "income_forecast",
-    "list_applicable_income_plans",
     "list_income_plans",
     "restore_income_plan",
     "total_monthly_income_cents",

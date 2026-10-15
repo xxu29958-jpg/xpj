@@ -76,7 +76,7 @@ class IncomePlanCreateViewModelTest {
         viewModel.updateDraftLabel("项目尾款")
         viewModel.updateDraftSource(IncomeSourceType.FREELANCE)
         viewModel.updateDraftFrequency(IncomeFrequency.ONE_TIME)
-        viewModel.updateDraftIncomeMonth("2026-06")
+        viewModel.updateDraftField(IncomePlanDraftField.IncomeMonth, "2026-06")
         viewModel.updateDraftAmount("2500")
         viewModel.updateDraftPayDay("28")
         viewModel.submit()
@@ -154,7 +154,7 @@ class IncomePlanCreateViewModelTest {
         val viewModel = IncomePlanCreateViewModel(repo)
         advanceUntilIdle()
         viewModel.openOriginal(repo)
-        viewModel.updateDraftIncomeMonth("2026-06")
+        viewModel.updateDraftField(IncomePlanDraftField.IncomeMonth, "2026-06")
 
         viewModel.shiftDraftIncomeMonth(-1L)
         assertEquals("2026-05", viewModel.state.value.session?.draft?.incomeMonthInput)

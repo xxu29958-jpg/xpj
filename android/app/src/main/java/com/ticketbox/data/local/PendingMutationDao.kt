@@ -24,8 +24,7 @@ import kotlinx.coroutines.flow.Flow
  * Observable queue/conflict/failure reads keep original rows visible even
  * when an ordinary FAILED upload no longer blocks its sibling. [allRows]
  * includes every binding and raw type for the file owner's reference proof.
- * [recoverStaleInFlight] and [deleteResolvedBefore] retain their existing
- * recovery and completed-row retention responsibilities.
+ * [recoverStaleInFlight] retains its existing recovery responsibility.
  */
 @Dao
 interface PendingMutationDao {
@@ -234,14 +233,12 @@ interface PendingMutationDao {
      * ISO TEXT column (see [OutboxRepository.ISO]) that SQLite compares
      * lexicographically; a numeric cutoff would not compare meaningfully against
      * it. The repository converts ``now - cap`` to the same fixed-width format,
-     * exactly like [recoverStaleInFlight]'s ``staleCutoffIso`` and
-     * [deleteResolvedBefore]'s ``cutoffIso``.
+     * exactly like [recoverStaleInFlight]'s ``staleCutoffIso``.
      *
      * Intentionally **not binding-scoped** (no ``ownerKey`` / ``ledgerId``
      * filter, unlike the drain reads): a stale PENDING row under ANY binding is a
      * double-apply risk the moment that binding becomes active again, so the
-     * reaper must catch all of them — same global reach as the
-     * [deleteResolvedBefore] / [clearAll] DAO ops. The ``status = 'pending'``
+     * reaper must catch all of them. The ``status = 'pending'``
      * guard means only un-dispatched rows are affected; IN_FLIGHT / CONFLICT /
      * FAILED / DONE rows are never touched (a CONFLICT/FAILED row is already
      * awaiting the user, and an IN_FLIGHT row is mid-send).
@@ -700,26 +697,6 @@ interface PendingMutationDao {
         """,
     )
     suspend fun deleteUnfinishedUploadGroup(ownerKey: String, ledgerId: String, targetId: String): Int
-
-    /**
-     * Prune DONE rows older than [cutoffIso] (ISO-Z). FAILED rows are
-     * intentionally excluded: they still need explicit user retry/drop
-     * and must not disappear because a retention window elapsed.
-     */
-    @Query(
-        """
-        DELETE FROM pending_mutations
-        WHERE status = :doneStatus
-          AND completedAt IS NOT NULL
-          AND completedAt < :cutoffIso
-          AND (lastError IS NULL OR (lastError NOT GLOB 'correction_refresh_required:*'
-              AND lastError != 'budget_read_refresh_required'))
-        """,
-    )
-    suspend fun deleteResolvedBefore(
-        doneStatus: String,
-        cutoffIso: String,
-    ): Int
 
     /**
      * Drop every row in the outbox. Used only for explicit sign-out

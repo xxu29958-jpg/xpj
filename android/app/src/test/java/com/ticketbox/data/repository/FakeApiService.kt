@@ -535,16 +535,6 @@ internal class FakeApiService(
         idempotencyKey: String?,
     ): ExpenseDto = unsupported()
 
-    override suspend fun acceptPendingSuggestion(
-        id: Long,
-        decisionPublicId: String,
-    ): StatusDto = unsupported()
-
-    override suspend fun rejectPendingSuggestion(
-        id: Long,
-        decisionPublicId: String,
-    ): StatusDto = unsupported()
-
     override suspend fun markNotDuplicate(
         id: String,
         request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
@@ -767,7 +757,6 @@ internal class FakeApiService(
 
     override suspend fun debt(publicId: String): com.ticketbox.data.remote.dto.DebtDto = unsupported()
     override suspend fun debtActivity(publicId: String, page: Int, focusRepayment: String?): com.ticketbox.data.remote.dto.DebtActivityListDto = unsupported()
-    override suspend fun debtRepayments(publicId: String, page: Int): com.ticketbox.data.remote.dto.RepaymentFactListDto = unsupported()
     override suspend fun voidDebtRepayment(
         publicId: String,
         request: com.ticketbox.data.remote.dto.RepaymentVoidCreateRequestDto,
@@ -860,7 +849,6 @@ internal class FakeApiService(
     override suspend fun updateIncomePlan(publicId: String, request: com.ticketbox.data.remote.dto.IncomePlanUpdateRequestDto, idempotencyKey: String?): com.ticketbox.data.remote.dto.IncomePlanDto = unsupported()
     override suspend fun archiveIncomePlan(publicId: String, request: com.ticketbox.data.remote.dto.IncomePlanTokenRequestDto): com.ticketbox.data.remote.dto.IncomePlanDto = unsupported()
     override suspend fun restoreIncomePlan(publicId: String, request: com.ticketbox.data.remote.dto.IncomePlanTokenRequestDto): com.ticketbox.data.remote.dto.IncomePlanDto = unsupported()
-    override suspend fun budgetDiscretionary(savingsTargetCents: Long, reservedBufferCents: Long): com.ticketbox.data.remote.dto.DiscretionaryResponseDto = unsupported()
     override suspend fun exchangeRates(currencyCode: String?, homeCurrencyCode: String?, rateDate: String?, limit: Int): com.ticketbox.data.remote.dto.ExchangeRateListDto = unsupported()
     override suspend fun referenceRates(homeCurrencyCode: String, currencyCode: String?, rateDate: String?): com.ticketbox.data.remote.dto.ReferenceRatesDto = unsupported()
     override suspend fun acquireReferenceRates(request: com.ticketbox.data.remote.dto.ReferenceRateRequestDto): com.ticketbox.data.remote.dto.ReferenceRatesDto = unsupported()

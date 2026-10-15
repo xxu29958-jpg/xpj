@@ -412,49 +412,6 @@ def _settle_expiry_before_transition(
     return fresh
 
 
-def expire_invitations(db: Session) -> int:
-    """Sweeper: anything ``invited`` with ``expires_at < now`` -> expired.
-
-    A single guarded ``UPDATE ... WHERE status='invited' ... RETURNING`` means
-    a row concurrently accepted/rejected/cancelled after an earlier read can
-    never be clobbered to expired.
-    """
-    now = now_utc()
-    candidate_id = db.scalar(
-        select(BillSplitInvitation.id)
-        .where(BillSplitInvitation.status == "invited")
-        .where(BillSplitInvitation.expires_at < now)
-        .limit(1)
-    )
-    if candidate_id is None:
-        return 0
-    resolve_write_capability(db)
-    expired = db.execute(
-        update(BillSplitInvitation)
-        .where(BillSplitInvitation.status == "invited")
-        .where(BillSplitInvitation.expires_at <= now)
-        .values(status="expired", expired_at=now)
-        .returning(
-            BillSplitInvitation.sender_ledger_id,
-            BillSplitInvitation.receiver_account_id,
-            BillSplitInvitation.public_id,
-        )
-        .execution_options(synchronize_session=False)
-    ).all()
-    for row in expired:
-        _audit(
-            db,
-            row.sender_ledger_id,
-            "bill_split_expired",
-            actor_account_id=None,
-            target_account_id=row.receiver_account_id,
-            invitation_public_id=row.public_id,
-        )
-    if expired:
-        db.commit()
-    return len(expired)
-
-
 def _mark_expired(db: Session, inv: BillSplitInvitation) -> bool:
     """Best-effort expiry flip; false means a peer settled the row first."""
     resolve_write_capability(db)

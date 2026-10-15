@@ -253,23 +253,7 @@ internal class ExpenseCorrectionRefreshRecoveryTest {
         assertTrue(fixture.outbox.dequeueNextRunnable().isEmpty())
     }
 
-    @Test
-    fun completedRowCleanupWaitsForCanonicalRecoveryWithoutChangingTheOriginal() = runTest {
-        val fixture = CorrectionRefreshFixture()
-        val original = fixture.seed(42L)
-        val future = OutboxRepository(fixture.queue,
-            Clock.fixed(Instant.parse("2026-09-20T00:00:00Z"), ZoneOffset.UTC),
-            bindingProvider = { fixture.binding.sessionStore.currentSession().toOutboxBinding() }, onRowsDeleted = {})
 
-        assertEquals(0, future.gcCompleted())
-        assertEquals(original, fixture.queue.rows[original.id])
-        fixture.read = { fixture.expense(it, 11L) }
-        fixture.streamVersions[42L] = 11L
-        fixture.repository.fetchExpense(42L).getOrThrow()
-        assertEquals(original.copy(lastError = null), fixture.queue.rows[original.id])
-        assertEquals(1, future.gcCompleted())
-        assertTrue(fixture.queue.rows.isEmpty())
-    }
 }
 
 private class CorrectionRefreshFixture(failAcknowledgment: () -> Boolean = { false }) : ExpensePendingRepositoryOutboxTestBase() {

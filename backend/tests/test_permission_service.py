@@ -35,10 +35,7 @@ def test_app_roles_define_business_permissions() -> None:
     assert not permission_service.can_create_pending_expense(viewer)
 
     assert permission_service.can_manage_members(owner)
-    assert permission_service.can_manage_ledger(owner)
-    assert permission_service.can_manage_upload_links(owner)
     assert not permission_service.can_manage_members(member)
-    assert not permission_service.can_manage_ledger(viewer)
 
 
 def test_admin_scope_is_maintenance_not_ledger_business_role() -> None:
@@ -47,8 +44,6 @@ def test_admin_scope_is_maintenance_not_ledger_business_role() -> None:
     assert not permission_service.can_write_expense(admin_owner)
     assert not permission_service.can_create_pending_expense(admin_owner)
     assert not permission_service.can_manage_members(admin_owner)
-    assert not permission_service.can_manage_ledger(admin_owner)
-    assert not permission_service.can_manage_upload_links(admin_owner)
     assert permission_service.can_use_admin_maintenance(admin_owner)
 
     with pytest.raises(AppError) as denied:

@@ -27,7 +27,7 @@
     <string name="ledger_manual_save_button">记入账本</string>
     <string name="ledger_manual_recent_label">最近</string>
 
-    <!-- CategoryFilterRow：分类筛选行 -->
+    <!-- 流水分类筛选 -->
     <string name="ledger_category_filter_label">分类</string>
     <string name="ledger_category_filter_all">全部分类</string>
 
@@ -124,17 +124,6 @@
     <string name="ledger_msg_batch_part_failed">%1$d 笔需重新同步</string>
     <string name="ledger_msg_batch_none">没有需要修改的账单。</string>
 
-    <!-- LedgerStatusText：状态行 / 筛选摘要（ledgerCombinedStatusLine + ledgerFilterSummary）。
-         前后空格、全角标点必须与原字面量逐字一致，含前导空格的串用双引号包裹以免被裁剪。 -->
-    <string name="ledger_status_syncing">更新中</string>
-    <string name="ledger_status_synced_at">更新完成 · %1$s</string>
-    <string name="ledger_status_offline">离线可用</string>
-    <string name="ledger_status_line">%1$s · %2$s</string>
-    <string name="ledger_filter_summary_month_all">全部月份</string>
-    <string name="ledger_filter_summary_category_all">全部分类</string>
-    <string name="ledger_filter_summary_tag">" · 标签「%1$s」"</string>
-    <string name="ledger_filter_summary_query">" · 搜索「%1$s」"</string>
-    <string name="ledger_filter_summary_template">当前查看：%1$s · %2$s%3$s%4$s</string>
 
     <!-- LedgerGrouping：日期分组头（ledgerDayLabel）。月/日 格式 pattern 不外置，见代码注释。 -->
     <string name="ledger_day_no_date">账务日期待核对</string>

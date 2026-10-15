@@ -60,12 +60,6 @@ interface BudgetApi {
         @Header("Idempotency-Key") idempotencyKey: String? = null,
     ): BudgetMonthlyDto
 
-    @GET("api/budget/discretionary")
-    suspend fun budgetDiscretionary(
-        @Query("savings_target_cents") savingsTargetCents: Long = 0L,
-        @Query("reserved_buffer_cents") reservedBufferCents: Long = 0L,
-    ): com.ticketbox.data.remote.dto.DiscretionaryResponseDto
-
     @POST("api/budget/advise")
     suspend fun budgetAdvise(
         @Body request: com.ticketbox.data.remote.dto.BudgetAdviseRequestDto,

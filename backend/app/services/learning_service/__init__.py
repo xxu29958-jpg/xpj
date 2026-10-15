@@ -10,7 +10,7 @@ Public surface:
   algorithm produces a fresh suggestion for the same subject, the old
   decision is marked ``superseded`` and the new id is linked in
   ``superseded_by_id``.
-* :func:`recent_events_for_subject` / :func:`active_decision_for_subject`
+* :func:`active_decision_for_subject`
   — read-side helpers the suggestion / scoring services use to look up
   the user's prior reactions when deciding whether to suggest again.
 
@@ -54,13 +54,9 @@ from app.services.learning_service._algorithm_registry import (
     AlgorithmType,
     build_feedback_marker,
     canonical_marker_hash,
-    decision_types,
 )
 from app.services.learning_service._algorithm_registry import (
     get as get_algorithm_type,
-)
-from app.services.learning_service._algorithm_registry import (
-    is_registered as is_algorithm_type_registered,
 )
 from app.services.learning_service._budget_quantile import (
     ALGORITHM_VERSION as BUDGET_QUANTILE_VERSION,
@@ -148,21 +144,16 @@ __all__ = [
     "close_active_decisions_for_subject",
     "compute_budget_quantile_suggestion",
     "compute_category_suggestion",
-    "decision_types",
     "get_algorithm_type",
     "get_status_overview",
     "learning_decision_expenses",
     "learning_activity",
-    "is_algorithm_type_registered",
-    "latest_ocr_fact_for_expense",
     "list_algorithm_versions",
-    "ocr_facts_for_expense",
     "read_ocr_text",
     "read_ocr_texts",
     "record_decision",
     "record_event",
     "record_ocr_fact",
-    "recent_events_for_subject",
     "run_full_maintenance",
     "score_duplicate_candidates",
     "duplicate_feedback_expense_ids",
@@ -417,39 +408,6 @@ def find_decision_by_public_id(
     )
 
 
-def recent_events_for_subject(
-    db: Session,
-    *,
-    tenant_id: str,
-    subject_kind: str,
-    subject_id: int | None,
-    event_types: Iterable[str] | None = None,
-    limit: int = 50,
-) -> list[LedgerLearningEvent]:
-    """Latest events on (subject_kind, subject_id), newest first.
-
-    ``event_types``, when provided, filters by event type — typical
-    callers want "every reject the user has made on this merchant" or
-    similar. ``limit`` defaults to 50 because anything above the
-    recency horizon is usually not actionable.
-    """
-
-    stmt = (
-        select(LedgerLearningEvent)
-        .where(LedgerLearningEvent.tenant_id == tenant_id)
-        .where(LedgerLearningEvent.subject_kind == subject_kind)
-        .order_by(LedgerLearningEvent.created_at.desc())
-        .limit(limit)
-    )
-    if subject_id is None:
-        stmt = stmt.where(LedgerLearningEvent.subject_id.is_(None))
-    else:
-        stmt = stmt.where(LedgerLearningEvent.subject_id == subject_id)
-    if event_types:
-        stmt = stmt.where(LedgerLearningEvent.event_type.in_(list(event_types)))
-    return list(db.scalars(stmt))
-
-
 @dataclass(frozen=True)
 class OcrFactDraft:
     """Caller shape for :func:`record_ocr_fact`.
@@ -515,56 +473,6 @@ def record_ocr_fact(
     db.add(row)
     db.flush()
     return row
-
-
-def ocr_facts_for_expense(
-    db: Session,
-    *,
-    tenant_id: str,
-    expense_id: int,
-    limit: int = 20,
-) -> list[OcrFact]:
-    """Return OCR facts for ``expense_id`` newest first.
-
-    Caller can ask for more than the default 20 if they really want the
-    full history (typical UI inspection shows the latest one plus a
-    "show prior runs" expander).
-    """
-
-    stmt = (
-        select(OcrFact)
-        .where(OcrFact.tenant_id == tenant_id)
-        .where(OcrFact.expense_id == expense_id)
-        .order_by(OcrFact.extracted_at.desc(), OcrFact.id.desc())
-        .limit(limit)
-    )
-    return list(db.scalars(stmt))
-
-
-def latest_ocr_fact_for_expense(
-    db: Session,
-    *,
-    tenant_id: str,
-    expense_id: int,
-) -> OcrFact | None:
-    """Return the most recent ``ocr_facts`` row for ``expense_id``, or
-    ``None`` when the expense has never been OCR'd into the new table.
-
-    This is the canonical read API for the OCR single-source migration
-    (v1.2 P0). Consumers that need just the text should call
-    :func:`read_ocr_text`, which wraps this lookup. After step 4
-    dropped the ``expenses.raw_text`` fallback, ``None`` here means
-    "no OCR text on record" — the legacy column is no longer
-    consulted by the helper, even when it still happens to be set.
-    """
-
-    return db.scalar(
-        select(OcrFact)
-        .where(OcrFact.tenant_id == tenant_id)
-        .where(OcrFact.expense_id == expense_id)
-        .order_by(OcrFact.extracted_at.desc(), OcrFact.id.desc())
-        .limit(1)
-    )
 
 
 def read_ocr_text(

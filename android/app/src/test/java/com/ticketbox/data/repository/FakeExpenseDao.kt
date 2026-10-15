@@ -6,7 +6,6 @@ import com.ticketbox.data.local.ExpenseEntity
 import com.ticketbox.data.local.ExpenseOffsetStreamEntity
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.map
 
 internal class FakeExpenseDao(
     private val events: MutableList<String> = mutableListOf(),
@@ -62,17 +61,11 @@ internal class FakeExpenseDao(
 
     override fun observeConfirmed(ledgerId: String): Flow<List<ExpenseEntity>> = flowFor(ledgerId)
 
-    override fun observeConfirmedStreamRoots(ledgerId: String): Flow<List<ExpenseEntity>> =
-        flowFor(ledgerId).map { rows -> rows.filter(::hasCompleteStreamProjection) }
-
     override fun observeConfirmedStreamOffsets(ledgerId: String): Flow<List<ExpenseOffsetStreamEntity>> =
         offsetFlowFor(ledgerId)
 
     override suspend fun getConfirmedStreamOffsets(ledgerId: String): List<ExpenseOffsetStreamEntity> =
         offsetSnapshot(ledgerId)
-
-    override suspend fun confirmedStreamOffsetPublicIdsForLedger(ledgerId: String): List<String> =
-        offsetSnapshot(ledgerId).map { it.publicId }
 
     override suspend fun getConfirmed(ledgerId: String): List<ExpenseEntity> {
         return expenses.values
@@ -151,15 +144,6 @@ internal class FakeExpenseDao(
         emit(ledgerId)
     }
 
-    override suspend fun deleteConfirmedForLedger(ledgerId: String) {
-        expenses.values
-            .filter { it.ledgerId == ledgerId && it.status == "confirmed" }
-            .map { it.id }
-            .forEach { expenses.remove(it) }
-        emit(ledgerId)
-    }
-
-
     override suspend fun deleteConfirmedByServerIds(ledgerId: String, serverIds: List<Long>) {
         val remove = serverIds.toSet()
         expenses.values
@@ -194,28 +178,6 @@ internal class FakeExpenseDao(
             .map { it.key }
             .forEach(offsets::remove)
         emitOffsets(ledgerId)
-    }
-
-    override suspend fun applyConfirmedSyncForLedger(
-        ledgerId: String,
-        expenses: List<ExpenseEntity>,
-        replaceCache: Boolean,
-        pruneScope: Set<Long>?,
-    ) {
-        beforeApplyConfirmedSync?.invoke()
-        if (replaceCache) {
-            clearForLedger(ledgerId)
-        }
-        expenses.forEach { upsertByServerIdForLedger(ledgerId, it) }
-        if (pruneScope != null) {
-            val remoteServerIds = expenses.map { it.serverId }.toSet()
-            val staleServerIds = confirmedServerIdsForLedger(ledgerId)
-                .filter { it !in remoteServerIds && it in pruneScope }
-            if (staleServerIds.isNotEmpty()) {
-                deleteConfirmedByServerIds(ledgerId, staleServerIds)
-            }
-        }
-        onAfterApplyConfirmedSync?.invoke()
     }
 
     override suspend fun applyConfirmedStreamSyncForLedger(
@@ -253,9 +215,3 @@ internal class FakeExpenseDao(
         offsetFlowFor(ledgerId).value = offsetSnapshot(ledgerId)
     }
 }
-
-private fun hasCompleteStreamProjection(expense: ExpenseEntity): Boolean =
-    expense.streamDate != null &&
-        expense.streamAmountCents != null &&
-        expense.lineageStatus != null &&
-        expense.lineageHomeNetCents != null

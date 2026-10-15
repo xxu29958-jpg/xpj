@@ -1,45 +1,17 @@
-"""Alias map roundtrip and outbound payload schema guard."""
+"""Current advisor outbound payload schema and privacy guard."""
 
 from __future__ import annotations
 
 import pytest
 
-from app.database import SessionLocal
 from app.errors import DataIntegrityError
-from app.models import Account, Ledger
 from app.services.budget_advisor_service import (
-    BudgetAdvisorAliasAllocationError,
     BudgetInputs,
     CategorySnapshot,
-    assign_transaction_temp_id,
-    cleanup_session,
-    get_or_create_member_anon,
-    get_or_create_merchant_anon,
-    resolve_member_anon,
-    resolve_merchant_anon,
-    resolve_transaction_temp_id,
     to_outbound_dict,
     validate_outbound_payload,
 )
 from app.services.category_common import DEFAULT_CATEGORIES
-from app.services.time_service import now_utc
-
-
-def _make_extra_ledger(label: str) -> tuple[str, int]:
-    with SessionLocal() as db:
-        now = now_utc()
-        account = Account(display_name=f"alias-test-{label}", created_at=now)
-        db.add(account)
-        db.flush()
-        ledger = Ledger(
-            ledger_id=f"alias_{label}",
-            name=f"alias {label}",
-            owner_account_id=account.id,
-            created_at=now,
-        )
-        db.add(ledger)
-        db.commit()
-        return ledger.ledger_id, account.id
 
 
 def _full_inputs() -> BudgetInputs:
@@ -52,8 +24,6 @@ def _full_inputs() -> BudgetInputs:
     )
 
 
-def test_budget_advisor_alias_error_is_facade_exported() -> None:
-    assert issubclass(BudgetAdvisorAliasAllocationError, RuntimeError)
 
 
 def test_to_outbound_dict_only_contains_current_builder_keys() -> None:
@@ -235,87 +205,3 @@ def test_validate_rejects_non_list_row_collection() -> None:
 def test_validate_rejects_non_dict_inputs() -> None:
     with pytest.raises(DataIntegrityError):
         validate_outbound_payload("not a dict")  # type: ignore[arg-type]
-
-
-def test_merchant_anon_is_stable_within_tenant(identity) -> None:
-    tenant_id = "owner"
-    with SessionLocal() as db:
-        a = get_or_create_merchant_anon(
-            db, tenant_id=tenant_id, merchant_canonical="McDonalds"
-        )
-        db.commit()
-        b = get_or_create_merchant_anon(
-            db, tenant_id=tenant_id, merchant_canonical="McDonalds"
-        )
-        assert a == b == "merchant_001"
-        c = get_or_create_merchant_anon(
-            db, tenant_id=tenant_id, merchant_canonical="Starbucks"
-        )
-        db.commit()
-        assert c == "merchant_002"
-        assert (
-            resolve_merchant_anon(db, tenant_id=tenant_id, anon_id="merchant_001")
-            == "McDonalds"
-        )
-
-
-def test_member_anon_is_stable_per_account(identity) -> None:
-    tenant_id = "owner"
-    with SessionLocal() as db:
-        owner = db.query(Account).order_by(Account.id.asc()).first()
-        assert owner is not None
-        a = get_or_create_member_anon(db, tenant_id=tenant_id, account_id=owner.id)
-        db.commit()
-        b = get_or_create_member_anon(db, tenant_id=tenant_id, account_id=owner.id)
-        assert a == b == "member_1"
-        assert (
-            resolve_member_anon(db, tenant_id=tenant_id, anon_id="member_1")
-            == owner.id
-        )
-
-
-def test_transaction_temp_id_is_session_scoped(identity) -> None:
-    tenant_id = "owner"
-    s1 = "session-alpha"
-    s2 = "session-beta"
-    with SessionLocal() as db:
-        assign_transaction_temp_id(db, tenant_id=tenant_id, expense_id=10, session_id=s1)
-        assign_transaction_temp_id(db, tenant_id=tenant_id, expense_id=11, session_id=s1)
-        db.commit()
-        beta_temp = assign_transaction_temp_id(
-            db, tenant_id=tenant_id, expense_id=10, session_id=s2
-        )
-        db.commit()
-        assert beta_temp == "tx_001"
-        assert (
-            resolve_transaction_temp_id(
-                db, tenant_id=tenant_id, session_id=s1, temp_id="tx_001"
-            )
-            == 10
-        )
-        removed = cleanup_session(db, tenant_id=tenant_id, session_id=s1)
-        db.commit()
-        assert removed == 2
-        assert (
-            resolve_transaction_temp_id(
-                db, tenant_id=tenant_id, session_id=s2, temp_id="tx_001"
-            )
-            == 10
-        )
-
-
-def test_aliases_are_tenant_isolated(identity) -> None:
-    tenant_a = "owner"
-    tenant_b, _account_b = _make_extra_ledger("isolation_b")
-    with SessionLocal() as db_a:
-        a_id = get_or_create_merchant_anon(
-            db_a, tenant_id=tenant_a, merchant_canonical="McDonalds"
-        )
-        db_a.commit()
-        assert a_id == "merchant_001"
-    with SessionLocal() as db_b:
-        b_id = get_or_create_merchant_anon(
-            db_b, tenant_id=tenant_b, merchant_canonical="McDonalds"
-        )
-        db_b.commit()
-        assert b_id == "merchant_001"

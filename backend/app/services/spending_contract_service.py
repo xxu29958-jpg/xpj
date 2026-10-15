@@ -187,33 +187,6 @@ def count_undated_expenses(db: Session, *, tenant_id: str, category: str | None 
     return counts.get(normalize_category(category), 0) if category else sum(counts.values())
 
 
-def confirmed_amount_query(
-    *,
-    tenant_id: str,
-    month: str | None = None,
-    category: str | None = None,
-    tag: str | None = None,
-    timezone_name: str | None = None,
-) -> Select:
-    stream = confirmed_stream_query(
-        tenant_id=tenant_id,
-        month=month,
-        category=category,
-        tag=tag,
-        timezone_name=timezone_name,
-        amount_required=True,
-    )
-    return select(
-        stream.c.entry_id.label("id"),
-        stream.c.root_expense_id,
-        stream.c.entry_kind,
-        stream.c.stream_date,
-        stream.c.category,
-        stream.c.stream_amount_cents.label("amount_cents"),
-        stream.c.home_currency_code,
-    )
-
-
 def calendar_month_bounds(month: str) -> tuple[date, date]:
     year, month_number = parse_month(month)
     start = date(year, month_number, 1)

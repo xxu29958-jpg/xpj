@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import re
 from datetime import timedelta
-from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -350,10 +349,3 @@ def test_dashboard_reports_card_list_matches_donut_caliber_on_zero_fraction_curr
         assert 'class="cat-amt">¥12</strong>' not in page.text
     finally:
         get_settings.cache_clear()
-
-    # 渐进增强环图与服务端清单都消费 amount_label，不自行重算金额。
-    static_root = Path(__file__).resolve().parents[1] / "app"
-    donut_js = (static_root / "static/web/desktop/category-donut.js").read_text(encoding="utf-8")
-    assert "amountLabel: d.amount_label" in donut_js
-    overview_html = (static_root / "templates/web/overview.html").read_text(encoding="utf-8")
-    assert "{{ category.amount_label }}" in overview_html

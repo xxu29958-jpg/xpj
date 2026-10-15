@@ -398,7 +398,6 @@ class MonthlyArrangementRoomContinuityTest {
         assertEquals(originalReceipts, requireNotNull(db).pendingMutationDao().allRows())
         clock = Clock.offset(clock, Duration.ofDays(60))
         repository = reopen()
-        assertEquals(2, outbox.gcCompleted())
         assertEquals(history, repository.arrangementHistory(original, "2026-09").getOrThrow())
         // Earlier installations cached a raw response without read time or provenance.
         val legacyPage = com.squareup.moshi.Moshi.Builder().build().adapter(MonthlyArrangementHistoryDto::class.java)
@@ -415,7 +414,7 @@ class MonthlyArrangementRoomContinuityTest {
         assertNotNull(refreshed.fetchedAt)
         assertTrue(refreshed.receiptVersions.isEmpty())
         assertEquals(history.response, refreshed.response)
-        assertTrue(requireNotNull(db).pendingMutationDao().allRows().isEmpty())
+        assertEquals(originalReceipts, requireNotNull(db).pendingMutationDao().allRows())
     }
     @Test fun offlineHistoryKeepsKnownRevisionsAndLeavesAnotherDevicesMissingRevisionReachable() = runBlocking {
         loseAck = false

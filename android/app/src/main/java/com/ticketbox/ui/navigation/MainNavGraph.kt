@@ -375,9 +375,6 @@ private fun MainProductNavigationSync(
                     launchSingleTop = request.route == WORKSPACE_ROUTE
                 }
             }
-            MainNavigationRequest.Back -> {
-                navController.popBackStack()
-            }
             null -> Unit
         }
     }

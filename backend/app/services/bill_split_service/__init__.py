@@ -65,7 +65,6 @@ from app.services.bill_split_service._source_financial_change import (
 from app.services.bill_split_service._transitions import (
     accept_invitation,
     cancel_invitation,
-    expire_invitations,
     reject_invitation,
 )
 
@@ -81,7 +80,6 @@ __all__ = [
     "backfill_bill_split_debts",
     "cancel_invitation",
     "create_invitation",
-    "expire_invitations",
     "get_invitation",
     "get_bill_split_agreement",
     "list_accepted_source_relationships",

@@ -357,41 +357,6 @@ private fun ManualRecentMerchants(
 }
 
 @Composable
-fun CategoryFilterRow(
-    categories: List<String>,
-    selectedCategory: String,
-    onCategoryChange: (String) -> Unit,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
-        Text(
-            text = stringResource(R.string.ledger_category_filter_label),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.labelMedium,
-        )
-        AppCompactChips {
-            FlowRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
-            ) {
-                SelectableFilterChip(
-                    selected = selectedCategory.isBlank(),
-                    label = stringResource(R.string.ledger_category_filter_all),
-                    onClick = { onCategoryChange("") },
-                )
-                categories.forEach { category ->
-                    SelectableFilterChip(
-                        selected = selectedCategory == category,
-                        label = category,
-                        onClick = { onCategoryChange(category) },
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
 fun SelectableFilterChip(
     selected: Boolean,
     label: String,

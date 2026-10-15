@@ -20,7 +20,7 @@ from app.models import Account, Ledger
 from app.services.income_plan_service import (
     archive_income_plan,
     create_income_plan,
-    list_applicable_income_plans,
+    income_forecast,
     list_income_plans,
     restore_income_plan,
     total_monthly_income_cents,
@@ -398,13 +398,13 @@ def test_total_monthly_income_counts_one_time_only_for_matching_month(identity) 
             db, tenant_id="owner", month="2026-07", as_of=datetime(2026, 7, 31, tzinfo=UTC)
         )
         recurring_only = total_monthly_income_cents(db, tenant_id="owner")
-        june_rows = list_applicable_income_plans(
+        june_forecast = income_forecast(
             db, tenant_id="owner", month="2026-06", as_of=datetime(2026, 6, 30, tzinfo=UTC)
         )
     assert june_total == 1_200_000
     assert july_total == 1_300_000
     assert recurring_only == 1_000_000
-    assert {row.label for row in june_rows} == {"salary", "one-off June"}
+    assert {row.label for row in june_forecast.entries} == {"salary", "one-off June"}
 
 
 def test_whole_month_estimate_is_available_before_scheduled_day(identity) -> None:  # noqa: ARG001

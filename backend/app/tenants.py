@@ -128,11 +128,3 @@ def configured_tenants() -> tuple[Tenant, ...]:
     if len(ids) != len(set(ids)):
         raise AppError("server_error", status_code=500)
     return tenants
-
-
-def default_tenant() -> Tenant:
-    tenants = configured_tenants()
-    for tenant in tenants:
-        if tenant.id == DEFAULT_TENANT_ID:
-            return tenant
-    return tenants[0]

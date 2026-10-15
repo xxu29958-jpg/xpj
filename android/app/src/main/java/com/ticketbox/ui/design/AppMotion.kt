@@ -32,9 +32,6 @@ object AppMotion {
     const val slowMillis: Int = 320
     const val backgroundMillis: Int = 420
 
-    /** v0.10 拖拽拾起动效时长（DraggableReorderColumn 等）。 */
-    const val dragLiftMillis: Int = 160
-
     /** M3 emphasized standard —— 适合大部分状态切换（hover、selection、show/hide）。 */
     val easeStandard: Easing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
 
@@ -46,9 +43,6 @@ object AppMotion {
 
     /** 线性——只用于 loading 旋转、shimmer 这类等速场景。 */
     val easeLinear: Easing = LinearEasing
-
-    /** v0.10 回弹/超调——拾起后落位、按钮按下回弹等"有重量感"的反馈。 */
-    val easeOvershoot: Easing = CubicBezierEasing(0.34f, 1.56f, 0.64f, 1f)
 
     /** Material 3 默认 `FastOutSlowInEasing` 的别名；个别 M3 组件需要它的精确曲线。 */
     val easeM3Default: Easing = FastOutSlowInEasing

@@ -291,11 +291,6 @@ internal class ExpenseManualCreation(private val core: ExpenseRepositoryCore) {
     }
 }
 
-internal suspend fun ExpenseManualCreation.inspectOrigin(
-    binding: LogicalSessionBinding,
-    origin: RecurringPaymentOrigin,
-): RecurringPaymentOriginLookup = observeOrigin(binding, origin).first()
-
 private suspend fun classifyExactOrigin(
     rows: List<OutboxRow>,
     binding: LogicalSessionBinding,

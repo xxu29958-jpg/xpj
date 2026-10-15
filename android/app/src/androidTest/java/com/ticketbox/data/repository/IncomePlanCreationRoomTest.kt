@@ -2,10 +2,7 @@ package com.ticketbox.data.repository
 
 import android.os.Bundle
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertIsNotEnabled
-import com.ticketbox.ui.assertEditableTextEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -25,7 +22,6 @@ import com.ticketbox.ui.screens.IncomePlanScreen
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.IncomePlanEditViewModel
 import com.ticketbox.viewmodel.IncomePlanCreateViewModel
-import com.ticketbox.viewmodel.IncomePlanCreationPhase
 import com.ticketbox.viewmodel.incomePlanCreateViewModelFactory
 import com.ticketbox.viewmodel.IncomePlanViewModel
 import kotlinx.coroutines.cancel
@@ -33,7 +29,6 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -120,54 +115,6 @@ class IncomePlanCreationRoomTest {
         assertEquals(listOf(accepted), fixture.stored())
         assertTrue(fixture.network.creationCalls.isEmpty())
         compose.onNodeWithText("旅行补贴 · 2026-09").performScrollTo().assertIsDisplayed()
-    }
-
-    @Test fun collectedCompletedRecordRequiresExplicitDraftDiscardWithoutRepeatingTheAcceptedIncome() {
-        creationAck = CompletableDeferred()
-        installModels()
-        showModels()
-        compose.waitUntil(10_000) { model.value?.state?.value?.forecastMonth == "2026-09" }
-        compose.onNodeWithTag("income-creation-action").performClick()
-        compose.onAllNodes(hasSetTextAction())[0].performScrollTo().performTextInput("已保存的补贴")
-        compose.onAllNodes(hasSetTextAction())[1].performScrollTo().performTextInput("120.00")
-        closeSoftKeyboard()
-        compose.waitForIdle()
-        compose.onNodeWithText("保存收入计划").performClick()
-        compose.waitUntil(10_000) { fixture.stored().size == 1 && creator.value?.state?.value?.isSubmitting == true }
-        val original = requireNotNull(creator.value?.state?.value?.session)
-        fixture.network.loseResponse = false
-        assertEquals(1, runBlocking { fixture.drain() }.done)
-        stopModels() // The system retains Publishing before the local acknowledgement reaches its owner.
-        compose.runOnIdle { model.value = null }
-        compose.waitForIdle()
-        fixture.advanceToOctober()
-        val graph = fixture.reopen()
-        runBlocking {
-            val pending = requireNotNull(graph.incomePlanRepository.originalCreation(original.binding, original.creationKey).getOrThrow())
-            assertTrue(pending.isConfirmed)
-            assertEquals(1, fixture.outbox.gcCompleted(retentionMillis = 0))
-        }
-        assertTrue(fixture.stored().isEmpty())
-        val acceptedIncome = fixture.network.creationReceipts.toMap()
-        assertEquals(1, acceptedIncome.size)
-        installModels()
-        compose.waitUntil(10_000) { creator.value?.state?.value?.session?.phase == IncomePlanCreationPhase.NeedsRecovery }
-        compose.onNodeWithTag("income-creation-action").performClick()
-        com.ticketbox.ui.saveConsumerArtPreview("income-original-discard-before-scroll",
-            requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
-        compose.onNodeWithText("放弃草稿").performScrollTo().assertIsDisplayed().performClick()
-        compose.onNodeWithText("取消").performClick()
-        compose.onNodeWithText("已保存的补贴").performScrollTo().assertEditableTextEquals("已保存的补贴").assertIsNotEnabled()
-        assertEquals(original.creationKey, creator.value?.state?.value?.session?.creationKey)
-        compose.onNodeWithText("放弃草稿").performScrollTo().assertIsDisplayed().performClick()
-        compose.onNodeWithText("确认放弃").performClick()
-        compose.onNodeWithTag("income-creation-action").performClick()
-        assertEquals("", compose.onAllNodes(hasSetTextAction())[0].fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
-        assertEquals("", compose.onAllNodes(hasSetTextAction())[1].fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
-        assertNotEquals(original.creationKey, creator.value?.state?.value?.session?.creationKey)
-        assertEquals(acceptedIncome, fixture.network.creationReceipts)
-        assertEquals(1, fixture.network.creationCalls.size)
-        assertTrue(fixture.stored().isEmpty())
     }
 
     private fun showModels() {

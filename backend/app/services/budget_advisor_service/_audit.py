@@ -36,7 +36,6 @@ from app.services import app_meta_service
 from app.services.budget_advisor_service._models import BudgetAdvisorOutboundPayload
 from app.services.budget_advisor_service._provider_names import (
     LIVE_PROVIDER_NAMES,
-    clean_provider_name,
 )
 from app.services.budget_advisor_service._readiness import get_advisor_readiness
 from app.services.time_service import ensure_utc, now_utc, to_iso
@@ -46,12 +45,6 @@ IN_PROGRESS_ERROR_CODE = "ai_advisor_in_progress"
 # from the CSRF signing key (different app_meta row), so neither degrades to the
 # public placeholder ADMIN_TOKEN default.
 AUDIT_SIGNING_KEY_META = "budget_advisor_audit_key"
-
-
-def is_live_provider(name: str | None) -> bool:
-    """Return True for any provider that actually phones home."""
-
-    return clean_provider_name(name) in LIVE_PROVIDER_NAMES
 
 
 @dataclass(frozen=True)
@@ -95,17 +88,6 @@ def compute_input_hash(db: Session, payload: BudgetAdvisorOutboundPayload) -> st
     raw = json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8")
     secret = _audit_signing_secret(db)
     return hmac.new(secret.encode("utf-8"), raw, hashlib.sha256).hexdigest()
-
-
-def enforce_live_call_budget(
-    db: Session,
-    *,
-    tenant_id: str,
-    now: datetime | None = None,
-) -> None:
-    """Fail before an outbound advisor call exceeds configured cost caps."""
-
-    _check_live_call_budget(db, tenant_id=tenant_id, current=now or now_utc())
 
 
 def _check_live_call_budget(
@@ -266,43 +248,6 @@ def mask_base_url(value: str | None) -> str | None:
     return urlunparse(parsed._replace(netloc=netloc))
 
 
-def record_audit_row(
-    db: Session,
-    *,
-    tenant_id: str,
-    actor_account_id: int | None,
-    provider: str,
-    model: str | None,
-    base_url: str | None,
-    month: str | None,
-    input_hash: str,
-    success: bool,
-    error_code: str | None = None,
-    suggestion_count: int = 0,
-    duration_ms: int | None = None,
-    called_at: datetime | None = None,
-) -> BudgetAdvisorAuditLog:
-    cfg = get_settings()
-    row = BudgetAdvisorAuditLog(
-        tenant_id=tenant_id,
-        actor_account_id=actor_account_id,
-        provider=provider,
-        model=model,
-        base_url=mask_base_url(base_url),
-        month=month,
-        input_hash=input_hash,
-        success=1 if success else 0,
-        error_code=error_code,
-        suggestion_count=int(max(suggestion_count, 0)),
-        duration_ms=duration_ms,
-        retention_days=max(int(cfg.budget_advisor_audit_retention_days), 0),
-        called_at=called_at or now_utc(),
-    )
-    db.add(row)
-    db.commit()
-    return row
-
-
 def latest_audit_row(db: Session, *, tenant_id: str) -> BudgetAdvisorAuditLog | None:
     return db.scalar(
         select(BudgetAdvisorAuditLog)
@@ -397,12 +342,9 @@ __all__ = [
     "expired_audit_logs",
     "complete_live_call_audit_row",
     "compute_input_hash",
-    "enforce_live_call_budget",
     "reserve_live_call_budget",
-    "is_live_provider",
     "latest_audit_row",
     "mask_base_url",
     "recent_audit_rows",
-    "record_audit_row",
     "LIVE_PROVIDER_NAMES",
 ]

@@ -59,14 +59,6 @@ def can_manage_members(ctx: AuthContext) -> bool:
     return ctx.scope == SCOPE_APP and ctx.role in ROLES_MANAGE
 
 
-def can_manage_ledger(ctx: AuthContext) -> bool:
-    return ctx.scope == SCOPE_APP and ctx.role in ROLES_MANAGE
-
-
-def can_manage_upload_links(ctx: AuthContext) -> bool:
-    return ctx.scope == SCOPE_APP and ctx.role in ROLES_MANAGE
-
-
 def can_use_admin_maintenance(ctx: AuthContext) -> bool:
     return ctx.scope == SCOPE_ADMIN
 

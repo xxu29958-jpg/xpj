@@ -285,28 +285,6 @@ def cross_rate_to_home(
     return (home_per_eur / currency_per_eur).quantize(RATE_QUANT, rounding=ROUND_HALF_UP)
 
 
-def get_fx_rate(
-    db: Session,
-    *,
-    currency_code: str,
-    rate_date: date,
-    home_currency_code: str,
-    source: str | None = None,
-) -> FxRate | None:
-    currency = normalize_currency_code(currency_code)
-    home = normalize_currency_code(home_currency_code)
-    if currency == home:
-        return None
-    return db.scalar(
-        select(FxRate)
-        .where(FxRate.source == source if source else FxRate.source.in_((FX_SOURCE_ECB, FX_SOURCE_FRANKFURTER)))
-        .where(FxRate.home_currency_code == home)
-        .where(FxRate.currency_code == currency)
-        .where(FxRate.rate_date == rate_date)
-        .order_by(_reference_source_priority()).limit(1)
-    )
-
-
 def get_fx_rate_on_or_before(
     db: Session,
     *,

@@ -7,8 +7,6 @@
     <string name="components_async_image_loading">正在打开图片…</string>
     <string name="components_async_image_content_description">账单截图</string>
 
-    <!-- SafeBadge：安全状态徽标 -->
-    <string name="components_safe_badge_label">安全</string>
 
     <!-- AppDataAuthorityStrip：跨页面数据来源 / 缓存降级提示 -->
     <string name="components_data_authority_backend_title">账本数据</string>

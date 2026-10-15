@@ -21,10 +21,9 @@ from app.models import (
 from app.services.currency_adoption_service import (
     CurrencyAdoptionPreview,
     CurrencyAdoptionReceipt,
-    adopt_currency_binding,
+    adopt_currency_binding_for_installation_owner,
     adoption_preview,
 )
-from app.services.identity_service import authenticate_session_token, bootstrap_owner
 from app.tenants import AuthContext
 from tests._infra.c07_money_migration import (
     current_revision,
@@ -34,6 +33,7 @@ from tests._infra.c07_money_migration import (
     seed_legacy_ocr_amount_fact,
     seed_owner,
 )
+from tests._infra.currency import authenticate_migration_currency_owner
 
 pytestmark = [pytest.mark.real_db, pytest.mark.currency_binding_unbound]
 
@@ -300,7 +300,7 @@ def _assert_adoption_rejections(
     preview: CurrencyAdoptionPreview,
 ) -> CurrencyAdoptionPreview:
     with pytest.raises(AppError) as conflicting_currency:
-        adopt_currency_binding(
+        adopt_currency_binding_for_installation_owner(
             db,
             auth=auth,
             idempotency_key=uuid4(),
@@ -313,7 +313,7 @@ def _assert_adoption_rejections(
         )
     assert conflicting_currency.value.error == "currency_adoption_currency_conflict"
     with pytest.raises(AppError) as stale_contract:
-        adopt_currency_binding(
+        adopt_currency_binding_for_installation_owner(
             db,
             auth=auth,
             idempotency_key=uuid4(),
@@ -337,7 +337,7 @@ def _assert_adoption_rejections(
     changed_preview = adoption_preview(db)
     assert changed_preview.evidence_sha256 != preview.evidence_sha256
     with pytest.raises(AppError) as stale_evidence:
-        adopt_currency_binding(
+        adopt_currency_binding_for_installation_owner(
             db,
             auth=auth,
             idempotency_key=uuid4(),
@@ -359,7 +359,7 @@ def _assert_adoption_replay_contract(
     key: UUID,
     receipt: CurrencyAdoptionReceipt,
 ) -> None:
-    replay = adopt_currency_binding(
+    replay = adopt_currency_binding_for_installation_owner(
         db,
         auth=auth,
         idempotency_key=key,
@@ -380,7 +380,7 @@ def _assert_adoption_replay_contract(
     assert idem.status == "succeeded"
     assert idem.receipt == receipt.__dict__
     with pytest.raises(AppError) as reused:
-        adopt_currency_binding(
+        adopt_currency_binding_for_installation_owner(
             db,
             auth=auth,
             idempotency_key=key,
@@ -393,7 +393,7 @@ def _assert_adoption_replay_contract(
         )
     assert reused.value.error == "idempotency_key_reused"
     with pytest.raises(AppError) as already_active:
-        adopt_currency_binding(
+        adopt_currency_binding_for_installation_owner(
             db,
             auth=auth,
             idempotency_key=uuid4(),
@@ -417,16 +417,14 @@ def test_owner_adoption_is_atomic_audited_and_replayable() -> None:
 
     with SessionLocal() as db:
         # Current bootstrap reuses the owner who held the historical facts.
-        bootstrap = bootstrap_owner(db, account_name="Owner", ledger_name="Owner ledger", device_name="migration-admin")
-        admin_token = bootstrap.admin_token
-        auth = authenticate_session_token(db, admin_token, {"app", "admin"})
+        auth = authenticate_migration_currency_owner(db)
         assert auth.account_id == owner_id
         preview = adoption_preview(db)
         assert preview.allowed_home_currency_codes == ("CNY",)
         assert preview.evidence_health == "adoptable"
         preview = _assert_adoption_rejections(db, auth, preview)
         key = uuid4()
-        receipt = adopt_currency_binding(
+        receipt = adopt_currency_binding_for_installation_owner(
             db,
             auth=auth,
             idempotency_key=key,
@@ -442,5 +440,4 @@ def test_owner_adoption_is_atomic_audited_and_replayable() -> None:
     assert receipt.binding_revision == 1
     assert receipt.home_currency_code == "CNY"
     with SessionLocal() as db:
-        auth = authenticate_session_token(db, admin_token, {"app", "admin"})
         _assert_adoption_replay_contract(db, auth, preview, key, receipt)

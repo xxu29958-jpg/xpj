@@ -7,17 +7,38 @@ from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from api_contract_helpers import recognize_text_api, retry_ocr_api, upload_png
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
 from app.models import Expense, OcrFact
 from app.services.expense_service._ocr_facts import apply_ocr_result_and_append_fact
 from app.services.learning_service import (
     OcrFactDraft,
-    ocr_facts_for_expense,
     record_ocr_fact,
 )
 from app.services.ocr_service import OcrApplyContractError, OcrResult, apply_ocr_result
 from tests._infra.assets import PNG_BYTES
+
+
+def _stored_ocr_facts(
+    db: Session,
+    *,
+    tenant_id: str,
+    expense_id: int,
+    limit: int = 20,
+) -> list[OcrFact]:
+    """Inspect append-only storage without adding a product query for tests."""
+
+    stmt = (
+        select(OcrFact)
+        .where(OcrFact.tenant_id == tenant_id)
+        .where(OcrFact.expense_id == expense_id)
+        .order_by(OcrFact.extracted_at.desc(), OcrFact.id.desc())
+        .limit(limit)
+    )
+    return list(db.scalars(stmt))
+
 
 
 def _make_expense(tenant_id: str, *, currency_code: str = "CNY") -> int:
@@ -103,7 +124,7 @@ def test_facts_returned_newest_first(*, identity) -> None:
                 now=base + timedelta(minutes=offset_min),
             )
         db.commit()
-        facts = ocr_facts_for_expense(
+        facts = _stored_ocr_facts(
             db, tenant_id="owner", expense_id=expense_id
         )
         assert [f.raw_text for f in facts] == [
@@ -137,10 +158,10 @@ def test_facts_are_tenant_isolated(*, identity) -> None:
         )
         db.commit()
 
-        owner_facts = ocr_facts_for_expense(
+        owner_facts = _stored_ocr_facts(
             db, tenant_id="owner", expense_id=owner_expense_id
         )
-        tester_facts = ocr_facts_for_expense(
+        tester_facts = _stored_ocr_facts(
             db, tenant_id="tester_1", expense_id=tester_expense_id
         )
         assert len(owner_facts) == 1
@@ -194,7 +215,7 @@ def test_apply_with_fact_updates_mirror_and_appends_snapshot(*, identity) -> Non
         db.commit()
 
         db.refresh(expense)
-        rows = ocr_facts_for_expense(
+        rows = _stored_ocr_facts(
             db, tenant_id="owner", expense_id=expense_id
         )
         assert expense.raw_text == "paired mirror text\n交易金额：12.00"
@@ -232,7 +253,7 @@ def test_apply_with_fact_persists_frozen_currency_minor_units(
         db.commit()
 
         db.refresh(expense)
-        rows = ocr_facts_for_expense(
+        rows = _stored_ocr_facts(
             db,
             tenant_id="owner",
             expense_id=expense_id,
@@ -279,7 +300,7 @@ def test_facts_table_is_append_only_no_unique_per_expense(*, identity) -> None:
 
 def _facts(expense_id: int):
     with SessionLocal() as db:
-        return ocr_facts_for_expense(
+        return _stored_ocr_facts(
             db, tenant_id="owner", expense_id=expense_id
         )
 

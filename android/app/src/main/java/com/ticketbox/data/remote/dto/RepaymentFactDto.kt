@@ -22,12 +22,3 @@ data class RepaymentFactDto(
     @param:Json(name = "exchange_rate_source") val exchangeRateSource: String? = null,
     @param:Json(name = "accounting_time") val accountingTime: ExpenseAccountingTimeDto? = null,
 )
-
-data class RepaymentFactListDto(
-    @param:Json(name = "debt_public_id") val debtPublicId: String,
-    @param:Json(name = "home_currency_code") val homeCurrencyCode: String,
-    val items: List<RepaymentFactDto>,
-    val page: Int,
-    @param:Json(name = "page_size") val pageSize: Int,
-    val total: Int,
-)

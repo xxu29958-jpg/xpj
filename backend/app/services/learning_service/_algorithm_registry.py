@@ -58,9 +58,7 @@ __all__ = [
     "DUPLICATE_CANDIDATE",
     "build_feedback_marker",
     "canonical_marker_hash",
-    "decision_types",
     "get",
-    "is_registered",
 ]
 
 AlgorithmPayload: TypeAlias = Mapping[str, JsonValue]
@@ -186,16 +184,6 @@ def get(decision_type: str) -> AlgorithmType:
             f"unknown algorithm decision_type {decision_type!r}; "
             f"add it to learning_service._algorithm_registry"
         ) from exc
-
-
-def is_registered(decision_type: str) -> bool:
-    return decision_type in ALGORITHM_TYPES
-
-
-def decision_types() -> tuple[str, ...]:
-    """All known decision_type values, alphabetised for stable output."""
-
-    return tuple(sorted(ALGORITHM_TYPES.keys()))
 
 
 def build_feedback_marker(

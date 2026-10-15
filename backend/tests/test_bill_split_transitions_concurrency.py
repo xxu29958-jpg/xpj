@@ -1,16 +1,5 @@
-"""Bill split transition concurrency + expiry-path tests.
-
-The 2026-06-10 audit found ``reject_invitation`` / ``cancel_invitation`` /
-``_mark_expired`` / the ``expire_invitations`` sweeper were read-modify-write
-(plain ORM assignment), while ``accept_invitation`` already used the
-ADR-0038 PR-C atomic claim (``UPDATE … WHERE status='invited'`` + rowcount).
-A stale-read transition racing a committed accept could clobber the
-'accepted' row, contradicting the receiver's already-confirmed expense.
-These tests pin the guarded-flip behaviour for every non-accept transition,
-plus the previously untested expiry path (TTL 410 / sweeper).
-
-The race tests are explicitly marked ``real_db`` because they need real
-cross-connection commits.
+"""Current invitation commands preserve committed acceptance and canonical expiry
+across connections; stale reads cannot overwrite a peer's terminal result.
 """
 
 from __future__ import annotations
@@ -64,10 +53,10 @@ def _create_invitation_for_race(*, receiver_account_id: int, amount_cents: int =
 
 
 def _expire_from_peer(public_id: str) -> None:
-    """Cross the TTL and let the real sweeper win from another session."""
+    """Cross the TTL and run the command expiry transition from another session."""
     _backdate_expiry(public_id)
     with SessionLocal() as peer:
-        assert bsplit.expire_invitations(peer) == 1
+        assert _mark_expired(peer, bsplit.get_invitation(peer, public_id))
 
 
 def _assert_one_expiry(public_id: str) -> None:
@@ -85,7 +74,7 @@ def _assert_one_expiry(public_id: str) -> None:
 
 
 @pytest.mark.real_db
-def test_accept_lost_to_sweeper_reports_canonical_expiry(monkeypatch, *, identity) -> None:
+def test_accept_lost_to_peer_expiry_reports_canonical_expiry(monkeypatch, *, identity) -> None:
     receiver_account_id = _seed_receiver(name="B-accept-expiry", ledger_id="receiver_accept_expiry")
     public_id = _create_invitation_for_race(receiver_account_id=receiver_account_id)
     load_member = transition_impl._load_accept_target_member
@@ -117,7 +106,7 @@ def test_accept_lost_to_sweeper_reports_canonical_expiry(monkeypatch, *, identit
 
 @pytest.mark.real_db
 @pytest.mark.parametrize("command", ["reject", "cancel"])
-def test_non_accept_transition_lost_to_sweeper_reports_canonical_expiry(monkeypatch, *, identity, command: str) -> None:
+def test_non_accept_transition_lost_to_peer_expiry_reports_canonical_expiry(monkeypatch, *, identity, command: str) -> None:
     receiver_account_id = _seed_receiver(name=f"B-{command}-expiry", ledger_id=f"receiver_{command}_expiry")
     public_id = _create_invitation_for_race(receiver_account_id=receiver_account_id)
 
@@ -335,50 +324,3 @@ def test_cancel_after_ttl_marks_expired_and_returns_410(*, identity) -> None:
         assert inv.status == "expired"
         assert inv.expired_at is not None
         assert inv.cancelled_at is None
-
-
-def test_expire_sweeper_expires_overdue_invited_invitation(*, identity) -> None:
-    receiver_account_id = _seed_receiver(name="B-sweep", ledger_id="receiver_sweep")
-    public_id = _create_invitation_for_race(receiver_account_id=receiver_account_id)
-    _backdate_expiry(public_id)
-
-    with SessionLocal() as db:
-        assert bsplit.expire_invitations(db) == 1
-
-    with SessionLocal() as db:
-        inv = db.scalar(select(BillSplitInvitation).where(BillSplitInvitation.public_id == public_id))
-        assert inv is not None
-        assert inv.status == "expired"
-        assert inv.expired_at is not None
-        expired_audit = list(
-            db.scalars(
-                select(LedgerAuditLog)
-                .where(LedgerAuditLog.invitation_public_id == public_id)
-                .where(LedgerAuditLog.action == "bill_split_expired")
-            )
-        )
-        assert len(expired_audit) == 1
-
-
-def test_expire_sweeper_does_not_clobber_accepted_row_past_ttl(*, identity) -> None:
-    """An accepted invitation whose TTL has since lapsed must survive the
-    sweeper untouched — the guarded UPDATE only matches 'invited' rows."""
-    receiver_account_id = _seed_receiver(name="B-sweepacc", ledger_id="receiver_sweepacc")
-    public_id = _create_invitation_for_race(receiver_account_id=receiver_account_id)
-    with SessionLocal() as db:
-        bsplit.accept_invitation(
-            db,
-            public_id=public_id,
-            accepting_account_id=receiver_account_id,
-            target_ledger_id="receiver_sweepacc",
-        )
-    _backdate_expiry(public_id)
-
-    with SessionLocal() as db:
-        assert bsplit.expire_invitations(db) == 0
-
-    with SessionLocal() as db:
-        inv = db.scalar(select(BillSplitInvitation).where(BillSplitInvitation.public_id == public_id))
-        assert inv is not None
-        assert inv.status == "accepted"
-        assert inv.expired_at is None

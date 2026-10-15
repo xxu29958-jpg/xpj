@@ -130,8 +130,8 @@ class OutboxDrainEngine(
          *  the fixed-expense leg. ReplaceItems only rewrites
          *  ExpenseItem sub-lines
          *  (+ updated_at / items_sum_status) — the advisor aggregates
-         *  Expense.category / amount_cents / month via confirmed_amount_query
-         *  (monthly_report_service.py), never line items, so item replacement
+         *  the confirmed financial stream through spending_projection_service,
+         *  never line items, so item replacement
          *  leaves every advisor aggregate byte-identical. */
         val ADVICE_INPUT_MUTATION_TYPES: Set<PendingMutationType> = setOf(
             PendingMutationType.ConfirmExpense,
