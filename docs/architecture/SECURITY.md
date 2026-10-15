@@ -67,8 +67,8 @@ BootstrapAdmin 初始化时生成的 admin scope token，用于后续管理操�
 - 不提供数据库下载、文件管理、命令执行、远程关机等危险接口。
 - API 只返回业务字段，不返回真实数据库路径。
 - CSV 导出只返回已确认账单业务数据，不提供任意文件下载或目录浏览。
-- 当前正式 Windows Manager 不提供完整数据集备份或恢复 mutation；产品内导出只包含已确认流水 CSV。
-- backend 中的 complete-dataset/restore 代码与历史 Windows 合同只作审计和演进输入，不是当前已出货恢复能力；手工 `pg_restore` 只用于源码/测试 scratch，不能冒充 Windows 生命周期证据。
+- 产品内还提供可携带账本包，按当前授权携带账本资料、历史、关系和原件；业务导出不包含完整 PostgreSQL 集群、宿主凭据、安装绑定或设备未提交意图。
+- 当前正式 Windows Manager 不提供完整数据集备份或恢复 mutation。未发布的 complete-dataset/restore 原型及专属 scratch 演练已退役；现行有界冷备、只读库存与完整恢复限制见[数据保护边界](../runbook/WINDOWS_BACKUP_TASK.md)。历史代码或手工 `pg_restore` 不能冒充已出货恢复能力和 Windows 生命周期证据。
 
 ## 维护接口
 
