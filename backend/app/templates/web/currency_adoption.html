@@ -4,7 +4,7 @@
 {% if preview.state == 'ACTIVE' %}
 <header class="product-page-header"><div class="product-page-heading">
   <h1 class="page-title">本位币已确认</h1>
-  <p class="product-page-summary">这台小票夹按 {{ active_name or preview.home_currency_code }} 记录和汇总金额，金额功能已经恢复。</p>
+  <p class="product-page-summary">这台小票夹按 {{ active_name or preview.home_currency_code }} 记录和汇总金额。</p>
 </div></header>
 <div class="product-feedback" role="status">当前本位币：<strong>{{ preview.home_currency_code }}</strong></div>
 <div class="product-form-actions"><a class="product-button product-button--primary" href="/web">回到小票夹</a></div>
@@ -37,12 +37,19 @@
       {% for currency in currency_options %}<option value="{{ currency.code }}"{% if selected_code == currency.code %} selected{% endif %}>{{ currency.name }} {{ currency.code }}</option>{% endfor %}
     </select>
   </label>
+  {% if preview.state == 'EMPTY' %}
+  <div class="product-feedback">
+    <strong>从这个币种开始记账</strong>
+    <p>新录入和汇总默认使用所选币种，每笔记录都会保留自己的币种和金额。以后也可以修改默认币种。</p>
+  </div>
+  {% else %}
   <div class="product-feedback product-feedback--warning">
     <strong>先核对旧记录的含义</strong>
     <p>确认不会换算或改写已有金额；记账、预算、计划等金额功能会恢复。</p>
     <p>以后可以修改新录入的默认币种；历史记录选错币种仍需另行更正。</p>
   </div>
-  <div class="product-form-actions"><button class="product-button product-button--primary" type="submit">确认选择并恢复金额功能</button></div>
+  {% endif %}
+  <div class="product-form-actions"><button class="product-button product-button--primary" type="submit">{% if preview.state == 'EMPTY' %}确认并开始记账{% else %}确认选择并恢复金额功能{% endif %}</button></div>
 </form>
 {% endif %}
 {% endif %}
