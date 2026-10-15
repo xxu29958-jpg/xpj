@@ -1,5 +1,7 @@
 package com.ticketbox.data.repository
 
+import com.squareup.moshi.JsonClass
+
 /**
  * Generic repository failure that callers can map to UI error messages.
  *
@@ -33,6 +35,7 @@ class RepositoryException(
 }
 
 /** Client validation outcomes are separate from the server's error-code protocol. */
+@JsonClass(generateAdapter = false)
 enum class LocalRepositoryFailure {
     ManualRateReviewRequired,
     ManualRateUnresolved,

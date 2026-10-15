@@ -6,6 +6,7 @@ import com.squareup.moshi.Moshi
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.domain.model.ManagedTag
 
+@JsonClass(generateAdapter = false)
 enum class TagEditorAction { Rename, Merge, Delete }
 
 @JsonClass(generateAdapter = true)

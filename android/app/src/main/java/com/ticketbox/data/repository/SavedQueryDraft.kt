@@ -9,6 +9,7 @@ import com.ticketbox.data.remote.dto.SavedViewDefinitionRequestDto
 import com.ticketbox.data.remote.dto.SavedViewDeletionReceiptDto
 import com.ticketbox.data.remote.dto.SavedViewDto
 
+@JsonClass(generateAdapter = false)
 enum class SavedQueryCommand { Create, Edit, Delete }
 
 @JsonClass(generateAdapter = true)

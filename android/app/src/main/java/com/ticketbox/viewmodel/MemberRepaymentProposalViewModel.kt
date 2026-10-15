@@ -4,6 +4,7 @@ import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
+import com.squareup.moshi.JsonClass
 import com.ticketbox.R
 import com.ticketbox.data.repository.DebtProposalActions
 import com.ticketbox.data.repository.DebtTask
@@ -84,6 +85,7 @@ data class MemberProposalUiState(
         get() = pendingProposal == null && latestResolvedProposal?.status == MemberProposalStatuses.REJECTED
 }
 
+@JsonClass(generateAdapter = false)
 enum class ProposalForm { Propose, Confirm }
 
 /** Owns the current editing task and online attempt; the server owns proposals and committed folds. */

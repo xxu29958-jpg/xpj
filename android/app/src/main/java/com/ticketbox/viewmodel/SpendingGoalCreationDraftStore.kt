@@ -13,6 +13,7 @@ import com.ticketbox.domain.model.UiText
 import java.time.YearMonth
 import java.util.UUID
 
+@JsonClass(generateAdapter = false)
 internal enum class SpendingGoalFailureKind { Create, Currency, Lookup, Validation, Amount, Recovery, MissingOriginal }
 
 @JsonClass(generateAdapter = true)
