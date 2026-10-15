@@ -307,4 +307,26 @@
     <string name="expense_correction_review_use_current">使用当前记录，保留另一端的修改</string>
     <string name="expense_correction_comparison_current">当前记录</string>
     <string name="expense_correction_comparison_proposed">这次修改</string>
+    <string name="category_rule_application_reason">应用理由（选填）</string>
+    <string name="category_rule_application_reason_hint">例如：按商家统一分类</string>
+    <string name="category_rule_rollback_reason">回退说明（选填）</string>
+    <string name="category_rule_rollback_reason_hint">例如：核对后撤回本批次</string>
+    <string name="category_rule_reason_retained">随本次操作保存到应用记录 · %1$d/500</string>
+    <string name="category_rule_application_reason_value">应用理由：%1$s</string>
+    <string name="category_rule_rollback_reason_value">回退说明：%1$s</string>
+    <string name="category_rule_rollback_preview_failed">暂时无法读取回退范围，输入已保留，请重新核对。</string>
+    <string name="category_rule_rollback_loading">正在核对本批次可回退的记录…</string>
+    <string name="category_rule_rollback_wait_for_preview">核对范围后回退</string>
+    <string name="category_rule_rollback_counts">当前可回退 %1$d 笔 · 保留 %2$d 笔</string>
+    <string name="category_rule_rollback_eligible_action">回退允许的 %1$d 笔</string>
+    <string name="category_rule_rollback_none">当前没有可回退的记录，不会覆盖保留项。</string>
+    <string name="category_rule_rollback_retained_details">查看 %1$d 笔保留项</string>
+    <string name="category_rule_rollback_retained_hint">查看每笔不能回退的原因</string>
+    <string name="category_rule_rollback_modified">应用后已有修改，保留当前事实</string>
+    <string name="category_rule_rollback_already_restored">已回退，不重复处理</string>
+    <string name="category_rule_rollback_already_skipped">已跳过，不重新应用</string>
+    <string name="category_rule_rollback_unavailable">原记录不可读取</string>
+    <string name="category_rule_rollback_finished">本批次已处理完成</string>
+    <string name="category_rule_rollback_verify">核实原回退</string>
+    <string name="category_rule_rollback_original_pending">保留原批次与原说明。核实只读取或完成这一次回退，已处理项不会再次执行。</string>
 </resources>

@@ -26,6 +26,7 @@ from app.services.rule_application_service._common import (
 )
 from app.services.rule_application_service._history import (
     list_rule_applications,
+    preview_rule_application_rollback,
     rollback_rule_application,
     rule_application_change_counts,
 )
@@ -44,6 +45,7 @@ __all__ = [
     "apply_rules_idempotently",
     "apply_rules_to_pending",
     "list_rule_applications",
+    "preview_rule_application_rollback",
     "preview_apply_rules_to_confirmed",
     "preview_apply_rules_to_pending",
     "preview_rule_for_pending",

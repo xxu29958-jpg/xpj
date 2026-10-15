@@ -56,7 +56,7 @@ class RuleApplicationCommandTest {
         val f = CategoryRuleCommandFixture { reads++; if (readFails) throw IOException("Read unavailable") }
         val preview = f.repository.previewApplyConfirmedRules().getOrThrow()
         assertTrue(f.repository.confirmApplyConfirmedRules(f.binding.copy(ledgerId = "other"), preview).isFailure)
-        f.repository.confirmApplyConfirmedRules(f.binding, preview).getOrThrow()
+        f.repository.confirmApplyConfirmedRules(f.binding, preview, "按商家统一分类").getOrThrow()
         val original = f.repository.observeApplications(f.binding).first().single().row
         assertTrue(f.repository.confirmApplyConfirmedRules(f.binding, preview).isFailure)
         val server = ApplyServer(f.api)
@@ -66,6 +66,7 @@ class RuleApplicationCommandTest {
         assertEquals(0, server.keys.size)
         assertEquals(1, engine.drainOnce().failures)
         val failed = f.repository.observeApplications(f.binding).first().single()
+        assertEquals("按商家统一分类", failed.original?.reason)
         assertTrue(failed.canRetry)
         assertEquals(original.payloadJson, failed.row.payloadJson)
         assertEquals(original.idempotencyKey, failed.row.idempotencyKey)

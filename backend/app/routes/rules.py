@@ -25,6 +25,7 @@ from app.schemas import (
     RulePreviewResponse,
     StatusResponse,
 )
+from app.schemas._rules import RuleApplicationRollbackPreview, RuleApplicationRollbackRequest
 from app.services.classify_service import (
     delete_rule,
     get_rule_for_tenant,
@@ -41,7 +42,11 @@ from app.services.idempotency import (
     mark_idempotency_succeeded,
 )
 from app.services.permission_service import require_write_expense
-from app.services.rule_application_service import apply_rules_idempotently, rule_application_change_counts
+from app.services.rule_application_service import (
+    apply_rules_idempotently,
+    preview_rule_application_rollback,
+    rule_application_change_counts,
+)
 from app.services.rule_command_service import create_rule_idempotently, update_rule_idempotently
 from app.tenants import AuthContext
 
@@ -170,7 +175,7 @@ def post_rule_apply_pending(
         )
     return apply_rules_idempotently(db, tenant_id=auth.tenant_id, status="pending",
         preview_token=payload.preview_token, idempotency_key=idempotency_key, max_scan=max_scan,
-        actor_account_id=auth.account_id, actor_device_id=auth.device_id)
+        actor_account_id=auth.account_id, actor_device_id=auth.device_id, reason=payload.reason)
 
 
 @router.get("/applications", response_model=RuleApplicationListResponse)
@@ -185,7 +190,17 @@ def get_rule_applications(
         public_id=batch.public_id, status=batch.status, pending_scanned=batch.pending_scanned,
         changed_count=batch.changed_count, change_counts=outcomes.get(batch.id, {}),
         created_at=batch.created_at, rolled_back_at=batch.rolled_back_at,
+        application_reason=batch.application_reason, rollback_reason=batch.rollback_reason,
     ) for batch in batches])
+
+
+@router.get("/applications/{public_id}/rollback-preview", response_model=RuleApplicationRollbackPreview)
+def get_rule_application_rollback_preview(
+    public_id: str,
+    auth: AuthContext = Depends(get_current_app_context),
+    db: Session = Depends(get_db),
+) -> RuleApplicationRollbackPreview:
+    return preview_rule_application_rollback(db, tenant_id=auth.tenant_id, public_id=public_id)
 
 
 @router.post(
@@ -194,6 +209,7 @@ def get_rule_applications(
 )
 def post_rule_application_rollback(
     public_id: str,
+    payload: RuleApplicationRollbackRequest | None = None,
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> RuleApplicationRollbackResponse:
@@ -203,6 +219,7 @@ def post_rule_application_rollback(
         public_id=public_id,
         actor_account_id=auth.account_id,
         actor_device_id=auth.device_id,
+        reason=payload.reason if payload else None,
     )
     return RuleApplicationRollbackResponse(
         public_id=batch.public_id,
@@ -210,6 +227,7 @@ def post_rule_application_rollback(
         changed=changed,
         skipped=skipped,
         rolled_back_at=batch.rolled_back_at,
+        rollback_reason=batch.rollback_reason,
     )
 
 
@@ -280,4 +298,4 @@ def post_rule_apply_confirmed(
     require_write_expense(auth)
     return apply_rules_idempotently(db, tenant_id=auth.tenant_id, status="confirmed",
         preview_token=payload.preview_token, idempotency_key=idempotency_key, max_scan=max_scan,
-        actor_account_id=auth.account_id, actor_device_id=auth.device_id)
+        actor_account_id=auth.account_id, actor_device_id=auth.device_id, reason=payload.reason)

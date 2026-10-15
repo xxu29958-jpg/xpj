@@ -7771,6 +7771,11 @@
             "default": "",
             "title": "Ledger Id",
             "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "title": "Reason",
+            "type": "string"
           }
         },
         "title": "Body_web_rules_application_rollback_web_rules_applications__public_id__rollback_post",
@@ -24479,6 +24484,17 @@
       },
       "RuleApplicationBatchResponse": {
         "properties": {
+          "application_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Application Reason"
+          },
           "change_counts": {
             "additionalProperties": {
               "type": "integer"
@@ -24508,6 +24524,17 @@
           "public_id": {
             "title": "Public Id",
             "type": "string"
+          },
+          "rollback_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rollback Reason"
           },
           "rolled_back_at": {
             "anyOf": [
@@ -24587,6 +24614,12 @@
             "title": "Preview Token",
             "type": "string"
           },
+          "reason": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Reason",
+            "type": "string"
+          },
           "review_new": {
             "default": false,
             "title": "Review New",
@@ -24612,6 +24645,69 @@
         "title": "RuleApplicationListResponse",
         "type": "object"
       },
+      "RuleApplicationRollbackPreview": {
+        "properties": {
+          "eligible_count": {
+            "title": "Eligible Count",
+            "type": "integer"
+          },
+          "original_count": {
+            "title": "Original Count",
+            "type": "integer"
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          },
+          "reason_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Reason Counts",
+            "type": "object"
+          },
+          "skipped_count": {
+            "title": "Skipped Count",
+            "type": "integer"
+          },
+          "skipped_items": {
+            "items": {
+              "$ref": "#/components/schemas/RuleRollbackSkippedItem"
+            },
+            "title": "Skipped Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "public_id",
+          "original_count",
+          "eligible_count",
+          "skipped_count",
+          "reason_counts",
+          "skipped_items"
+        ],
+        "title": "RuleApplicationRollbackPreview",
+        "type": "object"
+      },
+      "RuleApplicationRollbackRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "title": "RuleApplicationRollbackRequest",
+        "type": "object"
+      },
       "RuleApplicationRollbackResponse": {
         "properties": {
           "changed": {
@@ -24621,6 +24717,17 @@
           "public_id": {
             "title": "Public Id",
             "type": "string"
+          },
+          "rollback_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rollback Reason"
           },
           "rolled_back_at": {
             "anyOf": [
@@ -24669,6 +24776,18 @@
               }
             ],
             "title": "Preview Token"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
           }
         },
         "title": "RuleApplyConfirmedRequest",
@@ -24921,6 +25040,18 @@
               }
             ],
             "title": "Preview Token"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
           }
         },
         "title": "RuleApplyPendingRequest",
@@ -25297,6 +25428,36 @@
           "items"
         ],
         "title": "RulePreviewResponse",
+        "type": "object"
+      },
+      "RuleRollbackSkippedItem": {
+        "properties": {
+          "expense_id": {
+            "title": "Expense Id",
+            "type": "integer"
+          },
+          "merchant": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merchant"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expense_id",
+          "merchant",
+          "reason"
+        ],
+        "title": "RuleRollbackSkippedItem",
         "type": "object"
       },
       "RuntimeCompatibilitySnapshotResponse": {
@@ -47086,6 +47247,23 @@
             "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/RuleApplicationRollbackRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {
@@ -47119,6 +47297,90 @@
           }
         },
         "summary": "Post Rule Application Rollback",
+        "tags": [
+          "rules"
+        ]
+      }
+    },
+    "/api/rules/applications/{public_id}/rollback-preview": {
+      "get": {
+        "operationId": "get_rule_application_rollback_preview_api_rules_applications__public_id__rollback_preview_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuleApplicationRollbackPreview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Get Rule Application Rollback Preview",
         "tags": [
           "rules"
         ]
@@ -63126,6 +63388,56 @@
       }
     },
     "/web/rules/applications/{public_id}/rollback": {
+      "get": {
+        "operationId": "web_rules_rollback_preview_web_rules_applications__public_id__rollback_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Ledger Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Rules Rollback Preview",
+        "tags": [
+          "web"
+        ]
+      },
       "post": {
         "operationId": "web_rules_application_rollback_web_rules_applications__public_id__rollback_post",
         "parameters": [

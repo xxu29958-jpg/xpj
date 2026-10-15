@@ -93,7 +93,7 @@ _LEDGER_RECORDS = (
     (m.CategoryRule, "id tenant_id keyword category enabled priority amount_min_cents amount_max_cents home_currency_code "
         "source_contains tag_contains created_at updated_at row_version deleted_at"),
     (m.RuleApplicationBatch, "id public_id tenant_id status pending_scanned changed_count actor_account_id "
-        "actor_device_id created_at rolled_back_at"),
+        "actor_device_id created_at rolled_back_at application_reason rollback_reason"),
     (m.RuleApplicationChange, "id public_id tenant_id batch_id expense_id rule_id matched_keyword before_category "
         "after_category status created_at rolled_back_at"),
     (m.DashboardCardPreference, "id public_id tenant_id surface card_key position visible created_at updated_at"),

@@ -22,7 +22,7 @@ def saved_queries(j):
     native.click("修改条件或名称")
     native.fill("TripNative", previous=original["name"])
     native.fill("RefPay", previous="", label="关键词")
-    native.click("保存这组查询")
+    native.click("保存这组查询", bottom=True)
     j.expect(lambda state: state["views"][0]["name"] == "TripNative" and state["views"][0]["query_text"] == "RefPay",
         "The actual native query edit did not reach the shared saved-query owner")
     native.click("完成并读取当前查询")

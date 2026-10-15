@@ -5,8 +5,6 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.onAllNodesWithText
-import androidx.compose.ui.test.onLast
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.test.platform.app.InstrumentationRegistry
@@ -108,9 +106,6 @@ class CategoryRulesScreenMessageTest {
         val applied = original.copy(publicId = "applied-original", status = "applied", rolledBackAt = null, changeCounts = null)
         composeRule.runOnIdle { history.value = listOf(applied) }
         composeRule.onNodeWithText("回退", substring = false).performScrollTo().performClick()
-        composeRule.onNodeWithText("原批次更正 3 笔").assertIsDisplayed()
-        capture("rule-rollback-original-scope")
-        composeRule.onAllNodesWithText("回退", substring = false).onLast().assertIsDisplayed().performClick()
         org.junit.Assert.assertEquals(applied, selected)
     }
 

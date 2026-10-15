@@ -22,6 +22,8 @@
           <div><dt>批次状态</dt><dd>{% if batch.status == 'rolled_back' %}已回滚{% elif batch.status == 'rollback_partial' %}部分回滚{% elif batch.status == 'rollback_skipped' %}未回滚{% elif batch.status == 'applied_confirmed' %}已应用历史{% elif batch.status == 'applied' %}已应用待确认{% else %}{{ batch.status }}{% endif %}</dd></div>
           <div><dt>当时扫描</dt><dd>{{ batch.pending_scanned }} 笔</dd></div>
           <div><dt>当时变更</dt><dd>{{ batch.changed_count }} 笔</dd></div>
+          {% if batch.application_reason %}<div><dt>应用理由</dt><dd>{{ batch.application_reason }}</dd></div>{% endif %}
+          {% if batch.rollback_reason %}<div><dt>回退说明</dt><dd>{{ batch.rollback_reason }}</dd></div>{% endif %}
           {% if reverted %}<div><dt>最近回退时间</dt><dd>{{ batch.rolled_back_at|owner_datetime }}</dd></div><div><dt>保留的回退结果</dt><dd>已回退 {{ batch.change_counts.get('rolled_back', 0) }} 笔 · 已跳过 {{ batch.change_counts.get('skipped', 0) }} 笔 · 未回退 {{ batch.change_counts.get('applied', 0) }} 笔</dd></div>{% endif %}
           <div><dt>批次编号</dt><dd><code>{{ batch.public_id }}</code></dd></div>
         </dl>

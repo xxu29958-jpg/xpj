@@ -97,6 +97,8 @@ data class RuleApplicationBatchDto(
     val rolledBackAt: String? = null,
     @param:Json(name = "change_counts")
     val changeCounts: Map<String, Int>? = null,
+    @param:Json(name = "application_reason") val applicationReason: String? = null,
+    @param:Json(name = "rollback_reason") val rollbackReason: String? = null,
 )
 
 data class RuleApplicationListDto(
@@ -111,12 +113,31 @@ data class RuleApplicationRollbackDto(
     val skipped: Int,
     @param:Json(name = "rolled_back_at")
     val rolledBackAt: String? = null,
+    @param:Json(name = "rollback_reason") val rollbackReason: String? = null,
+)
+
+data class RuleApplicationRollbackRequestDto(val reason: String? = null)
+
+data class RuleRollbackSkippedItemDto(
+    @param:Json(name = "expense_id") val expenseId: Long,
+    val merchant: String?,
+    val reason: String,
+)
+
+data class RuleApplicationRollbackPreviewDto(
+    @param:Json(name = "public_id") val publicId: String,
+    @param:Json(name = "original_count") val originalCount: Int,
+    @param:Json(name = "eligible_count") val eligibleCount: Int,
+    @param:Json(name = "skipped_count") val skippedCount: Int,
+    @param:Json(name = "reason_counts") val reasonCounts: Map<String, Int>,
+    @param:Json(name = "skipped_items") val skippedItems: List<RuleRollbackSkippedItemDto>,
 )
 
 data class RuleApplyConfirmedRequestDto(
     val confirm: Boolean = false,
     @param:Json(name = "preview_token")
     val previewToken: String? = null,
+    val reason: String? = null,
 )
 
 @JsonClass(generateAdapter = true)

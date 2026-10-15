@@ -45,7 +45,7 @@ def test_original_application_concurrent_replay_retains_first_result_and_later_f
         json={"keyword": "OriginalApplication", "category": "餐饮"})
     assert created.status_code == 200, created.text
     path = f"/api/rules/apply-{status}"
-    body = _preview(client, identity.app_headers, status)
+    body = {**_preview(client, identity.app_headers, status), "reason": "按商家统一分类"}
     missing = client.post(path, headers=identity.app_headers, json=body)
     assert missing.status_code == 422 and missing.json()["error"] == "idempotency_key_required"
     key = str(uuid4())
@@ -61,6 +61,7 @@ def test_original_application_concurrent_replay_retains_first_result_and_later_f
         resolve_write_capability(db)
         batch = db.scalar(select(RuleApplicationBatch).where(RuleApplicationBatch.public_id == receipt["application_public_id"]))
         assert batch is not None and batch.changed_count == 1
+        assert batch.application_reason == body["reason"]
         stored = db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.idempotency_key == key))
         assert stored.response_body == receipt and stored.resource_id == batch.public_id
         expense = db.get(Expense, expense_id)
@@ -73,6 +74,10 @@ def test_original_application_concurrent_replay_retains_first_result_and_later_f
     assert replay.status_code == 200 and replay.json() == receipt
     mismatch = client.post(path, headers=headers, json={**body, "preview_token": "different-preview"})
     assert mismatch.status_code == 422 and mismatch.json()["error"] == "idempotency_key_reused"
+    changed_reason = client.post(path, headers=headers, json={**body, "reason": "改过的应用理由"})
+    assert changed_reason.status_code == 422 and changed_reason.json()["error"] == "idempotency_key_reused"
+    history = client.get("/api/rules/applications", headers=identity.app_headers).json()["items"][0]
+    assert history["application_reason"] == body["reason"]
     with SessionLocal() as db:
         expense = db.get(Expense, expense_id)
         assert expense.category == "医疗" and expense.row_version == later_version
@@ -138,6 +143,7 @@ def test_public_web_application_binding_csrf_and_current_permission_guard_origin
     with closing(public_client()) as web, closing(public_client()) as another:
         web.cookies.set(SESSION_COOKIE_NAME, mint_session(client, identity=identity))
         fields = hidden_post_forms(web.get(preview_url).text)[action]
+        fields["reason"] = "按商家统一分类"
         assert web.post(action, data={**fields, "csrf_token": "invalid"}, headers=headers).status_code == 403
         assert web.post(action, data={**fields, "ledger_id": "gray"}, headers=headers).status_code == 409
         another.cookies.set(SESSION_COOKIE_NAME, mint_session(client, identity=identity))
@@ -153,5 +159,10 @@ def test_public_web_application_binding_csrf_and_current_permission_guard_origin
         assert result["ack"] == {"scope": json.loads(fields["draft_scope"]), "clientRef": fields["idempotency_key"]}
         assert result["receipt"]["changed_count"] == 1
         assert web.post(action, data=fields, headers=headers).json() == result
+        history = web.get("/web/rules?ledger_id=owner&view=history")
+        assert "应用理由：按商家统一分类" in history.text
+        public_id = result["receipt"]["application_public_id"]
+        rollback_page = web.get(f"/web/rules/applications/{public_id}/rollback?ledger_id=owner")
+        assert rollback_page.status_code == 200 and "回退允许的 1 笔" in rollback_page.text
         demote_owner_ledger_to_viewer()
         assert web.post(action, data=fields, headers=headers).status_code == 403

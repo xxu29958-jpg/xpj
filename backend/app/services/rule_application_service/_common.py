@@ -218,6 +218,12 @@ def _changed_after_rule_application(expense: Expense, change: RuleApplicationCha
     return expense.updated_at > change.created_at
 
 
+def normalize_rule_reason(reason: str | None) -> str | None:
+    if reason is not None and len(reason) > 500:
+        raise AppError("invalid_request", "说明最多填写500字。", status_code=422)
+    return reason.strip() or None if reason is not None else None
+
+
 def _try_apply_rule_category(
     db: Session,
     *,
@@ -229,6 +235,7 @@ def _try_apply_rule_category(
     before_category: str,
     after_category: str,
     now,
+    reason: str | None = None,
     actor_account_id: int | None = None,
     actor_device_id: int | None = None,
     expected_row_version: int | None = None,
@@ -271,7 +278,7 @@ def _try_apply_rule_category(
             db,
             updated,
             prepared,
-            reason=f"规则“{matched_keyword}”更正分类",
+            reason=reason or f"规则“{matched_keyword}”更正分类",
             actor_account_id=actor_account_id,
             actor_device_id=actor_device_id,
         )
@@ -285,6 +292,7 @@ def _try_rollback_rule_change(
     expense: Expense,
     change: RuleApplicationChange,
     now,
+    reason: str | None = None,
     actor_account_id: int | None = None,
     actor_device_id: int | None = None,
 ) -> bool:
@@ -313,7 +321,7 @@ def _try_rollback_rule_change(
             db,
             updated,
             prepared,
-            reason="撤销规则分类更正",
+            reason=reason or "撤销规则分类更正",
             actor_account_id=actor_account_id,
             actor_device_id=actor_device_id,
         )

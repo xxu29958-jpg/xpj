@@ -34,7 +34,8 @@ def facts(ledger_id):
             "rules": [{"id": row.id, "keyword": row.keyword, "category": row.category,
                 "priority": row.priority, "row_version": row.row_version,
                 "deleted": row.deleted_at is not None} for row in rows(CategoryRule)],
-            "applications": [{"id": row.public_id, "status": row.status, "changed": row.changed_count}
+            "applications": [{"id": row.public_id, "status": row.status, "changed": row.changed_count,
+                "application_reason": row.application_reason, "rollback_reason": row.rollback_reason}
                 for row in rows(RuleApplicationBatch)],
             "rule_changes": [{"expense_id": row.expense_id, "before": row.before_category,
                 "after": row.after_category, "status": row.status} for row in rows(RuleApplicationChange)],

@@ -116,10 +116,10 @@ REVIEWED_BOUNDARIES = {
         "reason": "Unexpected adoption replay failures report through logNetworkWarning while Outbox retains the original payload and key as unresolved. Receipt mismatches use a static diagnostic. No raw exception text reaches the UI; cancellation propagates and existing transport retry behavior is unchanged.",
     },
     (ANDROID + "data/repository/ApplyConfirmedRulesDispatcher.kt", "dispatch"): {
-        "sha256": "05c182564cf7ba8c855da84ad741a40e11473d5bcb5fb47d8e53a77404ce2a65",
+        "sha256": "3744f9c657235963732ddb0e42d4232db6b4ed13d2c373758d63a8e8b2281703",
         "owner": "NetworkErrorHandler for read/HTTP errors; sanitized TicketboxNetwork output for unexpected replay failures",
         "test": "android/app/src/test/java/com/ticketbox/data/repository/RuleApplicationCommandTest.kt",
-        "reason": "A verified first receipt survives a later read failure or cancellation with a retained read-recovery flag. Repository read failures already use NetworkErrorHandler; unexpected callback and replay faults use logNetworkWarning without raw messages, changing keys, retrying or claiming acceptance.",
+        "reason": "The immutable application reason is now copied into the original request; it is not logged. A verified first receipt survives a later read failure or cancellation with a retained read-recovery flag. Repository read failures already use NetworkErrorHandler; unexpected callback and replay faults use logNetworkWarning without raw messages, changing keys, retrying or claiming acceptance.",
     },
     (ANDROID + "data/repository/SaveMonthlyBudgetDispatcher.kt", "dispatch"): {
         "sha256": "456969319e417619bf74dcafe9b254abd21dcf565d2727337e65626568c679bb",

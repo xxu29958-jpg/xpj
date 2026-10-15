@@ -318,6 +318,7 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("POST", "/web/rules/create"): "writer-only",
     ("GET", "/web/rules/{rule_id}/edit"): "local-only-rendering",  # Read-only users can inspect retained input.
     ("POST", "/web/rules/{rule_id}/edit"): "writer-only",
+    ("GET", "/web/rules/applications/{public_id}/rollback"): "local-only-rendering",
     ("POST", "/web/rules/applications/{public_id}/rollback"): "writer-only",
     ("POST", "/web/rules/{rule_id}/toggle"): "writer-only",
     ("POST", "/web/rules/{rule_id}/delete"): "writer-only",

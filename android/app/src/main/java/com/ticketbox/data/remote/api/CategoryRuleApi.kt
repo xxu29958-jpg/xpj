@@ -6,6 +6,8 @@ import com.ticketbox.data.remote.dto.CategoryRuleRequest
 import com.ticketbox.data.remote.dto.CategoryRuleUpdateRequest
 import com.ticketbox.data.remote.dto.RuleApplicationListDto
 import com.ticketbox.data.remote.dto.RuleApplicationRollbackDto
+import com.ticketbox.data.remote.dto.RuleApplicationRollbackRequestDto
+import com.ticketbox.data.remote.dto.RuleApplicationRollbackPreviewDto
 import com.ticketbox.data.remote.dto.RuleApplyConfirmedRequestDto
 import com.ticketbox.data.remote.dto.RuleApplyConfirmedResponseDto
 import com.ticketbox.data.remote.dto.StatusDto
@@ -57,7 +59,11 @@ interface CategoryRuleApi {
     @POST("api/rules/applications/{publicId}/rollback")
     suspend fun rollbackRuleApplication(
         @Path("publicId") publicId: String,
+        @Body request: RuleApplicationRollbackRequestDto = RuleApplicationRollbackRequestDto(),
     ): RuleApplicationRollbackDto
+
+    @GET("api/rules/applications/{publicId}/rollback-preview")
+    suspend fun previewRuleApplicationRollback(@Path("publicId") publicId: String): RuleApplicationRollbackPreviewDto
 
     @POST("api/rules/apply-confirmed")
     suspend fun applyConfirmedRules(

@@ -16,6 +16,7 @@ from app.services.rule_application_service._common import (
     _rule_application_candidates,
     _rule_application_preview_token,
     _try_apply_rule_category,
+    normalize_rule_reason,
 )
 from app.services.time_service import now_utc
 
@@ -29,6 +30,7 @@ def apply_rules_to_pending(
     actor_device_id: int | None = None,
     max_scan: int | None = None,
     commit: bool = True,
+    reason: str | None = None,
 ) -> tuple[int, int, bool, str | None]:
     """Re-run rule classification on all pending expenses for this tenant.
 
@@ -49,6 +51,7 @@ def apply_rules_to_pending(
         actor_device_id=actor_device_id,
         max_scan=max_scan,
         commit=commit,
+        reason=reason,
     )
 
 
@@ -61,6 +64,7 @@ def apply_rules_to_confirmed(
     actor_device_id: int | None = None,
     max_scan: int | None = None,
     commit: bool = True,
+    reason: str | None = None,
 ) -> tuple[int, int, bool, str | None]:
     """Apply category rules to confirmed historical rows for this tenant.
 
@@ -79,6 +83,7 @@ def apply_rules_to_confirmed(
         actor_device_id=actor_device_id,
         max_scan=max_scan,
         commit=commit,
+        reason=reason,
     )
 
 
@@ -93,7 +98,9 @@ def _apply_rules_to_status(
     actor_device_id: int | None,
     max_scan: int | None,
     commit: bool,
+    reason: str | None,
 ) -> tuple[int, int, bool, str | None]:
+    reason = normalize_rule_reason(reason)
     if not preview_token:
         raise AppError("preview_required", "请先预览影响范围，再确认应用规则。", status_code=409)
     expenses, scan_limit_reached = _rule_application_candidates(
@@ -126,6 +133,7 @@ def _apply_rules_to_status(
             before_category=before_category, after_category=new_category, now=now,
             actor_account_id=actor_account_id, actor_device_id=actor_device_id,
             expected_row_version=expected_version,
+            reason=reason,
         )
         if applied is not None:
             changes.append(applied)
@@ -135,6 +143,7 @@ def _apply_rules_to_status(
             tenant_id=tenant_id, status=audit_status, created_at=now,
             pending_scanned=len(expenses), changed_count=len(changes),
             actor_account_id=actor_account_id, actor_device_id=actor_device_id,
+            application_reason=reason,
         )
         db.add(batch)
         db.flush()

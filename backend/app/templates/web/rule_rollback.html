@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+{% set page_title = '核对回退范围' %}
+{% set product_body_domain = 'transactions' %}
+{% set page_surface = 'tertiary' %}
+{% set task_return_href = '/web/rules' ~ q ~ '&view=history' %}
+{% set task_return_label = '规则应用记录' %}
+{% block title %}核对回退范围 · 小票夹{% endblock %}
+{% block content %}
+<div class="library-workspace stack">
+<header class="product-page-header"><div class="product-page-heading"><h1 class="page-title">核对回退范围</h1><p class="product-page-summary">只检查原批次的记录，保留后来人工修改。</p></div></header>
+{% if error %}<p class="product-feedback product-feedback--danger" role="alert">{{ error }} 输入仍保留，可重新核对。</p>{% endif %}
+{% if rollback_preview %}
+{% set p = rollback_preview %}
+<section class="rule-impact-total" aria-label="当前回退范围"><span>当前可回退</span><strong>{{ p.eligible_count }} 笔</strong><span>原批次变更 {{ p.original_count }} 笔 · 保留 {{ p.skipped_count }} 笔</span></section>
+{% set reasons = {'modified_after_application': '应用后已有修改，保留当前事实', 'already_rolled_back': '已回退，不重复处理', 'already_skipped': '已跳过，不重新应用', 'expense_unavailable': '原记录不可读取', 'batch_finished': '本批次已处理完成'} %}
+{% if p.skipped_items %}
+<details class="fact-disclosure"><summary class="product-entry"><span class="product-entry-icon product-entry-icon--lilac" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#list"/></svg></span><span class="product-entry-copy"><strong>查看 {{ p.skipped_count }} 笔保留项</strong><span>每笔都按原记录核对。</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-down"/></svg></summary>
+{% for item in p.skipped_items %}<div class="product-entry product-entry--static"><span class="product-entry-icon product-entry-icon--apricot" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#info"/></svg></span><span class="product-entry-copy"><strong>{{ item.merchant or '未填写商家' }} · #{{ item.expense_id }}</strong><span>{{ reasons.get(item.reason, '当前无法回退') }}</span></span></div>{% endfor %}
+</details>
+{% endif %}
+{% if p.eligible_count == 0 %}<p class="product-feedback">当前没有可回退的记录，不会覆盖保留项。</p>{% endif %}
+<p class="meta">预览尚未执行。确认时会再次核对，期间变化的记录仍会保留；最终数量以回退结果为准。</p>
+{% endif %}
+<form method="post" action="/web/rules/applications/{{ batch_public_id }}/rollback" class="stack">
+{{ csrf_field|safe }}<input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+<label for="rollback-reason">回退说明（选填）</label>
+<textarea id="rollback-reason" name="reason" maxlength="500" rows="2"{% if not can_write %} readonly{% endif %} placeholder="例如：核对后撤回本批次">{{ rollback_reason }}</textarea>
+<p class="meta">随首次回退结果保存，最多 500 字。</p>
+<button type="submit" class="product-button product-button--primary"{% if not can_write or not rollback_preview or rollback_preview.eligible_count == 0 %} disabled{% endif %}>{% if rollback_preview %}回退允许的 {{ rollback_preview.eligible_count }} 笔{% else %}核对范围后回退{% endif %}</button>
+</form>
+<a class="product-button product-button--quiet" href="{{ task_return_href }}">返回应用记录</a>
+</div>
+{% endblock %}

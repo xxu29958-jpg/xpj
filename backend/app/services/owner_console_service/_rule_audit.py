@@ -29,6 +29,8 @@ class RuleApplicationAuditRow:
     created_at: object
     rolled_back_at: object | None
     change_counts: dict[str, int] = field(default_factory=dict)
+    application_reason: str | None = None
+    rollback_reason: str | None = None
 
 
 @dataclass
@@ -83,6 +85,8 @@ def get_rule_application_audit(
             created_at=batch.created_at,
             rolled_back_at=batch.rolled_back_at,
             change_counts=outcomes.get(batch.id, {}),
+            application_reason=batch.application_reason,
+            rollback_reason=batch.rollback_reason,
         )
         for batch in batches
     ]

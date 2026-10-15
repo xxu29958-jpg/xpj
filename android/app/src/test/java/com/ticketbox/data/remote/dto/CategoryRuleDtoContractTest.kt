@@ -39,7 +39,9 @@ class CategoryRuleDtoContractTest {
                       "changed_count": 3,
                       "created_at": "2026-05-13T00:00:00Z",
                       "rolled_back_at": "2026-05-14T00:00:00Z",
-                      "change_counts": {"rolled_back": 2, "skipped": 1}
+                      "change_counts": {"rolled_back": 2, "skipped": 1},
+                      "application_reason": "按商家统一分类",
+                      "rollback_reason": "核对后撤回本批次"
                     }
                   ]
                 }
@@ -52,9 +54,27 @@ class CategoryRuleDtoContractTest {
         assertEquals(20, item.pendingScanned)
         assertEquals(3, item.changedCount)
         assertEquals(mapOf("rolled_back" to 2, "skipped" to 1), item.toDomain().changeCounts)
+        assertEquals("按商家统一分类", item.toDomain().applicationReason)
+        assertEquals("核对后撤回本批次", item.toDomain().rollbackReason)
         val legacy = requireNotNull(moshi.adapter(RuleApplicationBatchDto::class.java).fromJson(
             """{"public_id":"old","status":"rolled_back","pending_scanned":3,"changed_count":3,"created_at":"2026-05-13T00:00:00Z"}"""))
         assertEquals(null, legacy.toDomain().changeCounts, "An old response must not invent zero outcomes")
+        assertEquals(null, legacy.toDomain().applicationReason)
+    }
+
+    @Test
+    fun rollbackPreviewAndReasonUseTheServerWireFields() {
+        val preview = requireNotNull(moshi.adapter(RuleApplicationRollbackPreviewDto::class.java).fromJson(
+            """{"public_id":"batch-1","original_count":8,"eligible_count":6,"skipped_count":2,
+                "reason_counts":{"modified_after_application":2},"skipped_items":[
+                {"expense_id":12,"merchant":"小馆","reason":"modified_after_application"},
+                {"expense_id":13,"merchant":null,"reason":"modified_after_application"}]}"""))
+        assertEquals(6, preview.eligibleCount)
+        assertEquals(2, preview.skippedCount)
+        assertEquals(listOf(12L, 13L), preview.skippedItems.map { it.expenseId })
+        assertEquals("""{"reason":"核对后撤回本批次"}""",
+            moshi.adapter(RuleApplicationRollbackRequestDto::class.java).toJson(
+                RuleApplicationRollbackRequestDto("核对后撤回本批次")))
     }
 
     @Test

@@ -4,6 +4,9 @@ import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.CategoryRuleRequest
 import com.ticketbox.data.remote.dto.RuleApplyConfirmedRequestDto
+import com.ticketbox.data.remote.dto.RuleApplicationRollbackRequestDto
+import com.ticketbox.domain.model.RuleApplicationRollbackPreview
+import com.ticketbox.domain.model.RuleRollbackSkippedItem
 import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.RuleApplicationBatch
 import com.ticketbox.domain.model.RuleApplicationRollback
@@ -159,13 +162,15 @@ class RuleRepository(
             }
         }
 
-    suspend fun confirmApplyConfirmedRules(expected: LogicalSessionBinding, preview: RuleApplyConfirmedResult): Result<Long> =
+    suspend fun confirmApplyConfirmedRules(expected: LogicalSessionBinding, preview: RuleApplyConfirmedResult,
+        reason: String = ""): Result<Long> =
         errorHandler.safeCall {
             val bound = ledgerRequestGuard.bindExact(expected)
             require(canModifyLedger()) { "当前角色为只读，无法应用规则。" }
             require(preview.dryRun && !preview.previewToken.isNullOrBlank() && preview.changedCount > 0) { "请先预览影响范围。" }
+            require(reason.length <= 500) { "说明最多填写500字。" }
             val payload = RuleApplicationPayload(previewToken = requireNotNull(preview.previewToken), maxScan = preview.scanLimit,
-                scanned = preview.confirmedScanned, expectedChanges = preview.changedCount)
+                scanned = preview.confirmedScanned, expectedChanges = preview.changedCount, reason = reason.trim().takeIf { it.isNotEmpty() })
             enqueue(bound, PendingMutationIntent(PendingMutationType.ApplyConfirmedRules, RULE_APPLICATION_TARGET,
                 requireNotNull(offlineMutations.applicationAdapter).toJson(payload), 0, UUID.randomUUID().toString()))
         }
@@ -209,13 +214,29 @@ class RuleRepository(
             }
         }
 
-    suspend fun rollbackRuleApplication(publicId: String): Result<RuleApplicationRollback> =
+    suspend fun previewRuleApplicationRollback(expected: LogicalSessionBinding, publicId: String): Result<RuleApplicationRollbackPreview> =
+        errorHandler.safeCall {
+            ledgerRequestGuard.bindExact(expected).call { api ->
+                val preview = api.previewRuleApplicationRollback(publicId)
+                require(preview.publicId == publicId) { "回退范围不匹配，请重新核对。" }
+                RuleApplicationRollbackPreview(preview.publicId, preview.originalCount, preview.eligibleCount,
+                    preview.skippedCount, preview.reasonCounts, preview.skippedItems.map {
+                        RuleRollbackSkippedItem(it.expenseId, it.merchant, it.reason)
+                    })
+            }
+        }
+
+    suspend fun rollbackRuleApplication(publicId: String, reason: String? = null,
+        expected: LogicalSessionBinding? = currentAccess()?.binding): Result<RuleApplicationRollback> =
         errorHandler.safeCall {
             val cleanPublicId = publicId.trim()
             require(cleanPublicId.isNotBlank()) { "请选择一条应用记录。" }
-            ledgerRequestGuard.guardedCall { api ->
-                val result = api.rollbackRuleApplication(cleanPublicId).toDomain()
-                requireStillActive()
+            require(canModifyLedger()) { "当前角色为只读，无法回退。" }
+            require(reason == null || reason.length <= 500) { "说明最多填写500字。" }
+            val bound = ledgerRequestGuard.bindExact(requireNotNull(expected))
+            bound.call { api ->
+                val result = api.rollbackRuleApplication(cleanPublicId, RuleApplicationRollbackRequestDto(reason)).toDomain()
+                bound.requireStillActive()
                 if (result.changed > 0) {
                     onConfirmedChanged()
                 }

@@ -24,7 +24,7 @@ class ApplyConfirmedRulesDispatcher(
         if (payload?.supports(row) != true) return DispatchResult.Failure("原应用内容无法核对，已保留原任务。")
         return try {
             val receipt = apiProvider(row).applyConfirmedRules(
-                RuleApplyConfirmedRequestDto(confirm = true, previewToken = payload.previewToken),
+                RuleApplyConfirmedRequestDto(confirm = true, previewToken = payload.previewToken, reason = payload.reason),
                 maxScan = payload.maxScan, idempotencyKey = row.idempotencyKey)
             if (!payload.accepts(row, receipt)) DispatchResult.Failure(RULE_APPLICATION_UNVERIFIED)
             else {

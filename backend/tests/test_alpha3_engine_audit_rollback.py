@@ -132,6 +132,11 @@ def test_rule_application_rollback_safety_boundaries_integration(client: TestCli
     assert gray_list.status_code == 200
     assert all(item["public_id"] != batch_id for item in gray_list.json()["items"])
     assert gray_rollback.status_code == 404
+    preview_path = f"/api/rules/applications/{batch_id}/rollback-preview"
+    assert client.get(preview_path, headers=identity.gray_app_headers).status_code == 404
+    original_preview = client.get(preview_path, headers=identity.app_headers)
+    assert original_preview.status_code == 200, original_preview.text
+    assert original_preview.json()["eligible_count"] == 2
 
     manual = patch_expense(
         client,
@@ -140,9 +145,15 @@ def test_rule_application_rollback_safety_boundaries_integration(client: TestCli
         fields={"category": "交通"},
     )
     assert manual.status_code == 200
+    preview = client.get(preview_path, headers=identity.app_headers).json()
+    assert preview["original_count"] == 2
+    assert preview["eligible_count"] == preview["skipped_count"] == 1
+    assert preview["reason_counts"] == {"modified_after_application": 1}
+    assert preview["skipped_items"][0]["expense_id"] == pending_id
+    assert preview["skipped_items"][0]["reason"] == "modified_after_application"
     with ThreadPoolExecutor(max_workers=2) as pool:
         requests = [pool.submit(client.post, f"/api/rules/applications/{batch_id}/rollback",
-            headers=identity.app_headers) for _ in range(2)]
+            headers=identity.app_headers, json={"reason": "核对后撤回本批次"}) for _ in range(2)]
         first, second = [request.result(timeout=10) for request in requests]
     assert first.status_code == second.status_code == 200
     assert first.json() == second.json()
@@ -150,6 +161,10 @@ def test_rule_application_rollback_safety_boundaries_integration(client: TestCli
     assert first.json()["changed"] == first.json()["skipped"] == 1
     history = client.get("/api/rules/applications", headers=identity.app_headers).json()["items"][0]
     assert history["change_counts"] == {"rolled_back": 1, "skipped": 1}
+    assert history["rollback_reason"] == "核对后撤回本批次"
+    completed_preview = client.get(preview_path, headers=identity.app_headers).json()
+    assert completed_preview["eligible_count"] == 0
+    assert completed_preview["reason_counts"] == {"already_rolled_back": 1, "already_skipped": 1}
     with SessionLocal() as db:
         expense = db.scalar(select(Expense).where(Expense.id == pending_id))
         assert expense is not None
@@ -160,8 +175,10 @@ def test_rule_application_rollback_safety_boundaries_integration(client: TestCli
 
     later = patch_expense(client, another_id, headers=identity.app_headers, fields={"category": "医疗"})
     assert later.status_code == 200, later.text
-    replay = client.post(f"/api/rules/applications/{batch_id}/rollback", headers=identity.app_headers)
+    replay = client.post(f"/api/rules/applications/{batch_id}/rollback", headers=identity.app_headers,
+        json={"reason": "不能改写首次回退说明"})
     assert replay.status_code == 200 and replay.json() == first.json()
+    assert client.get("/api/rules/applications", headers=identity.app_headers).json()["items"][0]["rollback_reason"] == "核对后撤回本批次"
     with SessionLocal() as db:
         restored = db.get(Expense, another_id)
         assert restored.category == "医疗" and restored.row_version == restored_version + 1
@@ -190,6 +207,8 @@ def test_rule_application_rollback_skips_after_manual_edit_even_when_category_ma
     assert applied.status_code == 200
     batch_id = client.get("/api/rules/applications", headers=identity.app_headers).json()["items"][0]["public_id"]
 
+    before_edit = client.get(f"/api/rules/applications/{batch_id}/rollback-preview", headers=identity.app_headers)
+    assert before_edit.status_code == 200 and before_edit.json()["eligible_count"] == 1
     manual = patch_expense(
         client,
         pending_id,

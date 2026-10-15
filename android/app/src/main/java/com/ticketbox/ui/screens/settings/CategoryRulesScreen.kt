@@ -46,6 +46,7 @@ import com.ticketbox.ui.screens.settings.categoryrules.RollbackRuleApplicationDi
 import kotlinx.coroutines.delay
 import com.ticketbox.data.repository.RuleDefinitionDraft
 import com.ticketbox.viewmodel.RuleDefinitionDraftState
+import com.ticketbox.viewmodel.RuleRollbackState
 import com.ticketbox.ui.screens.settings.categoryrules.CategoryRuleDefinitionEditor
 
 data class CategoryRulesScreenState(
@@ -83,6 +84,8 @@ data class CategoryRulesApplicationState(
     val loading: Boolean,
     val confirmedPreview: RuleApplyConfirmedResult?,
     val loadFailed: Boolean = false,
+    val reason: String = "",
+    val rollback: RuleRollbackState = RuleRollbackState(),
 )
 
 data class CategoryRulesScreenActions(
@@ -116,6 +119,15 @@ data class CategoryRulesApplicationActions(
     val onRollbackRuleApplication: (RuleApplicationBatch) -> Unit,
     val onReload: () -> Unit,
     val onRecover: (PendingRuleApplication, Boolean) -> Unit = { _, _ -> },
+    val onReasonChange: (String) -> Unit = {},
+    val rollback: CategoryRuleRollbackActions = CategoryRuleRollbackActions(),
+)
+
+data class CategoryRuleRollbackActions(
+    val onDismiss: () -> Unit = {},
+    val onConfirm: () -> Unit = {},
+    val onRefresh: () -> Unit = {},
+    val onReasonChange: (String) -> Unit = {},
 )
 
 data class CategoryRulesUndoActions(
@@ -147,10 +159,11 @@ fun CategoryRulesScreen(
         }
     }
     var deletingRule by remember(state.binding) { mutableStateOf<CategoryRule?>(null) }
-    var rollbackApplication by remember(state.binding) { mutableStateOf<RuleApplicationBatch?>(null) }
 
     CategoryRuleDeleteDialogHost(deletingRule, { deletingRule = null }, actions.rules.onDelete)
-    CategoryRuleRollbackDialogHost(rollbackApplication, { rollbackApplication = null }, actions.applications.onRollbackRuleApplication)
+    if (state.applications.rollback.visible) {
+        RollbackRuleApplicationDialog(state.applications.rollback, state.interaction, actions.applications.rollback)
+    }
 
     val backToDirectory = { page = RuleWorkspacePage.Directory }
     val openHistory = { page = RuleWorkspacePage.History; actions.applications.onReload() }
@@ -164,8 +177,7 @@ fun CategoryRulesScreen(
                         onPreviewApplyConfirmedRules = { page = RuleWorkspacePage.Preview; actions.applications.onPreviewApplyConfirmedRules() })),
                     chrome)
             } else {
-                CategoryRulesApplicationPage(state, actions.copy(onBack = backToDirectory,
-                    applications = actions.applications.copy(onRollbackRuleApplication = { rollbackApplication = it })), chrome, page)
+                CategoryRulesApplicationPage(state, actions.copy(onBack = backToDirectory), chrome, page)
             }
         }
     }
@@ -240,7 +252,8 @@ private fun CategoryRulesApplicationPage(
         } } else null,
     ) {
         if (preview) {
-            ConfirmedRuleApplyPanel(state.applications.confirmedPreview, state.interaction.readOnly)
+            ConfirmedRuleApplyPanel(state.applications.confirmedPreview, state.interaction.readOnly,
+                state.applications.reason, state.interaction.busy, actions.applications.onReasonChange)
         } else {
             RuleApplicationHistory(state.applications, state.interaction,
                 actions.applications.onRollbackRuleApplication, actions.applications.onReload)
@@ -276,24 +289,6 @@ private fun CategoryRuleDeleteDialogHost(
     rule?.let {
         DeleteCategoryRuleDialog(
             rule = it,
-            onDismiss = onDismiss,
-            onConfirm = {
-                onDismiss()
-                onConfirm(it)
-            },
-        )
-    }
-}
-
-@Composable
-private fun CategoryRuleRollbackDialogHost(
-    application: RuleApplicationBatch?,
-    onDismiss: () -> Unit,
-    onConfirm: (RuleApplicationBatch) -> Unit,
-) {
-    application?.let {
-        RollbackRuleApplicationDialog(
-            application = it,
             onDismiss = onDismiss,
             onConfirm = {
                 onDismiss()

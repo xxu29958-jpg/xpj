@@ -35,11 +35,14 @@
 <div class="product-entry product-entry--static"><span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#info"/></svg></span><span class="product-entry-copy"><strong>修改会留在历史里</strong><span>确认时会再次核对预览；后来的人工更正不会被本批次回退覆盖。</span></span></div>
 {% else %}<p class="product-feedback">从此浏览器保留的原任务核实提交结果；要应用新的范围，请先重新预览。</p>{% endif %}
 </div>
-<form method="post" action="/web/rules/apply-{{ application_status }}" class="stack" data-rule-application
+<form method="post" action="/web/rules/apply-{{ application_status }}" class="stack" data-rule-application data-ruleapplication-has-preview="{{ 'true' if result else 'false' }}"
 {% if rule_draft_scope %} data-ruleapplication-draft-scope="{{ rule_draft_scope|tojson|forceescape }}" data-ruleapplication-can-write="{{ 'true' if can_write else 'false' }}" data-ruleapplication-native-result="{{ application_result }}"{% endif %}>
 {{ csrf_field|safe }}
 {% for name in ['ledger_id', 'apply_status', 'preview_confirmed', 'preview_token', 'idempotency_key', 'draft_ref', 'draft_scope', 'original_scanned', 'original_changed'] %}<input type="hidden" name="{{ name }}" value="{{ application_form[name] }}">{% endfor %}
 <p class="product-page-summary" data-ruleapplication-original{% if not frozen %} hidden{% endif %}>原预览扫描 {{ application_form.original_scanned }} 笔{{ target }}，预计改写 {{ application_form.original_changed }} 笔。</p>
+<label for="application-reason">应用理由（选填）</label>
+<textarea id="application-reason" name="reason" maxlength="500" rows="2"{% if not can_write %} readonly{% endif %} placeholder="例如：按商家统一分类">{{ application_form.reason }}</textarea>
+<p class="meta">随本次应用保存在记录中，最多 500 字。</p>
 <p class="product-feedback" data-ruleapplication-draft-status role="status" aria-live="polite"{% if can_write %} hidden{% endif %}>{% if not can_write %}当前角色为只读，可预览影响，不能应用规则。{% endif %}</p>
 <button type="submit" class="product-button product-button--primary"{% if not can_write or not frozen and (not result or result.changed_count == 0) %} disabled{% endif %}>{{ '核实原应用' if frozen else '确认应用到' ~ target ~ ' · ' ~ application_form.original_changed ~ ' 笔' }}</button>
 <p class="meta" data-ruleapplication-review-note{% if application_result != 'rejected' %} hidden{% endif %}>原提交已被拒绝。重新读取当前影响后，需再次确认才会应用。</p>

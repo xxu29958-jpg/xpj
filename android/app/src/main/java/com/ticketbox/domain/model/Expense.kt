@@ -437,6 +437,8 @@ data class RuleApplicationBatch(
     val createdAt: String,
     val rolledBackAt: String?,
     val changeCounts: Map<String, Int>? = null,
+    val applicationReason: String? = null,
+    val rollbackReason: String? = null,
 ) {
     val isRolledBack: Boolean = status == "rolled_back" || rolledBackAt != null
 }
@@ -447,6 +449,18 @@ data class RuleApplicationRollback(
     val changed: Int,
     val skipped: Int,
     val rolledBackAt: String?,
+    val rollbackReason: String? = null,
+)
+
+data class RuleRollbackSkippedItem(val expenseId: Long, val merchant: String?, val reason: String)
+
+data class RuleApplicationRollbackPreview(
+    val publicId: String,
+    val originalCount: Int,
+    val eligibleCount: Int,
+    val skippedCount: Int,
+    val reasonCounts: Map<String, Int>,
+    val skippedItems: List<RuleRollbackSkippedItem>,
 )
 
 data class RuleApplyPreviewItem(
