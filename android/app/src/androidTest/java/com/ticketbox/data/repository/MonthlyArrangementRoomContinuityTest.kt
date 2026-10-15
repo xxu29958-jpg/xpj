@@ -414,7 +414,7 @@ class MonthlyArrangementRoomContinuityTest {
         assertNotNull(refreshed.fetchedAt)
         assertTrue(refreshed.receiptVersions.isEmpty())
         assertEquals(history.response, refreshed.response)
-        assertTrue(requireNotNull(db).pendingMutationDao().allRows().isEmpty())
+        assertEquals(originalReceipts, requireNotNull(db).pendingMutationDao().allRows())
     }
     @Test fun offlineHistoryKeepsKnownRevisionsAndLeavesAnotherDevicesMissingRevisionReachable() = runBlocking {
         loseAck = false
