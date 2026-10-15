@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.schemas import RuleApplyConfirmedResponse, RuleApplyPendingResponse
 from app.services.idempotency import (
+    IdempotencyOutcome,
     IdempotencyOutcomeKind,
     claim_idempotency_key,
     fingerprint_request,
@@ -16,6 +17,23 @@ from app.services.idempotency import (
 from app.services.rule_application_service._apply import apply_rules_to_confirmed, apply_rules_to_pending
 from app.services.rule_application_service._common import normalize_rule_reason
 from app.services.rule_application_service._preview import validate_rule_application_preview
+
+
+def _original_application_receipt(
+    claim: IdempotencyOutcome,
+    response_type: type[RuleApplyConfirmedResponse] | type[RuleApplyPendingResponse],
+    idempotency_key: str,
+) -> RuleApplyPendingResponse | RuleApplyConfirmedResponse:
+    """Read the accepted result without interpreting the current ledger again."""
+    try:
+        receipt = response_type.model_validate(claim.row.response_body)
+        if (receipt.command_key != idempotency_key or receipt.application_public_id != claim.row.resource_id
+            or bool(receipt.changed_count) != bool(receipt.application_public_id)
+            or isinstance(receipt, RuleApplyConfirmedResponse) and receipt.dry_run):
+            raise ValueError("Original result does not match the accepted command")
+        return receipt
+    except (ValueError, ValidationError) as exc:
+        raise AppError("rule_original_requires_review", "原应用已被接受，但原结果无法核对。请查看应用记录。", status_code=409) from exc
 
 
 def apply_rules_idempotently(db: Session, *, tenant_id: str, status: Literal["pending", "confirmed"],
@@ -42,15 +60,7 @@ def apply_rules_idempotently(db: Session, *, tenant_id: str, status: Literal["pe
         raise AppError("idempotency_key_reused", status_code=422)
     response_type = RuleApplyConfirmedResponse if status == "confirmed" else RuleApplyPendingResponse
     if claim.kind is IdempotencyOutcomeKind.HIT:
-        try:
-            receipt = response_type.model_validate(claim.row.response_body)
-            if (receipt.command_key != idempotency_key or receipt.application_public_id != claim.row.resource_id
-                or bool(receipt.changed_count) != bool(receipt.application_public_id)
-                or isinstance(receipt, RuleApplyConfirmedResponse) and receipt.dry_run):
-                raise ValueError("Original result does not match the accepted command")
-            return receipt
-        except (ValueError, ValidationError) as exc:
-            raise AppError("rule_original_requires_review", "原应用已被接受，但原结果无法核对。请查看应用记录。", status_code=409) from exc
+        return _original_application_receipt(claim, response_type, idempotency_key)
     preview = validate_rule_application_preview(db, tenant_id=tenant_id, status=status,
         preview_token=preview_token, max_scan=max_scan)
     apply = apply_rules_to_confirmed if status == "confirmed" else apply_rules_to_pending

@@ -147,16 +147,15 @@ def rollback_rule_application(
         change.rolled_back_at = now
         changed += 1
 
-    if changed > 0 and skipped > 0 and batch.status != "rollback_partial":
-        batch.status = "rollback_partial"
+    # Completed batches returned their original result above, under the same lock.
+    if changed or skipped:
+        if changed and skipped:
+            batch.status = "rollback_partial"
+        elif changed:
+            batch.status = "rolled_back"
+        else:
+            batch.status = "rollback_skipped"
         batch.rolled_back_at = now
-    elif changed > 0 and batch.status != "rolled_back":
-        batch.status = "rolled_back"
-        batch.rolled_back_at = now
-    elif changed == 0 and skipped > 0 and batch.status != "rolled_back":
-        batch.status = "rollback_skipped"
-        batch.rolled_back_at = now
-    if batch.rolled_back_at is not None:
         batch.rollback_reason = reason
     db.commit()
     db.refresh(batch)
