@@ -14,7 +14,9 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_docs_only_change_skips_heavy_jobs() -> None:
-    assert classify_ci_paths(["docs/runbook/CI.md", "README.md"]) == {
+    assert classify_ci_paths([
+        "docs/runbook/CI.md", "README.md", "backend/README.md", "backend/packaging/README.md",
+    ]) == {
         "postgres": False,
         "backend_frozen": False,
         "desktop": False,
@@ -339,6 +341,7 @@ def test_desktop_pairing_producers_require_the_real_desktop_consumer() -> None:
 
 def test_always_on_contract_tests_do_not_expand_heavy_scopes() -> None:
     for path in (
+        "backend/scripts/engineering_task_map.py",
         "backend/tests/test_android_test_qualification.py",
         "backend/tests/test_backend_ci_results.py",
         "backend/tests/test_postgres_ci_lane_runner.py",
