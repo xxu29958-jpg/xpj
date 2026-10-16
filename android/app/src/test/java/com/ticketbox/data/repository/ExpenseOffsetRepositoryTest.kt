@@ -146,9 +146,8 @@ internal class ExpenseOffsetRepositoryTest : ExpensePendingRepositoryOutboxTestB
             ExpenseCorrectionDraft("The receipt is in yen", originalCurrencyCode = CurrencyCode.JPY,
                 originalAmountMinor = 1_000L)).isFailure)
 
-        outbox.cascadeFreshToken(original.targetId, 8L)
         assertEquals(listOf(original), mutationDao.rows.values.toList(),
-            "The original currency-basis OCC, body, binding and key survive subsequent read/token propagation")
+            "Refusing a conflicting correction preserves the original currency-basis OCC, body, binding and key")
     }
 
     @Test

@@ -41,7 +41,24 @@ class ExpenseOffsetRoomIdentityTest {
         }
 
         val patch = fixture.outbox.enqueue(PendingMutationType.PatchExpense, "expense:42", "{\"note\":\"Original patch\"}", 7, "patch-key")
+        val patchOriginal = fixture.pendingDao.allRows().single { it.id == patch }
+        val protectedTypes = listOf(PendingMutationType.CorrectExpense, PendingMutationType.UndoExpense,
+            PendingMutationType.VoidExpenseOffset, PendingMutationType.SplitAgreement,
+            PendingMutationType.CreateBillSplitInvitation, PendingMutationType.AcceptBillSplitInvitation,
+            PendingMutationType.UploadScreenshot, PendingMutationType.OriginalAttachment)
+        val protectedRows = protectedTypes.map { type -> patchOriginal.copy(id = 0, type = type.wireValue,
+            idempotencyKey = "original-${type.wireValue}") } + listOf(
+            patchOriginal.copy(id = 0, ownerKey = "another-owner"),
+            patchOriginal.copy(id = 0, ledgerId = "another-ledger"),
+            patchOriginal.copy(id = 0, targetId = "expense:43"),
+            patchOriginal.copy(id = 0, status = "done"),
+            patchOriginal.copy(id = 0, status = "conflict"),
+        )
+        fixture.pendingDao.insertBatch(protectedRows)
+        val unchanged = fixture.pendingDao.allRows().filter { it.id != patch }
         fixture.outbox.cascadeFreshToken("expense:42", 9)
+        fixture.reopen()
+        assertEquals(unchanged, fixture.pendingDao.allRows().filter { it.id != patch })
         assertEquals("9", fixture.stored().single { it["id"] == patch.toString() }["expectedRowVersion"])
         assertEquals("7", fixture.stored().single { it["id"] == id.toString() }["expectedRowVersion"])
         fixture.outbox.markConflict(patch, "state_conflict")

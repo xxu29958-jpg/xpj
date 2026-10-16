@@ -245,11 +245,19 @@ class OutboxRepositoryTest {
         // r2#1's NOT EXISTS filter. ``resolveFailed(Retry)`` must
         // put the row back to PENDING so the next drain re-claims it.
         val dao = FakePendingMutationDao()
-        val repo = testOutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
+        var scheduled = 0
+        val repo = testOutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"), onEnqueued = { scheduled++ })
         val id = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 0L)
         repo.markFailed(id, "transient parse")
 
-        repo.resolveFailed(id, FailedResolution.Retry())
+        val original = dao.rows.getValue(id)
+        dao.refusedRecoveries += id
+        assertEquals(false, repo.resolveFailed(id, FailedResolution.Retry()))
+        assertEquals(original, dao.rows.getValue(id))
+        assertEquals(1, scheduled)
+        dao.refusedRecoveries.remove(id)
+        assertTrue(repo.resolveFailed(id, FailedResolution.Retry()))
+        assertEquals(2, scheduled)
 
         val row = dao.rows[id]!!
         assertEquals(PendingMutationStatus.Pending.wireValue, row.status)
@@ -283,54 +291,6 @@ class OutboxRepositoryTest {
         assertEquals(2L, row.expectedRowVersion)
         assertEquals(null, row.lastError)
         assertEquals(0, row.retryCount, "Retry(freshToken) 也是用户显式重试, 必须重置 retryCount")
-    }
-
-    @Test
-    fun resolveFailedRetryNoOpsIfRowAlreadyDone() = runTest {
-        // [codex round-4 P2] A stale banner click after some other
-        // surface already retried + DONE this row must NOT flip the
-        // DONE row back to PENDING and trigger a duplicate replay.
-        val dao = FakePendingMutationDao()
-        val repo = testOutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
-        val id = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 0L)
-        // Simulate: row was FAILED, another surface retried, drain
-        // ran, server accepted → row is now DONE.
-        dao.rows[id] = dao.rows[id]!!.copy(
-            status = PendingMutationStatus.Done.wireValue,
-            completedAt = "2026-05-04T00:01:00Z",
-        )
-
-        val changed = repo.resolveFailed(id, FailedResolution.Retry())
-
-        // The retry is a no-op because the row is no longer FAILED.
-        assertEquals(false, changed)
-        assertEquals(PendingMutationStatus.Done.wireValue, dao.rows[id]!!.status)
-    }
-
-    @Test
-    fun resolveConflictKeepMineNoOpsIfRowAlreadyPending() = runTest {
-        // Mirror of resolveFailedRetryNoOpsIfRowAlreadyDone — if a
-        // parallel surface already moved the row out of CONFLICT,
-        // a stale banner click is a no-op.
-        val dao = FakePendingMutationDao()
-        val repo = testOutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
-        val id = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 0L)
-        repo.markConflict(id, "stale")
-        // Another surface keep-mined first; row is now PENDING.
-        dao.rows[id] = dao.rows[id]!!.copy(
-            status = PendingMutationStatus.Pending.wireValue,
-            expectedRowVersion = 7L,
-            lastError = null,
-        )
-
-        val changed = repo.resolveConflict(
-            id,
-            ConflictResolution.KeepMine(freshToken = 9L),
-        )
-
-        assertEquals(false, changed)
-        // The other surface's fresh token survives.
-        assertEquals(7L, dao.rows[id]!!.expectedRowVersion)
     }
 
     @Test

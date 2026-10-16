@@ -173,6 +173,7 @@ class UpdateMerchantAliasDispatcherTest {
         val nextId = outbox.enqueue(original.type, original.targetId, original.payloadJson, 1L,
             idempotencyKey = "following-key")
 
+        dao.tokenCascadeIds += listOf(nextId)
         dao.runnableBatches.addAll(listOf(listOf(firstId), listOf(nextId)))
         val summary = OutboxDrainEngine(outbox, listOf(dispatcherFor(api))).drainOnce()
 

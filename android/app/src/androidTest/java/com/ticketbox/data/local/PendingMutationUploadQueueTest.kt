@@ -165,6 +165,33 @@ class PendingMutationUploadQueueTest {
     }
 
     @Test
+    fun recoveryRejectsStaleStatusAndForeignBindingsWithoutChangingTheOriginal() = runBlocking<Unit> {
+        UploadQueueFixture().use { fixture ->
+            val original = fixture.row("original").copy(type = "patch_expense", status = "failed", retryCount = 3)
+            val id = fixture.dao.insert(original)
+            for ((owner, ledger) in listOf("another-owner" to LEDGER, OWNER to "another-ledger")) {
+                assertEquals(0, fixture.dao.retryFailed(id, owner, ledger, NON_RETRYABLE_UPLOAD_ERRORS))
+                assertEquals(0, fixture.dao.requeueFailedWithFreshToken(id, owner, ledger, 8, "replacement"))
+                assertEquals(0, fixture.dao.deleteIfStatus(id, owner, ledger, "failed"))
+            }
+            assertEquals(original.copy(id = id), fixture.reopen().allRows().single())
+            assertEquals(1, fixture.dao.retryFailed(id, OWNER, LEDGER, NON_RETRYABLE_UPLOAD_ERRORS))
+            val retried = fixture.dao.allRows().single()
+            assertEquals(original.copy(id = id, status = "pending", retryCount = 0,
+                lastError = "manual_retry"), retried)
+            assertEquals(0, fixture.dao.retryFailed(id, OWNER, LEDGER, NON_RETRYABLE_UPLOAD_ERRORS))
+            assertEquals(0, fixture.dao.requeueFailedWithFreshToken(id, OWNER, LEDGER, 8, "replacement"))
+            assertEquals(0, fixture.dao.requeueConflictWithFreshToken(id, OWNER, LEDGER, 8, "replacement"))
+            assertEquals(0, fixture.dao.deleteIfStatus(id, OWNER, LEDGER, "failed"))
+            assertEquals(retried, fixture.reopen().allRows().single())
+            fixture.dao.markDone(id, "done", COMPLETED, receiptJson = RECEIPT)
+            val done = fixture.dao.allRows().single()
+            assertEquals(0, fixture.dao.retryFailed(id, OWNER, LEDGER, NON_RETRYABLE_UPLOAD_ERRORS))
+            assertEquals(done, fixture.reopen().allRows().single())
+        }
+    }
+
+    @Test
     fun bothExpiryPathsRestoreBlockingWithoutDeletingOrRewritingIntent() = runBlocking<Unit> {
         UploadQueueFixture().use { fixture ->
             val cutoff = "2026-09-01T00:00:00.000Z"

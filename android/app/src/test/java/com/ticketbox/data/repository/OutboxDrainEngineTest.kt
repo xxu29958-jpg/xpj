@@ -214,89 +214,19 @@ class OutboxDrainEngineTest {
             expectedRowVersion = 1L,
         )
 
+        dao.tokenCascadeIds += listOf(secondId)
         dao.runnableBatches.addAll(listOf(listOf(dao.rows.keys.first()), listOf(secondId)))
         val summary = engine.drainOnce()
 
         assertEquals(2, summary.attempted)
         assertEquals(2, summary.done)
         assertEquals(listOf(1L, 2L), dispatcher.dispatchedRows.map { it.expectedRowVersion })
+        assertEquals("expense:1", dao.tokenCascadeCalls.first().targetId)
+        assertEquals(testOutboxBinding().ownerStorageKey, dao.tokenCascadeCalls.first().ownerKey)
+        assertEquals("owner", dao.tokenCascadeCalls.first().ledgerId)
+        assertEquals(2L, dao.tokenCascadeCalls.first().freshToken)
         assertEquals(secondId, dispatcher.dispatchedRows.last().id)
         assertTrue(outbox.activeForTarget("expense:1").isEmpty())
-    }
-
-    @Test
-    fun successDoesNotRebaseQueuedCompositeCorrection() = runTest {
-        val dao = FakePendingMutationDao()
-        val outbox = testOutboxRepository(dao = dao)
-        val engine = OutboxDrainEngine(
-            outbox,
-            listOf(StubDispatcher(result = DispatchResult.Success(newRowVersion = 8L)),
-                StubDispatcher(result = DispatchResult.Conflict("stale original fact"), type = PendingMutationType.CorrectExpense)),
-        )
-        outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 7L)
-        val payload = """{"expected_row_version":0,"reason":"校正复合事实","original_currency_code":"CNY","original_amount_minor":1200,"items":[{"name":"午餐","amount_cents":1200}],"splits":[{"member_id":7,"amount_cents":1200}]}"""
-        val correctionId = outbox.enqueue(
-            PendingMutationType.CorrectExpense,
-            "expense:1",
-            payload,
-            7L,
-            idempotencyKey = "original-correction-key",
-        )
-        val original = dao.rows.getValue(correctionId)
-
-        dao.runnableBatches.addAll(listOf(listOf(dao.rows.keys.first()), listOf(correctionId)))
-        val summary = engine.drainOnce()
-
-        assertEquals(1, summary.done)
-        assertEquals(2, summary.attempted, "the correction follows the predecessor using only its original OCC")
-        assertEquals(1, summary.conflicts)
-        val pending = dao.rows.getValue(correctionId)
-        assertEquals(7L, pending.expectedRowVersion, "a predecessor's success cannot authorize correction of an unseen fact version")
-        assertEquals("original-correction-key", pending.idempotencyKey)
-        assertEquals(payload, pending.payload)
-        assertEquals(original.ownerKey, pending.ownerKey)
-        assertEquals(original.ledgerId, pending.ledgerId)
-        assertEquals(PendingMutationStatus.Conflict.wireValue, pending.status)
-    }
-
-    @Test
-    fun voidSuccessCascadesRootTokenWithoutOverwritingAnotherOffsetsOccToken() = runTest {
-        val dao = FakePendingMutationDao()
-        val outbox = testOutboxRepository(dao = dao)
-        val engine = OutboxDrainEngine(
-            outbox,
-            listOf(
-                StubDispatcher(
-                    result = DispatchResult.Success(newRowVersion = 8L),
-                    type = PendingMutationType.VoidExpenseOffset,
-                ),
-            ),
-        )
-        outbox.enqueue(
-            type = PendingMutationType.VoidExpenseOffset,
-            targetId = "expense:1",
-            payloadJson = "{}",
-            expectedRowVersion = 2L,
-        )
-        val laterPatchId = outbox.enqueue(
-            type = PendingMutationType.PatchExpense,
-            targetId = "expense:1",
-            payloadJson = "{}",
-            expectedRowVersion = 7L,
-        )
-        val laterVoidId = outbox.enqueue(
-            type = PendingMutationType.VoidExpenseOffset,
-            targetId = "expense:1",
-            payloadJson = "{}",
-            expectedRowVersion = 4L,
-        )
-
-        dao.runnableBatches.addAll(listOf(listOf(dao.rows.keys.first()), listOf(laterPatchId)))
-        val summary = engine.drainOnce()
-
-        assertEquals(1, summary.done)
-        assertEquals(8L, dao.rows.getValue(laterPatchId).expectedRowVersion)
-        assertEquals(4L, dao.rows.getValue(laterVoidId).expectedRowVersion)
     }
 
     @Test

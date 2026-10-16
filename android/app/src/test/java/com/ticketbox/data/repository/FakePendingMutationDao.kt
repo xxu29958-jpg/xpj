@@ -15,10 +15,13 @@ class FakePendingMutationDao : PendingMutationDao {
     val rows: MutableMap<Long, PendingMutationEntity> = Collections.synchronizedMap(linkedMapOf())
     val runnableBatches = ArrayDeque<List<Long>>()
     val batchCalls = mutableListOf<RunnableBatchCall>()
+    val tokenCascadeIds = ArrayDeque<List<Long>>()
+    val tokenCascadeCalls = mutableListOf<TokenCascadeCall>()
     var beforeNextRunnableBatchReturn: (suspend () -> Unit)? = null
     var beforeInsert: (suspend () -> Unit)? = null
     var replacePayloadError: Throwable? = null
     val refusedClaims = mutableSetOf<Long>()
+    val refusedRecoveries = mutableSetOf<Long>()
     // Query outcomes are supplied by the scenario; generated Room owns age/status/binding predicates.
     val expiredPendingIds = mutableListOf<Long>()
     val expiredBoundIds = mutableSetOf<Long>()
@@ -169,18 +172,11 @@ class FakePendingMutationDao : PendingMutationDao {
         preservedTokenTypes: List<String>,
         freshToken: Long,
     ): Int {
-        val matching = rows.values.filter {
-            it.ownerKey == ownerKey &&
-                it.ledgerId == ledgerId &&
-                it.targetId == targetId &&
-                it.status == PendingMutationStatus.Pending.wireValue &&
-                it.type !in preservedTokenTypes
-        }
-        for (row in matching) {
-            rows[row.id] = row.copy(expectedRowVersion = freshToken)
-        }
-        if (matching.isNotEmpty()) refreshObservables()
-        return matching.size
+        tokenCascadeCalls += TokenCascadeCall(ownerKey, ledgerId, targetId, preservedTokenTypes, freshToken)
+        val ids = tokenCascadeIds.removeFirstOrNull().orEmpty()
+        for (id in ids) rows[id] = rows.getValue(id).copy(expectedRowVersion = freshToken)
+        if (ids.isNotEmpty()) refreshObservables()
+        return ids.size
     }
 
     override suspend fun requeueConflictWithFreshToken(
@@ -191,14 +187,10 @@ class FakePendingMutationDao : PendingMutationDao {
         rotatedIdempotencyKey: String?,
     ): Int {
         val current = rows[id] ?: return 0
-        if (current.type in setOf("correct_expense", "create_expense_offset", "upload_screenshot", "create_bill_split_invitation")) return 0
-        if (current.ownerKey != ownerKey || current.ledgerId != ledgerId || current.status != "conflict") return 0
-        // codex P1 #7: 同步真实 DAO 的 retryCount = 0 重置, 否则 fake 看不到用户 retry
-        // 重置预算的语义。
+        if (id in refusedRecoveries) return 0
         rows[id] = current.copy(
             status = "pending",
             expectedRowVersion = freshToken,
-            // ADR-0042 §4.8: rotate only key-bearing rows (mirrors the DAO CASE).
             idempotencyKey = if (current.idempotencyKey != null) rotatedIdempotencyKey else null,
             retryCount = 0,
             lastError = null,
@@ -216,14 +208,10 @@ class FakePendingMutationDao : PendingMutationDao {
         rotatedIdempotencyKey: String?,
     ): Int {
         val current = rows[id] ?: return 0
-        if (current.type in setOf("correct_expense", "create_expense_offset", "upload_screenshot", "create_bill_split_invitation")) return 0
-        if (current.ownerKey != ownerKey || current.ledgerId != ledgerId || current.status != "failed") return 0
-        // codex P1 #7: 同步真实 DAO 的 retryCount = 0 重置, 否则 fake 看不到用户 retry
-        // 重置预算的语义。
+        if (id in refusedRecoveries) return 0
         rows[id] = current.copy(
             status = "pending",
             expectedRowVersion = freshToken,
-            // ADR-0042 §4.8: rotate only key-bearing rows (mirrors the DAO CASE).
             idempotencyKey = if (current.idempotencyKey != null) rotatedIdempotencyKey else null,
             retryCount = 0,
             lastError = null,
@@ -235,8 +223,7 @@ class FakePendingMutationDao : PendingMutationDao {
 
     override suspend fun retryFailed(id: Long, ownerKey: String, ledgerId: String, nonRetryableUploadErrors: Set<String>): Int {
         val current = rows[id] ?: return 0
-        if (current.ownerKey != ownerKey || current.ledgerId != ledgerId || current.status != "failed") return 0
-        if (current.type == "upload_screenshot" && current.lastError?.substringBefore(':') in nonRetryableUploadErrors) return 0
+        if (id in refusedRecoveries) return 0
         rows[id] = current.copy(status = "pending", retryCount = 0, lastError = "manual_retry", blocksFollowing = true)
         refreshObservables()
         return 1
@@ -479,3 +466,6 @@ data class BoundExpiryCall(val id: Long, val ownerKey: String, val ledgerId: Str
 
 data class RunnableBatchCall(val ownerKey: String, val ledgerId: String, val unresolvedStatuses: List<String>,
     val limit: Int, val excludedIds: List<Long>)
+
+data class TokenCascadeCall(val ownerKey: String, val ledgerId: String, val targetId: String,
+    val preservedTypes: List<String>, val freshToken: Long)

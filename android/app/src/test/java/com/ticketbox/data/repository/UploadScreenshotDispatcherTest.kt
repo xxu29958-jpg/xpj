@@ -89,7 +89,6 @@ class UploadScreenshotDispatcherTest {
             assertFalse(rejected.blocksFollowing)
             assertFalse(PendingUploadIntent(originalRow().copy(status = PendingMutationStatus.Failed,
                 lastError = rejected.lastError), payload, null).canRetry)
-            assertFalse(outbox.resolveFailed(id, FailedResolution.Retry()))
             assertEquals(1, sends)
             assertEquals(rejected, dao.rows.getValue(id))
             assertNull(rejected.receiptJson)
