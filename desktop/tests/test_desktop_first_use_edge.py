@@ -10,7 +10,7 @@ import pytest
 
 from backend_manager.desktop_shell import discover_edge_executable
 from tests._edge_cdp import evaluate_page
-from tests.test_ui_browser_layout import _STARTUP_SCRIPT, _UI_HTML, _status
+from tests._manager_ui_test_support import _STARTUP_SCRIPT, _UI_HTML, _status
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows Edge consumer gate")

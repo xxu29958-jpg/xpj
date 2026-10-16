@@ -184,3 +184,15 @@ def _hidden_value(form_html: str, name: str) -> str:
     match = re.search(rf'name="{re.escape(name)}" value="([^"]+)"', form_html)
     assert match is not None
     return match.group(1)
+
+
+def _money_fields(html, expense_id):
+    action = f"/web/expenses/{expense_id}/offsets"
+    form = next(match.group() for match in re.finditer(r"<form\b[^>]*>.*?</form>", html, re.S)
+        if f'action="{action}"' in match.group() and 'id="offset-amount"' in match.group())
+    return hidden_post_forms(form)[action]
+
+
+def _hidden_fields(html: str) -> dict[str, str]:
+    return {**dict(re.findall(r'<input type="hidden" name="([^"]+)" value="([^"]*)"', html)),
+        **accounting_time_fields(html)}

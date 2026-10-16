@@ -2,7 +2,6 @@
 import json
 
 import pytest
-from _web_recurring_test_support import open_recurring_form
 from sqlalchemy import func, select
 
 from app.database import SessionLocal
@@ -19,15 +18,12 @@ from app.models import (
     RecurringOccurrence,
     RecurringOccurrenceRevision,
 )
-from app.services.identity_service import authenticate_web_session_token
-from app.services.manual_expense_draft_presenter import manual_draft_scope
 from tests._local_web_identity_support import _connect_local_session, installed_web_setup
-from tests._web_native_form_support import hidden_post_forms
-from tests.test_web_manual_expense import _hidden_fields
-from tests.test_web_recurring_occurrences import _choose
+from tests._web_budget_test_support import MONTH, _form, _original, _scope
+from tests._web_native_form_support import _hidden_fields, hidden_post_forms
+from tests._web_recurring_test_support import _choose
 
 KINDS = ["budget", "arrangement", "recurring-create", "recurring-edit"]
-MONTH = "2026-09"
 
 
 @pytest.fixture
@@ -35,53 +31,11 @@ def installed_planning_browser():
     yield from installed_web_setup()
 
 
-def _scope(token):
-    with SessionLocal() as db:
-        return manual_draft_scope(db, authenticate_web_session_token(db, token, ttl_seconds=8 * 60 * 60).auth)
-
-
 def _facts():
     with SessionLocal() as db:
         return [list(db.execute(select(*model.__table__.columns).order_by(*model.__table__.primary_key.columns))) for model in
             [Budget, BudgetCategory, BudgetRevision, MonthlyArrangement, MonthlyArrangementRevision, RecurringItem, RecurringItemRevision, Expense,
              RecurringOccurrence, RecurringOccurrenceRevision]]
-
-
-def _form(browser, kind, *, public_id="", amount="15.00"):
-    path = {"budget": "/web/budgets", "arrangement": "/web/budget-advise"}.get(kind, "/web/recurring")
-    page = browser.get(path, params={"month": MONTH})
-    assert page.status_code == 200, page.text
-    if kind.startswith("recurring"):
-        page = open_recurring_form(browser, page, public_id=public_id)
-    action = {"budget": "/web/budgets/save", "arrangement": "/web/budget-advise/save",
-        "recurring-create": "/web/recurring/create", "recurring-edit": f"/web/recurring/{public_id}/edit"}[kind]
-    form_action = path if kind == "arrangement" else action
-    fields = hidden_post_forms(page.text)[form_action]
-    if kind == "budget":
-        fields.update(total_amount_yuan=amount, rollover_amount_yuan="-1.00", non_monthly_amount_yuan="0.00",
-            excluded_categories="", category_budget_category=["餐饮", "交通"], category_budget_amount_yuan=["5.00", "2.00"],
-            category_budget_remove=["1"], return_category="餐饮", return_month=MONTH)
-    elif kind == "arrangement":
-        fields.update(savings_target_yuan=amount, reserved_buffer_yuan="2.00")
-    else:
-        fields.update(merchant="原固定支出", baseline_amount_yuan=amount, home_currency_code="CNY", next_expected_date="2026-10-09")
-    return action, fields
-
-
-def _original(installed, kind):
-    scope = _scope(_connect_local_session(installed))
-    browser = installed.browser
-    browser.base_url = browser.base_url.copy_with(scheme="https")
-    headers = {"Origin": str(browser.base_url).rstrip("/"), "Accept": "application/json"}
-    public_id = ""
-    if kind == "recurring-edit":
-        action, seed = _form(browser, "recurring-create", amount="10.00")
-        created = browser.post(action, data=seed, headers=headers)
-        assert created.status_code == 200, created.text
-        public_id = created.json()["receipt"]["public_id"]
-    action, fields = _form(browser, kind, public_id=public_id)
-    assert json.loads(fields["draft_scope"]) == scope
-    return browser, action, fields, scope, headers
 
 
 @pytest.mark.real_db

@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from typing_extensions import override
 
-from tests.test_web_import_event_review import BATCH, root, row
+from tests._web_import_test_support import BATCH, root, row
 
 _spec = importlib.util.spec_from_file_location("csv_browser_support",
     Path(__file__).with_name("test_web_planning_draft_runtime.py"))

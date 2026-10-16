@@ -14,7 +14,7 @@ from app.database import SessionLocal
 from app.models import BackgroundTask, CsvImportBatch, CsvImportRow, Expense
 from app.services import background_task_worker, pending_fx_task_service
 from app.services.fx_rate_provider import EcbDailyRates, FxFetchError
-from tests.test_foreign_bill_continuation import _import_foreign_bill
+from tests._infra.csv import _import_foreign_bill
 
 pytestmark = pytest.mark.real_db
 

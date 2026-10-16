@@ -18,7 +18,8 @@ from app.database import SessionLocal
 from app.errors import AppError
 from app.models import Expense
 from app.routes import web_originals
-from app.services import file_service, manual_expense_draft_presenter
+from app.services import background_task_worker, file_service, manual_expense_draft_presenter
+from app.services.background_task_registry import TaskHandlerRegistry
 from app.services.currency_binding_service import authorize_currency_metadata_write, resolve_write_capability
 from app.services.file_service import resolve_upload_path_for_tenant, save_upload_bytes
 from app.services.time_service import now_utc
@@ -124,3 +125,20 @@ def _facts(case):
     with case.session_factory() as db:
         row = db.get(Expense, 42)
         return tuple(getattr(row, name) for name in FACT_FIELDS)
+
+
+def _failed_upload(client, monkeypatch, headers):
+    def fail_recognition(db, task, payload):
+        raise RuntimeError("recognition unavailable")
+
+    registry = TaskHandlerRegistry({"expense_enrichment": fail_recognition})
+    monkeypatch.setattr("app.services.background_task_executor.submit_task",
+        lambda task_id, payload, **_kwargs: background_task_worker.run_task(task_id, payload, registry),
+    )
+    response = client.post(
+        "/api/app/upload-screenshot",
+        headers=headers,
+        files={"file": ("task-continuation.png", PNG_BYTES, "image/png")},
+    )
+    assert response.status_code == 200, response.text
+    return response.json()

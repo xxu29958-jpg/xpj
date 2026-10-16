@@ -8,11 +8,10 @@ from sqlalchemy import func, select
 from app.database import SessionLocal
 from app.models import ApiIdempotencyKey, Expense, IncomePlanRevision, LedgerMember
 from app.services import income_plan_service as income
-from tests import test_web_income_edit_continuity
-from tests.test_income_plan_revision_delivery import _seed_undated_single_month_plan
+from tests.income_plan_test_support import _seed_undated_single_month_plan
+from tests.income_plan_test_support import web_income as web_income
 
 pytestmark = pytest.mark.real_db
-web_income = test_web_income_edit_continuity.web_income
 NOW = datetime(2026, 9, 5, tzinfo=UTC)
 FIELDS = ("label", "source_type", "frequency", "income_month", "home_currency_code", "amount_cents", "pay_day", "status")
 

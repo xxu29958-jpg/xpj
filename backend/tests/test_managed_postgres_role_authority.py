@@ -10,11 +10,7 @@ from psycopg import sql
 from app.database._managed_postgres_migration_runtime import (
     ManagedPostgresMigrationRuntimeError,
 )
-from tests.test_managed_postgres_migration_runtime import (
-    _C07_TARGET_REVISION,
-    _managed_topology,
-    _revision,
-)
+from tests.managed_postgres_test_support import _C07_TARGET_REVISION, _managed_topology, _revision
 
 pytestmark = pytest.mark.real_db
 

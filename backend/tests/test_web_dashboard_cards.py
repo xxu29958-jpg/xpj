@@ -4,14 +4,12 @@ from __future__ import annotations
 
 import re
 
-import pytest
 from _web_native_form_support import hidden_post_forms
 from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
 from app.main import app
 from app.routes import web_common
-from app.routes.web_app import _require_local as _web_require_local
 from tests.family_ledger_test_support import set_owner_ledger_role
 
 WEB_CARD_KEYS = [
@@ -25,13 +23,6 @@ WEB_CARD_KEYS = [
     "backup_status",
     "device_status",
 ]
-
-
-@pytest.fixture()
-def web_client(client: TestClient) -> TestClient:
-    app.dependency_overrides[_web_require_local] = lambda: None
-    yield client
-    app.dependency_overrides.pop(_web_require_local, None)
 
 
 def _dashboard_form_payload(

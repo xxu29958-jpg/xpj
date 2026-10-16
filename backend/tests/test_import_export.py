@@ -11,19 +11,10 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.errors import AppError
-from app.main import app
 from app.models import CsvImportBatch, Expense
-from app.routes.web_app import _require_local as _web_require_local
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.fx_rate_provider import upsert_fx_rate
 from tests._infra.csv import parse_uploaded_csv
-
-
-@pytest.fixture()
-def web_client(client: TestClient) -> TestClient:
-    app.dependency_overrides[_web_require_local] = lambda: None
-    yield client
-    app.dependency_overrides.pop(_web_require_local, None)
 
 
 def _create_pending(client: TestClient, *, identity) -> int:

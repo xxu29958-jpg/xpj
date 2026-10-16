@@ -16,11 +16,8 @@ Coverage:
 
 from __future__ import annotations
 
-import pytest
 from fastapi.testclient import TestClient
 
-from app.main import app
-from app.routes.web_app import _require_local as _web_require_local
 from tests._web_native_form_support import hidden_post_forms
 
 
@@ -30,13 +27,6 @@ def _create_income(client, *, data, follow_redirects=False):
     assert page.status_code == 200, page.text
     fields = hidden_post_forms(page.text)[action]
     return client.post(action, data={**fields, **data}, follow_redirects=follow_redirects)
-
-
-@pytest.fixture()
-def web_client(client: TestClient) -> TestClient:
-    app.dependency_overrides[_web_require_local] = lambda: None
-    yield client
-    app.dependency_overrides.pop(_web_require_local, None)
 
 
 def test_income_plans_page_renders_empty(web_client: TestClient, *, identity) -> None:  # noqa: ARG001

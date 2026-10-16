@@ -19,11 +19,7 @@ from app.services.tag_service import set_expense_tags
 from app.services.web_stats_service import confirmed_by_day, source_breakdown
 from app.tag_text import MAX_TAG_STORAGE_LENGTH
 from tests._web_bulk_test_support import seed_pending_with_amount
-from tests.test_web_transactions_backend import (
-    _expense_payload,
-    _foreign_expense,
-    _seed_confirmed,
-)
+from tests.web_expense_fact_test_support import _expense_payload, _foreign_expense, _seed_confirmed
 
 
 def test_confirmed_tag_filter_shares_list_total_calendar_and_source_cohort(

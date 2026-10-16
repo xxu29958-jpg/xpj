@@ -14,11 +14,9 @@ from app.errors import AppError
 from app.models import ApiIdempotencyKey, Goal, GoalRevision, LedgerMember
 from app.services import goal_service
 from app.services.currency_binding_service import resolve_write_capability
-from tests import test_web_goal_edit_continuity
 from tests._runtime_protocol import negotiated_headers
 
 pytestmark = pytest.mark.real_db
-web_client = test_web_goal_edit_continuity.web_client
 
 DEFINITION_FIELDS = (
     "name", "goal_type", "period", "month", "category", "target_amount_cents", "home_currency_code", "status",

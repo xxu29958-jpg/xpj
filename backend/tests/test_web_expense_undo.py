@@ -73,7 +73,7 @@ def test_web_reject_from_recurring_occurrence_returns_to_the_original_period(
     from html import unescape
     from urllib.parse import parse_qs, urlsplit
 
-    from tests.test_recurring_occurrences import _create_series
+    from tests._web_recurring_test_support import _create_series
 
     series = _create_series(web_client, identity)
     series_id = series["public_id"]
@@ -142,7 +142,7 @@ def test_web_undo_invalid_token_from_recurring_returns_to_the_original_period(
 ) -> None:
     from urllib.parse import parse_qs, urlsplit
 
-    from tests.test_recurring_occurrences import _create_series
+    from tests._web_recurring_test_support import _create_series
 
     series = _create_series(web_client, identity)
     series_id = series["public_id"]

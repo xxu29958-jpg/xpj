@@ -14,20 +14,11 @@ from sqlalchemy import select
 
 from app.config import get_settings
 from app.database import SessionLocal
-from app.main import app
 from app.models import CsvImportBatch, CsvImportRow, Expense
 from app.money_contract import MONEY_MINOR_MAX
-from app.routes.web_app import _require_local as _web_require_local
 from app.services.expense_accounting_time_service import refresh_legacy_expense_time
 from tests._infra.csv import parse_uploaded_csv
 from tests._infra.currency import activate_test_currency_authority
-
-
-@pytest.fixture()
-def web_client(client: TestClient) -> TestClient:
-    app.dependency_overrides[_web_require_local] = lambda: None
-    yield client
-    app.dependency_overrides.pop(_web_require_local, None)
 
 
 def test_parse_uploaded_csv_uses_the_c07_minor_limit_not_the_legacy_int32_limit() -> None:

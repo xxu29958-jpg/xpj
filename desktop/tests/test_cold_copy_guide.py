@@ -8,7 +8,7 @@ import pytest
 
 from backend_manager.desktop_shell import discover_edge_executable
 from tests._edge_cdp import evaluate_page
-from tests.test_ui_browser_layout import _render_probe_page, _status
+from tests._manager_ui_test_support import _render_probe_page, _status
 
 
 @pytest.mark.skipif(os.name != "nt", reason="actual Windows Edge layout")
