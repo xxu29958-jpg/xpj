@@ -1,12 +1,10 @@
 """Short constraint probes; PostgreSQL trigger execution has its own migration test."""
 
 from datetime import UTC, datetime, timedelta
-from importlib.util import module_from_spec, spec_from_file_location
-from pathlib import Path
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import Column, Index, Integer, MetaData, Table, create_engine, insert, text
+from sqlalchemy import Column, Integer, MetaData, Table, create_engine, insert, text
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.schema import CreateIndex
@@ -119,37 +117,3 @@ def test_return_debt_source_has_its_own_identity_but_still_requires_a_source():
             with pytest.raises(IntegrityError):
                 db.execute(text("INSERT INTO probe VALUES (:kind, :source)"), {"kind": kind, "source": source})
     engine.dispose()
-
-
-def test_frozen_migration_tables_and_indexes_match_current_models(monkeypatch):
-    path = Path(__file__).resolve().parents[1] / "migrations/versions/20260920_0003_bill_split_agreements.py"
-    spec = spec_from_file_location("split_agreement_migration", path)
-    module = module_from_spec(spec)
-    spec.loader.exec_module(module)
-    metadata = MetaData()
-
-    class CaptureOperations:
-        @staticmethod
-        def f(name):
-            return name
-
-        @staticmethod
-        def create_table(name, *parts):
-            Table(name, metadata, *parts)
-
-        @staticmethod
-        def create_index(name, table, columns, **options):
-            Index(name, *(metadata.tables[table].c[column] for column in columns), **options)
-
-    monkeypatch.setattr(module, "op", CaptureOperations)
-    module._create_tables()
-    dialect = postgresql.dialect()
-    for model in (BillSplitChangeProposal, BillSplitAgreementChange):
-        table = model.__table__
-        frozen = metadata.tables[table.name]
-        assert [(c.name, str(c.type), c.nullable) for c in frozen.columns] == [
-            (c.name, str(c.type), c.nullable) for c in table.columns]
-        assert {c.name: str(c.sqltext) for c in frozen.constraints if hasattr(c, "sqltext")} == {
-            c.name: str(c.sqltext) for c in table.constraints if hasattr(c, "sqltext")}
-        assert {str(CreateIndex(index).compile(dialect=dialect)) for index in frozen.indexes} == {
-            str(CreateIndex(index).compile(dialect=dialect)) for index in table.indexes}

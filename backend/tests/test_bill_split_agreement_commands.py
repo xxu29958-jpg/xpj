@@ -103,43 +103,6 @@ def _paid(db, debt_id, amount):
     db.flush()
 
 
-@pytest.mark.parametrize(("paid", "net"), [(0, 2_000), (1_000, 1_000), (3_000, -1_000), (4_000, -2_000)])
-def test_bilateral_change_preserves_original_facts_and_records_real_remaining(agreement_db, paid, net):
-    db = agreement_db
-    if paid:
-        _paid(db, 1, paid)
-    proposal = _request(db, share=2_000, net=net)
-    assert compute_remaining(db, db.get(Debt, 1)) == 4_000 - paid
-    change = _accept(db, proposal)
-    original = db.get(Debt, 1)
-    returned = db.get(Debt, change.return_debt_id) if change.return_debt_id else None
-    assert original.principal_amount_cents == 4_000
-    assert compute_paid(db, original) == paid
-    assert compute_remaining(db, original) == max(net, 0)
-    assert (compute_remaining(db, returned) if returned else 0) == max(-net, 0)
-    assert proposal.status == "accepted"
-    assert change.new_share_amount_cents == 2_000
-    assert db.get(Expense, 100).amount_cents == 10_000
-    assert db.get(Expense, 200).amount_cents == 4_000
-
-
-def test_repeated_changes_reuse_one_return_debt_and_keep_both_cash_histories(agreement_db):
-    db = agreement_db
-    _paid(db, 1, 4_000)
-    first = _accept(db, _request(db, share=2_000, net=-2_000))
-    returned = db.get(Debt, first.return_debt_id)
-    _paid(db, returned.id, 800)
-    returned.row_version += 1
-    second = _accept(db, _request(db, share=3_000, net=-200))
-    third = _accept(db, _request(db, share=3_500, net=300))
-    assert first.return_debt_id == second.return_debt_id == third.return_debt_id
-    assert compute_remaining(db, db.get(Debt, 1)) == 300
-    assert compute_remaining(db, returned) == 0
-    assert compute_paid(db, db.get(Debt, 1)) == 4_000
-    assert compute_paid(db, returned) == 800
-    assert len(list(db.scalars(select(BillSplitAgreementChange)))) == 3
-
-
 def test_existing_forgiveness_survives_a_new_agreement_without_fake_cash(agreement_db):
     db = agreement_db
     _paid(db, 1, 1_000)

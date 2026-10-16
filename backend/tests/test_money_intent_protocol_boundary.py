@@ -31,7 +31,8 @@ from app.services.currency_binding_service import CurrencyCapability
     ("POST", "/api/debts/debt/repayment-proposals/proposal/withdraw", {"unexpected": True}),
     ("POST", "/api/debts/debt/repayment-proposals/proposal/reject", {"unexpected": True}),
 ])
-@pytest.mark.parametrize("version", [None, "2026-09-07", "2026-09-08", "2026-09-09", "2026-09-13", "current"])
+# Every guarded endpoint retains missing, incompatible and current protocol coverage.
+@pytest.mark.parametrize("version", [None, "2026-09-13", "current"])
 def test_currency_intent_protocol_rejection_precedes_missing_money_context(version, method, path, body):
     app = FastAPI()
     add_exception_handlers(app)

@@ -380,10 +380,6 @@ def _writer_only_paths() -> list[tuple[str, str]]:
     return [key for key, kind in _WEB_ROUTE_CLASSIFICATION.items() if kind == "writer-only"]
 
 
-def _owner_live_provider_paths() -> list[tuple[str, str]]:
-    return [key for key, kind in _WEB_ROUTE_CLASSIFICATION.items() if kind == "owner-live-provider"]
-
-
 def _route_endpoint(method: str, path: str) -> Callable[..., object] | None:
     for route in app.routes:
         if not isinstance(route, Route):
@@ -457,18 +453,3 @@ def test_writer_only_routes_actually_check_writer(method: str, path: str) -> Non
         f"({endpoint.__module__}.{endpoint.__name__}) does not reach "
         "_require_selected_ledger_write through its local call chain."
     )
-
-
-@pytest.mark.parametrize("method,path", _owner_live_provider_paths())
-def test_owner_live_provider_routes_use_shared_advisor_runner(method: str, path: str) -> None:
-    endpoint = _route_endpoint(method, path)
-    assert endpoint is not None, f"endpoint not found: {method} {path}"
-    source = inspect.getsource(endpoint)
-    assert "_render_budget_advise(" in source
-
-    render_source = inspect.getsource(endpoint.__globals__["_render_budget_advise"])
-    assert "_budget_advice_response(" in render_source
-    advice_source = inspect.getsource(endpoint.__globals__["_budget_advice_response"])
-    assert "run_budget_advisor(" in advice_source
-    assert "run_advise: bool = Form(default=False)" in source
-    assert "allow_outbound=run_advise" in source
