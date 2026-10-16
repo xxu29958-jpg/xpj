@@ -360,6 +360,7 @@ internal class ExpenseCorrectionRepositoryTest : ExpensePendingRepositoryOutboxT
         val id = harness.submit(repo, baselineExpense().copy(status = "confirmed", rowVersion = 7),
             ExpenseCorrectionDraft("原始到期提交", note = "内容仍在")).getOrThrow()
         val original = queue.rows.getValue(id)
+        queue.expiredPendingIds += id
         outbox.reapExpiredPending(java.time.Instant.parse("2026-09-14T00:00:00Z").toEpochMilli())
         val observed = repo.observeCorrections().first()
         assertFalse(observed.corrections.single().canRetry)

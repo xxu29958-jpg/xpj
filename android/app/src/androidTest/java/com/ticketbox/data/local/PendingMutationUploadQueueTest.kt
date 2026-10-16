@@ -162,19 +162,50 @@ class PendingMutationUploadQueueTest {
     @Test
     fun bothExpiryPathsRestoreBlockingWithoutDeletingOrRewritingIntent() = runBlocking<Unit> {
         UploadQueueFixture().use { fixture ->
+            val cutoff = "2026-09-01T00:00:00.000Z"
             val pending = fixture.row("pending").copy(blocksFollowing = false)
             val failed = fixture.row("failed").copy(status = "failed", blocksFollowing = false)
-            val ids = fixture.dao.insertBatch(listOf(pending, failed))
-            assertEquals(1, fixture.dao.markExpiredPendingAsFailed("2026-09-01T00:00:00.000Z", "failed", "outbox_row_expired"))
+            val foreign = fixture.row("foreign").copy(ownerKey = "other-owner", ledgerId = "other-ledger")
+            val preserved = listOf(
+                fixture.row("at-cutoff").copy(createdAt = cutoff),
+                fixture.row("busy").copy(status = "in_flight"),
+                fixture.row("conflict").copy(status = "conflict"),
+                fixture.row("done").copy(status = "done", receiptJson = RECEIPT),
+            )
+            val ids = fixture.dao.insertBatch(listOf(pending, failed, foreign) + preserved)
+            val originals = fixture.dao.allRows().associateBy { it.id }
+            assertEquals(2, fixture.dao.markExpiredPendingAsFailed(cutoff, "failed", "outbox_row_expired"))
             assertEquals(0, fixture.dao.expireBoundRowIfStatusAndOverAge(ids[1], "other-owner", LEDGER, "failed", COMPLETED))
+            assertEquals(0, fixture.dao.expireBoundRowIfStatusAndOverAge(ids[1], OWNER, "other-ledger", "failed", COMPLETED))
+            assertEquals(0, fixture.dao.expireBoundRowIfStatusAndOverAge(ids[1], OWNER, LEDGER, "conflict", COMPLETED))
+            assertEquals(0, fixture.dao.expireBoundRowIfStatusAndOverAge(ids[3], OWNER, LEDGER, "pending", cutoff))
             assertEquals(1, fixture.dao.expireBoundRowIfStatusAndOverAge(ids[1], OWNER, LEDGER, "failed", COMPLETED))
 
-            val rows = fixture.reopen().allRows()
-            assertEquals(2, rows.size)
-            assertTrue(rows.all { it.blocksFollowing && it.status == "failed" && it.lastError == "outbox_row_expired" })
-            assertEquals(listOf(pending.payload, failed.payload), rows.map { it.payload })
-            assertEquals(listOf(pending.idempotencyKey, failed.idempotencyKey), rows.map { it.idempotencyKey })
-            assertEquals(listOf(pending.expectedRowVersion, failed.expectedRowVersion), rows.map { it.expectedRowVersion })
+            val stored = fixture.reopen().allRows().associateBy { it.id }
+            assertEquals(originals.keys, stored.keys)
+            for (id in ids.take(3)) assertEquals(originals.getValue(id).copy(
+                blocksFollowing = true, status = "failed", lastError = "outbox_row_expired"), stored[id])
+            for (id in ids.drop(3)) assertEquals(originals[id], stored[id])
+        }
+    }
+
+    @Test
+    fun staleRecoveryPreservesFreshForeignAndNonFlightOriginalsAfterReopen() = runBlocking<Unit> {
+        UploadQueueFixture().use { fixture ->
+            val cutoff = "2026-09-01T00:00:00.000Z"
+            val stale = fixture.row("stale").copy(status = "in_flight", attemptedAt = "2026-08-31T00:00:00.000Z", retryCount = 3)
+            val missingAttempt = stale.copy(idempotencyKey = "missing-attempt", attemptedAt = null)
+            val preserved = listOf(stale.copy(ownerKey = "other-owner"), stale.copy(ledgerId = "other-ledger"),
+                stale.copy(attemptedAt = cutoff), stale.copy(status = "pending"), stale.copy(status = "conflict"))
+            val ids = fixture.dao.insertBatch(listOf(stale, missingAttempt) + preserved)
+            val originals = fixture.dao.allRows().associateBy { it.id }
+
+            assertEquals(2, fixture.dao.recoverStaleInFlight(OWNER, LEDGER, cutoff, "recovered_from_stuck_in_flight"))
+            val stored = fixture.reopen().allRows().associateBy { it.id }
+            assertEquals(originals.keys, stored.keys)
+            for (id in ids.take(2)) assertEquals(originals.getValue(id).copy(
+                status = "pending", lastError = "recovered_from_stuck_in_flight"), stored[id])
+            for (id in ids.drop(2)) assertEquals(originals[id], stored[id])
         }
     }
 

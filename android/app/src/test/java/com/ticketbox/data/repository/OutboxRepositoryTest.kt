@@ -31,10 +31,10 @@ import kotlin.test.assertTrue
  * These exercise the public surface of [OutboxRepository] against a
  * pure-Kotlin in-memory fake of [PendingMutationDao] — no Room
  * dependency in unit tests, so the suite stays fast and JVM-only.
- * The fake mirrors the DAO's SQL semantics field by field; the
- * "real" DAO behaviour belongs to the instrumented Room tests
+ * Request parameters and recovery decisions stay here; generated DAO query
+ * predicates belong to the instrumented Room tests
  * (``:app:connectedGrayDebugAndroidTest``), which run on the
- * path-filtered emulator lane (android-connected.yml).
+ * path-filtered emulator lane (android-connected-test.yml).
  */
 class OutboxRepositoryTest {
 
@@ -236,55 +236,6 @@ class OutboxRepositoryTest {
 
 
     @Test
-    fun reapExpiredPendingFailsOverAgeRowAndLeavesFreshRowUntouched() = runTest {
-        // ADR-0042 §4.10: a row that has sat PENDING past the age-cap can no
-        // longer trust its idempotency key (server retention ~30d > 7d cap), so it
-        // must be reaped — flipped to FAILED with the outbox_row_expired marker,
-        // NEVER replayed. A fresh PENDING row (well within the cap) is untouched.
-        val dao = FakePendingMutationDao()
-        val now = "2026-05-04T12:00:00Z"
-        val repo = testOutboxRepository(dao = dao, clock = fixedClock(now))
-
-        val staleId = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 1L)
-        // Hand-edit createdAt to a month ago — far past the 7-day cap.
-        dao.rows[staleId] = dao.rows[staleId]!!.copy(createdAt = "2026-04-01T00:00:00.000Z")
-        // A fresh row enqueued at the fixed clock (createdAt = now) is inside the cap.
-        val freshId = repo.enqueue(PendingMutationType.PatchExpense, "expense:2", "{}", 1L)
-
-        val nowMillis = Instant.parse(now).toEpochMilli()
-        val reaped = repo.reapExpiredPending(nowMillis)
-
-        assertEquals(1, reaped, "exactly the over-age PENDING row is reaped")
-        val stale = dao.rows[staleId]!!
-        assertEquals(PendingMutationStatus.Failed.wireValue, stale.status)
-        assertEquals("outbox_row_expired", stale.lastError)
-        val fresh = dao.rows[freshId]!!
-        assertEquals(PendingMutationStatus.Pending.wireValue, fresh.status, "fresh row stays PENDING")
-        assertNull(fresh.lastError)
-    }
-
-    @Test
-    fun reapExpiredPendingIgnoresNonPendingRowsEvenWhenOverAge() = runTest {
-        // The DAO guard is status='pending' only: an over-age CONFLICT / FAILED /
-        // IN_FLIGHT row is awaiting the user or mid-send and must NOT be re-stamped
-        // by the reaper. Confirms the reap is scoped to un-dispatched rows.
-        val dao = FakePendingMutationDao()
-        val now = "2026-05-04T12:00:00Z"
-        val repo = testOutboxRepository(dao = dao, clock = fixedClock(now))
-
-        val conflictId = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 1L)
-        repo.markConflict(conflictId, "stale")
-        dao.rows[conflictId] = dao.rows[conflictId]!!.copy(createdAt = "2026-04-01T00:00:00.000Z")
-
-        val reaped = repo.reapExpiredPending(Instant.parse(now).toEpochMilli())
-
-        assertEquals(0, reaped)
-        val row = dao.rows[conflictId]!!
-        assertEquals(PendingMutationStatus.Conflict.wireValue, row.status, "over-age CONFLICT is not reaped")
-        assertEquals("stale", row.lastError)
-    }
-
-    @Test
     fun resolveFailedRetryExpiresOverAgeRowInsteadOfRequeuing() = runTest {
         // ADR-0042 §4.10: the reaper skips non-PENDING rows, so an old FAILED row
         // (max_attempts_exceeded) never carries outbox_row_expired. Retrying it would
@@ -299,8 +250,11 @@ class OutboxRepositoryTest {
         repo.markFailed(id, "max_attempts_exceeded(10/10): server 503")
         dao.rows[id] = dao.rows[id]!!.copy(createdAt = "2026-04-01T00:00:00.000Z")
 
+        dao.expiredBoundIds += id
         val changed = repo.resolveFailed(id, FailedResolution.Retry())
 
+        assertEquals(BoundExpiryCall(id, testOutboxBinding().ownerStorageKey, "owner", "failed",
+            "2026-04-27T12:00:00.000Z"), dao.boundExpiryCall)
         assertTrue(changed, "resolving an over-age FAILED row changes it (to expired)")
         val row = dao.rows[id]!!
         assertEquals(PendingMutationStatus.Failed.wireValue, row.status, "stays terminal, not re-queued")
@@ -321,30 +275,16 @@ class OutboxRepositoryTest {
         repo.markConflict(id, "stale token")
         dao.rows[id] = dao.rows[id]!!.copy(createdAt = "2026-04-01T00:00:00.000Z")
 
+        dao.expiredBoundIds += id
         val changed = repo.resolveConflict(id, ConflictResolution.KeepMine(freshToken = 9L))
 
+        assertEquals(BoundExpiryCall(id, testOutboxBinding().ownerStorageKey, "owner", "conflict",
+            "2026-04-27T12:00:00.000Z"), dao.boundExpiryCall)
         assertTrue(changed)
         val row = dao.rows[id]!!
         assertEquals(PendingMutationStatus.Failed.wireValue, row.status, "expired, not re-queued to PENDING")
         assertEquals("outbox_row_expired", row.lastError)
         assertEquals(1, scheduled, "Expiring the original must not schedule a replay")
-    }
-
-    @Test
-    fun resolveFailedRetryOnFreshRowRequeuesNormally() = runTest {
-        // Control: a FAILED row inside the cap retries normally (flip to PENDING).
-        val dao = FakePendingMutationDao()
-        val repo = testOutboxRepository(dao = dao, clock = fixedClock("2026-05-04T12:00:00Z"))
-
-        val id = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 1L)
-        repo.markFailed(id, "transient parse")
-
-        val changed = repo.resolveFailed(id, FailedResolution.Retry())
-
-        assertTrue(changed)
-        val row = dao.rows[id]!!
-        assertEquals(PendingMutationStatus.Pending.wireValue, row.status, "fresh row retries to PENDING")
-        assertEquals("manual_retry", row.lastError)
     }
 
     @Test
@@ -677,33 +617,14 @@ class OutboxRepositoryTest {
     }
 
     @Test
-    fun recoverStaleInFlightScopesToCurrentBindingOnly() = runTest {
+    fun recoverStaleInFlightPassesTheCurrentBindingAndFixedUtcCutoff() = runTest {
         val dao = FakePendingMutationDao()
-        var binding = testOutboxBinding().copy(serverUrl = "https://api.example.com", ledgerId = "active")
-        val repo = testOutboxRepository(
-            dao = dao,
-            clock = fixedClock("2026-05-04T00:00:00Z"),
-            bindingProvider = { binding },
-        )
-        val activeRow = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 0L)
-        dao.rows[activeRow] = dao.rows[activeRow]!!.copy(
-            status = PendingMutationStatus.InFlight.wireValue,
-            attemptedAt = "2026-05-03T00:00:00.000Z",
-        )
-
-        binding = testOutboxBinding().copy(serverUrl = "https://api.example.com", ledgerId = "other")
-        val otherRow = repo.enqueue(PendingMutationType.PatchExpense, "expense:2", "{}", 0L)
-        dao.rows[otherRow] = dao.rows[otherRow]!!.copy(
-            status = PendingMutationStatus.InFlight.wireValue,
-            attemptedAt = "2026-05-03T00:00:00.000Z",
-        )
-
-        binding = testOutboxBinding().copy(serverUrl = "https://api.example.com", ledgerId = "active")
-        val recovered = repo.recoverStaleInFlight()
-
-        assertEquals(1, recovered)
-        assertEquals(PendingMutationStatus.Pending.wireValue, dao.rows[activeRow]?.status)
-        assertEquals(PendingMutationStatus.InFlight.wireValue, dao.rows[otherRow]?.status)
+        var binding = testOutboxBinding().copy(ledgerId = "previous")
+        val repo = testOutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"),
+            bindingProvider = { binding })
+        binding = binding.copy(ledgerId = "active")
+        assertEquals(0, repo.recoverStaleInFlight())
+        assertEquals(Triple(binding.ownerStorageKey, "active", "2026-05-03T23:55:00.000Z"), dao.staleRecoveryCall)
     }
 
     @Test

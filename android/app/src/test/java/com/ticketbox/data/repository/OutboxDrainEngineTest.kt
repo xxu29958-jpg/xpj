@@ -465,6 +465,7 @@ class OutboxDrainEngineTest {
             status = PendingMutationStatus.InFlight.wireValue,
             attemptedAt = "2026-05-04T11:50:00Z",
         )
+        dao.staleInFlightIds += id
 
         val engine = OutboxDrainEngine(
             outbox,
@@ -852,12 +853,14 @@ class OutboxDrainEngineTest {
         // Stale row: enqueued, then back-dated a month (far past the 7-day cap).
         val staleId = outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 1L)
         dao.rows[staleId] = dao.rows[staleId]!!.copy(createdAt = "2026-04-01T00:00:00.000Z")
+        dao.expiredPendingIds += staleId
         // Fresh row, different target — createdAt = now, inside the cap.
         outbox.enqueue(PendingMutationType.PatchExpense, "expense:2", "{}", 2L)
 
         val summary = engine.drainOnce()
 
         // Stale row reaped (FAILED, never dispatched); fresh row dispatched + DONE.
+        assertEquals("2026-04-27T12:00:00.000Z", dao.pendingExpiryCutoff)
         assertEquals(1, summary.reaped, "the over-age PENDING row must be reaped")
         assertEquals(1, summary.attempted, "only the fresh row enters the batch")
         assertEquals(1, summary.done)
@@ -895,6 +898,7 @@ class OutboxDrainEngineTest {
         val engine = OutboxDrainEngine(outbox, listOf(dispatcher), now = { now.toEpochMilli() })
         val staleId = outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 1L)
         dao.rows[staleId] = dao.rows[staleId]!!.copy(createdAt = "2026-04-01T00:00:00.000Z")
+        dao.expiredPendingIds += staleId
 
         val summary = engine.drainOnce()
 

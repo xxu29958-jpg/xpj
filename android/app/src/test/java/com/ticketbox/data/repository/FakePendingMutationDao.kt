@@ -16,6 +16,16 @@ class FakePendingMutationDao : PendingMutationDao {
     var beforeNextRunnableBatchReturn: (suspend () -> Unit)? = null
     var beforeInsert: (suspend () -> Unit)? = null
     var replacePayloadError: Throwable? = null
+    // Query outcomes are supplied by the scenario; generated Room owns age/status/binding predicates.
+    val expiredPendingIds = mutableListOf<Long>()
+    val expiredBoundIds = mutableSetOf<Long>()
+    val staleInFlightIds = mutableListOf<Long>()
+    var pendingExpiryCutoff: String? = null
+        private set
+    var boundExpiryCall: BoundExpiryCall? = null
+        private set
+    var staleRecoveryCall: Triple<String, String, String>? = null
+        private set
     private var nextId = 1L
     private val creationAcceptance = Mutex()
     private val queueDepth = MutableStateFlow(0)
@@ -128,16 +138,11 @@ class FakePendingMutationDao : PendingMutationDao {
         status: String,
         lastError: String,
     ): Int {
-        // Mirrors the DAO SQL: status='pending' AND createdAt < cutoff. createdAt
-        // is a fixed-width ISO string so the lexicographic < matches SQLite, same
-        // as recoverStaleInFlight's attemptedAt comparison. Global (no binding
-        // filter) by design — a stale PENDING row under any binding is a
-        // double-apply risk.
-        val victims = rows.values.filter {
-            it.status == "pending" && it.createdAt < cutoffCreatedAtIso
-        }
-        for (row in victims) {
-            rows[row.id] = row.copy(status = status, lastError = lastError, blocksFollowing = true)
+        pendingExpiryCutoff = cutoffCreatedAtIso
+        val victims = expiredPendingIds.toList()
+        expiredPendingIds.clear()
+        for (id in victims) {
+            rows[id] = rows.getValue(id).copy(status = status, lastError = lastError, blocksFollowing = true)
         }
         if (victims.isNotEmpty()) refreshObservables()
         return victims.size
@@ -150,17 +155,9 @@ class FakePendingMutationDao : PendingMutationDao {
         fromStatus: String,
         cutoffCreatedAtIso: String,
     ): Int {
-        // Mirrors the DAO SQL: id AND status=fromStatus AND createdAt < cutoff.
-        val current = rows[id] ?: return 0
-        if (
-            current.ownerKey != ownerKey ||
-            current.ledgerId != ledgerId ||
-            current.status != fromStatus ||
-            current.createdAt >= cutoffCreatedAtIso
-        ) {
-            return 0
-        }
-        rows[id] = current.copy(status = "failed", lastError = "outbox_row_expired", blocksFollowing = true)
+        boundExpiryCall = BoundExpiryCall(id, ownerKey, ledgerId, fromStatus, cutoffCreatedAtIso)
+        if (!expiredBoundIds.remove(id)) return 0
+        rows[id] = rows.getValue(id).copy(status = "failed", lastError = "outbox_row_expired", blocksFollowing = true)
         refreshObservables()
         return 1
     }
@@ -345,14 +342,11 @@ class FakePendingMutationDao : PendingMutationDao {
         staleCutoffIso: String,
         recoveryMessage: String,
     ): Int {
-        val victims = rows.values.filter {
-            it.ownerKey == ownerKey &&
-                it.ledgerId == ledgerId &&
-                it.status == PendingMutationStatus.InFlight.wireValue &&
-                (it.attemptedAt == null || it.attemptedAt < staleCutoffIso)
-        }
-        for (row in victims) {
-            rows[row.id] = row.copy(status = PendingMutationStatus.Pending.wireValue, lastError = recoveryMessage)
+        staleRecoveryCall = Triple(ownerKey, ledgerId, staleCutoffIso)
+        val victims = staleInFlightIds.toList()
+        staleInFlightIds.clear()
+        for (id in victims) {
+            rows[id] = rows.getValue(id).copy(status = PendingMutationStatus.Pending.wireValue, lastError = recoveryMessage)
         }
         if (victims.isNotEmpty()) refreshObservables()
         return victims.size
@@ -497,3 +491,5 @@ class FakePendingMutationDao : PendingMutationDao {
         queueDepth.value++
     }
 }
+
+data class BoundExpiryCall(val id: Long, val ownerKey: String, val ledgerId: String, val fromStatus: String, val cutoff: String)
