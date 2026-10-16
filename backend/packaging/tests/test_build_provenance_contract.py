@@ -164,36 +164,6 @@ def _lock_input_fingerprint(root: Path) -> str:
     return hashlib.sha256(material.encode()).hexdigest()
 
 
-def _assert_shawl_legal_evidence_chain(
-    build: str,
-    installer: str,
-    shawl_source: dict[str, object],
-) -> None:
-    legal = shawl_source["legal"]
-    assert isinstance(legal, dict)
-    assert build.count("legal_archive = [ordered]@{") == 1
-    assert build.count("legal_notice = $legalNoticeEvidence") == 1
-    assert build.count("legal_archive = $ShawlProvenance.legal_archive") == 1
-    assert build.count("legal_notice = $ShawlProvenance.legal_notice") == 1
-    assert build.count("shawl = $BuildInputs.shawl") == 1
-    for producer_mapping in (
-        "name = [string]$installerVendorContracts.shawl.legal.archive_name",
-        "url = [string]$installerVendorContracts.shawl.legal.url",
-        "sha256 = ([string]$installerVendorContracts.shawl.legal.sha256).ToLowerInvariant()",
-    ):
-        assert build.count(producer_mapping) == 1
-    for value in (
-        legal["archive_name"],
-        legal["url"],
-        legal["sha256"],
-        legal["notice_name"],
-        legal["notice_sha256"],
-    ):
-        assert isinstance(value, str) and value
-    expected_entry = f'Source: "vendor\\shawl\\{legal["notice_name"]}"; DestDir: "{{app}}\\shawl"; Flags: ignoreversion'
-    assert [line.strip() for line in installer.splitlines() if str(legal["notice_name"]) in line] == [expected_entry]
-
-
 def _write_minimal_backend(root: Path) -> Path:
     (root / "app").mkdir(parents=True)
     (root / "migrations" / "versions").mkdir(parents=True)

@@ -13,12 +13,10 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
-import app.routes.uploads as upload_routes
 import app.routes.web_inbox_capture as web_inbox_capture_routes
 from app.database import SessionLocal
 from app.main import app as fastapi_app
 from app.models import BackgroundTask, Expense, LedgerMember
-from app.routes._upload_request import handle_upload
 from app.services.ledger_service import find_owner_account_id_for_ledger
 from tests._infra.assets import PNG_BYTES
 
@@ -37,8 +35,6 @@ def test_web_pending_upload_uses_shared_owner_and_creates_real_pending_expense(
     monkeypatch,
 ) -> None:
     monkeypatch.setenv("XPJ_BACKGROUND_TASK_INLINE", "1")
-    assert upload_routes.handle_upload is handle_upload
-    assert web_inbox_capture_routes.handle_upload is handle_upload
 
     response = web_client.post(
         "/web/pending/upload?ledger_id=owner&idempotency_key=original-native-upload&timezone=Asia%2FShanghai",

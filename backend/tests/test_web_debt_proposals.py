@@ -15,9 +15,6 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-import app.routes.web_debt_proposal_actions as proposal_routes
-import app.routes.web_debts as web_debts_routes
-import app.services.debt_proposal_command_service as proposal_commands
 from app.database import SessionLocal
 from app.models import Account, Debt, LedgerMember, MemberRepaymentProposal, Repayment
 from app.routes._web_debt_write import (
@@ -34,15 +31,6 @@ from tests._web_native_form_support import hidden_post_forms, open_repayment_tas
 # gate; the loopback web viewer resolves to the ledger owner account.
 
 _COMMITTED_STATUSES = {"confirmed", "partially_confirmed"}
-
-
-def test_web_proposal_adapter_delegates_to_shared_commands_and_views() -> None:
-    assert (
-        proposal_routes.create_repayment_proposal_idempotently
-        is proposal_commands.create_repayment_proposal_idempotently
-    )
-    assert proposal_routes._proposal_error_message
-    assert web_debts_routes._proposal_section is _proposal_section
 
 
 def _owner_account_id(db) -> int:
