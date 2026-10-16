@@ -31,7 +31,7 @@ from app.services import debt_service
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.time_service import ensure_utc, now_utc
 from tests._infra.identity import seeded_owner_account_id
-from tests._runtime_protocol import negotiated_headers
+from tests.debt_proposal_helpers import _create_external_debt, capture_repayment_draft
 from tests.family_ledger_test_support import set_owner_ledger_role
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
@@ -39,34 +39,6 @@ VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
 
 def _idem(app_headers: dict[str, str]) -> dict[str, str]:
     return {**app_headers, "Idempotency-Key": str(uuid4())}
-
-
-def _create_debt(client: TestClient, identity, *, principal_amount_cents: int = 50000) -> dict:
-    response = client.post(
-        "/api/debts",
-        headers=negotiated_headers(client, _idem(identity.app_headers)),
-        json={
-            "home_currency_code": "CNY", "direction": "i_owe",
-            "counterparty_type": "external",
-            "counterparty_label": "花呗",
-            "principal_amount_cents": principal_amount_cents,
-        },
-    )
-    assert response.status_code == 201, response.json()
-    return response.json()
-
-
-def _create_draft(client: TestClient, identity, *, amount_cents: int, notification_key: str | None = None) -> dict:
-    body: dict[str, object] = {
-        "source": "alipay",
-        "amount_cents": amount_cents,
-        "merchant_label": "花呗",
-    }
-    if notification_key is not None:
-        body["notification_key"] = notification_key
-    response = client.post("/api/repayment-drafts", headers=identity.app_headers, json=body)
-    assert response.status_code == 201, response.json()
-    return response.json()
 
 
 def _confirm(client: TestClient, identity, draft_id: str, debt: dict, *, headers: dict | None = None):
@@ -81,8 +53,8 @@ def _confirm(client: TestClient, identity, draft_id: str, debt: dict, *, headers
 
 
 def test_confirm_records_repayment_and_reduces_remaining(client: TestClient, *, identity) -> None:
-    debt = _create_debt(client, identity, principal_amount_cents=50000)
-    draft = _create_draft(client, identity, amount_cents=20000)
+    debt = _create_external_debt(client, identity.app_headers, principal_amount_cents=50000, counterparty_label='花呗')
+    draft = capture_repayment_draft(client, identity, amount_cents=20000)
     headers = _idem(identity.app_headers)
     response = _confirm(client, identity, draft["public_id"], debt, headers=headers)
     assert response.status_code == 201, response.json()
@@ -125,7 +97,7 @@ def test_confirm_records_repayment_at_captured_time_not_review_time(
     # fired ≈ when the payment happened), NOT now() — a delayed review must not back-stamp
     # the debt history to review time. (mutation: drop paid_at=draft.captured_at in confirm
     # → paid_at falls back to now() and this fails.)
-    debt = _create_debt(client, identity, principal_amount_cents=50000)
+    debt = _create_external_debt(client, identity.app_headers, principal_amount_cents=50000, counterparty_label='花呗')
     captured = "2026-05-01T03:30:00Z"
     create = client.post(
         "/api/repayment-drafts",
@@ -144,8 +116,8 @@ def test_confirm_records_repayment_at_captured_time_not_review_time(
 
 
 def test_confirm_clearing_debt_latches_cleared(client: TestClient, *, identity) -> None:
-    debt = _create_debt(client, identity, principal_amount_cents=20000)
-    draft = _create_draft(client, identity, amount_cents=20000)
+    debt = _create_external_debt(client, identity.app_headers, principal_amount_cents=20000, counterparty_label='花呗')
+    draft = capture_repayment_draft(client, identity, amount_cents=20000)
     response = _confirm(client, identity, draft["public_id"], debt)
     assert response.status_code == 201, response.json()
     detail = client.get(f"/api/debts/{debt['public_id']}", headers=identity.app_headers).json()
@@ -154,8 +126,8 @@ def test_confirm_clearing_debt_latches_cleared(client: TestClient, *, identity) 
 
 
 def test_confirm_overpay_is_rejected_and_draft_stays_pending(client: TestClient, *, identity) -> None:
-    debt = _create_debt(client, identity, principal_amount_cents=10000)
-    draft = _create_draft(client, identity, amount_cents=10001)
+    debt = _create_external_debt(client, identity.app_headers, principal_amount_cents=10000, counterparty_label='花呗')
+    draft = capture_repayment_draft(client, identity, amount_cents=10001)
     response = _confirm(client, identity, draft["public_id"], debt)
     assert response.status_code == 422, response.json()
     assert response.json()["error"] == "debt_overpay_rejected"
@@ -171,26 +143,26 @@ def test_confirm_against_member_debt_is_conflict(client: TestClient, *, identity
     # A member Debt is not directly writable (it goes through the proposal flow), so a
     # captured repayment cannot be confirmed against it — record_repayment guards it.
     member_debt = _seed_manual_member_debt(principal_amount_cents=10000)
-    draft = _create_draft(client, identity, amount_cents=1000)
+    draft = capture_repayment_draft(client, identity, amount_cents=1000)
     response = _confirm(client, identity, draft["public_id"], member_debt)
     assert response.status_code == 409, response.json()
     assert response.json()["error"] == "state_conflict"
 
 
 def test_confirm_stale_debt_version_is_conflict(client: TestClient, *, identity) -> None:
-    debt = _create_debt(client, identity, principal_amount_cents=50000)
-    draft_a = _create_draft(client, identity, amount_cents=5000, notification_key="stale-a")
+    debt = _create_external_debt(client, identity.app_headers, principal_amount_cents=50000, counterparty_label='花呗')
+    draft_a = capture_repayment_draft(client, identity, amount_cents=5000, notification_key='stale-a')
     first = _confirm(client, identity, draft_a["public_id"], debt)
     assert first.status_code == 201, first.json()
     # A second draft confirmed with the now-stale original debt version → 409.
-    draft_b = _create_draft(client, identity, amount_cents=5000, notification_key="stale-b")
+    draft_b = capture_repayment_draft(client, identity, amount_cents=5000, notification_key='stale-b')
     stale = _confirm(client, identity, draft_b["public_id"], debt)
     assert stale.status_code == 409, stale.json()
     assert stale.json()["error"] == "state_conflict"
 
 
 def test_confirm_missing_debt_is_404(client: TestClient, *, identity) -> None:
-    draft = _create_draft(client, identity, amount_cents=1000)
+    draft = capture_repayment_draft(client, identity, amount_cents=1000)
     response = client.post(
         f"/api/repayment-drafts/{draft['public_id']}/confirm",
         headers=_idem(identity.app_headers),
@@ -201,7 +173,7 @@ def test_confirm_missing_debt_is_404(client: TestClient, *, identity) -> None:
 
 
 def test_confirm_missing_draft_is_404(client: TestClient, *, identity) -> None:
-    debt = _create_debt(client, identity, principal_amount_cents=10000)
+    debt = _create_external_debt(client, identity.app_headers, principal_amount_cents=10000, counterparty_label='花呗')
     response = client.post(
         "/api/repayment-drafts/does-not-exist/confirm",
         headers=_idem(identity.app_headers),
@@ -212,16 +184,16 @@ def test_confirm_missing_draft_is_404(client: TestClient, *, identity) -> None:
 
 
 def test_confirm_missing_idempotency_key_is_422(client: TestClient, *, identity) -> None:
-    debt = _create_debt(client, identity, principal_amount_cents=10000)
-    draft = _create_draft(client, identity, amount_cents=1000)
+    debt = _create_external_debt(client, identity.app_headers, principal_amount_cents=10000, counterparty_label='花呗')
+    draft = capture_repayment_draft(client, identity, amount_cents=1000)
     response = _confirm(client, identity, draft["public_id"], debt, headers=identity.app_headers)
     assert response.status_code == 422
     assert response.json()["error"] == "idempotency_key_required"
 
 
 def test_confirm_viewer_is_403(client: TestClient, *, identity) -> None:
-    debt = _create_debt(client, identity, principal_amount_cents=10000)
-    draft = _create_draft(client, identity, amount_cents=1000)
+    debt = _create_external_debt(client, identity.app_headers, principal_amount_cents=10000, counterparty_label='花呗')
+    draft = capture_repayment_draft(client, identity, amount_cents=1000)
     set_owner_ledger_role("viewer")
     response = _confirm(client, identity, draft["public_id"], debt)
     assert response.status_code == 403, response.json()
@@ -229,8 +201,8 @@ def test_confirm_viewer_is_403(client: TestClient, *, identity) -> None:
 
 
 def test_confirm_unauthenticated_is_401(client: TestClient, *, identity) -> None:
-    debt = _create_debt(client, identity, principal_amount_cents=10000)
-    draft = _create_draft(client, identity, amount_cents=1000)
+    debt = _create_external_debt(client, identity.app_headers, principal_amount_cents=10000, counterparty_label='花呗')
+    draft = capture_repayment_draft(client, identity, amount_cents=1000)
     response = client.post(
         f"/api/repayment-drafts/{draft['public_id']}/confirm",
         headers={"Idempotency-Key": str(uuid4())},  # no Authorization

@@ -27,8 +27,8 @@ from tests.debt_proposal_helpers import (
     _member_headers,
     _mint_member_actor,
     _propose,
+    capture_repayment_draft,
 )
-from tests.test_repayment_drafts import _create_draft
 
 
 def _seed_pending_proposal(client: TestClient, owner_headers: dict[str, str]) -> tuple[int, int, int]:
@@ -149,7 +149,7 @@ def test_supersedes_proposal_id_fk_rejects_orphan(client: TestClient, *, identit
 
 
 def _seed_pending_draft(client: TestClient, identity) -> int:
-    draft = _create_draft(client, identity)
+    draft = capture_repayment_draft(client, identity)
     with SessionLocal() as db:
         return db.scalar(
             select(RepaymentDraft.id).where(RepaymentDraft.public_id == draft["public_id"])
