@@ -5,6 +5,7 @@ import os
 import threading
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from datetime import date
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.error import URLError
 from urllib.parse import urlsplit
@@ -53,11 +54,13 @@ def advisor_wire_fixture():
         def do_GET(self):
             # A bounded failure switch in front of the real dated quote provider.
             parts = urlsplit(self.path)
-            assert parts.path in {"/fx/latest", "/fx/2025-01-12"}
+            assert parts.path.startswith("/fx/"), parts.path
+            endpoint = parts.path.removeprefix("/fx/")
+            assert endpoint == "latest" or date.fromisoformat(endpoint).isoformat() == endpoint, parts.path
             record = {"path": parts.path, "available": state.fx_available}
             content, status = b"temporarily unavailable for recovery verification", 503
             if state.fx_available:
-                target = "https://api.frankfurter.dev/v1/" + parts.path.rsplit("/", 1)[1] + "?" + parts.query
+                target = "https://api.frankfurter.dev/v1/" + endpoint + "?" + parts.query
                 # Preserve the production provider's explicit client identity;
                 # the upstream rejects urllib's default Python User-Agent.
                 request = Request(target, headers={"User-Agent": self.headers["User-Agent"]})

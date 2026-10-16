@@ -8,7 +8,6 @@ also prepares a known original and invokes the existing archive command.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import secrets
@@ -22,6 +21,7 @@ from pathlib import Path
 
 from scripts.planning_journey_android import PlanningAndroid, wait_for
 from scripts.planning_journey_recovery import PlanningRecovery
+from scripts.planning_journey_results import execution_identity, record_execution
 from scripts.planning_journey_roles import verify_roles
 from scripts.test_postgres_contract import TEST_POSTGRES_CONTRACT
 from scripts.test_postgres_database import dedicated_test_database_lease
@@ -138,7 +138,7 @@ def _journey(page, native: PlanningAndroid, fixture, evidence: Path):
     native.capture("income-from-web")
     native.click("联动工资")
     native.fill("6000.00", previous=r"5,?000(?:\.00)?")
-    native.click("保存")
+    native.click("保存收入计划")
     wait_for(lambda: _facts(fixture.ledger_id)["income_amount"] == 600000, "The native original submission did not reach PostgreSQL", 90)
 
     facts = _facts(fixture.ledger_id)
@@ -171,6 +171,7 @@ def _journey(page, native: PlanningAndroid, fixture, evidence: Path):
     assert result["expenses"] == result["budgets"] == 0, "A prediction or reminder created financial facts"
     assert result["income_amount"] == 630000 and result["goal_amount"] == 250000
     assert result["income_status"] == result["goal_status"] == "active"
+    result["verified_leg"] = "Web/native creation, cross-client edits/OCC, reply loss, offline restart and resumption, both recycle bins, retained history, member edits and viewer reads"
     return result
 
 
@@ -206,7 +207,9 @@ def _run_group(args, page, native, fixture):
     if args.group == "portable-downloads":
         from scripts.portable_journey import PortableJourney
         return PortableJourney(page, native, fixture, args.evidence, BASE_URL).run()
-    return _journey(page, native, fixture, args.evidence)
+    if args.group == "income-goals":
+        return _journey(page, native, fixture, args.evidence)
+    raise ValueError(f"Unknown consumer group: {args.group}")
 
 
 def _browser_run(args, native, fixture):
@@ -252,19 +255,17 @@ def _run_consumers(args, native, fixture):
         result = None
         try:
             wait_for(_ready, "The real backend did not become ready")
+            execution = execution_identity(args.apk)
+            record_execution(args.evidence, execution, "running")
             result = _browser_run(args, native, fixture)
         finally:
             if result is None:
                 _native_failure(native, native.pairing_code or fixture.pairing_code)
             server.terminate()
             server.wait(timeout=20)
-    result["checkout_sha"] = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
-    result["source_sha"] = os.environ["TICKETBOX_JOURNEY_SOURCE_SHA"]
-    result["apk_sha256"] = hashlib.sha256(args.apk.read_bytes()).hexdigest()
-    result.setdefault("verified_leg", "Web/native creation, cross-client edits/OCC, reply loss, offline restart and resumption, both recycle bins, retained history, member edits and viewer reads")
-    result["group"] = args.group
+    result.update(execution)
     (args.evidence / "business-result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
-    print("The actual Web/native planning recovery journey completed")
+    print(f"The actual Web/native {args.group} journey completed")
 
 
 def _native_failure(native, pairing_code):
@@ -279,7 +280,7 @@ def main() -> int:
     parser.add_argument("--serial", required=True)
     parser.add_argument("--apk", type=Path, required=True)
     parser.add_argument("--evidence", type=Path, required=True)
-    parser.add_argument("--group", choices=("income-goals", "budget-recurring", "relationships", "portable-downloads", "backstage", "notifications", "reference-library", "financial-facts", "original-maintenance", "insights", "appearance"), default="income-goals")
+    parser.add_argument("--group", choices=("income-goals", "budget-recurring", "relationships", "portable-downloads", "backstage", "notifications", "reference-library", "financial-facts", "original-maintenance", "insights", "appearance"), required=True)
     args = parser.parse_args()
     if os.environ.get("GITHUB_ACTIONS") != "true":
         raise RuntimeError("Run this sustained PostgreSQL/native journey in the isolated cloud job")

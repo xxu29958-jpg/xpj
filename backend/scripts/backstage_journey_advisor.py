@@ -29,7 +29,7 @@ def _consent(j, confirmed):
         owner.goto(j.base_url + "/owner/ai-advisor")
         form = owner.locator('form[action^="/owner/ai-advisor/confirmation"]')
         form.locator('[name="confirmed"]').set_checked(confirmed)
-        form.locator('button[type="submit"]').click()
+        form.get_by_role("button", name="仅保存请求授权", exact=True).click()
         assert form.locator('[name="confirmed"]').is_checked() == confirmed
         j.capture("ai-owner-consent" if confirmed else "ai-owner-not-consented", page=owner)
     except (AssertionError, BrowserError):

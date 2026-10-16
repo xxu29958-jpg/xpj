@@ -339,6 +339,95 @@ def test_desktop_pairing_producers_require_the_real_desktop_consumer() -> None:
         _assert_path_scopes((path,), "postgres", "backend_frozen", "windows")
 
 
+def test_journey_selection_follows_real_consumers_without_a_default_budget_group() -> None:
+    from fnmatch import fnmatch
+
+    import yaml
+
+    from scripts.planning_journey_scope import journey_dependencies, select_groups
+
+    cases = {
+        "financial_journey.py": {"financial-facts"},
+        "relationship_journey_views.py": {"relationships"},
+        "portable_journey_transport.py": {"portable-downloads"},
+        "backstage_journey_advisor_transport.py": {"backstage"},
+        "backstage_journey_facts.py": {"backstage", "financial-facts", "original-maintenance"},
+        "insights_journey.py": {"insights", "appearance"},
+    }
+    for name, expected in cases.items():
+        assert set(select_groups([f"backend/scripts/{name}"])["selected"]) == expected
+    assert set(select_groups(["backend/scripts/financial_journey.py", "backend/scripts/relationship_journey.py"])["selected"]) == {"financial-facts", "relationships"}
+    assert set(select_groups(["backend/scripts/planning_journey_android.py"])["selected"]) == set(journey_dependencies())
+    for helper in ("postgres_release_policy", "report_qualification_sha", "write_test_postgres_env", "prepare_test_postgres_databases"):
+        assert set(select_groups([f"backend/scripts/{helper}.py"])["selected"]) == set(journey_dependencies())
+    assert select_groups([], "financial-facts")["selected"] == ["financial-facts"]
+    assert select_groups([], "cold-copy")["selected"] == ["cold-copy"]
+    assert select_groups(["backend/app/services/expense_service.py"])["selected"] == []
+    for paths, requested in (([], ""), ([], "unknown"), (["backend/scripts/unowned_journey.py"], "")):
+        with pytest.raises(ValueError):
+            select_groups(paths, requested)
+    workflow = yaml.safe_load((BACKEND_ROOT.parent / ".github/workflows/planning-consumer-journey.yml").read_text(encoding="utf-8"))
+    consumer = workflow["jobs"]["consumers"]
+    assert consumer["env"]["TICKETBOX_JOURNEY_GROUP"] == "${{ matrix.group }}"
+    assert "matrix.group" in consumer["concurrency"]["group"]
+    assert "inputs.group" not in json.dumps(consumer)
+    assert consumer["strategy"]["fail-fast"] is False
+    assert "selection" in consumer["needs"]
+    triggers = workflow.get("on", workflow.get(True))
+    for event in ("pull_request", "push"):
+        for path in set.union(*journey_dependencies().values()):
+            assert any(fnmatch(path, pattern) for pattern in triggers[event]["paths"]), path
+    assert "app" in consumer["needs"]
+    assert not any("assembleGrayDebug" in step.get("run", "") for step in consumer["steps"])
+
+
+def test_journey_selection_retains_consumers_across_renames_and_removed_imports(tmp_path) -> None:
+    from scripts.planning_journey_scope import journey_dependencies, select_groups
+
+    # Snapshot only the existing journey dependencies; no product runtime or PG.
+    sources = set.union(*journey_dependencies().values())
+    for name in sources:
+        destination = tmp_path / name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes((BACKEND_ROOT.parent / name).read_bytes())
+
+    def git(*args):
+        return subprocess.check_output([
+            "git", "-c", "user.name=Journey contract", "-c", "user.email=journey@example.invalid",
+            "-c", "commit.gpgsign=false", "-c", f"core.hooksPath={tmp_path / 'no-hooks'}", *args,
+        ], cwd=tmp_path, text=True).strip()
+
+    git("init", "-q")
+    workflow = tmp_path / ".github/workflows/planning-consumer-journey.yml"
+    # A historical path trigger is not an executable module dependency.
+    workflow.write_text(workflow.read_text(encoding="utf-8").replace("backend/scripts/**.py", "backend/scripts/planning_*journey*.py"), encoding="utf-8")
+    git("add", ".")
+    git("commit", "-qm", "Before dependency changes")
+    base = git("rev-parse", "HEAD")
+    old = "backend/scripts/backstage_journey_facts.py"
+    new = "backend/scripts/backstage_journey_fixture.py"
+    (tmp_path / old).rename(tmp_path / new)
+    workflow.write_text(workflow.read_text(encoding="utf-8").replace("backend/scripts/report_qualification_sha.py", "backend/scripts/report_journey_sha.py"), encoding="utf-8")
+    (tmp_path / "backend/scripts/report_qualification_sha.py").rename(tmp_path / "backend/scripts/report_journey_sha.py")
+    for path in (tmp_path / "backend/scripts").glob("*.py"):
+        text = path.read_text(encoding="utf-8")
+        text = text.replace("scripts.backstage_journey_facts", "scripts.backstage_journey_fixture")
+        if path.name == "planning_appearance_journey.py":
+            text = text.replace("from scripts.insights_journey import InsightsJourney", "")
+        path.write_text(text, encoding="utf-8")
+    git("add", "-A")
+    git("commit", "-qm", "Rename shared fixture and remove an import edge")
+    head = git("rev-parse", "HEAD")
+
+    expected = {"backstage", "financial-facts", "original-maintenance"}
+    for paths in ([old], [new], [old, new]):
+        assert set(select_groups(paths, root=tmp_path, base=base, head=head)["selected"]) == expected
+    insights = ["backend/scripts/insights_journey.py"]
+    assert select_groups(insights, root=tmp_path, head=head)["selected"] == ["insights"]
+    assert set(select_groups(insights, root=tmp_path, base=base, head=head)["selected"]) == {"insights", "appearance"}
+    assert set(select_groups(["backend/scripts/report_qualification_sha.py"], root=tmp_path, base=base, head=head)["selected"]) == set(journey_dependencies())
+
+
 def test_always_on_contract_tests_do_not_expand_heavy_scopes() -> None:
     for path in (
         "backend/scripts/engineering_task_map.py",
