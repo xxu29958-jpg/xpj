@@ -116,7 +116,8 @@ def test_creditor_forgives_full_open_debt(client: TestClient, *, identity) -> No
     debt = _create_member_debt(
         client, identity.app_headers, direction="owed_to_me", member_account_id=member_id
     )
-    resp = _forgive(client, identity.app_headers, debt["public_id"], expected_row_version=1)
+    key = str(uuid4())
+    resp = _forgive(client, identity.app_headers, debt["public_id"], expected_row_version=1, idempotency_key=key)
     assert resp.status_code == 201, resp.json()
     body = resp.json()
     assert body["status"] == "cleared"
@@ -128,12 +129,19 @@ def test_creditor_forgives_full_open_debt(client: TestClient, *, identity) -> No
     assert body["viewer_is_debtor"] is False  # owner is the creditor
     assert body["row_version"] == 2
 
+    replay = _forgive(client, identity.app_headers, debt["public_id"], expected_row_version=1, idempotency_key=key)
+    assert replay.status_code == 201, replay.json()
+    assert replay.json() == body
+    again = _forgive(client, identity.app_headers, debt["public_id"], expected_row_version=body["row_version"])
+    assert again.status_code == 409, again.json()
+    assert again.json()["error"] == "state_conflict"
     facts = _forgivenesses(debt["public_id"])
     assert len(facts) == 1
     assert facts[0].amount_cents == 50000
     with SessionLocal() as db:
         stored = db.scalar(select(Debt).where(Debt.public_id == debt["public_id"]))
         assert stored.status == "cleared"  # latched cleared, NOT voided
+        assert stored.row_version == body["row_version"]
 
 
 def test_creditor_forgives_after_partial_repayment_clears(client: TestClient, *, identity) -> None:
@@ -207,24 +215,6 @@ def test_external_debt_cannot_be_forgiven(client: TestClient, *, identity) -> No
 # ── zero-remaining / OCC / scope ─────────────────────────────────────────────
 
 
-def test_forgive_already_settled_debt_is_rejected(client: TestClient, *, identity) -> None:
-    # Forgiving a Debt that already folds to 0 (fully repaid, or already forgiven) is a
-    # state_conflict — recording a 0-amount fact would pollute history and could trip the
-    # §5 celebration. The second forgive after a first must also 409 (re-forgive).
-    member_id, _ = _mint_member_actor()
-    debt = _create_member_debt(
-        client, identity.app_headers, direction="owed_to_me", member_account_id=member_id
-    )
-    first = _forgive(client, identity.app_headers, debt["public_id"], expected_row_version=1)
-    assert first.status_code == 201, first.json()
-    again = _forgive(
-        client, identity.app_headers, debt["public_id"], expected_row_version=first.json()["row_version"]
-    )
-    assert again.status_code == 409, again.json()
-    assert again.json()["error"] == "state_conflict"
-    assert len(_forgivenesses(debt["public_id"])) == 1  # no second fact
-
-
 def test_forgive_stale_row_version_conflicts(client: TestClient, *, identity) -> None:
     # A stale expected_row_version (the user acted on stale Debt state) is rejected by the
     # §2.1 fence with state_conflict; no forgiveness fact is recorded.
@@ -281,25 +271,6 @@ def test_cross_ledger_creditor_forgives(client: TestClient, *, identity, debt_ro
 
 
 # ── idempotency / pending-proposal supersede ─────────────────────────────────
-
-
-def test_forgive_is_idempotent_on_replay(client: TestClient, *, identity) -> None:
-    # A lost-response replay of the same key returns the canonical cleared Debt and records
-    # exactly one forgiveness fact (no second fold change).
-    member_id, _ = _mint_member_actor()
-    debt = _create_member_debt(
-        client, identity.app_headers, direction="owed_to_me", member_account_id=member_id
-    )
-    key = str(uuid4())
-    first = _forgive(client, identity.app_headers, debt["public_id"], expected_row_version=1, idempotency_key=key)
-    assert first.status_code == 201, first.json()
-    assert first.json()["is_forgiven"] is True
-
-    replay = _forgive(client, identity.app_headers, debt["public_id"], expected_row_version=1, idempotency_key=key)
-    assert replay.status_code == 201, replay.json()
-    assert replay.json()["status"] == "cleared"
-    assert replay.json()["is_forgiven"] is True
-    assert len(_forgivenesses(debt["public_id"])) == 1  # exactly one despite the replay
 
 
 def test_forgive_idempotency_fingerprint_is_actor_scoped(client: TestClient, *, identity) -> None:
