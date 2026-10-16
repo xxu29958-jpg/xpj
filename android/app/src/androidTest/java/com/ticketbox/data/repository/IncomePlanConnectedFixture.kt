@@ -15,6 +15,7 @@ import com.ticketbox.data.remote.dto.IncomePlanDto
 import com.ticketbox.data.remote.dto.IncomePlanCreateRequestDto
 import com.ticketbox.data.remote.dto.IncomePlanListResponseDto
 import com.ticketbox.data.remote.dto.IncomePlanUpdateRequestDto
+import com.ticketbox.data.remote.dto.IncomePlanTokenRequestDto
 import com.ticketbox.data.remote.dto.IncomeHistoryResponseDto
 import com.ticketbox.data.remote.dto.IncomeRevisionDto
 import com.ticketbox.data.remote.dto.IncomeDefinitionDto
@@ -99,10 +100,16 @@ internal class IncomeConnectedNetwork {
     var listing: (suspend (String) -> IncomePlanListResponseDto)? = null
     var history: (suspend (Long?) -> IncomeHistoryResponseDto)? = null
     var loseResponse = true
+    // Declared peer replies. PostgreSQL owns money, OCC and server idempotency;
+    // these Room consumers prove their original request survives interrupted delivery.
+    private val updated = current.copy(amountCents = 12_000, rowVersion = 4)
+    private val archived = current.copy(status = "archived", rowVersion = 4, archivedAt = "2026-09-30T15:30:00Z")
+    private val restored = current.copy(rowVersion = 5)
+    var creationReply = IncomePlanDto("created-income", "旅行补贴", "salary", "one_time", "2026-09",
+        1200, 10, "active", "2026-09-30T00:00:00Z", "2026-09-30T00:00:00Z", 1, null, "JPY")
     val calls = mutableListOf<Pair<IncomePlanUpdateRequestDto, String>>()
-    val results = mutableMapOf<String, IncomePlanDto>()
     val creationCalls = mutableListOf<Pair<IncomePlanCreateRequestDto, String>>()
-    val creationReceipts = mutableMapOf<String, IncomePlanDto>()
+    val statusCalls = mutableListOf<Pair<String, IncomePlanTokenRequestDto>>()
     val historyCalls = mutableListOf<String>()
     val service = object : ApiService by incomeProxy<ApiService>({ error("Unexpected remote method: $it") }) {
         override suspend fun incomePlanHistory(publicId: String, limit: Int, beforeVersion: Long?): IncomeHistoryResponseDto {
@@ -124,43 +131,38 @@ internal class IncomeConnectedNetwork {
                 current.amountCents, month, current.amountCents, 1, current.amountCents, homeCurrencyCode = forecastCurrencyCode)
         }
 
-        override suspend fun archiveIncomePlan(publicId: String, request: com.ticketbox.data.remote.dto.IncomePlanTokenRequestDto): IncomePlanDto =
-            changeStatus(publicId, request.expectedRowVersion, "archived")
+        override suspend fun archiveIncomePlan(publicId: String, request: IncomePlanTokenRequestDto): IncomePlanDto {
+            check(publicId == archived.publicId)
+            statusCalls += "archive" to request
+            return publish(archived)
+        }
 
-        override suspend fun restoreIncomePlan(publicId: String, request: com.ticketbox.data.remote.dto.IncomePlanTokenRequestDto): IncomePlanDto =
-            changeStatus(publicId, request.expectedRowVersion, "active")
+        override suspend fun restoreIncomePlan(publicId: String, request: IncomePlanTokenRequestDto): IncomePlanDto {
+            check(publicId == restored.publicId)
+            statusCalls += "restore" to request
+            return publish(restored)
+        }
 
         override suspend fun createIncomePlan(request: IncomePlanCreateRequestDto, idempotencyKey: String): IncomePlanDto {
             creationCalls += request to idempotencyKey
-            val receipt = creationReceipts.getOrPut(idempotencyKey) {
-                IncomePlanDto("created-income", request.label, request.sourceType, request.frequency, request.incomeMonth,
-                    request.amountCents, request.payDay, "active", "2026-09-30T00:00:00Z", "2026-09-30T00:00:00Z",
-                    1, null, request.homeCurrencyCode)
-            }
             if (loseResponse) throw IOException("Synthetic lost creation acknowledgement")
-            return receipt
+            return creationReply
         }
 
         override suspend fun updateIncomePlan(publicId: String, request: IncomePlanUpdateRequestDto,
             idempotencyKey: String?): IncomePlanDto {
             check(publicId == current.publicId)
             calls += request to requireNotNull(idempotencyKey)
-            val response = results.getOrPut(idempotencyKey) {
-                check(request.expectedRowVersion == current.rowVersion)
-                current.copy(amountCents = requireNotNull(request.amountCents), rowVersion = current.rowVersion + 1)
-                    .also { current = it }
-            }
+            if (calls.size == 1) current = updated
             if (loseResponse) throw IOException("Synthetic lost response after commit")
-            return response
+            return updated
         }
     }
 
-    private fun changeStatus(publicId: String, version: Long, status: String): IncomePlanDto {
-        check(publicId == current.publicId && version == current.rowVersion)
-        current = current.copy(status = status, rowVersion = current.rowVersion + 1,
-            archivedAt = if (status == "archived") "2026-09-30T15:30:00Z" else null)
+    private fun publish(reply: IncomePlanDto): IncomePlanDto {
+        current = reply
         if (loseResponse) throw IOException("Synthetic lost status acknowledgement")
-        return current
+        return reply
     }
 }
 

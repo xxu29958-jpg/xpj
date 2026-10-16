@@ -122,6 +122,9 @@ class IncomeQueryContinuityRoomTest {
         assertEquals(knownArchived.copy(fromCache = true), fixture.reopen().incomePlanRepository.listIncluding(binding, IncomePlanStatus.ARCHIVED).getOrThrow())
         val reopened = fixture.reopen().incomePlanRepository
         reopened.restore(binding, archived.publicId, archived.rowVersion, "2026-09").getOrThrow()
+        assertEquals(listOf("archive" to 3L, "restore" to 4L),
+            fixture.network.statusCalls.map { (action, request) -> action to request.expectedRowVersion })
+        assertTrue(fixture.network.statusCalls.all { it.second.intentMonth == "2026-09" })
         assertTrue(reopened.listIncluding(binding, IncomePlanStatus.ARCHIVED).isFailure)
         assertTrue(fixture.stored().isEmpty())
     }
