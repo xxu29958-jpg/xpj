@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import uuid4
 
+from api_contract_helpers import manual_expense
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
@@ -15,29 +16,6 @@ from app.services.time_service import now_utc
 from tests.family_ledger_test_support import set_owner_ledger_role
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
-
-
-def _manual_expense(
-    client: TestClient,
-    *,
-    headers: dict[str, str],
-    amount_cents: int,
-    merchant: str,
-    category: str,
-    expense_time: str,
-) -> None:
-    response = client.post(
-        "/api/expenses/manual",
-        headers=headers,
-        json={
-            "client_ref": str(uuid4()),
-            "home_currency_code": "CNY", "amount_cents": amount_cents,
-            "merchant": merchant,
-            "category": category,
-            "expense_time": expense_time,
-        },
-    )
-    assert response.status_code == 200, response.json()
 
 
 def _seed_recurring(
@@ -106,7 +84,7 @@ def _seed_monthly_budget_dashboard_sources(client: TestClient, identity: object)
         baseline_amount_cents=9900,
         created_at=datetime(2026, 5, 1, tzinfo=UTC),
     )
-    _manual_expense(
+    manual_expense(
         client,
         headers=identity.app_headers,
         amount_cents=12000,
@@ -114,7 +92,7 @@ def _seed_monthly_budget_dashboard_sources(client: TestClient, identity: object)
         category="餐饮",
         expense_time="2026-05-05T12:00:00Z",
     )
-    _manual_expense(
+    manual_expense(
         client,
         headers=identity.app_headers,
         amount_cents=3500,
@@ -122,7 +100,7 @@ def _seed_monthly_budget_dashboard_sources(client: TestClient, identity: object)
         category="交通",
         expense_time="2026-05-06T12:00:00Z",
     )
-    _manual_expense(
+    manual_expense(
         client,
         headers=identity.app_headers,
         amount_cents=9900,
@@ -130,7 +108,7 @@ def _seed_monthly_budget_dashboard_sources(client: TestClient, identity: object)
         category="医疗",
         expense_time="2026-05-07T12:00:00Z",
     )
-    _manual_expense(
+    manual_expense(
         client,
         headers=identity.app_headers,
         amount_cents=7777,
@@ -138,7 +116,7 @@ def _seed_monthly_budget_dashboard_sources(client: TestClient, identity: object)
         category="餐饮",
         expense_time="2026-04-30T12:00:00Z",
     )
-    _manual_expense(
+    manual_expense(
         client,
         headers=identity.gray_app_headers,
         amount_cents=7777,

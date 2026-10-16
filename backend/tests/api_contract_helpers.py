@@ -18,6 +18,30 @@ from tests._infra.identity import TestIdentity
 from tests._web_native_form_support import hidden_post_forms
 
 
+def manual_expense(
+    client: TestClient,
+    *,
+    headers: dict[str, str],
+    amount_cents: int,
+    merchant: str,
+    category: str,
+    expense_time: str,
+) -> None:
+    response = client.post(
+        "/api/expenses/manual",
+        headers=headers,
+        json={
+            "client_ref": str(uuid4()),
+            "home_currency_code": "CNY", "amount_cents": amount_cents,
+            "merchant": merchant,
+            "category": category,
+            "expense_time": expense_time,
+        },
+    )
+    assert response.status_code == 200, response.json()
+
+
+
 def web_save_expense(
     client: TestClient,
     expense_id: int,
