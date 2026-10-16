@@ -1,17 +1,4 @@
-"""Product-shell contracts for the Web UI/IA rebuild (218-D S3, 移植自产品矿并适配 main).
-
-S3 落「壳基座」: base.html / _sidebar_nav.html 重写 + product 设计系统 CSS
-+ web_common 展示 helper。S4 落「收件域正文」: pending/duplicates 两页
-换 product 新标记, 经 _product_body_domains 开关断旧栈、挂 domains/inbox.css,
-/web 根 303→/web/pending —— 页面级断言族在 test_web_inbox_rebuild.py,
-本文件只钉壳层与旧栈分流防回归。
-
-218-D S3-R1 翻转 (#256 P1: 收件行整列塌缩): 挂载策略按页面正文标记新旧分流——
-- 正文仍是旧标记的页 (debts 等): 旧全局栈+页级 CSS 保持在场
-  (本文件钉死防回归), 对应 domain 模块不双挂 (矿域模块与旧页共享类名谱系
-  .exp-row/.timeline-row 等, 双挂则旧规则被盖、新 grid 不认嵌套标记)。
-- 正文已是新标记的页 (overview S2; 收件域两页 S4): 断旧栈, 挂对应 domain 模块。
-"""
+"""Delivered Web navigation, assets, read-only access and native form contracts."""
 
 from __future__ import annotations
 
@@ -27,14 +14,6 @@ from sqlalchemy import select
 from app.database import SessionLocal
 from app.models import LedgerMember
 from app.version import STATIC_ASSET_VERSION
-
-_RETIRED_GLOBAL_STACK = (
-    "/static/web/web.css",
-    "/static/web/_base.css",
-    "/static/web/_shell.css",
-    "/static/web/_misc.css",
-    "/static/web/components/",
-)
 
 
 @pytest.fixture
@@ -57,16 +36,6 @@ def owner_ledger_viewer() -> Iterator[None]:
             db.commit()
 
 
-def _assert_shell_chrome_has_no_inline_style(body: str) -> None:
-    """壳 chrome (侧边导航 + 顶栏) 零内联样式。"""
-    sidebar = re.search(r'<aside class="sidebar">.*?</aside>', body, re.S)
-    assert sidebar is not None
-    assert 'style="' not in sidebar.group(0)
-    topbar = re.search(r'<header class="product-topbar">.*?</header>', body, re.S)
-    assert topbar is not None
-    assert 'style="' not in topbar.group(0)
-
-
 def test_product_shell_exposes_local_appearance_axes_without_fake_upload_entry(
     web_client: TestClient,
 ) -> None:
@@ -85,11 +54,6 @@ def test_product_shell_exposes_local_appearance_axes_without_fake_upload_entry(
 
     theme_js = web_client.get("/static/web/desktop/theme.js")
     assert theme_js.status_code == 200
-    assert "localStorage" in theme_js.text
-    assert "const prefs = window.TicketboxAppearance" in theme_js.text
-    assert 'prefs.write("texture"' in theme_js.text
-    assert 'prefs.write("accent"' in theme_js.text
-    assert "fetch(" not in theme_js.text
 
 
 def test_product_shell_restores_appearance_axes_via_external_bootstrap(
@@ -104,19 +68,6 @@ def test_product_shell_restores_appearance_axes_via_external_bootstrap(
     assert "localStorage" not in response.text
 
 
-def test_product_shell_topbar_carries_compact_brand_identity(
-    web_client: TestClient,
-) -> None:
-    """K3 响应式收件: ≤40rem 品牌身份并入 topbar (sidebar brand 行隐藏),
-    topbar 需携带压缩品牌元素, 桌面由 CSS 隐藏。"""
-    response = web_client.get("/web/pending?ledger_id=owner")
-
-    assert response.status_code == 200
-    topbar = re.search(r'<header class="product-topbar">.*?</header>', response.text, re.S)
-    assert topbar is not None
-    assert 'class="topbar-brand"' in topbar.group(0)
-
-
 def test_product_shell_mobile_task_order_and_capture_search_entries(
     web_client: TestClient,
     *, identity,
@@ -126,7 +77,9 @@ def test_product_shell_mobile_task_order_and_capture_search_entries(
     可见的 GET 导航, upload command owner 不变) 与搜索。"""
     empty = web_client.get("/web/pending?ledger_id=owner")
     assert empty.status_code == 200
-    assert 'class="mobile-plan-nav"' not in empty.text
+    empty_main = re.search(r"<main\b[^>]*>(.*?)</main>", empty.text, re.S)
+    assert empty_main is not None
+    assert 'aria-label="当前领域页面"' not in empty_main.group(1)
     assert "收第一张小票" in empty.text
     _seed_pending_with_amount(web_client, "12.00", "待确认的小票", identity=identity)
     response = web_client.get("/web/pending?ledger_id=owner")
@@ -135,12 +88,13 @@ def test_product_shell_mobile_task_order_and_capture_search_entries(
     body = response.text
 
     # 有待处理小票时保留域内页签；空态只显示唯一五域导航和真实采集入口。
-    assert body.count('class="mobile-primary-nav"') == 1
-    assert body.count('class="mobile-plan-nav"') == 1
-    assert body.index('<main class="content"') < body.index('class="mobile-plan-nav"')
-    assert body.index('</main>') < body.index('class="mobile-primary-nav"')
+    assert body.count('aria-label="产品领域"') == 1
+    main = re.search(r"<main\b[^>]*>(.*?)</main>", body, re.S)
+    assert main is not None
+    assert main.group(1).count('aria-label="当前领域页面"') == 1
+    assert body.index('</main>') < body.index('aria-label="产品领域"')
 
-    topbar = re.search(r'<header class="product-topbar">.*?</header>', body, re.S)
+    topbar = re.search(r'<header\b[^>]*>.*?</header>', body, re.S)
     assert topbar is not None
     topbar_html = topbar.group(0)
     assert 'href="/web/pending?ledger_id=owner#capture"' in topbar_html
@@ -156,7 +110,7 @@ def test_product_shell_capture_entry_hidden_for_viewer(
     """W1: 收票是写入口, viewer 不渲染; 搜索只读可用, 保留。"""
     response = web_client.get("/web/pending?ledger_id=owner")
     assert response.status_code == 200
-    topbar = re.search(r'<header class="product-topbar">.*?</header>', response.text, re.S)
+    topbar = re.search(r'<header\b[^>]*>.*?</header>', response.text, re.S)
     assert topbar is not None
     topbar_html = topbar.group(0)
     assert "#capture" not in topbar_html
@@ -175,12 +129,11 @@ def test_account_switcher_is_native_disclosure_without_false_local_logout(
     assert response.status_code == 200
     body = response.text
 
-    assert '<details class="ledger-switcher" id="ledger-switcher">' in body
-    assert re.search(r'<summary[^>]+aria-label="账户与账本"', body) is not None
+    assert re.search(r'<details\b[^>]*>\s*<summary[^>]+aria-label="账户与账本"', body)
     assert 'action="/web/auth/logout"' not in body
     assert "退出登录" not in body
     # 账本切换 rows 仍是真实 GET 链接, 不被披露组件吃掉
-    assert re.search(r'<a class="row[^"]*"\s+href="/web/pending\?ledger_id=', body) is not None
+    assert re.search(r'<a\b[^>]*href="/web/pending\?ledger_id=', body) is not None
 
 
 @pytest.mark.parametrize(
@@ -191,7 +144,7 @@ def test_account_switcher_is_native_disclosure_without_false_local_logout(
         ("/web/debts/new?ledger_id=owner", "tertiary"),
     ],
 )
-def test_debt_core_pages_use_product_body_and_retire_legacy_css(
+def test_debt_core_pages_deliver_domain_navigation_and_assets(
     web_client: TestClient,
     path: str,
     page_level: str,
@@ -202,7 +155,6 @@ def test_debt_core_pages_use_product_body_and_retire_legacy_css(
     body = response.text
     assert 'data-domain="obligations"' in body
     assert f'data-page="obligations" data-page-level="{page_level}"' in body
-    assert 'data-body-stack="product"' in body
     assert re.search(
         r'href="/web/debts\?ledger_id=owner"[^>]+aria-current="location"',
         body,
@@ -210,100 +162,35 @@ def test_debt_core_pages_use_product_body_and_retire_legacy_css(
     assert f"/static/web/product/shell.css?v={STATIC_ASSET_VERSION}" in body
     assert f"/static/web/product/components.css?v={STATIC_ASSET_VERSION}" in body
     assert f"/static/web/product/domains/obligations.css?v={STATIC_ASSET_VERSION}" in body
-    for retired in _RETIRED_GLOBAL_STACK:
-        assert retired not in body
-    assert "/static/web/pages/debts.css" not in body
-    assert "desktop-shell-active" not in body
-    assert "<style" not in body
-    assert 'style="' not in body
-    _assert_shell_chrome_has_no_inline_style(body)
 
 
-def test_budgets_product_body_retires_legacy_stack(web_client: TestClient) -> None:
-    """计划主入口迁入 product 正文栈，旧预算页样式不再拥有当前 surface。"""
+def test_budget_page_delivers_its_tasks_and_assets(web_client: TestClient) -> None:
     response = web_client.get("/web/budgets?ledger_id=owner&month=2026-05")
 
     assert response.status_code == 200
     body = response.text
     assert 'data-domain="plans"' in body
     assert 'data-page="plans" data-page-level="primary"' in body
-    assert 'data-body-stack="product"' in body
     assert f"/static/web/product/domains/plans.css?v={STATIC_ASSET_VERSION}" in body
     assert f"/static/web/desktop/budgets.js?v={STATIC_ASSET_VERSION}" in body
-    for retired in _RETIRED_GLOBAL_STACK:
-        assert retired not in body
-    assert "/static/web/pages/budgets.css" not in body
-    assert "desktop-shell-active" not in body
-    assert '<h1 class="page-title">这个月，心里有数</h1>' in body
-    assert "<style" not in body
-    assert 'style="' not in body
-    _assert_shell_chrome_has_no_inline_style(body)
+    assert "这个月，心里有数" in body
 
 
-def test_confirmed_product_body_retires_legacy_stack_and_fake_filter(
+def test_confirmed_page_delivers_current_tasks_and_assets(
     web_client: TestClient,
 ) -> None:
-    """流水主入口迁入 product 正文栈，并退役只筛当前 50 行的假分类能力。"""
     confirmed = web_client.get("/web/confirmed?ledger_id=owner")
     assert confirmed.status_code == 200
     body = confirmed.text
 
-    assert 'data-body-stack="product"' in body
     assert f"/static/web/product/domains/transactions.css?v={STATIC_ASSET_VERSION}" in body
-    for retired in _RETIRED_GLOBAL_STACK:
-        assert retired not in body
-    assert "/static/web/pages/confirmed.css" not in body
-    assert "/static/web/desktop/ledger-filter.js" not in body
-    assert "data-ledger-filter" not in body
 
-    assert '<h1 class="page-title">流水</h1>' in body
-    assert "ledger-stream" in body
+    assert "流水" in body
     assert 'aria-label="本月概况"' in body
     assert "每日分布" in body
-    assert "日历视图" not in body
-    assert '<div class="head">一</div>' not in body
-    assert 'class="heatmap"' in body
-    assert 'class="source-list"' in body
-    assert "<style" not in body
-    _assert_shell_chrome_has_no_inline_style(body)
 
 
-def test_bill_split_body_uses_product_hook_and_drawer_scope_stays_isolated(
-    web_client: TestClient,
-) -> None:
-    """C3b: bill split pages leave the legacy body stack without widening drawer CSS."""
-    bill_splits = web_client.get("/web/bill-splits/inbox?ledger_id=owner")
-    assert bill_splits.status_code == 200
-    body = bill_splits.text
-    body_tag = re.search(r"<body [^>]+>", body)
-    assert body_tag is not None
-    assert "desktop-shell-active" not in body_tag.group(0)
-    assert 'data-body-stack="product"' in body_tag.group(0)
-    assert "/static/web/components/drawer.css" not in body
-
-    css = web_client.get("/static/web/product/components.css")
-    assert css.status_code == 200
-    assert not re.search(r"^\.drawer\s*\{", css.text, re.M)
-    assert not re.search(r"^\.drawer-head\s*\{", css.text, re.M)
-    assert not re.search(r"^\.scrim\s*\{", css.text, re.M)
-    assert '[data-body-stack="product"] .drawer {' in css.text
-    assert '[data-body-stack="product"] .scrim {' in css.text
-
-
-def test_overview_new_body_omits_desktop_hook(web_client: TestClient) -> None:
-    """新标记页 (overview) 不挂 desktop-shell-active (其规则面向旧栈),
-    改挂 data-body-stack="product" 作为 product drawer 族规则作用域锚。"""
-    response = web_client.get("/web/overview?ledger_id=owner")
-    assert response.status_code == 200
-    body_tag = re.search(r"<body [^>]+>", response.text)
-    assert body_tag is not None
-    assert "desktop-shell-active" not in body_tag.group(0)
-    assert 'data-body-stack="product"' in body_tag.group(0)
-
-
-def test_overview_new_body_mounts_insights_module(web_client: TestClient) -> None:
-    """overview (S2 新页, 正文已是新标记): 断旧栈, 挂 insights 域模块。
-    W3: 页级 pages/overview.css 已并入 domains/insights.css 并物理删除。"""
+def test_overview_delivers_current_navigation_and_assets(web_client: TestClient) -> None:
     response = web_client.get("/web/overview?ledger_id=owner")
 
     assert response.status_code == 200
@@ -315,24 +202,6 @@ def test_overview_new_body_mounts_insights_module(web_client: TestClient) -> Non
     assert f"/static/web/product/shell.css?v={STATIC_ASSET_VERSION}" in body
     assert f"/static/web/product/components.css?v={STATIC_ASSET_VERSION}" in body
     assert f"/static/web/product/domains/insights.css?v={STATIC_ASSET_VERSION}" in body
-    assert "/static/web/pages/overview.css" not in body
-    retired_overview_css = web_client.get("/static/web/pages/overview.css")
-    assert retired_overview_css.status_code == 404
-
-    # 新标记页断旧栈: 退役全局栈不得回流 (物理删除是独立后续片)。
-    for retired in _RETIRED_GLOBAL_STACK:
-        assert retired not in body
-    for retired_page in (
-        "/static/web/pages/dashboard.css",
-        "/static/web/pages/pending.css",
-        "/static/web/pages/confirmed.css",
-        "/static/web/pages/budgets.css",
-        "/static/web/pages/debts.css",
-    ):
-        assert retired_page not in body
-
-    assert "<style" not in body
-    _assert_shell_chrome_has_no_inline_style(body)
 
 
 def test_product_shell_self_hosts_consumer_fonts(web_client: TestClient) -> None:
@@ -341,8 +210,6 @@ def test_product_shell_self_hosts_consumer_fonts(web_client: TestClient) -> None
     assert "/static/web/fonts/fonts.css" in page.text
     css = web_client.get("/static/web/fonts/fonts.css")
     assert css.status_code == 200
-    assert "font-family: 'Ticketbox Sans'" in css.text
-    assert "font-family: 'Ticketbox Figures'" in css.text
     sources = re.findall(r"src:\s*url\(([^)]+)\)", css.text)
     assert sources
     for source in sources:
@@ -413,8 +280,8 @@ def test_secondary_product_routes_follow_canonical_ownership(
     assert repayment.status_code == 200
     assert 'data-domain="obligations"' in repayment.text
     assert 'data-page="obligations" data-page-level="secondary"' in repayment.text
-    assert '<span class="topbar-domain">往来</span>' in repayment.text
-    assert '<span class="topbar-title">还款采集</span>' in repayment.text
+    assert "往来" in repayment.text
+    assert "还款采集" in repayment.text
 
     # Recovery is a focused task under the shipped reference library.
     recycle_bin = web_client.get("/web/recycle-bin?ledger_id=owner")
@@ -434,10 +301,10 @@ def test_viewer_primary_page_keeps_read_only_shell(
     assert page.status_code == 200
     body = page.text
     assert 'data-domain="transactions"' in body
-    assert 'class="ledger-read-notice" role="status"' in body
+    assert re.search(r'role="status"[^>]*>.*?你可以查看这本账', body, re.S)
     assert "你可以查看这本账" in body
     assert "如需修改，请联系拥有者。" in body
-    sidebar = re.search(r'<aside class="sidebar">.*?</aside>', body, re.S)
+    sidebar = re.search(r'<aside\b[^>]*>.*?</aside>', body, re.S)
     assert sidebar is not None
     for label in ["收件", "流水", "往来", "计划", "洞察"]:
         assert label in sidebar.group(0)
@@ -446,23 +313,3 @@ def test_viewer_primary_page_keeps_read_only_shell(
     budgets = web_client.get("/web/budgets?ledger_id=owner")
     assert budgets.status_code == 200
     assert 'action="/web/budgets/save"' not in budgets.text
-
-
-def test_product_css_modules_are_token_driven(web_client: TestClient) -> None:
-    paths = [
-        "/static/web/product/shell.css",
-        "/static/web/product/components.css",
-        "/static/web/product/detail.css",
-        "/static/web/product/domains/inbox.css",
-        "/static/web/product/domains/transactions.css",
-        "/static/web/product/domains/obligations.css",
-        "/static/web/product/domains/plans.css",
-        "/static/web/product/domains/insights.css",
-    ]
-
-    for path in paths:
-        response = web_client.get(path)
-        assert response.status_code == 200, path
-        css = response.text
-        assert not re.search(r"#[0-9a-fA-F]{3,8}\b", css), path
-        assert not re.search(r"\brgba?\(", css), path

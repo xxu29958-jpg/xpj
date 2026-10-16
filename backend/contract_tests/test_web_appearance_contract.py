@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -217,3 +218,22 @@ def test_appearance_bootstrap_and_theme_share_one_preference_contract() -> None:
             "trendAmount": 12.34,
         },
     }
+
+
+def test_product_css_modules_are_token_driven() -> None:
+    paths = [
+        "/static/web/product/shell.css",
+        "/static/web/product/components.css",
+        "/static/web/product/detail.css",
+        "/static/web/product/domains/inbox.css",
+        "/static/web/product/domains/transactions.css",
+        "/static/web/product/domains/obligations.css",
+        "/static/web/product/domains/plans.css",
+        "/static/web/product/domains/insights.css",
+    ]
+
+    static_root = Path(__file__).resolve().parents[1] / "app" / "static"
+    for path in paths:
+        css = (static_root / path.removeprefix("/static/")).read_text(encoding="utf-8")
+        assert not re.search(r"#[0-9a-fA-F]{3,8}\b", css), path
+        assert not re.search(r"\brgba?\(", css), path
