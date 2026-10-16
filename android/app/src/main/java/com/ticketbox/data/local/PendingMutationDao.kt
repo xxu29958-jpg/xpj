@@ -37,7 +37,6 @@ interface PendingMutationDao {
     suspend fun insert(row: PendingMutationEntity): Long
 
     /** Publish the command and its local projection in the same database transaction. */
-    @Transaction
     suspend fun insertAndPublish(row: PendingMutationEntity, publish: suspend () -> Unit): Long {
         val id = insert(row)
         publish()
