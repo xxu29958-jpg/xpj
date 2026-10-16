@@ -12,7 +12,6 @@ from app.database import SessionLocal
 from app.main import app
 from app.models import Expense, LedgerAuditLog, LedgerMember
 from app.routes._web_expense_rows import item_replace_payload
-from app.routes.web_app import _require_local as _web_require_local
 from app.schemas import (
     ExpenseItemReplaceRequest,
     ExpenseItemRequest,
@@ -24,13 +23,6 @@ from app.services.receipt_item_service import replace_expense_items
 from app.services.time_service import now_utc
 from tests._web_native_form_support import hidden_post_forms
 from tests.family_ledger_test_support import set_owner_ledger_role
-
-
-@pytest.fixture()
-def web_client(client: TestClient) -> TestClient:
-    app.dependency_overrides[_web_require_local] = lambda: None
-    yield client
-    app.dependency_overrides.pop(_web_require_local, None)
 
 
 def _seed_pending_expense(

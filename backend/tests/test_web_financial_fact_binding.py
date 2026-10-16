@@ -10,9 +10,8 @@ from app.database import SessionLocal
 from app.models import Expense, ExpenseOffsetFact, ExpenseOffsetRevision, ExpenseRevision, LedgerMember
 from tests._local_web_identity_support import _connect_local_session, installed_web_setup
 from tests._runtime_protocol import current_protocol_headers
-from tests._web_native_form_support import hidden_post_forms
+from tests._web_native_form_support import _money_fields, hidden_post_forms
 from tests.expense_correction_support import _read_form
-from tests.test_web_expense_offsets import _money_fields
 from tests.web_expense_fact_test_support import create_confirmed
 
 pytestmark = [pytest.mark.real_db, pytest.mark.currency_binding_unbound]

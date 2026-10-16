@@ -17,29 +17,19 @@ from app.database import SessionLocal
 from app.models import Expense, LedgerMember, RecurringItem, RecurringOccurrence, RecurringOccurrenceRevision
 from app.services.currency_binding_service import resolve_write_capability
 from tests._infra.currency import activate_test_currency_authority
-from tests._runtime_protocol import negotiated_headers
-from tests.test_recurring_items import _seed_monthly_candidate
+from tests._web_recurring_test_support import _create_definition as _create
+from tests._web_recurring_test_support import _definition_headers as _headers
+from tests._web_recurring_test_support import _definition_history as _history
+from tests._web_recurring_test_support import _definition_payment as _payment
+from tests._web_recurring_test_support import _seed_monthly_candidate
 
 pytestmark = pytest.mark.real_db
 DEFINITION_FIELDS = ("merchant", "merchant_key", "frequency", "home_currency_code", "baseline_amount_cents",
     "next_expected_date", "status", "source")
 
 
-def _headers(client, identity, key=None):
-    return {**negotiated_headers(client, identity.app_headers), "Idempotency-Key": key or str(uuid4())}
-
-
 def _definition(receipt):
     return {field: receipt[field] for field in DEFINITION_FIELDS}
-
-
-def _create(client, identity, currency="JPY"):
-    body = {"merchant": "原固定支出", "home_currency_code": currency, "baseline_amount_cents": 1200,
-        "next_expected_date": "2026-09-05"}
-    key = str(uuid4())
-    response = client.post("/api/recurring/items", headers=_headers(client, identity, key), json=body)
-    assert response.status_code == 201, response.text
-    return body, key, response.json()
 
 
 def _edit(client, identity, previous, **changes):
@@ -51,23 +41,6 @@ def _edit(client, identity, previous, **changes):
     assert response.status_code == 200, response.text
     assert response.json()["row_version"] == previous["row_version"] + 1
     return body, key, response.json()
-
-
-def _history(client, identity, public_id, **params):
-    response = client.get(f"/api/recurring/items/{public_id}/history", headers=identity.app_headers, params=params)
-    assert response.status_code == 200, response.text
-    history = response.json()
-    assert (history["ledger_id"], history["public_id"]) == ("owner", public_id)
-    return history
-
-
-def _payment(client, identity, *, currency="CNY", amount=1200, month="2026-05"):
-    response = client.post("/api/expenses/manual", headers=identity.app_headers, json={
-        "client_ref": str(uuid4()), "home_currency_code": currency, "amount_cents": amount,
-        "merchant": "真实付款", "category": "其他", "expense_time": f"{month}-05T12:00:00Z",
-    })
-    assert response.status_code == 200, response.text
-    return response.json()
 
 
 def _link(client, identity, series, payment, month="2026-05", version=0):

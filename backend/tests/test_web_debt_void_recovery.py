@@ -10,9 +10,8 @@ import app.routes.web_debts as queries
 from app.errors import AppError
 from app.routes._web_debt_repayment import repayment_context as actual_repayment_context
 from app.routes._web_debt_write import _debt_action_keys
-from tests._web_debt_test_support import stub_debt
+from tests._web_debt_test_support import representative_response, stub_debt
 from tests._web_native_form_support import hidden_post_forms
-from tests.test_web_debt_activity_view import representative_response
 
 
 @pytest.mark.parametrize('kind', ['debt', 'repayment'])

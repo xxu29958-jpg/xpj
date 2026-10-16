@@ -13,7 +13,7 @@ import pytest
 
 from backend_manager.control_server import ControlServer
 from backend_manager.web_bff import BridgeContext
-from tests.test_control_auth import _bootstrap_cookie_header
+from tests._control_auth_test_support import _bootstrap_cookie_header
 
 
 @contextmanager

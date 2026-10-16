@@ -7,8 +7,9 @@ module only holds seed/post/extract helpers.
 from __future__ import annotations
 
 import re
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from html import unescape
+from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
 
 from api_contract_helpers import insert_confirmed_expense
@@ -20,6 +21,7 @@ from app.models import RecurringItem
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.merchant_service import normalize_merchant
 from app.services.time_service import now_utc
+from tests._runtime_protocol import negotiated_headers
 
 
 def open_recurring_form(client: TestClient, listing, *, public_id: str = ""):
@@ -185,3 +187,114 @@ def extract_hidden_token(html: str, *, action: str) -> str:
 def hero_block(html: str) -> str:
     match = re.search(r'<section[^>]+aria-label="固定支出概览".*?</section>', html, re.DOTALL)
     return match.group(0) if match else ""
+
+
+def _seed_monthly_candidate(*, merchant: str = "ChatGPT Plus", amount_cents: int = 20000) -> datetime:
+    last_seen = datetime(2026, 5, 5, 12, 0, tzinfo=UTC)
+    for when in (
+        datetime(2026, 3, 5, 12, 0, tzinfo=UTC),
+        datetime(2026, 4, 5, 12, 0, tzinfo=UTC),
+        last_seen,
+    ):
+        insert_confirmed_expense(
+            amount_cents=amount_cents,
+            merchant=merchant,
+            category="AI订阅",
+            expense_time=when,
+            confirmed_at=when,
+        )
+    return last_seen
+
+
+def _definition_headers(client, identity, key=None):
+    return {**negotiated_headers(client, identity.app_headers), "Idempotency-Key": key or str(uuid4())}
+
+
+def _create_definition(client, identity, currency="JPY"):
+    body = {"merchant": "原固定支出", "home_currency_code": currency, "baseline_amount_cents": 1200,
+        "next_expected_date": "2026-09-05"}
+    key = str(uuid4())
+    response = client.post("/api/recurring/items", headers=_definition_headers(client, identity, key), json=body)
+    assert response.status_code == 201, response.text
+    return body, key, response.json()
+
+
+def _definition_history(client, identity, public_id, **params):
+    response = client.get(f"/api/recurring/items/{public_id}/history", headers=identity.app_headers, params=params)
+    assert response.status_code == 200, response.text
+    history = response.json()
+    assert (history["ledger_id"], history["public_id"]) == ("owner", public_id)
+    return history
+
+
+def _definition_payment(client, identity, *, currency="CNY", amount=1200, month="2026-05"):
+    response = client.post("/api/expenses/manual", headers=identity.app_headers, json={
+        "client_ref": str(uuid4()), "home_currency_code": currency, "amount_cents": amount,
+        "merchant": "真实付款", "category": "其他", "expense_time": f"{month}-05T12:00:00Z",
+    })
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def _create_series(client: TestClient, identity) -> dict:
+    response = client.post(
+        "/api/recurring/items",
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"home_currency_code": "CNY",
+            "merchant": "房租",
+            "baseline_amount_cents": 10_000,
+            "next_expected_date": "2026-09-05",
+        },
+    )
+    assert response.status_code == 201, response.json()
+    return response.json()
+
+
+def _occurrence_payment(client: TestClient, identity) -> dict:
+    response = client.post(
+        "/api/expenses/manual", headers=identity.app_headers,
+        json={
+            "client_ref": str(uuid4()),
+            "home_currency_code": "CNY", "amount_cents": 10_000, "merchant": "房租", "category": "餐饮",
+            "expense_time": "2026-09-05T12:00:00Z", "note": "本期完整付款",
+        },
+    )
+    assert response.status_code == 200, response.json()
+    return response.json()
+
+
+def _form(body, action):
+    for form in re.findall(r"<form\b[^>]*>.*?</form>", body, flags=re.S):
+        if f'name="action" value="{action}"' in form:
+            return {
+                name: unescape(value)
+                for name, value in re.findall(r'<input\b[^>]*name="([^"]+)"[^>]*value="([^"]*)"', form)
+            }
+    raise AssertionError(f"real {action} form is missing")
+
+
+def _choice_href(body, action):
+    return next(unescape(href) for href in re.findall(r'href="([^"]+)"', body)
+        if parse_qs(urlsplit(unescape(href)).query).get("command") == [action])
+
+
+def _choose(client, body, action):
+    page = client.get(_choice_href(body, action))
+    assert page.status_code == 200, page.text
+    return _form(page.text, action)
+
+
+def _record_payment_href(html: str, *, series_id: str, period: str, ledger_id: str = "owner") -> str:
+    section = re.search(r'<section\b[^>]*aria-label="记录本期付款"[^>]*>(.*?)</section>', html, flags=re.S)
+    assert section is not None, "An unpaid period must offer a record-this-period payment task"
+    for href in re.findall(r'href="([^"]+)"', section.group(1)):
+        parsed = urlsplit(unescape(href))
+        if parsed.path != "/web/expenses/new":
+            continue
+        query = parse_qs(parsed.query)
+        assert query.get("return_to") == ["recurring_occurrence"]
+        assert query.get("return_recurring_public_id") == [series_id]
+        assert query.get("return_month") == [period]
+        assert query.get("ledger_id") == [ledger_id]
+        return unescape(href)
+    raise AssertionError("The period payment entry must open the existing manual-expense owner")

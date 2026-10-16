@@ -28,11 +28,10 @@ from app.services.csv_import_batch_service import (
 )
 from app.services.ledger_service import find_owner_account_id_for_ledger
 from app.services.time_service import now_utc
+from tests._infra.csv import _csv_bytes
 from tests._runtime_protocol import current_protocol_headers
-from tests.desktop_activation_support import _desktop_session
+from tests.desktop_activation_support import _auth_context, _desktop_session, _mint_desktop_session
 from tests.desktop_activation_support import token_row as _token_row
-from tests.test_csv_import_batches_apply_lease import _csv_bytes
-from tests.test_web_session_write_gate import _auth_context, _mint_desktop_session
 
 
 def _seed_batch(*, row_count: int) -> tuple[str, int]:

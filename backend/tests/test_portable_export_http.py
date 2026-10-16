@@ -11,25 +11,9 @@ from app.database import SessionLocal
 from app.models import Account, Ledger, LedgerMember
 from app.routes.web_auth import SESSION_COOKIE_NAME
 from tests._web_public_session_support import PUBLIC_HOST, mint_session, public_client
-from tests.test_original_attachment_api import _bill, _financial_snapshot
+from tests.original_test_support import _assert_bill_and_unverified_original, _bill, _financial_snapshot
 
 pytestmark = pytest.mark.real_db
-
-
-def _assert_bill_and_unverified_original(response, expense_id, original_bytes):
-    assert response.status_code == 200, response.text
-    assert response.headers["content-type"] == "application/zip"
-    assert response.headers["cache-control"] == "no-store"
-    with ZipFile(BytesIO(response.content)) as package:
-        manifest = json.loads(package.read("manifest.json"))
-        assert manifest["ledger_id"] == "owner" and manifest["records_complete"] is True
-        assert manifest["restore_image"] is False and manifest["includes_client_unsubmitted_intents"] is False
-        expenses = [json.loads(line) for line in package.read("records/expenses.jsonl").splitlines()]
-        assert any(row["id"] == expense_id and row["amount_cents"] == 1234 for row in expenses)
-        originals = [json.loads(line) for line in package.read("originals.jsonl").splitlines()]
-        original = next(row for row in originals if row["reference_id"] == f"expense:{expense_id}:current")
-        assert original["state"] == "unverified"
-        assert package.read(original["path"]) == original_bytes
 
 
 def test_api_and_real_browser_viewer_download_without_filters_or_cross_ledger_disclosure(client, identity) -> None:

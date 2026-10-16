@@ -5,27 +5,14 @@ from __future__ import annotations
 import re
 
 from api_contract_helpers import (
+    upload_png_as_raw_body,
     web_confirm_expense,
     web_reject_expense,
     web_save_expense,
 )
 from fastapi.testclient import TestClient
 
-
-def _create_pending(client: TestClient, *, identity) -> int:
-    """Helper: upload a tiny PNG to the owner ledger so /web/pending sees it."""
-    png = (
-        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
-        b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01"
-        b"\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
-    )
-    resp = client.post(
-        f"/u/{identity.upload_key}",
-        headers={"Content-Type": "image/png"},
-        content=png,
-    )
-    assert resp.status_code == 200, resp.text
-    return int(resp.json()["id"])
+from tests._infra.assets import RGBA_PNG_BYTES
 
 
 def _row_id_set(html: str) -> set[str]:
@@ -52,7 +39,7 @@ def test_web_invalid_ledger_rejected(web_client: TestClient) -> None:
 
 
 def test_web_selected_ledger_pending_isolated(web_client: TestClient, *, identity) -> None:
-    expense_id = _create_pending(web_client, identity=identity)
+    expense_id = upload_png_as_raw_body(web_client, identity=identity, content=RGBA_PNG_BYTES)
     # Default (owner) sees the new pending row...
     owner_pending = web_client.get("/web/pending?ledger_id=owner")
     assert owner_pending.status_code == 200
@@ -63,7 +50,7 @@ def test_web_selected_ledger_pending_isolated(web_client: TestClient, *, identit
 
 
 def test_web_selected_ledger_confirmed_isolated(web_client: TestClient, *, identity) -> None:
-    expense_id = _create_pending(web_client, identity=identity)
+    expense_id = upload_png_as_raw_body(web_client, identity=identity, content=RGBA_PNG_BYTES)
     web_save_expense(
         web_client,
         expense_id,
@@ -93,7 +80,7 @@ def test_web_selected_ledger_reports_isolated(web_client: TestClient) -> None:
 
 
 def test_web_reject_keeps_selected_ledger(web_client: TestClient, *, identity) -> None:
-    expense_id = _create_pending(web_client, identity=identity)
+    expense_id = upload_png_as_raw_body(web_client, identity=identity, content=RGBA_PNG_BYTES)
     resp = web_reject_expense(
         web_client, expense_id, identity=identity, follow_redirects=False
     )
@@ -102,7 +89,7 @@ def test_web_reject_keeps_selected_ledger(web_client: TestClient, *, identity) -
 
 
 def test_web_confirm_redirect_keeps_selected_ledger(web_client: TestClient, *, identity) -> None:
-    expense_id = _create_pending(web_client, identity=identity)
+    expense_id = upload_png_as_raw_body(web_client, identity=identity, content=RGBA_PNG_BYTES)
     web_save_expense(
         web_client,
         expense_id,

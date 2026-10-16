@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import re
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
-from tests._web_native_form_support import hidden_post_forms
+from tests._web_native_form_support import _money_fields
 from tests.web_expense_fact_test_support import create_confirmed, row_version
 
 
@@ -18,13 +17,6 @@ def _fact_bundle(client: TestClient, expense_id: int, identity) -> dict:
     )
     assert response.status_code == 200, response.text
     return response.json()
-
-
-def _money_fields(html, expense_id):
-    action = f"/web/expenses/{expense_id}/offsets"
-    form = next(match.group() for match in re.finditer(r"<form\b[^>]*>.*?</form>", html, re.S)
-        if f'action="{action}"' in match.group() and 'id="offset-amount"' in match.group())
-    return hidden_post_forms(form)[action]
 
 
 def test_web_refund_replay_then_void_keeps_one_authoritative_fact(

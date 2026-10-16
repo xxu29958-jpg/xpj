@@ -10,14 +10,14 @@ from app.database import SessionLocal
 from app.errors import AppError
 from app.models import ApiIdempotencyKey, Debt, DebtVoid, Repayment, RepaymentVoid
 from app.services import debt_command_service
-from tests.test_debt_void import _create_debt, _record_repayment
+from tests.debt_proposal_helpers import _create_external_debt, _record_repayment
 
 
 def _void_request(client: TestClient, identity, kind: str) -> tuple[dict, str, dict, dict]:
-    debt = _create_debt(client, identity, principal_amount_cents=10000)
+    debt = _create_external_debt(client, identity.app_headers, principal_amount_cents=10000, counterparty_label='信用卡')
     request = {"reason": "原记录有误", "expected_row_version": debt["row_version"]}
     if kind == "repayment-voids":
-        repaid = _record_repayment(client, identity, debt["public_id"], 1000, debt["row_version"])
+        repaid = _record_repayment(client, identity.app_headers, debt, amount_cents=1000)
         request.update(repayment_public_id=repaid["repayment_public_id"], expected_row_version=repaid["row_version"])
     headers = {**identity.app_headers, "Idempotency-Key": str(uuid4())}
     route = f"/api/debts/{debt['public_id']}/{kind}"
@@ -47,7 +47,7 @@ def test_recovered_repayment_void_returns_its_original_acceptance_after_another_
     client: TestClient, *, identity,
 ) -> None:
     accepted, route, request, headers = _original_void(client, identity, "repayment-voids")
-    later = _record_repayment(client, identity, accepted["public_id"], 2000, accepted["row_version"])
+    later = _record_repayment(client, identity.app_headers, accepted, amount_cents=2000)
     assert later["paid_amount_cents"] == 2000
     assert accepted["paid_amount_cents"] == 0
 

@@ -1,4 +1,4 @@
-"""Shared fixtures for ADR-0049 member repayment proposal tests."""
+"""Shared debt API preparation for repayments, captured drafts and proposals."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ def _idem(headers: dict[str, str]) -> dict[str, str]:
 
 
 def _seed_usd_rate(*, tenant_id: str, rate_date: date, rate_to_cny: str) -> None:
-    """Seed one USD→CNY rate snapshot (mirrors ``test_debt_repayment._seed_usd_rate``)."""
+    """Seed one USD→CNY rate snapshot through the existing currency authority."""
     with SessionLocal() as db:
         resolve_write_capability(db)
         db.add(
@@ -133,7 +133,8 @@ def _create_member_debt(
 
 
 def _create_external_debt(
-    client: TestClient, headers: dict[str, str], *, principal_amount_cents: int = 50000
+    client: TestClient, headers: dict[str, str], *, principal_amount_cents: int = 50000,
+    counterparty_label: str = "招商信用卡",
 ) -> dict:
     response = client.post(
         "/api/debts",
@@ -141,7 +142,7 @@ def _create_external_debt(
         json={
             "home_currency_code": "CNY", "direction": "i_owe",
             "counterparty_type": "external",
-            "counterparty_label": "招商信用卡",
+            "counterparty_label": counterparty_label,
             "principal_amount_cents": principal_amount_cents,
         },
     )
@@ -309,3 +310,25 @@ def _seed_cross_ledger_member_debt() -> tuple[str, str]:
         db.add(debt)
         db.commit()
         return debt.public_id, token
+
+
+def capture_repayment_draft(
+    client: TestClient,
+    identity,
+    *,
+    source: str = "alipay",
+    amount_cents: int = 20000,
+    merchant_label: str | None = "花呗",
+    notification_key: str | None = None,
+) -> dict:
+    body: dict[str, object] = {
+        "source": source,
+        "amount_cents": amount_cents,
+    }
+    if merchant_label is not None:
+        body["merchant_label"] = merchant_label
+    if notification_key is not None:
+        body["notification_key"] = notification_key
+    response = client.post("/api/repayment-drafts", headers=identity.app_headers, json=body)
+    assert response.status_code == 201, response.json()
+    return response.json()

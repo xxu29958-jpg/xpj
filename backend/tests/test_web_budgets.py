@@ -15,7 +15,6 @@ from app.routes.web_budgets import _budget_view, _category_form_rows
 from app.schemas import BudgetCategoryResponse, BudgetMonthlyResponse
 from tests._local_web_identity_support import _connect_local_session, installed_web_setup
 from tests._web_budget_test_support import _save_budget
-from tests._web_budget_test_support import web_client as web_client
 from tests._web_native_form_support import hidden_post_forms
 from tests.family_ledger_test_support import set_owner_ledger_role
 

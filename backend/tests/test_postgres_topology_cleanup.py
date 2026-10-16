@@ -64,7 +64,7 @@ def test_cleanup_attempts_every_step_and_preserves_all_failures() -> None:
 
 
 def test_managed_topology_preserves_body_and_cleanup_failures(monkeypatch) -> None:
-    from tests import test_managed_postgres_migration_runtime as runtime_test
+    from tests import managed_postgres_test_support as runtime_test
 
     body_error = ValueError("body failed")
     cleanup_error = KeyboardInterrupt("cleanup failed")

@@ -8,7 +8,7 @@ from app.routes.web_auth import SESSION_COOKIE_NAME
 from tests._infra.assets import PNG_BYTES
 from tests._web_native_form_support import hidden_post_forms
 from tests._web_public_session_support import PUBLIC_HOST, mint_session, public_client
-from tests.test_original_attachment_api import _bill, _financial_snapshot
+from tests.original_test_support import _bill, _financial_snapshot
 
 pytestmark = pytest.mark.real_db
 

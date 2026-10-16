@@ -18,7 +18,7 @@ from app.database._database_generation_program import ALEMBIC_PROGRAM_ATTRIBUTE
 from app.database._managed_postgres_migration_runtime import (
     ManagedPostgresMigrationRuntimeError,
 )
-from tests.test_managed_postgres_migration_runtime import (
+from tests.managed_postgres_test_support import (
     _C02_TARGET_REVISION,
     _C07_TARGET_REVISION,
     _managed_topology,

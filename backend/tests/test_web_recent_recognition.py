@@ -22,7 +22,7 @@ from app.routes.web_auth import SESSION_COOKIE_NAME
 from app.routes.web_common import templates
 from app.services.currency_binding_service import authorize_currency_metadata_write
 from tests._web_public_session_support import mint_session, public_client
-from tests.test_background_task_continuation import _failed_upload
+from tests.original_test_support import _failed_upload
 
 
 def _render(engine, name, context):

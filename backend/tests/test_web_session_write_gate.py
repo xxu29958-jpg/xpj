@@ -23,6 +23,7 @@ from app.routes.web_common import (
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
 )
+from tests.desktop_activation_support import _auth_context, _mint_desktop_session
 
 
 def _option(ledger_id: str, role: str) -> LedgerOption:
@@ -172,53 +173,6 @@ def test_desktop_session_options_scoped_to_bound_ledger_on_roster(identity) -> N
 
 
 # ── Desktop bridge principal: lock-time revalidation in the handler transaction ──
-
-
-def _mint_desktop_session(*, ledger_id: str = "owner", role: str = "member"):
-    from app.database import SessionLocal
-    from app.models import Account, AuthToken, Device, Ledger, LedgerMember
-    from app.services.identity_service import hash_secret, new_session_token
-
-    token_value = new_session_token()
-    with SessionLocal() as db:
-        ledger = db.scalar(select(Ledger).where(Ledger.ledger_id == ledger_id))
-        assert ledger is not None
-        account = Account(display_name=f"desktop-reval-{role}-{uuid4()}")
-        db.add(account)
-        db.flush()
-        db.add(LedgerMember(ledger_id=ledger_id, account_id=account.id, role=role))
-        device = Device(account_id=account.id, device_name="pytest-reval-desktop", platform="desktop")
-        db.add(device)
-        db.flush()
-        token = AuthToken(
-            token_hash=hash_secret(token_value),
-            account_id=account.id,
-            device_id=device.id,
-            ledger_id=ledger_id,
-            scope="app",
-        )
-        db.add(token)
-        db.commit()
-        return token, account, device
-
-
-def _auth_context(token, account, device, *, ledger_id: str, role: str, ledger_name: str = "我的小票夹"):
-    from app.tenants import AuthContext
-
-    return AuthContext(
-        account_id=account.id,
-        account_public_id=account.public_id,
-        account_name=account.display_name,
-        ledger_id=ledger_id,
-        ledger_name=ledger_name,
-        device_id=device.id,
-        device_public_id=device.public_id,
-        device_name=device.device_name,
-        role=role,
-        scope="app",
-        credential_id=token.id,
-        credential_hash=token.token_hash,
-    )
 
 
 def test_web_rule_rollback_threads_session_account_and_device(identity, monkeypatch) -> None:

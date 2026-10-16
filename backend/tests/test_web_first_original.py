@@ -10,71 +10,19 @@ from datetime import timedelta
 from types import SimpleNamespace
 
 import pytest
-from fastapi import Request
-from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.errors import AppError
 from app.models import ApiIdempotencyKey, Expense, LedgerAuditLog
-from app.routes import web_originals
 from app.services import attachment_cleanup_service as cleanup
-from app.services import file_service, manual_expense_draft_presenter, original_command_service
-from app.services.currency_binding_service import resolve_write_capability
+from app.services import file_service, original_command_service
 from app.services.time_service import now_utc
-from tests.test_original_replenishment_admission import _camera_jpeg
-from tests.web_expense_fact_test_support import confirmation_actor
+from tests._infra.assets import _camera_jpeg
+from tests.original_test_support import SCOPE, _attach, _facts
+from tests.original_test_support import first_original_web as first_original_web
 from tests.web_expense_fact_test_support import confirmation_store as confirmation_store
 from tests.web_expense_fact_test_support import confirmation_web as confirmation_web
-
-SCOPE = {"datasetId": "dataset", "clientGeneration": "generation", "accountId": "account",
-         "ledgerId": "owner", "deviceId": "browser"}
-FACT_FIELDS = ("id", "public_id", "status", "merchant", "amount_cents", "original_amount_minor",
-               "original_currency_code", "home_currency_code", "expense_time", "accounting_date", "fact_revision")
-
-
-@pytest.fixture
-def first_original_web(confirmation_store, confirmation_web, monkeypatch, tmp_path):
-    client, options = confirmation_web
-    client.app.include_router(web_originals.router)
-    with confirmation_store() as db:
-        auth = confirmation_actor(db)
-    state = SimpleNamespace(auth=auth, original_auth=auth, options=options, client=client, session_factory=confirmation_store,
-                            uploads=tmp_path / "uploads")
-
-    def local(request: Request):
-        request.state.web_session_auth = state.auth
-
-    @client.app.exception_handler(AppError)
-    async def error(_request, exc):
-        return JSONResponse({"error": exc.error, "message": exc.message}, status_code=exc.status_code)
-
-    client.app.dependency_overrides[web_originals.LocalOnly.dependency] = local
-    monkeypatch.setattr(web_originals, "_list_ledger_options", lambda db: options)
-    monkeypatch.setattr(web_originals, "_resolve_selected_ledger_id", lambda *args, **kwargs: "owner")
-    monkeypatch.setattr(manual_expense_draft_presenter, "manual_draft_scope", lambda *args: SCOPE)
-    monkeypatch.setattr(file_service, "get_settings", lambda: SimpleNamespace(upload_dir=state.uploads,
-                                                                            max_upload_size_bytes=1024 * 1024))
-    with state.session_factory() as db:
-        resolve_write_capability(db)
-        expense = db.get(Expense, 42)
-        expense.source, expense.status, expense.fact_revision = "手动记账", "confirmed", 1
-        db.commit()
-    return state
-
-
-def _attach(case, *, key="a" * 32, version=4, scope=SCOPE, data=None):
-    return case.client.post("/web/expenses/42/original/attach", params={"ledger_id": "owner",
-        "draft_scope": json.dumps(scope), "idempotency_key": key, "expected_row_version": version},
-        files={"file": ("camera.jpg", _camera_jpeg() if data is None else data, "image/jpeg")},
-        headers={"Accept": "application/json"})
-
-
-def _facts(case):
-    with case.session_factory() as db:
-        row = db.get(Expense, 42)
-        return tuple(getattr(row, name) for name in FACT_FIELDS)
 
 
 def test_first_attachment_page_offers_optional_same_bill_action_only_to_writer(first_original_web):

@@ -15,9 +15,8 @@ from app.services import portable_export_service as service
 from app.services.identity_service import authenticate_session_token, hash_secret
 from app.services.time_service import now_utc
 from tests._web_public_session_support import PUBLIC_HOST, mint_session, public_client
-from tests.test_desktop_web_bridge_session import LOOPBACK_BASE_URL, _mint_principal, _principal_headers
-from tests.test_original_attachment_api import _bill, _financial_snapshot
-from tests.test_portable_export_http import _assert_bill_and_unverified_original
+from tests.desktop_activation_support import LOOPBACK_BASE_URL, _mint_principal, _principal_headers
+from tests.original_test_support import _assert_bill_and_unverified_original, _bill, _financial_snapshot
 
 pytestmark = pytest.mark.real_db
 

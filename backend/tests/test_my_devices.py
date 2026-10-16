@@ -26,12 +26,9 @@ from app.models import (
 )
 from app.services.identity_service import hash_pairing_code, hash_secret, new_session_token
 from app.services.time_service import now_utc
+from tests._infra.identity import _auth_headers, _devices, _seed_same_account_device, _seed_same_account_device_session
 from tests._runtime_protocol import current_protocol_headers
 from tests.pairing_test_support import pairing_payload
-
-
-def _auth_headers(token: str) -> dict[str, str]:
-    return current_protocol_headers({"Authorization": f"Bearer {token}"})
 
 
 def _seed_viewer_token(ledger_id: str = "owner") -> str:
@@ -83,47 +80,6 @@ def _seed_member_device(ledger_id: str = "owner") -> str:
         )
         db.commit()
         return device.public_id
-
-
-def _seed_same_account_device_session(
-    token_value: str,
-    ledger_id: str = "owner",
-    platform: str = "android",
-) -> tuple[str, str]:
-    now = now_utc()
-    spare_token = new_session_token()
-    with SessionLocal() as db:
-        session = db.query(AuthToken).filter(AuthToken.token_hash == hash_secret(token_value)).one()
-        device = Device(
-            account_id=session.account_id,
-            device_name="spare phone",
-            platform=platform,
-            created_at=now,
-        )
-        db.add(device)
-        db.flush()
-        db.add(
-            AuthToken(
-                token_hash=hash_secret(spare_token),
-                account_id=session.account_id,
-                device_id=device.id,
-                ledger_id=ledger_id,
-                scope="app",
-                created_at=now,
-            )
-        )
-        db.commit()
-        return device.public_id, spare_token
-
-
-def _seed_same_account_device(token_value: str, ledger_id: str = "owner") -> str:
-    return _seed_same_account_device_session(token_value, ledger_id)[0]
-
-
-def _devices(client: TestClient, headers: dict[str, str]) -> list[dict]:
-    response = client.get("/api/ledgers/owner/devices", headers=headers)
-    assert response.status_code == 200, response.text
-    return response.json()["devices"]
 
 
 def test_list_my_devices_marks_current_and_hides_internal_ids(client: TestClient, *, identity) -> None:

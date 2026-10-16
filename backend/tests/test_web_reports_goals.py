@@ -8,20 +8,10 @@ from html import unescape
 from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
 
-import pytest
 from fastapi.testclient import TestClient
 
-from app.main import app
-from app.routes.web_app import _require_local as _web_require_local
 from tests._web_native_form_support import hidden_post_forms, open_creation_form
 from tests.family_ledger_test_support import set_owner_ledger_role
-
-
-@pytest.fixture()
-def web_client(client: TestClient) -> TestClient:
-    app.dependency_overrides[_web_require_local] = lambda: None
-    yield client
-    app.dependency_overrides.pop(_web_require_local, None)
 
 
 def _create_expense(

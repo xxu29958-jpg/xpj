@@ -13,7 +13,6 @@ from app.database import SessionLocal
 from app.errors import AppError
 from app.models import LedgerMember
 from app.routes.web_monthly_arrangement import MonthlyArrangementForm, arrangement_payload
-from tests._web_budget_test_support import web_client as web_client
 from tests._web_native_form_support import hidden_post_forms
 
 

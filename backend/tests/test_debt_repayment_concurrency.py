@@ -20,23 +20,17 @@ from sqlalchemy.exc import OperationalError
 
 from app.database import SessionLocal, engine
 from app.errors import AppError
-from app.models import Account, Debt, Repayment
+from app.models import Debt, Repayment
 from app.schemas import DebtCreateRequest, RepaymentCreateRequest
 from app.services import debt_service
+from tests._infra.identity import seeded_owner_account_id
 
 pytestmark = pytest.mark.real_db
 
 
-def _owner_account_id() -> int:
-    with SessionLocal() as db:
-        owner = db.query(Account).order_by(Account.id.asc()).first()
-        assert owner is not None
-        return owner.id
-
-
 def _seed_committed_debt(*, principal_amount_cents: int) -> tuple[str, int]:
     """Create + commit one external Debt; return (public_id, row_version)."""
-    actor = _owner_account_id()
+    actor = seeded_owner_account_id()
     with SessionLocal() as db:
         debt = debt_service.create_debt(
             db,
@@ -73,7 +67,7 @@ def test_two_sessions_repayment_cannot_both_pass_over_remaining(*, identity) -> 
     short ``lock_timeout`` turns that into a deterministic ``OperationalError``
     instead of a hang. Only one of the two 60s can ever land."""
     public_id, version = _seed_committed_debt(principal_amount_cents=10000)
-    actor = _owner_account_id()
+    actor = seeded_owner_account_id()
 
     holder = SessionLocal()
     try:
@@ -108,7 +102,7 @@ def test_two_sessions_repayment_serializes_then_second_rechecks(*, identity) -> 
     against the now-serialized state: its post-lock fold sees remaining=40 and
     rejects the 60 as overpay rather than double-spending."""
     public_id, version = _seed_committed_debt(principal_amount_cents=10000)
-    actor = _owner_account_id()
+    actor = seeded_owner_account_id()
 
     # Session A: commit a 60 repayment.
     with SessionLocal() as session_a:
@@ -153,7 +147,7 @@ def test_two_sessions_repayment_serializes_then_second_rechecks(*, identity) -> 
 
 def test_preloaded_debt_version_is_refreshed_after_another_writer_commits(identity):
     public_id, version = _seed_committed_debt(principal_amount_cents=10_000)
-    actor = _owner_account_id()
+    actor = seeded_owner_account_id()
     with SessionLocal() as reader:
         cached = reader.scalar(select(Debt).where(Debt.public_id == public_id))
         assert cached.row_version == version

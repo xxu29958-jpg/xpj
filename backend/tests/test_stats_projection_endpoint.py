@@ -4,13 +4,13 @@ from types import SimpleNamespace
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from test_stats_currency_projection import StatsRows, entry
 
 from app.auth import get_current_app_context
 from app.database import get_db
 from app.routes import stats as routes
 from app.services import money_projection_service as money
 from app.services import stats_service as stats
+from tests._confirmed_stream_test_support import StatsRows, entry
 
 
 def client_for(monkeypatch, rows):

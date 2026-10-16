@@ -12,17 +12,8 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.database import SessionLocal
 from app.errors import AppError
-from app.main import app
 from app.models import ApiIdempotencyKey, Expense
-from app.routes.web_app import _require_local as _web_require_local
 from tests._web_native_form_support import hidden_post_forms
-
-
-@pytest.fixture()
-def web_client(client: TestClient) -> TestClient:
-    app.dependency_overrides[_web_require_local] = lambda: None
-    yield client
-    app.dependency_overrides.pop(_web_require_local, None)
 
 
 def _create_pending(client: TestClient, *, identity) -> int:

@@ -576,7 +576,7 @@ val grayDebugUnitTestResultsDirectory =
 
 tasks.register("assertAndroidTestCountEqualsBaseline") {
     group = "verification"
-    description = "Verify executed GrayDebug JVM results meet the Android test-count minimum ratchet."
+    description = "Verify executed GrayDebug JVM results meet the reviewed Android test-count floor."
     dependsOn(grayDebugUnitTestTaskName)
     inputs.file(androidTestBaselineFile)
 
@@ -594,7 +594,7 @@ tasks.register("assertAndroidTestCountEqualsBaseline") {
             ),
         )
         runTicketboxAndroidQualification(
-            "Android test baseline ratchet",
+            "Android test baseline comparison",
             listOf(
                 "baseline",
                 "--baseline",

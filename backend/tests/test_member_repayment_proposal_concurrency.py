@@ -37,15 +37,9 @@ from app.schemas import (
 )
 from app.services import debt_service
 from app.services.currency_binding_service import resolve_write_capability
+from tests._infra.identity import seeded_owner_account_id
 
 pytestmark = pytest.mark.real_db
-
-
-def _owner_account_id() -> int:
-    with SessionLocal() as db:
-        owner = db.query(Account).order_by(Account.id.asc()).first()
-        assert owner is not None
-        return owner.id
 
 
 def _seed_member_account() -> int:
@@ -66,7 +60,7 @@ def _seed_member_debt(*, principal_amount_cents: int) -> tuple[str, int, int]:
     member is the debtor (proposer) and the owner is the creditor (confirmer).
     Returns (debt_public_id, debt_row_version, member_account_id).
     """
-    owner = _owner_account_id()
+    owner = seeded_owner_account_id()
     member_id = _seed_member_account()
     with SessionLocal() as db:
         # Public create + the create_debt service reject committed member Debt now
@@ -195,7 +189,7 @@ def test_two_sessions_double_confirm_commits_one_repayment(*, identity) -> None:
     separately by ``test_two_sessions_confirm_blocks_on_held_parent_lock``.)
     Exactly one Repayment is committed."""
     public_id, version, member_id = _seed_member_debt(principal_amount_cents=50000)
-    owner_id = _owner_account_id()
+    owner_id = seeded_owner_account_id()
 
     # The debtor (member) creates one pending proposal.
     with SessionLocal() as db:
@@ -289,7 +283,7 @@ def test_two_sessions_confirm_blocks_on_held_parent_lock(*, identity) -> None:
     contended wait into a deterministic ``OperationalError`` instead of a hang —
     proving B serializes on A's parent-Debt lock, not on a stale snapshot."""
     public_id, version, member_id = _seed_member_debt(principal_amount_cents=50000)
-    owner_id = _owner_account_id()
+    owner_id = seeded_owner_account_id()
     proposal_public_id = _seed_pending_proposal(public_id, debtor_id=member_id)
 
     holder = SessionLocal()

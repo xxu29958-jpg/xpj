@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from io import BytesIO
 
 import pytest
 from fastapi.testclient import TestClient
@@ -20,12 +19,7 @@ from app.services.csv_import_batch_service import (
 )
 from app.services.ledger_service import find_owner_account_id_for_ledger
 from app.services.time_service import now_utc
-
-
-def _csv_bytes(row_count: int) -> BytesIO:
-    lines = ["amount_yuan,merchant,category,note"]
-    lines.extend(f"{index}.00,Merchant {index},餐饮,note {index}" for index in range(1, row_count + 1))
-    return BytesIO(("\n".join(lines) + "\n").encode("utf-8"))
+from tests._infra.csv import _csv_bytes
 
 
 def test_csv_import_apply_lease_is_atomically_claimed(client: TestClient) -> None:

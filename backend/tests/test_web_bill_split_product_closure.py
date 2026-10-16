@@ -17,8 +17,8 @@ from app.services import bill_split_service as bsplit
 from app.services.identity_service import hash_secret, new_session_token
 from app.services.spending_contract_service import accounting_zone
 from app.services.time_service import ensure_utc, now_utc
+from tests._infra.identity import seeded_owner_account_id
 from tests.bill_split_test_support import _make_web_expense as _make_owner_expense
-from tests.bill_split_test_support import _owner_account_id
 from tests.bill_split_test_support import _seed_web_receiver as _seed_receiver
 
 
@@ -79,7 +79,7 @@ def test_web_inbox_replaces_sender_deictic_default_with_authorized_context(
     with SessionLocal() as db:
         bsplit.create_invitation(
             db,
-            sender_account_id=_owner_account_id(),
+            sender_account_id=seeded_owner_account_id(),
             sender_ledger_id="owner",
             expense_id=expense_id,
             receiver_account_id=receiver_id,
@@ -109,7 +109,7 @@ def test_web_sent_shows_absolute_deadline_for_terminal_states(web_client: TestCl
     with SessionLocal() as db:
         invitation = bsplit.create_invitation(
             db,
-            sender_account_id=_owner_account_id(),
+            sender_account_id=seeded_owner_account_id(),
             sender_ledger_id="owner",
             expense_id=expense_id,
             receiver_account_id=receiver_id,
@@ -136,7 +136,7 @@ def test_web_sent_expired_row_shows_actual_expiry_boundary(web_client: TestClien
     with SessionLocal() as db:
         invitation = bsplit.create_invitation(
             db,
-            sender_account_id=_owner_account_id(),
+            sender_account_id=seeded_owner_account_id(),
             sender_ledger_id="owner",
             expense_id=expense_id,
             receiver_account_id=receiver_id,
@@ -165,7 +165,7 @@ def test_source_refund_links_only_to_a_readable_relationship(web_client: TestCli
     expense_id = _make_owner_expense()
     with SessionLocal() as db:
         invitation = bsplit.create_invitation(
-            db, sender_account_id=_owner_account_id(), sender_ledger_id="owner", expense_id=expense_id,
+            db, sender_account_id=seeded_owner_account_id(), sender_ledger_id="owner", expense_id=expense_id,
             receiver_account_id=receiver_id, amount_cents=1500, idempotency_key=str(uuid4()), expected_row_version=1,
         )
         _, received = bsplit.accept_invitation(

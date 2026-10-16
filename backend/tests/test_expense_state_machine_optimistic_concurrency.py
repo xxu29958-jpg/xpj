@@ -26,6 +26,7 @@ from api_contract_helpers import (
     mark_not_duplicate_api,
     patch_expense,
     reject_expense_api,
+    upload_png_as_raw_body,
 )
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -39,22 +40,11 @@ from app.services.expense_service import (
     mark_expense_not_duplicate,
     reject_expense,
 )
-from tests._infra.assets import PNG_BYTES
-
-
-def _create_pending(client: TestClient, *, identity) -> int:
-    resp = client.post(
-        identity.upload_url_path,
-        headers={**identity.upload_headers, "Content-Type": "image/png"},
-        content=PNG_BYTES,
-    )
-    assert resp.status_code == 200, resp.text
-    return int(resp.json()["id"])
 
 
 def _seed_ready(client: TestClient, *, identity) -> int:
     """Upload + patch amount so the row is confirm-able (amount_cents set)."""
-    expense_id = _create_pending(client, identity=identity)
+    expense_id = upload_png_as_raw_body(client, identity=identity)
     resp = patch_expense(
         client,
         expense_id,
@@ -160,7 +150,7 @@ def test_confirm_unknown_expense_returns_404(
 def test_reject_with_fresh_updated_at_succeeds(
     client: TestClient, *, identity
 ) -> None:
-    expense_id = _create_pending(client, identity=identity)
+    expense_id = upload_png_as_raw_body(client, identity=identity)
     resp = reject_expense_api(client, expense_id, headers=identity.app_headers)
     assert resp.status_code == 200, resp.text
     assert resp.json()["status"] == "rejected"
@@ -169,7 +159,7 @@ def test_reject_with_fresh_updated_at_succeeds(
 def test_reject_with_stale_updated_at_returns_409(
     client: TestClient, *, identity
 ) -> None:
-    expense_id = _create_pending(client, identity=identity)
+    expense_id = upload_png_as_raw_body(client, identity=identity)
     stale_token = _snapshot_updated_at(client, expense_id, identity=identity)
     patched = patch_expense(
         client,
@@ -190,7 +180,7 @@ def test_reject_with_stale_updated_at_returns_409(
 def test_reject_without_expected_row_version_returns_422(
     client: TestClient, *, identity
 ) -> None:
-    expense_id = _create_pending(client, identity=identity)
+    expense_id = upload_png_as_raw_body(client, identity=identity)
     resp = client.post(
         f"/api/expenses/{expense_id}/reject",
         headers=identity.app_headers,
@@ -203,7 +193,7 @@ def test_reject_without_expected_row_version_returns_422(
 def test_reject_already_rejected_requires_its_current_reviewed_token(
     client: TestClient, *, identity
 ) -> None:
-    expense_id = _create_pending(client, identity=identity)
+    expense_id = upload_png_as_raw_body(client, identity=identity)
     first = reject_expense_api(client, expense_id, headers=identity.app_headers)
     assert first.status_code == 200
     replay = client.post(
@@ -230,7 +220,7 @@ def test_reject_already_rejected_requires_its_current_reviewed_token(
 def test_mark_not_duplicate_with_fresh_updated_at_succeeds(
     client: TestClient, *, identity
 ) -> None:
-    expense_id = _create_pending(client, identity=identity)
+    expense_id = upload_png_as_raw_body(client, identity=identity)
     # Mark the row as a suspected duplicate directly so mark-not-duplicate
     # has something to clear (server-side flag manipulation; UI normally
     # flags via OCR detection).
@@ -252,7 +242,7 @@ def test_mark_not_duplicate_with_fresh_updated_at_succeeds(
 def test_mark_not_duplicate_with_stale_updated_at_returns_409(
     client: TestClient, *, identity
 ) -> None:
-    expense_id = _create_pending(client, identity=identity)
+    expense_id = upload_png_as_raw_body(client, identity=identity)
     stale_token = _snapshot_updated_at(client, expense_id, identity=identity)
     patched = patch_expense(
         client,
@@ -273,7 +263,7 @@ def test_mark_not_duplicate_with_stale_updated_at_returns_409(
 def test_mark_not_duplicate_without_expected_row_version_returns_422(
     client: TestClient, *, identity
 ) -> None:
-    expense_id = _create_pending(client, identity=identity)
+    expense_id = upload_png_as_raw_body(client, identity=identity)
     resp = client.post(
         f"/api/expenses/{expense_id}/mark-not-duplicate",
         headers=identity.app_headers,
@@ -380,7 +370,7 @@ def test_two_sessions_mark_not_duplicate_race(
 ) -> None:
     """Both sessions see same suspected-duplicate row; A clears first, B's
     replay on the pre-clear token → 409 from atomic UPDATE WHERE."""
-    expense_id = _create_pending(client, identity=identity)
+    expense_id = upload_png_as_raw_body(client, identity=identity)
     with SessionLocal() as setup_db:
         authorize_currency_metadata_write(setup_db)
         row = setup_db.scalar(select(Expense).where(Expense.id == expense_id))

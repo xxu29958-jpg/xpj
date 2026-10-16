@@ -12,13 +12,13 @@ from sqlalchemy import select
 from app.models import ApiIdempotencyKey, Expense, ExpenseRevision
 from app.routes import _web_expense_helpers, web_expense_edit, web_expense_items, web_expense_splits
 from app.services.currency_binding_service import resolve_write_capability
-from tests import test_expense_subtask_receipts as receipt_tests
-from tests import test_web_expense_fact_items_ack as fact_ack_tests
-from tests import test_web_expense_review_runtime as review_tests
+from tests import _web_expense_review_test_support as review_tests
+from tests import _web_native_form_support as fact_ack_tests
+from tests import web_expense_fact_test_support as receipt_tests
 from tests.web_expense_fact_test_support import confirmation_actor, owner_member_id
+from tests.web_expense_fact_test_support import confirmation_store as confirmation_store
+from tests.web_expense_fact_test_support import confirmation_web as confirmation_web
 
-confirmation_store = review_tests.confirmation_store
-confirmation_web = review_tests.confirmation_web
 review_browser = review_tests.review_browser
 fact_review_browser = review_tests.fact_review_browser
 _PRESENTERS = {name: getattr(_web_expense_helpers, name)

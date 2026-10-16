@@ -10,8 +10,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from fastapi.testclient import TestClient
+from sqlalchemy import select
+
 from app.database import SessionLocal
-from app.models import Account, AuthToken, Device, Ledger, UploadLink
+from app.models import (
+    Account,
+    AuthToken,
+    Device,
+    Ledger,
+    LedgerMember,
+    UploadLink,
+)
 from app.services.identity_service import (
     bootstrap_owner,
     hash_secret,
@@ -63,6 +73,13 @@ class TestIdentity:
     @property
     def gray_upload_url_path(self) -> str:
         return f"/u/{self.tenant_upload_key}"
+
+
+def seeded_owner_account_id() -> int:
+    with SessionLocal() as db:
+        owner = db.query(Account).order_by(Account.id.asc()).first()
+        assert owner is not None
+        return owner.id
 
 
 def seed_identity() -> TestIdentity:
@@ -126,3 +143,59 @@ def seed_identity() -> TestIdentity:
         tenant_app_token=tenant_app_token,
         tenant_upload_key=tenant_upload_key,
     )
+
+
+def owner_ledger_account_id() -> int:
+    with SessionLocal() as db:
+        account_id = db.scalar(
+            select(LedgerMember.account_id)
+            .where(LedgerMember.ledger_id == "owner", LedgerMember.role == "owner")
+            .limit(1)
+        )
+        assert account_id is not None
+        return account_id
+
+
+def _auth_headers(token: str) -> dict[str, str]:
+    return current_protocol_headers({"Authorization": f"Bearer {token}"})
+
+
+def _seed_same_account_device_session(
+    token_value: str,
+    ledger_id: str = "owner",
+    platform: str = "android",
+) -> tuple[str, str]:
+    now = now_utc()
+    spare_token = new_session_token()
+    with SessionLocal() as db:
+        session = db.query(AuthToken).filter(AuthToken.token_hash == hash_secret(token_value)).one()
+        device = Device(
+            account_id=session.account_id,
+            device_name="spare phone",
+            platform=platform,
+            created_at=now,
+        )
+        db.add(device)
+        db.flush()
+        db.add(
+            AuthToken(
+                token_hash=hash_secret(spare_token),
+                account_id=session.account_id,
+                device_id=device.id,
+                ledger_id=ledger_id,
+                scope="app",
+                created_at=now,
+            )
+        )
+        db.commit()
+        return device.public_id, spare_token
+
+
+def _seed_same_account_device(token_value: str, ledger_id: str = "owner") -> str:
+    return _seed_same_account_device_session(token_value, ledger_id)[0]
+
+
+def _devices(client: TestClient, headers: dict[str, str]) -> list[dict]:
+    response = client.get("/api/ledgers/owner/devices", headers=headers)
+    assert response.status_code == 200, response.text
+    return response.json()["devices"]

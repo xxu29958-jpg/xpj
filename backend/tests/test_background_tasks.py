@@ -26,18 +26,12 @@ import app.services.background_task_service as bgtasks
 from app.config import reset_settings_cache
 from app.database import SessionLocal
 from app.log_sanitize import SanitizedFormatter
-from app.models import Account, BackgroundTask, LedgerMember
+from app.models import BackgroundTask, LedgerMember
 from app.services import background_task_handler_api as handler_api
 from app.services.time_service import now_utc
+from tests._infra.identity import seeded_owner_account_id
 
 pytestmark = pytest.mark.real_db
-
-
-def _owner_account_id() -> int:
-    with SessionLocal() as db:
-        owner = db.query(Account).order_by(Account.id.asc()).first()
-        assert owner is not None
-        return owner.id
 
 
 @pytest.fixture(autouse=True)
@@ -78,7 +72,7 @@ def test_enqueue_runs_handler_and_marks_completed(*, identity) -> None:
         task = bgtasks.enqueue(
             db,
             task_type="test_echo",
-            initiator_account_id=_owner_account_id(),
+            initiator_account_id=seeded_owner_account_id(),
             ledger_id="owner",
             payload={"echo": "hello"},
         )
@@ -86,7 +80,7 @@ def test_enqueue_runs_handler_and_marks_completed(*, identity) -> None:
 
     assert captured["payload_echo"] == "hello"
     with SessionLocal() as db:
-        row = bgtasks.get_task(db, public_id, account_id=_owner_account_id(), tenant_id="owner")
+        row = bgtasks.get_task(db, public_id, account_id=seeded_owner_account_id(), tenant_id="owner")
         assert row.status == "completed"
         assert row.completed_at is not None
         assert json.loads(row.result_summary_json)["ran"] is True
@@ -125,7 +119,7 @@ def test_enqueue_does_not_false_fail_after_durable_task_insert(
         task = bgtasks.enqueue(
             submission_db,
             task_type="test_post_commit_read",
-            initiator_account_id=_owner_account_id(),
+            initiator_account_id=seeded_owner_account_id(),
             ledger_id="owner",
         )
         public_id = task.public_id
@@ -145,7 +139,7 @@ def test_enqueue_unknown_task_type_400(*, identity) -> None:
         bgtasks.enqueue(
             db,
             task_type="not_registered",
-            initiator_account_id=_owner_account_id(),
+            initiator_account_id=seeded_owner_account_id(),
             ledger_id="owner",
         )
     assert exc.value.error == "unknown_task_type"
@@ -166,13 +160,13 @@ def test_handler_exception_marks_failed(caplog, monkeypatch, logging_failure, *,
         task = bgtasks.enqueue(
             db,
             task_type="test_boom",
-            initiator_account_id=_owner_account_id(),
+            initiator_account_id=seeded_owner_account_id(),
             ledger_id="owner",
         )
         public_id = task.public_id
 
     with SessionLocal() as db:
-        row = bgtasks.get_task(db, public_id, account_id=_owner_account_id(), tenant_id="owner")
+        row = bgtasks.get_task(db, public_id, account_id=seeded_owner_account_id(), tenant_id="owner")
         assert row.status == "failed"
         assert row.error_code == "RuntimeError"
         assert "kaboom" in (row.error_message or "")
@@ -198,14 +192,14 @@ def test_handler_reports_progress_through_chunks(*, identity) -> None:
         task = bgtasks.enqueue(
             db,
             task_type="test_chunked",
-            initiator_account_id=_owner_account_id(),
+            initiator_account_id=seeded_owner_account_id(),
             ledger_id="owner",
             progress_total=5,
         )
         public_id = task.public_id
 
     with SessionLocal() as db:
-        row = bgtasks.get_task(db, public_id, account_id=_owner_account_id(), tenant_id="owner")
+        row = bgtasks.get_task(db, public_id, account_id=seeded_owner_account_id(), tenant_id="owner")
         assert row.status == "completed"
         assert row.progress_current == 5
         assert row.progress_total == 5
@@ -234,14 +228,14 @@ def test_handler_observes_cancellation_request(*, identity) -> None:
         task = bgtasks.enqueue(
             db,
             task_type="test_cancellable",
-            initiator_account_id=_owner_account_id(),
+            initiator_account_id=seeded_owner_account_id(),
             ledger_id="owner",
             progress_total=10,
         )
         public_id = task.public_id
 
     with SessionLocal() as db:
-        row = bgtasks.get_task(db, public_id, account_id=_owner_account_id(), tenant_id="owner")
+        row = bgtasks.get_task(db, public_id, account_id=seeded_owner_account_id(), tenant_id="owner")
         assert row.status == "cancelled"
         assert row.completed_at is not None
 
@@ -255,7 +249,7 @@ def test_viewer_cannot_cancel_a_ledger_task(
         task = BackgroundTask(
             task_type="test_viewer_cancel",
             tenant_id="owner",
-            initiated_by_account_id=_owner_account_id(),
+            initiated_by_account_id=seeded_owner_account_id(),
             status="running",
         )
         db.add(task)
@@ -291,14 +285,14 @@ def test_request_cancellation_idempotent_on_terminal_task(*, identity) -> None:
         task = bgtasks.enqueue(
             db,
             task_type="test_immediate",
-            initiator_account_id=_owner_account_id(),
+            initiator_account_id=seeded_owner_account_id(),
             ledger_id="owner",
         )
         public_id = task.public_id
 
     with SessionLocal() as db:
         # cancel should not flip status from completed
-        row = bgtasks.request_cancellation(db, public_id, account_id=_owner_account_id(), tenant_id="owner")
+        row = bgtasks.request_cancellation(db, public_id, account_id=seeded_owner_account_id(), tenant_id="owner")
         assert row.status == "completed"
         assert row.cancellation_requested_at is None
 
@@ -312,7 +306,7 @@ def test_account_isolation_get(*, identity) -> None:
         task = bgtasks.enqueue(
             db,
             task_type="test_iso",
-            initiator_account_id=_owner_account_id(),
+            initiator_account_id=seeded_owner_account_id(),
             ledger_id="owner",
         )
         public_id = task.public_id
@@ -331,7 +325,7 @@ def test_list_recent_tasks_account_scoped(*, identity) -> None:
         bgtasks.enqueue(
             db,
             task_type="test_iso2",
-            initiator_account_id=_owner_account_id(),
+            initiator_account_id=seeded_owner_account_id(),
             ledger_id="owner",
         )
         # Same enqueue but a different account; should not appear in mine.
@@ -343,16 +337,16 @@ def test_list_recent_tasks_account_scoped(*, identity) -> None:
         )
 
     with SessionLocal() as db:
-        mine = bgtasks.list_recent_tasks(db, account_id=_owner_account_id(), tenant_id="owner")
+        mine = bgtasks.list_recent_tasks(db, account_id=seeded_owner_account_id(), tenant_id="owner")
         assert len(mine) == 1
-        assert mine[0].initiated_by_account_id == _owner_account_id()
+        assert mine[0].initiated_by_account_id == seeded_owner_account_id()
 
 
 def test_list_recent_tasks_tenant_scoped(*, identity) -> None:
     """A multi-ledger account only sees the active ledger's tasks (the bug:
     a task initiated under ledger A leaking into ledger B's task list)."""
     bgtasks.register_handler("test_tenant_iso", lambda db, t, p: None)
-    owner = _owner_account_id()
+    owner = seeded_owner_account_id()
     with SessionLocal() as db:
         bgtasks.enqueue(
             db,
@@ -378,7 +372,7 @@ def test_get_task_rejects_cross_tenant(*, identity) -> None:
     from app.errors import AppError
 
     bgtasks.register_handler("test_tenant_iso2", lambda db, t, p: None)
-    owner = _owner_account_id()
+    owner = seeded_owner_account_id()
     with SessionLocal() as db:
         task = bgtasks.enqueue(
             db,
@@ -523,7 +517,7 @@ def test_api_get_returns_task(client: TestClient, *, identity) -> None:
         task = bgtasks.enqueue(
             db,
             task_type="test_api",
-            initiator_account_id=_owner_account_id(),
+            initiator_account_id=seeded_owner_account_id(),
             ledger_id="owner",
         )
         public_id = task.public_id
@@ -543,7 +537,7 @@ def test_api_list_returns_recent(client: TestClient, *, identity) -> None:
             bgtasks.enqueue(
                 db,
                 task_type="test_list",
-                initiator_account_id=_owner_account_id(),
+                initiator_account_id=seeded_owner_account_id(),
                 ledger_id="owner",
             )
 
@@ -575,7 +569,7 @@ def test_api_cancel_sets_flag(client: TestClient, *, identity) -> None:
         queued = BackgroundTask(
             task_type="test_cancel_api",
             status="queued",
-            initiated_by_account_id=_owner_account_id(),
+            initiated_by_account_id=seeded_owner_account_id(),
             tenant_id="owner",
         )
         db.add(queued)

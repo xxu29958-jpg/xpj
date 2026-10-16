@@ -13,9 +13,10 @@ from sqlalchemy import select
 from app.database import SessionLocal
 from app.main import app
 from app.middleware.csrf import CSRF_COOKIE_NAME
-from app.models import Account, InstallationOwnerClaim, Ledger, LedgerMember
+from app.models import Account, AuthToken, Device, InstallationOwnerClaim, Ledger, LedgerMember
+from app.models.dataset_authority import DatasetAuthorityRecord
 from app.routes.web_auth import PAIRING_ATTEMPT_COOKIE_NAME, SESSION_COOKIE_NAME
-from app.services.identity_service import bootstrap_installation_owner
+from app.services.identity_service import bootstrap_installation_owner, hash_secret
 from tests._infra.currency import activate_test_currency_authority
 
 
@@ -141,3 +142,21 @@ __all__ = [
     "_local_confirmation",
     "installed_web_setup",
 ]
+
+
+def _installed_scope(installed_web: _InstalledWeb, session_token: str) -> dict[str, str]:
+    with SessionLocal() as db:
+        authority = db.get(DatasetAuthorityRecord, 1)
+        token = db.scalar(select(AuthToken).where(AuthToken.token_hash == hash_secret(session_token)))
+        assert authority is not None and token is not None
+        device = db.get(Device, token.device_id)
+        assert device is not None and device.platform == "web"
+        account = db.get(Account, device.account_id)
+        assert account is not None and account.id == installed_web.installation_account_id
+        return {
+            "datasetId": authority.dataset_id,
+            "clientGeneration": authority.client_generation,
+            "accountId": account.public_id,
+            "ledgerId": installed_web.shared_ledger_id,
+            "deviceId": device.public_id,
+        }

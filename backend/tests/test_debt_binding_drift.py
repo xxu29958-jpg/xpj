@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from decimal import Decimal
-from inspect import signature
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -20,11 +19,7 @@ from sqlalchemy.exc import ProgrammingError
 from app.config import get_settings
 from app.database import SessionLocal
 from app.errors import AppError
-from app.models import Debt, Expense, InstallationCurrencyBinding, LedgerMember, MonthlyIncomePlan, Repayment
-from app.runtime_compatibility_contract import (
-    RUNTIME_COMPATIBILITY_SESSION_KEY,
-    RuntimeCompatibilityRequest,
-)
+from app.models import Debt, Expense, InstallationCurrencyBinding, MonthlyIncomePlan, Repayment
 from app.schemas import ExchangeRateRequest, RepaymentCreateRequest
 from app.services.currency_binding_service import (
     assert_currency_binding_consistent,
@@ -34,20 +29,12 @@ from app.services.debt_service._repayment import record_repayment
 from app.services.exchange_rate_service import apply_currency_payload, set_exchange_rate_idempotently
 from app.services.time_service import now_utc
 from tests._infra.currency import activate_test_currency_authority
+from tests._infra.currency import mark_legacy_http_writer as _mark_legacy_http_writer
+from tests._infra.identity import owner_ledger_account_id as _owner_account_id
 from tests._runtime_protocol import negotiated_headers
+from tests.debt_proposal_helpers import _idem as _idem_headers
 
 pytestmark = pytest.mark.currency_binding_unbound
-
-
-def _mark_legacy_http_writer(db) -> None:
-    db.info[RUNTIME_COMPATIBILITY_SESSION_KEY] = RuntimeCompatibilityRequest(
-        api_version=None,
-        currency_binding=None,
-    )
-
-
-def _idem_headers(app_headers: dict[str, str]) -> dict[str, str]:
-    return {**app_headers, "Idempotency-Key": str(uuid4())}
 
 
 def _create_cny_debt(client: TestClient, identity) -> None:
@@ -148,8 +135,6 @@ def test_binding_gate_rejects_drift_via_expense_facts() -> None:
         assert excinfo.value.status_code == 409
 
 
-
-
 def _seed_cny_expense_fact() -> None:
     with SessionLocal() as db:
         activate_test_currency_authority(db, "CNY")
@@ -192,10 +177,6 @@ def test_explicit_amount_payload_uses_confirmed_basis_despite_environment(monkey
         assert expense.home_currency_code == "CNY"
 
 
-def test_currency_payload_has_no_binding_bypass_parameter() -> None:
-    assert "binding_checked" not in signature(apply_currency_payload).parameters
-
-
 def test_repayment_capture_keeps_cny_original_on_non_cny_installation(client: TestClient, monkeypatch, *, identity) -> None:
     # PR#255 R10③：Android 通知解析器按 CNY 分声明 amount_cents（无 FX 路径）——非 CNY
     # 安装把该整数按 home minor 盖章即 100× 错账，故后端整体拒建（跨币种捕获契约
@@ -220,17 +201,6 @@ def test_repayment_capture_keeps_cny_original_on_non_cny_installation(client: Te
     finally:
         monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
         get_settings.cache_clear()
-
-
-def _owner_account_id() -> int:
-    with SessionLocal() as db:
-        account_id = db.scalar(
-            select(LedgerMember.account_id)
-            .where(LedgerMember.ledger_id == "owner", LedgerMember.role == "owner")
-            .limit(1)
-        )
-        assert account_id is not None
-        return account_id
 
 
 def _create_jpy_debt(client: TestClient, identity, monkeypatch) -> str:

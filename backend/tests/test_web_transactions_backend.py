@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import re
 from datetime import UTC, datetime
-from decimal import Decimal
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -18,95 +17,18 @@ import pytest
 from api_contract_helpers import patch_expense, web_confirm_expense
 from fastapi.testclient import TestClient
 
-from app.database import SessionLocal
-from app.models import Expense
-from app.services.currency_binding_service import resolve_write_capability
-from app.services.expense_accounting_time_service import refresh_legacy_expense_time
 from app.services.spending_contract_service import (
     current_accounting_month,
     shift_month,
 )
-from app.services.tag_service import sync_expense_tags
 from tests._runtime_protocol import negotiated_headers
 from tests._web_bulk_test_support import seed_pending_with_amount
+from tests.web_expense_fact_test_support import _expense_payload, _foreign_expense, _seed_confirmed
 
 
 def _month_instant(month: str, *, day: int = 15) -> datetime:
     year, month_number = (int(part) for part in month.split("-"))
     return datetime(year, month_number, day, 12, 0, tzinfo=UTC)
-
-
-def _seed_confirmed(
-    *,
-    merchant: str,
-    when: datetime | None,
-    amount_minor: int = 1200,
-    confirmed_at: datetime | None = None,
-    created_at: datetime | None = None,
-    source: str = "pytest",
-    tags: str | None = None,
-) -> int:
-    with SessionLocal() as db:
-        resolve_write_capability(db)
-        confirmation_time = confirmed_at or when
-        assert confirmation_time is not None
-        creation_time = created_at or confirmation_time
-        expense = Expense(
-            tenant_id="owner",
-            amount_cents=amount_minor,
-            home_currency_code="CNY",
-            original_currency_code="CNY",
-            original_amount_minor=amount_minor,
-            exchange_rate_to_cny=Decimal("1"),
-            exchange_rate_date=confirmation_time.date(),
-            exchange_rate_source="base",
-            fx_status="ready",
-            merchant=merchant,
-            category="餐饮",
-            source=source,
-            tags=tags,
-            status="confirmed",
-            expense_time=when,
-            confirmed_at=confirmation_time,
-            created_at=creation_time,
-            updated_at=confirmation_time,
-        )
-        db.add(expense)
-        refresh_legacy_expense_time(db, expense)
-        db.flush()
-        if tags:
-            sync_expense_tags(db, expense)
-        db.commit()
-        return expense.id
-
-
-def _foreign_expense(web_client: TestClient, *, identity, rate: str = "7.0000") -> int:
-    rate_response = web_client.put(
-        "/api/exchange-rates/USD/2026-05-04",
-        headers={**negotiated_headers(web_client, identity.app_headers), "Idempotency-Key": str(uuid4())},
-        json={
-            "expected_row_version": 0,
-            "home_currency_code": "CNY",
-            "currency_code": "USD",
-            "rate_date": "2026-05-04",
-            "rate_to_cny": rate,
-        },
-    )
-    assert rate_response.status_code == 200, rate_response.text
-    created = web_client.post(
-        "/api/expenses/manual",
-        headers=identity.app_headers,
-        json={
-            "client_ref": str(uuid4()),
-            "original_currency_code": "USD",
-            "original_amount_minor": 12345,
-            "merchant": "Frozen FX Cafe",
-            "category": "餐饮",
-            "expense_time": "2026-05-04T12:00:00Z",
-        },
-    )
-    assert created.status_code == 200, created.text
-    return int(created.json()["id"])
 
 
 def _correct_current_rate(web_client: TestClient, *, identity) -> None:
@@ -130,14 +52,6 @@ def _correct_current_rate(web_client: TestClient, *, identity) -> None:
     )
     assert changed.status_code == 200, changed.text
     assert changed.json()["row_version"] == rate["row_version"] + 1
-
-
-def _expense_payload(web_client: TestClient, expense_id: int, *, identity) -> dict:
-    response = web_client.get(
-        f"/api/expenses/{expense_id}", headers=identity.app_headers
-    )
-    assert response.status_code == 200, response.text
-    return response.json()
 
 
 def test_confirmed_default_list_and_summary_share_current_month(

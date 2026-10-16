@@ -9,7 +9,10 @@ from app.database import SessionLocal
 from app.models import RecurringItem, RecurringItemRevision, RecurringOccurrence
 from app.services import recurring_item_command_service as commands
 from app.services import recurring_occurrence_command as occurrences
-from tests.test_recurring_definition_history import _create, _headers, _history, _payment
+from tests._web_recurring_test_support import _create_definition as _create
+from tests._web_recurring_test_support import _definition_headers as _headers
+from tests._web_recurring_test_support import _definition_history as _history
+from tests._web_recurring_test_support import _definition_payment as _payment
 
 pytestmark = pytest.mark.real_db
 

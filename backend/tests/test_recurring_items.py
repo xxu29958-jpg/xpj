@@ -16,6 +16,7 @@ from app.schemas import RecurringCandidateConfirmRequest
 from app.services.recurring_candidate_confirmation_service import (
     confirm_recurring_candidate as confirm_recurring_candidate_service,
 )
+from tests._web_recurring_test_support import _seed_monthly_candidate
 from tests.family_ledger_test_support import set_owner_ledger_role
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
@@ -93,23 +94,6 @@ def test_candidate_confirmation_rejects_normalized_merchant_key_overflow(
             .select_from(RecurringItem)
             .where(RecurringItem.tenant_id == "owner")
         ) == 0
-
-
-def _seed_monthly_candidate(*, merchant: str = "ChatGPT Plus", amount_cents: int = 20000) -> datetime:
-    last_seen = datetime(2026, 5, 5, 12, 0, tzinfo=UTC)
-    for when in (
-        datetime(2026, 3, 5, 12, 0, tzinfo=UTC),
-        datetime(2026, 4, 5, 12, 0, tzinfo=UTC),
-        last_seen,
-    ):
-        insert_confirmed_expense(
-            amount_cents=amount_cents,
-            merchant=merchant,
-            category="AI订阅",
-            expense_time=when,
-            confirmed_at=when,
-        )
-    return last_seen
 
 
 def _confirm_candidate(

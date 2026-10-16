@@ -1,16 +1,17 @@
 """The real report router preserves task currency, nullable money and viewer reads."""
 
+from datetime import date
 from types import SimpleNamespace
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from test_period_report_projection import StreamRows, entry
 
 from app.auth import get_current_app_context
 from app.database import get_db
 from app.routes import reports
 from app.services import money_projection_service as money
 from app.services.reports_service import _ranking
+from tests._confirmed_stream_test_support import StatsRows, entry
 
 
 def test_report_api_and_csv_expose_same_original_home_and_missing_rate(monkeypatch):
@@ -19,7 +20,7 @@ def test_report_api_and_csv_expose_same_original_home_and_missing_rate(monkeypat
     app = FastAPI()
     app.include_router(reports.router)
     app.dependency_overrides[get_current_app_context] = lambda: SimpleNamespace(tenant_id="owner", role="viewer")
-    app.dependency_overrides[get_db] = lambda: StreamRows([entry(2000, "CNY"), entry(1000)])
+    app.dependency_overrides[get_db] = lambda: StatsRows([entry(2000, "CNY", day=date(2026, 9, 7), category="餐饮"), entry(1000, day=date(2026, 9, 7), category="餐饮")])
     client = TestClient(app)
     query = "?month=2026-09&timezone=UTC&home_currency_code=JPY&granularity=week&ranking_metric=count"
     response = client.get("/api/reports/overview" + query)

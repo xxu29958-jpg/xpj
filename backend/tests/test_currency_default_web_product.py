@@ -6,8 +6,8 @@ from sqlalchemy import select
 from app.database import SessionLocal
 from app.models import Goal, InstallationCurrencyAuditLog, InstallationCurrencyBinding
 from tests._web_native_form_support import hidden_post_forms, open_creation_form
-from tests.test_currency_adoption_product import _AdoptionBrowser
-from tests.test_currency_adoption_product import adoption_browser as adoption_browser
+from tests.currency_adoption_test_support import _AdoptionBrowser
+from tests.currency_adoption_test_support import adoption_browser as adoption_browser
 
 pytestmark = [pytest.mark.currency_binding_unbound, pytest.mark.real_db]
 

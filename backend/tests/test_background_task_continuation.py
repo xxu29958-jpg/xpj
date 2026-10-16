@@ -10,29 +10,10 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import BackgroundTask, Expense
-from app.services import background_task_worker
-from app.services.background_task_registry import TaskHandlerRegistry
-from tests._infra.assets import PNG_BYTES
 from tests._runtime_protocol import negotiated_headers
+from tests.original_test_support import _failed_upload
 
 pytestmark = pytest.mark.real_db
-
-
-def _failed_upload(client, monkeypatch, headers):
-    def fail_recognition(db, task, payload):
-        raise RuntimeError("recognition unavailable")
-
-    registry = TaskHandlerRegistry({"expense_enrichment": fail_recognition})
-    monkeypatch.setattr("app.services.background_task_executor.submit_task",
-        lambda task_id, payload, **_kwargs: background_task_worker.run_task(task_id, payload, registry),
-    )
-    response = client.post(
-        "/api/app/upload-screenshot",
-        headers=headers,
-        files={"file": ("task-continuation.png", PNG_BYTES, "image/png")},
-    )
-    assert response.status_code == 200, response.text
-    return response.json()
 
 
 def test_failed_upload_task_identifies_original_bill_without_changing_it(client, monkeypatch, *, identity):

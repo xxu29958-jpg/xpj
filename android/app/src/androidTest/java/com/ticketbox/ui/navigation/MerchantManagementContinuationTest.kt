@@ -320,8 +320,11 @@ class MerchantManagementContinuationTest {
         catalog = catalogResponse
         compose.onNodeWithText(context.getString(R.string.merchant_command_verify))
             .performTouchInput { click() }
-        compose.waitUntil(5_000) { updates.size == 2 && compose.onAllNodesWithText(
-            context.getString(R.string.merchant_catalog_rename_dialog_title)).fetchSemanticsNodes().isEmpty() }
+        compose.waitUntil(5_000) {
+            updates.size == 2 && compose.onAllNodesWithText(
+                context.getString(R.string.merchant_catalog_rename_dialog_title),
+            ).fetchSemanticsNodes().isEmpty()
+        }
         compose.waitForIdle()
         compose.onNodeWithText(context.getString(R.string.merchant_catalog_rename_dialog_title)).assertDoesNotExist()
         clickText(R.string.merchant_catalog_section_list)

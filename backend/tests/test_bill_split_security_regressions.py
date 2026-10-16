@@ -22,10 +22,10 @@ from app.models import (
 from app.services import bill_split_service as bsplit
 from app.services.ledger_calendar_service import adopt_ledger_calendar
 from app.services.time_service import now_utc
+from tests._infra.identity import seeded_owner_account_id
 from tests.bill_split_test_support import (
     _bearer_for_account_ledger,
     _make_expense_for_owner,
-    _owner_account_id,
     _seed_receiver,
     _split_headers,
 )
@@ -79,7 +79,7 @@ def test_accept_route_allows_current_viewer_when_target_ledger_is_writer(
     _add_viewer_ledger(
         "receiver_route_accept_viewer",
         account_id=receiver_account_id,
-        owner_account_id=_owner_account_id(),
+        owner_account_id=seeded_owner_account_id(),
     )
 
     create_resp = client.post(
@@ -166,7 +166,7 @@ def test_reject_route_allows_current_viewer_ledger(
     _add_viewer_ledger(
         "receiver_route_reject_viewer",
         account_id=receiver_account_id,
-        owner_account_id=_owner_account_id(),
+        owner_account_id=seeded_owner_account_id(),
     )
 
     create_resp = client.post(
@@ -197,7 +197,7 @@ def test_cancel_route_checks_sender_ledger_not_current_ledger_writer_role(
         name="B-cancel-route",
         ledger_id="receiver_cancel_route",
     )
-    sender_account_id = _owner_account_id()
+    sender_account_id = seeded_owner_account_id()
     _add_viewer_ledger(
         "sender_cancel_current_viewer",
         account_id=sender_account_id,
@@ -234,7 +234,7 @@ def test_sender_expense_updates_do_not_change_receiver_snapshot() -> None:
     with SessionLocal() as db:
         inv = bsplit.create_invitation(
             db,
-            sender_account_id=_owner_account_id(),
+            sender_account_id=seeded_owner_account_id(),
             sender_ledger_id="owner",
             expense_id=expense_id,
             receiver_account_id=receiver_account_id,
@@ -274,7 +274,7 @@ def test_inbox_status_filter() -> None:
     with SessionLocal() as db:
         inv = bsplit.create_invitation(
             db,
-            sender_account_id=_owner_account_id(),
+            sender_account_id=seeded_owner_account_id(),
             sender_ledger_id="owner",
             expense_id=expense_id,
             receiver_account_id=receiver_account_id,
@@ -304,7 +304,7 @@ def test_reject_audit_does_not_record_external_receiver_as_sender_ledger_actor()
     with SessionLocal() as db:
         inv = bsplit.create_invitation(
             db,
-            sender_account_id=_owner_account_id(),
+            sender_account_id=seeded_owner_account_id(),
             sender_ledger_id="owner",
             expense_id=expense_id,
             receiver_account_id=receiver_account_id,
@@ -337,7 +337,7 @@ def test_sender_cannot_invite_self(client: TestClient, *, identity) -> None:
     response = client.post(
         f"/api/expenses/{expense_id}/split-invite",
         headers=_split_headers(client, identity.app_headers),
-        json={"expected_row_version": 1, "receiver_account_id": _owner_account_id(), "amount_cents": 2500},
+        json={"expected_row_version": 1, "receiver_account_id": seeded_owner_account_id(), "amount_cents": 2500},
     )
     assert response.status_code == 422
     assert response.json()["error"] == "split_receiver_invalid"
@@ -390,7 +390,7 @@ def test_duplicate_pending_invite_integrity_error_maps_to_contract(
     with SessionLocal() as db:
         bsplit.create_invitation(
             db,
-            sender_account_id=_owner_account_id(),
+            sender_account_id=seeded_owner_account_id(),
             sender_ledger_id="owner",
             expense_id=expense_id,
             receiver_account_id=receiver_account_id,
@@ -422,7 +422,7 @@ def test_duplicate_pending_invite_integrity_error_maps_to_contract(
         with pytest.raises(AppError) as exc_info:
             bsplit.create_invitation(
                 db,
-                sender_account_id=_owner_account_id(),
+                sender_account_id=seeded_owner_account_id(),
                 sender_ledger_id="owner",
                 expense_id=expense_id,
                 receiver_account_id=receiver_account_id,

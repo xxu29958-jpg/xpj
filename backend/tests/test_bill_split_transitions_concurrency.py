@@ -18,7 +18,8 @@ from app.services.bill_split_service import _transitions as transition_impl
 from app.services.bill_split_service._transitions import _mark_expired
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.time_service import now_utc
-from tests.bill_split_test_support import _make_expense_for_owner, _owner_account_id, _seed_receiver
+from tests._infra.identity import seeded_owner_account_id
+from tests.bill_split_test_support import _make_expense_for_owner, _seed_receiver
 
 
 def _backdate_expiry(public_id: str) -> None:
@@ -38,7 +39,7 @@ def _create_invitation_for_race(*, receiver_account_id: int, amount_cents: int =
     with SessionLocal() as db:
         inv = bsplit.create_invitation(
             db,
-            sender_account_id=_owner_account_id(),
+            sender_account_id=seeded_owner_account_id(),
             sender_ledger_id="owner",
             expense_id=expense_id,
             receiver_account_id=receiver_account_id,
@@ -123,7 +124,7 @@ def test_non_accept_transition_lost_to_peer_expiry_reports_canonical_expiry(monk
             bsplit.cancel_invitation(
                 db,
                 public_id=public_id,
-                sender_account_id=_owner_account_id(),
+                sender_account_id=seeded_owner_account_id(),
             )
     assert exc.value.error == "invitation_expired"
     assert exc.value.status_code == 410
@@ -200,7 +201,7 @@ def test_two_sessions_cancel_vs_accept_race_does_not_clobber_accepted(*, identit
             bsplit.cancel_invitation(
                 session_b,
                 public_id=public_id,
-                sender_account_id=_owner_account_id(),
+                sender_account_id=seeded_owner_account_id(),
             )
         assert exc.value.error == "invitation_not_cancellable"
         assert exc.value.status_code == 409
@@ -309,7 +310,7 @@ def test_cancel_after_ttl_marks_expired_and_returns_410(*, identity) -> None:
         bsplit.cancel_invitation(
             db,
             public_id=public_id,
-            sender_account_id=_owner_account_id(),
+            sender_account_id=seeded_owner_account_id(),
         )
     assert exc.value.error == "invitation_expired"
     assert exc.value.status_code == 410

@@ -168,3 +168,31 @@ class _NativeForm(HTMLParser):
                 fields[button["name"]] = [button["value"]]
         return client.post(action, data=fields, headers={"Origin": str(client.base_url).rstrip("/")},
             follow_redirects=False)
+
+
+def _ack_form_html(page_text: str, expense_id: int) -> str | None:
+    marker = f'action="/web/expenses/{expense_id}/items/acknowledge-mismatch"'
+    if marker not in page_text:
+        return None
+    marker_index = page_text.index(marker)
+    start = page_text.rfind("<form", 0, marker_index)
+    end = page_text.index("</form>", marker_index)
+    return page_text[start:end]
+
+
+def _hidden_value(form_html: str, name: str) -> str:
+    match = re.search(rf'name="{re.escape(name)}" value="([^"]+)"', form_html)
+    assert match is not None
+    return match.group(1)
+
+
+def _money_fields(html, expense_id):
+    action = f"/web/expenses/{expense_id}/offsets"
+    form = next(match.group() for match in re.finditer(r"<form\b[^>]*>.*?</form>", html, re.S)
+        if f'action="{action}"' in match.group() and 'id="offset-amount"' in match.group())
+    return hidden_post_forms(form)[action]
+
+
+def _hidden_fields(html: str) -> dict[str, str]:
+    return {**dict(re.findall(r'<input type="hidden" name="([^"]+)" value="([^"]*)"', html)),
+        **accounting_time_fields(html)}
