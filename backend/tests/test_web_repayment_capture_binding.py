@@ -18,9 +18,9 @@ from app.routes import _web_repayment_review as review
 from app.routes.web_auth import SESSION_COOKIE_NAME
 from app.schemas import RepaymentDraftCreateRequest
 from app.services.debt_service import create_repayment_draft
-from tests._local_web_identity_support import _connect_local_session, installed_web_setup
+from tests._local_web_identity_support import _connect_local_session, _installed_scope, installed_web_setup
+from tests._web_debt_command_support import _seed_external_debt
 from tests._web_native_form_support import _NativeForm
-from tests.test_web_repayment_binding import _installed_scope, _seed_external_debt
 
 pytestmark = [pytest.mark.real_db, pytest.mark.currency_binding_unbound]
 
