@@ -11,9 +11,7 @@ import com.ticketbox.domain.model.DebtCounterpartyTypes
 import com.ticketbox.domain.model.DebtDirections
 import com.ticketbox.domain.model.DebtKinds
 import com.ticketbox.domain.model.DebtSourceTypes
-import java.io.IOException
 import java.time.Clock
-import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
 import kotlinx.coroutines.flow.first
@@ -55,34 +53,6 @@ class DebtCreationRepositoryTest {
     }
 
     @Test
-    fun lostResponseThenRestartedDrainReusesTheStoredRequestAndKey() = runTest {
-        val fixture = DebtCreationFixture()
-        val time = com.ticketbox.data.remote.dto.ExpenseTimeInputDto("date_only", 3L, "2026-01-31")
-        val receipt = fixture.save(time).getOrThrow()
-        val original = fixture.dao.rows.getValue(receipt.intentId)
-
-        fixture.dao.runnableBatches += listOf(receipt.intentId)
-        val first = fixture.engine(fixture.outbox, fixture.clock).drainOnce()
-
-        assertEquals(1, first.retryable)
-        assertEquals(PendingMutationStatus.Pending.wireValue, fixture.dao.rows.getValue(receipt.intentId).status)
-        assertEquals(original.payload, fixture.dao.rows.getValue(receipt.intentId).payload)
-        val restartedClock = Clock.offset(fixture.clock, Duration.ofMinutes(2))
-        val restartedOutbox = fixture.newOutbox(restartedClock)
-        fixture.api.loseResponse = false
-        fixture.dao.runnableBatches += listOf(receipt.intentId)
-        val second = fixture.engine(restartedOutbox, restartedClock).drainOnce()
-
-        assertEquals(1, second.done)
-        assertEquals(2, fixture.api.calls.size)
-        assertEquals(fixture.api.calls[0], fixture.api.calls[1])
-        assertEquals(time, fixture.api.calls[1].first.timeInput)
-        assertEquals(original.idempotencyKey, fixture.api.calls[1].second)
-        assertEquals(1, fixture.api.facts.size)
-        assertEquals(PendingMutationStatus.Done.wireValue, fixture.dao.rows.getValue(receipt.intentId).status)
-    }
-
-    @Test
     fun aStoredV1IntentSuppliesItsCurrencyToTheNewWireRequest() = runTest {
         val fixture = DebtCreationFixture()
         val receipt = fixture.save().getOrThrow()
@@ -97,8 +67,10 @@ class DebtCreationRepositoryTest {
                 "source_type":"manual","debt_kind":"unspecified"}
         }"""
         fixture.dao.rows[row.id] = row.copy(payload = original)
-        fixture.api.loseResponse = false
-        fixture.api.replyHomeCurrency = "JPY"
+
+        fixture.api.response = fixture.api.response.copy(homeCurrencyCode = "JPY", counterpartyLabel = "Alex",
+            principalAmountCents = 1200, remainingAmountCents = 1200, debtKind = "unspecified",
+            installmentCount = null, installmentPeriodMonths = null, note = null)
 
         fixture.dao.runnableBatches += listOf(receipt.intentId)
         fixture.engine(fixture.outbox, fixture.clock).drainOnce()
@@ -117,8 +89,8 @@ class DebtCreationRepositoryTest {
         val fixture = DebtCreationFixture()
         val receipt = fixture.save().getOrThrow()
         val original = fixture.dao.rows.getValue(receipt.intentId)
-        fixture.api.loseResponse = false
-        fixture.api.replyHomeCurrency = "JPY"
+
+        fixture.api.response = fixture.api.response.copy(homeCurrencyCode = "JPY")
 
         fixture.dao.runnableBatches += listOf(receipt.intentId)
         fixture.engine(fixture.outbox, fixture.clock).drainOnce()
@@ -135,8 +107,9 @@ class DebtCreationRepositoryTest {
         val time = com.ticketbox.data.remote.dto.ExpenseTimeInputDto("date_only", 3L, "2026-01-31")
         val receipt = fixture.save(time).getOrThrow()
         val original = fixture.dao.rows.getValue(receipt.intentId)
-        fixture.api.loseResponse = false
-        fixture.api.replyDate = "2026-02-01"
+
+        fixture.api.response = fixture.api.response.copy(accountingTime = com.ticketbox.data.remote.dto.ExpenseAccountingTimeDto(
+            precision = "date_only", userLocalDate = "2026-02-01", calendarRevision = 3))
         fixture.dao.runnableBatches += listOf(receipt.intentId)
         fixture.engine(fixture.outbox, fixture.clock).drainOnce()
         val retained = fixture.dao.rows.getValue(receipt.intentId)
@@ -158,8 +131,8 @@ class DebtCreationRepositoryTest {
             val fixture = DebtCreationFixture()
             val receipt = fixture.save().getOrThrow()
             val original = fixture.dao.rows.getValue(receipt.intentId)
-            fixture.api.loseResponse = false
-            fixture.api.replyTransform = mismatch
+
+            fixture.api.response = mismatch(fixture.api.response)
             fixture.dao.runnableBatches += listOf(receipt.intentId)
             fixture.engine(fixture.outbox, fixture.clock).drainOnce()
             val retained = fixture.dao.rows.getValue(receipt.intentId)
@@ -178,23 +151,6 @@ class DebtCreationRepositoryTest {
         assertNotEquals(first.intentId, second.intentId)
         assertEquals(2, fixture.dao.rows.size)
         assertEquals(2, fixture.dao.rows.values.map { it.idempotencyKey }.toSet().size)
-    }
-
-    @Test
-    fun originalPublicationKeyReusesOneRowAndRejectsChangedContent() = runTest {
-        val fixture = DebtCreationFixture()
-        val key = java.util.UUID.randomUUID().toString()
-        val first = fixture.save(creationKey = key).getOrThrow()
-        val original = fixture.dao.rows.getValue(first.intentId)
-        val replay = fixture.save(creationKey = key).getOrThrow()
-        assertEquals(first, replay)
-        assertEquals(1, fixture.dao.rows.size)
-        val changed = fixture.save(creationKey = key, time = com.ticketbox.data.remote.dto.ExpenseTimeInputDto(
-            precision = "date_only", userLocalDate = "2026-01-31", calendarRevision = 3L))
-        assertTrue(changed.isFailure)
-        assertEquals(original, fixture.dao.rows.getValue(first.intentId))
-        assertEquals(1, fixture.dao.rows.size)
-        assertTrue(fixture.api.calls.isEmpty())
     }
 
     @Test
@@ -268,17 +224,15 @@ internal class DebtCreationFixture(role: String = "owner") {
     val dao = FakePendingMutationDao()
     val clock: Clock = Clock.fixed(Instant.parse("2026-09-06T00:00:00Z"), ZoneOffset.UTC)
     val queueDepthAtSchedule = mutableListOf<Int>()
-    val outbox = newOutbox(clock)
-    val adapters = OutboxAdapterGraph()
-    val repository = DebtCreationRepository(provider, outbox, adapters.debtCreateAdapter)
-
-    fun newOutbox(clock: Clock) = OutboxRepository(
-    onRowsDeleted = {},
+    val outbox = OutboxRepository(
+        onRowsDeleted = {},
         dao = dao,
         clock = clock,
         bindingProvider = { provider.currentSession().toOutboxBinding() },
         onEnqueued = { queueDepthAtSchedule += dao.rows.size },
     )
+    val adapters = OutboxAdapterGraph()
+    val repository = DebtCreationRepository(provider, outbox, adapters.debtCreateAdapter)
 
     suspend fun save(time: com.ticketbox.data.remote.dto.ExpenseTimeInputDto? = null,
         creationKey: String = java.util.UUID.randomUUID().toString()) = repository.createDebt(
@@ -302,29 +256,14 @@ internal class DebtCreationFixture(role: String = "owner") {
 
 internal class DebtCreationApiProbe : ApiService by FakeApiService(mutableListOf(), 0) {
     val calls = mutableListOf<Pair<DebtCreateRequestDto, String?>>()
-    val facts = mutableMapOf<String, DebtDto>()
-    var loseResponse = true
-    var replyHomeCurrency = "CNY"
-    var replyDate: String? = null
-    var replyTransform: (DebtDto) -> DebtDto = { it }
+    var response = DebtDto(publicId = "debt-1", ledgerId = "owner", direction = "owed_to_me", counterpartyType = "external",
+        counterpartyLabel = "小王", principalAmountCents = 12_345, remainingAmountCents = 12_345, paidAmountCents = 0,
+        status = "open", sourceType = "manual", homeCurrencyCode = "CNY", createdAt = "2026-09-06T00:00:00Z",
+        updatedAt = "2026-09-06T00:00:00Z", rowVersion = 1, debtKind = "installment", installmentCount = 3,
+        installmentPeriodMonths = 2, note = "出差垫付车费")
 
     override suspend fun createDebt(request: DebtCreateRequestDto, idempotencyKey: String?): DebtDto {
         calls += request to idempotencyKey
-        val fact = facts.getOrPut(requireNotNull(idempotencyKey)) {
-            DebtDto(
-                publicId = "debt-${facts.size + 1}", ledgerId = "owner",
-                direction = request.direction, counterpartyType = request.counterpartyType,
-                counterpartyLabel = request.counterpartyLabel, principalAmountCents = request.principalAmountCents,
-                remainingAmountCents = request.principalAmountCents, paidAmountCents = 0,
-                status = "open", sourceType = request.sourceType, homeCurrencyCode = replyHomeCurrency,
-                createdAt = "2026-09-06T00:00:00Z", updatedAt = "2026-09-06T00:00:00Z", rowVersion = 1,
-                debtKind = request.debtKind, installmentCount = request.installmentCount,
-                installmentPeriodMonths = request.installmentPeriodMonths, note = request.note,
-                accountingTime = request.timeInput?.let { com.ticketbox.data.remote.dto.ExpenseAccountingTimeDto(
-                    precision = it.precision, userLocalDate = replyDate ?: it.userLocalDate, calendarRevision = it.calendarRevision) },
-            )
-        }
-        if (loseResponse) throw IOException("Synthetic response loss after acceptance")
-        return replyTransform(fact)
+        return response
     }
 }

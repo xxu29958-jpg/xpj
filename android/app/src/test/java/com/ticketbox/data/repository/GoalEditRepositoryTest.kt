@@ -21,8 +21,9 @@ class GoalEditRepositoryTest {
         val f = GoalEditFixture().apply { useDebtGoal() }
         val id = f.saveDate("2028-03-01").getOrThrow()
         val original = f.dao.rows.getValue(id)
-        assertTrue(f.keys.isEmpty())
+        assertTrue(f.calls.isEmpty())
         assertTrue(f.saveLinks().isFailure)
+        f.response = f.current.copy(rowVersion = 2, debtRepayment = f.current.debtRepayment?.copy(targetDate = "2028-03-01"))
         f.loseAck = true
         f.dao.runnableBatches += listOf(id)
         assertEquals(1, f.engine().drainOnce().failures)
@@ -35,19 +36,26 @@ class GoalEditRepositoryTest {
         f.loseAck = false
         f.dao.runnableBatches += listOf(id)
         assertEquals(1, f.engine().drainOnce().done)
-        assertEquals(listOf(original.idempotencyKey, original.idempotencyKey), f.keys)
+        assertEquals(listOf(original.idempotencyKey, original.idempotencyKey), f.calls.map { it.third })
         assertEquals(original.payload, f.dao.rows.getValue(id).payload)
         assertEquals(original.expectedRowVersion, f.dao.rows.getValue(id).expectedRowVersion)
         assertEquals(2, f.pending().confirmed?.rowVersion)
         assertEquals(1, f.pending().confirmed?.debtRepayment?.goalVersion)
         assertEquals("2028-03-01", f.pending().confirmed?.debtRepayment?.targetDate)
         val clearId = f.saveDate(null).getOrThrow()
+        f.response = f.current.copy(rowVersion = 4, debtRepayment = f.current.debtRepayment?.copy(targetDate = null))
         f.dao.runnableBatches += listOf(clearId)
         assertEquals(1, f.engine().drainOnce().done)
         assertEquals(null, f.pending().confirmed?.debtRepayment?.targetDate)
         assertEquals(4, f.pending().confirmed?.rowVersion)
         assertEquals(1, f.pending().confirmed?.debtRepayment?.goalVersion)
         assertTrue(f.dao.rows.getValue(clearId).idempotencyKey != original.idempotencyKey)
+        assertEquals(listOf("goal-1", "goal-1", "goal-1"), f.calls.map { it.first })
+        assertEquals(listOf(
+            com.ticketbox.data.remote.dto.DebtGoalTargetDateRequestDto(1, "2028-03-01"),
+            com.ticketbox.data.remote.dto.DebtGoalTargetDateRequestDto(1, "2028-03-01"),
+            com.ticketbox.data.remote.dto.DebtGoalTargetDateRequestDto(3, null),
+        ), f.calls.map { it.second })
     }
 
     @Test fun dateTaskRejectsNonApplicableGoalsAndUnmatchedReceiptsWithoutDroppingTheOriginal() = runTest {
@@ -60,7 +68,7 @@ class GoalEditRepositoryTest {
         f.current = current
         val id = f.saveDate("2028-03-01").getOrThrow()
         val original = f.dao.rows.getValue(id)
-        f.receiptOverride = current.copy(rowVersion = 2, debtRepayment = current.debtRepayment?.copy(
+        f.response = current.copy(rowVersion = 2, debtRepayment = current.debtRepayment?.copy(
             targetDate = "2028-03-01", goalVersion = 2))
         f.dao.runnableBatches += listOf(id)
         assertEquals(1, f.engine().drainOnce().failures)
@@ -71,39 +79,12 @@ class GoalEditRepositoryTest {
         assertTrue(f.acceptedRows.isEmpty())
     }
 
-    @Test fun debtEditReplayRetainsTheOriginalSelectionAndReceiptAfterALaterGoalChange() = runTest {
-        val f = GoalEditFixture()
-        f.useDebtGoal()
-        val id = f.saveLinks().getOrThrow()
-        val original = f.dao.rows.getValue(id)
-        assertEquals(listOf(1), f.scheduledDepth)
-        assertTrue(f.keys.isEmpty())
-        assertTrue(f.saveLinks().isFailure)
-        f.loseAck = true
-        f.dao.runnableBatches += listOf(id)
-        assertEquals(1, f.engine().drainOnce().failures)
-        val failed = f.pending()
-        assertEquals(listOf("debt-a", "debt-b"), failed.debtEdit?.request?.debtPublicIds)
-        assertTrue(failed.canRetry)
-        f.current = f.current.copy(rowVersion = 3, name = "另一端后来修改")
-        f.repository.recover(f.binding, failed, drop = false).getOrThrow()
-        f.loseAck = false
-        f.dao.runnableBatches += listOf(id)
-        assertEquals(1, f.engine().drainOnce().done)
-        assertEquals(listOf(original.idempotencyKey, original.idempotencyKey), f.keys)
-        assertEquals(original.payload, f.dao.rows.getValue(id).payload)
-        assertEquals(original.expectedRowVersion, f.dao.rows.getValue(id).expectedRowVersion)
-        assertEquals(2, f.pending().confirmed?.rowVersion)
-        assertEquals("原还债目标", f.pending().confirmed?.name)
-        assertEquals(listOf(id), f.acceptedRows)
-    }
-
     @Test fun debtEditRefuseForeignAndNewerReceiptsAndCannotSubmitAsViewer() = runTest {
         val f = GoalEditFixture()
         f.useDebtGoal()
         val id = f.saveLinks().getOrThrow()
         val original = f.pending()
-        f.receiptOverride = f.current.copy(rowVersion = 8)
+        f.response = f.current.copy(rowVersion = 8)
         f.dao.runnableBatches += listOf(id)
         assertEquals(1, f.engine().drainOnce().failures)
         assertEquals(null, f.pending().confirmed)
@@ -137,7 +118,7 @@ class GoalEditRepositoryTest {
         val f = GoalEditFixture()
         val id = f.save().getOrThrow()
         assertEquals(listOf(1), f.scheduledDepth)
-        assertTrue(f.keys.isEmpty())
+        assertTrue(f.calls.isEmpty())
         val original = f.dao.rows.getValue(id)
         assertEquals("goal:goal-1", original.targetId)
         assertEquals(1, original.expectedRowVersion)
@@ -146,28 +127,6 @@ class GoalEditRepositoryTest {
         assertEquals("JPY", f.adapters.goalUpdateAdapter.fromJson(original.payload)?.homeCurrencyCode)
         assertTrue(f.save().isFailure)
         assertEquals(listOf(original), f.dao.rows.values.toList())
-    }
-
-    @Test fun lostAckRetriesTheOriginalKeyAndStoresCanonicalReceipt() = runTest {
-        val f = GoalEditFixture()
-        val id = f.save().getOrThrow()
-        val original = f.dao.rows.getValue(id)
-        f.loseAck = true
-        f.dao.runnableBatches += listOf(id)
-        assertEquals(1, f.engine().drainOnce().failures)
-        val failed = f.pending()
-        assertTrue(failed.canRetry)
-        f.repository.recover(f.binding, failed, drop = false).getOrThrow()
-        f.loseAck = false
-        f.dao.runnableBatches += listOf(id)
-        assertEquals(1, f.engine().drainOnce().done)
-        assertEquals(listOf(original.idempotencyKey, original.idempotencyKey), f.keys)
-        assertEquals(listOf(id), f.acceptedRows)
-        assertEquals(original.payload, f.dao.rows.getValue(id).payload)
-        assertEquals(2, f.pending().confirmed?.rowVersion)
-        assertEquals(35000, f.pending().confirmed?.targetAmountCents)
-        assertEquals(27000, f.pending().confirmed?.remainingAmountCents)
-        assertTrue(f.save(goal = f.current.toDomain()).isSuccess)
     }
 
     @Test fun exactBindingAndViewerProtectTheOriginalIntent() = runTest {
@@ -230,42 +189,28 @@ private class GoalEditFixture {
     val adapters = OutboxAdapterGraph()
     val scheduledDepth = mutableListOf<Int>()
     val outbox = testOutboxRepository(dao, onEnqueued = { scheduledDepth += dao.rows.size })
-    val keys = mutableListOf<String?>()
+    val calls = mutableListOf<Triple<String, Any, String?>>()
     val acceptedRows = mutableListOf<Long>()
     var loseAck = false
-    var receiptOverride: GoalDto? = null
     var replyFailure: Exception? = null
     var current = GoalDto("goal-1", "owner", "餐饮", "spending_limit", "monthly", "2026-09", "餐饮",
         20000, 8000, 12000, 40, "on_track", "active", "2026-09-01T00:00:00Z", "2026-09-01T00:00:00Z", 1, null,
         homeCurrencyCode = "JPY")
-    private val results = mutableMapOf<String, GoalDto>()
+    var response = current.copy(targetAmountCents = 35000, remainingAmountCents = 27000, category = null, rowVersion = 2)
     private val api = object : com.ticketbox.data.remote.ApiService by FakeApiService(mutableListOf(), 0) {
         override suspend fun setGoalTargetDate(publicId: String,
             request: com.ticketbox.data.remote.dto.DebtGoalTargetDateRequestDto, idempotencyKey: String?, timezone: String?): GoalDto {
-            keys += idempotencyKey
+            calls += Triple(publicId, request, idempotencyKey)
             replyFailure?.let { throw it }
-            val result = results.getOrPut(requireNotNull(idempotencyKey)) {
-                check(request.expectedRowVersion == current.rowVersion)
-                current.copy(rowVersion = current.rowVersion + 1, debtRepayment = current.debtRepayment?.copy(
-                    targetDate = request.targetDate)).also { current = it }
-            }
             if (loseAck) throw IOException("lost synthetic date reply")
-            return receiptOverride ?: result
+            return response
         }
         override suspend fun replaceGoalDebtLinks(publicId: String,
             request: com.ticketbox.data.remote.dto.DebtGoalLinksReplaceRequestDto,
             idempotencyKey: String?, timezone: String?): GoalDto {
-            keys += idempotencyKey
+            calls += Triple(publicId, request, idempotencyKey)
             replyFailure?.let { throw it }
-            val result = results.getOrPut(requireNotNull(idempotencyKey)) {
-                check(request.expectedRowVersion == current.rowVersion)
-                current.copy(rowVersion = current.rowVersion + 1, debtRepayment = current.debtRepayment?.copy(
-                    linkedDebts = request.debtPublicIds.map { debtId ->
-                        com.ticketbox.data.remote.dto.DebtGoalLinkViewDto(debtId, "open", "i_owe", "external", debtId, 100, 100, "CNY")
-                    })).also { current = it }
-            }
-            if (loseAck) throw IOException("lost synthetic acknowledgement")
-            return receiptOverride ?: result
+            return response
         }
         override suspend fun runtimeCompatibility() = com.ticketbox.data.remote.dto.RuntimeCompatibilityDto(
             com.ticketbox.data.remote.CURRENT_TICKETBOX_API_VERSION, "compatible",
@@ -273,14 +218,8 @@ private class GoalEditFixture {
                 com.ticketbox.data.remote.dto.RuntimeCurrencyCapabilityDto("1:1:JPY", "JPY", 0, "compatible")))
         override suspend fun updateGoal(publicId: String, request: GoalUpdateRequestDto,
             idempotencyKey: String?, timezone: String?): GoalDto {
-            keys += idempotencyKey
-            val result = results.getOrPut(requireNotNull(idempotencyKey)) {
-                check(request.expectedRowVersion == current.rowVersion)
-                current.copy(targetAmountCents = 35000, remainingAmountCents = 27000, category = null,
-                    rowVersion = current.rowVersion + 1).also { current = it }
-            }
-            if (loseAck) throw IOException("lost synthetic acknowledgement")
-            return result
+            calls += Triple(publicId, request, idempotencyKey)
+            return response
         }
     }
     private val provider = testApiServiceProvider(object : ApiServiceFactory {

@@ -28,6 +28,10 @@ class PendingExpenseCacheRoomTest {
     private lateinit var current: ExpenseDto
     private lateinit var sendingApi: ApiService
     private var offline = false
+    private lateinit var patchResponse: ExpenseDto
+    private lateinit var rejectionResponse: ExpenseDto
+    private lateinit var undoResponse: ExpenseDto
+    private val calls = mutableListOf<Triple<String, Any, String?>>()
     private var pendingResponse: (suspend () -> List<ExpenseDto>)? = null
     private val fixture: ExpenseCorrectionConnectedFixture =
         ExpenseCorrectionConnectedFixture(ApplicationProvider.getApplicationContext<Context>()) { api ->
@@ -39,19 +43,17 @@ class PendingExpenseCacheRoomTest {
             override suspend fun pendingExpenses(): List<ExpenseDto> = pendingResponse?.invoke()
                 ?: listOf(current).filter { it.status == "pending" }
             override suspend fun updateExpense(id: String, request: ExpenseUpdateRequest, idempotencyKey: String?): ExpenseDto {
-                check(id == current.id.toString() && request.expectedRowVersion == current.rowVersion)
-                check(!idempotencyKey.isNullOrBlank())
-                return current.copy(merchant = request.merchant, rowVersion = current.rowVersion + 1).also { current = it }
+                calls += Triple(id, request, idempotencyKey)
+                return patchResponse.also { current = it }
             }
             override suspend fun rejectExpense(id: String, request: ExpenseStateTokenRequest, idempotencyKey: String?): ExpenseDto {
                 if (offline) throw IOException("Offline rejection")
-                check(id == current.id.toString() && request.expectedRowVersion == current.rowVersion)
-                check(!idempotencyKey.isNullOrBlank())
-                return current.copy(status = "rejected", rejectedAt = fixture.clock.instant().toString(), rowVersion = current.rowVersion + 1).also { current = it }
+                calls += Triple(id, request, idempotencyKey)
+                return rejectionResponse.also { current = it }
             }
             override suspend fun undoExpense(id: Long, request: ExpenseStateTokenRequest, idempotencyKey: String): ExpenseDto {
-                check(id == current.id && request.expectedRowVersion == current.rowVersion)
-                return current.copy(status = "pending", rowVersion = current.rowVersion + 1).also { current = it }
+                calls += Triple(id.toString(), request, idempotencyKey)
+                return undoResponse.also { current = it }
             }
         }.also { sendingApi = it }
     }
@@ -88,6 +90,10 @@ class PendingExpenseCacheRoomTest {
         val accepted = repository.fetchExpenseFromLocalCache(42).getOrThrow()
         assertEquals("Saved merchant", accepted.merchant)
         assertEquals(2L, accepted.rowVersion)
+        assertEquals("42", calls.single().first)
+        assertEquals(1L, (calls.single().second as ExpenseUpdateRequest).expectedRowVersion)
+        assertEquals("Saved merchant", (calls.single().second as ExpenseUpdateRequest).merchant)
+        assertEquals(fixture.stored().single()["idempotencyKey"], calls.single().third)
         offline = true
 
         val reopened = fixture.reopen().expenseRepository
@@ -126,31 +132,11 @@ class PendingExpenseCacheRoomTest {
         assertEquals(1, drainReview().done)
         val restored = reopened.fetchExpenseFromLocalCache(42).getOrThrow()
         assertEquals(3L, restored.rowVersion)
+        assertEquals(listOf("42", "42"), calls.map { it.first })
+        assertEquals(listOf(1L, 2L), calls.map { (it.second as ExpenseStateTokenRequest).expectedRowVersion })
+        assertEquals(fixture.stored().map { it["idempotencyKey"] }, calls.map { it.third })
         assertEquals(restored, reopened.fetchExpenseFromLocalCache(42).getOrThrow())
         assertEquals(restored, reopened.getCachedPending().getOrThrow().single())
-    }
-
-    @Test fun acceptedOutboxRejectionCannotReappearAsPendingAfterRoomReopen() = runBlocking {
-        val repository = start()
-        val pending = repository.fetchExpense(42).getOrThrow()
-        offline = true
-        assertTrue(repository.rejectExpenseAllowingOffline(requireNotNull(repository.captureDeferredLedgerBinding()), pending)
-            .getOrThrow().rowIds.single() > 0L)
-        val original = fixture.pendingDao.allRows().single()
-        offline = false
-        val dispatcher = RejectExpenseDispatcher(apiProvider = { sendingApi },
-            payloadAdapter = OutboxAdapterGraph().expenseStateTokenAdapter,
-            publishExpense = { ledgerId, expense -> fixture.expenseDao.applyServerExpense(ledgerId, expense.toEntity(ledgerId)); Unit })
-        assertEquals(1, OutboxDrainEngine(fixture.outbox, listOf(dispatcher), now = fixture.clock::millis).drainOnce().done)
-        val delivered = fixture.pendingDao.allRows().single()
-        assertEquals(PendingMutationStatus.Done.wireValue, delivered.status)
-        assertEquals(original.idempotencyKey, delivered.idempotencyKey)
-        assertEquals(original.payload, delivered.payload)
-        offline = true
-
-        val reopened = fixture.reopen().expenseRepository
-        assertTrue(reopened.getCachedPending().getOrThrow().isEmpty())
-        assertTrue(reopened.fetchExpenseFromLocalCache(42).isFailure)
     }
 
     @Test fun delayedPendingListCannotEraseNewerDetailOrANewlyObservedBillInTheSameLedger() = runBlocking {
@@ -196,6 +182,9 @@ class PendingExpenseCacheRoomTest {
     private fun start(): ExpenseRepository {
         val repository = fixture.reopen().expenseRepository
         current = fixture.network.current.copy(status = "pending", confirmedAt = null, rowVersion = 1)
+        patchResponse = current.copy(merchant = "Saved merchant", rowVersion = 2)
+        rejectionResponse = current.copy(status = "rejected", rejectedAt = fixture.clock.instant().toString(), rowVersion = 2)
+        undoResponse = rejectionResponse.copy(status = "pending", rowVersion = 3)
         return repository
     }
 

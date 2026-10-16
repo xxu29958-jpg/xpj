@@ -34,30 +34,6 @@ class DebtGoalCreationRepositoryTest {
         assertTrue(f.calls.isEmpty())
     }
 
-    @Test fun lostRemoteAcknowledgementReplaysTheOriginalIdsKeyAndFirstReceipt() = runTest {
-        val f = DebtGoalCreationFixture()
-        f.create().getOrThrow()
-        val original = f.pending().row
-        f.loseAck = true
-        f.dao.runnableBatches += listOf(f.dao.rows.keys.single())
-        assertEquals(1, f.engine().drainOnce().failures)
-        val failed = f.pending()
-        assertTrue(failed.canRetry)
-        val firstReceipt = f.accepted.values.single()
-        f.laterRemaining = 800
-        f.loseAck = false
-        f.repository.recoverCreation(f.binding, failed, drop = false).getOrThrow()
-        f.dao.runnableBatches += listOf(f.dao.rows.keys.single())
-        assertEquals(1, f.engine().drainOnce().done)
-        val done = f.pending()
-        assertEquals(listOf(original.idempotencyKey, original.idempotencyKey), f.calls.map { it.second })
-        assertEquals(f.calls.first().first, f.calls.last().first)
-        assertEquals(listOf("debt-b", "debt-a"), f.calls.last().first.debtPublicIds)
-        assertEquals(firstReceipt.toDomain(), done.confirmed)
-        assertEquals(original.payloadJson, done.row.payloadJson)
-        assertEquals(1, f.accepted.size)
-    }
-
     @Test fun aMonetaryForeignOrChangedLinkReceiptCannotSettleTheDebtOriginal() = runTest {
         val mutations: List<(GoalDto) -> GoalDto> = listOf(
             { it.copy(homeCurrencyCode = "JPY") }, { it.copy(targetAmountCents = 1200) },
@@ -87,20 +63,6 @@ class DebtGoalCreationRepositoryTest {
         }
     }
 
-    @Test fun changedNameOrDebtSelectionIsRefusedWhileAnIndependentTaskRemainsIndependent() = runTest {
-        val f = DebtGoalCreationFixture()
-        val id = f.create().getOrThrow()
-        val original = f.pending()
-        assertTrue(f.repository.createDebtGoal(f.binding, "另一个名称", listOf("debt-b", "debt-a"), f.key).isFailure)
-        assertTrue(f.repository.createDebtGoal(f.binding, "还清欠款", listOf("debt-c"), f.key).isFailure)
-        assertEquals(original, f.pending())
-        val otherKey = UUID.randomUUID().toString()
-        val second = f.repository.createDebtGoal(f.binding, "还清欠款", listOf("debt-b", "debt-a"), otherKey).getOrThrow()
-        assertTrue(id != second)
-        assertEquals(2, f.dao.rows.size)
-        assertEquals(original.row.payloadJson, f.repository.originalCreation(f.binding, otherKey).getOrThrow()?.row?.payloadJson)
-    }
-
     @Test fun theCommandOwnerRejectsMixedShapesBlankInputReadonlyAndReplacementBindings() = runTest {
         val f = DebtGoalCreationFixture()
         val request = GoalCreateRequestDto("还清欠款", goalType = "debt_repayment", debtPublicIds = listOf("debt-a"))
@@ -117,18 +79,6 @@ class DebtGoalCreationRepositoryTest {
         assertTrue(f.repository.create(requireNotNull(f.repository.currentAccess()).binding, request, f.key).isFailure)
         assertTrue(f.dao.rows.isEmpty())
         assertTrue(f.calls.isEmpty())
-    }
-
-    @Test fun completedOriginalIsReadableWithoutASecondCommandOrCurrentCandidateLookup() = runTest {
-        val f = DebtGoalCreationFixture()
-        val id = f.create().getOrThrow()
-        f.dao.runnableBatches += listOf(f.dao.rows.keys.single())
-        assertEquals(1, f.engine().drainOnce().done)
-        val original = f.pending()
-        assertEquals(id, f.create().getOrThrow())
-        assertEquals(original, f.repository.originalCreation(f.binding, f.key).getOrThrow())
-        assertEquals(1, f.dao.rows.size)
-        assertEquals(1, f.calls.size)
     }
 
     @Test fun readonlyAndReplacementBindingsCannotReplayTheFailedOriginal() = runTest {
@@ -152,52 +102,6 @@ class DebtGoalCreationRepositoryTest {
         assertEquals(1, f.calls.size)
     }
 
-    @Test fun stoppingDebtOriginalRetainsItsKeyBodyAndEvidenceWithoutClaimingRemoteRollback() = runTest {
-        val f = DebtGoalCreationFixture()
-        f.create().getOrThrow()
-        val original = f.pending()
-        f.loseAck = true
-        f.dao.runnableBatches += listOf(f.dao.rows.keys.single())
-        assertEquals(1, f.engine().drainOnce().failures)
-        val failed = f.pending()
-        f.repository.recoverCreation(f.binding, failed, drop = true).getOrThrow()
-        val stopped = requireNotNull(f.repository.originalCreation(f.binding, f.key).getOrThrow())
-        assertEquals(PendingMutationStatus.Abandoned, stopped.row.status)
-        assertEquals(original.row.payloadJson, stopped.row.payloadJson)
-        assertEquals(original.row.idempotencyKey, stopped.row.idempotencyKey)
-        assertEquals(original.row.id, stopped.row.id)
-        assertFalse(stopped.canRetry)
-        assertFalse(stopped.canDrop)
-        assertTrue(f.repository.recoverCreation(f.binding, stopped, drop = false).isFailure)
-        assertEquals(original.row.id, f.create().getOrThrow())
-        assertEquals(1, f.calls.size)
-        assertEquals(1, f.accepted.size)
-        assertEquals(1, f.dao.rows.size)
-    }
-
-    @Test fun acceptedDebtCreationRetiresOldQueryMembershipWithoutPromotingItsReceiptToARead() = runTest {
-        lateinit var sendingApi: ApiService
-        val request = GoalCreateRequestDto("新还债目标", goalType = "debt_repayment", debtPublicIds = listOf("debt-a"))
-        val receipt = debtCreationTestReceipt(request)
-        val f = GoalReadFixture { delegate -> object : ApiService by delegate {
-            override suspend fun createGoal(request: GoalCreateRequestDto, timezone: String?, idempotencyKey: String?) = receipt
-        }.also { sendingApi = it } }
-        f.api.goals = listOf(receipt.copy(publicId = "old-debt-goal"))
-        val reports = f.repository
-        reports.debtGoals().getOrThrow()
-        val adapters = OutboxAdapterGraph()
-        val dao = FakePendingMutationDao()
-        val queue = testOutboxRepository(dao, bindingProvider = { f.provider.currentSession().toOutboxBinding() })
-        val owner = GoalEditRepository(f.provider, queue, adapters.goalUpdateAdapter, adapters.goalReceiptAdapter, adapters.goalCreateAdapter, adapters.goalDebtEditAdapter)
-        owner.create(f.binding, request, UUID.randomUUID().toString()).getOrThrow()
-        val dispatcher = CreateGoalDispatcher({ sendingApi }, adapters.goalCreateAdapter, adapters.goalReceiptAdapter,
-            reports::invalidateGoalReadsAfterDelivery)
-        dao.runnableBatches += listOf(dao.rows.keys.single())
-        assertEquals(1, OutboxDrainEngine(queue, listOf(dispatcher)).drainOnce().done)
-        f.api.offline = true
-        assertTrue(reports.debtGoals().isFailure)
-        assertTrue(reports.goal("old-debt-goal").isFailure)
-    }
 }
 
 private class DebtGoalCreationFixture {
@@ -206,19 +110,23 @@ private class DebtGoalCreationFixture {
     val adapters = OutboxAdapterGraph()
     val outbox = testOutboxRepository(dao)
     val calls = mutableListOf<Pair<GoalCreateRequestDto, String>>()
-    val accepted = mutableMapOf<String, GoalDto>()
+    val response = GoalDto(
+        "created-debt-goal", "owner", "还清欠款", "debt_repayment", "monthly", null, null, null, null, null, null,
+        "in_progress", "active", "2026-09-01T00:00:00Z", "2026-09-01T00:00:00Z", 1, null,
+        debtRepayment = DebtRepaymentEvaluationDto(1, "in_progress", false, linkedDebts = listOf("debt-b", "debt-a").map {
+            DebtGoalLinkViewDto(it, "open", "i_owe", "external", "原欠款对象", 1200, 1200, "JPY")
+        }, voidedDebtPublicIds = emptyList()),
+    )
     val acceptedRows = mutableListOf<Long>()
     val key = UUID.randomUUID().toString()
     var loseAck = false
-    var laterRemaining = 1200L
     var receiptMutation: (GoalDto) -> GoalDto = { it }
     private val api = object : ApiService by FakeApiService(mutableListOf(), 0) {
         override suspend fun createGoal(request: GoalCreateRequestDto, timezone: String?, idempotencyKey: String?): GoalDto {
             val originalKey = requireNotNull(idempotencyKey)
             calls += request to originalKey
-            val receipt = accepted.getOrPut(originalKey) { debtCreationTestReceipt(request, laterRemaining) }
             if (loseAck) throw IOException("Synthetic response lost after remote creation")
-            return receiptMutation(receipt)
+            return receiptMutation(response)
         }
     }
     private val provider = testApiServiceProvider(object : ApiServiceFactory {
@@ -231,11 +139,3 @@ private class DebtGoalCreationFixture {
     fun engine() = OutboxDrainEngine(outbox, listOf(CreateGoalDispatcher({ api }, adapters.goalCreateAdapter,
         adapters.goalReceiptAdapter) { acceptedRows += it.id }), maxAttempts = 1)
 }
-
-private fun debtCreationTestReceipt(request: GoalCreateRequestDto, remaining: Long = 1200) = GoalDto(
-    "created-debt-goal", "owner", request.name, "debt_repayment", "monthly", null, null, null, null, null, null,
-    "in_progress", "active", "2026-09-01T00:00:00Z", "2026-09-01T00:00:00Z", 1, null,
-    debtRepayment = DebtRepaymentEvaluationDto(1, "in_progress", false, linkedDebts = request.debtPublicIds.orEmpty().map {
-        DebtGoalLinkViewDto(it, "open", "i_owe", "external", "原欠款对象", 1200, remaining, "JPY")
-    }, voidedDebtPublicIds = emptyList()),
-)

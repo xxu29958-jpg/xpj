@@ -220,7 +220,6 @@ internal class ExpenseOffsetRepositoryTest : ExpensePendingRepositoryOutboxTestB
         val receipt = expenseFactBundleDtoFixture(root = confirmedExpenseDtoFixture(
             ConfirmedExpenseFixture(amountCents = 1_200, rowVersion = 4)))
         val requests = mutableListOf<Pair<ExpenseOffsetCreateRequestDto, String>>()
-        val accepted = mutableMapOf<String, ExpenseFactBundleDto>()
         val api = object : ApiService by FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0) {
             override suspend fun createExpenseOffset(
                 id: String, request: ExpenseOffsetCreateRequestDto, idempotencyKey: String,
@@ -229,9 +228,8 @@ internal class ExpenseOffsetRepositoryTest : ExpensePendingRepositoryOutboxTestB
                 assertEquals(PendingMutationStatus.InFlight.wireValue, original.status)
                 assertEquals(idempotencyKey, original.idempotencyKey)
                 requests += request to idempotencyKey
-                val result = accepted.getOrPut(idempotencyKey) { receipt }
                 if (requests.size == 1) throw IOException("accepted, but response lost")
-                return result
+                return receipt
             }
         }
         val repository = buildRepository(api, dao, outbox)
@@ -252,7 +250,6 @@ internal class ExpenseOffsetRepositoryTest : ExpensePendingRepositoryOutboxTestB
 
         mutationDao.runnableBatches += listOf(original.id)
         assertEquals(1, engine.drainOnce().retryable)
-        assertEquals(1, accepted.size)
         assertTrue(dao.getConfirmedStreamOffsets("owner").isEmpty())
         assertEquals(0L, outbox.acceptedReplayRevision.value)
         assertEquals(original.payload, mutationDao.rows.getValue(original.id).payload)
@@ -264,7 +261,6 @@ internal class ExpenseOffsetRepositoryTest : ExpensePendingRepositoryOutboxTestB
         assertEquals(3L, requests[1].first.expectedRowVersion)
         assertEquals(300L, requests[1].first.originalAmountMinor)
         assertEquals("2026-09-03", requests[1].first.accountingDate)
-        assertEquals(1, accepted.size)
         assertEquals(1L, outbox.acceptedReplayRevision.value)
         assertEquals("refund-1", dao.getConfirmedStreamOffsets("owner").single().publicId)
         val cached = assertNotNull(dao.findByServerId("owner", 9))

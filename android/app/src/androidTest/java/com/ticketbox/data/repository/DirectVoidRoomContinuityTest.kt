@@ -78,8 +78,11 @@ class DirectVoidRoomContinuityTest {
         val original = fixture.stored().single()
         assertEquals(0, remote.calls.size)
         assertEquals(1, runBlocking { fixture.drain(maxAttempts = 1) }.failures)
-        assertEquals(1, remote.facts.size)
+
         assertEquals("原记录重复", remote.calls.single().reason)
+        assertEquals("debt-original", remote.calls.single().debtPublicId)
+        assertEquals(if (action == DebtAction.RepaymentVoid) "repayment-original" else null,
+            remote.calls.single().repaymentPublicId)
         assertEquals(2L, remote.calls.single().expectedRowVersion)
         assertEquals(if (action == DebtAction.Void) "voided" else "open", remote.current.status)
         assertEquals(if (action == DebtAction.Void) 0L else 50_000L, remote.current.remainingAmountCents)
@@ -105,7 +108,7 @@ class DirectVoidRoomContinuityTest {
         assertNotNull(fixture.stored().single()["receiptJson"])
         assertOriginalColumns(original)
         assertEquals(remote.calls.first(), remote.calls.last())
-        assertEquals(1, remote.facts.size)
+
     }
 
     private fun assertOriginalReplay(action: DebtAction) = runBlocking {
@@ -114,7 +117,7 @@ class DirectVoidRoomContinuityTest {
         submit(firstGraph.debtWriteRepository, binding, action).getOrThrow()
         val original = fixture.stored().single()
         assertEquals(1, fixture.drain(maxAttempts = 1).failures)
-        assertEquals(1, remote.facts.size)
+
         val reopenedGraph = fixture.reopen()
         val pending = reopenedGraph.debtWriteRepository.observeWrites(binding, remote.current.publicId)
             .first().single()
@@ -127,7 +130,7 @@ class DirectVoidRoomContinuityTest {
         assertEquals(remote.calls.first(), remote.calls.last())
         assertEquals("Recovery must reuse the original key rather than write another correction",
             remote.calls.first().key, remote.calls.last().key)
-        assertEquals(1, remote.facts.size)
+
         assertEquals(receipt, requireNotNull(com.ticketbox.OutboxAdapterGraph().debtVoidReceiptAdapter
             .fromJson(requireNotNull(fixture.stored().single()["receiptJson"]))))
         assertOriginalColumns(original)
@@ -153,7 +156,7 @@ class DirectVoidRoomContinuityTest {
             assertEquals(1, runBlocking { fixture.drain() }.done)
             compose.waitUntil(10_000) { consumers.balances() == List(5) { 50_000L } }
             assertEquals(remote.calls.first(), remote.calls.last())
-            assertEquals(1, remote.facts.size)
+
             assertOriginalColumns(original)
         } finally { compose.runOnIdle { consumers.close(); sync.viewModelScope.cancel() } }
     }
@@ -204,7 +207,7 @@ class DirectVoidRoomContinuityTest {
             assertEquals(1, overview.stoppedCount)
             assertEquals(DEBT_VOID_ORIGINAL_REQUIRES_REVIEW, stoppedIntent.row.lastError)
             assertOriginalColumns(original)
-            assertEquals(1, remote.facts.size)
+
             assertEquals(0, runBlocking { fixture.drain() }.attempted)
         } finally { compose.runOnIdle { sync.viewModelScope.cancel() } }
     }
@@ -239,7 +242,7 @@ class DirectVoidRoomContinuityTest {
         assertEquals(0, runBlocking { fixture.drain() }.attempted)
         assertEquals(original, fixture.stored().single())
         assertEquals(1, remote.calls.size)
-        assertEquals(1, remote.facts.size)
+
         lateinit var sync: OutboxStatusViewModel
         compose.runOnIdle { sync = globalSync() }
         try {
@@ -273,7 +276,7 @@ class DirectVoidRoomContinuityTest {
         assertEquals(0, fixture.drain().attempted)
         assertEquals(original, fixture.stored().single())
         assertEquals(1, remote.calls.size)
-        assertEquals(1, remote.facts.size)
+
     }
 
     @Test fun readonlyGlobalRecoveryKeepsOriginalAndAllowsOnlyLocalStop() = runBlocking {
@@ -297,7 +300,7 @@ class DirectVoidRoomContinuityTest {
             compose.runOnIdle { sync.dropFailed(row) }
             compose.waitUntil(10_000) { fixture.stored().single()["status"] == "abandoned" }
             assertOriginalColumns(original)
-            assertEquals(1, remote.facts.size)
+
             assertEquals(0, fixture.drain().attempted)
         } finally { compose.runOnIdle { sync.viewModelScope.cancel() } }
     }
@@ -306,6 +309,17 @@ class DirectVoidRoomContinuityTest {
         DebtAction.Void -> writes.saveVoid(binding, remote.current.toDomain(), "  原记录重复  ")
         DebtAction.RepaymentVoid -> writes.saveRepaymentVoid(binding, remote.current.toDomain(), remote.payment.publicId, "  原记录重复  ")
         else -> error("Only the two direct void owners are in scope")
+    }.also { declareAcceptedRead(action) }
+
+    private fun declareAcceptedRead(action: DebtAction) {
+        val response = if (action == DebtAction.Void) {
+            remote.current.copy(status = "voided", remainingAmountCents = 0, rowVersion = 3)
+        } else {
+            remote.current.copy(status = "open", remainingAmountCents = 50_000, paidAmountCents = 0, rowVersion = 3)
+        }
+        remote.response = response
+        remote.current = response
+        remote.syncCanonical()
     }
 
     private fun saveFromForm(action: DebtAction) {
@@ -315,6 +329,7 @@ class DirectVoidRoomContinuityTest {
         compose.onAllNodes(hasSetTextAction())[0].performTextReplacement("  原记录重复  ")
         compose.onNodeWithText(context.getString(R.string.debt_action_void_submit)).performClick()
         compose.waitUntil(10_000) { fixture.stored().size == 1 && detail.value?.state?.value?.activeAction == null }
+        declareAcceptedRead(action)
     }
 
     private fun assertOriginalColumns(original: Map<String, String?>) {
@@ -358,7 +373,7 @@ private data class OriginalVoidRoomCall(
     val expectedRowVersion: Long, val key: String,
 )
 
-/** Mirrors claim-before-OCC and immutable original result; it is not a second server owner. */
+/** Supplies declared replies and transport failures; it does not validate or commit commands. */
 private class DirectVoidRoomProbe {
     private val baseline = DebtAdjustmentConnectedNetwork()
     var current = baseline.current.copy(remainingAmountCents = 40_000, paidAmountCents = 10_000)
@@ -369,7 +384,7 @@ private class DirectVoidRoomProbe {
     init { syncCanonical() }
     fun syncCanonical() { baseline.current = current; baseline.failReads = failReads }
     val calls = mutableListOf<OriginalVoidRoomCall>()
-    val facts = mutableMapOf<String, Pair<OriginalVoidRoomCall, DebtDto>>()
+    var response: DebtDto? = null
     val service = object : ApiService by baseline.service {
         override suspend fun debt(publicId: String): DebtDto {
             check(publicId == current.publicId)
@@ -378,38 +393,20 @@ private class DirectVoidRoomProbe {
         }
 
         override suspend fun voidDebt(publicId: String, request: DebtVoidCreateRequestDto,
-            idempotencyKey: String?): DebtDto = commit(OriginalVoidRoomCall(publicId, null, request.reason,
+            idempotencyKey: String?): DebtDto = reply(OriginalVoidRoomCall(publicId, null, request.reason,
             request.expectedRowVersion, requireNotNull(idempotencyKey)))
 
         override suspend fun voidDebtRepayment(publicId: String, request: RepaymentVoidCreateRequestDto,
-            idempotencyKey: String?): DebtDto = commit(OriginalVoidRoomCall(publicId, request.repaymentPublicId,
+            idempotencyKey: String?): DebtDto = reply(OriginalVoidRoomCall(publicId, request.repaymentPublicId,
             request.reason, request.expectedRowVersion, requireNotNull(idempotencyKey)))
     }
 
-    private fun commit(call: OriginalVoidRoomCall): DebtDto {
+    private fun reply(call: OriginalVoidRoomCall): DebtDto {
         calls += call
-        check(call.debtPublicId == current.publicId)
-        facts[call.key]?.let { (original, receipt) ->
-            check(original == call)
-            return receipt
-        }
-        if (call.expectedRowVersion != current.rowVersion) {
-            throw HttpException(Response.error<DebtDto>(409,
-                """{"error":"state_conflict","message":"原记录已变化"}""".toResponseBody("application/json".toMediaType())))
-        }
-        check(call.repaymentPublicId == null || call.repaymentPublicId == payment.publicId)
-        current = if (call.repaymentPublicId == null) {
-            current.copy(status = "voided", remainingAmountCents = 0, rowVersion = current.rowVersion + 1)
-        } else {
-            current.copy(status = "open", remainingAmountCents = 50_000, paidAmountCents = 0,
-                rowVersion = current.rowVersion + 1)
-        }
-        facts[call.key] = call to current
-        syncCanonical()
         if (legacyAccepted) throw HttpException(Response.error<DebtDto>(409,
             """{"error":"debt_void_original_requires_review","message":"原作废已被接受，请核对原记录"}"""
                 .toResponseBody("application/json".toMediaType())))
         if (loseResponse) throw IOException("Synthetic response loss after the original void committed")
-        return current
+        return requireNotNull(response) { "Declare the original void receipt" }
     }
 }

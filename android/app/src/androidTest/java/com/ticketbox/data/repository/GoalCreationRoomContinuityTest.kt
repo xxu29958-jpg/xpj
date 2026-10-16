@@ -53,20 +53,18 @@ class GoalCreationRoomContinuityTest {
     private var loseAck = true
     private var navigations = 0
     private val keys = mutableListOf<String?>()
-    private val accepted = mutableMapOf<String, GoalDto>()
+    private val requests = mutableListOf<GoalCreateRequestDto>()
+    private var response = GoalDto("goal-created", "debt-adjustment-ledger", "旅行", "spending_limit", "monthly",
+        "2026-09", null, 1200, 0, 1200, 0, "not_started", "active",
+        "2026-09-01T00:00:00Z", "2026-09-01T00:00:00Z", 1, null, homeCurrencyCode = "JPY")
     private val service = object : ApiService by network.service {
         override suspend fun runtimeCompatibility() = RuntimeCompatibilityDto(CURRENT_TICKETBOX_API_VERSION, "compatible",
             RuntimeProductCapabilitiesDto(RuntimeCurrencyCapabilityDto("1:1:$currency", currency, if (currency == "JPY") 0 else 2, "compatible")))
         override suspend fun createGoal(request: GoalCreateRequestDto, timezone: String?, idempotencyKey: String?): GoalDto {
             keys += idempotencyKey
-            val receipt = accepted.getOrPut(requireNotNull(idempotencyKey)) {
-                check(request.homeCurrencyCode == "JPY" && request.targetAmountCents == 1200L)
-                GoalDto("goal-created", "debt-adjustment-ledger", request.name, request.goalType, request.period,
-                    request.month, request.category, request.targetAmountCents, 0, request.targetAmountCents, 0, "not_started", "active",
-                    "2026-09-01T00:00:00Z", "2026-09-01T00:00:00Z", 1, null, homeCurrencyCode = "JPY")
-            }
+            requests += request
             if (loseAck) throw IOException("Synthetic lost acknowledgement")
-            return receipt
+            return response
         }
     }
     private val fixture = DebtAdjustmentConnectedFixture(context, service)
@@ -109,13 +107,16 @@ class GoalCreationRoomContinuityTest {
         compose.waitUntil(10_000) { !model.state.value.isSubmitting }
         runBlocking { assertEquals(1, engine().drainOnce().done) }
         compose.waitUntil(10_000) { navigations == 1 }
-        assertEquals(1, accepted.size)
         assertEquals(listOf(original["idempotencyKey"], original["idempotencyKey"]), keys)
+        assertEquals(requests.first(), requests.last())
+        assertEquals("JPY", requests.first().homeCurrencyCode)
+        assertEquals(1200L, requests.first().targetAmountCents)
         assertEquals(original["payload"], fixture.stored().single()["payload"])
         check(!fixture.stored().single()["receiptJson"].isNullOrBlank())
     }
 
     @Test fun oldSystemDraftSnapshotFindsTheRoomAcceptedKeyWithoutReinterpretingJpyOrCreatingAgain() {
+        response = response.copy(name = "旅行原稿")
         localAcknowledgement = CompletableDeferred()
         installModel(fixture.reopen().goalEditRepository)
         compose.setContent { TicketboxTheme(skin = AppSkin.Paper) {
@@ -149,7 +150,6 @@ class GoalCreationRoomContinuityTest {
         runBlocking { assertEquals(1, engine().drainOnce().done) }
         compose.waitUntil(10_000) { navigations == 1 }
         assertEquals(listOf(originalKey), keys)
-        assertEquals(1, accepted.size)
         assertEquals(acceptedRow["payload"], fixture.stored().single()["payload"])
     }
 

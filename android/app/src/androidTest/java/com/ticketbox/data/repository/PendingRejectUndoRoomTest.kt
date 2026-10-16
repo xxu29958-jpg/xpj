@@ -42,7 +42,8 @@ class PendingRejectUndoRoomTest {
     @Volatile private lateinit var current: ExpenseDto
     @Volatile private var acceptReject = false
     private lateinit var sendingApi: ApiService
-    private val attempts = CopyOnWriteArrayList<Pair<ExpenseStateTokenRequest, String>>()
+    private val attempts = CopyOnWriteArrayList<Triple<String, ExpenseStateTokenRequest, String>>()
+    private lateinit var rejectionResponse: ExpenseDto
     private val fixture = ExpenseCorrectionConnectedFixture(context) { api ->
         object : ApiService by api {
             override suspend fun expense(id: Long): ExpenseDto {
@@ -54,13 +55,9 @@ class PendingRejectUndoRoomTest {
             override suspend fun pendingExpenses(): List<ExpenseDto> = listOf(current).filter { it.status == "pending" }
 
             override suspend fun rejectExpense(id: String, request: ExpenseStateTokenRequest, idempotencyKey: String?): ExpenseDto {
-                check(id == current.id.toString() && !idempotencyKey.isNullOrBlank())
-                attempts += request to idempotencyKey
+                attempts += Triple(id, request, requireNotNull(idempotencyKey))
                 if (!acceptReject) throw IOException("Rejection transport unavailable before acceptance")
-                check(current.status == "pending" && request.expectedRowVersion == current.rowVersion)
-                val acceptedAt = Instant.now().toString()
-                return current.copy(status = "rejected", rowVersion = current.rowVersion + 1,
-                    rejectedAt = acceptedAt, updatedAt = acceptedAt).also { current = it }
+                return rejectionResponse.also { current = it }
             }
         }.also { sendingApi = it }
     }
@@ -93,6 +90,8 @@ class PendingRejectUndoRoomTest {
         assertEquals("pending", current.status)
         assertNull("Queued rejection is not an accepted server rejection", vm.uiState.value.undoableExpense)
 
+        val acceptedAt = Instant.now().toString()
+        rejectionResponse = current.copy(status = "rejected", rowVersion = 8, rejectedAt = acceptedAt, updatedAt = acceptedAt)
         acceptReject = true
         val dispatcher = RejectExpenseDispatcher(apiProvider = { sendingApi },
             payloadAdapter = OutboxAdapterGraph().expenseStateTokenAdapter,
@@ -108,7 +107,7 @@ class PendingRejectUndoRoomTest {
         assertEquals(original.ledgerId, delivered.ledgerId)
         assertEquals(original.serverUrl, delivered.serverUrl)
         assertEquals(original.targetId, delivered.targetId)
-        assertTrue(attempts.all { it.first.expectedRowVersion == reviewed.rowVersion && it.second == original.idempotencyKey })
+        assertTrue(attempts.all { it.first == "42" && it.second.expectedRowVersion == reviewed.rowVersion && it.third == original.idempotencyKey })
         assertTrue(repository.getCachedPending().getOrThrow().isEmpty())
         assertNotNull("Accepted rejection must retain its original receipt with Done", delivered.receiptJson)
         assertEquals(current.id, expenseAcceptanceReceiptId(delivered.receiptJson))

@@ -98,12 +98,13 @@ class DebtGoalDraftNavigationRoomTest {
     private val restores = mutableListOf<com.ticketbox.data.remote.dto.RecycleBinRestoreRequestDto>()
     private val anotherDebt = originalDebt.copy(publicId = "other-debt", counterpartyLabel = "另一笔欠款")
     private var loseDateReply = false
-    private val dateRequests = mutableListOf<Pair<String?, DebtGoalTargetDateRequestDto>>()
-    private val dateReceipts = mutableMapOf<String, GoalDto>()
+    private val dateRequests = mutableListOf<Triple<String, DebtGoalTargetDateRequestDto, String?>>()
+    private var dateResponse: GoalDto? = null
+    private var editFailure: Exception? = null
     private var loseLinkReply = false
     private var denyGoalRead = false
-    private val linkRequests = mutableListOf<Pair<String?, DebtGoalLinksReplaceRequestDto>>()
-    private val linkReceipts = mutableMapOf<String, GoalDto>()
+    private val linkRequests = mutableListOf<Triple<String, DebtGoalLinksReplaceRequestDto, String?>>()
+    private var linkResponse: GoalDto? = null
     private lateinit var linksApi: ApiService
     private var existingGoal = GoalDto("debt-goal", "correction-ledger", "年底还清", "debt_repayment", "unbounded", null,
         null, null, null, null, null, "unavailable", "active", "2026-10-01T00:00:00Z", "2026-10-01T00:00:00Z", 4, null,
@@ -116,7 +117,7 @@ class DebtGoalDraftNavigationRoomTest {
                 GoalListResponseDto(if (showGoal && (includeArchived || existingGoal.status != "archived")) listOf(existingGoal) else emptyList())
             override suspend fun archiveGoal(publicId: String, timezone: String?): GoalDto {
                 archiveRequests += publicId
-                return existingGoal.copy(status = "archived", rowVersion = existingGoal.rowVersion + 1,
+                return existingGoal.copy(status = "archived", rowVersion = 5,
                     archivedAt = "2026-10-11T00:00:00Z").also { existingGoal = it }
             }
             override suspend fun recycleBin() = com.ticketbox.data.remote.dto.RecycleBinListResponseDto(
@@ -126,8 +127,7 @@ class DebtGoalDraftNavigationRoomTest {
             override suspend fun restoreRecycleBinItem(request: com.ticketbox.data.remote.dto.RecycleBinRestoreRequestDto):
                 com.ticketbox.data.remote.dto.RecycleBinRestoreResponseDto {
                 restores += request
-                check(request.resourceId == existingGoal.publicId && request.expectedRowVersion?.toLong() == existingGoal.rowVersion)
-                existingGoal = existingGoal.copy(status = "active", rowVersion = existingGoal.rowVersion + 1, archivedAt = null)
+                existingGoal = existingGoal.copy(status = "active", rowVersion = 6, archivedAt = null)
                 return com.ticketbox.data.remote.dto.RecycleBinRestoreResponseDto("还债目标已恢复。")
             }
             override suspend fun goal(publicId: String, timezone: String?): GoalDto {
@@ -138,33 +138,17 @@ class DebtGoalDraftNavigationRoomTest {
                 if (debtAvailable) if (showGoal) listOf(originalDebt, anotherDebt) else listOf(originalDebt) else emptyList(), "CNY")
             override suspend fun setGoalTargetDate(publicId: String, request: DebtGoalTargetDateRequestDto,
                 idempotencyKey: String?, timezone: String?): GoalDto {
-                dateRequests += idempotencyKey to request
-                val receipt = dateReceipts.getOrPut(requireNotNull(idempotencyKey)) {
-                    check(publicId == existingGoal.publicId)
-                    if (request.expectedRowVersion != existingGoal.rowVersion) throw HttpException(Response.error<Any>(409,
-                        """{"error":"state_conflict","message":"目标已更新"}""".toResponseBody()))
-                    existingGoal.copy(rowVersion = request.expectedRowVersion + 1,
-                        debtRepayment = existingGoal.debtRepayment?.copy(targetDate = request.targetDate)).also { existingGoal = it }
-                }
+                dateRequests += Triple(publicId, request, idempotencyKey)
+                editFailure?.let { throw it }
                 if (loseDateReply) throw IOException("Reply lost after the target date was committed")
-                return receipt
+                return requireNotNull(dateResponse)
             }
             override suspend fun replaceGoalDebtLinks(publicId: String, request: DebtGoalLinksReplaceRequestDto,
                 idempotencyKey: String?, timezone: String?): GoalDto {
-                linkRequests += idempotencyKey to request
-                val receipt = linkReceipts.getOrPut(requireNotNull(idempotencyKey)) {
-                    check(publicId == existingGoal.publicId)
-                    if (request.expectedRowVersion != existingGoal.rowVersion) throw HttpException(Response.error<Any>(409,
-                        """{"error":"state_conflict","message":"目标已更新"}""".toResponseBody()))
-                    existingGoal.copy(rowVersion = request.expectedRowVersion + 1,
-                        debtRepayment = existingGoal.debtRepayment?.copy(linkedDebts = request.debtPublicIds.map { id ->
-                            val debt = listOf(originalDebt, anotherDebt).single { it.publicId == id }
-                            DebtGoalLinkViewDto(id, debt.status, debt.direction, debt.counterpartyType, debt.counterpartyLabel,
-                                debt.principalAmountCents, debt.remainingAmountCents, debt.homeCurrencyCode)
-                        })).also { existingGoal = it }
-                }
+                linkRequests += Triple(publicId, request, idempotencyKey)
+                editFailure?.let { throw it }
                 if (loseLinkReply) throw IOException("Reply lost after the association was committed")
-                return receipt
+                return requireNotNull(linkResponse)
             }
         }.also { linksApi = it }
     }
@@ -295,6 +279,8 @@ class DebtGoalDraftNavigationRoomTest {
         assertTrue(dateRequests.isEmpty())
         val original = runBlocking { harness.fixture.stored().single() }
         assertEquals("4", original["expectedRowVersion"])
+        dateResponse = existingGoal.copy(rowVersion = 5, debtRepayment = existingGoal.debtRepayment?.copy(targetDate = null))
+        existingGoal = requireNotNull(dateResponse)
         loseDateReply = true
         assertEquals(1, runBlocking { linkEngine(PendingMutationType.SetGoalTargetDate).drainOnce().failures })
         compose.waitUntil(10_000) { owner.state.value.pending?.canRetry == true }
@@ -325,7 +311,8 @@ class DebtGoalDraftNavigationRoomTest {
         assertEquals(null, reopened.state.value.pending?.confirmed?.debtRepayment?.targetDate)
         assertEquals(1, reopened.state.value.pending?.confirmed?.debtRepayment?.goalVersion)
         assertEquals(6L, reopened.state.value.goal?.rowVersion)
-        assertEquals(listOf(original["idempotencyKey"], original["idempotencyKey"]), dateRequests.map { it.first })
+        assertEquals(listOf(original["idempotencyKey"], original["idempotencyKey"]), dateRequests.map { it.third })
+        assertEquals(listOf("debt-goal", "debt-goal"), dateRequests.map { it.first })
         assertEquals(listOf(4L, 4L), dateRequests.map { it.second.expectedRowVersion })
         assertEquals(listOf(null, null), dateRequests.map { it.second.targetDate })
         val done = runBlocking { harness.fixture.stored().single() }
@@ -367,6 +354,8 @@ class DebtGoalDraftNavigationRoomTest {
         compose.waitUntil(10_000) { restored.state.value.pending != null && !restored.state.value.isSaving }
         val rejected = runBlocking { harness.fixture.stored().single() }
         assertEquals("4", rejected["expectedRowVersion"])
+        editFailure = HttpException(Response.error<Any>(409,
+            """{"error":"state_conflict","message":"目标已更新"}""".toResponseBody()))
         runBlocking { linkEngine(PendingMutationType.SetGoalTargetDate).drainOnce() }
         compose.waitUntil(10_000) { restored.state.value.pending?.canReviewDebtEdit == true }
         capture("debt-goal-date-conflict")
@@ -377,18 +366,19 @@ class DebtGoalDraftNavigationRoomTest {
         assertTrue(restored.state.value.hasDraft && restored.state.value.targetDate == null)
         assertTrue(runBlocking { harness.fixture.stored().isEmpty() })
         assertEquals(1, dateRequests.size)
-        assertTrue(dateReceipts.isEmpty())
         capture("debt-goal-date-reviewed")
         compose.onNodeWithText(context.getString(R.string.debt_goal_date_save)).performClick()
         compose.waitUntil(10_000) { restored.state.value.pending != null && !restored.state.value.isSaving }
         val replacement = runBlocking { harness.fixture.stored().single() }
         assertEquals("5", replacement["expectedRowVersion"])
         assertNotEquals(rejected["idempotencyKey"], replacement["idempotencyKey"])
+        editFailure = null
+        dateResponse = existingGoal.copy(rowVersion = 6, debtRepayment = existingGoal.debtRepayment?.copy(targetDate = null))
+        existingGoal = requireNotNull(dateResponse)
         assertEquals(1, runBlocking { linkEngine(PendingMutationType.SetGoalTargetDate).drainOnce().done })
         compose.waitUntil(10_000) { restored.state.value.pending?.confirmed != null }
         assertEquals(6L, restored.state.value.pending?.confirmed?.rowVersion)
         assertEquals(null, restored.state.value.pending?.confirmed?.debtRepayment?.targetDate)
-        assertEquals(1, dateReceipts.size)
         capture("debt-goal-date-review-confirmed")
     }
 
@@ -436,6 +426,12 @@ class DebtGoalDraftNavigationRoomTest {
         val original = runBlocking { harness.fixture.stored().single() }
         assertEquals("4", original["expectedRowVersion"])
         capture("debt-goal-links-pending")
+        linkResponse = existingGoal.copy(rowVersion = 5, debtRepayment = existingGoal.debtRepayment?.copy(
+            linkedDebts = listOf(originalDebt, anotherDebt).map { debt ->
+                DebtGoalLinkViewDto(debt.publicId, debt.status, debt.direction, debt.counterpartyType, debt.counterpartyLabel,
+                    debt.principalAmountCents, debt.remainingAmountCents, debt.homeCurrencyCode)
+            }))
+        existingGoal = requireNotNull(linkResponse)
         loseLinkReply = true
         assertEquals(1, runBlocking { linkEngine().drainOnce().failures })
         compose.waitUntil(10_000) { owner.state.value.pending?.canRetry == true }
@@ -464,7 +460,8 @@ class DebtGoalDraftNavigationRoomTest {
         compose.waitUntil(10_000) { reopened.state.value.pending?.confirmed != null && reopened.state.value.canSave }
         assertEquals(5L, reopened.state.value.pending?.confirmed?.rowVersion)
         assertEquals(6L, reopened.state.value.goal?.rowVersion)
-        assertEquals(listOf(original["idempotencyKey"], original["idempotencyKey"]), linkRequests.map { it.first })
+        assertEquals(listOf(original["idempotencyKey"], original["idempotencyKey"]), linkRequests.map { it.third })
+        assertEquals(listOf("debt-goal", "debt-goal"), linkRequests.map { it.first })
         assertEquals(listOf(4L, 4L), linkRequests.map { it.second.expectedRowVersion })
         assertEquals(listOf(selection.keys.toList(), selection.keys.toList()), linkRequests.map { it.second.debtPublicIds })
         val done = runBlocking { harness.fixture.stored().single() }
@@ -513,6 +510,8 @@ class DebtGoalDraftNavigationRoomTest {
         compose.waitUntil(10_000) { restored.state.value.pending != null && !restored.state.value.isSaving }
         val rejected = runBlocking { harness.fixture.stored().single() }
         assertEquals("4", rejected["expectedRowVersion"])
+        editFailure = HttpException(Response.error<Any>(409,
+            """{"error":"state_conflict","message":"目标已更新"}""".toResponseBody()))
         runBlocking { linkEngine().drainOnce() }
         compose.waitUntil(10_000) { restored.state.value.pending?.row?.status == com.ticketbox.data.local.PendingMutationStatus.Conflict }
         capture("debt-goal-links-conflict")
@@ -523,18 +522,21 @@ class DebtGoalDraftNavigationRoomTest {
         assertEquals(selected, restored.state.value.selectedLabels)
         assertTrue(runBlocking { harness.fixture.stored().isEmpty() })
         assertEquals(1, linkRequests.size)
-        assertTrue(linkReceipts.isEmpty())
         capture("debt-goal-links-reviewed")
         compose.onNodeWithText(context.getString(R.string.debt_goal_links_save)).performClick()
         compose.waitUntil(10_000) { restored.state.value.pending != null && !restored.state.value.isSaving }
         val replacement = runBlocking { harness.fixture.stored().single() }
         assertEquals("5", replacement["expectedRowVersion"])
         assertNotEquals(rejected["idempotencyKey"], replacement["idempotencyKey"])
+        editFailure = null
+        linkResponse = existingGoal.copy(rowVersion = 6, debtRepayment = existingGoal.debtRepayment?.copy(linkedDebts = listOf(
+            DebtGoalLinkViewDto(anotherDebt.publicId, anotherDebt.status, anotherDebt.direction, anotherDebt.counterpartyType,
+                anotherDebt.counterpartyLabel, anotherDebt.principalAmountCents, anotherDebt.remainingAmountCents, anotherDebt.homeCurrencyCode))))
+        existingGoal = requireNotNull(linkResponse)
         assertEquals(1, runBlocking { linkEngine().drainOnce().done })
         compose.waitUntil(10_000) { restored.state.value.pending?.confirmed != null }
         assertEquals(6L, restored.state.value.pending?.confirmed?.rowVersion)
         assertEquals(selected.keys.toList(), linkRequests.last().second.debtPublicIds)
-        assertEquals(1, linkReceipts.size)
         capture("debt-goal-links-review-confirmed")
     }
 

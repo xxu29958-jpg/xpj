@@ -53,7 +53,12 @@ class DebtCreationNavigationRoomTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
     private val skin = if (InstrumentationRegistry.getArguments().getString("captureSkin") == "midnight") AppSkin.Midnight else AppSkin.Paper
     private val calls = CopyOnWriteArrayList<Pair<DebtCreateRequestDto, String?>>()
-    private val facts = linkedMapOf<String, DebtDto>()
+    private var acceptedRead = false
+    private val response = DebtAdjustmentConnectedNetwork().current.copy(
+        publicId = "created-original-debt", ledgerId = "correction-ledger", counterpartyLabel = "原往来 小王",
+        direction = "i_owe", principalAmountCents = 12_345_678_901L, remainingAmountCents = 12_345_678_901L,
+        paidAmountCents = 0, debtKind = "unspecified", note = null, installmentCount = null, installmentPeriodMonths = null,
+        accountingTime = ExpenseAccountingTimeDto("date_only", userLocalDate = "2026-01-31", calendarRevision = 3))
     private var loseReply = true
     private lateinit var api: ApiService
     private val harness = FactEntryNavigationHarness(context) { delegate ->
@@ -61,24 +66,15 @@ class DebtCreationNavigationRoomTest {
             override suspend fun runtimeCompatibility() = delegate.runtimeCompatibility().let {
                 it.copy(capabilities = it.capabilities.copy(accountingTimeInputVersion = 1))
             }
-            override suspend fun debts(lens: String?) = DebtListResponseDto(facts.values.toList(), "CNY")
+            override suspend fun debts(lens: String?) = DebtListResponseDto(if (acceptedRead) listOf(response) else emptyList(), "CNY")
             override suspend fun debtReceivables() = DebtListResponseDto(emptyList(), "CNY")
-            override suspend fun debt(publicId: String) = facts.values.single { it.publicId == publicId }
+            override suspend fun debt(publicId: String) = response
             override suspend fun ledgerCalendar(ledgerId: String, revision: Long?) =
                 LedgerCalendarDto(ledgerId, 3L, "Asia/Shanghai", "adopted", "2026-01-01T00:00:00Z")
             override suspend fun createDebt(request: DebtCreateRequestDto, idempotencyKey: String?): DebtDto {
                 calls += request to idempotencyKey
-                val receipt = facts.getOrPut(requireNotNull(idempotencyKey)) {
-                    DebtAdjustmentConnectedNetwork().current.copy(publicId = "created-original-debt", ledgerId = "correction-ledger",
-                        counterpartyLabel = request.counterpartyLabel, direction = request.direction,
-                        principalAmountCents = request.principalAmountCents, remainingAmountCents = request.principalAmountCents,
-                        paidAmountCents = 0, debtKind = request.debtKind, note = request.note,
-                        installmentCount = request.installmentCount, installmentPeriodMonths = request.installmentPeriodMonths,
-                        accountingTime = request.timeInput?.let { ExpenseAccountingTimeDto(it.precision,
-                            userLocalDate = it.userLocalDate, calendarRevision = it.calendarRevision) })
-                }
                 if (loseReply) throw IOException("Synthetic lost first receipt")
-                return receipt
+                return response
             }
         }.also { api = it }
     }
@@ -117,6 +113,7 @@ class DebtCreationNavigationRoomTest {
         waitFor(text(R.string.debt_create_local_saved))
         val original = harness.fixture.stored().single()
         assertTrue(calls.isEmpty())
+        acceptedRead = true
         runBlocking { assertEquals(1, drain().retryable) }
         loseReply = false
         runBlocking {
@@ -125,6 +122,9 @@ class DebtCreationNavigationRoomTest {
         assertEquals(2, calls.size)
         assertEquals(calls.first(), calls.last())
         assertEquals(original["idempotencyKey"], calls.last().second)
+        assertEquals("原往来 小王", calls.last().first.counterpartyLabel)
+        assertEquals("i_owe", calls.last().first.direction)
+        assertEquals("unspecified", calls.last().first.debtKind)
         assertEquals(12_345_678_901L, calls.last().first.principalAmountCents)
         assertEquals("2026-01-31", calls.last().first.timeInput?.userLocalDate)
         waitFor(context.getString(R.string.debt_list_total_payable, "CNY"))
@@ -138,7 +138,6 @@ class DebtCreationNavigationRoomTest {
         waitFor("我欠原往来 小王")
         compose.onNodeWithText(text(R.string.debt_list_add)).assertIsDisplayed()
         capture("relations-root-populated")
-        assertEquals(1, facts.size)
         assertEquals(1, harness.fixture.stored().size)
     }
 
