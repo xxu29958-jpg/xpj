@@ -19,9 +19,10 @@ from sqlalchemy import select
 
 from app.config import get_settings
 from app.database import SessionLocal
-from app.models import Expense, LedgerMember
+from app.models import Expense
 from app.routes import web_common
 from app.services.time_service import current_month, now_utc
+from tests.family_ledger_test_support import set_owner_ledger_role
 
 WEB_CARD_KEYS = [
     "monthly_spend",
@@ -57,14 +58,6 @@ def _seed_goal(client: TestClient, *, identity) -> None:
         json={"home_currency_code": "CNY", "name": "餐饮月度上限", "month": month, "target_amount_cents": 80000},
     )
     assert resp.status_code == 201, resp.text
-
-
-def _demote_owner_ledger_to_viewer() -> None:
-    with SessionLocal() as db:
-        member = db.scalar(select(LedgerMember).where(LedgerMember.ledger_id == "owner").limit(1))
-        assert member is not None
-        member.role = "viewer"
-        db.commit()
 
 
 def test_overview_renders_amount_and_visible_modules(web_client: TestClient, *, identity) -> None:
@@ -124,7 +117,7 @@ def test_overview_selected_ledger_isolated(web_client: TestClient, *, identity) 
 
 def test_overview_viewer_read_only(web_client: TestClient, *, identity) -> None:
     _seed_confirmed_expense(web_client, identity=identity, amount_cents=8800, merchant="海底捞", category="餐饮")
-    _demote_owner_ledger_to_viewer()
+    set_owner_ledger_role("viewer")
 
     resp = web_client.get("/web/overview?ledger_id=owner")
     assert resp.status_code == 200
@@ -220,7 +213,7 @@ def _save_card_layout(
 def test_overview_viewer_all_cards_hidden_gets_readonly_guidance(web_client: TestClient) -> None:
     """PR #253 R8: viewer 的全隐藏空态不引向模块设置 (保存 403), 改只读引导。"""
     _save_card_layout(web_client, ordered_keys=list(WEB_CARD_KEYS), hidden=set(WEB_CARD_KEYS))
-    _demote_owner_ledger_to_viewer()
+    set_owner_ledger_role("viewer")
 
     resp = web_client.get("/web/overview?ledger_id=owner")
     assert resp.status_code == 200
@@ -257,7 +250,7 @@ def test_overview_omits_hidden_modules_without_reordering_the_rest(web_client: T
 
 def test_overview_viewer_empty_ledger_gets_readonly_onboarding(web_client: TestClient) -> None:
     """PR #253 P2-5: viewer 的空账本引导不引向写入口。"""
-    _demote_owner_ledger_to_viewer()
+    set_owner_ledger_role("viewer")
 
     resp = web_client.get("/web/overview?ledger_id=owner")
     assert resp.status_code == 200
@@ -387,7 +380,7 @@ def test_overview_pending_card_link_is_readonly_for_viewer(
     owner_page = web_client.get("/web/overview?ledger_id=owner")
     assert "继续整理" in owner_page.text
 
-    _demote_owner_ledger_to_viewer()
+    set_owner_ledger_role("viewer")
     resp = web_client.get("/web/overview?ledger_id=owner")
     assert resp.status_code == 200
     card = re.search(r'data-overview-card="pending">.*?</article>', resp.text, re.S)

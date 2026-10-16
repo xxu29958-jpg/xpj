@@ -29,9 +29,15 @@ internal class MemberSettlementConnectedNetwork {
     )
     val confirms = mutableListOf<Pair<MemberRepaymentProposalConfirmRequestDto, String>>()
     val proposes = mutableListOf<Pair<MemberRepaymentProposalCreateRequestDto, String>>()
-    val acceptedProposals = mutableMapOf<String, MemberRepaymentProposalDto>()
+    val forgives = mutableListOf<Pair<DebtForgiveCreateRequestDto, String>>()
+    private val proposedReply = proposal.copy(paidAt = null,
+        accountingTime = ExpenseAccountingTimeDto("date_only", userLocalDate = "2026-04-30",
+            accountingDate = "2026-04-30", sourceTimezone = "Asia/Shanghai", calendarRevision = 3))
+    private val confirmedReply = current.copy(remainingAmountCents = 750, paidAmountCents = 450, rowVersion = 2)
+    private val confirmedProposal = proposal.copy(status = "partially_confirmed", confirmedAmountCents = 450,
+        committedRepaymentPublicId = "payment-original", resolvedAt = current.createdAt)
+    private val forgivenReply = confirmedReply.copy(remainingAmountCents = 0, status = "cleared", isForgiven = true, rowVersion = 3)
     var hasProposal = true
-    val accepted = mutableMapOf<String, DebtDto>()
     var failReads = false
     var failProposalReads = false
     var loseFirstResponse = true
@@ -54,16 +60,10 @@ internal class MemberSettlementConnectedNetwork {
             check(publicId == current.publicId)
             val key = requireNotNull(idempotencyKey)
             proposes += request to key
-            val result = acceptedProposals.getOrPut(key) {
-                val time = requireNotNull(request.timeInput)
-                check(time.precision == "date_only" && time.instantUtc == null)
-                proposal.copy(proposedAmountCents = request.proposedAmountCents, note = request.note, paidAt = null,
-                    accountingTime = ExpenseAccountingTimeDto(time.precision, userLocalDate = time.userLocalDate,
-                        accountingDate = time.accountingDate, sourceTimezone = time.sourceTimezone, calendarRevision = time.calendarRevision))
-                    .also { proposal = it; hasProposal = true }
-            }
+            proposal = proposedReply
+            hasProposal = true
             if (loseFirstResponse) { loseFirstResponse = false; failReads = true; throw IOException("Synthetic lost acknowledgement") }
-            return result
+            return proposedReply
         }
 
         override suspend fun confirmRepaymentProposal(publicId: String, proposalPublicId: String,
@@ -71,16 +71,12 @@ internal class MemberSettlementConnectedNetwork {
             check(publicId == current.publicId && proposalPublicId == proposal.publicId)
             val key = requireNotNull(idempotencyKey)
             confirms += request to key
-            val result = accepted.getOrPut(key) {
-                check(request.expectedRowVersion == 1L && request.confirmedAmountCents == 450L)
-                payment = RepaymentFactDto("payment-original", 450, current.createdAt, current.createdAt, "active")
-                proposal = proposal.copy(status = "partially_confirmed", confirmedAmountCents = 450,
-                    committedRepaymentPublicId = "payment-original", resolvedAt = current.createdAt)
-                current.copy(remainingAmountCents = 750, paidAmountCents = 450, rowVersion = 2).also { current = it }
-            }
+            payment = RepaymentFactDto("payment-original", 450, confirmedReply.createdAt, confirmedReply.createdAt, "active")
+            proposal = confirmedProposal
+            current = confirmedReply
             failReads = true
             if (loseFirstResponse) { loseFirstResponse = false; throw IOException("Synthetic lost acknowledgement") }
-            return result
+            return confirmedReply
         }
 
         override suspend fun debtActivity(publicId: String, page: Int, focusRepayment: String?): com.ticketbox.data.remote.dto.DebtActivityListDto {
@@ -101,11 +97,10 @@ internal class MemberSettlementConnectedNetwork {
 
         override suspend fun forgiveDebt(publicId: String, request: DebtForgiveCreateRequestDto,
             idempotencyKey: String?): DebtDto {
-            check(publicId == current.publicId && request.expectedRowVersion == 2L)
-            return accepted.getOrPut(requireNotNull(idempotencyKey)) {
-                current.copy(remainingAmountCents = 0, paidAmountCents = 450, status = "cleared", isForgiven = true,
-                    rowVersion = 3).also { current = it }
-            }
+            check(publicId == current.publicId)
+            forgives += request to requireNotNull(idempotencyKey)
+            current = forgivenReply
+            return forgivenReply
         }
     }
 }

@@ -28,9 +28,9 @@ from tests.debt_repayment_goal_helpers import (
     _goal_latch_state,
     _links_count_for_version,
     _replace_links,
-    _set_owner_ledger_role,
     _void_debt,
 )
+from tests.family_ledger_test_support import set_owner_ledger_role
 
 
 def test_create_debt_goal_with_open_debts_is_in_progress(client: TestClient, *, identity) -> None:
@@ -362,7 +362,7 @@ def test_viewer_read_computes_achieved_without_latching(client: TestClient, *, i
     _clear_debt(client, identity.app_headers, a)
     assert _goal_latch_state(goal["public_id"]) == (None, None)  # not latched yet
 
-    _set_owner_ledger_role("viewer")
+    set_owner_ledger_role("viewer")
     viewer_read = client.get(f"/api/goals/{goal['public_id']}", headers=identity.app_headers)
     assert viewer_read.status_code == 200, viewer_read.json()
     block = viewer_read.json()["debt_repayment"]

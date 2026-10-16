@@ -11,43 +11,14 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import Expense
-
-
-def _seed_pending_with_merchant(merchant: str) -> int:
-    """Upload a PNG (pending), then patch its merchant to control matching."""
-    # Use a TestClient implicitly via the fixture in the test that calls this helper.
-    raise RuntimeError("call _patch_pending_merchant from a test using `client`")
-
-
-def _set_pending_merchant(client: TestClient, expense_id: int, merchant: str, *, identity) -> None:
-    response = patch_expense(
-        client,
-        expense_id,
-        headers=identity.app_headers,
-        fields={"merchant": merchant, "amount_cents": 3800},
-    )
-    assert response.status_code == 200
-
-
-def _apply_pending_rules(client: TestClient, *, identity, max_scan: int = 500):
-    preview = client.post(
-        f"/api/rules/apply-pending/preview?max_scan={max_scan}",
-        headers=identity.app_headers,
-    )
-    assert preview.status_code == 200, preview.json()
-    token = preview.json()["preview_token"]
-    return client.post(
-        f"/api/rules/apply-pending?max_scan={max_scan}",
-        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
-        json={"confirm": True, "preview_token": token},
-    )
+from tests.rule_application_test_support import apply_pending_rules, set_pending_merchant
 
 
 def test_rule_apply_pending_preview_does_not_modify_and_reports_scope(
     client: TestClient, *, identity,
 ) -> None:
     default_id = upload_png(client, identity=identity)
-    _set_pending_merchant(client, default_id, "Starbucks 上海", identity=identity)
+    set_pending_merchant(client, default_id, "Starbucks 上海", identity=identity)
     custom_id = upload_png(client, identity=identity)
     custom = patch_expense(
         client,
@@ -102,7 +73,7 @@ def test_rule_apply_pending_updates_category(client: TestClient, *, identity) ->
         assert expense is not None
         expense.ocr_draft_fields = json.dumps(["category", "merchant"])
         db.commit()
-    _set_pending_merchant(client, pending_id, "Starbucks 上海", identity=identity)
+    set_pending_merchant(client, pending_id, "Starbucks 上海", identity=identity)
 
     # Seed a rule for Starbucks → 餐饮 with high priority.
     response = client.post(
@@ -112,7 +83,7 @@ def test_rule_apply_pending_updates_category(client: TestClient, *, identity) ->
     )
     assert response.status_code == 200
 
-    response = _apply_pending_rules(client, identity=identity)
+    response = apply_pending_rules(client, identity=identity)
     assert response.status_code == 200
     body = response.json()
     assert body["pending_scanned"] >= 1
@@ -133,7 +104,7 @@ def test_rule_apply_pending_updates_category(client: TestClient, *, identity) ->
 
 def test_rule_apply_pending_requires_fresh_preview_token(client: TestClient, *, identity) -> None:
     pending_id = upload_png(client, identity=identity)
-    _set_pending_merchant(client, pending_id, "PendingPreviewCafe", identity=identity)
+    set_pending_merchant(client, pending_id, "PendingPreviewCafe", identity=identity)
     created = client.post(
         "/api/rules/categories",
         headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
@@ -190,7 +161,7 @@ def test_rule_apply_pending_does_not_touch_confirmed(client: TestClient, *, iden
         json={"keyword": "Starbucks", "category": "餐饮", "enabled": True, "priority": 1},
     )
 
-    response = _apply_pending_rules(client, identity=identity)
+    response = apply_pending_rules(client, identity=identity)
     assert response.status_code == 200
 
     with SessionLocal() as db:
@@ -203,14 +174,14 @@ def test_rule_apply_pending_does_not_touch_confirmed(client: TestClient, *, iden
 
 def test_rule_apply_pending_does_not_auto_confirm(client: TestClient, *, identity) -> None:
     pending_id = upload_png(client, identity=identity)
-    _set_pending_merchant(client, pending_id, "Kimi 订阅", identity=identity)
+    set_pending_merchant(client, pending_id, "Kimi 订阅", identity=identity)
     client.post(
         "/api/rules/categories",
         headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"keyword": "Kimi", "category": "AI订阅", "enabled": True, "priority": 1},
     )
 
-    response = _apply_pending_rules(client, identity=identity)
+    response = apply_pending_rules(client, identity=identity)
     assert response.status_code == 200
 
     with SessionLocal() as db:
@@ -235,7 +206,7 @@ def test_rule_apply_pending_skips_non_default_category(client: TestClient, *, id
         json={"keyword": "Starbucks", "category": "餐饮", "enabled": True, "priority": 1},
     )
 
-    response = _apply_pending_rules(client, identity=identity)
+    response = apply_pending_rules(client, identity=identity)
     assert response.status_code == 200
 
     with SessionLocal() as db:

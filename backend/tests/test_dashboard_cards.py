@@ -1,18 +1,8 @@
 from __future__ import annotations
 
 from fastapi.testclient import TestClient
-from sqlalchemy import select
 
-from app.database import SessionLocal
-from app.models import LedgerMember
-
-
-def _set_owner_ledger_role(role: str) -> None:
-    with SessionLocal() as db:
-        member = db.scalar(select(LedgerMember).where(LedgerMember.ledger_id == "owner").limit(1))
-        assert member is not None
-        member.role = role
-        db.commit()
+from tests.family_ledger_test_support import set_owner_ledger_role
 
 
 def test_dashboard_cards_defaults_update_and_ledger_scope(client: TestClient, *, identity) -> None:
@@ -134,7 +124,7 @@ def test_dashboard_cards_validation_and_viewer_write_guard(client: TestClient, *
     assert duplicate_position.status_code == 422
     assert duplicate_position.json()["error"] == "invalid_request"
 
-    _set_owner_ledger_role("viewer")
+    set_owner_ledger_role("viewer")
     viewer_read = client.get(
         "/api/dashboard/cards?surface=web",
         headers=identity.app_headers,

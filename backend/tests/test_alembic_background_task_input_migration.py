@@ -1,15 +1,13 @@
 """Real PostgreSQL edge: preserve old tasks and refuse erasing original execution input."""
 
-from pathlib import Path
 from uuid import uuid4
 
 import pytest
 from alembic import command
-from alembic.config import Config
 from sqlalchemy import inspect, text
 
 from app.database import engine
-from tests._infra.alembic_runtime import reset_public_schema, run_alembic_for_test
+from tests._infra.alembic_runtime import alembic_config_for_test, reset_public_schema, run_alembic_for_test
 
 pytestmark = pytest.mark.real_db
 _PARENT = "20260906_0002"
@@ -17,10 +15,7 @@ _HEAD = "20260907_0001"
 
 
 def _run(action, revision):
-    root = Path(__file__).resolve().parents[1]
-    config = Config(str(root / "alembic.ini"))
-    config.set_main_option("script_location", str(root / "migrations"))
-    run_alembic_for_test(engine, config, action, revision)
+    run_alembic_for_test(engine, alembic_config_for_test(), action, revision)
 
 
 def test_task_input_migration_preserves_old_tasks_and_refuses_erasure():

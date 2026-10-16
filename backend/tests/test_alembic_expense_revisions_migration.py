@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -11,7 +10,7 @@ from sqlalchemy import inspect, text
 
 from app.database import SessionLocal, engine
 from app.services.currency_binding_service import resolve_write_capability
-from tests._infra.alembic_runtime import reset_public_schema, run_alembic_for_test
+from tests._infra.alembic_runtime import alembic_config_for_test, reset_public_schema, run_alembic_for_test
 from tests._infra.currency import activate_test_currency_authority
 
 pytestmark = pytest.mark.real_db
@@ -24,17 +23,8 @@ _CHECK = "ck_expenses_fact_revision_nonnegative"
 _DEVICE_SNAPSHOT_CHECK = "ck_expense_revisions_actor_device_snapshot_pair"
 
 
-def _cfg():
-    from alembic.config import Config
-
-    backend_root = Path(__file__).resolve().parents[1]
-    cfg = Config(str(backend_root / "alembic.ini"))
-    cfg.set_main_option("script_location", str(backend_root / "migrations"))
-    return cfg
-
-
 def _run(action, *args) -> None:
-    run_alembic_for_test(engine, _cfg(), action, *args)
+    run_alembic_for_test(engine, alembic_config_for_test(), action, *args)
 
 
 def _drop_alembic_version() -> None:

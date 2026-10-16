@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from api_contract_helpers import insert_confirmed_expense, patch_expense
+from api_contract_helpers import insert_confirmed_expense
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -17,36 +17,6 @@ from app.models import (
     RuleApplicationBatch,
     RuleApplicationChange,
 )
-
-
-def _seed_pending_with_merchant(merchant: str) -> int:
-    """Upload a PNG (pending), then patch its merchant to control matching."""
-    # Use a TestClient implicitly via the fixture in the test that calls this helper.
-    raise RuntimeError("call _patch_pending_merchant from a test using `client`")
-
-
-def _set_pending_merchant(client: TestClient, expense_id: int, merchant: str, *, identity) -> None:
-    response = patch_expense(
-        client,
-        expense_id,
-        headers=identity.app_headers,
-        fields={"merchant": merchant, "amount_cents": 3800},
-    )
-    assert response.status_code == 200
-
-
-def _apply_pending_rules(client: TestClient, *, identity, max_scan: int = 500):
-    preview = client.post(
-        f"/api/rules/apply-pending/preview?max_scan={max_scan}",
-        headers=identity.app_headers,
-    )
-    assert preview.status_code == 200, preview.json()
-    token = preview.json()["preview_token"]
-    return client.post(
-        f"/api/rules/apply-pending?max_scan={max_scan}",
-        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
-        json={"confirm": True, "preview_token": token},
-    )
 
 
 def _seed_confirmed_apply_candidates() -> tuple[int, int]:

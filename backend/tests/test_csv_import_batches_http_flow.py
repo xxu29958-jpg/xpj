@@ -4,25 +4,15 @@ from io import BytesIO
 
 from api_contract_helpers import confirm_expense_api
 from fastapi.testclient import TestClient
-from sqlalchemy import select
 
-from app.database import SessionLocal
-from app.models import LedgerMember
 from tests._confirmed_stream_test_support import confirmed_expense_roots
+from tests.family_ledger_test_support import set_owner_ledger_role
 
 
 def _csv_bytes(row_count: int) -> BytesIO:
     lines = ["amount_yuan,merchant,category,note"]
     lines.extend(f"{index}.00,Merchant {index},餐饮,note {index}" for index in range(1, row_count + 1))
     return BytesIO(("\n".join(lines) + "\n").encode("utf-8"))
-
-
-def _demote_owner_ledger_to_viewer() -> None:
-    with SessionLocal() as db:
-        member = db.scalar(select(LedgerMember).where(LedgerMember.ledger_id == "owner").limit(1))
-        assert member is not None
-        member.role = "viewer"
-        db.commit()
 
 
 def _create_rich_csv_import_batch(client: TestClient, *, identity) -> dict:
@@ -200,7 +190,7 @@ def test_csv_import_viewer_can_read_batch_but_cannot_create_or_apply(client: Tes
     assert created.status_code == 201, created.json()
     public_id = created.json()["public_id"]
 
-    _demote_owner_ledger_to_viewer()
+    set_owner_ledger_role("viewer")
     read = client.get(f"/api/imports/csv/{public_id}", headers=identity.app_headers)
     assert read.status_code == 200, read.json()
 

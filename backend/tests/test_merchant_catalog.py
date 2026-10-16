@@ -17,15 +17,13 @@ from tests._infra.merchant_catalog import (
 )
 from tests._infra.merchant_catalog import create_catalog as _create_catalog
 from tests._infra.merchant_catalog import (
-    demote_owner_ledger_to_viewer as _demote_owner_ledger_to_viewer,
-)
-from tests._infra.merchant_catalog import (
     disable_alias_and_seed_recurring as _disable_alias_and_seed_recurring,
 )
 from tests._infra.merchant_catalog import (
     seed_enabled_alias_target as _seed_enabled_alias_target,
 )
 from tests._infra.merchant_catalog import seed_historical_expense as _seed_historical_expense
+from tests.family_ledger_test_support import set_owner_ledger_role
 
 
 def test_merchant_catalog_crud_soft_delete_and_recycle_restore(
@@ -138,7 +136,7 @@ def test_viewer_cannot_mutate_merchant_catalog(
 ) -> None:
     created = _create_catalog(client, identity.app_headers)
     target = _create_catalog(client, identity.app_headers, display_name="Target")
-    _demote_owner_ledger_to_viewer()
+    set_owner_ledger_role("viewer")
 
     checks = [
         client.post(

@@ -7,6 +7,7 @@ from sqlalchemy import select
 from app.database import SessionLocal
 from app.models import ApiIdempotencyKey
 from app.services.merchant_catalog_service import restore_merchant_catalog
+from tests.family_ledger_test_support import set_owner_ledger_role
 
 
 def _create(client, identity, name):
@@ -143,8 +144,6 @@ def test_catalog_receipt_must_match_original_pair_and_versions(client, identity,
 
 @pytest.mark.parametrize("action", ["rename", "delete", "merge"])
 def test_catalog_receipt_cannot_cross_ledger_or_bypass_revoked_write_permission(client, identity, action):
-    from tests._infra.merchant_catalog import demote_owner_ledger_to_viewer
-
     method, path, body = _operation(client, identity, action)
     key = str(uuid4())
     headers = {**identity.app_headers, "Idempotency-Key": key}
@@ -152,5 +151,5 @@ def test_catalog_receipt_cannot_cross_ledger_or_bypass_revoked_write_permission(
     assert accepted.status_code == 200, accepted.text
     other = client.request(method, path, headers={**identity.gray_app_headers, "Idempotency-Key": key}, json=body)
     assert other.status_code == 404, other.text
-    demote_owner_ledger_to_viewer()
+    set_owner_ledger_role("viewer")
     assert client.request(method, path, headers=headers, json=body).status_code == 403

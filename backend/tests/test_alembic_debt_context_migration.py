@@ -1,18 +1,16 @@
 """Real PostgreSQL edge: retain old obligations and refuse context-erasing downgrade."""
 
-from pathlib import Path
 from uuid import uuid4
 
 import pytest
 from alembic import command
-from alembic.config import Config
 from sqlalchemy import inspect, text
 
 from app.database import SessionLocal, engine
 from app.models import Account
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.time_service import now_utc
-from tests._infra.alembic_runtime import reset_public_schema, run_alembic_for_test
+from tests._infra.alembic_runtime import alembic_config_for_test, reset_public_schema, run_alembic_for_test
 from tests._infra.currency import activate_test_currency_authority
 
 pytestmark = pytest.mark.real_db
@@ -22,10 +20,7 @@ _HEAD = "20260905_0001"
 
 
 def _run(action, revision: str) -> None:
-    root = Path(__file__).resolve().parents[1]
-    config = Config(str(root / "alembic.ini"))
-    config.set_main_option("script_location", str(root / "migrations"))
-    run_alembic_for_test(engine, config, action, revision)
+    run_alembic_for_test(engine, alembic_config_for_test(), action, revision)
 
 
 def _seed_old_debt() -> int:

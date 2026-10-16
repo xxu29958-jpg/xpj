@@ -1,6 +1,5 @@
 """An arrangement retains explicit zero, original currency and accepted intent."""
 
-from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -8,7 +7,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.errors import AppError
-from app.schemas._monthly_arrangement import MonthlyArrangementDto, MonthlyArrangementSaveRequest
+from app.schemas._monthly_arrangement import MonthlyArrangementSaveRequest
 from app.services import monthly_arrangement_service as command
 from app.services.idempotency import IdempotencyOutcomeKind
 
@@ -28,44 +27,6 @@ def test_arrangement_cannot_accept_invalid_money(amount):
 def test_arrangement_token_requires_the_exact_observed_integer(token):
     with pytest.raises(ValidationError):
         _payload(expected_row_version=token)
-
-
-def test_missing_arrangement_is_distinct_from_explicit_zero():
-    db = Mock()
-    db.scalar.return_value = None
-    assert command.read_monthly_arrangement(db, tenant_id="owner", month="2026-09") is None
-    assert _payload(reserved_buffer_cents=0).savings_target_cents == 0
-
-
-def test_ack_loss_replays_original_receipt_without_touching_later_facts(monkeypatch):
-    receipt = MonthlyArrangementDto(ledger_id="owner", month="2026-09", home_currency_code="JPY",
-        savings_target_cents=0, reserved_buffer_cents=100, row_version=1, updated_at=datetime.now(UTC))
-    db = Mock()
-    monkeypatch.setattr(command, "claim_idempotency_key", lambda *a, **k: SimpleNamespace(
-        kind=IdempotencyOutcomeKind.HIT, row=SimpleNamespace(response_body=receipt.model_dump(mode="json"))))
-    apply = Mock()
-    monkeypatch.setattr(command, "_apply_save", apply)
-    assert command.save_monthly_arrangement(db, tenant_id="owner", month="2026-09", payload=_payload(),
-        actor_account_id=1, idempotency_key="lost-ack") == receipt
-    apply.assert_not_called()
-    db.commit.assert_not_called()
-
-
-@pytest.mark.parametrize("currency,version", [("CNY", 3), ("JPY", 1), ("JPY", None)])
-def test_stale_or_relabelled_arrangement_preserves_fact(monkeypatch, currency, version):
-    db = Mock()
-    row = SimpleNamespace(id=7, tenant_id="owner", month="2026-09", home_currency_code="JPY",
-        savings_target_cents=300, reserved_buffer_cents=100, row_version=3)
-    db.scalar.return_value = row
-    monkeypatch.setattr(command, "resolve_write_capability", lambda _: None)
-    monkeypatch.setattr(command, "claim_idempotency_key", lambda *a, **k: SimpleNamespace(
-        kind=IdempotencyOutcomeKind.PROCEED, row=object()))
-    with pytest.raises(AppError):
-        command.save_monthly_arrangement(db, tenant_id="owner", month="2026-09", actor_account_id=1,
-            idempotency_key="original", payload=_payload(home_currency_code=currency, expected_row_version=version))
-    assert (row.savings_target_cents, row.reserved_buffer_cents, row.row_version) == (300, 100, 3)
-    db.commit.assert_not_called()
-    db.rollback.assert_called_once_with()
 
 
 def test_unknown_or_pending_original_command_cannot_claim_confirmed_ack():

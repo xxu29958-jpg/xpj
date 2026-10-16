@@ -10,21 +10,14 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.models import Budget, LedgerMember
+from app.models import Budget
 from app.routes.web_budgets import _budget_view, _category_form_rows
 from app.schemas import BudgetCategoryResponse, BudgetMonthlyResponse
 from tests._local_web_identity_support import _connect_local_session, installed_web_setup
 from tests._web_budget_test_support import _save_budget
 from tests._web_budget_test_support import web_client as web_client
 from tests._web_native_form_support import hidden_post_forms
-
-
-def _demote_owner_ledger_to_viewer() -> None:
-    with SessionLocal() as db:
-        member = db.scalar(select(LedgerMember).where(LedgerMember.ledger_id == "owner").limit(1))
-        assert member is not None
-        member.role = "viewer"
-        db.commit()
+from tests.family_ledger_test_support import set_owner_ledger_role
 
 
 def _owner_budget_total() -> int | None:
@@ -254,7 +247,7 @@ def test_first_budget_total_only_save_and_optional_error_remain_operable(web_cli
 
 def test_web_budgets_viewer_read_only_and_post_denied(web_client: TestClient) -> None:
     _save_budget(web_client)
-    _demote_owner_ledger_to_viewer()
+    set_owner_ledger_role("viewer")
 
     page = web_client.get("/web/budgets?ledger_id=owner&month=2026-05")
     assert page.status_code == 200

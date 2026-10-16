@@ -24,9 +24,9 @@ from tests.debt_repayment_goal_helpers import (
     _create_debt_goal,
     _create_external_debt,
     _repay_debt,
-    _set_owner_ledger_role,
     _set_target_date,
 )
+from tests.family_ledger_test_support import set_owner_ledger_role
 
 # ── pure three-state math (payoff_three_state) ──────────────────────────────────────────
 
@@ -212,7 +212,7 @@ def test_set_target_date_viewer_forbidden(client: TestClient, *, identity) -> No
     goal = _create_debt_goal(
         client, identity.app_headers, name="信用卡", debt_public_ids=[debt["public_id"]]
     ).json()
-    _set_owner_ledger_role("viewer")
+    set_owner_ledger_role("viewer")
     response = _set_target_date(
         client, identity.app_headers, goal["public_id"], expected_row_version=goal["row_version"], target_date="2028-03-01"
     )

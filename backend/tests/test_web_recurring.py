@@ -12,7 +12,6 @@ from uuid import uuid4
 import pytest
 from _web_recurring_test_support import (
     create_via_web,
-    demote_owner_ledger_to_viewer,
     edit_via_web,
     first_recurring_public_id,
     hero_block,
@@ -25,6 +24,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.routes.web_app import _require_local as _web_require_local
+from tests.family_ledger_test_support import set_owner_ledger_role
 
 
 @pytest.fixture()
@@ -294,7 +294,7 @@ def test_web_recurring_candidate_insight_failure_degrades(
 
 def test_web_recurring_viewer_read_only(web_client: TestClient) -> None:
     seed_candidate()
-    demote_owner_ledger_to_viewer()
+    set_owner_ledger_role("viewer")
 
     page = web_client.get("/web/recurring?ledger_id=owner&view=suggestions")
     assert page.status_code == 200

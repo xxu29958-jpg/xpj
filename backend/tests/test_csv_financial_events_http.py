@@ -27,7 +27,7 @@ from app.models import (
 )
 from app.services.csv_import_batch_service import _events as csv_events
 from tests.expense_correction_support import idem, manual_confirmed
-from tests.test_csv_import_batches_http_flow import _demote_owner_ledger_to_viewer
+from tests.family_ledger_test_support import set_owner_ledger_role
 from tests.test_expense_offset_lifecycle import _create_refund, _foreign_expense, _seed_usd_rate
 
 
@@ -181,7 +181,7 @@ def test_export_reuploaded_to_original_ledger_matches_facts_and_viewer_cannot_re
     hidden = client.get(f"/api/imports/csv/{batches[0]}", headers=identity.gray_app_headers)
     assert hidden.status_code == 404, hidden.text
 
-    _demote_owner_ledger_to_viewer()
+    set_owner_ledger_role("viewer")
     assert _rows(client, identity.app_headers, batches[0])["total"] == 2
     denied = client.post(
         f"/api/imports/csv/{batches[0]}/rows/{offset_row['line_number']}/review",
