@@ -15,7 +15,7 @@ from app.auth import get_current_app_principal
 from app.database import get_db
 from app.errors import add_exception_handlers
 from app.tenants import AuthContext
-from tests.test_original_http_delivery import _deliver
+from tests._infra.assets import _deliver
 
 AUTH = AuthContext(account_id=7, account_public_id="account", account_name="Reader",
     ledger_id="reader-ledger", ledger_name="Read ledger", device_id=11,

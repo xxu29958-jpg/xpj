@@ -19,6 +19,7 @@ from app.errors import AppError, add_exception_handlers
 from app.routes import expenses, web_media
 from app.services import file_service
 from app.services.expense_service import _image
+from tests._infra.assets import _deliver
 
 ORIGINAL = b"the admitted original image bytes"
 
@@ -52,26 +53,6 @@ def image_route(monkeypatch, tmp_path):
         )
 
     return original, row, route
-
-
-async def _deliver(response, *, method="GET", headers=(), extensions=None, fail_send=None):
-    messages = []
-
-    async def send(message):
-        if message["type"] == "http.response.body" and fail_send is not None:
-            raise fail_send
-        messages.append(message)
-
-    async def receive():
-        # Keep the client connected until sending finishes or fail_send fires.
-        await asyncio.Event().wait()
-
-    await response(
-        {"type": "http", "asgi": {"version": "3.0", "spec_version": "2.4"},
-         "method": method, "headers": list(headers), "extensions": extensions or {}},
-        receive, send,
-    )
-    return messages
 
 
 @pytest.mark.parametrize("surface", ["api", "web"])

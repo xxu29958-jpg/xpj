@@ -13,17 +13,7 @@ from PIL import Image
 
 from app.errors import AppError
 from app.services import file_service
-
-
-def _camera_jpeg(seed=7):
-    pixels = bytes((index * 73 + index // 9 + seed) % 256 for index in range(37 * 29 * 3))
-    image = Image.frombytes("RGB", (37, 29), pixels)
-    exif = Image.Exif()
-    exif[0x010F] = "PrivateCameraIdentity"
-    exif[0x0112] = 6
-    buffer = BytesIO()
-    image.save(buffer, format="JPEG", quality=88, exif=exif)
-    return buffer.getvalue()
+from tests._infra.assets import _camera_jpeg
 
 
 @pytest.fixture

@@ -10,8 +10,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterator
-from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import timedelta
 from uuid import uuid4
 
 import pytest
@@ -34,19 +33,11 @@ from app.models import (
     LedgerMember,
 )
 from app.routes.web_auth import SESSION_COOKIE_NAME
-from app.services.identity_service import hash_secret, new_session_token
+from app.services.identity_service import hash_secret
 from app.services.time_service import now_utc
+from tests.desktop_activation_support import LOOPBACK_BASE_URL, _mint_principal, _principal_headers
 
-LOOPBACK_BASE_URL = "http://127.0.0.1:8000"
 PUBLIC_BASE_URL = "https://api.example.com"
-
-
-@dataclass(frozen=True)
-class _Principal:
-    token: str
-    account_id: int
-    device_id: int
-    ledger_id: str
 
 
 @pytest.fixture()
@@ -58,78 +49,6 @@ def desktop_bridge_client(identity) -> Iterator[TestClient]:
         client=("127.0.0.1", 51001),
     ) as test_client:
         yield test_client
-
-
-def _principal_headers(
-    token: str | None,
-    *,
-    marker: str = DESKTOP_BRIDGE_VERSION,
-) -> dict[str, str]:
-    headers = {DESKTOP_BRIDGE_HEADER: marker}
-    if token is not None:
-        headers["Authorization"] = f"Bearer {token}"
-    return headers
-
-
-def _mint_principal(
-    *,
-    ledger_id: str = "owner",
-    role: str = "owner",
-    platform: str = "desktop",
-    scope: str = "app",
-    expires_at: datetime | None = None,
-) -> _Principal:
-    token = new_session_token()
-    with SessionLocal() as db:
-        ledger = db.scalar(select(Ledger).where(Ledger.ledger_id == ledger_id))
-        assert ledger is not None
-        if role == "owner":
-            membership = db.scalar(
-                select(LedgerMember)
-                .where(LedgerMember.ledger_id == ledger_id)
-                .where(LedgerMember.role == "owner")
-                .where(LedgerMember.disabled_at.is_(None))
-                .limit(1)
-            )
-            assert membership is not None
-            account_id = membership.account_id
-        else:
-            account = Account(display_name=f"bridge-{role}-{uuid4()}")
-            db.add(account)
-            db.flush()
-            account_id = account.id
-            db.add(
-                LedgerMember(
-                    ledger_id=ledger_id,
-                    account_id=account_id,
-                    role=role,
-                )
-            )
-
-        device = Device(
-            account_id=account_id,
-            device_name=f"pytest-{platform}-bridge",
-            platform=platform,
-        )
-        db.add(device)
-        db.flush()
-        db.add(
-            AuthToken(
-                token_hash=hash_secret(token),
-                account_id=account_id,
-                device_id=device.id,
-                ledger_id=ledger_id,
-                scope=scope,
-                expires_at=expires_at,
-            )
-        )
-        db.commit()
-        return _Principal(
-            token=token,
-            account_id=account_id,
-            device_id=device.id,
-            ledger_id=ledger_id,
-        )
 
 
 def _auth_token(token: str) -> AuthToken:

@@ -19,7 +19,7 @@ from app.services.background_task_admission import BackgroundTaskCapacityFullErr
 from app.services.orphan_maintenance_tasks import remaining_candidates, task_result
 from app.services.time_service import now_utc
 from tests._infra.assets import PNG_BYTES
-from tests.test_orphan_original_continuity import _old_file
+from tests.original_test_support import _old_file
 
 pytestmark = pytest.mark.real_db
 
