@@ -82,13 +82,15 @@ class RelationshipJourney:
         self.capture("received-invitation", receiver=True)
         self.native.bind(pairing_code(self.identity.receiver_ledger, self.identity.receiver_account), self.port)
 
-    def open_native(self, *, returned=False):
+    def native_debts(self):
         self.native.plan_home()
         self.native.click("往来", bottom=True)
         self.native.reveal_any("我欠", "欠我", "拆账约定与结算", toward_start=True)
         if self.native.has("拆账约定与结算"):
             self.native.back()
             self.native.reveal_any("我欠", "欠我", toward_start=True)
+    def open_native(self, *, returned=False):
+        self.native_debts()
         self.native.click("欠我" if returned else "我欠")
         title = "联动验证账户欠我" if returned else "我欠联动验证账户"
         self.native.reveal_any(title, exact=True)
@@ -211,6 +213,7 @@ class RelationshipJourney:
         self.expect("settlement", 0)
 
     def run(self):
+        from scripts.relationship_debt_adjustment import manual_adjustment
         from scripts.relationship_journey_recovery import RelationshipRecovery
         from scripts.relationship_journey_views import goal_entry
 
@@ -234,5 +237,8 @@ class RelationshipJourney:
             assert result["source_amount"] == 10000 and result["expenses"] == 2 and result["offsets"] == 1
             assert (result["original_paid"], result["original_forgiven"], result["return_paid"], result["return_forgiven"]) == (3000, 1000, 200, 100)
             assert result["return_count"] == 1 and result["repayments"] == 2
-            result["verified_leg"] = "Bilateral invitation, repayment, source refund, explicit agreement, return and forgiveness, immutable histories, both clients and recovery"
+            adjustment = manual_adjustment(self)
+            assert self.facts() == result, "The manual adjustment changed the independent bilateral relationship"
+            result["manual_adjustment"] = adjustment
+            result["verified_leg"] = "Bilateral invitation, repayment, source refund, explicit agreement, return and forgiveness, immutable histories, both clients and recovery; native manual adjustment through the production worker"
             return result

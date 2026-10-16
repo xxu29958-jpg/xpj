@@ -118,6 +118,8 @@ class DirectRepaymentRoomContinuityTest {
         val initialBalance = if (longContent) 60_000_000_000L else 50_000L
         fixture.network.current = fixture.network.current.copy(principalAmountCents = initialBalance, remainingAmountCents = initialBalance,
             counterpartyLabel = if (longContent) "共同装修与旅行费用往来需要完整核对的原借款对象名称" else "原借款对象")
+        fixture.network.repaymentResponse = fixture.network.current.copy(
+            remainingAmountCents = if (longContent) 47_654_321_099L else 40_000L, paidAmountCents = amountCents, rowVersion = 3)
         installModels()
         compose.setContent {
             val model = detail.value ?: return@setContent
@@ -233,6 +235,7 @@ class DirectRepaymentRoomContinuityTest {
                 retained.createGoal.toggleDebt(fixture.network.current.publicId)
             }
             val binding = requireNotNull(graph.debtWriteRepository.currentAccess()).binding
+            fixture.network.repaymentResponse = fixture.network.current.copy(remainingAmountCents = 40_000, paidAmountCents = 10_000, rowVersion = 3)
             runBlocking { graph.debtWriteRepository.saveRepayment(binding, fixture.network.current.toDomain(), 10_000).getOrThrow() }
             assertEquals(1, runBlocking { fixture.drain(maxAttempts = 1) }.failures)
             compose.waitUntil(10_000) { sync.uiState.value.status.failed.size == 1 }
@@ -244,6 +247,7 @@ class DirectRepaymentRoomContinuityTest {
             assertRetainedAdjustmentSelection(retained.createGoal, fixture.network.current.publicId)
             assertRetainedAdjustmentSelection(retained.inbox, fixture.network.current.publicId)
 
+            fixture.network.repaymentResponse = fixture.network.current.copy(remainingAmountCents = 35_000, paidAmountCents = 15_000, rowVersion = 4)
             runBlocking { graph.debtWriteRepository.saveRepayment(binding, fixture.network.current.toDomain(), 5_000).getOrThrow() }
             fixture.network.loseResponse = true
             assertEquals(1, runBlocking { fixture.drain(maxAttempts = 1) }.failures)
@@ -285,6 +289,7 @@ class DirectRepaymentRoomContinuityTest {
     private fun assertChangedOriginCannotResume(changeSession: Boolean) {
         val originalGraph = fixture.reopen()
         val binding = requireNotNull(originalGraph.debtWriteRepository.currentAccess()).binding
+        fixture.network.repaymentResponse = fixture.network.current.copy(remainingAmountCents = 40_000, paidAmountCents = 10_000, rowVersion = 3)
         runBlocking { originalGraph.debtWriteRepository.saveRepayment(binding, fixture.network.current.toDomain(), 10_000).getOrThrow() }
         fixture.network.loseResponse = true
         assertEquals(1, runBlocking { fixture.drain(maxAttempts = 1) }.failures)
