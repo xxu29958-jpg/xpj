@@ -93,8 +93,17 @@ class RecurringOccurrenceRoomContinuityTest {
         automation.waitForIdle(300, 3_000)
         saveConsumerArtPreview("recurring-occurrence-choice", requireNotNull(automation.takeScreenshot()))
         compose.onNodeWithTag("occurrence-submit").performClick()
-        compose.waitUntil(10_000) { fixture.stored().size == 1 }
+        compose.waitUntil(10_000) { fixture.stored().size == 1 && host.model.value?.uiState?.value?.saving == false }
         val original = fixture.stored().single()
+        val intent = requireNotNull(OutboxAdapterGraph().recurringOccurrenceAdapter.fromJson(requireNotNull(original["payload"])))
+        val binding = requireNotNull(host.model.value?.uiState?.value?.access).binding
+        assertEquals(binding.ownerKey, original["ownerKey"])
+        assertEquals(binding.bindingRevision, intent.originBindingRevision)
+        assertEquals("2026-09", intent.period)
+        assertEquals("JPY", intent.paymentCurrencyCode)
+        assertTrue(!requireNotNull(original["payload"]).contains("\"homeCurrencyCode\""))
+        assertEquals(com.ticketbox.data.remote.dto.RecurringOccurrencePaymentRequestDto("link", 0, 7, "payment-1", 3), intent.request)
+        assertEquals(listOf(1), fixture.enqueuedDepths)
         assertEquals(0, fixture.network.calls.size)
         assertEquals("set_recurring_occurrence_payment", original["type"])
         assertEquals("recurring-ledger", original["ledgerId"])
@@ -112,6 +121,7 @@ class RecurringOccurrenceRoomContinuityTest {
         assertEquals(2, fixture.network.calls.size)
         assertEquals(fixture.network.calls.first(), fixture.network.calls.last())
         assertEquals(original["idempotencyKey"], fixture.network.calls.last().second)
+        assertEquals(intent.request, fixture.network.calls.last().first)
         assertEquals(0L, host.model.value?.uiState?.value?.occurrence?.reservedAmountCents)
         compose.onNodeWithText("关联付款当前金额 JPY ¥12,345").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("查看关联账单").assertIsDisplayed().performClick()
@@ -120,6 +130,9 @@ class RecurringOccurrenceRoomContinuityTest {
     }
 
     private fun completeUndo() {
+        fixture.network.reply = fixture.network.current.copy(rowVersion = 2, state = "unfulfilled",
+            reservedAmountCents = 10_000, expensePublicId = null, paidAmountCents = null,
+            nextDueDate = "2026-09-05", expenseId = null, paidHomeCurrencyCode = null)
         compose.waitUntil(10_000) { host.model.value?.uiState?.value?.canWrite == true }
         compose.onNodeWithText("撤销本期关联").performScrollTo().performClick()
         compose.onNodeWithTag("occurrence-submit").performClick()
@@ -128,7 +141,8 @@ class RecurringOccurrenceRoomContinuityTest {
         compose.waitUntil(10_000) { host.model.value?.uiState?.value?.occurrence?.state == "unfulfilled" }
         assertEquals(10_000L, host.model.value?.uiState?.value?.occurrence?.reservedAmountCents)
         assertEquals("2026-09-05", host.model.value?.uiState?.value?.occurrence?.nextDueDate)
-        assertEquals("clear", fixture.network.calls.last().first.action)
+        assertEquals(com.ticketbox.data.remote.dto.RecurringOccurrencePaymentRequestDto("clear", 1, 7),
+            fixture.network.calls.last().first)
     }
 
     @Test
@@ -516,6 +530,8 @@ class RecurringOccurrenceRoomContinuityTest {
         val binding = requireNotNull(actions.currentAccess()).binding
         val prior = fixture.network.current.copy(period = "2026-08")
         fixture.network.current = prior
+        fixture.network.reply = fixture.network.reply.copy(period = "2026-08", expensePublicId = "payment-august",
+            paidAmountCents = 9_800, paidHomeCurrencyCode = "CNY", nextDueDate = "2026-09-05")
         runBlocking {
             actions.enqueue(binding, OccurrencePaymentDraft(prior, "八月房租",
                 com.ticketbox.data.remote.dto.RecurringOccurrencePaymentRequestDto("link", 0, 7, "payment-august", 2),
@@ -550,7 +566,8 @@ class RecurringOccurrenceRoomContinuityTest {
         assertEquals(2, fixture.network.calls.size)
         assertEquals(fixture.network.calls.first(), fixture.network.calls.last())
         assertEquals(originalKey, fixture.network.calls.last().second)
-        assertEquals(1, fixture.network.results.size)
+        assertEquals(com.ticketbox.data.remote.dto.RecurringOccurrencePaymentRequestDto("link", 0, 7, "payment-august", 2),
+            fixture.network.calls.last().first)
     }
 
     @Test

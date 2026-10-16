@@ -6,9 +6,7 @@ import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.RecurringOccurrenceDto
 import com.ticketbox.data.remote.dto.RecurringOccurrencePaymentRequestDto
-import java.io.IOException
 import java.time.Clock
-import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
 import kotlinx.coroutines.test.runTest
@@ -24,18 +22,8 @@ import kotlin.test.assertTrue
 
 class RecurringOccurrenceRepositoryTest {
     @Test
-    fun newIntentCapturesPaymentUnitsWithoutTheLegacyDisplayCurrency() = runTest {
-        val fixture = OccurrenceFixture()
-        val id = fixture.repository.enqueue(fixture.binding, fixture.draft.copy(paymentCurrencyCode = "JPY")).getOrThrow()
-        val original = fixture.dao.rows.getValue(id)
-        assertTrue(original.payload.contains("\"paymentCurrencyCode\":\"JPY\""))
-        assertTrue(!original.payload.contains("\"homeCurrencyCode\""))
-    }
-
-    @Test
     fun unrelatedReceiptCannotSettleTheOriginalAssociation() = runTest {
         val fixture = OccurrenceFixture()
-        fixture.api.loseResponse = false
         fixture.api.returnAnotherPeriod = true
         val id = fixture.repository.enqueue(fixture.binding, fixture.draft).getOrThrow()
         val original = fixture.dao.rows.getValue(id)
@@ -45,34 +33,6 @@ class RecurringOccurrenceRepositoryTest {
         assertEquals(PendingMutationStatus.Failed.wireValue, retained.status)
         assertEquals(original.payload, retained.payload)
         assertEquals(original.idempotencyKey, retained.idempotencyKey)
-    }
-
-    @Test
-    fun acceptancePrecedesDispatchAndRestartReplaysOriginalKeyAndAllVersions() = runTest {
-        val fixture = OccurrenceFixture()
-        val id = fixture.repository.enqueue(fixture.binding, fixture.draft).getOrThrow()
-        val original = fixture.dao.rows.getValue(id)
-        assertEquals(listOf(1), fixture.scheduledDepths)
-        assertTrue(fixture.api.calls.isEmpty())
-        val payload = requireNotNull(fixture.adapter.readSupportedOccurrence(original.payload))
-        assertEquals(fixture.binding.ownerKey, original.ownerKey)
-        assertEquals(fixture.binding.bindingRevision, payload.originBindingRevision)
-        assertEquals("2026-09", payload.period)
-        assertEquals(7L, payload.request.expectedSeriesRowVersion)
-        assertEquals(3L, payload.request.expectedExpenseRowVersion)
-
-        fixture.dao.runnableBatches += listOf(id)
-        assertEquals(1, fixture.engine(fixture.outbox, fixture.clock).drainOnce().retryable)
-        assertEquals(original.payload, fixture.dao.rows.getValue(id).payload)
-        val laterClock = Clock.offset(fixture.clock, Duration.ofMinutes(2))
-        fixture.api.loseResponse = false
-        fixture.dao.runnableBatches += listOf(id)
-        assertEquals(1, fixture.engine(fixture.newOutbox(laterClock), laterClock).drainOnce().done)
-        assertEquals(2, fixture.api.calls.size)
-        assertEquals(fixture.api.calls.first(), fixture.api.calls.last())
-        assertEquals(original.idempotencyKey, fixture.api.calls.last().second)
-        assertEquals(1, fixture.api.results.size)
-        assertEquals(PendingMutationStatus.Done.wireValue, fixture.dao.rows.getValue(id).status)
     }
 
     @Test
@@ -126,7 +86,6 @@ class RecurringOccurrenceRepositoryTest {
             }
             assertTrue(pending.canRetry)
             fixture.api.refusalCode = null
-            fixture.api.loseResponse = false
             fixture.repository.recover(fixture.binding, retained.toDomain(), drop = false).getOrThrow()
             fixture.dao.runnableBatches += listOf(id)
             assertEquals(1, fixture.engine(fixture.outbox, fixture.clock).drainOnce().done)
@@ -153,7 +112,6 @@ class RecurringOccurrenceRepositoryTest {
         assertNull(fixture.repository.describe(original.toDomain().copy(serverUrl = "https://another.example.test")))
         fixture.repository.recover(fixture.binding, original.toDomain(), drop = false).getOrThrow()
         assertEquals(legacy, fixture.dao.rows.getValue(id).payload)
-        fixture.api.loseResponse = false
         fixture.dao.runnableBatches += listOf(id)
         assertEquals(1, fixture.engine(fixture.outbox, fixture.clock).drainOnce().done)
         assertEquals(original.idempotencyKey, fixture.api.calls.single().second)
@@ -173,8 +131,8 @@ private class OccurrenceFixture(role: String = "owner") {
     val binding = requireNotNull(LedgerRequestGuard(provider).captureLogicalBinding())
     val dao = FakePendingMutationDao()
     val clock: Clock = Clock.fixed(Instant.parse("2026-09-06T00:00:00Z"), ZoneOffset.UTC)
-    val scheduledDepths = mutableListOf<Int>()
-    val outbox = newOutbox(clock)
+    val outbox = OutboxRepository(onRowsDeleted = {}, dao = dao, clock = clock,
+        bindingProvider = { provider.currentSession().toOutboxBinding() })
     val adapter = OutboxAdapterGraph().recurringOccurrenceAdapter
     private val readCache = FakeExpenseDao()
     val repository = RecurringOccurrenceRepository(provider, outbox, adapter,
@@ -182,18 +140,14 @@ private class OccurrenceFixture(role: String = "owner") {
     val draft = OccurrencePaymentDraft(occurrenceFixture(), "房租",
         RecurringOccurrencePaymentRequestDto("link", 0, 7, "payment-1", 3), "房租付款", 10_000, "CNY")
 
-    fun newOutbox(clock: Clock) = OutboxRepository(onRowsDeleted = {}, dao = dao, clock = clock,
-        bindingProvider = { provider.currentSession().toOutboxBinding() },
-        onEnqueued = { scheduledDepths += dao.rows.size })
-
     fun engine(outbox: OutboxRepository, clock: Clock) = OutboxDrainEngine(outbox,
         listOf(RecurringOccurrenceDispatcher({ api }, adapter)), now = clock::millis)
 }
 
 private class OccurrenceApiProbe : ApiService by FakeApiService(mutableListOf(), 0) {
     val calls = mutableListOf<Pair<RecurringOccurrencePaymentRequestDto, String>>()
-    val results = mutableMapOf<String, RecurringOccurrenceDto>()
-    var loseResponse = true
+    private val reply = occurrenceFixture().copy(rowVersion = 1, state = "fulfilled", reservedAmountCents = 0,
+        expensePublicId = "payment-1", paidAmountCents = 10_000, nextDueDate = "2026-10-05")
     var refusalCode: String? = null
     var returnAnotherPeriod = false
 
@@ -207,12 +161,7 @@ private class OccurrenceApiProbe : ApiService by FakeApiService(mutableListOf(),
             throw HttpException(Response.error<Any>(409,
                 """{"error":"$code","message":"请更新配套版本后重试。"}""".toResponseBody("application/json".toMediaType())))
         }
-        val result = results.getOrPut(idempotencyKey) {
-            occurrenceFixture().copy(rowVersion = 1, state = "fulfilled", reservedAmountCents = 0,
-                expensePublicId = request.expensePublicId, paidAmountCents = 10_000, nextDueDate = "2026-10-05")
-        }
-        if (loseResponse) throw IOException("Synthetic lost response after commit")
-        return if (returnAnotherPeriod) result.copy(period = "2026-08") else result
+        return if (returnAnotherPeriod) reply.copy(period = "2026-08") else reply
     }
 }
 

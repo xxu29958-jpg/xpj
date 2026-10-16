@@ -39,6 +39,7 @@ internal class RecurringOccurrenceConnectedFixture(private val context: Context)
     private var database: AppDatabase? = null
     private var clock: Clock = Clock.fixed(Instant.parse("2026-09-06T00:00:00Z"), ZoneOffset.UTC)
     val network = OccurrenceConnectedNetwork()
+    val enqueuedDepths = mutableListOf<Int>()
     private val adapters = OutboxAdapterGraph()
     private val session = occurrenceConnectedSession()
     lateinit var outbox: OutboxRepository
@@ -64,7 +65,8 @@ internal class RecurringOccurrenceConnectedFixture(private val context: Context)
                 failReplacePayload?.let { throw it }
                 return realDao.replacePayload(id, type, payload)
             }
-        }, clock, onRowsDeleted = {}, bindingProvider = { session.toOutboxBinding() })
+        }, clock, onRowsDeleted = {}, bindingProvider = { session.toOutboxBinding() },
+            onEnqueued = { enqueuedDepths += stored().size })
         val sessions = occurrenceProxy<LocalSessionStore> { method, _ -> when (method) {
             "currentSession" -> session
             "observeSession" -> flowOf(session)
@@ -101,7 +103,10 @@ internal class OccurrenceConnectedNetwork {
     var current = RecurringOccurrenceDto("recurring-1", "2026-09", 7, 0, "unfulfilled", 10_000, 10_000, null, null, "2026-09-05",
         homeCurrencyCode = "CNY")
     val calls = mutableListOf<Pair<RecurringOccurrencePaymentRequestDto, String>>()
-    val results = mutableMapOf<String, RecurringOccurrenceDto>()
+    // Each scenario declares its peer reply; PostgreSQL owns OCC, money and replay.
+    var reply = current.copy(rowVersion = 1, state = "fulfilled", reservedAmountCents = 0,
+        expensePublicId = "payment-1", paidAmountCents = 12_345, nextDueDate = "2026-10-05",
+        expenseId = 1, paidHomeCurrencyCode = "JPY")
     var loseResponse = true
     var failReads = false
     val service = object : ApiService by occurrenceProxy<ApiService>({ method, _ -> error("Unexpected remote method: $method") }) {
@@ -114,15 +119,8 @@ internal class OccurrenceConnectedNetwork {
         ): RecurringOccurrenceDto {
             check(publicId == current.seriesPublicId && month == current.period)
             calls += request to idempotencyKey
-            val response = results.getOrPut(idempotencyKey) {
-                check(request.expectedRowVersion == current.rowVersion)
-                val linked = request.action == "link"
-                current.copy(rowVersion = current.rowVersion + 1, state = if (linked) "fulfilled" else "unfulfilled",
-                    reservedAmountCents = if (linked) 0 else 10_000, expensePublicId = request.expensePublicId,
-                    paidAmountCents = if (linked) 12_345 else null, nextDueDate = if (linked) "2026-10-05" else "2026-09-05",
-                    expenseId = if (linked) 1 else null, paidHomeCurrencyCode = if (linked) "JPY" else null)
-                    .also { current = it }
-            }
+            val response = reply
+            current = response
             if (loseResponse) throw IOException("Synthetic lost response after acceptance")
             return response
         }
