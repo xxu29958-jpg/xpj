@@ -24,6 +24,7 @@ class CategoryRuleCommandTest {
         assertEquals(0, f.calls)
         assertEquals("JPY", f.pending(create).request?.homeCurrencyCode)
         assertEquals(null, f.pending(create).confirmed)
+        f.dao.runnableBatches += listOf(create)
         assertEquals(1, f.engine(PendingMutationType.CreateCategoryRule).drainOnce().done)
         assertEquals("JPY", f.pending(create).confirmed?.homeCurrencyCode)
         val update = f.repository.updateCategoryRule(f.binding, f.current.toDomain(),
@@ -40,11 +41,13 @@ class CategoryRuleCommandTest {
             f.current.asRequest().copy(amountMinCents = 3500, amountMaxCents = null)).getOrThrow()
         val original = f.dao.rows.getValue(id)
         f.loseAck = true
+        f.dao.runnableBatches += listOf(id)
         assertEquals(1, f.engine(PendingMutationType.UpdateCategoryRule).drainOnce().failures)
         val accepted = f.current
         f.current = f.current.copy(amountMinCents = 7000, rowVersion = f.current.rowVersion + 1)
         f.repository.recoverSubmission(f.binding, f.pending(id), false).getOrThrow()
         f.loseAck = false
+        f.dao.runnableBatches += listOf(id)
         assertEquals(1, f.engine(PendingMutationType.UpdateCategoryRule).drainOnce().done)
         assertEquals(listOf(original.idempotencyKey, original.idempotencyKey), f.keys)
         assertEquals(accepted.toDomain(), f.pending(id).confirmed)
@@ -86,6 +89,7 @@ class CategoryRuleCommandTest {
         val f = CategoryRuleCommandFixture()
         val id = f.repository.deleteCategoryRule(f.binding, f.current.toDomain().copy(homeCurrencyCode = null)).getOrThrow()
         assertEquals(0, f.calls)
+        f.dao.runnableBatches += listOf(id)
         assertEquals(1, f.engine(PendingMutationType.DeleteCategoryRule).drainOnce().done)
         assertEquals(1200L, f.pending(id).request?.amountMinCents)
         assertEquals(null, f.pending(id).request?.homeCurrencyCode)

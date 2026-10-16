@@ -31,9 +31,11 @@ class RepaymentReviewCommandTest {
         val outbox = queue()
         outbox.enqueue(LedgerRequestGuard(provider).bindExact(binding), intent)
         val original = dao.rows.values.single()
+        dao.runnableBatches += listOf(original.id)
         engine(outbox).drainOnce()
         assertEquals("pending", dao.rows.values.single().status)
         remote.loseReply = false
+        dao.runnableBatches += listOf(original.id)
         engine(queue()).drainOnce()
         val completed = dao.rows.values.single()
         assertEquals("done", completed.status)

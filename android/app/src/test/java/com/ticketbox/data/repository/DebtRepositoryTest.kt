@@ -247,6 +247,7 @@ class DebtRepositoryTest {
         fixture.repository.saveKind(fixture.binding, debt, DebtKinds.REVOLVING).getOrThrow()
         val original = fixture.dao.rows.values.single()
         assertTrue(fixture.api.kindCalls.isEmpty())
+        fixture.dao.runnableBatches += listOf(original.id)
         assertEquals(1, fixture.engine().drainOnce().done)
         val call = fixture.api.kindCalls.single()
         assertEquals(debt.publicId, call.first)
@@ -276,11 +277,13 @@ class DebtRepositoryTest {
     fun independentSavedDebtKindsKeepDistinctOriginalKeysAndVersions() = runTest {
         val fixture = DirectRepaymentTestFixture()
         fixture.api.loseResponse = false
-        fixture.repository.saveKind(fixture.binding, fixture.debt, DebtKinds.REVOLVING).getOrThrow()
+        val firstId = fixture.repository.saveKind(fixture.binding, fixture.debt, DebtKinds.REVOLVING).getOrThrow()
+        fixture.dao.runnableBatches += listOf(firstId)
         assertEquals(1, fixture.engine().drainOnce().done)
         val first = fixture.dao.rows.values.single()
         val current = fixture.api.current.toDomain()
-        fixture.repository.saveKind(fixture.binding, current, DebtKinds.INSTALLMENT).getOrThrow()
+        val nextId = fixture.repository.saveKind(fixture.binding, current, DebtKinds.INSTALLMENT).getOrThrow()
+        fixture.dao.runnableBatches += listOf(nextId)
         assertEquals(1, fixture.engine().drainOnce().done)
         val keys = fixture.api.kindCalls.map { it.third }
         assertEquals(2, keys.size)

@@ -38,6 +38,7 @@ class NotificationCaptureRepositoryTest {
         val saved = f.dao.rows.values.single()
         assertEquals(original.ownerKey, saved.ownerKey)
         assertEquals("same-delivery", saved.idempotencyKey)
+        f.dao.runnableBatches += listOf(saved.id)
         f.engine().drainOnce()
         assertEquals(PendingMutationStatus.Pending.wireValue, f.dao.rows.values.single().status)
         assertEquals(saved.payload, f.dao.rows.values.single().payload)
@@ -61,6 +62,7 @@ class NotificationCaptureRepositoryTest {
         f.api.loseReply = true
         f.accept().getOrThrow()
         f.repository.accept(f.repayment, f.binding, "repayment-delivery").getOrThrow()
+        f.dao.runnableBatches += f.dao.rows.keys.toList()
         f.engine().drainOnce()
         assertEquals(2, f.api.accepted.size)
         assertEquals(2, f.dao.rows.values.count { it.status == "pending" })
@@ -68,6 +70,7 @@ class NotificationCaptureRepositoryTest {
         f.api.loseReply = false
         val later = Clock.offset(f.clock, java.time.Duration.ofHours(1))
         val reopened = f.newOutbox(later)
+        f.dao.runnableBatches += f.dao.rows.keys.toList()
         f.engine(reopened, later).drainOnce()
         assertEquals(2, f.api.accepted.size)
         assertEquals(originals, f.dao.rows.values.associate { it.id to (it.payload to it.idempotencyKey) })
@@ -86,6 +89,7 @@ class NotificationCaptureRepositoryTest {
         f.session.rebindAsDifferentAccountForFixture("另一个人", "owner", "另一本", "另一台", "other-token")
         assertTrue(f.repository.accept(f.repayment, original, "old-post").isFailure)
         f.engine().drainOnce()
+        assertTrue(f.dao.batchCalls.first().ownerKey != original.ownerKey)
         assertEquals(1, f.dao.rows.size)
         assertEquals(0, f.api.calls)
         assertEquals(original.ownerKey, f.dao.rows.values.single().ownerKey)
@@ -123,12 +127,14 @@ class NotificationCaptureRepositoryTest {
         f.api.refusal = 403
         val id = f.repository.accept(f.repayment, f.binding, "repayment-refused").getOrThrow()
         val original = f.dao.rows.values.single()
+        f.dao.runnableBatches += listOf(id)
         f.engine().drainOnce()
         assertEquals("failed", f.dao.rows.values.single().status)
         assertTrue(f.published.isEmpty())
         assertTrue(f.api.accepted.isEmpty())
         f.api.refusal = null
         assertTrue(f.outbox.resolveFailed(id, FailedResolution.Retry()))
+        f.dao.runnableBatches += listOf(id)
         f.engine().drainOnce()
         val completed = f.dao.rows.values.single()
         assertEquals("done", completed.status)

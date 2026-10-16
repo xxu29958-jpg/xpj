@@ -67,9 +67,12 @@ class PendingMutationUploadQueueTest {
             fixture.dao.insertBatch(listOf(conflict, conflict.copy(status = "pending"), busy, busy.copy(status = "pending")))
             fixture.dao.insert(fixture.row("foreign").copy(ownerKey = "other-owner", status = "failed"))
             fixture.dao.insert(fixture.row("other-ledger").copy(ledgerId = "other-ledger", status = "failed"))
+            fixture.dao.insert(fixture.row("foreign-pending").copy(ownerKey = "other-owner", targetId = "upload_batch:foreign"))
+            fixture.dao.insert(fixture.row("other-ledger-pending").copy(ledgerId = "other-ledger", targetId = "upload_batch:foreign"))
+            fixture.dao.insert(fixture.row("unowned-pending").copy(ownerKey = null, targetId = "upload_batch:unowned"))
             val free = fixture.dao.insert(fixture.row("free"))
 
-            assertEquals(listOf(free), runnable(fixture.dao).map { it.id })
+            assertEquals(listOf(free), fixture.dao.nextRunnableBatch(OWNER, LEDGER, UNRESOLVED, 1).map { it.id })
             assertTrue(fixture.dao.allRows().single { it.id == oldIds[0] }.blocksFollowing)
         }
     }
@@ -215,9 +218,10 @@ class PendingMutationUploadQueueTest {
     fun excludingTriedRowsFindsOtherTargetsButDoesNotAdvanceTheirUnresolvedTail() = runBlocking<Unit> {
         UploadQueueFixture().use { fixture ->
             val ids = fixture.dao.insertBatch(listOf(
-                fixture.row("b"), fixture.row("c"), fixture.row("other").copy(targetId = "upload_batch:other"),
+                fixture.row("b"), fixture.row("c"), fixture.row("other").copy(
+                    targetId = "upload_batch:other", createdAt = "2026-07-31T00:00:00.000Z"),
             ))
-            assertEquals(listOf(ids[0], ids[2]), runnable(fixture.dao).map { it.id })
+            assertEquals(listOf(ids[2], ids[0]), fixture.dao.nextRunnableBatch(OWNER, LEDGER, UNRESOLVED, 2).map { it.id })
             val remaining = fixture.dao.nextRunnableBatch(OWNER, LEDGER, UNRESOLVED, 1, listOf(ids[0]))
             assertEquals(listOf(ids[2]), remaining.map { it.id })
             assertEquals(0, fixture.dao.markInFlightIfPending(ids[1], "pending", "in_flight", ATTEMPTED))

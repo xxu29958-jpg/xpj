@@ -172,6 +172,7 @@ internal class ExpensePendingRepositoryOutboxFallbackTest : ExpensePendingReposi
         val dispatcher = PatchExpenseDispatcher(apiProvider = { api },
             payloadAdapter = moshi().adapter(ExpenseUpdateRequest::class.java),
             publishExpense = { _, _ -> error("Rejected HTTP must not publish a snapshot") })
+        dao.runnableBatches += listOf(original.id)
         OutboxDrainEngine(outbox, listOf(dispatcher)).drainOnce()
         val retained = dao.rows.values.single()
         assertEquals(status.wireValue, retained.status)

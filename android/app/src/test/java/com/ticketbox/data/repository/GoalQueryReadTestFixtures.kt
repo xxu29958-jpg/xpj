@@ -46,7 +46,8 @@ internal class GoalReadFixture(decorateDao: (com.ticketbox.data.local.ExpenseDao
     val provider = testApiServiceProvider(factory, session)
     val coordinator = LocalLedgerSessionCoordinator(settings, session.sessionStore, queryDao)
     val repository get() = ReportsRepository(provider, queryDao, coordinator)
-    val outbox = testOutboxRepository(FakePendingMutationDao(), bindingProvider = { session.sessionStore.currentSession().toOutboxBinding() })
+    val pending = FakePendingMutationDao()
+    val outbox = testOutboxRepository(pending, bindingProvider = { session.sessionStore.currentSession().toOutboxBinding() })
     val stats = expenseRepositoryFixture(queryDao, testServerSessionBinding(factory, settings, session), coordinator, outbox = outbox)
     val binding get() = requireNotNull(repository.dashboardAccess()).binding
 }

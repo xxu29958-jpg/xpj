@@ -18,6 +18,7 @@ class DebtVoidIntentTest {
             val fixture = DirectRepaymentTestFixture()
             save(fixture, payment).getOrThrow()
             val original = fixture.dao.rows.values.single()
+            fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
             assertEquals(1, fixture.engine().drainOnce().failures)
             fixture.api.loseResponse = false
             for (case in listOf("debt", "ledger", "currency", "later_version")) {
@@ -28,6 +29,7 @@ class DebtVoidIntentTest {
                     "currency" -> it.copy(homeCurrencyCode = "JPY")
                     else -> it.copy(rowVersion = original.expectedRowVersion!! + 2)
                 } }
+                fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
                 assertEquals(0, fixture.engine().drainOnce().done, case)
                 val unverified = fixture.dao.rows.values.single()
                 assertEquals(null, unverified.receiptJson, case)
@@ -37,6 +39,7 @@ class DebtVoidIntentTest {
             }
             fixture.repository.recover(fixture.binding, fixture.pending(), false).getOrThrow()
             fixture.api.voidReceiptTransform = { it }
+            fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
             assertEquals(1, fixture.engine().drainOnce().done)
             val stored = fixture.dao.rows.values.single()
             assertEquals(original.payload, stored.payload)
@@ -52,6 +55,7 @@ class DebtVoidIntentTest {
         val fixture = DirectRepaymentTestFixture()
         save(fixture, true).getOrThrow()
         val original = fixture.dao.rows.values.single()
+        fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
         assertEquals(1, fixture.engine().drainOnce().failures)
         fixture.api.loseResponse = false
         for (case in listOf("cleared", "unknown", "zero_remaining", "negative_remaining")) {
@@ -62,6 +66,7 @@ class DebtVoidIntentTest {
                 "zero_remaining" -> it.copy(remainingAmountCents = 0)
                 else -> it.copy(remainingAmountCents = -1)
             } }
+            fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
             assertEquals(0, fixture.engine().drainOnce().done, case)
             val unverified = fixture.dao.rows.values.single()
             assertEquals(null, unverified.receiptJson, case)
@@ -72,6 +77,7 @@ class DebtVoidIntentTest {
         }
         fixture.repository.recover(fixture.binding, fixture.pending(), false).getOrThrow()
         fixture.api.voidReceiptTransform = { it }
+        fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
         assertEquals(1, fixture.engine().drainOnce().done)
         assertTrue(fixture.api.voidCalls.all { it == fixture.api.voidCalls.first() })
         assertNotNull(fixture.dao.rows.values.single().receiptJson)
@@ -101,6 +107,7 @@ class DebtVoidIntentTest {
     @Test fun everyBindingAxisAndReadonlyCannotAdoptOrRetryOriginalVoid() = runTest {
         val fixture = DirectRepaymentTestFixture()
         save(fixture, true).getOrThrow()
+        fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
         fixture.engine().drainOnce()
         val pending = fixture.pending()
         val original = fixture.dao.rows.values.single()
@@ -126,6 +133,7 @@ class DebtVoidIntentTest {
         for (payment in listOf(false, true)) for (axis in listOf("session", "revision")) {
             val fixture = DirectRepaymentTestFixture()
             save(fixture, payment).getOrThrow()
+            fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
             assertEquals(1, fixture.engine().drainOnce().failures)
             val original = fixture.dao.rows.values.single()
             val session = requireNotNull(fixture.session.sessionStore.currentSession())
@@ -142,7 +150,6 @@ class DebtVoidIntentTest {
             assertFalse(pending.canRetry, axis)
             assertFalse(refused.exceptionOrNull()?.message.isNullOrBlank(), axis)
             assertEquals(original, fixture.dao.rows.values.single(), axis)
-            assertEquals(0, fixture.engine(outbox).drainOnce().attempted)
             assertEquals(1, fixture.api.voidCalls.size)
             writes.recover(binding, pending, true).getOrThrow()
             val stopped = fixture.dao.rows.values.single()
@@ -164,6 +171,7 @@ class DebtVoidIntentTest {
                 else session.copy(bindingRevision = "new-revision"))
             val outbox = fixture.newOutbox(fixture.clock)
             val writes = fixture.newRepository(outbox, fixture.clock)
+            fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
             fixture.engine(outbox).drainOnce()
             assertTrue(fixture.api.voidCalls.isEmpty(), axis)
             assertTrue(fixture.api.voidFacts.isEmpty(), axis)
@@ -183,6 +191,7 @@ class DebtVoidIntentTest {
         for (payment in listOf(false, true)) {
             val fixture = DirectRepaymentTestFixture()
             save(fixture, payment).getOrThrow()
+            fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
             assertEquals(1, fixture.engine().drainOnce().failures)
             val original = fixture.dao.rows.values.single()
             val session = requireNotNull(fixture.session.sessionStore.currentSession())
@@ -195,6 +204,7 @@ class DebtVoidIntentTest {
             assertTrue(fixture.pending().canRetry)
             fixture.repository.recover(fixture.binding, fixture.pending(), false).getOrThrow()
             fixture.api.loseResponse = false
+            fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
             assertEquals(1, fixture.engine().drainOnce().done)
             val confirmed = fixture.dao.rows.values.single()
             assertEquals(original.payload, confirmed.payload)
@@ -211,6 +221,7 @@ class DebtVoidIntentTest {
         save(fixture, true).getOrThrow()
         val original = fixture.dao.rows.values.single()
         fixture.api.refusal = 409 to DEBT_VOID_ORIGINAL_REQUIRES_REVIEW
+        fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
         assertEquals(1, fixture.engine().drainOnce().failures)
         val pending = fixture.pending()
         assertTrue(pending.requiresReview)
@@ -236,7 +247,6 @@ class DebtVoidIntentTest {
         assertEquals(0, overview.reviewRequiredCount)
         assertEquals(0, overview.needsActionCount)
         assertEquals(1, overview.stoppedCount)
-        assertEquals(0, fixture.engine().drainOnce().attempted)
     }
 
     private suspend fun save(fixture: DirectRepaymentTestFixture, payment: Boolean) = if (payment) {

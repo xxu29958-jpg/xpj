@@ -21,10 +21,13 @@ class OutboxBindingIsolationTest {
         repo.withBindingTransition { binding = OutboxBinding.DEFAULT }
         assertEquals(1, repo.observeStatus().first().quarantinedCount)
         assertTrue(repo.dequeueNextRunnable().isEmpty())
+        assertTrue(dao.batchCalls.isEmpty(), "An unbound repository must not query the queue")
 
         repo.withBindingTransition { binding = original }
         assertEquals(0, repo.observeStatus().first().quarantinedCount)
+        dao.runnableBatches += listOf(dao.rows.keys.single())
         assertEquals(1, repo.dequeueNextRunnable().size)
+        assertEquals(original.ownerStorageKey, dao.batchCalls.single().ownerKey)
     }
 
     @Test
@@ -38,6 +41,7 @@ class OutboxBindingIsolationTest {
         val status = repo.observeStatus().first()
 
         assertTrue(repo.dequeueNextRunnable().isEmpty())
+        assertEquals(binding.ownerStorageKey, dao.batchCalls.single().ownerKey)
         assertEquals(0, status.queueDepth)
         assertTrue(status.conflicts.isEmpty())
         assertTrue(status.failed.isEmpty())

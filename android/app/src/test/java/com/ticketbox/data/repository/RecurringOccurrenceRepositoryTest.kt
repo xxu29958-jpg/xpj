@@ -39,6 +39,7 @@ class RecurringOccurrenceRepositoryTest {
         fixture.api.returnAnotherPeriod = true
         val id = fixture.repository.enqueue(fixture.binding, fixture.draft).getOrThrow()
         val original = fixture.dao.rows.getValue(id)
+        fixture.dao.runnableBatches += listOf(id)
         assertEquals(1, fixture.engine(fixture.outbox, fixture.clock).drainOnce().failures)
         val retained = fixture.dao.rows.getValue(id)
         assertEquals(PendingMutationStatus.Failed.wireValue, retained.status)
@@ -60,10 +61,12 @@ class RecurringOccurrenceRepositoryTest {
         assertEquals(7L, payload.request.expectedSeriesRowVersion)
         assertEquals(3L, payload.request.expectedExpenseRowVersion)
 
+        fixture.dao.runnableBatches += listOf(id)
         assertEquals(1, fixture.engine(fixture.outbox, fixture.clock).drainOnce().retryable)
         assertEquals(original.payload, fixture.dao.rows.getValue(id).payload)
         val laterClock = Clock.offset(fixture.clock, Duration.ofMinutes(2))
         fixture.api.loseResponse = false
+        fixture.dao.runnableBatches += listOf(id)
         assertEquals(1, fixture.engine(fixture.newOutbox(laterClock), laterClock).drainOnce().done)
         assertEquals(2, fixture.api.calls.size)
         assertEquals(fixture.api.calls.first(), fixture.api.calls.last())
@@ -81,6 +84,7 @@ class RecurringOccurrenceRepositoryTest {
         assertNull(fixture.adapter.readSupportedOccurrence(original.payload.replace("\"action\":\"link\",", "")))
         val unknown = original.copy(payload = fixture.adapter.toJson(payload.copy(revision = 99)))
         fixture.dao.rows[id] = unknown
+        fixture.dao.runnableBatches += listOf(id)
         fixture.engine(fixture.outbox, fixture.clock).drainOnce()
         assertTrue(fixture.api.calls.isEmpty())
         val retained = fixture.dao.rows.getValue(id)
@@ -107,6 +111,7 @@ class RecurringOccurrenceRepositoryTest {
             val id = fixture.repository.enqueue(fixture.binding, fixture.draft).getOrThrow()
             val original = fixture.dao.rows.getValue(id)
             fixture.api.refusalCode = code
+            fixture.dao.runnableBatches += listOf(id)
             assertEquals(1, fixture.engine(fixture.outbox, fixture.clock).drainOnce().failures)
             val retained = fixture.dao.rows.getValue(id)
             assertEquals(PendingMutationStatus.Failed.wireValue, retained.status)
@@ -123,6 +128,7 @@ class RecurringOccurrenceRepositoryTest {
             fixture.api.refusalCode = null
             fixture.api.loseResponse = false
             fixture.repository.recover(fixture.binding, retained.toDomain(), drop = false).getOrThrow()
+            fixture.dao.runnableBatches += listOf(id)
             assertEquals(1, fixture.engine(fixture.outbox, fixture.clock).drainOnce().done)
             assertEquals(fixture.api.calls.first(), fixture.api.calls.last())
         }
@@ -148,6 +154,7 @@ class RecurringOccurrenceRepositoryTest {
         fixture.repository.recover(fixture.binding, original.toDomain(), drop = false).getOrThrow()
         assertEquals(legacy, fixture.dao.rows.getValue(id).payload)
         fixture.api.loseResponse = false
+        fixture.dao.runnableBatches += listOf(id)
         assertEquals(1, fixture.engine(fixture.outbox, fixture.clock).drainOnce().done)
         assertEquals(original.idempotencyKey, fixture.api.calls.single().second)
         assertEquals(pending.intent?.request, fixture.api.calls.single().first)

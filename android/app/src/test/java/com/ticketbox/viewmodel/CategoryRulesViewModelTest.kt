@@ -223,7 +223,8 @@ class CategoryRulesViewModelTest {
         // 应用规则改写确认流水的分类：走 applicationRevision（流水行重同步），
         // 不再 bump changedRevision（字典并未变化）。
         val api = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0)
-        val queue = com.ticketbox.data.repository.testOutboxRepository(com.ticketbox.data.repository.FakePendingMutationDao())
+        val pendingRows = com.ticketbox.data.repository.FakePendingMutationDao()
+        val queue = com.ticketbox.data.repository.testOutboxRepository(pendingRows)
         val vm = harness(api, queue = queue)
         awaitInitialLoads(vm)
 
@@ -237,6 +238,7 @@ class CategoryRulesViewModelTest {
         val adapters = com.ticketbox.OutboxAdapterGraph()
         val dispatcher = com.ticketbox.data.repository.ApplyConfirmedRulesDispatcher({ api },
             adapters.ruleApplicationAdapter, adapters.ruleApplicationReceiptAdapter, {})
+        pendingRows.runnableBatches += listOf(pendingRows.rows.keys.single())
         com.ticketbox.data.repository.OutboxDrainEngine(queue, listOf(dispatcher)).drainOnce()
         val state = vm.uiState.first { it.applicationRevision > 0 }
         runCurrent()
@@ -332,7 +334,8 @@ class CategoryRulesViewModelTest {
 
     @Test
     fun historicalAcceptedReceiptCannotResurrectADeletedCanonicalRule() = rulesTest {
-        val queue = com.ticketbox.data.repository.testOutboxRepository(com.ticketbox.data.repository.FakePendingMutationDao())
+        val pendingRows = com.ticketbox.data.repository.FakePendingMutationDao()
+        val queue = com.ticketbox.data.repository.testOutboxRepository(pendingRows)
         val accepted = categoryRuleDto(keyword = "旅行", category = "交通").copy(amountMinCents = 1200, homeCurrencyCode = "JPY")
         var canonical = listOf(accepted)
         val vm = harness(object : ApiService by FakeApiService(mutableListOf(), 0) {

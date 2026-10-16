@@ -81,6 +81,7 @@ class OutboxProtocolRefusalTest(private val refusal: String) {
 
         transport.accept = true
         assertTrue(outbox.resolveFailed(id, FailedResolution.Retry()))
+        dao.runnableBatches += listOf(id)
         assertEquals(1, engine.drainOnce().done)
         assertEquals(PendingMutationStatus.Done.wireValue, dao.rows.getValue(id).status)
         assertEquals(1, committedNotifications)

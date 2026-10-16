@@ -39,7 +39,7 @@ import kotlin.test.assertTrue
 class OutboxRepositoryTest {
 
     @Test
-    fun enqueueInsertsPendingRowInCausalOrder() = runTest {
+    fun enqueuePersistsOriginalCommandsAndRequestsTheCurrentBoundBatch() = runTest {
         val dao = FakePendingMutationDao()
         val repo = testOutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
 
@@ -56,76 +56,10 @@ class OutboxRepositoryTest {
             expectedRowVersion = 1L,
         )
 
+        dao.runnableBatches += listOf(first, second)
         val runnable = repo.dequeueNextRunnable(limit = 10)
         assertEquals(listOf(first, second), runnable.map { it.id })
         assertEquals(PendingMutationStatus.Pending.wireValue, dao.rows.values.first().status)
-    }
-
-    @Test
-    fun dequeueSkipsRowsForTargetsAlreadyInFlight() = runTest {
-        val dao = FakePendingMutationDao()
-        val repo = testOutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
-
-        val first = repo.enqueue(
-            type = PendingMutationType.PatchExpense,
-            targetId = "expense:1",
-            payloadJson = "{}",
-            expectedRowVersion = 0L,
-        )
-        // Another row for the SAME target — drain must not pick it
-        // up while ``first`` is in flight.
-        val second = repo.enqueue(
-            type = PendingMutationType.PatchExpense,
-            targetId = "expense:1",
-            payloadJson = "{}",
-            expectedRowVersion = 0L,
-        )
-        // Different target — drain may take it.
-        val third = repo.enqueue(
-            type = PendingMutationType.PatchExpense,
-            targetId = "expense:2",
-            payloadJson = "{}",
-            expectedRowVersion = 0L,
-        )
-
-        // Atomic claim flips first PENDING → IN_FLIGHT.
-        assertTrue(repo.tryClaim(first))
-        val runnable = repo.dequeueNextRunnable(limit = 10).map { it.id }
-
-        // ``first`` is IN_FLIGHT so it's no longer PENDING and won't
-        // be re-queued; ``second`` shares its target and must wait;
-        // ``third`` is independent and runs.
-        assertEquals(listOf(third), runnable)
-        assertTrue(second !in runnable)
-    }
-
-    @Test
-    fun dequeueDedupesSameTargetBeforeApplyingLimit() = runTest {
-        val dao = FakePendingMutationDao()
-        val repo = testOutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
-
-        val firstSameTarget = repo.enqueue(
-            type = PendingMutationType.PatchExpense,
-            targetId = "expense:1",
-            payloadJson = "{}",
-            expectedRowVersion = 1L,
-        )
-        repo.enqueue(
-            type = PendingMutationType.PatchExpense,
-            targetId = "expense:1",
-            payloadJson = "{}",
-            expectedRowVersion = 1L,
-        )
-        val differentTarget = repo.enqueue(
-            type = PendingMutationType.PatchExpense,
-            targetId = "expense:2",
-            payloadJson = "{}",
-            expectedRowVersion = 1L,
-        )
-
-        val runnable = repo.dequeueNextRunnable(limit = 2).map { it.id }
-
-        assertEquals(listOf(firstSameTarget, differentTarget), runnable)
     }
 
     @Test
@@ -459,7 +393,7 @@ class OutboxRepositoryTest {
     }
 
     @Test
-    fun bindingScopedQueueDoesNotDrainRowsFromPreviousLedger() = runTest {
+    fun dequeuePassesTheCurrentBindingWithoutRewritingAnEarlierLedgerOriginal() = runTest {
         val dao = FakePendingMutationDao()
         var binding = testOutboxBinding().copy(serverUrl = "https://old.example.com", ledgerId = "ledger-a")
         val repo = testOutboxRepository(
@@ -482,7 +416,10 @@ class OutboxRepositoryTest {
             expectedRowVersion = 2L,
         )
 
-        val runnable = repo.dequeueNextRunnable(limit = 10).map { it.id }
+        dao.runnableBatches += listOf(newRow)
+        val runnable = repo.dequeueNextRunnable(limit = 10, excludedIds = listOf(oldRow)).map { it.id }
+        assertEquals(RunnableBatchCall(binding.ownerStorageKey, "ledger-b", listOf("in_flight", "conflict", "failed"),
+            10, listOf(oldRow)), dao.batchCalls.single())
 
         assertEquals(listOf(newRow), runnable)
         assertEquals("https://old.example.com", dao.rows[oldRow]?.serverUrl)

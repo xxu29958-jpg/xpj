@@ -25,10 +25,9 @@ class OutboxDrainAdviceInvalidationTest {
             fired += 1
         }
 
+        dao.runnableBatches += listOf(dao.rows.keys.single())
         assertEquals(1, engine.drainOnce().done)
         assertEquals(1, fired)
-        assertEquals(0, engine.drainOnce().done)
-        assertEquals(1, fired, "An already settled create must not invalidate again")
     }
 
     @Test
@@ -40,40 +39,17 @@ class OutboxDrainAdviceInvalidationTest {
             DispatchResult.Discarded("not an accepted creation"),
         )
         for (result in refusals) {
-            val (engine, outbox) = withDispatcher(TypedStubDispatcher(
+            val (engine, outbox, dao) = withDispatcher(TypedStubDispatcher(
                 type = PendingMutationType.CreateIncomePlan, result = result))
             var fired = 0
             engine.onAdviceInputReplaySucceeded = { fired += 1 }
             outbox.enqueue(PendingMutationType.CreateIncomePlan,
                 "income_plan_create:original", "{}", 0L, "original")
 
+            dao.runnableBatches += listOf(dao.rows.keys.single())
             assertEquals(0, engine.drainOnce().done, result.toString())
             assertEquals(0, fired, result.toString())
         }
-    }
-
-    @Test
-    fun incomeCreationInvalidatesOnlyWhenItsOriginalBindingIsDrained() = runTest {
-        val originalBinding = testOutboxBinding()
-        var binding = originalBinding
-        val dao = FakePendingMutationDao()
-        val outbox = testOutboxRepository(dao, bindingProvider = { binding })
-        val engine = OutboxDrainEngine(outbox,
-            listOf(TypedStubDispatcher(type = PendingMutationType.CreateIncomePlan)))
-        val notifiedBindings = mutableListOf<OutboxBinding>()
-        engine.onAdviceInputReplaySucceeded = { notifiedBindings += binding }
-        val rowId = outbox.enqueue(PendingMutationType.CreateIncomePlan,
-            "income_plan_create:original", "{}", 0L, "original")
-
-        outbox.withBindingTransition { binding = originalBinding.copy(ledgerId = "other-ledger") }
-        assertEquals(0, engine.drainOnce().attempted)
-        assertEquals(emptyList(), notifiedBindings)
-        assertEquals(PendingMutationStatus.Pending.wireValue, dao.rows.getValue(rowId).status)
-
-        outbox.withBindingTransition { binding = originalBinding }
-        assertEquals(1, engine.drainOnce().done)
-        assertEquals(listOf(originalBinding), notifiedBindings)
-        assertEquals(PendingMutationStatus.Done.wireValue, dao.rows.getValue(rowId).status)
     }
 
     @Test
@@ -81,7 +57,7 @@ class OutboxDrainAdviceInvalidationTest {
         // 218-B4 review: advice generated between queue and replay used the
         // pre-replay server state — a successful replay of an advice-input
         // kind must invalidate it.
-        val (engine, outbox) = withDispatcher(
+        val (engine, outbox, dao) = withDispatcher(
             TypedStubDispatcher(type = PendingMutationType.UpdateIncomePlan),
         )
         var fired = 0
@@ -93,6 +69,7 @@ class OutboxDrainAdviceInvalidationTest {
             expectedRowVersion = 1L,
         )
 
+        dao.runnableBatches += listOf(dao.rows.keys.single())
         val summary = engine.drainOnce()
 
         assertEquals(1, summary.done)
@@ -101,7 +78,7 @@ class OutboxDrainAdviceInvalidationTest {
 
     @Test
     fun confirmedCorrectionReplaySuccessInvalidatesAdviceInputs() = runTest {
-        val (engine, outbox) = withDispatcher(
+        val (engine, outbox, dao) = withDispatcher(
             TypedStubDispatcher(type = PendingMutationType.CorrectExpense),
         )
         var fired = 0
@@ -114,6 +91,7 @@ class OutboxDrainAdviceInvalidationTest {
             idempotencyKey = "correction-intent",
         )
 
+        dao.runnableBatches += listOf(dao.rows.keys.single())
         val summary = engine.drainOnce()
 
         assertEquals(1, summary.done)
@@ -123,7 +101,7 @@ class OutboxDrainAdviceInvalidationTest {
     @Test
     fun nonInputReplaySuccessDoesNotFireInvalidationSeam() = runTest {
         // Spending goals travel the outbox but are not an advisor input.
-        val (engine, outbox) = withDispatcher(
+        val (engine, outbox, dao) = withDispatcher(
             TypedStubDispatcher(type = PendingMutationType.UpdateGoal),
         )
         var fired = 0
@@ -135,6 +113,7 @@ class OutboxDrainAdviceInvalidationTest {
             expectedRowVersion = 1L,
         )
 
+        dao.runnableBatches += listOf(dao.rows.keys.single())
         val summary = engine.drainOnce()
 
         assertEquals(1, summary.done)
@@ -144,7 +123,7 @@ class OutboxDrainAdviceInvalidationTest {
     @Test
     fun failedAdviceInputReplayDoesNotFireInvalidationSeam() = runTest {
         // Retry/failure leaves the server state unchanged — no invalidation.
-        val (engine, outbox) = withDispatcher(
+        val (engine, outbox, dao) = withDispatcher(
             TypedStubDispatcher(
                 result = DispatchResult.RetryableFailure("offline again"),
                 type = PendingMutationType.ConfirmExpense,
@@ -159,6 +138,7 @@ class OutboxDrainAdviceInvalidationTest {
             expectedRowVersion = 1L,
         )
 
+        dao.runnableBatches += listOf(dao.rows.keys.single())
         engine.drainOnce()
 
         assertEquals(0, fired)
@@ -167,10 +147,11 @@ class OutboxDrainAdviceInvalidationTest {
     @Test
     fun savingABudgetLimitDoesNotDiscardAdviceFromUnchangedFinancialInputs() = runTest {
         // The advisor reads expense history, income and recurring commitments, not the saved limit.
-        val (engine, outbox) = withDispatcher(TypedStubDispatcher(type = PendingMutationType.SaveMonthlyBudget))
+        val (engine, outbox, dao) = withDispatcher(TypedStubDispatcher(type = PendingMutationType.SaveMonthlyBudget))
         var fired = 0
         engine.onAdviceInputReplaySucceeded = { fired += 1 }
         outbox.enqueue(PendingMutationType.SaveMonthlyBudget, "monthly_budget:2026-09", "{}", 1L, "budget-original")
+        dao.runnableBatches += listOf(dao.rows.keys.single())
         assertEquals(1, engine.drainOnce().done)
         assertEquals(0, fired)
     }
@@ -181,7 +162,7 @@ class OutboxDrainAdviceInvalidationTest {
         // ExpenseItem sub-lines + updated_at + items_sum_status only; the
         // advisor reads the confirmed financial stream through spending_projection_service,
         // never line items — nothing it reads moves.
-        val (engine, outbox) = withDispatcher(
+        val (engine, outbox, dao) = withDispatcher(
             TypedStubDispatcher(type = PendingMutationType.ReplaceItems),
         )
         var fired = 0
@@ -193,6 +174,7 @@ class OutboxDrainAdviceInvalidationTest {
             expectedRowVersion = 1L,
         )
 
+        dao.runnableBatches += listOf(dao.rows.keys.single())
         val summary = engine.drainOnce()
 
         assertEquals(1, summary.done)
@@ -201,11 +183,11 @@ class OutboxDrainAdviceInvalidationTest {
 
     private fun withDispatcher(
         dispatcher: OutboxMutationDispatcher,
-    ): Pair<OutboxDrainEngine, OutboxRepository> {
+    ): Triple<OutboxDrainEngine, OutboxRepository, FakePendingMutationDao> {
         val dao = FakePendingMutationDao()
         val outbox = testOutboxRepository(dao = dao)
         val engine = OutboxDrainEngine(outbox, listOf(dispatcher))
-        return engine to outbox
+        return Triple(engine, outbox, dao)
     }
 }
 

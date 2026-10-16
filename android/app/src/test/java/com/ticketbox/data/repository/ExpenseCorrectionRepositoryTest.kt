@@ -128,6 +128,7 @@ internal class ExpenseCorrectionRepositoryTest : ExpensePendingRepositoryOutboxT
             val dispatcher = CorrectExpenseDispatcher({ api }, OutboxAdapterGraph().correctionAdapter,
                 publishAuthoritativeProjection = { _, _ -> error("A refusal cannot publish a fact") },
                 onConfirmedCommitted = { error("A refusal is not committed") })
+            queue.runnableBatches += listOf(id)
             assertEquals(1, OutboxDrainEngine(outbox, listOf(dispatcher)).drainOnce().failures)
             assertEquals(1, requests)
             val pending = repo.observeCorrections().first().corrections.single()
@@ -139,7 +140,6 @@ internal class ExpenseCorrectionRepositoryTest : ExpensePendingRepositoryOutboxT
             assertTrue(pending.canDiscard)
             assertTrue(repo.recoverCorrection(binding, id, drop = false).isFailure)
             assertEquals(original, queue.rows.getValue(id))
-            assertEquals(0, OutboxDrainEngine(outbox, listOf(dispatcher)).drainOnce().attempted)
             assertEquals(1, requests)
             repo.recoverCorrection(binding, id, drop = true).getOrThrow()
             assertTrue(queue.rows.isEmpty())

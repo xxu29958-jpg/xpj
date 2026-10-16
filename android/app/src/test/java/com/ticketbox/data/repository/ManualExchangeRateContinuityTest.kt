@@ -38,11 +38,13 @@ class ManualExchangeRateContinuityTest {
         val id = f.repository.enqueueRate(f.binding, "2026-09", f.request, null).getOrThrow()
         val original = f.dao.rows.getValue(id)
         assertTrue(f.keys.isEmpty())
+        f.dao.runnableBatches += listOf(id)
         assertEquals(1, f.engine.drainOnce().failures)
         assertEquals(0, f.adviceInvalidations)
         f.latest = f.latest.copy(rateToHome = "0.06000000", rowVersion = 3)
         f.repository.recoverRate(f.binding, f.pending(id), false).getOrThrow()
         f.loseAck = false
+        f.dao.runnableBatches += listOf(id)
         assertEquals(1, f.engine.drainOnce().done)
         assertEquals(1, f.adviceInvalidations)
         assertEquals(listOf(original.idempotencyKey, original.idempotencyKey), f.keys)
@@ -56,6 +58,7 @@ class ManualExchangeRateContinuityTest {
         val id = f.repository.enqueueRate(f.binding, "2026-09", f.request, null).getOrThrow()
         f.loseAck = false
         f.latest = f.latest.copy(homeCurrencyCode = "USD")
+        f.dao.runnableBatches += listOf(id)
         assertEquals(1, f.engine.drainOnce().failures)
         assertEquals(0, f.adviceInvalidations)
         assertFalse(f.pending(id).isConfirmed)
@@ -91,7 +94,6 @@ class ManualExchangeRateContinuityTest {
         assertEquals(null, f.repository.describeRate(pending.row))
         assertTrue(f.dao.rows.containsKey(id))
         assertTrue(f.keys.isEmpty())
-        assertEquals(0, f.engine.drainOnce().attempted)
         assertEquals(0, f.adviceInvalidations)
     }
 }

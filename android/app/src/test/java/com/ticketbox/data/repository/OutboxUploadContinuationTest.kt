@@ -36,6 +36,7 @@ class OutboxUploadContinuationTest {
             if (row.id == ids[1] && full) DispatchResult.Failure(UPLOAD_CAPACITY_FULL)
             else DispatchResult.Success(receiptJson = "original-${row.id}")
         }
+        dao.runnableBatches.addAll(listOf(listOf(ids[0]), listOf(ids[1])))
         val first = engine.drainOnce()
         assertEquals(listOf(ids[0], ids[1]), sends)
         assertEquals(1, first.done)
@@ -44,6 +45,7 @@ class OutboxUploadContinuationTest {
         val original = dao.rows.getValue(ids[1])
         full = false
         assertTrue(outbox.resolveFailed(ids[1], FailedResolution.Retry()))
+        dao.runnableBatches.addAll(listOf(listOf(ids[1]), listOf(ids[2])))
         assertEquals(2, engine.drainOnce().done)
         assertEquals(listOf(ids[0], ids[1], ids[1], ids[2]), sends)
         assertEquals(original.payload, dao.rows.getValue(ids[1]).payload)
@@ -56,6 +58,7 @@ class OutboxUploadContinuationTest {
         val outbox = testOutboxRepository(dao)
         val ids = enqueue(outbox, 3)
         val sends = mutableListOf<Long>()
+        dao.runnableBatches.addAll(ids.map(::listOf))
         val summary = engine(outbox) { row ->
             sends += row.id
             if (row.id == ids[1]) DispatchResult.Failure("unreadable", blocksFollowing = false)
@@ -71,10 +74,12 @@ class OutboxUploadContinuationTest {
 
     @Test
     fun aTransientHeadIsAttemptedOnlyOnceAndDoesNotStarveAnotherTarget() = runTest {
-        val outbox = testOutboxRepository(FakePendingMutationDao())
+        val dao = FakePendingMutationDao()
+        val outbox = testOutboxRepository(dao)
         val ids = enqueue(outbox, 3)
         val other = outbox.enqueue(PendingMutationType.UploadScreenshot, "upload_batch:other", "other", 0L, "other-key")
         val sends = mutableListOf<Long>()
+        dao.runnableBatches += listOf(ids[0], other)
         val summary = engine(outbox) { row ->
             sends += row.id
             if (row.id == ids[0]) DispatchResult.RetryableFailure("in progress") else DispatchResult.Success()
@@ -82,19 +87,23 @@ class OutboxUploadContinuationTest {
         assertEquals(listOf(ids[0], other), sends)
         assertEquals(1, summary.retryable)
         assertEquals(1, summary.done)
+        assertEquals(listOf(ids[0], other), dao.batchCalls[1].excludedIds)
         assertEquals(OutboxDrainWorker.DrainOutcome.RETRY, OutboxDrainWorker.classify(summary))
     }
 
     @Test
     fun boundedDrainLeavesExplicitContinuationForTheOriginalWorker() = runTest {
-        val outbox = testOutboxRepository(FakePendingMutationDao())
+        val dao = FakePendingMutationDao()
+        val outbox = testOutboxRepository(dao)
         val ids = enqueue(outbox, 101)
         val sends = mutableListOf<Long>()
         val engine = engine(outbox) { row -> sends += row.id; DispatchResult.Success() }
+        dao.runnableBatches.addAll(ids.map(::listOf))
         val first = engine.drainOnce()
         assertEquals(ids.take(100), sends)
         assertTrue(first.continuationRequired)
         assertEquals(OutboxDrainWorker.DrainOutcome.RETRY, OutboxDrainWorker.classify(first))
+        dao.runnableBatches += listOf(ids.last())
         assertEquals(1, engine.drainOnce().done)
         assertEquals(ids, sends)
     }
@@ -115,6 +124,7 @@ class OutboxUploadContinuationTest {
         val sends = mutableListOf<Long>()
         val engine = engine(outbox) { row -> sends += row.id; DispatchResult.Success() }
 
+        dao.runnableBatches.addAll(listOf(listOf(ids[1]), listOf(ids[0]), emptyList(), listOf(ids[1])))
         val first = engine.drainOnce()
         assertEquals(listOf(ids[0]), sends)
         assertEquals(1, first.done)
@@ -124,6 +134,7 @@ class OutboxUploadContinuationTest {
         assertTrue(first.continuationRequired)
         assertEquals(OutboxDrainWorker.DrainOutcome.RETRY, OutboxDrainWorker.classify(first))
 
+        dao.runnableBatches += listOf(ids[1])
         assertEquals(1, engine.drainOnce().done)
         assertEquals(ids, sends)
         assertEquals(originalTail.payload, dao.rows.getValue(ids[1]).payload)

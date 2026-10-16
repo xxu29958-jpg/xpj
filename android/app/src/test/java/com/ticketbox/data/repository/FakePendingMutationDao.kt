@@ -10,9 +10,11 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-/** In-memory [PendingMutationDao] preserving bound FIFO, original row identity and atomic batch changes. */
+/** Stores original commands and explicit query outcomes; generated Room owns queue eligibility. */
 class FakePendingMutationDao : PendingMutationDao {
     val rows: MutableMap<Long, PendingMutationEntity> = Collections.synchronizedMap(linkedMapOf())
+    val runnableBatches = ArrayDeque<List<Long>>()
+    val batchCalls = mutableListOf<RunnableBatchCall>()
     var beforeNextRunnableBatchReturn: (suspend () -> Unit)? = null
     var beforeInsert: (suspend () -> Unit)? = null
     var replacePayloadError: Throwable? = null
@@ -310,28 +312,11 @@ class FakePendingMutationDao : PendingMutationDao {
         limit: Int,
         excludedIds: List<Long>,
     ): List<PendingMutationEntity> {
-        val batch = runnableRows(ownerKey, ledgerId, "pending", unresolvedStatuses)
-            .filterNot { it.id in excludedIds }
-            .take(limit)
+        batchCalls += RunnableBatchCall(ownerKey, ledgerId, unresolvedStatuses.toList(), limit, excludedIds)
+        val batch = (runnableBatches.removeFirstOrNull() ?: emptyList()).map(rows::getValue)
+        check(batch.all { it.status == "pending" }) { "Scenario offered an original that was not pending" }
         beforeNextRunnableBatchReturn?.invoke()
         return batch
-    }
-
-    private fun runnableRows(
-        ownerKey: String, ledgerId: String, pendingStatus: String, unresolvedStatuses: Collection<String>,
-    ): List<PendingMutationEntity> {
-        val boundRows = rows.values.filter { it.ownerKey == ownerKey && it.ledgerId == ledgerId }
-        val unresolvedTargets = boundRows
-            .filter { it.status in unresolvedStatuses && (it.status != "failed" || it.blocksFollowing) }
-            .map { it.targetId }
-            .toSet()
-        return boundRows
-            .filter {
-                it.status == pendingStatus &&
-                    it.targetId !in unresolvedTargets
-            }
-            .sortedWith(compareBy({ it.createdAt }, { it.id }))
-            .distinctBy { it.targetId }
     }
 
     override suspend fun recoverStaleInFlight(
@@ -491,3 +476,6 @@ class FakePendingMutationDao : PendingMutationDao {
 }
 
 data class BoundExpiryCall(val id: Long, val ownerKey: String, val ledgerId: String, val fromStatus: String, val cutoff: String)
+
+data class RunnableBatchCall(val ownerKey: String, val ledgerId: String, val unresolvedStatuses: List<String>,
+    val limit: Int, val excludedIds: List<Long>)

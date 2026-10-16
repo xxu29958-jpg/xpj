@@ -22,11 +22,13 @@ internal fun outboxStatusHarness(onEnqueued: () -> Unit = {}, onRuleRefresh: sus
     val api = FakeApiServiceFactory(FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0))
     val binding = testServerSessionBinding(apiClient = api, settingsStore = boundSettingsStore(), tokenStore = tokenStore)
     val expenseRepository = com.ticketbox.data.repository.expenseRepositoryFixture(expenseDao = FakeExpenseDao(), binding = binding)
-    val outbox = testOutboxRepository(dao = FakePendingMutationDao(), onEnqueued = onEnqueued)
+    val pending = FakePendingMutationDao()
+    val outbox = testOutboxRepository(dao = pending, onEnqueued = onEnqueued)
     val recurringProvider = testApiServiceProvider(api, tokenStore)
     val recurringCache = FakeExpenseDao()
     return OutboxStatusHarness(
         outbox = outbox,
+        pending = pending,
         expenseRepository = expenseRepository,
         debtCreation = DebtCreationRepository(
             testApiServiceProvider(api, tokenStore), outbox, OutboxAdapterGraph().debtCreateAdapter,
@@ -52,6 +54,7 @@ internal fun outboxStatusHarness(onEnqueued: () -> Unit = {}, onRuleRefresh: sus
 
 internal data class OutboxStatusHarness(
     val outbox: OutboxRepository,
+    val pending: FakePendingMutationDao,
     val expenseRepository: ExpenseRepository,
     val debtCreation: DebtCreationRepository,
     val incomePlans: IncomePlanRepository,

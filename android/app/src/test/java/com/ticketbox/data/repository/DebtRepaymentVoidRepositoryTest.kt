@@ -18,6 +18,7 @@ class DebtRepaymentVoidRepositoryTest {
         assertEquals(1L, pending.intent?.expectedRowVersion)
         assertTrue(!pending.row.idempotencyKey.isNullOrBlank())
         assertTrue(fixture.api.voidCalls.isEmpty())
+        fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
         assertEquals(1, fixture.engine().drainOnce().done)
         val receipt = fixture.adapters.debtVoidReceiptAdapter.fromJson(fixture.dao.rows.values.single().receiptJson!!)
         assertEquals("JPY", receipt?.homeCurrencyCode)

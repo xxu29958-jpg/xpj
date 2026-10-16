@@ -24,6 +24,7 @@ class GoalEditRepositoryTest {
         assertTrue(f.keys.isEmpty())
         assertTrue(f.saveLinks().isFailure)
         f.loseAck = true
+        f.dao.runnableBatches += listOf(id)
         assertEquals(1, f.engine().drainOnce().failures)
         val failed = f.pending()
         assertEquals("2028-03-01", failed.debtEdit?.dateRequest?.targetDate)
@@ -32,6 +33,7 @@ class GoalEditRepositoryTest {
             debtRepayment = f.current.debtRepayment?.copy(targetDate = "2029-12-31"))
         f.repository.recover(f.binding, failed, drop = false).getOrThrow()
         f.loseAck = false
+        f.dao.runnableBatches += listOf(id)
         assertEquals(1, f.engine().drainOnce().done)
         assertEquals(listOf(original.idempotencyKey, original.idempotencyKey), f.keys)
         assertEquals(original.payload, f.dao.rows.getValue(id).payload)
@@ -40,6 +42,7 @@ class GoalEditRepositoryTest {
         assertEquals(1, f.pending().confirmed?.debtRepayment?.goalVersion)
         assertEquals("2028-03-01", f.pending().confirmed?.debtRepayment?.targetDate)
         val clearId = f.saveDate(null).getOrThrow()
+        f.dao.runnableBatches += listOf(clearId)
         assertEquals(1, f.engine().drainOnce().done)
         assertEquals(null, f.pending().confirmed?.debtRepayment?.targetDate)
         assertEquals(4, f.pending().confirmed?.rowVersion)
@@ -59,6 +62,7 @@ class GoalEditRepositoryTest {
         val original = f.dao.rows.getValue(id)
         f.receiptOverride = current.copy(rowVersion = 2, debtRepayment = current.debtRepayment?.copy(
             targetDate = "2028-03-01", goalVersion = 2))
+        f.dao.runnableBatches += listOf(id)
         assertEquals(1, f.engine().drainOnce().failures)
         assertEquals(null, f.pending().confirmed)
         assertFalse(f.pending().isDone)
@@ -76,6 +80,7 @@ class GoalEditRepositoryTest {
         assertTrue(f.keys.isEmpty())
         assertTrue(f.saveLinks().isFailure)
         f.loseAck = true
+        f.dao.runnableBatches += listOf(id)
         assertEquals(1, f.engine().drainOnce().failures)
         val failed = f.pending()
         assertEquals(listOf("debt-a", "debt-b"), failed.debtEdit?.request?.debtPublicIds)
@@ -83,6 +88,7 @@ class GoalEditRepositoryTest {
         f.current = f.current.copy(rowVersion = 3, name = "另一端后来修改")
         f.repository.recover(f.binding, failed, drop = false).getOrThrow()
         f.loseAck = false
+        f.dao.runnableBatches += listOf(id)
         assertEquals(1, f.engine().drainOnce().done)
         assertEquals(listOf(original.idempotencyKey, original.idempotencyKey), f.keys)
         assertEquals(original.payload, f.dao.rows.getValue(id).payload)
@@ -98,6 +104,7 @@ class GoalEditRepositoryTest {
         val id = f.saveLinks().getOrThrow()
         val original = f.pending()
         f.receiptOverride = f.current.copy(rowVersion = 8)
+        f.dao.runnableBatches += listOf(id)
         assertEquals(1, f.engine().drainOnce().failures)
         assertEquals(null, f.pending().confirmed)
         assertFalse(f.pending().canRetry)
@@ -117,6 +124,7 @@ class GoalEditRepositoryTest {
         }
         val missingId = missing.saveLinks().getOrThrow()
         val missingOriginal = missing.dao.rows.getValue(missingId)
+        missing.dao.runnableBatches += listOf(missingId)
         assertEquals(1, missing.engine().drainOnce().failures)
         assertFalse(missing.pending().isDone)
         assertTrue(missing.pending().canDrop)
@@ -145,11 +153,13 @@ class GoalEditRepositoryTest {
         val id = f.save().getOrThrow()
         val original = f.dao.rows.getValue(id)
         f.loseAck = true
+        f.dao.runnableBatches += listOf(id)
         assertEquals(1, f.engine().drainOnce().failures)
         val failed = f.pending()
         assertTrue(failed.canRetry)
         f.repository.recover(f.binding, failed, drop = false).getOrThrow()
         f.loseAck = false
+        f.dao.runnableBatches += listOf(id)
         assertEquals(1, f.engine().drainOnce().done)
         assertEquals(listOf(original.idempotencyKey, original.idempotencyKey), f.keys)
         assertEquals(listOf(id), f.acceptedRows)

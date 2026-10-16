@@ -139,6 +139,7 @@ class NetworkErrorReportingTest {
             }
         }
         val adapter = Moshi.Builder().add(KotlinJsonAdapterFactory()).build().adapter(MerchantAliasUpdateRequest::class.java)
+        dao.runnableBatches += listOf(dao.rows.keys.single())
         val summary = OutboxDrainEngine(outbox, listOf(UpdateMerchantAliasDispatcher({ api }, adapter))).drainOnce()
 
         assertEquals(1, attempts)
@@ -175,6 +176,7 @@ class NetworkErrorReportingTest {
                 throw IllegalStateException("password=synthetic-debt-secret", IOException("private principal text"))
             }
         }
+        dao.runnableBatches += listOf(dao.rows.keys.single())
         val summary = OutboxDrainEngine(outbox, listOf(CreateDebtDispatcher({ api }, adapter))).drainOnce()
         assertEquals(1, attempts)
         assertEquals(0, summary.done)
@@ -226,6 +228,7 @@ class NetworkErrorReportingTest {
                 throw IllegalStateException("password=synthetic-adoption-secret", IOException("private financial text"))
             }
         }
+        dao.runnableBatches += listOf(dao.rows.keys.single())
         val summary = OutboxDrainEngine(outbox, listOf(ConfirmRecurringCandidateDispatcher({ api }, adapter))).drainOnce()
         val original = dao.rows.getValue(originalId)
         assertEquals(1, attempts)
@@ -261,6 +264,7 @@ class NetworkErrorReportingTest {
                 throw IllegalStateException("password=synthetic-links-secret", IOException("private financial text"))
             }
         }
+        dao.runnableBatches += listOf(dao.rows.keys.single())
         val summary = OutboxDrainEngine(outbox, listOf(DebtGoalEditDispatcher({ api },
             adapters.goalDebtEditAdapter, adapters.goalReceiptAdapter) { error("Unconfirmed results cannot invalidate reads") })).drainOnce()
         val original = dao.rows.getValue(id)
@@ -296,6 +300,7 @@ class NetworkErrorReportingTest {
             }
         }
         val adapter = Moshi.Builder().add(KotlinJsonAdapterFactory()).build().adapter(ExpenseStateTokenRequest::class.java)
+        dao.runnableBatches += listOf(dao.rows.keys.single())
         val summary = OutboxDrainEngine(outbox, listOf(ConfirmExpenseDispatcher({ api }, adapter) { _, _ ->
             error("A failed response must not publish a fact")
         })).drainOnce()

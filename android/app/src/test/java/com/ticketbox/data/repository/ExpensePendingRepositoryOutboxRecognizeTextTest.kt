@@ -43,6 +43,7 @@ internal class ExpensePendingRepositoryOutboxRecognizeTextTest : ExpensePendingR
         assertNull(api.lastRecognizeTextIdempotencyKey)
         val dispatcher = RecognizeTextDispatcher(apiProvider = { api }, payloadAdapter = adapter,
             publishExpense = { _, _ -> error("An unavailable transport cannot publish recognition") })
+        dao.runnableBatches += listOf(original.id)
         assertEquals(1, OutboxDrainEngine(outbox, listOf(dispatcher)).drainOnce().retryable)
         val retained = dao.rows.values.single()
         assertEquals(PendingMutationStatus.Pending.wireValue, retained.status)
@@ -68,6 +69,7 @@ internal class ExpensePendingRepositoryOutboxRecognizeTextTest : ExpensePendingR
         val dispatcher = RecognizeTextDispatcher(apiProvider = { api },
             payloadAdapter = moshi().adapter(ExpenseRecognizeTextRequestDto::class.java),
             publishExpense = { _, expense -> published += expense })
+        dao.runnableBatches += listOf(original.id)
         assertEquals(1, OutboxDrainEngine(outbox, listOf(dispatcher)).drainOnce().done)
         assertEquals(listOf(parsed), published)
         assertEquals(PendingMutationStatus.Done.wireValue, dao.rows.values.single().status)

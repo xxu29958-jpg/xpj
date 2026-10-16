@@ -57,7 +57,6 @@ class DebtAdjustmentRepositoryTest {
             assertNotNull(stopped.completedAt)
             assertTrue(fixture.api.calls.isEmpty())
             assertTrue(fixture.api.facts.isEmpty())
-            assertEquals(0, fixture.engine(outbox, maxAttempts = 1).drainOnce().attempted)
             writes.save(binding, fixture.debt, 3_000L, "补记借款").getOrThrow()
             assertEquals(2, fixture.dao.rows.size)
             assertEquals(stopped, fixture.dao.rows.getValue(stopped.id))
@@ -69,6 +68,7 @@ class DebtAdjustmentRepositoryTest {
             val fixture = DebtAdjustmentFixture()
             fixture.api.loseResponse = true
             fixture.save().getOrThrow()
+            fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
             assertEquals(1, fixture.engine(maxAttempts = 1).drainOnce().failures)
             val original = fixture.dao.rows.values.single()
             val originalIntent = fixture.pending().intent
@@ -86,7 +86,6 @@ class DebtAdjustmentRepositoryTest {
             assertFalse(refused.exceptionOrNull()?.message.isNullOrBlank())
             assertFalse(pending.canRetry)
             assertEquals(original, fixture.dao.rows.values.single())
-            assertEquals(0, fixture.engine(outbox, maxAttempts = 1).drainOnce().attempted)
             assertEquals(1, fixture.api.calls.size)
             writes.recover(binding, pending, drop = true).getOrThrow()
             val stopped = fixture.dao.rows.values.single()
@@ -110,6 +109,7 @@ class DebtAdjustmentRepositoryTest {
                 else session.copy(bindingRevision = "new-revision"))
             val outbox = fixture.newOutbox(fixture.clock)
             val writes = fixture.newRepository(outbox)
+            fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
             fixture.engine(outbox, maxAttempts = 1).drainOnce()
             assertTrue(fixture.api.calls.isEmpty(), axis)
             assertTrue(fixture.api.facts.isEmpty(), axis)
@@ -131,6 +131,7 @@ class DebtAdjustmentRepositoryTest {
         val fixture = DebtAdjustmentFixture()
         fixture.api.loseResponse = true
         fixture.save().getOrThrow()
+        fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
         assertEquals(1, fixture.engine(maxAttempts = 1).drainOnce().failures)
         val original = fixture.dao.rows.values.single()
         val session = requireNotNull(fixture.session.sessionStore.currentSession())
@@ -143,6 +144,7 @@ class DebtAdjustmentRepositoryTest {
         assertTrue(fixture.pending().canRetry)
         fixture.repository.recover(fixture.binding, fixture.pending(), drop = false).getOrThrow()
         fixture.api.loseResponse = false
+        fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
         assertEquals(1, fixture.engine(maxAttempts = 1).drainOnce().done)
         val confirmed = fixture.dao.rows.values.single()
         assertEquals(original.payload, confirmed.payload)
@@ -176,6 +178,7 @@ class DebtAdjustmentRepositoryTest {
         assertTrue(!stored.idempotencyKey.isNullOrBlank())
         assertEquals(PendingMutationStatus.Pending.wireValue, stored.status)
 
+        fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
         assertEquals(1, fixture.engine().drainOnce().done)
         val sent = fixture.api.calls.single()
         assertEquals("d1", sent.publicId)
@@ -190,6 +193,7 @@ class DebtAdjustmentRepositoryTest {
         val id = fixture.save().getOrThrow()
         val original = fixture.dao.rows.getValue(id)
 
+        fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
         assertEquals(1, fixture.engine().drainOnce().retryable)
         assertEquals(PendingMutationStatus.Pending.wireValue, fixture.dao.rows.getValue(id).status)
         assertOriginalIntent(original, fixture.dao.rows.getValue(id))
@@ -203,6 +207,7 @@ class DebtAdjustmentRepositoryTest {
         assertEquals(DebtAdjustmentCreateRequestDto(3_000L, "补记借款", 2L), recovered.adjustment?.request)
         fixture.api.loseResponse = false
 
+        fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
         assertEquals(1, fixture.engine(restartedOutbox, restartedClock).drainOnce().done)
         assertEquals(2, fixture.api.calls.size)
         assertEquals(fixture.api.calls[0], fixture.api.calls[1])
@@ -232,6 +237,7 @@ class DebtAdjustmentRepositoryTest {
         )
         val following = fixture.dao.rows.getValue(followingId)
 
+        fixture.dao.runnableBatches.addAll(listOf(listOf(id), listOf(followingId)))
         val summary = fixture.engine().drainOnce()
         assertEquals(1, summary.done)
         assertEquals(1, summary.conflicts)
@@ -253,6 +259,7 @@ class DebtAdjustmentRepositoryTest {
             val id = fixture.save().getOrThrow()
             val original = fixture.dao.rows.getValue(id)
 
+            fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
             val result = fixture.engine().drainOnce()
 
             assertEquals(1, result.failures, refusal.toString())
@@ -267,7 +274,6 @@ class DebtAdjustmentRepositoryTest {
             }
             assertEquals(1, fixture.api.calls.size)
             assertTrue(fixture.api.facts.isEmpty())
-            assertEquals(0, fixture.engine().drainOnce().attempted)
             assertEquals(1, fixture.api.calls.size)
         }
     }
@@ -278,6 +284,7 @@ class DebtAdjustmentRepositoryTest {
         fixture.api.refusal = 409 to "future_domain_refusal"
         val id = fixture.save().getOrThrow()
         val original = fixture.dao.rows.getValue(id)
+        fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
         fixture.engine().drainOnce()
 
         fixture.repository.recover(fixture.binding, fixture.pending(), drop = false).getOrThrow()
@@ -286,6 +293,7 @@ class DebtAdjustmentRepositoryTest {
         assertOriginalIntent(original, fixture.dao.rows.getValue(id))
         assertEquals(listOf(1, 1), fixture.queueDepthAtSchedule, "Retry must schedule the persisted original command")
         fixture.api.refusal = null
+        fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
         assertEquals(1, fixture.engine().drainOnce().done)
         assertEquals(2, fixture.api.calls.size)
         assertEquals(fixture.api.calls.first(), fixture.api.calls.last())
@@ -303,12 +311,14 @@ class DebtAdjustmentRepositoryTest {
             fixture.api.refusal = 409 to "future_domain_refusal"
             val id = fixture.save(amountCents = -5_000L).getOrThrow()
             val original = fixture.dao.rows.getValue(id)
+            fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
             assertEquals(1, fixture.engine().drainOnce().failures)
             val staleRetryable = fixture.pending()
             assertTrue(staleRetryable.canRetry)
             fixture.repository.recover(fixture.binding, staleRetryable, drop = false).getOrThrow()
             fixture.api.refusal = refusal
 
+            fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
             val drained = fixture.engine().drainOnce()
             assertEquals(1, if (expectedStatus == PendingMutationStatus.Conflict) drained.conflicts else drained.failures)
             val pending = fixture.pending()
@@ -322,7 +332,6 @@ class DebtAdjustmentRepositoryTest {
             assertEquals(expectedStatus.wireValue, fixture.dao.rows.getValue(id).status)
             assertOriginalIntent(original, fixture.dao.rows.getValue(id))
             assertEquals(listOf(1, 1), fixture.queueDepthAtSchedule)
-            assertEquals(0, fixture.engine().drainOnce().attempted)
             assertEquals(2, fixture.api.calls.size)
             assertEquals(fixture.api.calls.first(), fixture.api.calls.last())
             assertTrue(fixture.api.facts.isEmpty())
@@ -334,7 +343,6 @@ class DebtAdjustmentRepositoryTest {
             assertTrue(fixture.repository.recover(fixture.binding, pending, drop = true).isFailure)
             assertEquals(listOf(1, 1, 1), fixture.queueDepthAtSchedule, "A stale abandonment must not notify again")
             assertTrue(fixture.repository.recover(fixture.binding, pending, drop = false).isFailure)
-            assertEquals(0, fixture.engine().drainOnce().attempted)
         }
     }
 
@@ -350,13 +358,13 @@ class DebtAdjustmentRepositoryTest {
             val unsupported = row.copy(payload = fixture.adapters.debtAdjustmentAdapter.toJson(invalid))
             fixture.dao.rows[id] = unsupported
 
+            fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
             assertEquals(1, fixture.engine().drainOnce().failures)
             val pending = fixture.pending()
             assertFalse(pending.hasSupportedIntent)
             assertTrue(fixture.repository.recover(fixture.binding, pending, drop = false).isFailure)
             assertEquals(PendingMutationStatus.Failed.wireValue, fixture.dao.rows.getValue(id).status)
             assertOriginalIntent(unsupported, fixture.dao.rows.getValue(id))
-            assertEquals(0, fixture.engine().drainOnce().attempted)
             assertEquals(listOf(1), fixture.queueDepthAtSchedule)
             assertTrue(fixture.api.calls.isEmpty())
 
@@ -364,7 +372,6 @@ class DebtAdjustmentRepositoryTest {
             assertEquals(PendingMutationStatus.Abandoned.wireValue, fixture.dao.rows.getValue(id).status)
             assertOriginalIntent(unsupported, fixture.dao.rows.getValue(id))
             assertFalse(fixture.pending().canRetry)
-            assertEquals(0, fixture.engine().drainOnce().attempted)
             assertTrue(fixture.api.calls.isEmpty())
         }
     }
@@ -389,6 +396,7 @@ class DebtAdjustmentRepositoryTest {
             assertEquals(reason, fixture.pending().adjustment?.request?.reason)
             assertEquals(listOf(1), fixture.queueDepthAtSchedule)
             assertTrue(fixture.api.calls.isEmpty())
+            fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
             assertEquals(1, fixture.engine().drainOnce().done)
             assertEquals(reason, fixture.api.calls.single().request.reason)
         }
@@ -397,6 +405,7 @@ class DebtAdjustmentRepositoryTest {
         assertEquals(-50_000L, cleared.pending().adjustment?.request?.amountCents)
         assertEquals(listOf(1), cleared.queueDepthAtSchedule)
         assertTrue(cleared.api.calls.isEmpty())
+        cleared.dao.runnableBatches += listOf(cleared.dao.rows.keys.single())
         assertEquals(1, cleared.engine().drainOnce().done)
         assertEquals(0L, cleared.api.facts.values.single().second.remainingAmountCents)
     }

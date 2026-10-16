@@ -45,6 +45,7 @@ class UploadScreenshotDispatcherTest {
         val engine = OutboxDrainEngine(outbox, listOf(dispatcher(api)))
         var adviceChanges = 0
         engine.onAdviceInputReplaySucceeded = { adviceChanges++ }
+        dao.runnableBatches += listOf(id)
         assertEquals(1, engine.drainOnce().done)
         val original = dao.rows.getValue(id)
         assertEquals(PendingMutationStatus.Done.wireValue, original.status)
@@ -53,7 +54,6 @@ class UploadScreenshotDispatcherTest {
         assertEquals(adapters.uploadPayloadAdapter.toJson(payload), original.payload)
         assertEquals(payload.file.key, original.idempotencyKey)
         assertEquals(0L, original.expectedRowVersion)
-        assertEquals(0, engine.drainOnce().attempted)
         assertEquals(1, sends)
         assertEquals(0, adviceChanges)
     }
@@ -82,6 +82,7 @@ class UploadScreenshotDispatcherTest {
                 sends++
                 throw refusal(status, code)
             })))
+            dao.runnableBatches += listOf(id)
             assertEquals(1, engine.drainOnce().failures)
             val rejected = dao.rows.getValue(id)
             assertEquals(code, rejected.lastError)
@@ -89,7 +90,6 @@ class UploadScreenshotDispatcherTest {
             assertFalse(PendingUploadIntent(originalRow().copy(status = PendingMutationStatus.Failed,
                 lastError = rejected.lastError), payload, null).canRetry)
             assertFalse(outbox.resolveFailed(id, FailedResolution.Retry()))
-            assertEquals(0, engine.drainOnce().attempted)
             assertEquals(1, sends)
             assertEquals(rejected, dao.rows.getValue(id))
             assertNull(rejected.receiptJson)

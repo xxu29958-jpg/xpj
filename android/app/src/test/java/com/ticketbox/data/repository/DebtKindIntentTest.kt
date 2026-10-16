@@ -30,12 +30,14 @@ class DebtKindIntentTest {
         val fixture = DirectRepaymentTestFixture()
         fixture.repository.saveKind(fixture.binding, fixture.debt, "revolving").getOrThrow()
         val original = fixture.dao.rows.values.single()
+        fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
         assertEquals(1, fixture.engine().drainOnce().failures)
         val accepted = fixture.api.current
         fixture.api.current = accepted.copy(debtKind = "installment", rowVersion = accepted.rowVersion + 1)
         fixture.api.loseResponse = false
         val rebuilt = fixture.newRepository(fixture.newOutbox(fixture.clock), fixture.clock)
         rebuilt.recover(fixture.binding, fixture.pending(rebuilt), false).getOrThrow()
+        fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
         assertEquals(1, fixture.engine().drainOnce().done)
         val stored = fixture.dao.rows.values.single()
         assertEquals(original.payload, stored.payload)
@@ -55,6 +57,7 @@ class DebtKindIntentTest {
         val fixture = DirectRepaymentTestFixture()
         fixture.repository.saveKind(fixture.binding, fixture.debt, "revolving").getOrThrow()
         val original = fixture.dao.rows.values.single()
+        fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
         fixture.engine().drainOnce()
         fixture.api.loseResponse = false
         for (case in listOf("target", "ledger", "kind", "currency", "revision")) {
@@ -66,6 +69,7 @@ class DebtKindIntentTest {
                 "currency" -> it.copy(homeCurrencyCode = "JPY")
                 else -> it.copy(rowVersion = it.rowVersion + 1)
             } }
+            fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
             assertEquals(0, fixture.engine().drainOnce().done, case)
             val pending = fixture.dao.rows.values.single()
             assertEquals(null, pending.receiptJson, case)
@@ -74,6 +78,7 @@ class DebtKindIntentTest {
         }
         fixture.repository.recover(fixture.binding, fixture.pending(), false).getOrThrow()
         fixture.api.kindReceiptTransform = { it }
+        fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
         assertEquals(1, fixture.engine().drainOnce().done)
         assertEquals(1, fixture.api.kindFacts.size)
     }
@@ -94,6 +99,7 @@ class DebtKindIntentTest {
         val fixture = DirectRepaymentTestFixture()
         fixture.repository.saveKind(fixture.binding, fixture.debt, "revolving").getOrThrow()
         fixture.api.refusal = 409 to "debt_kind_original_requires_review"
+        fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
         fixture.engine().drainOnce()
         val original = fixture.dao.rows.values.single()
         val pending = fixture.pending()

@@ -55,7 +55,6 @@ class DirectRepaymentIntentTest {
             assertNotNull(stopped.completedAt)
             assertTrue(fixture.api.calls.isEmpty())
             assertTrue(fixture.api.facts.isEmpty())
-            assertEquals(0, fixture.engine(outbox).drainOnce().attempted)
             writes.saveRepayment(binding, fixture.debt, 10_000L).getOrThrow()
             assertEquals(2, fixture.dao.rows.size)
             assertEquals(stopped, fixture.dao.rows.getValue(stopped.id))
@@ -66,6 +65,7 @@ class DirectRepaymentIntentTest {
         for (axis in listOf("session", "revision")) {
             val fixture = DirectRepaymentTestFixture()
             fixture.save().getOrThrow()
+            fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
             assertEquals(1, fixture.engine().drainOnce().failures)
             val original = fixture.dao.rows.values.single()
             val originalIntent = fixture.pending().intent
@@ -83,7 +83,6 @@ class DirectRepaymentIntentTest {
             assertFalse(refused.exceptionOrNull()?.message.isNullOrBlank())
             assertFalse(pending.canRetry)
             assertEquals(original, fixture.dao.rows.values.single())
-            assertEquals(0, fixture.engine(outbox).drainOnce().attempted)
             assertEquals(1, fixture.api.calls.size)
             writes.recover(binding, pending, drop = true).getOrThrow()
             val stopped = fixture.dao.rows.values.single()
@@ -107,6 +106,7 @@ class DirectRepaymentIntentTest {
                 else session.copy(bindingRevision = "new-revision"))
             val outbox = fixture.newOutbox(fixture.clock)
             val writes = fixture.newRepository(outbox, fixture.clock)
+            fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
             fixture.engine(outbox).drainOnce()
             assertTrue(fixture.api.calls.isEmpty(), axis)
             assertTrue(fixture.api.facts.isEmpty(), axis)
@@ -127,6 +127,7 @@ class DirectRepaymentIntentTest {
     @Test fun credentialRefreshKeepsOriginalRepaymentRecoverableWithoutChangingBodyKeyOccOrFact() = runTest {
         val fixture = DirectRepaymentTestFixture()
         fixture.save().getOrThrow()
+        fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
         assertEquals(1, fixture.engine().drainOnce().failures)
         val original = fixture.dao.rows.values.single()
         val session = requireNotNull(fixture.session.sessionStore.currentSession())
@@ -139,6 +140,7 @@ class DirectRepaymentIntentTest {
         assertTrue(fixture.pending().canRetry)
         fixture.repository.recover(fixture.binding, fixture.pending(), drop = false).getOrThrow()
         fixture.api.loseResponse = false
+        fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
         assertEquals(1, fixture.engine().drainOnce().done)
         val confirmed = fixture.dao.rows.values.single()
         assertEquals(original.payload, confirmed.payload)
@@ -162,6 +164,7 @@ class DirectRepaymentIntentTest {
             assertTrue(fixture.api.calls.isEmpty())
             assertEquals(if (paymentTime == null) "2026-09-30T15:59:00Z" else null, fixture.pending().repayment?.request?.paidAt)
             assertEquals(paymentTime?.toRequest(), fixture.pending().repayment?.request?.timeInput)
+            fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
             assertEquals(1, fixture.engine().drainOnce().failures)
             assertEquals(1, fixture.api.facts.size)
 
@@ -169,6 +172,7 @@ class DirectRepaymentIntentTest {
             val reopenedOutbox = fixture.newOutbox(nextDay)
             val reopenedOwner = fixture.newRepository(reopenedOutbox, nextDay)
             reopenedOwner.recover(fixture.binding, fixture.pending(reopenedOwner), drop = false).getOrThrow()
+            fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
             assertEquals(1, fixture.engine(reopenedOutbox, nextDay).drainOnce().done)
 
             val delivered = fixture.dao.rows.getValue(id)
@@ -226,6 +230,7 @@ class DirectRepaymentIntentTest {
             } }
             val id = fixture.save().getOrThrow()
             val original = fixture.dao.rows.getValue(id)
+            fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
             assertEquals(0, fixture.engine().drainOnce().done, case)
             val failed = fixture.dao.rows.getValue(id)
             assertEquals(PendingMutationStatus.Failed.wireValue, failed.status, case)
@@ -242,6 +247,8 @@ class DirectRepaymentIntentTest {
         val original = fixture.pending()
         val next = fixture.outbox.enqueue(PendingMutationType.RecordDebtRepayment, original.row.targetId,
             original.row.payloadJson, 1, "separate-original-key")
+        fixture.dao.runnableBatches += listOf(original.row.id)
+        fixture.dao.runnableBatches += listOf(next)
         val result = fixture.engine().drainOnce()
         assertEquals(1, result.done)
         assertEquals(1, result.conflicts)
@@ -253,6 +260,7 @@ class DirectRepaymentIntentTest {
     @Test fun bindingChangeCannotRetargetOriginalRetryOrStop() = runTest {
         val fixture = DirectRepaymentTestFixture()
         val id = fixture.save().getOrThrow()
+        fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
         fixture.engine().drainOnce()
         val pending = fixture.pending()
         val stored = fixture.dao.rows.getValue(id)

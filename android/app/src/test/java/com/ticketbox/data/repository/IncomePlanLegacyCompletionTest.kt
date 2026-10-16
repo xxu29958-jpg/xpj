@@ -29,6 +29,7 @@ class IncomePlanLegacyCompletionTest {
                 override val type = PendingMutationType.UpdateIncomePlan
                 override suspend fun dispatch(row: OutboxRow) = legacyResult
             }))
+            f.dao.runnableBatches += listOf(f.dao.rows.keys.single())
             engine.drainOnce()
             val pending = f.pending(id)
             assertEquals(PendingMutationStatus.Done, pending.row.status)
@@ -56,6 +57,7 @@ class IncomePlanLegacyCompletionTest {
         val f = IncomeCreationFixture()
         val id = f.repository.create(f.binding, f.draft, f.creationKey).getOrThrow()
         f.loseAck = false
+        f.dao.runnableBatches += listOf(f.dao.rows.keys.single())
         f.engine().drainOnce()
         val pending = f.pending(id)
         assertTrue(pending.isConfirmed)

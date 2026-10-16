@@ -39,6 +39,7 @@ class DebtGoalCreationRepositoryTest {
         f.create().getOrThrow()
         val original = f.pending().row
         f.loseAck = true
+        f.dao.runnableBatches += listOf(f.dao.rows.keys.single())
         assertEquals(1, f.engine().drainOnce().failures)
         val failed = f.pending()
         assertTrue(failed.canRetry)
@@ -46,6 +47,7 @@ class DebtGoalCreationRepositoryTest {
         f.laterRemaining = 800
         f.loseAck = false
         f.repository.recoverCreation(f.binding, failed, drop = false).getOrThrow()
+        f.dao.runnableBatches += listOf(f.dao.rows.keys.single())
         assertEquals(1, f.engine().drainOnce().done)
         val done = f.pending()
         assertEquals(listOf(original.idempotencyKey, original.idempotencyKey), f.calls.map { it.second })
@@ -74,6 +76,7 @@ class DebtGoalCreationRepositoryTest {
             f.receiptMutation = mutation
             f.create().getOrThrow()
             val original = f.pending().row
+            f.dao.runnableBatches += listOf(f.dao.rows.keys.single())
             assertEquals(1, f.engine().drainOnce().failures)
             val refused = f.pending()
             assertEquals(PendingMutationStatus.Failed, refused.row.status)
@@ -119,6 +122,7 @@ class DebtGoalCreationRepositoryTest {
     @Test fun completedOriginalIsReadableWithoutASecondCommandOrCurrentCandidateLookup() = runTest {
         val f = DebtGoalCreationFixture()
         val id = f.create().getOrThrow()
+        f.dao.runnableBatches += listOf(f.dao.rows.keys.single())
         assertEquals(1, f.engine().drainOnce().done)
         val original = f.pending()
         assertEquals(id, f.create().getOrThrow())
@@ -131,6 +135,7 @@ class DebtGoalCreationRepositoryTest {
         val f = DebtGoalCreationFixture()
         f.create().getOrThrow()
         f.loseAck = true
+        f.dao.runnableBatches += listOf(f.dao.rows.keys.single())
         f.engine().drainOnce()
         val failed = f.pending()
         for (stale in listOf(f.binding.copy(sessionGeneration = "next-session"),
@@ -152,6 +157,7 @@ class DebtGoalCreationRepositoryTest {
         f.create().getOrThrow()
         val original = f.pending()
         f.loseAck = true
+        f.dao.runnableBatches += listOf(f.dao.rows.keys.single())
         assertEquals(1, f.engine().drainOnce().failures)
         val failed = f.pending()
         f.repository.recoverCreation(f.binding, failed, drop = true).getOrThrow()
@@ -164,7 +170,6 @@ class DebtGoalCreationRepositoryTest {
         assertFalse(stopped.canDrop)
         assertTrue(f.repository.recoverCreation(f.binding, stopped, drop = false).isFailure)
         assertEquals(original.row.id, f.create().getOrThrow())
-        assertEquals(0, f.engine().drainOnce().done)
         assertEquals(1, f.calls.size)
         assertEquals(1, f.accepted.size)
         assertEquals(1, f.dao.rows.size)
@@ -181,11 +186,13 @@ class DebtGoalCreationRepositoryTest {
         val reports = f.repository
         reports.debtGoals().getOrThrow()
         val adapters = OutboxAdapterGraph()
-        val queue = testOutboxRepository(FakePendingMutationDao(), bindingProvider = { f.provider.currentSession().toOutboxBinding() })
+        val dao = FakePendingMutationDao()
+        val queue = testOutboxRepository(dao, bindingProvider = { f.provider.currentSession().toOutboxBinding() })
         val owner = GoalEditRepository(f.provider, queue, adapters.goalUpdateAdapter, adapters.goalReceiptAdapter, adapters.goalCreateAdapter, adapters.goalDebtEditAdapter)
         owner.create(f.binding, request, UUID.randomUUID().toString()).getOrThrow()
         val dispatcher = CreateGoalDispatcher({ sendingApi }, adapters.goalCreateAdapter, adapters.goalReceiptAdapter,
             reports::invalidateGoalReadsAfterDelivery)
+        dao.runnableBatches += listOf(dao.rows.keys.single())
         assertEquals(1, OutboxDrainEngine(queue, listOf(dispatcher)).drainOnce().done)
         f.api.offline = true
         assertTrue(reports.debtGoals().isFailure)

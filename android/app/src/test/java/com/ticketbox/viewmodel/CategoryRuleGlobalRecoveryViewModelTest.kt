@@ -60,6 +60,7 @@ class CategoryRuleGlobalRecoveryViewModelTest {
             assertEquals(original.idempotencyKey, retried.idempotencyKey)
             val writer = com.ticketbox.data.repository.ApplyConfirmedRulesDispatcher({ api }, adapters.ruleApplicationAdapter,
                 adapters.ruleApplicationReceiptAdapter) { harness.rules.refreshAcceptedApplication(it).getOrThrow() }
+            harness.pending.runnableBatches += listOf(id)
             com.ticketbox.data.repository.OutboxDrainEngine(harness.outbox, listOf(writer)).drainOnce()
             val accepted = vm.uiState.first { it.ruleApplications[id]?.needsRefresh == true }.ruleApplications.getValue(id)
             assertFalse(accepted.canRetry)
