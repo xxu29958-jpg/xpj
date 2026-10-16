@@ -11,6 +11,7 @@ from sqlalchemy import select
 
 from app.models import ApiIdempotencyKey, Expense, ExpenseRevision
 from app.routes import _web_expense_helpers, web_expense_edit, web_expense_items, web_expense_splits
+from app.services.currency_binding_service import resolve_write_capability
 from tests import test_expense_subtask_receipts as receipt_tests
 from tests import test_web_expense_fact_items_ack as fact_ack_tests
 from tests import test_web_expense_review_runtime as review_tests
@@ -68,6 +69,7 @@ def subtask_journey(subtask_browser, fact_review_browser):
         with session_factory() as db:
             current = db.get(Expense, 42)
             if kind == "ack":
+                resolve_write_capability(db)
                 current.status = "confirmed"
                 current.row_version += 1
                 db.commit()
@@ -84,6 +86,7 @@ def subtask_journey(subtask_browser, fact_review_browser):
     return client, session_factory
 
 
+@pytest.mark.real_db
 @pytest.mark.parametrize("scenario", ["rows", "ack", "fact-ack"])
 def test_real_web_subtasks_resume_originals_without_overwriting_other_work(subtask_journey, tmp_path, scenario):
     client, session_factory = subtask_journey
@@ -91,6 +94,7 @@ def test_real_web_subtasks_resume_originals_without_overwriting_other_work(subta
         with session_factory() as db:
             receipt_tests._prepare(db, "ack")
             if scenario == "fact-ack":
+                resolve_write_capability(db)
                 current = db.get(Expense, 42)
                 current.status, current.confirmed_at = "confirmed", current.created_at
                 db.commit()

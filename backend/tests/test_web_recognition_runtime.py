@@ -12,6 +12,7 @@ from app.middleware.logging import SanitizedLoggingMiddleware
 from app.models import ApiIdempotencyKey, Expense, OcrFact
 from app.routes import web_expense_recognition
 from app.services import expense_ocr_command_service as command
+from app.services.currency_binding_service import resolve_write_capability
 from app.services.expense_service import _ocr
 from app.services.ocr_service import OcrResult
 from tests import test_web_expense_review_runtime as review_tests
@@ -44,6 +45,7 @@ def recognition_browser(review_browser, confirmation_store, monkeypatch):
 
         monkeypatch.setattr(command, name, capture)
     with confirmation_store() as db:
+        resolve_write_capability(db)
         db.get(Expense, 42).image_path = "controlled-original.png"
         db.commit()
 
@@ -54,6 +56,7 @@ def recognition_browser(review_browser, confirmation_store, monkeypatch):
     @client.app.post("/recognition-later-fact")
     def later_fact():
         with confirmation_store() as db:
+            resolve_write_capability(db)
             current = db.get(Expense, 42)
             current.merchant, current.row_version = "后来人工核对", 12
             db.commit()
@@ -120,6 +123,7 @@ def test_recognition_refuses_changed_binding_or_fact_with_original_input_retaine
         assert not accepted, "核对依据不能启动识别"
 
 
+@pytest.mark.real_db
 @pytest.mark.parametrize("kind", ["text", "image"])
 def test_browser_resumes_recognition_and_original_financial_draft_after_lost_reply(recognition_browser, confirmation_store, tmp_path, kind):
     client, _, _, accepted = recognition_browser
@@ -133,6 +137,7 @@ def test_browser_resumes_recognition_and_original_financial_draft_after_lost_rep
         assert (current.merchant, current.row_version, current.status) == ("后来人工核对", 12, "pending")
 
 
+@pytest.mark.real_db
 def test_recognition_keeps_unsaved_text_in_page_when_browser_cannot_retain_it(recognition_browser, tmp_path):
     client, _, _, accepted = recognition_browser
     result = review_tests._run_review_page(client, tmp_path,
