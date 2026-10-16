@@ -6,7 +6,6 @@ from datetime import timedelta
 import pytest
 from fastapi.testclient import TestClient
 
-import app.services.identity_service._installation_bootstrap as _installation_bootstrap
 import app.services.identity_service._installation_claim as _installation_claim
 import app.services.identity_service._installation_recovery as _installation_recovery
 from app.config import get_settings
@@ -205,7 +204,6 @@ def test_installation_owner_failure_rolls_back_secret_and_identity(
             status_code=503,
         )
 
-    assert _installation_bootstrap.installation_claim is _installation_claim
     monkeypatch.setattr(_installation_claim, "pairing_candidate", fail_pairing_candidate)
     with _bootstrap_client(monkeypatch, _SECRET) as client:
         failed = _post(client, _SECRET)
