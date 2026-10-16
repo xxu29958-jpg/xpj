@@ -88,6 +88,12 @@ GitHub PostgreSQL service container 按共享 matrix 的受支持 major 启动�
 
 `desktop/`：compileall + ruff + pytest。
 
+### planning-consumer-journey（实际旅程按输入选组）
+
+自动事件从 exact base/source diff 读取旅程脚本变更。`planning_journey_scope.py` 沿现有 `planning_consumer_journey.py` 的组分支、真实脚本 import 和受控 transport 入口取得消费者；合并变更前后关系，删除、改名或移除调用也保留旧消费者。脚本只选择这些现有旅程，不分析全仓或另行调度。未知旅程脚本、无法读取 diff 或无解释的空输入直接失败；普通业务源码改动不会因此被扩大为全部长旅程，也不获得未执行旅程的资格。手动入口仍要求显式 group；cold-copy 继续使用独立 Windows job 和同 SHA 的安装器输入。
+
+实际 group 贯穿 matrix、准备条件、原 25/35 分钟旅程超时、并发取消、证据路径、artifact 和业务结果。不使用自动事件中不存在的 `inputs.group` 决定执行。同次选择的 APK 构建一次，各组下载并核验后安装；通知探针只在选中通知组时构建。每组实际执行结束后将原 `business-result.json` 与 group、checkout/source SHA、实际 APK hash 和结果状态绑定；汇总要求所有选中组有对应成功结果及同一 APK。失败、取消、未执行或缺报告不会由另一个组的成功补齐。失败 attempt 保留；同一 run 的定向复验仅消费各组最新记录，并要求整个 matrix 成功。
+
 ### android-unit（按域）
 
 ```powershell

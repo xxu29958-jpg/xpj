@@ -171,6 +171,7 @@ def _journey(page, native: PlanningAndroid, fixture, evidence: Path):
     assert result["expenses"] == result["budgets"] == 0, "A prediction or reminder created financial facts"
     assert result["income_amount"] == 630000 and result["goal_amount"] == 250000
     assert result["income_status"] == result["goal_status"] == "active"
+    result["verified_leg"] = "Web/native creation, cross-client edits/OCC, reply loss, offline restart and resumption, both recycle bins, retained history, member edits and viewer reads"
     return result
 
 
@@ -206,7 +207,9 @@ def _run_group(args, page, native, fixture):
     if args.group == "portable-downloads":
         from scripts.portable_journey import PortableJourney
         return PortableJourney(page, native, fixture, args.evidence, BASE_URL).run()
-    return _journey(page, native, fixture, args.evidence)
+    if args.group == "income-goals":
+        return _journey(page, native, fixture, args.evidence)
+    raise ValueError(f"Unknown consumer group: {args.group}")
 
 
 def _browser_run(args, native, fixture):
@@ -261,10 +264,9 @@ def _run_consumers(args, native, fixture):
     result["checkout_sha"] = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
     result["source_sha"] = os.environ["TICKETBOX_JOURNEY_SOURCE_SHA"]
     result["apk_sha256"] = hashlib.sha256(args.apk.read_bytes()).hexdigest()
-    result.setdefault("verified_leg", "Web/native creation, cross-client edits/OCC, reply loss, offline restart and resumption, both recycle bins, retained history, member edits and viewer reads")
     result["group"] = args.group
     (args.evidence / "business-result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
-    print("The actual Web/native planning recovery journey completed")
+    print(f"The actual Web/native {args.group} journey completed")
 
 
 def _native_failure(native, pairing_code):
@@ -279,7 +281,7 @@ def main() -> int:
     parser.add_argument("--serial", required=True)
     parser.add_argument("--apk", type=Path, required=True)
     parser.add_argument("--evidence", type=Path, required=True)
-    parser.add_argument("--group", choices=("income-goals", "budget-recurring", "relationships", "portable-downloads", "backstage", "notifications", "reference-library", "financial-facts", "original-maintenance", "insights", "appearance"), default="income-goals")
+    parser.add_argument("--group", choices=("income-goals", "budget-recurring", "relationships", "portable-downloads", "backstage", "notifications", "reference-library", "financial-facts", "original-maintenance", "insights", "appearance"), required=True)
     args = parser.parse_args()
     if os.environ.get("GITHUB_ACTIONS") != "true":
         raise RuntimeError("Run this sustained PostgreSQL/native journey in the isolated cloud job")

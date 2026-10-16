@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -8,6 +9,40 @@ import yaml
 from scripts.verify_backend_ci_results import verify
 
 _ROOT = Path(__file__).resolve().parents[2]
+
+
+def test_journey_qualification_rejects_failed_missing_or_mismatched_actual_results(tmp_path, monkeypatch) -> None:
+    from scripts.planning_journey_results import record_execution, verify_results
+
+    monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "1")
+    identity = {"checkout_sha": "a" * 40, "source_sha": "b" * 40, "run_id": "1", "run_attempt": "1"}
+    selection = {**identity, "requested": "automatic", "selected": ["financial-facts", "relationships"]}
+    for group in selection["selected"]:
+        evidence = tmp_path / group
+        evidence.mkdir()
+        execution = {**identity, "group": group, "apk_sha256": "c" * 64}
+        business = {**execution, "verified_leg": "actual group assertions completed"}
+        (evidence / "business-result.json").write_text(json.dumps(business), encoding="utf-8")
+        record_execution(evidence, execution, "success")
+    assert verify_results(selection, tmp_path, "success")["status"] == "passed"
+    evidence = tmp_path / "financial-facts"
+    execution = {**identity, "group": "financial-facts", "apk_sha256": "c" * 64}
+    for outcome in ("failure", "cancelled", "skipped"):
+        record_execution(evidence, execution, outcome)
+        assert verify_results(selection, tmp_path, "success")["status"] == "failed"
+    (evidence / "execution-result.json").unlink()
+    assert verify_results(selection, tmp_path, "success")["groups"]["financial-facts"] == "missing"
+    original = {**execution, "verified_leg": "actual group assertions completed"}
+    for key in ("group", "checkout_sha", "source_sha", "apk_sha256"):
+        (evidence / "business-result.json").write_text(json.dumps({**original, key: "other"}), encoding="utf-8")
+        assert record_execution(evidence, execution, "success")["status"] == "failed"
+    different_apk = {**original, "apk_sha256": "d" * 64}
+    (evidence / "business-result.json").write_text(json.dumps(different_apk), encoding="utf-8")
+    record_execution(evidence, different_apk, "success")
+    with pytest.raises(ValueError, match="Different APKs"):
+        verify_results(selection, tmp_path, "success")
+    (evidence / "business-result.json").unlink()
+    assert record_execution(evidence, execution, "success")["status"] == "failed"
 
 
 def _jobs() -> dict[str, object]:
