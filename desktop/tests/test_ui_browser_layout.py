@@ -207,16 +207,21 @@ def _render_behavior_probe(tmp_path: Path) -> dict[str, object]:
       }}}});
       const projectedRows = [...$("publicConnectivityDetails").children]
         .map(row => [...row.children].map(cell => cell.textContent));
-      const actionable = {{...healthy, service_controls_available: true,
+      const actionable = {{...healthy, service_controls_available: true, product_available: true,
         iphone_upload_state: "configured_unverified"}};
       window.fetch = async (url, options = {{}}) => {{
         if (options.method === "POST") taskRequests.push(url);
         return {{ok: true, status: 200, json: async () =>
           url === "/api/product/session" ? {{configured: false}} : actionable}};
       }};
-      for (const id of ["primaryAction", "iphoneAction", "diagnosticExportAction"]) {{
+      render(actionable);
+      await loadProductSession();
+      const taskButtons = ["primaryAction", "androidAction", "iphoneAction", "diagnosticExportAction"]
+        .map(id => $(id)).concat([...document.querySelectorAll("button")]
+          .filter(button => button.textContent.trim() === "系统体检"));
+      for (const button of taskButtons) {{
         render(actionable);
-        $(id).click();
+        button.click();
         await new Promise(resolve => setTimeout(resolve, 0));
       }}
       const unsafeLog = '<svg onload="window.injectedLog = true"></svg><b>diagnostic</b>';
@@ -436,7 +441,10 @@ def test_manager_layout_has_no_overflow_overlap_or_unsafe_repair_path(
 def test_manager_offline_state_remains_coherent(tmp_path: Path) -> None:
     probe = _render_behavior_probe(tmp_path)
 
-    assert probe["taskRequests"] == ["/api/stop", "/api/open_upload_links", "/api/export_diagnostics"]
+    assert probe["taskRequests"] == [
+        "/api/stop", "/api/open_pairing", "/api/open_upload_links",
+        "/api/export_diagnostics", "/api/open_diagnostics",
+    ]
     assert probe["projectedRows"] == [
         ["Windows 服务", "服务身份等待确认"],
         ["Cloudflare Edge", "连接观察已过期"],
