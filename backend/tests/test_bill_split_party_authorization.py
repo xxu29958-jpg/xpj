@@ -11,34 +11,18 @@ Pin it on every transition, plus the guard's precedence over state resolution
 (it must fire before any settled/expiry branch so a non-party cannot probe
 invitation state).
 
-The bearer-token helper is shared with
-``test_bill_split_security_regressions`` rather than duplicated.
+The bearer-token and invitation setup live in ``bill_split_test_support``.
 """
 
 from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from tests.test_bill_split import _make_expense_for_owner, _seed_receiver, _split_headers
-from tests.test_bill_split_security_regressions import _bearer_for_account_ledger
-
-
-def _create_invited_split(
-    client: TestClient,
-    identity,
-    *,
-    receiver_account_id: int,
-    amount_cents: int = 2500,
-) -> str:
-    """Owner sends a split invite to ``receiver_account_id``; return its public_id."""
-    expense_id = _make_expense_for_owner()
-    resp = client.post(
-        f"/api/expenses/{expense_id}/split-invite",
-        headers=_split_headers(client, identity.app_headers),
-        json={"expected_row_version": 1, "receiver_account_id": receiver_account_id, "amount_cents": amount_cents},
-    )
-    assert resp.status_code == 200, resp.json()
-    return resp.json()["public_id"]
+from tests.bill_split_test_support import (
+    _bearer_for_account_ledger,
+    _create_invited_split,
+    _seed_receiver,
+)
 
 
 def test_accept_route_rejects_non_party_account(

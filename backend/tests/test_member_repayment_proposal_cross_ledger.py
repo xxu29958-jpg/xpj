@@ -43,13 +43,10 @@ from app.services import bill_split_service as bsplit
 from app.services.identity_service import hash_secret, new_session_token
 from app.services.ledger_calendar_service import adopt_ledger_calendar
 from tests._runtime_protocol import current_protocol_headers
+from tests.bill_split_test_support import _create_invited_split as _invite
 
 # Reuse the slice-4 linkage helpers (owner expense → invite → service-level accept).
-from tests.test_bill_split_debt_linkage import (
-    _debts_for,
-    _invite,
-    _owner_account_id,
-)
+from tests.bill_split_test_support import _debts_for, _owner_account_id
 
 
 @pytest.fixture

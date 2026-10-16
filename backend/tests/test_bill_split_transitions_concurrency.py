@@ -18,11 +18,7 @@ from app.services.bill_split_service import _transitions as transition_impl
 from app.services.bill_split_service._transitions import _mark_expired
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.time_service import now_utc
-from tests.test_bill_split import (
-    _make_expense_for_owner,
-    _owner_account_id,
-    _seed_receiver,
-)
+from tests.bill_split_test_support import _make_expense_for_owner, _owner_account_id, _seed_receiver
 
 
 def _backdate_expiry(public_id: str) -> None:

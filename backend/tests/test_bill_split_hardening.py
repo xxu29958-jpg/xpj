@@ -19,12 +19,7 @@ from app.services.currency_binding_service import resolve_write_capability
 from app.services.expense_accounting_time_service import refresh_legacy_expense_time
 from app.services.ledger_calendar_service import adopt_ledger_calendar
 from app.services.time_service import now_utc
-from tests.test_bill_split import (
-    _make_expense_for_owner,
-    _owner_account_id,
-    _seed_receiver,
-    _split_headers,
-)
+from tests.bill_split_test_support import _make_expense_for_owner, _owner_account_id, _seed_receiver, _split_headers
 
 
 def test_invitation_retry_after_peer_acceptance_keeps_the_original_result(

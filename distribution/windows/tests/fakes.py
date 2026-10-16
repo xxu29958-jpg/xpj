@@ -8,7 +8,6 @@ from pathlib import Path
 from ticketbox_lifecycle.domain.install import LifecycleStores, hash_request_payload
 from ticketbox_lifecycle.errors import LifecycleError, LifecycleViolation
 from ticketbox_lifecycle.schemas import (
-    APPLY_SEQUENCE,
     INSTALLATION_SCHEMA,
     OPERATION_SCHEMA,
     REQUEST_SCHEMA,
@@ -76,9 +75,10 @@ class MemoryMutex:
 
 
 class _StatefulAdapter:
-    def __init__(self, name: str, steps: tuple[str, ...]) -> None:
+    def __init__(self, name: str, steps: tuple[str, ...], applied: list[str]) -> None:
         self.name = name
         self._steps = set(steps)
+        self._all_applied = applied
         self.applied: list[str] = []
         self.fail_on: str | None = None
         self.apply_calls = 0
@@ -94,6 +94,7 @@ class _StatefulAdapter:
         if self.fail_on == step:
             raise LifecycleError("injected_failure", f"forced failure at {step}")
         self.applied.append(step)
+        self._all_applied.append(step)
         self._done.add(step)
         Path(request.program_data_root).mkdir(parents=True, exist_ok=True)
         return "applied"
@@ -114,8 +115,8 @@ class _StatefulAdapter:
 
 
 class _RecordingScmAdapter(_StatefulAdapter):
-    def __init__(self) -> None:
-        super().__init__("scm", ("scm", "start_services"))
+    def __init__(self, applied: list[str]) -> None:
+        super().__init__("scm", ("scm", "start_services"), applied)
         self.autostart_enabled = False
         self.autostart_calls = 0
         self.fail_autostart = False
@@ -143,25 +144,15 @@ class _RecordingScmAdapter(_StatefulAdapter):
 
 class RecordingAdapterBundle:
     def __init__(self) -> None:
-        self.files = _StatefulAdapter("files", ("programdata_root",))
-        self.security = _StatefulAdapter("security", ("acl",))
-        self.postgres = _StatefulAdapter("postgres", ("postgres_initdb", "start_postgres", "roles_database"))
-        self.alembic = _StatefulAdapter("alembic", ("alembic",))
-        self.scm = _RecordingScmAdapter()
-        self.dataset = _StatefulAdapter("dataset", ("owner_claim", "health"))
-
-    def apply_order(self) -> list[str]:
-        return [step for step in APPLY_SEQUENCE if any(
-            step in adapter.applied
-            for adapter in (
-                self.files,
-                self.security,
-                self.postgres,
-                self.alembic,
-                self.scm,
-                self.dataset,
-            )
-        )]
+        self.applied: list[str] = []
+        self.files = _StatefulAdapter("files", ("programdata_root",), self.applied)
+        self.security = _StatefulAdapter("security", ("acl",), self.applied)
+        self.postgres = _StatefulAdapter(
+            "postgres", ("postgres_initdb", "start_postgres", "roles_database"), self.applied,
+        )
+        self.alembic = _StatefulAdapter("alembic", ("alembic",), self.applied)
+        self.scm = _RecordingScmAdapter(self.applied)
+        self.dataset = _StatefulAdapter("dataset", ("owner_claim", "health"), self.applied)
 
 
 class MemoryStores:
