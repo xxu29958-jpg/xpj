@@ -4,34 +4,12 @@ import csv
 from datetime import date
 from decimal import Decimal
 from io import StringIO
-from types import SimpleNamespace
 
 import pytest
 
 from app.services import money_projection_service as money
 from app.services.reports_service import _ranking, export_reports_overview_csv, reports_overview
-
-
-class StreamRows:
-    def __init__(self, rows):
-        self.rows = rows
-        self.statements = []
-
-    def scalar(self, statement):
-        assert "ledger_calendar_revisions" in str(statement)
-        return SimpleNamespace(timezone_name="UTC")
-
-    def execute(self, statement):
-        self.statements.append(statement)
-        if [column.name for column in statement.selected_columns] == ["category", "count"]:
-            return iter(())
-        return iter(self.rows)
-
-
-def entry(amount, currency="JPY", *, day=date(2026, 9, 7), merchant="JPY shop", category="餐饮", kind="expense", id=1):
-    return SimpleNamespace(entry_id=id, root_expense_id=id, entry_kind=kind,
-        stream_date=day, stream_amount_cents=amount, home_currency_code=currency,
-        merchant=merchant, category=category)
+from tests._confirmed_stream_test_support import StatsRows, entry
 
 
 @pytest.fixture(autouse=True)
@@ -46,7 +24,7 @@ def read(db, **kwargs):
 
 def test_merchant_ranking_converts_before_comparing_and_aggregating(monkeypatch):
     monkeypatch.setattr(money, "resolve_payload_rate", lambda *a, **kw: (Decimal("20"), None, None, None))
-    db = StreamRows([entry(1000), entry(2000, "CNY", merchant="CNY shop", id=2)])
+    db = StatsRows([entry(1000, day=date(2026, 9, 7), category="餐饮"), entry(2000, "CNY", merchant="CNY shop", id=2, day=date(2026, 9, 7), category="餐饮")])
     result = read(db)
     assert result["home_currency_code"] == "JPY"
     assert result["total_amount_cents"] == 1400
@@ -60,22 +38,22 @@ def test_merchant_ranking_converts_before_comparing_and_aggregating(monkeypatch)
 
 def test_missing_rate_keeps_counts_and_unknown_amounts_without_a_false_ranking(monkeypatch):
     monkeypatch.setattr(money, "resolve_payload_rate", lambda *a, **kw: (None, None, None, None))
-    rows = [entry(1000), entry(2000, "CNY", merchant="CNY shop", category="交通", id=2)]
-    result = read(StreamRows(rows))
+    rows = [entry(1000, day=date(2026, 9, 7), category="餐饮"), entry(2000, "CNY", merchant="CNY shop", category="交通", id=2, day=date(2026, 9, 7))]
+    result = read(StatsRows(rows))
     assert result["total_amount_cents"] is None
     assert result["year_over_year_delta_amount_cents"] is None
     assert result["count"] == 2
     assert result["trend"][6] == {"bucket": "2026-09-07", "label": "09-07", "amount_cents": None, "count": 2}
     assert result["merchant_ranking"] == []
     assert result["missing_rates"] == (money.ProjectionGap("CNY", "JPY", date(2026, 9, 7)),)
-    counted = read(StreamRows(rows), ranking_metric="count")
+    counted = read(StatsRows(rows), ranking_metric="count")
     assert {row["merchant"]: (row["count"], row["amount_cents"]) for row in counted["merchant_ranking"]} == {
         "JPY shop": (1, 1000), "CNY shop": (1, None)}
 
 
 def test_previous_gap_does_not_erase_current_total_or_rank(monkeypatch):
     monkeypatch.setattr(money, "resolve_payload_rate", lambda *a, **kw: (None, None, None, None))
-    result = read(StreamRows([entry(1000), entry(2000, "CNY", day=date(2026, 8, 7))]))
+    result = read(StatsRows([entry(1000, day=date(2026, 9, 7), category="餐饮"), entry(2000, "CNY", day=date(2026, 8, 7), category="餐饮")]))
     assert result["total_amount_cents"] == 1000
     assert result["previous_total_amount_cents"] is None
     assert result["category_comparison"][0]["delta_amount_cents"] is None
@@ -87,7 +65,7 @@ def test_unknown_record_currency_stays_unknown_without_runtime_relabelling(monke
         raise AssertionError("An unknown source cannot select an exchange-rate pair")
 
     monkeypatch.setattr(money, "resolve_payload_rate", forbidden)
-    result = read(StreamRows([entry(1000, None)]))
+    result = read(StatsRows([entry(1000, None, day=date(2026, 9, 7), category="餐饮")]))
     assert result["total_amount_cents"] is None
     assert result["count"] == 1
     assert result["merchant_ranking"] == []
@@ -102,7 +80,7 @@ def test_signed_offset_uses_its_own_date_and_rounds_before_sum(monkeypatch):
         return Decimal("20") if kwargs["rate_date"].day == 7 else Decimal("30"), None, None, None
 
     monkeypatch.setattr(money, "resolve_payload_rate", rate)
-    result = read(StreamRows([entry(101, "CNY"), entry(-102, "CNY", day=date(2026, 9, 8), kind="offset", id=2)]))
+    result = read(StatsRows([entry(101, "CNY", day=date(2026, 9, 7), category="餐饮"), entry(-102, "CNY", day=date(2026, 9, 8), kind="offset", id=2, category="餐饮")]))
     assert result["total_amount_cents"] == -11
     assert result["count"] == 2
     assert result["trend"][6]["amount_cents"] == 20
@@ -112,7 +90,7 @@ def test_signed_offset_uses_its_own_date_and_rounds_before_sum(monkeypatch):
 
 def test_csv_carries_projection_home_and_gap_without_publishing_unknown_as_zero(monkeypatch):
     monkeypatch.setattr(money, "resolve_payload_rate", lambda *a, **kw: (None, None, None, None))
-    content = export_reports_overview_csv(StreamRows([entry(2000, "CNY")]),
+    content = export_reports_overview_csv(StatsRows([entry(2000, "CNY", day=date(2026, 9, 7), category="餐饮")]),
         month="2026-09", tenant_id="owner", timezone_name="UTC", home_currency_code="JPY")
     rows = list(csv.reader(StringIO(content)))
     assert ["summary", "home_currency_code", "JPY"] in rows
@@ -130,19 +108,19 @@ def test_rate_cache_is_per_read_including_missing_rates_and_each_amount_rounds(m
         return value, None, None, None
 
     monkeypatch.setattr(money, "resolve_payload_rate", rate)
-    rows = [entry(102, "CNY"), entry(102, "CNY", id=2)]
-    first = read(StreamRows(rows))
+    rows = [entry(102, "CNY", day=date(2026, 9, 7), category="餐饮"), entry(102, "CNY", id=2, day=date(2026, 9, 7), category="餐饮")]
+    first = read(StatsRows(rows))
     assert first["total_amount_cents"] == (40 if value is not None else None)
     assert len(lookups) == 1
-    read(StreamRows(rows))
+    read(StatsRows(rows))
     assert len(lookups) == 2
 
 
 def test_category_alias_and_merchant_filter_preserve_global_totals(monkeypatch):
     monkeypatch.setattr(money, "resolve_payload_rate", lambda *a, **kw: (Decimal("20"), None, None, None))
     monkeypatch.setattr(_ranking, "enabled_merchant_display_map", lambda *a, **kw: {"alias": "Canonical"})
-    result = read(StreamRows([entry(1000, merchant="alias", category="吃饭"),
-        entry(2000, "CNY", merchant="Canonical"), entry(5000, category="交通")]), merchant_category="吃饭")
+    result = read(StatsRows([entry(1000, merchant="alias", category="吃饭", day=date(2026, 9, 7)),
+        entry(2000, "CNY", merchant="Canonical", day=date(2026, 9, 7), category="餐饮"), entry(5000, category="交通", day=date(2026, 9, 7))]), merchant_category="吃饭")
     assert result["total_amount_cents"] == 6400
     assert result["count"] == 3
     assert result["merchant_category"] == "餐饮"

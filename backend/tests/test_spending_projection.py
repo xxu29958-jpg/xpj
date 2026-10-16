@@ -3,13 +3,12 @@
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
-from test_stats_currency_projection import StatsRows, entry
-
 from app.models import Expense, ExpenseOffsetFact
 from app.schemas import ExpenseResponse
 from app.services import money_projection_service as money
 from app.services.expense_service._query import _stream_entry
 from app.services.spending_projection_service import entry_gaps, project_confirmed_items, read_projected_entries
+from tests._confirmed_stream_test_support import StatsRows, entry
 
 
 def page_item(*, kind="expense", id=1, amount=10000, stream_amount=10000, currency="CNY", day=date(2026, 9, 9)):
