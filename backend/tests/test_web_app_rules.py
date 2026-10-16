@@ -5,31 +5,16 @@ from __future__ import annotations
 import re
 from urllib.parse import parse_qs, urlparse
 
-from api_contract_helpers import web_confirm_expense, web_save_expense
+from api_contract_helpers import upload_png_as_raw_body, web_confirm_expense, web_save_expense
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.errors import AppError
 from app.models import CategoryPreference
+from tests._infra.assets import RGBA_PNG_BYTES
 from tests._web_native_form_support import hidden_post_forms
 from tests._web_rule_form_support import submit_rule_form
-
-
-def _create_pending(client: TestClient, *, identity) -> int:
-    """Helper: upload a tiny PNG to the owner ledger so /web/pending sees it."""
-    png = (
-        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
-        b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01"
-        b"\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
-    )
-    resp = client.post(
-        f"/u/{identity.upload_key}",
-        headers={"Content-Type": "image/png"},
-        content=png,
-    )
-    assert resp.status_code == 200, resp.text
-    return int(resp.json()["id"])
 
 
 def _rule_id_for_keyword(page_html: str, keyword: str) -> int:
@@ -47,7 +32,7 @@ def _rule_id_for_keyword(page_html: str, keyword: str) -> int:
 
 def _seed_pending_with_amount(web_client: TestClient, amount_yuan: str = "10.00", merchant: str = "测试", *, identity) -> int:
     """Upload a tiny PNG then patch amount+merchant via /web/expenses/{id}/save."""
-    expense_id = _create_pending(web_client, identity=identity)
+    expense_id = upload_png_as_raw_body(web_client, identity=identity, content=RGBA_PNG_BYTES)
     resp = web_save_expense(
         web_client,
         expense_id,

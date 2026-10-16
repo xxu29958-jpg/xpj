@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
-from api_contract_helpers import web_save_expense
+from api_contract_helpers import upload_png_as_raw_body, web_save_expense
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
@@ -36,6 +36,7 @@ from app.services.currency_binding_service import authorize_currency_metadata_wr
 from app.services.expense_accounting_time_service import refresh_legacy_expense_time
 from app.services.merchant_service import display_merchant, normalize_merchant
 from app.services.time_service import now_utc
+from tests._infra.assets import RGBA_PNG_BYTES
 from tests._infra.env import BACKEND_ROOT
 
 # ── Fixtures (mirror tests/test_web_app.py setup) ───────────────────────────
@@ -46,21 +47,6 @@ def web_client(client: TestClient) -> TestClient:
     app.dependency_overrides[_web_require_local] = lambda: None
     yield client
     app.dependency_overrides.pop(_web_require_local, None)
-
-
-def _create_pending(client: TestClient, *, identity) -> int:
-    png = (
-        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
-        b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01"
-        b"\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
-    )
-    resp = client.post(
-        f"/u/{identity.upload_key}",
-        headers={"Content-Type": "image/png"},
-        content=png,
-    )
-    assert resp.status_code == 200, resp.text
-    return int(resp.json()["id"])
 
 
 def _save_pending(
@@ -152,8 +138,8 @@ def test_web_categories_renders_with_navigation(web_client: TestClient) -> None:
 
 def test_web_categories_counts_pending_uncategorized(web_client: TestClient, *, identity) -> None:
     # A missing category is distinct from the user's valid choice of 其他.
-    missing = _create_pending(web_client, identity=identity)
-    _create_pending(web_client, identity=identity)
+    missing = upload_png_as_raw_body(web_client, identity=identity, content=RGBA_PNG_BYTES)
+    upload_png_as_raw_body(web_client, identity=identity, content=RGBA_PNG_BYTES)
     with SessionLocal() as db:
         db.get(Expense, missing).category = ""
         db.commit()
@@ -490,8 +476,8 @@ def test_category_rejection_lists_every_blocker_once(client: TestClient, identit
 
 
 def test_web_uncategorized_lists_only_uncategorized(web_client: TestClient, *, identity) -> None:
-    eid_other = _create_pending(web_client, identity=identity)  # stays "其他"
-    eid_food = _create_pending(web_client, identity=identity)
+    eid_other = upload_png_as_raw_body(web_client, identity=identity, content=RGBA_PNG_BYTES)  # stays "其他"
+    eid_food = upload_png_as_raw_body(web_client, identity=identity, content=RGBA_PNG_BYTES)
     _save_pending(
         web_client, eid_food, identity=identity,
         amount_yuan="12.34", merchant="星巴克", category="餐饮",
@@ -499,7 +485,7 @@ def test_web_uncategorized_lists_only_uncategorized(web_client: TestClient, *, i
     dashboard = web_client.get("/web/categories?ledger_id=owner")
     assert "1 条待确认使用「其他」分类" in dashboard.text
     assert "filter=including_other" in dashboard.text
-    eid_missing = _create_pending(web_client, identity=identity)
+    eid_missing = upload_png_as_raw_body(web_client, identity=identity, content=RGBA_PNG_BYTES)
     with SessionLocal() as db:
         db.get(Expense, eid_missing).category = "未分類"
         db.commit()
@@ -514,7 +500,7 @@ def test_web_uncategorized_lists_only_uncategorized(web_client: TestClient, *, i
 
 
 def test_web_uncategorized_bulk_set_category(web_client: TestClient, *, identity) -> None:
-    eid = _create_pending(web_client, identity=identity)
+    eid = upload_png_as_raw_body(web_client, identity=identity, content=RGBA_PNG_BYTES)
     original = web_client.get("/web/categories/uncategorized?ledger_id=owner&filter=including_other")
     snapshot = re.search(rf'name="expense_snapshot" value="({eid}:\d+)"', original.text)[1]
     resp = web_client.post(
@@ -550,7 +536,7 @@ def test_web_uncategorized_bulk_requires_selection(web_client: TestClient) -> No
 
 
 def test_category_batch_rolls_back_real_writes_and_replays_its_first_result(web_client, identity, monkeypatch):
-    identities = [_create_pending(web_client, identity=identity) for _ in range(2)]
+    identities = [upload_png_as_raw_body(web_client, identity=identity, content=RGBA_PNG_BYTES) for _ in range(2)]
     with SessionLocal() as db:
         before = {identity: (db.get(Expense, identity).category, db.get(Expense, identity).row_version) for identity in identities}
     command = str(uuid4())
@@ -598,7 +584,7 @@ def test_web_categories_remote_returns_403(client: TestClient) -> None:
 
 
 def test_web_categories_no_secret_leak(web_client: TestClient, *, identity) -> None:
-    _create_pending(web_client, identity=identity)
+    upload_png_as_raw_body(web_client, identity=identity, content=RGBA_PNG_BYTES)
     for path in ("/web/categories?ledger_id=owner", "/web/categories/uncategorized?ledger_id=owner"):
         resp = web_client.get(path)
         assert resp.status_code == 200

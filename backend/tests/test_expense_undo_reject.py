@@ -36,6 +36,7 @@ from api_contract_helpers import (
     patch_expense,
     reject_expense_api,
     undo_expense_api,
+    upload_png_as_raw_body,
 )
 from fastapi.testclient import TestClient
 from sqlalchemy import event, func, select
@@ -46,22 +47,11 @@ from app.errors import AppError
 from app.models import ApiIdempotencyKey, Expense, LedgerAuditLog
 from app.services.soft_delete_policy import SOFT_DELETE_RETENTION
 from app.services.time_service import now_utc
-from tests._infra.assets import PNG_BYTES
 from tests._runtime_protocol import current_protocol_headers
 
 
-def _create_pending(client: TestClient, *, identity) -> int:
-    resp = client.post(
-        identity.upload_url_path,
-        headers={**identity.upload_headers, "Content-Type": "image/png"},
-        content=PNG_BYTES,
-    )
-    assert resp.status_code == 200, resp.text
-    return int(resp.json()["id"])
-
-
 def _create_confirmed(client: TestClient, *, identity) -> tuple[int, str]:
-    expense_id = _create_pending(client, identity=identity)
+    expense_id = upload_png_as_raw_body(client, identity=identity)
     patch = patch_expense(
         client,
         expense_id,
@@ -95,7 +85,7 @@ def _post_losing_successful_ack(client, monkeypatch, endpoint, *, headers, body)
 
 
 def test_replayed_original_reject_cannot_supply_a_later_rejections_undo_token(client, identity, monkeypatch):
-    expense_id = _create_pending(client, identity=identity)
+    expense_id = upload_png_as_raw_body(client, identity=identity)
     endpoint = f"/api/expenses/{expense_id}"
     initial = client.get(endpoint, headers=identity.app_headers)
     assert initial.status_code == 200, initial.text
@@ -142,7 +132,7 @@ def test_replayed_original_reject_cannot_supply_a_later_rejections_undo_token(cl
 
 
 def test_first_delayed_reject_with_old_token_cannot_claim_another_rejection(client, identity):
-    expense_id = _create_pending(client, identity=identity)
+    expense_id = upload_png_as_raw_body(client, identity=identity)
     endpoint = f"/api/expenses/{expense_id}/reject"
     with SessionLocal() as db:
         original_version = db.get(Expense, expense_id).row_version
@@ -163,7 +153,7 @@ def test_first_delayed_reject_with_old_token_cannot_claim_another_rejection(clie
 
 
 def test_undo_ack_loss_replays_original_success_without_a_second_restore(client, identity, monkeypatch):
-    expense_id = _create_pending(client, identity=identity)
+    expense_id = upload_png_as_raw_body(client, identity=identity)
     _reject(client, expense_id, identity=identity)
     endpoint = f"/api/expenses/{expense_id}"
     rejected = client.get(endpoint, headers=identity.app_headers)
@@ -197,7 +187,7 @@ def test_undo_ack_loss_replays_original_success_without_a_second_restore(client,
 def test_reject_or_undo_commit_failure_keeps_fact_audit_and_original_key_atomic(
     client, identity, operation,
 ):
-    expense_id = _create_pending(client, identity=identity)
+    expense_id = upload_png_as_raw_body(client, identity=identity)
     if operation == "undo":
         _reject(client, expense_id, identity=identity)
     endpoint = f"/api/expenses/{expense_id}/{operation}"
@@ -249,7 +239,7 @@ def test_reject_or_undo_commit_failure_keeps_fact_audit_and_original_key_atomic(
 def test_undo_after_reject_restores_pending_and_writes_audit(
     client: TestClient, *, identity
 ) -> None:
-    expense_id = _create_pending(client, identity=identity)
+    expense_id = upload_png_as_raw_body(client, identity=identity)
     _reject(client, expense_id, identity=identity)
 
     response = undo_expense_api(client, expense_id, headers=identity.app_headers)
@@ -292,7 +282,7 @@ def test_confirmed_reject_requires_reversal_and_keeps_fact(
 
 def test_undo_on_pending_expense_returns_404(client: TestClient, *, identity) -> None:
     # Never rejected — undo has nothing to restore.
-    expense_id = _create_pending(client, identity=identity)
+    expense_id = upload_png_as_raw_body(client, identity=identity)
     response = undo_expense_api(client, expense_id, headers=identity.app_headers)
     assert response.status_code == 404, response.text
     assert response.json()["error"] == "expense_not_found"
@@ -301,7 +291,7 @@ def test_undo_on_pending_expense_returns_404(client: TestClient, *, identity) ->
 def test_undo_after_window_expires_returns_404(
     client: TestClient, *, identity
 ) -> None:
-    expense_id = _create_pending(client, identity=identity)
+    expense_id = upload_png_as_raw_body(client, identity=identity)
     _reject(client, expense_id, identity=identity)
 
     # Hand-age the rejected_at past the retention cutoff. cleanup_service may
@@ -329,7 +319,7 @@ def test_undo_after_window_expires_returns_404(
 def test_second_undo_on_restored_expense_returns_404(
     client: TestClient, *, identity
 ) -> None:
-    expense_id = _create_pending(client, identity=identity)
+    expense_id = upload_png_as_raw_body(client, identity=identity)
     _reject(client, expense_id, identity=identity)
 
     first = undo_expense_api(client, expense_id, headers=identity.app_headers)
@@ -358,7 +348,7 @@ def test_undo_from_different_ledger_returns_404(client: TestClient, *, identity)
     # codex review P2: 真正的 cross-ledger 测试 — 之前的 `# coverage: cross-ledger`
     # 标记是过度声明, 实现里 tenant_id WHERE 兜得住但没测试覆盖。create + switch 到
     # 一个新 ledger, 用新 session_token 尝试 undo 旧 ledger 的 rejected expense → 404。
-    expense_id = _create_pending(client, identity=identity)
+    expense_id = upload_png_as_raw_body(client, identity=identity)
     _reject(client, expense_id, identity=identity)
 
     create_ledger = client.post(
@@ -406,8 +396,8 @@ def test_undo_does_not_restore_cleared_duplicate_references(
     # change is a deliberate decision, not a silent surprise. If we ever decide
     # to re-detect duplicates on undo, flip these assertions and document the
     # symmetry in post_undo_expense.
-    first_id = _create_pending(client, identity=identity)
-    second_id = _create_pending(client, identity=identity)
+    first_id = upload_png_as_raw_body(client, identity=identity)
+    second_id = upload_png_as_raw_body(client, identity=identity)
     # Re-uploading the same PNG_BYTES makes the second pending row a "suspected"
     # duplicate of the first; second.duplicate_of_id == first.id.
     with SessionLocal() as db:

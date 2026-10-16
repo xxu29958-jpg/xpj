@@ -13,27 +13,14 @@ from urllib.parse import parse_qs, urlparse
 from uuid import uuid4
 
 import pytest
+from api_contract_helpers import upload_png_as_raw_body
 from fastapi.testclient import TestClient
 
+from tests._infra.assets import RGBA_PNG_BYTES
 from tests._runtime_protocol import negotiated_headers
 from tests.web_expense_fact_test_support import create_confirmed as _create_confirmed
 from tests.web_expense_fact_test_support import owner_member_id as _owner_member_id
 from tests.web_expense_fact_test_support import row_version as _row_version
-
-
-def _create_pending(client: TestClient, *, identity) -> int:
-    png = (
-        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
-        b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01"
-        b"\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
-    )
-    resp = client.post(
-        f"/u/{identity.upload_key}",
-        headers={"Content-Type": "image/png"},
-        content=png,
-    )
-    assert resp.status_code == 200, resp.text
-    return int(resp.json()["id"])
 
 
 def _expense_href(body: str, expense_id: int, action: str) -> str:
@@ -95,7 +82,7 @@ def test_confirmed_fact_page_read_first_and_pending_keeps_edit(web_client: TestC
     assert f'action="/web/expenses/{confirmed_id}/splits/save"' not in page.text
     assert f'formaction="/web/expenses/{confirmed_id}/reject"' not in page.text
 
-    pending_id = _create_pending(web_client, identity=identity)
+    pending_id = upload_png_as_raw_body(web_client, identity=identity, content=RGBA_PNG_BYTES)
     pending_page = web_client.get(f"/web/expenses/{pending_id}/edit?ledger_id=owner")
     assert pending_page.status_code == 200
     assert pending_page.text.count("/static/web/product/detail.css") == 1
