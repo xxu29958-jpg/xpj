@@ -88,8 +88,8 @@ class SavedQueryContinuityTest {
         assertEquals(13L, accepted.receipt?.rowVersion)
         val request = fixture.requests.last() as SavedViewUpdateRequestDto
         assertEquals(12L, request.expectedRowVersion)
-        assertEquals("我的新名字", request.name)
-        assertEquals("原关键词", request.queryText)
+        assertEquals("  我的新名字  ", request.name)
+        assertEquals("  原关键词  ", request.queryText)
         scope.cancel()
     }
 
