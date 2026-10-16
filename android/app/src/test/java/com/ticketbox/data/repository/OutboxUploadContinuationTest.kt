@@ -109,6 +109,8 @@ class OutboxUploadContinuationTest {
         dao.beforeNextRunnableBatchReturn = {
             dao.beforeNextRunnableBatchReturn = null
             assertTrue(outbox.resolveFailed(ids[0], FailedResolution.Retry()))
+            // Room owns the atomic predecessor check. The engine must handle its refusal.
+            dao.refusedClaims += ids[1]
         }
         val sends = mutableListOf<Long>()
         val engine = engine(outbox) { row -> sends += row.id; DispatchResult.Success() }

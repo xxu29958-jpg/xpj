@@ -94,6 +94,8 @@ class PendingMutationUploadQueueTest {
             assertEquals(original.idempotencyKey, earlier.idempotencyKey)
             assertEquals(original.payload, earlier.payload)
             assertEquals(original.expectedRowVersion, earlier.expectedRowVersion)
+            assertEquals(0, fixture.dao.markInFlightIfPending(ids[0], "pending", "in_flight", COMPLETED))
+            assertEquals(earlier, fixture.reopen().allRows().single { it.id == ids[0] })
         }
     }
 

@@ -16,6 +16,7 @@ class FakePendingMutationDao : PendingMutationDao {
     var beforeNextRunnableBatchReturn: (suspend () -> Unit)? = null
     var beforeInsert: (suspend () -> Unit)? = null
     var replacePayloadError: Throwable? = null
+    val refusedClaims = mutableSetOf<Long>()
     // Query outcomes are supplied by the scenario; generated Room owns age/status/binding predicates.
     val expiredPendingIds = mutableListOf<Long>()
     val expiredBoundIds = mutableSetOf<Long>()
@@ -83,10 +84,7 @@ class FakePendingMutationDao : PendingMutationDao {
         attemptedAt: String,
     ): Int {
         val current = rows[id] ?: return 0
-        if (current.status != fromStatus) return 0
-        if (current.ownerKey != null && runnableRows(
-                current.ownerKey, current.ledgerId, fromStatus, listOf(inFlightStatus, "conflict", "failed"),
-            ).none { it.id == id }) return 0
+        if (refusedClaims.remove(id)) return 0
         rows[id] = current.copy(
             status = inFlightStatus,
             attemptedAt = attemptedAt,
