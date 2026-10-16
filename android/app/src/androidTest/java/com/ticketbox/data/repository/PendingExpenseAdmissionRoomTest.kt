@@ -300,11 +300,7 @@ class PendingExpenseAdmissionRoomTest {
         confirmationResponse = patchResponse.copy(status = "confirmed", confirmedAt = "2026-09-06T00:01:00Z", rowVersion = 9)
             .withConfirmationReceipt()
         val originalRows = fixture.stored()
-        val adapters = OutboxAdapterGraph()
-        OutboxDrainEngine(fixture.outbox, listOf(
-            PatchExpenseDispatcher({ admissionApi }, adapters.patchExpenseAdapter, fixture::publishExpense),
-            ConfirmExpenseDispatcher({ admissionApi }, adapters.expenseStateTokenAdapter, fixture::publishExpense),
-        ), now = fixture.clock::millis).drainOnce()
+        fixture.drainExpenseLifecycle(api = admissionApi)
         compose.waitUntil(10_000) { editor!!.uiState.value.confirmationReceipt != null }
         assertEquals(listOf("42", "42"), requests.map { it.first })
         assertEquals(7L, (requests.first().second as ExpenseUpdateRequest).expectedRowVersion)

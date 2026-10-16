@@ -192,10 +192,10 @@ internal class ExpenseCorrectionConnectedFixture(
         .also { it.onAdviceInputReplaySucceeded = { adviceCallbacks++ } }.drainOnce()
 
     /** Existing engine with the production Patch/Confirm dispatchers; callers drive it after admission. */
-    suspend fun drainExpenseLifecycle(maxAttempts: Int = 10) = OutboxDrainEngine(outbox,
+    suspend fun drainExpenseLifecycle(maxAttempts: Int = 10, api: ApiService = network.service) = OutboxDrainEngine(outbox,
         listOf(
-            PatchExpenseDispatcher({ network.service }, adapters.patchExpenseAdapter, ::publishExpenseSnapshot),
-            ConfirmExpenseDispatcher({ network.service }, adapters.expenseStateTokenAdapter, ::publishExpenseSnapshot),
+            PatchExpenseDispatcher({ api }, adapters.patchExpenseAdapter, ::publishExpenseSnapshot),
+            ConfirmExpenseDispatcher({ api }, adapters.expenseStateTokenAdapter, ::publishExpenseSnapshot),
         ), maxAttempts = maxAttempts, now = clock::millis).drainOnce()
 
     suspend fun drainSplitAcceptance(maxAttempts: Int = 10) = OutboxDrainEngine(outbox,
