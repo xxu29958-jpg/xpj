@@ -466,7 +466,11 @@ def test_loopback_transport_disables_proxies_and_redirects(monkeypatch: pytest.M
     proxy_handlers = [value for value in handlers if isinstance(value, urllib.request.ProxyHandler)]
     assert len(proxy_handlers) == 1
     assert proxy_handlers[0].proxies == {}
-    assert any(type(value).__name__ == "_NoRedirect" for value in handlers)
+    redirect_handlers = [value for value in handlers if isinstance(value, urllib.request.HTTPRedirectHandler)]
+    assert len(redirect_handlers) == 1
+    assert redirect_handlers[0].redirect_request(
+        urllib.request.Request("http://127.0.0.1:20241/ready"), None, 302, "Found", {}, "https://unexpected.invalid/"
+    ) is None
 
 
 def test_loopback_transport_rejects_oversized_and_redirected_responses() -> None:

@@ -57,28 +57,28 @@ class ItemsCascadeDispatcherTest {
             assertEquals(2L, following.expectedRowVersion)
             assertEquals("following-key", following.idempotencyKey)
             assertEquals(followingPayload, following.payload)
-            assertEquals(3L, api.currentPeerVersion)
+            assertEquals(listOf("original-key" to 1L, "following-key" to 2L), api.receivedIntents)
         }
     }
 
     /** Server accepted version 2, lost its reply, then a peer wrote version 3. */
     private class AcceptedSubtaskApi : ApiService by FakeApiService(mutableListOf(), 0) {
-        var currentPeerVersion = 3L
-            private set
+        val receivedIntents = mutableListOf<Pair<String?, Long>>()
         private fun originalItems() = ExpenseItemsResponseDto(expenseId = 42, rowVersion = 2,
             parentAmountCents = 1500, itemsTotalAmountCents = 500, mismatchCents = 1000, items = emptyList())
 
         override suspend fun replaceExpenseItems(id: String, request: ExpenseItemReplaceRequestDto,
             idempotencyKey: String?): ExpenseItemsResponseDto {
+            receivedIntents += idempotencyKey to request.expectedRowVersion
             if (idempotencyKey == "original-key") return originalItems()
-            if (request.expectedRowVersion != currentPeerVersion) throw HttpException(Response.error<Any>(409,
+            check(idempotencyKey == "following-key")
+            throw HttpException(Response.error<Any>(409,
                 """{"error":"state_conflict","message":"账单已被其它端修改"}""".toResponseBody("application/json".toMediaType())))
-            currentPeerVersion += 1
-            return originalItems().copy(rowVersion = currentPeerVersion)
         }
 
         override suspend fun replaceExpenseSplits(id: String, request: ExpenseSplitReplaceRequestDto,
             idempotencyKey: String?): ExpenseSplitsResponseDto {
+            receivedIntents += idempotencyKey to request.expectedRowVersion
             assertEquals("original-key", idempotencyKey)
             return ExpenseSplitsResponseDto(expenseId = 42, rowVersion = 2,
                 parentAmountCents = 1500, splitsTotalAmountCents = 500, mismatchCents = 1000, splits = emptyList())
@@ -86,6 +86,7 @@ class ItemsCascadeDispatcherTest {
 
         override suspend fun acknowledgeExpenseItemsMismatch(id: String, request: ExpenseStateTokenRequest,
             idempotencyKey: String?): ExpenseItemsResponseDto {
+            receivedIntents += idempotencyKey to request.expectedRowVersion
             assertEquals("original-key", idempotencyKey)
             return originalItems().copy(itemsSumStatus = "mismatch_acknowledged")
         }

@@ -450,7 +450,11 @@ def test_https_transport_disables_proxies_rejects_redirect_following_and_uses_ge
     assert handlers is not None
     proxy_handlers = [value for value in handlers if isinstance(value, urllib.request.ProxyHandler)]
     assert len(proxy_handlers) == 1 and proxy_handlers[0].proxies == {}
-    assert any(type(value).__name__ == "_NoRedirect" for value in handlers)
+    redirect_handlers = [value for value in handlers if isinstance(value, urllib.request.HTTPRedirectHandler)]
+    assert len(redirect_handlers) == 1
+    assert redirect_handlers[0].redirect_request(
+        urllib.request.Request("https://public.example/api/health"), None, 302, "Found", {}, "https://unexpected.invalid/"
+    ) is None
     request, timeout = opener.requests[0]
     assert request.get_method() == "GET"
     assert request.full_url == "https://public.example/api/health"

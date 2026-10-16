@@ -162,10 +162,8 @@ class UpdateMerchantAliasDispatcherTest {
             ): MerchantAliasDto {
                 receivedVersions += request.expectedRowVersion
                 if (idempotencyKey == "original-key") return updatedAliasDto()
-                if (request.expectedRowVersion != 3L) {
-                    throw httpException(409, """{"error":"state_conflict","message":"他端已修改别名"}""")
-                }
-                error("The peer's version must never authorize this unsent successor")
+                check(idempotencyKey == "following-key")
+                throw httpException(409, """{"error":"state_conflict","message":"他端已修改别名"}""")
             }
         }
         val firstId = outbox.enqueue(original.type, original.targetId, original.payloadJson, 1L,

@@ -13,7 +13,7 @@ import com.ticketbox.data.remote.dto.RepaymentFactDto
 import java.io.IOException
 import java.lang.reflect.Proxy
 
-/** Synthetic peer-side server IO; production graph, Room, UI and currency consumers remain real. */
+/** Declared member-command replies; Room, UI and client currency consumers remain real. */
 internal class MemberSettlementConnectedNetwork {
     var current = DebtDto(
         publicId = "member-original", ledgerId = null, direction = "i_owe", counterpartyType = "member",
@@ -72,13 +72,11 @@ internal class MemberSettlementConnectedNetwork {
             val key = requireNotNull(idempotencyKey)
             confirms += request to key
             val result = accepted.getOrPut(key) {
-                check(request.expectedRowVersion == current.rowVersion)
-                val amount = request.confirmedAmountCents ?: proposal.proposedAmountCents
-                payment = RepaymentFactDto("payment-original", amount, current.createdAt, current.createdAt, "active")
-                proposal = proposal.copy(status = if (amount < proposal.proposedAmountCents) "partially_confirmed" else "confirmed", confirmedAmountCents = amount,
+                check(request.expectedRowVersion == 1L && request.confirmedAmountCents == 450L)
+                payment = RepaymentFactDto("payment-original", 450, current.createdAt, current.createdAt, "active")
+                proposal = proposal.copy(status = "partially_confirmed", confirmedAmountCents = 450,
                     committedRepaymentPublicId = "payment-original", resolvedAt = current.createdAt)
-                current.copy(remainingAmountCents = current.remainingAmountCents - amount,
-                    paidAmountCents = amount, rowVersion = current.rowVersion + 1).also { current = it }
+                current.copy(remainingAmountCents = 750, paidAmountCents = 450, rowVersion = 2).also { current = it }
             }
             failReads = true
             if (loseFirstResponse) { loseFirstResponse = false; throw IOException("Synthetic lost acknowledgement") }
@@ -103,10 +101,10 @@ internal class MemberSettlementConnectedNetwork {
 
         override suspend fun forgiveDebt(publicId: String, request: DebtForgiveCreateRequestDto,
             idempotencyKey: String?): DebtDto {
-            check(publicId == current.publicId && request.expectedRowVersion == current.rowVersion)
+            check(publicId == current.publicId && request.expectedRowVersion == 2L)
             return accepted.getOrPut(requireNotNull(idempotencyKey)) {
-                current.copy(remainingAmountCents = 0, status = "cleared", isForgiven = true,
-                    rowVersion = current.rowVersion + 1).also { current = it }
+                current.copy(remainingAmountCents = 0, paidAmountCents = 450, status = "cleared", isForgiven = true,
+                    rowVersion = 3).also { current = it }
             }
         }
     }
