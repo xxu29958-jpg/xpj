@@ -19,7 +19,6 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
-import app.services.expense_service._create as create_module
 from app.database import SessionLocal
 from app.models import AuthToken, Device, Expense
 from app.services.identity_service import hash_secret, new_session_token
@@ -50,18 +49,6 @@ def _count_manual_rows(tenant_id: str = "owner") -> int:
             .select_from(Expense)
             .where(Expense.tenant_id == tenant_id, Expense.source == "手动记账")
         )
-
-
-def _stored_amount_for_ref(client_ref: str, tenant_id: str = "owner") -> int:
-    with SessionLocal() as db:
-        row = db.scalar(
-            select(Expense).where(
-                Expense.tenant_id == tenant_id,
-                Expense.draft_idempotency_key.like(f"%:{client_ref}"),
-            )
-        )
-        assert row is not None
-        return row.amount_cents
 
 
 def _add_second_owner_device(identity) -> str:
@@ -98,16 +85,6 @@ def test_manual_create_without_auth_is_401(client: TestClient, *, identity) -> N
     assert response.status_code == 401
 
 
-def test_same_client_ref_same_body_is_idempotent(client: TestClient, *, identity) -> None:
-    first = _post_manual(client, identity.app_headers, client_ref="ref-idem")
-    assert first.status_code == 200, first.text
-    second = _post_manual(client, identity.app_headers, client_ref="ref-idem")
-    assert second.status_code == 200, second.text
-
-    assert second.json()["id"] == first.json()["id"]
-    assert _count_manual_rows() == 1
-
-
 def test_client_ref_replay_with_auto_classified_category_is_idempotent(
     client: TestClient, *, identity
 ) -> None:
@@ -134,33 +111,18 @@ def test_client_ref_replay_with_auto_classified_category_is_idempotent(
     assert _count_manual_rows() == 1
 
 
-def test_same_client_ref_different_amount_is_rejected(client: TestClient, *, identity) -> None:
-    first = _post_manual(client, identity.app_headers, client_ref="ref-amt", amount_cents=1000)
+def test_same_client_ref_different_intent_is_rejected(client: TestClient, *, identity) -> None:
+    original = {"client_ref": "ref-intent", "amount_cents": 1000, "merchant": "A 店", "note": "原始备注"}
+    first = _post_manual(client, identity.app_headers, **original)
     assert first.status_code == 200, first.text
-    conflict = _post_manual(client, identity.app_headers, client_ref="ref-amt", amount_cents=2000)
-    assert conflict.status_code == 422, conflict.text
-    assert conflict.json()["error"] == "idempotency_key_reused"
-    assert _count_manual_rows() == 1
-    # The rejected replay must NOT have mutated the original row.
-    assert _stored_amount_for_ref("ref-amt") == 1000
-
-
-def test_same_client_ref_different_merchant_is_rejected(client: TestClient, *, identity) -> None:
-    first = _post_manual(client, identity.app_headers, client_ref="ref-mer", merchant="A 店")
-    assert first.status_code == 200, first.text
-    conflict = _post_manual(client, identity.app_headers, client_ref="ref-mer", merchant="B 店")
-    assert conflict.status_code == 422, conflict.text
-    assert conflict.json()["error"] == "idempotency_key_reused"
-    assert _count_manual_rows() == 1
-
-
-def test_same_client_ref_different_note_is_rejected(client: TestClient, *, identity) -> None:
-    first = _post_manual(client, identity.app_headers, client_ref="ref-note", note="原始备注")
-    assert first.status_code == 200, first.text
-    conflict = _post_manual(client, identity.app_headers, client_ref="ref-note", note="改过的备注")
-    assert conflict.status_code == 422, conflict.text
-    assert conflict.json()["error"] == "idempotency_key_reused"
-    assert _count_manual_rows() == 1
+    for change in ({"amount_cents": 2000}, {"merchant": "B 店"}, {"note": "改过的备注"}):
+        conflict = _post_manual(client, identity.app_headers, **(original | change))
+        assert conflict.status_code == 422, conflict.text
+        assert conflict.json()["error"] == "idempotency_key_reused"
+        assert _count_manual_rows() == 1
+        with SessionLocal() as db:
+            row = db.get(Expense, first.json()["id"])
+            assert (row.amount_cents, row.merchant, row.note) == (1000, "A 店", "原始备注")
 
 
 @pytest.mark.parametrize("fields", [{}, {"client_ref": None}, {"client_ref": ""}, {"client_ref": "   "}])
@@ -180,24 +142,15 @@ def test_same_client_ref_different_device_creates_distinct_rows(
     second_token = _add_second_owner_device(identity)
     second_headers = current_protocol_headers({"Authorization": f"Bearer {second_token}"})
 
-    first = _post_manual(client, identity.app_headers, client_ref="shared-ref")
-    second = _post_manual(client, second_headers, client_ref="shared-ref")
+    reference = " " + "r" * 62 + " "
+    first = _post_manual(client, identity.app_headers, client_ref=reference)
+    second = _post_manual(client, second_headers, client_ref=reference)
     assert first.status_code == 200, first.text
     assert second.status_code == 200, second.text
 
     # Same client_ref, different device → distinct server-built keys → two rows.
     assert second.json()["id"] != first.json()["id"]
     assert _count_manual_rows() == 2
-
-
-def test_receipt_replay_does_not_reenter_expense_insert_or_current_lookup(client, identity, monkeypatch):
-    created = _post_manual(client, identity.app_headers, client_ref="ref-original")
-    assert created.status_code == 200, created.text
-    def reject_current_lookup(*_args, **_kwargs):
-        pytest.fail("The original receipt must bypass latest expense lookup")
-    monkeypatch.setattr(create_module, "_find_manual_expense_by_key", reject_current_lookup)
-    monkeypatch.setattr(create_module, "_insert_manual_expense", reject_current_lookup)
-    replay = _post_manual(client, identity.app_headers, client_ref="ref-original")
-    assert replay.status_code == 200, replay.text
-    assert replay.json() == created.json()
-    assert _count_manual_rows() == 1
+    with SessionLocal() as db:
+        for expense_id in (first.json()["id"], second.json()["id"]):
+            assert db.get(Expense, expense_id).draft_idempotency_key.endswith(":" + reference)

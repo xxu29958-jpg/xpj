@@ -1,9 +1,9 @@
 """New time intent cannot alter an old command body or an accepted receipt."""
 
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
-from test_manual_create_receipt import _expense
-
+from app.models import Expense
 from app.schemas import ExpenseCorrectionRequest, ExpenseManualCreateRequest, ExpenseResponse
 from app.services.expense_correction_service import correction_idempotency_body
 from app.services.manual_expense_receipt import _manual_receipt, _manual_request_fingerprint
@@ -13,6 +13,8 @@ def test_old_manual_fingerprint_keeps_absent_and_explicit_null_time():
     payload = ExpenseManualCreateRequest(client_ref="original-ref", home_currency_code="JPY",
         original_currency="JPY", original_amount="12", category="餐饮")
     assert _manual_request_fingerprint(payload) == "69d4366d334edb81a7660210407e46b9b49f4b8dfe26b9817336b987c5382c9d"
+    assert _manual_request_fingerprint(payload.model_copy(update={"client_ref": "different"})) == (
+        "69d4366d334edb81a7660210407e46b9b49f4b8dfe26b9817336b987c5382c9d")
     assert "time_input" not in payload.model_dump(exclude_unset=True)
     cleared = payload.model_copy(update={"expense_time": None})
     assert _manual_request_fingerprint(cleared) == "a9cf7add3992c5ff24cbf34a18f92c914e13325ce7be836c45ddd368f0c28d74"
@@ -32,7 +34,13 @@ def test_time_intent_is_part_of_original_command_and_correction_body():
 
 
 def test_old_accepted_receipt_keeps_missing_time_evidence_missing():
-    original = ExpenseResponse.model_validate(_expense()).model_dump(mode="json")
+    now = datetime(2026, 9, 9, tzinfo=UTC)
+    expense = Expense(id=42, public_id="original-expense", tenant_id="owner", home_currency_code="JPY",
+        original_currency_code="JPY", original_amount_minor=12, amount_cents=12,
+        category="餐饮", source="手动记账", status="confirmed", fx_status="ready",
+        duplicate_status="none", row_version=3, fact_revision=1, created_at=now, updated_at=now,
+        expense_time=now, confirmed_at=now)
+    original = ExpenseResponse.model_validate(expense).model_dump(mode="json")
     original.pop("accounting_time", None)
     receipt = _manual_receipt(SimpleNamespace(response_body=original, operation="create_manual_expense",
         resource_type="expense", resource_id="42"))
