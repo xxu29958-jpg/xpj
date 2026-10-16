@@ -3,7 +3,7 @@
 模板与路由从同一共享常量 (``PROPOSAL_CONFIRM_AMOUNT_FIELD``) 取字段名——修复前模板提交
 ``confirmed_amount_major`` 而路由读 ``amount_major``，用户改填的部分金额被静默丢弃，proposal
 按对方申报全额入账 (金额事实 bug)。这里钉死：改填值入账 / 留空按全额 (显式分支) / 非法输入
-422 原地重渲染且错误锚定到金额输入 / viewer 直 POST 仍 403 / 模板↔路由同源契约。
+422 原地重渲染且错误锚定到金额输入 / viewer 直 POST 仍 403 / 实际表单与提交结果。
 
 Review P1 (N-1)：旧字段名 ``amount_major`` 仍被接受 (新字段非空优先，旧字段兜底，两者皆空按
 申报全额)——否则旧客户端/旧页面的部分确认会再次静默变成全额；两字段均非空时按债务币种解析后
@@ -14,13 +14,9 @@ Review P1 (N-1)：旧字段名 ``amount_major`` 仍被接受 (新字段非空优
 
 from __future__ import annotations
 
-import inspect
-
-from fastapi import params
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-import app.routes.web_debt_proposal_actions as proposal_routes
 from app.database import SessionLocal
 from app.models import Debt, MemberRepaymentProposal, Repayment
 from app.money_carrier import MAX_MAJOR_DECIMAL_TEXT_LENGTH
@@ -47,6 +43,14 @@ def test_web_confirm_with_empty_amount_records_full_declared_amount(
     # D3 (b)：留空 = 按对方申报全额确认 (显式分支语义，不是 Form 默认值巧合)。
     public_id, debt_id, owner_id, _member_id, proposal_public_id = seed_creditor_view()
     before_version = row_version_of(debt_id)
+    page = web_client.get(f"/web/debts/{public_id}")
+    assert page.status_code == 200
+    confirm_form = page.text.split(
+        f'action="/web/debts/{public_id}/repayment-proposals/{proposal_public_id}/confirm"', 1
+    )[1].split("</form>", 1)[0]
+    assert f'name="{PROPOSAL_CONFIRM_AMOUNT_FIELD}"' in confirm_form
+    assert 'name="amount_major"' not in confirm_form
+    assert 'value="80.00"' in confirm_form
 
     confirmed = web_client.post(
         f"/web/debts/{public_id}/repayment-proposals/{proposal_public_id}/confirm",
@@ -197,32 +201,6 @@ def test_web_confirm_direct_post_as_viewer_is_rejected(
         assert repayments == []
 
 
-def test_confirm_amount_field_contract_binds_template_and_route(web_client: TestClient) -> None:
-    # D3 (e) + P1：模板渲染的字段名与路由 Form 绑定必须出自同一共享常量,任一侧漂移都在这里失败。
-    signature = inspect.signature(proposal_routes.web_confirm_repayment_proposal)
-    form_aliases = {
-        parameter.default.alias
-        for parameter in signature.parameters.values()
-        if isinstance(parameter.default, params.Form)
-    }
-    assert PROPOSAL_CONFIRM_AMOUNT_FIELD in form_aliases  # 路由绑定共享契约常量 (新名字)
-    assert PROPOSAL_CONFIRM_AMOUNT_FIELD_LEGACY in form_aliases  # N-1 旧名字也出自契约常量
-    assert PROPOSAL_CONFIRM_AMOUNT_FIELD_LEGACY == "amount_major"  # 旧名字冻结 (外部已发布契约)
-
-    public_id, _debt_id, _owner_id, _member_id, proposal_public_id = seed_creditor_view()
-    resp = web_client.get(f"/web/debts/{public_id}")
-    assert resp.status_code == 200
-    assert f'name="{PROPOSAL_CONFIRM_AMOUNT_FIELD}"' in resp.text  # 模板渲染新名字
-    # 确认表单内只用新名字 (旧名字不再进确认表单;同页「记一笔还款」等其他表单
-    # 仍合法使用 amount_major,故只在确认表单片段内做负断言)。
-    confirm_form = resp.text.split(
-        f'action="/web/debts/{public_id}/repayment-proposals/{proposal_public_id}/confirm"', 1
-    )[1].split("</form>", 1)[0]
-    assert f'name="{PROPOSAL_CONFIRM_AMOUNT_FIELD}"' in confirm_form
-    assert f'name="{PROPOSAL_CONFIRM_AMOUNT_FIELD_LEGACY}"' not in confirm_form
-    assert 'value="80.00"' in resp.text  # 预填对方申报全额 (留空提交即按全额)
-
-
 # ── P1：N-1 旧字段 amount_major 兼容 ─────────────────────────────────────────
 
 
@@ -238,7 +216,7 @@ def test_web_confirm_with_legacy_amount_field_records_edited_partial(
         f"/web/debts/{public_id}/repayment-proposals/{proposal_public_id}/confirm",
         data=proposal_form(
             **{
-                PROPOSAL_CONFIRM_AMOUNT_FIELD_LEGACY: "50.00",
+                "amount_major": "50.00",
                 "expected_row_version": str(before_version),
             }
         ),
