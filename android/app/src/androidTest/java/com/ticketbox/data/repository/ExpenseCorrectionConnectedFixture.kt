@@ -225,11 +225,11 @@ internal class ExpenseCorrectionConnectedFixture(
     fun close() { database?.close(); context.deleteDatabase(name); calendarPreferences.edit().clear().commit(); readSettings.clear() }
 }
 
-/** Response-loss model deduplicates by the actual original key and full request; not a PostgreSQL substitute. */
+/** Declared remote replies; Room/Outbox owns delivery, while PostgreSQL tests own money, CAS and replay. */
 internal class CorrectionConnectedNetwork {
     var current = correctionExpense()
     var financialSummary: ExpenseFinancialSummaryDto? = null
-    var historyOverride: List<ExpenseRevisionDto>? = null
+    var history = emptyList<ExpenseRevisionDto>()
     var diagnosticApiVersion = com.ticketbox.data.remote.CURRENT_TICKETBOX_API_VERSION
     val diagnosticReads = CopyOnWriteArrayList<String>()
     var backgroundTasks = com.ticketbox.data.remote.dto.BackgroundTaskListResponseDto()
@@ -251,7 +251,11 @@ internal class CorrectionConnectedNetwork {
     var loseResponse = true
     var refusalCode: String? = null
     val calls = mutableListOf<Pair<ExpenseCorrectionRequestDto, String>>()
-    val results = mutableMapOf<String, ExpenseCorrectionResponseDto>()
+    var correctionReply = ExpenseCorrectionResponseDto(
+        correctionExpense().copy(originalAmountMinor = 1200, amountCents = 1200, rowVersion = 8, factRevision = 4),
+        ExpenseRevisionDto("correction-1", 4, "correction", "核对原小票", listOf("original_amount_minor"),
+            null, emptyMap(), "家庭成员", "手机", "2026-09-06T00:00:00Z"),
+    )
     val expenseReads = CopyOnWriteArrayList<Long>()
     val occurrenceReads = CopyOnWriteArrayList<Pair<String, String>>()
     val editCalls = CopyOnWriteArrayList<String>()
@@ -400,7 +404,7 @@ internal class CorrectionConnectedNetwork {
         }
         override suspend fun expenseRevisions(id: Long, page: Int, pageSize: Int, snapshotRevision: Long?, offsetSnapshotId: Long?): ExpenseRevisionPageDto {
             readable()
-            val rows = historyOverride ?: results.values.map { it.revision }
+            val rows = history
             return ExpenseRevisionPageDto(rows, page, pageSize, rows.size, current.factRevision,
                 offsetSnapshotId = if (rows.any { it.offsetPublicId != null }) 1 else 0)
         }
@@ -420,18 +424,9 @@ internal class CorrectionConnectedNetwork {
                     """{"error":"$code","message":"private transport detail"}"""
                         .toResponseBody("application/json".toMediaType())))
             }
-            val response = results[key] ?: run {
-                check(request.expectedRowVersion == current.rowVersion)
-                current = current.copy(merchant = request.merchant ?: current.merchant,
-                    originalAmountMinor = request.originalAmountMinor ?: current.originalAmountMinor,
-                    amountCents = request.originalAmountMinor ?: current.amountCents, rowVersion = current.rowVersion + 1,
-                    expenseTime = if (request.expenseTime.changed) request.expenseTime.value else current.expenseTime,
-                    factRevision = current.factRevision + 1)
-                ExpenseCorrectionResponseDto(current, ExpenseRevisionDto("correction-1", current.factRevision, "correction",
-                    request.reason, listOf("original_amount_minor"), null, emptyMap(), "家庭成员", "手机", "2026-09-06T00:00:00Z"))
-                    .also { results[key] = it }
-            }
-            check(calls.first { it.second == key }.first == request) { "Replay mutated the original body" }
+            val response = correctionReply
+            current = response.expense
+            history = listOf(response.revision)
             if (loseResponse) throw IOException("Synthetic committed response loss")
             return response
         }
