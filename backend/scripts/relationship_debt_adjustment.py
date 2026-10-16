@@ -29,7 +29,7 @@ def manual_adjustment(j):
     original = wait_for(lambda: adjustment_facts(ledger), "The Web did not create the manual debt")
     assert original["principal"] == 5000 and original["adjustments"] == []
 
-    native.domain_home("往来")
+    j.native_debts()
     native.click("我欠")
     native.reveal_any("我欠T3Loan", exact=True)
     native.click("我欠T3Loan", stable=True)

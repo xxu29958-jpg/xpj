@@ -82,13 +82,15 @@ class RelationshipJourney:
         self.capture("received-invitation", receiver=True)
         self.native.bind(pairing_code(self.identity.receiver_ledger, self.identity.receiver_account), self.port)
 
-    def open_native(self, *, returned=False):
+    def native_debts(self):
         self.native.plan_home()
         self.native.click("往来", bottom=True)
         self.native.reveal_any("我欠", "欠我", "拆账约定与结算", toward_start=True)
         if self.native.has("拆账约定与结算"):
             self.native.back()
             self.native.reveal_any("我欠", "欠我", toward_start=True)
+    def open_native(self, *, returned=False):
+        self.native_debts()
         self.native.click("欠我" if returned else "我欠")
         title = "联动验证账户欠我" if returned else "我欠联动验证账户"
         self.native.reveal_any(title, exact=True)
